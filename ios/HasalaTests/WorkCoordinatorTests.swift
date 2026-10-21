@@ -260,4 +260,32 @@ struct WorkCoordinatorTests {
     #expect(await c.runs == 3)
     #expect(log.all.filter { $0.hasPrefix("mail.") } == ["mail.foreground", "mail.refresh", "mail.refresh"])
   }
+
+  @Test func aPullJoinsARunThatReadsMail() async {
+    let log = Log()
+    let c = Self.coordinator(log, delay: .milliseconds(80))
+    await withTaskGroup(of: Void.self) { g in
+      g.addTask { _ = await c.run(.launch) }
+      try? await Task.sleep(for: .milliseconds(20))
+      g.addTask { _ = await c.run(.refresh) }
+      g.addTask { _ = await c.run(.refresh) }
+    }
+    #expect(await c.runs == 1)
+    #expect(log.all == ["sync.launch", "mail.launch", "committed"])
+  }
+
+  @Test func aPullBehindAnUploadStillReadsMail() async {
+    let log = Log()
+    let c = Self.coordinator(log, delay: .milliseconds(80))
+    await withTaskGroup(of: Void.self) { g in
+      g.addTask { _ = await c.run(.authored) }
+      try? await Task.sleep(for: .milliseconds(20))
+      g.addTask { _ = await c.run(.refresh) }
+    }
+    #expect(await c.runs == 2)
+    #expect(log.all.filter { $0.hasPrefix("mail.") } == ["mail.refresh"])
+    #expect(WorkCoordinator.joins(.refresh, running: .authored, queued: .silentPush))
+    #expect(!WorkCoordinator.joins(.refresh, running: .authored, queued: nil))
+    #expect(!WorkCoordinator.joins(.silentPush, running: .launch, queued: nil))
+  }
 }

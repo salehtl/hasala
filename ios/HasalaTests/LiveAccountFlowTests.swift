@@ -397,38 +397,36 @@ struct LiveAccountFlowTests {
     func add(_ line: String) { lock.withLock { _lines.append(line) } }
   }
 
-  func mailboxStepUp(_ phone: Phone, passkey: Bool, explained: Bool, log: StepUpLog) -> LiveStepUp {
+  func mailboxStepUp(_ phone: Phone, passkey: Bool, log: StepUpLog) -> LiveStepUp {
     LiveStepUp(
       env: phone.env, usesPasskey: { passkey },
-      askPassword: { log.add("password: \($0)"); return nil },
-      explain: { log.add("explain: \($0)"); return explained })
+      askPassword: { log.add("password: \($0)"); return nil })
   }
 
-  @Test func aPasskeyAccountIsToldWhyBeforeTheMailboxStepUp() async throws {
+  @Test func aPasskeyAccountGoesStraightToTheMailboxStepUp() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
     _ = try await signUp(a, server)
     let log = StepUpLog()
     await #expect(throws: MailboxStepUpError.unavailable) {
-      try await mailboxStepUp(a, passkey: true, explained: true, log: log)
+      try await mailboxStepUp(a, passkey: true, log: log)
         .proof(kind: "mailbox.link", payloadHash: Data(repeating: 7, count: 32))
     }
-    #expect(log.lines == ["explain: Confirm it's you to connect this mailbox to Hasala"])
+    #expect(log.lines.isEmpty)
     #expect(server.lastStepUpAction == "mailbox.link")
   }
 
-  @Test func aPasskeyAccountThatSaysNoIsNeverAsked() async throws {
+  @Test func aPasskeyAccountGoesStraightToTheDisconnectStepUp() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
     _ = try await signUp(a, server)
-    let before = server.lastStepUpAction
     let log = StepUpLog()
-    await #expect(throws: MailboxStepUpError.cancelled) {
-      try await mailboxStepUp(a, passkey: true, explained: false, log: log)
+    await #expect(throws: MailboxStepUpError.unavailable) {
+      try await mailboxStepUp(a, passkey: true, log: log)
         .proof(kind: "mailbox.unlink", payloadHash: nil)
     }
-    #expect(log.lines == ["explain: Confirm it's you to disconnect this mailbox"])
-    #expect(server.lastStepUpAction == before)
+    #expect(log.lines.isEmpty)
+    #expect(server.lastStepUpAction == "mailbox.unlink")
   }
 
   @Test func aPasswordAccountIsAskedForItsPasswordWithTheReason() async throws {
@@ -437,7 +435,7 @@ struct LiveAccountFlowTests {
     _ = try await signUp(a, server)
     let log = StepUpLog()
     await #expect(throws: MailboxStepUpError.cancelled) {
-      try await mailboxStepUp(a, passkey: false, explained: true, log: log)
+      try await mailboxStepUp(a, passkey: false, log: log)
         .proof(kind: "mailbox.link", payloadHash: Data(repeating: 7, count: 32))
     }
     #expect(log.lines == ["password: Confirm it's you to connect this mailbox to Hasala"])
@@ -667,6 +665,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
         "restricted": u.frozenBy != nil,
         "review_account": s.reviewAccounts,
       ])
+    case "PUT /api/v1/account/display-name":
+      guard let name = b["display_name"] as? String, case .success(let valid) = DisplayName.validate(name) else {
+        return error(400, "bad_name")
+      }
+      u.name = valid
+      s.users[u.id] = u
+      return APIResponse(status: 204)
     case "GET /api/v1/keys": return ok(u.keys)
     case "GET /api/v1/keys/wraps": return ok(["wraps": u.wraps])
     case "POST /api/v1/writers/challenge":

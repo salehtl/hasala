@@ -47,6 +47,7 @@ private let doc: Doc = {
 }()
 
 private let outlookVectors = doc.vectors.filter { $0.provider == "outlook" }
+private let gmailVectors = doc.vectors.filter { $0.provider == nil }
 
 private func vector(_ name: String) -> String { doc.vectors.first { $0.name == name }!.raw }
 
@@ -259,6 +260,89 @@ struct TrustCheckTests {
     #expect(TrustCheck.parse(["/x"]) == nil)
     #expect(TrustCheck.parse(["--expect", "maybe", "/x"]) == nil)
     #expect(TrustCheck.parse(["--expect", "pass", "/x", "/y"]) == nil)
+    #expect(
+      TrustCheck.parse(["--provider", "gmail", "--expect", "pass", "/x"])
+        == .init(expect: .pass, domains: [], directory: "/x", provider: .gmail))
+    #expect(TrustCheck.parse(["--provider", "yahoo", "--expect", "pass", "/x"]) == nil)
+    #expect(TrustCheck.parse(["--expect", "pass", "/x"])?.provider == .outlook)
+  }
+
+  @Test("the Gmail probe's verdict is the Gmail rule on every Gmail conformance vector", arguments: gmailVectors.map(\.name))
+  func sameGmailVerdict(_ name: String) {
+    let raw = vector(name)
+    let p = AuthResults.gmailTrustProbe(raw)
+    let v = doc.vectors.first { $0.name == name }!
+    #expect(p.analysis == AuthResults.analyze(raw))
+    #expect(p.analysis.verdict.reason.rawValue == v.expect.reason)
+    #expect(p.analysis.domain == v.expect.domain)
+  }
+
+  @Test("a Gmail-delivered alert prints one redacted line")
+  func gmailLines() {
+    let direct = TrustCheck.gmailProbe(bytes: eml(vector("gmail-direct-alert")))
+    #expect(
+      direct.line
+        == "from=bank.example from_fields=1 ar=1 forms=gmail gmail_index=0 topmost=yes dkim=pass/i/bank.example/aligned dmarc=pass spf=pass arc=- verdict=pass domain=bank.example"
+    )
+    #expect(direct.g1)
+    let forwarded = TrustCheck.gmailProbe(bytes: eml(vector("gmail-forwarded-alert")))
+    #expect(forwarded.line.contains(" ar=2 forms=gmail,other gmail_index=0 topmost=yes "))
+    #expect(forwarded.line.contains(" arc=pass verdict=pass domain=bank.example"))
+    let esp = TrustCheck.gmailProbe(bytes: eml(vector("gmail-esp-signature-with-spf-aligned-dmarc")))
+    #expect(esp.line.contains(" dkim=pass/i/esp.example/unaligned dmarc=pass "))
+    #expect(esp.line.hasSuffix(" verdict=fail domain=-"))
+    let both = TrustCheck.gmailProbe(bytes: eml(vector("gmail-esp-then-bank-signature")))
+    #expect(both.line.contains(" dkim=pass/i/esp.example/unaligned,pass/i/bank.example/aligned "))
+    let decides = TrustCheck.gmailProbe(bytes: eml(vector("gmail-header-d-decides-over-header-i")))
+    #expect(decides.line.contains(" dkim=pass/d/evil.example/unaligned "))
+    let foreign = TrustCheck.gmailProbe(bytes: eml(vector("gmail-shape-foreign-above")))
+    #expect(foreign.line.contains(" forms=other,gmail gmail_index=1 topmost=no "))
+    #expect(!foreign.g1)
+    let outlook = TrustCheck.gmailProbe(bytes: eml(vector("outlook-pass")))
+    #expect(outlook.line.contains(" forms=ms gmail_index=- topmost=no dkim=- dmarc=- spf=- arc=- verdict=no_ar "))
+  }
+
+  @Test("Gmail folders: G1 and G2 for genuine alerts, G3 for copied or forged mail")
+  func gmailFolders() {
+    let direct = MessageInput(group: .plain, bytes: eml(vector("gmail-direct-alert")))
+    let forwarded = MessageInput(group: .forwarded, bytes: eml(vector("gmail-forwarded-alert")))
+    let genuine = TrustCheck.runGmail([direct, forwarded], expect: .pass, domains: ["bank.example"])
+    #expect(status(genuine, "G1") == .pass)
+    #expect(status(genuine, "G2") == .pass)
+    #expect(status(genuine, "G3") == .needsData)
+    #expect(genuine.lines[1].hasPrefix("#02 [forwarded] "))
+    #expect(genuine.exitCode == 0)
+    let esp = TrustCheck.runGmail([MessageInput(group: .plain, bytes: eml(vector("gmail-esp-signature-with-spf-aligned-dmarc")))], expect: .pass)
+    #expect(status(esp, "G1") == .pass)
+    #expect(status(esp, "G2") == .fail)
+    #expect(esp.exitCode == 1)
+    #expect(status(TrustCheck.runGmail([direct], expect: .pass, domains: ["other-bank.example"]), "G2") == .fail)
+    let copied = TrustCheck.runGmail(
+      [MessageInput(group: .plain, bytes: eml(vector("gmail-shape-copy-above"))), MessageInput(group: .plain, bytes: eml(vector("no-ar-header")))],
+      expect: .untrusted)
+    #expect(status(copied, "G3") == .pass)
+    #expect(status(copied, "G1") == .needsData)
+    #expect(copied.exitCode == 0)
+    let leaked = TrustCheck.runGmail([direct], expect: .untrusted)
+    #expect(status(leaked, "G3") == .fail)
+    #expect(leaked.checks.first { $0.id == "G3" }?.detail == "0/1 are not pass pass_domains=bank.example")
+    #expect(TrustCheck.runGmail([], expect: .pass).checks.allSatisfy { $0.status == .needsData })
+  }
+
+  @Test("no Gmail line names a subject, body, amount, local part, message id, date, address or signature")
+  func gmailRedaction() {
+    let names = ["gmail-direct-alert", "gmail-forwarded-alert", "gmail-forwarded-dkim-broken", "gmail-esp-then-bank-signature"]
+    let r = TrustCheck.runGmail(
+      names.map { MessageInput(group: .plain, bytes: eml(vector($0))) } + [MessageInput(group: .junk, bytes: nil)], expect: .pass)
+    let text = r.text
+    for secret in [
+      "alerts", "user@", "synthetic.user", "tester-local-part", "Synthetic purchase", "Transaction alert", "1,234.56", "0000",
+      "SYNTHETIC SHOP", "9876543210", "synthetic-message-id", "Mon,", "2026", "08:15", "192.0.2", "selector1", "c3ludGhl",
+      "forwarder.example", "ZXNwc2ln",
+    ] {
+      #expect(!text.contains(secret), "leaked \(secret)")
+    }
+    #expect(status(r, "READ") == .fail)
   }
 
   @Test("C4: the same order in $value and internetMessageHeaders matches; a moved A-R does not")

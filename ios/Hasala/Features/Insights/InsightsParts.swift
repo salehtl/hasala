@@ -528,7 +528,7 @@ struct InsightsReportTile: View {
       Text("\u{2014}").hFigure(Self.figure).foregroundStyle(HColor.textPrimary)
     case .money(let m):
       MoneyText(m, figure: Self.figure, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary,
-                sign: m.minor < 0 ? .debt : .none, approx: report.mark?.estimate ?? false)
+                sign: m.minor < 0 ? .debt : .none)
     case .signedMoney(let m):
       MoneyText(m, figure: Self.figure, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary,
                 sign: m.minor < 0 ? .debt : (m.minor > 0 ? .income : .none))
@@ -540,7 +540,7 @@ struct InsightsReportTile: View {
   private var spokenValue: String {
     switch report.value {
     case .missing: "Not available"
-    case .money(let m): (report.mark?.estimate == true && !hidden ? "about " : "") + InsightsSpeech.amount(m, hidden: hidden)
+    case .money(let m): InsightsSpeech.amount(m, hidden: hidden)
     case .signedMoney(let m): InsightsSpeech.amount(m, hidden: hidden, signed: true)
     case .delta(let d):
       switch d.kind {

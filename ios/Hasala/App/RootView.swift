@@ -104,6 +104,7 @@ struct LiveRootView: View {
         SyncHaltWall(halt: halt, retrying: boot.retryingSync, tryAgain: boot.retrySync)
       }
     }
+    .environment(\.avatarPictures, GravatarLoader.shared.provider)
     .onAppear { boot.start() }
     .onChange(of: boot.session.phase) { _, phase in boot.phaseChanged(phase) }
     .onChange(of: scenePhase) { _, phase in
@@ -193,8 +194,22 @@ struct LaunchView: View {
           layouts: mockLayouts(arguments)),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments),
         syncHalt: MockSyncHalt(arguments))
+      if let delay = milliseconds(after: refreshDelayArgument, in: arguments) {
+        graph.app.refreshWork = { try? await Task.sleep(for: delay) }
+      }
+      if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
       launch?.open(graph)
       return graph
+    }
+
+    static let refreshDelayArgument = "-HasalaRefreshDelay"
+    static let pullHoldArgument = "-HasalaPullHold"
+
+    static func milliseconds(after argument: String, in arguments: [String]) -> Duration? {
+      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count,
+        let ms = Int(arguments[i + 1]), ms > 0
+      else { return nil }
+      return .milliseconds(ms)
     }
 
     static let keepLayoutArgument = "-HasalaKeepHomeLayout"

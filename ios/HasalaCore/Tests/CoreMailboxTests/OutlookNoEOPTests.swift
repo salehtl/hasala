@@ -59,7 +59,13 @@ import Testing
 
   @Test func everyAuthResultsReasonFolds() throws {
     let reasons = try Self.authresReasons()
-    #expect(Set(reasons) == Set([AuthResults.Reason.pass, .noAR, .multipleAR, .notTopmost, .fail, .parseError, .noEOP].map(\.rawValue)))
+    #expect(
+      Set(reasons)
+        == Set(
+          [
+            AuthResults.Reason.pass, .noAR, .multipleAR, .notTopmost, .fail, .parseError, .noEOP, .notInbox, .unknownSender,
+            .noDMARCReject,
+          ].map(\.rawValue)))
     #expect(Set(State.gateARValues) == Set(reasons))
     for r in reasons {
       var a = OpAuthor(
@@ -103,42 +109,45 @@ import Testing
     #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").reviewReason == nil)
   }
 
-  @Test func aNoEOPAlertFoldsIntoReview() async throws {
+  @Test func aJunkAlertFoldsIntoReview() async throws {
     let store = try RuntimeGlueTests.ledger()
-    let rig = OutlookRig(trustProven: true, ledgerStore: store, author: Self.authoring(store).opAuthor)
-    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-noeop", amount: "1.00", dateMs: Self.t0 - Self.day, eop: false))
+    let rig = OutlookRig(ledgerStore: store, author: Self.authoring(store).opAuthor)
+    rig.graph.add(
+      SyntheticOutlookMail.dibCard(id: "AAkALgAA-junk", amount: "1.00", dateMs: Self.t0 - Self.day, folder: FakeGraph.junkID))
     await rig.connectAndActivate()
     #expect(await rig.state().phase == .active)
-    #expect(rig.accounted("AAkALgAA-noeop") == .op)
+    #expect(rig.accounted("AAkALgAA-junk") == .op)
     let s = try Self.fold(store)
     #expect(s.anomalies.isEmpty)
-    let t = try #require(Self.row(s, message: "AAkALgAA-noeop"))
+    let t = try #require(Self.row(s, message: "AAkALgAA-junk"))
     #expect(t.needsReview && !t.unparsed && t.amountMinor == 100)
-    #expect(t.gates?.ar == "no_eop" && t.gates?.sender == "untrusted")
+    #expect(t.gates?.ar == "fail" && t.gates?.sender == "untrusted")
     #expect(t.gates?.reviewReason == .senderUnverified)
     #expect(t.category == nil)
   }
 
-  @Test func aPassingAlertBehindTheClosedTrustGateHasNoSenderReason() async throws {
+  @Test func aKnownSenderInTheInboxFoldsWithNoSenderReason() async throws {
     let store = try RuntimeGlueTests.ledger()
-    let rig = OutlookRig(trustProven: false, ledgerStore: store, author: Self.authoring(store).opAuthor)
-    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-gated", amount: "1.00", dateMs: Self.t0 - Self.day))
+    let rig = OutlookRig(ledgerStore: store, author: Self.authoring(store).opAuthor)
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-inbox", amount: "1.00", dateMs: Self.t0 - Self.day, eop: false))
     await rig.connectAndActivate()
     let s = try Self.fold(store)
-    let t = try #require(Self.row(s, message: "AAkALgAA-gated"))
-    #expect(t.needsReview)
-    #expect(t.gates?.ar == "pass" && t.gates?.sender == "untrusted")
+    let t = try #require(Self.row(s, message: "AAkALgAA-inbox"))
+    #expect(!t.needsReview)
+    #expect(t.gates?.ar == "pass" && t.gates?.sender == "trusted")
     #expect(t.gates?.reviewReason == nil)
   }
 
-  @Test func aBatchOf200WithOneNoEOPAlertImportsAll() async throws {
+  @Test func aBatchOf200WithOneJunkAlertImportsAll() async throws {
     let store = try RuntimeGlueTests.ledger()
-    let rig = OutlookRig(trustProven: true, ledgerStore: store, author: Self.authoring(store).opAuthor)
+    let rig = OutlookRig(ledgerStore: store, author: Self.authoring(store).opAuthor)
     for n in 0..<199 {
       rig.graph.add(
         SyntheticOutlookMail.dibCard(id: "AAkALgAA-ok\(n)", amount: "\(n + 2).00", dateMs: Self.t0 - Self.day - Int64(n) * 1_000))
     }
-    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-noeop", amount: "1.00", dateMs: Self.t0 - 2 * Self.day, eop: false))
+    rig.graph.add(
+      SyntheticOutlookMail.dibCard(
+        id: "AAkALgAA-junk", amount: "1.00", dateMs: Self.t0 - 2 * Self.day, folder: FakeGraph.junkID))
     await rig.connectAndActivate()
     #expect(await rig.state().phase == .active)
     #expect(try store.pendingOps().count == 200)
@@ -148,7 +157,7 @@ import Testing
     #expect(rows.count == 200)
     #expect(rows.filter { !$0.needsReview }.count == 199)
     let review = rows.filter(\.needsReview)
-    #expect(review.count == 1 && review.first?.mailboxMessageID == "AAkALgAA-noeop")
+    #expect(review.count == 1 && review.first?.mailboxMessageID == "AAkALgAA-junk")
     #expect(review.first?.gates?.reviewReason == .senderUnverified)
   }
 

@@ -48,12 +48,12 @@ struct NotificationsStep: View {
     } dock: {
       VStack(spacing: 4) {
         // Once iOS has asked, the step only goes on.
-        Button(model.notificationsAllowed ? "Continue" : "Allow notifications") {
+        Button(model.systemAskedForNotifications ? "Continue" : "Allow notifications") {
           Task { await model.allowNotifications() }
         }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("notifications.allow")
-        if !model.notificationsAllowed {
+        if !model.systemAskedForNotifications {
           Button("Not now") { model.notNow() }
             .buttonStyle(.pill(.tertiary, fill: true))
             .accessibilityIdentifier("notifications.notNow")

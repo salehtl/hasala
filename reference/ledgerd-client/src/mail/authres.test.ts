@@ -11,12 +11,16 @@
  *
  * The hardened rule (spec D4): trust a verdict ONLY when exactly one A-R header
  * has authserv-id == mx.google.com, AND it precedes every other A-R header, AND
- * it reports dkim=pass with a d= domain aligned with the one From domain.
+ * it reports dkim=pass with a DKIM domain (header.d, else the domain of
+ * header.i) aligned with the one From domain.
  * Everything else is untrusted with a specific reason.
  */
 
 import { expect, test } from "bun:test";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
+import { noPrivateFixtures, privateFile, realCorpus } from "../../test/private-fixtures.ts";
 import { analyzeFor, gmailVerdict, outlookVerdict, verifiedDomain } from "./authres.ts";
 
 /** Joins header lines with CRLF and terminates the block, the wire shape. */
@@ -151,6 +155,47 @@ test("dkim=fail and no dmarc pass ⇒ fail", () => {
   expect(verifiedDomain(raw)).toBeNull();
 });
 
+test.skipIf(noPrivateFixtures)(realCorpus("every Gmail-delivered .eml passes with its From domain"), () => {
+  const emls: string[] = [];
+  const walk = (dir: string): void => {
+    for (const n of readdirSync(dir).sort()) {
+      const p = join(dir, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (n.endsWith(".eml")) emls.push(p);
+    }
+  };
+  walk(privateFile("server/internal/origin/testdata"));
+  walk(privateFile("conformance/templates/eml"));
+  let gmail = 0;
+  for (const p of emls) {
+    const raw = new TextDecoder().decode(readFileSync(p));
+    const end = raw.search(/\r\n\r\n|\n\n|\r\r/);
+    const headers = end < 0 ? raw : raw.slice(0, end);
+    const fields = headers.split(/\r\n|\r|\n/).reduce<string[]>((out, line) => {
+      if ((line.startsWith(" ") || line.startsWith("\t")) && out.length > 0) out[out.length - 1] += " " + line.trim();
+      else out.push(line);
+      return out;
+    }, []);
+    const firstAR = fields.find((f) => /^authentication-results\s*:/i.test(f));
+    if (firstAR === undefined || !/^authentication-results\s*:\s*mx\.google\.com\s*;/i.test(firstAR)) continue;
+    gmail++;
+    const from = fields.filter((f) => /^from\s*:/i.test(f));
+    expect(from.length).toBe(1);
+    const fromDomain = from[0]!.slice(from[0]!.lastIndexOf("@") + 1).split(/[>\s"]/)[0]!.toLowerCase();
+    expect(analyzeFor(headers, "gmail")).toEqual({ verdict: { trusted: true, reason: "pass" }, domain: fromDomain });
+  }
+  expect(gmail).toBeGreaterThanOrEqual(5);
+});
+
+test("dkim=pass with neither header.d nor header.i and no dmarc pass ⇒ fail", () => {
+  const raw = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.s=selector1 header.b=c3ludGhl",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+  expect(verifiedDomain(raw)).toBeNull();
+});
+
 test("dkim=pass WITHOUT a d= domain reads the domain of header.i", () => {
   const raw = block(
     "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example",
@@ -182,6 +227,59 @@ test("Gmail's DMARC header.from must be the From domain", () => {
     "From: Bank <alerts@bank.example>",
   );
   expect(gmailVerdict(raw)).toEqual({ trusted: false, reason: "fail" });
+});
+
+const GMAIL_AR = [
+  "Authentication-Results: mx.google.com;",
+  "       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;",
+  "       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;",
+  "       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example",
+];
+
+test("Gmail's own shape: dkim=pass header.i=@domain with no header.d, aligned ⇒ trusted", () => {
+  const raw = block(...GMAIL_AR, "From: Bank <alerts@bank.example>");
+  expect(gmailVerdict(raw)).toEqual({ trusted: true, reason: "pass" });
+  expect(verifiedDomain(raw)).toBe("bank.example");
+  const local = block("Authentication-Results: mx.google.com; dkim=pass header.i=alerts@Bank.Example", "From: <alerts@bank.example>");
+  expect(verifiedDomain(local)).toBe("bank.example");
+  const sub = block("Authentication-Results: mx.google.com; dkim=pass header.i=@mail.bank.example", "From: <alerts@bank.example>");
+  expect(verifiedDomain(sub)).toBe("mail.bank.example");
+  const parent = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: <alerts@mail.bank.example>");
+  expect(verifiedDomain(parent)).toBe("bank.example");
+  const second = block(
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln;",
+    "       dkim=pass header.i=@bank.example header.s=s2 header.b=YmFua3Np",
+    "From: Bank <alerts@bank.example>",
+  );
+  expect(verifiedDomain(second)).toBe("bank.example");
+});
+
+test("Gmail's shape near-misses ⇒ fail", () => {
+  const from = "From: Bank <alerts@bank.example>";
+  for (const ar of [
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln; spf=pass smtp.mailfrom=bounce@bank.example; dmarc=pass header.from=bank.example",
+    "Authentication-Results: mx.google.com; dkim=fail header.i=@bank.example header.s=s1 header.b=c3ludGhl; spf=pass smtp.mailfrom=alerts@bank.example; dmarc=pass header.from=bank.example",
+    "Authentication-Results: mx.google.com; dkim=neutral (body hash did not verify) header.i=@bank.example header.s=s1 header.b=c3ludGhl; dmarc=fail header.from=bank.example",
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@notbank.example",
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@ank.example",
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example.evil.example",
+    'Authentication-Results: mx.google.com; dkim=pass header.i="alerts@bank.example"@evil.example',
+    "Authentication-Results: mx.google.com; dkim=pass header.i=@",
+    "Authentication-Results: mx.google.com; dkim=pass header.d=evil.example header.i=@bank.example",
+    "Authentication-Results: mx.google.com; dkim=pass header.d=localhost header.i=@bank.example",
+  ]) {
+    expect(gmailVerdict(block(ar, from))).toEqual({ trusted: false, reason: "fail" });
+    expect(verifiedDomain(block(ar, from))).toBeNull();
+  }
+  const lookalikeFrom = block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", "From: <alerts@bank.example.evil.example>");
+  expect(gmailVerdict(lookalikeFrom)).toEqual({ trusted: false, reason: "fail" });
+  expect(gmailVerdict(block(...GMAIL_AR))).toEqual({ trusted: false, reason: "fail" });
+  expect(gmailVerdict(block(...GMAIL_AR, from, from))).toEqual({ trusted: false, reason: "fail" });
+  expect(gmailVerdict(block(GMAIL_AR.join("\r\n"), ...GMAIL_AR, from))).toEqual({ trusted: false, reason: "multiple_ar" });
+  expect(gmailVerdict(block("Authentication-Results: relay.example; dkim=pass header.i=@bank.example", ...GMAIL_AR, from))).toEqual({
+    trusted: false,
+    reason: "not_topmost",
+  });
 });
 
 test("folded / continued A-R value across many lines ⇒ parses, trusted", () => {

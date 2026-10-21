@@ -5,7 +5,9 @@ import SwiftUI
 struct PeriodSheet: View {
   @Bindable var app: AppModel
   @State private var picking: PeriodPicking
+  @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   init(app: AppModel) {
     self.app = app
@@ -37,11 +39,16 @@ struct PeriodSheet: View {
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 21)
       .padding(.bottom, 40)
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
     }
     .scrollBounceBehavior(.basedOnSize)
+    .ignoresSafeArea(.container, edges: .bottom)
     .background(HColor.sheetSurfaceLarge)
     .accessibilityIdentifier("period.sheet")
-    .planLargeSheet()
+    .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? 640)])
+    .presentationCornerRadius(HRadius.sheetLarge)
+    .presentationBackground(HColor.sheetSurfaceLarge)
+    .presentationDragIndicator(.visible)
   }
 
   private var presets: some View {

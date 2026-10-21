@@ -15,6 +15,7 @@ final class AppRouter {
   var home: [HomeRoute] = []
   var plan: [PlanRoute] = []
   var activity: [ActivityRoute] = []
+  var review: [ReviewRoute] = []
   var profile: [ProfileRoute] = []
   var transaction: [TransactionRoute] = []
   var sheet: SheetRoute?
@@ -57,7 +58,8 @@ final class AppRouter {
     case .home: home = []
     case .plan: plan = []
     case .activity: activity = []
-    case .review, .search: break
+    case .review: review = []
+    case .add: break
     }
   }
 

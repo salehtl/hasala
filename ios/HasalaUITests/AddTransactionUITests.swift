@@ -14,7 +14,8 @@ final class AddTransactionUITests: XCTestCase {
     XCTAssertTrue(count.waitForExistence(timeout: uiWait))
     XCTAssertEqual(count.label, "26 transactions this month")
 
-    tap(app, "header.add", opening: "add.amount")
+    app.tabBars.firstMatch.buttons["Add a transaction"].tap()
+    XCTAssertTrue(el(app, "add.amount").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "add.save").isEnabled)
     attach(app, "Add transaction · Empty")
     try audit(app)
@@ -45,5 +46,27 @@ final class AddTransactionUITests: XCTestCase {
     row.tap()
     XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "txn.merchant").label.contains("Corner Bakery"), el(app, "txn.merchant").label)
+  }
+
+  @MainActor
+  func testTheAddButtonOpensAddATransactionOnEveryTab() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let tabBar = app.tabBars.firstMatch
+    let add = tabBar.buttons["Add a transaction"]
+    for (tab, id) in [("Home", "home.hero.left"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+                      ("Activity", "activity.count")] {
+      tabBar.buttons[tab].tap()
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
+      XCTAssertTrue(add.isHittable, "\(tab) has no add button")
+      XCTAssertFalse(add.isSelected)
+      add.tap()
+      XCTAssertTrue(el(app, "add.amount").waitForExistence(timeout: uiWait), "the add button on \(tab) opened nothing")
+      tap(app, "add.close")
+      XCTAssertTrue(el(app, "add.amount").waitForNonExistence(timeout: uiWait))
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait), "closing Add a transaction left \(tab)")
+      XCTAssertTrue(tabBar.buttons[tab].isSelected, "the add button left \(tab)")
+      XCTAssertFalse(add.isSelected)
+    }
   }
 }

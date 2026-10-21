@@ -127,9 +127,11 @@
       let setup = MockSetupAuthoring()
       // The bank ops are what the lane reads, as live's sender trust is.
       setup.choseBanks = { [weak mailbox] in mailbox?.banks = $0 }
+      let cloudSort = MockCloudSort()
       func services(_ account: MockAccountService) -> AccountServices {
         AccountServices(account: account, mailbox: mailbox, setup: setup,
-                        notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode })
+                        notifications: MockNotificationPermission(), hasPasscode: { scenario != .noPasscode },
+                        cloudSort: cloudSort)
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,

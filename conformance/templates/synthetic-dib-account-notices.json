@@ -1,0 +1,284 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.account.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.account.v1",
+    "version": 3,
+    "bank": "dib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "dib.ae"
+      ],
+      "body_not_contains": [
+        "إشعار مشتريات",
+        "إشعار تحويل الأموال",
+        "Money Transfer\n"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "body",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "المبلغ\\n(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})(?:[^0-9]|$)"
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          "بتاريخ (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4})"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "المعاملة\\n(?P<v>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "من حساب\\n(?P<v>[^ \\n]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "المعاملة\\n[^\\n]*DEBIT(?:\\n|$)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "المعاملة\\n[^\\n]*CREDIT(?:\\n|$)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit",
+        "patterns": [
+          "إشعار إيداع"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit",
+        "patterns": [
+          "إشعار خصم",
+          "إشعار سحب"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit",
+        "patterns": [
+          "من الحساب"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          "المعاملة\\n[^\\n]*(?:TRNSFER|TRANSFER)"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction",
+      "date"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.account.v1/notice-own-accounts",
+      "source": "SYNTHETIC: the account template does not read a transfer notice: body_not_contains names the notice",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjYqtin2LHZitiuIDA1LTA2LTIwMjYgMDc6NDEg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKKNmK2LTZhdmEIDUlINi22LHZitio2Kkg2KfZhNmC2YrZhdipINin2YTZhdi22KfZgdipKQpBRUQgNDMyMS4wOQrZhdmGINit2LPYp9ioCjAwMS0wMDAtMTIzWFhYWDAxCltGcm9tIEFjY291bnQgRlJNXQrYp9mE2YkKMDAxLTAwMC0xMjNYWFhYMDIK2KfZhNit2KfZhNipCtiq2YXYqiDYqNmG2KzYp9itCtin2YTYsdmC2YUg2KfZhNmF2LHYrNi52YoKW1JlZmVyZW5jZSBOdW1iZXJdCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-within-dib",
+      "source": "SYNTHETIC: the same for a transfer to another DIB account",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2K3Ys9in2KjYp9iqINii2K7YsdmJINiv2KfYrtmEINin2YTYqNmG2YMg2KjYqtin2LHZitiuIDA1LTA2LTIwMjYgMDc6NDEg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKKNmK2LTZhdmEIDUlINi22LHZitio2Kkg2KfZhNmC2YrZhdipINin2YTZhdi22KfZgdipKQpBRUQgNDMyMS4wOQrZhdmGINit2LPYp9ioCjAwMS0wMDAtMTIzWFhYWDAxCltGcm9tIEFjY291bnQgRlJNXQrYp9mE2YkKMDAxLTAwMC0xMjNYWFhYMDIK2KfZhNit2KfZhNipCtiq2YXYqiDYqNmG2KzYp9itCtin2YTYsdmC2YUg2KfZhNmF2LHYrNi52YoKW1JlZmVyZW5jZSBOdW1iZXJdCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-other-uae-bank",
+      "source": "SYNTHETIC: the same for a transfer to another UAE bank",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2KjZhtmDINii2K7YsSDYr9in2K7ZhCDYp9mE2K/ZiNmE2Kkg2KjYqtin2LHZitiuIDA1LTA2LTIwMjYgMDc6NDEg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKKNmK2LTZhdmEIDUlINi22LHZitio2Kkg2KfZhNmC2YrZhdipINin2YTZhdi22KfZgdipKQpBRUQgNDMyMS4wOQrZhdmGINit2LPYp9ioCjAwMS0wMDAtMTIzWFhYWDAxCltGcm9tIEFjY291bnQgRlJNXQrYp9mE2YkKQUUwMDAwMDAwMDAwMDAwMDAwMDAwMDEK2KfZhNio2YbZgyDYp9mE2YXYs9iq2YHZitivCnNhbXBsZSBiYW5rIHVhZQrYp9mE2K3Yp9mE2KkK2KrZhdiqINio2YbYrNin2K0K2KfZhNix2YLZhSDYp9mE2YXYsdis2LnZigpbUmVmZXJlbmNlIE51bWJlcl0K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-english",
+      "source": "SYNTHETIC: the English notice is excluded by name too",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQuNTYKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKQmVuZWZpY2lhcnkgQmFuawpTYW1wbGUgQmFuayBQSlNDClN0YXR1cwpDcmVkaXRlZCB0byBiZW5lZmljaWFyeQpSZWZlcmVuY2UgTnVtYmVyCltSZWZlcmVuY2UgTnVtYmVyXQpCZXN0IFJlZ2FyZHMsCkR1YmFpIElzbGFtaWMgQmFuaw==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-without-vat-line",
+      "source": "SYNTHETIC: without the VAT line version 2 read a notice, and its default direction made an outgoing transfer a credit; version 3 does not read it",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjYqtin2LHZitiuIDA1LTA2LTIwMjYgMDc6NDEg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDQzMjEuMDkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTEyM1hYWFgwMQpbRnJvbSBBY2NvdW50IEZSTV0K2KfZhNmJCjAwMS0wMDAtMTIzWFhYWDAyCtin2YTYrdin2YTYqQrYqtmF2Kog2KjZhtis2KfYrQrYp9mE2LHZgtmFINin2YTZhdix2KzYudmKCltSZWZlcmVuY2UgTnVtYmVyXQrZhdi5INin2LfZitioINin2YTYqtit2YrYp9iq2IwK2KjZhtmDINiv2KjZiiDYp9mE2KXYs9mE2KfZhdmK",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-rendered",
+      "source": "SYNTHETIC: the rendered layout, which version 2 read as a credit",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2K3Ys9in2KjYp9iqINii2K7YsdmJINiv2KfYrtmEINin2YTYqNmG2YMg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKMDAxLTAwMC02NTRYWFhYMDMK2KfZhNit2KfZhNipCtiq2YXYqiDYqNmG2KzYp9itCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/notice-rendered-in-progress",
+      "source": "SYNTHETIC: an in-progress notice in the rendered layout reaches no DIB template",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2KjZhtmDINii2K7YsSDYr9in2K7ZhCDYp9mE2K/ZiNmE2Kkg2KjYqtin2LHZitiuIDE0LTAzLTIwMzEgMDY6Mjkg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKQUVEIDMxNDEuNTkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLTk4N1hYWFgwMQrYp9mE2YkKQUUwMDAwMDAwMDAwMDAwMDAwMDAwMDIK2KfZhNio2YbZgyDYp9mE2YXYs9iq2YHZitivCnNhbXBsZSBiYW5rIHVhZQrYp9mE2K3Yp9mE2KkK2YLZitivINin2YTYqtmG2YHZitiwCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.account.v1/debit-alert",
+      "source": "SYNTHETIC: the account debit alert for the same transfer, which the template files",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KXYtNi52KfYsSDYrti12YUK2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYpdi02LnYp9ixCtiu2LXZhQrZhdmGINin2YTYrdiz2KfYqCDYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNiDYqNin2YTYqtmB2KfYtdmK2YQg2KfZhNiq2KfZhNmK2KkuCtin2YTZhdio2YTYugpBRUQgNCwzMjEuMDkK2YXZhiDYrdiz2KfYqAowMDEtMDAwLVhYWFgxMjMtMDEK2K3Ys9in2Kgg2KzYp9ix2YoK2KfZhNmF2LnYp9mF2YTYqQpNQiBGVU5EIFRSQU5TRkVSIERFQklUCtin2YTYrdin2YTYqQrYqtmF2Kog2KjZhtis2KfYrQrYp9mE2LHZgtmFINin2YTZhdix2KzYudmKCkZUMDAwMDAwMDAwMDA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "MB FUND TRANSFER DEBIT",
+        "last4": "2301",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    }
+  ]
+}

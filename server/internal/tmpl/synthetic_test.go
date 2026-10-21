@@ -673,6 +673,193 @@ func syntheticDIB(t *testing.T) []syntheticGroup {
 	}
 }
 
+const (
+	dibOwnAccounts   = "بين حساباتك"
+	dibWithinBank    = "الى حسابات آخرى داخل البنك"
+	dibOtherUAEBank  = "الى بنك آخر داخل الدولة"
+	dibDone          = "تمت بنجاح"
+	dibPending       = "قيد الأنتظار"
+	dibInProgress    = "قيد التنفيذ"
+	dibVATLine       = "(يشمل 5% ضريبة القيمة المضافة)\n"
+	dibFromPlacehold = "[From Account FRM]"
+	dibCurrentAcct   = "حساب جاري"
+	dibRefPlacehold  = "[Reference Number]"
+)
+
+type dibNotice struct {
+	kind, date, vat, amount, from, label, to, bank, status, ref string
+}
+
+func (n dibNotice) body() string {
+	b := "تحويل الأموال\nعزيزي المتعامل,\nإشعار تحويل الأموال " + n.kind + " بتاريخ " + n.date +
+		" بالتفاصيل التالية.\nالمبلغ\n" + n.vat + n.amount + "\nمن حساب\n" + n.from + "\n"
+	if n.label != "" {
+		b += n.label + "\n"
+	}
+	b += "الى\n" + n.to + "\n"
+	if n.bank != "" {
+		b += "البنك المستفيد\n" + n.bank + "\n"
+	}
+	b += "الحالة\n" + n.status + "\n"
+	if n.ref != "" {
+		b += "الرقم المرجعي\n" + n.ref + "\n"
+	}
+	return b + "مع اطيب التحيات،\nبنك دبي الإسلامي"
+}
+
+func dibNoticeOf(kind string) dibNotice {
+	n := dibNotice{
+		kind: kind, date: "05-06-2026 07:41", vat: dibVATLine, amount: "AED 4321.09",
+		from: "001-000-123XXXX01", label: dibFromPlacehold, to: "001-000-123XXXX02", status: dibDone,
+		ref: dibRefPlacehold,
+	}
+	if kind == dibOtherUAEBank {
+		n.to, n.bank = "AE000000000000000000001", "sample bank uae"
+	}
+	return n
+}
+
+func dibNoticeRendered(kind string) dibNotice {
+	n := dibNoticeOf(kind)
+	n.date, n.amount, n.from, n.to = "14-03-2031 06:29", "AED 3141.59", "001-000-987XXXX01", "001-000-654XXXX03"
+	if kind == dibOtherUAEBank {
+		n.to = "AE000000000000000000002"
+	}
+	n.vat, n.label, n.ref = "", "", ""
+	return n
+}
+
+func dibMoneyTransfer(amount, bank, status string) string {
+	b := "Money Transfer\nDear Customer,\nThis is to notify you that a Domestic Fund Transfer transaction has " +
+		"been initiated on 07-23-2026 11:12:13 with the following details.\nAmount\n" + amount +
+		"\nFrom\nAE0000000000000XXXXX101\n[From Account FRM]\nTo\nAE0000000000000XXXXX002\n"
+	if bank != "" {
+		b += "Beneficiary Bank\n" + bank + "\n"
+	}
+	return b + "Status\n" + status + "\nReference Number\n[Reference Number]\nBest Regards,\nDubai Islamic Bank"
+}
+
+const dibDebitAlert = "إشعار خصم\nعزيزي المتعامل,\nإشعار\nخصم\nمن الحساب بتاريخ 05-06-2026 بالتفاصيل التالية.\n" +
+	"المبلغ\nAED 4,321.09\nمن حساب\n001-000-XXXX123-01\nحساب جاري\nالمعاملة\nMB FUND TRANSFER DEBIT\n" +
+	"الحالة\nتمت بنجاح\nالرقم المرجعي\nFT00000000000"
+
+func readSeed(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("seed", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func syntheticDIBTransfer(t *testing.T) syntheticGroup {
+	t.Helper()
+	with := func(n dibNotice, f func(*dibNotice)) string {
+		f(&n)
+		return n.body()
+	}
+	keep := func(*dibNotice) {}
+	return syntheticGroup{
+		file:       "synthetic-dib-transfer.json",
+		template:   "dib.transfer.v1",
+		definition: readSeed(t, "dib.transfer.v1.json"),
+		cases: []syntheticCase{
+			{"own-accounts", "a completed transfer between the customer's own DIB accounts", "DIB Notification",
+				with(dibNoticeOf(dibOwnAccounts), keep)},
+			{"within-dib", "a completed transfer to another DIB account", "DIB Notification",
+				with(dibNoticeOf(dibWithinBank), keep)},
+			{"other-uae-bank", "a completed transfer to another UAE bank: the beneficiary bank is the merchant",
+				"DIB Notification", with(dibNoticeOf(dibOtherUAEBank), keep)},
+			{"current-account-label", "some notices print the account type where the placeholder line is",
+				"DIB Notification", with(dibNoticeOf(dibOwnAccounts), func(n *dibNotice) { n.label = dibCurrentAcct })},
+			{"thousands-separator", "the [0-9,]{0,24} run", "DIB Notification",
+				with(dibNoticeOf(dibOtherUAEBank), func(n *dibNotice) { n.amount = "AED 12,345.67" })},
+			{"without-vat-line", "the VAT line between the amount label and the amount is optional",
+				"DIB Notification", with(dibNoticeOf(dibWithinBank), func(n *dibNotice) { n.vat = "" })},
+			{"rendered-within-dib", "the layout a mail app renders: no VAT line, no account-name line and no " +
+				"reference line between the details", "DIB Notification", with(dibNoticeRendered(dibWithinBank), keep)},
+			{"rendered-own-accounts", "the rendered layout between the customer's own accounts", "DIB Notification",
+				with(dibNoticeRendered(dibOwnAccounts), keep)},
+			{"rendered-other-uae-bank", "the rendered layout to another UAE bank", "DIB Notification",
+				with(dibNoticeRendered(dibOtherUAEBank), keep)},
+			{"rendered-pending", "a pending notice in the rendered layout is not gated in either",
+				"DIB Notification", with(dibNoticeRendered(dibWithinBank), func(n *dibNotice) { n.status = dibPending })},
+			{"foreign-currency", "the ccy group wins over default_currency", "DIB Notification",
+				with(dibNoticeOf(dibOtherUAEBank), func(n *dibNotice) { n.amount = "USD 98.76" })},
+			{"pending", "a pending notice is not gated in: the transfer is not done yet, so it stays in review",
+				"DIB Notification",
+				with(dibNoticeOf(dibOtherUAEBank), func(n *dibNotice) { n.status, n.date = dibPending, "2026-06-05 11:12:13" })},
+			{"in-progress", "an in-progress notice is not gated in either", "DIB Notification",
+				with(dibNoticeOf(dibOtherUAEBank), func(n *dibNotice) { n.status = dibInProgress })},
+			{"no-date", "date is required; a new date shape goes to review instead of a wrong day",
+				"DIB Notification", with(dibNoticeOf(dibOwnAccounts), func(n *dibNotice) { n.date = "2026-06-05 07:41:00" })},
+			{"amount-without-decimals", "conversion failure, not a zero amount", "DIB Notification",
+				with(dibNoticeOf(dibOwnAccounts), func(n *dibNotice) { n.amount = "AED 4321" })},
+			{"debit-alert-body", "the account debit alert for a transfer: dib.account.v1 owns it", "DIB Notification",
+				dibDebitAlert},
+			{"english-notice-body", "the English layout: dib.money-transfer.v1 owns it", "DIB Notification",
+				dibMoneyTransfer("1,234.56", "Sample Bank PJSC", "Credited to beneficiary")},
+		},
+	}
+}
+
+func syntheticDIBMoneyTransfer(t *testing.T) syntheticGroup {
+	t.Helper()
+	const done = "Credited to beneficiary"
+	return syntheticGroup{
+		file:       "synthetic-dib-money-transfer.json",
+		template:   "dib.money-transfer.v1",
+		definition: readSeed(t, "dib.money-transfer.v1.json"),
+		cases: []syntheticCase{
+			{"domestic-transfer", "the English Money Transfer notice, dated from the email: its body date is " +
+				"MM-DD-YYYY, which is not a layout", "DIB Notification",
+				dibMoneyTransfer("1,234.56", "Sample Bank PJSC", done)},
+			{"no-thousands-separator", "the [0-9,]{0,24} run without a comma", "DIB Notification",
+				dibMoneyTransfer("321.09", "Sample Bank PJSC", done)},
+			{"foreign-currency", "the ccy group wins over default_currency", "DIB Notification",
+				dibMoneyTransfer("USD 98.76", "Sample Bank PJSC", done)},
+			{"no-beneficiary-bank", "without a beneficiary bank the merchant is the constant", "DIB Notification",
+				dibMoneyTransfer("1,234.56", "", done)},
+			{"other-status", "a status other than credited is not gated in", "DIB Notification",
+				dibMoneyTransfer("1,234.56", "Sample Bank PJSC", "Pending")},
+			{"arabic-notice-body", "the Arabic layout: dib.transfer.v1 owns it", "DIB Notification",
+				dibNoticeOf(dibOtherUAEBank).body()},
+			{"amount-without-decimals", "conversion failure, not a zero amount", "DIB Notification",
+				dibMoneyTransfer("1,234", "Sample Bank PJSC", done)},
+		},
+	}
+}
+
+func syntheticDIBAccountNotices(t *testing.T) syntheticGroup {
+	t.Helper()
+	noVAT := dibNoticeOf(dibOwnAccounts)
+	noVAT.vat = ""
+	pending := dibNoticeRendered(dibOtherUAEBank)
+	pending.status = dibInProgress
+	return syntheticGroup{
+		file: "synthetic-dib-account-notices.json", template: "dib.account.v1",
+		definition: readSeed(t, "dib.account.v1.json"),
+		cases: []syntheticCase{
+			{"notice-own-accounts", "the account template does not read a transfer notice: body_not_contains " +
+				"names the notice", "DIB Notification", dibNoticeOf(dibOwnAccounts).body()},
+			{"notice-within-dib", "the same for a transfer to another DIB account", "DIB Notification",
+				dibNoticeOf(dibWithinBank).body()},
+			{"notice-other-uae-bank", "the same for a transfer to another UAE bank", "DIB Notification",
+				dibNoticeOf(dibOtherUAEBank).body()},
+			{"notice-english", "the English notice is excluded by name too", "DIB Notification",
+				dibMoneyTransfer("1,234.56", "Sample Bank PJSC", "Credited to beneficiary")},
+			{"notice-without-vat-line", "without the VAT line version 2 read a notice, and its default direction " +
+				"made an outgoing transfer a credit; version 3 does not read it", "DIB Notification", noVAT.body()},
+			{"notice-rendered", "the rendered layout, which version 2 read as a credit", "DIB Notification",
+				dibNoticeRendered(dibWithinBank).body()},
+			{"notice-rendered-in-progress", "an in-progress notice in the rendered layout reaches no DIB template",
+				"DIB Notification", pending.body()},
+			{"debit-alert", "the account debit alert for the same transfer, which the template files", "DIB Notification",
+				dibDebitAlert},
+		},
+	}
+}
+
 func repeatRune(r rune, n int) string {
 	out := make([]rune, n)
 	for i := range out {
@@ -697,6 +884,7 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 	}
 	out = append(out, syntheticDefaultCurrencyExponent())
 	out = append(out, syntheticDIBSeedAmounts(t))
+	out = append(out, syntheticDIBTransfer(t), syntheticDIBMoneyTransfer(t), syntheticDIBAccountNotices(t))
 	return append(out, syntheticDIB(t)...)
 }
 

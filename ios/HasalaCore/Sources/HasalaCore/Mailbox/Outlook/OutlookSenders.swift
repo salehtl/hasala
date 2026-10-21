@@ -3,7 +3,13 @@ public enum OutlookSenders {
     "adibsms@adib.ae",
     "DIB.notification@dib.ae",
     "dib.mail@dib.ae",
-    "alert@emiratesnbd.com",
+    "OnlineBanking@emiratesnbd.com",
+  ]
+
+  public static let dmarcReject: [String] = [
+    "adib.ae",
+    "dib.ae",
+    "emiratesnbd.com",
   ]
 
   public static func addresses(for domains: [String], known: [String] = known) -> [String] {

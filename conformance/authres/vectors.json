@@ -29,7 +29,10 @@
     "not_topmost",
     "fail",
     "parse_error",
-    "no_eop"
+    "no_eop",
+    "not_inbox",
+    "unknown_sender",
+    "no_dmarc_reject"
   ],
   "vectors": [
     {
@@ -120,6 +123,16 @@
         "trusted": true,
         "reason": "pass",
         "domain": "bank.example"
+      }
+    },
+    {
+      "name": "dkim-pass-without-identity",
+      "group": "goldens",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.s=selector1 header.b=c3ludGhl\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
       }
     },
     {
@@ -996,6 +1009,263 @@
       "expect": {
         "trusted": false,
         "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-direct-alert",
+      "group": "gmail_shape",
+      "note": "The block Gmail delivers for a direct bank alert: DKIM is reported as header.i=@<domain> with header.s and header.b, never header.d.",
+      "headers": "Delivered-To: synthetic.user@example.com\r\nReceived: by 2002:a05:6000:1::1 with SMTP id synthetic1; Mon, 1 Jun 2026 08:00:01 -0700 (PDT)\r\nX-Received: by 2002:a05:6000:1::2 with SMTP id synthetic2; Mon, 1 Jun 2026 08:00:01 -0700 (PDT)\r\nARC-Seal: i=1; a=rsa-sha256; t=1780326001; cv=none; d=google.com; s=arc-synthetic; b=c3ludGhldGljc2VhbA==\r\nARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-synthetic;\r\n        h=subject:to:from:message-id:dkim-signature; bh=c3ludGhldGlj; b=c3ludGhldGljbXNn\r\nARC-Authentication-Results: i=1; mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nReturn-Path: <alerts@bank.example>\r\nReceived: from mail.bank.example (mail.bank.example. [192.0.2.1])\r\n        by mx.google.com with ESMTPS id synthetic3\r\n        for <synthetic.user@example.com>\r\n        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);\r\n        Mon, 01 Jun 2026 08:00:01 -0700 (PDT)\r\nReceived-SPF: pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) client-ip=192.0.2.1;\r\nAuthentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nDKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=bank.example; s=selector1;\r\n        h=from:to:subject:message-id; bh=c3ludGhldGlj; b=c3ludGhldGljc2lnbmF0dXJl\r\nFrom: Bank <alerts@bank.example>\r\nTo: synthetic.user@example.com\r\nSubject: Transaction alert\r\nMessage-ID: <synthetic.1@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-forwarded-alert",
+      "group": "gmail_shape",
+      "note": "Another mailbox forwarded a genuine alert into Gmail; the bank's DKIM survived, and the forwarder's own A-Rs are below Gmail's.",
+      "headers": "Delivered-To: synthetic.user@example.com\r\nARC-Seal: i=2; a=rsa-sha256; t=1780326002; cv=pass; d=google.com; s=arc-synthetic; b=c3ludGhldGljc2VhbDI=\r\nARC-Authentication-Results: i=2; mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example);\r\n       spf=pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) smtp.mailfrom=user@forwarder.example;\r\n       dmarc=pass (p=REJECT sp=NONE dis=NONE) header.from=bank.example\r\nReturn-Path: <user@forwarder.example>\r\nReceived: from mx.forwarder.example (mx.forwarder.example. [192.0.2.7]) by mx.google.com with ESMTPS id synthetic4; Mon, 01 Jun 2026 08:00:02 -0700 (PDT)\r\nReceived-SPF: pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) client-ip=192.0.2.7;\r\nAuthentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example);\r\n       spf=pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) smtp.mailfrom=user@forwarder.example;\r\n       dmarc=pass (p=REJECT sp=NONE dis=NONE) header.from=bank.example\r\nARC-Seal: i=1; a=rsa-sha256; cv=none; d=forwarder.example; s=arc-1; b=c3ludGhldGljZndk\r\nARC-Authentication-Results: i=1; mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; dmarc=pass header.from=bank.example\r\nReceived: from mail.bank.example (mail.bank.example [192.0.2.1]) by mx.forwarder.example with ESMTPS; Mon, 01 Jun 2026 08:00:01 -0700\r\nAuthentication-Results: mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; spf=pass smtp.mailfrom=alerts@bank.example; dmarc=pass header.from=bank.example\r\nDKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=bank.example; s=selector1;\r\n        h=from:to:subject:message-id; bh=c3ludGhldGlj; b=c3ludGhldGljc2lnbmF0dXJl\r\nFrom: Bank <alerts@bank.example>\r\nTo: user@forwarder.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-forwarded-dkim-broken",
+      "group": "gmail_shape",
+      "note": "The forwarder changed the body: the forwarder's pass below and ARC are not read, so the message goes to review.",
+      "headers": "Delivered-To: synthetic.user@example.com\r\nARC-Seal: i=2; a=rsa-sha256; t=1780326002; cv=pass; d=google.com; s=arc-synthetic; b=c3ludGhldGljc2VhbDI=\r\nARC-Authentication-Results: i=2; mx.google.com;\r\n       dkim=neutral (body hash did not verify) header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example);\r\n       spf=pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) smtp.mailfrom=user@forwarder.example;\r\n       dmarc=fail (p=REJECT sp=NONE dis=NONE) header.from=bank.example\r\nReturn-Path: <user@forwarder.example>\r\nReceived: from mx.forwarder.example (mx.forwarder.example. [192.0.2.7]) by mx.google.com with ESMTPS id synthetic4; Mon, 01 Jun 2026 08:00:02 -0700 (PDT)\r\nReceived-SPF: pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) client-ip=192.0.2.7;\r\nAuthentication-Results: mx.google.com;\r\n       dkim=neutral (body hash did not verify) header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example);\r\n       spf=pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) smtp.mailfrom=user@forwarder.example;\r\n       dmarc=fail (p=REJECT sp=NONE dis=NONE) header.from=bank.example\r\nARC-Seal: i=1; a=rsa-sha256; cv=none; d=forwarder.example; s=arc-1; b=c3ludGhldGljZndk\r\nARC-Authentication-Results: i=1; mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; dmarc=pass header.from=bank.example\r\nReceived: from mail.bank.example (mail.bank.example [192.0.2.1]) by mx.forwarder.example with ESMTPS; Mon, 01 Jun 2026 08:00:01 -0700\r\nAuthentication-Results: mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; spf=pass smtp.mailfrom=alerts@bank.example; dmarc=pass header.from=bank.example\r\nDKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=bank.example; s=selector1;\r\n        h=from:to:subject:message-id; bh=c3ludGhldGlj; b=c3ludGhldGljc2lnbmF0dXJl\r\nFrom: Bank <alerts@bank.example>\r\nTo: user@forwarder.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-only",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-header-i-with-local-part",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=alerts@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-header-i-upper-case",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass HEADER.I=@Bank.Example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-header-i-subdomain-of-from",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@mail.bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "mail.bank.example"
+      }
+    },
+    {
+      "name": "gmail-from-subdomain-of-header-i",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example\r\nFrom: Bank <alerts@mail.bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-esp-then-bank-signature",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln;\r\n       dkim=pass header.i=@bank.example header.s=s2 header.b=YmFua3Np;\r\n       spf=pass (google.com: domain of bounce@esp.example designates 192.0.2.9 as permitted sender) smtp.mailfrom=bounce@esp.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-esp-signature-with-spf-aligned-dmarc",
+      "group": "gmail_shape",
+      "note": "DMARC passes on SPF alone; the only DKIM pass is the ESP's.",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln;\r\n       spf=pass (google.com: domain of bounce@bank.example designates 192.0.2.9 as permitted sender) smtp.mailfrom=bounce@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-dkim-fail-with-spf-aligned-dmarc",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=fail header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-sibling-of-from",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@notbank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-suffix-without-dot",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@ank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-look-alike",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example.evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-from-look-alike",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example\r\nFrom: Bank <alerts@bank.example.evil.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-quoted-local-part",
+      "group": "gmail_shape",
+      "note": "The domain of an AUID is what follows its last '@'.",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=\"alerts@bank.example\"@evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-empty-domain",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-d-decides-over-header-i",
+      "group": "gmail_shape",
+      "note": "header.i is read only when the method has no header.d.",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=evil.example header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-invalid-header-d-no-fallback",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.d=localhost header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-repeated-last-wins",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@evil.example header.i=@bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": true,
+        "reason": "pass",
+        "domain": "bank.example"
+      }
+    },
+    {
+      "name": "gmail-header-i-repeated-last-wins-unaligned",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example header.i=@evil.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-no-from",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nSubject: Transaction alert\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-header-i-two-from-fields",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "fail",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-shape-copy-above",
+      "group": "gmail_shape",
+      "note": "A sender-written copy of Gmail's A-R is a second mx.google.com A-R.",
+      "headers": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nAuthentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "multiple_ar",
+        "domain": null
+      }
+    },
+    {
+      "name": "gmail-shape-foreign-above",
+      "group": "gmail_shape",
+      "headers": "Authentication-Results: relay.example; dkim=pass header.i=@bank.example\r\nAuthentication-Results: mx.google.com;\r\n       dkim=pass header.i=@bank.example header.s=selector1 header.b=c3ludGhl;\r\n       spf=pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@bank.example;\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example\r\nFrom: Bank <alerts@bank.example>\r\n\r\n",
+      "expect": {
+        "trusted": false,
+        "reason": "not_topmost",
         "domain": null
       }
     },

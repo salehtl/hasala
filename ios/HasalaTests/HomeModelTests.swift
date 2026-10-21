@@ -110,7 +110,7 @@ struct HomeModelTests {
     #expect(home.openNotification(.bill("axa")) == nil)
     #expect(router.sheet == nil && router.tab == .home && router.home == [.bill("axa")])
 
-    // A found bill or a new price: Bills.
+    // A found bill: Bills.
     router.open(.notifications)
     #expect(home.openNotification(.bills) == nil)
     #expect(router.home == [.bills])
@@ -127,6 +127,56 @@ struct HomeModelTests {
     #expect(router.nextSheet?.0 == .profile && router.nextSheet?.profilePath == [.bankAlerts])
     router.sheetDismissed()
     #expect(router.sheet == .profile && router.profile == [.bankAlerts])
+  }
+
+  @Test func everyBellRowLandsOnAScreenThatShowsIt() throws {
+    var state = MayaHistory.state
+    state.txns.append(Txn(id: "jun-shop", merchant: "Corner Shop", amount: .aed(12_50),
+                          postedAt: LocalDateTime(2026, 6, 20, 18, 0), accountID: "dib"))
+    let app = AppModel(store: InMemoryLedger(state: state), mailbox: MockMailbox())
+    app.period = .month(YearMonth(2026, 9))
+    let home = HomeViewModel(app: app)
+    let router = app.router
+    let items = home.bell.needsALook
+    #expect(items.map(\.id) == ["review", "bill.axa", "found.apple-bill", "price.du", "mail.connect"])
+    #expect(Bell.label(home.bell.count) == "Notifications, 5 need a look")
+    #expect(Bell.label(1) == "Notifications, 1 needs a look")
+    #expect(Bell.label(0) == "Notifications")
+    for item in items {
+      router.clearPresentation()
+      router.tab = .activity
+      router.home = []
+      router.open(.notifications)
+      let after = home.openNotification(item.destination)
+      #expect(router.sheet == nil, "\(item.id)")
+      switch item.destination {
+      case .review:
+        #expect(router.tab == .review)
+        after?()
+        #expect(app.cover == .review)
+        let deck = ReviewViewModel(app: app)
+        #expect(item.title == "\(deck.total) transactions to sort")
+        #expect(deck.cards.contains { $0.id == "jun-shop" })
+        #expect(ReviewTabView.countLine(deck.total).hasPrefix("\(app.reviewCount) to sort"))
+      case .bill(let id):
+        #expect(router.tab == .home && router.home == [.bill(id)])
+        let detail = try #require(BillsViewModel(app: app).detail(id))
+        #expect(item.id.hasPrefix("price.") ? detail.isPriceChange : detail.isLate, "\(item.id)")
+      case .bills:
+        #expect(router.tab == .home && router.home == [.bills])
+        let found = BillsViewModel(app: app).snapshot.found.map { "found.\($0.id)" }
+        #expect(found.contains(item.id))
+      case .category(let id):
+        #expect(router.tab == .plan && router.plan == [.category(id)])
+      case .unreadMail:
+        #expect(router.tab == .review && router.review == [.unreadMail])
+        #expect(!app.store.state.unreadMail.isEmpty)
+      case .bankAlerts:
+        router.sheetDismissed()
+        #expect(router.sheet == .profile && router.profile == [.bankAlerts])
+        #expect(app.mailOffer == .connect)
+      }
+    }
   }
 
   /// "Earlier" is the Debug Maya mock's (plan B7.6 decision 12): three rows read and done.

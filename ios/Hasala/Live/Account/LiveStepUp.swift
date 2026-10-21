@@ -21,7 +21,6 @@ nonisolated struct LiveStepUp: MailboxStepUp {
   let usesPasskey: @Sendable () async -> Bool
   /// Asks for the account's password ("Confirm it's you"); nil when the user cancels.
   let askPassword: @Sendable (_ reason: String) async -> String?
-  let explain: @Sendable (_ reason: String) async -> Bool
 
   func proof(kind: String, payloadHash: Data?) async throws(MailboxStepUpError) -> JSONValue {
     guard kind == "mailbox.link" || kind == "mailbox.unlink",
@@ -33,7 +32,6 @@ nonisolated struct LiveStepUp: MailboxStepUp {
     let passkey = await usesPasskey()
     // Both lanes share this step-up, so the reason names no provider.
     let reason = Self.reason(kind)
-    if passkey, !(await explain(reason)) { throw .cancelled }
     let begin: StepUpBeginResponse
     do {
       begin = try await env.client.stepUpBegin(
@@ -97,8 +95,6 @@ nonisolated struct LiveStepUp: MailboxStepUp {
 /// "Confirm it's you" outside the account screens (the mailbox step-up): a system alert over
 /// the key window that names the change, with one secure field for a password account.
 enum StepUpPrompt {
-  static let passkeyMessage = "Face ID confirms it's really you, using your passkey."
-
   @MainActor
   static func password(_ reason: String) async -> String? {
     let alert = UIAlertController(title: reason, message: "Enter your Hasala password.", preferredStyle: .alert)
@@ -108,12 +104,6 @@ enum StepUpPrompt {
       field.placeholder = "Password"
     }
     return await present(alert, cancelled: nil) { [weak alert] in alert?.textFields?.first?.text }
-  }
-
-  @MainActor
-  static func passkey(_ reason: String) async -> Bool {
-    let alert = UIAlertController(title: reason, message: passkeyMessage, preferredStyle: .alert)
-    return await present(alert, cancelled: false) { true }
   }
 
   @MainActor

@@ -1,3 +1,4 @@
+import OSLog
 import UIKit
 
 /// The UIKit half the SwiftUI app needs (spec 04 §2.3): the APNs token callbacks and
@@ -25,6 +26,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
     // No token (the simulator, or APNs unreachable): foreground and background refresh
     // still catch up.
+    let code = (error as NSError).code
+    Logger(subsystem: "app.hasala.ios", category: "push").notice("APNs registration failed, code \(code, privacy: .public)")
   }
 
   func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async

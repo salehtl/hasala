@@ -138,7 +138,10 @@ struct ScanSteps: View {
   /// The on-device model tier (Foundation Models) is a later sweep, not part of this build's
   /// sorting, so a Release build doesn't name it.
   static var sortingDetail: String {
-    BuildSurface.showsUnfinished
+    if MerchantSuggestionsSetting.isEnabled() {
+      return "A UAE merchant list first. Merchant names it can't place go to Cloudflare's AI, one at a time. Anything unsure waits for you."
+    }
+    return BuildSurface.showsUnfinished
       ? "A UAE merchant list first, then Apple's on-device model. Anything unsure waits for you. Nothing goes to an AI service."
       : "A UAE merchant list first. Anything unsure waits for you. Nothing goes to an AI service."
   }

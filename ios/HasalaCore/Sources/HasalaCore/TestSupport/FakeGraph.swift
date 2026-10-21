@@ -108,6 +108,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   public var nowMs: (@Sendable () -> Int64)?
 
   public static let tokenURL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+  public static let inboxID = "inbox"
+  public static let junkID = "junkemail"
   static let graphPrefix = "/v1.0"
 
   public init() {}
@@ -425,7 +427,8 @@ public enum SyntheticOutlookMail {
   /// A DIB card purchase alert (dib.card.v1's shape), from `DIB.notification@<fromDomain>`.
   public static func dibCard(
     id: String, amount: String = "250.00", day: String = "05-06-2026", merchant: String = "SYNTHETIC GROCER DUBAI",
-    last4: String = "1234", dateMs: Int64, fromDomain: String = "dib.ae", eop: Bool = true, spoofedAbove: Bool = false
+    last4: String = "1234", dateMs: Int64, fromDomain: String = "dib.ae", eop: Bool = true, spoofedAbove: Bool = false,
+    folder: String = FakeGraph.inboxID
   ) -> FakeGraph.Message {
     let body = "إشعار مشتريات\nالمبلغ\nAED \(amount)\nبتاريخ \(day)\nالدفع الى\n\(merchant)\nرقم البطاقة\nXXXX\(last4)"
     let address = "DIB.notification@\(fromDomain)"
@@ -434,14 +437,14 @@ public enum SyntheticOutlookMail {
       raw: rfc822(
         from: "DIB Alerts <\(address)>", subject: "Card transaction", body: body, dateMs: dateMs, authDomain: fromDomain,
         eop: eop, spoofedAbove: spoofedAbove),
-      receivedMs: dateMs, fromAddress: address)
+      receivedMs: dateMs, fromAddress: address, folder: folder)
   }
 
   /// An ENBD account debit alert (enbd.alert.v1's shape; dated from the email).
   public static func enbdAlert(id: String, amount: String = "12.34", last4: String = "8642", dateMs: Int64)
     -> FakeGraph.Message
   {
-    let address = "alert@emiratesnbd.com"
+    let address = "OnlineBanking@emiratesnbd.com"
     return FakeGraph.Message(
       id: id,
       raw: rfc822(
@@ -453,7 +456,7 @@ public enum SyntheticOutlookMail {
 
   /// A bank-domain message no template reads (the empty review shape).
   public static func bankNotice(id: String, dateMs: Int64) -> FakeGraph.Message {
-    let address = "alert@emiratesnbd.com"
+    let address = "OnlineBanking@emiratesnbd.com"
     return FakeGraph.Message(
       id: id,
       raw: rfc822(

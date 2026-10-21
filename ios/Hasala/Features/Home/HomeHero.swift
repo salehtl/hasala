@@ -113,7 +113,7 @@ struct HomeHero: View {
       // reads "AED 10,288.34, spent of 19,000 on needs and wants".
       // The figure is zero until the reveal's fill starts, so it rolls on the fill's curve. A
       // live change rolls it on the bar's own 250 ms curve, so both land together.
-      HeroFigure(amount: phase.figure(hero.spent), hidden: hidden, approx: hero.approx)
+      HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
         .hAnimation(.fillUpdate, value: hero.spent)
         .accessibilityValue(hero.caption.spoken(hidden: hidden))
         .accessibilityIdentifier("home.hero.left")
@@ -198,10 +198,9 @@ struct HomeHero: View {
 private struct HeroFigure: View {
   let amount: Money
   let hidden: Bool
-  let approx: Bool
 
   var body: some View {
-    HeroFigureLine(amount: amount, hidden: hidden, approx: approx)
+    HeroFigureLine(amount: amount, hidden: hidden)
       .dynamicTypeSize(...HFigure.display.maxDynamicTypeSize)
   }
 }
@@ -209,14 +208,13 @@ private struct HeroFigure: View {
 private struct HeroFigureLine: View {
   let amount: Money
   let hidden: Bool
-  let approx: Bool
   /// Half of 56 × 1.19 − 58.
   @ScaledMetric(relativeTo: .largeTitle) private var trim: CGFloat = 4.32
 
   var body: some View {
     // Paper's hidden hero: 38 pt dots, 3 pt apart, on the 58 line (page 18 §18.7).
     MoneyText(amount, figure: .display, unit: .displayUnit, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 38,
-              hiddenTracking: 3, color: HColor.textPrimary, sign: amount.isNegative ? .debt : .none, approx: approx)
+              hiddenTracking: 3, color: HColor.textPrimary, sign: amount.isNegative ? .debt : .none)
       .padding(.vertical, hidden ? 0 : -trim)
   }
 }

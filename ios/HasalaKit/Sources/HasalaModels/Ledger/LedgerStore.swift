@@ -66,6 +66,8 @@ public enum LedgerEdit: Sendable, Hashable {
   // Device preferences (spec 04 §4.5; never synced).
   case setNotifications(DevicePrefs.NotificationLevel)
   case setFaceIDLock(Bool)
+
+  case setDisplayName(String)
 }
 
 public struct ManualEntryDraft: Sendable, Hashable {

@@ -382,6 +382,13 @@
       return t
     }
 
+    func updateDisplayName(_ name: String) async throws(AuthFailure) -> String {
+      await pause()
+      guard let valid = AccountFields.displayName(name) else { throw .badName }
+      if let p = profile { profile = AccountProfile(displayName: valid, email: p.email, method: p.method) }
+      return valid
+    }
+
     func finishEmailChange(_ ticket: EmailChangeTicket, currentCode: String, newCode: String) async throws(AuthFailure)
     {
       await pause()

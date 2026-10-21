@@ -203,7 +203,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in
         for id in ids { a.annotate(txnID: id, set: [("project_id", project)]) }
       }
-    case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock:
+    case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock,
+      .setDisplayName:
       break
     }
     return []

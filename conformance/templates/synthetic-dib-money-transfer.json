@@ -1,0 +1,205 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.money-transfer.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.money-transfer.v1",
+    "version": 1,
+    "bank": "dib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "dib.ae"
+      ],
+      "body_contains": [
+        "Money Transfer\n",
+        "Status\nCredited to beneficiary"
+      ],
+      "body_not_contains": [
+        "إشعار مشتريات",
+        "إشعار تحويل الأموال"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "email",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "\\nAmount\\n(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2})(?:[^0-9]|$)"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "\\nBeneficiary Bank\\n(?P<v>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB TRANSFER"
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "\\nFrom\\n(?P<v>[^ \\n]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.money-transfer.v1/domestic-transfer",
+      "source": "SYNTHETIC: the English Money Transfer notice, dated from the email: its body date is MM-DD-YYYY, which is not a layout",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQuNTYKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKQmVuZWZpY2lhcnkgQmFuawpTYW1wbGUgQmFuayBQSlNDClN0YXR1cwpDcmVkaXRlZCB0byBiZW5lZmljaWFyeQpSZWZlcmVuY2UgTnVtYmVyCltSZWZlcmVuY2UgTnVtYmVyXQpCZXN0IFJlZ2FyZHMsCkR1YmFpIElzbGFtaWMgQmFuaw==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123456",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "Sample Bank PJSC",
+        "last4": "0101",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/no-thousands-separator",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run without a comma",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMzIxLjA5CkZyb20KQUUwMDAwMDAwMDAwMDAwWFhYWFgxMDEKW0Zyb20gQWNjb3VudCBGUk1dClRvCkFFMDAwMDAwMDAwMDAwMFhYWFhYMDAyCkJlbmVmaWNpYXJ5IEJhbmsKU2FtcGxlIEJhbmsgUEpTQwpTdGF0dXMKQ3JlZGl0ZWQgdG8gYmVuZWZpY2lhcnkKUmVmZXJlbmNlIE51bWJlcgpbUmVmZXJlbmNlIE51bWJlcl0KQmVzdCBSZWdhcmRzLApEdWJhaSBJc2xhbWljIEJhbms=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "32109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "Sample Bank PJSC",
+        "last4": "0101",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/foreign-currency",
+      "source": "SYNTHETIC: the ccy group wins over default_currency",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKVVNEIDk4Ljc2CkZyb20KQUUwMDAwMDAwMDAwMDAwWFhYWFgxMDEKW0Zyb20gQWNjb3VudCBGUk1dClRvCkFFMDAwMDAwMDAwMDAwMFhYWFhYMDAyCkJlbmVmaWNpYXJ5IEJhbmsKU2FtcGxlIEJhbmsgUEpTQwpTdGF0dXMKQ3JlZGl0ZWQgdG8gYmVuZWZpY2lhcnkKUmVmZXJlbmNlIE51bWJlcgpbUmVmZXJlbmNlIE51bWJlcl0KQmVzdCBSZWdhcmRzLApEdWJhaSBJc2xhbWljIEJhbms=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "9876",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "Sample Bank PJSC",
+        "last4": "0101",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/no-beneficiary-bank",
+      "source": "SYNTHETIC: without a beneficiary bank the merchant is the constant",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQuNTYKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKU3RhdHVzCkNyZWRpdGVkIHRvIGJlbmVmaWNpYXJ5ClJlZmVyZW5jZSBOdW1iZXIKW1JlZmVyZW5jZSBOdW1iZXJdCkJlc3QgUmVnYXJkcywKRHViYWkgSXNsYW1pYyBCYW5r",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123456",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "DIB TRANSFER",
+        "last4": "0101",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/other-status",
+      "source": "SYNTHETIC: a status other than credited is not gated in",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQuNTYKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKQmVuZWZpY2lhcnkgQmFuawpTYW1wbGUgQmFuayBQSlNDClN0YXR1cwpQZW5kaW5nClJlZmVyZW5jZSBOdW1iZXIKW1JlZmVyZW5jZSBOdW1iZXJdCkJlc3QgUmVnYXJkcywKRHViYWkgSXNsYW1pYyBCYW5r",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/arabic-notice-body",
+      "source": "SYNTHETIC: the Arabic layout: dib.transfer.v1 owns it",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhArYudiy2YrYstmKINin2YTZhdiq2LnYp9mF2YQsCtil2LTYudin2LEg2KrYrdmI2YrZhCDYp9mE2KPZhdmI2KfZhCDYp9mE2Ykg2KjZhtmDINii2K7YsSDYr9in2K7ZhCDYp9mE2K/ZiNmE2Kkg2KjYqtin2LHZitiuIDA1LTA2LTIwMjYgMDc6NDEg2KjYp9mE2KrZgdin2LXZitmEINin2YTYqtin2YTZitipLgrYp9mE2YXYqNmE2LoKKNmK2LTZhdmEIDUlINi22LHZitio2Kkg2KfZhNmC2YrZhdipINin2YTZhdi22KfZgdipKQpBRUQgNDMyMS4wOQrZhdmGINit2LPYp9ioCjAwMS0wMDAtMTIzWFhYWDAxCltGcm9tIEFjY291bnQgRlJNXQrYp9mE2YkKQUUwMDAwMDAwMDAwMDAwMDAwMDAwMDEK2KfZhNio2YbZgyDYp9mE2YXYs9iq2YHZitivCnNhbXBsZSBiYW5rIHVhZQrYp9mE2K3Yp9mE2KkK2KrZhdiqINio2YbYrNin2K0K2KfZhNix2YLZhSDYp9mE2YXYsdis2LnZigpbUmVmZXJlbmNlIE51bWJlcl0K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.money-transfer.v1/amount-without-decimals",
+      "source": "SYNTHETIC: conversion failure, not a zero amount",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "TW9uZXkgVHJhbnNmZXIKRGVhciBDdXN0b21lciwKVGhpcyBpcyB0byBub3RpZnkgeW91IHRoYXQgYSBEb21lc3RpYyBGdW5kIFRyYW5zZmVyIHRyYW5zYWN0aW9uIGhhcyBiZWVuIGluaXRpYXRlZCBvbiAwNy0yMy0yMDI2IDExOjEyOjEzIHdpdGggdGhlIGZvbGxvd2luZyBkZXRhaWxzLgpBbW91bnQKMSwyMzQKRnJvbQpBRTAwMDAwMDAwMDAwMDBYWFhYWDEwMQpbRnJvbSBBY2NvdW50IEZSTV0KVG8KQUUwMDAwMDAwMDAwMDAwWFhYWFgwMDIKQmVuZWZpY2lhcnkgQmFuawpTYW1wbGUgQmFuayBQSlNDClN0YXR1cwpDcmVkaXRlZCB0byBiZW5lZmljaWFyeQpSZWZlcmVuY2UgTnVtYmVyCltSZWZlcmVuY2UgTnVtYmVyXQpCZXN0IFJlZ2FyZHMsCkR1YmFpIElzbGFtaWMgQmFuaw==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "Sample Bank PJSC",
+        "last4": "0101",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    }
+  ]
+}

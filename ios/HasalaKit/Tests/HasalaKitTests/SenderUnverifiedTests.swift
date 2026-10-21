@@ -50,4 +50,14 @@ struct SenderUnverifiedTests {
     #expect(back.reviewReason == .senderUnverified)
     #expect(TxnReviewReason(rawValue: "sender_unverified") == .senderUnverified)
   }
+
+  @Test func theSenderCheckRidesOnTheProvenance() throws {
+    var t = try #require(s.txn("steam"))
+    #expect(t.provenance?.senderCheck == nil)
+    t.provenance?.senderCheck = "no_eop"
+    let back = try JSONDecoder().decode(Txn.self, from: JSONEncoder().encode(t))
+    #expect(back.provenance?.senderCheck == "no_eop")
+    let old = try JSONDecoder().decode(Provenance.self, from: Data(#"{"title":"t","readAt":"r","rawMerchant":"m"}"#.utf8))
+    #expect(old.senderCheck == nil && old.rawMerchant == "m")
+  }
 }

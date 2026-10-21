@@ -359,4 +359,29 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
     XCTAssertEqual(toggle.value as? String, "0")
   }
+
+  @MainActor
+  func testChangingTheName() throws {
+    let app = launchHome()
+    openProfile(app)
+    tap(app, "profile.editName", opening: "name.field")
+    attach(app, "Profile · Name")
+    try audit(app)
+
+    replaceText(app, "name.field", "   ")
+    XCTAssertFalse(el(app, "name.save").isEnabled, "Save is on for an empty name")
+
+    replaceText(app, "name.field", "Maya 42")
+    tap(app, "name.save")
+    XCTAssertTrue(el(app, "name.error").waitForExistence(timeout: uiWait), "a name with digits was not refused")
+    XCTAssertTrue(el(app, "name.field").exists, "the page closed on a refused name")
+
+    replaceText(app, "name.field", "  Noor   Haddad ")
+    XCTAssertFalse(el(app, "name.error").exists, "the error stayed after typing")
+    tap(app, "name.save")
+    XCTAssertTrue(el(app, "name.field").waitForNonExistence(timeout: uiWait), "the page did not close after saving")
+    let name = el(app, "profile.name")
+    XCTAssertTrue(name.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(name.label, "Noor Haddad")
+  }
 }

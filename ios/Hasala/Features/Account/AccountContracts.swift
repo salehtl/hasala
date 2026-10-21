@@ -274,6 +274,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let removeDevice = AccountCapabilities(rawValue: 1 << 18)
   /// Lift a freeze the holder made.
   static let unfreeze = AccountCapabilities(rawValue: 1 << 20)
+  static let changeName = AccountCapabilities(rawValue: 1 << 21)
 
   /// Every action above. The default for services that don't say (the Debug mocks).
   static let all: AccountCapabilities = [
@@ -286,6 +287,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .rotatePhrase, .addPasskey, .changeEmail,
     .freeze, .unfreeze, .viewPhrase,
     .removePasskey, .changePassword, .removeDevice,
+    .changeName,
   ]
 
   /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, access
@@ -304,6 +306,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .recoverAccess,
     .viewPhrase,
     .addPasskey,
+    .changeName,
     .unfreeze,
   ]
 }
@@ -404,6 +407,8 @@ protocol AccountService: AnyObject {
   /// throws `.codeMismatch` before any Face ID prompt; then the approval key signs and
   /// `password/reset/approve` is sent.
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure)
+
+  func updateDisplayName(_ name: String) async throws(AuthFailure) -> String
 }
 
 extension AccountService {
@@ -424,4 +429,6 @@ extension AccountService {
   func finishEmailChange(_ ticket: EmailChangeTicket, currentCode: String, newCode: String) async throws(AuthFailure) {
     throw .notInThisBuild
   }
+
+  func updateDisplayName(_ name: String) async throws(AuthFailure) -> String { throw .notInThisBuild }
 }

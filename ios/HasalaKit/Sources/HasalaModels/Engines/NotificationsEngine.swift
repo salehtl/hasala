@@ -1,6 +1,6 @@
 // Home · Notifications (Paper 11Y9-0, 12AC-0; spec 10 §4, page 15 §15.2, page 18 §14): what
 // needs a look, from the ledger. The bell on every tab counts these items; its large sheet lists
-// them newest first under "Needs a look". Only the review item follows the period: it counts the deck it opens.
+// them newest first under "Needs a look". Notifications never follow the period; the review item counts the deck it opens.
 //
 // The mailbox item ("Connect your email", "Sign in again to …") comes from the mail lane, not
 // the ledger, so the app appends it (`HomeViewModel`). "Earlier" needs a notification history
@@ -10,14 +10,15 @@
 public enum NotificationDestination: Sendable, Hashable {
   /// The review deck, over the Review tab.
   case review
-  /// One bill (Bills · AXA Insurance).
+  /// One bill (Bills · AXA Insurance): one that may be late, or a new price to accept or check.
   case bill(BillID)
-  /// Bills · Coming up and found (a found bill, a new price to accept or check).
+  /// Bills · Coming up and found (a found bill).
   case bills
   /// A category's detail in Plan ("Groceries is running fast").
   case category(CategoryID)
   /// Profile › Bank alerts (connect, sign in again, a quiet bank).
   case bankAlerts
+  case unreadMail
 }
 
 /// One row of the Notifications sheet (page 15 §15.2 NotificationRow): a 40 disc in the item's
@@ -89,6 +90,14 @@ public enum NotificationsEngine {
       )))
     }
 
+    let unread = ReviewEngine.unreadMail(s)
+    if let newest = unread.first {
+      dated.append((newest.receivedOn, NotificationItem(
+        id: "unread", disc: .neutral(.envelope), title: ReviewEngine.unreadLine(unread.count),
+        line: "Add each one by hand or dismiss it", when: when(newest.receivedOn, today: today), destination: .unreadMail
+      )))
+    }
+
     let tracked = s.bills.filter { $0.state == .tracked && !$0.isIncome }
 
     // A bill may be late from the day after it was due with no payment read. Hasala can't
@@ -104,7 +113,7 @@ public enum NotificationsEngine {
       )))
     }
 
-    // A tracked bill charged outside its usual amount: accept the new price or check it, in Bills.
+    // A tracked bill charged outside its usual amount: accept the new price or check it, on the bill.
     for b in tracked {
       guard let usual = b.priceChangeFrom else { continue }
       let charged = b.history.first ?? today
@@ -115,7 +124,7 @@ public enum NotificationsEngine {
         line: MoneyPhrase([
           .amount(b.amount, hidden: 3), .text(" from "), .amount(usual, hidden: 3), .text(" · accept or check"),
         ]),
-        when: when(charged, today: today), destination: .bills
+        when: when(charged, today: today), destination: .bill(b.id)
       )))
     }
 

@@ -28,12 +28,14 @@ import (
 // made, this test is the record that the gap exists and is known.
 func TestWhichSeedTemplatesCanWitnessTheirOwnDecode(t *testing.T) {
 	want := map[string]bool{
-		"dib.card.v1":      true,
-		"dib.account.v1":   false,
-		"enbd.alert.v1":    false,
-		"enbd.transfer.v1": false,
-		"adib.alert.v1":    false,
-		"adib.account.v1":  false,
+		"dib.card.v1":           true,
+		"dib.account.v1":        false,
+		"dib.transfer.v1":       true,
+		"dib.money-transfer.v1": false,
+		"enbd.alert.v1":         false,
+		"enbd.transfer.v1":      false,
+		"adib.alert.v1":         false,
+		"adib.account.v1":       false,
 	}
 	seen := map[string]bool{}
 	for _, d := range Seed() {

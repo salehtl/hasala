@@ -15,7 +15,7 @@ struct PlanView: View {
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).plan) {
-      TabScreen(app: app, title: "Plan", extra: .none) {
+      TabScreen(app: app, title: "Plan") {
         MonthPill(month: model.snapshot.month)
       } content: {
         PlanContent(model: model)

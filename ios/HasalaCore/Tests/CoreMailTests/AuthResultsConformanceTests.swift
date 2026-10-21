@@ -77,7 +77,12 @@ struct AuthResultsConformanceTests {
     #expect(doc.limits.maxRawUTF16Units == AuthResults.maxRawUnits)
     #expect(doc.limits.maxContinuationLines == AuthResults.maxFieldLines)
     #expect(doc.providers == AuthResults.Provider.allCases.map(\.rawValue))
-    #expect(Set(doc.reasons) == Set([AuthResults.Reason.pass, .noAR, .multipleAR, .notTopmost, .fail, .parseError, .noEOP].map(\.rawValue)))
+    #expect(
+      doc.reasons
+        == [
+          AuthResults.Reason.pass, .noAR, .multipleAR, .notTopmost, .fail, .parseError, .noEOP, .notInbox, .unknownSender,
+          .noDMARCReject,
+        ].map(\.rawValue))
     #expect(doc.vectors.filter { $0.provider == "outlook" }.count > 40)
   }
 

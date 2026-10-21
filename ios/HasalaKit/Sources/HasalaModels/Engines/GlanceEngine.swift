@@ -120,8 +120,7 @@ public enum GlanceEngine {
   }
 
   static func toReview(_ s: LedgerState, now: LocalDateTime) -> ToReviewWidget {
-    let queue = ReviewEngine.queue(s, in: .month(now.date.yearMonth))
-    let notCounted = Fils.sum(queue.filter { $0.direction == .out && !$0.isHeldCopy }) { $0.homeMinor ?? 0 }
-    return ToReviewWidget(count: queue.count, notCounted: .aed(notCounted))
+    let review = ActivityEngine.reviewSummary(s, now: now)
+    return ToReviewWidget(count: review.count, notCounted: review.unplanned)
   }
 }

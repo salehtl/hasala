@@ -46,16 +46,20 @@ extension ModelTier {
     subjects: [String], stages: [ModelStage], allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
     mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }
-  ) async -> (suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure]) {
+  ) async -> (
+    suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure],
+    asked: [(subject: String, modelTag: String)], requests: Int
+  ) {
     let budget = context.budget
     let limit = callTimeout ?? .milliseconds(budget.callMs)
     var live = stages.map { $0.model.availability() == .available }
-    guard budget.calls > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:]) }
+    guard budget.calls > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0) }
     let start = now()
     var seen: Set<String> = []
     var out: [StagedSuggestion] = []
     var unknown: [(subject: String, modelTag: String)] = []
     var stopped: [String: ModelFailure] = [:]
+    var asked: [(subject: String, modelTag: String)] = []
     var calls = 0
     subjects: for subject in subjects where seen.insert(subject).inserted {
       for (i, stage) in stages.enumerated() where live[i] {
@@ -63,8 +67,10 @@ extension ModelTier {
         guard stage.accepts(subject), !stage.leavesDevice || mayLeaveDevice(subject), !isCached(subject, tag) else { continue }
         if calls >= budget.calls || now() - start >= budget.phaseMs || Task.isCancelled { break subjects }
         calls += 1
+        asked.append((subject, tag))
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
-        if reply.answer == .failed(.contextOverflow) {
+        if reply.answer == .failed(.contextOverflow), calls < budget.calls {
+          calls += 1
           reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
         }
         switch reply.answer {
@@ -87,7 +93,7 @@ extension ModelTier {
         }
       }
     }
-    return (out, unknown, stopped)
+    return (out, unknown, stopped, asked, calls)
   }
 }
 

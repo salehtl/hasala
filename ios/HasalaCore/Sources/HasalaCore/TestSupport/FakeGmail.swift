@@ -341,11 +341,12 @@ public enum SyntheticMail {
     if let d = authDomain {
       if !arTopmost { h.append("Authentication-Results: relay.example.net; dkim=pass header.d=\(d)") }
       let fromDomain = BankDomains.domainOf(from)
+      let spf = "spf=pass (google.com: domain of alerts@\(d) designates 192.0.2.1 as permitted sender) smtp.mailfrom=alerts@\(d)"
       let verdict =
         dkimPass
-        ? "dkim=pass header.d=\(d) header.s=synthetic header.b=c3ludGhl; dmarc=pass header.from=\(fromDomain); spf=pass"
-        : "dkim=fail header.d=\(d); spf=fail"
-      h.append("Authentication-Results: mx.google.com; \(verdict)")
+        ? "dkim=pass header.i=@\(d) header.s=synthetic header.b=c3ludGhl;\r\n       \(spf);\r\n       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=\(fromDomain)"
+        : "dkim=fail header.i=@\(d) header.s=synthetic header.b=c3ludGhl;\r\n       spf=fail smtp.mailfrom=alerts@\(d)"
+      h.append("Authentication-Results: mx.google.com;\r\n       \(verdict)")
     }
     h.append("Delivered-To: \(defaultTo)")
     if let d = authDomain {
@@ -373,6 +374,33 @@ public enum SyntheticMail {
       id: id,
       raw: rfc822(from: from, subject: "Card transaction", body: body, dateMs: dateMs, authDomain: authDomain, arTopmost: arTopmost,
         to: to, signedHeaders: signedHeaders),
+      internalDateMs: dateMs, from: from)
+  }
+
+  public static func dibTransferNotice(
+    id: String, amount: String = "3141.59", day: String = "05-06-2026", status: String = "تمت بنجاح", dateMs: Int64,
+    to: String? = defaultTo
+  ) -> FakeGmail.Message {
+    let body =
+      "تحويل الأموال\nعزيزي المتعامل,\nإشعار تحويل الأموال الى حسابات آخرى داخل البنك بتاريخ \(day) 06:29 بالتفاصيل التالية.\n"
+      + "المبلغ\nAED \(amount)\nمن حساب\n001-000-987XXXX01\nالى\n001-000-654XXXX03\nالحالة\n\(status)\n"
+      + "مع اطيب التحيات،\nبنك دبي الإسلامي"
+    let from = "DIB Notification <notification@dib.ae>"
+    return FakeGmail.Message(
+      id: id, raw: rfc822(from: from, subject: "DIB Notification", body: body, dateMs: dateMs, authDomain: "dib.ae", to: to),
+      internalDateMs: dateMs, from: from)
+  }
+
+  public static func dibDebitAlert(
+    id: String, amount: String = "3,141.59", day: String = "05-06-2026", description: String = "MB FUND TRANSFER DEBIT",
+    dateMs: Int64
+  ) -> FakeGmail.Message {
+    let body =
+      "إشعار خصم\nعزيزي المتعامل,\nإشعار\nخصم\nمن الحساب بتاريخ \(day) بالتفاصيل التالية.\nالمبلغ\nAED \(amount)\n"
+      + "من حساب\n001-000-XXXX321-01\nالمعاملة\n\(description)\nالحالة\nتمت بنجاح"
+    let from = "DIB Notification <notification@dib.ae>"
+    return FakeGmail.Message(
+      id: id, raw: rfc822(from: from, subject: "DIB Notification", body: body, dateMs: dateMs, authDomain: "dib.ae"),
       internalDateMs: dateMs, from: from)
   }
 

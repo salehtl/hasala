@@ -70,6 +70,7 @@ nonisolated enum LedgerStateMapper {
       txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
     }
     markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
+    let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map(unreadMail)
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
@@ -135,8 +136,15 @@ nonisolated enum LedgerStateMapper {
     return LedgerState(
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
-      unreadNotifications: 0, netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
-      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) })
+      netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
+      rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
+      unreadMail: unreadMail)
+  }
+
+  static func unreadMail(_ row: TxnRow) -> UnreadMail {
+    UnreadMail(
+      id: row.id, provider: row.sourceProvider.flatMap(MailProviderKind.init(rawValue:)),
+      receivedOn: CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1))
   }
 
   /// The transactions whose digest is among the skipped cards'.
@@ -225,7 +233,8 @@ nonisolated enum LedgerStateMapper {
     let provenance = row.entryMethod == "mailbox"
       ? Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
-        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw)
+        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw,
+        senderCheck: row.senderCheck)
       : nil
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),

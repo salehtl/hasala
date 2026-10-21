@@ -315,6 +315,10 @@ struct TransactionSheet: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(p.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
             Text(p.readAt).hType(.footnote).foregroundStyle(HColor.textSecondary)
+            if let check = p.senderCheck {
+              Text("Sender check: \(check)").hType(.footnote).foregroundStyle(HColor.textSecondary)
+                .accessibilityIdentifier("txn.senderCheck")
+            }
             Text(verbatim: p.rawMerchant)
               .font(.system(.footnote, design: .monospaced))
               .foregroundStyle(HColor.textPrimary)

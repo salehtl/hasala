@@ -6,6 +6,11 @@ public enum TrustExpectation: String, Sendable, CaseIterable {
   case untrusted
 }
 
+public enum TrustProvider: String, Sendable, CaseIterable {
+  case outlook
+  case gmail
+}
+
 public enum Status: String, Sendable {
   case pass = "PASS"
   case fail = "FAIL"
@@ -56,10 +61,79 @@ public enum TrustCheck {
     "C5": "an alert from Junk Email and an auto-forwarded alert both report dmarc=pass compauth=pass and verdict pass",
     "C6": "every genuine alert is pass with its bank domain; every C3 probe is untrusted",
     "C7": "no genuine alert carries a second Microsoft-form A-R (a bank tenant's would make it multiple_ar)",
+    "G1": "exactly one mx.google.com A-R per genuine alert, topmost among the A-Rs",
+    "G2": "every genuine alert is pass with an aligned DKIM domain",
+    "G3": "every copied or forged message is not pass",
   ]
 
   public static func probe(bytes: [UInt8]) -> AuthResults.OutlookTrustProbe {
     AuthResults.outlookTrustProbe(MailHeaders.headerBlock(rawMessage: bytes))
+  }
+
+  public static func gmailProbe(bytes: [UInt8]) -> AuthResults.GmailTrustProbe {
+    AuthResults.gmailTrustProbe(MailHeaders.headerBlock(rawMessage: bytes))
+  }
+
+  static func index(_ i: Int, of count: Int) -> String {
+    let width = max(2, String(count).count)
+    let n = String(i + 1)
+    return "#" + String(repeating: "0", count: width - n.count) + n
+  }
+
+  public static func runGmail(_ inputs: [MessageInput], expect: TrustExpectation, domains: [String] = []) -> Report {
+    var lines: [String] = []
+    var probes: [AuthResults.GmailTrustProbe] = []
+    var unreadable = 0
+    for (i, input) in inputs.enumerated() {
+      let tag = input.group == .plain ? "" : " [\(input.group.rawValue)]"
+      guard let bytes = input.bytes else {
+        unreadable += 1
+        lines.append("\(index(i, of: inputs.count))\(tag) unreadable")
+        continue
+      }
+      let p = gmailProbe(bytes: bytes)
+      probes.append(p)
+      lines.append("\(index(i, of: inputs.count))\(tag) \(p.line)")
+    }
+    var checks: [CheckLine] = []
+    func add(_ id: String, _ status: Status, _ detail: String) {
+      checks.append(CheckLine(id: id, status: status, detail: detail, expectation: expectations[id] ?? ""))
+    }
+    if unreadable > 0 {
+      checks.append(
+        CheckLine(
+          id: "READ", status: .fail, detail: "\(unreadable) file(s) could not be read",
+          expectation: "every .eml in the folder is readable and under \(maxFileBytes / 1024 / 1024) MB"))
+    }
+    let total = probes.count
+    switch expect {
+    case .pass:
+      if total == 0 {
+        for id in ["G1", "G2"] { add(id, .needsData, "no genuine alerts in this folder") }
+        return Report(lines: lines, checks: checks)
+      }
+      let g1 = probes.filter(\.g1).count
+      add("G1", g1 == total ? .pass : .fail, "\(g1)/\(total) have one mx.google.com A-R, topmost")
+      let g2 = probes.filter { p in
+        guard p.analysis.verdict.trusted, let d = p.analysis.domain else { return false }
+        return domains.isEmpty || domains.contains { d == $0 || d.hasSuffix("." + $0) }
+      }.count
+      let scope = domains.isEmpty ? "" : " under \(domains.joined(separator: ","))"
+      add("G2", g2 == total ? .pass : .fail, "\(g2)/\(total) pass with a verified domain\(scope)")
+      add("G3", .needsData, "this folder is for --expect pass; run the copied folder with --expect untrusted")
+    case .untrusted:
+      if total == 0 {
+        add("G3", .needsData, "no copied or forged messages in this folder")
+      } else {
+        let passed = probes.filter { $0.analysis.verdict.trusted }.count
+        let passDomains = Array(Set(probes.compactMap { $0.analysis.domain })).sorted()
+        let leak = passDomains.isEmpty ? "" : " pass_domains=\(passDomains.joined(separator: ","))"
+        add("G3", passed == 0 ? .pass : .fail, "\(total - passed)/\(total) are not pass\(leak)")
+      }
+      for id in ["G1", "G2"] { add(id, .needsData, "this folder is for --expect untrusted; run the genuine folder with --expect pass") }
+      checks.sort { order($0.id) < order($1.id) }
+    }
+    return Report(lines: lines, checks: checks)
   }
 
   public static func run(_ inputs: [MessageInput], expect: TrustExpectation, domains: [String] = []) -> Report {
@@ -148,7 +222,7 @@ public enum TrustCheck {
   }
 
   static func order(_ id: String) -> Int {
-    ["READ", "C1", "C2", "C3", "C5", "C6", "C7"].firstIndex(of: id) ?? 99
+    ["READ", "C1", "C2", "C3", "C5", "C6", "C7", "G1", "G2", "G3"].firstIndex(of: id) ?? 99
   }
 
   public static func collect(directory: URL) throws -> [MessageInput] {
@@ -187,23 +261,26 @@ public enum TrustCheck {
   }
 
   public static let usage = """
-    usage: outlook-trust-check --expect pass|untrusted [--domains d1,d2] <dir>
+    usage: outlook-trust-check [--provider outlook|gmail] --expect pass|untrusted [--domains d1,d2] <dir>
       <dir>            a folder of .eml files outside the repository; junk/ and forwarded/
                        subfolders are read too (C5)
-      --expect pass    genuine bank alerts (C1, C2, C5, C6, C7)
+      --provider       outlook (the default: checks C1-C7) or gmail (the Gmail rule: G1-G3)
+      --expect pass    genuine bank alerts (C1, C2, C5, C6, C7; Gmail: G1, G2)
       --expect untrusted
-                       copied messages or spoof probes (C3, and the untrusted half of C6)
-      --domains        optional comma-separated bank domains; C6 then also requires the
+                       copied messages or spoof probes (C3, and the untrusted half of C6; Gmail: G3)
+      --domains        optional comma-separated bank domains; C6 and G2 then also require the
                        verified domain to be one of them or a subdomain
     exit: 0 no FAIL, 1 a FAIL, 64 usage
     """
 
   public struct Arguments: Sendable, Equatable {
+    public let provider: TrustProvider
     public let expect: TrustExpectation
     public let domains: [String]
     public let directory: String
 
-    public init(expect: TrustExpectation, domains: [String], directory: String) {
+    public init(expect: TrustExpectation, domains: [String], directory: String, provider: TrustProvider = .outlook) {
+      self.provider = provider
       self.expect = expect
       self.domains = domains
       self.directory = directory
@@ -211,6 +288,7 @@ public enum TrustCheck {
   }
 
   public static func parse(_ args: [String]) -> Arguments? {
+    var provider = TrustProvider.outlook
     var expect: TrustExpectation? = nil
     var domains: [String] = []
     var dir: String? = nil
@@ -218,6 +296,10 @@ public enum TrustCheck {
     while i < args.count {
       let a = args[i]
       switch a {
+      case "--provider":
+        guard i + 1 < args.count, let p = TrustProvider(rawValue: args[i + 1]) else { return nil }
+        provider = p
+        i += 2
       case "--expect":
         guard i + 1 < args.count, let e = TrustExpectation(rawValue: args[i + 1]) else { return nil }
         expect = e
@@ -233,6 +315,6 @@ public enum TrustCheck {
       }
     }
     guard let expect, let dir else { return nil }
-    return Arguments(expect: expect, domains: domains, directory: dir)
+    return Arguments(expect: expect, domains: domains, directory: dir, provider: provider)
   }
 }

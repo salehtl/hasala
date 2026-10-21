@@ -448,12 +448,12 @@ struct SetupFlowTests: AccountSuite {
   @Test func notificationsAreAskedOnce() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let m = model(s)
-    #expect(!m.notificationsAllowed)
+    #expect(!m.systemAskedForNotifications)
     await m.allowNotifications()
-    #expect(m.notificationsAllowed && m.path.last == .done)
+    #expect(m.systemAskedForNotifications && m.path.last == .done)
     m.back()
     m.notNow()
-    #expect(m.notificationsAllowed)
+    #expect(m.systemAskedForNotifications)
   }
 
   // MARK: Support

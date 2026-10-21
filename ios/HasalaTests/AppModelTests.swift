@@ -19,22 +19,20 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
-  @Test func theReviewBadgeFollowsHomesPeriod() {
+  @Test func theReviewBadgeIgnoresHomesPeriod() {
     var state = MayaLedger.state
     state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
     #expect(app.period == .month(MayaLedger.october))
-    #expect(app.reviewCount == 6)
-    app.period = .month(YearMonth(2026, 9))
-    #expect(app.reviewWindow == ReviewWindow(from: LocalDate(2026, 9, 1), to: LocalDate(2026, 9, 30)))
-    #expect(app.reviewCount == 1)
-    app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
-    #expect(app.reviewWindow == ReviewWindow(from: LocalDate(2026, 8, 1), to: LocalDate(2026, 10, 31)))
     #expect(app.reviewCount == 7)
+    for period in [Period.month(YearMonth(2026, 9)), .month(YearMonth(2026, 6)), Period(YearMonth(2026, 8), YearMonth(2026, 10))] {
+      app.period = period
+      #expect(app.reviewCount == 7)
+      #expect(app.needsALook.first { $0.id == "review" }?.title == "7 transactions to sort")
+    }
     app.period = .month(YearMonth(2026, 12))
     #expect(app.period == .month(MayaLedger.october))
-    #expect(app.reviewCount == 6)
     #expect(AppModel(store: InMemoryLedger(state: state)).period == .month(MayaLedger.october))
   }
 
@@ -50,7 +48,7 @@ struct AppModelTests {
       return Int(row.detail.rendered(hidden: false).prefix { $0.isNumber }) ?? -1
     }
     app.period = .month(YearMonth(2026, 9))
-    #expect(app.reviewCount == 0)
+    #expect(app.reviewCount == 9)
     #expect(homeWaiting() == app.reviewCount)
     app.period = Period(YearMonth(2026, 9), MayaLedger.october)
     #expect(app.reviewCount == 9)
@@ -222,5 +220,121 @@ struct AppModelTests {
                           .categorize("no-such-txn", "groceries", learnRule: false, project: nil)]))
     #expect(store.state.txn("starbucks-copy")?.isHeldCopy == true)
     #expect(app.toast?.undo == nil)
+  }
+}
+
+@MainActor
+@Suite("Pull to refresh")
+struct SyncActivityTests {
+  final class Gate {
+    var calls = 0
+    private var opened = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func pass() async {
+      calls += 1
+      if opened { return }
+      await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func open() {
+      opened = true
+      for k in waiting { k.resume() }
+      waiting = []
+    }
+  }
+
+  final class Said {
+    var all: [String] = []
+  }
+
+  static func activity(_ gate: Gate) -> (SyncActivity, Said) {
+    let sync = SyncActivity()
+    let said = Said()
+    sync.announce = { said.all.append($0) }
+    sync.work = { await gate.pass() }
+    return (sync, said)
+  }
+
+  @Test func aStartShowsTheIndicatorUntilTheSyncEnds() async {
+    let gate = Gate()
+    let (sync, said) = Self.activity(gate)
+    #expect(!sync.isSyncing)
+    let task = sync.start()
+    #expect(sync.isSyncing)
+    #expect(said.all == ["Updating"])
+    gate.open()
+    await task.value
+    #expect(!sync.isSyncing)
+    #expect(said.all == ["Updating", "Updated"])
+    #expect(gate.calls == 1)
+  }
+
+  @Test func thePullEndsBeforeTheSync() async {
+    let gate = Gate()
+    let (sync, _) = Self.activity(gate)
+    await sync.pull(holding: .milliseconds(30))
+    #expect(sync.isSyncing)
+    gate.open()
+    await sync.start().value
+    #expect(!sync.isSyncing)
+  }
+
+  @Test func aQuickSyncEndsThePullAtOnce() async {
+    let (sync, said) = Self.activity(Gate())
+    sync.work = {}
+    let started = ContinuousClock.now
+    await sync.pull(holding: .seconds(10))
+    #expect(ContinuousClock.now - started < .seconds(5))
+    #expect(!sync.isSyncing)
+    #expect(said.all == ["Updating", "Updated"])
+  }
+
+  @Test func aPullWhileSyncingJoinsTheRunningSync() async {
+    let gate = Gate()
+    let (sync, said) = Self.activity(gate)
+    let first = sync.start()
+    await sync.pull(holding: .milliseconds(10))
+    await sync.pull(holding: .milliseconds(10))
+    #expect(sync.start() == first)
+    #expect(sync.runs == 1)
+    #expect(said.all == ["Updating"])
+    gate.open()
+    await first.value
+    #expect(gate.calls == 1)
+    #expect(!sync.isSyncing)
+  }
+
+  final class Outcomes {
+    var all: [WorkCoordinator.Outcome] = []
+  }
+
+  @Test func aFailedSyncClearsTheIndicatorAndTheNextPullStartsAgain() async {
+    let sync = SyncActivity()
+    sync.announce = { _ in }
+    let outcomes = Outcomes()
+    sync.work = { outcomes.all.append(WorkCoordinator.Outcome(newData: false, stop: .offline)) }
+    await sync.start().value
+    #expect(!sync.isSyncing)
+    #expect(outcomes.all.last?.failed == true)
+    await sync.pull(holding: .seconds(5))
+    #expect(sync.runs == 2)
+    #expect(outcomes.all.count == 2)
+    #expect(!sync.isSyncing)
+  }
+
+  @Test func theMockEndsThePullAtOnce() async {
+    let app = AppModel(store: InMemoryLedger())
+    app.sync.announce = { _ in }
+    await app.pull()
+    #expect(!app.sync.isSyncing)
+    #expect(app.sync.runs == 1)
+  }
+
+  @Test func aListLeftBelowTheTopAfterTheSpinnerIsStuck() {
+    #expect(RefreshSettle.isStuck(contentOffset: -230, insetTop: 170))
+    #expect(!RefreshSettle.isStuck(contentOffset: -170, insetTop: 170))
+    #expect(!RefreshSettle.isStuck(contentOffset: -230, insetTop: 230))
+    #expect(!RefreshSettle.isStuck(contentOffset: 400, insetTop: 170))
   }
 }

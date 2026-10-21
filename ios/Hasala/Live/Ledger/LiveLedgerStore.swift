@@ -157,6 +157,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .skipReview(let id): prefs.skip(id, on: now.date)
     case .setNotifications(let level): prefs.update { $0.notifications = level }
     case .setFaceIDLock(let on): prefs.update { $0.faceIDLock = on }
+    case .setDisplayName(let name): profile.displayName = name
     default: break
     }
     state = s
@@ -313,6 +314,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].needsReview = false
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])
     case .archive(let id, let archived):
+      if archived, s.unreadMail.contains(where: { $0.id == id }) {
+        s.unreadMail.removeAll { $0.id == id }
+        return ("Dismissed", [.archived(txn: id, archived: false)])
+      }
       let i = try index(id)
       s.txns[i].archived = archived
       return (archived ? "Archived" : "Restored", [.archived(txn: id, archived: !archived)])
@@ -442,6 +447,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return (nil, [])
     case .setFaceIDLock(let on):
       s.prefs.faceIDLock = on
+      return (nil, [])
+    case .setDisplayName(let name):
+      s.profile.displayName = name
       return (nil, [])
     }
   }

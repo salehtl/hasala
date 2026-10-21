@@ -83,6 +83,7 @@ actor CancelOnParse: MailboxPersistence {
     try await base.markParsing(messageID)
   }
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { try await base.clearParsing(messageID) }
+  func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] { try await base.pendingImports() }
 }
 
 @Suite struct CancelledParseTests {

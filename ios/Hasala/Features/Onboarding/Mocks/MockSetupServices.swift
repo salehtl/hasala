@@ -78,6 +78,25 @@
   }
 
   @MainActor
+  final class MockCloudSort: CloudSortOffering {
+    static let argument = "-HasalaCloudSort"
+
+    var isOffered: Bool
+    private(set) var isOn = false
+    private(set) var turnOnCalls = 0
+
+    init(offered: Bool = ProcessInfo.processInfo.arguments.contains(MockCloudSort.argument), on: Bool = false) {
+      isOffered = offered
+      isOn = on
+    }
+
+    func turnOn() {
+      turnOnCalls += 1
+      isOn = true
+    }
+  }
+
+  @MainActor
   final class MockNotificationPermission: NotificationPermissionAsking {
     var showsDetails = false
     private(set) var asked = false

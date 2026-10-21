@@ -27,8 +27,10 @@ struct SetupDraft: Equatable, Sendable {
   var payday: PaydayChoice?
   var split: StartingPlan?
   var showDetails = false
-  enum NotificationsDecision: Equatable, Sendable { case allowed, notNow }
+  enum NotificationsDecision: Equatable, Sendable { case systemAsked, notNow }
   var notificationsDecision: NotificationsDecision?
+  enum CloudSortDecision: Equatable, Sendable { case on, notNow }
+  var cloudSortDecision: CloudSortDecision?
   var authored = AuthoredSetup()
 }
 
@@ -214,6 +216,7 @@ final class SetupModel {
     if target >= .income, !facts.sampleLoaded { stack.append(.income) }
     if target >= .plan, !facts.sampleLoaded { stack.append(.plan) }
     if target >= .notifications, scanTask != nil, !facts.sampleLoaded { stack.append(.result) }
+    if target >= .notifications, offersCloudSort { stack.append(.sort) }
     if target >= .notifications { stack.append(.notifications) }
     if target >= .done { stack.append(.done) }
     path = stack
@@ -561,26 +564,41 @@ final class SetupModel {
   var scanDone: Bool { scan?.phase == .finished }
 
   /// "Continue" on the result, whether or not the scan has finished.
-  func afterResult() { go(.notifications) }
+  func afterResult() { go(offersCloudSort ? .sort : .notifications) }
+
+  var offersCloudSort: Bool { services.cloudSort?.isOffered == true && scanTask != nil && !facts.sampleLoaded }
+
+  var cloudSortOn: Bool { draft.cloudSortDecision == .on || services.cloudSort?.isOn == true }
+
+  func turnOnCloudSort() {
+    if draft.cloudSortDecision != .on { services.cloudSort?.turnOn() }
+    draft.cloudSortDecision = .on
+    go(.notifications)
+  }
+
+  func cloudSortNotNow() {
+    if draft.cloudSortDecision == nil { draft.cloudSortDecision = .notNow }
+    go(.notifications)
+  }
 
   // MARK: Notifications and done
 
   /// The system was asked here already: the step shows "Continue" (plan B3.2 rule 2).
-  var notificationsAllowed: Bool { draft.notificationsDecision == .allowed }
+  var systemAskedForNotifications: Bool { draft.notificationsDecision == .systemAsked }
 
   /// "Allow notifications": iOS asks once; after that the step's button only continues.
   func allowNotifications() async {
-    if draft.notificationsDecision != .allowed {
+    if draft.notificationsDecision != .systemAsked {
       services.notifications.showsDetails = showDetails
       _ = await services.notifications.requestAuthorization()
-      draft.notificationsDecision = .allowed
+      draft.notificationsDecision = .systemAsked
     }
     facts.notificationsAsked = true
     go(.done)
   }
 
   func notNow() {
-    if draft.notificationsDecision != .allowed { draft.notificationsDecision = .notNow }
+    if draft.notificationsDecision != .systemAsked { draft.notificationsDecision = .notNow }
     facts.notificationsAsked = true
     go(.done)
   }

@@ -57,7 +57,7 @@ public enum ProfileEngine {
       emailLine: s.profile.email + (s.profile.emailVerified ? " · Verified" : " · Not verified"),
       mailbox: s.mailbox,
       accounts: MoneyPhrase([
-        .text("\(s.accounts.count) · net worth \(netWorth.estimate ? "≈ " : "")"),
+        .text("\(s.accounts.count) · net worth "),
         .amount(netWorth.money, .rounded, hidden: 4),
       ] + (netWorth.mark?.caption.map { [.text(" · \($0)")] } ?? [])),
       accountsKnown: s.accounts.contains { !$0.balance.isZero },

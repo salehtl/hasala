@@ -16,12 +16,13 @@ extension EnvironmentValues {
 struct ProfileIdentity: View {
   let name: String
   let initial: String
+  var email: String?
   /// "maya@example.com · Verified".
   let emailLine: String
 
   var body: some View {
     VStack(spacing: 10) {
-      AvatarDisc(initial: initial, size: 96, ring: true)
+      AvatarDisc(initial: initial, size: 96, ring: true, email: email)
         // The monogram is the name's first letter: drawn, not read (the name follows).
         .accessibilityHidden(true)
       VStack(spacing: 8) {

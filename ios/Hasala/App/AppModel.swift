@@ -58,12 +58,17 @@ final class AppModel {
 
   /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
   /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
-  @ObservationIgnored var refreshWork: (@MainActor () async -> Void)?
+  var refreshWork: (@MainActor () async -> Void)? {
+    get { sync.work }
+    set { sync.work = newValue }
+  }
+
+  let sync = SyncActivity()
 
   private var toastTask: Task<Void, Never>?
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
-  @ObservationIgnored private var reviewMemo = Memo<ReviewMemoKey, Int>()
+  @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
   @ObservationIgnored private var canvasMemo = Memo<CanvasMemoKey, [HomeCanvasItem]>()
@@ -179,25 +184,25 @@ final class AppModel {
   /// The header's avatar letter, without running the Home engine on every tab.
   var avatarInitial: String { store.state.profile.initial }
 
-  /// Transactions waiting to be sorted in Home's period: the Review tab's badge, once per
-  /// ledger or period change.
-  var reviewCount: Int {
-    let window = reviewWindow
-    return reviewMemo.value(for: ReviewMemoKey(revision: store.revision, window: window)) {
-      ReviewEngine.queue(store.state, in: window).count
-    }
-  }
+  var avatarEmail: String { store.state.profile.email }
 
-  var reviewWindow: ReviewWindow { ReviewWindow(period) }
+  /// Transactions waiting to be sorted, whatever the period: the Review tab's badge, once per
+  /// ledger change. The bell, the Review tab and the deck count the same queue.
+  var reviewCount: Int {
+    reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
+  }
 
   var showingProfile: Bool {
     get { sheet == .profile }
     set { sheet = newValue ? .profile : (sheet == .profile ? nil : sheet) }
   }
 
-  /// Pull to refresh: waits for the run, so the spinner shows until the screens reload.
   func refresh() async {
-    await refreshWork?()
+    await sync.start().value
+  }
+
+  func pull() async {
+    await sync.pull()
   }
 
   /// The header eye (Paper "Home · Amounts hidden"): hiding persists until it is toggled back; a
@@ -334,7 +339,53 @@ struct HomeMemoKey: Equatable {
   var period: Period?
 }
 
-struct ReviewMemoKey: Hashable {
-  var revision: Int
-  var window: ReviewWindow
+@MainActor
+@Observable
+final class SyncActivity {
+  static let pullHold: Duration = .milliseconds(450)
+  static let startedMessage = "Updating"
+  static let finishedMessage = "Updated"
+
+  private(set) var isSyncing = false
+  @ObservationIgnored var hold = SyncActivity.pullHold
+  @ObservationIgnored var work: (@MainActor () async -> Void)?
+  @ObservationIgnored var announce: @MainActor (String) -> Void = SyncActivity.announcePolitely
+  @ObservationIgnored private(set) var runs = 0
+  @ObservationIgnored private var running: Task<Void, Never>?
+
+  @discardableResult
+  func start() -> Task<Void, Never> {
+    if let running { return running }
+    runs += 1
+    isSyncing = true
+    announce(Self.startedMessage)
+    let work = work
+    let task = Task { [weak self] in
+      await work?()
+      self?.finish()
+    }
+    running = task
+    return task
+  }
+
+  func pull() async {
+    await pull(holding: hold)
+  }
+
+  func pull(holding hold: Duration) async {
+    let task = start()
+    await WorkCoordinator.wait(for: task, until: .now + hold, timedOut: (), cancelled: ())
+  }
+
+  private func finish() {
+    running = nil
+    isSyncing = false
+    announce(Self.finishedMessage)
+  }
+
+  static func announcePolitely(_ message: String) {
+    var text = AttributedString(message)
+    text.accessibilitySpeechAnnouncementPriority = .low
+    AccessibilityNotification.Announcement(text).post()
+  }
 }

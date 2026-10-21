@@ -1340,6 +1340,7 @@ public actor MailboxEngine {
     var sinceCommit = 0
     var stop: MailboxHaltCode?
     var pagedBase: Int?
+    var senderAddresses: [String]?
   }
 
   enum Mode { case author, stage }
@@ -1622,10 +1623,12 @@ public actor MailboxEngine {
         interrupted = id
       } else {
         try await store.markParsing(id)
+        if run.senderAddresses == nil { run.senderAddresses = (try? await store.senderAddresses()) ?? [] }
+        let senders = run.senderAddresses ?? []
         parsed = MessageDisposer.parse(
           raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
           bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
-          analyze: { provider.analyzeAuthResults($0) })
+          analyze: { provider.analyzeAuthResults($0, inInbox: raw.inInbox, senderAddresses: senders) })
         try await store.clearParsing(id)
       }
       switch parsed {

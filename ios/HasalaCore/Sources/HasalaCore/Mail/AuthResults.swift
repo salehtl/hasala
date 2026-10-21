@@ -59,6 +59,16 @@ public enum AuthResults {
     case parseError = "parse_error"
     /// Outlook only: the EOP-only fields do not prove the message crossed EOP inbound.
     case noEOP = "no_eop"
+    case notInbox = "not_inbox"
+    case unknownSender = "unknown_sender"
+    case noDMARCReject = "no_dmarc_reject"
+
+    public var recorded: String {
+      switch self {
+      case .notInbox, .unknownSender, .noDMARCReject: Reason.fail.rawValue
+      default: rawValue
+      }
+    }
   }
 
   public struct Verdict: Sendable, Equatable {
@@ -179,7 +189,7 @@ public enum AuthResults {
   /// SPF and DKIM are parsed but are not trust inputs; ARC is ignored. Each step is one block
   /// and its constants are above, so tightening or loosening it after the owner's samples is a
   /// local change (and a vector). The rule rests on premises real mail has not yet proven, so
-  /// the Outlook lane sends every message to review until they are (`outlookTrustProven`).
+  /// the Outlook lane does not use it: it trusts `analyzeOutlookSender` (the WP1 decision §3a).
   public static func analyzeOutlook(_ rawHeaders: String) -> Analysis {
     // 1. Bounds.
     if rawHeaders.isEmpty { return untrusted(.noAR) }
@@ -221,6 +231,69 @@ public enum AuthResults {
 
     // 8.
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+  }
+
+  public static func analyzeOutlookSender(
+    _ rawHeaders: String, inInbox: Bool, knownSenders: [String], rejectDomains: [String]
+  ) -> Analysis {
+    if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
+    guard let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return untrusted(.parseError) }
+    guard inInbox else { return untrusted(.notInbox) }
+    let from = fields.filter { jsLower(jsTrim($0.name)) == Array("from".unicodeScalars) }
+    guard from.count == 1, let address = fromAddress(from[0].value),
+      knownSenders.contains(where: { same(asciiLower($0), address) })
+    else { return untrusted(.unknownSender) }
+    let domain = String(address[address.index(after: address.lastIndex(of: "@")!)...])
+    guard rejectDomains.contains(where: { same(asciiLower($0), domain) }) else { return untrusted(.noDMARCReject) }
+    return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
+  }
+
+  static func asciiLower(_ s: String) -> String {
+    String(decoding: s.utf8.map { $0 >= 0x41 && $0 <= 0x5a ? $0 + 0x20 : $0 }, as: UTF8.self)
+  }
+
+  static func fromAddress(_ value: Scalars) -> String? {
+    let (clean, readable) = stripComments(value)
+    guard readable, let s = stripQuoted(clean), !s.contains(","), !s.contains(";") else { return nil }
+    let addr: Scalars
+    if let lt = s.firstIndex(of: "<") {
+      guard let gt = s.firstIndex(of: ">"), gt > lt, s.filter({ $0 == "<" }).count == 1,
+        s.filter({ $0 == ">" }).count == 1, !s[..<lt].contains("@"), jsTrim(s[(gt + 1)...]).isEmpty
+      else { return nil }
+      addr = Array(jsTrim(s[(lt + 1)..<gt]))
+    } else {
+      guard !s.contains(">") else { return nil }
+      addr = Array(jsTrim(s))
+    }
+    guard addr.allSatisfy({ $0.value >= 0x21 && $0.value <= 0x7e }),
+      let at = addr.firstIndex(of: "@"), at > 0, addr.filter({ $0 == "@" }).count == 1
+    else { return nil }
+    let lower = Array(asciiLower(string(addr)).unicodeScalars)
+    guard isLDHDomain(Array(lower[(at + 1)...])) else { return nil }
+    return string(lower)
+  }
+
+  static func stripQuoted(_ v: Scalars) -> Scalars? {
+    var out: Scalars = []
+    var inQuote = false
+    var i = 0
+    while i < v.count {
+      let c = v[i]
+      if inQuote {
+        if c == "\\" {
+          i += 2
+          continue
+        }
+        if c == "\"" { inQuote = false }
+      } else if c == "\"" {
+        inQuote = true
+        out.append(" ")
+      } else {
+        out.append(c)
+      }
+      i += 1
+    }
+    return inQuote ? nil : out
   }
 
   static func dkimAligned(_ d: String, _ from: String) -> Bool {

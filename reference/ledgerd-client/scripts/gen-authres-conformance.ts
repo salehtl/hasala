@@ -14,7 +14,7 @@
  * The format is described in `conformance/authres/README.md`.
  */
 
-import { analyzeFor, type MailProvider } from "../src/mail/authres";
+import { AR_REASONS, analyzeFor, type MailProvider } from "../src/mail/authres";
 import { asciiJSON, assertFresh, writeOrCheck, type FixtureFile } from "./conformance-io";
 
 export const SUITE = "authres";
@@ -116,6 +116,11 @@ function specs(): VectorSpec[] {
     block("Authentication-Results: mx.google.com;", "       dkim=fail header.d=bank.example;", "       dmarc=fail header.from=bank.example", FROM),
   );
   add("goldens", "dkim-pass-without-d", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", FROM));
+  add(
+    "goldens",
+    "dkim-pass-without-identity",
+    block("Authentication-Results: mx.google.com; dkim=pass header.s=selector1 header.b=c3ludGhl", FROM),
+  );
   add(
     "goldens",
     "folded-across-many-lines",
@@ -313,6 +318,8 @@ function specs(): VectorSpec[] {
   add("domain", "dmarc-softfail", block("Authentication-Results: mx.google.com; dkim=neutral header.d=bank.example; dmarc=bestguesspass header.from=bank.example", FROM));
   add("domain", "spf-pass-alone-is-not-trust", block("Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=alerts@bank.example", FROM));
 
+  gmailShapeSpecs(add);
+
   // --- bounds: the two input limits, at and past each ---
   // 256 KiB measured in UTF-16 code units by the oracle. These blocks are ASCII,
   // so UTF-16 units, scalars and UTF-8 bytes all agree on the length.
@@ -353,6 +360,144 @@ function specs(): VectorSpec[] {
 
   outlookSpecs(v);
   return v;
+}
+
+type Add = (group: string, name: string, headers: string | Part[], note?: string) => void;
+
+const GMAIL_SIG = "header.s=selector1 header.b=c3ludGhl";
+const gmailDKIM = (domain: string): string => `dkim=pass header.i=@${domain} ${GMAIL_SIG}`;
+const gmailSPF = (mailfrom: string, ip: string): string =>
+  `spf=pass (google.com: domain of ${mailfrom} designates ${ip} as permitted sender) smtp.mailfrom=${mailfrom}`;
+const GMAIL_DMARC = "dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=bank.example";
+const gmailAR = (...methods: string[]): string =>
+  ["Authentication-Results: mx.google.com;", ...methods.map((m, i) => `       ${m}${i < methods.length - 1 ? ";" : ""}`)].join("\r\n");
+const BANK_DKIM_SIGNATURE = [
+  "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=bank.example; s=selector1;",
+  "        h=from:to:subject:message-id; bh=c3ludGhldGlj; b=c3ludGhldGljc2lnbmF0dXJl",
+].join("\r\n");
+
+function gmailShapeSpecs(add: Add): void {
+  const g = (name: string, headers: string, note?: string): void => add("gmail_shape", name, headers, note);
+  const direct = gmailAR(gmailDKIM("bank.example"), gmailSPF("alerts@bank.example", "192.0.2.1"), GMAIL_DMARC);
+  g(
+    "gmail-direct-alert",
+    block(
+      "Delivered-To: synthetic.user@example.com",
+      "Received: by 2002:a05:6000:1::1 with SMTP id synthetic1; Mon, 1 Jun 2026 08:00:01 -0700 (PDT)",
+      "X-Received: by 2002:a05:6000:1::2 with SMTP id synthetic2; Mon, 1 Jun 2026 08:00:01 -0700 (PDT)",
+      "ARC-Seal: i=1; a=rsa-sha256; t=1780326001; cv=none; d=google.com; s=arc-synthetic; b=c3ludGhldGljc2VhbA==",
+      "ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-synthetic;",
+      "        h=subject:to:from:message-id:dkim-signature; bh=c3ludGhldGlj; b=c3ludGhldGljbXNn",
+      "ARC-" + direct.replace("mx.google.com;", "i=1; mx.google.com;"),
+      "Return-Path: <alerts@bank.example>",
+      "Received: from mail.bank.example (mail.bank.example. [192.0.2.1])",
+      "        by mx.google.com with ESMTPS id synthetic3",
+      "        for <synthetic.user@example.com>",
+      "        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);",
+      "        Mon, 01 Jun 2026 08:00:01 -0700 (PDT)",
+      "Received-SPF: pass (google.com: domain of alerts@bank.example designates 192.0.2.1 as permitted sender) client-ip=192.0.2.1;",
+      direct,
+      BANK_DKIM_SIGNATURE,
+      FROM,
+      "To: synthetic.user@example.com",
+      SUBJECT,
+      "Message-ID: <synthetic.1@bank.example>",
+    ),
+    "The block Gmail delivers for a direct bank alert: DKIM is reported as header.i=@<domain> with header.s and header.b, never header.d.",
+  );
+  const forwardedAR = (dkim: string, arc: string, dmarc: string): string =>
+    gmailAR(dkim, arc, gmailSPF("user@forwarder.example", "192.0.2.7"), dmarc);
+  const forwarded = (ar: string): string =>
+    block(
+      "Delivered-To: synthetic.user@example.com",
+      "ARC-Seal: i=2; a=rsa-sha256; t=1780326002; cv=pass; d=google.com; s=arc-synthetic; b=c3ludGhldGljc2VhbDI=",
+      "ARC-" + ar.replace("mx.google.com;", "i=2; mx.google.com;"),
+      "Return-Path: <user@forwarder.example>",
+      "Received: from mx.forwarder.example (mx.forwarder.example. [192.0.2.7]) by mx.google.com with ESMTPS id synthetic4; Mon, 01 Jun 2026 08:00:02 -0700 (PDT)",
+      "Received-SPF: pass (google.com: domain of user@forwarder.example designates 192.0.2.7 as permitted sender) client-ip=192.0.2.7;",
+      ar,
+      "ARC-Seal: i=1; a=rsa-sha256; cv=none; d=forwarder.example; s=arc-1; b=c3ludGhldGljZndk",
+      "ARC-Authentication-Results: i=1; mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; dmarc=pass header.from=bank.example",
+      "Received: from mail.bank.example (mail.bank.example [192.0.2.1]) by mx.forwarder.example with ESMTPS; Mon, 01 Jun 2026 08:00:01 -0700",
+      "Authentication-Results: mx.forwarder.example; dkim=pass header.d=bank.example header.i=@bank.example header.b=c3ludGhl; spf=pass smtp.mailfrom=alerts@bank.example; dmarc=pass header.from=bank.example",
+      BANK_DKIM_SIGNATURE,
+      FROM,
+      "To: user@forwarder.example",
+      SUBJECT,
+    );
+  g(
+    "gmail-forwarded-alert",
+    forwarded(
+      forwardedAR(
+        gmailDKIM("bank.example"),
+        "arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example)",
+        "dmarc=pass (p=REJECT sp=NONE dis=NONE) header.from=bank.example",
+      ),
+    ),
+    "Another mailbox forwarded a genuine alert into Gmail; the bank's DKIM survived, and the forwarder's own A-Rs are below Gmail's.",
+  );
+  g(
+    "gmail-forwarded-dkim-broken",
+    forwarded(
+      forwardedAR(
+        "dkim=neutral (body hash did not verify) header.i=@bank.example " + GMAIL_SIG,
+        "arc=pass (i=1 spf=pass spfdomain=bank.example dkim=pass dkdomain=bank.example dmarc=pass fromdomain=bank.example)",
+        "dmarc=fail (p=REJECT sp=NONE dis=NONE) header.from=bank.example",
+      ),
+    ),
+    "The forwarder changed the body: the forwarder's pass below and ARC are not read, so the message goes to review.",
+  );
+  g("gmail-header-i-only", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", FROM));
+  g("gmail-header-i-with-local-part", block("Authentication-Results: mx.google.com; dkim=pass header.i=alerts@bank.example", FROM));
+  g("gmail-header-i-upper-case", block("Authentication-Results: mx.google.com; dkim=pass HEADER.I=@Bank.Example", FROM));
+  g("gmail-header-i-subdomain-of-from", block("Authentication-Results: mx.google.com; dkim=pass header.i=@mail.bank.example", FROM));
+  g("gmail-from-subdomain-of-header-i", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", fromAt("mail.bank.example")));
+  g(
+    "gmail-esp-then-bank-signature",
+    block(
+      gmailAR(
+        "dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln",
+        "dkim=pass header.i=@bank.example header.s=s2 header.b=YmFua3Np",
+        gmailSPF("bounce@esp.example", "192.0.2.9"),
+        GMAIL_DMARC,
+      ),
+      FROM,
+    ),
+  );
+  g(
+    "gmail-esp-signature-with-spf-aligned-dmarc",
+    block(gmailAR("dkim=pass header.i=@esp.example header.s=s1 header.b=ZXNwc2ln", gmailSPF("bounce@bank.example", "192.0.2.9"), GMAIL_DMARC), FROM),
+    "DMARC passes on SPF alone; the only DKIM pass is the ESP's.",
+  );
+  g(
+    "gmail-dkim-fail-with-spf-aligned-dmarc",
+    block(gmailAR("dkim=fail header.i=@bank.example " + GMAIL_SIG, gmailSPF("alerts@bank.example", "192.0.2.1"), GMAIL_DMARC), FROM),
+  );
+  g("gmail-header-i-sibling-of-from", block("Authentication-Results: mx.google.com; dkim=pass header.i=@notbank.example", FROM));
+  g("gmail-header-i-suffix-without-dot", block("Authentication-Results: mx.google.com; dkim=pass header.i=@ank.example", FROM));
+  g("gmail-header-i-look-alike", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example.evil.example", FROM));
+  g("gmail-from-look-alike", block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example", fromAt("bank.example.evil.example")));
+  g(
+    "gmail-header-i-quoted-local-part",
+    block('Authentication-Results: mx.google.com; dkim=pass header.i="alerts@bank.example"@evil.example', FROM),
+    "The domain of an AUID is what follows its last '@'.",
+  );
+  g("gmail-header-i-empty-domain", block("Authentication-Results: mx.google.com; dkim=pass header.i=@", FROM));
+  g(
+    "gmail-header-d-decides-over-header-i",
+    block("Authentication-Results: mx.google.com; dkim=pass header.d=evil.example header.i=@bank.example", FROM),
+    "header.i is read only when the method has no header.d.",
+  );
+  g("gmail-invalid-header-d-no-fallback", block("Authentication-Results: mx.google.com; dkim=pass header.d=localhost header.i=@bank.example", FROM));
+  g("gmail-header-i-repeated-last-wins", block("Authentication-Results: mx.google.com; dkim=pass header.i=@evil.example header.i=@bank.example", FROM));
+  g(
+    "gmail-header-i-repeated-last-wins-unaligned",
+    block("Authentication-Results: mx.google.com; dkim=pass header.i=@bank.example header.i=@evil.example", FROM),
+  );
+  g("gmail-header-i-no-from", block(direct, SUBJECT));
+  g("gmail-header-i-two-from-fields", block(direct, FROM, FROM));
+  g("gmail-shape-copy-above", block(direct, direct, FROM), "A sender-written copy of Gmail's A-R is a second mx.google.com A-R.");
+  g("gmail-shape-foreign-above", block("Authentication-Results: relay.example; dkim=pass header.i=@bank.example", direct, FROM));
 }
 
 // --- Outlook.com: outlookVerdict (WP1 decision §3) ---
@@ -531,7 +676,7 @@ export function build(): FixtureFile[] {
         },
         limits: { max_raw_utf16_units: 256 * 1024, max_continuation_lines: 512 },
         providers: ["gmail", "outlook"],
-        reasons: ["pass", "no_ar", "multiple_ar", "not_topmost", "fail", "parse_error", "no_eop"],
+        reasons: AR_REASONS,
         vectors,
       }),
     },

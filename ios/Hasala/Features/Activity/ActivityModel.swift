@@ -22,7 +22,6 @@ protocol ActivityModel: AnyObject, Observable {
   func open(_ txn: TxnID)
   func openBill(_ bill: BillID)
   func startReview()
-  func addTransaction()
 }
 
 @MainActor
@@ -72,8 +71,6 @@ final class ActivityViewModel: ActivityModel {
   func open(_ txn: TxnID) { app.open(txn) }
   func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }
   func startReview() { ReviewEntry.open(app, at: nil) }
-
-  func addTransaction() { app.router.open(.addTransaction) }
 }
 
 /// Asks the Activity tab to show a filter from elsewhere (Search's category row, a Debug
@@ -91,6 +88,7 @@ final class ActivityRequests {
     pending = (ObjectIdentifier(app), filter)
     app.router.activity = []
     app.tab = .activity
+    if app.router.sheet == .search { app.router.sheet = nil }
   }
 
   /// The filter waiting for `app`'s Activity screen; the request is used up.

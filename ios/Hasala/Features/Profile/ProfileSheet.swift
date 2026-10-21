@@ -45,7 +45,7 @@ struct ProfileSheet: View {
     NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          ProfileIdentity(name: snap.displayName, initial: snap.initial, emailLine: snap.emailLine)
+          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
           BankAlertsCard(summary: summary) { push(.bankAlerts) }
           money
           settings
@@ -147,6 +147,11 @@ struct ProfileSheet: View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Settings")
       ProfileListCard(inset: .icon52) {
+        if session != nil, can(.changeName) {
+          row(.editName, id: "profile.editName") {
+            SettingRow(icon: .pencil, title: "Name", trailing: .value(snap.displayName))
+          }
+        }
         if session != nil || unfinished {
           row(.security, id: "profile.security") {
             SettingRow(icon: .shieldCheck, title: "Sign-in & security",
@@ -307,7 +312,9 @@ private struct ProfilePage: View {
     case .accounts:
       AccountsView(app: app)
     case .security:
-      if let session { SecurityView(session: session) }
+      if let session { SecurityView(session: session, app: app) }
+    case .editName:
+      if let session { NameEditPage(app: app, session: session) }
     case .privacy:
       // The row is a link to hasala.app/privacy; nothing pushes this page any more.
       HelpPage()

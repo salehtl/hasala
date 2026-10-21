@@ -88,6 +88,15 @@ struct ConnectProviderView: View {
           .fixedSize(horizontal: false, vertical: true)
           .padding(.top, 10)
           .padding(.horizontal, 8)
+        if connected == nil {
+          Text(MailCopy.confirmNote)
+            .hType(.footnote)
+            .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .accessibilityIdentifier("mail.confirmNote")
+        }
         if let message = coordinator.inlineMessage, case .failed(let failure)? = coordinator.outcome {
           InlineStatus(tone: Self.tone(failure), text: message, size: .regular)
             .padding(.top, 16)

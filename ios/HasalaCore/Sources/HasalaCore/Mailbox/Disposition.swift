@@ -9,7 +9,8 @@
 // This is op-authoring code. Its two disciplines, from fetch.ts:
 //   1. Nothing is silently dropped. A message is set aside (not a bank: no op, recorded and
 //      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
-//   2. Filing without review needs every gate: Gmail's A-R verdict `pass`, the VERIFIED domain in
+//   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
+//      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
 //      the trusted set T, a template hit with a usable amount, a card not marked "not mine", not
 //      forwarded, not in Spam, and a recipient check that is not a mismatch. Anything less is
 //      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
@@ -32,7 +33,7 @@ public enum MailboxLimits {
 /// The trust and parse facts a row records in its `gates` object (03c §3.1), display only.
 public struct MailGates: Sendable, Equatable, Codable {
   /// AuthResults.Reason raw value: pass | no_ar | multiple_ar | not_topmost | fail | parse_error |
-  /// no_eop (Outlook).
+  /// no_eop | not_inbox | unknown_sender | no_dmarc_reject (Outlook).
   public var ar: String
   /// The verified domain is in the trusted set T.
   public var senderTrusted: Bool
@@ -162,7 +163,7 @@ public enum MessageDisposer {
     var mail = ParsedMail(
       messageID: messageID, ingestID: "", internalDateMs: internalDateMs, bank: "", last4: "",
       templateHasCardField: false,
-      gates: MailGates(ar: analysis.verdict.reason.rawValue, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
+      gates: MailGates(ar: analysis.verdict.reason.recorded, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
       fields: nil, dayPostedAt: day)
     mail.ingestID = ingestID(raw)
     mail.headerIDHash = MessageIDEvidence.hash(headers: headers)

@@ -77,7 +77,6 @@ public struct DayGroup: Sendable, Hashable, Identifiable {
   public var title: String
   public var total: Money
   public var rows: [MiniTxnRow]
-  public var approx: Bool = false
 }
 
 /// The summary card on a category filter ("Activity · Filtered").
@@ -87,7 +86,6 @@ public struct FilterSummary: Sendable, Hashable {
   public var hue: Hue
   public var count: Int
   public var total: Money
-  public var approx: Bool = false
   public var progress: Permille
   public var today: Permille
   public var verdict: Verdict
@@ -147,6 +145,7 @@ public enum ActivityEngine {
     let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
     let days = group(listed, s, today: now.date)
     let showsOverview = filter.kind == .all && filter.category == nil && !filter.isSearching
+    let review = showsOverview ? reviewSummary(s, now: now) : nil
     let n = inPeriod.count
     let noun = "\(n) transaction\(n == 1 ? "" : "s")"
 
@@ -156,7 +155,7 @@ public enum ActivityEngine {
       countLine: isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)",
       chips: chips,
       filter: filter,
-      review: showsOverview && !reviewQueue.isEmpty ? reviewSummary(s, now: now, in: window) : nil,
+      review: review.flatMap { $0.count > 0 ? $0 : nil },
       comingUp: showsOverview && period.contains(today) ? comingUp(s, today: now.date, within: 7) : [],
       days: days,
       rows: filter.category == nil ? [] : listed.map { dated($0, s) },
@@ -165,7 +164,7 @@ public enum ActivityEngine {
   }
 
   public static func reviewSummary(_ s: LedgerState, now: LocalDateTime, in window: ReviewWindow = .all) -> ReviewSummary {
-    let queue = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) }
+    let queue = ReviewEngine.queue(s, in: window)
     let out = queue.filter { $0.direction == .out && !$0.isHeldCopy }
     let unplanned = Fils.sum(out) { $0.homeMinor ?? 0 }
     let today = queue.filter { $0.postedAt.date == now.date }.count
@@ -207,10 +206,9 @@ public enum ActivityEngine {
       if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor.add(signed)
-        if t.isEstimate { groups[i].approx = true }
       } else {
         index[d] = groups.count
-        groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row], approx: t.isEstimate))
+        groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row]))
       }
     }
     return groups
@@ -312,9 +310,8 @@ public enum ActivityEngine {
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
     let pct = Fils.mulDiv(total, 100, budget)
-    let approx = txns.contains { t in t.isEstimate && Spending.includes(t, in: s) && t.lines.contains { $0.category == c } }
     return FilterSummary(
-      title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), approx: approx, progress: Permille.ratio(total, of: budget),
+      title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
       today: Pace.monthGone(day: day, days: days), verdict: verdict,
       caption: MoneyPhrase([
         .text("\(pct)% of \(cat.name)\(cat.name.hasSuffix("s") ? "'" : "'s") "), .amount(.aed(budget), .compact),

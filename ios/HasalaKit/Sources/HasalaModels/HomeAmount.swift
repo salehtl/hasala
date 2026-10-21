@@ -51,12 +51,6 @@ extension MiniTxnRow {
 }
 
 extension Spending {
-  public static func hasEstimate(_ s: LedgerState, in period: Period) -> Bool {
-    s.txns.contains { t in
-      t.isEstimate && period.contains(t.postedAt.date) && carvedOut(t, in: s) == nil && !measured(t, in: s).isEmpty
-    }
-  }
-
   public static func unrated(_ s: LedgerState, in period: Period) -> TotalMark? {
     var leftOut: [String: Int] = [:]
     for t in s.txns where period.contains(t.postedAt.date) && unrated(t, in: s) {

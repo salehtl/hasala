@@ -1,8 +1,9 @@
 # Outlook trust checks: the owner's runbook (WP0)
 
 This runbook runs checks C1–C7 of [outlook-mailbox.md](outlook-mailbox.md#trust-needs-real-bank-alerts-plus-synthetic-spoof-probes)
-on real mail. Their results decide whether `OutlookProvider.outlookTrustProven` can become
-true. Until then, every Outlook message goes to review.
+on real mail. Since 2026-10-20 the app does not use their result: the Outlook lane uses the
+sender rule of [§3a](outlook-mailbox.md#3a-the-outlook-sender-rule-2026-10-20). The checks
+still show how Outlook.com marks bank mail. L8 and C8 of §3a are the checks that matter now.
 
 You do every step on your own Mac and phone. The real `.eml` files stay in
 `~/hasala-private/`. They never go into this repository, an issue, a pull request or a
@@ -185,3 +186,42 @@ Follow CLAUDE.md "Secrets and real mail":
 
 The spoof probe is synthetic, but it carries your domain and test address. Treat it like
 the real ones.
+
+## 8. A Gmail alert that says "Couldn't verify sender"
+
+The same checker reads the Gmail rule with `--provider gmail`. Use it when an alert in a
+Gmail mailbox still shows "Couldn't verify sender" on a build that reads `header.i` (Gmail
+writes `dkim=pass header.i=@<domain>`, never `header.d`; builds 261020.10759 to
+261020.11636 read only `header.d`, so every Gmail alert they read came out `fail`).
+
+1. In the app, open the transaction. The "From your bank" card shows `Sender check: <code>`:
+
+   | Code | What stopped it |
+   |---|---|
+   | `no_ar` | the message has no `mx.google.com` A-R: a draft, imported or POP-fetched mail, or another provider's copy |
+   | `multiple_ar` | two `mx.google.com` A-Rs |
+   | `not_topmost` | another A-R is above Gmail's |
+   | `fail` | no DKIM pass for the `From` domain (a forward that broke the signature, a bank that signs only with its mail provider's domain), or not exactly one `From` |
+   | `parse_error` | the header block is over the bounds, or the app stopped while it read the message |
+   | `no_eop` | Outlook only: the EOP fields that C2 checks are missing, repeated or wrong |
+
+2. The tester opens the alert in Gmail on the web, then `⋮` › **Download message**, and
+   gives you the `.eml` privately (never an issue, a pull request or a chat). Put it in
+   `~/hasala-private/gmail-trust/genuine/`.
+3. Run:
+
+   ```sh
+   scripts/outlook-trust-check.sh --provider gmail --expect pass --domains adib.ae,dib.ae,emiratesnbd.com ~/hasala-private/gmail-trust/genuine
+   ```
+
+   Each message gives one line, for example (synthetic):
+
+   ```text
+   #01 from=bank.example from_fields=1 ar=1 forms=gmail gmail_index=0 topmost=yes dkim=pass/i/bank.example/aligned dmarc=pass spf=pass arc=- verdict=pass domain=bank.example
+   ```
+
+   `forms` is each A-R in order (`gmail`, `ms` for Microsoft form, `other`); `dkim` is each
+   DKIM result in Gmail's A-R as `result/source/domain/aligned`, where the source is `d`
+   (`header.d`) or `i` (`header.i`). G1 checks one `mx.google.com` A-R, topmost; G2 checks a
+   pass with an aligned DKIM domain under `--domains`.
+4. Paste back only the output, as in step 6.

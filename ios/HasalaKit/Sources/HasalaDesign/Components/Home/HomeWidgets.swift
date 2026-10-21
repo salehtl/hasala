@@ -282,7 +282,7 @@ public struct NetWorthWidgetView: View {
       VStack(alignment: .leading, spacing: 2) {
         MoneyText(model.total, figure: .widgetNetWorth, unit: .widgetUnit, style: .rounded, hidden: hidden,
                   hiddenGlyphs: 6, hiddenDots: 22, color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4,
-                  sign: model.total.isNegative ? .debt : .none, approx: model.mark?.estimate ?? false)
+                  sign: model.total.isNegative ? .debt : .none)
         HStack(spacing: 6) {
           Circle().fill(changeColor).frame(width: 7, height: 7)
           Text(model.change.rendered(hidden: hidden)).privacySensitive().hType(.footnote.weight(.semibold))

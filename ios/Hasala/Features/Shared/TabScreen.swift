@@ -13,8 +13,6 @@ import SwiftUI
 struct TabScreen<Header: View, Content: View>: View {
   @Bindable var app: AppModel
   let title: String?
-  let extra: MainHeader.Extra
-  var onExtra: () -> Void
   var wash: HWash
   /// Between the title block and each section (Paper 32; Review draws 24).
   var spacing: CGFloat
@@ -24,14 +22,12 @@ struct TabScreen<Header: View, Content: View>: View {
   @ViewBuilder let content: () -> Content
 
   init(
-    app: AppModel, title: String?, extra: MainHeader.Extra, onExtra: @escaping () -> Void = {},
+    app: AppModel, title: String?,
     wash: HWash = .onTrack, spacing: CGFloat = HSpacing.gapScreenSection, titleGap: CGFloat = 10,
     @ViewBuilder header: @escaping () -> Header, @ViewBuilder content: @escaping () -> Content
   ) {
     self.app = app
     self.title = title
-    self.extra = extra
-    self.onExtra = onExtra
     self.wash = wash
     self.spacing = spacing
     self.titleGap = titleGap
@@ -44,15 +40,26 @@ struct TabScreen<Header: View, Content: View>: View {
       VStack(alignment: .leading, spacing: spacing) {
         if let title {
           VStack(alignment: .leading, spacing: titleGap) {
-            Text(title)
-              .hType(.largeTitle)
-              .foregroundStyle(HColor.textPrimary)
-              .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .center, spacing: 8) {
+              Text(title)
+                .hType(.largeTitle)
+                .foregroundStyle(HColor.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+              Spacer(minLength: 0)
+              SyncStatus(syncing: app.sync.isSyncing)
+            }
             header()
           }
           .padding(.horizontal, HSpacing.insetPage)
         }
         content()
+      }
+      .overlay(alignment: .topTrailing) {
+        if title == nil {
+          SyncStatus(syncing: app.sync.isSyncing)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .padding(.trailing, HSpacing.insetPage)
+        }
       }
       .padding(.top, 20)
       .padding(.bottom, HSpacing.scrollContentBottom)
@@ -61,18 +68,19 @@ struct TabScreen<Header: View, Content: View>: View {
     // The wash starts at the top of the screen, behind the bar, and scrolls away with the
     // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
-    .refreshable { [app] in await app.refresh() }
+    .settlesAfterRefresh()
+    .refreshable { [app] in await app.pull() }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       MainHeader(
         amountsHidden: app.amountsHidden,
-        extra: extra,
         unread: app.bellCount,
         avatarInitial: app.avatarInitial,
+        avatarEmail: app.avatarEmail,
         onToggleAmounts: { app.toggleAmountsHidden() },
-        onExtra: onExtra,
+        onSearch: { app.router.open(.search) },
         onNotifications: { app.router.open(.notifications) },
         onProfile: { app.showingProfile = true }
       )
@@ -81,13 +89,85 @@ struct TabScreen<Header: View, Content: View>: View {
   }
 }
 
+nonisolated enum RefreshSettle {
+  static func isStuck(contentOffset: CGFloat, insetTop: CGFloat) -> Bool {
+    contentOffset < -insetTop - 0.5
+  }
+}
+
+private struct SettlesAfterRefresh: ViewModifier {
+  @State private var position = ScrollPosition(edge: .top)
+  @State private var stuck = false
+  @State private var phase = ScrollPhase.idle
+  @State private var settling = false
+  @Environment(\.hMotion) private var policy
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  func body(content: Content) -> some View {
+    content
+      .scrollPosition($position)
+      .onScrollGeometryChange(for: Bool.self) { geo in
+        RefreshSettle.isStuck(contentOffset: geo.contentOffset.y, insetTop: geo.contentInsets.top)
+      } action: { _, value in
+        stuck = value
+        if !value { settling = false }
+        settle()
+      }
+      .onScrollPhaseChange { _, value in
+        phase = value
+        settle()
+      }
+  }
+
+  private func settle() {
+    guard stuck, phase == .idle, !settling else { return }
+    settling = true
+    let still = policy.isStill || reduceMotion
+    Task { @MainActor in
+      guard stuck, phase == .idle else {
+        settling = false
+        return
+      }
+      withAnimation(still ? nil : HMotion.easeOutSoft(HMotion.sheetContent)) {
+        position.scrollTo(edge: .top)
+      }
+    }
+  }
+}
+
+extension View {
+  fileprivate func settlesAfterRefresh() -> some View {
+    modifier(SettlesAfterRefresh())
+  }
+}
+
+struct SyncStatus: View {
+  let syncing: Bool
+
+  var body: some View {
+    ZStack(alignment: .trailing) {
+      if syncing {
+        HStack(spacing: 6) {
+          ProgressView().controlSize(.mini)
+          Text("Updating…").hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(SyncActivity.startedMessage)
+        .accessibilityIdentifier("sync.status")
+        .hTransition(.fade)
+      }
+    }
+    .hAnimation(.fade, value: syncing)
+  }
+}
+
 extension TabScreen where Header == EmptyView {
   init(
-    app: AppModel, title: String?, extra: MainHeader.Extra, onExtra: @escaping () -> Void = {},
+    app: AppModel, title: String?,
     wash: HWash = .onTrack, spacing: CGFloat = HSpacing.gapScreenSection, titleGap: CGFloat = 10,
     @ViewBuilder content: @escaping () -> Content
   ) {
-    self.init(app: app, title: title, extra: extra, onExtra: onExtra, wash: wash, spacing: spacing,
+    self.init(app: app, title: title, wash: wash, spacing: spacing,
               titleGap: titleGap, header: { EmptyView() }, content: content)
   }
 }

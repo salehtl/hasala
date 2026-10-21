@@ -6,6 +6,31 @@ import OrderedCollections
 
 public enum DuplicateRules {
   public static let probableCopyWindowMs: Int64 = 10 * 60_000
+  public static let transferCopyWindowMs: Int64 = 60 * 60_000
+  static let transferNoticeTemplates = ["dib.transfer.v1", "dib.money-transfer.v1"]
+  static let transferAlertTemplates = ["dib.account.v1"]
+
+  enum TransferRole: Sendable, Equatable { case notice, alert }
+
+  static func templateID(_ gate: String?) -> String? {
+    guard let gate else { return nil }
+    let u = Array(gate.utf8)
+    return String(decoding: u[..<(u.firstIndex(of: 0x40) ?? u.count)], as: UTF8.self)
+  }
+
+  static func transferRole(_ t: Txn) -> TransferRole? {
+    guard !t.unparsed, t.entryMethod == "mailbox", t.bank != nil, utf8Equal(t.direction, "debit"),
+      (t.postedPrecision ?? "time") == "time", let id = templateID(t.gates?.template)
+    else { return nil }
+    if transferNoticeTemplates.contains(where: { utf8Equal($0, id) }) { return .notice }
+    if transferAlertTemplates.contains(where: { utf8Equal($0, id) }) { return .alert }
+    return nil
+  }
+
+  static func transferKey(_ t: Txn) -> String? {
+    guard transferRole(t) != nil, let bank = t.bank else { return nil }
+    return ["", "transfer", bank, String(t.amountMinor), t.currency].joined(separator: "\u{0}")
+  }
 
   public static func isEvidenceHash(_ s: String) -> Bool {
     let u = Array(s.utf8)
@@ -56,18 +81,48 @@ extension State {
       {
         copyCandidates[key, default: []].append(winner)
       }
+      detectTransferCopy(winner)
       return
     }
     registerDedupeKeys(of: id, to: id)
-    guard let key = DuplicateRules.candidateKey(b).map(ExactKey.init(_:)) else { return }
-    if let earlier = copyCandidates[key] {
-      for oid in earlier where !utf8Equal(oid, id) {
-        guard let a = txns[oid], a.isLive, !a.isHeldCopy, DuplicateRules.probable(a, b) else { continue }
-        txns[id]!.copyOf = oid
-        break
+    if let key = DuplicateRules.candidateKey(b).map(ExactKey.init(_:)) {
+      if let earlier = copyCandidates[key] {
+        for oid in earlier where !utf8Equal(oid, id) {
+          guard let a = txns[oid], a.isLive, !a.isHeldCopy, DuplicateRules.probable(a, b) else { continue }
+          txns[id]!.copyOf = oid
+          break
+        }
       }
+      copyCandidates[key, default: []].append(id)
     }
-    copyCandidates[key, default: []].append(id)
+    detectTransferCopy(id)
+  }
+
+  mutating func detectTransferCopy(_ id: String) {
+    guard let b = txns[id], let key = DuplicateRules.transferKey(b).map(ExactKey.init(_:)), let role = DuplicateRules.transferRole(b) else { return }
+    let bucket = copyCandidates[key] ?? []
+    if b.isLive, b.copyOf == nil, !transferPartnered(id, role: role, in: bucket), let mb = try? parseInstantMs(b.postedAt) {
+      var best: (id: String, gap: Int64)?
+      for oid in bucket where !utf8Equal(oid, id) {
+        guard let a = txns[oid], a.isLive, !a.isHeldCopy, let r = DuplicateRules.transferRole(a), r != role,
+          let ma = try? parseInstantMs(a.postedAt)
+        else { continue }
+        let gap = abs(ma - mb)
+        guard gap <= DuplicateRules.transferCopyWindowMs, !transferPartnered(oid, role: r, in: bucket) else { continue }
+        if best.map({ gap < $0.gap }) ?? true { best = (oid, gap) }
+      }
+      if let best { txns[id]!.copyOf = best.id }
+    }
+    if !bucket.contains(where: { utf8Equal($0, id) }) { copyCandidates[key, default: []].append(id) }
+  }
+
+  func transferPartnered(_ id: String, role: DuplicateRules.TransferRole, in bucket: [String]) -> Bool {
+    bucket.contains { c in
+      guard !utf8Equal(c, id), let t = txns[c], let of = t.copyOf, utf8Equal(of, id), t.copyDecision == nil,
+        t.isLive || t.mergedInto.map({ utf8Equal($0, id) }) == true, let r = DuplicateRules.transferRole(t)
+      else { return false }
+      return r != role
+    }
   }
 
   mutating func registerDedupeKeys(of id: String, to canonical: String) {

@@ -35,6 +35,10 @@
       }),
       // Review · Tab · To sort (6) (NPV-0).
       Screen("review", scenario: "maya", prepare: shell(.review)),
+      Screen("review.unread", scenario: "mayaUnreadMail", prepare: shell(.review)),
+      Screen("review.unread.list", scenario: "mayaUnreadMail", prepare: shell(.review, review: [.unreadMail])),
+      Screen("review.unread.add", scenario: "mayaUnreadMail",
+             prepare: shell(.review, sheet: .addFromEmail("unread-gmail"), review: [.unreadMail])),
       Screen("review.range", scenario: "maya", prepare: { graph in
         graph.app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
         shell(.review)(graph)
@@ -72,30 +76,30 @@
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
       // Search · Ready.
-      Screen("search", scenario: "maya", prepare: shell(.search)),
+      Screen("search", scenario: "maya", prepare: shell(.home, sheet: .search)),
       // Search · Results as you type ("carre").
       Screen("search.results", scenario: "maya", prepare: { graph in
         SearchHistory.launchQuery = "carre"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "How much did I spend at Carrefour in September?"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.coffee", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "coffee this month"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.ready", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
       Screen("search.ask.arabic", scenario: "maya", prepare: { graph in
         AskSearch.launchParser = SearchQueryParser(model: ScriptedSearchModel())
         SearchHistory.launchQuery = "كارفور"
-        shell(.search)(graph)
+        shell(.home, sheet: .search)(graph)
       }),
     ]
 

@@ -4,6 +4,7 @@ import CoreOutbox
 import CoreStore
 import CoreSync
 import Foundation
+import Synchronization
 
 struct ModelSuggestionStage: Sendable {
   let observer: LedgerPageObserver
@@ -14,6 +15,9 @@ struct ModelSuggestionStage: Sendable {
   let cloud: (any CategoryModel)?
   let onDeviceAlone: Bool
   let nowMs: @Sendable () -> Int64
+  var firstImportActive: @Sendable () -> Bool = { false }
+  var autoFileEnabled: @Sendable () -> Bool = { false }
+  let gate = SweepGate()
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
     trigger == .launch || trigger == .foreground || trigger == .refresh
@@ -32,30 +36,101 @@ struct ModelSuggestionStage: Sendable {
   }
 
   func run(_ trigger: WorkCoordinator.Trigger) async -> Bool {
-    guard Self.runs(trigger) else { return false }
+    guard Self.runs(trigger), !firstImportActive() else { return false }
+    return await gate.run { await sweep() }
+  }
+
+  private func sweep() async -> Bool {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
     do {
       let taxonomy = try reader.taxonomy()
-      let rules = try reader.rules().map {
-        RuleInput(
-          id: $0.id, patterns: $0.patterns, match: $0.match, category: $0.category, priority: $0.priority, enabled: $0.enabled,
-          removed: $0.removed)
-      }
       let stages = Self.stages(onDevice: onDevice, cloud: cloud, onDeviceAlone: onDeviceAlone)
       guard !stages.isEmpty else { return false }
       let blobs = try await ModelSuggestionSweep.run(
-        rows: try reader.sweepRows(), categorizer: Categorizer(rules: rules, dictionary: dictionary, categories: taxonomy),
-        allowed: ModelTier.allowed(taxonomy.ordered), stages: stages, context: .foreground, cache: cache, now: nowMs,
-        stamps: observer.stamps,
+        rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
+        stages: stages, context: .foreground, cache: cache, now: nowMs, stamps: observer.stamps,
         reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-      guard !blobs.isEmpty else { return false }
-      for b in blobs { try await outbox.enqueue(b.ops) }
-      try await observer.reproject()
-      return true
+      return try await commit(blobs)
     } catch {
       return false
     }
+  }
+
+  func firstImportPass(_ memo: FirstImportSort.Memo) async -> FirstImportSort.Pass? {
+    guard let cloud else { return FirstImportSort.Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
+    return await gate.run { () async -> FirstImportSort.Pass? in
+      let observer = self.observer
+      let reader = observer.reader
+      do {
+        let taxonomy = try reader.taxonomy()
+        let r = try await FirstImportSort.run(
+          rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
+          cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), stamps: observer.stamps,
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
+        do {
+          _ = try await commit(r.blobs)
+        } catch {
+          return .failed(r.pass.memo)
+        }
+        return r.pass
+      } catch let e as FirstImportSort.Interrupted {
+        return .failed(e.memo)
+      } catch {
+        return nil
+      }
+    }
+  }
+
+  private func categorizer(_ taxonomy: TaxonomyView) throws -> Categorizer {
+    let rules = try observer.reader.rules().map {
+      RuleInput(
+        id: $0.id, patterns: $0.patterns, match: $0.match, category: $0.category, priority: $0.priority, enabled: $0.enabled,
+        removed: $0.removed)
+    }
+    return Categorizer(rules: rules, dictionary: dictionary, categories: taxonomy)
+  }
+
+  private func commit(_ blobs: [AuthoredBlob]) async throws -> Bool {
+    guard !blobs.isEmpty else { return false }
+    for b in blobs { try await outbox.enqueue(b.ops) }
+    try await observer.reproject()
+    return true
+  }
+}
+
+nonisolated final class SweepGate: Sendable {
+  private let state = Mutex<(busy: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, []))
+
+  func run<T: Sendable>(_ body: @Sendable () async -> T) async -> T {
+    await acquire()
+    defer { release() }
+    return await body()
+  }
+
+  private func acquire() async {
+    await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+      let now = state.withLock { s -> Bool in
+        if s.busy {
+          s.waiters.append(k)
+          return false
+        }
+        s.busy = true
+        return true
+      }
+      if now { k.resume() }
+    }
+  }
+
+  private func release() {
+    let next = state.withLock { s -> CheckedContinuation<Void, Never>? in
+      if s.waiters.isEmpty {
+        s.busy = false
+        return nil
+      }
+      return s.waiters.removeFirst()
+    }
+    next?.resume()
   }
 }

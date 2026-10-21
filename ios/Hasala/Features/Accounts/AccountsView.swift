@@ -31,7 +31,7 @@ struct AccountsView: View {
       }
       if !snap.everyday.isEmpty {
         section("Everyday money", subtitle: "Counts in your plan" + (snap.everydayMark?.caption.map { " · \($0)" } ?? ""),
-                total: snap.everydayTotal, approx: snap.everydayMark?.estimate ?? false, rows: snap.everyday)
+                total: snap.everydayTotal, rows: snap.everyday)
           .padding(.horizontal, HSpacing.insetPage)
       }
       if !snap.tracking.isEmpty {
@@ -66,8 +66,7 @@ struct AccountsView: View {
       Text("Net worth").hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityAddTraits(.isHeader)
       MoneyText(snap.netWorth, figure: .hero, unit: .unit, hidden: model.hidden, hiddenGlyphs: 6,
-                color: HColor.textPrimary, sign: snap.netWorth.isNegative ? .debt : .none,
-                approx: snap.netWorthMark?.estimate ?? false)
+                color: HColor.textPrimary, sign: snap.netWorth.isNegative ? .debt : .none)
         .accessibilityIdentifier("accounts.netWorth")
       if let change = snap.monthChange {
         let up = !change.isNegative
@@ -96,7 +95,7 @@ struct AccountsView: View {
   }
 
   /// "Everyday money / Counts in your plan ……… 38,163.00" over its list card.
-  private func section(_ title: String, subtitle: String, total: Money?, approx: Bool = false, rows: [AccountRowModel])
+  private func section(_ title: String, subtitle: String, total: Money?, rows: [AccountRowModel])
     -> some View
   {
     VStack(alignment: .leading, spacing: 12) {
@@ -108,7 +107,7 @@ struct AccountsView: View {
       } trailing: {
         if let total {
           MoneyText(total, figure: .unit, hidden: model.hidden, hiddenGlyphs: 4, color: HColor.textSecondary,
-                    sign: total.isNegative ? .debt : .none, approx: approx)
+                    sign: total.isNegative ? .debt : .none)
         }
       }
       HListCard {

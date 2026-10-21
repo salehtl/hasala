@@ -21,7 +21,7 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
     // Home has no Needs-you rail any more (decided 14 Oct): the bell counts what needs a look.
     XCTAssertFalse(app.staticTexts["Needs you"].exists)
-    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 new")
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 need a look")
     attach(app, "Home · Default")
     try audit(app)
     app.swipeUp()
@@ -83,12 +83,12 @@ final class SmokeTests: XCTestCase {
     try audit(app)
     app.buttons["profile.close"].firstMatch.tap()
 
-    // Search last: on iOS 26 the search tab collapses the bar into one button, so
-    // there is no "Home" tab button to go back with.
-    XCTAssertTrue(tabBar.buttons["Search"].waitForExistence(timeout: uiWait))
-    tabBar.buttons["Search"].tap()
+    app.buttons["header.search"].firstMatch.tap()
     XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: uiWait))
     try audit(app)
+    tap(app, "search.close")
+    XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(tabBar.buttons["Home"].isSelected, "Search left Home")
   }
 
   /// A bell row closes the sheet and opens its screen (spec 10 §4.4): the late bill inside
@@ -124,12 +124,22 @@ final class SmokeTests: XCTestCase {
     let tabBar = app.tabBars.firstMatch
     let bell = app.buttons["header.notifications"].firstMatch
     let profile = app.buttons["header.profile"].firstMatch
+    let search = app.buttons["header.search"].firstMatch
+    let mark = app.images["Hasala"].firstMatch
     for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
-      XCTAssertEqual(bell.label, "Notifications, 4 new")
+      XCTAssertEqual(bell.label, "Notifications, 4 need a look")
       XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
+      XCTAssertTrue(search.isHittable, "\(tab) has no search")
+      XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")
+      XCTAssertGreaterThanOrEqual(search.frame.width, 44)
+      XCTAssertGreaterThanOrEqual(search.frame.height, 44)
+      if mark.exists {
+        XCTAssertLessThanOrEqual(mark.frame.maxX, search.frame.minX, "\(tab): search overlaps the mark")
+        XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "\(tab): the mark is off centre")
+      }
       attach(app, "Bell · \(tab)")
       bell.tap()
       XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
@@ -138,12 +148,6 @@ final class SmokeTests: XCTestCase {
       XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
       XCTAssertTrue(tabBar.buttons[tab].isSelected, "the bell left \(tab)")
     }
-
-    let add = app.buttons["header.add"].firstMatch
-    XCTAssertTrue(add.isHittable, "Activity lost its +")
-    XCTAssertLessThan(add.frame.maxX, bell.frame.minX)
-    let mark = app.images["Hasala"].firstMatch
-    if mark.exists { XCTAssertLessThanOrEqual(mark.frame.maxX, add.frame.minX, "the + overlaps the mark") }
 
     bell.tap()
     tap(app, "bell.row.bill.axa")
@@ -185,8 +189,14 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
 
     let tabBar = app.tabBars.firstMatch
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count"),
-                      ("Search", "search.placeholder")] {
+    app.buttons["header.search"].firstMatch.tap()
+    XCTAssertTrue(el(app, "search.placeholder").waitForExistence(timeout: uiWait))
+    attach(app, "AX3 · Search")
+    try audit(app, atLargeText: true)
+    tap(app, "search.close")
+    XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
+
+    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       attach(app, "AX3 · \(tab)")
@@ -283,6 +293,70 @@ final class SmokeTests: XCTestCase {
 
   private func distance(_ a: [CGFloat], _ b: [CGFloat]) -> CGFloat {
     zip(a, b).map { abs($0 - $1) }.max() ?? 1
+  }
+
+  @MainActor
+  func testAPullOnActivityEndsAtOnceAndTheListComesBackToTheTop() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "10000"])
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    let pill = el(app, "activity.period")
+    XCTAssertTrue(pill.waitForExistence(timeout: uiWait))
+    waitForStill(app)
+    let rest = top(app, pill)
+    attach(app, "Refresh · Activity · 0 at rest")
+    pull(app)
+    let status = el(app, "sync.status")
+    let sawStatus = status.waitForExistence(timeout: 2)
+    let backWhileSyncing = waitUntil(2) { abs(top(app, pill) - rest) < 1 } && status.exists
+    attach(app, "Refresh · Activity · 1 back at the top while updating")
+    _ = status.waitForNonExistence(timeout: 15)
+    waitForStill(app)
+    attach(app, "Refresh · Activity · 2 after the update")
+    XCTAssertTrue(sawStatus, "no Updating line")
+    XCTAssertTrue(backWhileSyncing, "the content did not spring back while the sync ran")
+    XCTAssertEqual(top(app, pill), rest, accuracy: 1, "the list stayed offset after the refresh")
+  }
+
+  @MainActor
+  func testAPullOnEveryTabReturnsToTheTop() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "8000", "-HasalaPullHold", "5000"])
+    let tabs = [("Home", "home.period"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+                ("Activity", "activity.period")]
+    for (tab, anchor) in tabs {
+      app.tabBars.firstMatch.buttons[tab].tap()
+      let mark = el(app, anchor)
+      XCTAssertTrue(mark.waitForExistence(timeout: uiWait), tab)
+      waitForStill(app)
+      let rest = top(app, mark)
+      pull(app)
+      attach(app, "Refresh · \(tab) · updating")
+      _ = el(app, "sync.status").waitForNonExistence(timeout: 15)
+      waitForStill(app)
+      XCTAssertEqual(top(app, mark), rest, accuracy: 1, "\(tab) stayed offset after the refresh")
+    }
+  }
+
+  @MainActor
+  private func top(_ app: XCUIApplication, _ mark: XCUIElement) -> CGFloat {
+    let search = app.searchFields.firstMatch
+    return mark.frame.minY - (search.exists ? search.frame.maxY : 0)
+  }
+
+  @MainActor
+  private func pull(_ app: XCUIApplication) {
+    let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+    let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+    from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.1)
+  }
+
+  @MainActor
+  private func waitUntil(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    while Date() < deadline {
+      if condition() { return true }
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    }
+    return condition()
   }
 
   @MainActor

@@ -7,7 +7,8 @@
 //   GET    /me/messages/{id}         id, received time, From and folder, for a listed id the run
 //                                    has not seen in its listing
 //   GET    /me/messages/{id}/$value  the MIME, for a listed id (§4)
-//   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox?
+//   GET    /me/mailFolders/inbox     `$select=id` only: does this account have a mailbox, and
+//                                    which folder id is the Inbox (§3a)
 //   GET    /me/mailFolders/junkemail and /deleteditems, `$select=id` only: a message in Junk
 //                                    Email is marked spam, one in Deleted Items is left out
 //   POST   /subscriptions            the inbox's messages, `created`, the server's two hook URLs,
@@ -144,15 +145,20 @@ public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable
 /// that follows needs no metadata request (§4: "Do not fetch metadata first").
 final class GraphListingCache: @unchecked Sendable {
   private let lock = NSLock()
-  private var entries: [String: (address: String, receivedMs: Int64, junk: Bool)] = [:]
+  private var entries: [String: (address: String, receivedMs: Int64, folder: String?, junk: Bool)] = [:]
   private var folders: GraphClient.SpecialFolders?
+  private var inbox: String?
 
-  func put(_ id: String, address: String, receivedMs: Int64, junk: Bool) {
-    lock.withLock { entries[id] = (address, receivedMs, junk) }
+  func put(_ id: String, address: String, receivedMs: Int64, folder: String?, junk: Bool) {
+    lock.withLock { entries[id] = (address, receivedMs, folder, junk) }
   }
-  func get(_ id: String) -> (address: String, receivedMs: Int64, junk: Bool)? { lock.withLock { entries[id] } }
+  func get(_ id: String) -> (address: String, receivedMs: Int64, folder: String?, junk: Bool)? { lock.withLock { entries[id] } }
   func special() -> GraphClient.SpecialFolders? { lock.withLock { folders } }
   func setSpecial(_ f: GraphClient.SpecialFolders) { lock.withLock { folders = f } }
+  var inboxID: String? {
+    get { lock.withLock { inbox } }
+    set { lock.withLock { inbox = newValue } }
+  }
 }
 
 public struct GraphClient: Sendable {
@@ -280,6 +286,7 @@ public struct GraphClient: Sendable {
       }
       o = try await object(.get, u, op: "list")
     } else {
+      _ = try await inboxFolderID()
       do {
         o = try await object(.get, url("/me/messages", Self.listQuery(addresses, sinceSec: sinceSec)), op: "list")
       } catch .status(504, _) {
@@ -287,7 +294,7 @@ public struct GraphClient: Sendable {
       }
     }
     var ids: [String] = []
-    var seen: [(String, String, Int64, Bool)] = []
+    var seen: [(String, String, Int64, String?, Bool)] = []
     let values = o["value"]?.arrayValue ?? []
     let folders = values.isEmpty ? SpecialFolders() : try await specialFolders()
     for m in values {
@@ -302,9 +309,11 @@ public struct GraphClient: Sendable {
       let parent = m["parentFolderId"]?.stringValue
       if let deleted = folders.deleted, parent == deleted { continue }
       ids.append(id)
-      seen.append((id, address, received, folders.junk != nil && parent == folders.junk))
+      seen.append((id, address, received, parent, folders.junk != nil && parent == folders.junk))
     }
-    for (id, address, received, junk) in seen { cache.put(id, address: address, receivedMs: received, junk: junk) }
+    for (id, address, received, folder, junk) in seen {
+      cache.put(id, address: address, receivedMs: received, folder: folder, junk: junk)
+    }
     let next = o["@odata.nextLink"]?.stringValue
     return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
   }
@@ -339,8 +348,9 @@ public struct GraphClient: Sendable {
       throw .status(200, op: "metadata")
     }
     var junk = false
-    if let parent = o["parentFolderId"]?.stringValue { junk = try await specialFolders().junk == parent }
-    cache.put(id, address: address, receivedMs: received, junk: junk)
+    let parent = o["parentFolderId"]?.stringValue
+    if let parent { junk = try await specialFolders().junk == parent }
+    cache.put(id, address: address, receivedMs: received, folder: parent, junk: junk)
     return Self.metadata(id, address, received)
   }
 
@@ -352,10 +362,21 @@ public struct GraphClient: Sendable {
   /// that status (the engine treats it as `gone`).
   public func messageRaw(id: String) async throws(MailAPIError) -> MailRawMessage {
     let received = try await messageMetadata(id: id).internalDate
+    let inbox = try await inboxFolderID()
     let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
     guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
+    let entry = cache.get(id)
     return MailRawMessage(
-      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, spam: cache.get(id)?.junk ?? false)
+      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, spam: entry?.junk ?? false,
+      inInbox: entry?.folder == inbox)
+  }
+
+  public func inboxFolderID() async throws(MailAPIError) -> String {
+    if let id = cache.inboxID { return id }
+    let o = try await object(.get, url("/me/mailFolders/inbox", [("$select", "id")]), op: "mailbox")
+    guard let id = o["id"]?.stringValue, !id.isEmpty else { throw .status(200, op: "mailbox") }
+    cache.inboxID = id
+    return id
   }
 
   public func messageValue(id: String) async throws(MailAPIError) -> Data {

@@ -3,9 +3,9 @@ import HasalaModels
 import SwiftUI
 
 /// Search · Ready and Results as you type (Paper "Search · Ready", "Search · Results as you
-/// type (carre)"), in every build; no answers yet (plan D.2). The search tab grows into the
-/// bottom field; while it is empty, "Try asking" and the recent searches; as you type, the
-/// top result, the matching transactions, the categories and the rules, the typed part in
+/// type (carre)"), in every build; no answers yet (plan D.2). The header's search opens it as
+/// a sheet with the field focused; while it is empty, "Try asking" and the recent searches; as
+/// you type, the top result, the matching transactions, the categories and the rules, the typed part in
 /// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search): no
 /// query leaves the device.
 struct SearchView: View {
@@ -14,6 +14,8 @@ struct SearchView: View {
   /// The field is up and focused when Search opens (Paper "Search · Ready": keyboard up).
   @State private var searching = false
   @State private var ask = AskSearchModel()
+  @State private var opened: OpenedTransaction?
+  @Environment(\.dismiss) private var dismiss
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
@@ -58,10 +60,14 @@ struct SearchView: View {
       .textInputAutocapitalization(.never)
       .autocorrectionDisabled()
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
+      .toolbar { SheetCloseButton(identifier: "search.close") { dismiss() } }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
       .task(id: query.trimmedSpaces) {
         await ask.run(query.trimmedSpaces, app.store.state, now: app.store.now)
       }
+    }
+    .sheet(item: $opened, onDismiss: { app.router.transaction = [] }) { txn in
+      TransactionHost(app: app, id: txn.id)
     }
     .onAppear {
       searching = true
@@ -72,6 +78,11 @@ struct SearchView: View {
         }
       #endif
     }
+  }
+
+  private func open(_ id: TxnID) {
+    app.router.transaction = []
+    opened = OpenedTransaction(id: id)
   }
 
   // MARK: Ready
@@ -175,7 +186,7 @@ struct SearchView: View {
                 if i > 0 { HDivider(inset: .disc68) }
                 Button {
                   SearchHistory.shared.add(q)
-                  app.open(row.id)
+                  open(row.id)
                 } label: {
                   resultRow(row, q, detail: row.detail)
                 }
@@ -355,7 +366,7 @@ struct SearchView: View {
             if i > 0 { HDivider(inset: .disc68) }
             Button {
               SearchHistory.shared.add(q)
-              app.open(row.id)
+              open(row.id)
             } label: {
               resultRow(row, "", detail: row.detail)
             }
@@ -468,6 +479,10 @@ struct SearchView: View {
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("search.none")
   }
+}
+
+private struct OpenedTransaction: Identifiable {
+  let id: TxnID
 }
 
 /// What a typed query finds in the ledger, across months: the transactions (newest first),

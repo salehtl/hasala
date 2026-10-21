@@ -8,11 +8,10 @@ public enum HomeEngine {
     let today = now.date.yearMonth
     let header = HeaderState(avatarInitial: s.profile.initial)
     let chosen = period?.clamped(to: today)
-    let notifications = NotificationsEngine.snapshot(s, now: now, review: ReviewWindow(chosen ?? .month(today)))
+    let notifications = NotificationsEngine.snapshot(s, now: now)
     guard let p = chosen, p != .month(today) else {
       let plan = PlanEngine.snapshot(s, now: now)
       var h = hero(s, now: now, plan: plan)
-      h.approx = Spending.hasEstimate(s, in: .month(today))
       h.unrated = Spending.unrated(s, in: .month(today))
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
@@ -22,19 +21,17 @@ public enum HomeEngine {
       let month = p.first
       let plan = PlanEngine.snapshot(s, now: LocalDateTime(date: month.lastDay, hour: 23, minute: 59))
       var h = endedHero(s, month: month, plan: plan)
-      h.approx = Spending.hasEstimate(s, in: .month(month))
       h.unrated = Spending.unrated(s, in: .month(month))
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
         widgets: [.budgetPace(budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)"))],
-        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
+        period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now))
     }
     var h = rangeHero(s, period: p, now: now)
-    h.approx = Spending.hasEstimate(s, in: p)
     h.unrated = Spending.unrated(s, in: p)
     return HomeSnapshot(
       header: header, hero: h, notifications: notifications, widgets: [],
-      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now, review: ReviewWindow(p)))
+      period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now))
   }
 
   // MARK: - The hero
@@ -194,7 +191,7 @@ public enum HomeEngine {
     return MoneyPhrase([.text("\(c.name) "), .amount(.aed(spent), hidden: 3), .text(" · your top want")])
   }
 
-  static func aboutNow(_ s: LedgerState, now: LocalDateTime, review: ReviewWindow) -> [AboutNowRow] {
+  static func aboutNow(_ s: LedgerState, now: LocalDateTime) -> [AboutNowRow] {
     var rows: [AboutNowRow] = []
     if let next = nextBill(s, now: now) {
       let n = now.date.days(until: next.nextDue)
@@ -204,7 +201,7 @@ public enum HomeEngine {
         detail: MoneyPhrase([.text(next.approximate ? "~" : ""), .amount(next.amount, hidden: 3), .text(" · \(when)")]),
         destination: .bills))
     }
-    let waiting = ReviewEngine.queue(s, in: review).count
+    let waiting = ReviewEngine.queue(s).count
     if waiting > 0 {
       rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review))
     }

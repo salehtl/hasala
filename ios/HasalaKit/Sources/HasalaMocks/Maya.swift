@@ -21,6 +21,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaCopy
   case mayaRange
   case mayaSamePurchase
+  case mayaUnreadMail
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -63,6 +64,13 @@ public enum Scenario: String, Sendable, CaseIterable {
             categoryID: "shopping", categorySource: .dictionary,
             provenance: MayaLedger.alert(MayaLedger.dib, "08:00", "AMAZON MKTPLACE"),
             samePurchase: SamePurchaseMatch(of: "amazon-usd")))
+    }
+    if self == .mayaUnreadMail {
+      s.unreadMail = [
+        UnreadMail(id: "unread-gmail", provider: .gmail, receivedOn: LocalDate(2026, 10, 9)),
+        UnreadMail(id: "unread-outlook", provider: .outlook, receivedOn: LocalDate(2026, 10, 7)),
+      ]
+      s.mailbox.unreadable = 1
     }
     if self == .mayaRange {
       s.txns += MayaHistory.rangeReview
@@ -131,7 +139,7 @@ public enum Maya {
       line: MoneyPhrase([
         .amount(.aed(427_90), hidden: 3), .text(" from "), .amount(.aed(389_00), hidden: 3), .text(" · accept or check"),
       ]),
-      when: "Mon", destination: .bills),
+      when: "Mon", destination: .bill("du")),
   ])
 
   static let widgets: [HomeWidget] = [

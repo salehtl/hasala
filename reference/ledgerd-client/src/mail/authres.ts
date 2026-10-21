@@ -80,7 +80,8 @@ const maxFieldLines = 512;
 
 /**
  * The reason codes a verdict can report. `no_eop` is outlookVerdict's only:
- * gmailVerdict never returns it.
+ * gmailVerdict never returns it. `not_inbox`, `unknown_sender` and
+ * `no_dmarc_reject` are analyzeOutlookSender's only.
  */
 export type ArReason =
   | "pass"
@@ -89,7 +90,23 @@ export type ArReason =
   | "not_topmost"
   | "fail"
   | "parse_error"
-  | "no_eop";
+  | "no_eop"
+  | "not_inbox"
+  | "unknown_sender"
+  | "no_dmarc_reject";
+
+export const AR_REASONS: readonly ArReason[] = [
+  "pass",
+  "no_ar",
+  "multiple_ar",
+  "not_topmost",
+  "fail",
+  "parse_error",
+  "no_eop",
+  "not_inbox",
+  "unknown_sender",
+  "no_dmarc_reject",
+];
 
 /** The mailbox providers whose own Authentication-Results this module reads. */
 export type MailProvider = "gmail" | "outlook";
@@ -127,8 +144,8 @@ export function gmailVerdict(rawHeaders: string): ArVerdict {
 
 /**
  * verifiedDomain returns the domain the trusted mx.google.com verdict vouched
- * for — the dkim d= (header.d) when the verdict passed on DKIM, else the
- * dmarc header.from — for sender-list matching, or null.
+ * for — the DKIM domain of the aligned dkim=pass (Gmail) or the DMARC
+ * header.from (Outlook) — for sender-list matching, or null.
  *
  * It returns a domain ONLY when gmailVerdict trusts the message. Sender-list
  * matching happens exclusively on a trusted verdict, so an untrusted message
@@ -298,9 +315,9 @@ const OUTLOOK_REQUIRED: readonly (readonly [string, string])[] = [
  * the rule after the WP0 samples is a local change (and a vector).
  *
  * This verdict is fail-closed but rests on premises that real mail has not yet
- * proven (EOP stamps exactly one topmost A-R; $value keeps header order). Until
- * the owner's checks pass, the Outlook lane sends every message to review
- * whatever this returns (`outlookTrustProven`, WP5b).
+ * proven (EOP stamps exactly one topmost A-R; $value keeps header order). The
+ * Outlook lane does not use it: it trusts analyzeOutlookSender instead (WP1
+ * decision §3a). It stays as the reading of the owner's trust checks.
  */
 function analyzeOutlook(rawHeaders: string): Analysis {
   try {
@@ -379,6 +396,92 @@ function analyzeOutlook(rawHeaders: string): Analysis {
   } catch {
     return untrusted("parse_error");
   }
+}
+
+export type OutlookSenderContext = {
+  inInbox: boolean;
+  knownSenders: readonly string[];
+  rejectDomains: readonly string[];
+};
+
+export function analyzeOutlookSender(rawHeaders: string, ctx: OutlookSenderContext): Analysis {
+  try {
+    if (typeof rawHeaders !== "string" || rawHeaders.length > maxRawBytes) {
+      return untrusted("parse_error");
+    }
+    const fields = unfold(rawHeaders);
+    if (fields === null) {
+      return untrusted("parse_error");
+    }
+    if (ctx.inInbox !== true) {
+      return untrusted("not_inbox");
+    }
+    const from = fields.filter((f) => fieldNameEquals(f.name, "from"));
+    const address = from.length === 1 ? fromAddress(from[0]!.value) : null;
+    if (address === null || !ctx.knownSenders.some((k) => asciiLower(k) === address)) {
+      return untrusted("unknown_sender");
+    }
+    const domain = address.slice(address.lastIndexOf("@") + 1);
+    if (!ctx.rejectDomains.some((d) => asciiLower(d) === domain)) {
+      return untrusted("no_dmarc_reject");
+    }
+    return { verdict: { trusted: true, reason: "pass" }, domain };
+  } catch {
+    return untrusted("parse_error");
+  }
+}
+
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
+function fromAddress(value: string): string | null {
+  const clean = stripComments(value);
+  const s = clean === null ? null : stripQuoted(clean);
+  if (s === null || s.includes(",") || s.includes(";")) return null;
+  let addr: string;
+  const lt = s.indexOf("<");
+  if (lt >= 0) {
+    const gt = s.indexOf(">");
+    if (s.indexOf("<", lt + 1) >= 0 || gt < lt || s.indexOf(">", gt + 1) >= 0) return null;
+    if (s.slice(0, lt).includes("@") || s.slice(gt + 1).trim() !== "") return null;
+    addr = s.slice(lt + 1, gt).trim();
+  } else {
+    if (s.includes(">")) return null;
+    addr = s.trim();
+  }
+  for (let i = 0; i < addr.length; i++) {
+    const c = addr.charCodeAt(i);
+    if (c < 0x21 || c > 0x7e) return null;
+  }
+  const at = addr.indexOf("@");
+  if (at <= 0 || addr.indexOf("@", at + 1) >= 0) return null;
+  const lower = asciiLower(addr);
+  if (!isLdhDomain(lower.slice(at + 1))) return null;
+  return lower;
+}
+
+function stripQuoted(v: string): string | null {
+  let out = "";
+  let inQuote = false;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i]!;
+    if (inQuote) {
+      if (c === "\\") {
+        i++;
+        continue;
+      }
+      if (c === '"') inQuote = false;
+      continue;
+    }
+    if (c === '"') {
+      inQuote = true;
+      out += " ";
+      continue;
+    }
+    out += c;
+  }
+  return inQuote ? null : out;
 }
 
 function dkimAligned(d: string, from: string): boolean {
@@ -575,8 +678,8 @@ function splitKV(token: string): { key: string; value: string } | null {
 }
 
 /**
- * domainProp reads a property expected to hold a domain (header.d, header.from),
- * strips a leading '@' (header.i-style local parts never reach here, but
+ * domainProp reads a property expected to hold a domain (header.d, header.i,
+ * header.from), keeps what follows the last '@' (header.i is an AUID, and
  * header.from can be a full address in the wild), lowercases it, and returns
  * "" if the result is not a plausible bare domain. Case folding matters because
  * DNS names are case-insensitive and this value is later compared against a

@@ -35,6 +35,7 @@ final class AccountRuntime {
   @ObservationIgnored let mailboxLedger: RuntimeMailboxLedger
   /// The server's mailbox routes (the lanes', and the link check below).
   @ObservationIgnored let mailboxServer: HTTPMailboxServer
+  @ObservationIgnored let firstImport: FirstImportSorter
   let store: LiveLedgerStore
 
   /// The provider the running lane reads (observed: Profile names it).
@@ -63,7 +64,7 @@ final class AccountRuntime {
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
     lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
-    mailboxServer: HTTPMailboxServer, store: LiveLedgerStore
+    mailboxServer: HTTPMailboxServer, firstImport: FirstImportSorter, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -78,6 +79,7 @@ final class AccountRuntime {
     activeProvider = active.lane?.provider
     self.mailboxLedger = mailboxLedger
     self.mailboxServer = mailboxServer
+    self.firstImport = firstImport
     self.store = store
   }
 
@@ -206,8 +208,7 @@ final class AccountRuntime {
       http: SessionHTTPExchange(transport: env.client.api.transport, secrets: env.secrets), base: env.apiBase)
     let persistence = LedgerMailboxPersistence(
       store: context.store, authoring: authoring, nowMs: { context.clock.nowMs() })
-    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) },
-      explain: { await StepUpPrompt.passkey($0) })
+    let stepUp = LiveStepUp(env: env, usesPasskey: usesPasskey, askPassword: { await StepUpPrompt.password($0) })
     let categorizer = PipelineCategorizer(projection: projection, dictionary: dictionary)
     var lanes: [MailboxProvider: MailboxLane] = [:]
     for p in MailboxProvider.allCases {
@@ -238,7 +239,20 @@ final class AccountRuntime {
         refusal: MerchantSuggestionsSetting.refusal(
           version: MerchantSuggestionsSetting.appVersion(marketing: build.marketingVersion, build: build.buildNumber))),
       onDeviceAlone: BuildSurface.showsUnfinished,
-      nowMs: { context.clock.nowMs() })
+      nowMs: { context.clock.nowMs() },
+      firstImportActive: {
+        MerchantSuggestionsSetting.firstImport().map {
+          !FirstImportSort.expired(startedMs: $0.startedMs, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
+        } ?? false
+      },
+      autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader)
+    let firstImport = FirstImportSorter(
+      pass: { await suggestions.firstImportPass($0) }, nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
+      importRunning: {
+        guard let lane = active.lane else { return false }
+        let phase = await lane.status().phase
+        return phase == .scanning || phase == .authoringBackfill
+      })
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -265,12 +279,13 @@ final class AccountRuntime {
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
-      mailboxServer: mailboxServer, store: store)
+      mailboxServer: mailboxServer, firstImport: firstImport, store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
     await rt.followImports()
+    await firstImport.start()
     return rt
   }
 
@@ -393,15 +408,20 @@ final class AccountRuntime {
   func close() async {
     closed = true
     stopFollowingImports()
+    await firstImport.stop()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
   }
 
   func followImports() async {
-    let follower = ImportFollower(store: store) { [weak self] in
-      guard let self, let lane = self.lane else { return }
-      self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
-    }
+    let sorter = firstImport
+    let follower = ImportFollower(
+      store: store,
+      refreshStatus: { [weak self] in
+        guard let self, let lane = self.lane else { return }
+        self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
+      },
+      imported: { Task { await sorter.nudge() } })
     follower.follow(lanes.values.map(\.events))
     for lane in lanes.values { await lane.relayEvents() }
     importFollower = follower
@@ -417,12 +437,16 @@ final class AccountRuntime {
 final class ImportFollower {
   private let store: LiveLedgerStore
   private let refreshStatus: @MainActor () async -> Void
+  private let imported: @MainActor () -> Void
   private var task: Task<Void, Never>?
   private var listeners: [(LaneEvents, UUID)] = []
 
-  init(store: LiveLedgerStore, refreshStatus: @escaping @MainActor () async -> Void) {
+  init(
+    store: LiveLedgerStore, refreshStatus: @escaping @MainActor () async -> Void, imported: @escaping @MainActor () -> Void = {}
+  ) {
     self.store = store
     self.refreshStatus = refreshStatus
+    self.imported = imported
   }
 
   func follow(_ sources: [LaneEvents]) {
@@ -447,12 +471,14 @@ final class ImportFollower {
     switch event {
     case .committed:
       await store.reload()
+      imported()
     case .progress(let p):
       store.noteImport(p)
       switch p.stage {
       case .done, .failed:
         await refreshStatus()
         await store.reload()
+        imported()
       case .listing, .downloading, .authoring:
         break
       }

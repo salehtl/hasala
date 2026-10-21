@@ -10,9 +10,12 @@ struct GlassModifier<S: Shape>: ViewModifier {
   let prominent: Bool
   let interactive: Bool
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @Environment(\.hGlassPaired) private var paired
 
   func body(content: Content) -> some View {
-    if reduceTransparency {
+    if paired {
+      content
+    } else if reduceTransparency {
       // Reduce Transparency: solid, with the 0.5 hairline so the edge still shows (page 04).
       content
         .background(prominent ? HColor.actionAccent : HColor.materialGlassReduced, in: shape)
@@ -26,6 +29,10 @@ struct GlassModifier<S: Shape>: ViewModifier {
     let base: Glass = prominent ? .regular.tint(HColor.actionAccent) : .regular
     return interactive ? base.interactive() : base
   }
+}
+
+extension EnvironmentValues {
+  @Entry var hGlassPaired = false
 }
 
 /// The two elevations (page 04 §4.4). List groups and rows are flat; only a card that

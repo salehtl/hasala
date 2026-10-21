@@ -85,9 +85,9 @@ struct WidgetPublisherTests {
     app.period = .month(YearMonth(2026, 9))
     await settle()
     #expect(app.snapshot.hero.spent == .aed(Spending.total(state, in: YearMonth(2026, 9))))
-    #expect(app.reviewCount == 1)
+    #expect(app.reviewCount == 7)
     #expect(store.read()?.spentSoFar == october)
-    #expect(store.read()?.toReview?.count == 6)
+    #expect(store.read()?.toReview?.count == 7)
     #expect(publisher.snapshot == WidgetPublisher(app: AppModel(store: InMemoryLedger(state: state)), store: nil).snapshot)
     #expect(reloads.count == 1)
   }
@@ -211,13 +211,13 @@ struct WidgetLinkRoutingTests {
     #expect(app.cover == nil)
   }
 
-  @Test func theReviewLinkOpensThisMonthsDeck() {
+  @Test func theReviewLinkOpensTheWholeDeckInAnyPeriod() {
     let app = AppModel(store: InMemoryLedger())
     app.period = .month(YearMonth(2026, 9))
-    #expect(app.reviewCount == 0)
+    #expect(app.reviewCount == 6)
     let widget = WidgetPublisher(app: app, store: nil).snapshot
     app.open(.review)
-    #expect(app.period == .month(MayaLedger.october))
+    #expect(app.period == .month(YearMonth(2026, 9)))
     #expect(app.reviewCount == widget.toReview?.count)
     #expect(app.reviewCount == 6)
     #expect(app.cover == .review)

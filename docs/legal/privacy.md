@@ -282,13 +282,19 @@ Hasala writes its notifications on your iPhone. Our server only sends a silent s
 
 By default, notifications don't show amounts or merchants. For example, you'll see "New transaction" and "Tap to see it in Hasala". You can turn on **Show amounts and merchants** in Settings › Notifications. If you do, amounts and merchants may appear on your Lock Screen.
 
+## Your profile picture
+
+Hasala shows your picture from Gravatar, a service run by Automattic, if you have one tied to your email address. To do this, your iPhone asks Gravatar for the picture by sending a hash of your email address, a code made from it, and the size it needs. Automattic can see that request and your iPhone's IP address. The request goes straight from your iPhone to Gravatar, not through our server, and we never see it. Like any web request, it also carries a few standard headers: a generic browser name ("Mozilla/5.0") that doesn't name Hasala, its version or your iPhone, and that it accepts any image, any language and compressed replies. Hasala sends no cookies and no other details with it, and keeps the picture on your iPhone for up to a day. If you have no Gravatar picture, or your iPhone is offline, Hasala shows your initials instead. A hash isn't a secret: someone who already knows your email address could make the same code and check it. The app has no switch for this yet.
+
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort your first import. There are two switches, and you can turn each on or off at any time.
 
 **Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. Apple's on-device model is used when Cloudflare can't help. It sends the merchant name as it appears in the alert, for example "CAFE EXAMPLE JBR", and Hasala's built-in category names. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is marked "Suggested by Cloudflare AI", and it doesn't count in your totals until you confirm it.
 
 **Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments count in your totals straight away and are marked "Sorted by Cloudflare AI". You can change any of them. It sends nothing more than Merchant suggestions does.
+
+**Sorting your first import.** When you set up Hasala, it can offer to sort the transactions it has just imported. If you choose Turn on, both switches turn on, and Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. If you choose Not now, both stay off. You can change either in Profile › Cloud suggestions at any time.
 
 **What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address; the service uses it only to limit abuse, in memory, and doesn't record it. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it doesn't keep it or use it to train its models. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records don't include the merchant name or the category names. We never see these requests.
 
@@ -306,6 +312,7 @@ We use a small number of service providers. None of them can open your sealed da
 | **Cloudflare Workers AI** | If you turn on Cloud suggestions: runs the AI model that suggests a category. | The merchant name, Hasala's built-in category names, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say it answers and keeps nothing. |
 | **Google** | If you connect Gmail: hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Microsoft** | If you connect Outlook: hosts your Outlook mailbox and tells our server when a new message arrives in it. | Your mail, as it already does, and that you've given Hasala read-only access. Microsoft also sees your iPhone's IP address when it connects to Outlook, and our server's notification address. |
+| **Gravatar (Automattic)** | Shows your profile picture, if you have one on Gravatar. Your iPhone asks for it directly. Our server is not involved. | A code made from your email address (a SHA-256 hash), the size of the picture, your iPhone's IP address, and standard web request headers that don't name Hasala. Nothing else. See [Your profile picture](#your-profile-picture). |
 | **Apple** | Distributes the beta through TestFlight and handles your TestFlight invitation, delivers silent push signals, and syncs your passkeys in iCloud Keychain. | When you install and open the beta, crash reports (which don't include your transactions), any feedback you send, and push timing. For an invite: your email address, unless you asked for the public join link. Testers never see each other. Apple encrypts iCloud Keychain so that Apple itself can't read your passkeys. Your Hasala database is excluded from iCloud backups. |
 
 Emails you send to our @hasala.app addresses (support@, privacy@ and security@) arrive through Cloudflare Email Routing, which forwards them to our email provider (Apple iCloud Mail), where we keep them. Apart from that, we don't use any other service provider that handles your personal data. The waitlist, invites and our admin tool run on our own server.
@@ -318,7 +325,7 @@ Encryption of the server's disks at rest is being added before the public launch
 
 ### Where your data is processed
 
-Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft and Apple operate worldwide, so data they handle may be processed outside the UAE. When personal data leaves the UAE, we rely on the protections in the providers' own data processing terms and on the cross-border transfer rules of the UAE Personal Data Protection Law.
+Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft, Automattic and Apple operate worldwide, so data they handle may be processed outside the UAE. When personal data leaves the UAE, we rely on the protections in the providers' own data processing terms and on the cross-border transfer rules of the UAE Personal Data Protection Law.
 
 ## How long we keep data
 

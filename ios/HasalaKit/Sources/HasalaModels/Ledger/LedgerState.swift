@@ -136,11 +136,13 @@ public struct Provenance: Sendable, Hashable, Codable {
   public var readAt: String
   /// The merchant exactly as the bank wrote it: "CARREFOUR MALL OF EMIRATES".
   public var rawMerchant: String
+  public var senderCheck: String?
 
-  public init(title: String, readAt: String, rawMerchant: String) {
+  public init(title: String, readAt: String, rawMerchant: String, senderCheck: String? = nil) {
     self.title = title
     self.readAt = readAt
     self.rawMerchant = rawMerchant
+    self.senderCheck = senderCheck
   }
 }
 
@@ -614,6 +616,18 @@ public struct MailboxHealth: Sendable, Hashable, Codable {
   }
 }
 
+public struct UnreadMail: Sendable, Hashable, Codable, Identifiable {
+  public var id: TxnID
+  public var provider: MailProviderKind?
+  public var receivedOn: LocalDate
+
+  public init(id: TxnID, provider: MailProviderKind?, receivedOn: LocalDate) {
+    self.id = id
+    self.provider = provider
+    self.receivedOn = receivedOn
+  }
+}
+
 public enum SignInMethod: String, Sendable, Hashable, Codable { case passkey, password }
 
 public struct ProfileInfo: Sendable, Hashable, Codable {
@@ -630,7 +644,9 @@ public struct ProfileInfo: Sendable, Hashable, Codable {
   }
 
   /// "M".
-  public var initial: String { displayName.first.map { String($0).uppercased() } ?? "?" }
+  public var initial: String {
+    (displayName.first(where: \.isLetter) ?? displayName.first).map { String($0).uppercased() } ?? "?"
+  }
 }
 
 /// Device-local preferences the screens show (spec 04 §4.5). Never synced.
@@ -690,19 +706,21 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var profile: ProfileInfo
   public var mailbox: MailboxHealth
   public var prefs: DevicePrefs
-  public var unreadNotifications: Int
   public var netWorth: NetWorthHistory
   /// Review cards skipped on this device until the next local midnight (spec 04 §16.1 "Review · Deck").
   public var skippedReview: Set<TxnID>
   public var rates: [CurrencyRate]
+  public var unreadMail: [UnreadMail]
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
     billCandidates: [BillCandidate] = [], projects: [Project] = [], goals: [Goal] = [], rules: [Rule] = [],
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
-    unreadNotifications: Int = 0, netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
-    rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)]
+    netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
+    rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)],
+    unreadMail: [UnreadMail] = []
   ) {
+    self.unreadMail = unreadMail
     self.rates = rates
     self.netWorth = netWorth
     self.categories = categories
@@ -717,7 +735,6 @@ public struct LedgerState: Sendable, Hashable, Codable {
     self.profile = profile
     self.mailbox = mailbox
     self.prefs = prefs
-    self.unreadNotifications = unreadNotifications
     self.skippedReview = skippedReview
   }
 

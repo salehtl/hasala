@@ -14,6 +14,14 @@ struct Bell: Equatable {
   var earlier: [NotificationItem]
 
   var count: Int { needsALook.count }
+
+  static func label(_ count: Int) -> String {
+    switch count {
+    case ...0: "Notifications"
+    case 1: "Notifications, 1 needs a look"
+    default: "Notifications, \(count) need a look"
+    }
+  }
 }
 
 /// Home · Default (spec 10 §2) and its bell (§4).
@@ -101,6 +109,11 @@ final class HomeViewModel: HomeModel {
       close()
       router.tab = .review
       return { [app] in app.startReview() }
+    case .unreadMail:
+      close()
+      router.tab = .review
+      router.review = [.unreadMail]
+      return nil
     case .bill(let id):
       close()
       router.tab = .home
@@ -175,7 +188,7 @@ final class HomeViewModel: HomeModel {
 
 extension AppModel {
   var needsALook: [NotificationItem] {
-    NotificationsEngine.snapshot(store.state, now: store.now, review: reviewWindow).needsALook
+    NotificationsEngine.snapshot(store.state, now: store.now).needsALook
       + [HomeViewModel.mailItem(mailOffer, mailboxes: mailbox?.mailboxes ?? [])].compactMap { $0 }
   }
 

@@ -46,9 +46,8 @@ final class ReviewViewModel: ReviewDeckModel {
   private let app: AppModel
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
-  /// The order this session reads the queue in: oldest first, or from the row that opened it.
+  /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private let order: [TxnID]
-  private let window: ReviewWindow
   let total: Int
   var picking: ReviewPick?
   var celebrated = false
@@ -56,8 +55,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   init(app: AppModel) {
     self.app = app
-    window = app.reviewWindow
-    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    let queue = ReviewEngine.queue(app.store.state).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: ReviewEntry.take(for: app))
     #if HASALA_MOCKS
@@ -70,7 +68,7 @@ final class ReviewViewModel: ReviewDeckModel {
   var cards: [ReviewCardModel] {
     memo.value(for: app.store.revision) {
       let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
-      return ReviewEngine.cards(app.store.state, in: window).enumerated()
+      return ReviewEngine.cards(app.store.state).enumerated()
         .sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
         .map(\.element)
     }
