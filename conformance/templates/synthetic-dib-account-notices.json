@@ -7,7 +7,7 @@
   "normalizer_version": 1,
   "definition": {
     "id": "dib.account.v1",
-    "version": 3,
+    "version": 4,
     "bank": "dib",
     "normalizer_version": 1,
     "match": {
@@ -17,7 +17,9 @@
       "body_not_contains": [
         "إشعار مشتريات",
         "إشعار تحويل الأموال",
-        "Money Transfer\n"
+        "Money Transfer\n",
+        "تم إرجاع مبلغ",
+        "A transaction to the value of"
       ]
     },
     "default_currency": "AED",

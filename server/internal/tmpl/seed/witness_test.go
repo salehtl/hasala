@@ -32,6 +32,8 @@ func TestWhichSeedTemplatesCanWitnessTheirOwnDecode(t *testing.T) {
 		"dib.account.v1":        false,
 		"dib.transfer.v1":       true,
 		"dib.money-transfer.v1": false,
+		"dib.card-refund.v1":    true,
+		"dib.card-reversal.v1":  false,
 		"enbd.alert.v1":         false,
 		"enbd.transfer.v1":      false,
 		"adib.alert.v1":         false,

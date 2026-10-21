@@ -466,10 +466,37 @@ import Testing
 
   @Test func dibDebitAlertStillFilesAndANoticeIsNotACredit() throws {
     let alert = try mail(SyntheticMail.dibDebitAlert(id: "a0", day: "29-05-2026", dateMs: Rig.t0))
-    #expect(alert.gates.template == "dib.account.v1@3")
+    #expect(alert.gates.template == "dib.account.v1@4")
     #expect(alert.fields?.direction == "debit" && alert.fields?.amountMinor == 314_159 && alert.fields?.merchant == "MB FUND TRANSFER DEBIT")
     let notice = try mail(SyntheticMail.dibTransferNotice(id: "a1", day: "29-05-2026", dateMs: Rig.t0))
-    #expect(notice.gates.template != "dib.account.v1@3" && notice.fields?.direction == "debit")
+    #expect(notice.gates.template != "dib.account.v1@4" && notice.fields?.direction == "debit")
+  }
+
+  @Test func dibCardRefundsAndReversalsFileAsCredits() throws {
+    let from = "DIB <notification@dib.ae>"
+    func dib(_ id: String, _ body: String) throws -> ParsedMail {
+      try mail(
+        FakeGmail.Message(
+          id: id, raw: SyntheticMail.rfc822(from: from, subject: "DIB Notification", body: body, dateMs: Rig.t0, authDomain: "dib.ae"),
+          internalDateMs: Rig.t0, from: from))
+    }
+    let refund = try dib(
+      "r0", "عزيزي المتعامل,\nتم إرجاع مبلغ 1,234.50 درهم على بطاقة بنك دبي الإسلامي الخاصة بك والمنتهية بالرقم XX1234.\nمع اطيب التحيات،")
+    #expect(refund.bank == "dib" && refund.gates.template == "dib.card-refund.v1@1" && refund.last4 == "1234")
+    let rf = try #require(refund.fields)
+    #expect(rf.amountMinor == 123_450 && rf.currency == "AED" && rf.direction == "credit" && rf.merchant == "DIB CARD REFUND")
+    #expect(rf.postedAt == "2026-05-28T20:26:40.000Z" && rf.precision == "time")
+    let d = MessageDisposer.finalize(refund, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    #expect(d.payload["unparsed"] == .bool(false) && d.payload["direction"] == .string("credit"))
+
+    let reversal = try dib(
+      "r1",
+      "عزيزي المتعامل,\nA transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with XX1234 has been reversed.")
+    #expect(reversal.gates.template == "dib.card-reversal.v1@1" && reversal.last4 == "1234")
+    #expect(reversal.fields?.amountMinor == 5_200 && reversal.fields?.direction == "credit" && reversal.fields?.merchant == "SAMPLE SHOP LLC")
+
+    let dollars = try dib("r2", "تم إرجاع مبلغ 12.50 دولار على بطاقة بنك دبي الإسلامي الخاصة بك والمنتهية بالرقم XX1234.")
+    #expect(dollars.fields == nil && dollars.gates.template == nil)
   }
 
   @Test func aCancelledTemplateRunIsInterruptedNotAnEmptyReviewRow() async {
