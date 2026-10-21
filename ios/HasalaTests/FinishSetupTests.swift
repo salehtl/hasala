@@ -1,0 +1,118 @@
+import Foundation
+import HasalaDesign
+import HasalaMocks
+import HasalaModels
+import Testing
+
+@testable import Hasala
+
+@MainActor
+@Suite("Home: finish setting up")
+struct FinishSetupTests: AccountSuite {
+  func services(_ setup: MockSetupAuthoring = MockSetupAuthoring(),
+                notifications: MockNotificationPermission = MockNotificationPermission()) -> AccountServices {
+    AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(),
+                    setup: setup, notifications: notifications)
+  }
+
+  @Test func theItemsLeaveAsTheyAreDone() async throws {
+    let setup = MockSetupAuthoring()
+    let notifications = MockNotificationPermission()
+    let m = FinishSetupModel(services: services(setup, notifications: notifications))
+    #expect(!m.isDone(.plan) && !m.isDone(.notifications))
+
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    for d in [2, 5, 0, 0, 0] { flow.incomeEntry.type(.digit(d)) }
+    flow.continueWithIncome()
+    #expect(flow.path == [.plan])
+    await flow.savePlan()
+    #expect(setup.savePlanCalls == 1 && setup.income == 2_500_000 && setup.payday == 28 && setup.plan == StartingPlan())
+    #expect(m.isDone(.plan) && m.planFlow == nil)
+
+    m.askNotifications()
+    #expect(m.askingNotifications)
+    m.showDetails = true
+    await m.allowNotifications()
+    #expect(notifications.asked && notifications.showsDetails && m.isDone(.notifications) && !m.askingNotifications)
+  }
+
+  @Test func whatWasTypedStaysWhenThePlanIsClosedAndOpenedAgain() throws {
+    let m = FinishSetupModel(services: services())
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.incomeEntry = AmountEntry(typing: "25000")
+    flow.paydayChoice = .day(25)
+    flow.continueWithIncome()
+    m.planFlow = nil
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again === flow && again.path.isEmpty && again.incomeEntry.text == "25000" && again.paydayChoice == .day(25))
+  }
+
+  @Test func notNowAnswersTheNotificationsItem() {
+    let notifications = MockNotificationPermission()
+    let m = FinishSetupModel(services: services(notifications: notifications))
+    m.askNotifications()
+    m.notificationsNotNow()
+    #expect(m.isDone(.notifications) && notifications.answered && !notifications.asked)
+  }
+
+  @Test func whatTheAccountHoldsCountsAsDone() {
+    let saved = SetupReadBack(incomeMinor: 2_500_000, payday: 25, split: StartingPlan())
+    let m = FinishSetupModel(services: services(MockSetupAuthoring(saved: saved),
+                                                notifications: MockNotificationPermission(answered: true)))
+    #expect(m.isDone(.plan) && m.isDone(.notifications))
+    let onlySplit = FinishSetupModel(services: services(MockSetupAuthoring(saved: SetupReadBack(split: StartingPlan()))))
+    #expect(onlySplit.isDone(.plan))
+  }
+
+  @Test func closingThePlanWithNothingChosenSendsNothingAndKeepsTheItem() async throws {
+    let setup = MockSetupAuthoring()
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.skipIncome()
+    await flow.savePlan(skip: true)
+    #expect(setup.savePlanCalls == 0 && !m.isDone(.plan) && m.planFlow == nil)
+  }
+
+  @Test func incomeIsWholeDirhamsAndSkipKeepsWhatWasTyped() async throws {
+    let setup = MockSetupAuthoring()
+    let flow = MonthlyPlanModel(setup: setup) { _ in }
+    for key in [AmountKey.digit(4), .digit(8), .decimal, .digit(5)] { flow.incomeEntry.type(key) }
+    #expect(flow.incomeEntry.text == "485" && flow.incomeMinor == 48_500)
+    flow.incomeEntry = AmountEntry(typing: "12.50")
+    #expect(flow.incomeEntry.text == "485")
+    for _ in 0..<3 { flow.incomeEntry.type(.delete) }
+    #expect(flow.incomeMinor == nil)
+    flow.continueWithIncome()
+    #expect(flow.path.isEmpty)
+    flow.incomeEntry = AmountEntry(typing: "25000")
+    flow.skipIncome()
+    #expect(flow.savedIncomeMinor == nil && flow.incomeEntry.text == "25000" && flow.path == [.plan])
+    await flow.savePlan()
+    #expect(setup.planSaved && setup.income == nil && setup.payday == nil && setup.plan == StartingPlan())
+  }
+
+  @Test func theSavedPlanIsReadBackAndNotSentAgain() async {
+    let saved = SetupReadBack(incomeMinor: 2_500_050, payday: 25,
+                              split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
+    let setup = MockSetupAuthoring(saved: saved)
+    var outcome: Bool?
+    let flow = MonthlyPlanModel(setup: setup) { outcome = $0 }
+    #expect(flow.incomeEntry.display == "25,000" && flow.paydayChoice == .day(25) && flow.plan.needsPercent == 60)
+    #expect(flow.today == MayaLedger.now.date && flow.nextPayday == LocalDate(2026, 10, 25))
+    flow.incomeEntry = AmountEntry(typing: "25000")
+    flow.continueWithIncome()
+    await flow.savePlan()
+    #expect(setup.savePlanCalls == 1 && outcome == true)
+    let unchanged = MockSetupAuthoring(saved: SetupReadBack(
+      incomeMinor: 2_500_000, payday: 25, split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)))
+    outcome = nil
+    let same = MonthlyPlanModel(setup: unchanged) { outcome = $0 }
+    same.continueWithIncome()
+    await same.savePlan()
+    #expect(unchanged.savePlanCalls == 0 && outcome == true)
+  }
+}

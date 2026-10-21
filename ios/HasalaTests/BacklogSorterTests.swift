@@ -650,7 +650,7 @@ struct BacklogSortSettingTests {
     return d
   }
 
-  @Test func turningOnFromSetupTurnsOnBothSwitchesAndAsksForARun() {
+  @Test func turningOnFromTheAskTurnsOnBothSwitchesAndAsksForARun() {
     let d = freshDefaults()
     #expect(!MerchantSuggestionsSetting.hasRunRequest(d))
     MerchantSuggestionsSetting.turnOnForFirstImport(d)
@@ -720,71 +720,42 @@ struct BacklogSortSettingTests {
 }
 
 @MainActor
-@Suite("Setup: sorting the first import")
-struct SetupCloudSortTests: AccountSuite {
-  func reachResult(_ cloudSort: MockCloudSort?) async -> (SetupModel, AccountServices) {
-    var s = services(MockAccountService(existing: .passkey, signedIn: true))
-    s.cloudSort = cloudSort
-    let m = SetupModel(services: s, displayName: "Maya Rahman", facts: .init(hasSession: true, keysReady: true)) {}
-    await m.continueWithBanks()
-    m.planWhileScanning()
-    for d in [2, 5, 0, 0, 0] { m.incomeEntry.type(.digit(d)) }
-    m.continueWithIncome()
-    await m.savePlan()
-    return (m, s)
-  }
-
-  @Test func theOfferComesAfterTheResultAndTurnsOnOnce() async {
+@Suite("Review: asking about the cloud sort")
+struct ReviewCloudSortAskTests {
+  @Test func theAskShowsUntilTheDeviceAnswersAndTurnsOnOnce() {
     let cloud = MockCloudSort(offered: true)
-    let (m, _) = await reachResult(cloud)
-    #expect(m.path.last == .result && m.offersCloudSort)
-    m.afterResult()
-    #expect(m.path.last == .sort && !m.cloudSortOn)
-    m.turnOnCloudSort()
-    #expect(cloud.turnOnCalls == 1 && m.cloudSortOn && m.path.last == .notifications)
-    m.back()
-    #expect(m.path.last == .sort && m.cloudSortOn)
-    m.turnOnCloudSort()
-    #expect(cloud.turnOnCalls == 1 && m.path.last == .notifications)
+    #expect(ReviewTabView.asksCloudSort(cloud, reviewAccount: false, toSort: 12))
+    cloud.turnOn()
+    #expect(cloud.turnOnCalls == 1 && cloud.isOn)
+    #expect(!ReviewTabView.asksCloudSort(cloud, reviewAccount: false, toSort: 12))
   }
 
-  @Test func turningOnWhenBothSwitchesAreAlreadyOnStillStartsTheSort() async {
-    let cloud = MockCloudSort(offered: true, on: true)
-    let (m, _) = await reachResult(cloud)
-    m.afterResult()
-    #expect(m.path.last == .sort && m.cloudSortOn)
-    m.turnOnCloudSort()
-    #expect(cloud.turnOnCalls == 1 && m.path.last == .notifications)
-    m.back()
-    m.turnOnCloudSort()
-    #expect(cloud.turnOnCalls == 1)
-  }
-
-  @Test func notNowLeavesBothSwitchesOff() async {
+  @Test func notNowLeavesBothSwitchesOffAndStopsAsking() {
     let cloud = MockCloudSort(offered: true)
-    let (m, _) = await reachResult(cloud)
-    m.afterResult()
-    m.cloudSortNotNow()
-    #expect(cloud.turnOnCalls == 0 && !cloud.isOn && !m.cloudSortOn && m.path.last == .notifications)
-    await m.allowNotifications()
-    #expect(m.path.last == .done)
+    cloud.notNow()
+    #expect(cloud.turnOnCalls == 0 && !cloud.isOn)
+    #expect(!ReviewTabView.asksCloudSort(cloud, reviewAccount: false, toSort: 12))
   }
 
-  @Test func aBuildWithoutTheServiceSkipsTheStep() async {
-    for cloud in [nil, MockCloudSort(offered: false)] {
-      let (m, _) = await reachResult(cloud)
-      #expect(!m.offersCloudSort)
-      m.afterResult()
-      #expect(m.path.last == .notifications)
-    }
+  @Test func onlyWhenThereIsSomethingToSortOnARealAccountInABuildThatOffersIt() {
+    #expect(!ReviewTabView.asksCloudSort(MockCloudSort(offered: true), reviewAccount: false, toSort: 0))
+    #expect(!ReviewTabView.asksCloudSort(MockCloudSort(offered: true), reviewAccount: true, toSort: 12))
+    #expect(!ReviewTabView.asksCloudSort(MockCloudSort(offered: false), reviewAccount: false, toSort: 12))
+    #expect(!ReviewTabView.asksCloudSort(nil, reviewAccount: false, toSort: 12))
   }
 
-  @Test func withoutAFirstScanThereIsNothingToSort() async {
-    var s = services(MockAccountService(existing: .passkey, signedIn: true))
-    s.cloudSort = MockCloudSort(offered: true)
-    let m = SetupModel(services: s, displayName: "Maya Rahman", facts: .init(hasSession: true, keysReady: true)) {}
-    m.skipBanks()
-    await m.savePlan(skip: true)
-    #expect(!m.offersCloudSort && m.path.last == .notifications)
+  @Test func theLiveAnswerIsKeptOnThisIPhoneUntilTheAccountLeaves() {
+    let d = UserDefaults(suiteName: "review-ask-\(UUID().uuidString)")!
+    let offer = LiveCloudSort(runtime: { nil }, defaults: d)
+    #expect(!offer.answered)
+    offer.notNow()
+    #expect(offer.answered && !offer.isOn && !MerchantSuggestionsSetting.isEnabled(d))
+    MerchantSuggestionsSetting.forget(d)
+    #expect(!offer.answered)
+    MerchantSuggestionsSetting.setEnabled(true, d)
+    #expect(offer.answered)
+    MerchantSuggestionsSetting.forget(d)
+    offer.turnOn()
+    #expect(offer.answered && offer.isOn)
   }
 }

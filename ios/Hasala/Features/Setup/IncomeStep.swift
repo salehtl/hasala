@@ -2,22 +2,21 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Setup · 3 of 4 · Monthly income (Paper 56S-0): the salary on the app's own keypad
+/// Set your monthly plan · Monthly income (Paper 56S-0): the salary on the app's own keypad
 /// (page 11, docked: no system keyboard, never sliding in or out), the payday day strip,
-/// the scan's pill above Continue, and Skip. What was typed and chosen stays for the life of
+/// and Skip. What was typed and chosen stays for the life of
 /// the process: Back and Forward show it again.
 ///
 /// Nothing on the keypad animates beyond a key's highlight and a light tick; a hardware
 /// keyboard types into the figure.
 struct IncomeStep: View {
-  @Bindable var model: SetupModel
+  @Bindable var model: MonthlyPlanModel
   @FocusState private var figureFocused: Bool
 
   var body: some View {
     SetupScreen(
       title: "What lands in your account each month?",
       subtitle: "After tax. You can change it any time.",
-      steps: model.steps(3),
       back: .system,
       trailing: ("Skip", model.skipIncome),
       layout: .fill
@@ -37,7 +36,7 @@ struct IncomeStep: View {
   }
 
   /// The figure and the payday strip, centred in the space between the question and the
-  /// dock (Paper "Amount entry": gap 16, 28 under), with the scan's pill 8 above Continue.
+  /// dock (Paper "Amount entry": gap 16, 28 under).
   private var amountArea: some View {
     VStack(spacing: 16) {
       AmountFigure(entry: model.incomeEntry, layout: .docked)
@@ -52,14 +51,9 @@ struct IncomeStep: View {
       SetupFailureBanner(failure: model.failure)
         .padding(.horizontal, HSpacing.insetPage)
     }
-    // Room for the pill under the strip, without moving the block off Paper's centre.
     .padding(.vertical, 22)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding(.bottom, 28)
-    .overlay(alignment: .bottom) {
-      ScanPill(scan: model.scan, running: model.scanRunning)
-        .padding(.bottom, 8)
-    }
   }
 
   /// A hardware keyboard: digits and Delete type into the figure, as the keys do (the

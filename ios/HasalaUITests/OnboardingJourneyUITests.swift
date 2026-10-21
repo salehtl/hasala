@@ -3,7 +3,7 @@ import XCTest
 /// Onboarding as one new person walks it, on the in-memory mocks (plan Stage I task 3):
 /// the stories, joining with a passkey, the 12 words (shown, then "I've written them
 /// down", with no word check after them, plan B5), and setup from the bank to Home, with
-/// Gmail, or with Outlook through "Use Outlook". The other two tests are the owner's
+/// Gmail, or with Outlook through "Use Outlook", then Home's Finish setting up. The other two tests are the owner's
 /// requirement 4: whatever is typed or chosen in onboarding stays for the life of the
 /// process, through Back and Forward (plan B3).
 ///
@@ -20,15 +20,14 @@ final class OnboardingJourneyUITests: XCTestCase {
 
   // MARK: - New user to Home
 
-  /// Stories › join with the passkey › the words › setup: every bank and Gmail on one
-  /// screen › Continue with Google › the first scan › 25,000 on the keypad › the 50/30/20 plan › the result ›
-  /// notifications › You're set › Home.
+  /// Stories › join with the passkey › the words › every bank and Gmail on one screen ›
+  /// Continue with Google › Home, the import reading behind it › Finish setting up: the
+  /// monthly plan (25,000 on the keypad, the 50/30/20 plan), then a note when money moves.
   @MainActor
   func testNewUserToHome() throws {
     let app = launch(scenario: "newUser")
     joinWithPasskey(app)
 
-    // Setup · 1 of 4: both banks start picked.
     XCTAssertTrue(el(app, "bank.enbd").isSelected)
     XCTAssertTrue(el(app, "bank.dib").isSelected)
     XCTAssertTrue(el(app, "bank.adib").isSelected)
@@ -39,45 +38,37 @@ final class OnboardingJourneyUITests: XCTestCase {
     attach(app, "Setup · Bank alerts and Gmail")
     connect.tap()
 
-    XCTAssertTrue(app.staticTexts["Gmail is connected. Reading your alerts now."].waitForExistence(timeout: 10))
-    XCTAssertTrue(el(app, "scan.progress").exists)
-    XCTAssertTrue(says(app, "maya@example.com"), "the first scan doesn't show the mailbox")
-    attach(app, "Setup · First scan")
-    tap(app, "scan.setUpPlan")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open after the connect")
+    XCTAssertTrue(el(app, "home.finish").waitForExistence(timeout: uiWait), "Home has no Finish setting up")
+    attach(app, "Home · Finish setting up")
+    tap(app, "home.finish.plan")
 
-    // Income on the app's keypad, never the system keyboard.
     XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     XCTAssertFalse(app.keyboards.firstMatch.exists, "the system keyboard opened for money")
     typeOnKeypad(app, "25000")
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the figure reads \(incomeFigure(app))")
-    attach(app, "Setup · Income")
+    attach(app, "Monthly plan · Income")
     tap(app, "income.continue")
 
-    // The starting plan: 50/30/20 of 25,000.
     let needs = el(app, "plan.split.handle.0")
     XCTAssertTrue(needs.waitForExistence(timeout: uiWait))
     XCTAssertEqual(needs.value as? String, "50%")
     XCTAssertTrue(says(app, "AED 12,500"), "the needs amount is missing")
-    attach(app, "Setup · Starting plan")
+    attach(app, "Monthly plan · Starting plan")
     tap(app, "plan.use")
 
-    XCTAssertTrue(app.staticTexts["268 transactions, sorted."].waitForExistence(timeout: 20))
-    attach(app, "Setup · Sorted")
-    tap(app, "result.continue")
-
-    // The mock grants notifications without the system's alert.
+    XCTAssertTrue(el(app, "home.finish.plan").waitForNonExistence(timeout: uiWait), "the plan item stayed")
+    let note = el(app, "home.finish.notifications")
+    XCTAssertTrue(note.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(enabled(note, timeout: 30), "notifications weren't offered after the import")
+    note.tap()
     tap(app, "notifications.allow")
-    XCTAssertTrue(app.staticTexts["You're set, Maya."].waitForExistence(timeout: 10))
-    XCTAssertTrue(says(app, "starting at 50/30/20"), "Done doesn't say which plan")
-    attach(app, "Setup · You're set")
-    tap(app, "done.home")
-
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
-    attach(app, "Home")
+    XCTAssertTrue(el(app, "home.finish").waitForNonExistence(timeout: uiWait), "Finish setting up stayed")
+    attach(app, "Home · set up")
   }
 
-  /// The same setup with Outlook through "Use Outlook", through to the first scan; Back
-  /// from the scan finds Outlook connected, and Continue never offers Google's sign-in.
+  /// The same setup with Outlook through "Use Outlook", through to Home; Bank alerts reads
+  /// the Outlook mailbox.
   @MainActor
   func testOutlookPath() throws {
     let app = launch(scenario: "newUser")
@@ -88,65 +79,32 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
     outlook.tap()
 
-    XCTAssertTrue(app.staticTexts["Outlook is connected. Reading your alerts now."].waitForExistence(timeout: 10))
-    XCTAssertTrue(el(app, "scan.progress").exists)
-    XCTAssertTrue(says(app, "maya.k@example.com"), "the first scan doesn't show the Outlook mailbox")
-    attach(app, "Setup · Outlook connected · First scan")
-
-    back(app)
-    XCTAssertTrue(el(app, "mail.connected").waitForExistence(timeout: uiWait), "Outlook was forgotten")
-    XCTAssertTrue(says(app, "maya.k@example.com"), "the bank step doesn't show the Outlook mailbox")
-    XCTAssertFalse(el(app, "mail.connect.outlook").exists, "the step offered Microsoft's sign-in again")
-    XCTAssertFalse(el(app, "mail.connect.gmail").exists, "the step offered Google's sign-in")
-    tap(app, "bank.continue")
-    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open after the connect")
+    app.buttons["header.profile"].firstMatch.tap()
+    tap(app, "profile.bankAlerts")
+    XCTAssertTrue(says(app, "maya.k@example.com"), "Bank alerts doesn't show the Outlook mailbox")
+    attach(app, "Bank alerts · Outlook")
   }
 
   // MARK: - Requirement 4: setup remembers everything
 
-  /// Connect Gmail; Back to the bank step: it shows the mailbox connected, with Continue and
-  /// no second sign-in. 25,000 on the keypad survives Back twice and Forward
-  /// twice; the payday and a moved split handle survive Back and Forward; the banks are as
-  /// they were left. On to Home, the plan is the one chosen and the account reads one
-  /// mailbox: Google's sign-in ran once.
+  /// One bank, then Gmail: Home opens, and the account reads one mailbox and that one bank.
+  /// In the monthly plan, 25,000, the 25th and a moved split handle survive Back and
+  /// Forward, and closing the sheet and opening it again; the plan sent is the one chosen.
   @MainActor
   func testSetupRemembersEverything() throws {
     let app = launch(scenario: "setupBank")
 
-    // One bank, not the two the step starts with, so "unchanged" means something.
     XCTAssertTrue(el(app, "bank.dib").waitForExistence(timeout: 15))
     tap(app, "bank.dib")
     tap(app, "bank.adib")
     assertBanksAsLeft(app)
     tap(app, "mail.connect.gmail")
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
 
-    // Back to the bank step: connected, its button a plain Continue.
-    back(app)
-    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait), "the bank step forgot the connect")
-    assertBanksAsLeft(app)
-    XCTAssertTrue(el(app, "mail.connected").exists, "the connected mailbox isn't shown")
-    XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened")
-    XCTAssertFalse(el(app, "mail.connect.gmail").exists, "the step offered Google's sign-in again")
-    attach(app, "Bank alerts · connected, after Back")
-    tap(app, "bank.continue")
-    tap(app, "scan.setUpPlan")
-
-    // 25,000; Back twice (the scan, the bank step) and Forward twice.
+    tap(app, "home.finish.plan")
     XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
     typeOnKeypad(app, "25000")
-    XCTAssertTrue(incomeFigure(app).contains("25,000"), "the figure reads \(incomeFigure(app))")
-    back(app)
-    XCTAssertTrue(el(app, "scan.setUpPlan").waitForExistence(timeout: uiWait))
-    back(app)
-    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait))
-    tap(app, "bank.continue")
-    tap(app, "scan.setUpPlan")
-    XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
-    XCTAssertTrue(el(app, "income.continue").isEnabled)
-    attach(app, "Income · after Back twice and Forward twice")
-
-    // The 25th, and needs to 55%; Back and Forward.
     tap(app, "income.payday.25")
     XCTAssertTrue(el(app, "income.payday.25").waitForLabel("Payday, 25th"), "the 25th wasn't chosen")
     tap(app, "income.continue")
@@ -159,38 +117,22 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th", "the payday was lost")
     tap(app, "income.continue")
-    XCTAssertTrue(el(app, "plan.split.handle.0").waitForExistence(timeout: uiWait))
-    XCTAssertEqual(el(app, "plan.split.handle.0").value as? String, "55%", "the split was lost")
+    XCTAssertTrue(el(app, "plan.split.handle.0").waitForValue("55%"), "the split was lost")
     XCTAssertEqual(el(app, "plan.split.handle.1").value as? String, "25%", "the split was lost")
     attach(app, "Starting plan · after Back and Forward")
 
-    // All the way back to the bank step (income, the scan, the bank): the banks as they
-    // were left.
-    for screen in ["keypad.1", "scan.setUpPlan", "bank.continue"] {
-      back(app)
-      XCTAssertTrue(el(app, screen).waitForExistence(timeout: uiWait), "Back did not reach \(screen)")
-    }
-    assertBanksAsLeft(app)
-    attach(app, "Bank · after Back")
-
-    // Forward to the end: every step shows what it held.
-    tap(app, "bank.continue")
-    tap(app, "scan.setUpPlan")
+    back(app)
+    tap(app, "plan.setup.close")
+    XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait), "the plan item left unsaved")
+    tap(app, "home.finish.plan")
+    XCTAssertTrue(el(app, "keypad.1").waitForExistence(timeout: uiWait))
     XCTAssertTrue(incomeFigure(app).contains("25,000"), "the salary was lost: \(incomeFigure(app))")
     XCTAssertEqual(el(app, "income.payday.25").label, "Payday, 25th", "the payday was lost")
     tap(app, "income.continue")
     XCTAssertTrue(el(app, "plan.split.handle.0").waitForValue("55%"), "the split was lost")
     tap(app, "plan.use")
-    tap(app, "result.continue", timeout: 20)
-    tap(app, "notifications.notNow")
-    XCTAssertTrue(app.staticTexts["You're set, Maya."].waitForExistence(timeout: 10))
-    XCTAssertTrue(says(app, "starting at 55/25/20"), "Done doesn't show the split that was chosen")
-    tap(app, "done.home")
+    XCTAssertTrue(el(app, "home.finish.plan").waitForNonExistence(timeout: uiWait), "the plan item stayed")
 
-    // Profile › Bank alerts: the one Gmail setup connected (a second sign-in would have
-    // added a second Google account: the mock gives it its own address), reading the one
-    // bank that was left picked.
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
     app.buttons["header.profile"].firstMatch.tap()
     tap(app, "profile.bankAlerts")
     XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForExistence(timeout: uiWait))
@@ -292,6 +234,16 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "bank.enbd").isSelected, "Emirates NBD was dropped", line: line)
     XCTAssertFalse(el(app, "bank.dib").isSelected, "DIB came back", line: line)
     XCTAssertFalse(el(app, "bank.adib").isSelected, "ADIB came back", line: line)
+  }
+
+  @MainActor
+  private func enabled(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+      if element.exists, element.isEnabled { return true }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    }
+    return element.isEnabled
   }
 
   /// Some element's label is `text` or contains it (combined rows read as one).

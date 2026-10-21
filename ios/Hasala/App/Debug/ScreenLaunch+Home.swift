@@ -52,6 +52,15 @@
       Screen("home.importing", scenario: "mailboxes2", prepare: { graph in
         mock(graph)?.importing = MailImport(state: .reading, read: 40, total: 268)
       }),
+      Screen("home.finishSetup", scenario: "finishSetup", prepare: { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 40, total: 268)
+      }),
+      Screen("home.finishSetup.plan", scenario: "finishSetup") { graph in
+        graph.onboarding.finishSetupModel().setPlan()
+      },
+      Screen("home.finishSetup.notifications", scenario: "finishSetup") { graph in
+        graph.onboarding.finishSetupModel().askNotifications()
+      },
       Screen("home.september", scenario: "maya", prepare: { graph in
         graph.app.period = .month(YearMonth(2026, 9))
       }),

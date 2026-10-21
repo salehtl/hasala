@@ -187,9 +187,11 @@ struct LaunchView: View {
       let scenario = Scenario.fromLaunchArguments(arguments)
       let auth = AuthScenario.fromLaunchArguments(arguments)
       let session = AuthScenario.session(for: auth)
+      var state = scenario.state
+      if auth == .finishSetup { for key in state.plan.budgets.keys { state.plan.budgets[key] = .aed(0) } }
       let graph = MockGraph(
         app: AppModel(
-          store: InMemoryLedger(state: scenario.state, now: scenario.now),
+          store: InMemoryLedger(state: state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
           layouts: mockLayouts(arguments)),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments),

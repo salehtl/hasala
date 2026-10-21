@@ -7,10 +7,9 @@ import Testing
 
 @testable import Hasala
 
-/// Setup after the account (bank to done), on the in-memory mock: the steps, the email
+/// Setup after the account (bank and email, then Home), on the in-memory mock: the email
 /// step's providers and failures, and what setup remembers for the life of the process
-/// (plan B3: Back never reverts, Forward shows what was left, nothing is sent or signed in
-/// twice).
+/// (plan B3: Back never reverts, nothing is sent or signed in twice).
 @MainActor
 @Suite("Setup flows")
 struct SetupFlowTests: AccountSuite {
@@ -19,16 +18,13 @@ struct SetupFlowTests: AccountSuite {
     SetupModel(services: s, displayName: "Maya Rahman", facts: facts, onFinished: finished)
   }
 
-  /// Waits for the mock's first scan to finish.
-  func scanFinishes(_ m: SetupModel) async throws {
-    for _ in 0..<400 where !m.scanDone { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(m.scanDone)
-  }
-
-  @Test func setupRunsBankToDone() async throws {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
-    var finished = false
-    let m = model(s) { finished = true }
+  @Test func setupEndsOnHomeOnceTheEmailIsConnected() async throws {
+    let base = MockMailbox()
+    base.step = .milliseconds(1)
+    let mailbox = CountingMailbox(base)
+    let s = services(with: mailbox)
+    var finished = 0
+    let m = model(s) { finished += 1 }
     #expect(m.step == .bank)
     m.toggle(.dib)
     #expect(m.orderedBanks == [.enbd, .adib])
@@ -36,46 +32,41 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.connectable == [.gmail, .outlook] && m.provider == .gmail)
     await m.continueWithBanks()
     #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib, .adib])
-    #expect(!m.choosingEmail)
-    #expect(m.step == .scan && m.path == [.scan])
-    #expect(m.connectedMailbox?.provider == .gmail)
-    m.planWhileScanning()
-    #expect(m.step == .income)
-    for d in [2, 5, 0, 0, 0] { m.incomeEntry.type(.digit(d)) }
-    #expect(m.incomeMinor == 2_500_000 && m.incomeDisplay == "25,000")
-    m.continueWithIncome()
-    await m.savePlan()
-    let setup = try #require(s.setup as? MockSetupAuthoring)
-    #expect(setup.income == 2_500_000 && setup.payday == 28)
-    #expect(setup.plan == StartingPlan())
-    #expect(m.plan.amounts(income: 2_500_000) == (1_250_000, 750_000, 500_000))
-    // No cards step: the result, finished or not, then notifications.
-    #expect(m.path.last == .result)
-    #expect(m.step == .notifications)
-    try await scanFinishes(m)
-    #expect(m.summary?.total == 268)
-    #expect(m.facts.mailbox == .linked)
-    m.afterResult()
-    #expect(m.path.last == .notifications)
-    await m.allowNotifications()
-    #expect(m.step == .done)
-    m.finish()
-    #expect(finished)
-    #expect(m.firstName == "Maya")
+    #expect(!m.choosingEmail && m.path.isEmpty)
+    #expect(m.step == .finished && m.facts.mailbox == .scanning && finished == 1)
+    #expect(m.connectedMailbox?.provider == .gmail && mailbox.scans == 1)
+    for _ in 0..<400 where base.importing != nil || base.mailboxes.first?.state != .connected {
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(base.importing == nil && base.mailboxes.first?.state == .connected)
+    m.resume()
+    m.continueConnected()
+    #expect(finished == 1 && mailbox.scans == 1)
+    #expect((s.setup as? MockSetupAuthoring)?.savePlanCalls == 0)
   }
 
-  /// A review account's email step offers the sample month, which completes the email,
-  /// the scan, income and plan.
   @Test func reviewAccountsCanUseSampleData() async {
     let s = services(MockAccountService(existing: .passkey, signedIn: true), sample: true)
-    let m = model(s)
+    var finished = false
+    let m = model(s) { finished = true }
     #expect(m.offersSampleData)
     for bank in SupportedBank.allCases { m.toggle(bank) }
     #expect(m.chosenBanks.isEmpty)
     await m.useSampleData()
     let setup = s.setup as? MockSetupAuthoring
     #expect(setup?.banks == [] && setup?.chooseBanksCalls == 0 && setup?.setBanksCalls == 0)
-    #expect(m.step == .notifications && m.path == [.notifications])
+    #expect(m.step == .finished && m.path.isEmpty && finished)
+  }
+
+  @Test func skippingTheBankOrTheEmailGoesHome() {
+    var finished = 0
+    let manual = model(services(MockAccountService(existing: .passkey, signedIn: true))) { finished += 1 }
+    manual.skipBanks()
+    #expect(manual.step == .finished && finished == 1)
+    let noMail = model(services(MockAccountService(existing: .passkey, signedIn: true)),
+                       facts: .init(hasSession: true, keysReady: true, banksChosen: true)) { finished += 1 }
+    noMail.skipMail()
+    #expect(noMail.step == .finished && finished == 2)
   }
 
   @Test func aSecondConnectWhileOneRunsDoesNothing() async throws {
@@ -87,7 +78,7 @@ struct SetupFlowTests: AccountSuite {
     async let second: Void = m.connectMail(.gmail)
     _ = await (first, second)
     #expect(lane.connectCalls == 1 && !m.connecting)
-    #expect(m.path == [.scan])
+    #expect(m.path.isEmpty && m.step == .finished)
   }
 
   @Test func aPickInTheChooserStartsItsConnect() async throws {
@@ -105,25 +96,16 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.connectRequest == nil)
   }
 
-  @Test func noAlertsCanMoveToAnotherMailboxAndScansIt() async throws {
+  @Test func aConnectThatReplacesTheMailboxScansTheNewOne() async throws {
     let base = MockMailbox()
     base.total = 0
     let mailbox = CountingMailbox(base)
     let m = model(services(with: mailbox))
     await m.continueWithBanks()
-    try await scanFinishes(m)
-    m.planWhileScanning()
-    #expect(m.foundNoAlerts && mailbox.scans == 1)
-    m.useDifferentEmail()
-    #expect(m.path.isEmpty && m.choosingEmail)
-    m.choose(.outlook)
-    m.choosingEnded()
-    #expect(m.connectRequest == .outlook)
-    m.connectRequest = nil
+    #expect(mailbox.scans == 1)
     await m.connectMail(.outlook, replacing: true, removingOld: false)
-    #expect(m.path == [.scan] && mailbox.scans == 2)
-    #expect(m.connectedMailbox?.provider == .outlook && !m.facts.scanDeferred)
-    try await scanFinishes(m)
+    #expect(mailbox.scans == 2 && m.facts.mailbox == .scanning)
+    #expect(m.connectedMailbox?.provider == .outlook)
   }
 
   /// Offline, the email step says so in the provider's words (spec copy), and stays put.
@@ -131,44 +113,42 @@ struct SetupFlowTests: AccountSuite {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
     lane.offline = true
-    let m = model(s)
+    var finished = false
+    let m = model(s) { finished = true }
     await m.continueWithBanks()
     #expect(m.failure?.message == "You're offline. Connect Gmail when you're back online.")
-    #expect(m.path == [] && m.facts.mailbox == .unlinked)
+    #expect(m.path == [] && m.facts.mailbox == .unlinked && !finished)
     #expect(m.connectFailure(.gmail) == .offline)
     #expect(SetupModel.setupFailure(.offline, .outlook).message == "You're offline. Connect Outlook when you're back online.")
     #expect(SetupModel.setupFailure(.cancelled, .gmail) == .cancelled)
   }
 
   /// The two failures the design draws a screen for push it; trying again from there,
-  /// once it works, replaces it with the first scan. A closed Google sign-in changes
-  /// nothing.
+  /// once it works, goes Home. A closed Google sign-in changes nothing.
   @Test func outlookFailuresHaveTheirScreensAndTryAgainGoesOn() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
     lane.outlookAdmin = true
-    let m = model(s)
+    var finished = false
+    let m = model(s) { finished = true }
     m.pickProvider(.outlook)
     await m.continueWithBanks()
     #expect(m.path == [.connectError(.outlook)])
     #expect(m.connectFailure(.outlook) == .adminApprovalNeeded(address: MockMailbox.workAddress))
-    // The view's own outcome watch arriving too pushes nothing more.
     m.connectFailed(.outlook)
     #expect(m.path == [.connectError(.outlook)])
 
     lane.outlookAdmin = false
     lane.outlookCancelled = true
     await m.retryConnect(.outlook)
-    #expect(m.connectFailure(.outlook) == .cancelled && m.path.last == .connectError(.outlook))
+    #expect(m.connectFailure(.outlook) == .cancelled && m.path.last == .connectError(.outlook) && !finished)
 
     lane.outlookCancelled = false
     await m.retryConnect(.outlook)
-    #expect(m.path == [.scan] && m.facts.mailbox == .scanning)
+    #expect(m.path == [] && m.facts.mailbox == .scanning && finished)
     #expect(m.draft.provider == .outlook && m.connectedMailbox?.provider == .outlook)
     #expect(lane.connectCalls == 3)
 
-    // "Choose a different email" from an error screen: the chooser, then the pick takes the
-    // email step's place.
     let other = model(services(MockAccountService(existing: .passkey, signedIn: true)))
     let otherLane = try #require(other.mailbox as? MockMailbox)
     otherLane.outlookCancelled = true
@@ -191,7 +171,7 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.path == [.connectError(.outlook)])
     #expect(m.connectFailure(.outlook) == .noMailbox(.outlook))
     await m.retryConnect(.outlook)
-    #expect(m.path == [.scan] && m.facts.mailbox == .scanning)
+    #expect(m.path == [] && m.facts.mailbox == .scanning && m.step == .finished)
     #expect(lane.connectCalls == 2)
   }
 
@@ -206,7 +186,7 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.path == [.connectError(.outlook)])
     await m.retryConnect(.outlook)
     #expect(lane.replacingCalls == [true, true])
-    #expect(m.path == [.scan])
+    #expect(m.path == [] && m.step == .finished)
   }
 
   @Test func aRemoveThatFailedDuringASwitchInSetupIsSaid() async throws {
@@ -215,13 +195,17 @@ struct SetupFlowTests: AccountSuite {
     lane.step = .milliseconds(1)
     lane.holdOneLink()
     lane.switchRemoveFails = true
-    let m = model(services(with: lane))
+    var finished = false
+    let m = model(services(with: lane)) { finished = true }
     m.pickProvider(.outlook)
     #expect(await m.saveBanks())
     await m.connectMail(.outlook, replacing: true, removingOld: true)
     #expect(m.failure == .failed(
       "Outlook connected. Checking for alerts. The transactions from maya@example.com couldn't be removed. They stay."))
+    #expect(!finished && m.mailConnected)
     #expect(m.coordinator(.outlook).takeRemovalFailure() == nil)
+    await m.continueWithBanks()
+    #expect(finished)
   }
 
   /// A closed Google sign-in is not an error: the screen stays as it was.
@@ -231,55 +215,7 @@ struct SetupFlowTests: AccountSuite {
     let m = model(services(with: mailbox))
     await m.continueWithBanks()
     #expect(m.path == [] && m.failure == nil && m.connectFailure(.gmail) == nil)
-    #expect(m.facts.mailbox == .unlinked)
-  }
-
-  /// The memory test (owner requirement 4): connect, Back to the bank, Continue: the email
-  /// step shows connected and goes on without a second sign-in, scan or bank ops; the
-  /// salary, payday and split survive Back and Forward; an unchanged plan isn't sent
-  /// again, a changed one is.
-  @Test func backAndForwardKeepsEverythingAndNeverRepeatsAnything() async throws {
-    let mailbox = CountingMailbox(MockMailbox())
-    let s = services(with: mailbox)
-    let setup = try #require(s.setup as? MockSetupAuthoring)
-    let m = model(s)
-    await m.continueWithBanks()
-    #expect(m.path == [.scan])
-    m.navigationPath = []
-    #expect(m.mailConnected)
-    #expect(m.coordinator(.gmail).outcome == .connected(mailboxID: "gmail-1"))
-    await m.continueWithBanks()
-    #expect(!m.choosingEmail && m.path == [.scan])
-    m.continueConnected()
-    #expect(m.path == [.scan])
-    #expect(mailbox.base.connectCalls == 1 && mailbox.scans == 1 && setup.chooseBanksCalls == 1)
-
-    // 25,000 on the keypad, payday the 25th, the split moved: all of it stays.
-    m.planWhileScanning()
-    for d in [2, 5, 0, 0, 0] { m.incomeEntry.type(.digit(d)) }
-    m.paydayChoice = .day(25)
-    m.continueWithIncome()
-    m.plan = m.plan.moving(handle: 0, to: 60)
-    await m.savePlan()
-    #expect(setup.savePlanCalls == 1 && setup.income == 2_500_000 && setup.payday == 25)
-    #expect(setup.plan == StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
-    m.navigationPath = [.scan, .income, .plan]
-    m.navigationPath = [.scan, .income]
-    m.navigationPath = [.scan]
-    m.navigationPath = []
-    await m.continueWithBanks()
-    #expect(m.path == [.scan])
-    m.planWhileScanning()
-    #expect(m.incomeDisplay == "25,000" && m.paydayChoice == .day(25) && m.plan.needsPercent == 60)
-    m.continueWithIncome()
-    await m.savePlan()
-    #expect(setup.savePlanCalls == 1)  // unchanged: not sent again
-    #expect(mailbox.base.connectCalls == 1 && mailbox.scans == 1 && setup.chooseBanksCalls == 1)
-
-    m.back()
-    m.plan = m.plan.moving(handle: 1, to: 90)
-    await m.savePlan()
-    #expect(setup.savePlanCalls == 2 && setup.plan?.savingsPercent == 10)  // a real change is sent
+    #expect(m.facts.mailbox == .unlinked && m.step == .mail)
   }
 
   @Test func untickingABankAfterBackRemovesIt() async throws {
@@ -295,6 +231,8 @@ struct SetupFlowTests: AccountSuite {
     #expect(await m.saveBanks())
     #expect(setup.banks == [.enbd])
     #expect(setup.chooseBanksCalls == 1 && setup.setBanksCalls == 1)
+    #expect(await m.saveBanks())
+    #expect(setup.chooseBanksCalls == 1 && setup.setBanksCalls == 1)
   }
 
   @Test func useOtherProviderOpensTheChooserAndThePickStaysOnTheBankStep() async throws {
@@ -305,7 +243,7 @@ struct SetupFlowTests: AccountSuite {
     m.pickProvider(.outlook)
     #expect(!m.choosingEmail && m.path.isEmpty && m.provider == .outlook)
     await m.continueWithBanks()
-    #expect(m.path == [.scan] && m.connectedMailbox?.provider == .outlook)
+    #expect(m.step == .finished && m.connectedMailbox?.provider == .outlook)
 
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
@@ -326,29 +264,11 @@ struct SetupFlowTests: AccountSuite {
     #expect(m.failure?.message == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
     #expect(m.path == [] && m.facts.mailbox == .unlinked)
     await m.continueWithBanks()
-    #expect(m.failure == nil && m.path == [.scan])
-  }
-
-  @Test func checkAgainAfterNoAlertsReadsTheMailboxAgain() async throws {
-    let base = MockMailbox()
-    base.total = 0
-    let mailbox = CountingMailbox(base)
-    let m = model(services(with: mailbox))
-    await m.continueWithBanks()
-    try await scanFinishes(m)
-    #expect(m.foundNoAlerts && mailbox.scans == 1)
-    await m.checkAgain()
-    #expect(m.foundNoAlerts && mailbox.scans == 2 && !m.checkingAgain)
-    base.total = 24
-    await m.checkAgain()
-    #expect(!m.foundNoAlerts && m.summary?.total == 24 && mailbox.scans == 3)
-    await m.checkAgain()
-    #expect(mailbox.scans == 3)
+    #expect(m.failure == nil && m.step == .finished)
   }
 
   /// A relaunch whose facts say the mail is linked to Outlook, before the lane's status is
-  /// read (no rows yet): setup's email step is Outlook's and shows it connected; Gmail's
-  /// screen would be a new connect, not "Gmail is connected".
+  /// read (no rows yet): setup's provider is Outlook's.
   @Test func aRelaunchLinkedToOutlookShowsOutlookConnected() async throws {
     let lane = CountingMailbox(MockMailbox())
     lane.linkedOverride = .outlook
@@ -364,44 +284,14 @@ struct SetupFlowTests: AccountSuite {
     #expect(link.existing(.gmail) == nil)
   }
 
-  /// Whole dirhams on this step: the decimal key is ignored, as page 11 ignores any key that
-  /// breaks the rules. Skip keeps what was typed for Back but sends no income.
-  @Test func incomeIsWholeDirhamsAndSkipKeepsWhatWasTyped() async throws {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
-    let setup = try #require(s.setup as? MockSetupAuthoring)
-    let m = model(s)
-    m.skipBanks()
-    for key in [AmountKey.digit(4), .digit(8), .decimal, .digit(5)] { m.incomeEntry.type(key) }
-    #expect(m.incomeText == "485" && m.incomeMinor == 48_500)
-    m.incomeEntry = AmountEntry(typing: "12.50")
-    #expect(m.incomeText == "485")
-    m.incomeEntry.type(.delete)
-    m.incomeEntry.type(.delete)
-    m.incomeEntry.type(.delete)
-    #expect(m.incomeMinor == nil)
-    m.continueWithIncome()  // disabled at 0: nothing happens
-    #expect(m.path == [.income])
-    m.incomeText = "25000"
-    m.skipIncome()
-    #expect(m.savedIncomeMinor == nil && m.incomeText == "25000" && m.step == .plan)
-    await m.savePlan()
-    #expect(setup.planSaved && setup.income == nil && setup.payday == nil)
-    m.back()
-    m.back()
-    #expect(m.path == [.income] && m.incomeDisplay == "25,000")
-    m.continueWithIncome()
-    #expect(m.savedIncomeMinor == 2_500_000 && !m.facts.incomeSkipped)
-  }
-
   /// The payday strip's days: the next one from the ledger's today, a day a month doesn't
   /// have on its last day, and the last working day (Monday to Friday) sent as its day.
   @Test func paydaysFallOnRealDays() {
-    let today = LocalDate(2026, 10, 10)  // Saturday
+    let today = LocalDate(2026, 10, 10)
     #expect(PaydayChoice.day(28).next(onOrAfter: today) == LocalDate(2026, 10, 28))
     #expect(PaydayChoice.day(5).next(onOrAfter: today) == LocalDate(2026, 11, 5))
     #expect(PaydayChoice.day(10).next(onOrAfter: today) == today)
     #expect(PaydayChoice.day(31).next(onOrAfter: LocalDate(2026, 11, 2)) == LocalDate(2026, 11, 30))
-    // 31 Oct 2026 is a Saturday: the last working day is Friday the 30th.
     #expect(PaydayChoice.lastWorkingDay.next(onOrAfter: today) == LocalDate(2026, 10, 30))
     #expect(PaydayChoice.lastWorkingDay.opDay(today: today) == 30)
     #expect(PaydayChoice.day(31).opDay(today: today) == 31)
@@ -409,11 +299,6 @@ struct SetupFlowTests: AccountSuite {
     #expect(PaydayChoice.all.allSatisfy { PaydayChoice.all[$0.index] == $0 })
     #expect(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st"]
       == [1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31].map { PaydayChoice.day($0).spoken })
-
-    let m = model(services(MockAccountService(existing: .passkey, signedIn: true)))
-    #expect(m.today == MayaLedger.now.date && m.paydayChoice == .day(28) && m.nextPayday == LocalDate(2026, 10, 28))
-    m.paydayChoice = .lastWorkingDay
-    #expect(m.payday == 30)
   }
 
   /// The split's handles move in 5% steps; no bucket goes under 0% and the three make 100.
@@ -430,85 +315,25 @@ struct SetupFlowTests: AccountSuite {
     }
   }
 
-  /// A relaunch mid-scan follows the scan again, and Back walks the real steps before the
-  /// derived one (plan B3.3: an honest back stack, built once).
-  @Test func setupResumedWithTheScanStillRunningGoesOnToNotifications() {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+  @Test func anAccountPastTheEmailStepResumesOnHome() {
+    for mailbox in [OnboardingStep.Facts.Mailbox.scanning, .linked, .otherDevice] {
+      var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
+      facts.mailbox = mailbox
+      var finished = 0
+      let m = model(services(MockAccountService(existing: .passkey, signedIn: true)), facts: facts) { finished += 1 }
+      m.resume()
+      m.resume()
+      #expect(finished == 1 && m.path.isEmpty)
+    }
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.mailbox = .scanning
-    facts.scanDeferred = true
-    facts.incomeSkipped = true
-    facts.planSkipped = true
-    let m = model(s, facts: facts)
-    m.resume()
-    #expect(m.path == [.scan, .income, .plan, .result, .notifications])
-    m.path = []
-    m.resume()  // once per model
-    #expect(m.path == [])
-  }
-
-  @Test func resumesAtTheDerivedStep() {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
-    var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
+    var finished = false
+    let atEmail = model(services(MockAccountService(existing: .passkey, signedIn: true)), facts: facts) { finished = true }
+    atEmail.resume()
+    #expect(!finished && atEmail.step == .mail)
     facts.mailSkipped = true
-    let m = model(s, facts: facts)
-    m.resume()
-    #expect(m.path == [.income])
-  }
-
-  /// After a relaunch (a new model, the account's facts and values read back), the email
-  /// step under the stack comes back connected without a sign-in, and the salary, payday
-  /// and split are what the account holds.
-  @Test func aRelaunchReadsBackTheValuesAndShowsTheEmailStepConnected() async throws {
-    let lane = MockMailbox(mailboxes: [MockMailbox.gmail])
-    let mailbox = CountingMailbox(lane)
-    let saved = SetupReadBack(incomeMinor: 2_500_000, payday: 25,
-                              split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
-    let setup = MockSetupAuthoring(saved: saved)
-    let s = services(with: mailbox, setup: setup)
-    let session = AccountSession(services: s, phase: .onboarding(.plan))
-    let store = OnboardingStore(services: s, session: { session })
-    var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.mailbox = .linked
-    facts.incomeSet = true
-    facts.planSet = true
-    let m = store.setupModel(displayName: "Maya", facts: facts)
-    #expect(m.incomeDisplay == "25,000" && m.paydayChoice == .day(25) && m.plan.needsPercent == 60)
-    #expect(m.step == .notifications)
-    m.resume()
-    #expect(m.path == [.income, .plan, .notifications])
-    for _ in 0..<100 where m.coordinator(.gmail).outcome == nil { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(m.coordinator(.gmail).outcome == .connected(mailboxID: "gmail-1"))
-    #expect(lane.connectCalls == 0)
-    // Values the account holds count as sent: the same plan isn't sent again.
-    m.path = [.income, .plan]
-    await m.savePlan()
-    #expect(setup.savePlanCalls == 0)
-  }
-
-  /// The store's model resumed twice keeps the person's place.
-  @Test func resumeTwiceKeepsThePosition() {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
-    var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.mailbox = .linked
-    let m = model(s, facts: facts)
-    m.resume()
-    #expect(m.path == [.income])
-    m.back()
-    m.resume()
-    #expect(m.path == [])
-  }
-
-  /// "Allow notifications" asks iOS once; back there it only goes on.
-  @Test func notificationsAreAskedOnce() async throws {
-    let s = services(MockAccountService(existing: .passkey, signedIn: true))
-    let m = model(s)
-    #expect(!m.systemAskedForNotifications)
-    await m.allowNotifications()
-    #expect(m.systemAskedForNotifications && m.path.last == .done)
-    m.back()
-    m.notNow()
-    #expect(m.systemAskedForNotifications)
+    let skipped = model(services(MockAccountService(existing: .passkey, signedIn: true)), facts: facts) { finished = true }
+    skipped.resume()
+    #expect(finished)
   }
 
   // MARK: Support

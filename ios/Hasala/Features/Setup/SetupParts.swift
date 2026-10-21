@@ -106,64 +106,6 @@ struct SetupQuestion: View {
   }
 }
 
-/// One row of the scan's and the done screen's step cards (Paper "StepRow"): a 22 lane
-/// holding a mint check disc (done), a 20 spinner (now) or an 18 empty ring (next), then
-/// 15/21 text, the "now" title at 600 with a 13/18 detail under it. Only one row is "now".
-struct StepRow: View {
-  enum State: Equatable { case done, now, next }
-
-  var text: String
-  var state: State
-  var detail: String?
-
-  @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 21
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 12) {
-      mark.frame(width: 22, height: max(22, lane))
-      VStack(alignment: .leading, spacing: 2) {
-        Text(text)
-          .hType(HType(size: 15, leading: 21, weight: state == .now ? .semibold : .regular, textStyle: .subheadline))
-          .foregroundStyle(state == .next ? HColor.textSecondary : HColor.textPrimary)
-        if let detail, state == .now {
-          Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
-        }
-      }
-      .fixedSize(horizontal: false, vertical: true)
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .accessibilityElement(children: .combine)
-    .accessibilityValue(state == .done ? "Done" : state == .now ? "In progress" : "Next")
-  }
-
-  @ViewBuilder private var mark: some View {
-    switch state {
-    case .done:
-      Circle().fill(HColor.statusSuccessSurface).frame(width: 22, height: 22)
-        .overlay { HIconView(.check, size: 12, color: HColor.statusSuccessForeground, strokeWidth: 3) }
-        .accessibilityHidden(true)
-    case .now:
-      Spinner(size: 20)
-    case .next:
-      Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).frame(width: 18, height: 18)
-        .accessibilityHidden(true)
-    }
-  }
-}
-
-/// A white card of step rows, 14 apart (Paper "Scan steps", "Summary").
-struct StepCard<Rows: View>: View {
-  @ViewBuilder var rows: () -> Rows
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 14) { rows() }
-      .padding(.vertical, 18)
-      .padding(.horizontal, 16)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-  }
-}
-
 /// The note above a step's button (Paper "Note row"): a 16 lock in a 20 lane and 15/20
 /// secondary text, 8 in from the dock's edges.
 struct DockNote: View {
@@ -194,31 +136,5 @@ struct SetupFailureBanner: View {
     if let message = failure?.message, !message.isEmpty {
       FailureBanner(failure: .badPhrase(message))
     }
-  }
-}
-
-/// "Reading on this iPhone · 214 of 268" above the main button on income and plan (Paper
-/// "Scan status pill", page 17 §04 A) while the first scan runs; it rises in and fades out
-/// when the scan ends. The screen stays usable.
-struct ScanPill: View {
-  var scan: ScanProgress?
-  var running: Bool
-
-  @Environment(\.hMotion) private var policy
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  var body: some View {
-    let motion = MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
-    ZStack {
-      if running, let scan {
-        BackgroundWorkPill(
-          label: scan.phase == .background ? "Importing in the background" : "Reading on this iPhone",
-          count: scan.phase == .background ? nil : "\(scan.read) of \(scan.total)")
-          .accessibilityIdentifier("scan.pill")
-          .transition(.asymmetric(insertion: motion.transition(.rise), removal: motion.transition(.fade)))
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .animation(motion.animation(running ? .rise : .fade), value: running)
   }
 }

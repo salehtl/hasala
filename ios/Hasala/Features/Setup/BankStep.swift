@@ -2,7 +2,7 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Setup · 1 of 4 · Connect your bank alerts (Paper X4 "Proposal · Step 4 · Bank alerts +
+/// Setup · Connect your bank alerts (Paper X4 "Proposal · Step 4 · Bank alerts +
 /// Gmail"): the banks the beta reads, all picked to start, how to turn on their email
 /// alerts, a card for a bank that isn't listed, the mailbox they go to, what Google's own
 /// screens will show, and the provider's sign-in, which runs from here.
@@ -21,7 +21,6 @@ struct BankStep: View {
     AccountScreen(
       title: "Connect your bank alerts",
       subtitle: "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
-      steps: model.steps(1),
       trailing: skip(connected)
     ) {
       VStack(alignment: .leading, spacing: 12) {
