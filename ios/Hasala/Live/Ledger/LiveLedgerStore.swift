@@ -51,6 +51,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private var reloadSeq = 0
   @ObservationIgnored private var writesInFlight = 0
   @ObservationIgnored var onWriteFailed: (@MainActor () -> Void)?
+  @ObservationIgnored private var forkRecords: [String: LedgerStateMapper.BillRecord] = [:]
+  @ObservationIgnored private var forksLookedUp: Set<String> = []
 
   init(
     reader: LedgerReader, author: LedgerEditAuthor?, profile: ProfileInfo, prefs: DevicePrefsStore,
@@ -132,11 +134,18 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     reloadSeq += 1
     let seq = reloadSeq
     let today = clock()
+    let reader = self.reader
+    if let author, let forks = try? reader.forkNotices(kind: "bill") {
+      let missing = Set(forks.map(\.loserOp)).subtracting(forksLookedUp)
+      if !missing.isEmpty {
+        forksLookedUp.formUnion(missing)
+        forkRecords.merge(await author.billRecords(opIDs: missing)) { a, _ in a }
+      }
+    }
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
       skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
-      dismissedNotices: prefs.dismissedNoticeDigests)
-    let reader = self.reader
+      dismissedNotices: prefs.dismissedNoticeDigests, forkRecords: forkRecords)
     let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
       .value
     guard seq == reloadSeq, writesInFlight == 0, let mapped else { return }
@@ -181,7 +190,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   static func authorsInverse(_ edit: LedgerEdit) -> Bool {
     switch edit {
-    case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
+    case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .trackCandidate, .dismissCandidate, .reapplyBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
       .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome:
       true
     case .resolveCopy(_, let merge): merge
@@ -371,8 +380,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       }
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
       return ("Moved to \(name(to))", [])
-    case .trackCandidate, .dismissCandidate:
-      throw .notFound
     case .markBillPaid(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
       let due = s.bills[i].nextDue
@@ -385,7 +392,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.bills[i].priceChangeFrom = nil
       return ("New amount accepted", [])
     case .stopTrackingBill, .addBill, .editBillAmount, .pauseBill, .resumeBill, .endBill, .reactivateBill, .deleteBill,
-      .linkBillPayments, .reapplyBill, .editIncome, .dismissBillNotice:
+      .linkBillPayments, .reapplyBill, .editIncome, .dismissBillNotice, .trackCandidate, .dismissCandidate:
       return (try BillPatch.apply(edit, &s, today: now.date), [])
     case .setRuleEnabled(let id, let enabled):
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }

@@ -148,20 +148,19 @@ struct LiveLedgerMapperTests {
     let want = HomeEngine.snapshot(MayaLedger.state, now: now)
     // The hero: 11,115.62 spent of 19,000, the tick at 11,217.17 (the bills paid so far are
     // linked to their payments in the seed too), on track, and the tiles.
-    #expect(want.hero == Maya.home.hero)
-    #expect(got.hero.spent == want.hero.spent && got.hero.plan == want.hero.plan && got.hero.verdict == want.hero.verdict)
-    #expect(got.hero.tick == .aed(11_394_59))
+    #expect(got.hero == want.hero)
+    #expect(got.hero == Maya.home.hero)
+    #expect(got.hero.tick == .aed(11_217_17))
     #expect(got.hero.tiles.map(\.value) == [.aed(9_040_80), .aed(1_247_54), .aed(5_000_00)])
     #expect(HomeEngine.billsThisMonth(live, month: MayaLedger.october).paid == 8_005_89)
-    // The bell: the transactions to sort and du's new price. The detector's proposals are not
-    // ops, so live finds no bill yet (the mock's Apple.com/bill). AXA's 7 October due falls
-    // before the day the sample was loaded, its tracking day, so it is not late (decision 3).
-    // A bill's row id is its bill id, which the seed mints afresh, so rows compare by what they say.
-    let wantRows = want.notifications.needsALook.filter { !$0.id.hasPrefix("found.") && !$0.title.hasPrefix("AXA") }
+    // The bell: the transactions to sort, AXA three days late and du's new price. The detector's
+    // proposals are not ops, so live finds no bill yet (the mock's Apple.com/bill). A bill's row
+    // id is its bill id, which the seed mints afresh, so rows compare by what they say.
+    let wantRows = want.notifications.needsALook.filter { !$0.id.hasPrefix("found.") }
     #expect(got.notifications.needsALook.map(\.title) == wantRows.map(\.title))
     #expect(got.notifications.needsALook.map(\.line) == wantRows.map(\.line))
     #expect(got.notifications.needsALook.map(\.when) == wantRows.map(\.when))
-    #expect(got.notifications.count == 2)
+    #expect(got.notifications.count == 3)
     // Widgets: the bucket pace rows, the next bill, net worth, the trip, the goal, today.
     func widget(_ s: HomeSnapshot, _ id: String) -> HomeWidget? { s.widgets.first { $0.id == id } }
     #expect(widget(got, "budgetPace") == widget(want, "budgetPace"))
@@ -232,7 +231,7 @@ struct LiveLedgerMapperTests {
     #expect(got.review?.count == 6)
     #expect(got.review?.unplanned == .aed(827_28))
     #expect(got.chips == want.chips)
-    #expect(got.comingUp.map(\.name) == ["DEWA"])
+    #expect(got.comingUp.map(\.name) == ["DEWA", "AXA Insurance"])
     #expect(got.days.map(\.title) == want.days.map(\.title))
     #expect(got.days.map(\.total) == want.days.map(\.total))
     #expect(got.days.map { $0.rows.map(\.merchant) } == want.days.map { $0.rows.map(\.merchant) })
@@ -263,11 +262,11 @@ struct LiveLedgerMapperTests {
     let live = try await Self.foldedState()
     let got = BillsEngine.snapshot(live, now: MayaLedger.now)
     let want = BillsEngine.snapshot(MayaLedger.state, now: MayaLedger.now)
-    #expect(got.next14 == .aed(489_15))
+    #expect(got.next14 == .aed(1_039_15))
     #expect(got.incomeLine == want.incomeLine)
-    #expect(got.needsALook.map(\.name) == ["du"])
-    #expect(got.needsALook.map(\.kind) == want.needsALook.filter { $0.name == "du" }.map(\.kind))
-    #expect(got.upcoming.map(\.name) == ["DEWA", "Salary · Acme Gulf", "Rent · Al Habtoor", "Netflix", "AXA Insurance", "Spotify"])
+    #expect(got.needsALook.map(\.name) == ["AXA Insurance", "du"])
+    #expect(got.needsALook.map(\.kind) == want.needsALook.map(\.kind))
+    #expect(got.upcoming.map(\.name) == want.upcoming.map(\.name))
     #expect(got.recentlyPaid.map(\.name) == want.recentlyPaid.map(\.name))
     #expect(got.paidThisMonth == .aed(8_005_89))
     #expect(got.tracked == want.tracked)
@@ -290,7 +289,7 @@ struct LiveLedgerMapperTests {
     #expect(lp.readyToAssign == fp.readyToAssign)
     #expect(lp.sections.map(\.left) == fp.sections.map(\.left))
     #expect(lp.sections.flatMap(\.rows).map(\.trailing) == fp.sections.flatMap(\.rows).map(\.trailing))
-    #expect(BillsEngine.snapshot(live, now: now).next14 == .aed(489_15))
+    #expect(BillsEngine.snapshot(live, now: now).next14 == .aed(1_039_15))
     #expect(live.txns.filter { $0.postedAt.date.yearMonth == MayaLedger.october }.count == 26)
     // The gate is one-shot: a second load is refused, and nothing more is authored.
     await #expect(throws: SampleLoadError.self) { _ = try await Self.seed(a) }

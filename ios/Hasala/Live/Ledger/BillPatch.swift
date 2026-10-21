@@ -85,6 +85,22 @@ nonisolated enum BillPatch {
   static func apply(_ edit: LedgerEdit, _ s: inout LedgerState, today: LocalDate) throws(ActionError) -> String? {
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
     switch edit {
+    case .trackCandidate(let id):
+      guard let c = s.billCandidates.first(where: { $0.id == id }) else { throw .notFound }
+      s.billCandidates.removeAll { $0.id == id }
+      let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
+      var b = Bill(
+        id: id, name: c.name, kind: categoryName(c.categoryID), categoryID: c.categoryID, amount: c.amount,
+        usualDay: c.last.day, nextDue: c.last, source: .detected, cadence: cadence,
+        every: cadence == .weekly ? max(1, c.everyDays / 7) : 1, trackingSince: today)
+      b.nextDue = shift(b, from: c.last, by: 1)
+      s.bills.removeAll { $0.id == id }
+      s.bills.append(b)
+      return "Tracking \(c.name)"
+    case .dismissCandidate(let id):
+      guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
+      s.billCandidates.removeAll { $0.id == id }
+      return "Dismissed"
     case .stopTrackingBill(let id):
       let i = try index(s, id)
       try end(&s.bills[i], lastPayment: today)
@@ -166,7 +182,8 @@ nonisolated enum BillPatch {
       guard s.bills[i].notices.contains(where: { if case .changedOnTwoDevices = $0.kind { true } else { false } }) else {
         throw .notFound
       }
-      throw .invalidBill
+      s.bills[i].notices.removeAll { if case .changedOnTwoDevices = $0.kind { true } else { false } }
+      return "Re-applied your change"
     case .dismissBillNotice(let id, let noticeID):
       guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].notices.contains(where: { $0.id == noticeID })
       else { throw .notFound }

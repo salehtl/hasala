@@ -18,6 +18,8 @@ import HasalaModels
 /// resolved occurrences, a balance is the latest check-in. What no op family holds (the
 /// detector's bill proposals, review suggestions, row detail overrides) is left empty.
 nonisolated enum LedgerStateMapper {
+  typealias BillRecord = CoreReplay.Bill
+
   /// What the projection doesn't hold: who is signed in, the mailbox's health and the
   /// device's own preferences.
   struct Context: Sendable {
@@ -30,6 +32,7 @@ nonisolated enum LedgerStateMapper {
     var digestSalt = ""
     var unreadSenders: [String: String] = [:]
     var dismissedNotices: Set<String> = []
+    var forkRecords: [String: CoreReplay.Bill] = [:]
   }
 
   enum MapError: Error { case date }
@@ -40,13 +43,20 @@ nonisolated enum LedgerStateMapper {
   static func map(_ r: LedgerReader, context c: Context) throws -> LedgerState {
     guard let today = CivilDate(year: c.today.year, month: c.today.month, day: c.today.day) else { throw MapError.date }
     let month = today.yearMonth
-    let engine = try r.planEngine(month: month, today: today)
     let taxonomy = try r.taxonomy()
-
-    let categories = taxonomy.ordered.map { category($0, engine: engine) }
     let records = try r.bills()
     let resolutions = try r.billResolutions()
-    let matched = derivedMatches(records, resolutions: resolutions, today: today)
+    var rows = try r.activity(limit: 1_000_000)
+    rows += try r.archived(limit: 1_000_000)
+    let home = try r.homeCurrency() ?? "AED"
+    let derived = derive(records, resolutions: resolutions, rows: rows, today: today)
+    let roles = CoreDomain.PlanEngine(plan: try r.planState(), taxonomy: taxonomy, lines: [], today: today)
+    let expectations = expectations(
+      records, derived: derived, month: month, today: today, home: home, role: { roles.role($0) })
+    let engine = try r.planEngine(month: month, today: today, bills: expectations)
+
+    let categories = taxonomy.ordered.map { category($0, engine: engine) }
+    let matched = derived.matched
     let billOfTxn = billOfTxn(records, resolutions: resolutions, matched: matched)
 
     // Accounts: the latest check-in is the balance (03b §4.6).
@@ -64,14 +74,12 @@ nonisolated enum LedgerStateMapper {
     // Transactions: every live, parsed row (archived ones too, flagged).
     let rules = try r.rules()
     let ruleByID = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var rows = try r.activity(limit: 1_000_000)
-    rows += try r.archived(limit: 1_000_000)
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for row in rows {
       txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
     }
-    markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
+    markSamePurchases(&txns, rows: rows, home: home)
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
       unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
@@ -98,15 +106,25 @@ nonisolated enum LedgerStateMapper {
     let paidAmount = Dictionary(txns.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     var byBill: [String: [BillResolution]] = [:]
     for res in resolutions { byBill[res.bill, default: []].append(res) }
+    let current = Dictionary(records.map { ($0.id, $0.bill) }, uniquingKeysWith: { a, _ in a })
+    let forks = forkNotices(try r.forkNotices(kind: "bill"), records: current, losers: c.forkRecords)
     for (id, b) in records {
       if var mapped = bill(
-        id: id, b, resolutions: byBill[id] ?? [], matched: matched[id] ?? [], today: c.today, taxonomy: taxonomy,
-        paidAmount: paidAmount)
+        id: id, b, resolutions: byBill[id] ?? [], matched: matched[id] ?? [], result: derived.result,
+        notices: derived.notices[id] ?? [], today: c.today, taxonomy: taxonomy, paidAmount: paidAmount)
       {
+        mapped.notices += forks[id] ?? []
         mapped.notices = notices(mapped.notices, dismissed: c.dismissedNotices, salt: c.digestSalt)
+        if let usual = mapped.priceChangeFrom, let txn = mapped.payments.first?.txnID,
+          !mapped.notices.contains(where: { $0.id == "priceChange.\(txn)" })
+        {
+          mapped.amount = usual
+          mapped.priceChangeFrom = nil
+        }
         bills.append(mapped)
       }
     }
+    let billCandidates = candidates(derived.candidates, taxonomy: taxonomy)
     for s in engine.plan.incomeSources.values {
       bills.append(income(s, today: c.today, taxonomy: taxonomy))
     }
@@ -137,7 +155,7 @@ nonisolated enum LedgerStateMapper {
     }
 
     return LedgerState(
-      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
+      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: billCandidates,
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
@@ -290,10 +308,197 @@ nonisolated enum LedgerStateMapper {
     var txnID: String
   }
 
-  static func derivedMatches(
-    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], today: CivilDate
-  ) -> [String: [DerivedMatch]] {
-    [:]
+  struct Derived: Sendable {
+    var result: BillMatcherResult
+    var matched: [String: [DerivedMatch]]
+    var notices: [String: [BillNoticeCore]]
+    var days: [String: CivilDate]
+    var candidates: [BillCandidateCore]
+  }
+
+  static func billEligible(_ row: TxnRow) -> Bool {
+    row.direction == "debit" && BillEdits.linkable(row, direction: "debit")
+  }
+
+  static func derive(
+    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], rows: [TxnRow], today: CivilDate
+  ) -> Derived {
+    var match: [MatchRow] = []
+    var detect: [DetectRow] = []
+    var days: [String: CivilDate] = [:]
+    match.reserveCapacity(rows.count)
+    detect.reserveCapacity(rows.count)
+    for row in rows {
+      guard let day = CivilDate(wire: row.localDate) else { continue }
+      days[row.id] = day
+      let eligible = billEligible(row)
+      match.append(
+        MatchRow(
+          txnID: row.id, merchantKey: row.merchantKey, direction: row.direction, amountMinor: row.amountMinor,
+          currency: row.currency, homeMinor: row.amountHomeMinor, day: day, eligible: eligible))
+      detect.append(
+        DetectRow(
+          txnID: row.id, merchantKey: row.merchantKey, merchantName: row.displayName, direction: row.direction,
+          amountMinor: row.amountMinor, currency: row.currency, day: day, category: row.category,
+          eligible: eligible && Grammar.isBillKey(row.merchantKey)))
+    }
+    let result = BillMatcher.run(
+      bills: records.map { BillMatchInput(id: $0.id, bill: $0.bill) }, resolutions: resolutions, rows: match, today: today)
+    var matched: [String: [DerivedMatch]] = [:]
+    for m in result.matches where !m.explicit {
+      matched[m.bill, default: []].append(DerivedMatch(due: m.due, txnID: m.txnID))
+    }
+    var notices: [String: [BillNoticeCore]] = [:]
+    for n in result.notices { notices[n.bill, default: []].append(n) }
+    let covered = Set(records.flatMap(\.bill.keys))
+    let candidates = BillDetector.run(rows: detect, coveredKeys: covered, today: today)
+    return Derived(result: result, matched: matched, notices: notices, days: days, candidates: candidates)
+  }
+
+  static func detect(_ records: [(id: String, bill: CoreReplay.Bill)], rows: [TxnRow], today: CivilDate)
+    -> [BillCandidateCore]
+  {
+    derive(records, resolutions: [], rows: rows, today: today).candidates
+  }
+
+  static func candidates(_ found: [BillCandidateCore], taxonomy: TaxonomyView) -> [BillCandidate] {
+    found.map { c in
+      let category = c.category.flatMap { id in taxonomy.info(id).flatMap { $0.kind == .spending ? id : nil } }
+      return BillCandidate(
+        id: c.id, name: c.name, categoryID: category ?? "subscriptions",
+        amount: Money(minor: c.amountMinor, currency: c.currency), seenCount: c.seen,
+        everyDays: everyDays(c.unit, every: Int(c.every)), last: local(c.last))
+    }
+  }
+
+  static func everyDays(_ unit: String, every: Int) -> Int {
+    switch unit {
+    case "day": every
+    case "week": 7 * every
+    case "year": 365 * every
+    default: 30 * every
+    }
+  }
+
+  static func expectations(
+    _ records: [(id: String, bill: CoreReplay.Bill)], derived: Derived, month: CivilMonth, today: CivilDate, home: String,
+    role: (String) -> String?
+  ) -> [BillExpectation] {
+    var out: [BillExpectation] = []
+    for (id, b) in records where b.status == "active" && b.direction == "debit" && b.currency == home {
+      let category = b.category ?? "utilities"
+      guard role(category) == "bills", let v = BillScheduleView(b) else { continue }
+      for d in v.dues(from: month.firstDay, through: month.lastDay) {
+        let status: BillExpectation.Status
+        var paidDay: CivilDate?
+        switch derived.result.status(bill: id, due: d, today: today) {
+        case .paid(let txn, _):
+          status = .paid
+          paidDay = txn.flatMap { derived.days[$0] }
+        case .skipped: status = .skipped
+        case .snoozed(let until): status = until > today ? .upcoming : until == today ? .due : .late
+        case .paused, .notTracked: continue
+        case .upcoming: status = .upcoming
+        case .due: status = .due
+        case .late: status = .late
+        }
+        let terms = v.terms(at: d)
+        out.append(
+          BillExpectation(
+            billID: id, categoryID: category, payee: b.name, expectedDay: d, amount: terms.amountMinor,
+            isEstimate: terms.variable, status: status, paidDay: paidDay,
+            usualDayOfMonth: v.unit == "month" ? v.anchor.day : nil))
+      }
+    }
+    return out
+  }
+
+  static func kitNotices(_ core: [BillNoticeCore], currency: String, paidAmount: [String: HasalaModels.Txn])
+    -> [BillNotice]
+  {
+    var out: [BillNotice] = []
+    var latestPrice: (due: CivilDate, notice: BillNotice)?
+    for n in core {
+      switch n.kind {
+      case .priceChange(let due, let usual, let charged):
+        let notice = BillNotice(
+          id: "priceChange.\(n.txnID)",
+          kind: .priceChange(
+            usual: Money(minor: usual, currency: currency), charged: Money(minor: charged, currency: currency),
+            from: local(due)), txnID: n.txnID)
+        if latestPrice.map({ due > $0.due }) ?? true { latestPrice = (due, notice) }
+      case .chargedWhilePaused(let due):
+        let t = paidAmount[n.txnID]
+        let charged = t.flatMap { charged($0, in: currency) } ?? Money(minor: 0, currency: currency)
+        out.append(
+          BillNotice(
+            id: "chargedWhilePaused.\(n.txnID)", kind: .chargedWhilePaused(charged: charged, on: t?.postedAt.date ?? local(due)),
+            txnID: n.txnID))
+      case .chargedAfterEnd(let day, let chargedMinor):
+        out.append(
+          BillNotice(
+            id: "chargedAfterEnd.\(n.txnID)",
+            kind: .chargedAfterEnd(charged: Money(minor: chargedMinor, currency: currency), on: local(day)), txnID: n.txnID))
+      }
+    }
+    if let p = latestPrice { out.insert(p.notice, at: 0) }
+    return out
+  }
+
+  static func forkNotices(_ forks: [ForkNotice], records: [String: CoreReplay.Bill], losers: [String: CoreReplay.Bill])
+    -> [String: [BillNotice]]
+  {
+    var out: [String: [BillNotice]] = [:]
+    var seen = Set<String>()
+    for f in forks where f.entityKind == "bill" && seen.insert(f.loserOp).inserted {
+      guard let current = records[f.entityID], current.status != "dismissed" || losers[f.loserOp] != nil else { continue }
+      let summary: String
+      if let loser = losers[f.loserOp] {
+        guard let s = forkSummary(loser: loser, current: current) else { continue }
+        summary = s
+      } else {
+        summary = "A change made on your other iPhone was replaced"
+      }
+      out[f.entityID, default: []].append(BillNotice(id: "fork.\(f.loserOp)", kind: .changedOnTwoDevices(summary: summary)))
+    }
+    return out
+  }
+
+  static func forkSummary(loser l: CoreReplay.Bill, current c: CoreReplay.Bill) -> String? {
+    func day(_ wire: String?) -> String { wire.flatMap(CivilDate.init(wire:)).map { local($0).dayMonth } ?? "" }
+    func amount(_ minor: Int64, _ mode: String) -> String { (mode == "variable" ? "~" : "") + MoneyFormat.string(minor) }
+    if l.status != c.status {
+      switch l.status {
+      case "dismissed": return "Deleted"
+      case "cancelled": return "Ended \(day(l.end))"
+      default: return "Tracking again"
+      }
+    }
+    var parts: [String] = []
+    if l.name != c.name { parts.append("Name \(l.name)") }
+    if l.amountMinor != c.amountMinor || l.amountMode != c.amountMode { parts.append("Amount \(amount(l.amountMinor, l.amountMode))") }
+    for ch in l.changes where !c.changes.contains(ch) {
+      parts.append("Amount \(amount(ch.amountMinor, ch.amountMode)) from \(day(ch.from))")
+    }
+    for p in l.pauses where !c.pauses.contains(p) {
+      if p.until == nil {
+        parts.append("Paused")
+      } else if c.pauses.contains(where: { $0.from == p.from }) {
+        parts.append("Resumed \(day(p.until))")
+      } else {
+        parts.append("Paused until \(day(p.until))")
+      }
+    }
+    if l.cadence != c.cadence || l.anchor != c.anchor || l.start != c.start { parts.append("Schedule") }
+    if l.status == "cancelled", l.end != c.end { parts.append("Ended \(day(l.end))") }
+    if parts.isEmpty {
+      var a = l
+      a.createdAt = c.createdAt
+      a.firstSeq = c.firstSeq
+      a.version = c.version
+      if a != c { parts.append("Other details") }
+    }
+    return parts.isEmpty ? nil : parts.joined(separator: ", ")
   }
 
   static func billOfTxn(
@@ -344,7 +549,8 @@ nonisolated enum LedgerStateMapper {
   }
 
   static func bill(
-    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], matched: [DerivedMatch] = [], today: LocalDate,
+    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], matched: [DerivedMatch] = [],
+    result: BillMatcherResult? = nil, notices core: [BillNoticeCore] = [], today: LocalDate,
     taxonomy: TaxonomyView, paidAmount: [String: HasalaModels.Txn]
   ) -> HasalaModels.Bill? {
     guard b.direction == "debit", let v = BillScheduleView(b),
@@ -352,15 +558,13 @@ nonisolated enum LedgerStateMapper {
     else { return nil }
     let payments = payments(explicit: resolutions, matched: matched, paidAmount: paidAmount, currency: b.currency)
     let paidDues = Set(payments.map(\.due))
-    var resolved: [CivilDate: BillResolution] = [:]
-    for r in resolutions { if let d = CivilDate(wire: r.due) { resolved[d] = r } }
+    let statuses = result ?? BillMatcher.run(bills: [BillMatchInput(id: id, bill: b)], resolutions: resolutions, rows: [], today: t)
     func open(_ d: CivilDate) -> Bool {
-      if v.isPaused(d) || paidDues.contains(local(d)) { return false }
-      guard let r = resolved[d] else { return true }
-      switch r.resolution {
-      case "skipped", "paid": return false
-      case "snoozed": return (r.until.flatMap(CivilDate.init(wire:)) ?? d) < t
-      default: return true
+      if paidDues.contains(local(d)) { return false }
+      switch statuses.status(bill: id, due: d, today: t) {
+      case .upcoming, .due, .late: return true
+      case .snoozed(let until): return until < t
+      case .paid, .skipped, .paused, .notTracked: return false
       }
     }
     var next: CivilDate?
@@ -416,7 +620,8 @@ nonisolated enum LedgerStateMapper {
       source: b.source == "manual" ? .manual : .detected, cadence: cadence, every: every, pausedSince: pausedSince,
       pausedUntil: pausedUntil, endedOn: b.status == "cancelled" ? v.end.map(local) : nil,
       trackingSince: local(v.trackingSince), nextAmount: upcoming.map { Money(minor: $0.terms.amountMinor, currency: b.currency) },
-      nextAmountFrom: upcoming.map { local($0.from) }, payments: payments, notices: [], keys: b.keys)
+      nextAmountFrom: upcoming.map { local($0.from) }, payments: payments,
+      notices: kitNotices(core, currency: b.currency, paidAmount: paidAmount), keys: b.keys)
   }
 
   static func income(_ s: IncomeSource, today: LocalDate, taxonomy: TaxonomyView) -> HasalaModels.Bill {

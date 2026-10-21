@@ -145,7 +145,16 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
       try await build { a throws(AuthorError) in a.setBillOccurrence(bill: id, due: d, .paid(txn: nil)) }
     case .acceptBillAmount(let id):
-      guard let shown = before.bill(id)?.amount else { throw Failure.notFound }
+      guard let shownBill = before.bill(id) else { throw Failure.notFound }
+      let shown = shownBill.amount
+      for n in shownBill.notices {
+        guard case .priceChange(_, let charged, let from) = n.kind else { continue }
+        let f = try civil(from)
+        let old = try await editBill(id) { d throws in
+          try BillEdits.editAmount(&d, amountMinor: charged.minor, currency: charged.currency, variable: false, from: f)
+        }
+        return [.bill(id: id, draft: old)]
+      }
       let old = try await editBill(id) { d in
         if d.changes.isEmpty {
           d.amountMinor = shown.minor
@@ -188,8 +197,12 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return [.bill(id: id, draft: old)]
     case .linkBillPayments(let id, let txns):
       return try await linkPayments(id, txns)
-    case .reapplyBill:
-      throw Failure.refused("re-apply comes with fork notices")
+    case .reapplyBill(let id):
+      return try await reapply(id)
+    case .trackCandidate(let id):
+      return try await candidate(id, track: true, today: today)
+    case .dismissCandidate(let id):
+      return try await candidate(id, track: false, today: today)
     case .editIncome(let id, let amount, let payday, let active):
       return try await editIncome(id, amount: amount, payday: payday, active: active)
     case .setRate(let currency, let micro):
@@ -240,7 +253,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in
         for id in ids { a.annotate(txnID: id, set: [("project_id", project)]) }
       }
-    case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock,
+    case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break
     }
@@ -592,6 +605,66 @@ nonisolated struct LedgerEditAuthor: Sendable {
       for l in links { a.setBillOccurrence(bill: id, due: l.due, .paid(txn: l.txn)) }
     }
     return inverses
+  }
+
+  static func candidateDraft(_ c: BillCandidateCore) -> OpAuthor.BillDraft {
+    OpAuthor.BillDraft(
+      name: c.name, keys: [c.key], direction: "debit", currency: c.currency,
+      mode: c.variable ? .variable : .fixed(toleranceBp: BillEdits.defaultToleranceBp), amountMinor: c.amountMinor,
+      cadenceUnit: OpAuthor.CadenceUnit(rawValue: c.unit) ?? .month, cadenceEvery: c.every, anchor: c.anchor, start: c.start,
+      category: c.category, account: nil, source: .detected, status: .active)
+  }
+
+  static func withdrawn(_ d: OpAuthor.BillDraft, id: String) -> OpAuthor.BillDraft {
+    var w = d
+    w.status = .dismissed
+    w.keys = [id]
+    w.end = nil
+    w.changes = []
+    w.pauses = []
+    return w
+  }
+
+  private func candidate(_ id: String, track: Bool, today: LocalDate) async throws -> [Inverse] {
+    let t = try civil(today)
+    let records = try reader.bills()
+    var rows = try reader.activity(limit: 1_000_000)
+    rows += try reader.archived(limit: 1_000_000)
+    guard let c = LedgerStateMapper.detect(records, rows: rows, today: t).first(where: { $0.id == id }) else {
+      throw Failure.notFound
+    }
+    var d = Self.candidateDraft(c)
+    let taxonomy = try reader.taxonomy()
+    if d.category.flatMap({ taxonomy.info($0)?.kind }) != .spending {
+      d.category = taxonomy.info("subscriptions") == nil ? nil : "subscriptions"
+    }
+    if !track { d.status = .dismissed }
+    let existing = records.first { $0.id == id }?.bill
+    let draft = d
+    try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: existing?.version, draft) }
+    if let existing, let old = Self.draft(existing) { return [.bill(id: id, draft: old)] }
+    return [.bill(id: id, draft: Self.withdrawn(draft, id: id))]
+  }
+
+  private func reapply(_ id: String) async throws -> [Inverse] {
+    guard let (_, current) = try reader.bills().first(where: { $0.id == id }), let old = Self.draft(current) else {
+      throw Failure.notFound
+    }
+    let forks = try reader.forkNotices(kind: "bill").filter { $0.entityID == id }
+    let records = await billRecords(opIDs: Set(forks.map(\.loserOp)))
+    for f in forks.reversed() {
+      guard let loser = records[f.loserOp], LedgerStateMapper.forkSummary(loser: loser, current: current) != nil,
+        let draft = Self.draft(loser)
+      else { continue }
+      try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: current.version, draft) }
+      return [.bill(id: id, draft: old)]
+    }
+    throw Failure.notFound
+  }
+
+  func billRecords(opIDs: Set<String>) async -> [String: CoreReplay.Bill] {
+    guard !opIDs.isEmpty else { return [:] }
+    return await observer.ops(opIDs).compactMapValues { Replay.billRecord($0) }
   }
 
   static let incomePrefix = "income."
