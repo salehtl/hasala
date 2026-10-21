@@ -212,6 +212,7 @@ extension State {
       "active": .bool(c.active), "bucket": str(c.bucket), "id": .string(c.id), "kind": .string(c.kind), "name": .string(c.name),
     ]
     if c.shape <= 3 { o["color"] = str(c.color) } else { o["icon"] = str(c.icon) }
+    if let parent = c.parent { o["parent"] = .string(parent) }
     return obj(o)
   }
 

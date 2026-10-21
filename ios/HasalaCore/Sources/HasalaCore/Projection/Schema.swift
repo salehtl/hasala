@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 6
+  public static let version = 7
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
@@ -149,6 +149,7 @@ public enum ProjectionSchema {
       icon    TEXT NOT NULL,
       active  INTEGER NOT NULL CHECK (active IN (0,1)),
       builtin INTEGER NOT NULL CHECK (builtin IN (0,1)),
+      parent  TEXT,
       CHECK ((kind = 'spending') = (bucket IS NOT NULL))
     );
 

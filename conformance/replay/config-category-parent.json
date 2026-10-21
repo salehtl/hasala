@@ -1,0 +1,237 @@
+{
+  "name": "category-parent",
+  "group": "config",
+  "note": "category_defined v4 may name a built-in parent: absent or null means none; an edit replaces it with the rest of the record; the record's own kind and bucket are kept even when they differ from the parent's; v3 ignores the key.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-1",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Coffee",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "dining"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-2",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000102",
+            "name": "Side gigs",
+            "kind": "income",
+            "bucket": null,
+            "icon": null,
+            "active": true,
+            "parent": "freelance"
+          }
+        },
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-3",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000103",
+            "name": "Old custom",
+            "kind": "spending",
+            "bucket": "need",
+            "icon": null,
+            "active": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-4",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Coffee beans",
+            "kind": "spending",
+            "bucket": "need",
+            "icon": "cup",
+            "active": true,
+            "parent": "groceries"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-5",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000102",
+            "name": "Side gigs",
+            "kind": "income",
+            "bucket": null,
+            "icon": null,
+            "active": false,
+            "parent": null
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 3,
+          "type": "category_defined",
+          "op_id": "category-parent-6",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "k1",
+            "name": "Kids",
+            "kind": "spending",
+            "bucket": "want",
+            "active": true,
+            "parent": "not a parent"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-7",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000103",
+            "name": "Old custom",
+            "kind": "spending",
+            "bucket": "need",
+            "icon": null,
+            "active": true,
+            "parent": "dining"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [
+        [
+          "c_01jc0000000000000000000101",
+          {
+            "active": true,
+            "bucket": "need",
+            "icon": "cup",
+            "id": "c_01jc0000000000000000000101",
+            "kind": "spending",
+            "name": "Coffee beans",
+            "parent": "groceries"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000102",
+          {
+            "active": false,
+            "bucket": null,
+            "icon": null,
+            "id": "c_01jc0000000000000000000102",
+            "kind": "income",
+            "name": "Side gigs"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000103",
+          {
+            "active": true,
+            "bucket": "need",
+            "icon": null,
+            "id": "c_01jc0000000000000000000103",
+            "kind": "spending",
+            "name": "Old custom",
+            "parent": "dining"
+          }
+        ],
+        [
+          "k1",
+          {
+            "active": true,
+            "bucket": "want",
+            "color": null,
+            "id": "k1",
+            "kind": "spending",
+            "name": "Kids"
+          }
+        ]
+      ],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "27adee4edb51a473194abf152c49b96b83994637e98c0f4a1061476e53efdb7e",
+    "order": {
+      "banks": [],
+      "categories": [
+        "c_01jc0000000000000000000101",
+        "c_01jc0000000000000000000102",
+        "c_01jc0000000000000000000103",
+        "k1"
+      ]
+    }
+  }
+}

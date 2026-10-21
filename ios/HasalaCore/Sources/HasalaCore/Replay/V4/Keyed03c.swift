@@ -100,8 +100,15 @@ extension State {
       guard let s = v.stringValue, Grammar.isIconID(s) else { throw PayloadError("icon must be an IconId, got \(showValue(v))") }
       icon = s
     }
+    var parent: String?
+    if let v = P.present(p["parent"]) {
+      guard let s = v.stringValue, Grammar.isCategoryParent(s) else {
+        throw PayloadError("parent must be a built-in category that can be a parent, got \(showValue(v))")
+      }
+      parent = s
+    }
     let active = try P.boolField(p["active"], "active")
-    return CategoryDef(shape: 4, id: id, name: name, kind: kind, bucket: bucket, color: nil, icon: icon, active: active)
+    return CategoryDef(shape: 4, id: id, name: name, kind: kind, bucket: bucket, color: nil, icon: icon, parent: parent, active: active)
   }
 
   /// 03c §5.1: `rule_added` at v4. `created_at` is filled from the create op.

@@ -166,6 +166,21 @@ struct ProjectionContractTests {
     #expect(try reader.taxonomy().ordered.count == 18)
   }
 
+  @Test("a custom category's parent is projected and read back")
+  func categoryParent() throws {
+    let maya = try Maya()
+    var s = maya.state
+    var a = OpAuthor(maya.context())
+    let id = try a.createCategory(name: "Coffee", parent: "dining", icon: "cup", in: TaxonomyView(state: s))
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let t = try LedgerReader(db).taxonomy()
+    #expect(t.info(id)?.parent == "dining" && t.info(id)?.bucket == .want)
+    #expect(t.info("dining")?.parent == nil)
+    #expect(t.ordered == TaxonomyView(state: s).ordered)
+  }
+
   @Test("display names: rename beats the dictionary beats prettify; local dates at +04:00")
   func displayAndDates() throws {
     let maya = try Maya()

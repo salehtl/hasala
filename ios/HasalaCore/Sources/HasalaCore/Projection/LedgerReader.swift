@@ -313,7 +313,7 @@ public struct LedgerReader: Sendable {
           CategoryInfo(
             id: r["id"], name: r["name"], kind: CategoryKind(rawValue: r["kind"]) ?? .excluded,
             bucket: (r["bucket"] as String?).flatMap(Bucket.init(rawValue:)), icon: r["icon"], active: r["active"], builtin: r["builtin"],
-            sortKey: r["ord"])
+            sortKey: r["ord"], parent: r["parent"])
         })
     }
   }

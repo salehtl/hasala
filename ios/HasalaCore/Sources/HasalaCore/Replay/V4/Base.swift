@@ -46,6 +46,13 @@ public enum Grammar {
   /// 03c §1.7 `IconId`: a `Token`.
   public static func isIconID(_ s: String) -> Bool { TextRules.isToken(s) }
 
+  public static let categoryParentIDs = [
+    "rent", "utilities", "groceries", "transport", "healthcare", "insurance", "dining", "entertainment", "shopping", "travel",
+    "subscriptions", "savings", "investments", "debt", "salary", "freelance",
+  ]
+
+  public static func isCategoryParent(_ s: String) -> Bool { categoryParentIDs.contains { utf8Equal($0, s) } }
+
   /// 03c §1.7 `EntityId` / `OpId`: a ULID, `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`.
   public static func isULID(_ s: String) -> Bool {
     let u = Array(s.utf8)
