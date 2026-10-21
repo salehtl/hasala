@@ -27,14 +27,14 @@ struct CoreCategorizeTests {
     #expect(Self.dictionary.defects.isEmpty)
   }
 
-  @Test("dict-02/03/04: digest mismatch disables; regex and income entries refused")
+  @Test("dict-02/03/04: digest mismatch disables; regex, income and refund entries refused; transfer entries load")
   func dictionaryRefusals() {
-    let doc = #"{"format":"hasala.merchant-dictionary","format_version":1,"bundle":"2026.10.11-1","taxonomy":1,"entries":[{"m":"regex","p":"^x","c":"dining"},{"m":"contains","p":"acme","c":"salary"},{"m":"contains","p":"ACME","c":"dining"},{"m":"contains","p":"acme","c":"dining"}]}"#
+    let doc = #"{"format":"hasala.merchant-dictionary","format_version":1,"bundle":"2026.10.11-1","taxonomy":1,"entries":[{"m":"regex","p":"^x","c":"dining"},{"m":"contains","p":"acme","c":"salary"},{"m":"contains","p":"ACME","c":"dining"},{"m":"contains","p":"acme","c":"dining"},{"m":"contains","p":"acme refund","c":"refunds"},{"m":"contains","p":"acme own","c":"transfer"}]}"#
     let bytes = Array(doc.utf8)
     #expect(MerchantDictionary.load(bytes, expectedSHA256: String(repeating: "0", count: 64)) == .failure(.digestMismatch))
     let d = try! MerchantDictionary.load(bytes, expectedSHA256: nil).get()
-    #expect(d.entries.count == 1)
-    #expect(d.defects.map(\.code) == ["regex_not_allowed", "category_not_spending", "pattern_not_canonical"])
+    #expect(d.entries.map(\.category) == ["dining", "transfer"])
+    #expect(d.defects.map(\.code) == ["regex_not_allowed", "category_not_spending", "pattern_not_canonical", "category_not_spending"])
   }
 
   @Test("decide: rule beats dictionary, retired categories skipped, credit gate suggests")
@@ -53,6 +53,25 @@ struct CoreCategorizeTests {
     #expect(retired.prepared.defects.contains(Defect(id: "01JC0000000000000000000004", code: "category_retired")))
     #expect(c.decide(merchantRaw: "   ", direction: .debit) == .none)
     #expect(c.decide(merchantRaw: "كارفور السيف", direction: .debit).category == "groceries")
+  }
+
+  @Test("own-account transfers file as Transfer on either side; a transfer to someone else is left to sort")
+  func ownAccountTransfers() {
+    let c = Categorizer(rules: [], dictionary: Self.dictionary, categories: Table())
+    for (m, dir) in [("DIB OWN ACCOUNT TRANSFER", Direction.debit), ("OWN ACCOUNT TRNSFER", .debit), ("OWN ACCOUNT TRNSFER", .credit)] {
+      let d = c.decide(merchantRaw: m, direction: dir)
+      #expect(d.category == "transfer" && d.display == "Own account transfer" && d.suggested == nil, "\(m) \(dir)")
+      guard case .dictionary(DictionaryManifest.bundle, _) = d.source else {
+        Issue.record("\(m): \(d.source)")
+        continue
+      }
+    }
+    for m in ["DIB TRANSFER", "SAMPLE BANK PJSC", "MB FUND TRANSFER DEBIT", "OUTWARD UAE FUNDS TRANS IPI", "ACC TO ACC TRANSFER CREDIT"] {
+      #expect(c.decide(merchantRaw: m, direction: .debit).category == nil, "\(m)")
+    }
+    let rule = RuleInput(id: "01JC0000000000000000000004", patterns: ["own account"], match: "contains", category: "rent", priority: 10)
+    #expect(Categorizer(rules: [rule], dictionary: Self.dictionary, categories: Table()).decide(merchantRaw: "DIB OWN ACCOUNT TRANSFER", direction: .debit).category == "rent")
+    #expect(Categorizer(rules: [], dictionary: Self.dictionary, categories: Table(retired: ["transfer"])).decide(merchantRaw: "OWN ACCOUNT TRNSFER", direction: .debit).category == nil)
   }
 
   @Test("pipe-02..06: the sweep re-files, never un-files, leaves user and held rows alone, keeps needs_review")

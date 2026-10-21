@@ -225,6 +225,7 @@ public struct MailboxStatus: Sendable, Equatable {
   /// False when the server relays no wakes ("Updates when you open Hasala").
   public var watchActive: Bool
   public var unlisted: [String] = []
+  public var unparsedSenders: [String: String] = [:]
 }
 
 public actor MailboxEngine {
@@ -917,6 +918,7 @@ public actor MailboxEngine {
         m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer)
       c.drafts.append(draft)
       c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
+      if let u = Self.unparsedSender(m, at: at) { c.unparsedSenders.append(u) }
       counted.count(draft)
     }
     do { try await store.commit(c) } catch { return nil }
@@ -1174,7 +1176,13 @@ public actor MailboxEngine {
         $0.newestMs > $1.newestMs
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
       health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil,
-      unlisted: await unlisted(state))
+      unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:])
+  }
+
+  static func unparsedSender(_ m: ParsedMail, from: String = "", at: Int64) -> UnparsedSenderRecord? {
+    guard m.fields == nil else { return nil }
+    let domain = m.senderDomain ?? BankDomains.domainOf(from)
+    return domain.isEmpty ? nil : UnparsedSenderRecord(messageID: m.messageID, domain: domain, atMs: at)
   }
 
   func unlisted(_ state: MailboxState) async -> [String] {
@@ -1523,13 +1531,16 @@ public actor MailboxEngine {
         switch mode {
         case .stage:
           report.staged += 1
-          c.stage.append(m)
+          var staged = m
+          if staged.senderDomain == nil { staged.senderDomain = Self.unparsedSender(m, from: from, at: at)?.domain }
+          c.stage.append(staged)
         case .author:
           let draft = MessageDisposer.finalize(
             m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))
+          if let u = Self.unparsedSender(m, from: from, at: at) { c.unparsedSenders.append(u) }
         }
       }
     }

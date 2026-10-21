@@ -319,6 +319,7 @@ struct SnapshotTests {
     #expect(s.txns["01JC0000000000000000000013"]?.isHeldCopy == true)
     #expect(s.txns["01JC0000000000000000000013"]?.copyOf == "01JC0000000000000000000012")
     #expect(s.txns["01JC0000000000000000000012"]?.copyOf == nil)
+    #expect(s.txns["01JC0000000000000000000015"]?.copyOf == nil && s.txns["01JC0000000000000000000014"]?.copyOf == nil)
     #expect(s.mailboxRetirements.first?.txnIDs == ["01JC0000000000000000000003", "01JC0000000000000000000008"])
     #expect(s.anomalies.map(\.kind) == ["duplicate_ingest"])
     #expect(s.unreadable.isEmpty)

@@ -6,7 +6,7 @@ import OrderedCollections
 
 public enum DuplicateRules {
   public static let probableCopyWindowMs: Int64 = 10 * 60_000
-  public static let transferCopyWindowMs: Int64 = 60 * 60_000
+  public static let transferCopyWindowMs: Int64 = 30 * 60_000
   static let transferNoticeTemplates = ["dib.transfer.v1", "dib.money-transfer.v1"]
   static let transferAlertTemplates = ["dib.account.v1"]
 

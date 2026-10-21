@@ -347,6 +347,12 @@ struct RuntimeGlueTests {
     #expect(dict.source["bundle"]?.stringValue == DictionaryManifest.bundle && dict.source["entry"]?.stringValue == "contains:starbucks")
     #expect(c.decide(merchantRaw: "STARBUCKS DIFC", direction: "credit") == .none)
     #expect(c.decide(merchantRaw: "UNKNOWN SHOP", direction: "debit") == .none)
+    for (m, dir) in [("DIB OWN ACCOUNT TRANSFER", "debit"), ("OWN ACCOUNT TRNSFER", "credit")] {
+      let own = c.decide(merchantRaw: m, direction: dir)
+      #expect(own.category == "transfer" && own.source["kind"]?.stringValue == "dictionary", "\(m)")
+      #expect(own.source["entry"]?.stringValue?.hasPrefix("contains:own account") == true, "\(m)")
+    }
+    #expect(c.decide(merchantRaw: "DIB TRANSFER", direction: "debit") == .none)
     #expect(c.decide(merchantRaw: "STARBUCKS", direction: "sideways") == .none)
 
     // A new rule, projected later, applies to the next decision.

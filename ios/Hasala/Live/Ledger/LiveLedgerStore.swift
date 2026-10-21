@@ -42,6 +42,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   @ObservationIgnored var profile: ProfileInfo
   /// Bank alerts' health for the next reload (`noteMailbox`).
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
+  @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var nextToken = 1
@@ -100,6 +101,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   /// The Gmail lane's status: its health shows from the next reload, its phase at once.
   func noteMailbox(_ status: MailboxStatus, nowMs: Int64) {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
+    unreadSenders = status.unparsedSenders
     if mailboxStatus != status { mailboxStatus = status }
     if mailboxPhase != status.phase { mailboxPhase = status.phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
@@ -131,7 +133,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     let today = clock()
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
-      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt)
+      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders)
     let reader = self.reader
     let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
       .value

@@ -74,6 +74,7 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var headerIDHash: String? = nil
   public var recipient: RecipientCheck? = nil
   public var spam: Bool? = nil
+  public var senderDomain: String? = nil
 }
 
 public struct CardKey: Sendable, Hashable, Codable, Comparable {
@@ -168,6 +169,7 @@ public enum MessageDisposer {
     mail.recipient = MailRecipients.check(
       linked: linkedAddress, headers: headers, provider: provider, signingDomain: verified, signature: analysis.signature)
     mail.spam = spam
+    mail.senderDomain = domains.first { BankDomains.isMember($0, of: bankDomains) }
 
     guard let norm else { return .mail(mail) }
     for t in templates where t.definition.match.senderDomain.contains(where: { want in

@@ -89,6 +89,9 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     }
     w.unstage = c.unstage
     w.pruneAccountedBelow = c.pruneAccountedBelowMs
+    w.unparsedSenders = c.unparsedSenders.map {
+      MailboxUnparsedSenderRow(messageID: $0.messageID, domain: $0.domain, at: $0.atMs)
+    }
     w.health = c.healthBumps.map { ($0.domain, MailboxClock.localMonth($0.internalDateMs), $0.internalDateMs) }
     if let s = c.state {
       var r = MailboxStateRow(phase: s.phase.rawValue)
@@ -121,6 +124,10 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
         messageID: $0.messageID, reason: UnreadableReason(rawValue: $0.reason) ?? .undecodable, domain: $0.domain,
         internalDateMs: $0.internalDate, atMs: $0.at)
     }
+  }
+
+  public func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String] {
+    try io { try tables.unparsedSenders() }
   }
 
   public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool {
