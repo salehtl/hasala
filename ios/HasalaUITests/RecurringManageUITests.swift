@@ -78,6 +78,7 @@ final class RecurringManageUITests: XCTestCase {
     XCTAssertTrue(el(app, "bills.amount.field").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "Earlier payments keep their price.").exists)
     replaceText(app, "bills.amount.field", "63.00")
+    app.toolbars.buttons["Done"].firstMatch.tap()
     tap(app, "Sun 6 Dec")
     try audit(app, overSheet: true)
     attach(app, "Edit amount")
