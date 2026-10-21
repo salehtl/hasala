@@ -207,6 +207,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in
         for id in ids { a.annotate(txnID: id, set: [("project_id", project)]) }
       }
+    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+      try await authorCategory(edit, today: today)
     case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName:
       break
@@ -400,7 +402,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   /// One blob under the account's shared stamps; enqueued, then re-projected.
   @discardableResult
-  private func build(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws -> [Op] {
+  func build(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws -> [Op] {
     let ctx = try await observer.authorContext()
     guard let blob = try observer.stamps.build(ctx, body) else { return [] }
     try await outbox.enqueue(blob.ops)

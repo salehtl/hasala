@@ -149,6 +149,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    if let why = try categoryRefusal(edit) { throw .refused(why) }
     let before = state
     var s = state
     let (title, inverses) = try Self.patch(edit, &s, now: now)
@@ -472,6 +473,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         project == nil ? "Taken out of the project" : ids.count == 1 ? "Added to \(name)" : "Added \(ids.count) to \(name)",
         inverses
       )
+    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+      CategoriesEngine.apply(
+        edit, to: &s, newID: "pending-category-\(UUID().uuidString.lowercased())", month: now.date.yearMonth)
+      return (nil, [])
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])

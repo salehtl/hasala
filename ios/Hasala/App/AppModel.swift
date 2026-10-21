@@ -256,6 +256,17 @@ final class AppModel {
     return true
   }
 
+  func refusal(applying edit: LedgerEdit) -> String? {
+    do {
+      try store.apply(edit)
+      return nil
+    } catch {
+      if case .refused(let why) = error { return why }
+      show(Toast(disc: .note(.info), title: Self.message(for: error)))
+      return Self.message(for: error)
+    }
+  }
+
   func writeFailed() {
     show(Toast(disc: .note(.info), title: "That change didn't save", subtitle: "Try it again"))
   }
@@ -304,6 +315,7 @@ final class AppModel {
     case .invalidAmount: "Enter an amount"
     case .invalidProject: "Check the project's name, amount and dates"
     case .invalidMerchant: "Enter who it was with"
+    case .refused(let why): why
     }
   }
 
