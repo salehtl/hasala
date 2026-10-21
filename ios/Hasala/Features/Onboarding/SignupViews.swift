@@ -61,7 +61,7 @@ struct InviteCodeView: View {
       // Groups the code as it is typed or pasted, and wraps instead of clipping at large
       // text sizes.
       InviteCodeField(text: $model.inviteText, focused: $focused, identifier: "invite.field") { link in
-        model.applyInviteLink(link)
+        model.applyInviteLink(link, pasteboardChange: UIPasteboard.general.changeCount)
       }
       .padding(.horizontal, HSpacing.fieldInsetInline)
       .padding(.vertical, 8)
@@ -72,10 +72,16 @@ struct InviteCodeView: View {
       HStack(alignment: .top, spacing: 8) {
         status
         Spacer(minLength: 0)
-        InlineTextButton(title: "Paste", identifier: "invite.paste") {
-          if let text = UIPasteboard.general.string { model.paste(text) }
+        PasteButton(payloadType: String.self) { pasted in
+          Task { @MainActor in
+            model.paste(pasted.first ?? "", pasteboardChange: UIPasteboard.general.changeCount)
+          }
         }
-        .padding(.top, -12)
+        .labelStyle(.titleOnly)
+        .buttonBorderShape(.capsule)
+        .tint(HColor.surfacePrimary)
+        .padding(.top, -6)
+        .accessibilityIdentifier("invite.paste")
       }
       .padding(.top, 6)
     }

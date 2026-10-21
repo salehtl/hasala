@@ -2,11 +2,11 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // The welcome stories (Paper row 10: Welcome · Story 1–4 of 4, the "Who can see what"
-// sheet, and Welcome · Motion and haptics; spec 04) and Welcome · Join with an invite, or
-// sign in (Paper E2X-0; spec 07 S1). Privacy-first: every claim is one the design makes and
-// the privacy policy backs.
+// sheet, and Welcome · Motion and haptics; spec 04). Privacy-first: every claim is one the
+// design makes and the privacy policy backs.
 
 // MARK: - The stories
 
@@ -73,16 +73,18 @@ struct StoriesView: View {
   /// Outlook can be connected in this build (the sheet names Microsoft only then).
   var outlook: Bool
   var onGetStarted: () -> Void
+  var onPasteInvite: (String) -> Void
   var onSignIn: () -> Void
 
   init(
     page: Binding<Int>, whoSeesOpen: Binding<Bool>, outlook: Bool, onGetStarted: @escaping () -> Void,
-    onSignIn: @escaping () -> Void
+    onPasteInvite: @escaping (String) -> Void, onSignIn: @escaping () -> Void
   ) {
     _page = page
     _whoSeesOpen = whoSeesOpen
     self.outlook = outlook
     self.onGetStarted = onGetStarted
+    self.onPasteInvite = onPasteInvite
     self.onSignIn = onSignIn
     let start = min(max(page.wrappedValue, 0), Stories.all.count - 1)
     _position = State(initialValue: ScrollPosition(id: start))
@@ -106,6 +108,8 @@ struct StoriesView: View {
   @State private var fading = false
   /// Plays the selection haptic each time a change the person made settles.
   @State private var settles = 0
+  @State private var linkCopied = false
+  @State private var pasteboardChecks = 0
 
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
@@ -145,7 +149,17 @@ struct StoriesView: View {
     .toolbar(.hidden, for: .navigationBar)
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
     .hHaptic(.selection, trigger: settles)
-    .onAppear(perform: appeared)
+    .onAppear {
+      appeared()
+      pasteboardChecks += 1
+    }
+    .task(id: pasteboardChecks) { await lookForCopiedLink() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { pasteboardChecks += 1 }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+      pasteboardChecks += 1
+    }
     .onDisappear {
       onScreen = false
       clock.pause(at: .now)
@@ -242,30 +256,67 @@ struct StoriesView: View {
     .accessibilityElement(children: .combine)
   }
 
-  /// The two buttons and the trust line, fixed under the pager (Paper "Start panel").
+  /// The two buttons and the terms line, fixed under the pager (Paper "Start panel").
   private func startPanel(bottom: CGFloat) -> some View {
     VStack(spacing: 12) {
-      Button("Get started", action: onGetStarted)
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("stories.getStarted")
+      if linkCopied {
+        CopiedInviteCard()
+          .hTransition(.fade)
+        WidePasteButton(identifier: "stories.useInvite", onPaste: onPasteInvite)
+          .frame(maxWidth: .infinity)
+          .frame(height: 54)
+      } else {
+        Button("Get started", action: onGetStarted)
+          .buttonStyle(.pill(.primary, fill: true))
+          .accessibilityIdentifier("stories.getStarted")
+      }
       Button(action: onSignIn) {
         // Paper sets this label in text-primary, not the link blue of "On grouped".
         Text("I already have an account").foregroundStyle(HColor.textPrimary)
       }
       .buttonStyle(.pill(.onGrouped, fill: true))
       .accessibilityIdentifier("stories.signIn")
-      HStack(spacing: 6) {
-        HIconView(.lock, size: 14, color: HColor.textOnWashSecondary, strokeWidth: 2)
-        Text("Read-only email · End-to-end encrypted")
-          .hType(.footnote.weight(.medium))
-          .foregroundStyle(HColor.textOnWashSecondary)
+      Menu {
+        Link("Terms", destination: URL(string: "https://hasala.app/terms")!)
+        Link("Privacy Policy", destination: URL(string: "https://hasala.app/privacy")!)
+      } label: {
+        HStack(spacing: 6) {
+          HIconView(.lock, size: 14, color: HColor.textOnWashSecondary, strokeWidth: 2)
+          Text("You agree to the Terms and Privacy Policy.")
+            .hType(.footnote.weight(.medium))
+            .foregroundStyle(HColor.textOnWashSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .contentShape(Rectangle())
       }
-      .padding(.top, 4)
-      .multilineTextAlignment(.center)
-      .accessibilityElement(children: .combine)
+      .padding(.vertical, -10)
+      .accessibilityHint("Opens the Terms or the Privacy Policy.")
+      .accessibilityIdentifier("stories.legal")
     }
+    .hAnimation(.fade, value: linkCopied)
     .padding(.horizontal, HSpacing.insetPage)
     .padding(.bottom, bottom)
+  }
+
+  private func lookForCopiedLink() async {
+    let pasteboard = UIPasteboard.general
+    guard pasteboard.hasStrings || pasteboard.hasURLs else {
+      linkCopied = false
+      return
+    }
+    let found = await Self.webURLCopied(pasteboard)
+    guard !Task.isCancelled else { return }
+    linkCopied = found
+  }
+
+  private nonisolated static func webURLCopied(_ pasteboard: UIPasteboard) async -> Bool {
+    await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+      pasteboard.detectPatterns(for: [.probableWebURL]) { @Sendable result in
+        done.resume(returning: (try? result.get())?.contains(.probableWebURL) == true)
+      }
+    }
   }
 
   // MARK: Pager
@@ -473,6 +524,93 @@ struct StoriesView: View {
   }
 }
 
+private struct WidePasteButton: UIViewRepresentable {
+  var identifier: String
+  var onPaste: (String) -> Void
+
+  func makeUIView(context: Context) -> PasteTarget {
+    let target = PasteTarget()
+    target.onPaste = onPaste
+    let config = UIPasteControl.Configuration()
+    config.displayMode = .iconAndLabel
+    config.cornerStyle = .capsule
+    config.baseBackgroundColor = UIColor(HColor.actionAccent)
+    config.baseForegroundColor = UIColor(HColor.textOnAccent)
+    let control = UIPasteControl(configuration: config)
+    control.target = target
+    control.accessibilityIdentifier = identifier
+    control.translatesAutoresizingMaskIntoConstraints = false
+    target.addSubview(control)
+    NSLayoutConstraint.activate([
+      control.leadingAnchor.constraint(equalTo: target.leadingAnchor),
+      control.trailingAnchor.constraint(equalTo: target.trailingAnchor),
+      control.topAnchor.constraint(equalTo: target.topAnchor),
+      control.bottomAnchor.constraint(equalTo: target.bottomAnchor),
+    ])
+    return target
+  }
+
+  func updateUIView(_ target: PasteTarget, context: Context) {
+    target.onPaste = onPaste
+  }
+
+  final class PasteTarget: UIView {
+    var onPaste: (String) -> Void = { _ in }
+
+    override init(frame: CGRect) {
+      super.init(frame: frame)
+      pasteConfiguration = UIPasteConfiguration(
+        acceptableTypeIdentifiers: [UTType.utf8PlainText.identifier, UTType.plainText.identifier, UTType.url.identifier])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool { true }
+
+    override func paste(itemProviders: [NSItemProvider]) {
+      guard let provider = itemProviders.first else { return onPaste("") }
+      let deliver: @Sendable (String) -> Void = { [weak self] text in
+        Task { @MainActor in self?.onPaste(text) }
+      }
+      if provider.canLoadObject(ofClass: NSString.self) {
+        _ = provider.loadObject(ofClass: NSString.self) { value, _ in deliver((value as? NSString as String?) ?? "") }
+      } else {
+        _ = provider.loadObject(ofClass: NSURL.self) { value, _ in deliver((value as? NSURL)?.absoluteString ?? "") }
+      }
+    }
+  }
+}
+
+private struct CopiedInviteCard: View {
+  var body: some View {
+    HStack(spacing: 10) {
+      ZStack {
+        Circle().fill(HColor.actionAccent)
+        HIconView(.check, size: 12, color: .white, strokeWidth: 2.6)
+      }
+      .frame(width: 20, height: 20)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("Your invite link is ready")
+          .hType(.subheadline.weight(.semibold))
+          .foregroundStyle(HColor.textPrimary)
+        Text("Copied from hasala.app · no code to type")
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 14)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HColor.blue200, lineWidth: 1)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("stories.inviteFound")
+  }
+}
+
 /// How a story's drawing fits its page.
 struct StageMetrics: Equatable {
   var height: CGFloat
@@ -566,142 +704,5 @@ private struct StoryCopy: View {
     guard lines.count > 1 else { return first }
     let second = Text(lines[1]).foregroundStyle(story.accentSecondLine ? HColor.blue700 : HColor.textPrimary)
     return Text("\(first)\n\(second)")
-  }
-}
-
-// MARK: - Join with an invite, or sign in
-
-/// Welcome · Join with an invite, or sign in (Paper E2X-0; spec 07 S1): the coin going into
-/// the slot, the beta's promise, and the account panel. Invites are the only way in during
-/// the beta, so there is one join button. "Get started" on the stories lands here.
-struct JoinWelcomeView: View {
-  var onJoin: () -> Void
-  var onSignIn: () -> Void
-  var onBack: (() -> Void)?
-
-  @Environment(\.dynamicTypeSize) private var typeSize
-
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        hero
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Private beta · by invite")
-            .hType(.overline)
-            .foregroundStyle(HColor.hueSkyInk)
-          Text("Know what's left. Keep it to yourself.")
-            .hType(.largeTitle)
-            .foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityAddTraits(.isHeader)
-          Text("Your budget is built and kept on this iPhone, and sealed before anything leaves it.")
-            .hType(.body)
-            .foregroundStyle(HColor.textOnWashSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
-        // At the accessibility sizes the buttons wrap: they scroll with the page rather
-        // than fill a fixed dock.
-        if typeSize.isAccessibilitySize { panel.padding(.bottom, 30) }
-      }
-      // The hero sits under the status bar, as Paper draws it; the back button floats over
-      // its corner.
-      .padding(.top, Self.statusBarHeight)
-    }
-    .ignoresSafeArea(.container, edges: .top)
-    .scrollEdgeEffectHidden(true, for: .top)
-    .scrollBounceBehavior(.basedOnSize)
-    .safeAreaBar(edge: .bottom) {
-      if !typeSize.isAccessibilitySize { panel }
-    }
-    .background(alignment: .top) {
-      AmbientWash(.welcome).ignoresSafeArea(edges: .top)
-    }
-    .background(HColor.surfaceSecondary)
-    // Back is the system's, with its swipe (plan decision 7); `onBack` says whether there is one.
-    .accountHeader(back: onBack == nil ? .none : .system)
-  }
-
-  /// The window's status bar (62 on the iPhone 17 class): the hero starts under it.
-  static var statusBarHeight: CGFloat {
-    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-    return scene?.keyWindow?.safeAreaInsets.top ?? 62
-  }
-
-  /// Paper "Hero · Coin into the slot": 330 tall, the mark and the wordmark centred in a
-  /// soft white glow.
-  private var hero: some View {
-    ZStack {
-      Circle()
-        .fill(.radialGradient(
-          Gradient(stops: [
-            .init(color: Color.white.opacity(0.9), location: 0),
-            .init(color: Color.white.opacity(0.35), location: 0.45 / 0.7),
-            .init(color: Color.white.opacity(0), location: 1),
-          ]).colorSpace(.perceptual),
-          center: .center, startRadius: 0, endRadius: 140 * 2.squareRoot() * 0.7))
-        .frame(width: 280, height: 280)
-        .offset(y: 25 + 140 - 165)
-      VStack(spacing: 0) {
-        SlotMark(plate: .onWash)
-          .frame(width: 216, height: 129)
-        Text("Hasala")
-          .font(.custom(HWeight.bold.interFace, size: 28, relativeTo: .title))
-          .tracking(-0.84)
-          .foregroundStyle(HColor.textPrimary)
-          .padding(.top, 18)
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .frame(height: 330)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Hasala")
-  }
-
-  private var panel: some View {
-    VStack(spacing: 12) {
-      Button("Join with an invite", action: onJoin)
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("welcome.join")
-      Button(action: onSignIn) {
-        Text("Sign in").foregroundStyle(HColor.textPrimary)
-      }
-      .buttonStyle(.pill(.onGrouped, fill: true))
-      .accessibilityIdentifier("welcome.signIn")
-      VStack(spacing: 2) {
-        Link(destination: URL(string: "https://hasala.app")!) {
-          Text("No invite yet? Join the waitlist")
-            .hType(.subheadline.weight(.semibold))
-            .foregroundStyle(HColor.textOnWashLink)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .padding(.vertical, -4)
-        .accessibilityIdentifier("welcome.waitlist")
-        // Plain text as Paper draws it. Two links inside a footnote are too small to tap,
-        // so the whole line is one target that offers both pages.
-        Menu {
-          Link("Terms", destination: URL(string: "https://hasala.app/terms")!)
-          Link("Privacy Policy", destination: URL(string: "https://hasala.app/privacy")!)
-        } label: {
-          Text("By continuing you agree to the Terms and Privacy Policy.")
-            .hType(.footnote)
-            .foregroundStyle(HColor.textOnWashSecondary)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .top)
-            .contentShape(Rectangle())
-        }
-        // The 44 target reaches down into the panel's bottom margin, not up into the
-        // waitlist link, so the line sits where Paper puts it.
-        .padding(.bottom, -24)
-        .accessibilityHint("Opens the Terms or the Privacy Policy.")
-        .accessibilityIdentifier("welcome.legal")
-      }
-    }
-    .padding(.horizontal, HSpacing.insetPage)
-    .padding(.top, 8)
   }
 }

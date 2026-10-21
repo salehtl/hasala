@@ -229,29 +229,28 @@ final class OnboardingJourneyUITests: XCTestCase {
 
   // MARK: - Requirement 4: join remembers what was typed
 
-  /// The invite, the name and the email; Back to Welcome; Forward: each field still holds
+  /// The invite, the name and the email; Back to the stories; Forward: each field still holds
   /// what was typed, and Continue is on.
   @MainActor
   func testJoinRemembersTypedFields() throws {
     let app = launch(scenario: "newUser")
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", JoinUITests.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
     type(app, "about.email", "maya@example.com")
     attach(app, "About you · typed")
 
-    // Back to the invite, then to Welcome.
+    // Back to the invite, then to the stories.
     back(app)
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     XCTAssertEqual(el(app, "invite.field").value as? String, Self.groupedInvite)
     back(app)
-    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
-    attach(app, "Welcome · after Back")
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 10))
+    attach(app, "Stories · after Back")
 
     // Forward: the invite, the name and the email as they were typed.
-    tap(app, "welcome.join")
+    tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     XCTAssertEqual(el(app, "invite.field").value as? String, Self.groupedInvite, "the invite was lost")
     XCTAssertTrue(el(app, "invite.continue").isEnabled)
@@ -285,7 +284,6 @@ final class OnboardingJourneyUITests: XCTestCase {
                   file: file, line: line)
     attach(app, "Stories · 4 of 4")
     tap(app, "stories.getStarted", file: file, line: line)
-    tap(app, "welcome.join", file: file, line: line)
     type(app, "invite.field", JoinUITests.invite, file: file, line: line)
     tap(app, "invite.continue", file: file, line: line)
     type(app, "about.name", "Maya Rahman", file: file, line: line)

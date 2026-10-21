@@ -83,13 +83,13 @@ struct SignupFlowTests: AccountSuite {
     account.delay = .zero
     let m = SignupModel(account: account)
     m.inviteText = "ZZZZ" + String(Self.code.dropFirst(4))
-    m.path = [.welcome, .invite]
+    m.path = [.invite]
     m.submitInvite()
     m.displayName = "Maya"
     m.email = "maya@example.com"
     await m.submitAboutYou()
     #expect(m.failure == .notInvited)
-    #expect(m.path == [.welcome, .invite])
+    #expect(m.path == [.invite])
   }
 
   @Test func badNameAndEmailAreCaughtLocally() async {
@@ -318,7 +318,7 @@ struct SignupFlowTests: AccountSuite {
   @Test func backFromTheMethodKeepsNameAndEmail() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
-    m.path = [.welcome, .invite]
+    m.path = [.invite]
     m.inviteText = Self.code
     m.submitInvite()
     m.displayName = "Maya Rahman"
@@ -326,7 +326,7 @@ struct SignupFlowTests: AccountSuite {
     await m.submitAboutYou()
     m.code = MockAccountService.emailCode
     await m.submitCode()
-    #expect(m.path == [.welcome, .invite, .aboutYou, .verifyEmail, .method])
+    #expect(m.path == [.invite, .aboutYou, .verifyEmail, .method])
     m.method = .password
 
     // The system back button pops the stack through `navigationPath`.
@@ -359,7 +359,7 @@ struct SignupFlowTests: AccountSuite {
     let m = SignupModel(account: account)
     let key = String(repeating: "k", count: 43)
     m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)#\(key)")!)))
-    m.path = [.welcome, .inviteReady]
+    m.path = [.inviteReady]
     m.submitInvite()
     m.displayName = "Maya Rahman"
     m.email = "maya@example.com"
@@ -388,7 +388,7 @@ struct SignupFlowTests: AccountSuite {
   @Test func aChangedNameOnTheTypedPathSaysANewCodeIsComing() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
-    m.path = [.welcome, .invite]
+    m.path = [.invite]
     m.inviteText = Self.code
     m.submitInvite()
     m.displayName = "Maya Rahman"
@@ -430,7 +430,7 @@ struct SignupFlowTests: AccountSuite {
   @Test func aUsedUpCodeStaysUsedUpThroughBackAndForward() async {
     let account = CountingAccount()
     let m = SignupModel(account: account)
-    m.path = [.welcome, .invite]
+    m.path = [.invite]
     m.inviteText = Self.code
     m.submitInvite()
     m.displayName = "Maya Rahman"
@@ -567,7 +567,7 @@ struct SignupFlowTests: AccountSuite {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
     let store = OnboardingStore(services: session.services, session: { session })
     let signup = store.signup
-    signup.path = [.welcome, .invite, .aboutYou]
+    signup.path = [.invite, .aboutYou]
     signup.inviteText = Self.code
     signup.displayName = "Maya Rahman"
     signup.email = "maya@example.com"
@@ -578,7 +578,7 @@ struct SignupFlowTests: AccountSuite {
       store.phaseChanged(from: nil, to: session.phase)
     }
     #expect(store.signup === signup)
-    #expect(signup.path == [.welcome, .invite, .aboutYou])
+    #expect(signup.path == [.invite, .aboutYou])
     #expect(signup.displayName == "Maya Rahman" && signup.email == "maya@example.com")
     #expect(signup.normalizedInvite == Self.code)
     #expect(store.storyPage == 3)
@@ -589,16 +589,16 @@ struct SignupFlowTests: AccountSuite {
   /// address needs no code.
   @Test func anInviteLinkMidSignupKeepsNameAndEmail() async throws {
     let m = SignupModel(account: CountingAccount())
-    m.path = [.welcome, .invite, .aboutYou]
+    m.path = [.invite, .aboutYou]
     m.inviteText = "ABCDEFGHIJKLMNOPQRSTUVWY"
     m.displayName = "Maya Rahman"
     m.email = "maya@example.com"
     let key = String(repeating: "k", count: 43)
     m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)#\(key)")!)))
-    m.path = [.welcome, .inviteReady]
+    m.path = [.inviteReady]
     #expect(m.normalizedInvite == Self.code && m.inviteFromLink)
     m.submitInvite()
-    #expect(m.path == [.welcome, .inviteReady, .aboutYou])
+    #expect(m.path == [.inviteReady, .aboutYou])
     #expect(m.displayName == "Maya Rahman" && m.email == "maya@example.com")
     await m.submitAboutYou()
     #expect(m.ticket?.emailProven == true)
@@ -613,17 +613,61 @@ struct SignupFlowTests: AccountSuite {
     let key = String(repeating: "k", count: 43)
     let unknown = "ZZZZ" + String(Self.code.dropFirst(4))
     m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(unknown)#\(key)")!)))
-    m.path = [.welcome, .inviteReady]
+    m.path = [.inviteReady]
     m.submitInvite()
     m.displayName = "Maya Rahman"
     m.email = "maya@example.com"
     await m.submitAboutYou()
     #expect(m.failure == .notInvited)
-    #expect(m.path == [.welcome, .invite])
+    #expect(m.path == [.invite])
     #expect(m.normalizedInvite == unknown)
     // Fixing the code clears "not found" at once.
     m.inviteText = Self.code
     #expect(m.failure == nil)
+  }
+
+  @Test func aPastedInviteLinkOpensInviteReadyAndClearsThePasteboardOnceUsed() async throws {
+    let account = MockAccountService()
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    var cleared: [Int] = []
+    m.clearPasteboard = { cleared.append($0) }
+    let key = String(repeating: "k", count: 43)
+    m.usePastedInvite(" https://hasala.app/i/\(Self.code)#\(key)\n", pasteboardChange: 7)
+    #expect(m.path == [.inviteReady])
+    #expect(m.inviteFromLink && m.linkProvesAddress && m.normalizedInvite == Self.code)
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    #expect(m.path.last == .method)
+    m.method = .passkey
+    await m.continueWithMethod()
+    m.go(.phraseShow)
+    m.phraseRevealed = true
+    #expect(cleared.isEmpty)
+    await m.finish()
+    #expect(m.path.last == .accountReady)
+    #expect(cleared == [7])
+    #expect(m.linkPasteboardChange == nil)
+  }
+
+  @Test func pastedTextThatIsNoInviteLinkOpensTheCodeField() {
+    let m = SignupModel(account: CountingAccount())
+    m.usePastedInvite("https://example.com/hello", pasteboardChange: 3)
+    #expect(m.path == [.invite])
+    #expect(m.inviteText.isEmpty && !m.inviteFromLink && m.linkPasteboardChange == nil)
+  }
+
+  @Test func anEditedPastedLinkLeavesThePasteboardAlone() throws {
+    let m = SignupModel(account: CountingAccount())
+    let key = String(repeating: "k", count: 43)
+    m.paste("https://hasala.app/i/\(Self.code)#\(key)", pasteboardChange: 4)
+    #expect(m.inviteFromLink && m.linkPasteboardChange == 4)
+    m.inviteText = "ABCDEFGHIJKLMNOPQRSTUVWY"
+    #expect(!m.inviteFromLink && m.linkPasteboardChange == nil)
+    m.applyInviteLink(try #require(InviteLink.parse(URL(string: "https://hasala.app/i/\(Self.code)#\(key)")!)))
+    #expect(m.linkPasteboardChange == nil)
   }
 
   // MARK: Session

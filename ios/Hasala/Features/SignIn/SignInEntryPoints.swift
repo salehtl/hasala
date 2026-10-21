@@ -14,7 +14,7 @@ extension SignInView {
         store.signup.go(.forgotEmail)
       },
       onRecover: { store.signup.go(.recoverIntro) },
-      onJoin: { store.signup.path = [.welcome, .invite] })
+      onJoin: { store.signup.path = [.invite] })
   }
 }
 

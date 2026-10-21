@@ -32,7 +32,6 @@ final class LiveE2ETests: LiveE2ECase {
     let app = launchLive()
 
     tap(app, "stories.getStarted", timeout: 30)
-    tap(app, "welcome.join")
     type(app, "invite.field", invite)
     tap(app, "invite.continue")
 

@@ -16,7 +16,7 @@ final class JoinUITests: XCTestCase {
   // MARK: - The stories
 
   /// The four stories as one pager (Paper row 10): a swipe moves on, story 4 is the last
-  /// ("Page 4 of 4", it doesn't loop), and "Get started" opens Welcome · Join.
+  /// ("Page 4 of 4", it doesn't loop), and "Get started" opens the invite code.
   @MainActor
   func testStoriesSwipeToTheLastThenGetStarted() throws {
     let app = launch(scenario: "newUser")
@@ -34,7 +34,7 @@ final class JoinUITests: XCTestCase {
     el(app, "stories.pager").swipeLeft()
     XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: uiWait))
     tap(app, "stories.getStarted")
-    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: 10))
     // Back returns to the story the person left.
     back(app)
     XCTAssertTrue(progress.waitForLabel("Page 4 of 4", timeout: 10))
@@ -59,6 +59,56 @@ final class JoinUITests: XCTestCase {
     tap(app, "whoSees.close")
   }
 
+  // MARK: - An invite link on the pasteboard
+
+  static let inviteLink = "https://hasala.app/i/\(invite)#" + String(repeating: "k", count: 43)
+
+  @MainActor
+  func testACopiedInviteLinkNeedsNoCode() throws {
+    let app = launch(scenario: "newUser", pasteboard: Self.inviteLink)
+    XCTAssertTrue(el(app, "stories.inviteFound").waitForExistence(timeout: 15))
+    XCTAssertFalse(el(app, "stories.getStarted").exists)
+    attach(app, "Stories · invite link found")
+    try audit(app)
+    tap(app, "stories.useInvite")
+    XCTAssertTrue(el(app, "inviteReady.card").waitForExistence(timeout: uiWait))
+    attach(app, "Invite ready · pasted")
+    tap(app, "inviteReady.create")
+    type(app, "about.name", "Maya Rahman")
+    type(app, "about.email", "maya@example.com")
+    tap(app, "about.continue")
+    XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: uiWait), "the link's key did not prove the address")
+    XCTAssertEqual(UIPasteboard.general.string, Self.inviteLink)
+    tap(app, "method.continue")
+    tap(app, "phrase.start")
+    tap(app, "phrase.reveal")
+    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: uiWait))
+    tap(app, "phrase.written")
+    XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
+    attach(app, "Account ready · from a pasted link")
+  }
+
+  @MainActor
+  func testACopiedLinkThatIsNoInviteOpensTheCodeField() throws {
+    let app = launch(scenario: "newUser", pasteboard: "https://example.com/hello")
+    tap(app, "stories.useInvite")
+    XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(UIPasteboard.general.string, "https://example.com/hello")
+  }
+
+  @MainActor
+  func testPasteFillsTheInviteCodeWithoutAPrompt() throws {
+    let app = launch(scenario: "newUser", pasteboard: "abcd efgh-ijkl mnop qrst uvwx")
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
+    XCTAssertFalse(el(app, "stories.inviteFound").exists)
+    tap(app, "stories.getStarted")
+    tap(app, "invite.paste")
+    XCTAssertTrue(el(app, "invite.field").waitForValue("ABCD-EFGH-IJKL-MNOP-QRST-UVWX", timeout: uiWait))
+    XCTAssertTrue(el(app, "invite.continue").isEnabled)
+    attach(app, "Invite code · pasted")
+    try audit(app)
+  }
+
   // MARK: - Back and Forward keep what was typed
 
   /// Name, email, the method and the password stay through the system back, all the way
@@ -68,7 +118,6 @@ final class JoinUITests: XCTestCase {
   func testBackAndForwardKeepNameEmailAndPassword() throws {
     let app = launch(scenario: "newUser")
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", Self.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
@@ -108,7 +157,7 @@ final class JoinUITests: XCTestCase {
 
   // MARK: - The stories wait under a pushed screen
 
-  /// Story 1 is playing when "Get started" opens Welcome · Join: under it the stories
+  /// Story 1 is playing when "Get started" opens the invite code: under it the stories
   /// don't move on, and Back finds the same story.
   @MainActor
   func testStoriesWaitUnderAPushedScreen() throws {
@@ -118,11 +167,11 @@ final class JoinUITests: XCTestCase {
     let shown = progress.label
     XCTAssertFalse(shown.isEmpty)
     tap(app, "stories.getStarted")
-    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
     sleep(8)
     back(app)
     XCTAssertTrue(progress.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(progress.label, shown, "the stories moved on under Welcome · Join")
+    XCTAssertEqual(progress.label, shown, "the stories moved on under the invite code")
   }
 
   // MARK: - The keyboard
@@ -174,7 +223,6 @@ final class JoinUITests: XCTestCase {
     attach(app, "Reduce Motion · Story 2")
     try audit(app)
     tap(app, "stories.getStarted")
-    tap(app, "welcome.join")
     type(app, "invite.field", Self.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
@@ -200,9 +248,6 @@ final class JoinUITests: XCTestCase {
     attach(app, "Stories")
     try audit(app)
     tap(app, "stories.getStarted")
-    attach(app, "Welcome")
-    try audit(app)
-    tap(app, "welcome.join")
 
     type(app, "invite.field", Self.invite.lowercased())
     XCTAssertEqual(el(app, "invite.field").value as? String, "ABCD-EFGH-IJKL-MNOP-QRST-UVWX")
@@ -264,7 +309,6 @@ final class JoinUITests: XCTestCase {
   func testSignupWithPasswordChecksTheRules() throws {
     let app = launch(scenario: "newUser")
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", Self.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
@@ -299,7 +343,6 @@ final class JoinUITests: XCTestCase {
   func testUnknownInviteSaysSo() throws {
     let app = launch(scenario: "newUser")
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", "ZZZZ" + String(Self.invite.dropFirst(4)))
     tap(app, "invite.continue")
     type(app, "about.name", "Maya")
@@ -342,10 +385,6 @@ final class JoinUITests: XCTestCase {
     sleep(7)
     XCTAssertEqual(el(app, "stories.progress").label, "Page 1 of 4", "the stories moved on mid-read")
     tap(app, "stories.getStarted")
-    XCTAssertTrue(el(app, "welcome.join").waitForExistence(timeout: uiWait))
-    attach(app, "AX3 · Welcome")
-    try audit(app, atLargeText: true)
-    tap(app, "welcome.join")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Invite")
     try audit(app, atLargeText: true)
