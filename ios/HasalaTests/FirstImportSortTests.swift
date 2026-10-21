@@ -274,7 +274,7 @@ struct FirstImportSorterTests {
     await s.stop()
   }
 
-  @Test func theGateRunsOneSweepAtATime() async {
+  @Test nonisolated func theGateRunsOneSweepAtATime() async {
     let gate = SweepGate()
     let inside = Mutex((now: 0, most: 0))
     await withTaskGroup(of: Void.self) { group in
