@@ -82,6 +82,11 @@ payment). The matcher never writes it.
 3. **Dues before tracking began are never late.** "Late" and "to come" consider only dues
    on or after the bill's tracking day (the day its first version was authored, or `start`
    if later). An unpaid due before that is shown as "Not tracked" in history, not as late.
+   A `bill_set` create may carry `created_at`, an instant no later than its `authored_at`;
+   the fold then uses it as the first version's day. Only the App Review sample writes
+   it (the seed's own `at`, shifted with the seed's dates), so the sample's bills are
+   tracked from the seed's day and AXA's 7 October due shows as late. Older builds ignore
+   the key.
 4. **Tracking a detected candidate** creates the bill with `start` = the first due of the
    series the detector saw, so its history fills from matched payments with no op per
    payment.
@@ -101,7 +106,8 @@ payment). The matcher never writes it.
    outside that due's tolerance shows "Netflix is 63.00 now (was 56.00)". Accept appends
    `{from: that due, amount_minor: the charge}`. Not now is device-local for that payment.
    The proposal never writes on its own, also not for detected bills and not for "Sort
-   automatically" users. A variable bill never proposes.
+   automatically" users. A variable bill never proposes. Only the newest such payment of
+   a bill is proposed, and Not now shows the bill at its usual amount again.
 9. **Foreign currency**: a bill in AED matches a foreign charge by its home amount when the
    row has one; otherwise it does not match on amount and is offered for manual linking.
 
@@ -138,7 +144,9 @@ payment). The matcher never writes it.
 
 20. A debit row matches a bill when its merchant key is one of the bill's `keys`, its
     currency is the bill's (or its home amount is AED for an AED bill), and its amount is
-    within the due's tolerance (fixed) or within 50% of the due's amount (variable).
+    within 50% of the due's amount, fixed or variable. For a fixed bill the tolerance
+    only decides the price-change notice (decision 8): a charge outside it still pays
+    the due.
 21. Each row matches at most one due of one bill; each due takes at most one row. A row is
     assigned to the nearest unpaid due within ± half a cadence (at most 15 days for
     monthly), ties to the earlier due. Rows outside every window stay unmatched.
@@ -152,6 +160,8 @@ payment). The matcher never writes it.
 24. Candidates are series of ≥ 3 debit rows with one merchant key and currency, with
     regular gaps (monthly 26–35 days, weekly 6–8, yearly 350–380), amounts within 20% of
     the median (else a variable candidate), and the last row within 1.5 cadences of today.
+    A fixed candidate proposes the latest amount of its series (after 56.00 then 63.00 it
+    proposes 63.00); a variable one proposes the median.
 25. A candidate's id is `detectedBillID(key, direction, currency)` (Pass A). A key already
     covered by any bill head (manual, active, ended or dismissed) never becomes a
     candidate, so "Not a bill" and ended items are never re-proposed, and a manual item
@@ -159,12 +169,21 @@ payment). The matcher never writes it.
 26. Track writes a `bill_set` create with that derived id (two iPhones that track the same
     candidate converge on one id; the second create is a `duplicate_create` anomaly and
     changes nothing). Not a bill writes a create with `status: dismissed`, so it syncs.
+    When a record with that id exists already, both write an edit of it instead. Undo of
+    either writes `status: dismissed` with `keys: [<the bill id>]`: no merchant key
+    matches that, so the record covers nothing and the candidate is proposed again.
 
 ### Conflicts and old builds
 
 27. Concurrent edits of one bill fork; the later `authored_at` wins (existing rule). The
     bill shows "Changed on two iPhones" from `fork_notice`, with the replaced record and
-    Re-apply (a new version with those values).
+    Re-apply (a new version with those values). The fold keeps only the two op ids; the
+    replaced record is read from the losing op itself (the outbox or the stored rows,
+    opened on the device) and kept in memory. The card says what the replaced version
+    had that the current one does not ("Amount 63.00 from 6 Dec", "Paused", "Ended 6 Nov")
+    and is not shown when nothing differs, so a re-applied change hides it. Keep hides it
+    on this device. When the losing op cannot be read, the card says a change was
+    replaced and offers only Keep.
 28. A build without this change ignores `changes` and `pauses`: it shows the original
     price and no pause, and an edit made there drops the lists (whole record). The What
     to Test of the first build with this change asks testers to update every device.
@@ -174,7 +193,9 @@ payment). The matcher never writes it.
 29. The plan reads one `BillExpectation` per due in the month for active bills in a
     `bills`-role category: amount from the due's terms, `isEstimate` for variable,
     status paid / upcoming / due / late from explicit and matched payments. Paused,
-    ended and dismissed dues give none.
+    ended and dismissed dues give none, and nor do dues before the tracking day. A
+    skipped due gives `skipped`; a snoozed one is upcoming until its day. Bills in a
+    currency other than the home currency give none.
 
 ### Salary
 
