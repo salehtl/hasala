@@ -8,12 +8,12 @@ import HasalaText
 
 public struct TaxonomyView: Sendable, CategoryLookup {
   public let ordered: [CategoryInfo]
-  private let byID: [String: CategoryInfo]
+  private let byID: [ExactKey: CategoryInfo]
 
   public init(_ infos: [CategoryInfo]) {
     ordered = infos.sorted { $0.sortKey != $1.sortKey ? $0.sortKey < $1.sortKey : compareUTF8($0.id, $1.id) < 0 }
-    var m: [String: CategoryInfo] = [:]
-    for i in infos { m[i.id] = i }
+    var m: [ExactKey: CategoryInfo] = [:]
+    for i in infos { m[ExactKey(i.id)] = i }
     byID = m
   }
 
@@ -21,14 +21,14 @@ public struct TaxonomyView: Sendable, CategoryLookup {
   public init(state: State) {
     var infos: [CategoryInfo] = []
     for b in TaxonomyV1.builtins {
-      guard let d = state.categories[b.id] else {
+      guard let d = state.categories[ExactKey(b.id)] else {
         infos.append(b)
         continue
       }
       infos.append(Self.info(d, sortKey: b.sortKey, builtin: true, defaultIcon: b.icon))
     }
     var userIndex = 0
-    for (id, d) in state.categories where TaxonomyV1.builtin(id) == nil {
+    for (id, d) in state.categories where TaxonomyV1.builtin(id.value) == nil {
       infos.append(Self.info(d, sortKey: 100 + userIndex, builtin: false, defaultIcon: TaxonomyV1.userIcon))
       userIndex += 1
     }
@@ -41,8 +41,8 @@ public struct TaxonomyView: Sendable, CategoryLookup {
       icon: d.shape >= 4 ? (d.icon ?? defaultIcon) : defaultIcon, active: d.active, builtin: builtin, sortKey: sortKey)
   }
 
-  public func info(_ id: String) -> CategoryInfo? { byID[id] }
+  public func info(_ id: String) -> CategoryInfo? { byID[ExactKey(id)] }
 
   /// Spending at read time (03a §2): defined, kind spending.
-  public func isSpending(_ id: String) -> Bool { byID[id]?.kind == .spending }
+  public func isSpending(_ id: String) -> Bool { byID[ExactKey(id)]?.kind == .spending }
 }

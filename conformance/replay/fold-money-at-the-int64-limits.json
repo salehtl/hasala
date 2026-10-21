@@ -1,0 +1,497 @@
+{
+  "name": "money-at-the-int64-limits",
+  "group": "fold",
+  "note": "Amounts at 2^63-1, one below it, just past 2^53 and one fils fold exactly and convert at the identity rate without loss; a split of the largest amount sums exactly; a user row restated to 2^63-1 converts to itself.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "home_currency_set",
+          "op_id": "money-at-the-int64-limits-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "currency": "AED"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-at-the-int64-limits-2",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "9223372036854775807",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "MAX",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-at-the-int64-limits-3",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t2"
+          },
+          "parent_version": null,
+          "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "payload": {
+            "amount_minor": "9223372036854775806",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "MAX LESS ONE",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-at-the-int64-limits-4",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t3"
+          },
+          "parent_version": null,
+          "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+          "payload": {
+            "amount_minor": "9007199254740993",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "PAST 2^53",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-at-the-int64-limits-5",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t4"
+          },
+          "parent_version": null,
+          "ingest_id": "6ed5045938d710d075142228a0a53aeda721a451b46d04894f98e747211a1d38",
+          "payload": {
+            "amount_minor": "1",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "ONE FILS",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_split",
+          "op_id": "money-at-the-int64-limits-6",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": 1,
+          "payload": {
+            "parts": [
+              {
+                "category": "groceries",
+                "amount_minor": "9223372036854775806"
+              },
+              {
+                "category": "dining",
+                "amount_minor": "1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "money-at-the-int64-limits-7",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t5"
+          },
+          "parent_version": null,
+          "ingest_id": "0016cf5ed68e5a5349722594ae8f592653c761881562607a2337678a70d22260",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "MANUAL",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "dev-a",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_edited",
+          "op_id": "money-at-the-int64-limits-8",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t5"
+          },
+          "parent_version": 1,
+          "payload": {
+            "amount_minor": "9223372036854775807"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|1|debit|ONE FILS|2026-06-05",
+          [
+            "t4"
+          ]
+        ],
+        [
+          "8642|9007199254740993|debit|PAST 2^53|2026-06-05",
+          [
+            "t3"
+          ]
+        ],
+        [
+          "8642|9223372036854775806|debit|MAX LESS ONE|2026-06-05",
+          [
+            "t2"
+          ]
+        ],
+        [
+          "8642|9223372036854775807|debit|MANUAL|2026-06-05",
+          [
+            "t5"
+          ]
+        ],
+        [
+          "8642|9223372036854775807|debit|MAX|2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "8"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "money-at-the-int64-limits-6",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ],
+        [
+          "txn\u0000t2",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t2",
+            "kind": "txn",
+            "op_id": "money-at-the-int64-limits-3",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t3",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t3",
+            "kind": "txn",
+            "op_id": "money-at-the-int64-limits-4",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t4",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t4",
+            "kind": "txn",
+            "op_id": "money-at-the-int64-limits-5",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ],
+        [
+          "txn\u0000t5",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t5",
+            "kind": "txn",
+            "op_id": "money-at-the-int64-limits-8",
+            "version": 2,
+            "writer_id": "dev-a"
+          }
+        ]
+      ],
+      "homeCurrency": "AED",
+      "liveByIngestID": [
+        [
+          "0016cf5ed68e5a5349722594ae8f592653c761881562607a2337678a70d22260",
+          "t5"
+        ],
+        [
+          "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+          "t2"
+        ],
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ],
+        [
+          "6ed5045938d710d075142228a0a53aeda721a451b46d04894f98e747211a1d38",
+          "t4"
+        ],
+        [
+          "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+          "t3"
+        ]
+      ],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [
+        [
+          "AED",
+          "1000000"
+        ]
+      ],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": "9223372036854775807",
+            "amount_minor": "9223372036854775807",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "MAX",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [
+              {
+                "amount_minor": "9223372036854775806",
+                "category": "groceries"
+              },
+              {
+                "amount_minor": "1",
+                "category": "dining"
+              }
+            ],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ],
+        [
+          "t2",
+          {
+            "amount_home_minor": "9223372036854775806",
+            "amount_minor": "9223372036854775806",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t2",
+            "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "MAX LESS ONE",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t3",
+          {
+            "amount_home_minor": "9007199254740993",
+            "amount_minor": "9007199254740993",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t3",
+            "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "PAST 2^53",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t4",
+          {
+            "amount_home_minor": "1",
+            "amount_minor": "1",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t4",
+            "ingest_id": "6ed5045938d710d075142228a0a53aeda721a451b46d04894f98e747211a1d38",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "ONE FILS",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "t5",
+          {
+            "amount_home_minor": "9223372036854775807",
+            "amount_minor": "9223372036854775807",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t5",
+            "ingest_id": "0016cf5ed68e5a5349722594ae8f592653c761881562607a2337678a70d22260",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "MANUAL",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 2
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "2e6d19addc40ead397b69959e9e47b2c350b6d07f31585d333d87a1033326a01",
+    "order": {
+      "banks": [],
+      "categories": []
+    },
+    "diagnostics": {
+      "full_state_sha256": "2e6d19addc40ead397b69959e9e47b2c350b6d07f31585d333d87a1033326a01",
+      "anomalies": [],
+      "unreadable": []
+    }
+  }
+}

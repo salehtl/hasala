@@ -1,0 +1,3250 @@
+{
+  "note": "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+  "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
+  "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
+  "cases": [
+    {
+      "name": "held-copy-at-the-int64-ceiling",
+      "group": "fold_v4",
+      "note": "The same alert at 2^63-1 from two mailboxes four minutes apart: the second is held as a copy of the first; both convert at the identity to 2^63-1 exactly.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "9223372036854775807",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9223372036854775807",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|9223372036854775807|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9223372036854775807",
+                "amount_minor": "9223372036854775807",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9223372036854775807",
+                "amount_minor": "9223372036854775807",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "f6dbdebfc6c23ccd8796cb401e8183dd5abbe3777393ff90b4bf49d8bdf13544",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "held-copy-kept-then-reopened",
+      "group": "fold_v4",
+      "note": "Keep both counts the copy; the undo (decision null) holds it again against the same row.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "2700",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "STARBUCKS DIFC",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "enbd-card@1",
+                  "card": "known",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-reopen-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": null
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2700|debit|STARBUCKS DIFC|2026-10-03",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "5"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-reopen-2",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "2700",
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "2700",
+                "amount_minor": "2700",
+                "bank": "enbd",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "enbd-card@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "STARBUCKS DIFC",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "20dc5c9a8786bc5c1fe5731e27c7f4d611edc31b7c52d57046660222e2e5799a",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "move-and-its-undo",
+      "group": "fold_v4",
+      "note": "A move and its undo net to zero in both cells and mark the move undone. A second undo of the same move, an undo with another amount, an undo in another month and an undo of an undo are plan_undo_mismatch and move nothing. An assign from Ready to assign undoes back to it.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "100000",
+                "scope": "onward"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-move-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": "dining",
+                "amount_minor": "20000",
+                "reason": "move",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "20000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-1"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-again",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "20000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-1"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "5",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-move-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": "dining",
+                "amount_minor": "5000",
+                "reason": "move",
+                "batch_id": null,
+                "undoes": null
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-short",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "4999",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-2"
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-month",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-11",
+                "from_category_id": "dining",
+                "to_category_id": "groceries",
+                "amount_minor": "5000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-move-2"
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-undo",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": "dining",
+                "amount_minor": "20000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-undo-1"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "6",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-assign-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": null,
+                "to_category_id": "groceries",
+                "amount_minor": "30000",
+                "reason": "assign",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "7",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-assign",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": null,
+                "amount_minor": "30000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-assign-1"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "4",
+              "detail": "",
+              "kind": "plan_undo_mismatch"
+            },
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "plan_undo_mismatch"
+            },
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "plan_undo_mismatch"
+            },
+            {
+              "at_seq": "5",
+              "detail": "",
+              "kind": "plan_undo_mismatch"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "7"
+          },
+          "forks": [],
+          "heads": [],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "plan": {
+            "cells": [
+              {
+                "category_id": "dining",
+                "latest_set_minor": null,
+                "month": "2026-10",
+                "moves_all_minor": "5000",
+                "moves_since_set_minor": "5000",
+                "onward_set_minor": null,
+                "write": null
+              },
+              {
+                "category_id": "groceries",
+                "latest_set_minor": "100000",
+                "month": "2026-10",
+                "moves_all_minor": "-5000",
+                "moves_since_set_minor": "-5000",
+                "onward_set_minor": "100000",
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-1",
+                  "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+                }
+              }
+            ],
+            "income_sources": [],
+            "moves": [
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-move-1",
+                "reason": "move",
+                "seq": "2",
+                "to": "dining",
+                "undoes": null,
+                "undone": true
+              },
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": "dining",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-undo-1",
+                "reason": "undo",
+                "seq": "3",
+                "to": "groceries",
+                "undoes": "op-move-1",
+                "undone": false
+              },
+              {
+                "amount_minor": "5000",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-move-2",
+                "reason": "move",
+                "seq": "5",
+                "to": "dining",
+                "undoes": null,
+                "undone": false
+              },
+              {
+                "amount_minor": "30000",
+                "batch_id": null,
+                "from": null,
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-assign-1",
+                "reason": "assign",
+                "seq": "6",
+                "to": "groceries",
+                "undoes": null,
+                "undone": true
+              },
+              {
+                "amount_minor": "30000",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-undo-assign",
+                "reason": "undo",
+                "seq": "7",
+                "to": null,
+                "undoes": "op-assign-1",
+                "undone": false
+              }
+            ],
+            "roles": []
+          },
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "ac1145a3a32f82c931ef1b76c3aa5f3f062f6b84ea70e609122c97bd0c130405",
+        "anomaly_kinds": [
+          "plan_undo_mismatch",
+          "plan_undo_mismatch",
+          "plan_undo_mismatch",
+          "plan_undo_mismatch"
+        ]
+      }
+    },
+    {
+      "name": "move-at-the-plan-cap",
+      "group": "fold_v4",
+      "note": "A plan amount is at most 9999999999999 fils (13 digits), far below 2^63-1. Assigning the cap fits and its undo nets the cell to zero; one fils past the cap is an invalid_payload that moves nothing, and so is an undo naming it.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-assign-cap",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": null,
+                "to_category_id": "groceries",
+                "amount_minor": "9999999999999",
+                "reason": "assign",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-assign-past",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": null,
+                "to_category_id": "groceries",
+                "amount_minor": "10000000000000",
+                "reason": "assign",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-past",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": null,
+                "amount_minor": "10000000000000",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-assign-past"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-undo-cap",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": "groceries",
+                "to_category_id": null,
+                "amount_minor": "9999999999999",
+                "reason": "undo",
+                "batch_id": null,
+                "undoes": "op-assign-cap"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "invalid_payload"
+            },
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "invalid_payload"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "plan": {
+            "cells": [
+              {
+                "category_id": "groceries",
+                "latest_set_minor": null,
+                "month": "2026-10",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": null,
+                "write": null
+              }
+            ],
+            "income_sources": [],
+            "moves": [
+              {
+                "amount_minor": "9999999999999",
+                "batch_id": null,
+                "from": null,
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-assign-cap",
+                "reason": "assign",
+                "seq": "1",
+                "to": "groceries",
+                "undoes": null,
+                "undone": true
+              },
+              {
+                "amount_minor": "9999999999999",
+                "batch_id": null,
+                "from": "groceries",
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-undo-cap",
+                "reason": "undo",
+                "seq": "4",
+                "to": null,
+                "undoes": "op-assign-cap",
+                "undone": false
+              }
+            ],
+            "roles": []
+          },
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "7002ba34e1f67da2ae3b197f18a3d96a817c72cc9bb21e652a2a8761a2f34a29",
+        "anomaly_kinds": [
+          "invalid_payload",
+          "invalid_payload"
+        ]
+      }
+    },
+    {
+      "name": "budget-edit-and-its-undo",
+      "group": "fold_v4",
+      "note": "October inherits 1000.00 onward from September and has 200.00 moved in (1200.00). An edit sets 1500.00 onward; its undo writes what the app writes: 1000.00 onward, then 1200.00 for October only. November inherits 1000.00 again.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-set-sep",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-09",
+                "amount_minor": "100000",
+                "scope": "onward"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_moved",
+              "op_id": "op-assign-oct",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "month": "2026-10",
+                "from_category_id": null,
+                "to_category_id": "groceries",
+                "amount_minor": "20000",
+                "reason": "assign",
+                "batch_id": null,
+                "undoes": null
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-edit-oct",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "150000",
+                "scope": "onward"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-undo-onward",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "100000",
+                "scope": "onward"
+              }
+            },
+            {
+              "v": 4,
+              "type": "budget_set",
+              "op_id": "op-undo-only",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "category_id": "groceries",
+                "month": "2026-10",
+                "amount_minor": "120000",
+                "scope": "only"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "plan": {
+            "cells": [
+              {
+                "category_id": "groceries",
+                "latest_set_minor": "100000",
+                "month": "2026-09",
+                "moves_all_minor": "0",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": "100000",
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-set-sep",
+                  "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+                }
+              },
+              {
+                "category_id": "groceries",
+                "latest_set_minor": "120000",
+                "month": "2026-10",
+                "moves_all_minor": "20000",
+                "moves_since_set_minor": "0",
+                "onward_set_minor": "100000",
+                "write": {
+                  "at_ms": "1790841600000",
+                  "op_id": "op-undo-only",
+                  "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+                }
+              }
+            ],
+            "income_sources": [],
+            "moves": [
+              {
+                "amount_minor": "20000",
+                "batch_id": null,
+                "from": null,
+                "index": 0,
+                "month": "2026-10",
+                "op_id": "op-assign-oct",
+                "reason": "assign",
+                "seq": "2",
+                "to": "groceries",
+                "undoes": null,
+                "undone": false
+              }
+            ],
+            "roles": []
+          },
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "b128e5edb28380205b103a0c5e23c6e032e832e86415a2de554f3aeabb5d0aeb",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "same-purchase-and-its-undo",
+      "group": "fold_v4",
+      "note": "Confirming the pair gives the USD row the AED amount as its stated value and archives the AED posting with a note; the undo the app writes with the live rate thaws the stated value, sets the rate again so the row re-freezes at it, and clears the archive and the note. The pair is offered again.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-confirm-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 1,
+              "payload": {
+                "amount_home_minor": "9300"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-confirm-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": "user",
+                  "note": "Settled the USD 25.00 purchase"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_edited",
+              "op_id": "op-undo-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": 2,
+              "payload": {
+                "amount_home_minor": null
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-undo-rate",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-undo-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": null,
+                  "note": null
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-undo-1",
+                "version": 3,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "annotations": [
+                  [
+                    "archived",
+                    {
+                      "op_id": "op-undo-2",
+                      "value": null
+                    }
+                  ],
+                  [
+                    "note",
+                    {
+                      "op_id": "op-undo-2",
+                      "value": null
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "e29a52aca1f7d949cc6000337e17b449e7403e4446371b2f4e6cb0a8dfd55505",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "pairing-skips-archived-and-held-rows",
+      "group": "fold_v4",
+      "note": "A USD purchase, its AED posting from mailbox A and the same posting from mailbox B four minutes later, held as a copy. The posting is archived: neither the archived posting nor the held copy is offered as the pair.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-archive-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": "user"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "annotations": [
+                  [
+                    "archived",
+                    {
+                      "op_id": "op-archive-2",
+                      "value": "user"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "copy_of": "01JC0000000000000000000002",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "585d6c5dd9c63e3b9dbac65b1b0535852a11b87f4f6fe0af72bf8562d1afc938",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "pairing-takes-the-kept-copy",
+      "group": "fold_v4",
+      "note": "Keep both on the held copy makes it a counted posting of its own, and it is offered as the pair.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-archive-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": "user"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000002",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-keep-3",
+                "version": 2,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "annotations": [
+                  [
+                    "archived",
+                    {
+                      "op_id": "op-archive-2",
+                      "value": "user"
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "copy_decision": "keep_both",
+                "copy_of": "01JC0000000000000000000002",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "3eb8feba9b11e317a7cbf25c01948f2bbed7154d35edc8eb6de98fbd3e82495c",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "pairing-after-unarchive",
+      "group": "fold_v4",
+      "note": "Unarchiving the posting offers it as the pair again; the held copy is still held.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-usd",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "3672500"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "2500",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "9300",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-archive-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": "user"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-unarchive-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000002",
+                "set": {
+                  "archived": null
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|2500|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ],
+            [
+              "4412|9300|debit|AMAZON MKTPLACE|2026-10-11",
+              [
+                "01JC0000000000000000000002",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "3672500"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9181",
+                "amount_minor": "2500",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "annotations": [
+                  [
+                    "archived",
+                    {
+                      "op_id": "op-unarchive-2",
+                      "value": null
+                    }
+                  ]
+                ],
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": "9300",
+                "amount_minor": "9300",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "copy_of": "01JC0000000000000000000002",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "4412",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "AMAZON MKTPLACE",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-11T08:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "4ff9323c60b4b2ee42c880dfbe6a3bbe707ef0e8808a2b7118f91f9e216eec5b",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "conversion-overflow-is-recorded",
+      "group": "fold_v4",
+      "note": "A USD row at 2^63-1 at 2.000000 does not fit Int64 in AED: the fold records money_overflow and the row waits with no home amount; a later rate of 1.000000 backfills it to 2^63-1.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            },
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "2000000"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "9223372036854775807",
+                "currency": "USD",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "AMAZON",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "rate_set",
+              "op_id": "op-rate-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "USD",
+                "rate_micro": "1000000"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "money_overflow"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|9223372036854775807|debit|AMAZON|2026-10-09",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [
+            [
+              "USD",
+              "2026-10-01T08:00:00.000Z"
+            ]
+          ],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ],
+            [
+              "USD",
+              "1000000"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": "9223372036854775807",
+                "amount_minor": "9223372036854775807",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "USD",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "4412",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "AMAZON",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "646acdcddc1851f45adebc2be624aed22fe97c19006a9f006a3b65fdf9a39421",
+        "anomaly_kinds": [
+          "money_overflow"
+        ]
+      }
+    },
+    {
+      "name": "amount-past-int64-is-refused",
+      "group": "fold_v4",
+      "note": "An amount of 2^63 is not money: the row is an invalid_payload and is not created, while 2^63-1 in the next op is.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "home_currency_set",
+              "op_id": "op-home",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "parent_version": null,
+              "payload": {
+                "currency": "AED"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "9223372036854775808",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "PAST MAX",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "9223372036854775807",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "MAX",
+                "last4": "4412",
+                "needs_review": false,
+                "tier": "template",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "entry_method": "mailbox",
+                "bank": "enbd",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "invalid_payload"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "4412|9223372036854775807|debit|MAX|2026-10-09",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": "AED",
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [],
+          "rates": [
+            [
+              "AED",
+              "1000000"
+            ]
+          ],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": "9223372036854775807",
+                "amount_minor": "9223372036854775807",
+                "bank": "enbd",
+                "category": "shopping",
+                "category_source": {
+                  "kind": "user"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "4412",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "MAX",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-09T15:12:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "b1e11c2763265973adb82965a3118f451a7e3a06e68536b4f01cc7a054eb4d3e",
+        "anomaly_kinds": [
+          "invalid_payload"
+        ]
+      }
+    }
+  ]
+}

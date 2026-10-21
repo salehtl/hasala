@@ -1,5 +1,5 @@
 // CorePrimitives against published vectors and the TypeScript seam's contract
-// tables (reference/ledgerd-client/src/platform.test.ts), ported case for case
+// tables (the ledgerd TypeScript client's src/platform.test.ts), ported case for case
 // where the case is a property of the primitive rather than of Node or Bun.
 import CryptoKit
 import Foundation

@@ -1,4 +1,4 @@
-// The template executor: a port of reference/ledgerd-client/src/tmpl/exec.ts (the mirror of
+// The template executor: a port of the ledgerd TypeScript client's src/tmpl/exec.ts (the mirror of
 // server/internal/tmpl/exec.go), byte-identical on conformance/templates.
 //
 // The body is ATTACKER-WRITABLE and this runs on the phone with a backtracking engine. Three

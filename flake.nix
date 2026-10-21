@@ -1,5 +1,5 @@
 {
-  description = "Hasala: Go server, conformance fixtures and the TypeScript reference client";
+  description = "Hasala: Go server and conformance fixtures";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";

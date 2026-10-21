@@ -1,0 +1,163 @@
+{
+  "name": "int64-max-converts-exactly",
+  "note": "Amounts at 2^63-1 and one below it, in the home currency at the identity and in USD at exactly 1.000000, come back digit for digit; EUR at 0.999999 rounds half-up to 9223362813482738952. The product amount_minor x rate_micro is past 2^63-1 in every row here, so an executor needs a 128-bit or unbounded intermediate; only the result must fit Int64.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "home_currency_set",
+        "op_id": "int64-max-converts-exactly-1",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "AED"
+        }
+      }
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "int64-max-converts-exactly-2",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t1"
+        },
+        "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+        "payload": {
+          "amount_minor": "9223372036854775807",
+          "currency": "AED",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t1",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "int64-max-converts-exactly-3",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t2"
+        },
+        "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+        "payload": {
+          "amount_minor": "9223372036854775806",
+          "currency": "AED",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t2",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_set",
+        "op_id": "int64-max-converts-exactly-4",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "USD",
+          "rate_micro": "1000000"
+        }
+      }
+    },
+    {
+      "seq": "5",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "int64-max-converts-exactly-5",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t3"
+        },
+        "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+        "payload": {
+          "amount_minor": "9223372036854775807",
+          "currency": "USD",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t3",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_set",
+        "op_id": "int64-max-converts-exactly-6",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "EUR",
+          "rate_micro": "999999"
+        }
+      }
+    },
+    {
+      "seq": "7",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "int64-max-converts-exactly-7",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t4"
+        },
+        "ingest_id": "6ed5045938d710d075142228a0a53aeda721a451b46d04894f98e747211a1d38",
+        "payload": {
+          "amount_minor": "9223372036854775807",
+          "currency": "EUR",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t4",
+          "last4": "8642"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "home_currency": "AED",
+    "rates": {
+      "AED": "1000000",
+      "USD": "1000000",
+      "EUR": "999999"
+    },
+    "snapshots": {
+      "t1": "9223372036854775807",
+      "t2": "9223372036854775806",
+      "t3": "9223372036854775807",
+      "t4": "9223362813482738952"
+    },
+    "pending": {},
+    "anomalies": []
+  }
+}

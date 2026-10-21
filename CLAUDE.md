@@ -19,9 +19,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 | `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
 | `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
 | `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models and the Maya mock. |
-| `conformance/` | Shared fixtures. Go, the TypeScript reference and Swift must all give output that is the same, byte for byte. |
-| `reference/ledgerd-client/` | The ledgerd TypeScript client core. **Use it only as a reference and a fixture oracle.** The Swift port must agree with it. Do not ship it. |
-| `reference/ledgerd-pwa/` | The ledgerd React PWA. Use only its product logic (`src/lib/`) as a reference. Do not ship it. |
+| `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Six sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |
 | `web/` | The hasala.app website: Astro and Bun, static output. Refer to "Website" below. |
 | `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
@@ -53,28 +51,28 @@ is reachable.
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates`) are the same as
   `server/internal/tmpl/seed`. After you change a seed template, run
   `swift ios/tools/templates/sync.swift`.
+- The golden fixtures check. The sets `authres`, `categorize`, `fx`,
+  `norm-dates`, `outlook-sender` and `replay` are golden files: the Swift tests own their
+  expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
+  (`conformance/README.md`). The gate fails when a branch changes one of these
+  sets and changes nothing under `ios/HasalaCore/Tests`.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
   temporary Postgres (unix socket only).
-- The typecheck and `bun test` of the reference client.
+- The typecheck and `bun test` of the assist worker (`infra/assist`).
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
-  the Go packages and the bun test files of each fixture set. Each directory
+  the Go packages of each fixture set. Each directory
   in `conformance/` must have an entry. When you add a fixture set, add its
   entry.
 - The known failures (`KNOWN_FAILING` in `scripts/check.sh`). The gate skips
   each one by name, then runs it alone, and it must still fail.
-
-Before the first run in a checkout, run
-`(cd reference/ledgerd-client && bun install --frozen-lockfile)` one time.
 
 ### One test
 
 - Go (in `server/` or `server/oracle/`):
   `go test -count=1 -run '^TestName$' ./internal/oplog`. Tests that use
   Postgres start their own temporary cluster.
-- Reference client (in `reference/ledgerd-client/`): `bun test <file>`, and
-  `bun run typecheck`.
 - HasalaCore: `swift test --package-path ios/HasalaCore --filter <Target>.<Class>/<test>`.
   CI (job `swift`) runs `swift test --disable-automatic-resolution --explicit-target-dependency-import-check error`
   in `ios/HasalaCore`.
@@ -159,8 +157,7 @@ it is not sure, it runs the job.
   in those directories, and the bundled templates
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`). A change in
   `infra/` starts them.
-- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`
-  and `reference/ledgerd-client/src/norm/charset-tables.ts`.
+- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`.
 - `ios-build`, `ios` and `ios-tools` read only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).
@@ -594,8 +591,8 @@ the approval of the owner for that deployment.
 ## Decisions (2026-10-11)
 
 - **Native Swift client.** It must agree fully with the Paper design. The
-  TypeScript client core has a **port** to Swift (no JavaScriptCore). The
-  conformance fixtures prove that the port is correct.
+  ledgerd TypeScript client core was **ported** to Swift (no JavaScriptCore).
+  The conformance fixtures prove that the port is correct.
 - **The server is blind.** The phone encrypts each op before it uploads it.
   The server examines only the framing, the position and the hash chain. It
   **does not accept plaintext**. Do not add a feature that makes the server

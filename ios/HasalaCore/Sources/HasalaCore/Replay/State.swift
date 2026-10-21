@@ -772,11 +772,11 @@ public struct State: Sendable, Equatable, Codable {
   public var rates: OrderedDictionary<String, Int64?> = [:]
   public var rateUpdatedAt: OrderedDictionary<String, String> = [:]
   /// bank → declared; insertion order is first-declaration order.
-  public var banks: OrderedDictionary<String, Bool> = [:]
+  public var banks: OrderedDictionary<ExactKey, Bool> = [:]
   public var budgetSplit: BudgetSplit?
   public var budgetMonthlyTotal: Int64?
   /// id → definition; insertion order is first-definition order (03c §4.4 `ord`).
-  public var categories: OrderedDictionary<String, CategoryDef> = [:]
+  public var categories: OrderedDictionary<ExactKey, CategoryDef> = [:]
   public var pendingByCurrency: OrderedDictionary<String, OrderedSet<String>> = [:]
   public var checkpoints: [CheckpointEntry] = []
   public var forks: [ForkNotice] = []

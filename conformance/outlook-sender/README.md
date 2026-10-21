@@ -3,24 +3,18 @@
 The Outlook lane's trust rule (`docs/decisions/outlook-mailbox.md` §3a): given
 a message's header block, whether Graph put it in the Inbox, the known bank
 sender addresses and the domains that publish DMARC `p=reject`, is the message
-taken as the bank's, why not, and which domain. The TypeScript reference client
-(`reference/ledgerd-client/src/mail/authres.ts`: `analyzeOutlookSender`) is the
-oracle; the Swift port (CoreMail `AuthResults.analyzeOutlookSender`) must
-reproduce every vector
-(`ios/HasalaCore/Tests/CoreMailTests/OutlookSenderConformanceTests.swift`).
+taken as the bank's, why not, and which domain. The ledgerd TypeScript client
+(`src/mail/authres.ts`: `analyzeOutlookSender`; removed after commit 9b4aae2)
+wrote the vectors; the Swift port (CoreMail `AuthResults.analyzeOutlookSender`)
+must reproduce every vector
+(`ios/HasalaCore/Tests/HasalaCoreConformanceTests/OutlookSenderConformanceTests.swift`).
 There is no Go executor: the server never reads mail. All header blocks,
 addresses and domains are synthetic. The app's real lists are
 `OutlookSenders.known` and `OutlookSenders.dmarcReject`.
 
-Regenerate (never hand-edit):
-
-```sh
-cd reference/ledgerd-client && bun run gen-outlook-sender-conformance
-bun run gen-outlook-sender-conformance --check   # compare only, exit 1 if stale
-```
-
-`src/mail/outlook-sender-conformance.test.ts` fails when the committed file
-differs from what the generator writes, and runs in `scripts/check.sh`.
+Golden file: the Swift test owns the expected output and rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`). To add or change a
+case, edit its input by hand, run update mode, and review the diff.
 
 ## The rule
 

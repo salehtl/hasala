@@ -1,4 +1,4 @@
-// Code generated from reference/ledgerd-client/src/crypto/wordlist.ts; DO NOT EDIT.
+// Code generated from bitcoin/bips bip-0039/english.txt; DO NOT EDIT.
 // The BIP-39 English wordlist (spec 01 §4.3). Its digest is pinned by
 // TestWordlistDigest: SHA256(words joined by "\n" plus "\n") = 2f5eed53….
 

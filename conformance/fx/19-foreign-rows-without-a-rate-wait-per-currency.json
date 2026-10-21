@@ -1,0 +1,144 @@
+{
+  "name": "foreign-rows-without-a-rate-wait-per-currency",
+  "note": "Three foreign rows, three currencies, no rate for any of them at ingest. A rate_unset for a currency that never had a rate makes its head a live null and freezes nothing; a rate for EUR backfills only the EUR row. USD and GBP stay pending in their own buckets with null snapshots.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "home_currency_set",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-1",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "AED"
+        }
+      }
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-2",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t3"
+        },
+        "ingest_id": "9a83c6cb1126d93de4a30715b28f1f4b26b983c57fb39e6d826d7e893ae4ee74",
+        "payload": {
+          "amount_minor": "10000",
+          "currency": "GBP",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t3",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "3",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-3",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t1"
+        },
+        "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+        "payload": {
+          "amount_minor": "10000",
+          "currency": "USD",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t1",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "4",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-4",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t2"
+        },
+        "ingest_id": "420fce314175df402adbeae3cfbbb85665b72d8b9bc2346f463e32a82f64b114",
+        "payload": {
+          "amount_minor": "10000",
+          "currency": "EUR",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t2",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "5",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_unset",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-5",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "GBP"
+        }
+      }
+    },
+    {
+      "seq": "6",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_set",
+        "op_id": "foreign-rows-without-a-rate-wait-per-currency-6",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "EUR",
+          "rate_micro": "4000000"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "home_currency": "AED",
+    "rates": {
+      "AED": "1000000",
+      "GBP": null,
+      "EUR": "4000000"
+    },
+    "snapshots": {
+      "t1": null,
+      "t2": "40000",
+      "t3": null
+    },
+    "pending": {
+      "GBP": [
+        "t3"
+      ],
+      "USD": [
+        "t1"
+      ]
+    },
+    "anomalies": []
+  }
+}

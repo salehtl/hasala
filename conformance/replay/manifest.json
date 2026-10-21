@@ -1,5 +1,5 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-replay-conformance.ts from the TypeScript v3 fold oracle (src/replay); do not hand-edit. Each case is a log of blobs in order. An `ops` item is one blob whose body is {\"v\": the largest op v, \"kind\": \"ops\", \"ops\": [...]} (its ops are wire-canonical and may be folded directly); a `body`/`body_base64` item is a blob given as its exact plaintext body. Fold every item at its seq as sync does (decode, set aside what will not decode, fold). `expect.error` names the entry that stops the fold; otherwise `expect.state` is serializeState with every anomalies[].detail and unreadable[].reason replaced by \"\", and `expect.state_sha256` is the SHA-256 of that compact JSON. `expect.order` is the first-declaration order of banks and categories. `expect.diagnostics` is the oracle's own text, for reference only. See README.md.",
+  "note": "First written by the ledgerd TypeScript v3 fold oracle (src/replay), removed after commit 9b4aae2. Golden file: the Swift tests own `expect` and rewrite it with HASALA_UPDATE_GOLDEN=1 (conformance/README.md); add or change an input by hand. Each case is a log of blobs in order. An `ops` item is one blob whose body is {\"v\": the largest op v, \"kind\": \"ops\", \"ops\": [...]} (its ops are wire-canonical and may be folded directly); a `body`/`body_base64` item is a blob given as its exact plaintext body. Fold every item at its seq as sync does (decode, set aside what will not decode, fold). `expect.error` names the entry that stops the fold; otherwise `expect.state` is serializeState with every anomalies[].detail and unreadable[].reason replaced by \"\", and `expect.state_sha256` is the SHA-256 of that compact JSON. `expect.order` is the first-declaration order of banks and categories. `expect.diagnostics` is the oracle's own text, for reference only. See README.md.",
   "schema_version": 1,
   "fold_schema_version": 3,
   "compared": "state with anomalies[].detail and unreadable[].reason blanked; order; error",
@@ -125,6 +125,30 @@
       "name": "pre-onboarding-rate-then-unset-then-onboarding",
       "group": "fx",
       "note": "conformance/fx: The shape that carries BOTH halves of the pre-onboarding problem at once, and which no other case reaches: a rate for the currency that becomes home, a row frozen against it, that rate then unset, a second row left pending, and only then the onboarding op \u2014 which installs the identity, backfills the pending row and raises the anomaly. t1 keeps its 2.0 basis and t2 gets the identity, so the two-basis split the anomaly reports is visible in the snapshots themselves. The anomaly fires on a NULL head, which is why the guard keys on 'a rate head exists' rather than on 'a non-null rate head exists'."
+    },
+    {
+      "file": "fx-foreign-rows-without-a-rate-wait-per-currency.json",
+      "name": "foreign-rows-without-a-rate-wait-per-currency",
+      "group": "fx",
+      "note": "conformance/fx: Three foreign rows, three currencies, no rate for any of them at ingest. A rate_unset for a currency that never had a rate makes its head a live null and freezes nothing; a rate for EUR backfills only the EUR row. USD and GBP stay pending in their own buckets with null snapshots."
+    },
+    {
+      "file": "fx-foreign-row-before-onboarding.json",
+      "name": "foreign-row-before-onboarding",
+      "group": "fx",
+      "note": "conformance/fx: Rows arrive before any home currency exists. The foreign row waits and its rate backfills it; the row in the currency that later becomes home waits for the onboarding op, which backfills it at the identity. A rate for another currency before onboarding is not an anomaly."
+    },
+    {
+      "file": "fx-int64-max-converts-exactly.json",
+      "name": "int64-max-converts-exactly",
+      "group": "fx",
+      "note": "conformance/fx: Amounts at 2^63-1 and one below it, in the home currency at the identity and in USD at exactly 1.000000, come back digit for digit; EUR at 0.999999 rounds half-up to 9223362813482738952. The product amount_minor x rate_micro is past 2^63-1 in every row here, so an executor needs a 128-bit or unbounded intermediate; only the result must fit Int64."
+    },
+    {
+      "file": "fx-int64-max-foreign-row-waits-then-backfills.json",
+      "name": "int64-max-foreign-row-waits-then-backfills",
+      "group": "fx",
+      "note": "conformance/fx: A USD row at 2^63-1 with no rate is pending with a null snapshot; an unset keeps it waiting; the first real rate, 1.000000, backfills it to 2^63-1 exactly."
     },
     {
       "file": "fold-empty-log.json",
@@ -539,6 +563,24 @@
       "name": "payload-not-an-object",
       "group": "fold",
       "note": "A payload that is not a JSON object is an invalid_payload for every op type that reads one."
+    },
+    {
+      "file": "fold-money-at-the-int64-limits.json",
+      "name": "money-at-the-int64-limits",
+      "group": "fold",
+      "note": "Amounts at 2^63-1, one below it, just past 2^53 and one fils fold exactly and convert at the identity rate without loss; a split of the largest amount sums exactly; a user row restated to 2^63-1 converts to itself."
+    },
+    {
+      "file": "fold-merchant-nfc-nfd-across-edits.json",
+      "name": "merchant-nfc-nfd-across-edits",
+      "group": "fold",
+      "note": "An edit that respells an NFD merchant in NFC moves the row into the NFC fingerprint, where it now collides; respelling it back in NFD moves it out again and the notice stays as history."
+    },
+    {
+      "file": "fold-category-ids-nfc-nfd-are-two.json",
+      "name": "category-ids-nfc-nfd-are-two",
+      "group": "fold",
+      "note": "A category id in NFC and the same id in NFD are two categories, keyed by their UTF-8 bytes; a row filed under one is not under the other."
     },
     {
       "file": "config-banks-last-write-per-bank.json",

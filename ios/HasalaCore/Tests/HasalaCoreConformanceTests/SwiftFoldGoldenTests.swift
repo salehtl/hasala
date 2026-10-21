@@ -1,7 +1,9 @@
+import CoreDomain
 import CoreInvariants
 import CoreJSON
 import CorePrimitives
 import CoreReplay
+import CoreTime
 import CoreWire
 import Foundation
 import Testing
@@ -36,7 +38,7 @@ enum FoldGoldens {
     return s + #","payload":\#(payload)}"#
   }
 
-  static let sets: [FoldGoldenSet] = [MailboxRetireGoldens.set, DuplicateGoldens.set]
+  static let sets: [FoldGoldenSet] = [MailboxRetireGoldens.set, DuplicateGoldens.set, EdgeGoldens.set]
 
   static func file(_ set: FoldGoldenSet) throws -> JSONValue {
     var cases: [JSONValue] = []
@@ -92,6 +94,31 @@ struct SwiftFoldGoldenTests {
     let committed = try String(contentsOf: Self.root.appendingPathComponent(file), encoding: .utf8)
     let now = Pretty.text(try FoldGoldens.file(set))
     #expect(committed == now, "\(file) is stale: regenerate it")
+  }
+
+  @Test("SamePurchase.pairs over the folded edge cases skips archived rows and held copies")
+  func pairs() throws {
+    let doc = try Fixtures.json("swift/\(EdgeGoldens.set.file)")
+    var seen = 0
+    for c in try doc.array("cases") {
+      let name = try c.string("name")
+      guard let want = EdgeGoldens.pairs[name] else { continue }
+      seen += 1
+      guard case .state(let s) = try ReplayConformanceTests.fold(c) else {
+        Issue.record("\(name) stopped")
+        continue
+      }
+      let rows = try s.txns.values.map { t in
+        SamePurchase.Row(
+          id: t.id, live: t.isLive, unparsed: t.unparsed, archived: t.annotation("archived") != nil,
+          manual: t.entryMethod == "manual", amountMinor: t.amountMinor, currency: t.currency, amountHomeMinor: t.amountHomeMinor,
+          direction: t.direction, bank: t.bank, last4: t.last4, postedMs: try parseInstantMs(t.postedAt),
+          merchantKey: DuplicateRules.merchantKey(t.merchantRaw), possibleDuplicateOf: t.possibleDuplicateOf,
+          duplicateDisposition: t.duplicateDisposition, heldCopy: t.isHeldCopy)
+      }
+      #expect(SamePurchase.pairs(rows, home: "AED").map { $0.foreign + ">" + $0.home } == want, "\(name)")
+    }
+    #expect(seen == EdgeGoldens.pairs.count)
   }
 
   @Test("every committed case folds through the replay reader to its hash, and passes the invariants", arguments: FoldGoldens.sets.map(\.file))

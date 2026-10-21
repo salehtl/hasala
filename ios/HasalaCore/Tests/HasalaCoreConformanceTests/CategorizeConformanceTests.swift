@@ -64,6 +64,67 @@ struct CategorizeConformanceTests {
     return .object(JSONObject(o)).sortingKeysByUTF8()
   }
 
+  static func preparedJSON(_ list: [PreparedPattern]) -> JSONValue {
+    .array(
+      list.map {
+        obj([
+          ("id", .string($0.id)), ("pattern", .string($0.pattern)), ("match", .string($0.match.rawValue)), ("category", .string($0.category)),
+          ("priority", .number(JSONNumber($0.priority))),
+        ])
+      })
+  }
+
+  static func preparedExpect(_ p: PreparedRules, _ e: JSONValue?, rules: Bool) throws -> JSONValue {
+    var out: [(String, JSONValue)] = []
+    if rules { out.append(("rules", preparedJSON(p.rules))) }
+    out.append(("entries", preparedJSON(p.entries)))
+    out.append(("defects", .array(p.defects.map { obj([("id", .string($0.id)), ("code", .string($0.code))]) })))
+    out.append(
+      ("decisions", try Golden.mapping(e?["decisions"]) { $0.setting("decision", decision(try $0.string("merchant"), p)) }))
+    return obj(out)
+  }
+
+  @Test("canon.json, order.json and dictionary.json are what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites them)")
+  func golden() throws {
+    let canon = try Fixtures.json("categorize/canon.json")
+    let vectors = try Golden.mapping(canon["vectors"]) { v in
+      let input = try v.string("input")
+      return v.setting(
+        "expect",
+        obj([
+          ("canonical", .string(Canon.canonical(input))), ("fold_case", .string(Canon.foldCase(input))),
+          ("rune_length", .number(JSONNumber(Int64(Canon.runeLength(input))))), ("subject", .string(Canon.subject(input))),
+        ]))
+    }
+    try Golden.check("categorize/canon.json", canon.setting("vectors", vectors))
+
+    let order = try Fixtures.json("categorize/order.json")
+    let cases = try Golden.mapping(order["cases"]) { c in
+      if c["requires"] != nil { return c }
+      let p = Matcher.prepare(rules: try Self.ruleInputs(try c.array("rules")), entries: try Self.entries(try c.array("entries")))
+      return c.setting("expect", try Self.preparedExpect(p, c["expect"], rules: true))
+    }
+    try Golden.check("categorize/order.json", order.setting("cases", cases))
+
+    let dict = try Fixtures.json("categorize/dictionary.json")
+    let entries = try Golden.mapping(dict["entries"]) { v in
+      let raw = v["entry"]!
+      let got = Matcher.validateDictEntry(
+        DictEntry(pattern: try raw.string("pattern"), match: try raw.string("match"), category: try raw.string("category")))
+      switch got {
+      case .entry(let x):
+        let entry = obj([("pattern", .string(x.pattern)), ("match", .string(x.match)), ("category", .string(x.category))])
+        return v.setting("expect", obj([("ok", .bool(true)), ("entry", entry)]))
+      case .defect(let d):
+        return v.setting("expect", obj([("ok", .bool(false)), ("defect", obj([("id", .string(d.id)), ("code", .string(d.code))]))]))
+      }
+    }
+    var lookups = dict["lookups"]!
+    let p = Matcher.prepare(rules: [], entries: try Self.entries(try lookups.array("dictionary")))
+    lookups = lookups.setting("expect", try Self.preparedExpect(p, lookups["expect"], rules: false))
+    try Golden.check("categorize/dictionary.json", dict.setting("entries", entries).setting("lookups", lookups))
+  }
+
   @Test("order.json: survivors in match order, defects, decisions")
   func order() throws {
     let cases = try Fixtures.json("categorize/order.json").array("cases")

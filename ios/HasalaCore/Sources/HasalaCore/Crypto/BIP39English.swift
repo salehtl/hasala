@@ -1,12 +1,11 @@
 // GENERATED: the BIP-39 English wordlist, verbatim (2048 words, index order),
-// from bitcoin/bips `bip-0039/english.txt` as copied into
-// reference/ledgerd-client/src/crypto/wordlist.ts. Do not edit by hand.
+// from bitcoin/bips `bip-0039/english.txt`. Do not edit by hand.
 //
 // SHA-256 of `words.joined("\n") + "\n"` MUST equal
 // 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda (spec 01 §4.3,
 // V-C); CoreCryptoTests pins it.
 //
-// Regenerate: extract the quoted words of wordlist.ts in order, check the digest
+// Regenerate: take the words of english.txt in order, check the digest
 // above, and write them eight per line in this shape.
 
 public enum BIP39English {

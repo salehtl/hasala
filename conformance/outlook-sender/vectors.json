@@ -1,5 +1,5 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-outlook-sender-conformance.ts from the TypeScript oracle (analyzeOutlookSender in src/mail/authres.ts); do not hand-edit. Each vector is one header block (`headers`, or `headers_parts`: concatenate each part's `text` repeated `repeat` times) and whether Graph put the message in the Inbox (`in_inbox`). Every vector uses the document's `known_senders` and `reject_domains`. All inputs are synthetic. See README.md.",
+  "note": "First written by the ledgerd TypeScript oracle (analyzeOutlookSender in src/mail/authres.ts), removed after commit 9b4aae2. Golden file: the Swift tests own `expect` and rewrite it with HASALA_UPDATE_GOLDEN=1 (conformance/README.md); add or change an input by hand. Each vector is one header block (`headers`, or `headers_parts`: concatenate each part's `text` repeated `repeat` times) and whether Graph put the message in the Inbox (`in_inbox`). Every vector uses the document's `known_senders` and `reject_domains`. All inputs are synthetic. See README.md.",
   "schema_version": 1,
   "known_senders": [
     "alerts@bank.example",
