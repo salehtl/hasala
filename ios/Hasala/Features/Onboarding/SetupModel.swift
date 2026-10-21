@@ -208,7 +208,6 @@ final class SetupModel {
     guard path.isEmpty else { return }
     let manual = facts.bankSkipped && !facts.banksChosen
     var stack: [SetupRoute] = []
-    if !manual { stack.append(.connect(provider)) }
     // A scan the lane is still running is followed again, and its screen is in the stack;
     // a finished one has nothing to show there, so Back goes to the connected email step.
     if !manual, facts.mailbox == .scanning, !facts.mailSkipped, !facts.sampleLoaded { startScan() }
@@ -255,13 +254,8 @@ final class SetupModel {
     chosenBanks = banks
   }
 
-  /// "Continue with N banks": the bank ops, unless these banks were sent already (Back
-  /// then Continue sends nothing again), then your email.
-  func continueWithBanks() async {
-    guard !chosenBanks.isEmpty, !busy else { return }
-    // The person moved on from the bank step here, so the stack follows them from now on:
-    // `resume()`, which the view runs when the derived step changes, must not build one
-    // under them (it pushed the email step behind "Choose your email", or twice).
+  func saveBanks() async -> Bool {
+    guard !chosenBanks.isEmpty, !busy else { return false }
     didResume = true
     let banks = orderedBanks
     if draft.authored.banks != banks {
@@ -276,11 +270,22 @@ final class SetupModel {
         draft.authored.banks = banks
       } catch {
         failure = error
-        return
+        return false
       }
     }
     facts.banksChosen = true
-    await openEmailStep()
+    return true
+  }
+
+  /// The bank step's button: the banks, then the provider's sign-in, or, once connected,
+  /// on without a second sign-in.
+  func continueWithBanks() async {
+    guard await saveBanks() else { return }
+    if mailConnected {
+      continueConnected()
+    } else {
+      await connectMail(provider)
+    }
   }
 
   /// "Skip": manual-entry mode; your email and the scan are skipped too.
@@ -307,21 +312,6 @@ final class SetupModel {
   /// The lane as the connect screens see it.
   var mailbox: MailboxConnecting { services.mailbox }
 
-  /// The email step after the banks: the provider connected or remembered, the only one
-  /// this build reads, or "Choose your email" (plan B4.6 rule 2, decision 5).
-  private func openEmailStep() async {
-    if mailConnected {
-      let provider = provider
-      await settle(provider)
-      go(.connect(provider))
-    } else if draft.provider != nil || connectable.count <= 1 {
-      go(.connect(provider))
-    } else {
-      failure = nil
-      choosingEmail = true
-    }
-  }
-
   /// Whether "Choose a different one" can open the chooser (more than one provider).
   var canChooseEmail: Bool { connectable.count > 1 }
 
@@ -332,21 +322,14 @@ final class SetupModel {
     choosingEmail = true
   }
 
-  /// A row in "Choose your email": the sheet goes, and that provider's read-only screen
-  /// takes the email step's place in the stack.
+  /// A row in "Choose your email": the sheet goes, and the bank step connects that
+  /// provider (an error screen on the stack goes with it).
   func pickProvider(_ provider: MailProviderKind) {
     draft.provider = provider
     choosingEmail = false
-    if case .failed? = coordinators[provider]?.outcome { coordinators[provider]?.reset() }
-    showEmailScreen(provider)
-  }
-
-  /// The email step's screen for `provider`, in place of any email screen on the stack.
-  private func showEmailScreen(_ provider: MailProviderKind) {
-    choosingEmail = false
     failure = nil
-    let kept = path.prefix { !$0.isEmailStep }
-    path = Array(kept) + [.connect(provider)]
+    if case .failed? = coordinators[provider]?.outcome { coordinators[provider]?.reset() }
+    path = Array(path.prefix { !$0.isEmailStep })
   }
 
   /// The connect attempt for `provider`'s screen, made once and kept.
@@ -377,15 +360,18 @@ final class SetupModel {
     await connectMail(provider, again: false)
   }
 
-  private func connectMail(_ provider: MailProviderKind, again: Bool) async {
-    if path.last != .connect(provider), path.last != .connectError(provider) {
-      draft.provider = provider
-      showEmailScreen(provider)
-    }
+  func connectMail(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool) async {
+    await connectMail(provider, again: false, replacing: replacing, removingOld: removingOld)
+  }
+
+  private func connectMail(_ provider: MailProviderKind, again: Bool, replacing: Bool = false,
+                           removingOld: Bool = false) async {
+    draft.provider = provider
+    failure = nil
     if again {
       await coordinator(provider).retry(provider)
     } else {
-      await coordinator(provider).connect(provider)
+      await coordinator(provider).connect(provider, replacing: replacing, removingOld: removingOld)
     }
     switch coordinators[provider]?.outcome {
     case .connected?: emailConnected(provider)
@@ -400,9 +386,8 @@ final class SetupModel {
     await connectMail(provider, again: true)
   }
 
-  /// The connect screen's own button connected, or its "Continue" was tapped once it had.
-  func continueFromEmail(_ provider: MailProviderKind) {
-    guard path.last == .connect(provider) else { return }
+  func continueConnected() {
+    guard path.isEmpty else { return }
     emailConnected(provider)
   }
 
@@ -454,7 +439,7 @@ final class SetupModel {
   }
 
   func useSampleData() async {
-    guard !busy else { return }
+    guard !busy, await saveBanks() else { return }
     busy = true
     defer { busy = false }
     do {
@@ -563,6 +548,26 @@ final class SetupModel {
   /// The scan has stopped in the foreground and filed what's shown; it may go on later.
   var scanDone: Bool { scan?.phase == .finished }
 
+  var foundNoAlerts: Bool { scanDone && (summary?.total ?? 0) == 0 }
+
+  private(set) var checkingAgain = false
+
+  func checkAgain() async {
+    guard foundNoAlerts, !checkingAgain else { return }
+    checkingAgain = true
+    defer { checkingAgain = false }
+    failure = nil
+    for await p in services.mailbox.firstScan() {
+      switch p.phase {
+      case .finished, .background:
+        if let s = p.summary { summary = s }
+      case .failed(let message):
+        failure = .failed(message)
+      default: break
+      }
+    }
+  }
+
   /// "Continue" on the result, whether or not the scan has finished.
   func afterResult() { go(offersCloudSort ? .sort : .notifications) }
 
@@ -613,11 +618,9 @@ final class SetupModel {
 }
 
 extension SetupRoute {
-  /// The email step's screens, which replace each other on the stack.
+  /// The email step's error screen, which a pick in "Choose your email" takes away.
   var isEmailStep: Bool {
-    switch self {
-    case .connect, .connectError: true
-    default: false
-    }
+    if case .connectError = self { return true }
+    return false
   }
 }

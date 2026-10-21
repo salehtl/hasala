@@ -36,6 +36,7 @@ enum MailConnectFailure: Error, Equatable {
   case takenByOtherIPhone
   case offline
   case noMailbox(MailProviderKind)
+  case permissionMissing(MailProviderKind)
   case switchDeclined
   /// Anything else, with its content-free copy.
   case failed(String)
@@ -50,7 +51,15 @@ enum MailConnectFailure: Error, Equatable {
     case .takenByOtherIPhone: "Your email is read on your other iPhone."
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
     case .noMailbox(let account): Self.noMailboxLine(account)
+    case .permissionMissing(let account): Self.permissionMissingLine(account)
     case .failed(let message): message
+    }
+  }
+
+  static func permissionMissingLine(_ provider: MailProviderKind) -> String {
+    switch provider {
+    case .gmail: "Hasala needs \u{201C}Read your email\u{201D} ticked. Try again and tick it."
+    case .outlook: "Hasala needs permission to read your bank alerts. Try again and allow it."
     }
   }
 

@@ -11,12 +11,11 @@ final class MailboxUITests: XCTestCase {
   /// The large-text size the audits use (AX3).
   static let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
 
-  /// Setup's email step connects Gmail (the mock's sign-in always succeeds) and the first
-  /// scan starts. With setup's chooser (P2) Continue offers Gmail and Outlook first.
+  /// Setup's bank alerts step connects Gmail (the mock's sign-in always succeeds) and the
+  /// first scan starts.
   @MainActor
   func testSetupConnectsGmailToTheFirstScan() throws {
     let app = launch(scenario: "setupBank")
-    tap(app, "bank.continue", timeout: 15)
     let connect = try connectScreen(app, .gmail)
     attach(app, "Connect Gmail")
     try audit(app)
@@ -25,13 +24,12 @@ final class MailboxUITests: XCTestCase {
     attach(app, "First scan")
   }
 
-  /// Outlook in setup: Choose your email › Outlook › its read-only screen (with the work
-  /// account line) › Continue with Microsoft › the first scan, through the chooser that
-  /// setup (P2) presents over the bank step.
+  /// Outlook in setup: Use Outlook › Choose your email › Outlook › the bank step with
+  /// Outlook (with the work account line) › Continue with Microsoft › the first scan.
   @MainActor
   func testSetupConnectsOutlookToTheFirstScan() throws {
     let app = launch(scenario: "setupBank")
-    tap(app, "bank.continue", timeout: 15)
+    tap(app, "mail.change", timeout: 15)
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
     attach(app, "Setup · Choose your email")
@@ -40,7 +38,8 @@ final class MailboxUITests: XCTestCase {
     let connect = el(app, "mail.connect.outlook")
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Microsoft")
-    XCTAssertTrue(el(app, "mail.notYours").label.contains("Work or school account?"))
+    XCTAssertTrue(el(app, "mail.provider").label.contains("Work or school account?"))
+    XCTAssertFalse(el(app, "mail.googleBriefing").exists)
     attach(app, "Setup · Outlook, read-only")
     try audit(app)
     connect.tap()
@@ -397,18 +396,11 @@ final class MailboxUITests: XCTestCase {
       .waitForExistence(timeout: uiWait)
   }
 
-  /// The provider's read-only screen after the bank step: through setup's chooser when the
-  /// build offers more than one provider, else straight on. Its button names the company.
+  /// The provider's button on setup's bank step. It names the company.
   @MainActor
   private func connectScreen(_ app: XCUIApplication, _ provider: Provider) throws -> XCUIElement {
-    let chooser = el(app, "mail.choose.\(provider.rawValue)")
     let button = el(app, "mail.connect.\(provider.rawValue)")
-    for _ in 0..<30 {
-      if chooser.exists { chooser.tap(); break }
-      if button.exists { break }
-      Thread.sleep(forTimeInterval: 0.5)
-    }
-    XCTAssertTrue(button.waitForExistence(timeout: 10), "the read-only screen did not open")
+    XCTAssertTrue(button.waitForExistence(timeout: 15), "the bank step has no sign-in")
     XCTAssertEqual(button.label, provider == .gmail ? "Continue with Google" : "Continue with Microsoft")
     return button
   }

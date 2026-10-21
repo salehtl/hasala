@@ -140,11 +140,11 @@ struct OnboardingStoreTests: AccountSuite {
     let fresh = other.setupModel(displayName: "Maya", facts: real)
     fresh.resume()
     #expect(setup.step == .plan && fresh.step == .plan)
-    #expect(setup.path == fresh.path && setup.path == [.connect(.gmail), .income, .plan])
+    #expect(setup.path == fresh.path && setup.path == [.income, .plan])
     // Built once: Back, then a later call, leave the stack as the person left it.
     setup.back()
     setup.resume()
-    #expect(setup.path == [.connect(.gmail), .income])
+    #expect(setup.path == [.income])
 
     // Moved on here before the facts changed: nothing is rebuilt over that place.
     let (third, _) = self.store(phase: .onboarding(.bank))
@@ -180,9 +180,9 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(signup.failure == .notInvited)
 
     let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
-    setup.path = [.connect(.gmail), .scan]
+    setup.path = [.scan, .income]
     setup.failure = .offline
-    setup.navigationPath = [.connect(.gmail)]
-    #expect(setup.failure == nil && setup.path == [.connect(.gmail)])
+    setup.navigationPath = [.scan]
+    #expect(setup.failure == nil && setup.path == [.scan])
   }
 }

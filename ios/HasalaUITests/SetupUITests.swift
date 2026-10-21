@@ -1,7 +1,7 @@
 import XCTest
 
-/// Setup on the in-memory mocks (Paper row 10 and P2.9 row 1): bank, "Choose your email",
-/// the read-only connect, the first scan, income on the keypad with the payday strip, the
+/// Setup on the in-memory mocks (Paper row 10, P2.9 row 1 and X4): the bank alerts step with
+/// the mailbox and its sign-in, how to turn on email alerts, the first scan, income on the keypad with the payday strip, the
 /// starting plan with its handles, the result, notifications and done. Every screen is
 /// audited for accessibility, and screenshots are attached to the report.
 final class SetupUITests: XCTestCase {
@@ -14,20 +14,22 @@ final class SetupUITests: XCTestCase {
     let app = launch(scenario: "setupBank")
 
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))
-    attach(app, "Bank")
-    try audit(app)
-    tap(app, "bank.continue")
-
-    // Debug reads Gmail and Outlook: "Choose your email" over the bank step.
-    XCTAssertTrue(el(app, "setup.chooseEmail").waitForExistence(timeout: uiWait))
-    attach(app, "Choose your email")
-    try audit(app, overSheet: true)
-    tap(app, "mail.choose.gmail")
     let connect = el(app, "mail.connect.gmail")
-    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Google")
-    attach(app, "Connect Gmail")
+    XCTAssertTrue(app.staticTexts["Connect your bank alerts"].exists)
+    XCTAssertTrue(el(app, "mail.googleBriefing").exists, "the Google card is missing")
+    XCTAssertTrue(el(app, "mail.change").label.contains("Use Outlook"))
+    XCTAssertFalse(el(app, "setup.chooseEmail").exists)
+    attach(app, "Bank alerts and Gmail")
     try audit(app)
+
+    tap(app, "bank.howTo")
+    XCTAssertTrue(el(app, "alertsHelp.enbd").waitForExistence(timeout: uiWait), "the how-to did not open")
+    XCTAssertTrue(el(app, "alertsHelp.adib").exists)
+    attach(app, "How to turn on email alerts")
+    try audit(app, overSheet: true)
+    tap(app, "alertsHelp.done")
+    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     connect.tap()
 
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10))
@@ -72,32 +74,24 @@ final class SetupUITests: XCTestCase {
   }
 
   /// The owner's requirement: setup remembers everything for the life of the process.
-  /// Connect, Back to the bank, Continue: the email step is connected, with no second
-  /// sign-in. 25,000 on the keypad, the payday and the split survive Back and Forward.
+  /// Connect, Back to the bank step: it shows the mailbox connected, with no second sign-in.
+  /// 25,000 on the keypad, the payday and the split survive Back and Forward.
   @MainActor
   func testSetupRemembersEverythingThroughBackAndForward() throws {
     let app = launch(scenario: "setupBank")
-    tap(app, "bank.continue")
-    tap(app, "mail.choose.gmail")
-    tap(app, "mail.connect.gmail")
+    tap(app, "mail.connect.gmail", timeout: 15)
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
 
-    // Back to the email step, then to the bank.
     back(app)
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "the email step forgot the connect")
-    back(app)
-    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait))
-
-    // Continue again: no chooser (the provider is remembered), and the step shows connected.
-    tap(app, "bank.continue")
-    XCTAssertTrue(el(app, "mail.continue").waitForExistence(timeout: uiWait), "Continue offered a sign-in again")
-    XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened again")
+    XCTAssertTrue(el(app, "bank.continue").waitForExistence(timeout: uiWait), "the bank step forgot the connect")
+    XCTAssertFalse(el(app, "setup.chooseEmail").exists, "the chooser opened")
     XCTAssertFalse(el(app, "mail.connect.gmail").exists, "the step offered Google's sign-in again")
+    XCTAssertFalse(el(app, "mail.googleBriefing").exists, "the Google card stayed after the connect")
     let connected = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'connected'"))
     XCTAssertGreaterThan(connected.count, 0, "nothing says the mailbox is connected")
-    attach(app, "Connect Gmail · connected again")
+    attach(app, "Bank alerts · connected again")
     try audit(app)
-    tap(app, "mail.continue")
+    tap(app, "bank.continue")
     XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: uiWait))
     tap(app, "scan.setUpPlan")
 
@@ -144,8 +138,6 @@ final class SetupUITests: XCTestCase {
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))
     attach(app, "Bank · AX3")
     try audit(app, atLargeText: true)
-    tap(app, "bank.continue")
-    tap(app, "mail.choose.gmail")
     tap(app, "mail.connect.gmail")
     tap(app, "scan.setUpPlan")
     XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
@@ -162,9 +154,7 @@ final class SetupUITests: XCTestCase {
   @MainActor
   func testSetupWithReduceMotion() throws {
     let app = launch(scenario: "setupBank", motion: "reduce")
-    tap(app, "bank.continue", timeout: 15)
-    tap(app, "mail.choose.gmail")
-    tap(app, "mail.connect.gmail")
+    tap(app, "mail.connect.gmail", timeout: 15)
     tap(app, "scan.setUpPlan")
     typeOnKeypad(app, "18000")
     XCTAssertTrue(incomeFigure(app).contains("18,000"))
@@ -176,5 +166,42 @@ final class SetupUITests: XCTestCase {
     tap(app, "notifications.notNow")
     XCTAssertTrue(el(app, "done.home").waitForExistence(timeout: 10))
     attach(app, "Done · Reduce Motion")
+  }
+
+  @MainActor
+  func testAMissingGmailGrantSaysWhatToTick() throws {
+    let app = launch(scenario: nil, screen: "mail.permissionMissing")
+    let line = "Hasala needs \u{201C}Read your email\u{201D} ticked. Try again and tick it."
+    XCTAssertTrue(app.staticTexts[line].waitForExistence(timeout: 30), "the missing grant has no line of its own")
+    attach(app, "Bank alerts · Read your email not ticked")
+    try audit(app)
+    tap(app, "mail.connect.gmail")
+    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "trying again did not connect")
+  }
+
+  @MainActor
+  func testNoBankAlertsYet() throws {
+    let app = launch(scenario: nil, screen: "setup.resultNoAlerts")
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: 30))
+    XCTAssertTrue(el(app, "result.howTo.enbd").exists && el(app, "result.howTo.adib").exists)
+    attach(app, "No bank alerts yet")
+    try audit(app)
+    tap(app, "result.howTo.dib")
+    XCTAssertTrue(el(app, "alertsHelp.dib").waitForExistence(timeout: uiWait), "the how-to did not open")
+    XCTAssertFalse(el(app, "alertsHelp.enbd").exists, "the how-to shows every bank")
+    tap(app, "alertsHelp.done")
+    tap(app, "result.checkAgain")
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: 10))
+    tap(app, "result.continue")
+    XCTAssertTrue(el(app, "notifications.allow").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testNoBankAlertsYetAtLargeTextSizes() throws {
+    let app = launch(scenario: nil, screen: "setup.resultNoAlerts",
+                     arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: 30))
+    attach(app, "No bank alerts yet · AX3")
+    try audit(app, atLargeText: true)
   }
 }
