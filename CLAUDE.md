@@ -411,6 +411,31 @@ There are two Postgres roles:
 Tests start their own temporary cluster (`internal/pgtest`). To use one
 cluster again, set `HASALA_TEST_POSTGRES_URL`.
 
+### The restore ledger
+
+The restore ledger (`server/internal/purgeledger`, the file
+`/var/lib/hasala-ledger/purged` on the QA host) records changes that a backup
+restore must not undo. `hasala-purge-replay` applies them again before
+`hasalad` starts. Refer to `docs/runbooks/restore.md`.
+
+- The ledger records account deletions, freezes and unfreezes, device
+  removals, password changes, passkey removals, waitlist leaves and waitlist
+  entries deleted after a bounced invite. It records only internal IDs and
+  times. Do not add an email address or a name.
+- No command freezes an account as the operator yet. When you add one, record
+  the freeze and the unfreeze in the ledger.
+- A line with only two fields is an account deletion. Each other event has a
+  third field (its kind). Do not change the format of an existing kind. Old
+  lines must stay readable.
+- When you add a change that a restore must not undo, record it in the ledger
+  and add its replay. The replay must be safe to run two times.
+
+> **WARNING:** A `hasalad` from before the event kinds (before branch
+> `legal/accuracy-fixes`) does not read lines with a third field. Then
+> `hasala-purge-replay` fails and `hasalad` does not start. Before you deploy
+> an older `hasalad`, copy the ledger file. Then remove each line that has a
+> third field.
+
 ### Rules for agents on this Mac
 
 - Do not write code comments. (The owner set this rule to save tokens.)
