@@ -45,7 +45,7 @@ struct RecurringLedgerTests {
     #expect(ledger.state.bill("netflix") == MayaLedger.state.bill("netflix"))
   }
 
-  @Test func endThenReactivateLeavesTheGapUnpaid() throws {
+  @Test func endThenReactivateTracksFromThatDay() throws {
     let ledger = InMemoryLedger()
     #expect(throws: ActionError.invalidBill) { try ledger.apply(.endBill("netflix", lastPayment: LocalDate(2026, 1, 1))) }
     try ledger.apply(.pauseBill("netflix", until: nil))
@@ -63,6 +63,7 @@ struct RecurringLedgerTests {
     #expect(b.state == .tracked)
     #expect(b.endedOn == nil)
     #expect(b.nextDue == LocalDate(2027, 2, 6))
+    #expect(b.trackingSince == LocalDate(2027, 1, 20))
     #expect(b.payments.map(\.due) == [LocalDate(2026, 10, 6)])
     #expect(throws: ActionError.invalidBill) { try ledger.apply(.reactivateBill("netflix")) }
   }

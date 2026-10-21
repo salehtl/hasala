@@ -320,6 +320,7 @@ public final class InMemoryLedger: LedgerStore {
       guard s.bills[i].state == .ended else { throw .invalidBill }
       s.bills[i].state = .tracked
       s.bills[i].endedOn = nil
+      s.bills[i].trackingSince = max(s.bills[i].trackingSince ?? today, today)
       s.bills[i].notices.removeAll { if case .chargedAfterEnd = $0.kind { true } else { false } }
       s.bills[i].nextDue = BillDates.first(s.bills[i], onOrAfter: today)
       title = "Tracking \(s.bills[i].name) again"
