@@ -277,11 +277,11 @@ struct StageTests {
 
 @Suite("CharsetTables.swift is current")
 struct CharsetTablesFreshnessTests {
-  /// reference/ledgerd-client/src/norm/charset-tables.ts, found by walking up from this file.
+  /// conformance/normalizer/charset-tables.ts, found by walking up from this file.
   static func tsSource() throws -> String {
     var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     while dir.path != "/" {
-      let f = dir.appendingPathComponent("reference/ledgerd-client/src/norm/charset-tables.ts")
+      let f = dir.appendingPathComponent("conformance/normalizer/charset-tables.ts")
       if FileManager.default.fileExists(atPath: f.path) { return try String(contentsOf: f, encoding: .utf8) }
       dir.deleteLastPathComponent()
     }
