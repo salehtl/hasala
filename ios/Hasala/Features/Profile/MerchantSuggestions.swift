@@ -84,14 +84,6 @@ struct CloudSuggestionsSection: View {
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
-      if consent.isOn, MerchantSuggestionsSetting.firstImport() != nil {
-        Text("Sorting your first import now, a few merchant names at a time. Turning Merchant suggestions off stops it.")
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 4)
-          .accessibilityIdentifier("profile.merchantFirstImport")
-      }
     }
     .sheet(item: Bindable(consent).asking) { ask in
       switch ask {

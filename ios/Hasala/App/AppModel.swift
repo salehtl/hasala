@@ -35,6 +35,7 @@ final class AppModel {
   /// The mail lane as setup uses it: the mailboxes, and what the bell, Profile and Bank
   /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
+  var cloudSort: (any CloudSortControlling)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
