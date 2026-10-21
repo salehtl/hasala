@@ -32,6 +32,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/salehtl/hasala/server/internal/headroom"
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/mail"
 )
 
@@ -667,8 +668,8 @@ func (c Config) validateAuth(prod bool) error {
 	if a.SessionMax < a.SessionIdle {
 		return fmt.Errorf("auth.session_max (%s) must be at least auth.session_idle (%s)", a.SessionMax, a.SessionIdle)
 	}
-	if a.InviteTTL <= 0 {
-		return errors.New("auth.invite_ttl must be positive (HASALA_INVITE_TTL)")
+	if err := invites.CheckTTL(a.InviteTTL); err != nil {
+		return fmt.Errorf("auth.invite_ttl (HASALA_INVITE_TTL): %w", err)
 	}
 	if a.PasswordHashConcurrency < 1 || a.PasswordHashConcurrency > 8 {
 		return fmt.Errorf("auth.password_hash_concurrency is %d: want 1–8", a.PasswordHashConcurrency)

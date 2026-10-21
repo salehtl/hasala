@@ -317,6 +317,13 @@ type prepareFunc func(ctx context.Context, tx pgx.Tx, rows []Row) error
 // consequence: under the reversed order the loser's error is SQLSTATE 23505,
 // not ErrChainBreak.
 func (a *Appender) appendTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, rows []Row, prepare prepareFunc) ([]int64, error) {
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT true FROM users WHERE id = $1 FOR KEY SHARE`, userID).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("oplog: append: no such account")
+		}
+		return nil, fmt.Errorf("oplog: append: lock the account: %w", err)
+	}
 	if err := EnsureSeqRow(ctx, tx, userID); err != nil {
 		return nil, err
 	}

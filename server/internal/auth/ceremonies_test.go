@@ -539,7 +539,7 @@ func TestOperatorFreezeOutranksTheHolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
-	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg), nil); err != nil {
 		t.Fatal(err)
 	}
 	var (
@@ -599,15 +599,15 @@ func TestADeviceFreezeIsDatedBackToTheSignOut(t *testing.T) {
 	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
 	bad := m.device.SignDAK(t, msg)
 	bad[40] ^= 1
-	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, bad); !errors.Is(err, ErrFreezeRefused) {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, bad, nil); !errors.Is(err, ErrFreezeRefused) {
 		t.Fatal(err)
 	}
-	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); !errors.Is(err, ErrFreezeRefused) {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg), nil); !errors.Is(err, ErrFreezeRefused) {
 		t.Fatal("a nonce served twice")
 	}
 	nonce, _, _ = f.acct.DeviceFreezeChallenge(bgctx, m.device.WriterID)
 	msg, _ = keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
-	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg)); err != nil {
+	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg), nil); err != nil {
 		t.Fatal(err)
 	}
 	var trigger time.Time

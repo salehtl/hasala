@@ -277,14 +277,35 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 	if g.StepUp == nil || len(g.StepUp.Nonce) == 0 {
 		return ErrStepUpRequired
 	}
+	ch, err := s.charge(ctx, g)
+	if err != nil {
+		if errors.Is(err, ErrStepUpFailed) {
+			if ferr := s.fail(ctx, g.StepUp.Nonce, nil); ferr != nil {
+				return ferr
+			}
+		}
+		return err
+	}
+	abort := func(tx pgx.Tx) error {
+		pgtx.Rollback(ctx, tx)
+		return s.refund(ctx, g, ch)
+	}
 	tx, err := pgtx.BeginReadCommitted(ctx, s.Pool)
 	if err != nil {
+		if rerr := s.refund(ctx, g, ch); rerr != nil {
+			return rerr
+		}
 		return fmt.Errorf("auth: step-up: begin: %w", err)
 	}
 	defer pgtx.Rollback(ctx, tx)
-	p, fail, err := s.verify(ctx, tx, g)
+	p, fail, err := s.verify(ctx, tx, g, ch)
 	if err != nil {
 		pgtx.Rollback(ctx, tx)
+		if fail == nil {
+			if rerr := s.refund(ctx, g, ch); rerr != nil {
+				return rerr
+			}
+		}
 		if errors.Is(err, ErrStepUpFailed) {
 			if ferr := s.fail(ctx, g.StepUp.Nonce, fail); ferr != nil {
 				return ferr
@@ -293,11 +314,13 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 		return err
 	}
 	if err := action(ctx, tx, p); err != nil {
+		if rerr := abort(tx); rerr != nil {
+			return rerr
+		}
 		// An action may refuse the proof itself (keys.wrap.put: the asserting
 		// credential is not the wrap's; account.unfreeze: the factor is not
 		// older than the trigger); that is a failed proof and burns.
 		if errors.Is(err, ErrStepUpFailed) {
-			pgtx.Rollback(ctx, tx)
 			if ferr := s.fail(ctx, g.StepUp.Nonce, nil); ferr != nil {
 				return ferr
 			}
@@ -305,12 +328,73 @@ func (s *StepUp) Run(ctx context.Context, g Guarded, action func(ctx context.Con
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE step_up_challenges SET used_at = $2 WHERE nonce = $1`, g.StepUp.Nonce, s.now()); err != nil {
+		if rerr := abort(tx); rerr != nil {
+			return rerr
+		}
 		return fmt.Errorf("auth: step-up: spend: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
+		if rerr := s.refund(ctx, g, ch); rerr != nil {
+			return rerr
+		}
 		return fmt.Errorf("auth: step-up: commit: %w", err)
 	}
 	return nil
+}
+
+type charged struct {
+	writer bool
+	code   bool
+	at     time.Time
+}
+
+func (s *StepUp) charge(ctx context.Context, g Guarded) (charged, error) {
+	kind := keyproto.ProofKind(g.StepUp.Proof.Kind)
+	if kind != keyproto.ProofDevice && kind != keyproto.ProofDeviceCode {
+		return charged{}, nil
+	}
+	ch, err := readChallenge(ctx, s.Pool, g.StepUp.Nonce, false)
+	if errors.Is(err, ErrStepUpFailed) {
+		return charged{}, nil
+	}
+	if err != nil {
+		return charged{}, err
+	}
+	if s.checkChallenge(ch, g) != nil {
+		return charged{}, nil
+	}
+	c, err := keyproto.StepUpChallenge(g.StepUp.Nonce, g.Action, g.ParamsHash)
+	if err != nil || s.verifyDAK(ctx, s.Pool, g, c, g.StepUp.Proof.WriterID) != nil {
+		return charged{}, nil
+	}
+	now := s.now()
+	if kind == keyproto.ProofDevice {
+		st, err := readAccount(ctx, s.Pool, g.UserID, false)
+		if err != nil || !st.hasPassword() || s.Keys == nil {
+			return charged{}, nil
+		}
+		if err := writerPasswordAttempt(ctx, s.Pool, g.UserID, g.StepUp.Proof.WriterID, now); err != nil {
+			return charged{}, err
+		}
+		return charged{writer: true, at: now}, nil
+	}
+	if ch.codeID == nil {
+		return charged{}, nil
+	}
+	if err := limitCodeVerify(ctx, s.Pool, now, *ch.codeID); err != nil {
+		if errors.Is(err, ErrCodeRejected) {
+			return charged{}, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
+		}
+		return charged{}, err
+	}
+	return charged{code: true, at: now}, nil
+}
+
+func (s *StepUp) refund(ctx context.Context, g Guarded, ch charged) error {
+	if !ch.writer {
+		return nil
+	}
+	return refundWriterPasswordAttempt(ctx, s.Pool, g.UserID, g.StepUp.Proof.WriterID, ch.at)
 }
 
 // fail commits a failed proof's effects and (unless they say otherwise) the
@@ -336,42 +420,63 @@ func (s *StepUp) fail(ctx context.Context, nonce []byte, f failure) error {
 	return tx.Commit(ctx)
 }
 
-// verify is spec 02 §8.1 step 5.1–5.3 inside tx: the row, then the proof.
-func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded) (Proven, failure, error) {
-	var (
-		user         uuid.UUID
-		session, ph  []byte
-		action, kind string
-		codeID       *uuid.UUID
-		expires      time.Time
-		used         *time.Time
-	)
-	err := tx.QueryRow(ctx,
-		`SELECT user_id, session_hash, action, params_hash, proof_kind, code_id, expires_at, used_at
-		   FROM step_up_challenges WHERE nonce = $1 FOR UPDATE`, g.StepUp.Nonce).
-		Scan(&user, &session, &action, &ph, &kind, &codeID, &expires, &used)
+type challenge struct {
+	user         uuid.UUID
+	session, ph  []byte
+	action, kind string
+	codeID       *uuid.UUID
+	expires      time.Time
+	used         *time.Time
+}
+
+func readChallenge(ctx context.Context, q querier, nonce []byte, forUpdate bool) (challenge, error) {
+	sql := `SELECT user_id, session_hash, action, params_hash, proof_kind, code_id, expires_at, used_at
+	          FROM step_up_challenges WHERE nonce = $1`
+	if forUpdate {
+		sql += ` FOR UPDATE`
+	}
+	var ch challenge
+	err := q.QueryRow(ctx, sql, nonce).
+		Scan(&ch.user, &ch.session, &ch.action, &ch.ph, &ch.kind, &ch.codeID, &ch.expires, &ch.used)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Proven{}, nil, fmt.Errorf("%w: unknown nonce", ErrStepUpFailed)
+		return challenge{}, fmt.Errorf("%w: unknown nonce", ErrStepUpFailed)
 	}
 	if err != nil {
-		return Proven{}, nil, fmt.Errorf("auth: step-up: read: %w", err)
+		return challenge{}, fmt.Errorf("auth: step-up: read: %w", err)
 	}
+	return ch, nil
+}
+
+func (s *StepUp) checkChallenge(ch challenge, g Guarded) error {
 	switch {
-	case user != g.UserID:
-		return Proven{}, nil, fmt.Errorf("%w: another account's nonce", ErrStepUpFailed)
-	case subtle.ConstantTimeCompare(session, g.SessionHash) != 1:
-		return Proven{}, nil, fmt.Errorf("%w: another session's nonce", ErrStepUpFailed)
-	case action != string(g.Action):
-		return Proven{}, nil, fmt.Errorf("%w: issued for %s, used for %s", ErrStepUpFailed, action, g.Action)
-	case subtle.ConstantTimeCompare(ph, g.ParamsHash[:]) != 1:
-		return Proven{}, nil, fmt.Errorf("%w: params differ from the ones begun", ErrStepUpFailed)
-	case kind != g.StepUp.Proof.Kind:
-		return Proven{}, nil, fmt.Errorf("%w: the proof kind is not the one begun (%s)", ErrStepUpFailed, kind)
-	case used != nil:
-		return Proven{}, nil, fmt.Errorf("%w: nonce already used", ErrStepUpFailed)
-	case !expires.After(s.now()):
-		return Proven{}, nil, fmt.Errorf("%w: nonce expired", ErrStepUpFailed)
+	case ch.user != g.UserID:
+		return fmt.Errorf("%w: another account's nonce", ErrStepUpFailed)
+	case subtle.ConstantTimeCompare(ch.session, g.SessionHash) != 1:
+		return fmt.Errorf("%w: another session's nonce", ErrStepUpFailed)
+	case ch.action != string(g.Action):
+		return fmt.Errorf("%w: issued for %s, used for %s", ErrStepUpFailed, ch.action, g.Action)
+	case subtle.ConstantTimeCompare(ch.ph, g.ParamsHash[:]) != 1:
+		return fmt.Errorf("%w: params differ from the ones begun", ErrStepUpFailed)
+	case ch.kind != g.StepUp.Proof.Kind:
+		return fmt.Errorf("%w: the proof kind is not the one begun (%s)", ErrStepUpFailed, ch.kind)
+	case ch.used != nil:
+		return fmt.Errorf("%w: nonce already used", ErrStepUpFailed)
+	case !ch.expires.After(s.now()):
+		return fmt.Errorf("%w: nonce expired", ErrStepUpFailed)
 	}
+	return nil
+}
+
+// verify is spec 02 §8.1 step 5.1–5.3 inside tx: the row, then the proof.
+func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded, charge charged) (Proven, failure, error) {
+	ch, err := readChallenge(ctx, tx, g.StepUp.Nonce, true)
+	if err != nil {
+		return Proven{}, nil, err
+	}
+	if err := s.checkChallenge(ch, g); err != nil {
+		return Proven{}, nil, err
+	}
+	kind, codeID := ch.kind, ch.codeID
 	c, err := keyproto.StepUpChallenge(g.StepUp.Nonce, g.Action, g.ParamsHash)
 	if err != nil {
 		return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
@@ -398,12 +503,12 @@ func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded) (Proven, fail
 		}
 		p.WriterID = w
 		if keyproto.ProofKind(kind) == keyproto.ProofDevice {
-			return s.verifyDevicePassword(ctx, tx, g, p)
+			return s.verifyDevicePassword(ctx, tx, g, p, charge)
 		}
 		if codeID == nil {
 			return Proven{}, nil, fmt.Errorf("%w: no code was issued", ErrStepUpFailed)
 		}
-		return s.verifyDeviceCode(ctx, tx, g, p, *codeID)
+		return s.verifyDeviceCode(ctx, tx, g, p, *codeID, charge)
 	}
 	return Proven{}, nil, fmt.Errorf("%w: proof kind %q", ErrStepUpFailed, kind)
 }
@@ -411,7 +516,7 @@ func (s *StepUp) verify(ctx context.Context, tx pgx.Tx, g Guarded) (Proven, fail
 // verifyDAK checks the proof's writer is the session's live writer and its
 // DAK signed DeviceStepUpMessage(C, writer_id). An invalid signature changes no
 // counter.
-func (s *StepUp) verifyDAK(ctx context.Context, tx pgx.Tx, g Guarded, c [32]byte, w string) error {
+func (s *StepUp) verifyDAK(ctx context.Context, q querier, g Guarded, c [32]byte, w string) error {
 	if w == "" || w != g.BoundWriter {
 		return fmt.Errorf("%w: the proof's writer is not the session's", ErrStepUpFailed)
 	}
@@ -419,7 +524,7 @@ func (s *StepUp) verifyDAK(ctx context.Context, tx pgx.Tx, g Guarded, c [32]byte
 		dak  []byte
 		live bool
 	)
-	err := tx.QueryRow(ctx, `SELECT dak_pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+	err := q.QueryRow(ctx, `SELECT dak_pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
 		g.UserID, w).Scan(&dak, &live)
 	if err != nil || !live {
 		return fmt.Errorf("%w: the session's writer is gone or revoked", ErrStepUpFailed)
@@ -434,7 +539,7 @@ func (s *StepUp) verifyDAK(ctx context.Context, tx pgx.Tx, g Guarded, c [32]byte
 // verifyDevicePassword is the device proof's second half: the account's
 // password, bound by the DAK (no pause, no per-address counter; the writer's
 // budget instead), through the gate.
-func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded, p Proven) (Proven, failure, error) {
+func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, charge charged) (Proven, failure, error) {
 	st, err := readAccount(ctx, tx, g.UserID, false)
 	if err != nil {
 		return Proven{}, nil, err
@@ -445,15 +550,12 @@ func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded,
 	if s.Keys == nil {
 		return Proven{}, nil, errors.New("auth: StepUp.Keys is nil")
 	}
-	now := s.now()
-	if err := writerPasswordAttempt(ctx, s.Pool, g.UserID, p.WriterID, now); err != nil {
-		return Proven{}, nil, err
+	if !charge.writer {
+		return Proven{}, nil, fmt.Errorf("%w: the attempt was not counted", ErrStepUpFailed)
 	}
+	now := charge.at
 	ok, err := passwordMatches(ctx, s.Keys, s.Gate, st, g.StepUp.Proof.Verifier, true)
 	if err != nil {
-		if rerr := refundWriterPasswordAttempt(ctx, s.Pool, g.UserID, p.WriterID, now); rerr != nil {
-			return Proven{}, nil, rerr
-		}
 		return Proven{}, nil, err
 	}
 	if !ok {
@@ -475,14 +577,11 @@ func (s *StepUp) verifyDevicePassword(ctx context.Context, tx pgx.Tx, g Guarded,
 
 // verifyDeviceCode is the device_code proof's second half: C8's code, gated
 // by the DAK and by limitCodeVerify, like every other code check.
-func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, codeID uuid.UUID) (Proven, failure, error) {
-	now := s.now()
-	if err := limitCodeVerify(ctx, s.Pool, now, codeID); err != nil {
-		if errors.Is(err, ErrCodeRejected) {
-			return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
-		}
-		return Proven{}, nil, err
+func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p Proven, codeID uuid.UUID, charge charged) (Proven, failure, error) {
+	if !charge.code {
+		return Proven{}, nil, fmt.Errorf("%w: the check was not counted", ErrStepUpFailed)
 	}
+	now := charge.at
 	fail, err := verifyCodeTx(ctx, tx, s.Keys, now, codeCheck{CodeID: codeID, Purpose: PurposePasswordReset,
 		CeremonyKind: CeremonyStepUp, CeremonyID: hex.EncodeToString(g.StepUp.Nonce), Submitted: g.StepUp.Proof.Code})
 	if err == nil {
