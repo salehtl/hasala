@@ -10,7 +10,6 @@ protocol ProfileModel: AnyObject, Observable {
   var hidden: Bool { get }
   var exportRows: [ExportRow] { get }
   var today: LocalDate { get }
-  func setFaceIDLock(_ on: Bool)
   func setNotifications(_ level: DevicePrefs.NotificationLevel)
   func setRule(_ id: RuleID, enabled: Bool)
 }
@@ -37,8 +36,6 @@ final class ProfileViewModel: ProfileModel {
     let s = app.store.state
     return s.txns.sorted { $0.postedAt > $1.postedAt }.map { ExportRow($0, s) }
   }
-
-  func setFaceIDLock(_ on: Bool) { app.perform(.setFaceIDLock(on)) }
 
   // TODO(spec 04 §9.3): asking for notification permission and the planner (§9.2).
   func setNotifications(_ level: DevicePrefs.NotificationLevel) { app.perform(.setNotifications(level)) }

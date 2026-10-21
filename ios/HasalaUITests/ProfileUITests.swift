@@ -232,7 +232,7 @@ final class ProfileUITests: XCTestCase {
 
     openProfile(app)
     try audit(app, atLargeText: true)
-    for id in ["profile.rules", "profile.security", "profile.faceID", "profile.signOut"] {
+    for id in ["profile.rules", "profile.security", "profile.signOut"] {
       XCTAssertTrue(bringUp(app, el(app, id)), "could not reach \(id)")
       attach(app, "AX3 · Profile · \(id)")
       try audit(app, atLargeText: true)

@@ -447,7 +447,7 @@ final class DevicePrefsStore {
     self.defaults = defaults
   }
 
-  /// The app lock is off until it is turned on in Profile (§4.5 `appLock.enabled`
+  /// The app lock is off until it is turned on in Sign-in & security (§4.5 `appLock.enabled`
   /// defaults to false).
   var prefs: DevicePrefs {
     guard let d = defaults.data(forKey: Self.prefsKey), let p = try? JSONDecoder().decode(DevicePrefs.self, from: d) else {
