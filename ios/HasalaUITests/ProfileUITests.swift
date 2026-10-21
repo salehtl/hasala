@@ -114,7 +114,7 @@ final class ProfileUITests: XCTestCase {
   }
 
   /// One bill, from Profile › Bills: what we noticed and the history; "I paid it" marks it
-  /// (with Undo); stopping it asks first, then the page goes and Bills drops the bill.
+  /// (with Undo); ending it asks for the last payment, then Bills lists it as ended.
   @MainActor
   func testOneBillFromTheProfile() throws {
     let app = launchHome()
@@ -133,13 +133,14 @@ final class ProfileUITests: XCTestCase {
     app.buttons["Undo"].firstMatch.tap()
     XCTAssertTrue(el(app, "bills.detail.paid").waitForExistence(timeout: uiWait), "Undo brings the late bill back")
 
-    tap(app, "bills.detail.stop")
-    let alert = app.alerts["Stop tracking AXA Insurance?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    alert.buttons["Stop tracking"].tap()
-    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait), "the page went back to Bills")
-    XCTAssertTrue(app.staticTexts["Stopped tracking AXA Insurance"].waitForExistence(timeout: uiWait))
+    tap(app, "bills.detail.end", opening: "bills.end.save")
+    tap(app, "bills.end.save")
+    XCTAssertTrue(app.staticTexts["Ended AXA Insurance"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bills.detail.reactivate").waitForExistence(timeout: uiWait), "the page shows it ended")
+    back(app)
+    XCTAssertTrue(el(app, "bills.next14").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "bills.attention.axa").exists)
+    XCTAssertTrue(el(app, "bills.ended.toggle").exists)
   }
 
   /// A rule learned today (Lulu sorted into Groceries with "Always use") carries its chip, and

@@ -72,6 +72,8 @@ public struct BillsSnapshot: Sendable, Hashable {
   /// A tag after a row's title, by row id ("Price change" on du's payment).
   public var tags: [String: StatusPill]
   public var paidMark: TotalMark?
+  public var paused: [BillRowModel] = []
+  public var ended: [BillRowModel] = []
 }
 
 /// One bill (Bills · AXA Insurance (late)): what we noticed, its payment history and what
@@ -86,6 +88,8 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
     case upcoming
     /// Money in (a salary), expected.
     case income
+    case paused(since: LocalDate?, until: LocalDate?)
+    case ended(on: LocalDate?)
   }
 
   public var id: BillID
@@ -111,6 +115,24 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
   public var historyNote: String?
   /// "Recurring payments are found from your history. Nothing is shared with AXA Insurance."
   public var footnote: String
+  public var source: Bill.Source = .detected
+  public var banners: [BillBanner] = []
+  public var notices: [BillNoticeCard] = []
+  public var nextDue: LocalDate? = nil
+
+  public var isPaused: Bool {
+    if case .paused = state { return true }
+    return false
+  }
+
+  public var isEnded: Bool {
+    if case .ended = state { return true }
+    return false
+  }
+
+  public var hasPriceNotice: Bool {
+    notices.contains { if case .acceptPrice = $0.primary.action { true } else { false } }
+  }
 
   public var isLate: Bool {
     if case .late = state { return true }
@@ -133,15 +155,62 @@ public struct BillHistoryStep: Sendable, Hashable, Identifiable {
     case paid
   }
 
-  public var id: Int { date.ordinal }
+  public var id: String { "\(kind == .paid ? "paid" : "expected").\(date.ordinal)" }
   public var date: LocalDate
   public var kind: Kind
   /// Under the date of an expected step: "Expected · no bank email yet", "Expected · in 4 days".
   public var note: String?
-  public var amount: Money
+  public var amount: Money?
 
   /// "Wed 7 Oct".
   public var title: String { date.short }
+}
+
+public struct BillBanner: Sendable, Hashable, Identifiable {
+  public var id: String
+  public var icon: BillBannerIcon
+  public var text: MoneyPhrase
+
+  public init(id: String, icon: BillBannerIcon, text: MoneyPhrase) {
+    self.id = id
+    self.icon = icon
+    self.text = text
+  }
+}
+
+public enum BillBannerIcon: String, Sendable, Hashable { case clock, calendar, tag }
+
+public struct BillNoticeCard: Sendable, Hashable, Identifiable {
+  public enum Action: Sendable, Hashable {
+    case acceptPrice(Money, from: LocalDate)
+    case resume, reactivate, reapply, dismiss
+  }
+
+  public struct Button: Sendable, Hashable {
+    public var title: String
+    public var action: Action
+
+    public init(title: String, action: Action) {
+      self.title = title
+      self.action = action
+    }
+  }
+
+  public var id: String
+  public var title: String
+  public var tone: StatusTone
+  public var body: MoneyPhrase
+  public var primary: Button
+  public var secondary: Button?
+
+  public init(id: String, title: String, tone: StatusTone, body: MoneyPhrase, primary: Button, secondary: Button?) {
+    self.id = id
+    self.title = title
+    self.tone = tone
+    self.body = body
+    self.primary = primary
+    self.secondary = secondary
+  }
 }
 
 public enum BillsEngine {
@@ -216,8 +285,31 @@ public enum BillsEngine {
     return BillsSnapshot(
       next14: next14.money, next14Mark: next14.mark, incomeLine: incomeLine, income: income, needsALook: attention, found: found,
       upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: paidRows,
-      paidThisMonth: .aed(Fils.sum(paid) { $0.homeMinor ?? 0 }), tags: tags, paidMark: TotalMark.unrated(paid)
+      paidThisMonth: .aed(Fils.sum(paid) { $0.homeMinor ?? 0 }), tags: tags, paidMark: TotalMark.unrated(paid),
+      paused: pausedRows(s), ended: endedRows(s)
     )
+  }
+
+  static func pausedRows(_ s: LedgerState) -> [BillRowModel] {
+    s.bills.filter { $0.state == .paused }
+      .sorted { ($0.pausedUntil ?? LocalDate(9999, 12, 31), $0.name) < ($1.pausedUntil ?? LocalDate(9999, 12, 31), $1.name) }
+      .map { b in
+        let line = b.pausedUntil.map { "Paused until \($0.dayMonth)" } ?? "Paused"
+        return BillRowModel(id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
+                            detail: [.text(MoneyPhrase(stringLiteral: line))], amount: b.amount,
+                            approximate: b.approximate, isIncome: b.isIncome)
+      }
+  }
+
+  static func endedRows(_ s: LedgerState) -> [BillRowModel] {
+    s.bills.filter { $0.state == .ended }
+      .sorted { ($0.endedOn ?? LocalDate(9999, 12, 31), $0.name) > ($1.endedOn ?? LocalDate(9999, 12, 31), $1.name) }
+      .map { b in
+        let line = b.endedOn.map { "Ended \($0.dayMonth)" } ?? "Ended"
+        return BillRowModel(id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
+                            detail: [.text(MoneyPhrase(stringLiteral: line))], amount: b.amount,
+                            approximate: b.approximate, isIncome: b.isIncome)
+      }
   }
 
   static func upcomingRow(_ b: Bill, _ s: LedgerState, today: LocalDate) -> BillRowModel {
@@ -255,69 +347,178 @@ public enum BillsEngine {
   /// A payment counts as on time within this many days of the usual day.
   static let onTimeWindow = 3
 
-  /// One tracked bill, or nil when it isn't tracked (stopped, or never was).
   public static func detail(_ s: LedgerState, now: LocalDateTime, bill id: BillID) -> BillDetail? {
-    guard let b = s.bill(id), b.state == .tracked else { return nil }
+    guard let b = s.bill(id), b.state != .dismissed else { return nil }
     let today = now.date
     let usualDay = PlanEngine.ordinal(b.usualDay)
     let untilDue = today.days(until: b.nextDue)
 
     let state: BillDetail.State
     let pill: StatusPill
-    if b.isIncome {
-      state = .income
-      pill = StatusPill("Expected \(ActivityEngine.inDays(max(0, untilDue)))", tone: .success)
-    } else if b.nextDue < today {
-      state = .late(days: -untilDue)
-      pill = StatusPill(pastUsual(-untilDue), tone: .error)
-    } else if let usual = b.priceChangeFrom {
-      state = .priceChange(usual: usual)
-      pill = StatusPill("Price change", tone: .warning)
-    } else {
-      state = .upcoming
-      pill = StatusPill("Due \(ActivityEngine.inDays(untilDue))", tone: .accent)
+    switch b.state {
+    case .paused:
+      state = .paused(since: b.pausedSince, until: b.pausedUntil)
+      pill = StatusPill("Paused", tone: .warning)
+    case .ended, .dismissed:
+      state = .ended(on: b.endedOn)
+      pill = StatusPill("Ended", tone: .accent)
+    case .tracked:
+      if b.isIncome {
+        state = .income
+        pill = StatusPill("Expected \(ActivityEngine.inDays(max(0, untilDue)))", tone: .success)
+      } else if b.nextDue < today {
+        state = .late(days: -untilDue)
+        pill = StatusPill(pastUsual(-untilDue), tone: .error)
+      } else if let usual = b.priceChangeFrom {
+        state = .priceChange(usual: usual)
+        pill = StatusPill("Price change", tone: .warning)
+      } else {
+        state = .upcoming
+        pill = StatusPill("Due \(ActivityEngine.inDays(untilDue))", tone: .accent)
+      }
     }
 
-    var cadence = ["every month", "usually the \(usualDay)"]
+    var cadence = [cadencePhrase(b), "usually the \(usualDay)"]
     if let account = s.account(b.accountID) { cadence.append(account.shortName) }
 
+    let notices = noticeCards(b)
+    let priceNotice = notices.contains { if case .acceptPrice = $0.primary.action { true } else { false } }
     let noticed: MoneyPhrase?
     switch state {
     case .late:
       noticed = MoneyPhrase(stringLiteral: lateNotice(b) + " This month there's no bank email yet.")
     case .priceChange(let usual):
-      noticed = priceChange(b, usual: usual)
-    case .upcoming, .income:
+      noticed = priceNotice ? nil : priceChange(b, usual: usual)
+    case .upcoming, .income, .paused, .ended:
       noticed = nil
     }
 
-    // The payment we expect leads the timeline, unless the bill changed price (its last
-    // charge is the news, and the next one is a month away).
     var steps: [BillHistoryStep] = []
     switch state {
     case .late:
       steps.append(BillHistoryStep(date: b.nextDue, kind: .expected(late: true),
-                                   note: "Expected · no bank email yet", amount: b.amount))
+                                   note: "Expected · no bank email yet", amount: amount(b, on: b.nextDue)))
     case .upcoming, .income:
       steps.append(BillHistoryStep(date: b.nextDue, kind: .expected(late: false),
-                                   note: "Expected · \(ActivityEngine.inDays(untilDue))", amount: b.amount))
-    case .priceChange:
+                                   note: "Expected · \(ActivityEngine.inDays(untilDue))", amount: amount(b, on: b.nextDue)))
+    case .priceChange, .paused, .ended:
       break
     }
-    for (i, date) in b.history.enumerated() {
-      steps.append(BillHistoryStep(date: date, kind: .paid, note: nil, amount: paidAmount(b, s, on: date, index: i)))
-    }
+    steps += paidSteps(b, s)
 
     let onTime = b.history.filter { abs($0.day - b.usualDay) <= onTimeWindow }.count
     let historyNote: String? = b.history.isEmpty
       ? nil : onTime == b.history.count ? "\(onTime) on time" : "\(onTime) of \(b.history.count) on time"
 
-    return BillDetail(
+    var d = BillDetail(
       id: b.id, name: b.name, kind: b.kind, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
       state: state, pill: pill, amount: b.amount, approximate: b.approximate,
       cadence: cadence.joined(separator: " · "), noticed: noticed, history: steps, historyNote: historyNote,
-      footnote: "Recurring payments are found from your history. Nothing is shared with \(payee(b))."
+      footnote: b.source == .manual
+        ? "You added this one. Nothing is shared with \(payee(b))."
+        : "Recurring payments are found from your history. Nothing is shared with \(payee(b))."
     )
+    d.source = b.source
+    d.banners = banners(b)
+    d.notices = notices
+    d.nextDue = b.state == .tracked || b.state == .paused ? b.nextDue : nil
+    return d
+  }
+
+  static func cadencePhrase(_ b: Bill) -> String {
+    let unit = switch b.cadence {
+    case .weekly: "week"
+    case .monthly: "month"
+    case .yearly: "year"
+    }
+    return b.every <= 1 ? "every \(unit)" : "every \(b.every) \(unit)s"
+  }
+
+  static func banners(_ b: Bill) -> [BillBanner] {
+    var out: [BillBanner] = []
+    if b.state == .paused {
+      let since = b.pausedSince.map { " since \($0.dayMonth)" } ?? ""
+      let until = b.pausedUntil.map { ", until \($0.dayMonth)" } ?? ". Nothing is expected until you resume it"
+      out.append(BillBanner(id: "paused", icon: .clock, text: MoneyPhrase(stringLiteral: "Paused\(since)\(until).")))
+    }
+    if b.state == .ended {
+      let on = b.endedOn.map { " on \($0.dayMonth)" } ?? ""
+      out.append(BillBanner(id: "ended", icon: .calendar,
+                            text: MoneyPhrase(stringLiteral: "Ended\(on). No more payments are expected.")))
+    }
+    if let next = b.nextAmount, let from = b.nextAmountFrom, b.state != .ended || (b.endedOn.map { from <= $0 } ?? true) {
+      out.append(BillBanner(id: "nextAmount", icon: .tag,
+                            text: MoneyPhrase([.text("Changes to "), .amount(next), .text(" from \(from.dayMonth)")])))
+    }
+    return out
+  }
+
+  static func noticeCards(_ b: Bill) -> [BillNoticeCard] {
+    b.notices.map { n in
+      switch n.kind {
+      case .priceChange(let usual, let charged, let from):
+        let difference = charged.minor.minus(usual.minor)
+        return BillNoticeCard(
+          id: n.id, title: "Price change", tone: .warning,
+          body: MoneyPhrase([
+            .text("Charged "), .amount(Money(minor: Int64(clamping: difference.magnitude), currency: charged.currency)),
+            .text(" \(difference < 0 ? "less" : "more") than usual ("), .amount(usual), .text(") on \(from.short)."),
+          ]),
+          primary: .init(title: "Accept from \(from.dayMonth)", action: .acceptPrice(charged, from: from)),
+          secondary: .init(title: "Not now", action: .dismiss))
+      case .chargedWhilePaused(let charged, let on):
+        return BillNoticeCard(
+          id: n.id, title: "Charged while paused", tone: .warning,
+          body: MoneyPhrase([.text("A payment of "), .amount(charged), .text(" arrived on \(on.short) while \(b.name) was paused.")]),
+          primary: .init(title: b.state == .paused ? "Resume" : "Got it", action: b.state == .paused ? .resume : .dismiss),
+          secondary: b.state == .paused ? .init(title: "It's fine", action: .dismiss) : nil)
+      case .chargedAfterEnd(let charged, let on):
+        return BillNoticeCard(
+          id: n.id, title: "Charged after you ended it", tone: .error,
+          body: MoneyPhrase([.text("A payment of "), .amount(charged), .text(" arrived on \(on.short).")]),
+          primary: .init(title: "Start tracking again", action: .reactivate),
+          secondary: .init(title: "It's fine", action: .dismiss))
+      case .changedOnTwoDevices(let summary):
+        return BillNoticeCard(
+          id: n.id, title: "Changed on two iPhones", tone: .accent,
+          body: MoneyPhrase(stringLiteral: summary),
+          primary: .init(title: "Re-apply", action: .reapply),
+          secondary: .init(title: "Keep", action: .dismiss))
+      }
+    }
+  }
+
+  static func paidSteps(_ b: Bill, _ s: LedgerState) -> [BillHistoryStep] {
+    guard !b.payments.isEmpty else {
+      return b.history.enumerated().map { i, date in
+        BillHistoryStep(date: date, kind: .paid, note: nil, amount: paidAmount(b, s, on: date, index: i))
+      }
+    }
+    var used = Set<LocalDate>()
+    return b.payments.sorted { $0.due > $1.due }.enumerated().compactMap { i, p in
+      let txn = p.txnID.flatMap(s.txn)
+      let date = txn?.postedAt.date
+        ?? b.history.first { BillDueDates.nearest(b, to: $0) == p.due }
+        ?? p.due
+      guard used.insert(date).inserted else { return nil }
+      let figure: Money?
+      let note: String?
+      switch p.link {
+      case .linked, .matched:
+        if p.txnID == nil {
+          figure = p.amount
+        } else if let txn, !txn.archived {
+          figure = txn.amount
+        } else {
+          figure = nil
+        }
+        note = p.link == .linked ? "Linked by you" : nil
+      case .marked:
+        figure = paidAmount(b, s, on: date, index: i)
+        note = "Marked paid"
+      }
+      return BillHistoryStep(date: date, kind: .paid, note: note, amount: figure)
+    }
   }
 
   /// "Your last 6 payments arrived between the 6th and 8th." (or on one day, or the usual day).

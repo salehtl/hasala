@@ -42,14 +42,16 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Profile › Recurring")
     // "All schedules" opens a screen that doesn't exist yet: matched by its identifier,
     // since its label ("All schedules, 9") is not the text it draws.
-    assertAbsent(app, ["bills.remind.axa", "Add a bill", "bills.allSchedules"], "Profile › Recurring")
+    assertAbsent(app, ["bills.remind.axa", "bills.allSchedules"], "Profile › Recurring")
+    assertPresent(app, ["bills.add"], "Profile › Recurring")
     assertNoButtons(app, ["Remind me"], "Profile › Recurring")
     tap(app, "bill.axa")
     XCTAssertTrue(el(app, "bills.detail.axa").waitForExistence(timeout: uiWait))
     attach(app, "Release · AXA Insurance")
     assertNoPlaceholders(app, "Profile › Recurring › AXA Insurance")
     assertAbsent(app, ["bills.detail.remind"], "Profile › Recurring › AXA Insurance")
-    assertPresent(app, ["bills.detail.paid", "bills.detail.stop"], "Profile › Recurring › AXA Insurance")
+    assertPresent(app, ["bills.detail.paid", "bills.detail.end", "bills.detail.manage"],
+                  "Profile › Recurring › AXA Insurance")
     back(app)
     back(app)
 
