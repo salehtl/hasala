@@ -155,6 +155,9 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 		if row.Subkind == "recovery_used_passkey" || row.Subkind == "recovery_used_password" {
 			trigger = "recovery_used"
 		}
+		if row.Subkind == "phrase_viewed" {
+			trigger = "phrase_viewed"
+		}
 		raw := make([]byte, 32)
 		if _, err := rand.Read(raw); err != nil {
 			return mail.Message{}, err

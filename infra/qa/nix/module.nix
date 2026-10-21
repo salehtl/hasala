@@ -1310,6 +1310,7 @@ in
 
       environment.systemPackages = [ hasalaAdmin ];
       security.pki.caCertificateBlacklist = cfg.hardening.distrustedCARoots;
+      services.journald.extraConfig = lib.mkDefault "SystemMaxUse=1G";
 
       # ----------------------------------------------------------- §5.3.6
       systemd.services.hasala-postgresql = {

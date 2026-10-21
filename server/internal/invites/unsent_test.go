@@ -12,6 +12,8 @@ import (
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 type testTagger struct{}
@@ -25,7 +27,7 @@ func (testTagger) EmailTag(s string) []byte {
 func unsentQueue(pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queue {
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
-	q.Unsent = MailUnsentTx
+	q.Unsent = MailUnsent(nil)
 	return q
 }
 
@@ -197,7 +199,7 @@ func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
 			if _, err := pool.Exec(bg, c.sql, invite); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Sweep(bg, pool); err != nil {
+			if _, err := Sweep(bg, pool, nil); err != nil {
 				t.Fatal(err)
 			}
 			if s := inviteState(t, pool, invite); s != "queued" {
@@ -207,7 +209,7 @@ func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
 				invite); err != nil {
 				t.Fatal(err)
 			}
-			if msg, err := Sweep(bg, pool); err != nil || msg == "" {
+			if msg, err := Sweep(bg, pool, nil); err != nil || msg == "" {
 				t.Fatalf("sweep %q %v", msg, err)
 			}
 			if s := inviteState(t, pool, invite); s != "revoked" {
@@ -227,7 +229,7 @@ func TestTheInviteSweepLeavesAQueuedInviteWithMailToSend(t *testing.T) {
 		invite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Sweep(bg, pool); err != nil {
+	if _, err := Sweep(bg, pool, nil); err != nil {
 		t.Fatal(err)
 	}
 	if s := inviteState(t, pool, invite); s != "queued" {
@@ -259,7 +261,7 @@ func TestASentInviteIsNotTouched(t *testing.T) {
 	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Sweep(bg, pool); err != nil {
+	if _, err := Sweep(bg, pool, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := q.Sweep(bg); err != nil {
@@ -300,7 +302,7 @@ func TestAnUnsentEmailDoesNotRevokeAnInviteBeingResent(t *testing.T) {
 			return
 		}
 		defer func() { _ = tx.Rollback(bg) }()
-		closed, err := closeUnsentTx(bg, tx, invite, []string{"queued", "active"})
+		closed, _, err := closeUnsentTx(bg, tx, invite, []string{"queued", "active"})
 		if err == nil {
 			err = tx.Commit(bg)
 		}
@@ -333,4 +335,92 @@ func TestAnUnsentEmailDoesNotRevokeAnInviteBeingResent(t *testing.T) {
 		t.Fatalf("invite %s, want queued", s)
 	}
 	assertEntryInvited(t, pool, entry, addr)
+}
+
+func TestABouncedInviteRecordsTheDeletedEntryAndTheReplayDeletesItAgain(t *testing.T) {
+	for _, c := range []struct {
+		name, before string
+		sweep        bool
+	}{{"mail queue", "active", false}, {"invite sweep", "queued", true}} {
+		t.Run(c.name, func(t *testing.T) {
+			pool := pgtest.New(t)
+			var recorded []purgeledger.Entry
+			record := func(e purgeledger.Entry) { recorded = append(recorded, e) }
+			q := unsentQueue(pool, &mail.Fake{Err: mail.ErrBounced})
+			q.Unsent = MailUnsent(record)
+			const addr = "bounce@example.com"
+			entry, invite := approved(t, pool, q, addr)
+			var saved string
+			if err := pool.QueryRow(bg, `SELECT row_to_json(e)::text FROM waitlist_entries e WHERE id = $1`, entry).Scan(&saved); err != nil {
+				t.Fatal(err)
+			}
+			if c.sweep {
+				if _, err := pool.Exec(bg, `UPDATE mail_log SET status = 'bounced', next_attempt_at = NULL, final_at = now(), error = 'x'
+				    WHERE invite_id = $1`, invite); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := pool.Exec(bg, `UPDATE invite_codes SET created_at = now() - interval '2 hours' WHERE id = $1`, invite); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := Sweep(bg, pool, record); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			assertEntryGone(t, pool, entry, addr)
+			if len(recorded) != 1 || recorded[0].ID != entry || recorded[0].Kind != purgeledger.KindWaitlistUnsent ||
+				time.Since(recorded[0].At) > time.Minute {
+				t.Fatalf("recorded %+v, want the entry's id", recorded)
+			}
+
+			if _, err := pool.Exec(bg, `INSERT INTO waitlist_entries SELECT * FROM json_populate_record(NULL::waitlist_entries, $1::json)`,
+				saved); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(bg, `UPDATE invite_codes SET state = $2, closed_at = NULL, waitlist_entry_id = $3 WHERE id = $1`,
+				invite, c.before, entry); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(bg, `UPDATE mail_log SET waitlist_entry_id = $2, recipient = $3 WHERE invite_id = $1`,
+				invite, entry, addr); err != nil {
+				t.Fatal(err)
+			}
+			n, err := waitlist.ReapplyUnsent(bg, pool, append(recorded, purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindPassword}))
+			if err != nil || n != 1 {
+				t.Fatalf("reapply %d %v, want 1", n, err)
+			}
+			assertEntryGone(t, pool, entry, addr)
+			if s := inviteState(t, pool, invite); s != "revoked" {
+				t.Fatalf("the restored invite is %s, want revoked", s)
+			}
+			var rows int
+			if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1 AND waitlist_entry_id IS NULL`, invite).
+				Scan(&rows); err != nil || rows != 1 {
+				t.Fatalf("%d detached invite mail rows (%v), want 1", rows, err)
+			}
+			if n, err := waitlist.ReapplyUnsent(bg, pool, recorded); err != nil || n != 0 {
+				t.Fatalf("a second replay %d %v", n, err)
+			}
+			if n, err := waitlist.ReapplyLeaves(bg, pool, recorded); err != nil || n != 0 {
+				t.Fatalf("the leave replay took an unsent deletion: %d %v", n, err)
+			}
+		})
+	}
+}
+
+func TestAnInviteWhoseEntryGoesBackToTheListRecordsNothing(t *testing.T) {
+	pool := pgtest.New(t)
+	var recorded []purgeledger.Entry
+	q := unsentQueue(pool, &mail.Fake{Err: mail.ErrPermanent})
+	q.Unsent = MailUnsent(func(e purgeledger.Entry) { recorded = append(recorded, e) })
+	const addr = "back@example.com"
+	entry, _ := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertEntryConfirmed(t, pool, entry, addr)
+	if len(recorded) != 0 {
+		t.Fatalf("recorded %+v for an entry that stayed", recorded)
+	}
 }

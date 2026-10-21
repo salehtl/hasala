@@ -14,6 +14,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/keyproto"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // Accounts owns the account ceremonies of spec 02 §10.4 and §10.7–§10.13:
@@ -30,6 +31,7 @@ type Accounts struct {
 	StepUp   *StepUp
 	Mail     *Mailer
 	Now      func() time.Time
+	Record   func(purgeledger.Entry)
 }
 
 func (a *Accounts) now() time.Time {

@@ -161,7 +161,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'email',
     q: 'What exactly can Hasala read in my email?',
     short: "Only your bank's alert emails, read-only.",
-    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks that it really came from your bank, and sets aside any that only looks like it did. Hasala can't send, change or delete mail, and nothing is sent to an AI service. ${MAIL_NOTE}`,
+    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
     more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {
@@ -180,8 +180,8 @@ export const FAQ: readonly FaqItem[] = [
   {
     id: 'iphone-english',
     q: 'Why only iPhone, and only English?',
-    short: 'Hasala does its work on the iPhone itself, and its sorting reads English merchant names.',
-    a: "Sorting uses Apple's on‑device model. Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.",
+    short: 'Hasala does its work on the iPhone itself.',
+    a: "Starting with one platform and one language lets us get every bank alert right before we promise more. The app is in light mode only for now, too.",
     more: { href: '/how-it-works#iphone', label: 'iPhone and English only, for now' },
   },
   {

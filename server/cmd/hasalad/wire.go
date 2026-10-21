@@ -26,6 +26,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/msjwt"
 	"github.com/salehtl/hasala/server/internal/opsnotify"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 	"github.com/salehtl/hasala/server/internal/turnstile"
 	"github.com/salehtl/hasala/server/internal/waitlist"
@@ -248,10 +249,28 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("deleted", mailq.DeletedRenderer)
 	minter, _ := tagger.(invites.Minter)
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
-	q.Unsent = invites.MailUnsentTx
+	var record func(purgeledger.Entry)
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		record = func(e purgeledger.Entry) {
+			if err := purgeledger.AppendEntries(p, e); err != nil {
+				slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion", "kind", string(e.Kind), "err", err)
+			}
+		}
+	}
+	q.Unsent = invites.MailUnsent(record)
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
 	wl.MaxOpen, wl.MaxPending = int(cfg.Web.WaitlistMax), int(cfg.Web.WaitlistPendingMax)
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		wl.Record = record
+		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention", func(context.Context) (string, error) {
+			n, err := purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
+			if err != nil || n == 0 {
+				return "", err
+			}
+			return fmt.Sprintf("removed %d restore ledger entries past retention", n), nil
+		}))
+	}
 	if cfg.Ops.Enabled() {
 		n := opsnotify.New(cfg.Ops.NtfyURL, cfg.Ops.NtfyClick)
 		wl.OnConfirmed = func() {
@@ -311,7 +330,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")
 	}
 	ex.done = append(ex.done,
-		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool) }),
+		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, record) }),
 		startSweep(ctx, "waitlist sweep", wl.Sweep),
 		startSweep(ctx, "mail log sweep", q.Sweep),
 	)

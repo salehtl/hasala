@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,43 +12,55 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-func MailUnsentTx(ctx context.Context, tx pgx.Tx, row mailq.Row) error {
-	if row.Kind != "invite" || row.InviteID == nil {
-		return nil
+func MailUnsent(record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
+	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) (func(), error) {
+		if row.Kind != "invite" || row.InviteID == nil {
+			return nil, nil
+		}
+		_, gone, err := closeUnsentTx(ctx, tx, *row.InviteID, []string{"queued", "active"})
+		if err != nil || gone == uuid.Nil || record == nil {
+			return nil, err
+		}
+		return func() { recordUnsent(record, gone) }, nil
 	}
-	_, err := closeUnsentTx(ctx, tx, *row.InviteID, []string{"queued", "active"})
-	return err
 }
 
-func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string) (bool, error) {
+func recordUnsent(record func(purgeledger.Entry), entry uuid.UUID) {
+	if record != nil && entry != uuid.Nil {
+		record(purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistUnsent})
+	}
+}
+
+func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string) (bool, uuid.UUID, error) {
 	var entry *uuid.UUID
 	err := tx.QueryRow(ctx,
 		`SELECT waitlist_entry_id FROM invite_codes WHERE id = $1 AND state = ANY($2::text[]) FOR UPDATE`,
 		id, states).Scan(&entry)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
+		return false, uuid.Nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("invites: lock an unsent invite: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: lock an unsent invite: %w", err)
 	}
 	var pending bool
 	if err := tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND status IN ('queued','sending','sent'))`,
 		id).Scan(&pending); err != nil {
-		return false, fmt.Errorf("invites: read an invite's mail: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: read an invite's mail: %w", err)
 	}
 	if pending {
-		return false, nil
+		return false, uuid.Nil, nil
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE invite_codes SET state = 'revoked', closed_at = now() WHERE id = $1`, id); err != nil {
-		return false, fmt.Errorf("invites: revoke an unsent invite: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: revoke an unsent invite: %w", err)
 	}
 	if entry == nil {
-		return true, nil
+		return true, uuid.Nil, nil
 	}
 	var (
 		state string
@@ -58,39 +71,39 @@ func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string
 		                          AND i.state IN ('awaiting_testflight','queued','active'))
 		   FROM waitlist_entries e WHERE e.id = $1 FOR UPDATE OF e`, *entry).Scan(&state, &open)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return true, nil
+		return true, uuid.Nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("invites: read the unsent invite's entry: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: read the unsent invite's entry: %w", err)
 	}
 	if state != "invited" || open {
-		return true, nil
+		return true, uuid.Nil, nil
 	}
 	var bounced bool
 	if err := tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND status = 'bounced')`, id).Scan(&bounced); err != nil {
-		return false, fmt.Errorf("invites: read the unsent invite's bounce: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: read the unsent invite's bounce: %w", err)
 	}
 	if !bounced {
 		if _, err := tx.Exec(ctx,
 			`UPDATE waitlist_entries SET state = 'confirmed', invited_at = NULL, updated_at = now() WHERE id = $1`,
 			*entry); err != nil {
-			return false, fmt.Errorf("invites: put the unsent invite's entry back on the list: %w", err)
+			return false, uuid.Nil, fmt.Errorf("invites: put the unsent invite's entry back on the list: %w", err)
 		}
-		return true, nil
+		return true, uuid.Nil, nil
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
 		  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, *entry); err != nil {
-		return false, fmt.Errorf("invites: detach the entry's invite mail: %w", err)
+		return false, uuid.Nil, fmt.Errorf("invites: detach the entry's invite mail: %w", err)
 	}
 	if err := waitlist.DeleteEntryTx(ctx, tx, *entry); err != nil {
-		return false, err
+		return false, uuid.Nil, err
 	}
-	return true, nil
+	return true, *entry, nil
 }
 
-func sweepUnsent(ctx context.Context, db *pgxpool.Pool) (int64, error) {
+func sweepUnsent(ctx context.Context, db *pgxpool.Pool, record func(purgeledger.Entry)) (int64, error) {
 	rows, err := db.Query(ctx,
 		`SELECT id FROM invite_codes i WHERE state = 'queued' AND created_at < now() - interval '1 hour'
 		    AND NOT EXISTS (SELECT 1 FROM mail_log m WHERE m.invite_id = i.id AND m.status IN ('queued','sending','sent'))
@@ -104,7 +117,7 @@ func sweepUnsent(ctx context.Context, db *pgxpool.Pool) (int64, error) {
 	}
 	var n int64
 	for _, id := range ids {
-		closed, err := sweepOne(ctx, db, id)
+		closed, err := sweepOne(ctx, db, id, record)
 		if err != nil {
 			return n, fmt.Errorf("invites: unsent sweep: %w", err)
 		}
@@ -115,15 +128,19 @@ func sweepUnsent(ctx context.Context, db *pgxpool.Pool) (int64, error) {
 	return n, nil
 }
 
-func sweepOne(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (bool, error) {
+func sweepOne(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, record func(purgeledger.Entry)) (bool, error) {
 	tx, err := pgtx.BeginReadCommitted(ctx, db)
 	if err != nil {
 		return false, err
 	}
 	defer pgtx.Rollback(ctx, tx)
-	closed, err := closeUnsentTx(ctx, tx, id, []string{"queued"})
+	closed, gone, err := closeUnsentTx(ctx, tx, id, []string{"queued"})
 	if err != nil {
 		return false, err
 	}
-	return closed, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	recordUnsent(record, gone)
+	return closed, nil
 }
