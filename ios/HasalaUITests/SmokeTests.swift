@@ -117,6 +117,19 @@ final class SmokeTests: XCTestCase {
   }
 
   @MainActor
+  func testTappingTheMarkOpensNothing() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let mark = app.images["Hasala"].firstMatch
+    XCTAssertTrue(mark.waitForExistence(timeout: uiWait))
+    for _ in 0..<5 { mark.tap() }
+    XCTAssertFalse(el(app, "bell.sheet").exists, "the mark opened the notifications")
+    XCTAssertTrue(app.buttons["header.notifications"].firstMatch.isHittable)
+    XCTAssertTrue(el(app, "home.hero.left").exists, "the mark left Home")
+    XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "the mark is off centre")
+  }
+
+  @MainActor
   func testTheBellIsOnEveryTab() throws {
     let app = launch(scenario: "maya")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
