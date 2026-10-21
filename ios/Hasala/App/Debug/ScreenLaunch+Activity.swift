@@ -75,6 +75,7 @@
       }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
+      Screen("review.suggestions", scenario: "mayaSuggestions", prepare: shell(.review, sheet: .checkSuggestions)),
       // Search · Ready.
       Screen("search", scenario: "maya", prepare: shell(.home, sheet: .search)),
       // Search · Results as you type ("carre").

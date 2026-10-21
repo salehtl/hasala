@@ -38,6 +38,9 @@ struct ReviewTabView: View {
             if unread > 0 { unreadable(unread) }
           } else {
             startCard(cards)
+            if app.suggestionCount > 0 {
+              CheckSuggestionsEntry(app: app, count: app.suggestionCount).background(cardSurface)
+            }
             if unread > 0 { unreadable(unread) }
             list(cards)
           }
