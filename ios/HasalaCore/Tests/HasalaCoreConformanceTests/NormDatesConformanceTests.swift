@@ -24,6 +24,30 @@ struct NormDatesConformanceTests {
     }
   }
 
+  static func expected(_ family: String, _ c: JSONValue) throws -> JSONValue {
+    switch family {
+    case "forward_dates":
+      return Unwrap.parseForwardDate(try c.string("input")).map { .string(Normalizer.format($0)) } ?? .null
+    case "email_dates":
+      let receivedMs = try Instant.parseMs(try c.string("received_at"))
+      let (date, source) = Normalizer.emailDateOf(forwardDate: try c.string("forward_date"), receivedAtMs: receivedMs)
+      return obj([("email_date", .string(date)), ("date_source", .string(source.rawValue))])
+    default:
+      let input = try c.string("input")
+      guard let canonical = try? canonicalTime(input), let ms = try? parseInstantMs(input) else { return obj([("ok", .bool(false))]) }
+      return obj([("ok", .bool(true)), ("epoch_ms", .string(String(ms))), ("canonical", .string(canonical)), ("utc_day", .string(utcDay(ms)))])
+    }
+  }
+
+  @Test("dates.json is what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites it)")
+  func golden() throws {
+    var doc = try NormDatesFixtures.doc.get()
+    for family in ["forward_dates", "email_dates", "instants"] {
+      doc = doc.setting(family, try Golden.mapping(doc[family]) { $0.setting("expect", try Self.expected(family, $0)) })
+    }
+    try Golden.check("norm-dates/dates.json", doc)
+  }
+
   @Test("forward_dates: parseForwardDate", arguments: NormDatesFixtures.cases("forward_dates"))
   func forwardDate(_ c: JSONValue) throws {
     let name = try c.string("name")

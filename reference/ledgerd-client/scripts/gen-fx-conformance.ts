@@ -600,6 +600,91 @@ function specs(): CaseSpec[] {
         },
       }),
     },
+    {
+      file: "19-foreign-rows-without-a-rate-wait-per-currency.json",
+      name: "foreign-rows-without-a-rate-wait-per-currency",
+      note: "Three foreign rows, three currencies, no rate for any of them at ingest. A rate_unset for a currency that never had a rate makes its head a live null and freezes nothing; a rate for EUR backfills only the EUR row. USD and GBP stay pending in their own buckets with null snapshots.",
+      build: () => ({
+        entries: [
+          at(1n, homeCurrency("AED")),
+          at(2n, ingested("i3", "t3", { currency: "GBP" })),
+          at(3n, ingested("i1", "t1", { currency: "USD" })),
+          at(4n, ingested("i2", "t2", { currency: "EUR" })),
+          at(5n, rateUnset("GBP")),
+          at(6n, rateSet("EUR", "4000000")),
+        ],
+        expect: {
+          home_currency: "AED",
+          rates: { AED: IDENTITY, GBP: null, EUR: "4000000" },
+          snapshots: { t1: null, t2: "40000", t3: null },
+          pending: { GBP: ["t3"], USD: ["t1"] },
+          anomalies: [],
+        },
+      }),
+    },
+    {
+      file: "20-foreign-row-before-onboarding.json",
+      name: "foreign-row-before-onboarding",
+      note: "Rows arrive before any home currency exists. The foreign row waits and its rate backfills it; the row in the currency that later becomes home waits for the onboarding op, which backfills it at the identity. A rate for another currency before onboarding is not an anomaly.",
+      build: () => ({
+        entries: [
+          at(1n, ingested("i1", "t1", { currency: "USD" })),
+          at(2n, ingested("i2", "t2", { currency: "AED" })),
+          at(3n, rateSet("USD", PEG)),
+          at(4n, homeCurrency("AED")),
+        ],
+        expect: {
+          home_currency: "AED",
+          rates: { USD: PEG, AED: IDENTITY },
+          snapshots: { t1: "36725", t2: "10000" },
+          pending: {},
+          anomalies: [],
+        },
+      }),
+    },
+    {
+      file: "21-int64-max-converts-exactly.json",
+      name: "int64-max-converts-exactly",
+      note: "Amounts at 2^63-1 and one below it, in the home currency at the identity and in USD at exactly 1.000000, come back digit for digit; EUR at 0.999999 rounds half-up to 9223362813482738952. The product amount_minor x rate_micro is past 2^63-1 in every row here, so an executor needs a 128-bit or unbounded intermediate; only the result must fit Int64.",
+      build: () => ({
+        entries: [
+          at(1n, homeCurrency("AED")),
+          at(2n, ingested("i1", "t1", { currency: "AED", amount_minor: "9223372036854775807" })),
+          at(3n, ingested("i2", "t2", { currency: "AED", amount_minor: "9223372036854775806" })),
+          at(4n, rateSet("USD", "1000000")),
+          at(5n, ingested("i3", "t3", { currency: "USD", amount_minor: "9223372036854775807" })),
+          at(6n, rateSet("EUR", "999999")),
+          at(7n, ingested("i4", "t4", { currency: "EUR", amount_minor: "9223372036854775807" })),
+        ],
+        expect: {
+          home_currency: "AED",
+          rates: { AED: IDENTITY, USD: "1000000", EUR: "999999" },
+          snapshots: { t1: "9223372036854775807", t2: "9223372036854775806", t3: "9223372036854775807", t4: "9223362813482738952" },
+          pending: {},
+          anomalies: [],
+        },
+      }),
+    },
+    {
+      file: "22-int64-max-foreign-row-waits-then-backfills.json",
+      name: "int64-max-foreign-row-waits-then-backfills",
+      note: "A USD row at 2^63-1 with no rate is pending with a null snapshot; an unset keeps it waiting; the first real rate, 1.000000, backfills it to 2^63-1 exactly.",
+      build: () => ({
+        entries: [
+          at(1n, homeCurrency("AED")),
+          at(2n, ingested("i1", "t1", { currency: "USD", amount_minor: "9223372036854775807" })),
+          at(3n, rateUnset("USD")),
+          at(4n, rateSet("USD", "1000000")),
+        ],
+        expect: {
+          home_currency: "AED",
+          rates: { AED: IDENTITY, USD: "1000000" },
+          snapshots: { t1: "9223372036854775807" },
+          pending: {},
+          anomalies: [],
+        },
+      }),
+    },
   ];
 }
 
@@ -630,7 +715,7 @@ const MANIFEST_NOTE =
   "Every integer is a decimal string, including seq. null is a value: a null snapshot means no rate existed at or after that row's position, and a null rate head is a live rate_unset, which is not the same as a currency with no rate at all. " +
   "`snapshots` names every transaction the fold materializes, superseded rows included. `pending` lists still-unfrozen live ids sorted by UTF-8 bytes, because the engine holds them in a set and Go would hold them in a map. `anomalies` is in fold order. " +
   "The home currency APPEARS IN `rates` carrying the identity 1000000, though spec §3.7:125 says it carries no rate row: the identity is materialized as a head so that head_rate(home, P) is one lookup rather than a special case at every call site. Every case encodes that literally, so an executor that keeps the identity implicit must add it before comparing. " +
-  "Every case keeps amount_minor x rate_micro (plus the +500000) below 2^63-1 so an int64 executor can consume it unchanged; case 17 sits deliberately close to that ceiling and is the largest conversion here.";
+  "Every snapshot fits Int64. Cases 1-20 keep amount_minor x rate_micro (plus the +500000) below 2^63-1 as well, and case 17 is the largest of those; cases 21 and 22 put the amount itself at 2^63-1, so their product needs a 128-bit or unbounded intermediate.";
 
 function build(): { manifest: string; files: { file: string; text: string }[] } {
   const cases = buildCases();

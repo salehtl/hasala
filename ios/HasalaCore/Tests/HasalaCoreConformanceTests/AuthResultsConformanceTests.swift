@@ -1,6 +1,7 @@
 // conformance/authres: every vector the TypeScript oracle (reference/ledgerd-client/src/mail/
 // authres.ts) wrote, Gmail and Outlook.com, reproduced by `AuthResults` as the README says. The
 // file is read in place from the repository (never bundled); HASALA_CONFORMANCE_DIR overrides.
+import CoreJSON
 import Foundation
 import Testing
 
@@ -84,6 +85,24 @@ struct AuthResultsConformanceTests {
           .noDMARCReject,
         ].map(\.rawValue))
     #expect(doc.vectors.filter { $0.provider == "outlook" }.count > 40)
+  }
+
+  @Test("vectors.json is what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites it)")
+  func golden() throws {
+    let file = try Fixtures.json("authres/vectors.json")
+    let vectors = try Golden.mapping(file["vectors"]) { v in
+      let parts = try (v["headers_parts"]?.arrayValue ?? []).map { String(repeating: try $0.string("text"), count: try $0.int("repeat")) }
+      let raw = v["headers"]?.stringValue ?? parts.joined()
+      let provider = try #require(AuthResults.Provider(rawValue: v["provider"]?.stringValue ?? "gmail"))
+      let a = AuthResults.analyze(raw, provider: provider)
+      return v.setting(
+        "expect",
+        obj([
+          ("trusted", .bool(a.verdict.trusted)), ("reason", .string(a.verdict.reason.rawValue)),
+          ("domain", a.domain.map { .string($0) } ?? .null),
+        ]))
+    }
+    try Golden.check("authres/vectors.json", file.setting("vectors", vectors))
   }
 
   @Test("every vector", arguments: doc.vectors.map(\.name))

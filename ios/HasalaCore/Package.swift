@@ -148,7 +148,7 @@ let package = Package(
       name: "HasalaCoreConformanceTests",
       // What its files import, and no more: none of them needs L3, L4 or
       // CoreTestSupport, so this target builds beside them, not after them.
-      dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate"]
+      dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate", "CoreMail"]
         + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreSoftAuth"],
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(

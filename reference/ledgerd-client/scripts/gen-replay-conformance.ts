@@ -703,6 +703,33 @@ function foldSpecs(): Spec[] {
         .blob("dev-a", c.op("rate_set", { payload: "USD" }))
         .blob("dev-a", c.op("home_currency_set", { payload: null })),
     ),
+    spec(g, "money-at-the-int64-limits", "Amounts at 2^63-1, one below it, just past 2^53 and one fils fold exactly and convert at the identity rate without loss; a split of the largest amount sums exactly; a user row restated to 2^63-1 converts to itself.", (c) =>
+      c
+        .blob("dev-a", c.home("AED"))
+        .blob("ingest", c.ingest("t1", "i1", { amount_minor: "9223372036854775807", merchant_raw: "MAX" }))
+        .blob("ingest", c.ingest("t2", "i2", { amount_minor: "9223372036854775806", merchant_raw: "MAX LESS ONE" }))
+        .blob("ingest", c.ingest("t3", "i3", { amount_minor: "9007199254740993", merchant_raw: "PAST 2^53" }))
+        .blob("ingest", c.ingest("t4", "i4", { amount_minor: "1", merchant_raw: "ONE FILS" }))
+        .blob("dev-a", c.split("t1", 1, [["groceries", "9223372036854775806"], ["dining", "1"]]))
+        .blob("dev-a", c.ingest("t5", "i5", { merchant_raw: "MANUAL" }))
+        .blob("dev-a", c.edit("t5", 1, { amount_minor: "9223372036854775807" })),
+    ),
+    spec(g, "merchant-nfc-nfd-across-edits", "An edit that respells an NFD merchant in NFC moves the row into the NFC fingerprint, where it now collides; respelling it back in NFD moves it out again and the notice stays as history.", (c) =>
+      c
+        .blob("ingest", c.ingest("t1", "i1", { merchant_raw: "CAFÉ" }))
+        .blob("ingest", c.ingest("t2", "i2", { merchant_raw: "CAFÉ" }))
+        .blob("dev-a", c.edit("t2", 1, { merchant_raw: "CAFÉ" }))
+        .blob("dev-a", c.edit("t2", 2, { merchant_raw: "CAFÉ" })),
+    ),
+    spec(g, "category-ids-nfc-nfd-are-two", "A category id in NFC and the same id in NFD are two categories, keyed by their UTF-8 bytes; a row filed under one is not under the other.", (c) =>
+      c
+        .blob("ingest", c.ingest("t1", "i1", { merchant_raw: "CAFÉ" }))
+        .blob("ingest", c.ingest("t2", "i2", { merchant_raw: "CAFÉ" }))
+        .blob("dev-a", c.category({ id: "café", name: "Café", kind: "spending", bucket: "want", active: true }))
+        .blob("dev-a", c.category({ id: "café", name: "Café", kind: "spending", bucket: "want", active: true }))
+        .blob("dev-a", c.categorize("t1", 1, { category: "café" }))
+        .blob("dev-a", c.categorize("t2", 1, { category: "café" })),
+    ),
   ];
 }
 
