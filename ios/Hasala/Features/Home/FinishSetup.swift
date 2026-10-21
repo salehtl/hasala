@@ -28,7 +28,7 @@ final class FinishSetupModel {
 
   func refresh() {
     let saved = services.setup.readBack()
-    if !planDone, saved.incomeMinor != nil || saved.split != nil { planDone = true }
+    if !planDone, saved.split != nil { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
   }
 
@@ -42,10 +42,10 @@ final class FinishSetupModel {
   var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
 
   func setPlan() {
-    let flow = draft ?? MonthlyPlanModel(setup: services.setup) { [weak self] saved in
-      if saved {
-        self?.planDone = true
+    let flow = draft ?? MonthlyPlanModel(setup: services.setup) { [weak self] held in
+      if let held {
         self?.draft = nil
+        if held.split != nil { self?.planDone = true }
       }
       self?.planFlow = nil
     }

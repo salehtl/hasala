@@ -9,7 +9,7 @@ final class MonthlyPlanModel: Identifiable {
   enum Route: Hashable { case plan }
 
   @ObservationIgnored private let setup: SetupAuthoring
-  @ObservationIgnored private let done: (_ saved: Bool) -> Void
+  @ObservationIgnored private let done: (_ held: SetupReadBack?) -> Void
   @ObservationIgnored private let saved: SetupReadBack
   var path: [Route] = []
   var busy = false
@@ -19,7 +19,7 @@ final class MonthlyPlanModel: Identifiable {
   private var split: StartingPlan?
   private(set) var incomeSkipped = false
 
-  init(setup: SetupAuthoring, done: @escaping (_ saved: Bool) -> Void) {
+  init(setup: SetupAuthoring, done: @escaping (_ held: SetupReadBack?) -> Void) {
     self.setup = setup
     self.done = done
     let readBack = setup.readBack()
@@ -76,7 +76,7 @@ final class MonthlyPlanModel: Identifiable {
     let income = savedIncomeMinor
     let values = SetupReadBack(
       incomeMinor: income, payday: income == nil ? nil : paydayChoice.opDay(today: today), split: skip ? nil : plan)
-    guard values != SetupReadBack() else { return done(false) }
+    guard values != SetupReadBack() else { return done(nil) }
     if values != saved {
       busy = true
       defer { busy = false }
@@ -87,6 +87,6 @@ final class MonthlyPlanModel: Identifiable {
         return
       }
     }
-    done(true)
+    done(values)
   }
 }

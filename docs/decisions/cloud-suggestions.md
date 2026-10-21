@@ -16,6 +16,8 @@ the Worker is deployed (see [Privacy policy changes](#privacy-policy-changes)).
 The owner decided (2026-10-21): a person can start a sort of the payments waiting in
 Review from Review, from the offer when Merchant suggestions is turned on in Profile, or
 in setup. This reverses the 2026-10-20 rule that the bulk sort is offered only in setup.
+Since the streamlined onboarding (2026-10-21), setup ends after the mailbox connect, and
+its ask is a card in Review, asked once on each iPhone.
 See [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-and-2026-10-21).
 
 Every example in this file is synthetic. No real mail, merchant, amount or name was used.
@@ -214,8 +216,7 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
   confirms it.
 - Order (decision D1): with Merchant suggestions on, Clef first, then Apple's model for
   Latin subjects that Clef couldn't answer. With it off, a Release build runs no model,
-  as before this feature (the beta doesn't use Apple's model on its own; the setup
-  screens say so). A Debug build runs Apple's model alone, for development.
+  as before this feature (the beta doesn't use Apple's model on its own). A Debug build runs Apple's model alone, for development.
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
 
@@ -273,23 +274,36 @@ stricter gate **files** the row instead of only suggesting it.
 
 On 2026-10-20 the owner decided that a bulk sort was offered only in setup, "never as a
 bulk button later", to keep the cost bounded. On 2026-10-21 the owner reversed that
-(option B of the backlog-sort exploration). A person can now start a sort from three
-places:
+(option B of the backlog-sort exploration). A person can now start a sort from two
+places. (Setup offered it too until the streamlined onboarding of 2026-10-21: setup now
+ends once the mailbox is connected, and its ask moved to Review.)
 
-- **Setup:** **Sort the rest with Cloudflare AI?** (`SetupRoute.sort`,
-  `Features/Setup/SortStep.swift`), after the result step and before notifications. It
-  shows only when the first scan ran in this setup (not for sample data, a skipped email
-  or manual entry) and the build has the Worker's URL (`BuildSurface`). **Turn on** sets
-  both switches (`MerchantSuggestionsSetting.turnOnForFirstImport`) and starts a run.
-  **Not now** leaves both off. The two pill buttons are the same size.
-- **Review:** a **Sort with Cloudflare AI** card at the top of Review.
+- **Review, with Merchant suggestions off:** a card at the top of Review asks **Sort the
+  rest with Cloudflare AI?** (`Features/Review/CloudSortAsk.swift`). It shows only when
+  items wait to be sorted, the build has the Worker's URL (`BuildSurface`), this iPhone
+  hasn't answered it (`MerchantSuggestionsSetting.reviewAskAnswered`: Turn on, Not now,
+  or Merchant suggestions turned on or off in Profile) and the account isn't the review
+  account. It is asked once on each iPhone. An iPhone that finished setup before the ask
+  moved to Review counts as answered (`MerchantSuggestionsSetting.migrateReviewAsk`, once
+  per install): the setup screen asked it already.
+  - The card says what is sent (the merchant name, with an example), what is not sent,
+    that only very sure answers are filed, and where to turn it off. **What Cloudflare
+    sees** opens the full sheet: the built-in category names, each name once, what
+    Cloudflare sees (the same text as the Profile sheet), what gets filed, and that both
+    switches can be changed in Profile. **Turn on** and **Not now** are two pill buttons
+    of the same size, on the card and on the sheet.
+  - **Turn on** sets both switches (`MerchantSuggestionsSetting.turnOnForFirstImport`)
+    and starts a run. **Not now** leaves both off.
+- **Review, with Merchant suggestions on:** the **Sort with Cloudflare AI** card at the
+  top of Review (below). It starts a run with the switches as they are, and never turns
+  them on. The ask and this card never show together.
 - **Profile:** when Merchant suggestions is turned on and payments are waiting, an offer
   ("Sort the 208 payments waiting in Review?"), with **Sort now** and **Later**.
 
 Every run is started by the person. There is no automatic run. The per-run and per-day
 caps below and the AI Gateway spend limit now keep the cost bounded.
 
-**One engine.** The three entry points start the same run (`BacklogSort`, which replaces
+**One engine.** Every entry point starts the same run (`BacklogSort`, which replaces
 `FirstImportSort`). Its state is a device-local record in the device's own database, next
 to `fm_cache`: the run id, start time, request count, counts, the undo manifest, the day
 ledger and the cumulative manifest of every run's filed rows. It
@@ -417,8 +431,8 @@ requests are sent and when, not what each one carries (see
 
 - Profile › **Cloud suggestions**, with two switches: **Merchant suggestions**
   and **Alert reading help**. Both off by default, on every device separately (they're
-  device settings, like Hide amounts, and never sync). Setup's sort screen is the one
-  other place that turns Merchant suggestions and Sort automatically on (see
+  device settings, like Hide amounts, and never sync). Review's ask is the one other
+  place that turns Merchant suggestions and Sort automatically on (see
   [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-and-2026-10-21)).
 - Turning one on shows one screen first: what is sent, an example of a request, that
   Cloudflare answers and keeps nothing, that the IP address is visible to Cloudflare, and

@@ -65,6 +65,27 @@ struct FinishSetupTests: AccountSuite {
     #expect(m.isDone(.plan) && m.isDone(.notifications))
     let onlySplit = FinishSetupModel(services: services(MockSetupAuthoring(saved: SetupReadBack(split: StartingPlan()))))
     #expect(onlySplit.isDone(.plan))
+    let onlyIncome = FinishSetupModel(services: services(MockSetupAuthoring(
+      saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))))
+    #expect(!onlyIncome.isDone(.plan))
+  }
+
+  @Test func anIncomeWithoutASplitKeepsThePlanItem() async throws {
+    let setup = MockSetupAuthoring()
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.incomeEntry = AmountEntry(typing: "25000")
+    flow.continueWithIncome()
+    await flow.savePlan(skip: true)
+    #expect(setup.savePlanCalls == 1 && setup.income == 2_500_000 && setup.plan == nil)
+    #expect(!m.isDone(.plan) && m.planFlow == nil)
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again !== flow && again.incomeEntry.text == "25000")
+    again.continueWithIncome()
+    await again.savePlan()
+    #expect(setup.savePlanCalls == 2 && setup.plan == StartingPlan() && m.isDone(.plan))
   }
 
   @Test func closingThePlanWithNothingChosenSendsNothingAndKeepsTheItem() async throws {
@@ -99,20 +120,20 @@ struct FinishSetupTests: AccountSuite {
     let saved = SetupReadBack(incomeMinor: 2_500_050, payday: 25,
                               split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
     let setup = MockSetupAuthoring(saved: saved)
-    var outcome: Bool?
+    var outcome: SetupReadBack?
     let flow = MonthlyPlanModel(setup: setup) { outcome = $0 }
     #expect(flow.incomeEntry.display == "25,000" && flow.paydayChoice == .day(25) && flow.plan.needsPercent == 60)
     #expect(flow.today == MayaLedger.now.date && flow.nextPayday == LocalDate(2026, 10, 25))
     flow.incomeEntry = AmountEntry(typing: "25000")
     flow.continueWithIncome()
     await flow.savePlan()
-    #expect(setup.savePlanCalls == 1 && outcome == true)
+    #expect(setup.savePlanCalls == 1 && outcome?.incomeMinor == 2_500_000 && outcome?.split?.needsPercent == 60)
     let unchanged = MockSetupAuthoring(saved: SetupReadBack(
       incomeMinor: 2_500_000, payday: 25, split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)))
     outcome = nil
     let same = MonthlyPlanModel(setup: unchanged) { outcome = $0 }
     same.continueWithIncome()
     await same.savePlan()
-    #expect(unchanged.savePlanCalls == 0 && outcome == true)
+    #expect(unchanged.savePlanCalls == 0 && outcome?.split != nil)
   }
 }

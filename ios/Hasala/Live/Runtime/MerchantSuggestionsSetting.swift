@@ -17,6 +17,7 @@ nonisolated enum MerchantSuggestionsSetting {
 
   static func setEnabled(_ on: Bool, _ defaults: UserDefaults = .standard) {
     defaults.set(on, forKey: key)
+    defaults.set(true, forKey: reviewAskAnsweredKey)
     if !on {
       defaults.set(false, forKey: autoSortKey)
       forgetRunRequest(defaults)

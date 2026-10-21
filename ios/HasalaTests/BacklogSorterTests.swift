@@ -754,6 +754,8 @@ struct ReviewCloudSortAskTests {
     #expect(!offer.answered)
     MerchantSuggestionsSetting.setEnabled(true, d)
     #expect(offer.answered)
+    MerchantSuggestionsSetting.setEnabled(false, d)
+    #expect(offer.answered && !offer.isOn)
     MerchantSuggestionsSetting.forget(d)
     offer.turnOn()
     #expect(offer.answered && offer.isOn)
