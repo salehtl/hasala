@@ -85,7 +85,7 @@ public enum TransactionEngine {
       if budget > 0 {
         let projected = Pace.projected(spent, day: now.date.day, days: month.days)
         pace = EmbeddedPace(
-          title: "\(c.name) this month", left: .aed(budget - spent), budget: .aed(budget),
+          title: "\(c.name) this month", left: .aed(budget.minus(spent)), budget: .aed(budget),
           progress: Permille.ratio(spent, of: budget),
           today: paced ? Pace.monthGone(day: now.date.day, days: month.days) : nil, verdict: verdict,
           projection: paced ? MoneyPhrase([.text("on course for "), .amount(.aed(projected), .rounded)]) : nil
@@ -128,16 +128,17 @@ public enum TransactionEngine {
   /// TODO(spec 04 §16.2 T4): over/under edge states with their own copy.
   public static func splitAddsUp(_ lines: [SplitLine], total: Money) -> Bool {
     lines.count >= 2 && lines.allSatisfy { $0.amount.minor > 0 }
-      && lines.reduce(Int64(0), { $0 + $1.amount.minor }) == total.minor
+      && lines.reduce(Int128(0), { $0 + Int128($1.amount.minor) }) == Int128(total.minor)
   }
 
   /// What the split editor says under the amount while lines are typed (`nil` is a line
   /// with no amount yet). Only `.addsUp` may be saved, and it means `splitAddsUp` holds:
   /// a line that is empty or zero never "adds up exactly", even when the others do.
   public static func splitDraftVerdict(_ amounts: [Int64?], total: Money) -> SplitDraftVerdict {
-    let placed = amounts.reduce(Int64(0)) { $0 + ($1 ?? 0) }
-    if placed < total.minor { return .leftToPlace(Money(minor: total.minor - placed, currency: total.currency)) }
-    if placed > total.minor { return .over(Money(minor: placed - total.minor, currency: total.currency)) }
+    let placed = amounts.reduce(Int128(0)) { $0 + Int128($1 ?? 0) }
+    let target = Int128(total.minor)
+    if placed < target { return .leftToPlace(Money(minor: Int64(clamping: target - placed), currency: total.currency)) }
+    if placed > target { return .over(Money(minor: Int64(clamping: placed - target), currency: total.currency)) }
     if amounts.count < 2 || amounts.contains(where: { ($0 ?? 0) <= 0 }) { return .emptyLine }
     return .addsUp
   }

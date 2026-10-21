@@ -175,7 +175,7 @@ final class HomeViewModel: HomeModel {
 
 extension AppModel {
   var needsALook: [NotificationItem] {
-    thisMonthSnapshot.notifications.needsALook
+    NotificationsEngine.snapshot(store.state, now: store.now, review: reviewWindow).needsALook
       + [HomeViewModel.mailItem(mailOffer, mailboxes: mailbox?.mailboxes ?? [])].compactMap { $0 }
   }
 

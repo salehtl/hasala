@@ -84,6 +84,36 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(outcome == .ready)
   }
 
+  @Test func anOfflineVerifyKeepsTheCodeForTheRetry() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(m.submitRecoveryCode())
+    account.failNext = .offline
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(m.failure(on: .recoverMethod) == .offline)
+    #expect(m.recoverCode == MockAccountService.emailCode)
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
+  }
+
+  @Test func aFailedResendShowsOnTheCodeScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    account.failNext = .offline
+    #expect(!(await m.resendRecoveryCode()))
+    #expect(m.failure(on: .recoverCode) == .offline)
+    #expect(m.failure(on: .recoverWords) == nil)
+    #expect(await m.resendRecoveryCode())
+    #expect(m.failure(on: .recoverCode) == nil)
+  }
+
   @Test func recoveryIsBoundToTheVerifiedKind() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
@@ -365,6 +395,23 @@ struct SignInSecurityFlowTests: AccountSuite {
     let session = AccountSession(services: services(account), phase: .checking)
     await session.resume()
     #expect(session.phase == .needsUnlock(passkeyCanUnlock: true))
+  }
+
+  @Test func signingOutDuringARetryStaysSignedOut() async {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.resumeOutcome = .needsUnlock(passkeyCanUnlock: true)
+    let session = AccountSession(services: services(account), phase: .checking)
+    account.failNext = .offline
+    await session.resume()
+    #expect(session.resumeFailure == .offline && session.phase == .checking)
+    account.delay = .milliseconds(200)
+    let retry = Task { await session.resume() }
+    while !session.resuming { await Task.yield() }
+    await session.resume()
+    session.signedOut()
+    await retry.value
+    #expect(session.phase == .signedOut)
+    #expect(!session.resuming)
   }
 
   @Test func viewingThePhraseIsForPasskeyAccounts() async {

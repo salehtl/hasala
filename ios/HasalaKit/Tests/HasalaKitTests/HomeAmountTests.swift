@@ -51,7 +51,10 @@ struct HomeAmountTests {
     #expect(Spending.total(s, in: october) == Spending.total(base, in: october))
     #expect(s.spent("dining", in: october) == base.spent("dining", in: october))
     #expect(InsightsEngine.Totals(InsightsEngine.lines(s)) == InsightsEngine.Totals(InsightsEngine.lines(base)))
-    #expect(PlanEngine.snapshot(s, now: now).projects == PlanEngine.snapshot(base, now: now).projects)
+    let japan = { (s: LedgerState) in PlanEngine.snapshot(s, now: now).projects.first { $0.id == "japan" }! }
+    #expect(japan(s).spent == japan(base).spent)
+    #expect(japan(s).pending == japan(base).pending)
+    #expect(japan(s).mark?.leftOut == ["USD": 1])
     #expect(ActivityEngine.reviewSummary(s, now: now).unplanned == ActivityEngine.reviewSummary(base, now: now).unplanned)
     #expect(HomeEngine.hero(s, now: now, plan: PlanEngine.snapshot(s, now: now)).spent
       == HomeEngine.hero(base, now: now, plan: PlanEngine.snapshot(base, now: now)).spent)

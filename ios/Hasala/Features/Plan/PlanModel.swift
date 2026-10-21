@@ -209,7 +209,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
 
   var shortfall: Money? {
     guard let row, let projected, projected.minor > row.budget.minor else { return nil }
-    return .aed(projected.minor - row.budget.minor)
+    return .aed(projected.minor.minus(row.budget.minor))
   }
 
   var lastMonth: (name: String, spent: Money)? {
@@ -230,7 +230,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       out.append(MoveSource(id: nil, name: "Ready to assign", glyph: .wallet, hue: .mint, available: p.readyToAssign,
                             detail: MoneyPhrase([.amount(p.readyToAssign, hidden: 3), .text(" not in a budget yet")])))
     }
-    func left(_ r: PlanRowModel) -> Int64 { r.budget.minor - r.spent.minor }
+    func left(_ r: PlanRowModel) -> Int64 { r.budget.minor.minus(r.spent.minor) }
     func rows(_ bucket: Bucket) -> [PlanRowModel] {
       p.sections.first { $0.bucket == bucket }?.rows.filter { $0.id != destination && left($0) > 0 } ?? []
     }
@@ -276,7 +276,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       return amount.minor > plan.readyToAssign.minor ? "Ready to assign doesn't have that much" : nil
     }
     guard let r = plan.row(source) else { return nil }
-    return amount.minor > r.budget.minor - r.spent.minor ? "\(r.name) doesn't have that much left" : nil
+    return amount.minor > r.budget.minor.minus(r.spent.minor) ? "\(r.name) doesn't have that much left" : nil
   }
 
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool {

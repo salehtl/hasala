@@ -27,6 +27,10 @@ struct ProjectDetailView: View {
         hostsToast: inPlan
       ) {
         ProjectHero(detail: d, hidden: model.hidden)
+        if let mark = d.mark, let line = mark.line {
+          NotCountedLine(mark, line: line, id: "project.notCounted", inProfileSheet: false, app: app)
+            .padding(.horizontal, HSpacing.insetPage)
+        }
         planSetting(d)
         if !d.categories.isEmpty { byCategory(d) }
         transactions(d)

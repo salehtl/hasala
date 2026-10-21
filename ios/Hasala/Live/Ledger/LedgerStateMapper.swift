@@ -73,8 +73,10 @@ nonisolated enum LedgerStateMapper {
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
+    var incomeByMonth: [YearMonth: Money] = [:]
     let months = [month.adding(months: -1), month, month.adding(months: 1)].compactMap { $0 }
     for m in months {
+      incomeByMonth[YearMonth(m.year, m.month)] = .aed(engine.income(m).total)
       for info in taxonomy.ordered where info.kind == .spending {
         let v = engine.assigned(m, info.id)
         if v != 0 { budgets[HasalaModels.PlanState.key(info.id, YearMonth(m.year, m.month))] = .aed(v) }
@@ -83,8 +85,9 @@ nonisolated enum LedgerStateMapper {
     let sources = engine.plan.incomeSources.values.filter(\.active)
     let split = try r.budgetTemplate()
     let plan = HasalaModels.PlanState(
-      income: .aed(sources.reduce(Int64(0)) { $0 + $1.amountMinor }), payday: Int(sources.first?.payday ?? 28),
-      startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets)
+      income: .aed(Fils.sum(sources.map(\.amountMinor))), payday: Int(sources.first?.payday ?? 28),
+      startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
+      incomeByMonth: incomeByMonth)
 
     // Bills, then each active income source as an income "bill" (Bills › Income).
     var bills: [HasalaModels.Bill] = []
@@ -295,8 +298,8 @@ nonisolated enum LedgerStateMapper {
     if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn,
       let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
     {
-      let tolerance = b.amountMinor * (b.toleranceBp ?? 0) / 10_000
-      if abs(charged.minor - b.amountMinor) > tolerance {
+      let tolerance = Fils.mulDiv(b.amountMinor, b.toleranceBp ?? 0, 10_000)
+      if charged.minor.minus(b.amountMinor).magnitude > tolerance.magnitude {
         priceChangeFrom = amount
         amount = charged
       }

@@ -281,7 +281,8 @@ struct BillsView: View {
       ReflowingRow(alignment: .bottom) {
         Text("Recently paid").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
       } trailing: {
-        PhraseText(MoneyPhrase([.amount(snap.paidThisMonth), .text(" in \(app.store.now.date.yearMonth.name)")]),
+        PhraseText(MoneyPhrase([.amount(snap.paidThisMonth), .text(" in \(app.store.now.date.yearMonth.name)")]
+                               + (snap.paidMark?.caption.map { [.text(" · \($0)")] } ?? [])),
                    hidden: model.hidden)
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
       }

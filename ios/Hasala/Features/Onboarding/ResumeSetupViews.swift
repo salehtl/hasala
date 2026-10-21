@@ -15,15 +15,16 @@ struct BootCheckView: View {
           ? "Checking your account."
           : "You're signed in. Hasala needs a connection to open your account on this iPhone."
       ) {
-        if session.resumeFailure == nil {
+        if session.resumeFailure == nil || session.resuming || signingOut {
           ProgressView().frame(maxWidth: .infinity).padding(.top, 24)
         }
       } actions: {
-        if session.resumeFailure != nil {
+        if session.resumeFailure != nil, !session.resuming, !signingOut {
           Button("Try again") { Task { await session.resume() } }
             .buttonStyle(.pill(.primary, fill: true))
             .accessibilityIdentifier("boot.retry")
           LinkButton(title: "Sign out", identifier: "boot.signOut") {
+            signingOut = true
             Task {
               await session.account.signOut()
               session.signedOut()
