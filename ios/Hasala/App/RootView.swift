@@ -51,6 +51,12 @@ struct RootView: View {
           AccountRootView(session: mock.session, onboarding: mock.onboarding, setupFacts: mock.setupFacts) {
             MainView(app: mock.app)
           }
+          .accessibilityHidden(mock.syncHalt.halt != nil)
+          .overlay {
+            if let halt = mock.syncHalt.halt {
+              SyncHaltWall(halt: halt, retrying: mock.syncHalt.retrying, tryAgain: mock.syncHalt.tryAgain)
+            }
+          }
         } else {
           LiveRootView()
         }
@@ -88,12 +94,14 @@ struct LiveRootView: View {
         }
         .id(ObjectIdentifier(boot.session))
         // Under a wall the gate keeps its place (a sign-in screen stays where it was).
-        .accessibilityHidden(boot.wall != nil)
+        .accessibilityHidden(boot.wall != nil || boot.syncHalt != nil)
       }
     }
     .overlay {
       if let wall = boot.wall {
         BootWallView(boot: boot, wall: wall)
+      } else if let halt = boot.syncHalt {
+        SyncHaltWall(halt: halt, retrying: boot.retryingSync, tryAgain: boot.retrySync)
       }
     }
     .onAppear { boot.start() }
@@ -153,9 +161,14 @@ struct LaunchView: View {
     let setupFacts: OnboardingStep.Facts
     let widgets: WidgetPublisher
     let lock: AppLockController
+    let syncHalt: MockSyncHalt
 
-    init(app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts, lock: MockAppLock = MockAppLock()) {
+    init(
+      app: AppModel, session: AccountSession, setupFacts: OnboardingStep.Facts, lock: MockAppLock = MockAppLock(),
+      syncHalt: MockSyncHalt = MockSyncHalt([])
+    ) {
       self.app = app
+      self.syncHalt = syncHalt
       self.session = session
       self.setupFacts = setupFacts
       self.lock = lock.controller(store: app.store)
@@ -178,7 +191,8 @@ struct LaunchView: View {
           store: InMemoryLedger(state: scenario.state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
           layouts: mockLayouts(arguments)),
-        session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments))
+        session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments),
+        syncHalt: MockSyncHalt(arguments))
       launch?.open(graph)
       return graph
     }

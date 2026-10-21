@@ -243,7 +243,8 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
-          return (out.newData, out.stop)
+          let phase = await engine.status.phase
+          return (out.newData, Self.shownStop(out.stop, phase: phase))
         },
         mailbox: mailboxStage,
         categorize: { trigger in await suggestions.run(trigger) },
@@ -270,6 +271,11 @@ final class AccountRuntime {
     }
     await rt.followImports()
     return rt
+  }
+
+  nonisolated static func shownStop(_ stop: SyncStop?, phase: SyncPhase) -> SyncStop? {
+    guard case .halted = stop, case .halted(let kind) = phase else { return stop }
+    return .halted(kind)
   }
 
   /// The launch run (spec 04 §6.5): `GET /meta` and `GET /auth/session` first, then
