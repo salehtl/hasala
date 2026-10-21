@@ -99,7 +99,8 @@ type ServerConfig struct {
 	LogGenerationFile string `toml:"-"`
 	// LogGeneration is the file's value, read once by serve at start
 	// (ReadLogGeneration) and reported by GET /api/v1/meta.
-	LogGeneration int `toml:"-"`
+	LogGeneration   int    `toml:"-"`
+	PurgeLedgerPath string `toml:"-"`
 }
 
 // ReadLogGeneration reads spec 02 §15.5's log generation file. An empty path
@@ -308,9 +309,10 @@ type ConsoleConfig struct {
 
 // PurgeArgs is `hasalad purge-user <uuid> --confirm <uuid> [--dry-run]`.
 type PurgeArgs struct {
-	User    string
-	Confirm string
-	DryRun  bool
+	User         string
+	Confirm      string
+	DryRun       bool
+	ReplayLedger bool
 }
 
 // VerifyArgs is `hasalad verify structural|usage [--user <uuid>] [--repair]`.
@@ -482,6 +484,7 @@ func applyEnv(c *Config, lookup func(string) (string, bool)) error {
 	c.Server.MinIOSBuild = int(minBuild)
 	str("HASALA_LOG_LEVEL", &c.Server.LogLevel)
 	str("HASALA_LOG_GENERATION_FILE", &c.Server.LogGenerationFile)
+	str("HASALA_PURGE_LEDGER_PATH", &c.Server.PurgeLedgerPath)
 
 	str("HASALA_RP_ID", &c.Auth.RPID)
 	str("HASALA_RP_DISPLAY_NAME", &c.Auth.RPDisplayName)
@@ -1015,7 +1018,14 @@ func (c Config) ValidateFor(mode string) error {
 	if c.PGDSN == "" {
 		return errors.New("HASALA_PG_DSN is required")
 	}
+	if p := c.Server.PurgeLedgerPath; p != "" && !filepath.IsAbs(p) {
+		return fmt.Errorf("HASALA_PURGE_LEDGER_PATH %q is not an absolute path", p)
+	}
 	switch mode {
+	case "purge-user":
+		if c.Purge.ReplayLedger && c.Server.PurgeLedgerPath == "" {
+			return errors.New("purge-user --replay-ledger needs HASALA_PURGE_LEDGER_PATH")
+		}
 	case "serve":
 		if c.Auth.RPID == "" {
 			return errors.New("serve needs auth.rp_id (HASALA_RP_ID) and auth.rp_origins (HASALA_RP_ORIGINS)")
@@ -1025,6 +1035,9 @@ func (c Config) ValidateFor(mode string) error {
 		}
 		if c.Server.TrustedProxy == ProxyCloudflare && (c.Auth.AuthKeyFile == "" || c.Auth.SaltKeyFile == "") {
 			return errors.New("serve needs HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE with trusted_proxy = cloudflare")
+		}
+		if c.Server.TrustedProxy == ProxyCloudflare && c.Server.PurgeLedgerPath == "" {
+			return errors.New("serve needs HASALA_PURGE_LEDGER_PATH with trusted_proxy = cloudflare")
 		}
 	case "console":
 		return c.validateConsole()

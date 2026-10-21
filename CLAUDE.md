@@ -379,6 +379,10 @@ CI for iOS:
     `lint.sh`.
   - `module-eval` (on x86_64-linux). Each module assertion must fail when you
     use the module incorrectly.
+  - `ca-distrust` (on the two systems). It builds the CA bundle with the
+    module's `hardening.distrustedCARoots` and examines that those roots are
+    not trusted for servers, and that the roots of the hosts the QA host calls
+    are.
   - `qa-vm` (on x86_64-linux). It must have KVM.
 - On a Mac, `nix flake check --no-build --all-systems` evaluates the Linux
   checks.

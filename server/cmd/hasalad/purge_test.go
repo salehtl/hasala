@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 func TestPurgeDryRunRunsTheRealPreflight(t *testing.T) {
@@ -86,5 +88,58 @@ func TestPurgeDryRunPassesWhenTheRealPurgeWould(t *testing.T) {
 	if code, out, msg := hasalad(t, env, "purge-user", user, "--confirm", user, "--dry-run"); code != 0 ||
 		!strings.Contains(out, "Nothing was deleted") {
 		t.Fatalf("dry run exited %d with %q (%s)", code, out, msg)
+	}
+}
+
+func TestAPurgeSurvivesARestoreThroughTheLedger(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	user := oplogtest.NewUser(t, pool)
+	stays := oplogtest.NewUser(t, pool)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	if code, out, msg := hasalad(t, env, "purge-user", user.String(), "--confirm", user.String()); code != 0 {
+		t.Fatalf("purge exited %d: %s %s", code, out, msg)
+	}
+	entries, err := purgeledger.Read(ledger)
+	if err != nil || len(entries) != 1 || entries[0].ID != user {
+		t.Fatalf("ledger %v %v, want the purged account", entries, err)
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name)
+	    VALUES ($1::uuid, sha256(convert_to($1::uuid::text, 'UTF8')), now(), 'restored@example.test', now(), 'Test User')`, user); err != nil {
+		t.Fatal(err)
+	}
+	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
+	if code != 0 || !strings.Contains(out, "1 entries, 1 account(s) purged again") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	if strings.Contains(out, user.String()) {
+		t.Fatalf("the replay printed the account id: %q", out)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, user).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("%d restored accounts left (%v), want 0", left, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, stays).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("the other account: %d (%v), want 1", left, err)
+	}
+	if code, out, _ := hasalad(t, env, "purge-user", "--replay-ledger"); code != 0 || !strings.Contains(out, "0 account(s) purged again") {
+		t.Fatalf("a second replay exited %d with %q", code, out)
+	}
+}
+
+func TestReplayNeedsTheLedgerAndNoAccount(t *testing.T) {
+	env := []string{"HASALA_PG_DSN=host=/nonexistent dbname=hasala"}
+	if code, _, msg := hasalad(t, env, "purge-user", "--replay-ledger"); code != 2 || !strings.Contains(msg, "HASALA_PURGE_LEDGER_PATH") {
+		t.Fatalf("replay without a ledger exited %d (%s)", code, msg)
+	}
+	id := "00000000-0000-4000-8000-000000000001"
+	env = append(env, "HASALA_PURGE_LEDGER_PATH=/nonexistent/purged")
+	for _, argv := range [][]string{{"purge-user", id, "--replay-ledger"}, {"purge-user", "--replay-ledger", "--dry-run"},
+		{"purge-user", "--replay-ledger", "--confirm", id}} {
+		if code, _, _ := hasalad(t, env, argv...); code != 2 {
+			t.Fatalf("%v exited %d, want 2", argv, code)
+		}
 	}
 }

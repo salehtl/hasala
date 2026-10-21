@@ -938,3 +938,84 @@ func TestPurgeRevokesTheAddresssOpenInvites(t *testing.T) {
 		t.Fatalf("another address's invite is %s, tag kept %v", s, tagged)
 	}
 }
+
+func TestRecordRunsBeforeTheCommitAndItsFailureDeletesNothing(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "recorded")
+	var seen []uuid.UUID
+	rep, err := PurgeWith(bg, pool, u, Options{Record: func(ids []uuid.UUID) error {
+		seen = append(seen, ids...)
+		if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
+			t.Errorf("the deletion was visible before it was recorded")
+		}
+		return nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0] != u || len(rep.Users) != 1 {
+		t.Fatalf("recorded %v, reported %v", seen, rep.Users)
+	}
+
+	v := newUser(t, pool, "unrecorded")
+	refused := errors.New("disk full")
+	if _, err := PurgeWith(bg, pool, v, Options{Goodbye: true, Record: func([]uuid.UUID) error { return refused }}); !errors.Is(err, refused) {
+		t.Fatalf("purge with a failing record: %v", err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, v); n != 1 {
+		t.Fatal("the account went although its deletion was not recorded")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log`); n != 0 {
+		t.Fatal("the goodbye was queued for a deletion that rolled back")
+	}
+
+	called := false
+	if _, err := PurgeWith(bg, pool, uuid.New(), Options{Record: func([]uuid.UUID) error { called = true; return nil }}); err != nil || called {
+		t.Fatalf("purging no account recorded it (%v, %v)", called, err)
+	}
+}
+
+func TestReplayPurgesTheRestoredAccountsAgain(t *testing.T) {
+	pool := pgtest.New(t)
+	gone := seedAFullyPopulatedUser(t, pool, "deleted-then-restored")
+	stays := seedAFullyPopulatedUser(t, pool, "never-deleted")
+	exec(t, pool, `UPDATE users SET email_norm = 'restored@example.com' WHERE id = $1`, gone)
+	rep, err := Replay(bg, pool, []uuid.UUID{gone, uuid.New()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Users) != 1 || rep.Users[0] != gone || rep.Total() == 0 {
+		t.Fatalf("replay reported %v, %d rows", rep.Users, rep.Total())
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, gone); n != 0 {
+		t.Fatal("the restored account survived the replay")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, stays); n != 1 {
+		t.Fatal("the replay deleted an account the ledger does not name")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log WHERE recipient = 'restored@example.com'`); n != 0 {
+		t.Fatal("the replay queued a second goodbye")
+	}
+	again, err := Replay(bg, pool, []uuid.UUID{gone})
+	if err != nil || len(again.Users) != 0 {
+		t.Fatalf("a second replay: %v %v", again.Users, err)
+	}
+}
+
+func TestReplayWithNothingToPurgeNeedsNoPreflight(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	if _, err := owner.Exec(bg, `CREATE TABLE later_task_rows (id bigserial PRIMARY KEY,
+	    user_id uuid REFERENCES users(id) ON DELETE SET NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Exec(bg, `GRANT SELECT, INSERT, DELETE ON later_task_rows TO hasala_runtime`); err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := Replay(bg, pool, []uuid.UUID{uuid.New()}); err != nil || len(rep.Users) != 0 {
+		t.Fatalf("replay of an absent account: %v %v", rep.Users, err)
+	}
+	u := newUser(t, pool, "blocked")
+	if _, err := Replay(bg, pool, []uuid.UUID{u}); err == nil {
+		t.Fatal("a replay that has work to do skipped the preflight")
+	}
+}

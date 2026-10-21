@@ -5,29 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/purge"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // runPurgeUser is `hasalad purge-user <uuid> --confirm <uuid> [--dry-run]`
 // (spec 02 §15.4): delete one account and everything that references it. The
 // account id must be typed twice, so a pasted id that is one character off
-// deletes nothing. (The purge ledger and `--replay-ledger` of spec 02 §15.5
-// arrive with WS-5's restore runbook.)
+// deletes nothing. `hasalad purge-user --replay-ledger` (spec 02 §15.5)
+// purges again every account the purge ledger names.
 func runPurgeUser(env *runEnv, args []string) error {
 	positional, rest := splitPositional(args)
 	var a config.PurgeArgs
 	fs := newFlags(env, "purge-user")
 	fs.StringVar(&a.Confirm, "confirm", "", "the same account id again")
 	fs.BoolVar(&a.DryRun, "dry-run", false, "report what would be deleted and delete nothing")
+	fs.BoolVar(&a.ReplayLedger, "replay-ledger", false, "purge again every account in the purge ledger (after a restore)")
 	if err := parseFlags(fs, rest); err != nil {
 		return err
 	}
+	if a.ReplayLedger {
+		if len(positional) != 0 || fs.NArg() > 0 || a.Confirm != "" || a.DryRun {
+			return refusal{errors.New("usage: hasalad purge-user --replay-ledger")}
+		}
+		return replayPurgeLedger(env, a)
+	}
 	if len(positional) != 1 || fs.NArg() > 0 {
-		return refusal{errors.New("usage: hasalad purge-user <uuid> --confirm <uuid> [--dry-run]")}
+		return refusal{errors.New("usage: hasalad purge-user <uuid> --confirm <uuid> [--dry-run] | purge-user --replay-ledger")}
 	}
 	a.User = positional[0]
 	target, err := uuid.Parse(a.User)
@@ -89,7 +98,13 @@ func runPurgeUser(env *runEnv, args []string) error {
 	// The CLI holds no auth key, so the tag-keyed steps are skipped; the
 	// goodbye email is queued like the API's, and serve's worker sends it
 	// (spec 02 §15.4).
-	rep, err := purge.PurgeWith(ctx, pool, target, purge.Options{Goodbye: true})
+	opts := purge.Options{Goodbye: true}
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		opts.Record = func(ids []uuid.UUID) error { return purgeledger.Append(p, ids, time.Now()) }
+	} else {
+		fmt.Fprintln(env.stderr, "purge-user: warning: HASALA_PURGE_LEDGER_PATH is not set, so restoring a backup would bring this account back")
+	}
+	rep, err := purge.PurgeWith(ctx, pool, target, opts)
 	if err != nil {
 		fmt.Fprintln(env.stderr, "purge-user: the purge did not complete: nothing was deleted and no email was queued")
 		return fmt.Errorf("purge-user: %w", err)
@@ -98,6 +113,35 @@ func runPurgeUser(env *runEnv, args []string) error {
 	if len(rep.Users) == 0 {
 		fmt.Fprintln(env.stdout, "no such account; nothing was deleted")
 	}
+	return nil
+}
+
+func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
+	cfg, err := env.load("purge-user", func(c *config.Config) { c.Purge = a })
+	if err != nil {
+		return err
+	}
+	path := cfg.Server.PurgeLedgerPath
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	pool, err := openRuntime(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	rep, err := purge.Replay(ctx, pool, purgeledger.IDs(entries))
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
+	dropped, err := purgeledger.Prune(path, time.Now().Add(-purgeledger.Retention))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d entries past retention removed\n",
+		len(entries), len(rep.Users), rep.Total(), dropped)
 	return nil
 }
 
