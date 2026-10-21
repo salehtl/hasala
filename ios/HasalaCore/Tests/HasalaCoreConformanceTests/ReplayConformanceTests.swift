@@ -60,10 +60,7 @@ struct ReplayConformanceTests {
     #expect(Set(onDisk) == Set(Self.files))
   }
 
-  static let disagreements: [String: Comment] = [
-    "fold-category-ids-nfc-nfd-are-two.json":
-      "Swift keys categories by String, which merges canonically equivalent ids; the oracle keys them by UTF-8 bytes. The owner decides which side changes."
-  ]
+  static let disagreements: [String: Comment] = [:]
 
   @Test("fold matches the oracle", arguments: files)
   func foldMatches(_ file: String) throws {
@@ -101,8 +98,8 @@ struct ReplayConformanceTests {
     }
     // The order serializeState sorts away: first declaration of banks and categories.
     if let order = expect["order"] {
-      #expect(Array(s.banks.keys) == (try order.array("banks")).compactMap(\.stringValue))
-      #expect(Array(s.categories.keys) == (try order.array("categories")).compactMap(\.stringValue))
+      #expect(s.banks.keys.map(\.value) == (try order.array("banks")).compactMap(\.stringValue))
+      #expect(s.categories.keys.map(\.value) == (try order.array("categories")).compactMap(\.stringValue))
     }
   }
 
@@ -115,7 +112,7 @@ struct ReplayConformanceTests {
       let sha = Hex.encode(sha256(bytes))
       var e: [(String, JSONValue)] = [
         ("error", .null), ("state", try JSONParser.parse(bytes)), ("state_sha256", .string(sha)),
-        ("order", obj([("banks", .array(s.banks.keys.map { .string($0) })), ("categories", .array(s.categories.keys.map { .string($0) }))])),
+        ("order", obj([("banks", .array(s.banks.keys.map { .string($0.value) })), ("categories", .array(s.categories.keys.map { .string($0.value) }))])),
       ]
       if let old = c["expect"], old["state_sha256"]?.stringValue == sha, let d = old["diagnostics"] { e.append(("diagnostics", d)) }
       return obj(e)

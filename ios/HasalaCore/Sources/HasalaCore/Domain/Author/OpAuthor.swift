@@ -438,7 +438,7 @@ public struct OpAuthor: Sendable {
     add(
       .categoryDefined,
       [
-        ("id", .string(id)), ("name", .string(name)), ("kind", .string(kind.rawValue)), ("bucket", bucket.map { .string($0.rawValue) } ?? .null),
+        ("id", .string(id.precomposedStringWithCanonicalMapping)), ("name", .string(name)), ("kind", .string(kind.rawValue)), ("bucket", bucket.map { .string($0.rawValue) } ?? .null),
         ("icon", icon.map(JSONValue.string) ?? .null), ("active", .bool(active)),
       ])
   }

@@ -45,10 +45,10 @@ In `replay`, `expect.diagnostics` holds the TypeScript oracle's anomaly and
 unreadable text, for reference. Update mode keeps it when the state hash does
 not change, and drops it when the state changes.
 
-Update mode never rewrites a case in `ReplayConformanceTests.disagreements`.
-Those cases are known disagreements between Swift and the TypeScript oracle,
-kept for the owner to decide. The test expects them to fail, and fails when
-one starts to pass.
+Update mode never rewrites a case in `ReplayConformanceTests.disagreements`
+(empty now). A case goes there only when Swift and the TypeScript oracle
+disagree and the owner has not yet decided which side changes. The test
+expects such a case to fail, and fails when it starts to pass.
 
 ### The gate
 
