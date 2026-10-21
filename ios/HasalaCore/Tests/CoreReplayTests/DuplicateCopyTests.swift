@@ -160,7 +160,7 @@ struct TransferCopyTests {
     let s = log.state
     #expect(s.txns[Ids.t2]?.copyOf == Ids.t1 && s.txns[Ids.t2]?.isHeldCopy == true)
     #expect(s.txns[Ids.t1]?.copyOf == nil)
-    #expect(DuplicateRules.transferCopyWindowMs == 3_600_000)
+    #expect(DuplicateRules.transferCopyWindowMs == 1_800_000)
     #expect(log.kinds.isEmpty)
   }
 
@@ -173,11 +173,11 @@ struct TransferCopyTests {
     #expect(log.state.txns[Ids.t2]?.copyOf == Ids.t1)
   }
 
-  @Test("more than an hour apart, another amount, a credit, a card purchase or a day-precision row stays separate")
+  @Test("more than thirty minutes apart, another amount, a credit, a card purchase or a day-precision row stays separate")
   func separate() throws {
     var log = Log()
     try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
-    try log.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T11:00:01.000Z"))
+    try log.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:30:01.000Z"))
     try log.blob(Notice.alert(3, id: Ids.t3, at: "2026-10-03T10:05:00.000Z", amount: "314158"))
     try log.blob(Notice.alert(4, id: Ids.ulid(7), at: "2026-10-03T10:05:00.000Z", direction: "credit"))
     try log.blob(
@@ -186,6 +186,14 @@ struct TransferCopyTests {
     for id in [Ids.t1, Ids.t2, Ids.t3, Ids.ulid(7), Ids.ulid(8), Ids.ulid(9)] {
       #expect(log.state.txns[id]?.copyOf == nil, "\(id)")
     }
+  }
+
+  @Test("an alert exactly thirty minutes after its notice is still its copy")
+  func windowEdge() throws {
+    var log = Log()
+    try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try log.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:30:00.000Z"))
+    #expect(log.state.txns[Ids.t2]?.copyOf == Ids.t1)
   }
 
   @Test("two notices never pair with each other, and each alert pairs with one notice")

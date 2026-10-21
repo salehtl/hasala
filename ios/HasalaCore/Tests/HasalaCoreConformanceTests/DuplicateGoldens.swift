@@ -48,7 +48,7 @@ enum DuplicateGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-duplicates.json",
     note:
-      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 3600000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. Written by the Swift executor; the TypeScript reference (schema 3) and Go (no fold) do not model v4.",
+      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. Written by the Swift executor; the TypeScript reference (schema 3) and Go (no fold) do not model v4.",
     cases: [
       FoldGoldenCase(
         name: "certain-merge",
@@ -182,6 +182,13 @@ enum DuplicateGoldens {
           (1, G.w1, [notice(1, at: "10:00:00")]),
           (2, G.w1, [debitAlert(2, at: "10:03:00")]),
           (3, G.w1, [debitAlert(3, at: "12:00:00", merchant: "OWN ACCOUNT TRNSFER")]),
+        ]),
+      FoldGoldenCase(
+        name: "transfer-window",
+        note: "A notice and an alert thirty minutes and one second apart stay two rows; another amount's notice and alert exactly thirty minutes apart are one transfer.",
+        blobs: [
+          (1, G.w1, [notice(1, at: "10:00:00"), debitAlert(2, at: "10:30:01")]),
+          (2, G.w1, [notice(3, at: "11:00:00", amount: "271828"), debitAlert(4, at: "11:30:00", amount: "271828")]),
         ]),
       FoldGoldenCase(
         name: "transfer-alert-then-notice",
