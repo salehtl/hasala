@@ -85,7 +85,7 @@ func TestEveryKeyHasAnEnvironmentName(t *testing.T) {
 		"HASALA_HTTP_LISTEN": "127.0.0.1:8471", "HASALA_METRICS_LISTEN": "127.0.0.1:9471",
 		"HASALA_MIN_IOS_BUILD": "42", "HASALA_LOG_LEVEL": "warn",
 		"HASALA_RP_ID": "hasala.app", "HASALA_RP_ORIGINS": "https://hasala.app, https://www.hasala.app",
-		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "1h",
+		"HASALA_SESSION_IDLE": "24h", "HASALA_SESSION_MAX": "48h", "HASALA_INVITE_TTL": "24h",
 		"HASALA_PASSWORD_HASH_CONCURRENCY": "2", "HASALA_AUTH_KEY_FILE": key, "HASALA_SALT_KEY_FILE": key,
 		"HASALA_HEADROOM_PATH": "/var/lib/hasala", "HASALA_HEADROOM_FLOOR_BYTES": "5", "HASALA_HEADROOM_INTERVAL": "1m",
 		"HASALA_APNS_ENABLED": "true", "HASALA_APNS_TEAM_ID": "ABCDE12345", "HASALA_APNS_KEY_ID": "KEY1234567",
@@ -151,6 +151,8 @@ func TestValuesAreValidated(t *testing.T) {
 	wantErr(t, env{"HASALA_SESSION_IDLE": "0s"}, "session_idle")
 	wantErr(t, env{"HASALA_SESSION_IDLE": "48h", "HASALA_SESSION_MAX": "24h"}, "session_max")
 	wantErr(t, env{"HASALA_SESSION_IDLE": "forever"}, "not a duration")
+	wantErr(t, env{"HASALA_INVITE_TTL": "1000h"}, "invite_ttl")
+	wantErr(t, env{"HASALA_INVITE_TTL": "12h"}, "invite_ttl")
 	wantErr(t, env{"HASALA_PASSWORD_HASH_CONCURRENCY": "9"}, "1–8")
 	wantErr(t, env{"HASALA_HEADROOM_FLOOR_BYTES": "0"}, "floor_bytes")
 	wantErr(t, env{"HASALA_RP_ORIGINS": "https://hasala.app"}, "rp_id is empty")
@@ -446,8 +448,31 @@ func TestModesHaveTheirOwnRequirements(t *testing.T) {
 		t.Fatalf("serve behind Cloudflare without the salt key: %v", err)
 	}
 	c.Auth.SaltKeyFile = "/run/credentials/hasalad.service/salt-key"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "HASALA_PURGE_LEDGER_PATH") {
+		t.Fatalf("serve behind Cloudflare without the purge ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = "/var/lib/hasala-ledger/purged"
 	if err := c.ValidateFor("serve"); err != nil {
-		t.Fatalf("serve with both keys: %v", err)
+		t.Fatalf("serve with both keys and the ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = "purged"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "absolute") {
+		t.Fatalf("a relative purge ledger path: %v", err)
+	}
+}
+
+func TestPurgeLedgerPath(t *testing.T) {
+	c := mustLoad(t, env{"HASALA_PURGE_LEDGER_PATH": "/srv/purged", "HASALA_PG_DSN": "host=/run/x user=hasala_runtime"})
+	if c.Server.PurgeLedgerPath != "/srv/purged" {
+		t.Fatalf("HASALA_PURGE_LEDGER_PATH was not applied: %q", c.Server.PurgeLedgerPath)
+	}
+	c.Purge.ReplayLedger = true
+	if err := c.ValidateFor("purge-user"); err != nil {
+		t.Fatalf("replay with a ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = ""
+	if err := c.ValidateFor("purge-user"); err == nil || !strings.Contains(err.Error(), "HASALA_PURGE_LEDGER_PATH") {
+		t.Fatalf("replay without a ledger: %v", err)
 	}
 }
 
@@ -588,8 +613,8 @@ func TestTurnstile(t *testing.T) {
 func TestUnknownEnvironment(t *testing.T) {
 	got := UnknownEnvironment([]string{"HASALA_PG_DSN=x", "HASALA_TURNSTILE_REQUIRED=true", "HASALA_CONFIG=x",
 		"HASALA_ADMIN_ACTOR=x", "HASALA_CONSOLE_LISTEN=x", "PATH=/bin", "HASALA_TURNSTYLE_REQUIRED=true",
-		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_TURNSTYLE_REQUIRED=false"})
-	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER_PATH,HASALA_TURNSTYLE_REQUIRED" {
+		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false"})
+	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
 		t.Fatalf("unknown: %v", got)
 	}
 }

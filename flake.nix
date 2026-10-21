@@ -184,6 +184,7 @@
           # file (G1), the structural rules L1–L9, the routing table, and every
           # negative fixture rejected.
           ingress-lint = import ./infra/qa/nix/tests/ingress-lint.nix { inherit self nixpkgs pkgs; };
+          ca-distrust = import ./infra/qa/nix/tests/ca-distrust.nix { inherit self nixpkgs pkgs; };
           formatting =
             pkgs.runCommand "hasala-formatting" { nativeBuildInputs = [ (treefmtFor system pkgs) ]; }
               ''

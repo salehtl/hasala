@@ -218,8 +218,12 @@ cycle is still needed, because Graph drops notifications for slow endpoints and
 `AuthResults.gmailVerdict` (`ios/HasalaCore/Sources/HasalaCore/Mail/AuthResults.swift`,
 oracle `reference/ledgerd-client/src/mail/authres.ts`, vectors in `conformance/authres/`):
 trust only when exactly one A-R has authserv-id `mx.google.com`, it is the topmost A-R,
-and it reports `dkim=pass` with `header.d` or `dmarc=pass`. The verified domain is the
-DKIM `header.d`, else the DMARC `header.from`. RFC 8601 §5 makes Gmail delete incoming
+and it reports `dkim=pass` with a DKIM domain aligned with the one `From` domain. The
+DKIM domain is `header.d`, else the domain of `header.i` (Gmail writes only `header.i`).
+Every `dmarc` spec must name the `From` domain as `header.from`, and an A-R that cannot
+be read cleanly (a quote inside a comment, an unbalanced paren or quote, a segment that
+is not a method spec) is `parse_error`. The verified domain is the DKIM domain.
+`conformance/authres/README.md` has the full rule. RFC 8601 §5 makes Gmail delete incoming
 A-Rs that claim `mx.google.com`, so the authserv-id identifies Gmail's own header.
 
 ### What is different on Outlook.com
@@ -304,7 +308,7 @@ Steps, in order (the first that applies decides):
 
 SPF and DKIM results are parsed but are not trust inputs. DMARC already requires an
 aligned SPF or DKIM pass, and `compauth` adds Microsoft's own judgement. Using the DMARC
-`header.from` as the domain differs from Gmail (DKIM `header.d` first), and is right here:
+`header.from` as the domain differs from Gmail (the DKIM domain), and is right here:
 it is the `From:` domain that `compauth` evaluated. Anything untrusted is `needs_review`,
 never dropped.
 

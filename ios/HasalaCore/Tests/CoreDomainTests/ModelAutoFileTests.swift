@@ -30,7 +30,7 @@ struct ModelAutoFileTests {
     var l = T.Ledger()
     let ids = try l.ingest([
       ("SURE SHOP", "debit"), ("UNSURE SHOP", "debit"), (T.arabic, "debit"), ("PLAIN SHOP", "debit"), ("SURE SHOP", "debit"),
-    ])
+    ], needsReview: false)
     let device = SweepModel("apple-fm/26.1", answers: ["plain shop": .category("shopping")])
     let cloud = GradedCloud(
       "cf-clef/1",
@@ -57,6 +57,26 @@ struct ModelAutoFileTests {
     #expect(ReviewQueue.lane(filed) == nil)
     #expect(ReviewQueue.lane(try #require(l.state.txns[ids[1]])) == .needsReview)
     #expect(ReviewQueue.lane(try #require(l.state.txns[ids[3]])) == .needsReview)
+  }
+
+  @Test("a confident cloud answer never clears a review the mail trust gates set")
+  func gateReviewStays() async throws {
+    var l = T.Ledger()
+    let gated = try l.ingest([("SURE SHOP", "debit")], needsReview: true)[0]
+    let trusted = try l.ingest([("SURE SHOP", "debit")], needsReview: false)[0]
+    let cloud = GradedCloud("cf-clef/1", ["sure shop": (.category("groceries"), true)])
+    let suggestions = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(suggestions.allSatisfy { !$0.needsReview })
+    let blobs = try ModelSuggestionSweep.author(suggestions, current: l.rows(), context: l.context())
+    var review: [String: Bool] = [:]
+    for op in blobs.flatMap(\.ops) { review[try #require(op.entity?.id)] = op.payload["needs_review"]?.boolValue }
+    #expect(review == [gated: true, trusted: false])
+    for b in blobs { try l.fold(b) }
+    let held = try #require(l.state.txns[gated])
+    #expect(held.category == "groceries" && held.needsReview)
+    #expect(ReviewQueue.lane(held) == .needsReview)
   }
 
   @Test("autoFile counts only for a cf-clef tag, and a plain model's suggestion is always reviewed")
