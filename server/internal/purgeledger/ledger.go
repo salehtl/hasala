@@ -71,13 +71,9 @@ func AppendEntries(path string, entries ...Entry) error {
 		return nil
 	}
 	var buf bytes.Buffer
-	latest := entries[0].At
 	for _, e := range entries {
 		if err := check(e); err != nil {
 			return err
-		}
-		if e.At.After(latest) {
-			latest = e.At
 		}
 		buf.WriteString(formatEntry(e))
 	}
@@ -86,11 +82,7 @@ func AppendEntries(path string, entries ...Entry) error {
 		return err
 	}
 	defer unlock()
-	if err := appendLocked(path, buf.Bytes()); err != nil {
-		return err
-	}
-	_, _ = pruneLocked(path, latest.Add(-Retention))
-	return nil
+	return appendLocked(path, buf.Bytes())
 }
 
 func appendLocked(path string, line []byte) error {

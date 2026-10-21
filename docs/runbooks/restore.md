@@ -19,8 +19,10 @@ coming back:
   entries deleted because their invite email bounced, with internal ids and
   times only (a passkey by its credential id). These are written after the
   change commits; a failed write is logged and does not stop the change. The
-  replay applies each one again: a freeze (unless an unfreeze came later), a
-  removed device (only when the device that signed the removal is still in the
+  replay applies each one again: a freeze (unless an unfreeze came later), an
+  unfreeze (when it is the account's latest freeze or unfreeze in the ledger
+  and the restored freeze is not newer than it; it never lifts an operator's
+  freeze, and the restored sessions end), a removed device (only when the device that signed the removal is still in the
   database; otherwise it only signs that device out, and the summary counts
   it), a password change (the restored password is cleared and every session
   ends, so a password-only account gets back in with its 12 words), a removed
@@ -28,8 +30,12 @@ coming back:
   with every passkey session the server cannot attribute; an account left with
   no passkey and no password gets back in with its 12 words), a waitlist leave,
   and a bounced-invite deletion (the entry goes again and its invite is
-  revoked). Operator freezes are not recorded: no console or CLI command
-  freezes or unfreezes an account yet.
+  revoked). A replay never leaves an account frozen with no passkey and no
+  password, because then nothing could lift the freeze: it lifts that holder
+  freeze (the sessions stay ended), records an `account_unfrozen` event, and
+  the summary counts it. The holder gets back in with the 12 words. Operator
+  freezes are not recorded: no console or CLI command freezes or unfreezes an
+  account yet.
 - An older `hasalad` cannot read the new event lines. Before you roll back past
   this change, keep a copy of the ledger and remove the lines that have a third
   field.

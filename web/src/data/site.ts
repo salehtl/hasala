@@ -161,7 +161,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'email',
     q: 'What exactly can Hasala read in my email?',
     short: "Only your bank's alert emails, read-only.",
-    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks that it really came from your bank, and sets aside any that only looks like it did. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
+    a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
     more: { href: '/how-it-works#email', label: 'Connecting your email' },
   },
   {

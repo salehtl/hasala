@@ -289,7 +289,7 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 	}
 }
 
-func TestAppendDropsEntriesPastRetention(t *testing.T) {
+func TestAppendKeepsEntriesPastRetentionUntilAPrune(t *testing.T) {
 	old := syscall.Umask(0o077)
 	defer syscall.Umask(old)
 	path := filepath.Join(t.TempDir(), "purged")
@@ -303,8 +303,15 @@ func TestAppendDropsEntriesPastRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, err := Read(path)
+	if err != nil || len(entries) != 2 || entries[0].ID != stale || entries[1].ID != fresh {
+		t.Fatalf("after an append %+v %v, want both entries", entries, err)
+	}
+	if n, err := Prune(path, now.Add(-Retention)); n != 1 || err != nil {
+		t.Fatalf("prune dropped %d (%v), want 1", n, err)
+	}
+	entries, err = Read(path)
 	if err != nil || len(entries) != 1 || entries[0].ID != fresh {
-		t.Fatalf("after an append %+v %v, want only the fresh entry", entries, err)
+		t.Fatalf("after a prune %+v %v, want only the fresh entry", entries, err)
 	}
 	if st, _ := os.Stat(path); st.Mode().Perm() != FileMode {
 		t.Fatalf("mode %v", st.Mode().Perm())

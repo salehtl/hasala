@@ -424,8 +424,14 @@ restore must not undo. `hasala-purge-replay` applies them again before
 - A line with only two fields is an account deletion. Each other event has a
   third field (its kind). Do not change the format of an existing kind. Old
   lines must stay readable.
+- The replay applies an unfreeze too. A replay never leaves a holder-frozen
+  account with no passkey and no password: it lifts that freeze and records
+  an `account_unfrozen` event.
+- The ledger has times in whole seconds. The replay compares a database time
+  with a ledger time at second precision.
 - When you add a change that a restore must not undo, record it in the ledger
-  and add its replay. The replay must be safe to run two times.
+  and add its replay. The replay must be safe to run two times, and a replay
+  on a database that was not restored must apply nothing.
 
 > **WARNING:** A `hasalad` from before the event kinds (before branch
 > `legal/accuracy-fixes`) does not read lines with a third field. Then

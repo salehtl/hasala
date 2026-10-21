@@ -154,11 +154,12 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d freeze(s), %d device removal(s), "+
-		"%d password change(s), %d passkey removal(s), %d waitlist leave(s) and %d bounced-invite waitlist deletion(s) applied again, "+
+	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d freeze(s), %d unfreeze(s), "+
+		"%d device removal(s), %d password change(s), %d passkey removal(s), %d waitlist leave(s) and %d bounced-invite waitlist "+
+		"deletion(s) applied again, %d freeze(s) lifted because the replay left the account no passkey and no password, "+
 		"%d device removal(s) whose signer is not in the database (signed out only), %d entries past retention removed\n",
-		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Devices, again.Passwords, again.Passkeys, left, bounced,
-		again.Unsigned, dropped)
+		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Unfreezes, again.Devices, again.Passwords, again.Passkeys,
+		left, bounced, again.Lifted, again.Unsigned, dropped)
 	return nil
 }
 

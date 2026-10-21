@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
@@ -48,10 +47,12 @@ func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, cre
 
 type ReapplyReport struct {
 	Freezes   int
+	Unfreezes int
 	Devices   int
 	Passwords int
 	Passkeys  int
 	Unsigned  int
+	Lifted    int
 }
 
 type reapplied int
@@ -88,29 +89,62 @@ func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
 	return lifted
 }
 
+func unfreezesToApply(entries []purgeledger.Entry, lifted map[int]bool) map[int]bool {
+	latest := map[uuid.UUID]int{}
+	frozen := map[uuid.UUID]bool{}
+	for i, e := range entries {
+		switch e.Kind {
+		case purgeledger.KindFreeze:
+			if !lifted[i] {
+				frozen[e.ID] = true
+			}
+		case purgeledger.KindUnfreeze:
+			if j, ok := latest[e.ID]; !ok || !entries[j].At.After(e.At) {
+				latest[e.ID] = i
+			}
+		}
+	}
+	apply := map[int]bool{}
+	for id, i := range latest {
+		if !frozen[id] {
+			apply[i] = true
+		}
+	}
+	return apply
+}
+
 func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entry, now time.Time) (ReapplyReport, error) {
 	var rep ReapplyReport
 	if pool == nil {
 		return rep, errors.New("auth: reapply: pool is nil")
 	}
 	lifted := liftedInLedger(entries)
+	unfreezes := unfreezesToApply(entries, lifted)
+	var touched []uuid.UUID
+	seen := map[uuid.UUID]bool{}
 	for i, e := range entries {
 		var (
 			step  func(context.Context, pgx.Tx, purgeledger.Entry, time.Time) (reapplied, error)
 			count *int
+			locks bool
 		)
 		switch e.Kind {
 		case purgeledger.KindFreeze:
 			if lifted[i] {
 				continue
 			}
-			step, count = reapplyFreezeTx, &rep.Freezes
+			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
+		case purgeledger.KindUnfreeze:
+			if !unfreezes[i] {
+				continue
+			}
+			step, count = reapplyUnfreezeTx, &rep.Unfreezes
 		case purgeledger.KindDevice:
 			step, count = reapplyDeviceTx, &rep.Devices
 		case purgeledger.KindPassword:
-			step, count = reapplyPasswordTx, &rep.Passwords
+			step, count, locks = reapplyPasswordTx, &rep.Passwords, true
 		case purgeledger.KindPasskey:
-			step, count = reapplyPasskeyTx, &rep.Passkeys
+			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
 		default:
 			continue
 		}
@@ -121,8 +155,21 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 		switch out {
 		case reappliedDone:
 			*count++
+			if locks && !seen[e.ID] {
+				seen[e.ID] = true
+				touched = append(touched, e.ID)
+			}
 		case reappliedUnsigned:
 			rep.Unsigned++
+		}
+	}
+	for _, id := range touched {
+		out, err := reapplyOne(ctx, pool, purgeledger.Entry{ID: id}, now, liftLockoutTx)
+		if err != nil {
+			return rep, fmt.Errorf("auth: reapply: lift a freeze that left no way in: %w", err)
+		}
+		if out == reappliedDone {
+			rep.Lifted++
 		}
 	}
 	return rep, nil
@@ -156,7 +203,7 @@ func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 	}
 	var lifted bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND at >= $3)`,
+		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) >= $3)`,
 		e.ID, EventAccountUnfrozen, e.At).Scan(&lifted); err != nil || lifted {
 		return reappliedNothing, err
 	}
@@ -168,7 +215,7 @@ func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 		tag, err := tx.Exec(ctx,
 			`UPDATE users SET freeze_trigger_at = least(freeze_trigger_at, $2),
 			        holder_also_froze = holder_also_froze OR frozen_by = 'operator'
-			  WHERE id = $1 AND (freeze_trigger_at > $2 OR (frozen_by = 'operator' AND NOT holder_also_froze))`,
+			  WHERE id = $1 AND (date_trunc('second', freeze_trigger_at) > $2 OR (frozen_by = 'operator' AND NOT holder_also_froze))`,
 			e.ID, trigger)
 		if err != nil || tag.RowsAffected() == 0 {
 			return reappliedNothing, err
@@ -186,6 +233,66 @@ func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 	return reappliedDone, nil
 }
 
+func reapplyUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var (
+		frozen    *time.Time
+		by        *string
+		holderToo bool
+	)
+	err := tx.QueryRow(ctx, `SELECT frozen_at, frozen_by, holder_also_froze FROM users WHERE id = $1 FOR UPDATE`, e.ID).
+		Scan(&frozen, &by, &holderToo)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if frozen == nil || frozen.Truncate(time.Second).After(e.At) {
+		return reappliedNothing, nil
+	}
+	if by != nil && *by == FrozenByOperator {
+		if !holderToo {
+			return reappliedNothing, nil
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET holder_also_froze = false WHERE id = $1`, e.ID); err != nil {
+			return reappliedNothing, err
+		}
+		return reappliedDone, nil
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
+		  WHERE id = $1`, e.ID); err != nil {
+		return reappliedNothing, err
+	}
+	if _, err := RevokeOtherSessionsTx(ctx, tx, e.ID, nil, now); err != nil {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func liftLockoutTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var locked bool
+	err := tx.QueryRow(ctx,
+		`SELECT frozen_at IS NOT NULL AND coalesce(frozen_by = 'holder', false) AND password_hash IS NULL
+		        AND NOT EXISTS (SELECT 1 FROM webauthn_credentials WHERE user_id = users.id)
+		   FROM users WHERE id = $1 FOR UPDATE`, e.ID).Scan(&locked)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !locked) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
+		  WHERE id = $1`, e.ID); err != nil {
+		return reappliedNothing, err
+	}
+	if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, now); err != nil {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
 func reapplyDeviceTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
 	d := e.Device
 	var id uuid.UUID
@@ -196,90 +303,38 @@ func reapplyDeviceTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 	if err != nil {
 		return reappliedNothing, err
 	}
-	var (
-		pub     []byte
-		revoked *time.Time
-	)
-	err = tx.QueryRow(ctx, `SELECT pubkey, revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR UPDATE`,
-		e.ID, d.WriterID).Scan(&pub, &revoked)
+	var revoked *time.Time
+	err = tx.QueryRow(ctx, `SELECT revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR UPDATE`,
+		e.ID, d.WriterID).Scan(&revoked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return reappliedNothing, nil
 	}
 	if err != nil {
 		return reappliedNothing, err
 	}
+	r := writerRevocation{UserID: e.ID, WriterID: d.WriterID, SignerWriterID: d.SignerWriterID,
+		FinalCounter: d.FinalCounter, FinalHead: d.FinalHead, Nonce: d.Nonce, Sig: d.Sig}
 	out := reappliedNothing
+	retire := false
 	if revoked == nil {
-		signed, err := revocationVerifiesTx(ctx, tx, e.ID, d)
+		signed, err := r.verifiesTx(ctx, tx)
 		if err != nil {
 			return reappliedNothing, err
 		}
-		if !signed {
-			out = reappliedUnsigned
+		if signed {
+			retire, out = true, reappliedDone
 		} else {
-			if _, err := tx.Exec(ctx,
-				`UPDATE writers SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
-				e.ID, d.WriterID, e.At); err != nil {
-				return reappliedNothing, err
-			}
-			if _, err := tx.Exec(ctx,
-				`INSERT INTO key_history (user_id, writer_id, alg, pubkey, event, authorized_by, authorizer_writer_id,
-				   final_counter, final_head, nonce, signature, at)
-				 VALUES ($1,$2,'ed25519',$3,'revoked','device',$4,$5,$6,$7,$8,$9)`,
-				e.ID, d.WriterID, pub, d.SignerWriterID, d.FinalCounter, d.FinalHead, d.Nonce, d.Sig, e.At); err != nil {
-				return reappliedNothing, err
-			}
-			out = reappliedDone
+			out = reappliedUnsigned
 		}
 	}
-	changed := false
-	tag, err := tx.Exec(ctx,
-		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'writer'
-		  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`, e.ID, d.WriterID, now)
+	so, err := revokeWriterTx(ctx, tx, r, retire, e.At, now)
 	if err != nil {
 		return reappliedNothing, err
 	}
-	changed = changed || tag.RowsAffected() > 0
-	tag, err = tx.Exec(ctx, `DELETE FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, e.ID, d.WriterID)
-	if err != nil {
-		return reappliedNothing, err
-	}
-	changed = changed || tag.RowsAffected() > 0
-	tag, err = tx.Exec(ctx,
-		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
-		e.ID, d.WriterID)
-	if err != nil {
-		return reappliedNothing, err
-	}
-	changed = changed || tag.RowsAffected() > 0
-	unlinked, err := dropHeldMailboxLinkTx(ctx, tx, e.ID, d.WriterID)
-	if err != nil {
-		return reappliedNothing, err
-	}
-	if out == reappliedNothing && (changed || unlinked) {
+	if out == reappliedNothing && (so.changed || so.unlinked) {
 		out = reappliedDone
 	}
 	return out, nil
-}
-
-func revocationVerifiesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, d *purgeledger.Device) (bool, error) {
-	var (
-		signerKey  []byte
-		signerLive bool
-	)
-	err := tx.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
-		userID, d.SignerWriterID).Scan(&signerKey, &signerLive)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	msg, err := keyproto.RevocationMessage(d.Nonce, d.WriterID, uint64(d.FinalCounter), d.FinalHead)
-	if err != nil {
-		return false, nil
-	}
-	return signerLive && keyproto.VerifyEd25519(signerKey, msg, d.Sig), nil
 }
 
 func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
@@ -295,7 +350,7 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 	if err != nil {
 		return reappliedNothing, err
 	}
-	if !has || (setAt != nil && !setAt.Before(e.At)) {
+	if !has || (setAt != nil && !setAt.Truncate(time.Second).Before(e.At)) {
 		return reappliedNothing, nil
 	}
 	if _, err := tx.Exec(ctx,

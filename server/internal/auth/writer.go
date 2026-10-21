@@ -352,8 +352,7 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 	if err := consumeChallenge(ctx, w.Pool, w.now(), userID, r.Nonce); err != nil {
 		return err
 	}
-	msg, err := keyproto.RevocationMessage(r.Nonce, r.WriterID, uint64(r.FinalCounter), r.FinalHead)
-	if err != nil {
+	if _, err := keyproto.RevocationMessage(r.Nonce, r.WriterID, uint64(r.FinalCounter), r.FinalHead); err != nil {
 		return fmt.Errorf("%w: %v", ErrWriterMalformed, err)
 	}
 	ph, err := keyproto.ParamsHash(keyproto.ActionWriterRevoke, []byte(r.WriterID))
@@ -385,50 +384,17 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			// The error is logged: the counter, never the head hash (spec 02 §20).
 			return fmt.Errorf("%w: the writer's counter is %d", ErrHeadMoved, counter)
 		}
-		var (
-			signerKey  []byte
-			signerLive bool
-		)
-		err = tx.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
-			userID, r.SignerWriterID).Scan(&signerKey, &signerLive)
-		if err != nil || !signerLive || !keyproto.VerifyEd25519(signerKey, msg, r.Sig) {
+		wr := writerRevocation{UserID: userID, WriterID: r.WriterID, SignerWriterID: r.SignerWriterID,
+			FinalCounter: r.FinalCounter, FinalHead: r.FinalHead, Nonce: r.Nonce, Sig: r.Sig}
+		if ok, err := wr.verifiesTx(ctx, tx); err != nil || !ok {
 			return fmt.Errorf("%w: the RevocationMessage does not verify under a live signer", ErrBadSignature)
 		}
 		now := w.now()
-		if _, err := tx.Exec(ctx,
-			`UPDATE writers SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
-			userID, r.WriterID, now); err != nil {
-			return fmt.Errorf("auth: revoke writer %s: %w", r.WriterID, err)
-		}
-		var pub []byte
-		if err := tx.QueryRow(ctx, `SELECT pubkey FROM writers WHERE user_id = $1 AND writer_id = $2`, userID, r.WriterID).Scan(&pub); err != nil {
-			return fmt.Errorf("auth: revoke: read key: %w", err)
-		}
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO key_history (user_id, writer_id, alg, pubkey, event, authorized_by, authorizer_writer_id,
-			   final_counter, final_head, nonce, signature, at)
-			 VALUES ($1,$2,'ed25519',$3,'revoked','device',$4,$5,$6,$7,$8,$9)`,
-			userID, r.WriterID, pub, r.SignerWriterID, r.FinalCounter, r.FinalHead, r.Nonce, r.Sig, now); err != nil {
-			return fmt.Errorf("auth: append key history (revoked %s): %w", r.WriterID, err)
-		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE sessions SET revoked_at = $3, revoked_reason = 'writer'
-			  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
-			userID, r.WriterID, now); err != nil {
-			return fmt.Errorf("auth: revoke the writer's sessions: %w", err)
-		}
-		if err := forgetPushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, userID, r.WriterID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
-			userID, r.WriterID); err != nil {
-			return fmt.Errorf("auth: revoke: drop the writer's pending approvals: %w", err)
-		}
-		unlinked, err := dropHeldMailboxLinkTx(ctx, tx, userID, r.WriterID)
+		so, err := revokeWriterTx(ctx, tx, wr, true, now, now)
 		if err != nil {
 			return err
 		}
-		if unlinked {
+		if so.unlinked {
 			if err := RecordQuietEventTx(ctx, tx, userID, AuthEvent{Kind: EventMailboxUnlinked,
 				WriterID: session.WriterID, CredentialID: p.CredentialID}, now); err != nil {
 				return err
@@ -446,6 +412,87 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 			FinalHead: r.FinalHead, Nonce: r.Nonce, Sig: r.Sig}})
 	}
 	return nil
+}
+
+type writerRevocation struct {
+	UserID         uuid.UUID
+	WriterID       string
+	SignerWriterID string
+	FinalCounter   int64
+	FinalHead      []byte
+	Nonce          []byte
+	Sig            []byte
+}
+
+func (r writerRevocation) verifiesTx(ctx context.Context, tx pgx.Tx) (bool, error) {
+	var (
+		signerKey  []byte
+		signerLive bool
+	)
+	err := tx.QueryRow(ctx, `SELECT pubkey, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+		r.UserID, r.SignerWriterID).Scan(&signerKey, &signerLive)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	msg, err := keyproto.RevocationMessage(r.Nonce, r.WriterID, uint64(r.FinalCounter), r.FinalHead)
+	if err != nil {
+		return false, nil
+	}
+	return signerLive && keyproto.VerifyEd25519(signerKey, msg, r.Sig), nil
+}
+
+type writerSignOut struct {
+	changed  bool
+	unlinked bool
+}
+
+func revokeWriterTx(ctx context.Context, tx pgx.Tx, r writerRevocation, retire bool, at, now time.Time) (writerSignOut, error) {
+	var so writerSignOut
+	if retire {
+		if _, err := tx.Exec(ctx,
+			`UPDATE writers SET revoked_at = $3 WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+			r.UserID, r.WriterID, at); err != nil {
+			return so, fmt.Errorf("auth: revoke writer %s: %w", r.WriterID, err)
+		}
+		var pub []byte
+		if err := tx.QueryRow(ctx, `SELECT pubkey FROM writers WHERE user_id = $1 AND writer_id = $2`, r.UserID, r.WriterID).Scan(&pub); err != nil {
+			return so, fmt.Errorf("auth: revoke: read key: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO key_history (user_id, writer_id, alg, pubkey, event, authorized_by, authorizer_writer_id,
+			   final_counter, final_head, nonce, signature, at)
+			 VALUES ($1,$2,'ed25519',$3,'revoked','device',$4,$5,$6,$7,$8,$9)`,
+			r.UserID, r.WriterID, pub, r.SignerWriterID, r.FinalCounter, r.FinalHead, r.Nonce, r.Sig, at); err != nil {
+			return so, fmt.Errorf("auth: append key history (revoked %s): %w", r.WriterID, err)
+		}
+	}
+	tag, err := tx.Exec(ctx,
+		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'writer'
+		  WHERE user_id = $1 AND writer_id = $2 AND revoked_at IS NULL`,
+		r.UserID, r.WriterID, now)
+	if err != nil {
+		return so, fmt.Errorf("auth: revoke the writer's sessions: %w", err)
+	}
+	so.changed = tag.RowsAffected() > 0
+	tag, err = tx.Exec(ctx, `DELETE FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, r.UserID, r.WriterID)
+	if err != nil {
+		return so, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	so.changed = so.changed || tag.RowsAffected() > 0
+	tag, err = tx.Exec(ctx,
+		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
+		r.UserID, r.WriterID)
+	if err != nil {
+		return so, fmt.Errorf("auth: revoke: drop the writer's pending approvals: %w", err)
+	}
+	so.changed = so.changed || tag.RowsAffected() > 0
+	if so.unlinked, err = dropHeldMailboxLinkTx(ctx, tx, r.UserID, r.WriterID); err != nil {
+		return so, err
+	}
+	return so, nil
 }
 
 func dropHeldMailboxLinkTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, writerID string) (bool, error) {
