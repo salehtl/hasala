@@ -304,7 +304,7 @@ Hasala shows your picture from Gravatar, a service run by Automattic, if you hav
 
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort your first import. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup or Review offers to sort payments that are waiting. There are two switches, and you can turn each on or off at any time.
 
 **How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. With Cloud suggestions off, that's all: a payment they can't place waits for you in Review, and no AI model runs. With Merchant suggestions on, Hasala then asks Cloudflare's AI service, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself.
 
@@ -312,11 +312,11 @@ Cloud suggestions are off unless you turn them on, on each iPhone, under Profile
 
 **Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments don't wait in Review, and they're labelled as sorted by Cloudflare's AI. You can change any of them. It sends nothing more than Merchant suggestions does.
 
-**Sorting your first import.** When you set up Hasala, it can offer to sort the transactions it has just imported. If you accept, both switches turn on, and Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. If you decline, both stay off. You can change either in Profile › Cloud suggestions at any time.
+**Sorting what's waiting.** Hasala can sort many waiting payments at once, but only when you start it yourself: in setup, in Review, or when you turn on Merchant suggestions. In setup, starting it turns both switches on; if you decline, both stay off. Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. Each request still carries one merchant name. You can stop it at any time, and you can send the payments it sorted back to Review. You can change either switch in Profile › Cloud suggestions at any time.
 
 **What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. The service passes each one to Cloudflare's AI service through Cloudflare AI Gateway, which lets us cap what we spend. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address. The service uses it only to limit how many requests one connection can send: Cloudflare's rate limiter counts requests from each IP address (for IPv6, from its network block) over a short window, about a minute. The service doesn't log or return the address. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say Cloudflare's AI service doesn't keep it or use it to train its models. We turn AI Gateway's logs and cache off, so it keeps only totals for each model, such as the number of requests, the amount of text processed, the cost and any errors, never the merchant name, the categories or the answer. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records describe the request, not what it carries, so the merchant name and the category names aren't in them. We never see these requests.
 
-**What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
+**What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. When you sort many payments at once, Cloudflare could see that the requests came from the same connection around the same time. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
 
 ## Who else handles your data
 
