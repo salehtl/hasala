@@ -419,8 +419,8 @@ At the beta's scale this costs almost nothing, and the AI Gateway spend limit bo
   runs pause until the gateway's window resets. If 100 testers each hit the daily cap, that
   would be about $4, so the limit would trip and the runs would wait; it fails closed.
 - The whole spike (120 subjects twice, 96 alerts) cost less than one US cent.
-- Global cap: 10,000 Clef and 1,000 Clairic requests a day, then the Worker answers
-  `rateLimited` until the next UTC day.
+- The account-wide stop is the AI Gateway spend limit ($1 a day), not a request count. Above
+  it the Worker answers 503 `model_unavailable` until the window resets.
 
 ## Checks before building
 
