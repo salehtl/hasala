@@ -279,7 +279,7 @@ struct FirstImportSorterTests {
     let inside = Mutex((now: 0, most: 0))
     await withTaskGroup(of: Void.self) { group in
       for _ in 0..<6 {
-        group.addTask {
+        group.addTask { @Sendable in
           await gate.run {
             inside.withLock { s in
               s.now += 1
