@@ -11,10 +11,10 @@
 #
 # It is ledgerd's scripts/v2-check.sh carried over to the monorepo layout:
 # server/ (the Go module, and server/oracle/, the separate module that holds
-# the frozen v1 reference packages and the corpus gates), reference/ledgerd-client/
-# (the TypeScript client core, the oracle for the Swift port) and conformance/
-# (the fixtures both executors must agree on). The PWA steps did not come along:
-# reference/ledgerd-pwa/ is reference material and is not built or tested here.
+# the frozen v1 reference packages and the corpus gates) and conformance/ (the
+# fixtures Go and the Swift port must agree on). The ledgerd TypeScript client
+# core that once was a third executor is removed; its last state is the tag
+# ts-reference-final.
 #
 # In order:
 #   0. The real-mail fence: no real bank mail has come back into this tree.
@@ -32,13 +32,11 @@
 #   3. ONE throwaway Postgres cluster for the whole run (unix socket, no TCP),
 #      shared through HASALA_TEST_POSTGRES_URL and stopped on any exit.
 #   4. go vet ./... and go test ./... in server/, then in server/oracle/.
-#   5. The reference client: typecheck, then bun test (unit tests and the
-#      TypeScript half of every conformance suite).
-#   6. The conformance suites, by name: each fixture set under conformance/ is
-#      checked through both of its executors, and every fixture set must have an
-#      entry here, so a new one cannot land without a runner. The Go half is
-#      proven from step 4's record (every test of each package ran there), the
-#      TypeScript half runs again.
+#   5. The assist worker (infra/assist): typecheck, then bun test.
+#   6. The conformance suites, by name: every fixture set under conformance/
+#      must have an entry here, so a new one cannot land without saying what
+#      checks it. The Go half is proven from step 4's record (every test of each
+#      package ran there); the Swift half runs in CI's `swift` job.
 #   7. Known failures: tests skipped in 4 by name, each re-run on its own and
 #      required to still fail (see KNOWN_FAILING below).
 #
@@ -125,12 +123,11 @@ leaked="$(
 	# deleted with the mail path) holds nothing, which is the passing case;
 	# `|| true` keeps find's complaint about it from failing the pipeline.
 	{
-		find conformance/normalizer -type f ! -name edge-cases.json ! -name '.*' || true
+		find conformance/normalizer -type f ! -name edge-cases.json ! -name charset-tables.ts ! -name '.*' || true
 		find conformance/templates -type f -name 'corpus-*' || true
 		find conformance/templates/eml -type f || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
-		find reference/ledgerd-client/test/e2e -type f -name '*.json' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true
 	} 2>/dev/null | sort -u
 )"
@@ -173,7 +170,7 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
-GOLDEN_SETS=(authres categorize fx norm-dates replay)
+GOLDEN_SETS=(authres categorize fx norm-dates outlook-sender replay)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"
 if [[ -n "$CI_RUN" ]]; then
@@ -266,10 +263,8 @@ PG_STOP=""
 # The detached server inherits boot's stderr, so its log goes to a file rather
 # than through this script's output. Kept, and named, only if the gate fails.
 PG_LOG="$(mktemp "${TMPDIR:-/tmp}/hasala-check-pg.XXXXXX")"
-# Real-corpus counts from steps 4 and 5, and the JUnit file step 5 counts them in.
+# Real-corpus counts from step 4.
 REAL_GO="$(mktemp)"
-REAL_BUN="$(mktemp)"
-JUNIT="$(mktemp)"
 # Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
 # checks the conformance packages against, and step 6's `go test -list`. Step 6
 # relies on step 4 running every test exactly as a run of its own would (only
@@ -283,7 +278,7 @@ cleanup() {
 	if [[ -n "$PG_STOP" && -x "$PG_STOP" ]]; then
 		"$PG_STOP" || true
 	fi
-	rm -f "$REAL_GO" "$REAL_BUN" "$JUNIT" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
+	rm -f "$REAL_GO" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
 	if [[ "$status" -eq 0 ]]; then
 		rm -f "$PG_LOG"
 	else
@@ -382,21 +377,8 @@ read -r o_ran o_skipped <"$REAL_ORACLE"
 rm -f "$REAL_ORACLE"
 echo "$((s_ran + o_ran)) $((s_skipped + o_skipped))" >"$REAL_GO"
 
-# --- 5. the reference client -------------------------------------------------------
-# No `bun install` here: a gate that mutates the tree to pass is not a gate.
+# --- 5. the assist worker -----------------------------------------------------------
 # `--bun` runs node-shebang tools (tsc) on Bun, so nothing needs a host Node.
-step "reference client (reference/ledgerd-client)"
-cd "$ROOT/reference/ledgerd-client"
-if [[ ! -d node_modules ]]; then
-	echo "check: reference/ledgerd-client/node_modules is missing; run" >&2
-	echo "  (cd reference/ledgerd-client && direnv exec . bun install --frozen-lockfile)" >&2
-	exit 1
-fi
-bun run --bun typecheck
-# JUnit beside the console output, only so the real-corpus tests can be counted.
-bun test --reporter=junit --reporter-outfile="$JUNIT"
-bun "$ROOT/scripts/realcorpus-summary.ts" "$JUNIT" "$REAL_BUN"
-
 step "assist worker (infra/assist)"
 cd "$ROOT/infra/assist"
 if [[ ! -d node_modules ]]; then
@@ -406,13 +388,12 @@ bun run --bun typecheck
 bun test
 
 # --- 6. conformance suites ------------------------------------------------------------
-# Every fixture set under conformance/, with the executors that must agree on
-# it: "set|go packages (in server/)|bun test files (in reference/ledgerd-client/)".
-# Both halves already ran in steps 4 and 5. They are checked again here by name
-# because this table is the record of which tests make up each contract, so
-# narrowing step 4 or 5 cannot quietly drop one half of a pair, and because every
-# directory under conformance/ must appear here: a new fixture set cannot land
-# without saying what checks it.
+# Every fixture set under conformance/, with the Go packages that check it:
+# "set|go packages (in server/)". The Go half already ran in step 4. It is
+# checked again here by name because this table is the record of which tests
+# make up each contract, so narrowing step 4 cannot quietly drop one, and
+# because every directory under conformance/ must appear here: a new fixture
+# set cannot land without saying what checks it.
 #
 # The Go half is not run a second time (it was the slowest part of this step:
 # internal/api again, for the same verdict against the same cluster). Instead
@@ -420,62 +401,48 @@ bun test
 # scripts/gotest-ran.ts requires each package to have passed in step 4's record
 # and each of those tests to have a result there (pass, or its own skip). A
 # package left out of step 4, or one of its tests that step 4 did not run (a
-# -run, a -skip, a KNOWN_FAILING pattern that also matches it), fails here. The
-# TypeScript half takes about a second and runs again by name.
+# -run, a -skip, a KNOWN_FAILING pattern that also matches it), fails here.
 #
-# Some sets have fewer than two executors here, on purpose and visibly:
-#   blob, dialect, dict, import, normalizer, op, templates, ts
-#           Go here, Swift in CI's `swift` job. The TypeScript reference no
-#           longer runs for them: it added nothing Go and Swift do not check.
-#   fx      TypeScript here, Swift in CI's `swift` job (FXConformanceTests).
-#           The FX fold exists only client-side; Go has no reader.
-#   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
-#           swift job, which also re-checks it); Go opens and verifies it once
-#           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
-#           runner on main yet: listed so the gap stays on screen.
-#   authres, categorize, norm-dates, outlook-sender, replay
-#           Written by the TypeScript oracle (reference/ledgerd-client/scripts/
-#           gen-*-conformance.ts) for the Swift port (spec 04 §19.7), whose
-#           executor joins CI's `swift` job with the port (WS-8, WS-10; replay
-#           and categorize: HasalaCoreConformanceTests' ReplayConformanceTests
-#           and CategorizeConformanceTests). The
-#           TypeScript entry is the freshness check (the committed files are
-#           byte-identical to what the generator writes now, computed in
-#           memory, no network) plus the oracle reading its own files back.
-#           Go has no reader: the server never reads mail or folds ops.
-#           authres, categorize, fx, norm-dates and replay are golden files
-#           too: the Swift tests rewrite their expected output with
-#           HASALA_UPDATE_GOLDEN=1, and the step "golden fixtures change only
-#           with a Swift test change" refuses a branch that changes one of
-#           them without touching ios/HasalaCore/Tests.
-#   crypto-v3, api-v1  Go only here. Go writes them (cmd/gen-crypto-vectors,
-#           spec 01 §15.1, spec 02 §22) and checks them: the committed files
-#           must regenerate byte for byte, the anchors A01–A26 reproduce, the
-#           predicate cases agree with Postgres, and every tamper upload gets
-#           its verdict from the real handler. Their other executor is Swift
-#           (HasalaCore's GoCryptoV3Tests, CI's swift job), which reads them
-#           and never writes them. ledgerd's encv2 set (conformance/crypto/,
-#           with a committed private key) is deleted (spec 01 §15.1).
+# The Swift port (HasalaCore's HasalaCoreConformanceTests, CI's `swift` job)
+# reads every set. Some sets have no Go executor, on purpose and visibly:
+#   authres, categorize, fx, norm-dates, outlook-sender, replay
+#           Golden files. The ledgerd TypeScript reference wrote them; the
+#           Swift tests now own their expected output and rewrite it with
+#           HASALA_UPDATE_GOLDEN=1 (conformance/README.md), and the step
+#           "golden fixtures change only with a Swift test change" refuses a
+#           branch that changes one of them without touching
+#           ios/HasalaCore/Tests. Go has no reader: the server never reads
+#           mail or folds ops.
+#   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests and
+#           SwiftFoldGoldenTests); Go opens and verifies the crypto half once
+#           WS-2's reader lands (spec 01 §15.2 step 2).
+#   crypto-v3, api-v1  Go writes them (cmd/gen-crypto-vectors, spec 01 §15.1,
+#           spec 02 §22) and checks them: the committed files must regenerate
+#           byte for byte, the anchors A01–A26 reproduce, the predicate cases
+#           agree with Postgres, and every tamper upload gets its verdict from
+#           the real handler. Swift (GoCryptoV3Tests) reads them and never
+#           writes them. ledgerd's encv2 set (conformance/crypto/, with a
+#           committed private key) is deleted (spec 01 §15.1).
 #
 # A Go package under ./oracle/ is run from the oracle module.
 CONFORMANCE=(
-	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref|"
-	"authres||src/mail/authres-conformance.test.ts"
-	"blob|./internal/oplog/opref|"
-	"categorize||src/categorize/oracle-conformance.test.ts"
-	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api|"
-	"dialect|./internal/tmpl|"
-	"dict|./internal/dict|"
-	"fx||src/replay/fx.test.ts"
-	"import|./oracle/v1ref/importer|"
-	"norm-dates||src/norm/dates-conformance.test.ts"
-	"normalizer|./internal/norm|"
-	"op|./internal/oplog/opref|"
-	"outlook-sender||src/mail/outlook-sender-conformance.test.ts"
-	"replay||src/replay/replay-conformance.test.ts"
-	"swift||"
-	"templates|./internal/tmpl|"
-	"ts|./internal/oplog/opref|"
+	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref"
+	"authres|"
+	"blob|./internal/oplog/opref"
+	"categorize|"
+	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api"
+	"dialect|./internal/tmpl"
+	"dict|./internal/dict"
+	"fx|"
+	"import|./oracle/v1ref/importer"
+	"norm-dates|"
+	"normalizer|./internal/norm"
+	"op|./internal/oplog/opref"
+	"outlook-sender|"
+	"replay|"
+	"swift|"
+	"templates|./internal/tmpl"
+	"ts|./internal/oplog/opref"
 )
 step "conformance"
 cd "$ROOT"
@@ -488,16 +455,9 @@ if [[ "$listed" != "$on_disk" ]]; then
 	exit 1
 fi
 go_pkgs="$(printf '%s\n' "${CONFORMANCE[@]}" | cut -d'|' -f2 | tr ' ' '\n' | awk 'NF' | sort -u)"
-ts_files="$(printf '%s\n' "${CONFORMANCE[@]}" | cut -d'|' -f3 | tr ' ' '\n' | awk 'NF' | sort -u)"
-for f in $ts_files; do
-	if [[ ! -f "reference/ledgerd-client/$f" ]]; then
-		echo "check: conformance runner reference/ledgerd-client/$f does not exist" >&2
-		exit 1
-	fi
-done
 for entry in "${CONFORMANCE[@]}"; do
-	IFS='|' read -r set go ts <<<"$entry"
-	printf '  %-11s go: %-28s ts: %s\n' "$set" "${go:-(none)}" "${ts:-(none)}"
+	IFS='|' read -r set go <<<"$entry"
+	printf '  %-14s go: %s\n' "$set" "${go:-(none)}"
 done
 server_pkgs="$(grep -v '^\./oracle/' <<<"$go_pkgs" || true)"
 oracle_pkgs="$(grep '^\./oracle/' <<<"$go_pkgs" | sed 's|^\./oracle/|./|' || true)"
@@ -508,9 +468,6 @@ if [[ -n "$oracle_pkgs" ]]; then
 	(cd server/oracle && go test -count=1 -p "$JOBS" -json -list . $oracle_pkgs) >>"$GO_LIST"
 fi
 bun "$ROOT/scripts/gotest-ran.ts" "$GO_LIST" "$GO_RECORD" "$ORACLE_RECORD"
-ts_paths=()
-for f in $ts_files; do ts_paths+=("./$f"); done
-(cd reference/ledgerd-client && bun test "${ts_paths[@]}")
 
 # --- 7. known failures still fail -------------------------------------------------------
 # A build error must not pass for "still failing": the named test has to have
@@ -534,19 +491,18 @@ done
 
 # --- the real corpus, accounted for -----------------------------------------------
 read -r go_ran go_skipped <"$REAL_GO"
-read -r bun_ran bun_skipped <"$REAL_BUN"
-corpus="go ${go_ran} ran / ${go_skipped} skipped; bun ${bun_ran} ran / ${bun_skipped} skipped"
+corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo
 echo "real corpus: $corpus"
 if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
-	if [[ "$go_skipped" -ne 0 || "$bun_skipped" -ne 0 || "$go_ran" -eq 0 || "$bun_ran" -eq 0 ]]; then
+	if [[ "$go_skipped" -ne 0 || "$go_ran" -eq 0 ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, assist worker, conformance; real corpus included)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, reference client, assist worker, conformance)"
+	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
 fi

@@ -1,5 +1,5 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-authres-conformance.ts from the TypeScript oracle (src/mail/authres.ts); do not hand-edit. Each vector is one header block: `headers`, or `headers_parts` (concatenate each part's `text` repeated `repeat` times). `provider` is \"outlook\" for an Outlook.com vector and absent for a Gmail one. `expect` is that provider's verdict {trusted, reason} and verified domain (gmailVerdict / outlookVerdict, verifiedDomain). All inputs are synthetic. See README.md.",
+  "note": "First written by the ledgerd TypeScript oracle (src/mail/authres.ts), removed after commit 9b4aae2. Golden file: the Swift tests own `expect` and rewrite it with HASALA_UPDATE_GOLDEN=1 (conformance/README.md); add or change an input by hand. Each vector is one header block: `headers`, or `headers_parts` (concatenate each part's `text` repeated `repeat` times). `provider` is \"outlook\" for an Outlook.com vector and absent for a Gmail one. `expect` is that provider's verdict {trusted, reason} and verified domain (gmailVerdict / outlookVerdict, verifiedDomain). All inputs are synthetic. See README.md.",
   "schema_version": 2,
   "authserv_id": "mx.google.com",
   "outlook": {

@@ -1,7 +1,7 @@
 // swift-tools-version: 6.2
 //
-// HasalaCore: the pure client core, ported from the TypeScript reference in
-// reference/ledgerd-client and proven against conformance/ (spec 04 §2).
+// HasalaCore: the pure client core, ported from the ledgerd TypeScript client
+// core (removed after commit 9b4aae2) and proven against conformance/ (spec 04 §2).
 //
 // EVERY module of the spec 04 §2.2 map is declared here, once, so the
 // workstreams that fill them never edit this file concurrently. A module that is

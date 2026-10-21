@@ -1,5 +1,5 @@
-// conformance/authres: every vector the TypeScript oracle (reference/ledgerd-client/src/mail/
-// authres.ts) wrote, Gmail and Outlook.com, reproduced by `AuthResults` as the README says. The
+// conformance/authres: every vector the ledgerd TypeScript oracle (src/mail/authres.ts) wrote,
+// Gmail and Outlook.com, reproduced by `AuthResults` as the README says. The
 // file is read in place from the repository (never bundled); HASALA_CONFORMANCE_DIR overrides.
 import CoreJSON
 import Foundation

@@ -217,7 +217,7 @@ cycle is still needed, because Graph drops notifications for slow endpoints and
 ### The Gmail rule, for comparison
 
 `AuthResults.gmailVerdict` (`ios/HasalaCore/Sources/HasalaCore/Mail/AuthResults.swift`,
-oracle `reference/ledgerd-client/src/mail/authres.ts`, vectors in `conformance/authres/`):
+vectors in `conformance/authres/`):
 trust only when exactly one A-R has authserv-id `mx.google.com`, it is the topmost A-R,
 and it reports `dkim=pass` with a DKIM domain aligned with the one `From` domain. The
 DKIM domain is `header.d`, else the domain of `header.i` (Gmail writes only `header.i`).

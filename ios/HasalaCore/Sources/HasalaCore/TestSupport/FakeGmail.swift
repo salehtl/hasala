@@ -1,5 +1,5 @@
 // FakeGmail: an in-process fake of Google's OAuth token endpoint and the Gmail REST surface the
-// lane uses (spec 04 §2.2 CoreTestSupport; port of reference/ledgerd-pwa/harness/fakegmail.mjs
+// lane uses (spec 04 §2.2 CoreTestSupport; port of the ledgerd PWA harness fakegmail.mjs
 // semantics, narrowed to PO G's sender-filtered listing).
 //
 // It answers `HTTPExchange`, so the request building and response parsing under test are the

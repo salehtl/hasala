@@ -1,5 +1,5 @@
 // CoreNorm (Norm/), spec 04 §2.2: the v2 normalizer, a byte-level port of
-// reference/ledgerd-client/src/norm (itself the twin of the Go normalizer, contract
+// the ledgerd TypeScript client's src/norm (itself the twin of the Go normalizer, contract
 // v2-normalizer-v1 in the ledgerd design archive). Raw RFC 822 bytes (Gmail `format=raw`,
 // base64url-decoded) in; the normalized text a template matches against out.
 //

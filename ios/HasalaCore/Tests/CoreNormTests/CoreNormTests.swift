@@ -1,7 +1,7 @@
 // Unit vectors for CoreNorm: the clauses of the normalizer contract no end-to-end fixture can
-// reach (a port of reference/ledgerd-client/src/norm/norm.test.ts, each of which pins a
+// reach (a port of the ledgerd TypeScript client's src/norm/norm.test.ts, each of which pins a
 // mutation that survived the whole corpus), plus the freshness check of the generated
-// charset tables against the TypeScript file they are generated from.
+// charset tables against conformance/normalizer/charset-tables.ts, which they are generated from.
 import Foundation
 import Testing
 

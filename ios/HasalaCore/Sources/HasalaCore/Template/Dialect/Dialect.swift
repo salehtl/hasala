@@ -1,4 +1,4 @@
-// The template regex dialect validator: a port of reference/ledgerd-client/src/tmpl/dialect.ts
+// The template regex dialect validator: a port of the ledgerd TypeScript client's src/tmpl/dialect.ts
 // (the mirror of the Go validator, server/internal/tmpl/dialect.go).
 //
 // A published template is data, run by more than one regex engine (Go's RE2 at publish, a

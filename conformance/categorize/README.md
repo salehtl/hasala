@@ -2,27 +2,17 @@
 
 On-device categorization as the v3 matcher does it: canonicalization, the
 order of user rules and dictionary entries, the load-time gates, and the
-decision for a merchant. The TypeScript reference client
-(`reference/ledgerd-client/src/categorize`) is the oracle; the Swift port
-(Categorize) must reproduce every vector. All strings are synthetic.
+decision for a merchant. The ledgerd TypeScript client (`src/categorize`,
+removed after commit 9b4aae2) wrote the vectors; the Swift port (Categorize)
+must reproduce every vector. All strings are synthetic.
 
 `conformance/dict/matching.json`, written by Go, already pins Go's whitespace
 set, lower-casing, canonical forms and the exact/contains test. This suite pins
 what only the client does.
 
-Regenerate (never hand-edit):
-
-```sh
-cd reference/ledgerd-client && bun run gen-categorize-conformance
-bun run gen-categorize-conformance --check   # compare only, exit 1 if stale
-```
-
-The expected output is also a golden file: the Swift test rewrites it with
-`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
-
-Generation is deterministic; `src/categorize/oracle-conformance.test.ts` fails
-when the committed files differ from what the generator writes, and runs in
-`scripts/check.sh`.
+Golden file: the Swift test owns the expected output and rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`). To add or change a
+case, edit its input by hand, run update mode, and review the diff.
 
 Strings are written with every non-ASCII code point escaped as `\uXXXX`.
 Lengths ("runes") are Unicode scalar values, never UTF-16 units or grapheme
