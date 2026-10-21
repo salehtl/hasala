@@ -503,6 +503,37 @@ let
           "proxy_pass http://127.0.0.1:8472;";
       })
     ];
+    "an ungated location on the console vhost" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts.${consoleHost}.locations."/assets/".proxyPass = "http://127.0.0.1:8472";
+      })
+    ];
+    "a console vhost location that turns auth off" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts.${consoleHost}.locations."/x".extraConfig =
+          "auth_request /auth; auth_request off; proxy_pass http://127.0.0.1:8472;";
+      })
+    ];
+    "auth off on the console vhost" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.virtualHosts.${consoleHost}.extraConfig = "auth_request off;";
+      })
+    ];
+    "http-level nginx config to the console" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.appendHttpConfig = "server { listen 127.0.0.1:8000; location / { proxy_pass http://127.0.0.1:8472; } }";
+      })
+    ];
+    "stream config to the console" = [
+      "M19"
+      (lib.recursiveUpdate full {
+        services.nginx.streamConfig = "server { listen 127.0.0.1:9000; proxy_pass 127.0.0.1:8472; }";
+      })
+    ];
     "second vhost through an upstream" = [
       "M19"
       (lib.recursiveUpdate full {
@@ -723,6 +754,7 @@ let
     "hasala-postgresql"
     "hasala-db-setup"
     "hasala-migrate"
+    "hasala-purge-replay"
     "hasalad"
     "hasala-console"
     "cloudflared-hasala"
@@ -882,7 +914,65 @@ let
       (envOf minimal "hasalad").HASALA_TRUSTED_PROXY == "none"
     ) "AT-E3 no tunnel must mean trusted_proxy none";
 
-  errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors;
+  backupOf = name: (svc fullSys name).serviceConfig;
+  offsiteExec = lib.toList (backupOf "hasala-backup-offsite").ExecStart;
+  ledgerTmpfiles = fullSys.config.systemd.tmpfiles.settings.hasala-ledger;
+  retentionErrors =
+    check (
+      sameSet (lib.attrNames (envOf fullSys "hasala-purge-replay")) [
+        "HASALA_PG_DSN"
+        "HASALA_PURGE_LEDGER_PATH"
+        "TZ"
+      ]
+      &&
+        (envOf fullSys "hasala-purge-replay").HASALA_PURGE_LEDGER_PATH
+        == hasaladEnv.HASALA_PURGE_LEDGER_PATH
+      && lib.hasSuffix " purge-user --replay-ledger" (backupOf "hasala-purge-replay").ExecStart
+      && (backupOf "hasala-purge-replay").User == "hasala"
+    ) "AT-E3 the purge ledger replay unit"
+    ++ check (lib.all
+      (
+        u:
+        lib.elem "hasala-purge-replay.service" (svc fullSys u).requires
+        && lib.elem "hasala-purge-replay.service" (svc fullSys u).after
+      )
+      [
+        "hasalad"
+        "hasala-console"
+      ]
+    ) "AT-E3 hasalad and the console must start after the purge ledger replay"
+    ++ check (lib.elem "hasala-migrate.service" (svc fullSys "hasala-purge-replay").after) "AT-E3 the replay must run after the migrations"
+    ++ check (
+      ledgerTmpfiles."/var/lib/hasala-ledger/purged".f.mode == "0640"
+      && ledgerTmpfiles."/var/lib/hasala-ledger/purged".f.group == "hasala-ledger"
+    ) "AT-E3 the purge ledger file is not created 0640 hasala-ledger"
+    ++
+      check
+        (
+          lib.length offsiteExec == 2
+          && lib.hasInfix " copy --immutable --max-age 48h --filter '- *.part' " (lib.elemAt offsiteExec 0)
+          && lib.hasInfix " delete --min-age 29d --filter '- *.part' --filter '+ hasala-*.age*' --filter '- *' " (
+            lib.elemAt offsiteExec 1
+          )
+          && lib.hasSuffix " r2:test-bucket/daily" (lib.elemAt offsiteExec 1)
+        )
+        "AT-E3 the off-site unit must copy without .part files and delete copies at retentionDays: ${builtins.toJSON offsiteExec}"
+    ++ check (
+      (backupOf "hasala-backup").RuntimeDirectory != (backupOf "hasala-backup-premigrate")
+      .RuntimeDirectory
+    ) "AT-E3 the daily and pre-migration backups share a RuntimeDirectory"
+    ++ check (
+      lib.hasInfix "flock --no-fork /run/hasala-maintenance.lock " (backupOf "hasala-migrate").ExecStart
+      &&
+        fullSys.config.systemd.tmpfiles.settings.hasala-maintenance."/run/hasala-maintenance.lock".f.group
+        == "hasala-db"
+    ) "AT-E3 migrations must hold the maintenance lock"
+    ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
+      "Comodo AAA Services root"
+      "emSign ECC Root CA - G3"
+    ]) "AT-E3 the CA distrust stopgap is missing";
+
+  errors = negativeErrors ++ typeErrorErrors ++ positiveErrors ++ envErrors ++ retentionErrors;
 
   # AT-E1: both toplevels evaluate. The paths are recorded without their
   # context, so the check builds nothing of either system.

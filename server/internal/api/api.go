@@ -287,6 +287,8 @@ type Server struct {
 
 	// Now defaults to time.Now and is used only by the default limiters.
 	Now func() time.Time
+
+	PurgeLedger string
 }
 
 // NewServer builds the production server from config. It performs no network
@@ -309,6 +311,7 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool) (*Server, error) {
 		Now:      now,
 
 		TrustCloudflare: cfg.Server.TrustedProxy == config.ProxyCloudflare,
+		PurgeLedger:     cfg.Server.PurgeLedgerPath,
 		Meta: Meta{
 			RPID:          cfg.Auth.RPID,
 			MinIOSBuild:   cfg.Server.MinIOSBuild,
