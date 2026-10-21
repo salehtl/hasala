@@ -109,6 +109,22 @@ extension LedgerReader {
     }
   }
 
+  public func forkNotices(kind: String? = nil) throws -> [ForkNotice] {
+    var sql = "SELECT * FROM fork_notice"
+    var args: [(any DatabaseValueConvertible)?] = []
+    if let kind {
+      sql += " WHERE entity_kind = ?"
+      args.append(kind)
+    }
+    sql += " ORDER BY ord"
+    let a = args
+    return try db.read { db in
+      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
+        ForkNotice(entityKind: r["entity_kind"], entityID: r["entity_id"], winnerOp: r["winner_op"], loserOp: r["loser_op"], atSeq: r["at_seq"])
+      }
+    }
+  }
+
   // MARK: Projects, income, trust
 
   /// Projects that are not removed, soonest start first (undated last).

@@ -263,6 +263,31 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
+  public func ops(_ ids: Set<String>) -> [String: Op] {
+    var out: [String: Op] = [:]
+    guard !ids.isEmpty else { return out }
+    for u in unconfirmed where ids.contains(u.opID) { out[u.opID] = u.op }
+    if let rows = try? context.store.pendingOps() {
+      for r in rows where ids.contains(r.opID) && out[r.opID] == nil {
+        if let op = try? Pusher.decodeStored(r) { out[r.opID] = op }
+      }
+    }
+    guard out.count < ids.count else { return out }
+    let store = context.store
+    do {
+      let sync = try context.storeCall { () throws(StoreError) in try store.syncState() }
+      let opener = Opener(epochHWM: sync.epochHWM, keys: try context.epochKeys(upTo: sync.epochHWM))
+      try storedPages(upTo: sync.cursorHot) { (rows: [WireRowRecord]) throws(SyncStop) in
+        guard out.count < ids.count else { return }
+        for r in rows where r.disposition == .folded {
+          guard case .opened(_, let ops) = try reopen(r, opener) else { continue }
+          for op in ops where ids.contains(op.opID) { out[op.opID] = op }
+        }
+      }
+    } catch {}
+    return out
+  }
+
   // MARK: Projection
 
   /// Re-applies the outbox overlay to the projection (after an `Outbox.enqueue`,

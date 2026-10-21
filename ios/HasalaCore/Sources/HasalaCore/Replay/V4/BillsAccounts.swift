@@ -12,7 +12,21 @@ import CoreTime
 import CoreWire
 import HasalaText
 
+extension Replay {
+  public static func billRecord(_ op: Op) -> Bill? {
+    guard op.type == .billSet, let p = op.payload.objectValue else { return nil }
+    return try? State.decodeBill(p)
+  }
+}
+
 extension State {
+  static func billCreatedAt(_ op: Op) -> String {
+    guard let s = op.payload.objectValue?["created_at"]?.stringValue, let ms = try? parseInstantMs(s),
+      let authored = try? parseInstantMs(op.authoredAt), ms <= authored, let iso = Instant.iso(ms)
+    else { return op.authoredAt }
+    return iso
+  }
+
   static func decodeBill(_ p: JSONObject) throws(PayloadError) -> Bill {
     let name = try P.label(p["name"], "name")
     guard let list = p["keys"]?.arrayValue, (1...8).contains(list.count) else { throw PayloadError("keys must hold 1-8 keys") }

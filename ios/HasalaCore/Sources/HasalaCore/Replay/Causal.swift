@@ -196,7 +196,7 @@ extension State {
     case .bill(var b):
       b.version = 1
       b.firstSeq = e.seq
-      b.createdAt = e.op.authoredAt
+      b.createdAt = State.billCreatedAt(e.op)
       bills[id] = b
       return true
     case .txn(let p):
