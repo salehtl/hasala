@@ -152,4 +152,21 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     tap(app, "phrase.done")
     XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: uiWait))
   }
+
+  @MainActor
+  func testAHolderFreezeOffersUnfreezeOnEverySurface() throws {
+    let wall = launchRelease("frozen", waitForHome: false)
+    XCTAssertTrue(el(wall, "frozen.unfreeze").waitForExistence(timeout: 15))
+    tap(wall, "frozen.leave")
+    XCTAssertTrue(el(wall, "frozenBanner.unfreeze").waitForExistence(timeout: 10))
+    wall.terminate()
+
+    let app = launchRelease("frozen", waitForHome: false, screen: "security.frozen")
+    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Your account is frozen. Confirm it's you to unfreeze it."].exists)
+    attach(app, "Release · Sign-in & security · frozen")
+    assertPresent(app, ["security.unfreeze"], "Sign-in & security · frozen")
+    assertAbsent(app, ["security.frozenTalk", "security.freeze"], "Sign-in & security · frozen")
+    try audit(app)
+  }
 }
