@@ -382,8 +382,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return ("New amount accepted", [])
     case .stopTrackingBill(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
-      s.bills[i].state = .dismissed
+      s.bills[i].state = .ended
       return ("Stopped tracking \(s.bills[i].name)", [])
+    case .addBill, .editBillAmount, .pauseBill, .resumeBill, .endBill, .reactivateBill, .deleteBill, .linkBillPayments,
+      .reapplyBill, .editIncome, .dismissBillNotice:
+      throw .notFound
     case .setRuleEnabled(let id, let enabled):
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled

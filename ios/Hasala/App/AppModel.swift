@@ -296,6 +296,7 @@ final class AppModel {
     case .invalidAmount: "Enter an amount"
     case .invalidProject: "Check the project's name, amount and dates"
     case .invalidMerchant: "Enter who it was with"
+    case .invalidBill: "Check the recurring item's details"
     }
   }
 

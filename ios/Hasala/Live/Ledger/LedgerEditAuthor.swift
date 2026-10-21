@@ -204,8 +204,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
         for id in ids { a.annotate(txnID: id, set: [("project_id", project)]) }
       }
     case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock,
-      .setDisplayName:
+      .setDisplayName, .dismissBillNotice:
       break
+    case .addBill, .editBillAmount, .pauseBill, .resumeBill, .endBill, .reactivateBill, .deleteBill, .linkBillPayments,
+      .reapplyBill, .editIncome:
+      throw Failure.refused("not built yet")
     }
     return []
   }
