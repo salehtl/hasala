@@ -53,6 +53,13 @@ enum EdgeGoldens {
     (3, G.w2, [annotate(2, #"{"archived":"user"}"#, id: "op-archive-2")]),
   ]
 
+  static func bill(_ extra: String, id: String, parent: Int? = nil, at: String) -> String {
+    G.op(
+      "bill_set",
+      #"{"name":"Netflix","keys":["netflix"],"direction":"debit","currency":"AED","amount_mode":"fixed","amount_minor":"5600","tolerance_bp":200,"cadence":{"unit":"month","every":1},"anchor":"2026-01-31","start":"2026-01-31","end":null,"category":"subscriptions","account":null,"source":"manual","status":"active"\#(extra)}"#,
+      id: id, entity: ("bill", "bm_0123456789abcdef0123456789abcdef"), parent: parent, at: at)
+  }
+
   static let pairs: [String: [String]] = [
     "pairing-skips-archived-and-held-rows": [],
     "pairing-takes-the-kept-copy": [G.ulid(1) + ">" + G.ulid(3)],
@@ -63,7 +70,7 @@ enum EdgeGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-edges.json",
     note:
-      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists (absent and [] the same record), a refused list consumes no version, and created_at stays the create's. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
     cases: [
       FoldGoldenCase(
         name: "held-copy-at-the-int64-ceiling",
@@ -185,6 +192,43 @@ enum EdgeGoldens {
             [
               row(1, "AED", "9223372036854775808", at: "2026-10-09T15:12:00.000Z", merchant: "PAST MAX"),
               row(2, "AED", max, at: "2026-10-09T15:12:00.000Z", merchant: "MAX"),
+            ]
+          ),
+        ]),
+      FoldGoldenCase(
+        name: "bill-empty-lists-are-the-old-record",
+        note: "A bill created with no changes or pauses, then edited with \"changes\":[] and \"pauses\":null: the record has neither list, and created_at stays the create's authored_at.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(#","changes":[],"pauses":null"#, id: "op-bill-2", parent: 1, at: "2026-10-01T08:00:00.000Z")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-price-change-pause-and-resume",
+        note: "A price change from 2026-06-30, a pause from 2026-08-01 left open, then the resume that closes it and a second change; an edit whose open pause is not the last range is refused and consumes no version.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (
+            2, G.w1,
+            [
+              bill(
+                #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#,
+                id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")
+            ]
+          ),
+          (
+            3, G.w2,
+            [
+              bill(
+                #","pauses":[{"from":"2026-08-01","until":null},{"from":"2026-09-01","until":"2026-09-15"}]"#, id: "op-bill-bad",
+                parent: 2, at: "2026-09-02T08:00:00.000Z")
+            ]
+          ),
+          (
+            4, G.w1,
+            [
+              bill(
+                #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200},{"from":"2026-10-31","amount_mode":"variable","amount_minor":"7000","tolerance_bp":null}],"pauses":[{"from":"2026-08-01","until":"2026-10-01"}]"#,
+                id: "op-bill-3", parent: 2, at: "2026-10-01T08:00:00.000Z")
             ]
           ),
         ]),

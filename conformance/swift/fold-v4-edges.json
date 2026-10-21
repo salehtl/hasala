@@ -1,5 +1,5 @@
 {
-  "note": "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+  "note": "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists (absent and [] the same record), a refused list consumes no version, and created_at stays the create's. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
   "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
   "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
   "cases": [
@@ -3241,6 +3241,470 @@
           "unreadable": []
         },
         "state_sha256": "b1e11c2763265973adb82965a3118f451a7e3a06e68536b4f01cc7a054eb4d3e",
+        "anomaly_kinds": [
+          "invalid_payload"
+        ]
+      }
+    },
+    {
+      "name": "bill-empty-lists-are-the-old-record",
+      "group": "fold_v4",
+      "note": "A bill created with no changes or pauses, then edited with \"changes\":[] and \"pauses\":null: the record has neither list, and created_at stays the create's authored_at.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-1",
+              "authored_at": "2026-01-20T21:30:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": null,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": 1,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active",
+                "changes": [],
+                "pauses": null
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "bills": [
+            [
+              "bm_0123456789abcdef0123456789abcdef",
+              {
+                "account": null,
+                "amount_minor": "5600",
+                "amount_mode": "fixed",
+                "anchor": "2026-01-31",
+                "cadence": {
+                  "every": 1,
+                  "unit": "month"
+                },
+                "category": "subscriptions",
+                "created_at": "2026-01-20T21:30:00.000Z",
+                "currency": "AED",
+                "direction": "debit",
+                "end": null,
+                "first_seq": "1",
+                "keys": [
+                  "netflix"
+                ],
+                "name": "Netflix",
+                "source": "manual",
+                "start": "2026-01-31",
+                "status": "active",
+                "tolerance_bp": 200,
+                "version": 2
+              }
+            ]
+          ],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "bill\u0000bm_0123456789abcdef0123456789abcdef",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "bm_0123456789abcdef0123456789abcdef",
+                "kind": "bill",
+                "op_id": "op-bill-2",
+                "version": 2,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "e723cad8e7fe90d3ba84f53381c992cf5b4f73657be8f2b03ff0d2d86f6d91d0",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "bill-price-change-pause-and-resume",
+      "group": "fold_v4",
+      "note": "A price change from 2026-06-30, a pause from 2026-08-01 left open, then the resume that closes it and a second change; an edit whose open pause is not the last range is refused and consumes no version.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-1",
+              "authored_at": "2026-01-20T21:30:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": null,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-2",
+              "authored_at": "2026-08-01T08:00:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": 1,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active",
+                "changes": [
+                  {
+                    "from": "2026-06-30",
+                    "amount_mode": "fixed",
+                    "amount_minor": "6300",
+                    "tolerance_bp": 200
+                  }
+                ],
+                "pauses": [
+                  {
+                    "from": "2026-08-01",
+                    "until": null
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-bad",
+              "authored_at": "2026-09-02T08:00:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": 2,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active",
+                "pauses": [
+                  {
+                    "from": "2026-08-01",
+                    "until": null
+                  },
+                  {
+                    "from": "2026-09-01",
+                    "until": "2026-09-15"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "bill_set",
+              "op_id": "op-bill-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "bill",
+                "id": "bm_0123456789abcdef0123456789abcdef"
+              },
+              "parent_version": 2,
+              "payload": {
+                "name": "Netflix",
+                "keys": [
+                  "netflix"
+                ],
+                "direction": "debit",
+                "currency": "AED",
+                "amount_mode": "fixed",
+                "amount_minor": "5600",
+                "tolerance_bp": 200,
+                "cadence": {
+                  "unit": "month",
+                  "every": 1
+                },
+                "anchor": "2026-01-31",
+                "start": "2026-01-31",
+                "end": null,
+                "category": "subscriptions",
+                "account": null,
+                "source": "manual",
+                "status": "active",
+                "changes": [
+                  {
+                    "from": "2026-06-30",
+                    "amount_mode": "fixed",
+                    "amount_minor": "6300",
+                    "tolerance_bp": 200
+                  },
+                  {
+                    "from": "2026-10-31",
+                    "amount_mode": "variable",
+                    "amount_minor": "7000",
+                    "tolerance_bp": null
+                  }
+                ],
+                "pauses": [
+                  {
+                    "from": "2026-08-01",
+                    "until": "2026-10-01"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "3",
+              "detail": "",
+              "kind": "invalid_payload"
+            }
+          ],
+          "banks": [],
+          "bills": [
+            [
+              "bm_0123456789abcdef0123456789abcdef",
+              {
+                "account": null,
+                "amount_minor": "5600",
+                "amount_mode": "fixed",
+                "anchor": "2026-01-31",
+                "cadence": {
+                  "every": 1,
+                  "unit": "month"
+                },
+                "category": "subscriptions",
+                "changes": [
+                  {
+                    "amount_minor": "6300",
+                    "amount_mode": "fixed",
+                    "from": "2026-06-30",
+                    "tolerance_bp": 200
+                  },
+                  {
+                    "amount_minor": "7000",
+                    "amount_mode": "variable",
+                    "from": "2026-10-31",
+                    "tolerance_bp": null
+                  }
+                ],
+                "created_at": "2026-01-20T21:30:00.000Z",
+                "currency": "AED",
+                "direction": "debit",
+                "end": null,
+                "first_seq": "1",
+                "keys": [
+                  "netflix"
+                ],
+                "name": "Netflix",
+                "pauses": [
+                  {
+                    "from": "2026-08-01",
+                    "until": "2026-10-01"
+                  }
+                ],
+                "source": "manual",
+                "start": "2026-01-31",
+                "status": "active",
+                "tolerance_bp": 200,
+                "version": 3
+              }
+            ]
+          ],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "bill\u0000bm_0123456789abcdef0123456789abcdef",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "bm_0123456789abcdef0123456789abcdef",
+                "kind": "bill",
+                "op_id": "op-bill-3",
+                "version": 3,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [],
+          "pendingByCurrency": [],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [],
+          "unreadable": []
+        },
+        "state_sha256": "4b2be792199b8ae0e52a4e2208e1692b9908ac1a8313c74f000e662f352e70a7",
         "anomaly_kinds": [
           "invalid_payload"
         ]

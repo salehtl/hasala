@@ -310,10 +310,11 @@ public enum Projector {
       let keys = JSONWriter().string(.array(b.keys.map(JSONValue.string)))
       let args: [(any DatabaseValueConvertible)?] = [
         id, b.name, keys, b.direction, b.currency, b.amountMode, b.amountMinor, b.toleranceBp, b.cadence.unit, b.cadence.every, b.anchor,
-        b.start, b.end, b.category, b.account, b.source, b.status, b.firstSeq, b.version,
+        b.start, b.end, b.category, b.account, b.source, b.status, Self.billChangesJSON(b.changes), Self.billPausesJSON(b.pauses),
+        b.createdAt, b.firstSeq, b.version,
       ]
       try db.execute(
-        sql: "INSERT INTO bill (id, name, keys_json, direction, currency, amount_mode, amount_minor, tolerance_bp, cadence_unit, cadence_every, anchor, start, end, category, account, source, status, first_seq, version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        sql: "INSERT INTO bill (id, name, keys_json, direction, currency, amount_mode, amount_minor, tolerance_bp, cadence_unit, cadence_every, anchor, start, end, category, account, source, status, changes_json, pauses_json, created_at, first_seq, version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         arguments: StatementArguments(args))
     }
     for r in s.billResolutions.values {
@@ -330,6 +331,26 @@ public enum Projector {
         sql: "INSERT INTO checkin (id, account, as_of, as_of_ms, balance_minor, source, resolution, adjustment_minor, void, at_seq) VALUES (?,?,?,?,?,?,?,?,?,?)",
         arguments: StatementArguments(args))
     }
+  }
+
+  static func billChangesJSON(_ changes: [BillChange]) -> String? {
+    guard !changes.isEmpty else { return nil }
+    return JSONWriter().string(
+      .array(changes.map { c in
+        .object(
+          JSONObject([
+            ("from", .string(c.from)), ("amount_mode", .string(c.amountMode)), ("amount_minor", .string(String(c.amountMinor))),
+            ("tolerance_bp", c.toleranceBp.map { .number(JSONNumber($0)) } ?? .null),
+          ]))
+      }))
+  }
+
+  static func billPausesJSON(_ pauses: [BillPause]) -> String? {
+    guard !pauses.isEmpty else { return nil }
+    return JSONWriter().string(
+      .array(pauses.map { p in
+        .object(JSONObject([("from", .string(p.from)), ("until", p.until.map(JSONValue.string) ?? .null)]))
+      }))
   }
 
   private static func writeNotices(_ db: Database, _ s: State) throws {
