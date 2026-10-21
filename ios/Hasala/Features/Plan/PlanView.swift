@@ -32,7 +32,7 @@ struct PlanView: View {
   }
 }
 
-private struct PlanContent: View {
+struct PlanContent: View {
   let model: any PlanModel
   @Environment(\.hMotion) private var policy
   /// The slim bars fill from empty the first time Plan appears in the process (owner rule:

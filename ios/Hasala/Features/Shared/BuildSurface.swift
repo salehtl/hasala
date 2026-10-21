@@ -19,6 +19,10 @@ nonisolated enum BuildSurface {
     #endif
   }()
 
+  static let showsPlanTab: Bool = ProcessInfo.processInfo.arguments.contains(planTabArgument)
+
+  static let planTabArgument = "-HasalaPlanTab"
+
   #if DEBUG
     /// The launch argument that gives a Debug build the Release surface.
     static let releaseArgument = "-HasalaReleaseSurface"

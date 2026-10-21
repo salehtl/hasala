@@ -16,11 +16,9 @@ extension AppModel {
       router.tab = .home
       router.home = []
     case .plan:
-      router.tab = .plan
-      router.plan = []
+      openPlan()
     case .category(let id):
-      router.tab = .plan
-      router.plan = store.state.category(id) == nil ? [] : [.category(id)]
+      openPlan(category: store.state.category(id) == nil ? nil : id)
     case .bills:
       router.tab = .home
       router.home = [.bills]

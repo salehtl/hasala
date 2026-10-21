@@ -14,8 +14,6 @@ struct ProjectDetailView: View {
     _model = State(initialValue: ProjectDetailViewModel(app: app, project: project))
   }
 
-  private var inPlan: Bool { app.router.plan.contains(.project(project)) }
-
   var body: some View {
     if let d = model.detail {
       PlanDetailScreen(
@@ -23,8 +21,7 @@ struct ProjectDetailView: View {
         more: [
           PlanMenuItem(title: "Edit project") { model.edit() },
           PlanMenuItem(title: "Remove project") { confirmRemove = true },
-        ],
-        hostsToast: inPlan
+        ]
       ) {
         ProjectHero(detail: d, hidden: model.hidden)
         if let mark = d.mark, let line = mark.line {
@@ -43,9 +40,9 @@ struct ProjectDetailView: View {
         Text("Its transactions stay, and count in your monthly plan again.")
       }
     } else {
-      PlanDetailScreen(app: app, title: "Project", wash: .hue(.peach), hostsToast: inPlan) {
+      PlanDetailScreen(app: app, title: "Project", wash: .hue(.peach)) {
         EmptyStateCard(icon: .project, tone: .neutral, title: "This project is gone",
-                       message: "It was removed. Plan shows the projects you have now.")
+                       message: "It was removed. Projects shows the ones you have now.")
           .padding(.horizontal, HSpacing.insetPage)
       }
     }

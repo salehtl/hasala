@@ -14,11 +14,13 @@ final class AppRouter {
   var tab: AppTab = .home
   var home: [HomeRoute] = []
   var plan: [PlanRoute] = []
+  var projects: [PlanRoute] = []
   var activity: [ActivityRoute] = []
   var review: [ReviewRoute] = []
   var profile: [ProfileRoute] = []
   var transaction: [TransactionRoute] = []
   var sheet: SheetRoute?
+  var overProfile: SheetRoute?
   var cover: CoverRoute?
   /// Sheet B after sheet A closes (never two at once): the bell row "Sign in again" opens
   /// Profile › Bank alerts.
@@ -46,6 +48,7 @@ final class AppRouter {
     guard sheet == nil else { return }
     MailConnectCoordinator.release()
     profile = []
+    overProfile = nil
     transaction = []
     guard let next = nextSheet else { return }
     nextSheet = nil
@@ -57,16 +60,27 @@ final class AppRouter {
     switch tab {
     case .home: home = []
     case .plan: plan = []
+    case .projects: projects = []
     case .activity: activity = []
     case .review: review = []
     case .add: break
     }
   }
 
+  var projectsPath: [PlanRoute] {
+    get { BuildSurface.showsPlanTab ? plan : projects }
+    set {
+      if BuildSurface.showsPlanTab { plan = newValue } else { projects = newValue }
+    }
+  }
+
+  var projectsTab: AppTab { BuildSurface.showsPlanTab ? .plan : .projects }
+
   /// No sheet, no cover and nothing queued (the shell appearing again, after signing out
   /// and back in).
   func clearPresentation() {
     sheet = nil
+    overProfile = nil
     cover = nil
     nextSheet = nil
   }
@@ -88,6 +102,7 @@ final class AppRouter {
     var sheet: SheetRoute?
     var cover: CoverRoute?
     var profile: [ProfileRoute] = []
+    var overProfile: SheetRoute?
     var transaction: [TransactionRoute] = []
   }
 #endif

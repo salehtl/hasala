@@ -18,7 +18,6 @@ struct ProjectsModelTests {
 
   @Test func creatingAProjectOpensIt() throws {
     let app = AppModel(store: InMemoryLedger())
-    app.router.plan = [.projects]
     app.router.open(.project(nil))
     let editor = ProjectEditorModel(app: app, project: nil)
     editor.name = "Kitchen refresh"
@@ -28,7 +27,7 @@ struct ProjectsModelTests {
     let made = try #require(app.store.state.projects.first { $0.name == "Kitchen refresh" })
     #expect(made.budget == .aed(8_000_00) && made.glyph == .rent && made.starts == nil)
     #expect(app.router.sheet == nil)
-    #expect(app.router.plan == [.projects, .project(made.id)])
+    #expect(app.router.projects == [.project(made.id)])
   }
 
   @Test func theEditorRefusesWhatCantBeSaved() {
@@ -56,7 +55,7 @@ struct ProjectsModelTests {
 
   @Test func addingTransactionsAssignsTheChosenOnes() throws {
     let app = AppModel(store: InMemoryLedger())
-    app.router.plan = [.project("japan"), .addToProject("japan")]
+    app.router.projects = [.project("japan"), .addToProject("japan")]
     let add = ProjectAddModel(app: app, project: "japan")
     add.filter.merchant = "carrefour"
     let rows = add.candidates
@@ -64,13 +63,13 @@ struct ProjectsModelTests {
     add.toggle(first.id)
     add.add(rows)
     #expect(app.store.state.txn(first.id)?.projectID == "japan")
-    #expect(app.router.plan == [.project("japan")])
+    #expect(app.router.projects == [.project("japan")])
     #expect(ProjectDetailViewModel(app: app, project: "japan").detail?.transactions.contains { $0.id == first.id } == true)
   }
 
   @Test func addingWaitsForANarrowedFilterAndUndoes() throws {
     let app = AppModel(store: InMemoryLedger())
-    app.router.plan = [.project("japan"), .addToProject("japan")]
+    app.router.projects = [.project("japan"), .addToProject("japan")]
     let add = ProjectAddModel(app: app, project: "japan")
     #expect(!add.narrowed && add.shown.isEmpty && !add.candidates.isEmpty)
     add.filter.merchant = "carrefour"
@@ -90,7 +89,7 @@ struct ProjectsModelTests {
 
   @Test func theDetailCompletesCountsAndRemoves() {
     let app = AppModel(store: InMemoryLedger())
-    app.router.plan = [.projects, .project("japan")]
+    app.router.projects = [.project("japan")]
     let japan = ProjectDetailViewModel(app: app, project: "japan")
     japan.setCountInPlan(true)
     #expect(japan.detail?.countInPlan == true)
@@ -105,7 +104,43 @@ struct ProjectsModelTests {
     app.router.sheetDismissed()
     japan.remove()
     #expect(app.store.state.project("japan") == nil)
-    #expect(app.router.plan == [.projects])
+    #expect(app.router.projects.isEmpty)
+  }
+
+  @Test func aQuickStartPrefillsTheEditor() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let list = ProjectsListModel(app: app)
+    let trip = try #require(ProjectStarter.quickStarts.first)
+    list.start(trip)
+    #expect(app.router.sheet == .newProject(trip))
+    let editor = ProjectEditorModel(app: app, project: nil, starter: trip)
+    #expect(editor.name == "Trip" && editor.glyph == .travel && editor.isNew)
+    #expect(ProjectStarter.quickStarts.map(\.name) == ["Trip", "Move", "Eid gifts"])
+    #expect(ProjectStarter.quickStarts.map(\.glyph) == [.travel, .rent, .shopping])
+  }
+
+  @Test func removingFromTheEditorClosesItAndLeavesTheProject() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.tab = .projects
+    app.router.projects = [.project("japan")]
+    app.editProject("japan")
+    #expect(app.router.sheet == .project("japan"))
+    let editor = ProjectEditorModel(app: app, project: "japan")
+    editor.remove()
+    #expect(app.store.state.project("japan") == nil)
+    #expect(app.router.sheet == nil)
+    #expect(app.router.projects.isEmpty)
+    #expect(app.toast?.title == "Japan trip removed")
+  }
+
+  @Test func removingFromTheEditorInTheProfilePopsBoth() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.profile, profile: [.plan, .project("japan")])
+    app.editProject("japan")
+    #expect(app.router.profile == [.plan, .project("japan"), .editProject("japan")])
+    ProjectEditorModel(app: app, project: "japan").remove()
+    #expect(app.router.profile == [.plan])
+    #expect(app.router.sheet == .profile)
   }
 
   @Test func inTheProfileProjectsPushInsideTheSheet() {

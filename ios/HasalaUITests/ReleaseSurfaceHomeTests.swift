@@ -122,7 +122,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     let tabBar = app.tabBars.firstMatch
     let bell = app.buttons["header.notifications"].firstMatch
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+    for (tab, id) in [("Projects", "projects.new"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")

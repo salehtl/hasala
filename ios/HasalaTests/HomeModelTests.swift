@@ -29,13 +29,12 @@ struct HomeModelTests {
     app.period = .month(YearMonth(2026, 9))
     let line = try #require(home.snapshot.hero.notCounted)
     home.openNotCounted(line)
-    #expect(app.tab == .plan)
-    #expect(app.router.plan == [.project("japan")])
+    #expect(app.tab == .projects)
+    #expect(app.router.projects == [.project("japan")])
     app.tab = .home
-    app.router.plan = []
     home.openNotCounted(SpendHero.NotCounted(amount: .aed(5_600_00), projects: 2, projectID: nil, line: ""))
-    #expect(app.tab == .plan)
-    #expect(app.router.plan == [.projects])
+    #expect(app.tab == .projects)
+    #expect(app.router.projects.isEmpty)
   }
 
   /// The snapshot is computed once per ledger change (`AppModel`'s memo): reading it again
@@ -115,10 +114,15 @@ struct HomeModelTests {
     #expect(home.openNotification(.bills) == nil)
     #expect(router.home == [.bills])
 
-    // A category running fast (Debug "Earlier"): Plan's category.
+    // A category running fast (Debug "Earlier"): Plan's category, inside the profile.
     router.open(.notifications)
     #expect(home.openNotification(.category("groceries")) == nil)
-    #expect(router.tab == .plan && router.plan == [.category("groceries")])
+    #expect(router.sheet == nil)
+    #expect(router.nextSheet?.0 == .profile && router.nextSheet?.profilePath == [.plan, .category("groceries")])
+    router.sheetDismissed()
+    #expect(router.sheet == .profile && router.profile == [.plan, .category("groceries")])
+    router.sheet = nil
+    router.sheetDismissed()
 
     // Mail: the bell's sheet closes, then Profile opens with Bank alerts pushed inside it.
     router.open(.notifications)
@@ -167,7 +171,7 @@ struct HomeModelTests {
         let found = BillsViewModel(app: app).snapshot.found.map { "found.\($0.id)" }
         #expect(found.contains(item.id))
       case .category(let id):
-        #expect(router.tab == .plan && router.plan == [.category(id)])
+        #expect(router.nextSheet?.0 == .profile && router.nextSheet?.profilePath == [.plan, .category(id)])
       case .unreadMail:
         #expect(router.tab == .review && router.review == [.unreadMail])
         #expect(!app.store.state.unreadMail.isEmpty)
