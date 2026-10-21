@@ -314,11 +314,8 @@ struct StoriesView: View {
   }
 
   private nonisolated static func webURLCopied(_ pasteboard: UIPasteboard) async -> Bool {
-    await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
-      pasteboard.detectPatterns(for: [.probableWebURL]) { @Sendable result in
-        done.resume(returning: (try? result.get())?.contains(.probableWebURL) == true)
-      }
-    }
+    let found = try? await pasteboard.detectedPatterns(for: [\.probableWebURL])
+    return found?.contains(\.probableWebURL) == true
   }
 
   // MARK: Pager
