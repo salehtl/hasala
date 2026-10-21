@@ -342,18 +342,31 @@ when its mail gates passed; everything else at or above 0.6 / 0.2 is a suggestio
 
 - Ready: the number of merchants Hasala can ask about, and **Sort 147 merchants**.
 - Running: names asked out of the total, payments sorted so far, the time left ("Keep
-  Hasala open."), and **Stop**.
+  Hasala open.", the names left at 24 a minute, rounded up), and **Stop**.
 - Paused: no connection; Hasala in the background; Cloudflare busy, with the retry time
-  and **Try now**; the per-run cap, with **Sort the next N**; the per-day cap.
+  and **Try now**; the per-run cap, with **Sort the next N**; the per-day cap. A paused
+  run also has **Stop**. With names waiting but nothing left of the day's 400, the card
+  shows the per-day line in place of Ready.
 - Done: payments sorted, suggestions to check and payments left for the person, with
-  **Check suggestions** and **Undo**.
+  **Check suggestions** (when there are suggestions) and **Undo** (while the manifest
+  exists). Undo asks first ("Send 104 payments back to Review?"). The Done card has a close
+  button; the device remembers it per run (by the run's end time), so a dismissed run's
+  card doesn't come back. While the Done card offers Check suggestions, the separate
+  Check suggestions row in Review is hidden, so there is one way in at a time.
+- Review asks the engine for fresh counts when it appears and when the app comes back to
+  the foreground.
 
-Profile › Cloud suggestions shows a "Last sort" readout on the device: names asked,
-payments sorted, suggestions, the payments that stay on the phone (transfers and account
-alerts), and why the run stopped.
+Profile › Cloud suggestions shows a "Last sort" readout on the device once a run has
+ended: when it ended, names asked, payments sorted, suggestions, and the payments that
+stay on the phone (transfers and account alerts) when there are any. Under the switches,
+**Send Cloudflare's sorting back to Review** shows while any row is filed by Clef, and
+asks first. When Merchant suggestions is turned on there, after its consent sheet, and at
+least 5 names wait, Profile offers the run ("Sort the 208 payments waiting in Review?",
+**Sort now** or **Later**).
 
-**The deck while a run is running.** Rows still waiting for Clef go to the end of the
-deck, under a divider "Waiting for Cloudflare AI (64)". Rows Clef won't be asked about
+**The deck while a run is active (running or paused).** Rows still waiting for Clef go to
+the end of the deck. The deck shows one card at a time, so it has no divider: the header
+says "Waiting for Cloudflare AI (64)" under "2 of 6". Rows Clef won't be asked about
 (transfers, account alerts, names already `unknown`) come first, so sorting by hand doesn't
 race the run.
 
@@ -368,7 +381,7 @@ source: model "cf-clef/1"}`, so the rows go back to Review with Clef's category 
 suggestion. Nothing is lost, and a later run doesn't ask again, because the row still has
 a category.
 
-- **Undo** (on the Done card, and in Profile while the manifest exists) uses the run's
+- **Undo** (on the Done card, while the manifest exists) uses the run's
   manifest on this device: the txn ids the run filed and the version it left each at. It
   re-reads each row and authors only rows unchanged since the run (the `parentVersion`
   check). An edit on another device moves the version, and the undo skips that row.

@@ -304,7 +304,7 @@ Hasala shows your picture from Gravatar, a service run by Automattic, if you hav
 
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup or Review offers to sort payments that are waiting. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort payments that are waiting. There are two switches, and you can turn each on or off at any time.
 
 **How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. With Cloud suggestions off, that's all: a payment they can't place waits for you in Review, and no AI model runs. With Merchant suggestions on, Hasala then asks Cloudflare's AI service, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself.
 
