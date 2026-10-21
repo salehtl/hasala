@@ -49,7 +49,7 @@ struct ProfileSheet: View {
           money
           settings
           GravatarSection()
-          if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection() }
+          if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection(app: app) }
           footer
         }
         .padding(.horizontal, HSpacing.sheetPadding)
