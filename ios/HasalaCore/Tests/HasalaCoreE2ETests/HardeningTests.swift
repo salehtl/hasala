@@ -133,6 +133,29 @@ struct HardeningTests {
     #expect(b.binding == nil)
   }
 
+  @Test("a published current_epoch above Int32.max is a bad response, not a trap")
+  func oversizedPublishedEpoch() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    for epoch in [Int(UInt32.max) + 1, Int(Int32.max) + 1] {
+      w.server.publishEpoch(user: account.userID, epoch)
+      do {
+        _ = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+        Issue.record("epoch \(epoch) accepted")
+      } catch {
+        guard case .badResponse("current_epoch") = error else {
+          Issue.record("epoch \(epoch): \(error)")
+          continue
+        }
+      }
+    }
+    w.server.publishEpoch(user: account.userID, Int(Int32.max))
+    _ = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+  }
+
   @Test("a transient roster failure after the server accepted the writer still binds; the first run pins the roster")
   func transientRosterFailureStillBinds() async throws {
     let w = World()

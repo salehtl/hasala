@@ -262,7 +262,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let addPasskey = AccountCapabilities(rawValue: 1 << 12)
   /// Change the account's email address.
   static let changeEmail = AccountCapabilities(rawValue: 1 << 13)
-  /// Freeze (and unfreeze) the account.
+  /// Freeze the account.
   static let freeze = AccountCapabilities(rawValue: 1 << 14)
   /// Show the 12 words again behind a step-up.
   static let viewPhrase = AccountCapabilities(rawValue: 1 << 15)
@@ -272,6 +272,8 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   static let changePassword = AccountCapabilities(rawValue: 1 << 17)
   /// Remove another device from the account's roster.
   static let removeDevice = AccountCapabilities(rawValue: 1 << 18)
+  /// Lift a freeze the holder made.
+  static let unfreeze = AccountCapabilities(rawValue: 1 << 20)
 
   /// Every action above. The default for services that don't say (the Debug mocks).
   static let all: AccountCapabilities = [
@@ -282,14 +284,14 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .deleteAccount, .removeThisIPhone,
     .resetPassword, .recoverAccess, .recoverWithPassword,
     .rotatePhrase, .addPasskey, .changeEmail,
-    .freeze, .viewPhrase,
+    .freeze, .unfreeze, .viewPhrase,
     .removePasskey, .changePassword, .removeDevice,
   ]
 
   /// What the TestFlight beta offers: signup, sign-in, unlocking with the words, access
   /// recovery to a new passkey (so someone who lost theirs can get back in, and delete the
   /// account), leaving (sign out, sign out everywhere, delete), viewing the words and
-  /// adding a passkey. Password reset, recovery to a new password, phrase rotation,
+  /// adding a passkey, and lifting the holder's own freeze. Password reset, recovery to a new password, phrase rotation,
   /// removing a passkey, setting or changing the password, removing this or another device,
   /// changing the email and freezing stay hidden. (The service can remove this iPhone, but Sign-in
   /// & security has no row for it.)
@@ -302,6 +304,7 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
     .recoverAccess,
     .viewPhrase,
     .addPasskey,
+    .unfreeze,
   ]
 }
 

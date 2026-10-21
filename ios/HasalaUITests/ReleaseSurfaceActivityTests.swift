@@ -4,8 +4,8 @@ import XCTest
 final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
   /// Activity has its "+"; a row opens its sheet, which offers no bank email to view yet; the
   /// Review tab is there with its Start and its rows, and every deck control sorts, skips or
-  /// closes ("Use N suggestions", opening the unreadable-email card and "View bank email" wait
-  /// for the features behind them).
+  /// closes, and the unreadable-email card opens Add a transaction ("Use N suggestions" and
+  /// "View bank email" wait for the features behind them).
   @MainActor
   func testActivityAndReviewShowOnlyWhatWorks() throws {
     let app = launchRelease()
@@ -47,7 +47,6 @@ final class ReleaseSurfaceActivityTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Review tab")
     assertPresent(app, ["review.tab.count", "review.tab.row.lulu"], "Review tab")
     assertAbsent(app, ["review.tab.useSuggestions"], "Review tab")
-    XCTAssertFalse(app.buttons["review.tab.unreadable"].exists, "Review tab opens the unreadable mail")
     try audit(app)
     el(app, "review.tab.start").tap()
     XCTAssertTrue(el(app, "review.position").waitForExistence(timeout: uiWait))

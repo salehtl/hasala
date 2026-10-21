@@ -56,6 +56,22 @@ extension Spending {
       t.isEstimate && period.contains(t.postedAt.date) && carvedOut(t, in: s) == nil && !measured(t, in: s).isEmpty
     }
   }
+
+  public static func unrated(_ s: LedgerState, in period: Period) -> TotalMark? {
+    var leftOut: [String: Int] = [:]
+    for t in s.txns where period.contains(t.postedAt.date) && unrated(t, in: s) {
+      leftOut[t.amount.currency, default: 0] += 1
+    }
+    return leftOut.isEmpty ? nil : TotalMark(leftOut: leftOut)
+  }
+
+  public static func unrated(_ t: Txn, in s: LedgerState) -> Bool {
+    guard !t.archived, !t.isTransfer, !t.isHeldCopy, carvedOut(t, in: s) == nil else { return false }
+    if !t.splits.isEmpty { return t.splits.contains { $0.homeMinor == nil && counts(s.category($0.categoryID)) } }
+    guard t.homeMinor == nil else { return false }
+    guard let c = s.category(t.categoryID) else { return t.direction == .out || t.isRefund }
+    return counts(c)
+  }
 }
 
 public struct TotalMark: Sendable, Hashable, Codable {
@@ -81,6 +97,12 @@ public struct TotalMark: Sendable, Hashable, Codable {
     let n = leftOutCount
     return n > 0 ? "\(n) not counted" : nil
   }
+
+  public static func unrated(_ txns: some Sequence<Txn>) -> TotalMark? {
+    var leftOut: [String: Int] = [:]
+    for t in txns where t.homeMinor == nil { leftOut[t.amount.currency, default: 0] += 1 }
+    return leftOut.isEmpty ? nil : TotalMark(leftOut: leftOut)
+  }
 }
 
 public struct HomeTotal: Sendable, Hashable {
@@ -104,11 +126,11 @@ extension Money {
     var leftOut: [String: Int] = [:]
     for m in ms {
       if let home = homeMinor(of: m) {
-        minor += home
+        minor.add(home)
       } else if m.isZero {
         continue
       } else if let home = converted(m, rates: rates) {
-        minor += home
+        minor.add(home)
         estimate = true
       } else {
         leftOut[m.currency, default: 0] += 1
@@ -123,7 +145,7 @@ extension Money {
       let magnitude = Int64(exactly: m.minor.magnitude),
       let home = ExchangeRates.convert(magnitude, rate)
     else { return nil }
-    return m.isNegative ? -home : home
+    return m.isNegative ? home.negated : home
   }
 
   public static func apportion(home: Int64?, parts: [Int64]) -> [Int64]? {

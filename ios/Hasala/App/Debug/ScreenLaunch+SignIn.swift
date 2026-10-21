@@ -91,6 +91,10 @@
       // Frozen.
       Screen("frozen", scenario: "frozen"),
       Screen("unfreeze", scenario: "frozen", prepare: step(.unfreeze)),
+      Screen("security.frozen", scenario: "frozen", prepare: { graph in
+        graph.session.leaveFrozen()
+        profile([.security])(graph)
+      }),
     ]
 
     static func mock(_ graph: MockGraph) -> MockAccountService? { graph.session.account as? MockAccountService }

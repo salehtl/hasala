@@ -114,6 +114,7 @@ extension SyncStop {
 
   /// Every other refusal on a read path: a protocol error (retried).
   static func read(_ e: APIError) -> SyncStop {
-    common(e) ?? .protocolError("refused \(e.failure?.status ?? 0) \(e.failure?.code ?? "")")
+    if let f = e.failure, f.status == 409, f.code == "cursor_ahead" { return .halted(.tampered(.chainBreak)) }
+    return common(e) ?? .protocolError("refused \(e.failure?.status ?? 0) \(e.failure?.code ?? "")")
   }
 }

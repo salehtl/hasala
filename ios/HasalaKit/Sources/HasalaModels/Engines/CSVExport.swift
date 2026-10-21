@@ -22,7 +22,7 @@ public struct ExportRow: Sendable, Hashable {
   public init(_ t: Txn, _ s: LedgerState) {
     date = t.postedAt.date
     description = t.provenance?.rawMerchant ?? t.merchant
-    amount = Money(minor: t.direction == .out ? -t.amount.minor : t.amount.minor, currency: t.amount.currency)
+    amount = Money(minor: t.direction == .out ? t.amount.minor.negated : t.amount.minor, currency: t.amount.currency)
     homeMinor = t.homeMinor.map { t.direction == .out ? -$0 : $0 }
     direction = t.direction
     category = s.category(t.categoryID)?.name ?? ""

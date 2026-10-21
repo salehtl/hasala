@@ -9,7 +9,7 @@ public enum Pace {
   /// rounded down (Paper: Groceries 812.40 on day 10 of 31 → "on course for 2,518").
   public static func projected(_ spent: Int64, day: Int, days: Int) -> Int64 {
     guard day > 0 else { return spent }
-    return spent * Int64(days) / Int64(day)
+    return Fils.mulDiv(spent, Int64(days), Int64(day))
   }
 
   /// The verdict for a budget line. Bills and savings have no pace: they are on track

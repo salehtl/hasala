@@ -129,18 +129,25 @@ public struct AskAnswer: Sendable, Hashable {
   public var isIncome: Bool
   public var countLine: String
   public var activity: TxnFilter?
+  public var mark: TotalMark?
+
+  public var refundedMore: Bool { !isIncome && total.minor < 0 }
 }
 
 public enum AskEngine {
   public static func answer(_ s: LedgerState, filter f: AskFilter) -> AskAnswer {
     let found = s.txns.filter { matches($0, f, s) }.sorted { $0.postedAt > $1.postedAt }
     let isIncome = f.direction == .in || (f.direction == nil && !found.isEmpty && found.allSatisfy { $0.direction == .in })
-    let total: Int64 = found.reduce(0) { sum, t in
-      guard let home = t.homeMinor else { return sum }
-      if isIncome { return t.direction == .in && !t.isRefund ? sum + home : sum }
-      if t.isTransfer { return sum }
-      return t.direction == .out ? sum + home : (t.isRefund ? sum - home : sum)
+    func counted(_ t: Txn) -> Bool {
+      if isIncome { return t.direction == .in && !t.isRefund }
+      return !t.isTransfer && (t.direction == .out || t.isRefund)
     }
+    let total = Fils.sum(found.filter(counted)) { t in
+      guard let home = t.homeMinor else { return 0 }
+      return isIncome || t.direction == .out ? home : home.negated
+    }
+    var leftOut: [String: Int] = [:]
+    for t in found where counted(t) && t.homeMinor == nil { leftOut[t.amount.currency, default: 0] += 1 }
     let rows = found.map { t in
       var r = ActivityEngine.row(t, s)
       r.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(t.postedAt.date.short)"
@@ -151,12 +158,13 @@ public enum AskEngine {
       else if f.merchants.isEmpty, let c = f.category { TxnFilter(category: c) }
       else { nil }
     return AskAnswer(
-      filter: f, headline: headline(f, s, isIncome: isIncome), scope: scope(f, s), rows: rows, total: .aed(max(total, 0)),
-      isIncome: isIncome, countLine: "\(found.count) transaction\(found.count == 1 ? "" : "s")", activity: activity)
+      filter: f, headline: headline(f, s, isIncome: isIncome), scope: scope(f, s), rows: rows, total: .aed(total),
+      isIncome: isIncome, countLine: "\(found.count) transaction\(found.count == 1 ? "" : "s")", activity: activity,
+      mark: leftOut.isEmpty ? nil : TotalMark(leftOut: leftOut))
   }
 
   public static func matches(_ t: Txn, _ f: AskFilter, _ s: LedgerState) -> Bool {
-    if t.archived { return false }
+    if t.archived || t.isHeldCopy { return false }
     if let d = f.direction, t.direction != d || t.isTransfer { return false }
     if let p = f.period, t.postedAt.date < p.from || t.postedAt.date > p.through { return false }
     if let lo = f.minimumFils, (t.homeMinor ?? .min) < lo { return false }

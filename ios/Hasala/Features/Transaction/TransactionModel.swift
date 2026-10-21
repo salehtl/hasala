@@ -33,6 +33,7 @@ protocol TransactionModel: AnyObject, Observable {
   func toggleRefund()
   func markTransfer()
   func setArchived(_ archived: Bool)
+  func resolve(_ reason: TxnReviewReason, merge: Bool)
 }
 
 @MainActor
@@ -72,5 +73,16 @@ final class TransactionViewModel: TransactionModel {
 
   func setArchived(_ archived: Bool) {
     if app.perform(.archive(id, archived)), archived { app.sheet = nil }
+  }
+
+  func resolve(_ reason: TxnReviewReason, merge: Bool) {
+    let edit: LedgerEdit
+    switch reason {
+    case .probableCopy: edit = .resolveCopy(id, merge: merge)
+    case .samePurchase: edit = .resolveSamePurchase(id, same: merge)
+    case .senderUnverified: return
+    }
+    guard app.perform(edit) else { return }
+    if merge { app.sheet = nil } else { app.router.transaction.removeAll() }
   }
 }

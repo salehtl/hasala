@@ -57,7 +57,7 @@ public enum Enrolment {
       userID: userID, recoveryPublicKey: try b64(k.recovery_pubkey, "recovery_pubkey"),
       amkCommitment: try b64(k.amk_commitment, "amk_commitment"),
       authorityPublicKey: try b64(k.authority_pubkey, "authority_pubkey"))
-    guard k.current_epoch >= 1 else { throw .badResponse("current_epoch") }
+    guard k.current_epoch >= 1, k.current_epoch <= Int(Int32.max) else { throw .badResponse("current_epoch") }
     return (p, try b64(k.recovery_wrap, "recovery_wrap"), UInt32(k.current_epoch))
   }
 

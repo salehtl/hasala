@@ -246,6 +246,22 @@ struct NotificationsEngineTests {
     #expect(NotificationsEngine.snapshot(s, now: now).needsALook[0].title == "1 transaction to sort")
   }
 
+  @Test func reviewItemCountsTheDeckItOpens() {
+    var s = MayaLedger.state
+    let queue = ReviewEngine.queue(s, in: .month(now.date.yearMonth))
+    #expect(queue.count == 6)
+    s.skippedReview = [queue[0].id]
+    var old = queue[1]
+    old.id = "old-review"
+    old.postedAt = LocalDateTime(date: now.date.yearMonth.previous.firstDay, hour: 9, minute: 0)
+    s.txns.append(old)
+    let window = ReviewWindow.month(now.date.yearMonth)
+    let n = NotificationsEngine.snapshot(s, now: now, review: window)
+    #expect(n.needsALook[0].title == "\(ReviewEngine.queue(s, in: window).count) transactions to sort")
+    #expect(n.needsALook[0].title == "5 transactions to sort")
+    #expect(NotificationsEngine.snapshot(s, now: now).needsALook[0].title == "6 transactions to sort")
+  }
+
   @Test func whenReadsLikeTheSheet() {
     let today = LocalDate(2026, 10, 10)
     #expect(NotificationsEngine.when(today, today: today) == "Today")

@@ -18,7 +18,7 @@ import Observation
 /// reloads too (`WorkCoordinator`'s committed stage).
 @MainActor
 @Observable
-final class LiveLedgerStore: HasalaModels.LedgerStore {
+final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
@@ -44,6 +44,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
+  @ObservationIgnored private var undoable: Set<Int> = []
   @ObservationIgnored private var nextToken = 1
   @ObservationIgnored private var writes: Task<Void, Never>?
   @ObservationIgnored private var reloadSeq = 0
@@ -162,30 +163,47 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
     revision += 1
     let token = title.map { UndoToken(id: nextToken, title: $0) }
     if token != nil { nextToken += 1 }
+    if let token {
+      if !inverses.isEmpty { undos[token.id] = inverses }
+      if !inverses.isEmpty || (author != nil && Self.authorsInverse(edit)) { undoable.insert(token.id) }
+    }
     if let author {
       let today = now.date
       enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today) }
     }
-    guard let token else { return nil }
-    if !inverses.isEmpty { undos[token.id] = inverses }
     return token
   }
 
-  func undo(_ token: UndoToken) {
-    guard let inverses = undos.removeValue(forKey: token.id), let author else { return }
-    enqueue { try await author.undo(inverses) }
+  static func authorsInverse(_ edit: LedgerEdit) -> Bool {
+    switch edit {
+    case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill: true
+    case .resolveCopy(_, let merge): merge
+    default: false
+    }
   }
+
+  func undo(_ token: UndoToken) {
+    guard undoable.remove(token.id) != nil, let author else { return }
+    enqueue { [weak self] in
+      guard let inverses = await self?.takeUndo(token.id), !inverses.isEmpty else { return [] }
+      try await author.undo(inverses)
+      return []
+    }
+  }
+
+  private func takeUndo(_ id: Int) -> [LedgerEditAuthor.Inverse]? { undos.removeValue(forKey: id) }
 
   /// Runs `write` after every earlier one, then reloads (a failure reloads too, so the
   /// optimistic change is replaced by what the projection holds).
-  func enqueue(undo: Int? = nil, _ write: @escaping @Sendable () async throws -> Void) {
+  func enqueue(undo: Int? = nil, _ write: @escaping @Sendable () async throws -> [LedgerEditAuthor.Inverse]) {
     let previous = writes
     writesInFlight += 1
     writes = Task { [weak self] in
       await previous?.value
+      var authored: [LedgerEditAuthor.Inverse] = []
       let failed: Bool
       do {
-        try await write()
+        authored = try await write()
         failed = false
       } catch {
         failed = true
@@ -193,14 +211,19 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       guard let self else { return }
       writesInFlight -= 1
       if failed {
-        if let undo { undos[undo] = nil }
+        if let undo {
+          undos[undo] = nil
+          undoable.remove(undo)
+        }
         onWriteFailed?()
+      } else if let undo, !authored.isEmpty {
+        undos[undo, default: []] += authored
       }
       await reload()
     }
   }
 
-  func canUndo(_ token: UndoToken) -> Bool { undos[token.id] != nil }
+  func canUndo(_ token: UndoToken) -> Bool { undoable.contains(token.id) }
 
   // MARK: The optimistic change
 
@@ -310,33 +333,33 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       s.txns[i].samePurchase = nil
       guard same else { return ("Kept both", [.samePurchaseDeclined(home: id)]) }
       guard let previous = s.txns[j].homeMinor else { throw .notFound }
+      let previousRate = s.txns[j].homeSource == .rate ? s.txns[j].homeRateMicro : nil
       let oldNote = s.txns[i].note
       s.txns[i].archived = true
       s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
       s.txns[j].homeMinor = s.txns[i].amount.minor
       return (
         "Counted once",
-        [.samePurchase(foreign: match.of, previousHome: previous, home: id, previousNote: oldNote)]
+        [.samePurchase(foreign: match.of, previousHome: previous, previousRateMicro: previousRate, home: id, previousNote: oldNote)]
       )
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
-      let old = s.plan.budget(c, month)
       s.plan.budgets[PlanState.key(c, month)] = amount
-      return ("\(name(c)) budget changed", [.budget(category: c, month: month, amount: old)])
+      return ("\(name(c)) budget changed", [])
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
       if let from {
-        let left = s.plan.budget(from, month).minor - s.spent(from, in: month).minor
+        let left = s.plan.budget(from, month).minor.minus(s.spent(from, in: month).minor)
         guard left >= amount.minor else { throw .insufficientFunds }
         s.plan.budgets[PlanState.key(from, month)] = .aed(s.plan.budget(from, month).minor - amount.minor)
       } else {
         guard PlanEngine.snapshot(s, now: now).readyToAssign.minor >= amount.minor else { throw .insufficientFunds }
       }
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
-      return ("Moved to \(name(to))", [.move(from: to, to: from, month: month, amount: amount)])
+      return ("Moved to \(name(to))", [])
     case .trackCandidate, .dismissCandidate:
       throw .notFound
     case .markBillPaid(let id):
@@ -422,6 +445,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore {
       return (nil, [])
     }
   }
+}
+
+@MainActor
+protocol UndoAvailability: AnyObject {
+  func canUndo(_ token: UndoToken) -> Bool
 }
 
 /// The device's own preferences (spec 04 §4.5; never synced): notification level, the
