@@ -114,7 +114,6 @@ struct HomeModelTests {
     #expect(home.openNotification(.bills) == nil)
     #expect(router.home == [.bills])
 
-    // A category running fast (Debug "Earlier"): Plan's category, inside the profile.
     router.open(.notifications)
     #expect(home.openNotification(.category("groceries")) == nil)
     #expect(router.sheet == nil)
