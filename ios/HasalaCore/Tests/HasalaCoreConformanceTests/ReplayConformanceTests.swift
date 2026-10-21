@@ -60,8 +60,18 @@ struct ReplayConformanceTests {
     #expect(Set(onDisk) == Set(Self.files))
   }
 
+  static let disagreements: [String: Comment] = [:]
+
   @Test("fold matches the oracle", arguments: files)
   func foldMatches(_ file: String) throws {
+    if let why = Self.disagreements[file] {
+      withKnownIssue(why) { try Self.compare(file) }
+      return
+    }
+    try Self.compare(file)
+  }
+
+  static func compare(_ file: String) throws {
     let c = try Fixtures.json("replay/\(file)")
     let expect = c["expect"]!
     let got = try Self.fold(c)
@@ -88,9 +98,32 @@ struct ReplayConformanceTests {
     }
     // The order serializeState sorts away: first declaration of banks and categories.
     if let order = expect["order"] {
-      #expect(Array(s.banks.keys) == (try order.array("banks")).compactMap(\.stringValue))
-      #expect(Array(s.categories.keys) == (try order.array("categories")).compactMap(\.stringValue))
+      #expect(s.banks.keys.map(\.value) == (try order.array("banks")).compactMap(\.stringValue))
+      #expect(s.categories.keys.map(\.value) == (try order.array("categories")).compactMap(\.stringValue))
     }
+  }
+
+  static func expected(_ c: JSONValue) throws -> JSONValue {
+    switch try fold(c) {
+    case .stopped(let kind, let at):
+      return obj([("error", obj([("kind", .string(kind)), ("at_entry", .number(JSONNumber(Int64(at))))]))])
+    case .state(let s):
+      let bytes = s.serialized(blankingDiagnostics: true)
+      let sha = Hex.encode(sha256(bytes))
+      var e: [(String, JSONValue)] = [
+        ("error", .null), ("state", try JSONParser.parse(bytes)), ("state_sha256", .string(sha)),
+        ("order", obj([("banks", .array(s.banks.keys.map { .string($0.value) })), ("categories", .array(s.categories.keys.map { .string($0.value) }))])),
+      ]
+      if let old = c["expect"], old["state_sha256"]?.stringValue == sha, let d = old["diagnostics"] { e.append(("diagnostics", d)) }
+      return obj(e)
+    }
+  }
+
+  @Test("each case's expect is what Swift computes (HASALA_UPDATE_GOLDEN=1 rewrites it)", arguments: files)
+  func golden(_ file: String) throws {
+    guard Self.disagreements[file] == nil else { return }
+    let c = try Fixtures.json("replay/\(file)")
+    try Golden.check("replay/\(file)", c.setting("expect", try Self.expected(c)))
   }
 
   @Test("folding decoded ops directly equals folding the blob bodies", arguments: files)

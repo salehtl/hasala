@@ -53,6 +53,11 @@ is reachable.
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates`) are the same as
   `server/internal/tmpl/seed`. After you change a seed template, run
   `swift ios/tools/templates/sync.swift`.
+- The golden fixtures check. The sets `authres`, `categorize`, `fx`,
+  `norm-dates` and `replay` are golden files: the Swift tests own their
+  expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
+  (`conformance/README.md`). The gate fails when a branch changes one of these
+  sets and changes nothing under `ios/HasalaCore/Tests`.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one

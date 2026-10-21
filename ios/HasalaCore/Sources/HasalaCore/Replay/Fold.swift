@@ -232,7 +232,7 @@ extension State {
     let p = try P.object(e.op)
     let bank = try P.nonEmptyString(p["bank"], "bank")
     let active = try P.boolField(p["active"], "active")
-    banks[bank] = active
+    banks[ExactKey(bank)] = active
   }
 
   private mutating func applyBudgetSplitSet(_ e: LogEntry) throws(PayloadError) {
@@ -258,7 +258,7 @@ extension State {
     let p = try P.object(e.op)
     if e.op.v >= 4 {
       let def = try decodeCategoryV4(p)
-      categories[def.id] = def
+      categories[ExactKey(def.id)] = def
       return
     }
     let id = try P.nonEmptyString(p["id"], "id")
@@ -270,7 +270,7 @@ extension State {
     let colorRaw = p["color"]
     let color: String? = (colorRaw == nil || colorRaw!.isNull) ? nil : try P.nonEmptyString(colorRaw, "color")
     let active = try P.boolField(p["active"], "active")
-    categories[id] = CategoryDef(shape: 3, id: id, name: name, kind: kind, bucket: bucket, color: color, icon: nil, active: active)
+    categories[ExactKey(id)] = CategoryDef(shape: 3, id: id, name: name, kind: kind, bucket: bucket, color: color, icon: nil, active: active)
   }
 
   /// replay.ts `bucketFor`: a spending category carries a bucket; the others none.

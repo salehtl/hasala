@@ -1,0 +1,86 @@
+{
+  "name": "int64-max-foreign-row-waits-then-backfills",
+  "note": "A USD row at 2^63-1 with no rate is pending with a null snapshot; an unset keeps it waiting; the first real rate, 1.000000, backfills it to 2^63-1 exactly.",
+  "schema_version": 1,
+  "entries": [
+    {
+      "seq": "1",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "home_currency_set",
+        "op_id": "int64-max-foreign-row-waits-then-backfills-1",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "AED"
+        }
+      }
+    },
+    {
+      "seq": "2",
+      "writer_id": "ingest",
+      "op": {
+        "v": 1,
+        "type": "txn_ingested",
+        "op_id": "int64-max-foreign-row-waits-then-backfills-2",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "entity": {
+          "kind": "txn",
+          "id": "t1"
+        },
+        "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+        "payload": {
+          "amount_minor": "9223372036854775807",
+          "currency": "USD",
+          "direction": "debit",
+          "posted_at": "2026-06-05T09:00:00Z",
+          "merchant_raw": "M-t1",
+          "last4": "8642"
+        }
+      }
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_unset",
+        "op_id": "int64-max-foreign-row-waits-then-backfills-3",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "USD"
+        }
+      }
+    },
+    {
+      "seq": "4",
+      "writer_id": "dev-a",
+      "op": {
+        "v": 1,
+        "type": "rate_set",
+        "op_id": "int64-max-foreign-row-waits-then-backfills-4",
+        "authored_at": "2026-06-05T10:00:00.000Z",
+        "parent_version": null,
+        "payload": {
+          "currency": "USD",
+          "rate_micro": "1000000"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "home_currency": "AED",
+    "rates": {
+      "AED": "1000000",
+      "USD": "1000000"
+    },
+    "snapshots": {
+      "t1": "9223372036854775807"
+    },
+    "pending": {},
+    "anomalies": []
+  }
+}

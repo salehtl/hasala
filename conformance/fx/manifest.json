@@ -1,5 +1,5 @@
 {
-  "note": "Written by reference/ledgerd-client/scripts/gen-fx-conformance.ts. Regenerate with `cd reference/ledgerd-client && bun run gen-fx-conformance`; do not hand-edit. Every case is a complete log: fold `entries` in seq order (entries sharing a seq are one blob, applied in array order) and compare against `expect`. Every integer is a decimal string, including seq. null is a value: a null snapshot means no rate existed at or after that row's position, and a null rate head is a live rate_unset, which is not the same as a currency with no rate at all. `snapshots` names every transaction the fold materializes, superseded rows included. `pending` lists still-unfrozen live ids sorted by UTF-8 bytes, because the engine holds them in a set and Go would hold them in a map. `anomalies` is in fold order. The home currency APPEARS IN `rates` carrying the identity 1000000, though spec §3.7:125 says it carries no rate row: the identity is materialized as a head so that head_rate(home, P) is one lookup rather than a special case at every call site. Every case encodes that literally, so an executor that keeps the identity implicit must add it before comparing. Every case keeps amount_minor x rate_micro (plus the +500000) below 2^63-1 so an int64 executor can consume it unchanged; case 17 sits deliberately close to that ceiling and is the largest conversion here.",
+  "note": "Written by reference/ledgerd-client/scripts/gen-fx-conformance.ts. Regenerate with `cd reference/ledgerd-client && bun run gen-fx-conformance`; do not hand-edit. Every case is a complete log: fold `entries` in seq order (entries sharing a seq are one blob, applied in array order) and compare against `expect`. Every integer is a decimal string, including seq. null is a value: a null snapshot means no rate existed at or after that row's position, and a null rate head is a live rate_unset, which is not the same as a currency with no rate at all. `snapshots` names every transaction the fold materializes, superseded rows included. `pending` lists still-unfrozen live ids sorted by UTF-8 bytes, because the engine holds them in a set and Go would hold them in a map. `anomalies` is in fold order. The home currency APPEARS IN `rates` carrying the identity 1000000, though spec §3.7:125 says it carries no rate row: the identity is materialized as a head so that head_rate(home, P) is one lookup rather than a special case at every call site. Every case encodes that literally, so an executor that keeps the identity implicit must add it before comparing. Every snapshot fits Int64. Cases 1-20 keep amount_minor x rate_micro (plus the +500000) below 2^63-1 as well, and case 17 is the largest of those; cases 21 and 22 put the amount itself at 2^63-1, so their product needs a 128-bit or unbounded intermediate.",
   "schema_version": 1,
   "conversion": "(amount_minor * rate_micro + 500000) / 1000000, truncating — half-up because amounts are positive",
   "home_identity_micro": "1000000",
@@ -93,6 +93,26 @@
       "file": "18-pre-onboarding-rate-then-unset-then-onboarding.json",
       "name": "pre-onboarding-rate-then-unset-then-onboarding",
       "note": "The shape that carries BOTH halves of the pre-onboarding problem at once, and which no other case reaches: a rate for the currency that becomes home, a row frozen against it, that rate then unset, a second row left pending, and only then the onboarding op — which installs the identity, backfills the pending row and raises the anomaly. t1 keeps its 2.0 basis and t2 gets the identity, so the two-basis split the anomaly reports is visible in the snapshots themselves. The anomaly fires on a NULL head, which is why the guard keys on 'a rate head exists' rather than on 'a non-null rate head exists'."
+    },
+    {
+      "file": "19-foreign-rows-without-a-rate-wait-per-currency.json",
+      "name": "foreign-rows-without-a-rate-wait-per-currency",
+      "note": "Three foreign rows, three currencies, no rate for any of them at ingest. A rate_unset for a currency that never had a rate makes its head a live null and freezes nothing; a rate for EUR backfills only the EUR row. USD and GBP stay pending in their own buckets with null snapshots."
+    },
+    {
+      "file": "20-foreign-row-before-onboarding.json",
+      "name": "foreign-row-before-onboarding",
+      "note": "Rows arrive before any home currency exists. The foreign row waits and its rate backfills it; the row in the currency that later becomes home waits for the onboarding op, which backfills it at the identity. A rate for another currency before onboarding is not an anomaly."
+    },
+    {
+      "file": "21-int64-max-converts-exactly.json",
+      "name": "int64-max-converts-exactly",
+      "note": "Amounts at 2^63-1 and one below it, in the home currency at the identity and in USD at exactly 1.000000, come back digit for digit; EUR at 0.999999 rounds half-up to 9223362813482738952. The product amount_minor x rate_micro is past 2^63-1 in every row here, so an executor needs a 128-bit or unbounded intermediate; only the result must fit Int64."
+    },
+    {
+      "file": "22-int64-max-foreign-row-waits-then-backfills.json",
+      "name": "int64-max-foreign-row-waits-then-backfills",
+      "note": "A USD row at 2^63-1 with no rate is pending with a null snapshot; an unset keeps it waiting; the first real rate, 1.000000, backfills it to 2^63-1 exactly."
     }
   ]
 }

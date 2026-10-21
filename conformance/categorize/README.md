@@ -17,6 +17,9 @@ cd reference/ledgerd-client && bun run gen-categorize-conformance
 bun run gen-categorize-conformance --check   # compare only, exit 1 if stale
 ```
 
+The expected output is also a golden file: the Swift test rewrites it with
+`HASALA_UPDATE_GOLDEN=1` (see `conformance/README.md`).
+
 Generation is deterministic; `src/categorize/oracle-conformance.test.ts` fails
 when the committed files differ from what the generator writes, and runs in
 `scripts/check.sh`.

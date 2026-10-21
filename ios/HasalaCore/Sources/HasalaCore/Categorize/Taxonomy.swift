@@ -5,6 +5,7 @@
 //
 // It lives in CoreCategorize, the lowest module that needs it (the dictionary
 // gate and `decide`); CoreDomain's `TaxonomyView` and the projection build on it.
+import HasalaText
 
 public enum CategoryKind: String, Sendable, Codable, CaseIterable {
   case spending, income, excluded
@@ -85,7 +86,7 @@ public enum TaxonomyV1 {
     CategoryInfo(id: id, name: name, kind: kind, bucket: bucket, icon: icon, active: true, builtin: true, sortKey: ord)
   }
 
-  public static func builtin(_ id: String) -> CategoryInfo? { builtins.first { $0.id == id } }
+  public static func builtin(_ id: String) -> CategoryInfo? { builtins.first { utf8Equal($0.id, id) } }
 
   /// The default icon of a user category (03c §4.2).
   public static let userIcon = "tag"

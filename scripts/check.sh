@@ -173,6 +173,30 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
+GOLDEN_SETS=(authres categorize fx norm-dates replay)
+step "golden fixtures change only with a Swift test change"
+cd "$ROOT"
+if [[ -n "$CI_RUN" ]]; then
+	golden_base="$(git rev-parse -q --verify 'HEAD^1' || true)"
+else
+	golden_base="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+fi
+if [[ -z "$golden_base" ]]; then
+	echo "no base commit to compare with (CI: HEAD^1, locally: the merge base with origin/main); skipped"
+else
+	golden_paths=()
+	for s in "${GOLDEN_SETS[@]}"; do golden_paths+=("conformance/$s"); done
+	changed_since() { { git diff --name-only "$golden_base" -- "$@" && git ls-files --others --exclude-standard -- "$@"; } | sort -u; }
+	golden_changed="$(changed_since "${golden_paths[@]}")"
+	if [[ -n "$golden_changed" && -z "$(changed_since ios/HasalaCore/Tests)" ]]; then
+		echo "check: golden fixtures changed since ${golden_base:0:12} with no change under ios/HasalaCore/Tests:" >&2
+		sed 's/^/  /' <<<"$golden_changed" >&2
+		echo "regenerate them with HASALA_UPDATE_GOLDEN=1 (conformance/README.md) and change the Swift test that pins the new behaviour" >&2
+		exit 1
+	fi
+	echo "$(grep -c . <<<"$golden_changed" || true) golden fixture file(s) changed since ${golden_base:0:12}"
+fi
+
 cd "$ROOT/server"
 
 # --- 1. toolchain floor ------------------------------------------------------
@@ -400,7 +424,11 @@ bun test
 # TypeScript half takes about a second and runs again by name.
 #
 # Some sets have fewer than two executors here, on purpose and visibly:
-#   fx      TypeScript only. The FX fold exists only client-side; Go has no reader.
+#   blob, dialect, dict, import, normalizer, op, templates, ts
+#           Go here, Swift in CI's `swift` job. The TypeScript reference no
+#           longer runs for them: it added nothing Go and Swift do not check.
+#   fx      TypeScript here, Swift in CI's `swift` job (FXConformanceTests).
+#           The FX fold exists only client-side; Go has no reader.
 #   swift   Written by the Swift executor (HasalaCore's SwiftGoldenTests, CI's
 #           swift job, which also re-checks it); Go opens and verifies it once
 #           WS-2's reader lands (spec 01 §15.2 step 2). No Go or TypeScript
@@ -415,6 +443,11 @@ bun test
 #           byte-identical to what the generator writes now, computed in
 #           memory, no network) plus the oracle reading its own files back.
 #           Go has no reader: the server never reads mail or folds ops.
+#           authres, categorize, fx, norm-dates and replay are golden files
+#           too: the Swift tests rewrite their expected output with
+#           HASALA_UPDATE_GOLDEN=1, and the step "golden fixtures change only
+#           with a Swift test change" refuses a branch that changes one of
+#           them without touching ios/HasalaCore/Tests.
 #   crypto-v3, api-v1  Go only here. Go writes them (cmd/gen-crypto-vectors,
 #           spec 01 §15.1, spec 02 §22) and checks them: the committed files
 #           must regenerate byte for byte, the anchors A01–A26 reproduce, the
@@ -428,21 +461,21 @@ bun test
 CONFORMANCE=(
 	"api-v1|./cmd/gen-crypto-vectors ./internal/cryptoref|"
 	"authres||src/mail/authres-conformance.test.ts"
-	"blob|./internal/oplog/opref|src/wire/blob.test.ts src/wire/chain.test.ts src/wire/op.test.ts"
+	"blob|./internal/oplog/opref|"
 	"categorize||src/categorize/oracle-conformance.test.ts"
 	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api|"
-	"dialect|./internal/tmpl|src/tmpl/dialect.test.ts src/tmpl/agreement.test.ts"
-	"dict|./internal/dict|src/categorize/conformance.test.ts"
+	"dialect|./internal/tmpl|"
+	"dict|./internal/dict|"
 	"fx||src/replay/fx.test.ts"
-	"import|./oracle/v1ref/importer|src/importer/importer.test.ts"
+	"import|./oracle/v1ref/importer|"
 	"norm-dates||src/norm/dates-conformance.test.ts"
-	"normalizer|./internal/norm|src/norm/conformance.test.ts"
-	"op|./internal/oplog/opref|src/wire/op.test.ts"
+	"normalizer|./internal/norm|"
+	"op|./internal/oplog/opref|"
 	"outlook-sender||src/mail/outlook-sender-conformance.test.ts"
 	"replay||src/replay/replay-conformance.test.ts"
 	"swift||"
-	"templates|./internal/tmpl|src/tmpl/conformance.test.ts src/tmpl/cost.test.ts"
-	"ts|./internal/oplog/opref|src/wire/blob.test.ts"
+	"templates|./internal/tmpl|"
+	"ts|./internal/oplog/opref|"
 )
 step "conformance"
 cd "$ROOT"
