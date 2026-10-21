@@ -92,6 +92,17 @@ public struct MailboxStagingRow: Sendable, Equatable {
   }
 }
 
+public struct MailboxUnparsedSenderRow: Sendable, Equatable {
+  public var messageID: String
+  public var domain: String
+  public var at: Int64
+  public init(messageID: String, domain: String, at: Int64) {
+    self.messageID = messageID
+    self.domain = domain
+    self.at = at
+  }
+}
+
 public struct BankHealthRecord: Sendable, Equatable {
   public var domain: String
   public var lastEmailAt: Int64?
@@ -128,6 +139,7 @@ public struct MailboxWrite: Sendable {
   public var pruneAccountedBelow: Int64?
   /// (domain, local month `YYYY-MM`, internalDate ms) per read message.
   public var health: [(domain: String, month: String, internalDate: Int64)] = []
+  public var unparsedSenders: [MailboxUnparsedSenderRow] = []
   public var state: MailboxStateRow?
   public var clearAll = false
   public init() {}
@@ -136,6 +148,7 @@ public struct MailboxWrite: Sendable {
 public final class MailboxTableStore: Sendable {
   public static let setAsideRing = 200
   public static let unreadableRing = 1_000
+  public static let unparsedSenderRing = 1_000
 
   let db: any DatabaseWriter
 
@@ -213,7 +226,17 @@ public final class MailboxTableStore: Sendable {
     """,
     "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID",
     "CREATE TABLE mailbox_parsing (message_id TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID",
+    "CREATE TABLE mailbox_unparsed_sender (message_id TEXT PRIMARY KEY, domain TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID",
   ]
+
+  public func unparsedSenders() throws -> [String: String] {
+    try db.read { db in
+      Dictionary(
+        try Row.fetchAll(db, sql: "SELECT message_id, domain FROM mailbox_unparsed_sender").map {
+          (($0["message_id"] as String), ($0["domain"] as String))
+        }, uniquingKeysWith: { a, _ in a })
+    }
+  }
 
   public func isParsing(_ messageID: String) throws -> Bool {
     try db.read { db in
@@ -389,6 +412,18 @@ public final class MailboxTableStore: Sendable {
               (message_id, ingest_id, bank, last4, gates_json, draft_json, internal_date)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """, arguments: [s.messageID, s.ingestID, s.bank, s.last4, s.gatesJSON, s.draftJSON, s.internalDate])
+      }
+      for u in w.unparsedSenders {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO mailbox_unparsed_sender (message_id, domain, at) VALUES (?, ?, ?)",
+          arguments: [u.messageID, u.domain, u.at])
+      }
+      if !w.unparsedSenders.isEmpty {
+        try db.execute(
+          sql: """
+            DELETE FROM mailbox_unparsed_sender WHERE message_id NOT IN
+              (SELECT message_id FROM mailbox_unparsed_sender ORDER BY at DESC, message_id DESC LIMIT ?)
+            """, arguments: [Self.unparsedSenderRing])
       }
       for id in w.unstage {
         try db.execute(sql: "DELETE FROM mailbox_staging WHERE message_id = ?", arguments: [id])

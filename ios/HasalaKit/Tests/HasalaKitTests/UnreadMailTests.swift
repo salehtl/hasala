@@ -51,6 +51,14 @@ struct UnreadMailTests {
       == "Received Thu 8 Oct")
   }
 
+  @Test func aRowNamesItsBankWhenThisIPhoneKnowsTheSender() {
+    #expect(ReviewEngine.unreadTitle(UnreadMail(id: "a", provider: .gmail, receivedOn: now.date, bank: "DIB")) == "DIB email")
+    #expect(ReviewEngine.unreadTitle(UnreadMail(id: "a", provider: .gmail, receivedOn: now.date)) == "Bank email")
+    let s = Scenario.mayaUnreadMail.state
+    #expect(s.unreadMail.map(ReviewEngine.unreadTitle) == ["DIB email", "Bank email"])
+    #expect(s.unreadMail.first?.accountID.flatMap { id in s.accounts.first { $0.id == id } }?.shortName == "DIB card")
+  }
+
   @Test func theBellGetsOneItemAndTheToSortItemDoesNotCountThem() {
     var s = Scenario.mayaUnreadMail.state
     let bell = NotificationsEngine.snapshot(s, now: now)

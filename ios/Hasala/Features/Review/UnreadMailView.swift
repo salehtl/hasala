@@ -44,7 +44,7 @@ struct UnreadMailView: View {
           .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 0) {
-          Text("Bank email").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+          Text(ReviewEngine.unreadTitle(m)).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           Text(ReviewEngine.unreadDetail(m, today: today))
             .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
             .foregroundStyle(HColor.textSecondary)

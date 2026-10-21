@@ -615,11 +615,15 @@ public struct UnreadMail: Sendable, Hashable, Codable, Identifiable {
   public var id: TxnID
   public var provider: MailProviderKind?
   public var receivedOn: LocalDate
+  public var bank: String?
+  public var accountID: AccountID?
 
-  public init(id: TxnID, provider: MailProviderKind?, receivedOn: LocalDate) {
+  public init(id: TxnID, provider: MailProviderKind?, receivedOn: LocalDate, bank: String? = nil, accountID: AccountID? = nil) {
     self.id = id
     self.provider = provider
     self.receivedOn = receivedOn
+    self.bank = bank
+    self.accountID = accountID
   }
 }
 

@@ -35,6 +35,10 @@ final class UnreadMailUITests: XCTestCase {
     let received = NSPredicate(format: "label CONTAINS 'Received Fri 9 Oct · in Gmail'")
     XCTAssertTrue(app.descendants(matching: .any).matching(received).firstMatch.exists)
     XCTAssertTrue(el(app, "unread.notDownloaded").label.contains("1 more email couldn't be downloaded."))
+    for (row, title) in [("unread-gmail", "DIB email"), ("unread-outlook", "Bank email")] {
+      let named = NSPredicate(format: "label BEGINSWITH %@", title)
+      XCTAssertTrue(el(app, "unread.row.\(row)").descendants(matching: .any).matching(named).firstMatch.exists, title)
+    }
     attach(app, "Unread mail · List")
     try audit(app)
 
@@ -43,6 +47,12 @@ final class UnreadMailUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Dismissed"].waitForExistence(timeout: uiWait))
     el(app, "toast").buttons["Undo"].tap()
     XCTAssertTrue(el(app, "unread.row.unread-gmail").waitForExistence(timeout: uiWait), "Undo did not bring it back")
+
+    tap(app, "unread.add.unread-gmail", opening: "add.amount")
+    XCTAssertTrue(el(app, "add.account").label.contains("DIB card"), el(app, "add.account").label)
+    tap(app, "add.close")
+    XCTAssertTrue(el(app, "add.amount").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "unread.row.unread-gmail").exists)
 
     tap(app, "unread.add.unread-outlook", opening: "add.amount")
     attach(app, "Unread mail · Add by hand")
