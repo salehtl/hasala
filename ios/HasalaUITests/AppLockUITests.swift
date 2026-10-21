@@ -36,26 +36,6 @@ final class AppLockUITests: XCTestCase {
   }
 
   @MainActor
-  func testTurningTheLockOffInProfile() {
-    let app = launch(arguments: ["-HasalaAppLock", "pass", "-HasalaAppLockGrace", "0"])
-    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
-    app.buttons["header.profile"].firstMatch.tap()
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
-
-    let toggle = app.switches["profile.faceID"].firstMatch
-    XCTAssertTrue(toggle.waitForExistence(timeout: uiWait))
-    dragUntilHittable(app, toggle)
-    XCTAssertEqual(toggle.value as? String, "1")
-    toggle.tap()
-    let off = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '0'"), object: toggle)
-    XCTAssertEqual(XCTWaiter.wait(for: [off], timeout: uiWait), .completed, "the lock did not turn off")
-
-    leaveAndComeBack(app)
-    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
-    XCTAssertFalse(el(app, "lock.unlock").exists, "the lock came back after it was turned off")
-  }
-
-  @MainActor
   private func openSignInAndSecurity(_ app: XCUIApplication) -> XCUIElement {
     app.buttons["header.profile"].firstMatch.tap()
     XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
@@ -70,6 +50,30 @@ final class AppLockUITests: XCTestCase {
   private func waitForValue(_ toggle: XCUIElement, _ value: String, _ message: String) {
     let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: toggle)
     XCTAssertEqual(XCTWaiter.wait(for: [reached], timeout: uiWait), .completed, message)
+  }
+
+  @MainActor
+  func testTurningTheLockOffInSignInAndSecurityLeavesTheAppOpen() {
+    let app = launch(arguments: ["-HasalaAppLock", "pass", "-HasalaAppLockGrace", "0"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    let toggle = openSignInAndSecurity(app)
+    XCTAssertEqual(toggle.value as? String, "1")
+    toggle.tap()
+    waitForValue(toggle, "0", "the lock did not turn off")
+
+    leaveAndComeBack(app)
+    XCTAssertTrue(el(app, "security.hero").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "lock.unlock").exists, "the lock came back after it was turned off")
+  }
+
+  @MainActor
+  func testProfileHasNoSecondFaceIDSwitch() {
+    let app = launch(arguments: ["-HasalaAppLock", "pass", "-HasalaAppLockGrace", "0"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "profile.security").exists)
+    XCTAssertFalse(app.switches["profile.faceID"].exists, "Profile still has its own Face ID switch")
   }
 
   @MainActor

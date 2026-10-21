@@ -88,7 +88,7 @@ struct WhoCanSeeSheet: View {
       }
       divider
       PartyRow(tile: tile(.other, .globe), title: "Gravatar") {
-        line("Your iPhone asks it for your picture with a code made from your email address. It sees that request and your IP address. No picture means your initials.")
+        line("Your iPhone asks it for your picture with a code made from your email address. It sees that request and your IP address. No picture means your initials. You can turn it off in Profile.")
       }
       divider
       PartyRow(tile: tile(.lilac, .phone), title: "Apple") {

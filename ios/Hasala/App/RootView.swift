@@ -96,7 +96,7 @@ struct LiveRootView: View {
         BootWallView(boot: boot, wall: wall)
       }
     }
-    .environment(\.avatarPictures, GravatarLoader.shared.provider)
+    .environment(\.avatarPictures, GravatarPreference.shared.isOn ? GravatarLoader.shared.provider : nil)
     .onAppear { boot.start() }
     .onChange(of: boot.session.phase) { _, phase in boot.phaseChanged(phase) }
     .onChange(of: scenePhase) { _, phase in

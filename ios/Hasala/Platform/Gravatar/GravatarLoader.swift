@@ -64,13 +64,27 @@ actor GravatarLoader {
   private let directory: URL?
   private let session: URLSession
   private let now: @Sendable () -> Date
+  private let isEnabled: @Sendable () -> Bool
+  private var epoch = 0
   private var memory: [String: Entry] = [:]
   private var inFlight: [String: Task<Outcome, Never>] = [:]
 
-  init(directory: URL?, session: URLSession, now: @escaping @Sendable () -> Date = { Date() }) {
+  init(
+    directory: URL?, session: URLSession, now: @escaping @Sendable () -> Date = { Date() },
+    isEnabled: @escaping @Sendable () -> Bool = { GravatarSetting.isEnabled() }
+  ) {
     self.directory = directory
     self.session = session
     self.now = now
+    self.isEnabled = isEnabled
+  }
+
+  func clear() {
+    epoch += 1
+    for task in inFlight.values { task.cancel() }
+    inFlight = [:]
+    memory = [:]
+    if let directory { try? FileManager.default.removeItem(at: directory) }
   }
 
   nonisolated var provider: AvatarPictureProvider {
@@ -78,6 +92,8 @@ actor GravatarLoader {
   }
 
   func picture(email: String, pixels: Int) async -> Data? {
+    guard isEnabled() else { return nil }
+    let started = epoch
     let key = "\(Gravatar.hash(email: email))-\(pixels)"
     if let entry = fresh(key) { return entry.data }
     guard let request = Gravatar.request(email: email, pixels: pixels) else { return nil }
@@ -98,7 +114,8 @@ actor GravatarLoader {
       inFlight[key] = task
     }
     let outcome = await task.value
-    inFlight[key] = nil
+    if started == epoch { inFlight[key] = nil }
+    guard started == epoch, isEnabled() else { return nil }
     switch outcome {
     case .found(let data):
       store(key, data)

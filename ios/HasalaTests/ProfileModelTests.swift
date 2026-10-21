@@ -67,8 +67,6 @@ struct ProfileModelTests {
   @Test func profileSettingsAndRules() {
     let app = AppModel(store: InMemoryLedger())
     let profile = ProfileViewModel(app: app)
-    profile.setFaceIDLock(false)
-    #expect(!profile.snapshot.prefs.faceIDLock)
     profile.setNotifications(.everything)
     #expect(profile.snapshot.prefs.notifications == .everything)
     // Most used first; pausing one keeps its place and turns its switch off.
