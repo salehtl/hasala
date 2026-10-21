@@ -210,6 +210,42 @@
       }
     },
     {
+      "name": "adib.alert.v1/non-two-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 0 next to the number is refused for good",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgSlBZMTIsNTAwLjAwIGRlYml0ZWQgZnJvbSB5b3VyIGEvYyAqMTIzIGF0IFNBTVBMRSBTVE9SRSBUT0tZTyBKUC4gQXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE TOKYO JP",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "adib.alert.v1/three-decimal-no-space",
+      "source": "SYNTHETIC: a currency with minor exponent 3 next to the number is refused for good",
+      "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",
+      "normalized_body_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQKRGVhciBDdXN0b21lciwKVHJhbnNhY3Rpb24gb2YgT01SMTIuNTAgZGViaXRlZCBmcm9tIHlvdXIgYS9jICoxMjMgYXQgU0FNUExFIFNUT1JFIE1VU0NBVCBPTS4gQXZsIEJhbCBpcyBBRUQgNCwzMjEuMDkKWW91cnMgU2luY2VyZWx5LApBYnUgRGhhYmkgSXNsYW1pYyBCYW5rCg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE MUSCAT OM",
+        "last4": "123",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
       "name": "adib.alert.v1/no-currency-prefix",
       "source": "SYNTHETIC: the ccy group does not participate; default_currency applies",
       "subject_base64": "UHVyY2hhc2UgVHJhbnNhY3Rpb24gQWxlcnQ=",

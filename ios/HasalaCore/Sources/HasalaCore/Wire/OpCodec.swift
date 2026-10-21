@@ -93,7 +93,7 @@ public enum OpCodec {
   static func parseBody(_ bytes: some Collection<UInt8>, what: String) throws(WireDecodeError) -> JSONObject {
     let doc: JSONValue
     do {
-      doc = try JSONParser.parse(bytes)
+      doc = try JSONParser.parse(bytes, refuseLoneSurrogates: true)
     } catch {
       throw .setAside("\(what): body is not valid JSON (\(bytes.count) bytes)")
     }

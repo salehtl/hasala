@@ -196,6 +196,8 @@ func TestResponsesClassifyAndExpiredTokenRetriesOnce(t *testing.T) {
 		{429, "TooManyRequests", ResultCooldown},
 		{403, "InvalidProviderToken", ResultConfig},
 		{403, "BadTopic", ResultConfig},
+		{403, "BadEnvironmentKeyIdInToken", ResultEnvironment},
+		{403, "BadCertificateEnvironment", ResultEnvironment},
 		{500, "InternalServerError", ResultTransient},
 		{503, "ServiceUnavailable", ResultTransient},
 	}

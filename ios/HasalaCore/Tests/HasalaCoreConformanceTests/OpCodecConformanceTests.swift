@@ -117,6 +117,46 @@ struct OpCodecConformanceTests {
     }
   }
 
+  @Test("set_aside_blobs: each shared body is set aside, never a hard stop")
+  func setAsideBlobs() throws {
+    let cases = try Self.manifest.get().array("set_aside_blobs")
+    #expect(!cases.isEmpty)
+    for c in cases {
+      let name = try c.string("name")
+      let bytes = [UInt8](try c.base64("body_base64"))
+      do {
+        if try c.string("kind") == "raw_body" {
+          _ = try FrameV1Reader.decodeRawBody(bytes)
+        } else {
+          _ = try OpCodec.decodeBlobOps(bytes)
+        }
+        Issue.record("accepted \(name)")
+      } catch let e as WireDecodeError {
+        if case .setAside = e {} else { Issue.record("\(name): \(e)") }
+      }
+    }
+  }
+
+  @Test("accepted_variants: case-variant keys are ignored and a surrogate pair is read")
+  func acceptedVariants() throws {
+    let cases = try Self.manifest.get().array("accepted_variants")
+    #expect(!cases.isEmpty)
+    for c in cases {
+      let name = try c.string("name")
+      let ops = try OpCodec.decodeBlobOps([UInt8](try c.base64("body_base64")))
+      let want = try c.array("expect_ops")
+      #expect(ops.count == want.count, "\(name)")
+      for (op, w) in zip(ops, want) {
+        #expect(op.type.rawValue == (try w.string("type")), "\(name)")
+        #expect(op.opID == (try w.string("op_id")), "\(name)")
+        #expect(String(try parseInstantMs(op.authoredAt)) == (try w.string("authored_at_unix_ms")), "\(name)")
+        #expect((op.entity != nil) == (w["has_entity"]?.boolValue == true), "\(name)")
+        #expect(op.parentVersion.map(String.init) == w["parent_version"]?.stringValue, "\(name)")
+        #expect((op.ingestID ?? "") == (try w.string("ingest_id")), "\(name)")
+      }
+    }
+  }
+
   // MARK: TypeScript byte identity
 
   static func tsOpCases() -> [String] {

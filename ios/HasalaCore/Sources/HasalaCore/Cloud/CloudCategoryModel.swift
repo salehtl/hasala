@@ -39,8 +39,8 @@ public struct CloudCategoryModel: GradedCategoryModel {
   }
 
   public func availability() -> ModelAvailability {
-    if latch.isOff { return .notEligible }
-    return isEnabled() ? .available : .notEnabled
+    guard isEnabled() else { return .notEnabled }
+    return latch.isOff ? .notEligible : .available
   }
 
   public func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {

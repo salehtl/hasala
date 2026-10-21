@@ -172,10 +172,13 @@ jobs:
           # or *.nix (the flake's formatting check covers them wherever they
           # are) and any go.mod, go.sum, go.work or go.work.sum. check.sh also
           # runs the HasalaCore lints over ios/, but `secrets` runs them too.
-          # infra/ is read (nix flake check evaluates and builds its checks).
-          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$'
-          # swift reads ios/ and conformance/ only.
-          skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$"
+          # check.sh compares the bundled templates with the server seed, so
+          # gate reads them. infra/ is read (nix flake check evaluates and
+          # builds its checks).
+          skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$|^ios/HasalaCore/Sources/HasalaCore/Resources/templates/'
+          # swift reads ios/ and conformance/, plus the server seed templates
+          # and the TypeScript charset tables that HasalaCore tests compare.
+          skip_unless swift "$none|^(docs|web|server|reference|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$" '^server/internal/tmpl/seed/|^reference/ledgerd-client/src/norm/charset-tables\.ts$'
           # ios-build, ios and ios-tools read ios/, design/ (the Paper tokens
           # the app is generated from) and the flake (which pins its XcodeGen).
           skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|reference|scripts|infra)/|^\.gitleaks\.toml$'

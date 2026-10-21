@@ -30,12 +30,15 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     public var receivedMs: Int64
     /// The From address Graph reports (`from.emailAddress.address`).
     public var fromAddress: String
+    /// The well-known name of the folder that holds it (`inbox`, `junkemail`, `deleteditems`).
+    public var folder: String
 
-    public init(id: String, raw: [UInt8], receivedMs: Int64, fromAddress: String) {
+    public init(id: String, raw: [UInt8], receivedMs: Int64, fromAddress: String, folder: String = "inbox") {
       self.id = id
       self.raw = raw
       self.receivedMs = receivedMs
       self.fromAddress = fromAddress
+      self.folder = folder
     }
   }
 
@@ -191,8 +194,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
       return error(404, GraphClient.noMailboxCode)
     }
     switch (request.method, sub) {
-    case (.get, "/me/mailFolders/inbox"):
-      return json(200, [("id", .string("inbox-synthetic"))])
+    case (.get, "/me/mailFolders/inbox"), (.get, "/me/mailFolders/junkemail"), (.get, "/me/mailFolders/deleteditems"):
+      return json(200, [("id", .string(Self.folderID(String(sub.dropFirst("/me/mailFolders/".count)))))])
     case (.get, "/me/messages"):
       return list(query: query, rawQuery: comps.percentEncodedQuery ?? "")
     case (.post, "/subscriptions"):
@@ -327,9 +330,12 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     }
   }
 
+  public static func folderID(_ wellKnownName: String) -> String { "\(wellKnownName)-synthetic" }
+
   static func listed(_ m: Message) -> [(String, JSONValue)] {
     [
       ("id", .string(m.id)), ("receivedDateTime", .string(Instant.iso(m.receivedMs) ?? "")),
+      ("parentFolderId", .string(folderID(m.folder))),
       (
         "from",
         .object(JSONObject([("emailAddress", .object(JSONObject([("name", .string("Synthetic")), ("address", .string(m.fromAddress))])))]))

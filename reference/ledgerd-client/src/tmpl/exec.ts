@@ -258,7 +258,7 @@ export class Compiled {
       // later entries for that field are SKIPPED — not evaluated and discarded.
       // Skipping is also what keeps the cost of a hostile body proportional to
       // the number of fields rather than to the number of entries.
-      if (st.isSet(ce.x.field) && ce.x.override !== true) continue;
+      if (st.isRefused(ce.x.field) || (st.isSet(ce.x.field) && ce.x.override !== true)) continue;
       const src = ce.x.source === "subject" ? subject : normalizedBody;
       if (!this.runEntry(st, ce, src)) continue;
       // Rule 4: on_match sets additional fields only if not already set.
@@ -295,7 +295,8 @@ export class Compiled {
    * Rule 3 in full: a pattern that does not match moves to the next pattern; a
    * pattern that matches but whose capture fails typed conversion ALSO moves to
    * the next pattern; an entry whose patterns are exhausted produces nothing. A
-   * conversion failure is never a zero value and never aborts the run.
+   * conversion failure is never a zero value and never aborts the run. The one
+   * exception is a currency the format refuses: it ends the field for the run.
    */
   private runEntry(st: ExecState, ce: CompiledEntry, src: string): boolean {
     const x = ce.x;
@@ -321,7 +322,13 @@ export class Compiled {
           const amt = m.groups?.["amt"];
           if (amt === undefined) continue;
           const got = convertAmount(amt, m.groups?.["ccy"], this.definition.default_currency);
-          if (got === null) continue;
+          if (got === null) {
+            if (currencyRefused(m.groups?.["ccy"], this.definition.default_currency)) {
+              st.refuse(x.field);
+              return false;
+            }
+            continue;
+          }
           st.setAmount(got.minor, got.currency);
           return true;
         }
@@ -511,9 +518,18 @@ class ExecState {
   private isTransfer = false;
   private readonly set = new Set<string>();
   private readonly empty = new Set<string>();
+  private readonly refused = new Set<string>();
 
   isSet(field: string): boolean {
     return this.set.has(field);
+  }
+
+  isRefused(field: string): boolean {
+    return this.refused.has(field);
+  }
+
+  refuse(field: string): void {
+    this.refused.add(field);
   }
 
   setAmount(minor: bigint, currency: string): void {
@@ -717,6 +733,16 @@ function convertAmount(
   }
   if (NON_TWO_DECIMAL_CURRENCIES.has(currency)) return null;
   return { minor, currency };
+}
+
+function currencyRefused(ccy: string | undefined, defaultCurrency: string): boolean {
+  let currency = defaultCurrency;
+  const c = asciiUpper(trimCapture(ccy ?? ""));
+  if (c !== "") {
+    if (!CURRENCY_RE.test(c)) return false;
+    currency = c;
+  }
+  return NON_TWO_DECIMAL_CURRENCIES.has(currency);
 }
 
 /** Upper-cases a-z and nothing else. `toUpperCase()` maps U+00DF to "SS" and Go's `ToUpper` does not; a currency code is ASCII by definition. */
