@@ -20,7 +20,7 @@ struct BillDetectorTests {
     BillDetector.run(rows: rows, coveredKeys: covered, today: d(today))
   }
 
-  @Test("a monthly series with a small price change is one fixed candidate at the median")
+  @Test("a monthly series with a small price change is one fixed candidate at the latest price")
   func monthlyPriceChange() throws {
     let rows = [
       Self.row("2026-01-15", 5_600), Self.row("2026-02-15", 5_600), Self.row("2026-03-16", 5_600),
@@ -35,7 +35,7 @@ struct BillDetectorTests {
     #expect(c.unit == "month")
     #expect(c.every == 1)
     #expect(c.variable == false)
-    #expect(c.amountMinor == 5_950)
+    #expect(c.amountMinor == 6_300)
     #expect(c.seen == 6)
     #expect(c.anchor == Self.d("2026-06-15"))
     #expect(c.last == Self.d("2026-06-15"))

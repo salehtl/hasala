@@ -137,7 +137,8 @@ public enum BillDetector {
     return BillCandidateCore(
       id: OpAuthor.detectedBillID(key: g.key, direction: "debit", currency: g.currency), key: g.key,
       name: mostFrequent(picked.map(\.merchantName)) ?? lastRow.merchantName, currency: g.currency, unit: cadence.unit,
-      every: 1, anchor: anchor, start: start, variable: variable, amountMinor: med, seen: picked.count, last: anchor,
+      every: 1, anchor: anchor, start: start, variable: variable, amountMinor: variable ? med : lastRow.amountMinor,
+      seen: picked.count, last: anchor,
       category: mostFrequent(picked.compactMap(\.category)))
   }
 
