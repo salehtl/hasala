@@ -1,7 +1,7 @@
 ---
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-21
 status: "final"
 plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
@@ -45,7 +45,7 @@ We'd love your feedback. If you send us ideas or suggestions, you allow us to us
 Hasala helps you see and plan your own spending. It is not a bank, a payment service or a financial adviser.
 
 - Nothing in Hasala is financial, investment, tax or legal advice.
-- Budgets, pace estimates, bill reminders and category suggestions are calculated automatically from your own data. They can be wrong or incomplete.
+- Budgets, pace estimates and bill reminders are calculated automatically from your own data. Categories come from your rules, a built-in merchant list and, if you turn them on, Cloud suggestions (with Apple's on-device model when Cloudflare can't help). All of these, including any transaction that Sort automatically files for you, can be wrong or incomplete.
 - Hasala does not move money, make payments, or connect to your bank account. It reads the alert emails your bank sends you.
 - Your bank's own statements are the record of your money. Check important figures against them before you rely on them.
 
@@ -65,7 +65,7 @@ You are responsible for keeping your sign-in methods and your iPhone secure. In 
 
 - **Your 12-word recovery phrase is your account.** Anyone who has it can read your data, sign in as you and add devices. Keep it private and stored somewhere safe.
 - **We can't reset your recovery phrase.** If you lose your recovery phrase and every passkey, and have no signed-in iPhone, your account and data can't be recovered. Not even by us.
-- **A password reset needs your 12 words or a signed-in iPhone.** If you sign in with email and password, keep at least one of these available.
+- **Password reset is not in the beta.** If you can't sign in, the way back is your 12 words with a code we email you. If you sign in with email and password, keep your 12 words safe.
 - **Hasala will never ask for your recovery phrase, your password or a code** in an email, a notification, a phone call or on a website. Only type them into the Hasala app.
 - Keep a passcode on your iPhone, and keep two-factor authentication on for your Apple Account. Your passkey is stored in iCloud Keychain.
 
@@ -97,9 +97,9 @@ While your account is suspended you can still:
 - sign in and sign out; and
 - delete your account.
 
-You can't sync new changes, connect your email, or change your sign-in methods or devices. If you think we've made a mistake, email us and we'll review it.
+You can't sync new changes, connect your email, change your sign-in methods or devices, sign out everywhere, use your recovery phrase to get back in, reset a password or view your recovery phrase. If you think we've made a mistake, email us and we'll review it.
 
-Suspension is something we do. It is different from freezing, which you can do yourself from a security email or in the app if a sign-in wasn't you; see our [Security](/security) page.
+Suspension is something we do. It is different from freezing, which you can do yourself with the Freeze link in a security email if a sign-in wasn't you. The beta app has no freeze button, but you can lift a freeze in the app; see our [Security](/security) page.
 
 ## Ending your use of Hasala
 
@@ -131,7 +131,7 @@ We work hard to make Hasala accurate, secure and reliable. But it's a free beta,
 
 To the extent the law allows:
 
-- we aren't responsible for losses caused by relying on Hasala's figures, categories or reminders, such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions or reminders (including transactions that Sort automatically filed in the wrong category), such as missed bill payments or bank charges;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
 - we aren't responsible for problems caused by Google, Microsoft, Apple, Cloudflare, your bank, or your device; and
 - our total liability to you for any claim about the beta is limited to AED 100.
