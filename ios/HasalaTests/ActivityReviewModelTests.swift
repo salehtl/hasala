@@ -1,6 +1,7 @@
 import CoreGraphics
 import HasalaMocks
 import HasalaModels
+import Observation
 import Testing
 
 @testable import Hasala
@@ -148,6 +149,52 @@ struct ActivityReviewModelTests {
   @Test func theReviewTabCountsUnreadableMail() {
     #expect(ReviewTabView.unreadableLine(1) == "1 bank email we couldn't read")
     #expect(ReviewTabView.unreadableLine(3) == "3 bank emails we couldn't read")
+    #expect(ReviewTabView.unreadableDetail == "Add it yourself from your bank app")
+  }
+
+  @Test func allCaughtUpCountsARuleTheStoreAddsLater() {
+    let app = AppModel(store: LateRuleLedger())
+    let deck = ReviewViewModel(app: app)
+    let rules = app.store.state.rules.count
+    #expect(deck.sort("lulu", into: "groceries", alwaysUse: true, project: nil))
+    #expect(app.store.state.rules.count == rules)
+    #expect(deck.sorted.first?.learnedRule == true)
+    #expect(deck.sort("steam", into: "entertainment", alwaysUse: false, project: nil))
+    #expect(deck.sorted.filter(\.learnedRule).count == 1)
+  }
+
+  @Test func theSheetMergesAProbableCopy() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .transaction("starbucks-copy")
+    app.router.transaction = [.reviewReason(.probableCopy)]
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy")
+    #expect(txn.detail?.reviewReason == .probableCopy)
+    txn.resolve(.probableCopy, merge: true)
+    #expect(app.store.state.txn("starbucks-copy") == nil)
+    #expect(app.sheet == nil)
+    #expect(app.toast?.title == "Merged")
+  }
+
+  @Test func theSheetKeepsBothCopies() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaCopy.state))
+    app.sheet = .transaction("starbucks-copy")
+    app.router.transaction = [.reviewReason(.probableCopy)]
+    let txn = TransactionViewModel(app: app, id: "starbucks-copy")
+    txn.resolve(.probableCopy, merge: false)
+    #expect(app.store.state.txn("starbucks-copy")?.isHeldCopy == false)
+    #expect(app.router.transaction.isEmpty)
+    #expect(app.sheet == .transaction("starbucks-copy"))
+  }
+
+  @Test func theSheetCountsASamePurchaseOnce() {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaSamePurchase.state))
+    app.sheet = .transaction("amazon-aed")
+    let txn = TransactionViewModel(app: app, id: "amazon-aed")
+    #expect(txn.detail?.reviewReason == .samePurchase)
+    txn.resolve(.samePurchase, merge: true)
+    #expect(app.store.state.txn("amazon-aed")?.archived == true)
+    #expect(app.store.state.txn("amazon-usd")?.homeMinor == 93_00)
+    #expect(app.sheet == nil)
   }
 
   @Test func activityFiltersAndSearches() {
@@ -259,4 +306,22 @@ struct ActivityReviewModelTests {
     // A chip wider than the row takes a row of its own.
     #expect(FlowLayout.rows([CGSize(width: 400, height: 40)], width: 300, spacing: 8).count == 1)
   }
+}
+
+@MainActor
+@Observable
+private final class LateRuleLedger: LedgerStore {
+  let inner = InMemoryLedger()
+  var state: LedgerState { inner.state }
+  var now: LocalDateTime { inner.now }
+  var revision: Int { inner.revision }
+
+  func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    if case .categorize(let id, let category, true, let project) = edit {
+      return try inner.apply(.categorize(id, category, learnRule: false, project: project))
+    }
+    return try inner.apply(edit)
+  }
+
+  func undo(_ token: UndoToken) { inner.undo(token) }
 }

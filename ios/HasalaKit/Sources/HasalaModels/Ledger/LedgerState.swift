@@ -339,7 +339,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var homeSigned: Int64? { homeMinor.map(signed) }
 
-  func signed(_ minor: Int64) -> Int64 { direction == .out ? minor : -minor }
+  func signed(_ minor: Int64) -> Int64 { direction == .out ? minor : minor.negated }
 
   public func apportioned(_ lines: [SplitLine]) -> [SplitLine] {
     let shares = Money.apportion(home: homeMinor, parts: lines.map(\.amount.minor))
@@ -571,15 +571,20 @@ public struct PlanState: Sendable, Hashable, Codable {
   public var startingSplit: [Int]
   /// Budgets keyed by "<category>@<yyyy-mm>" (03a §3.2 `budget_set`; carry-forward applied).
   public var budgets: [String: Money]
+  public var incomeByMonth: [YearMonth: Money]
 
-  public init(income: Money, payday: Int, startingSplit: [Int], budgets: [String: Money]) {
+  public init(income: Money, payday: Int, startingSplit: [Int], budgets: [String: Money],
+              incomeByMonth: [YearMonth: Money] = [:]) {
     self.income = income
     self.payday = payday
     self.startingSplit = startingSplit
     self.budgets = budgets
+    self.incomeByMonth = incomeByMonth
   }
 
   public static func key(_ category: CategoryID, _ month: YearMonth) -> String { "\(category)@\(month)" }
+
+  public func income(in month: YearMonth) -> Money { incomeByMonth[month] ?? income }
 
   public func budget(_ category: CategoryID, _ month: YearMonth) -> Money {
     budgets[Self.key(category, month)] ?? .aed(0)

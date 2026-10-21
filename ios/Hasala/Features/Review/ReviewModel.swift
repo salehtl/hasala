@@ -112,13 +112,12 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
-    let rulesBefore = app.store.state.rules.count
     var edits: [LedgerEdit] = []
     if app.store.state.txn(card)?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
     if app.store.state.txn(card)?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
     edits.append(.categorize(card, category, learnRule: alwaysUse, project: project))
     guard app.perform(edits) else { return false }
-    record(card, learnedRule: app.store.state.rules.count > rulesBefore)
+    record(card, learnedRule: alwaysUse)
     return true
   }
 

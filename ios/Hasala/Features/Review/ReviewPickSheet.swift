@@ -206,8 +206,8 @@ struct ReviewReasonSheet: View {
   let reason: TxnReviewReason
   let sort: () -> Void
   let archive: () -> Void
-  var merge: () -> Void = {}
-  var keepBoth: () -> Void = {}
+  let merge: () -> Void
+  let keepBoth: () -> Void
 
   @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
@@ -257,10 +257,12 @@ struct ReviewReasonPage: View {
   let reason: TxnReviewReason
   let sort: () -> Void
   let archive: () -> Void
+  let merge: () -> Void
+  let keepBoth: () -> Void
 
   var body: some View {
     ScrollView {
-      ReviewReasonInfo(reason: reason, sort: sort, archive: archive)
+      ReviewReasonInfo(reason: reason, sort: sort, archive: archive, merge: merge, keepBoth: keepBoth)
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)
         .padding(.bottom, 40)
@@ -275,8 +277,8 @@ struct ReviewReasonInfo: View {
   let reason: TxnReviewReason
   let sort: () -> Void
   let archive: () -> Void
-  var merge: () -> Void = {}
-  var keepBoth: () -> Void = {}
+  let merge: () -> Void
+  let keepBoth: () -> Void
 
   @ScaledMetric(relativeTo: .subheadline) private var stepDisc: CGFloat = 24
 

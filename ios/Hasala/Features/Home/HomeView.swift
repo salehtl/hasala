@@ -63,7 +63,10 @@ struct HomeView: View {
           backToThisMonth: { app.period = .month(app.store.now.date.yearMonth) },
           insights: { app.router.home.append(.insights) },
           setPlan: { app.tab = .plan },
-          openNotCounted: { model.openNotCounted($0) })
+          openNotCounted: { model.openNotCounted($0) },
+          openRates: { mark in
+            app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))
+          })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)

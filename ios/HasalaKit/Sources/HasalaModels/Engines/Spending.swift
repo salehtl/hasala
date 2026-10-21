@@ -1,8 +1,6 @@
 public enum Spending {
   public static func total(_ s: LedgerState, in period: Period) -> Int64 {
-    s.txns.reduce(Int64(0)) { sum, t in
-      period.contains(t.postedAt.date) ? sum + spent(t, in: s) : sum
-    }
+    Fils.sum(s.txns.filter { period.contains($0.postedAt.date) }) { spent($0, in: s) }
   }
 
   public static func total(_ s: LedgerState, in month: YearMonth) -> Int64 {
@@ -10,7 +8,7 @@ public enum Spending {
   }
 
   public static func spent(_ t: Txn, in s: LedgerState) -> Int64 {
-    parts(t, in: s).reduce(Int64(0)) { $0 + $1.minor }
+    Fils.sum(parts(t, in: s).map(\.minor))
   }
 
   public static func parts(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
@@ -25,15 +23,14 @@ public enum Spending {
     var byProject: [ProjectID: Int64] = [:]
     for t in s.txns where period.contains(t.postedAt.date) {
       guard let p = carvedOut(t, in: s) else { continue }
-      byProject[p.id, default: 0] += measured(t, in: s).reduce(Int64(0)) { $0 + $1.minor }
+      byProject[p.id, default: 0].add(Fils.sum(measured(t, in: s).map(\.minor)))
     }
     return s.projects.compactMap { p in byProject[p.id].flatMap { $0 == 0 ? nil : (p, $0) } }
   }
 
   public static func spent(_ s: LedgerState, category c: CategoryID, in period: Period) -> Int64 {
-    s.txns.reduce(Int64(0)) { sum, t in
-      guard period.contains(t.postedAt.date), includes(t, in: s) else { return sum }
-      return sum + t.lines.reduce(Int64(0)) { $1.category == c ? $0 + $1.minor : $0 }
+    Fils.sum(s.txns.filter { period.contains($0.postedAt.date) && includes($0, in: s) }) { t in
+      Fils.sum(t.lines.filter { $0.category == c }.map(\.minor))
     }
   }
 
@@ -51,7 +48,7 @@ public enum Spending {
       return t.splits.compactMap { sp in
         let c = s.category(sp.categoryID)
         guard counts(c), let home = sp.homeMinor else { return nil }
-        return (c, t.direction == .out ? home : -home)
+        return (c, t.direction == .out ? home : home.negated)
       }
     }
     guard let signed = t.homeSigned else { return [] }

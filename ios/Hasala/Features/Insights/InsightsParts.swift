@@ -210,7 +210,7 @@ struct InsightsSplitBar: View {
       (HColor.bucketNeedsFill, split.needs), (HColor.bucketWantsFill, split.wants),
       (InsightsInk.unsorted, split.unsorted), (HColor.bucketSavingsFill, split.savings), (HColor.neutral300, split.unspent),
     ].filter { $0.1 > 0 }
-    let total = parts.reduce(Int64(0)) { $0 + $1.1 }
+    let total = Fils.sum(parts.map(\.1))
     GeometryReader { geo in
       let gaps = CGFloat(max(0, parts.count - 1)) * 2
       let usable = max(0, geo.size.width - gaps)

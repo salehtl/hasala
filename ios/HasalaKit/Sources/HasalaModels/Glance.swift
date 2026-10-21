@@ -176,14 +176,16 @@ public struct WidgetSnapshot: Sendable, Hashable, Codable {
 
 public extension MoneyFormat {
   static func short(_ minor: Int64) -> String {
-    let dirhams = (minor.magnitude + 50) / 100
-    if dirhams < 1_000 { return grouped(dirhams) }
-    if dirhams < 100_000 {
-      let tenths = (dirhams + 50) / 100
-      return "\(tenths / 10)" + (tenths % 10 == 0 ? "" : ".\(tenths % 10)") + "K"
+    let fils = UInt128(minor.magnitude)
+    func tenths(_ t: UInt128, _ unit: String) -> String {
+      "\(t / 10)" + (t % 10 == 0 ? "" : ".\(t % 10)") + unit
     }
-    if dirhams < 1_000_000 { return "\((dirhams + 500) / 1_000)K" }
-    let tenths = (dirhams + 50_000) / 100_000
-    return "\(tenths / 10)" + (tenths % 10 == 0 ? "" : ".\(tenths % 10)") + "M"
+    let dirhams = (fils + 50) / 100
+    if dirhams < 1_000 { return grouped(UInt64(dirhams)) }
+    let tenthsK = (fils + 5_000) / 10_000
+    if tenthsK < 1_000 { return tenths(tenthsK, "K") }
+    let thousands = (fils + 50_000) / 100_000
+    if thousands < 1_000 { return "\(thousands)K" }
+    return tenths((fils + 5_000_000) / 10_000_000, "M")
   }
 }
