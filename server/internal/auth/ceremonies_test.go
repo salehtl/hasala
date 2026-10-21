@@ -731,3 +731,17 @@ func TestSweepsForgetExpiredCeremoniesAndCodes(t *testing.T) {
 		t.Fatal("an expired signup or code survived the sweep")
 	}
 }
+
+func TestSweepsDeleteOldAdminAuditAndRefusals(t *testing.T) {
+	f := newAcctFixture(t)
+	f.clock.advance(time.Since(f.clock.now()))
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO admin_audit (at, actor, action, result) VALUES (now() - interval '401 days', 'system:sweep', 'invite.mint', 'ok'), (now() - interval '399 days', 'system:sweep', 'invite.mint', 'ok')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.SweepHourly(bgctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM admin_audit`); n != 1 {
+		t.Fatalf("admin_audit rows = %d, want 1", n)
+	}
+}

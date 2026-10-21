@@ -644,7 +644,7 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	// 00021_waitlist_invites_mail, 00022_accounts, 00023_mailbox_outlook and
 	// 00024_mailbox_one_account.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 26 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 26", latest, err)
+	if err != nil || latest != 27 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 27", latest, err)
 	}
 }

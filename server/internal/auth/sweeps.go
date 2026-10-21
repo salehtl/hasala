@@ -36,6 +36,8 @@ func (a *Accounts) SweepHourly(ctx context.Context) (int64, error) {
 		{`UPDATE users SET password_paused_until = NULL WHERE password_paused_until < $1`, []any{now.Add(-24 * time.Hour)}},
 		{`DELETE FROM freeze_tokens WHERE expires_at < $1`, []any{now}},
 		{`DELETE FROM auth_events WHERE at < $1`, []any{now.Add(-90 * 24 * time.Hour)}},
+		{`DELETE FROM admin_audit WHERE at < LEAST($1, now() - interval '400 days')`, []any{now.Add(-400 * 24 * time.Hour)}},
+		{`DELETE FROM account_refusals WHERE day < $1::date`, []any{now.Add(-90 * 24 * time.Hour)}},
 		{`DELETE FROM step_up_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
 		{`DELETE FROM writer_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
 		{`DELETE FROM device_freeze_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
