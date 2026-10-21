@@ -35,6 +35,14 @@ struct ModelSuggestionStageTests {
     #expect(ModelSuggestionStage.stages(onDevice: apple, cloud: nil, onDeviceAlone: true).map(\.model.modelTag) == ["apple-fm/27.1"])
   }
 
+  @Test func applesModelRunsWhenTheSwitchIsOnButTheServiceRefusedThisVersion() {
+    let refused = Fake(modelTag: "cf-clef/1", state: .notEligible)
+    #expect(
+      ModelSuggestionStage.stages(onDevice: apple, cloud: refused, onDeviceAlone: false).map(\.model.modelTag) == ["apple-fm/27.1"])
+    #expect(
+      ModelSuggestionStage.stages(onDevice: apple, cloud: refused, onDeviceAlone: true).map(\.model.modelTag) == ["apple-fm/27.1"])
+  }
+
   @Test func onlyForegroundTriggersRunTheSweep() {
     let runs = WorkCoordinator.Trigger.allCases.filter(ModelSuggestionStage.runs)
     #expect(Set(runs) == [.launch, .foreground, .refresh])

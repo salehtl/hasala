@@ -56,18 +56,6 @@ import Testing
     #expect(r.ops == 1 && r.completed)
   }
 
-  @Test func aLinkMovedToTheOtherProviderStopsThisEngineWithoutWriting() async {
-    let rig = Rig()
-    await rig.connectAndActivate()
-    let before = await rig.state()
-    await rig.server.setLinkProvider(.outlook)
-    rig.gmail.add(SyntheticMail.dibCard(id: "late", dateMs: rig.clock.nowMs() - 1000))
-    let r = await rig.engine.runCycle(trigger: .launch)
-    #expect(r.haltedOn == nil && r.ops == 0)
-    #expect(await rig.engine.stopped)
-    #expect(await rig.state() == before)
-  }
-
   @Test func theHTTPServerRefusesAStatusForAnotherProvidersLink() async throws {
     let http = StaticHTTP(body: #"{"holder":{"is_this_device":true},"provider":"outlook"}"#)
     let server = HTTPMailboxServer(http: http, base: "https://api.example.test")

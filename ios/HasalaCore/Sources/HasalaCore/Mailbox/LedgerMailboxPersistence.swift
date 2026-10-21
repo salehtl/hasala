@@ -89,6 +89,8 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     }
     w.unstage = c.unstage
     w.pruneAccountedBelow = c.pruneAccountedBelowMs
+    w.addImports = c.addImports.map { ($0.domain, $0.sinceMs) }
+    w.doneImports = c.doneImports
     w.health = c.healthBumps.map { ($0.domain, MailboxClock.localMonth($0.internalDateMs), $0.internalDateMs) }
     if let s = c.state {
       var r = MailboxStateRow(phase: s.phase.rawValue)
@@ -134,6 +136,10 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
 
   public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) {
     try io { try tables.clearParsing(messageID) }
+  }
+
+  public func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] {
+    try io { try tables.pendingImports() }.map { PendingImport(domain: $0.domain, sinceMs: $0.sinceMs) }
   }
 
   public func senderAddresses() async throws(MailboxPersistenceError) -> [String] {
