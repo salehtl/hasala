@@ -579,6 +579,17 @@ interface ParsedBody {
 /** The reviver signature including the source-access context (ES2025). */
 type SourceReviver = (this: unknown, key: string, value: unknown, context?: { source?: string }) => unknown;
 
+const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
+
+function hasLoneSurrogate(v: unknown): boolean {
+  if (typeof v === "string") return LONE_SURROGATE.test(v);
+  if (Array.isArray(v)) return v.some(hasLoneSurrogate);
+  if (typeof v === "object" && v !== null) {
+    for (const [k, x] of Object.entries(v)) if (LONE_SURROGATE.test(k) || hasLoneSurrogate(x)) return true;
+  }
+  return false;
+}
+
 function parseBody(bytes: Uint8Array, what: string): ParsedBody {
   // Non-fatal decoding, so invalid UTF-8 becomes U+FFFD rather than throwing —
   // which is what Go's encoding/json does with invalid UTF-8 inside a string.
@@ -614,6 +625,7 @@ function parseBody(bytes: Uint8Array, what: string): ParsedBody {
     // itself is retained, so nothing about it is unrecoverable.
     throw new BlobDecodeError(`${what}: body is not valid JSON (${bytes.length} bytes)`);
   }
+  if (hasLoneSurrogate(doc)) throw new BlobDecodeError(`${what}: body is not valid JSON (${bytes.length} bytes)`);
   if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
     throw new BlobDecodeError(`${what}: body is not a JSON object`);
   }

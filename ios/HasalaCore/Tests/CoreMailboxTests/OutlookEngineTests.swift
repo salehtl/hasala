@@ -105,7 +105,7 @@ import Testing
       let f = try #require(l.query.first { $0.0 == "$filter" }?.1)
       #expect(f.hasPrefix("receivedDateTime ge ") && f.contains("from/emailAddress/address eq 'DIB.notification@dib.ae'"))
       #expect(!f.contains("endswith("))
-      #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from") })
+      #expect(l.query.contains { $0 == ("$select", "id,receivedDateTime,from,parentFolderId") })
       #expect(!l.query.contains { $0.0 == "$orderby" || $0.0 == "$search" })
     }
     // The listing named every id's From and time: no metadata request, one $value per message.
@@ -125,6 +125,42 @@ import Testing
     #expect(byID["AAkALgAA-d1"]?.payload["gates"]?["sender"] == .string("trusted"))
     #expect(byID["AAkALgAA-noeop"]?.needsReview == true && byID["AAkALgAA-noeop"]?.payload["gates"]?["ar"] == .string("no_eop"))
     #expect(byID["AAkALgAA-spoof"]?.needsReview == true && byID["AAkALgAA-spoof"]?.payload["gates"]?["ar"] == .string("multiple_ar"))
+  }
+
+  @Test func anAlertInJunkEmailWaitsForReviewEvenWithTrustProven() async throws {
+    let rig = OutlookRig(trustProven: true)
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-inbox", dateMs: t0 - Self.day))
+    var junk = SyntheticOutlookMail.dibCard(id: "AAkALgAA-junk", amount: "3.00", dateMs: t0 - Self.day)
+    junk.folder = "junkemail"
+    rig.graph.add(junk)
+    await rig.connectAndActivate()
+    let byID = rig.byID()
+    #expect(byID["AAkALgAA-inbox"]?.needsReview == false)
+    #expect(byID["AAkALgAA-junk"]?.needsReview == true)
+    #expect(rig.metadataRequests.isEmpty)
+  }
+
+  @Test func anAlertInDeletedItemsIsLeftOut() async throws {
+    let rig = OutlookRig()
+    rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-kept", dateMs: t0 - Self.day))
+    var deleted = SyntheticOutlookMail.dibCard(id: "AAkALgAA-deleted", amount: "4.00", dateMs: t0 - Self.day)
+    deleted.folder = "deleteditems"
+    rig.graph.add(deleted)
+    await rig.connectAndActivate()
+    #expect(rig.byID()["AAkALgAA-kept"] != nil && rig.byID()["AAkALgAA-deleted"] == nil)
+    #expect(rig.accounted("AAkALgAA-deleted") == nil)
+    #expect(!rig.rawRequests.contains { $0.path.contains("AAkALgAA-deleted") })
+  }
+
+  @Test func aMessageReadByIDKnowsItIsInJunkEmail() async throws {
+    let graph = FakeGraph()
+    var junk = SyntheticOutlookMail.dibCard(id: "AAkALgAA-j", dateMs: t0 - Self.day)
+    junk.folder = "junkemail"
+    graph.add(junk)
+    graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-i", dateMs: t0 - Self.day))
+    let client = GraphClient(http: graph, accessToken: "t", link: MemoryOutlookLinkStore(), nowMs: { 0 })
+    #expect(try await client.messageRaw(id: "AAkALgAA-j").spam)
+    #expect(try await !client.messageRaw(id: "AAkALgAA-i").spam)
   }
 
   @Test func aSecondCycleDownloadsNothingTwice() async {
@@ -281,7 +317,8 @@ import Testing
     let subs = rig.graph.subscriptions
     #expect(subs.count == 1)
     let s = try #require(subs.first)
-    #expect(s.resource == "me/messages" && s.changeType == "created" && s.clientState == OutlookServer.clientState)
+    #expect(s.resource == "me/mailFolders('inbox')/messages" && s.changeType == "created")
+    #expect(s.clientState == OutlookServer.clientState)
     #expect(s.notificationURL == OutlookServer.notificationURL && s.lifecycleURL == OutlookServer.lifecycleURL)
     #expect(s.expiresAtMs == t0 + lifetime)
     #expect(await rig.server.watches == [t0 + lifetime])
@@ -328,16 +365,43 @@ import Testing
 
   @Test func anotherIPhonesSubscriptionIsReplacedOnConflict() async throws {
     let rig = OutlookRig()
-    rig.graph.addSubscription(
-      FakeGraph.Subscription(
-        id: "sub-other-iphone", resource: "me/messages", changeType: "created",
-        notificationURL: OutlookServer.notificationURL, lifecycleURL: OutlookServer.lifecycleURL,
-        clientState: "b2xkLWNsaWVudC1zdGF0ZQ", expiresAtMs: t0 + 86_400_000))
+    for (id, resource) in [("sub-other-iphone", GraphClient.subscriptionResource), ("sub-older-build", "/me/messages")] {
+      rig.graph.addSubscription(
+        FakeGraph.Subscription(
+          id: id, resource: resource, changeType: "created",
+          notificationURL: OutlookServer.notificationURL, lifecycleURL: OutlookServer.lifecycleURL,
+          clientState: "b2xkLWNsaWVudC1zdGF0ZQ", expiresAtMs: t0 + 86_400_000))
+    }
     await rig.connectAndActivate()
     let subs = rig.graph.subscriptions
-    #expect(subs.count == 1 && subs[0].id != "sub-other-iphone" && subs[0].clientState == OutlookServer.clientState)
-    #expect(rig.subscriptionRequests("DELETE").map(\.path) == ["/v1.0/subscriptions/sub-other-iphone"])
+    #expect(subs.count == 1 && subs[0].clientState == OutlookServer.clientState)
+    #expect(subs[0].resource == GraphClient.subscriptionResource)
+    #expect(
+      rig.subscriptionRequests("DELETE").map(\.path)
+        == ["/v1.0/subscriptions/sub-other-iphone", "/v1.0/subscriptions/sub-older-build"])
   }
+
+  @Test func aSubscriptionOnEveryFolderIsReplacedByOneOnTheInboxAtRenewal() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    let first = try #require(rig.graph.subscriptions.first?.id)
+    _ = try await GraphClient(http: rig.graph, accessToken: "t", link: MemoryOutlookLinkStore(), nowMs: { 0 })
+      .deleteSubscription(id: first)
+    rig.graph.addSubscription(
+      FakeGraph.Subscription(
+        id: "sub-older-build", resource: "me/messages", changeType: "created",
+        notificationURL: OutlookServer.notificationURL, lifecycleURL: OutlookServer.lifecycleURL,
+        clientState: OutlookServer.clientState, expiresAtMs: t0 + 86_400_000))
+    try rig.link.write(OutlookLinkState(clientState: OutlookServer.clientState, subscriptionID: "sub-older-build"))
+    rig.clock.advance(5 * 86_400_000)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    let subs = rig.graph.subscriptions
+    #expect(subs.count == 1 && subs[0].id != "sub-older-build" && subs[0].resource == GraphClient.subscriptionResource)
+    #expect(rig.subscriptionRequests("PATCH").isEmpty)
+    let kept = try #require(try rig.link.read())
+    #expect(kept.subscriptionID == subs[0].id && kept.subscriptionResource == GraphClient.subscriptionResource)
+  }
+
 
   @Test func disconnectDeletesTheSubscriptionAndBothKeychainItems() async throws {
     let rig = OutlookRig()

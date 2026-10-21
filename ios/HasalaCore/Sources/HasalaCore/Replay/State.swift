@@ -12,6 +12,7 @@
 // oracle's. v4 fields are emitted only when not at their default (03c §1.9), so
 // a v3 log's witness is unchanged.
 import CoreJSON
+import HasalaText
 import OrderedCollections
 
 /// The implicit rate of the home currency against itself, 1.000000 in rate
@@ -764,7 +765,7 @@ public struct State: Sendable, Equatable, Codable {
   /// ingest_id → the one live txn id.
   public var liveByIngestID: OrderedDictionary<String, String> = [:]
   /// fingerprint → live txn ids in fold order (order is load-bearing).
-  public var byFingerprint: OrderedDictionary<String, [String]> = [:]
+  public var byFingerprint: OrderedDictionary<ExactKey, [String]> = [:]
   public var rules: OrderedDictionary<String, Rule> = [:]
   public var homeCurrency: String?
   /// The head rate per currency; a present nil is a live `rate_unset`.
@@ -786,7 +787,7 @@ public struct State: Sendable, Equatable, Codable {
   public var heads: OrderedDictionary<String, EntityHead> = [:]
 
   // v4 (witnessed when non-empty, 03c §1.9)
-  public var merchantNames: OrderedDictionary<String, Keyed<String?>> = [:]
+  public var merchantNames: OrderedDictionary<ExactKey, Keyed<String?>> = [:]
   public var senderTrust: OrderedDictionary<String, Keyed<Bool>> = [:]
   public var projects: OrderedDictionary<String, Project> = [:]
   public var goals: OrderedDictionary<String, Goal> = [:]
@@ -800,7 +801,7 @@ public struct State: Sendable, Equatable, Codable {
   public var checkins: OrderedDictionary<String, Checkin> = [:]
   public var mailboxRetirements: [MailboxRetirement] = []
   public var byDedupeKey: OrderedDictionary<String, String> = [:]
-  public var copyCandidates: OrderedDictionary<String, [String]> = [:]
+  public var copyCandidates: OrderedDictionary<ExactKey, [String]> = [:]
   public var mergedIngest: OrderedDictionary<String, String> = [:]
 
   // Not witnessed: delivery bookkeeping and derived values.

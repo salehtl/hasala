@@ -12,6 +12,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/oplog"
 )
@@ -52,9 +54,13 @@ func (s *Server) requireBound(w http.ResponseWriter, r *http.Request, info auth.
 	var live bool
 	err := s.Pool.QueryRow(r.Context(),
 		`SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`, info.UserID, info.WriterID).Scan(&live)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, http.StatusForbidden, "writer_unbound", "")
+		return false
+	}
 	if err != nil {
 		s.logf("api: %s: bound writer: %v", route(r), err)
-		writeErr(w, http.StatusForbidden, "writer_unbound", "")
+		writeErr(w, http.StatusInternalServerError, "internal", "")
 		return false
 	}
 	if !live {

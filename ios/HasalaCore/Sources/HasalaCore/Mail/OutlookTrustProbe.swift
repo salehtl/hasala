@@ -123,7 +123,7 @@ extension AuthResults {
     let receivedIndex = tagIndex.first(where: { $0.tag == Probe.Tag.received })?.index
 
     let froms = fields.filter { name($0) == fromName }
-    let fromDomain = froms.first.map { probeDomain(fromDomain($0.value)) } ?? "-"
+    let fromDom = froms.first.map { probeDomain(fromDomain($0.value)) } ?? "-"
 
     var dmarc = "-"
     var compauth = "-"
@@ -148,7 +148,7 @@ extension AuthResults {
       for idx in ms.dropFirst() {
         let ar = parsed[idx]
         let domains = ar.methods.flatMap { [domainProp($0, "header.from"), domainProp($0, "header.d")] }
-        if fromDomain != "-", domains.contains(where: { same($0, fromDomain) }) { second = .fromDomain }
+        if fromDom != "-", domains.contains(where: { same($0, fromDom) }) { second = .fromDomain }
       }
     }
 
@@ -156,7 +156,7 @@ extension AuthResults {
 
     return OutlookTrustProbe(
       fromCount: froms.count,
-      fromDomain: fromDomain,
+      fromDomain: fromDom,
       forms: forms,
       microsoftIndex: ms.first,
       microsoftCount: ms.count,

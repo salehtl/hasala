@@ -156,8 +156,11 @@ it is not sure, it runs the job.
   `private-fixtures.lock`. Only the iOS jobs read `design/`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
-  in those directories. A change in `infra/` starts them.
-- `swift` reads only `ios/` and `conformance/`.
+  in those directories, and the bundled templates
+  (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`). A change in
+  `infra/` starts them.
+- `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`
+  and `reference/ledgerd-client/src/norm/charset-tables.ts`.
 - `ios-build`, `ios` and `ios-tools` read only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).
@@ -379,6 +382,10 @@ CI for iOS:
     `lint.sh`.
   - `module-eval` (on x86_64-linux). Each module assertion must fail when you
     use the module incorrectly.
+  - `ca-distrust` (on the two systems). It builds the CA bundle with the
+    module's `hardening.distrustedCARoots` and examines that those roots are
+    not trusted for servers, and that the roots of the hosts the QA host calls
+    are.
   - `qa-vm` (on x86_64-linux). It must have KVM.
 - On a Mac, `nix flake check --no-build --all-systems` evaluates the Linux
   checks.

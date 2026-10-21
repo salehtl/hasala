@@ -715,6 +715,8 @@ function convertWord(charset: string, content: Uint8Array): string | null {
   switch (c.kind) {
     case "single-byte":
       return decodeSingleByte(c.table!, content);
+    case "passthrough":
+      return decodeUTF8WHATWG(content);
     case "unsupported":
       throw new UnsupportedCharsetError(cs);
     default:

@@ -182,6 +182,25 @@ requires the pre-migration dump, a missing backup disk also stops `hasalad`
 and the console from starting, even with nothing pending: deliberate, fail
 closed, and alerted through `onFailure`.
 
+The off-site unit copies the new backups and then deletes each off-site copy
+that is `backup.retentionDays` days old (29 by default). Thus the rclone
+credentials need permission to list, write and delete objects in the bucket
+(for R2: "Object Read & Write" on that bucket only). Do not add a bucket lock
+rule that keeps objects longer than 29 days: the privacy policy promises 30
+days at most, and `hasala-backup-check` fails when an off-site copy is 30 days
+old.
+
+The module also sets `security.pki.caCertificateBlacklist` from
+`hardening.distrustedCARoots` (a CA distrust stopgap). This applies to the
+whole host: each program that reads the system CA bundle stops trusting those
+roots. The hosts that Hasala calls do not chain to them. Remove the stopgap
+(set the option to `[ ]`) when the pinned nixpkgs ships the fixed CA bundle.
+
+Before `hasalad` and the console start, `hasala-purge-replay` purges again each
+account in the purge ledger (`/var/lib/hasala-ledger/purged`). Thus a restore
+from a backup cannot bring a deleted account back. Refer to
+`docs/runbooks/restore.md`.
+
 Every secret option is a **string** path (the `config.sops.secrets.….path`
 above), never a Nix path literal: M22 refuses any value under the Nix store,
 where a secret would be world-readable.
@@ -242,11 +261,13 @@ After the guarded activation:
 ```sh
 systemctl is-active hasala.target hasala-postgresql hasalad cloudflared-hasala
 systemctl show -P Result hasala-migrate                      # success
-curl -s http://127.0.0.1:8471/api/v1/healthz                 # {"status":"ok","db":"ok"}
+sudo curl -s http://127.0.0.1:8471/api/v1/healthz                 # {"status":"ok","db":"ok"}
+curl -s --max-time 5 http://127.0.0.1:8471/api/v1/healthz     # as your own user: no answer (the kernel rule resets it)
 ss -ltnH | grep -E ':(8471|9471|9472)\b'                     # 127.0.0.1 only
 ss -ltnpH | grep postgres                                    # nothing: no TCP
 sudo hasala-admin version
 sudo systemctl start hasala-backup && ls -l <backup dir>     # a .dump.age, .sha256 and ledger .tar.age
+systemctl show -P Result hasala-purge-replay                 # success
 # From outside the host (any network):
 curl -s -o /dev/null -w '%{http_code}\n' https://api.hasala.app/api/v1/healthz      # 200
 for p in / /admin/ /metrics /debug/pprof/ /api/v1/console; do
@@ -305,7 +326,7 @@ account (the API is not open to testers before this release).
 systemctl show -P Result hasala-migrate                      # success
 journalctl -u hasala-migrate -o cat | grep 00022             # OK 00022_accounts.sql
 journalctl -u hasalad -o cat | grep 'NOT mounted'            # nothing: both key files reached serve
-curl -s -X POST -H 'Content-Type: application/json' \
+sudo curl -s -X POST -H 'Content-Type: application/json' \
   -d '{"invite_code":"ABCDEFGHIJKLMNOPQRSTUVWX","email":"probe@example.com","display_name":"Probe"}' \
   http://127.0.0.1:8471/api/v1/auth/signup/begin             # {"error":"not_invited"}, not a 404
 ```
@@ -330,9 +351,9 @@ After the activation:
 ```sh
 journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists gmail-link, not gmail-push
 journalctl -u hasalad -o cat | grep 'Pub/Sub push is not configured'
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/api/v1/mailbox/link/challenge   # 401: mounted (404: not)
-curl -s http://127.0.0.1:8471/api/v1/meta                    # "gmail_watch_topic":null
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/hooks/gmail/pubsub              # 404
+sudo curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/api/v1/mailbox/link/challenge   # 401: mounted (404: not)
+sudo curl -s http://127.0.0.1:8471/api/v1/meta                    # "gmail_watch_topic":null
+sudo curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8471/hooks/gmail/pubsub              # 404
 ```
 
 **The push, later.** In this order, so Pub/Sub never pushes to an unmounted
@@ -348,7 +369,7 @@ hook:
 
    ```sh
    journalctl -u hasalad -o cat | grep 'optional groups'                     # "enabled" lists gmail-link and gmail-push
-   curl -s http://127.0.0.1:8471/api/v1/meta                                 # "gmail_watch_topic":"projects/…/topics/…"
+   sudo curl -s http://127.0.0.1:8471/api/v1/meta                                 # "gmail_watch_topic":"projects/…/topics/…"
    curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/gmail/pubsub   # 401
    ```
 
@@ -415,7 +436,7 @@ is also a valid configuration.) After the activation:
 
 ```sh
 journalctl -u hasalad -o cat | grep 'optional groups'        # "enabled" lists the Outlook link and push groups
-curl -s http://127.0.0.1:8471/api/v1/meta                    # "outlook_notification_url":"https://api.hasala.app/hooks/outlook/graph", and the lifecycle URL
+sudo curl -s http://127.0.0.1:8471/api/v1/meta                    # "outlook_notification_url":"https://api.hasala.app/hooks/outlook/graph", and the lifecycle URL
 curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph?validationToken=abc'             # 200, "abc", text/plain, nosniff
 curl -s -D- -X POST 'https://api.hasala.app/hooks/outlook/graph/lifecycle?validationToken=abc'   # the same
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://api.hasala.app/hooks/outlook/graph/x   # 404 from cloudflared

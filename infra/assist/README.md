@@ -115,8 +115,8 @@ It is empty by default. Use it to stop a build that sends bad requests.
 
 `wrangler.jsonc` has only these bindings: `AI`, the rate limiters `PER_IP`
 (30 per 60 s, keyed on the `cf-connecting-ip` address for IPv4 and on its
-/64 for IPv6) and `GLOBAL` (60 per 60 s, key
-`global`), and the variables `REFUSED_CLIENTS` and `AI_GATEWAY`. The limits
+/64 for IPv6) and `GLOBAL` (600 per 60 s, key
+`global`, at least 20 times `PER_IP`), and the variables `REFUSED_CLIENTS` and `AI_GATEWAY`. The limits
 apply per Cloudflare location. The Worker never logs or returns the IP address.
 
 Observability and Logpush are off. `workers.dev` and preview URLs are off.
