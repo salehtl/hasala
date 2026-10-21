@@ -124,7 +124,8 @@ struct MerchantSuggestionsTests {
       isAutoFileEnabled: { false }, refusal: MerchantSuggestionsSetting.refusal(version: version, suiteName: name))
     let model = try #require(made)
     #expect(model.availability() == .notEligible)
-    #expect(ModelSuggestionStage.stages(onDevice: model, cloud: model, onDeviceAlone: false).isEmpty)
+    let stages = ModelSuggestionStage.stages(onDevice: model, cloud: model, onDeviceAlone: false)
+    #expect(stages.count == 1 && stages.allSatisfy { !$0.leavesDevice })
   }
 
   @Test func theAutoSortReaderRunsOffTheMainActor() async {
