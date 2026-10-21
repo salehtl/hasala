@@ -29,7 +29,8 @@ has a numbered check in [Checks for the owner](#checks-for-the-owner-wp0).
 | 5 | At most 3 concurrent Graph requests per mailbox. On 429/503 honour `Retry-After` (stop the run, keep the watermark); without it, use the engine's backoff. | Confirmed from docs (4 concurrent, 10,000 per 10 min). |
 | 6a | id_token: check `iss`, `tid`, `aud`, `nonce`, `iat`. Take the address from `email`; there is no `email_verified`. `preferred_username` and `oid` are **absent** with the contract's scopes (they need `profile`). | Confirmed from docs. Contract change requested (see below). Presence of `email` on the test account is **UNVERIFIED** (I1). |
 | 6b | Register `msauth.app.hasala.ios://auth` under the **Mobile and desktop applications** platform, not iOS/macOS. | Confirmed from docs (correction to WP0). End-to-end redirect is **UNVERIFIED** (I2). |
-| 6c | Subscription: `me/messages`, `created`, at most 10,080 min (ask for 10,020); validate both URLs; handle `409 Conflict` on takeover by listing and deleting the app's old subscription. | Confirmed from docs. |
+| 6c | Subscription: `me/mailFolders('inbox')/messages` (the inbox only, as Gmail's watch is), `created`, at most 10,080 min (ask for 10,020); validate both URLs; handle `409 Conflict` on takeover by listing and deleting the app's old subscription. A subscription an older build made on `me/messages` is deleted and made again on the inbox at its next renewal. | Confirmed from docs. **Changed (2026-10-20)** from `me/messages`, which also woke hasalad for sent mail and drafts. |
+| 6d | The listing selects `parentFolderId`. A message in Junk Email (`/me/mailFolders/junkemail`) is marked spam, so it waits for review. A message in Deleted Items (`/me/mailFolders/deleteditems`) is left out, as Gmail leaves out Trash. | Decided (2026-10-20). That `parentFolderId` agrees with the well-known folder's `id` under `Prefer: IdType="ImmutableId"` is **UNVERIFIED** (L5); if it does not, nothing is marked or left out, as before. |
 
 ### Changes this asks of the contract or of other packages
 
@@ -217,8 +218,12 @@ cycle is still needed, because Graph drops notifications for slow endpoints and
 `AuthResults.gmailVerdict` (`ios/HasalaCore/Sources/HasalaCore/Mail/AuthResults.swift`,
 oracle `reference/ledgerd-client/src/mail/authres.ts`, vectors in `conformance/authres/`):
 trust only when exactly one A-R has authserv-id `mx.google.com`, it is the topmost A-R,
-and it reports `dkim=pass` with `header.d` or `dmarc=pass`. The verified domain is the
-DKIM `header.d`, else the DMARC `header.from`. RFC 8601 §5 makes Gmail delete incoming
+and it reports `dkim=pass` with a DKIM domain aligned with the one `From` domain. The
+DKIM domain is `header.d`, else the domain of `header.i` (Gmail writes only `header.i`).
+Every `dmarc` spec must name the `From` domain as `header.from`, and an A-R that cannot
+be read cleanly (a quote inside a comment, an unbalanced paren or quote, a segment that
+is not a method spec) is `parse_error`. The verified domain is the DKIM domain.
+`conformance/authres/README.md` has the full rule. RFC 8601 §5 makes Gmail delete incoming
 A-Rs that claim `mx.google.com`, so the authserv-id identifies Gmail's own header.
 
 ### What is different on Outlook.com
@@ -303,7 +308,7 @@ Steps, in order (the first that applies decides):
 
 SPF and DKIM results are parsed but are not trust inputs. DMARC already requires an
 aligned SPF or DKIM pass, and `compauth` adds Microsoft's own judgement. Using the DMARC
-`header.from` as the domain differs from Gmail (DKIM `header.d` first), and is right here:
+`header.from` as the domain differs from Gmail (the DKIM domain), and is right here:
 it is the `From:` domain that `compauth` evaluated. Anything untrusted is `needs_review`,
 never dropped.
 

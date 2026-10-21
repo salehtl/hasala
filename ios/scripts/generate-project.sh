@@ -44,7 +44,7 @@ if [[ "${1:-}" == "--check" ]]; then
 	# Git keeps files, not directories: compare the files only (Xcode leaves empty
 	# directories such as project.xcworkspace/xcshareddata behind after a build).
 	mkdir -p "$tmp/committed"
-	(cd "$here" && find Hasala.xcodeproj -type f ! -path '*/xcuserdata/*' -print0 | xargs -0 -I{} rsync -R {} "$tmp/committed/")
+	(cd "$here" && find Hasala.xcodeproj -type f ! -path '*/xcuserdata/*' ! -path '*/xcshareddata/swiftpm/*' -print0 | xargs -0 -I{} rsync -R {} "$tmp/committed/")
 	if ! diff -ru "$tmp/committed/Hasala.xcodeproj" "$tmp/Hasala.xcodeproj" >&2; then
 		echo "generate-project: ios/Hasala.xcodeproj is stale; run ios/scripts/generate-project.sh and commit" >&2
 		exit 1

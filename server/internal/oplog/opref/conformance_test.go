@@ -225,7 +225,9 @@ type opManifest struct {
 	// shared artifact rather than two independent literals on purpose: the whole
 	// class of bug here is one side quietly accepting what the other refuses, and
 	// two hand-maintained lists drift into exactly that.
-	AuthoredAtRejects []string `json:"authored_at_rejects"`
+	AuthoredAtRejects []string          `json:"authored_at_rejects"`
+	SetAsideBlobs     []setAsideBlob    `json:"set_aside_blobs"`
+	AcceptedVariants  []acceptedVariant `json:"accepted_variants"`
 }
 
 // timeAcceptCases are timestamps both executors must read as the same instant,
@@ -723,6 +725,7 @@ func TestWriteConformanceFixtures(t *testing.T) {
 		}
 		opMan.AuthoredAtRejects = append(opMan.AuthoredAtRejects, wire)
 	}
+	opMan.SetAsideBlobs, opMan.AcceptedVariants = wireVariants(t)
 	writeJSONFixture(t, filepath.Join(opDir, "manifest.json"), opMan)
 }
 

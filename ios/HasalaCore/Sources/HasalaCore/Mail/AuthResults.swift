@@ -15,10 +15,12 @@
 //
 // Trust a verdict ONLY when exactly one Authentication-Results header has authserv-id
 // `mx.google.com`, it precedes every other Authentication-Results header, and it reports
-// `dkim=pass` with a `header.d` domain aligned with the domain of the one `From` field.
+// `dkim=pass` with a DKIM domain (`header.d`, else the domain of `header.i`) aligned with the
+// domain of the one `From` field, and every `dmarc` spec in it names that domain as `header.from`.
 // `spf` and `dmarc` results are parsed like any other method but never trusted: DMARC can pass
 // on SPF alone, and SPF vouches for the envelope sender, not the From domain a bank's template
-// is keyed on. Everything else is
+// is keyed on. An A-R that is not readable (see `stripComments`, `parseARValue`) is
+// `parse_error`. Everything else is
 // untrusted with a reason, and an untrusted message goes to review, never to the void.
 //
 // # Fidelity
@@ -72,7 +74,7 @@ public enum AuthResults {
   /// The verdict and, only when trusted, the verified domain, from ONE reading of the bytes.
   public struct Analysis: Sendable, Equatable {
     public let verdict: Verdict
-    /// The DKIM `header.d` of the passing verdict, else the DMARC `header.from`; lower case.
+    /// The DKIM domain of the passing verdict (Gmail), or the DMARC `header.from` (Outlook); lower case.
     public let domain: String?
     public let signature: String?
 
@@ -122,6 +124,7 @@ public enum AuthResults {
     if arValues.isEmpty { return untrusted(.noAR) }
 
     let parsed = arValues.map(parseARValue)
+    if parsed.contains(where: { !$0.readable }) { return untrusted(.parseError) }
     let gmail = parsed.indices.filter { parsed[$0].authservID.utf8.elementsEqual(gmailAuthservID.utf8) }
     if gmail.isEmpty { return untrusted(.noAR) }
     if gmail.count > 1 { return untrusted(.multipleAR) }
@@ -132,10 +135,13 @@ public enum AuthResults {
     let fromDom = from.count == 1 ? string(fromDomain(from[0].value)) : ""
     guard
       let dkimPass = ar.methods.first(where: {
-        same($0.method, "dkim") && same($0.result, "pass") && dkimAligned(domainProp($0, "header.d"), fromDom)
+        same($0.method, "dkim") && same($0.result, "pass") && dkimAligned(dkimDomain($0), fromDom)
       })
     else { return untrusted(.fail) }
-    let domain = domainProp(dkimPass, "header.d")
+    if ar.methods.contains(where: { same($0.method, "dmarc") && !same(domainProp($0, "header.from"), fromDom) }) {
+      return untrusted(.fail)
+    }
+    let domain = dkimDomain(dkimPass)
     let b = dkimPass.props.last { $0.key.utf8.elementsEqual("header.b".utf8) }.map { string(jsTrim(Array($0.value.unicodeScalars))) }
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain, signature: (b?.isEmpty ?? true) ? nil : b)
   }
@@ -182,6 +188,7 @@ public enum AuthResults {
 
     func named(_ want: Scalars) -> [Field] { fields.filter { jsLower(jsTrim($0.name)) == want } }
     let parsed = named(Array("authentication-results".unicodeScalars)).map { parseARValue($0.value) }
+    if parsed.contains(where: { !$0.readable }) { return untrusted(.parseError) }
 
     // 2–4. Exactly one Microsoft-form A-R, and it is the topmost A-R.
     let ms = parsed.indices.filter { parsed[$0].microsoftForm }
@@ -224,15 +231,72 @@ public enum AuthResults {
     return under(f8, d8) || (f8.contains(0x2e) && under(d8, f8))
   }
 
-  /// The domain of a `From` value: after the last `@`, cut at `>`, space, tab, CR, LF, `"` or
-  /// `)`, ASCII lower-cased, trailing dots dropped; empty when there is no `@`. CoreMailbox's
-  /// `BankDomains.domainOf`, which the sender-trust match uses on the same `From`.
+  /// The domain of the one mailbox of a `From` value, read from its addr-spec with comments
+  /// removed: inside the one angle-addr when there is one, after the last `@` outside a quoted
+  /// string, spaces and tabs trimmed, ASCII lower-cased, trailing dots dropped. Empty when the
+  /// value has an unreadable comment or quote, more than one `<` or `>`, a top-level `,`, no `@`,
+  /// or a domain with anything but letters, digits, `.` and `-`.
   static func fromDomain(_ value: Scalars) -> Scalars {
-    guard let at = value.lastIndex(of: "@") else { return [] }
+    let (clean, ok) = stripComments(value)
+    guard ok else { return [] }
+    var lt = -1
+    var gt = -1
+    var lts = 0
+    var gts = 0
+    var inQuote = false
+    var i = 0
+    while i < clean.count {
+      let c = clean[i]
+      if inQuote {
+        if c == "\\" {
+          i += 1
+        } else if c == "\"" {
+          inQuote = false
+        }
+      } else if c == "\"" {
+        inQuote = true
+      } else if c == "<" {
+        lt = i
+        lts += 1
+      } else if c == ">" {
+        gt = i
+        gts += 1
+      } else if c == "," {
+        return []
+      }
+      i += 1
+    }
+    guard lts <= 1, gts == lts, gt >= lt else { return [] }
+    let addr = lts == 1 ? Array(clean[(lt + 1)..<gt]) : clean
+    var at = -1
+    inQuote = false
+    i = 0
+    while i < addr.count {
+      let c = addr[i]
+      if inQuote {
+        if c == "\\" {
+          i += 1
+        } else if c == "\"" {
+          inQuote = false
+        }
+      } else if c == "\"" {
+        inQuote = true
+      } else if c == "@" {
+        at = i
+      }
+      i += 1
+    }
+    guard at >= 0 else { return [] }
+    var lo = at + 1
+    var hi = addr.count
+    while lo < hi, addr[lo] == " " || addr[lo] == "\t" { lo += 1 }
+    while hi > lo, addr[hi - 1] == " " || addr[hi - 1] == "\t" { hi -= 1 }
     var out: Scalars = []
-    for c in value[(at + 1)...] {
-      if c == ">" || c == " " || c == "\t" || c == "\r" || c == "\n" || c == "\"" || c == ")" { break }
-      out.append(c.value >= 0x41 && c.value <= 0x5a ? Unicode.Scalar(UInt8(c.value + 0x20)) : c)
+    for c in addr[lo..<hi] {
+      let l = c.value >= 0x41 && c.value <= 0x5a ? Unicode.Scalar(UInt8(c.value + 0x20)) : c
+      let allowed = (l.value >= 0x61 && l.value <= 0x7a) || (l.value >= 0x30 && l.value <= 0x39) || l == "." || l == "-"
+      guard allowed else { return [] }
+      out.append(l)
     }
     while out.last == "." { out.removeLast() }
     return out
@@ -261,6 +325,7 @@ public enum AuthResults {
     /// Microsoft form: the first segment is a method spec, not an authserv-id. `methods` then
     /// holds the first segment's spec too, and `authservID` (the raw first token) never matches.
     let microsoftForm: Bool
+    let readable: Bool
   }
 
   /// Splits a header block into fields (`split(/\r\n|\r|\n/)`), joining folded continuation
@@ -318,7 +383,9 @@ public enum AuthResults {
   /// One A-R value: its authserv-id and method specs (RFC 8601 §2.2). Total: an unreadable
   /// value yields an empty authserv-id, which never matches.
   static func parseARValue(_ value: Scalars) -> ARHeader {
-    let segments = splitTop(stripComments(value), ";")
+    let (clean, stripped) = stripComments(value)
+    var readable = stripped
+    let segments = splitTop(clean, ";")
     let idToken = tokenize(segments.first ?? []).first ?? []
     let authservID = string(jsLower(unquote(idToken)))
     // Microsoft's form has no authserv-id: its first token is already a method=result
@@ -329,9 +396,14 @@ public enum AuthResults {
     for seg in segments.dropFirst(microsoftForm ? 0 : 1) {
       let toks = tokenize(seg)
       if toks.isEmpty { continue }
-      if let spec = parseMethodSpec(toks) { methods.append(spec) }
+      if toks.count == 1, jsLower(toks[0]) == Array("none".unicodeScalars) { continue }
+      guard let spec = parseMethodSpec(toks) else {
+        readable = false
+        continue
+      }
+      methods.append(spec)
     }
-    return ARHeader(authservID: authservID, methods: methods, microsoftForm: microsoftForm)
+    return ARHeader(authservID: authservID, methods: methods, microsoftForm: microsoftForm, readable: readable)
   }
 
   static func parseMethodSpec(_ tokens: [Scalars]) -> MethodSpec? {
@@ -342,7 +414,7 @@ public enum AuthResults {
     let result = string(jsLower(jsTrim(unquote(head.value))))
     var props: [(key: String, value: String)] = []
     for t in tokens.dropFirst() {
-      guard let kv = splitKV(t) else { continue }
+      guard let kv = splitKV(t) else { return nil }
       props.append((string(jsLower(jsTrim(kv.key))), string(unquote(kv.value))))
     }
     return MethodSpec(method: method, result: result, props: props)
@@ -364,6 +436,11 @@ public enum AuthResults {
     return isLDHDomain(lower) ? string(lower) : ""
   }
 
+  static func dkimDomain(_ spec: MethodSpec) -> String {
+    spec.props.contains { $0.key.utf8.elementsEqual("header.d".utf8) }
+      ? domainProp(spec, "header.d") : domainProp(spec, "header.i")
+  }
+
   /// `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`
   static func isLDHDomain(_ v: Scalars) -> Bool {
     func alnum(_ c: Unicode.Scalar) -> Bool { (c.value >= 0x61 && c.value <= 0x7a) || (c.value >= 0x30 && c.value <= 0x39) }
@@ -377,8 +454,9 @@ public enum AuthResults {
   }
 
   /// Removes RFC 5322 comments (nestable, `\` quoting), each top-level comment becoming one
-  /// space; quoted strings pass through verbatim.
-  static func stripComments(_ v: Scalars) -> Scalars {
+  /// space; quoted strings pass through verbatim. Not readable when a comment holds a `"`, a `)`
+  /// closes no comment, or a comment or quoted string is left open.
+  static func stripComments(_ v: Scalars) -> (Scalars, readable: Bool) {
     var out: Scalars = []
     var depth = 0
     var inQuote = false
@@ -399,11 +477,14 @@ public enum AuthResults {
           i += 2  // the escaped character is part of the comment
           continue
         }
+        if c == "\"" { return (out, false) }
         if c == "(" {
           depth += 1
         } else if c == ")" {
           depth -= 1
         }
+      } else if c == ")" {
+        return (out, false)
       } else if c == "(" {
         depth += 1
         out.append(" ")
@@ -413,7 +494,7 @@ public enum AuthResults {
       }
       i += 1
     }
-    return out
+    return (out, depth == 0 && !inQuote)
   }
 
   /// Splits on `sep` at the top level only (not inside a quoted string).

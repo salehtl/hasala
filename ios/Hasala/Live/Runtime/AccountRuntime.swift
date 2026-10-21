@@ -151,10 +151,11 @@ final class AccountRuntime {
   }
 
   /// Asks the server for the account's mailbox link after every run while this iPhone has
-  /// none (the lane's cycle never asks then): another iPhone can take the link at any
-  /// time. Offline, the last answer stays until the next run.
+  /// none or another iPhone holds it: another iPhone can take the link at any time, or
+  /// move it to the other provider, whose lane then runs here. Offline, the last answer
+  /// stays until the next run.
   func checkServerLink() async {
-    guard lane != nil, store.mailboxPhase == .unlinked else { return }
+    guard lane != nil, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice else { return }
     _ = await askServerLink()
   }
 

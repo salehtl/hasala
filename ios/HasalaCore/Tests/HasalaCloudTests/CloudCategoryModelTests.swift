@@ -307,6 +307,19 @@ struct CloudGuardTests {
     #expect(fresh.availability() == .available)
   }
 
+  @Test("a refused version tells a switch that is off from a service it can't use")
+  func refusedVersionKeepsTheSwitch() {
+    let refused = CloudRefusalRecord(isRecorded: { true }, record: {})
+    let ex = StubExchange(status: 200, json: "{}")
+    let flag = Atomic<Bool>(false)
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1.2.3", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false },
+      exchange: ex, refusal: refused, pause: {})
+    #expect(m.availability() == .notEnabled)
+    flag.store(true, ordering: .relaxed)
+    #expect(m.availability() == .notEligible)
+  }
+
   @Test("a 403 is recorded once, and a recorded refusal keeps a new instance off without a request")
   func recordedRefusal() async {
     let stored = Mutex(false)

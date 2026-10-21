@@ -51,13 +51,15 @@ extension State {
       if bWins { carryUserEdits(from: w, to: id) }
       registerDedupeKeys(of: bWins ? w : id, to: winner)
       registerDedupeKeys(of: winner, to: winner)
-      if let key = DuplicateRules.candidateKey(txns[winner]!), copyCandidates[key]?.contains(where: { utf8Equal($0, winner) }) != true {
+      if let key = DuplicateRules.candidateKey(txns[winner]!).map(ExactKey.init(_:)),
+        copyCandidates[key]?.contains(where: { utf8Equal($0, winner) }) != true
+      {
         copyCandidates[key, default: []].append(winner)
       }
       return
     }
     registerDedupeKeys(of: id, to: id)
-    guard let key = DuplicateRules.candidateKey(b) else { return }
+    guard let key = DuplicateRules.candidateKey(b).map(ExactKey.init(_:)) else { return }
     if let earlier = copyCandidates[key] {
       for oid in earlier where !utf8Equal(oid, id) {
         guard let a = txns[oid], a.isLive, !a.isHeldCopy, DuplicateRules.probable(a, b) else { continue }

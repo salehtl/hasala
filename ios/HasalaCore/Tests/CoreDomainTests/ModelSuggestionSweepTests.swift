@@ -74,7 +74,9 @@ struct ModelSuggestionSweepTests {
       #expect(state.anomalies.isEmpty, "\(state.anomalies)")
     }
 
-    mutating func ingest(_ merchants: [(String, String)], template: String? = "dib.card.v1@1") throws -> [String] {
+    mutating func ingest(_ merchants: [(String, String)], template: String? = "dib.card.v1@1", needsReview: Bool = true) throws
+      -> [String]
+    {
       var a = OpAuthor(context())
       var ids: [String] = []
       for (m, dir) in merchants {
@@ -82,7 +84,7 @@ struct ModelSuggestionSweepTests {
         let p = JSONObject([
           ("amount_minor", .string(String(1500 + ingested))), ("currency", .string("AED")), ("direction", .string(dir)),
           ("posted_at", .string("2026-10-09T15:12:00.000Z")), ("merchant_raw", .string(m)), ("last4", .string("0000")),
-          ("tier", .string("template")), ("needs_review", .bool(true)), ("entry_method", .string("mailbox")),
+          ("tier", .string("template")), ("needs_review", .bool(needsReview)), ("entry_method", .string("mailbox")),
         ])
         let hex = String(ingested, radix: 16)
         let id = try a.ingest(payload: p, ingestID: String(repeating: "0", count: 64 - hex.count) + hex)

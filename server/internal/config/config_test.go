@@ -448,8 +448,31 @@ func TestModesHaveTheirOwnRequirements(t *testing.T) {
 		t.Fatalf("serve behind Cloudflare without the salt key: %v", err)
 	}
 	c.Auth.SaltKeyFile = "/run/credentials/hasalad.service/salt-key"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "HASALA_PURGE_LEDGER_PATH") {
+		t.Fatalf("serve behind Cloudflare without the purge ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = "/var/lib/hasala-ledger/purged"
 	if err := c.ValidateFor("serve"); err != nil {
-		t.Fatalf("serve with both keys: %v", err)
+		t.Fatalf("serve with both keys and the ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = "purged"
+	if err := c.ValidateFor("serve"); err == nil || !strings.Contains(err.Error(), "absolute") {
+		t.Fatalf("a relative purge ledger path: %v", err)
+	}
+}
+
+func TestPurgeLedgerPath(t *testing.T) {
+	c := mustLoad(t, env{"HASALA_PURGE_LEDGER_PATH": "/srv/purged", "HASALA_PG_DSN": "host=/run/x user=hasala_runtime"})
+	if c.Server.PurgeLedgerPath != "/srv/purged" {
+		t.Fatalf("HASALA_PURGE_LEDGER_PATH was not applied: %q", c.Server.PurgeLedgerPath)
+	}
+	c.Purge.ReplayLedger = true
+	if err := c.ValidateFor("purge-user"); err != nil {
+		t.Fatalf("replay with a ledger: %v", err)
+	}
+	c.Server.PurgeLedgerPath = ""
+	if err := c.ValidateFor("purge-user"); err == nil || !strings.Contains(err.Error(), "HASALA_PURGE_LEDGER_PATH") {
+		t.Fatalf("replay without a ledger: %v", err)
 	}
 }
 
@@ -590,8 +613,8 @@ func TestTurnstile(t *testing.T) {
 func TestUnknownEnvironment(t *testing.T) {
 	got := UnknownEnvironment([]string{"HASALA_PG_DSN=x", "HASALA_TURNSTILE_REQUIRED=true", "HASALA_CONFIG=x",
 		"HASALA_ADMIN_ACTOR=x", "HASALA_CONSOLE_LISTEN=x", "PATH=/bin", "HASALA_TURNSTYLE_REQUIRED=true",
-		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_TURNSTYLE_REQUIRED=false"})
-	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER_PATH,HASALA_TURNSTYLE_REQUIRED" {
+		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false"})
+	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
 		t.Fatalf("unknown: %v", got)
 	}
 }

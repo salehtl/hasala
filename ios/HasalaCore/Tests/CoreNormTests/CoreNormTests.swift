@@ -367,6 +367,7 @@ struct CharsetTablesFreshnessTests {
     #expect(Self.list(Self.block(lines, "PASSTHROUGH")) == CharsetTables.passthrough)
     #expect(Self.list(Self.block(lines, "UNRESOLVED")) == CharsetTables.unresolved)
     #expect(Self.list(Self.block(lines, "WORD_UNSUPPORTED")) == CharsetTables.wordUnsupported)
+    #expect(Self.list(Self.block(lines, "WORD_PASSTHROUGH")) == CharsetTables.wordPassthrough)
   }
 }
 

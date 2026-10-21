@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purge"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // deletableWriter is the writer every deletable account enrols.
@@ -300,5 +302,29 @@ func TestDeleteAccountAnswers400ForMalformedInput(t *testing.T) {
 	}
 	if !h.accountExists(t, acc.u) {
 		t.Fatal("a malformed request deleted the account")
+	}
+}
+
+func TestDeleteAccountWritesThePurgeLedger(t *testing.T) {
+	h := newHarness(t).passkeys()
+	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "purged")
+	acc := h.deletable(t, "alice")
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusNoContent)
+	entries, err := purgeledger.Read(h.srv.PurgeLedger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].ID != acc.u {
+		t.Fatalf("ledger %v, want exactly the deleted account", entries)
+	}
+}
+
+func TestDeleteAccountThatCannotBeRecordedDeletesNothing(t *testing.T) {
+	h := newHarness(t).passkeys()
+	h.srv.PurgeLedger = filepath.Join(t.TempDir(), "missing", "purged")
+	acc := h.deletable(t, "alice")
+	wantStatus(t, h.req("DELETE", "/api/v1/account", acc.tok, acc.body(t, h)), http.StatusInternalServerError)
+	if !h.accountExists(t, acc.u) {
+		t.Fatal("the account was deleted although its deletion was not recorded")
 	}
 }
