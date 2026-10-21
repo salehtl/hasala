@@ -29,6 +29,7 @@ nonisolated enum LedgerStateMapper {
     var skippedDigests: Set<String> = []
     var digestSalt = ""
     var unreadSenders: [String: String] = [:]
+    var dismissedNotices: Set<String> = []
   }
 
   enum MapError: Error { case date }
@@ -43,11 +44,10 @@ nonisolated enum LedgerStateMapper {
     let taxonomy = try r.taxonomy()
 
     let categories = taxonomy.ordered.map { category($0, engine: engine) }
+    let records = try r.bills()
     let resolutions = try r.billResolutions()
-    var billOfTxn: [String: String] = [:]
-    for res in resolutions where res.resolution == "paid" {
-      if let t = res.txn { billOfTxn[t] = res.bill }
-    }
+    let matched = derivedMatches(records, resolutions: resolutions, today: today)
+    let billOfTxn = billOfTxn(records, resolutions: resolutions, matched: matched)
 
     // Accounts: the latest check-in is the balance (03b §4.6).
     let cards = try r.cards()
@@ -94,22 +94,21 @@ nonisolated enum LedgerStateMapper {
       startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
       incomeByMonth: incomeByMonth)
 
-    // Bills, then each active income source as an income "bill" (Bills › Income).
     var bills: [HasalaModels.Bill] = []
     let paidAmount = Dictionary(txns.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    for (id, b) in try r.bills() {
-      if let mapped = bill(id: id, b, resolutions: resolutions.filter { $0.bill == id }, today: c.today,
-                           taxonomy: taxonomy, paidAmount: paidAmount)
+    var byBill: [String: [BillResolution]] = [:]
+    for res in resolutions { byBill[res.bill, default: []].append(res) }
+    for (id, b) in records {
+      if var mapped = bill(
+        id: id, b, resolutions: byBill[id] ?? [], matched: matched[id] ?? [], today: c.today, taxonomy: taxonomy,
+        paidAmount: paidAmount)
       {
+        mapped.notices = notices(mapped.notices, dismissed: c.dismissedNotices, salt: c.digestSalt)
         bills.append(mapped)
       }
     }
-    for s in sources {
-      let next = nextPayday(Int(s.payday), after: c.today)
-      bills.append(
-        HasalaModels.Bill(
-          id: "income.\(s.id)", name: s.name, kind: taxonomy.info(s.categoryID)?.name ?? "Income",
-          categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday), nextDue: next))
+    for s in engine.plan.incomeSources.values {
+      bills.append(income(s, today: c.today, taxonomy: taxonomy))
     }
 
     let projects: [HasalaModels.Project] = try r.projects().map { id, p in
@@ -255,7 +254,7 @@ nonisolated enum LedgerStateMapper {
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
-      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) })
+      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey)
   }
 
 
@@ -286,81 +285,150 @@ nonisolated enum LedgerStateMapper {
 
   // MARK: Bills
 
+  struct DerivedMatch: Sendable, Equatable {
+    var due: CivilDate
+    var txnID: String
+  }
+
+  static func derivedMatches(
+    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], today: CivilDate
+  ) -> [String: [DerivedMatch]] {
+    [:]
+  }
+
+  static func billOfTxn(
+    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], matched: [String: [DerivedMatch]]
+  ) -> [String: String] {
+    let live = Set(records.filter { $0.bill.status != "dismissed" }.map(\.id))
+    var out: [String: String] = [:]
+    for (bill, list) in matched where live.contains(bill) {
+      for m in list { out[m.txnID] = bill }
+    }
+    for res in resolutions where res.resolution == "paid" && live.contains(res.bill) {
+      if let t = res.txn { out[t] = res.bill }
+    }
+    return out
+  }
+
+  static func notices(_ list: [BillNotice], dismissed: Set<String>, salt: String) -> [BillNotice] {
+    guard !dismissed.isEmpty else { return list }
+    return list.filter { !dismissed.contains(LocalAccountData.digest($0.id, salt: salt)) }
+  }
+
+  static func payments(
+    explicit resolutions: [BillResolution], matched: [DerivedMatch], paidAmount: [String: HasalaModels.Txn],
+    currency: String
+  ) -> [BillPayment] {
+    var out: [BillPayment] = []
+    var dues = Set<String>()
+    for r in resolutions where r.resolution == "paid" {
+      guard let due = CivilDate(wire: r.due), dues.insert(r.due).inserted else { continue }
+      let amount = r.txn.flatMap { paidAmount[$0] }.flatMap { charged($0, in: currency) }
+      out.append(BillPayment(due: local(due), txnID: r.txn, amount: amount, link: r.txn == nil ? .marked : .linked))
+    }
+    let decided = Set(resolutions.filter { $0.resolution != "clear" }.map(\.due))
+    for m in matched where !decided.contains(m.due.wire) && dues.insert(m.due.wire).inserted {
+      let amount = paidAmount[m.txnID].flatMap { charged($0, in: currency) }
+      out.append(BillPayment(due: local(m.due), txnID: m.txnID, amount: amount, link: .matched))
+    }
+    return out.sorted { $0.due > $1.due }
+  }
+
+  static func cadence(_ unit: String, every: Int) -> (HasalaModels.BillCadence, Int) {
+    switch unit {
+    case "week": (.weekly, every)
+    case "year": (.yearly, every)
+    case "day": (.weekly, max(1, every / 7))
+    default: (.monthly, every)
+    }
+  }
+
   static func bill(
-    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], today: LocalDate, taxonomy: TaxonomyView,
-    paidAmount: [String: HasalaModels.Txn]
+    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], matched: [DerivedMatch] = [], today: LocalDate,
+    taxonomy: TaxonomyView, paidAmount: [String: HasalaModels.Txn]
   ) -> HasalaModels.Bill? {
-    guard b.direction == "debit", let anchor = CivilDate(wire: b.anchor).map(local),
-      let start = CivilDate(wire: b.start).map(local)
+    guard b.direction == "debit", let v = BillScheduleView(b),
+      let t = CivilDate(year: today.year, month: today.month, day: today.day)
     else { return nil }
-    let end = b.end.flatMap(CivilDate.init(wire:)).map(local)
-    let resolved = Dictionary(
-      resolutions.compactMap { r in CivilDate(wire: r.due).map { (local($0), r) } }, uniquingKeysWith: { a, _ in a })
-    let dues = schedule(anchor: anchor, start: start, end: end, unit: b.cadence.unit, every: Int(b.cadence.every),
-                        horizon: today.adding(days: 400))
-    let next = dues.first { d in
+    let payments = payments(explicit: resolutions, matched: matched, paidAmount: paidAmount, currency: b.currency)
+    let paidDues = Set(payments.map(\.due))
+    var resolved: [CivilDate: BillResolution] = [:]
+    for r in resolutions { if let d = CivilDate(wire: r.due) { resolved[d] = r } }
+    func open(_ d: CivilDate) -> Bool {
+      if v.isPaused(d) || paidDues.contains(local(d)) { return false }
       guard let r = resolved[d] else { return true }
       switch r.resolution {
-      case "paid", "skipped": return false
-      case "snoozed": return (r.until.flatMap(CivilDate.init(wire:)).map(local) ?? d) < today
+      case "skipped", "paid": return false
+      case "snoozed": return (r.until.flatMap(CivilDate.init(wire:)) ?? d) < t
       default: return true
       }
-    } ?? dues.last ?? anchor
-    let paid = resolved.filter { $0.value.resolution == "paid" }
-    let history = paid.keys.sorted(by: >)
-    // A fixed bill whose latest payment was outside its tolerance shows the new price.
-    var amount = Money(minor: b.amountMinor, currency: b.currency)
+    }
+    var next: CivilDate?
+    var cursor = v.due(onOrAfter: v.trackingSince)
+    var steps = 0
+    while let d = cursor, steps < 5_000 {
+      if open(d) {
+        next = d
+        break
+      }
+      steps += 1
+      cursor = d.adding(days: 1).flatMap { v.due(onOrAfter: $0) }
+    }
+    let fallback = next ?? v.end.flatMap { e in e.adding(days: 1).flatMap { v.due(before: $0) } } ?? v.due(onOrAfter: t)
+      ?? v.anchor
+    let shownDue = next ?? fallback
+    let terms = v.terms(at: shownDue)
+    var amount = Money(minor: terms.amountMinor, currency: b.currency)
+    let history = payments.map(\.due)
     var priceChangeFrom: Money?
-    if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn,
-      let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
+    if !terms.variable, let last = payments.first, let txn = last.txnID,
+      let lastDue = CivilDate(year: last.due.year, month: last.due.month, day: last.due.day),
+      v.terms(at: lastDue) == terms, let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
     {
-      let tolerance = Fils.mulDiv(b.amountMinor, b.toleranceBp ?? 0, 10_000)
-      if charged.minor.minus(b.amountMinor).magnitude > tolerance.magnitude {
+      let tolerance = Fils.mulDiv(terms.amountMinor, terms.toleranceBp, 10_000)
+      if charged.minor.minus(terms.amountMinor).magnitude > tolerance.magnitude {
         priceChangeFrom = amount
         amount = charged
       }
     }
+    let state: HasalaModels.Bill.State
+    var pausedSince: LocalDate?
+    var pausedUntil: LocalDate?
+    switch b.status {
+    case "active":
+      if let p = v.pauses.last(where: { $0.from <= t && ($0.until.map { t < $0 } ?? true) }) {
+        state = .paused
+        pausedSince = local(p.from)
+        pausedUntil = p.until.map(local)
+      } else {
+        state = .tracked
+      }
+    case "cancelled": state = .ended
+    default: state = .dismissed
+    }
+    let upcoming = v.changes.first { $0.from > t }
+    let (cadence, every) = cadence(v.unit, every: v.every)
     let category = b.category ?? "utilities"
     return HasalaModels.Bill(
       id: id, name: b.name, kind: taxonomy.info(category)?.name ?? "Bill", categoryID: category, amount: amount,
-      approximate: b.amountMode == "variable", isIncome: false, usualDay: anchor.day, nextDue: next,
-      accountID: b.account, state: b.status == "active" ? .tracked : .dismissed, priceChangeFrom: priceChangeFrom,
-      history: history)
+      approximate: terms.variable, isIncome: false, usualDay: v.anchor.day, nextDue: local(shownDue),
+      accountID: b.account, state: state, priceChangeFrom: priceChangeFrom, history: history,
+      source: b.source == "manual" ? .manual : .detected, cadence: cadence, every: every, pausedSince: pausedSince,
+      pausedUntil: pausedUntil, endedOn: b.status == "cancelled" ? v.end.map(local) : nil,
+      trackingSince: local(v.trackingSince), nextAmount: upcoming.map { Money(minor: $0.terms.amountMinor, currency: b.currency) },
+      nextAmountFrom: upcoming.map { local($0.from) }, payments: payments, notices: [], keys: b.keys)
+  }
+
+  static func income(_ s: IncomeSource, today: LocalDate, taxonomy: TaxonomyView) -> HasalaModels.Bill {
+    HasalaModels.Bill(
+      id: LedgerEditAuthor.incomePrefix + s.id, name: s.name, kind: taxonomy.info(s.categoryID)?.name ?? "Income",
+      categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday),
+      nextDue: nextPayday(Int(s.payday), after: today), state: s.active ? .tracked : .ended)
   }
 
   static func charged(_ t: HasalaModels.Txn, in currency: String) -> Money? {
     if t.amount.currency == currency { return t.amount }
     return currency == Money.home ? t.homeMinor.map(Money.aed) : nil
-  }
-
-  /// The due dates of a bill from `start` to `horizon`, stepping from `anchor` (03b §3.4):
-  /// monthly and yearly dues keep the anchor's day, clamped to short months.
-  static func schedule(anchor: LocalDate, start: LocalDate, end: LocalDate?, unit: String, every: Int, horizon: LocalDate)
-    -> [LocalDate]
-  {
-    let step = max(1, every)
-    func due(_ k: Int) -> LocalDate {
-      switch unit {
-      case "day": return anchor.adding(days: k * step)
-      case "week": return anchor.adding(days: 7 * k * step)
-      case "year": return clamp(anchor.year + k * step, anchor.month, anchor.day)
-      default:
-        let index = anchor.year * 12 + (anchor.month - 1) + k * step
-        return clamp(index / 12, index % 12 + 1, anchor.day)
-      }
-    }
-    var k = 0
-    while due(k) > start, k > -2_000 { k -= 1 }
-    var out: [LocalDate] = []
-    while out.count < 2_000 {
-      let d = due(k)
-      k += 1
-      if d < start { continue }
-      if let end, d > end { break }
-      if d > horizon { break }
-      out.append(d)
-    }
-    return out
   }
 
   static func clamp(_ year: Int, _ month: Int, _ day: Int) -> LocalDate {
