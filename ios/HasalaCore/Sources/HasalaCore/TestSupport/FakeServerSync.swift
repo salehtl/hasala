@@ -165,6 +165,7 @@ extension FakeServer {
     let rows = page(user.log, after: q.after, limit: q.limit)
     let next = rows.last?.seq ?? q.after
     let maxSeq = user.log.last?.seq ?? 0
+    if q.after > maxSeq { return Self.error(409, "cursor_ahead") }
     return Self.ok(
       PullPage(
         stream: "hot",
@@ -181,6 +182,7 @@ extension FakeServer {
 
   func hashes(_ r: APIRequest, user: User) -> APIResponse {
     guard let q = query(r) else { return Self.error(400, "bad_request") }
+    if q.after > (user.log.last?.seq ?? 0) { return Self.error(409, "cursor_ahead") }
     let rows = page(user.log, after: q.after, limit: q.limit)
     let next = rows.last?.seq ?? q.after
     return Self.ok(

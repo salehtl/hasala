@@ -193,6 +193,29 @@ struct SyncTests {
     #expect(await engine.status.phase == .halted(.serverRestored))
   }
 
+  @Test("a cursor past the end of the stream halts and keeps the rows; after a restore it is server_restored")
+  func cursorAhead() async throws {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1), op(2)])
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    #expect(await SyncEngine(context: b).run(.launch).stop == nil)
+    let cursor = try b.store.syncState().cursorHot
+    #expect(cursor == 1)
+    #expect(try b.store.wireRowCount() == 1)
+
+    w.server.loseLogTail(user: a.userID, after: 0)
+    let engine = SyncEngine(context: b)
+    #expect(await engine.run(.launch).stop == .halted(.tampered(.chainBreak)))
+    #expect(await engine.status.phase == .halted(.tampered(.chainBreak)))
+    #expect(try b.store.syncState().cursorHot == cursor)
+    #expect(try b.store.wireRowCount() == 1)
+
+    w.server.setLogGeneration(2)
+    _ = await engine.run(.launch)
+    #expect(await engine.status.phase == .halted(.serverRestored))
+    #expect(try b.store.wireRowCount() == 1)
+  }
+
   @Test("§5.5's table: 401, 403 writer_revoked, 413 account_full, plaintext_refused, 426, chain_break")
   func responseTable() async throws {
     let (w, a, _) = try await twoPhones()

@@ -211,6 +211,10 @@ public final class FakeServer: Transport, @unchecked Sendable {
   /// Marks the account a review account (`account review <uuid> on`), or not.
   public func setReviewAccount(user: UserID, _ on: Bool) { state.withLock { $0.users[user]?.review = on } }
 
+  public func loseLogTail(user: UserID, after seq: Int64) {
+    state.withLock { $0.users[user]?.log.removeAll { $0.seq > seq } }
+  }
+
   public func storedRowCount(user: UserID) -> Int { state.withLock { $0.users[user]?.log.count ?? 0 } }
 
   public var uploadCount: Int { state.withLock { $0.uploads } }
