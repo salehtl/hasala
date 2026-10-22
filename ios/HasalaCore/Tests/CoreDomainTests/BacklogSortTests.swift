@@ -167,16 +167,49 @@ struct BacklogSortTests {
         now: { now }, autoFile: true, stamps: AuthorStamps(), reread: { throw Boom() })
       Issue.record("the reread failed, so the run must throw")
     } catch let e as BacklogSort.Interrupted {
-      #expect(e.memo.requests == 7 && e.memo.answers["sure shop"]?.category == "groceries")
+      #expect(e.memo.requests == 7 && e.calls == 2 && e.memo.answers["sure shop"]?.category == "groceries")
       #expect(e.memo.asked == ["sure shop", "mystery place 77"])
     }
     do {
       _ = try await Self.pass(l, cloud, cache: FailingCache())
       Issue.record("the cache failed, so the pass must throw")
     } catch let e as BacklogSort.Interrupted {
-      #expect(e.memo.requests == 2 && e.memo.asked.count == 2)
+      #expect(e.memo.requests == 2 && e.calls == 2 && e.memo.asked.count == 2)
     }
     #expect(BacklogSort.Pass.failed(.init(requests: 3)).failed)
+    let failed = BacklogSort.Pass.failed(.init(requests: 3), calls: 3)
+    #expect(failed.failed && failed.calls == 3)
+  }
+
+  @Test("a commit that fails part way keeps the filing of the blobs it enqueued")
+  func partialCommit() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("OTHER SURE SHOP", "debit"), ("THIRD SHOP", "debit")])
+    var blobs: [AuthoredBlob] = []
+    for id in ids.prefix(2) {
+      var a = OpAuthor(l.context())
+      a.categorize(
+        txnID: id, parentVersion: l.state.txns[id]!.version, category: "groceries", needsReview: false,
+        source: CategorySource(kind: .model, model: "cf-clef/1"))
+      let b = try a.build()
+      try l.fold(b)
+      blobs.append(b)
+    }
+    let filing = BacklogSort.Filing(filed: [ids[0]: 2, ids[1]: 2], suggested: [ids[2]])
+    let enqueued = Mutex(0)
+    let partial = await BacklogSort.commit(blobs, filing: filing) { _ in
+      let n = enqueued.withLock { n -> Int in
+        n += 1
+        return n
+      }
+      if n == 2 { throw Boom() }
+    }
+    #expect(partial.failed && partial.filing.filed == [ids[0]: 2] && partial.filing.suggested.isEmpty)
+    let whole = await BacklogSort.commit(blobs, filing: filing) { _ in }
+    #expect(!whole.failed && whole.filing == filing)
+    let none = await BacklogSort.commit(blobs, filing: filing) { _ in throw Boom() }
+    #expect(none.failed && none.filing == BacklogSort.Filing())
   }
 
   @Test("an answer kept from an earlier pass never files a row whose name may not leave the device")

@@ -41,7 +41,8 @@ public enum ModelSuggestionSweep {
 
   public static func suggest(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
-    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
+    maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }
   ) async throws -> [Suggestion] {
     guard context.budget.calls > 0, !allowed.isEmpty, !stages.isEmpty else { return [] }
     let queued = queue(rows: rows, categorizer: categorizer).map { (row: $0, subject: Canon.subject($0.merchantRaw)) }
@@ -76,7 +77,9 @@ public enum ModelSuggestionSweep {
     let hits = cached
     let r = await ModelTier.run(
       subjects: subjects.filter { answer[$0] == nil }, stages: stages, allowed: allowed, context: context, now: now,
-      callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) })
+      callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) },
+      maxCloudCalls: maxCloudCalls)
+    if r.cloudRequests > 0 { spent(r.cloudRequests) }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
     try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
     for s in r.suggestions { answer[s.subject] = s }
@@ -111,12 +114,13 @@ public enum ModelSuggestionSweep {
 
   public static func run(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
-    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true, stamps: AuthorStamps,
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
+    maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }, stamps: AuthorStamps,
     reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext)
   ) async throws -> [AuthoredBlob] {
     let suggestions = try await suggest(
       rows: rows, categorizer: categorizer, allowed: allowed, stages: stages, context: context, cache: cache, now: now,
-      callTimeout: callTimeout, autoFile: autoFile)
+      callTimeout: callTimeout, autoFile: autoFile, maxCloudCalls: maxCloudCalls, spent: spent)
     guard !suggestions.isEmpty else { return [] }
     try Task.checkCancellation()
     let fresh = try await reread()

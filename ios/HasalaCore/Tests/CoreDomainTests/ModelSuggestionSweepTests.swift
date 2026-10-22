@@ -243,6 +243,31 @@ struct ModelSuggestionSweepTests {
     #expect(device.calls == ["cafe example jbr"])
   }
 
+  @Test("the sweep reports its cloud calls even when the run fails after them, and keeps within its cloud cap")
+  func cloudSpend() async throws {
+    struct Boom: Error {}
+    var l = Ledger()
+    _ = try l.ingest([(Self.arabic, "debit"), ("ANOTHER CAFE SPOT", "debit"), ("THIRD CAFE SPOT", "debit")])
+    let device = SweepModel("apple-fm/26.1")
+    let cloud = SweepModel("cf-clef/1", fallback: .category("dining"))
+    let spent = Mutex<[Int]>([])
+    do {
+      _ = try await ModelSuggestionSweep.run(
+        rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: [.cloud(cloud), .onDevice(device)],
+        context: .foreground, cache: MemoryCache(), now: { now }, maxCloudCalls: 2, spent: { n in spent.withLock { $0.append(n) } },
+        stamps: AuthorStamps(), reread: { throw Boom() })
+      Issue.record("the reread failed, so the run must throw")
+    } catch is Boom {}
+    #expect(spent.withLock { $0 } == [2] && cloud.calls.count == 2)
+    #expect(device.calls.count == 1 && !cloud.calls.contains(device.calls[0]))
+    let quiet = SweepModel("cf-clef/1", fallback: .category("dining"))
+    let none = Mutex<[Int]>([])
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: [.cloud(quiet)], context: .foreground,
+      cache: MemoryCache(), now: { now }, maxCloudCalls: 0, spent: { n in none.withLock { $0.append(n) } })
+    #expect(quiet.calls.isEmpty && none.withLock { $0 }.isEmpty)
+  }
+
   @Test("more than 500 suggestions split into blobs that each fold clean")
   func chunks() async throws {
     var l = Ledger()

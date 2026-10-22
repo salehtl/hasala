@@ -44,7 +44,8 @@ extension ModelTier {
 
   public typealias StagedRun = (
     suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure],
-    asked: [(subject: String, modelTag: String)], requests: Int, failed: [(subject: String, modelTag: String, failure: ModelFailure)]
+    asked: [(subject: String, modelTag: String)], requests: Int, failed: [(subject: String, modelTag: String, failure: ModelFailure)],
+    cloudRequests: Int
   )
 
   public static func stops(_ f: ModelFailure) -> Bool {
@@ -57,17 +58,18 @@ extension ModelTier {
   public static func run(
     subjects: [String], stages: [ModelStage], allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
-    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, maxCalls: Int? = nil, concurrency: Int = 1
+    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1
   ) async -> StagedRun {
     let budget = context.budget
     let callCap = min(budget.calls, maxCalls ?? budget.calls)
+    let cloudCap = max(0, maxCloudCalls ?? Int.max)
     let limit = callTimeout ?? .milliseconds(budget.callMs)
-    var live = stages.map { $0.model.availability() == .available }
-    guard callCap > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0, []) }
+    var live = stages.map { $0.model.availability() == .available && (!$0.leavesDevice || cloudCap > 0) }
+    guard callCap > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0, [], 0) }
     if concurrency > 1, stages.count == 1 {
       return await concurrent(
-        subjects: subjects, stage: stages[0], allowed: allowed, callCap: callCap, phaseMs: budget.phaseMs, limit: limit, now: now,
-        isCached: isCached, mayLeaveDevice: mayLeaveDevice, width: concurrency)
+        subjects: subjects, stage: stages[0], allowed: allowed, callCap: stages[0].leavesDevice ? min(callCap, cloudCap) : callCap,
+        phaseMs: budget.phaseMs, limit: limit, now: now, isCached: isCached, mayLeaveDevice: mayLeaveDevice, width: concurrency)
     }
     let start = now()
     var seen: Set<String> = []
@@ -77,16 +79,20 @@ extension ModelTier {
     var asked: [(subject: String, modelTag: String)] = []
     var failed: [(subject: String, modelTag: String, failure: ModelFailure)] = []
     var calls = 0
+    var cloudCalls = 0
     subjects: for subject in subjects where seen.insert(subject).inserted {
       for (i, stage) in stages.enumerated() where live[i] {
         let tag = stage.model.modelTag
         guard stage.accepts(subject), !stage.leavesDevice || mayLeaveDevice(subject), !isCached(subject, tag) else { continue }
+        if stage.leavesDevice, cloudCalls >= cloudCap { continue }
         if calls >= callCap || now() - start >= budget.phaseMs || Task.isCancelled { break subjects }
         calls += 1
+        if stage.leavesDevice { cloudCalls += 1 }
         asked.append((subject, tag))
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
-        if reply.answer == .failed(.contextOverflow), calls < callCap {
+        if reply.answer == .failed(.contextOverflow), calls < callCap, !stage.leavesDevice || cloudCalls < cloudCap {
           calls += 1
+          if stage.leavesDevice { cloudCalls += 1 }
           reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
         }
         switch reply.answer {
@@ -109,7 +115,7 @@ extension ModelTier {
         }
       }
     }
-    return (out, unknown, stopped, asked, calls, failed)
+    return (out, unknown, stopped, asked, calls, failed, cloudCalls)
   }
 
   static func concurrent(
@@ -169,7 +175,7 @@ extension ModelTier {
         while inFlight < width, launch() {}
       }
     }
-    return (out, unknown, stopped, asked, calls, failed)
+    return (out, unknown, stopped, asked, calls, failed, stage.leavesDevice ? calls : 0)
   }
 }
 

@@ -1,6 +1,7 @@
 import CoreCategorize
 import CorePrimitives
 import CoreReplay
+import CoreWire
 
 public enum BacklogSort {
   public static let concurrency = 3
@@ -38,6 +39,12 @@ public enum BacklogSort {
 
   public struct Interrupted: Error, Sendable {
     public let memo: Memo
+    public let calls: Int
+
+    public init(memo: Memo, calls: Int = 0) {
+      self.memo = memo
+      self.calls = calls
+    }
   }
 
   public enum Stop: String, Sendable, Equatable, Codable {
@@ -66,8 +73,8 @@ public enum BacklogSort {
       self.settled = settled
     }
 
-    public static func failed(_ memo: Memo) -> Pass {
-      Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: nil, failed: true)
+    public static func failed(_ memo: Memo, calls: Int = 0) -> Pass {
+      Pass(suggestions: [], memo: memo, pending: 0, calls: calls, stop: nil, failed: true)
     }
   }
 
@@ -78,6 +85,12 @@ public enum BacklogSort {
     public init(filed: [String: Int64] = [:], suggested: Set<String> = []) {
       self.filed = filed
       self.suggested = suggested
+    }
+
+    public func only(_ blobs: [AuthoredBlob]) -> Filing {
+      var ids: Set<String> = []
+      for b in blobs { for op in b.ops { if let id = op.entity?.id { ids.insert(id) } } }
+      return Filing(filed: filed.filter { ids.contains($0.key) }, suggested: suggested.filter { ids.contains($0) })
     }
   }
 
@@ -251,7 +264,7 @@ public enum BacklogSort {
           try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
           try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
         } catch {
-          throw Interrupted(memo: memo)
+          throw Interrupted(memo: memo, calls: calls)
         }
       }
     }
@@ -300,8 +313,23 @@ public enum BacklogSort {
       }
       return (blobs, p, filing)
     } catch {
-      throw Interrupted(memo: p.memo)
+      throw Interrupted(memo: p.memo, calls: p.calls)
     }
+  }
+
+  public static func commit(
+    _ blobs: [AuthoredBlob], filing: Filing, enqueue: (AuthoredBlob) async throws -> Void
+  ) async -> (filing: Filing, failed: Bool) {
+    var done: [AuthoredBlob] = []
+    for b in blobs {
+      do {
+        try await enqueue(b)
+      } catch {
+        return (filing.only(done), true)
+      }
+      done.append(b)
+    }
+    return (filing, false)
   }
 
   public static func next(after p: Pass, importRunning: Bool, backoffs: Int, nowMs: Int64) -> (next: Next, backoffs: Int) {
