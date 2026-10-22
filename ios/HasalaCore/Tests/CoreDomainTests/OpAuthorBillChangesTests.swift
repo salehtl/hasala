@@ -94,6 +94,45 @@ struct OpAuthorBillChangesTests {
     #expect(b.createdAt != nil)
   }
 
+  @Test("an edit always names both lists, [] when empty, so clearing them is expressible; a create omits empty ones")
+  func editNamesBothLists() throws {
+    var a = OpAuthor(ctx())
+    try a.setBill(id: "bm_1", Self.base)
+    var withLists = Self.base
+    withLists.changes = [.init(from: Self.d("2026-06-06"), terms: .init(mode: .fixed(toleranceBp: 200), amountMinor: 6_300))]
+    withLists.pauses = [.init(from: Self.d("2026-08-01"))]
+    try a.setBill(id: "bm_1", parentVersion: 1, withLists)
+    try a.setBill(id: "bm_1", parentVersion: 2, Self.base)
+    let ops = try a.build().ops
+    #expect(!JSONWriter().string(ops[0].payload).contains("changes"))
+    #expect(JSONWriter().string(ops[2].payload).hasSuffix(#""status":"active","changes":[],"pauses":[]}"#))
+    var s = State()
+    try Replay.foldOps(Array(ops[0..<2]), seq: 1, writerID: w, into: &s)
+    #expect(s.bills["bm_1"]?.changes.count == 1 && s.bills["bm_1"]?.pauses.count == 1)
+    try Replay.foldOps([ops[2]], seq: 2, writerID: w, into: &s)
+    #expect(s.anomalies.isEmpty && s.bills["bm_1"]?.changes == [] && s.bills["bm_1"]?.pauses == [] && s.bills["bm_1"]?.version == 3)
+  }
+
+  @Test("billRecord(inheritingFrom:) reads an edit with no lists as the fold does; a create never inherits")
+  func recordInherits() throws {
+    var a = OpAuthor(ctx())
+    try a.setBill(id: "bm_1", Self.base)
+    var withLists = Self.base
+    withLists.changes = [.init(from: Self.d("2026-06-06"), terms: .init(mode: .fixed(toleranceBp: 200), amountMinor: 6_300))]
+    try a.setBill(id: "bm_1", parentVersion: 1, withLists)
+    let ops = try a.build().ops
+    var s = State()
+    try Replay.foldOps(ops, seq: 1, writerID: w, into: &s)
+    let head = try #require(s.bills["bm_1"])
+    let oldShape = #"{"v":4,"type":"bill_set","op_id":"op-old","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"bill","id":"bm_1"},"parent_version":2,"payload":\#(Self.raw(Self.base))}"#
+    let old = try OpCodec.decodeBlobOps(Array(#"{"v":4,"kind":"ops","ops":[\#(oldShape)]}"#.utf8))[0]
+    #expect(Replay.billRecord(old)?.changes == [])
+    #expect(Replay.billRecord(old, inheritingFrom: head)?.changes == head.changes)
+    #expect(Replay.billRecord(old, inheritingFrom: nil) == nil)
+    #expect(Replay.billRecord(ops[0], inheritingFrom: head)?.changes == [])
+    #expect(Replay.billRecord(ops[1], inheritingFrom: nil)?.changes.count == 1)
+  }
+
   @Test("author-side refusals, each one the decoder's")
   func refusals() throws {
     func change(_ from: String, _ mode: OpAuthor.AmountMode = .fixed(toleranceBp: 0), _ amount: Int64 = 6_300)

@@ -173,6 +173,18 @@ struct BillScheduleTests {
     #expect(try Self.view(Self.bill(anchor: "2026-01-06", start: "2026-01-06")).trackingSince == Self.d("2026-01-06"))
   }
 
+  @Test(
+    "trackingSince is the fixed +04:00 day whatever the device's zone: 22:30Z is the next day, the boundary is 20:00Z",
+    arguments: [
+      ("2026-11-05T22:30:00.000Z", "2026-11-06"), ("2026-11-05T20:00:00.000Z", "2026-11-06"),
+      ("2026-11-05T19:59:59.999Z", "2026-11-05"), ("2026-11-06T19:59:59.999Z", "2026-11-06"),
+    ])
+  func trackingSinceIsZoneFree(_ created: String, _ day: String) throws {
+    let v = try Self.view(Self.bill(anchor: "2026-01-06", start: "2026-01-06", createdAt: created))
+    #expect(v.trackingSince == Self.d(day))
+    #expect(LocalClock.localDate(try Instant.parseMs(created)) == Self.d(day))
+  }
+
   @Test("halfWindowDays: monthly 15, weekly 3, daily 0, yearly 30, scaled by every, at most 45")
   func windows() throws {
     func w(_ unit: String, _ every: Int64) throws -> Int {

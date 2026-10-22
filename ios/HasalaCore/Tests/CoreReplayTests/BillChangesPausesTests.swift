@@ -132,7 +132,7 @@ struct BillChangesPausesTests {
     #expect(log.kinds == ["invalid_payload"])
   }
 
-  @Test("a refused edit consumes no version; createdAt stays the create's across edits")
+  @Test("a refused edit consumes no version; an edit with no pauses key keeps them and [] clears them; createdAt stays the create's")
   func edits() throws {
     var log = Log()
     try log.blob(Self.create(Self.bill(), at: "2026-05-01T21:30:00.000Z"))
@@ -150,7 +150,10 @@ struct BillChangesPausesTests {
     #expect(b.version == 2 && b.pauses.count == 1)
     #expect(b.createdAt == "2026-05-01T21:30:00.000Z")
     try log.blob(op("bill_set", Self.bill(), id: 4, entity: ("bill", "bm_1"), parent: 2, at: "2026-10-04T08:00:00.000Z"))
-    #expect(log.state.bills["bm_1"]?.pauses.isEmpty == true && log.state.bills["bm_1"]?.version == 3)
+    #expect(log.state.bills["bm_1"]?.pauses.count == 1 && log.state.bills["bm_1"]?.version == 3)
+    try log.blob(
+      op("bill_set", Self.bill(#","pauses":[]"#), id: 5, entity: ("bill", "bm_1"), parent: 3, at: "2026-10-05T08:00:00.000Z"))
+    #expect(log.state.bills["bm_1"]?.pauses.isEmpty == true && log.state.bills["bm_1"]?.version == 4)
     #expect(log.state.bills["bm_1"]?.createdAt == "2026-05-01T21:30:00.000Z")
   }
 
