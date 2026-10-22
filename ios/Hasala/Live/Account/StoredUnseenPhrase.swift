@@ -7,7 +7,6 @@ import UserNotifications
 final class StoredUnseenPhrase: UnseenPhraseNoting {
   static let sinceKey = "app.hasala.prefs.phrase.unseenSince"
   static let remindedKey = "app.hasala.prefs.phrase.reminded"
-  static let unreportedKey = "app.hasala.prefs.phrase.seenUnreported"
   static let reminderID = "app.hasala.phrase.reminder"
   static let reminderDelay: TimeInterval = 24 * 60 * 60
 
@@ -20,8 +19,6 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
   @ObservationIgnored private let defaults: UserDefaults
   @ObservationIgnored private let scheduler: Scheduler
   @ObservationIgnored private let now: () -> Date
-  @ObservationIgnored var report: (@MainActor () async -> Bool)?
-  @ObservationIgnored private var flushing = false
   private var changes = 0
 
   var unseen: Bool {
@@ -40,19 +37,14 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
     return Date(timeIntervalSince1970: defaults.double(forKey: Self.sinceKey))
   }
 
-  var reportPending: Bool { defaults.bool(forKey: Self.unreportedKey) }
-
   func noteUnseen(at date: Date) {
     defaults.set(date.timeIntervalSince1970, forKey: Self.sinceKey)
     defaults.removeObject(forKey: Self.remindedKey)
-    defaults.removeObject(forKey: Self.unreportedKey)
     changes += 1
   }
 
   func noteSeen() {
-    if unseen { defaults.set(true, forKey: Self.unreportedKey) }
     clear()
-    if reportPending { Task { await flush() } }
   }
 
   private func clear() {
@@ -64,22 +56,11 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
   }
 
   func adopt(serverUnseenSince: Date?) async {
-    if reportPending {
-      await flush()
-      return
-    }
     if let serverUnseenSince {
       if !unseen { noteUnseen(at: serverUnseenSince) }
     } else if unseen {
       clear()
     }
-  }
-
-  func flush() async {
-    guard reportPending, !flushing, let report else { return }
-    flushing = true
-    defer { flushing = false }
-    if await report() { defaults.removeObject(forKey: Self.unreportedKey) }
   }
 
   func remindIfAllowed() async {
@@ -96,7 +77,6 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
   static func forget(_ defaults: UserDefaults = .standard) {
     defaults.removeObject(forKey: sinceKey)
     defaults.removeObject(forKey: remindedKey)
-    defaults.removeObject(forKey: unreportedKey)
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [reminderID])
     UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [reminderID])
   }

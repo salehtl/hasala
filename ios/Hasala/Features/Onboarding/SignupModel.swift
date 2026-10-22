@@ -112,8 +112,9 @@ final class SignupModel {
   var passkeyRegistered: Bool { ticket != nil && passkeyTicketID == ticket?.id }
   private(set) var passkeyPRF = false
   private(set) var passkeySynced = false
+  private(set) var wordsInSignup = false
   var wordsLater: Bool {
-    !replacing && method == .passkey && passkeyPRF && passkeySynced && passkeyRegistered
+    !replacing && !wordsInSignup && method == .passkey && passkeyPRF && passkeySynced && passkeyRegistered
       && capabilities.contains(.viewPhrase)
   }
   var busy = false
@@ -376,6 +377,7 @@ final class SignupModel {
       passkeyTicketID = ticket.id
       passkeyPRF = made.prf
       passkeySynced = made.synced
+      wordsInSignup = false
       if wordsLater {
         await finishWithoutWords()
         return
@@ -482,14 +484,24 @@ final class SignupModel {
       return
     }
     do {
-      unseenPhrase.noteUnseen(at: now())
       profile = try await account.finishAccountWithoutWords(ticket)
+      unseenPhrase.noteUnseen(at: now())
       self.phrase = nil
       linkKey = nil
       failure = nil
       accountCreated()
     } catch .codeExpired {
       startAgain()
+    } catch .wordsInSignup {
+      wordsInSignup = true
+      do {
+        try startPhrase()
+      } catch {
+        failure = error
+        return
+      }
+      failure = nil
+      go(.phraseIntro)
     } catch {
       failure = error
     }

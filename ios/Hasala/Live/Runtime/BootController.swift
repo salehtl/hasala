@@ -92,7 +92,6 @@ final class BootController {
     self.account = account
     let holder = RuntimeHolder()
     let unseenPhrase = StoredUnseenPhrase()
-    unseenPhrase.report = { [weak account] in await account?.reportPhraseSeen() ?? false }
     services = AccountServices(
       account: account, mailbox: LiveMailboxConnecting(
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
@@ -151,8 +150,6 @@ final class BootController {
     phaseChanged(session.phase)
     let env = self.env.account
     Task { await LiveAccountService.retryPendingLogout(env) }
-    let unseenPhrase = services.unseenPhrase
-    Task { await unseenPhrase.flush() }
   }
 
   /// Launched before first unlock, or the purge couldn't finish: decide once protected
@@ -229,8 +226,6 @@ final class BootController {
     if state == .waiting { start() }
     let env = self.env.account
     Task { await LiveAccountService.retryPendingLogout(env) }
-    let unseenPhrase = services.unseenPhrase
-    Task { await unseenPhrase.flush() }
     guard let rt = runtime else { return }
     if syncHalt != nil { return retrySync() }
     Task { await rt.coordinator.run(.foreground) }

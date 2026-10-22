@@ -323,10 +323,6 @@ public final class FakeServer: Transport, @unchecked Sendable {
           password_salt: Base64.encode(sSrv(user.emailNorm)),
           has_passkey: state.withLock { s in s.credentials.values.contains { $0.userID == user.id } }, frozen: user.frozen,
           restricted: user.frozen, review_account: user.review, phrase_unseen_since: user.phraseUnseenSince))
-    case "POST /api/v1/keys/phrase/seen":
-      guard user.keys != nil else { return Self.error(404, "no_keys") }
-      state.withLock { $0.users[user.id]?.phraseUnseenSince = nil }
-      return APIResponse(status: 204)
     case "GET /api/v1/keys":
       guard let k = user.keys else { return Self.error(404, "no_keys") }
       return Self.ok(k)

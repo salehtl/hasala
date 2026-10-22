@@ -8,7 +8,6 @@ protocol UnseenPhraseNoting: AnyObject {
   func noteSeen()
   func remindIfAllowed() async
   func adopt(serverUnseenSince: Date?) async
-  func flush() async
 }
 
 @MainActor
@@ -17,20 +16,15 @@ final class InMemoryUnseenPhrase: UnseenPhraseNoting {
   private(set) var unseen = false
   private(set) var since: Date?
   private(set) var reminders = 0
-  private(set) var reportPending = false
-  private(set) var reports = 0
-  @ObservationIgnored var report: (@MainActor () async -> Bool)?
 
   nonisolated init() {}
 
   func noteUnseen(at date: Date) {
     unseen = true
     since = date
-    reportPending = false
   }
 
   func noteSeen() {
-    if unseen { reportPending = true }
     unseen = false
     since = nil
   }
@@ -40,21 +34,10 @@ final class InMemoryUnseenPhrase: UnseenPhraseNoting {
   }
 
   func adopt(serverUnseenSince: Date?) async {
-    if reportPending {
-      await flush()
-      return
-    }
     if let serverUnseenSince {
       if !unseen { noteUnseen(at: serverUnseenSince) }
     } else {
-      unseen = false
-      since = nil
+      noteSeen()
     }
-  }
-
-  func flush() async {
-    guard reportPending, let report else { return }
-    reports += 1
-    if await report() { reportPending = false }
   }
 }

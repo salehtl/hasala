@@ -192,7 +192,7 @@ final class LiveAccountService: AccountService {
     } catch let e as AuthFailure {
       throw e
     } catch let e as CeremonyError {
-      throw Self.map(e)
+      throw Self.finishFailure(e, phraseUnseen: phraseUnseen)
     } catch {
       throw .refused
     }
@@ -729,17 +729,6 @@ final class LiveAccountService: AccountService {
     }
   }
 
-  func reportPhraseSeen() async -> Bool {
-    guard let token = try? env.secrets.session()?.token else { return false }
-    do {
-      try await env.client.phraseSeen(bearer: token)
-      return true
-    } catch {
-      if case .refused(let f) = error, f.status == 404 { return true }
-      return false
-    }
-  }
-
   static func instant(_ s: String?) -> Date? {
     guard let s, let ms = try? parseInstantMs(s) else { return nil }
     return Date(timeIntervalSince1970: Double(ms) / 1000)
@@ -795,7 +784,13 @@ final class LiveAccountService: AccountService {
 
   // MARK: Failures
 
+  static func finishFailure(_ e: CeremonyError, phraseUnseen: Bool) -> AuthFailure {
+    if phraseUnseen, case .api(.refused(let f)) = e, f.status == 400 { return .wordsInSignup }
+    return map(e)
+  }
+
   static func map(_ e: CeremonyError) -> AuthFailure {
+    if case .api(.refused(let f)) = e, f.code == "phrase_unseen" { return .wordsBeforeRemovingPasskey }
     switch e {
     case .notThisAccountsPhrase: return .phraseMismatch
     case .badPhrase: return .badPhrase("Every word is real, but together they aren't a Hasala phrase. Two words may be swapped.")

@@ -67,9 +67,9 @@ struct AccountTests {
     #expect(try a.binding?.writer_id == account.writerID.string)
   }
 
-  @Test("C1 with the words later: a synced passkey only, the server keeps the flag until the words are seen")
+  @Test("C1 with the words later: a synced passkey only; an older server's 400 leaves the same passkey and keys to publish")
   func passkeyCreationWithoutTheWords() async throws {
-    for synced in [false, true] {
+    for (synced, olderServer) in [(false, false), (true, false), (true, true)] {
       let w = World()
       let shared = SoftPasskey()
       shared.setBackup(eligible: true, backedUp: synced)
@@ -87,11 +87,22 @@ struct AccountTests {
         }
         continue
       }
+      if olderServer {
+        w.server.refuseNext("POST /api/v1/account/bootstrap", status: 400, code: "bad_request")
+        do {
+          _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys, phraseUnseen: true)
+          Issue.record("the older server took phrase_unseen")
+        } catch {
+          guard case .api(.refused(let f)) = error else { throw error }
+          #expect(f.status == 400)
+        }
+        _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
+        #expect(try await a.env.client.account(bearer: token).has_keys == true)
+        #expect(try await a.env.client.account(bearer: token).phrase_unseen_since == nil)
+        continue
+      }
       _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys, phraseUnseen: true)
       #expect(try await a.env.client.account(bearer: token).phrase_unseen_since != nil)
-      try await a.env.client.phraseSeen(bearer: token)
-      try await a.env.client.phraseSeen(bearer: token)
-      #expect(try await a.env.client.account(bearer: token).phrase_unseen_since == nil)
     }
   }
 

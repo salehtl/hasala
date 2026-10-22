@@ -127,9 +127,11 @@
 
     var passkeyPRF = false
     var passkeySynced = true
+    private(set) var passkeysMade = 0
 
     @discardableResult func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey {
       await pause()
+      passkeysMade += 1
       return NewPasskey(prf: passkeyPRF, synced: passkeySynced)
     }
 

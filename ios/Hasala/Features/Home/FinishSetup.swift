@@ -109,7 +109,7 @@ final class FinishSetupModel {
     defer { phraseLoading = false }
     if security.state == nil { await security.load() }
     if security.state?.hasPasskey == false {
-      services.unseenPhrase.noteSeen()
+      phraseFailure = .passkeyCantShowUnseenPhrase
       return
     }
     security.requestPhrase()
@@ -229,7 +229,12 @@ struct FinishSetupSection: View {
               enabled: !model.phraseLoading, tone: .urgent, identifier: "home.finish.phrase") {
                 Task { await model.writeDownPhrase() }
               }
-            if let failure = model.phraseProblem { FailureBanner(failure: failure) }
+            if let failure = model.phraseProblem {
+              FailureBanner(failure: failure)
+              if failure == .passkeyCantShowUnseenPhrase {
+                WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "home.finish.phraseTalk")
+              }
+            }
           case .readingStopped:
             let stopped = Self.stopped(model.stoppedMailbox)
             FinishSetupRow(
