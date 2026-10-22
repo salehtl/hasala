@@ -4,6 +4,8 @@ import HasalaCloud
 nonisolated enum MerchantSuggestionsSetting {
   static let key = "app.hasala.prefs.merchantSuggestions.enabled"
   static let autoSortKey = "app.hasala.prefs.merchantSuggestions.autoSort"
+  static let reviewAskAnsweredKey = "app.hasala.prefs.merchantSuggestions.reviewAskAnswered"
+  static let reviewAskMigratedKey = "app.hasala.prefs.merchantSuggestions.reviewAskMigrated"
   static let refusedVersionKey = "app.hasala.prefs.merchantSuggestions.refusedVersion"
   static let firstImportStartedKey = "app.hasala.prefs.merchantSuggestions.firstImport.startedMs"
   static let firstImportRequestsKey = "app.hasala.prefs.merchantSuggestions.firstImport.requests"
@@ -16,6 +18,7 @@ nonisolated enum MerchantSuggestionsSetting {
 
   static func setEnabled(_ on: Bool, _ defaults: UserDefaults = .standard) {
     defaults.set(on, forKey: key)
+    defaults.set(true, forKey: reviewAskAnsweredKey)
     if !on {
       defaults.set(false, forKey: autoSortKey)
       forgetRunRequest(defaults)
@@ -31,9 +34,24 @@ nonisolated enum MerchantSuggestionsSetting {
     defaults.set(on && isEnabled(defaults), forKey: autoSortKey)
   }
 
+  static func reviewAskAnswered(_ defaults: UserDefaults = .standard) -> Bool {
+    isEnabled(defaults) || defaults.bool(forKey: reviewAskAnsweredKey)
+  }
+
+  static func answerReviewAsk(_ defaults: UserDefaults = .standard) {
+    defaults.set(true, forKey: reviewAskAnsweredKey)
+  }
+
+  static func migrateReviewAsk(setupFinished: Bool, _ defaults: UserDefaults = .standard) {
+    guard !defaults.bool(forKey: reviewAskMigratedKey) else { return }
+    defaults.set(true, forKey: reviewAskMigratedKey)
+    if setupFinished { answerReviewAsk(defaults) }
+  }
+
   static func forget(_ defaults: UserDefaults = .standard) {
     defaults.removeObject(forKey: key)
     defaults.removeObject(forKey: autoSortKey)
+    defaults.removeObject(forKey: reviewAskAnsweredKey)
     forgetRunRequest(defaults)
   }
 

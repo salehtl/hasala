@@ -21,6 +21,7 @@ struct HomeView: View {
   let model: any HomeModel
   /// Present once the account gate runs; it knows whether this is the review account.
   @Environment(AccountSession.self) private var session: AccountSession?
+  @Environment(OnboardingStore.self) private var onboarding: OnboardingStore?
 
   private var snapshot: HomeSnapshot { model.snapshot }
   private var hidden: Bool { model.hidden }
@@ -47,6 +48,7 @@ struct HomeView: View {
   }
 
   var body: some View {
+    let finish = onboarding?.finishSetupModel()
     NavigationStack(path: Bindable(app.router).home) {
       TabScreen(
         app: app, title: nil,
@@ -62,7 +64,7 @@ struct HomeView: View {
           changePeriod: { app.sheet = .period },
           backToThisMonth: { app.period = .month(app.store.now.date.yearMonth) },
           insights: { app.router.home.append(.insights) },
-          setPlan: { app.openPlan() },
+          reading: app.mailbox?.importing != nil,
           openNotCounted: { model.openNotCounted($0) },
           openRates: { mark in
             app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))
@@ -70,6 +72,11 @@ struct HomeView: View {
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)
+        if let finish, snapshot.isThisMonth {
+          FinishSetupSection(model: finish, items: finish.items, importing: app.mailbox?.importing != nil) {
+            app.router.open(.profile, profile: [.bankAlerts])
+          }
+        }
         if !canvas.isEmpty || snapshot.isThisMonth {
           WidgetCanvas(title: snapshot.canvasTitle, items: canvas, hidden: hidden,
                        editable: snapshot.isThisMonth, editing: app.editingHome && snapshot.isThisMonth,
@@ -85,6 +92,20 @@ struct HomeView: View {
       .overlay(alignment: .bottom) {
         HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
           .padding(.bottom, 12)
+      }
+      .task(id: app.store.revision) { finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty) }
+      .task { await finish?.resumeImport() }
+      .sheet(item: Binding(get: { finish?.planFlow }, set: { finish?.planFlow = $0 })) { MonthlyPlanSheet(model: $0) }
+      .sheet(isPresented: Binding(get: { finish?.askingNotifications ?? false },
+                                  set: { finish?.askingNotifications = $0 })) {
+        if let finish { NotificationsAskSheet(model: finish) }
+      }
+      .sheet(isPresented: Binding(get: { finish?.showingNoAlerts ?? false },
+                                  set: { finish?.showingNoAlerts = $0 }),
+             onDismiss: {
+               if finish?.takeBankAlertsRequest() == true { app.router.open(.profile, profile: [.bankAlerts]) }
+             }) {
+        if let finish { NoAlertsSheet(model: finish) }
       }
       .onChange(of: snapshot.isThisMonth) { _, _ in app.editingHome = false }
       .onChange(of: app.tab) { _, tab in if tab != .home { app.editingHome = false } }

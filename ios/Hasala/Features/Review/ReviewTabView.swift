@@ -14,7 +14,9 @@ import SwiftUI
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(AccountSession.self) private var session: AccountSession?
   @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
+  @State private var cloudSortAnswered = false
 
   init(app: AppModel) {
     self.app = app
@@ -45,6 +47,9 @@ struct ReviewTabView: View {
             caughtUp(elsewhere)
             if unread > 0 { unreadable(unread) }
           } else {
+            if sortState == nil, asksCloudSort {
+              CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
+            }
             startCard
             if app.suggestionCount > 0, sortState?.offersCheckSuggestions != true {
               CheckSuggestionsEntry(app: app, count: app.suggestionCount).background(cardSurface)
@@ -66,6 +71,29 @@ struct ReviewTabView: View {
         Task { await sort.refresh() }
       }
     }
+  }
+
+  private var asksCloudSort: Bool {
+    guard !cloudSortAnswered, let session else { return false }
+    return Self.asksCloudSort(session.services.cloudSort, reviewAccount: session.reviewAccount,
+                              toSort: app.reviewCards.count)
+  }
+
+  static func asksCloudSort(_ cloud: CloudSortOffering?, reviewAccount: Bool, toSort: Int) -> Bool {
+    guard toSort > 0, !reviewAccount, let cloud else { return false }
+    return cloud.isOffered && !cloud.answered
+  }
+
+  private func turnOnCloudSort() {
+    session?.services.cloudSort?.turnOn()
+    cloudSortAnswered = true
+    if let sort = app.cloudSort { Task { await sort.refresh() } }
+    app.say("Cloudflare AI is on. It sorts a few names at a time while Hasala is open.", icon: .cloud)
+  }
+
+  private func cloudSortNotNow() {
+    session?.services.cloudSort?.notNow()
+    cloudSortAnswered = true
   }
 
   /// "6 to sort · about a minute": about ten seconds a card.

@@ -83,6 +83,7 @@
 
     var isOffered: Bool
     private(set) var isOn = false
+    private(set) var declined = false
     private(set) var turnOnCalls = 0
 
     init(offered: Bool = ProcessInfo.processInfo.arguments.contains(MockCloudSort.argument), on: Bool = false) {
@@ -90,9 +91,15 @@
       isOn = on
     }
 
+    var answered: Bool { isOn || declined }
+
     func turnOn() {
       turnOnCalls += 1
       isOn = true
+    }
+
+    func notNow() {
+      declined = true
     }
   }
 
@@ -100,6 +107,17 @@
   final class MockNotificationPermission: NotificationPermissionAsking {
     var showsDetails = false
     private(set) var asked = false
+    private(set) var declined = false
+
+    init(answered: Bool = false) {
+      asked = answered
+    }
+
+    var answered: Bool { asked || declined }
+
+    func decline() {
+      declined = true
+    }
 
     func requestAuthorization() async -> Bool {
       asked = true

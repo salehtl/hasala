@@ -47,6 +47,7 @@ final class SetupMailLink: MailboxConnecting {
   var offersSampleData: Bool { base.offersSampleData }
   var connectRefused: Bool { base.connectRefused }
   var importing: MailImport? { base.importing }
+  var firstScanFinished: Bool { base.firstScanFinished }
 
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }

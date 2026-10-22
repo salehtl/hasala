@@ -110,6 +110,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     return Self.importing(phase: rt.store.mailboxPhase, seen: rt.store.importSeen, progress: rt.store.importProgress)
   }
 
+  var firstScanFinished: Bool {
+    guard let rt = runtime(), !rt.store.holdsSample else { return false }
+    return rt.store.mailboxPhase == .active
+  }
+
   static func importing(phase: MailboxPhase?, seen: Bool, progress: MailboxProgress?) -> MailImport? {
     let read = progress?.done ?? 0
     let total = progress?.total ?? 0

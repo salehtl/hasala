@@ -1,7 +1,7 @@
 import XCTest
 
 /// Mailboxes on the in-memory mock (Debug: Gmail and Outlook): connecting in setup through
-/// to the first scan, Add a mailbox from Bank alerts, the two Outlook errors, Sign in again
+/// to Home with the import running, Add a mailbox from Bank alerts, the two Outlook errors, Sign in again
 /// from the hero and from the mailbox, Disconnect behind its alert, and the large-text audit.
 final class MailboxUITests: XCTestCase {
   override func setUp() {
@@ -11,8 +11,8 @@ final class MailboxUITests: XCTestCase {
   /// The large-text size the audits use (AX3).
   static let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
 
-  /// Setup's bank alerts step connects Gmail (the mock's sign-in always succeeds) and the
-  /// first scan starts.
+  /// Setup's bank alerts step connects Gmail (the mock's sign-in always succeeds), Home
+  /// opens, and the first scan reads behind it.
   @MainActor
   func testSetupConnectsGmailToTheFirstScan() throws {
     let app = launch(scenario: "setupBank")
@@ -20,12 +20,13 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Connect Gmail")
     try audit(app)
     connect.tap()
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
-    attach(app, "First scan")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
+    XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait), "Home has no Finish setting up")
+    attach(app, "Home after the connect")
   }
 
   /// Outlook in setup: the bank step with Outlook (with the work account line); then Use
-  /// Outlook › Choose your email › Outlook, which connects it, and the first scan.
+  /// Outlook › Choose your email › Outlook, which connects it, and Home.
   @MainActor
   func testSetupConnectsOutlookToTheFirstScan() throws {
     var app = launch(scenario: nil, screen: "mail.connectOutlook")
@@ -44,8 +45,8 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Setup · Choose your email")
     try audit(app, overSheet: true)
     outlook.tap()
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 15), "the pick did not connect Outlook")
-    attach(app, "Setup · Outlook connected · First scan")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "the pick did not connect Outlook")
+    attach(app, "Home · Outlook connected")
   }
 
   /// Profile › Bank alerts › Add a mailbox › Outlook connects a second mailbox: back on Bank

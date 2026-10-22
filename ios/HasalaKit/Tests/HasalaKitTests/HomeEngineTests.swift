@@ -161,7 +161,7 @@ struct HomeHeroTests {
     #expect(h.spent == .aed(11_115_62))
     #expect(h.tick == nil && h.verdict == nil && h.fact == nil)
     #expect(h.word.rendered(hidden: false) == "No plan yet")
-    #expect(h.caption.rendered(hidden: false) == "spent this month")
+    #expect(h.caption.rendered(hidden: false) == "spent so far")
     #expect(h.wash == .sky)
     #expect(h.tiles[2].value == .aed(5_000_00))
   }

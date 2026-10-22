@@ -171,7 +171,7 @@ class LiveE2ECase: XCTestCase {
     return false
   }
 
-  /// The setup's notification step, answered "Allow notifications" and then "Allow" on
+  /// Home's notifications sheet, answered "Allow notifications" and then "Allow" on
   /// the system's alert (drawn by SpringBoard or in the app's process). A tap that lands
   /// while the step is still sliding in is lost, so the button is tapped again until the
   /// alert shows. The alert does not always appear on a new simulator (the request then
@@ -181,7 +181,7 @@ class LiveE2ECase: XCTestCase {
   @discardableResult
   func allowNotifications(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> Bool {
     let button = el(app, "notifications.allow")
-    XCTAssertTrue(button.waitForExistence(timeout: 90), "the notification step did not open", file: file, line: line)
+    XCTAssertTrue(button.waitForExistence(timeout: 90), "the notifications sheet did not open", file: file, line: line)
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     var lastTap = Date.distantPast
     let deadline = Date().addingTimeInterval(30)
@@ -227,14 +227,13 @@ class LiveE2ECase: XCTestCase {
       == .completed
   }
 
-  /// Drives a fresh sign-in or the end of setup to Home: "Not now" on the notification
-  /// step and "Go to Home" on the last one, whichever of them the account still needs.
+  /// Drives a fresh sign-in to Home: "Not now" on the notifications sheet if it is up.
   @MainActor
   func driveToHome(_ app: XCUIApplication, timeout: TimeInterval = 120,
                    file: StaticString = #filePath, line: UInt = #line) {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
-      guard let seen = waitForAny(app, ["home.hero.left", "notifications.notNow", "done.home", "boot.retry"],
+      guard let seen = waitForAny(app, ["home.hero.left", "notifications.notNow", "boot.retry"],
                                   timeout: deadline.timeIntervalSinceNow)
       else { break }
       switch seen {

@@ -141,6 +141,7 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// with `.finished`, `.background` (it goes on later) or `.failed`, with the summary.
   func firstScan() -> AsyncStream<ScanProgress>
   var importing: MailImport? { get }
+  var firstScanFinished: Bool { get }
   /// Review accounts only (spec 04 §6.13): loads the synthetic sample instead of mail.
   var offersSampleData: Bool { get }
   func loadSampleData() async throws(SetupFailure)
@@ -222,6 +223,8 @@ struct MailImport: Equatable, Sendable {
 
 extension MailboxConnecting {
   var importing: MailImport? { nil }
+
+  var firstScanFinished: Bool { false }
 
   func disconnect(_ mailboxID: String) async throws(MailConnectFailure) {
     try await disconnect(mailboxID, removeTransactions: false)

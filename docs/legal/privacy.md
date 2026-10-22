@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, and your rights under UAE law."
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-22
 status: "final"
 plainWords: "Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
@@ -294,9 +294,9 @@ If you lose your recovery phrase and every passkey, your account can't be recove
 
 ## Notifications
 
-The beta doesn't show notifications yet. Setup can ask for your permission now, so that they work once they arrive. When they do, Hasala will write them on your iPhone. Our server only ever sends a silent signal through Apple to wake the app, and that signal carries no content.
+The beta doesn't show notifications yet. Hasala can ask for your permission now, from **Finish setting up** on Home, so that they work once they arrive. When they do, Hasala will write them on your iPhone. Our server only ever sends a silent signal through Apple to wake the app, and that signal carries no content.
 
-During setup you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and we plan for it to apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
+When Hasala asks, you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and we plan for it to apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
 
 ## Your profile picture
 
@@ -304,7 +304,7 @@ Hasala shows your picture from Gravatar, a service run by Automattic, if you hav
 
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when setup offers to sort payments that are waiting. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when Review offers to sort the payments waiting there. There are two switches, and you can turn each on or off at any time.
 
 **How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. With Cloud suggestions off, that's all: a payment they can't place waits for you in Review, and no AI model runs. With Merchant suggestions on, Hasala then asks Cloudflare's AI service, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself.
 
@@ -312,7 +312,7 @@ Cloud suggestions are off unless you turn them on, on each iPhone, under Profile
 
 **Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments don't wait in Review, and they're labelled as sorted by Cloudflare's AI. You can change any of them. It sends nothing more than Merchant suggestions does.
 
-**Sorting what's waiting.** Hasala can sort many waiting payments at once, but only when you start it yourself: in setup, in Review, or when you turn on Merchant suggestions. In setup, starting it turns both switches on; if you decline, both stay off. Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. Each request still carries one merchant name. You can stop it at any time, and you can send the payments it sorted back to Review. You can change either switch in Profile › Cloud suggestions at any time.
+**Sorting what's waiting.** Hasala can sort many waiting payments at once, but only when you start it yourself: in Review, or when you turn on Merchant suggestions. When payments wait in Review, Hasala can ask you, once on each iPhone, whether to sort them. You can answer at any time, not only after the first import. If you accept, both switches turn on, and if you decline, both stay off. Hasala asks about each merchant name it can't place once, a few at a time, while the app is open. Each request still carries one merchant name. You can stop it at any time, and you can send the payments it sorted back to Review. You can change either switch in Profile › Cloud suggestions at any time.
 
 **What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. The service passes each one to Cloudflare's AI service through Cloudflare AI Gateway, which lets us cap what we spend. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address. The service uses it only to limit how many requests one connection can send: Cloudflare's rate limiter counts requests from each IP address (for IPv6, from its network block) over a short window, about a minute. The service doesn't log or return the address. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say Cloudflare's AI service doesn't keep it or use it to train its models. We turn AI Gateway's logs and cache off, so it keeps only totals for each model, such as the number of requests, the amount of text processed, the cost and any errors, never the merchant name, the categories or the answer. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records describe the request, not what it carries, so the merchant name and the category names aren't in them. We never see these requests.
 

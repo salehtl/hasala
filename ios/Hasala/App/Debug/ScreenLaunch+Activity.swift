@@ -35,6 +35,10 @@
       }),
       // Review · Tab · To sort (6) (NPV-0).
       Screen("review", scenario: "maya", prepare: shell(.review)),
+      Screen("review.cloudSort", scenario: "maya", prepare: { graph in
+        (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
+        shell(.review)(graph)
+      }),
       Screen("review.unread", scenario: "mayaUnreadMail", prepare: shell(.review)),
       Screen("review.unread.list", scenario: "mayaUnreadMail", prepare: shell(.review, review: [.unreadMail])),
       Screen("review.unread.add", scenario: "mayaUnreadMail",

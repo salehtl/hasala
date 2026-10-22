@@ -19,6 +19,12 @@ final class SystemNotificationPermission: NotificationPermissionAsking {
     }
   }
 
+  var answered: Bool { UserDefaults.standard.bool(forKey: Self.askedKey) }
+
+  func decline() {
+    UserDefaults.standard.set(true, forKey: Self.askedKey)
+  }
+
   func requestAuthorization() async -> Bool {
     UserDefaults.standard.set(true, forKey: Self.askedKey)
     do {
