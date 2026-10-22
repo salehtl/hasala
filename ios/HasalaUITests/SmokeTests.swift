@@ -123,7 +123,7 @@ final class SmokeTests: XCTestCase {
     let mark = app.images["Hasala"].firstMatch
     XCTAssertTrue(mark.waitForExistence(timeout: uiWait))
     for _ in 0..<5 { mark.tap() }
-    XCTAssertFalse(el(app, "bell.sheet").exists, "the mark opened the notifications")
+    XCTAssertFalse(el(app, "bell.sheet").waitForExistence(timeout: 2), "the mark opened the notifications")
     XCTAssertTrue(app.buttons["header.notifications"].firstMatch.isHittable)
     XCTAssertTrue(el(app, "home.hero.left").exists, "the mark left Home")
     XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "the mark is off centre")
