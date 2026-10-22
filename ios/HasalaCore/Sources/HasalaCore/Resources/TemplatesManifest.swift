@@ -25,7 +25,9 @@ public enum TemplatesManifest {
   public static let entries: [Entry] = [
     Entry(file: "adib.account.v1.json", id: "adib.account.v1", version: 1, sha256: "4bd30c7ea5c8523cbb2c4b7c9573447b1aaa5a1615ab326ec9ec6e1bc2450b3e"),
     Entry(file: "adib.alert.v1.json", id: "adib.alert.v1", version: 1, sha256: "66afc2357dc1f50631ccf7d0a4f95fecb9fc45bbf2e7560d9adf435e4f193635"),
-    Entry(file: "dib.account.v1.json", id: "dib.account.v1", version: 3, sha256: "0f32deab961abe233455b1931c28c4975a1b4d235737d6fbcf3c9ab224b1a012"),
+    Entry(file: "dib.account.v1.json", id: "dib.account.v1", version: 4, sha256: "5740c1e7dc7fed3415ab961d1ecfce3e42dc63e4d642954ca94a4f02b6479a86"),
+    Entry(file: "dib.card-refund.v1.json", id: "dib.card-refund.v1", version: 1, sha256: "56c2119457357adad881ba235738c9b256927b8bdba6764a09fe6441319684f8"),
+    Entry(file: "dib.card-reversal.v1.json", id: "dib.card-reversal.v1", version: 1, sha256: "7088e6197fc77bc071c3a239642af7326e73fc0a870745d8ab5c280b10009ef0"),
     Entry(file: "dib.card.v1.json", id: "dib.card.v1", version: 2, sha256: "b89d285841df67345346d1b89982fe079f3f606720deb1e0cc859e23373781d6"),
     Entry(file: "dib.money-transfer.v1.json", id: "dib.money-transfer.v1", version: 1, sha256: "fee7d81b2c41c777acd9221afe13ffe7dc7c312a3326178a96fe2b0c52c4541b"),
     Entry(file: "dib.transfer.v1.json", id: "dib.transfer.v1", version: 1, sha256: "00401b96e47fc1139db8feb62a8d6adf18a540410b13d2612aac360116efdf61"),

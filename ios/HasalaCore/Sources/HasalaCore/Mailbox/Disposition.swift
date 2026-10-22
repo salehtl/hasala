@@ -16,6 +16,7 @@
 //      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
 //      ledger doesn't know (`unknown`) files like a known one: setup has no cards step. When the
 //      To or Cc naming it is unsigned, or there is none, only a known card files.
+import CoreCategorize
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -249,7 +250,8 @@ public enum MessageDisposer {
       && m.spam == false
       && (m.recipient == .confirmed || (m.recipient == .unconfirmed && card == "known"))
       && card != "not_mine"
-    let decision = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
+    let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
+    let decision = decided.category == nil ? refundDecision(m, f) ?? decided : decided
 
     var p = JSONObject([
       ("amount_minor", .string(String(f.amountMinor))), ("currency", .string(f.currency)),
@@ -308,6 +310,20 @@ public enum MessageDisposer {
       fields.append((key, .string(s)))
     }
     return .object(JSONObject(fields))
+  }
+
+  public static let refundTemplates = ["dib.card-refund.v1", "dib.card-reversal.v1"]
+
+  static func refundDecision(_ m: ParsedMail, _ f: ParsedFields) -> IngestDecision? {
+    guard f.direction == "credit", let ref = m.gates.template,
+      let id = ref.split(separator: "@", maxSplits: 1).first.map(String.init), refundTemplates.contains(id)
+    else { return nil }
+    return IngestDecision(
+      category: "refunds",
+      source: .object(
+        JSONObject([
+          ("kind", .string("dictionary")), ("bundle", .string(DictionaryManifest.bundle)), ("entry", .string("template:\(id)")),
+        ])))
   }
 
   static func gatesJSON(_ g: MailGates, template: String, card: String) -> JSONValue {

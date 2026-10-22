@@ -761,8 +761,8 @@ func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
 			account = d
 		}
 	}
-	if len(dib) != 4 {
-		t.Fatalf("%d DIB seeds; this test names the card, account and two transfer-notice templates", len(dib))
+	if len(dib) != 6 {
+		t.Fatalf("%d DIB seeds; this test names the card, account, two transfer-notice and two card-refund templates", len(dib))
 	}
 	if len(card.Match.BodyContains) != 1 || len(card.Match.BodyNotContains) != 0 || len(account.Match.BodyContains) != 0 {
 		t.Fatalf("the DIB pair is no longer one body_contains against body_not_contains: %+v / %+v",
