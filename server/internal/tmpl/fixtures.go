@@ -33,6 +33,8 @@ var SeedTemplateFiles = []string{
 	"dib.account.v1.json",
 	"dib.transfer.v1.json",
 	"dib.money-transfer.v1.json",
+	"dib.card-refund.v1.json",
+	"dib.card-reversal.v1.json",
 	"enbd.alert.v1.json",
 	"enbd.transfer.v1.json",
 	"adib.alert.v1.json",
