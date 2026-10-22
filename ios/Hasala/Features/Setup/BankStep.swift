@@ -11,16 +11,18 @@ struct BankStep: View {
   @State private var telling = false
   @State private var helping = false
   @State private var asking: MailProviderKind?
+  @State private var starting = false
 
   var body: some View {
     let provider = model.provider
     let coordinator = model.coordinator(provider)
     let connected = model.connectedMailbox
+    let connectBusy = starting || model.connecting || coordinator.busy
     AccountScreen(
       title: "Connect your bank alerts",
       subtitle: "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
       steps: model.steps(1),
-      trailing: ("Skip", model.skipBanks)
+      trailing: skip(connected)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         Text("Your banks")
@@ -48,20 +50,20 @@ struct BankStep: View {
                    identifier: "bank.continue") { Task { await model.continueWithBanks() } }
           .dockPill()
       } else if model.offersSampleData {
-        BusyButton(title: "Use sample data", busy: model.busy, enabled: !model.chosenBanks.isEmpty,
+        BusyButton(title: "Use sample data", busy: model.busy, enabled: !connectBusy,
                    identifier: "mail.sample") { Task { await model.useSampleData() } }
           .dockPill()
         Button(provider.continueTitle) { connect(provider) }
-          .buttonStyle(.pill(.tertiary, size: .medium, fill: true, loading: coordinator.busy))
-          .disabled(model.chosenBanks.isEmpty)
+          .buttonStyle(.pill(.tertiary, size: .medium, fill: true, loading: connectBusy))
+          .disabled(model.chosenBanks.isEmpty || connectBusy || model.busy)
           .dockPill()
           .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
       } else {
         Button { connect(provider) } label: {
           Text(provider.continueTitle).fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(.pill(.primary, fill: true, loading: coordinator.busy || model.busy))
-        .disabled(model.chosenBanks.isEmpty)
+        .buttonStyle(.pill(.primary, fill: true, loading: connectBusy || model.busy))
+        .disabled(model.chosenBanks.isEmpty || connectBusy || model.busy)
         .dockPill()
         .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
       }
@@ -76,10 +78,23 @@ struct BankStep: View {
       Task { await model.connectMail(provider, replacing: replacing, removingOld: removingOld) }
     }
     .mailSwitchQuestion(coordinator, asks: model.navigationPath.isEmpty)
+    .onChange(of: model.connectRequest, initial: true) { _, request in
+      guard let request else { return }
+      model.connectRequest = nil
+      connect(request)
+    }
+  }
+
+  private func skip(_ connected: MailboxSnapshot?) -> (title: String, action: () -> Void)? {
+    guard connected == nil else { return nil }
+    return ("Skip", model.skipBanks)
   }
 
   private func connect(_ provider: MailProviderKind) {
+    guard !starting, !model.connecting, !model.coordinator(provider).busy else { return }
+    starting = true
     Task {
+      defer { starting = false }
       guard await model.saveBanks() else { return }
       asking = provider
     }

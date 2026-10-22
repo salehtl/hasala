@@ -24,26 +24,27 @@ final class MailboxUITests: XCTestCase {
     attach(app, "First scan")
   }
 
-  /// Outlook in setup: Use Outlook › Choose your email › Outlook › the bank step with
-  /// Outlook (with the work account line) › Continue with Microsoft › the first scan.
+  /// Outlook in setup: the bank step with Outlook (with the work account line); then Use
+  /// Outlook › Choose your email › Outlook, which connects it, and the first scan.
   @MainActor
   func testSetupConnectsOutlookToTheFirstScan() throws {
-    let app = launch(scenario: "setupBank")
+    var app = launch(scenario: nil, screen: "mail.connectOutlook")
+    let connect = el(app, "mail.connect.outlook")
+    XCTAssertTrue(connect.waitForExistence(timeout: 30))
+    XCTAssertEqual(connect.label, "Continue with Microsoft")
+    XCTAssertTrue(el(app, "mail.provider").label.contains("Work or school account?"))
+    XCTAssertFalse(el(app, "mail.googleBriefing").exists)
+    attach(app, "Setup · Outlook, read-only")
+    try audit(app)
+
+    app = launch(scenario: "setupBank")
     tap(app, "mail.change", timeout: 15)
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
     attach(app, "Setup · Choose your email")
     try audit(app, overSheet: true)
     outlook.tap()
-    let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(connect.label, "Continue with Microsoft")
-    XCTAssertTrue(el(app, "mail.provider").label.contains("Work or school account?"))
-    XCTAssertFalse(el(app, "mail.googleBriefing").exists)
-    attach(app, "Setup · Outlook, read-only")
-    try audit(app)
-    connect.tap()
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
+    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 15), "the pick did not connect Outlook")
     attach(app, "Setup · Outlook connected · First scan")
   }
 

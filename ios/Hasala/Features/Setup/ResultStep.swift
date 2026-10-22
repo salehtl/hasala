@@ -106,7 +106,7 @@ private struct NoAlertsResult: View {
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       ActionDock(keyboardUp: false) {
-        Button("Check again") { Task { await model.checkAgain() } }
+        Button("Check for new alerts") { Task { await model.checkAgain() } }
           .buttonStyle(.pill(.primary, fill: true, loading: model.checkingAgain))
           .dockPill()
           .accessibilityIdentifier("result.checkAgain")
@@ -151,11 +151,19 @@ private struct NoAlertsResult: View {
             .accessibilityIdentifier("result.howTo.\(bank.rawValue)")
         }
       }
-      Text("New alerts are read when you open Hasala. Alerts go to another address? Use that mailbox instead.")
+      Text("Check for new alerts reads what reached \(mailbox) since Hasala looked. Alerts go to another address? Use that mailbox instead.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 8)
+      Button("Use a different email") { model.useDifferentEmail() }
+        .buttonStyle(.plain)
+        .hType(HType.subheadline.weight(.medium))
+        .foregroundStyle(HColor.textLink)
+        .disabled(model.checkingAgain)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("result.differentEmail")
     }
     .padding(.top, 18)
     .padding(.horizontal, 16)

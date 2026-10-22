@@ -35,10 +35,8 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Choose your email")
     try audit(app, overSheet: true)
     tap(app, "mail.choose.gmail")
-    XCTAssertTrue(connect.waitForExistence(timeout: 10))
-    connect.tap()
 
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 15), "the pick did not connect Gmail")
     attach(app, "Release · First scan")
     assertNoPlaceholders(app, "First scan")
     assertPersonalAccountsOnly(app, "First scan")
@@ -98,17 +96,13 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "notifications.allow").waitForExistence(timeout: 10), "the sample didn't go on")
   }
 
-  /// Outlook in setup: Use Outlook › Choose your email › Outlook, which says only personal
-  /// Microsoft accounts work, then Continue with Microsoft and the first scan.
+  /// Outlook in setup: the step says only personal Microsoft accounts work; Use Outlook ›
+  /// Choose your email › Outlook connects it, and the first scan starts.
   @MainActor
   func testSetupConnectsOutlook() throws {
-    let app = launchRelease("setupBank", waitForHome: false)
-    tap(app, "mail.change", timeout: 15)
-    let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
-    outlook.tap()
+    var app = launchRelease("setupEmail", waitForHome: false, screen: "mail.connectOutlook")
     let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: 10))
+    XCTAssertTrue(connect.waitForExistence(timeout: 30))
     XCTAssertEqual(connect.label, "Continue with Microsoft")
     XCTAssertTrue(el(app, "mail.provider").label.contains("Outlook: personal Microsoft accounts only."))
     assertAbsent(app, ["mail.googleBriefing"], "Outlook")
@@ -117,8 +111,13 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     assertNoText(app, ["our server is told"], "Outlook")
     attach(app, "Release · Outlook")
     try audit(app)
-    connect.tap()
-    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 10), "the first scan did not start")
+
+    app = launchRelease("setupBank", waitForHome: false)
+    tap(app, "mail.change", timeout: 15)
+    let outlook = el(app, "mail.choose.outlook")
+    XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
+    outlook.tap()
+    XCTAssertTrue(el(app, "scan.progress").waitForExistence(timeout: 15), "the pick did not connect Outlook")
     assertPersonalAccountsOnly(app, "First scan")
   }
 }

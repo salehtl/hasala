@@ -46,7 +46,7 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     guard f.hasPasscode else { return .passcode }
     guard f.hasSession else { return .account }
     guard f.keysReady else { return .keys }
-    guard f.banksChosen || f.bankSkipped else { return .bank }
+    guard f.banksChosen || f.bankSkipped || f.sampleLoaded else { return .bank }
     // Skipping the bank skips your email and the scan: nothing can be listed.
     let manual = f.bankSkipped && !f.banksChosen
     let mailDone = manual || f.mailbox != .unlinked || f.mailSkipped || f.sampleLoaded

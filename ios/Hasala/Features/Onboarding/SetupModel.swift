@@ -78,6 +78,9 @@ final class SetupModel {
   private(set) var summary: SortSummary?
 
   var busy = false
+  private(set) var connecting = false
+  var connectRequest: MailProviderKind?
+  @ObservationIgnored private var connectAfterChoosing: MailProviderKind?
   var failure: SetupFailure?
   var displayName: String
 
@@ -332,6 +335,27 @@ final class SetupModel {
     path = Array(path.prefix { !$0.isEmailStep })
   }
 
+  func choose(_ provider: MailProviderKind) {
+    pickProvider(provider)
+    connectAfterChoosing = provider
+  }
+
+  func choosingEnded() {
+    guard let provider = connectAfterChoosing else { return }
+    connectAfterChoosing = nil
+    connectRequest = provider
+  }
+
+  func useDifferentEmail() {
+    failure = nil
+    path = []
+    if canChooseEmail {
+      choosingEmail = true
+    } else {
+      connectRequest = provider
+    }
+  }
+
   /// The connect attempt for `provider`'s screen, made once and kept.
   func coordinator(_ provider: MailProviderKind) -> MailConnectCoordinator {
     if let c = coordinators[provider] { return c }
@@ -366,6 +390,10 @@ final class SetupModel {
 
   private func connectMail(_ provider: MailProviderKind, again: Bool, replacing: Bool = false,
                            removingOld: Bool = false) async {
+    guard !connecting else { return }
+    connecting = true
+    defer { connecting = false }
+    let before = connectedMailbox
     draft.provider = provider
     failure = nil
     if again {
@@ -374,7 +402,9 @@ final class SetupModel {
       await coordinator(provider).connect(provider, replacing: replacing, removingOld: removingOld)
     }
     switch coordinators[provider]?.outcome {
-    case .connected?: emailConnected(provider)
+    case .connected(let id)?:
+      let now = coordinators[provider]?.nowReading ?? connectedMailbox?.address
+      emailConnected(provider, fresh: before.map { $0.id != id || $0.address != now } ?? false)
     case .failed?: connectFailed(provider)
     case nil: break
     }
@@ -391,8 +421,16 @@ final class SetupModel {
     emailConnected(provider)
   }
 
-  private func emailConnected(_ provider: MailProviderKind) {
+  private func emailConnected(_ provider: MailProviderKind, fresh: Bool = false) {
     if path.last == .connectError(provider) { path.removeLast() }
+    if fresh {
+      scanTask?.cancel()
+      scanTask = nil
+      scan = nil
+      summary = nil
+      facts.scanDeferred = false
+      facts.mailbox = .unlinked
+    }
     if facts.mailbox == .unlinked {
       draft.provider = provider
       facts.mailSkipped = false
@@ -439,7 +477,8 @@ final class SetupModel {
   }
 
   func useSampleData() async {
-    guard !busy, await saveBanks() else { return }
+    guard !busy else { return }
+    didResume = true
     busy = true
     defer { busy = false }
     do {
@@ -458,7 +497,7 @@ final class SetupModel {
     let stream = services.mailbox.firstScan()
     scanTask = Task { [weak self] in
       for await p in stream {
-        guard let self else { return }
+        guard let self, !Task.isCancelled else { return }
         self.scan = p
         if let s = p.summary { self.summary = s }
         switch p.phase {

@@ -70,9 +70,60 @@ struct SetupFlowTests: AccountSuite {
     let s = services(MockAccountService(existing: .passkey, signedIn: true), sample: true)
     let m = model(s)
     #expect(m.offersSampleData)
+    for bank in SupportedBank.allCases { m.toggle(bank) }
+    #expect(m.chosenBanks.isEmpty)
     await m.useSampleData()
-    #expect((s.setup as? MockSetupAuthoring)?.banks == [.enbd, .dib, .adib])
+    let setup = s.setup as? MockSetupAuthoring
+    #expect(setup?.banks == [] && setup?.chooseBanksCalls == 0 && setup?.setBanksCalls == 0)
     #expect(m.step == .notifications && m.path == [.notifications])
+  }
+
+  @Test func aSecondConnectWhileOneRunsDoesNothing() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.connectDelay = .milliseconds(50)
+    let m = model(s)
+    async let first: Void = m.connectMail(.gmail)
+    async let second: Void = m.connectMail(.gmail)
+    _ = await (first, second)
+    #expect(lane.connectCalls == 1 && !m.connecting)
+    #expect(m.path == [.scan])
+  }
+
+  @Test func aPickInTheChooserStartsItsConnect() async throws {
+    let m = model(services(MockAccountService(existing: .passkey, signedIn: true)))
+    m.chooseEmail()
+    m.choosingEnded()
+    #expect(m.connectRequest == nil)
+    m.chooseEmail()
+    m.choose(.outlook)
+    #expect(!m.choosingEmail && m.provider == .outlook && m.connectRequest == nil)
+    m.choosingEnded()
+    #expect(m.connectRequest == .outlook)
+    m.connectRequest = nil
+    m.choosingEnded()
+    #expect(m.connectRequest == nil)
+  }
+
+  @Test func noAlertsCanMoveToAnotherMailboxAndScansIt() async throws {
+    let base = MockMailbox()
+    base.total = 0
+    let mailbox = CountingMailbox(base)
+    let m = model(services(with: mailbox))
+    await m.continueWithBanks()
+    try await scanFinishes(m)
+    m.planWhileScanning()
+    #expect(m.foundNoAlerts && mailbox.scans == 1)
+    m.useDifferentEmail()
+    #expect(m.path.isEmpty && m.choosingEmail)
+    m.choose(.outlook)
+    m.choosingEnded()
+    #expect(m.connectRequest == .outlook)
+    m.connectRequest = nil
+    await m.connectMail(.outlook, replacing: true, removingOld: false)
+    #expect(m.path == [.scan] && mailbox.scans == 2)
+    #expect(m.connectedMailbox?.provider == .outlook && !m.facts.scanDeferred)
+    try await scanFinishes(m)
   }
 
   /// Offline, the email step says so in the provider's words (spec copy), and stays put.

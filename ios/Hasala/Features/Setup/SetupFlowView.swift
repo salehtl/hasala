@@ -29,8 +29,8 @@ struct SetupFlowView: View {
           }
         }
     }
-    .sheet(isPresented: $model.choosingEmail) {
-      ChooseEmailSheet(mailbox: model.mailbox, title: .setup) { model.pickProvider($0) }
+    .sheet(isPresented: $model.choosingEmail, onDismiss: model.choosingEnded) {
+      ChooseEmailSheet(mailbox: model.mailbox, title: .setup) { model.choose($0) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("setup.chooseEmail")
     }

@@ -87,12 +87,6 @@ final class OnboardingJourneyUITests: XCTestCase {
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
     outlook.tap()
-    let connect = el(app, "mail.connect.outlook")
-    XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(connect.label, "Continue with Microsoft")
-    XCTAssertFalse(el(app, "mail.googleBriefing").exists, "Outlook shows what Google will show")
-    attach(app, "Setup · Bank alerts and Outlook")
-    connect.tap()
 
     XCTAssertTrue(app.staticTexts["Outlook is connected. Reading your alerts now."].waitForExistence(timeout: 10))
     XCTAssertTrue(el(app, "scan.progress").exists)

@@ -190,10 +190,22 @@ final class SetupUITests: XCTestCase {
     XCTAssertTrue(el(app, "alertsHelp.dib").waitForExistence(timeout: uiWait), "the how-to did not open")
     XCTAssertFalse(el(app, "alertsHelp.enbd").exists, "the how-to shows every bank")
     tap(app, "alertsHelp.done")
+    XCTAssertEqual(el(app, "result.checkAgain").label, "Check for new alerts")
     tap(app, "result.checkAgain")
     XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: 10))
     tap(app, "result.continue")
     XCTAssertTrue(el(app, "notifications.allow").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testNoBankAlertsYetOffersAnotherMailbox() throws {
+    let app = launch(scenario: nil, screen: "setup.resultNoAlerts")
+    XCTAssertTrue(app.staticTexts["No bank alerts yet."].waitForExistence(timeout: 30))
+    tap(app, "result.differentEmail")
+    let outlook = el(app, "mail.choose.outlook")
+    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
+    XCTAssertTrue(el(app, "mail.connected").exists, "the bank step is not under the chooser")
+    XCTAssertFalse(app.buttons["Skip"].exists, "Skip is offered with a mailbox connected")
   }
 
   @MainActor
