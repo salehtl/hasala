@@ -168,6 +168,7 @@ final class SignupModel {
   func usePastedInvite(_ text: String, pasteboardChange: Int? = nil) {
     failure = nil
     guard let link = InviteLink.parse(pasted: text) else {
+      if InviteCode(InviteCode.entryCharacters(text)) != nil { paste(text) }
       path = [.invite]
       return
     }
@@ -242,6 +243,7 @@ final class SignupModel {
                                             displayName: displayName)
       ticket = t
       ticketInvite = invite.value
+      clearPastedLink()
       emailVerified = false
       codeUsedUp = false
       email = t.email
@@ -428,10 +430,7 @@ final class SignupModel {
       // The phrase leaves memory once it is published, and the link's key is no longer needed.
       self.phrase = nil
       linkKey = nil
-      if let change = linkPasteboardChange {
-        clearPasteboard(change)
-        linkPasteboardChange = nil
-      }
+      clearPastedLink()
       newPassword = ""
       confirmPassword = ""
       passwordShown = false
@@ -444,7 +443,14 @@ final class SignupModel {
     }
   }
 
+  private func clearPastedLink() {
+    guard let change = linkPasteboardChange else { return }
+    clearPasteboard(change)
+    linkPasteboardChange = nil
+  }
+
   private func startAgain() {
+    clearPastedLink()
     let reason: AuthFailure = phraseSeen ? .signupExpiredPhrase : .signupExpired
     phrase = nil
     phraseRevealed = false

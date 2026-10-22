@@ -149,10 +149,7 @@ struct StoriesView: View {
     .toolbar(.hidden, for: .navigationBar)
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
     .hHaptic(.selection, trigger: settles)
-    .onAppear {
-      appeared()
-      pasteboardChecks += 1
-    }
+    .onAppear { appeared() }
     .task(id: pasteboardChecks) { await lookForCopiedLink() }
     .onChange(of: scenePhase) { _, phase in
       if phase == .active { pasteboardChecks += 1 }
@@ -260,18 +257,12 @@ struct StoriesView: View {
   private func startPanel(bottom: CGFloat) -> some View {
     VStack(spacing: 12) {
       if linkCopied {
-        CopiedInviteCard()
+        CopiedInviteCard(stacked: typeSize.isAccessibilitySize, onPaste: onPasteInvite)
           .hTransition(.fade)
-        WidePasteButton(identifier: "stories.useInvite", onPaste: onPasteInvite)
-          .frame(maxWidth: .infinity)
-          .frame(height: 54)
-        InlineTextButton(title: "Enter a code instead", identifier: "stories.enterCode", action: onGetStarted)
-          .padding(.vertical, -8)
-      } else {
-        Button("Get started", action: onGetStarted)
-          .buttonStyle(.pill(.primary, fill: true))
-          .accessibilityIdentifier("stories.getStarted")
       }
+      Button("Get started", action: onGetStarted)
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("stories.getStarted")
       Button(action: onSignIn) {
         // Paper sets this label in text-primary, not the link blue of "On grouped".
         Text("I already have an account").foregroundStyle(HColor.textPrimary)
@@ -525,6 +516,7 @@ struct StoriesView: View {
 
 private struct WidePasteButton: UIViewRepresentable {
   var identifier: String
+  var fill: Bool
   var onPaste: (String) -> Void
 
   func makeUIView(context: Context) -> PasteTarget {
@@ -533,8 +525,8 @@ private struct WidePasteButton: UIViewRepresentable {
     let config = UIPasteControl.Configuration()
     config.displayMode = .iconAndLabel
     config.cornerStyle = .capsule
-    config.baseBackgroundColor = UIColor(HColor.actionAccent)
-    config.baseForegroundColor = UIColor(HColor.textOnAccent)
+    config.baseBackgroundColor = UIColor(HColor.actionAccentSubtle)
+    config.baseForegroundColor = UIColor(HColor.textLink)
     let control = UIPasteControl(configuration: config)
     control.target = target
     control.accessibilityIdentifier = identifier
@@ -554,6 +546,18 @@ private struct WidePasteButton: UIViewRepresentable {
     target.onPaste = onPaste
   }
 
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView target: PasteTarget, context: Context) -> CGSize? {
+    guard let control = target.subviews.first else { return nil }
+    let limit = CGSize(width: proposal.width ?? UIView.layoutFittingExpandedSize.width, height: UIView.layoutFittingExpandedSize.height)
+    let fitted = control.sizeThatFits(limit)
+    let laid = control.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+    let intrinsic = control.intrinsicContentSize
+    let natural = CGSize(
+      width: max(fitted.width, laid.width, intrinsic.width), height: max(fitted.height, laid.height, intrinsic.height))
+    let width = fill ? (proposal.width ?? natural.width) : min(natural.width, proposal.width ?? natural.width)
+    return CGSize(width: max(width, 88), height: max(natural.height, 44))
+  }
+
   final class PasteTarget: UIView {
     var onPaste: (String) -> Void = { _ in }
 
@@ -568,7 +572,7 @@ private struct WidePasteButton: UIViewRepresentable {
     override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool { true }
 
     override func paste(itemProviders: [NSItemProvider]) {
-      guard let provider = itemProviders.first else { return onPaste("") }
+      guard let provider = itemProviders.first else { return }
       let deliver: @Sendable (String) -> Void = { [weak self] text in
         Task { @MainActor in self?.onPaste(text) }
       }
@@ -582,8 +586,34 @@ private struct WidePasteButton: UIViewRepresentable {
 }
 
 private struct CopiedInviteCard: View {
+  var stacked: Bool
+  var onPaste: (String) -> Void
+
   var body: some View {
-    HStack(spacing: 10) {
+    Group {
+      if stacked {
+        VStack(alignment: .leading, spacing: 10) {
+          message
+          paste(fill: true)
+        }
+      } else {
+        HStack(spacing: 10) {
+          message
+          Spacer(minLength: 0)
+          paste(fill: false)
+        }
+      }
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 14)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HColor.blue200, lineWidth: 1)
+    }
+  }
+
+  private var message: some View {
+    HStack(alignment: .top, spacing: 10) {
       ZStack {
         Circle().fill(HColor.actionAccent)
         HIconView(.check, size: 12, color: .white, strokeWidth: 2.6)
@@ -598,16 +628,15 @@ private struct CopiedInviteCard: View {
           .foregroundStyle(HColor.textSecondary)
       }
       .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 0)
-    }
-    .padding(.vertical, 10)
-    .padding(.horizontal, 14)
-    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HColor.blue200, lineWidth: 1)
     }
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("stories.inviteFound")
+  }
+
+  private func paste(fill: Bool) -> some View {
+    WidePasteButton(identifier: "stories.useInvite", fill: fill, onPaste: onPaste)
+      .frame(maxWidth: fill ? .infinity : nil, minHeight: 44)
+      .fixedSize(horizontal: !fill, vertical: true)
   }
 }
 

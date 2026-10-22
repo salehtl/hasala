@@ -73,8 +73,9 @@ struct InviteCodeView: View {
         status
         Spacer(minLength: 0)
         PasteButton(payloadType: String.self) { pasted in
+          guard let text = pasted.first, !text.isEmpty else { return }
           Task { @MainActor in
-            model.paste(pasted.first ?? "", pasteboardChange: UIPasteboard.general.changeCount)
+            model.paste(text, pasteboardChange: UIPasteboard.general.changeCount)
           }
         }
         .labelStyle(.titleOnly)

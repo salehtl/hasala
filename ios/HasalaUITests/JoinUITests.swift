@@ -67,7 +67,7 @@ final class JoinUITests: XCTestCase {
   func testACopiedInviteLinkNeedsNoCode() throws {
     let app = launch(scenario: "newUser", pasteboard: Self.inviteLink)
     XCTAssertTrue(el(app, "stories.inviteFound").waitForExistence(timeout: 15))
-    XCTAssertFalse(el(app, "stories.getStarted").exists)
+    XCTAssertTrue(el(app, "stories.getStarted").exists)
     attach(app, "Stories · invite link found")
     try audit(app)
     tap(app, "stories.useInvite")
@@ -78,7 +78,6 @@ final class JoinUITests: XCTestCase {
     type(app, "about.email", "maya@example.com")
     tap(app, "about.continue")
     XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: uiWait), "the link's key did not prove the address")
-    XCTAssertEqual(UIPasteboard.general.string, Self.inviteLink)
     tap(app, "method.continue")
     tap(app, "phrase.start")
     tap(app, "phrase.reveal")
@@ -104,7 +103,7 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "stories.inviteFound").waitForExistence(timeout: 15))
     attach(app, "AX3 · Stories · link copied")
     try audit(app, atLargeText: true)
-    tap(app, "stories.enterCode")
+    tap(app, "stories.getStarted")
     XCTAssertTrue(el(app, "invite.field").waitForExistence(timeout: uiWait))
     XCTAssertEqual(UIPasteboard.general.string, "https://example.com/hello")
   }

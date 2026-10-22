@@ -641,15 +641,22 @@ struct SignupFlowTests: AccountSuite {
     m.email = "maya@example.com"
     await m.submitAboutYou()
     #expect(m.path.last == .method)
+    #expect(cleared == [7])
+    #expect(m.linkPasteboardChange == nil)
     m.method = .passkey
     await m.continueWithMethod()
     m.go(.phraseShow)
     m.phraseRevealed = true
-    #expect(cleared.isEmpty)
     await m.finish()
     #expect(m.path.last == .accountReady)
     #expect(cleared == [7])
-    #expect(m.linkPasteboardChange == nil)
+  }
+
+  @Test func aPastedBareCodeOpensTheCodeFieldFilled() {
+    let m = SignupModel(account: CountingAccount())
+    m.usePastedInvite(InviteCode.group(Self.code), pasteboardChange: 5)
+    #expect(m.path == [.invite])
+    #expect(m.normalizedInvite == Self.code && m.invitePasted && !m.inviteFromLink)
   }
 
   @Test func pastedTextThatIsNoInviteLinkOpensTheCodeField() {
