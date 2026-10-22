@@ -27,6 +27,7 @@ public final class InMemoryLedger: LedgerStore {
     var rules: (before: [Rule], after: [Rule])?
     var projects: (before: [Project], after: [Project])?
     var unread: (before: [UnreadMail], after: [UnreadMail])?
+    var receipt: SortReceipt??
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -40,6 +41,7 @@ public final class InMemoryLedger: LedgerStore {
     for i in state.txns.indices where state.txns[i].merchantKey == nil {
       state.txns[i].merchantKey = state.txns[i].merchant.lowercased()
     }
+    MockReach.refresh(&state)
     self.state = state
     self.now = now
   }
@@ -52,7 +54,8 @@ public final class InMemoryLedger: LedgerStore {
     var touchedPlan = false, touchedBills = false, touchedCandidates = false, touchedRules = false
     var touchedProjects = false
     var touchedUnread = false
-    let title: String?
+    var title: String?
+    var receipt: SortReceipt?
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
@@ -63,6 +66,37 @@ public final class InMemoryLedger: LedgerStore {
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
 
     let today = now.date
+    let at = now
+
+    func fileByPerson(_ t: inout Txn, _ c: CategoryID) {
+      t.categoryID = c
+      t.categorySource = .user
+      t.ruleID = nil
+      t.needsReview = false
+      t.isTransfer = c == "transfer"
+      t.splits = []
+      t.categorizedAt = at
+    }
+
+    func reachBack(_ rule: Rule, group ref: MerchantGroupRef?, except: Set<TxnID>) throws(ActionError) -> [TxnID] {
+      guard let ref else { return [] }
+      let hits = s.txns.filter { t in
+        t.reachable && t.groupRef == ref && !s.skippedReview.contains(t.id) && !except.contains(t.id)
+          && (rule.matches(t.merchant) || rule.matches(t.spelling))
+      }.map(\.id)
+      for id in hits {
+        try editTxn(id) { t in
+          t.categoryID = rule.categoryID
+          t.categorySource = .rule(pattern: rule.patterns.first ?? "")
+          t.ruleID = rule.id
+          t.needsReview = false
+          t.isTransfer = rule.categoryID == "transfer"
+          t.splits = []
+          t.categorizedAt = at
+        }
+      }
+      return hits
+    }
 
     func billIndex(_ id: BillID) throws(ActionError) -> Int {
       guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].state != .dismissed else { throw .notFound }
@@ -115,30 +149,106 @@ public final class InMemoryLedger: LedgerStore {
     case .categorize(let id, let c, let learnRule, let project):
       guard s.category(c) != nil else { throw .notFound }
       try editTxn(id) { t in
-        t.categoryID = c
-        t.categorySource = .user
-        t.needsReview = false
-        t.isTransfer = c == "transfer"
-        t.splits = []
+        fileByPerson(&t, c)
         if let project { t.projectID = project }
       }
+      title = "Sorted into \(categoryName(c))"
       if learnRule, let t = s.txn(id), !s.rules.contains(where: { $0.matches(t.merchant) }) {
         touchedRules = true
-        s.rules.append(Rule(id: "learned-\(id)", patterns: [t.merchant.lowercased()], categoryID: c,
-                            learnedToday: true))
+        let taken = Set(s.rules.map(\.id)).union(s.txns.compactMap(\.ruleID))
+        let base = "learned-\(id)"
+        let ruleID = taken.contains(base) ? "\(base)-\(nextToken)" : base
+        let rule = Rule(id: ruleID, patterns: [t.merchant.lowercased()], categoryID: c, learnedToday: true)
+        s.rules.append(rule)
+        let reached = try reachBack(rule, group: t.groupRef, except: [id])
+        if !reached.isEmpty {
+          let filed = [id] + reached
+          let merchant = ReviewEngine.displayName(filed.compactMap { s.txn($0) })
+          receipt = SortReceipt(id: nextToken, group: t.groupRef, merchant: merchant, categoryID: c, txnIDs: filed,
+                                ruleID: rule.id)
+          title = "Sorted \(filed.count) \(merchant) as \(categoryName(c))"
+        }
       }
-      title = "Sorted into \(categoryName(c))"
+    case .sortGroup(let ref, let c, let alwaysUse, let project):
+      guard s.category(c) != nil else { throw .notFound }
+      if let project, s.project(project) == nil { throw .notFound }
+      let members = s.txns.filter { $0.reachable && $0.groupRef == ref && !s.skippedReview.contains($0.id) }
+      guard !members.isEmpty else { throw .notFound }
+      for t in members {
+        try editTxn(t.id) { t in
+          fileByPerson(&t, c)
+          if let project { t.projectID = project }
+        }
+      }
+      var filed = members.map(\.id)
+      var ruleID: RuleID?
+      if alwaysUse {
+        var seen: Set<String> = []
+        let patterns = members.map { $0.spelling.lowercased() }.filter { seen.insert($0).inserted }
+        let rule = Rule(id: "group-\(nextToken)", patterns: patterns, match: .exact, categoryID: c, learnedToday: true)
+        touchedRules = true
+        s.rules.append(rule)
+        ruleID = rule.id
+        filed += try reachBack(rule, group: ref, except: Set(filed))
+      }
+      let merchant = ReviewEngine.displayName(members)
+      receipt = SortReceipt(id: nextToken, group: ref, merchant: merchant, categoryID: c, txnIDs: filed, ruleID: ruleID)
+      title = "Sorted \(filed.count) \(merchant) as \(categoryName(c))"
+    case .notThis(let ref, let c):
+      guard s.category(c) != nil else { throw .notFound }
+      let rows = s.txns.filter { $0.inGroup(ref.key) }
+      guard !rows.isEmpty else { throw .notFound }
+      for row in rows {
+        try editTxn(row.id) { t in
+          t.rejectedCategories.insert(c)
+          guard t.isModelSourced, t.categoryID == c || (t.categoryID == nil && t.suggestion == c) else { return }
+          t.categoryID = nil
+          t.categorySource = nil
+          t.suggestion = nil
+          t.ruleID = nil
+          t.needsReview = true
+          t.isTransfer = false
+          t.categorizedAt = at
+        }
+      }
+      let shown = rows.filter { $0.direction == ref.direction }
+      let merchant = ReviewEngine.displayName(shown.isEmpty ? rows : shown)
+      title = "Hasala won't suggest \(categoryName(c)) for \(merchant) again"
+    case .returnToReview(let ids):
+      var seen: Set<TxnID> = []
+      var returned = 0
+      for id in ids where seen.insert(id).inserted {
+        guard let t = s.txn(id), t.sortedForYou else { continue }
+        let byRule = t.filedByRule
+        try editTxn(id) { t in
+          t.needsReview = true
+          t.categorizedAt = at
+          guard byRule else { return }
+          t.categoryID = nil
+          t.categorySource = nil
+          t.ruleID = nil
+          t.isTransfer = false
+        }
+        returned += 1
+      }
+      guard returned > 0 else { throw .notFound }
+      title = returned == 1 ? "1 payment back in Review" : "\(returned) payments back in Review"
+    case .stopRule(let id):
+      guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      touchedRules = true
+      let rule = s.rules.remove(at: i)
+      let byRule = s.txns.filter { $0.ruleID == id }
+      let hit = byRule.isEmpty ? s.txns.filter { rule.matches($0.spelling) || rule.matches($0.merchant) } : byRule
+      let merchant = hit.isEmpty ? rule.patterns.first ?? "" : ReviewEngine.displayName(hit)
+      title = "Stopped sorting \(merchant) as \(categoryName(rule.categoryID))"
+    case .dismissSortReceipt:
+      s.sortReceipt = nil
+      title = nil
     case .useSuggestions(let uses):
       var used = 0
       var seen: Set<TxnID> = []
       for u in uses where seen.insert(u.txn).inserted && s.txn(u.txn).map({ SuggestionsEngine.applies(u, to: $0) }) == true {
-        try editTxn(u.txn) { t in
-          t.categoryID = u.category
-          t.categorySource = .user
-          t.needsReview = false
-          t.isTransfer = u.category == "transfer"
-          t.splits = []
-        }
+        try editTxn(u.txn) { t in fileByPerson(&t, u.category) }
         used += 1
       }
       guard used > 0 else { throw .notFound }
@@ -147,8 +257,10 @@ public final class InMemoryLedger: LedgerStore {
       try editTxn(id) { t in
         t.categoryID = "transfer"
         t.categorySource = .user
+        t.ruleID = nil
         t.isTransfer = true
         t.needsReview = false
+        t.categorizedAt = at
       }
       title = "Marked as a transfer"
     case .markRefund(let id):
@@ -246,7 +358,7 @@ public final class InMemoryLedger: LedgerStore {
                           source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
                           trackingSince: today,
                           payments: [BillPayment(due: c.last, amount: c.amount, link: .matched)],
-                          keys: [c.name.lowercased()]))
+                          keys: [c.key ?? c.name.lowercased()]))
       title = "Tracking \(c.name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
@@ -450,6 +562,11 @@ public final class InMemoryLedger: LedgerStore {
       title = nil
     }
 
+    if var receipt, let title {
+      receipt.undo = UndoToken(id: nextToken, title: title)
+      s.sortReceipt = receipt
+    }
+    MockReach.refresh(&s)
     state = s
     revision += 1
     guard let title else { return nil }
@@ -464,6 +581,7 @@ public final class InMemoryLedger: LedgerStore {
     if touchedRules { record.rules = (before.rules, s.rules) }
     if touchedProjects { record.projects = (before.projects, s.projects) }
     if touchedUnread { record.unread = (before.unreadMail, s.unreadMail) }
+    if receipt != nil { record.receipt = .some(before.sortReceipt) }
     let token = UndoToken(id: nextToken, title: title)
     nextToken += 1
     undoRecords[token.id] = record
@@ -493,6 +611,11 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
+    if s.sortReceipt?.id == token.id {
+      let previous = r.receipt ?? nil
+      s.sortReceipt = previous.flatMap { undoRecords[$0.id] != nil ? $0 : nil }
+    }
+    MockReach.refresh(&s)
     state = s
     revision += 1
   }
@@ -511,6 +634,11 @@ public final class InMemoryLedger: LedgerStore {
     field(\.merchant)
     field(\.categoryID)
     field(\.categorySource)
+    field(\.ruleID)
+    field(\.suggestion)
+    t.rejectedCategories.subtract(after.rejectedCategories.subtracting(before.rejectedCategories))
+    t.rejectedCategories.formUnion(before.rejectedCategories.subtracting(after.rejectedCategories))
+    field(\.categorizedAt)
     field(\.needsReview)
     field(\.isTransfer)
     field(\.isRefund)

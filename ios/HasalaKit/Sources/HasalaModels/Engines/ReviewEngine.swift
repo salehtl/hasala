@@ -188,6 +188,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var copyLine: String? = nil
   public var samePurchase: Bool = false
   public var month: YearMonth? = nil
+  public var group: MerchantGroupRef? = nil
 }
 
 public struct ReviewMonth: Sendable, Hashable, Identifiable {
@@ -283,14 +284,21 @@ extension Txn {
     if isHeldCopy { return true }
     if samePurchase != nil { return true }
     if isTransfer { return false }
-    if needsReview { return true }
+    if needsReview || modelGuessRejected { return true }
     return categoryID == nil && splits.isEmpty
   }
 
   public var reviewSuggestion: CategoryID? {
-    if let suggestion { return suggestion }
-    if case .model = categorySource { return categoryID }
-    return nil
+    let guess: CategoryID?
+    if let suggestion {
+      guess = suggestion
+    } else if case .model = categorySource {
+      guess = categoryID
+    } else {
+      guess = nil
+    }
+    guard let guess, !rejectedCategories.contains(guess) else { return nil }
+    return guess
   }
 }
 
@@ -397,6 +405,7 @@ public enum ReviewEngine {
     if card.suggestion != nil { card.suggestedBy = t.categorySource?.suggestionLabel(needsReview: t.needsReview) }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
+    card.group = t.rejectionRef
     return card
   }
 

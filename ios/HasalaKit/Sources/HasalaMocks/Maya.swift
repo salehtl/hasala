@@ -23,6 +23,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaSamePurchase
   case mayaUnreadMail
   case mayaSuggestions
+  case mayaBacklog
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -81,6 +82,9 @@ public enum Scenario: String, Sendable, CaseIterable {
     }
     if self == .mayaRange {
       s.txns += MayaHistory.rangeReview
+    }
+    if self == .mayaBacklog {
+      MayaBacklog.apply(to: &s)
     }
     if self == .mayaSample {
       var n = 0

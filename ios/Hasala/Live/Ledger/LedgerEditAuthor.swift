@@ -89,6 +89,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case refused(String)
   }
 
+  static let unsupported = "This isn't available yet"
+
   /// Authors `edit`. `before` is the screens' state the gesture was made on (a bill's due
   /// date, the current amount).
   @discardableResult
@@ -292,6 +294,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break
+    case .sortGroup, .notThis, .returnToReview, .stopRule, .dismissSortReceipt:
+      throw Failure.refused(Self.unsupported)
     }
     return []
   }
