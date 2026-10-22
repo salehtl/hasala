@@ -21,7 +21,9 @@ struct InviteReadyView: View {
     let model = store.signup
     AccountScreen(
       title: "Your invite is ready",
-      subtitle: "Your link opened it and filled in the code. Setting up takes about five minutes.",
+      subtitle: model.linkPasteboardChange == nil
+        ? "Your link opened it and filled in the code. Setting up takes about five minutes."
+        : "Your copied link filled in the code. Setting up takes about five minutes.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {

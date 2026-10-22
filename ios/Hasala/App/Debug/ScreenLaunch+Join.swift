@@ -1,5 +1,6 @@
 #if HASALA_MOCKS
   import Foundation
+  import UIKit
 
   // The welcome stories, join, the recovery phrase and the interrupted signup (P1).
   extension ScreenLaunch {
@@ -13,11 +14,13 @@
         graph.onboarding.storyPage = 2
         graph.onboarding.signup.whoCanSeeOpen = true
       }),
-      Screen("join.welcome", scenario: "newUser", prepare: { $0.onboarding.signup.path = [.welcome] }),
+      Screen("welcome.inviteFound", scenario: "newUser", prepare: { _ in
+        UIPasteboard.general.string = inviteLinkText
+      }),
       // The code pasted from the invite email (Paper E47-0 "pasted").
       Screen("join.invite", scenario: "newUser") { graph in
         let signup = graph.onboarding.signup
-        signup.path = [.welcome, .invite]
+        signup.path = [.invite]
         signup.paste(InviteCode.group(inviteCode))
       },
       Screen("join.inviteNotFound", scenario: "newUser") { await signUp($0, to: .verifyEmail, invite: "ZZZZ") },
@@ -28,7 +31,7 @@
       Screen("join.aboutLink", scenario: "newUser") { graph in
         let signup = graph.onboarding.signup
         if let inviteLink { signup.applyInviteLink(inviteLink) }
-        signup.path = [.welcome, .inviteReady]
+        signup.path = [.inviteReady]
         signup.submitInvite()
         signup.displayName = "Maya Rahman"
         signup.email = "maya@example.com"
@@ -92,8 +95,9 @@
     static let inviteCode = "ABCDEFGHIJKLMNOPQRSTUVWX"
 
     /// A synthetic invite link with a link key, as the invite email opens the app.
-    static let inviteLink: InviteLink? = InviteLink.parse(
-      URL(string: "https://hasala.app/i/\(inviteCode)#" + String(repeating: "k", count: 43))!)
+    static let inviteLinkText = "https://hasala.app/i/\(inviteCode)#" + String(repeating: "k", count: 43)
+
+    static let inviteLink: InviteLink? = InviteLink.parse(URL(string: inviteLinkText)!)
 
     enum JoinStop: Int, Comparable {
       case aboutYou, verifyEmail, method, password, phraseIntro, phraseShow, accountReady
@@ -104,7 +108,7 @@
     /// or a password for `.password`), stopping on `stop`.
     static func signUp(_ graph: MockGraph, to stop: JoinStop, invite prefix: String = "") async {
       let signup = graph.onboarding.signup
-      signup.path = [.welcome, .invite]
+      signup.path = [.invite]
       signup.inviteText = prefix + String(inviteCode.dropFirst(prefix.count))
       signup.submitInvite()
       signup.displayName = "Maya Rahman"

@@ -71,6 +71,8 @@ final class AppModel {
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
   @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
+  @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
+  @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
   @ObservationIgnored private var canvasMemo = Memo<CanvasMemoKey, [HomeCanvasItem]>()
@@ -166,6 +168,20 @@ final class AppModel {
     }
   }
 
+  var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
+
+  var reviewCards: [ReviewCardModel] {
+    reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      ReviewEngine.cards(store.state, in: reviewWindow)
+    }
+  }
+
+  var reviewElsewhere: ReviewElsewhere? {
+    elsewhereMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      ReviewEngine.elsewhere(store.state, in: period, today: store.now.date.yearMonth)
+    }
+  }
+
   /// What Home draws, recomputed once per ledger change or period.
   var snapshot: HomeSnapshot {
     let period = chosenPeriod
@@ -189,7 +205,7 @@ final class AppModel {
   var avatarEmail: String { store.state.profile.email }
 
   /// Transactions waiting to be sorted, whatever the period: the Review tab's badge, once per
-  /// ledger change. The bell, the Review tab and the deck count the same queue.
+  /// ledger change.
   var reviewCount: Int {
     reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
   }
