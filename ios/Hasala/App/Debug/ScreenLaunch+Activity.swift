@@ -99,6 +99,24 @@
         mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
         shell(.review)(graph)
       }),
+      Screen("review.empty.importing", scenario: "mayaCaughtUp", prepare: { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
+      Screen("review.unread.importing", scenario: "mayaUnreadMail", prepare: { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
+      Screen("review.unread.ask", scenario: "mayaUnreadMail", prepare: { graph in
+        (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
+        shell(.review)(graph)
+      }),
+      Screen("review.unread.empty", scenario: "mayaUnreadMail", prepare: { graph in
+        let waiting = graph.app.store.state.txns.filter(\.needsReview).map(\.id)
+        _ = graph.app.perform(waiting.map { .categorize($0, "shopping", learnRule: false, project: nil) })
+        graph.app.dismissToast()
+        shell(.review)(graph)
+      }),
       Screen("review.sort.deck", scenario: "maya", prepare: cloudSort(.running) { graph in
         startDeck(graph, at: "lulu") { _ in }
       }),

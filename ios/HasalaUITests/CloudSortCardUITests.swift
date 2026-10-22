@@ -113,6 +113,39 @@ final class CloudSortCardUITests: XCTestCase {
   }
 
   @MainActor
+  func testTheImportOverAnEmptyQueueDoesNotInviteAStart() throws {
+    let app = launch(scenario: nil, screen: "review.empty.importing")
+    let card = el(app, "review.slot.importing")
+    XCTAssertTrue(card.waitForExistence(timeout: 30))
+    XCTAssertEqual(card.label, "Reading your mail, 312 so far. Hasala is reading your bank alerts. Payments to sort show up here.")
+    XCTAssertTrue(el(app, "review.tab.empty").exists)
+    XCTAssertFalse(el(app, "review.tab.start").exists)
+    attach(app, "Review · Reading your mail, nothing to sort")
+    try audit(app)
+  }
+
+  @MainActor
+  func testTheUnreadRowShowsWithEverySlotCard() throws {
+    let cases: [(screen: String, phase: String?, slot: String)] = [
+      ("review.unread.ask", nil, "review.cloudSort"),
+      ("review.unread.importing", nil, "review.slot.importing"),
+      ("review.unread", "running", "review.sort.stop"),
+      ("review.unread", "done", "review.sort.undo"),
+      ("review.unread", "idle", "review.sort.start"),
+      ("review.unread.empty", nil, "review.tab.empty"),
+    ]
+    for c in cases {
+      let name = "\(c.screen) \(c.phase ?? "")"
+      let app = launch(scenario: nil, screen: c.screen, arguments: c.phase.map { ["-HasalaCloudSortPhase", $0] } ?? [])
+      XCTAssertTrue(el(app, c.slot).waitForExistence(timeout: 30), name)
+      let row = el(app, "review.tab.unreadable")
+      XCTAssertTrue(row.exists, name)
+      XCTAssertTrue(row.label.contains("bank emails we couldn't read"), "\(name): \(row.label)")
+      app.terminate()
+    }
+  }
+
+  @MainActor
   func testARunShowsInsteadOfTheImport() throws {
     let app = launch(scenario: nil, screen: "review.sort.importing")
     XCTAssertTrue(el(app, "review.sort.stop").waitForExistence(timeout: 30))

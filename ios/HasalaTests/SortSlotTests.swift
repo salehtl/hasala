@@ -1,6 +1,8 @@
 import CoreMailbox
 import CoreSync
 import Foundation
+import Observation
+import SwiftUI
 import HasalaMocks
 import HasalaModels
 import Synchronization
@@ -92,8 +94,42 @@ struct SortSlotTests {
     #expect(SortSlot.importingLine(Self.reading) == "You can start on the ones here now. More arrive as Hasala reads.")
     #expect(SortSlot.importingSpoken(Self.reading)
       == "Reading your mail, 312 so far. You can start on the ones here now. More arrive as Hasala reads.")
-    #expect(SortSlot.importingLine(MailImport(state: .offline, read: 3, total: 9)).hasPrefix("Paused. No internet connection."))
+    #expect(SortSlot.importingLine(MailImport(state: .offline, read: 3, total: 9))
+      == "Paused. No internet connection. It continues when you're back online.")
     #expect(SortSlot.importingLine(MailImport(state: .paused, read: 3, total: 9)) == "Paused for now. Hasala tries again soon.")
+  }
+
+  @Test func withNothingToSortTheImportDoesNotInviteAStart() {
+    let line = SortSlot.importingLine(Self.reading, queued: false)
+    #expect(line == "Hasala is reading your bank alerts. Payments to sort show up here.")
+    #expect(!line.contains("start"))
+    #expect(SortSlot.importingSpoken(Self.reading, queued: false)
+      == "Reading your mail, 312 so far. Hasala is reading your bank alerts. Payments to sort show up here.")
+    let offline = MailImport(state: .offline, read: 3, total: 9)
+    #expect(SortSlot.importingLine(offline, queued: false) == SortSlot.importingLine(offline))
+  }
+
+  @Test func theOfferCountsAsShownOnlyOnTheVisibleReviewTab() {
+    let offer = SortSlot.of(F(status: Self.status(.idle)))
+    #expect(SortSlot.offerSeen(offer, onReview: true, phase: .active, covered: false))
+    #expect(!SortSlot.offerSeen(offer, onReview: false, phase: .active, covered: false))
+    #expect(!SortSlot.offerSeen(offer, onReview: true, phase: .inactive, covered: false))
+    #expect(!SortSlot.offerSeen(offer, onReview: true, phase: .background, covered: false))
+    #expect(!SortSlot.offerSeen(offer, onReview: true, phase: .active, covered: true))
+    #expect(!SortSlot.offerSeen(.run(.running), onReview: true, phase: .active, covered: false))
+    #expect(!SortSlot.offerSeen(nil, onReview: true, phase: .active, covered: false))
+  }
+
+  @Test func onlyAReturnFromTheBackgroundCountsAsAnOpen() {
+    var f = SortSlot.Foregrounds()
+    let phases: [ScenePhase] = [.inactive, .active, .inactive, .active, .inactive, .background, .inactive, .active, .inactive, .active]
+    let opens = phases.map { f.note($0) }
+    #expect(opens == [false, false, false, false, false, false, false, true, false, false])
+  }
+
+  @Test func dismissingTheResultSaysCheckSuggestionsGoesWithIt() {
+    #expect(CloudSortCardState.dismissHint(suggestions: 0).isEmpty)
+    #expect(CloudSortCardState.dismissHint(suggestions: 3).hasPrefix("Check suggestions is no longer offered."))
   }
 }
 
@@ -225,6 +261,19 @@ struct RunOfferTests {
     #expect(!due && !m.importSeen)
   }
 
+  @Test func theImportEdgeIsNotedFromThePhaseAlone() {
+    var m = M(stage: .spent, low: 12, lastRunMs: 10)
+    m = O.noted(m, .active)
+    #expect(!m.importSeen)
+    m = O.noted(m, .importing)
+    #expect(m.importSeen && m.wasImporting)
+    m = O.noted(m, .active)
+    #expect(m.importSeen && !m.wasImporting)
+    #expect(O.due(m, Self.facts(.active, waiting: 12, started: 10)))
+    let first = O.noted(M(), .importing)
+    #expect(!first.importSeen)
+  }
+
   @Test func anEarlierRunFromAnOlderBuildSkipsTheFirstOffer() {
     let (m, due) = Self.step(M(), Self.facts(.active, waiting: 15, started: 99))
     #expect(m.stage == .spent && !due)
@@ -303,17 +352,104 @@ struct CloudSortFirstLoadTests {
     #expect(!f.enabled && f.runStartedMs == nil)
   }
 
+  static func sorter(enabled: Bool = true) -> BacklogSorter {
+    let saved = BacklogSorterTests.Saved()
+    return BacklogSorter(
+      pass: { _, _ in nil }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
+      importRunning: { false }, enabled: { enabled }, network: BacklogSorterTests.Net(), sleep: { _ in })
+  }
+
   static func controller(
     load: RunOffer.Load, waiting: Int = 12, enabled: Bool = true, offers: RunOffer.Store
   ) -> (C, BacklogSorter) {
-    let saved = BacklogSorterTests.Saved()
-    let sorter = BacklogSorter(
-      pass: { _, _ in nil }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
-      importRunning: { false }, enabled: { enabled }, network: BacklogSorterTests.Net(), sleep: { _ in })
+    let sorter = Self.sorter(enabled: enabled)
     let c = LiveCloudSortController(
       sorter: sorter, view: { _ in CloudSortStatusTests.view(waiting) }, undo: { 0 }, sendBack: { 0 }, enabled: { enabled },
       nowMs: { BacklogSorterTests.start }, load: { load }, offers: offers)
     return (c, sorter)
+  }
+
+  nonisolated final class Gate: Sendable {
+    let calls = Mutex(0)
+    let open = Mutex(false)
+
+    func view(slow: Int, fast: Int) -> @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView? {
+      { _ in
+        let n = self.calls.withLock { c in
+          c += 1
+          return c
+        }
+        guard n == 1 else { return CloudSortStatusTests.view(fast) }
+        while !self.open.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+        return CloudSortStatusTests.view(slow)
+      }
+    }
+  }
+
+  @Test func anOlderCountCannotOverwriteANewerOne() async throws {
+    let gate = Gate()
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: gate.view(slow: 5, fast: 40), undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start }, load: { RunOffer.Load(mailbox: .active, caughtUp: true) }, offers: .inMemory())
+    let first = Task { await c.refresh() }
+    try await LiveLedgerMapperTests.eventually { gate.calls.withLock { $0 } == 1 }
+    await c.refresh()
+    #expect(c.status.waitingNames == 40)
+    gate.open.withLock { $0 = true }
+    await first.value
+    #expect(c.status.waitingNames == 40)
+  }
+
+  @Test func countChangesAreCoalesced() async throws {
+    let gate = Gate()
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: gate.view(slow: 5, fast: 40), undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start }, load: { RunOffer.Load(mailbox: .active, caughtUp: true) }, offers: .inMemory())
+    c.countsChanged()
+    try await LiveLedgerMapperTests.eventually { gate.calls.withLock { $0 } == 1 }
+    for _ in 0..<30 { c.countsChanged() }
+    gate.open.withLock { $0 = true }
+    try await LiveLedgerMapperTests.eventually { c.status.waitingNames == 40 }
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(gate.calls.withLock { $0 } == 2)
+    #expect(c.status.waitingNames == 40)
+  }
+
+  @MainActor @Observable final class Phase {
+    var mailbox: RunOffer.Mailbox = .active
+  }
+
+  @Test func theControllerSeesANewMailboxImportWithoutTheReviewTab() async throws {
+    let phase = Phase()
+    let offers = RunOffer.Store.inMemory(RunOffer.Memory(stage: .spent, low: 12, lastRunMs: 1))
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: { _ in CloudSortStatusTests.view(12) }, undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start }, load: { RunOffer.Load(mailbox: phase.mailbox, caughtUp: true) }, offers: offers,
+      watch: { phase.mailbox })
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(!c.status.offerDue && !offers.load().importSeen)
+    phase.mailbox = .importing
+    try await LiveLedgerMapperTests.eventually { offers.load().wasImporting }
+    #expect(offers.load().importSeen && !c.status.offerDue)
+    phase.mailbox = .awaitingCards
+    try await Task.sleep(for: .milliseconds(50))
+    phase.mailbox = .active
+    try await LiveLedgerMapperTests.eventually { c.status.offerDue }
+    #expect(c.status.offerDue && offers.load().importSeen && !offers.load().wasImporting)
+    c.offerShown()
+    #expect(offers.load().stage == .open && !offers.load().importSeen)
+  }
+
+  @Test func anOfferDueWhileAnotherTabIsOpenStaysUnshown() async {
+    let offers = RunOffer.Store.inMemory()
+    let (c, _) = Self.controller(load: RunOffer.Load(mailbox: .active, caughtUp: true), offers: offers)
+    await c.refresh()
+    #expect(c.status.offerDue)
+    let slot = SortSlot.of(SortSlot.Facts(status: c.status))
+    if SortSlot.offerSeen(slot, onReview: false, phase: .active, covered: false) { c.offerShown() }
+    #expect(offers.load().stage == .firstLoad)
+    if SortSlot.offerSeen(slot, onReview: true, phase: .active, covered: false) { c.offerShown() }
+    #expect(offers.load().stage == .open)
   }
 
   @Test func theControllerOffersOnceTheFirstLoadIsDoneAndRemembersItWasShown() async {

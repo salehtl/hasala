@@ -17,6 +17,7 @@ struct ReviewTabView: View {
   @Environment(AccountSession.self) private var session: AccountSession?
   @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
   @State private var cloudSortAnswered = false
+  @State private var foregrounds = SortSlot.Foregrounds()
 
   init(app: AppModel) {
     self.app = app
@@ -49,8 +50,11 @@ struct ReviewTabView: View {
           if !cards.isEmpty { list(cards) }
         }
         .padding(.horizontal, HSpacing.insetPage)
-        .onChange(of: slot?.isOffer == true, initial: true) { _, offer in
-          if offer { app.cloudSort?.offerShown() }
+        .onChange(
+          of: SortSlot.offerSeen(slot, onReview: app.tab == .review, phase: scenePhase, covered: app.router.cover != nil),
+          initial: true
+        ) { _, seen in
+          if seen { app.cloudSort?.offerShown() }
         }
       }
       .navigationDestination(for: ReviewRoute.self) { route in
@@ -64,16 +68,11 @@ struct ReviewTabView: View {
         Task { await sort.refresh() }
       }
       .task { await app.cloudSort?.refresh() }
-      .onChange(of: app.mailbox?.importing) {
-        guard let sort = app.cloudSort else { return }
-        Task { await sort.refresh() }
-      }
       .onChange(of: cards.count) {
-        guard let sort = app.cloudSort else { return }
-        Task { await sort.refresh() }
+        app.cloudSort?.countsChanged()
       }
       .onChange(of: scenePhase) { _, phase in
-        guard phase == .active, let sort = app.cloudSort else { return }
+        guard foregrounds.note(phase), let sort = app.cloudSort else { return }
         if app.tab == .review { sort.reviewOpened() }
         Task { await sort.refresh() }
       }
@@ -116,14 +115,12 @@ struct ReviewTabView: View {
     months > 1 ? "Newest month first" : "Oldest first"
   }
 
-  // MARK: Sorting card
-
   @ViewBuilder private func slotCard(_ slot: SortSlot?) -> some View {
     switch slot {
     case .ask?:
       CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
     case .importing(let mail)?:
-      importingCard(mail)
+      importingCard(mail, queued: !app.reviewCards.isEmpty)
     case let slot?:
       if let sort = app.cloudSort, let state = slot.card {
         CloudSortCard(app: app, sort: sort, state: state) {
@@ -136,7 +133,7 @@ struct ReviewTabView: View {
     }
   }
 
-  private func importingCard(_ mail: MailImport) -> some View {
+  private func importingCard(_ mail: MailImport, queued: Bool) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
         .overlay { HIconView(.envelope, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
@@ -145,7 +142,7 @@ struct ReviewTabView: View {
           .hType(.headline)
           .foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
-        Text(SortSlot.importingLine(mail))
+        Text(SortSlot.importingLine(mail, queued: queued))
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -159,7 +156,7 @@ struct ReviewTabView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(cardSurface)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(SortSlot.importingSpoken(mail))
+    .accessibilityLabel(SortSlot.importingSpoken(mail, queued: queued))
     .accessibilityAddTraits(.updatesFrequently)
     .accessibilityIdentifier("review.slot.importing")
   }

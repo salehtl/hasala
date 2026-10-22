@@ -10,6 +10,7 @@ import Observation
   func sendAllBack() async -> Int
   func reviewOpened()
   func offerShown()
+  func countsChanged()
 }
 
 nonisolated struct CloudSortStatus: Equatable, Sendable {

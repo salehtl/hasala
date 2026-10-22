@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 nonisolated enum RunOffer {
   static let returningGroups = 20
@@ -51,20 +52,23 @@ nonisolated enum RunOffer {
 
   static func observe(_ m: Memory, _ f: Facts) -> Memory {
     var m = m
-    let importing = f.load.mailbox == .importing || f.load.mailbox == .awaitingCards
     if let started = f.runStartedMs, started > m.lastRunMs {
       m.lastRunMs = started
       m.stage = .spent
       m.low = f.waitingNames
       m.importSeen = false
-      m.wasImporting = importing
+      m.wasImporting = f.load.mailbox == .importing || f.load.mailbox == .awaitingCards
       m.opens = 0
     }
-    if m.stage == .spent {
-      m.low = min(m.low, f.waitingNames)
-      if importing && !m.wasImporting { m.importSeen = true }
-    }
-    if f.load.mailbox == .importing { m.opens = 0 }
+    if m.stage == .spent { m.low = min(m.low, f.waitingNames) }
+    return noted(m, f.load.mailbox)
+  }
+
+  static func noted(_ m: Memory, _ mailbox: Mailbox) -> Memory {
+    var m = m
+    let importing = mailbox == .importing || mailbox == .awaitingCards
+    if m.stage == .spent, importing, !m.wasImporting { m.importSeen = true }
+    if mailbox == .importing { m.opens = 0 }
     m.wasImporting = importing
     return m
   }
@@ -203,21 +207,45 @@ enum SortSlot: Equatable {
     return false
   }
 
+  static func offerSeen(_ slot: SortSlot?, onReview: Bool, phase: ScenePhase, covered: Bool) -> Bool {
+    slot?.isOffer == true && onReview && phase == .active && !covered
+  }
+
+  struct Foregrounds: Equatable {
+    private(set) var left = false
+
+    mutating func note(_ phase: ScenePhase) -> Bool {
+      switch phase {
+      case .background:
+        left = true
+        return false
+      case .active:
+        defer { left = false }
+        return left
+      default:
+        return false
+      }
+    }
+  }
+
   static func importingTitle(_ mail: MailImport) -> String {
     mail.read > 0 ? "Reading your mail · \(mail.read) so far" : "Reading your mail"
   }
 
-  static func importingLine(_ mail: MailImport) -> String {
+  static func importingLine(_ mail: MailImport, queued: Bool = true) -> String {
     switch mail.state {
-    case .offline: "Paused. No internet connection. Hasala reads on when you're back online."
+    case .offline: "Paused. No internet connection. It continues when you're back online."
     case .paused: "Paused for now. Hasala tries again soon."
-    case .reading, .stopped: "You can start on the ones here now. More arrive as Hasala reads."
+    case .reading, .stopped:
+      queued
+        ? "You can start on the ones here now. More arrive as Hasala reads."
+        : "Hasala is reading your bank alerts. Payments to sort show up here."
     }
   }
 
-  static func importingSpoken(_ mail: MailImport) -> String {
+  static func importingSpoken(_ mail: MailImport, queued: Bool = true) -> String {
     let lead = mail.read > 0 ? "Reading your mail, \(mail.read) so far." : "Reading your mail."
-    return "\(lead) \(importingLine(mail))"
+    return "\(lead) \(importingLine(mail, queued: queued))"
   }
 }
 

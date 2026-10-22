@@ -25,6 +25,9 @@ final class LiveCloudSortController: CloudSortControlling {
   @ObservationIgnored private var loaded: RunOffer.Load?
   @ObservationIgnored private var facts: RunOffer.Facts?
   @ObservationIgnored private var openPending = false
+  @ObservationIgnored private let watch: (@MainActor () -> RunOffer.Mailbox)?
+  @ObservationIgnored private var watched: RunOffer.Mailbox?
+  @ObservationIgnored private var readSeq = 0
 
   init(
     sorter: BacklogSorter, view: @escaping @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView?,
@@ -32,10 +35,12 @@ final class LiveCloudSortController: CloudSortControlling {
     enabled: @escaping () -> Bool = { MerchantSuggestionsSetting.isEnabled() },
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
     load: @escaping @MainActor () async -> RunOffer.Load = { RunOffer.Load() },
-    offers: RunOffer.Store = .inMemory()
+    offers: RunOffer.Store = .inMemory(),
+    watch: (@MainActor () -> RunOffer.Mailbox)? = nil
   ) {
     self.sorter = sorter
     self.load = load
+    self.watch = watch
     self.offers = offers
     memory = offers.load()
     self.view = view
@@ -51,6 +56,7 @@ final class LiveCloudSortController: CloudSortControlling {
         self.take(s)
       }
     }
+    follow()
   }
 
   convenience init(runtime: AccountRuntime) {
@@ -65,19 +71,22 @@ final class LiveCloudSortController: CloudSortControlling {
         let sync = await runtime.engine.status
         return Self.load(phase: phase, sync: sync)
       },
-      offers: .live())
+      offers: .live(),
+      watch: { [weak runtime] in Self.mailbox(runtime?.store.mailboxPhase) })
   }
 
   nonisolated static func load(phase: MailboxPhase?, sync: CoreSync.SyncStatus) -> RunOffer.Load {
-    let mailbox: RunOffer.Mailbox
+    RunOffer.Load(mailbox: mailbox(phase), caughtUp: sync.phase == .idle && sync.lastSuccessAt != nil)
+  }
+
+  nonisolated static func mailbox(_ phase: MailboxPhase?) -> RunOffer.Mailbox {
     switch phase {
-    case .active?: mailbox = .active
-    case .otherDevice?: mailbox = .elsewhere
-    case .scanning?, .authoringBackfill?: mailbox = .importing
-    case .awaitingCards?: mailbox = .awaitingCards
-    case .unlinked?, .halted?, .reconnectRequired?, nil: mailbox = .none
+    case .active?: .active
+    case .otherDevice?: .elsewhere
+    case .scanning?, .authoringBackfill?: .importing
+    case .awaitingCards?: .awaitingCards
+    case .unlinked?, .halted?, .reconnectRequired?, nil: RunOffer.Mailbox.none
     }
-    return RunOffer.Load(mailbox: mailbox, caughtUp: sync.phase == .idle && sync.lastSuccessAt != nil)
   }
 
   isolated deinit {
@@ -85,10 +94,37 @@ final class LiveCloudSortController: CloudSortControlling {
   }
 
   func refresh() async {
-    loaded = await load()
     snapshot = await sorter.snapshot
-    counts = await view(snapshot?.record.filedHere ?? [:])
+    await reread()
     compose()
+  }
+
+  func countsChanged() {
+    recount()
+  }
+
+  private func reread() async {
+    readSeq += 1
+    let seq = readSeq
+    let filed = snapshot?.record.filedHere ?? [:]
+    let view = self.view
+    let nextLoad = await load()
+    let next = await Task.detached(priority: .userInitiated) { await view(filed) }.value
+    guard seq == readSeq else { return }
+    loaded = nextLoad
+    counts = next
+  }
+
+  private func follow() {
+    guard let watch else { return }
+    let mailbox = withObservationTracking { watch() } onChange: { [weak self] in
+      Task { @MainActor [weak self] in self?.follow() }
+    }
+    let first = watched == nil
+    guard mailbox != watched else { return }
+    watched = mailbox
+    remember(RunOffer.noted(memory, mailbox))
+    if !first { recount() }
   }
 
   func reviewOpened() {
@@ -143,10 +179,8 @@ final class LiveCloudSortController: CloudSortControlling {
     }
     recounting = true
     recountAgain = false
-    let filed = snapshot?.record.filedHere ?? [:]
     Task {
-      counts = await view(filed)
-      loaded = await load()
+      await reread()
       recounting = false
       compose()
       if recountAgain { recount() }

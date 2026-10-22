@@ -15,6 +15,7 @@
     private(set) var sentBack = 0
     private(set) var opens = 0
     private(set) var offersShown = 0
+    private(set) var recounts = 0
 
     init(_ status: CloudSortStatus = MockCloudSortController.sample(.idle)) {
       self.status = status
@@ -92,6 +93,8 @@
     func reviewOpened() { opens += 1 }
 
     func offerShown() { offersShown += 1 }
+
+    func countsChanged() { recounts += 1 }
 
     func start() {
       starts += 1

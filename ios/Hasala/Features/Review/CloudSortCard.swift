@@ -89,6 +89,10 @@ nonisolated enum CloudSortCardState: Equatable, Sendable {
     f.dateFormat = "HH:mm"
     return f.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
   }
+
+  static func dismissHint(suggestions: Int) -> String {
+    suggestions > 0 ? "Check suggestions is no longer offered. The suggestions stay as cards to sort." : ""
+  }
 }
 
 enum CloudSortDismissal {
@@ -141,6 +145,7 @@ struct CloudSortCard: View {
           .padding(.top, -12)
           .padding(.trailing, -12)
           .accessibilityLabel("Dismiss")
+          .accessibilityHint(CloudSortCardState.dismissHint(suggestions: app.suggestionCount))
           .accessibilityIdentifier("review.sort.dismiss")
         }
       }
