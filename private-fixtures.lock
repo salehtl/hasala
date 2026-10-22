@@ -1,7 +1,7 @@
 # salehtl/hasala-fixtures: the private real-mail fixtures this commit expects.
 # Written by scripts/private-fixtures-lock.sh write; checked by scripts/check.sh
 # when HASALA_PRIVATE_FIXTURES is set. Do not edit by hand.
-commit 96166efd9333e4ce1a53531f1b20869bd6f4e924
+commit a7511b14d489072d2ba21302b7d5ad8fa15a27e3
 e44a95198ce56c9e766ef228ef9a90007a218f2121bbdef4ec38f28cf795aafa  conformance/normalizer/apple-forward-dib-01.json
 c066cd81b25b6625de3570e7bf78dcd52df1b8f4305cdf57435323318a9b46ed  conformance/normalizer/apple-forward-dib-02.json
 805a183bedcb6fcdfb6d9f216c5e91a94a4640677c06ca2258974424d388a745  conformance/normalizer/apple-forward-enbd-alert.json
