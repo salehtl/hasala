@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // The signed-out screens' entry points (plan B7.3): each is `init(store: OnboardingStore)`,
 // with the store's `signup` model and the store's path for its navigation, so
@@ -10,14 +11,9 @@ extension StoriesView {
     self.init(
       page: Bindable(store).storyPage, whoSeesOpen: Bindable(store.signup).whoCanSeeOpen,
       outlook: store.services.mailbox.connectable.contains(.outlook),
-      onGetStarted: { store.signup.go(.welcome) }, onSignIn: { store.signup.go(.signIn) })
-  }
-}
-
-extension JoinWelcomeView {
-  init(store: OnboardingStore) {
-    self.init(onJoin: { store.signup.go(.invite) }, onSignIn: { store.signup.go(.signIn) },
-              onBack: { store.signup.back() })
+      onGetStarted: { store.signup.go(.invite) },
+      onPasteInvite: { store.signup.usePastedInvite($0, pasteboardChange: UIPasteboard.general.changeCount) },
+      onSignIn: { store.signup.go(.signIn) })
   }
 }
 

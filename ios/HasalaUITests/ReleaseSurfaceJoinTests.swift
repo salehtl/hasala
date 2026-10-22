@@ -8,9 +8,10 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
   @MainActor
   func testSignupPromisesOnlyWhatWorks() throws {
     let app = launchRelease("newUser", waitForHome: false)
-    tap(app, "stories.getStarted", timeout: 15)
-    assertPersonalAccountsOnly(app, "Welcome")
-    tap(app, "welcome.join")
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
+    assertPersonalAccountsOnly(app, "Stories")
+    assertNoPlaceholders(app, "Stories")
+    tap(app, "stories.getStarted")
     assertNoPlaceholders(app, "Invite code")
     type(app, "invite.field", "ABCDEFGHIJKLMNOPQRSTUVWX")
     tap(app, "invite.continue")

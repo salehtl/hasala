@@ -171,10 +171,10 @@ struct OnboardingStoreTests: AccountSuite {
   @Test func goingBackLeavesTheFailureBehindButAModelPopKeepsIt() {
     let (store, _) = store()
     let signup = store.signup
-    signup.path = [.welcome, .invite, .aboutYou]
+    signup.path = [.invite, .aboutYou]
     signup.failure = .notInvited
-    signup.navigationPath = [.welcome, .invite]
-    #expect(signup.failure == nil && signup.path == [.welcome, .invite])
+    signup.navigationPath = [.invite]
+    #expect(signup.failure == nil && signup.path == [.invite])
     signup.failure = .notInvited
     signup.path.removeAll { $0 == .invite }
     #expect(signup.failure == .notInvited)

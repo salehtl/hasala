@@ -5,7 +5,6 @@ import Foundation
 /// recovery (C4). Each screen is `init(store: OnboardingStore)` (plan B7.3). There is no
 /// word check after the phrase (`docs/decisions/recovery-phrase-no-quiz.md`).
 enum WelcomeRoute: Hashable {
-  case welcome
   case invite
   /// "Your invite is ready": an invite link opened the app with the code filled in.
   case inviteReady
