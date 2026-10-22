@@ -168,28 +168,31 @@ enum SortSlot: Equatable {
     var status: CloudSortStatus?
     var dismissedRun: Int64?
     var importing: MailImport?
+    var suggestions: Int
 
-    init(asks: Bool = false, status: CloudSortStatus? = nil, dismissedRun: Int64? = nil, importing: MailImport? = nil) {
+    init(
+      asks: Bool = false, status: CloudSortStatus? = nil, dismissedRun: Int64? = nil, importing: MailImport? = nil,
+      suggestions: Int = 0
+    ) {
       self.asks = asks
       self.status = status
       self.dismissedRun = dismissedRun
       self.importing = importing
+      self.suggestions = suggestions
     }
   }
 
   static func of(_ f: Facts) -> SortSlot? {
     if f.asks, f.status.map({ $0.phase == .off }) ?? true { return .ask }
-    if f.status?.phase == .running { return .run(.running) }
-    if let mail = f.importing, mail.showsInSlot { return .importing(mail) }
-    guard let status = f.status else { return nil }
+    guard let status = f.status else { return f.importing.flatMap { $0.showsInSlot ? .importing($0) : nil } }
+    if status.phase == .running { return .run(.running) }
     let offer = status.offerDue ? CloudSortCardState.offer(status) : nil
-    switch status.phase {
-    case .paused(let p): return .run(.paused(p))
-    case .done:
-      if offer != .ready, let ended = status.lastRunEndedMs, ended != f.dismissedRun { return .result }
-    case .off, .idle, .running:
-      break
-    }
+    let result = status.phase == .done && status.lastRunEndedMs.map { $0 != f.dismissedRun } == true
+    let holdsSuggestions = result && f.suggestions > 0
+    if offer == .ready, !holdsSuggestions { return .offer(.ready) }
+    if let mail = f.importing, mail.showsInSlot { return .importing(mail) }
+    if case .paused(let p) = status.phase { return .run(.paused(p)) }
+    if result { return .result }
     return offer.map(SortSlot.offer)
   }
 

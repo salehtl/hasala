@@ -168,6 +168,45 @@ final class CloudSortCardUITests: XCTestCase {
   }
 
   @MainActor
+  func testAReturningOfferWaitsWhileTheResultHoldsSuggestions() throws {
+    let app = launch(scenario: nil, screen: "review.sort.done.returning.suggestions")
+    XCTAssertTrue(el(app, "review.sort.check").waitForExistence(timeout: 30))
+    XCTAssertTrue(el(app, "review.sort.undo").exists)
+    XCTAssertFalse(el(app, "review.sort.start").exists, "two cards in the slot")
+  }
+
+  @MainActor
+  func testADueOfferShowsOverAMailboxWaitingForCards() throws {
+    let app = launch(scenario: nil, screen: "review.sort.ready.awaitingCards")
+    XCTAssertTrue(el(app, "review.sort.start").waitForExistence(timeout: 30))
+    XCTAssertFalse(el(app, "review.slot.importing").exists, "two cards in the slot")
+    attach(app, "Review · Offer over a mailbox waiting for cards")
+    try audit(app)
+  }
+
+  @MainActor
+  func testTheUnreadRowAtTheLargestSizes() throws {
+    let cases: [(screen: String, phase: String?, slot: String)] = [
+      ("review.unread.importing", nil, "review.slot.importing"),
+      ("review.unread", "done", "review.sort.undo"),
+    ]
+    for c in cases {
+      let name = "\(c.screen) \(c.phase ?? "")"
+      var arguments = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+      if let phase = c.phase { arguments += ["-HasalaCloudSortPhase", phase] }
+      let app = launch(scenario: nil, screen: c.screen, arguments: arguments)
+      XCTAssertTrue(el(app, c.slot).waitForExistence(timeout: 30), name)
+      let row = el(app, "review.tab.unreadable")
+      XCTAssertTrue(row.exists, name)
+      XCTAssertTrue(scroll(app, toShow: row), name)
+      XCTAssertTrue(row.label.contains("bank emails we couldn't read"), "\(name): \(row.label)")
+      attach(app, "AX3 · Review · Unread mail under \(name)")
+      try audit(app, atLargeText: true)
+      app.terminate()
+    }
+  }
+
+  @MainActor
   func testNothingOffersARunWhileSuggestionsAreOff() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaCloudSortPhase", "off"])
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30))

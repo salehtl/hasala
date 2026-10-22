@@ -84,6 +84,38 @@ struct SortSlotTests {
     #expect(SortSlot.of(F(status: capped, dismissedRun: 7)) == .offer(.paused(.dayCap)))
   }
 
+  @Test func theResultStaysAheadOfAReturnOfferWhileItsSuggestionsWait() {
+    let returning = Self.status(.done) {
+      $0.lastRunEndedMs = 7
+      $0.waitingNames = 30
+      $0.nextRunNames = 30
+      $0.remainingToday = 300
+      $0.offerDue = true
+    }
+    #expect(SortSlot.of(F(status: returning, suggestions: 3)) == .result)
+    #expect(SortSlot.of(F(status: returning, importing: Self.reading, suggestions: 3)) == .importing(Self.reading))
+    #expect(SortSlot.of(F(status: returning, dismissedRun: 7, suggestions: 3)) == .offer(.ready))
+    #expect(SortSlot.of(F(status: returning, suggestions: 0)) == .offer(.ready))
+    #expect(SortSlot.of(F(status: Self.status(.idle), suggestions: 3)) == .offer(.ready))
+  }
+
+  @Test func aDueOfferShowsOverAMailboxStuckWaitingForCards() {
+    let stuck = LiveMailboxConnecting.importing(phase: .awaitingCards, seen: true, progress: nil)
+    #expect(stuck == MailImport(state: .reading, read: 0, total: 0))
+    let f = RunOfferTests.facts(.awaitingCards, waiting: 147)
+    var m = RunOffer.opened(RunOffer.opened(RunOffer.observe(RunOffer.Memory(), f), f), f)
+    #expect(RunOffer.due(m, f))
+    let idle = Self.status(.idle) { $0.offerDue = RunOffer.due(m, f) }
+    let slot = SortSlot.of(F(status: idle, importing: stuck))
+    #expect(slot == .offer(.ready))
+    #expect(SortSlot.offerSeen(slot, onReview: true, phase: .active, covered: false))
+    m = RunOffer.shown(m, f)
+    #expect(m.stage == .open)
+    let scanning = LiveMailboxConnecting.importing(phase: .scanning, seen: true, progress: nil)
+    #expect(!RunOffer.due(m, RunOfferTests.facts(.importing, waiting: 147)))
+    #expect(SortSlot.of(F(status: Self.status(.idle) { $0.offerDue = false }, importing: scanning)) == scanning.map(SortSlot.importing))
+  }
+
   @Test func theOfferShowsOnlyWhenItIsDue() {
     let idle = Self.status(.idle)
     #expect(idle.offerDue)
@@ -461,6 +493,74 @@ struct CloudSortFirstLoadTests {
     #expect(c.status.offerDue && offers.load().importSeen && !offers.load().wasImporting)
     c.offerShown()
     #expect(offers.load().stage == .open && !offers.load().importSeen)
+  }
+
+  @MainActor @Observable final class Sync {
+    var revision = 0
+    var caughtUp = false
+    var loads = 0
+  }
+
+  @Test func theFirstOfferShowsOnceASyncThatWasRunningEnds() async throws {
+    let sync = Sync()
+    let offers = RunOffer.Store.inMemory()
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: { _ in CloudSortStatusTests.view(12) }, undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start },
+      load: {
+        sync.loads += 1
+        return RunOffer.Load(mailbox: .active, caughtUp: sync.caughtUp)
+      }, offers: offers, watch: { .active }, settled: { sync.revision })
+    await c.refresh()
+    #expect(!c.status.offerDue && offers.load().stage == .firstLoad)
+    sync.caughtUp = true
+    sync.revision += 1
+    try await LiveLedgerMapperTests.eventually { c.status.offerDue }
+    c.offerShown()
+    #expect(offers.load().stage == .open)
+    let loads = sync.loads
+    for _ in 0..<5 {
+      sync.revision += 1
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(sync.loads == loads)
+  }
+
+  @Test func aSyncEndingDoesNotRereadWhileTheOfferWaitsOnNothingElse() async throws {
+    let sync = Sync()
+    let offers = RunOffer.Store.inMemory(RunOffer.Memory(stage: .spent, low: 12, lastRunMs: 1))
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: { _ in CloudSortStatusTests.view(12) }, undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start },
+      load: {
+        sync.loads += 1
+        return RunOffer.Load(mailbox: .active, caughtUp: sync.caughtUp)
+      }, offers: offers, watch: { .active }, settled: { sync.revision })
+    await c.refresh()
+    try await Task.sleep(for: .milliseconds(50))
+    let loads = sync.loads
+    sync.caughtUp = true
+    for _ in 0..<5 {
+      sync.revision += 1
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(sync.loads == loads && !c.status.offerDue)
+  }
+
+  @Test func theImportReturnOfferShowsOnceASyncThatWasRunningEnds() async throws {
+    let sync = Sync()
+    let offers = RunOffer.Store.inMemory(
+      RunOffer.Memory(stage: .spent, low: 12, importSeen: true, lastRunMs: 1))
+    let c = LiveCloudSortController(
+      sorter: Self.sorter(), view: { _ in CloudSortStatusTests.view(12) }, undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start },
+      load: { RunOffer.Load(mailbox: .active, caughtUp: sync.caughtUp) }, offers: offers, watch: { .active },
+      settled: { sync.revision })
+    await c.refresh()
+    #expect(!c.status.offerDue)
+    sync.caughtUp = true
+    sync.revision += 1
+    try await LiveLedgerMapperTests.eventually { c.status.offerDue }
   }
 
   nonisolated final class Hold: Sendable {

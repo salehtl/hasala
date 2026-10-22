@@ -104,12 +104,18 @@
         shell(.review)(graph)
       }),
       Screen("review.sort.done.returning", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
-        if let sort = graph.app.cloudSort as? MockCloudSortController {
-          sort.status.waitingNames = 30
-          sort.status.waitingPayments = 34
-          sort.status.nextRunNames = 30
-          sort.status.offerDue = true
-        }
+        returning(graph)
+        let suggested = graph.app.store.state.txns.filter(SuggestionsEngine.isModelSuggestion).map(\.id)
+        _ = graph.app.perform(suggested.map { .categorize($0, "shopping", learnRule: false, project: nil) })
+        graph.app.dismissToast()
+        shell(.review)(graph)
+      }),
+      Screen("review.sort.done.returning.suggestions", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
+        returning(graph)
+        shell(.review)(graph)
+      }),
+      Screen("review.sort.ready.awaitingCards", scenario: "maya", prepare: cloudSort(.idle) { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 0, total: 0)
         shell(.review)(graph)
       }),
       Screen("review.empty.importing", scenario: "mayaCaughtUp", prepare: { graph in
@@ -160,6 +166,14 @@
         shell(.home, sheet: .search)(graph)
       }),
     ]
+
+    private static func returning(_ graph: MockGraph) {
+      guard let sort = graph.app.cloudSort as? MockCloudSortController else { return }
+      sort.status.waitingNames = 30
+      sort.status.waitingPayments = 34
+      sort.status.nextRunNames = 30
+      sort.status.offerDue = true
+    }
 
     /// The Review tab, then the deck opened at `card`, then `steps` on the deck's session.
     /// The boards draw no toast over the deck, so the last step's toast goes unless asked to

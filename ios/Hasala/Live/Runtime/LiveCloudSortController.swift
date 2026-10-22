@@ -28,6 +28,8 @@ final class LiveCloudSortController: CloudSortControlling {
   @ObservationIgnored private let watch: (@MainActor () -> RunOffer.Mailbox)?
   @ObservationIgnored private var watched: RunOffer.Mailbox?
   @ObservationIgnored private var readSeq = 0
+  @ObservationIgnored private let settled: (@MainActor () -> Int)?
+  @ObservationIgnored private var settledSeen: Int?
 
   init(
     sorter: BacklogSorter, view: @escaping @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView?,
@@ -36,11 +38,13 @@ final class LiveCloudSortController: CloudSortControlling {
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
     load: @escaping @MainActor () async -> RunOffer.Load = { RunOffer.Load() },
     offers: RunOffer.Store = .inMemory(),
-    watch: (@MainActor () -> RunOffer.Mailbox)? = nil
+    watch: (@MainActor () -> RunOffer.Mailbox)? = nil,
+    settled: (@MainActor () -> Int)? = nil
   ) {
     self.sorter = sorter
     self.load = load
     self.watch = watch
+    self.settled = settled
     self.offers = offers
     memory = offers.load()
     self.view = view
@@ -57,6 +61,7 @@ final class LiveCloudSortController: CloudSortControlling {
       }
     }
     follow()
+    followSync()
   }
 
   convenience init(runtime: AccountRuntime) {
@@ -72,7 +77,8 @@ final class LiveCloudSortController: CloudSortControlling {
         return Self.load(phase: phase, sync: sync)
       },
       offers: .live(),
-      watch: { [weak runtime] in Self.mailbox(runtime?.store.mailboxPhase) })
+      watch: { [weak runtime] in Self.mailbox(runtime?.store.mailboxPhase) },
+      settled: { [weak runtime] in runtime?.store.revision ?? 0 })
   }
 
   nonisolated static func load(phase: MailboxPhase?, sync: CoreSync.SyncStatus) -> RunOffer.Load {
@@ -125,6 +131,26 @@ final class LiveCloudSortController: CloudSortControlling {
     watched = mailbox
     remember(RunOffer.noted(memory, mailbox))
     if !first { recount() }
+  }
+
+  private func followSync() {
+    guard let settled else { return }
+    let seen = withObservationTracking { settled() } onChange: { [weak self] in
+      Task { @MainActor [weak self] in self?.followSync() }
+    }
+    let first = settledSeen == nil
+    guard seen != settledSeen else { return }
+    settledSeen = seen
+    if !first, waitsOnSync { recount() }
+  }
+
+  private var waitsOnSync: Bool {
+    guard let loaded, !loaded.caughtUp else { return false }
+    switch memory.stage {
+    case .firstLoad: return true
+    case .spent: return memory.importSeen
+    case .open: return false
+    }
   }
 
   func reviewOpened() {

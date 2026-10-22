@@ -38,7 +38,7 @@ struct ReviewTabView: View {
       } content: {
         let slot = SortSlot.of(SortSlot.Facts(
           asks: asksCloudSort, status: app.cloudSort?.status, dismissedRun: Int64(dismissedRun),
-          importing: app.mailbox?.importing))
+          importing: app.mailbox?.importing, suggestions: app.suggestionCount))
         VStack(alignment: .leading, spacing: 24) {
           if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
           slotCard(slot)
