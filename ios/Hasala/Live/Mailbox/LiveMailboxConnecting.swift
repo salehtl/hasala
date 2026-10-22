@@ -93,14 +93,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime: the review flag arrives with `GET /account`.
   var offersSampleData: Bool { runtime()?.offersSampleData ?? false }
 
-  var connectRefused: Bool {
-    guard let rt = runtime() else { return false }
-    return Self.refusesConnect(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample)
+  var connectRefusal: MailConnectRefusal? {
+    guard let rt = runtime() else { return nil }
+    return Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample)
   }
 
-  static func refusesConnect(reviewAccount: Bool, holdsSample: Bool) -> Bool { reviewAccount || holdsSample }
-
-  static let sampleRefusal = MailCopy.connectRefused
+  static func refusal(reviewAccount: Bool, holdsSample: Bool) -> MailConnectRefusal? {
+    if holdsSample { return .sampleData }
+    return reviewAccount ? .reviewAccount : nil
+  }
 
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }
@@ -379,8 +380,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
-    if Self.refusesConnect(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
-      throw .failed(Self.sampleRefusal)
+    if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
+      throw .failed(refusal.message)
     }
     let current = rt.lane
     let status = await (current ?? lane).status()

@@ -198,4 +198,5 @@ struct AccountServices {
   var hasPasscode: @MainActor () -> Bool = { DevicePasscode.isSet() }
   var cloudSort: CloudSortOffering?
   var unseenPhrase: any UnseenPhraseNoting = InMemoryUnseenPhrase()
+  var manualEntry = ManualEntryChoice()
 }

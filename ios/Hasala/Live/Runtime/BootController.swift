@@ -97,7 +97,7 @@ final class BootController {
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }),
-      unseenPhrase: unseenPhrase)
+      unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })

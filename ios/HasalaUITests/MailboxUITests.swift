@@ -64,6 +64,18 @@ final class MailboxUITests: XCTestCase {
     XCTAssertTrue(el(app, "mail.choose.outlook").exists)
   }
 
+  /// Someone who adds transactions by hand hides "Connect your email"; the rest of Finish
+  /// setting up stays.
+  @MainActor
+  func testHomeHidesTheConnectRowForSomeoneWhoAddsByHand() throws {
+    let app = launch(scenario: "noMailbox")
+    XCTAssertTrue(el(app, "home.finish.connectEmail").waitForExistence(timeout: 15))
+    tap(app, "home.finish.connectEmail.byHand")
+    XCTAssertTrue(el(app, "home.finish.connectEmail").waitForNonExistence(timeout: uiWait), "the row stayed")
+    XCTAssertFalse(el(app, "home.finish.connectEmail.byHand").exists)
+    attach(app, "Home · connect row hidden")
+  }
+
   /// Bank alerts with no mailbox offers Add a mailbox; where the account can't connect one
   /// it says why instead of showing nothing.
   @MainActor
@@ -75,8 +87,15 @@ final class MailboxUITests: XCTestCase {
     app = launch(scenario: nil, screen: "bankAlerts.refused")
     XCTAssertTrue(el(app, "bankAlerts.connectRefused").waitForExistence(timeout: 15), "a refused connect says nothing")
     XCTAssertFalse(el(app, "bankAlerts.addMailbox").exists)
+    XCTAssertTrue(el(app, "bankAlerts.connectRefused").label.contains("sample data"))
     attach(app, "Bank alerts · connect refused")
     try audit(app)
+    app.terminate()
+    app = launch(scenario: nil, screen: "bankAlerts.refusedReview")
+    let review = el(app, "bankAlerts.connectRefused")
+    XCTAssertTrue(review.waitForExistence(timeout: 15), "a review account's refused connect says nothing")
+    XCTAssertTrue(review.label.contains("App Review account"))
+    XCTAssertFalse(review.label.contains("sample"), "a review account without the sample says it shows sample data")
   }
 
   /// Profile › Bank alerts › Add a mailbox › Outlook connects a second mailbox: back on Bank
