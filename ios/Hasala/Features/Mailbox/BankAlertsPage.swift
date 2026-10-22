@@ -316,6 +316,9 @@ struct BankAlertsPage: View {
         }
         // A chip that changes (Syncing to Connected, Sign in again to Connected) cross-fades.
         .hAnimation(.stateSwap, value: mailboxes.map(\.state))
+      } else if lane?.connectRefused == true {
+        InlineStatus(tone: .warning, text: MailCopy.connectRefused, size: .regular)
+          .accessibilityIdentifier("bankAlerts.connectRefused")
       }
       Text(MailCopy.mailboxesFootnote)
         .hType(.footnote)

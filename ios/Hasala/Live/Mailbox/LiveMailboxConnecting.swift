@@ -100,7 +100,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   static func refusesConnect(reviewAccount: Bool, holdsSample: Bool) -> Bool { reviewAccount || holdsSample }
 
-  static let sampleRefusal = "This account shows sample data, so it can't read your email."
+  static let sampleRefusal = MailCopy.connectRefused
 
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }

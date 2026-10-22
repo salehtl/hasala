@@ -38,6 +38,7 @@
     var outlookAdmin = false
     /// An Outlook sign-in is closed, or its permissions declined.
     var outlookCancelled = false
+    var connectRefused = false
     var outlookNoMailbox = false
     var gmailNoMailbox = false
     var gmailPermissionMissing = false

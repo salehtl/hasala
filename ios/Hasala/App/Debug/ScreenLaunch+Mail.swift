@@ -22,6 +22,11 @@
       // The profile.
       Screen("bankAlerts", scenario: "mailboxes2", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.oneGmail", scenario: "passkeyUser", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.none", scenario: "noMailbox", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.refused", scenario: "noMailbox", prepare: { graph in
+        mock(graph)?.connectRefused = true
+        profile([.bankAlerts])(graph)
+      }),
       Screen("bankAlerts.syncing", scenario: "passkeyUser", prepare: { graph in
         // Add a mailbox › Outlook › Continue with Microsoft: back on Bank alerts with the
         // toast while the new mailbox still syncs (its first scan slowed to stay in view).

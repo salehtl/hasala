@@ -176,7 +176,7 @@ struct WordsLaterTests: AccountSuite {
     s.unseenPhrase = unseen
     let session = AccountSession(services: s, phase: .ready)
     let m = FinishSetupModel(services: s, session: { session })
-    #expect(m.items == [.phrase, .plan, .notifications])
+    #expect(m.items == [.phrase, .connectEmail, .plan, .notifications])
     #expect(!m.isDone(.phrase))
 
     await m.writeDownPhrase()
@@ -186,7 +186,7 @@ struct WordsLaterTests: AccountSuite {
     security.confirmationDismissed()
     security.phraseRevealed = true
     #expect(m.isDone(.phrase))
-    #expect(m.items == [.phrase, .plan, .notifications])
+    #expect(m.items == [.phrase, .connectEmail, .plan, .notifications])
   }
 
   @Test func theFirstViewAsksForPaperAndALaterOneDoesNot() async {
@@ -322,7 +322,7 @@ struct WordsLaterTests: AccountSuite {
   @Test func homeLeavesTheWordsOutWhenNothingIsPending() {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     let m = FinishSetupModel(services: services(account))
-    #expect(m.items == [.plan, .notifications])
+    #expect(m.items == [.connectEmail, .plan, .notifications])
   }
 
   @Test func allowingNotificationsAsksForTheReminder() async {

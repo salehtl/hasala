@@ -10,6 +10,8 @@ import SwiftUI
 // MARK: - Copy
 
 enum MailCopy {
+  static let connectRefused = "This account shows sample data, so it can't read your email."
+
   /// "Emirates NBD and DIB": the banks as the read-only card and the scan name them.
   static func banks(_ banks: [SupportedBank]) -> String {
     banks.map(\.shortName).formatted(.list(type: .and))

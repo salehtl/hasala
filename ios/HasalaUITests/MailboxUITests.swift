@@ -49,6 +49,36 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Home · Outlook connected")
   }
 
+  /// A signed-in account with no mailbox: Home's Finish setting up leads with "Connect your
+  /// email", which opens Bank alerts, where Add a mailbox offers Gmail and Outlook.
+  @MainActor
+  func testHomeOffersToConnectAnAccountWithNoMailbox() throws {
+    let app = launch(scenario: "noMailbox")
+    let row = el(app, "home.finish.connectEmail")
+    XCTAssertTrue(row.waitForExistence(timeout: 15), "Home offers no way to connect an email")
+    attach(app, "Home · Connect your email")
+    try audit(app)
+    row.tap()
+    tap(app, "bankAlerts.addMailbox")
+    XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "mail.choose.outlook").exists)
+  }
+
+  /// Bank alerts with no mailbox offers Add a mailbox; where the account can't connect one
+  /// it says why instead of showing nothing.
+  @MainActor
+  func testBankAlertsWithNoMailboxOffersAConnectOrSaysWhyNot() throws {
+    var app = launch(scenario: nil, screen: "bankAlerts.none")
+    XCTAssertTrue(el(app, "bankAlerts.addMailbox").waitForExistence(timeout: 15), "no Add a mailbox without a mailbox")
+    XCTAssertFalse(el(app, "bankAlerts.connectRefused").exists)
+    app.terminate()
+    app = launch(scenario: nil, screen: "bankAlerts.refused")
+    XCTAssertTrue(el(app, "bankAlerts.connectRefused").waitForExistence(timeout: 15), "a refused connect says nothing")
+    XCTAssertFalse(el(app, "bankAlerts.addMailbox").exists)
+    attach(app, "Bank alerts · connect refused")
+    try audit(app)
+  }
+
   /// Profile › Bank alerts › Add a mailbox › Outlook connects a second mailbox: back on Bank
   /// alerts, it is listed and checking for alerts.
   @MainActor
