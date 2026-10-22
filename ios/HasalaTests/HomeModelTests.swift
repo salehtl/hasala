@@ -64,8 +64,22 @@ struct HomeModelTests {
     #expect(home.bell.count == 4)
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
     #expect(home.bell.needsALook[0].title == "5 transactions to sort")
-    #expect(home.bell.unread == 1)
-    #expect(app.bellCount == 1)
+    #expect(home.bell.unread == 0)
+    #expect(app.bellCount == 0)
+  }
+
+  @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
+    func item(_ id: String, _ title: String) -> NotificationItem {
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review)
+    }
+    let reads = NotificationReads()
+    reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])
+    #expect(reads.isRead(item("review", "9 transactions to sort")))
+    #expect(reads.isRead(item("review", "8 transactions to sort")))
+    #expect(!reads.isRead(item("review", "10 transactions to sort")))
+    #expect(reads.isRead(item("bill.axa", "AXA Insurance may be late")))
+    #expect(!reads.isRead(item("bill.axa", "AXA Insurance is late")))
+    #expect(!reads.isRead(item("bill.du", "du may be late")))
   }
 
   @Test func readsPersistAsDigestsAndAreForgotten() throws {
