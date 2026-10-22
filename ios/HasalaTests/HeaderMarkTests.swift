@@ -1,5 +1,6 @@
 import Foundation
 import HasalaDesign
+import SwiftUI
 import Testing
 
 @testable import Hasala
@@ -103,5 +104,38 @@ struct CoinShowTests {
     stage.reset()
     #expect(stage == CoinStage())
     #expect(stage.step(.deposit, at: start + 0.12) == .play(after: 0))
+  }
+
+  func timeline(_ trick: CoinTaps.Trick) -> KeyframeTimeline<HeaderMark.Coin> {
+    KeyframeTimeline(initialValue: HeaderMark.Coin()) { HeaderMark.keyframes(trick) }
+  }
+
+  @Test(arguments: [CoinTaps.Trick.deposit, .jackpot])
+  func theKeyframesLastAsLongAsTheShow(_ trick: CoinTaps.Trick) {
+    #expect(abs(timeline(trick).duration - CoinShow.total(trick)) < 1e-9)
+  }
+
+  @Test func everyJackpotHitIsACoinReachingTheSlot() {
+    let drawn = timeline(.jackpot)
+    for hit in CoinShow.impacts(.jackpot) {
+      #expect(abs(drawn.value(time: hit).drop) < 1e-6)
+      #expect(drawn.value(time: hit + CoinShow.sinkAway / 2).drop < 0)
+    }
+  }
+
+  @Test func theJackpotBumpsPeakAfterEachHit() {
+    let drawn = timeline(.jackpot)
+    for (hit, bump) in zip(CoinShow.impacts(.jackpot), CoinShow.bumps) {
+      #expect(abs(drawn.value(time: hit + CoinShow.bumpUp).bump - bump) < 1e-6)
+    }
+  }
+
+  @Test func theJackpotEndsAtRest() {
+    let end = timeline(.jackpot).value(time: CoinShow.total(.jackpot))
+    #expect(abs(end.drop) < 3)
+    #expect(end.spin == 0)
+    #expect(end.squash == 0)
+    #expect(abs(end.bump) < 0.01)
+    #expect(end.burst == 0)
   }
 }

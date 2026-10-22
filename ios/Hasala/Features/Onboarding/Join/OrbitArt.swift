@@ -113,13 +113,13 @@ struct SlotMark: View, Animatable {
 
   static let aspect: CGFloat = 616 / 368
 
+  static func scale(in size: CGSize) -> CGFloat { min(size.width / 616, size.height / 368) }
+
   static func slotCentre(in size: CGSize) -> CGPoint {
-    let s = min(size.width / 616, size.height / 368)
+    let s = scale(in: size)
     let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
     return CGPoint(x: ox + (512 - 204) * s, y: oy + (632 - 328) * s)
   }
-
-  static func scale(in size: CGSize) -> CGFloat { min(size.width / 616, size.height / 368) }
 
   static let coinRim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
   static let coinLight = Color(HRGBA(0xF9, 0xDC, 0x94, 1))
@@ -127,7 +127,8 @@ struct SlotMark: View, Animatable {
 
   var body: some View {
     Canvas { context, size in
-      let s = min(size.width / 616, size.height / 368)
+      let s = Self.scale(in: size)
+      let slot = Self.slotCentre(in: size)
       let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
       func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
         CGRect(x: ox + (x - 204) * s, y: oy + (y - 328) * s, width: w * s, height: h * s)
@@ -142,22 +143,20 @@ struct SlotMark: View, Animatable {
       }
       // The coin, halfway in: everything below the slot's centre line is cut away.
       var coin = context
-      coin.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: oy + (632 - 328) * s)))
+      coin.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: slot.y)))
       if coinShadow {
         coin.addFilter(.shadow(color: navy.opacity(0.22), radius: 18 * s, x: 0, y: 14 * s))
       }
       coin.translateBy(x: 0, y: -drop * s)
       if squash != 0 {
-        let pivot = CGPoint(x: ox + (512 - 204) * s, y: oy + (632 - 328) * s)
-        coin.translateBy(x: pivot.x, y: pivot.y)
+        coin.translateBy(x: slot.x, y: slot.y)
         coin.scaleBy(x: 1 + squash * 0.6, y: max(1 - squash, 0.2))
-        coin.translateBy(x: -pivot.x, y: -pivot.y)
+        coin.translateBy(x: -slot.x, y: -slot.y)
       }
       if spin != 0 {
-        let axis = ox + (512 - 204) * s
-        coin.translateBy(x: axis, y: 0)
+        coin.translateBy(x: slot.x, y: 0)
         coin.scaleBy(x: max(abs(cos(spin * .pi * 2)), 0.04), y: 1)
-        coin.translateBy(x: -axis, y: 0)
+        coin.translateBy(x: -slot.x, y: 0)
       }
       coin.drawLayer { layer in
         let rim = Self.coinRim

@@ -39,6 +39,9 @@ nonisolated enum CoinShow {
   static let landed = 0.1
   static let burst = 0.45
   static let bumpUp = 0.04
+  static let bumpSettle = 0.2
+  static let stretchTime = 0.07
+  static let unstretch = 0.12
   static let stillGlow = 0.45
 
   static let spins: CGFloat = 2
@@ -148,67 +151,7 @@ struct HeaderMark: View {
             }
           }
       } keyframes: { _ in
-        KeyframeTrack(\.drop) {
-          if trick == .jackpot {
-            LinearKeyframe(CoinShow.dip, duration: CoinShow.crouch, timingCurve: .easeOut)
-            LinearKeyframe(CoinShow.lift, duration: CoinShow.rise, timingCurve: .easeOut)
-            LinearKeyframe(CoinShow.lift * 0.8, duration: CoinShow.spinTime - CoinShow.rise, timingCurve: .easeInOut)
-            LinearKeyframe(0, duration: CoinShow.slam, timingCurve: .easeIn)
-            LinearKeyframe(-300, duration: CoinShow.sinkAway)
-            MoveKeyframe(CoinShow.fallFrom)
-            LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
-            LinearKeyframe(-300, duration: CoinShow.sinkAway)
-            MoveKeyframe(CoinShow.fallFrom)
-            LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
-            LinearKeyframe(-300, duration: CoinShow.sinkAway)
-            MoveKeyframe(CoinShow.fallFrom)
-            SpringKeyframe(0, duration: CoinShow.landing, spring: Spring(response: 0.28, dampingRatio: 0.55))
-          } else {
-            LinearKeyframe(-300, duration: CoinShow.sink, timingCurve: .easeIn)
-            MoveKeyframe(CoinShow.fallFrom)
-            SpringKeyframe(0, duration: CoinShow.settle, spring: Spring(response: 0.2, dampingRatio: 0.7))
-          }
-        }
-        KeyframeTrack(\.spin) {
-          if trick == .jackpot {
-            LinearKeyframe(0, duration: CoinShow.crouch)
-            LinearKeyframe(CoinShow.spins, duration: CoinShow.spinTime, timingCurve: .easeInOut)
-            MoveKeyframe(0)
-          } else {
-            MoveKeyframe(0)
-          }
-        }
-        KeyframeTrack(\.squash) {
-          if trick == .jackpot {
-            LinearKeyframe(CoinShow.crouchSquash, duration: CoinShow.crouch, timingCurve: .easeOut)
-            LinearKeyframe(CoinShow.stretch, duration: 0.07, timingCurve: .easeOut)
-            LinearKeyframe(0, duration: 0.12, timingCurve: .easeOut)
-          } else {
-            MoveKeyframe(0)
-          }
-        }
-        KeyframeTrack(\.bump) {
-          if trick == .jackpot {
-            LinearKeyframe(0, duration: CoinShow.firstImpact)
-            LinearKeyframe(CoinShow.bumps[0], duration: CoinShow.bumpUp, timingCurve: .easeOut)
-            LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
-            LinearKeyframe(CoinShow.bumps[1], duration: CoinShow.bumpUp, timingCurve: .easeOut)
-            LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
-            LinearKeyframe(CoinShow.bumps[2], duration: CoinShow.bumpUp, timingCurve: .easeOut)
-            SpringKeyframe(0, duration: 0.2, spring: Spring(response: 0.2, dampingRatio: 0.6))
-          } else {
-            MoveKeyframe(0)
-          }
-        }
-        KeyframeTrack(\.burst) {
-          if trick == .jackpot {
-            LinearKeyframe(0, duration: CoinShow.firstImpact)
-            LinearKeyframe(1, duration: CoinShow.burst, timingCurve: .easeOut)
-            MoveKeyframe(0)
-          } else {
-            MoveKeyframe(0)
-          }
-        }
+        Self.keyframes(trick)
       }
       .padding(.bottom, Self.headroom)
       .allowsHitTesting(false)
@@ -231,6 +174,71 @@ struct HeaderMark: View {
       players = []
       stage.reset()
       glow = false
+    }
+  }
+
+  @KeyframesBuilder<Coin>
+  static func keyframes(_ trick: CoinTaps.Trick) -> some Keyframes<Coin> {
+    KeyframeTrack(\.drop) {
+      if trick == .jackpot {
+        LinearKeyframe(CoinShow.dip, duration: CoinShow.crouch, timingCurve: .easeOut)
+        LinearKeyframe(CoinShow.lift, duration: CoinShow.rise, timingCurve: .easeOut)
+        LinearKeyframe(CoinShow.lift * 0.8, duration: CoinShow.spinTime - CoinShow.rise, timingCurve: .easeInOut)
+        LinearKeyframe(0, duration: CoinShow.slam, timingCurve: .easeIn)
+        LinearKeyframe(-300, duration: CoinShow.sinkAway)
+        MoveKeyframe(CoinShow.fallFrom)
+        LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
+        LinearKeyframe(-300, duration: CoinShow.sinkAway)
+        MoveKeyframe(CoinShow.fallFrom)
+        LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
+        LinearKeyframe(-300, duration: CoinShow.sinkAway)
+        MoveKeyframe(CoinShow.fallFrom)
+        SpringKeyframe(0, duration: CoinShow.landing, spring: Spring(response: 0.28, dampingRatio: 0.55))
+      } else {
+        LinearKeyframe(-300, duration: CoinShow.sink, timingCurve: .easeIn)
+        MoveKeyframe(CoinShow.fallFrom)
+        SpringKeyframe(0, duration: CoinShow.settle, spring: Spring(response: 0.2, dampingRatio: 0.7))
+      }
+    }
+    KeyframeTrack(\.spin) {
+      if trick == .jackpot {
+        LinearKeyframe(0, duration: CoinShow.crouch)
+        LinearKeyframe(CoinShow.spins, duration: CoinShow.spinTime, timingCurve: .easeInOut)
+        MoveKeyframe(0)
+      } else {
+        MoveKeyframe(0)
+      }
+    }
+    KeyframeTrack(\.squash) {
+      if trick == .jackpot {
+        LinearKeyframe(CoinShow.crouchSquash, duration: CoinShow.crouch, timingCurve: .easeOut)
+        LinearKeyframe(CoinShow.stretch, duration: CoinShow.stretchTime, timingCurve: .easeOut)
+        LinearKeyframe(0, duration: CoinShow.unstretch, timingCurve: .easeOut)
+      } else {
+        MoveKeyframe(0)
+      }
+    }
+    KeyframeTrack(\.bump) {
+      if trick == .jackpot {
+        LinearKeyframe(0, duration: CoinShow.firstImpact)
+        LinearKeyframe(CoinShow.bumps[0], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+        LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
+        LinearKeyframe(CoinShow.bumps[1], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+        LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
+        LinearKeyframe(CoinShow.bumps[2], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+        SpringKeyframe(0, duration: CoinShow.bumpSettle, spring: Spring(response: 0.2, dampingRatio: 0.6))
+      } else {
+        MoveKeyframe(0)
+      }
+    }
+    KeyframeTrack(\.burst) {
+      if trick == .jackpot {
+        LinearKeyframe(0, duration: CoinShow.firstImpact)
+        LinearKeyframe(1, duration: CoinShow.burst, timingCurve: .easeOut)
+        MoveKeyframe(0)
+      } else {
+        MoveKeyframe(0)
+      }
     }
   }
 
@@ -268,6 +276,7 @@ struct HeaderMark: View {
       Task { @MainActor in
         withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = true }
         try? await Task.sleep(for: .seconds(CoinShow.stillGlow))
+        guard !Task.isCancelled else { return }
         withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = false }
       }
     ]
