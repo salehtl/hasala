@@ -130,9 +130,10 @@ struct CoinShowTests {
     }
   }
 
-  @Test func theJackpotEndsAtRest() {
-    let end = timeline(.jackpot).value(time: CoinShow.total(.jackpot))
-    #expect(abs(end.drop) < 3)
+  @Test(arguments: [CoinTaps.Trick.deposit, .jackpot])
+  func theShowEndsAtRest(_ trick: CoinTaps.Trick) {
+    let end = timeline(trick).value(time: CoinShow.total(trick))
+    #expect(abs(end.drop) < 1)
     #expect(end.spin == 0)
     #expect(end.squash == 0)
     #expect(abs(end.bump) < 0.01)

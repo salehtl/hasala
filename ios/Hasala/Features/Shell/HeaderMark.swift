@@ -197,7 +197,7 @@ struct HeaderMark: View {
       } else {
         LinearKeyframe(-300, duration: CoinShow.sink, timingCurve: .easeIn)
         MoveKeyframe(CoinShow.fallFrom)
-        SpringKeyframe(0, duration: CoinShow.settle, spring: Spring(response: 0.2, dampingRatio: 0.7))
+        SpringKeyframe(0, duration: CoinShow.settle, spring: Spring(response: 0.16, dampingRatio: 0.65))
       }
     }
     KeyframeTrack(\.spin) {
