@@ -28,6 +28,11 @@ protocol ReviewDeckModel: AnyObject, Observable {
   var picking: ReviewPick? { get set }
   /// All caught up celebrates once a session (motion policy: a rare moment may delight).
   var celebrated: Bool { get set }
+  var periodTitle: String { get }
+  var isThisMonth: Bool { get }
+  var elsewhere: ReviewElsewhere? { get }
+  func periodChanged()
+  func showElsewhere()
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption]
   func projects(for card: TxnID) -> [ProjectChoice]
   /// A swipe or a pill sent the card one way: ask which category.
@@ -48,17 +53,28 @@ final class ReviewViewModel: ReviewDeckModel {
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
   /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
-  private let order: [TxnID]
-  let total: Int
+  private var order: [TxnID]
+  private(set) var total: Int
+  private(set) var allMonths: Bool
+  private var window: ReviewWindow
   var picking: ReviewPick?
   var celebrated = false
-  @ObservationIgnored private var memo = Memo<Int, [ReviewCardModel]>()
+  @ObservationIgnored private var memo = Memo<CardsKey, [ReviewCardModel]>()
+
+  private struct CardsKey: Equatable {
+    let revision: Int
+    let window: ReviewWindow
+  }
 
   init(app: AppModel) {
     self.app = app
-    let queue = ReviewEngine.queue(app.store.state).map(\.id)
+    let entry = ReviewEntry.take(for: app)
+    allMonths = !entry.inPeriod
+    let window = entry.inPeriod ? app.reviewWindow : .all
+    self.window = window
+    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
     total = queue.count
-    order = ReviewEngine.order(queue, startingAt: ReviewEntry.take(for: app))
+    order = ReviewEngine.order(queue, startingAt: entry.card)
     #if HASALA_MOCKS
       ReviewEntry.takeScript(for: app)?(self)
     #endif
@@ -67,9 +83,9 @@ final class ReviewViewModel: ReviewDeckModel {
   /// The queue as it stands, in the session's order. A card that arrives mid-session goes
   /// last; a card that Undo puts back takes its old place.
   var cards: [ReviewCardModel] {
-    let ordered = memo.value(for: app.store.revision) {
+    let ordered = memo.value(for: CardsKey(revision: app.store.revision, window: window)) {
       let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
-      return ReviewEngine.cards(app.store.state).enumerated()
+      return ReviewEngine.cards(app.store.state, in: window).enumerated()
         .sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
         .map(\.element)
     }
@@ -96,6 +112,30 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   var position: Int { min(total, max(1, total - cards.count + 1)) }
+  var periodTitle: String { allMonths ? "All months" : app.period.title }
+  var isThisMonth: Bool { !allMonths && app.period == .month(app.store.now.date.yearMonth) }
+  var elsewhere: ReviewElsewhere? { allMonths ? nil : app.reviewElsewhere }
+
+  func periodChanged() {
+    allMonths = false
+    restart()
+  }
+
+  func showElsewhere() {
+    guard let elsewhere else { return }
+    app.period = elsewhere.widened
+    restart()
+  }
+
+  private func restart() {
+    let top = cards.first?.id
+    window = allMonths ? .all : app.reviewWindow
+    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    total = queue.count
+    order = ReviewEngine.order(queue, startingAt: top)
+    memo = Memo()
+  }
+
   var hidden: Bool { app.amountsHidden }
   var needOnRight: Bool { app.store.state.prefs.swipeNeedOnRight }
 
@@ -188,26 +228,29 @@ extension ReviewDeckModel {
 enum ReviewEntry {
   private static weak var requester: AppModel?
   private static var start: TxnID?
+  private static var inPeriod = false
 
   /// Opens the deck, at `card` when given.
-  static func open(_ app: AppModel, at card: TxnID?) {
-    request(app, at: card)
+  static func open(_ app: AppModel, at card: TxnID?, inPeriod: Bool = false) {
+    request(app, at: card, inPeriod: inPeriod)
     app.startReview()
   }
 
   /// The next session for `app` starts at `card` (the cover opens it).
-  static func request(_ app: AppModel, at card: TxnID?) {
+  static func request(_ app: AppModel, at card: TxnID?, inPeriod: Bool = false) {
     requester = app
     start = card
+    self.inPeriod = inPeriod
   }
 
   /// The card a new session for `app` starts at; the request is used up.
-  static func take(for app: AppModel) -> TxnID? {
+  static func take(for app: AppModel) -> (card: TxnID?, inPeriod: Bool) {
     defer {
       requester = nil
       start = nil
+      inPeriod = false
     }
-    return requester === app ? start : nil
+    return requester === app ? (start, inPeriod) : (nil, false)
   }
 
   #if HASALA_MOCKS

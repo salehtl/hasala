@@ -33,16 +33,30 @@ struct ReviewDoneView: View {
           .padding(.top, 16)
           .accessibilityAddTraits(.isHeader)
           .accessibilityIdentifier("review.done")
-        Text(Self.tally(sorted: sorted.count, rules: rules))
+        Text(sorted.isEmpty && model.elsewhere != nil
+          ? "Nothing to sort in \(model.periodTitle)." : Self.tally(sorted: sorted.count, rules: rules))
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
           .multilineTextAlignment(.center)
           .padding(.top, 4)
           .accessibilityIdentifier("review.done.tally")
+        if let elsewhere = model.elsewhere {
+          Text(elsewhere.line)
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
+            .padding(.top, 4)
+            .accessibilityIdentifier("review.done.elsewhere")
+        }
         VStack(spacing: 16) {
           if !sorted.isEmpty { summary(sorted) }
+          if let elsewhere = model.elsewhere {
+            Button("Show \(elsewhere.widened.title)") { model.showElsewhere() }
+              .buttonStyle(.pill(.primary, fill: true))
+              .accessibilityIdentifier("review.showElsewhere")
+          }
           Button("See activity") { model.close(goToActivity: true) }
-            .buttonStyle(.pill(.primary, fill: true))
+            .buttonStyle(.pill(model.elsewhere == nil ? .primary : .secondary, fill: true))
             .accessibilityIdentifier("review.seeActivity")
         }
         .padding(.top, 22)

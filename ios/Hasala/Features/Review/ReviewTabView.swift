@@ -3,10 +3,8 @@ import HasalaModels
 import SwiftUI
 
 /// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
-/// couldn't sort and the card that starts the swipe deck. The queue is a to-do list, so it
-/// ignores the period: the tab's badge (`AppModel.reviewCount`), the bell's "N transactions to
-/// sort" and the deck count the same transactions. With more than one month waiting, the list
-/// runs the newest month first, each under its month.
+/// couldn't sort and the card that starts the swipe deck. With more than one month waiting, the
+/// list runs the newest month first, each under its month.
 ///
 /// Start opens the deck at the top of the list, the newest month's oldest card, and reads on
 /// in the list's order; a row opens it at that row's card and reads on down the list. The
@@ -24,16 +22,19 @@ struct ReviewTabView: View {
 
   var body: some View {
     NavigationStack(path: Bindable(app.router).review) {
-      let cards = ReviewEngine.cards(app.store.state)
+      let cards = app.reviewCards
+      let elsewhere = app.reviewElsewhere
+      let isThisMonth = app.period == .month(app.store.now.date.yearMonth)
       let unread = ReviewEngine.unreadCount(app.store.state)
       TabScreen(app: app, title: "Review", spacing: 24, titleGap: 4) {
-        Text(Self.countLine(cards.count))
+        Text(Self.countLine(cards.count, elsewhere: elsewhere, period: app.period.title))
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
           .accessibilityIdentifier("review.tab.count")
       } content: {
         let sortState = app.cloudSort.flatMap { CloudSortCardState.of($0.status, dismissedRun: Int64(dismissedRun)) }
         VStack(alignment: .leading, spacing: 24) {
+          if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
           if let sort = app.cloudSort, let sortState {
             CloudSortCard(app: app, sort: sort, state: sortState) {
               dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
@@ -41,7 +42,7 @@ struct ReviewTabView: View {
             .background(cardSurface)
           }
           if cards.isEmpty {
-            caughtUp
+            caughtUp(elsewhere)
             if unread > 0 { unreadable(unread) }
           } else {
             startCard
@@ -68,8 +69,8 @@ struct ReviewTabView: View {
   }
 
   /// "6 to sort · about a minute": about ten seconds a card.
-  static func countLine(_ n: Int) -> String {
-    guard n > 0 else { return "All caught up" }
+  static func countLine(_ n: Int, elsewhere: ReviewElsewhere? = nil, period: String = "") -> String {
+    guard n > 0 else { return elsewhere == nil ? "All caught up" : "Nothing to sort in \(period)" }
     let minutes = (n + 5) / 6
     return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
   }
@@ -78,6 +79,38 @@ struct ReviewTabView: View {
 
   static func orderLine(months: Int) -> String {
     months > 1 ? "Newest month first" : "Oldest first"
+  }
+
+  // MARK: Period
+
+  private func periodRow(_ elsewhere: ReviewElsewhere?, isThisMonth: Bool) -> some View {
+    ReflowingRow(spacing: 12) {
+      PeriodPill(app.period.title, tinted: !isThisMonth) { app.sheet = .period }
+        .accessibilityIdentifier("review.tab.period")
+    } trailing: {
+      if let elsewhere {
+        Button { app.period = elsewhere.widened } label: {
+          Text(elsewhere.line)
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows \(elsewhere.widened.title)")
+        .accessibilityIdentifier("review.tab.elsewhere")
+      } else if !isThisMonth {
+        Button { app.period = .month(app.store.now.date.yearMonth) } label: {
+          Text("Back to this month")
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review.tab.backToThisMonth")
+      }
+    }
   }
 
   // MARK: Start card
@@ -101,7 +134,7 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      Button("Start") { ReviewEntry.open(app, at: nil) }
+      Button("Start") { ReviewEntry.open(app, at: nil, inPeriod: true) }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("review.tab.start")
     }
@@ -147,7 +180,7 @@ struct ReviewTabView: View {
             .accessibilityIdentifier("review.tab.month.\(month.month)")
         }
         ForEach(month.cards) { card in
-          Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
+          Button { ReviewEntry.open(app, at: card.id, inPeriod: true) } label: { row(card) }
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spoken(card))
@@ -208,14 +241,16 @@ struct ReviewTabView: View {
   // MARK: Others
 
   /// Nothing to sort: good news, said plainly, with the way to everything that was sorted.
-  private var caughtUp: some View {
+  private func caughtUp(_ elsewhere: ReviewElsewhere?) -> some View {
     VStack(spacing: 12) {
       Circle().fill(HColor.statusSuccessSurface).frame(width: 56, height: 56)
         .overlay { HIconView(.check, size: 26, color: HColor.statusSuccessForeground, strokeWidth: 2.2) }
         .accessibilityHidden(true)
-      Text("Nothing to sort").hType(HType.title3).foregroundStyle(HColor.textPrimary)
+      Text(elsewhere == nil ? "Nothing to sort" : "Nothing to sort in \(app.period.title)")
+        .hType(HType.title3).foregroundStyle(HColor.textPrimary)
+        .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
-      Text(Self.emptyLine)
+      Text(elsewhere.map { "\($0.line)." } ?? Self.emptyLine)
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)

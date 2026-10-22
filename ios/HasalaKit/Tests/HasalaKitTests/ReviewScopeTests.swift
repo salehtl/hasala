@@ -61,6 +61,50 @@ struct ReviewScopeTests {
     #expect(ReviewEngine.queue(store.state).count == 6)
   }
 
+  @Test func elsewhereCountsTheQueueOutsideThePeriod() {
+    let s = ledger([
+      unsorted("aug-shop", LocalDateTime(2026, 8, 20, 9, 0)),
+      unsorted("sep-shop", LocalDateTime(2026, 9, 12, 10, 0)),
+    ])
+    let oct = YearMonth(2026, 10), sep = YearMonth(2026, 9), aug = YearMonth(2026, 8)
+    let inOctober = ReviewEngine.elsewhere(s, in: .month(oct), today: oct)
+    #expect(inOctober == ReviewElsewhere(count: 2, side: .earlier, widened: Period(aug, oct)))
+    #expect(inOctober?.line == "2 more in earlier months")
+    let inAugust = ReviewEngine.elsewhere(s, in: .month(aug), today: oct)
+    #expect(inAugust == ReviewElsewhere(count: 7, side: .later, widened: Period(aug, oct)))
+    let inSeptember = ReviewEngine.elsewhere(s, in: .month(sep), today: oct)
+    #expect(inSeptember?.side == .other && inSeptember?.widened == Period(aug, oct))
+    #expect(inSeptember?.line == "7 more in other months")
+    #expect(ReviewEngine.elsewhere(s, in: Period(aug, oct), today: oct) == nil)
+    #expect(ReviewEngine.queue(s, in: september).count + (inSeptember?.count ?? 0) == ReviewEngine.queue(s).count)
+    #expect(ReviewEngine.elsewhere(s, in: .month(YearMonth(2026, 6)), today: oct)?.widened == Period(YearMonth(2026, 6), oct))
+  }
+
+  @Test func aRowFromAFutureMonthCountsInThisMonth() {
+    let s = ledger([unsorted("nov-shop", LocalDateTime(2026, 11, 2, 9, 0))])
+    let oct = YearMonth(2026, 10)
+    #expect(ReviewEngine.elsewhere(s, in: .month(oct), today: oct) == nil)
+    let window = ReviewEngine.window(.month(oct), today: oct)
+    #expect(window.to == nil && ReviewEngine.queue(s, in: window).contains { $0.id == "nov-shop" })
+    let inSeptember = ReviewEngine.elsewhere(s, in: .month(YearMonth(2026, 9)), today: oct)
+    #expect(inSeptember?.widened == Period(YearMonth(2026, 9), oct) && inSeptember?.count == 7)
+    #expect(ReviewEngine.window(.month(YearMonth(2026, 9)), today: oct) == september)
+  }
+
+  @Test func elsewhereSaysOneMonthForOne() {
+    let p = Period.month(YearMonth(2026, 10))
+    #expect(ReviewElsewhere(count: 1, side: .earlier, widened: p).line == "1 more in an earlier month")
+    #expect(ReviewElsewhere(count: 1, side: .later, widened: p).line == "1 more in a later month")
+    #expect(ReviewElsewhere(count: 1, side: .other, widened: p).line == "1 more in another month")
+  }
+
+  @Test func elsewhereLeavesOutTodaysSkips() {
+    var s = ledger([unsorted("sep-shop", LocalDateTime(2026, 9, 12, 10, 0))])
+    s.skippedReview = ["sep-shop"]
+    let oct = YearMonth(2026, 10)
+    #expect(ReviewEngine.elsewhere(s, in: .month(oct), today: oct) == nil)
+  }
+
   @Test func transfersArchivedAndSplitRowsStayOut() {
     let at = LocalDateTime(2026, 9, 12, 10, 0)
     var paired = unsorted("paired", at)
