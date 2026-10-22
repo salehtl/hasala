@@ -12,7 +12,38 @@ import CoreTime
 import CoreWire
 import HasalaText
 
+extension Replay {
+  public static func billRecord(_ op: Op) -> Bill? {
+    guard op.type == .billSet, let p = op.payload.objectValue else { return nil }
+    return try? State.decodeBill(p)
+  }
+
+  public static func billRecord(_ op: Op, inheritingFrom current: Bill?) -> Bill? {
+    guard op.type == .billSet, let p = op.payload.objectValue, let decoded = try? State.decodeBillPayload(p) else {
+      return nil
+    }
+    let (b, inherit) = decoded
+    guard op.parentVersion != nil, inherit != .none else { return b }
+    guard let current else { return nil }
+    return try? State.inheritBillLists(b, from: current, inherit)
+  }
+}
+
+struct BillInherit: Equatable {
+  var changes: Bool
+  var pauses: Bool
+
+  static let none = BillInherit(changes: false, pauses: false)
+}
+
 extension State {
+  static func billCreatedAt(_ op: Op) -> String {
+    guard let s = op.payload.objectValue?["created_at"]?.stringValue, let ms = try? parseInstantMs(s),
+      let authored = try? parseInstantMs(op.authoredAt), ms <= authored, let iso = Instant.iso(ms)
+    else { return op.authoredAt }
+    return iso
+  }
+
   static func decodeBill(_ p: JSONObject) throws(PayloadError) -> Bill {
     let name = try P.label(p["name"], "name")
     guard let list = p["keys"]?.arrayValue, (1...8).contains(list.count) else { throw PayloadError("keys must hold 1-8 keys") }
@@ -50,10 +81,103 @@ extension State {
     let source = try P.oneOf(p["source"], "source", ["manual", "detected"])
     let status = try P.oneOf(p["status"], "status", ["active", "cancelled", "dismissed"])
     if status == "cancelled" && end == nil { throw PayloadError("a cancelled bill needs an end") }
+    let startDate = CivilDate(wire: start)!
+    let endDate = end.flatMap(CivilDate.init(wire:))
+    let changes = try decodeBillChanges(p["changes"], start: startDate, end: endDate)
+    let pauses = try decodeBillPauses(p["pauses"], start: startDate)
     return Bill(
       name: name, keys: keys, direction: direction, currency: currency, amountMode: mode, amountMinor: amount,
       toleranceBp: tolerance, cadence: BillCadence(unit: unit, every: every), anchor: anchor, start: start, end: end,
-      category: category, account: account, source: source, status: status, firstSeq: 0, version: 0)
+      category: category, account: account, source: source, status: status, changes: changes, pauses: pauses,
+      firstSeq: 0, version: 0)
+  }
+
+  static func decodeBillPayload(_ p: JSONObject) throws(PayloadError) -> (Bill, BillInherit) {
+    (try decodeBill(p), BillInherit(changes: p["changes"] == nil, pauses: p["pauses"] == nil))
+  }
+
+  static func inheritBillLists(_ b: Bill, from old: Bill, _ inherit: BillInherit) throws(PayloadError) -> Bill {
+    guard let start = CivilDate(wire: b.start) else { throw PayloadError("start is not a LocalDay") }
+    let end = b.end.flatMap(CivilDate.init(wire:))
+    var out = b
+    if inherit.changes {
+      for (i, c) in old.changes.enumerated() {
+        guard let from = CivilDate(wire: c.from) else { throw PayloadError("inherited changes[\(i)].from is not a LocalDay") }
+        if from < start { throw PayloadError("inherited changes[\(i)].from is before start") }
+        if let end, end < from { throw PayloadError("inherited changes[\(i)].from is after end") }
+      }
+      out.changes = old.changes
+    }
+    if inherit.pauses {
+      for (i, p) in old.pauses.enumerated() {
+        guard let from = CivilDate(wire: p.from) else { throw PayloadError("inherited pauses[\(i)].from is not a LocalDay") }
+        if from < start { throw PayloadError("inherited pauses[\(i)].from is before start") }
+      }
+      out.pauses = old.pauses
+    }
+    return out
+  }
+
+  static let maxBillChanges = 24
+  static let maxBillPauses = 24
+
+  static func decodeBillChanges(_ v: JSONValue?, start: CivilDate, end: CivilDate?) throws(PayloadError) -> [BillChange] {
+    guard let v = P.present(v) else { return [] }
+    guard let list = v.arrayValue else { throw PayloadError("changes must be an array") }
+    guard list.count <= maxBillChanges else { throw PayloadError("changes holds at most \(maxBillChanges) entries") }
+    var out: [BillChange] = []
+    var last: CivilDate?
+    for (i, item) in list.enumerated() {
+      let o = try P.object(item, "changes[\(i)]")
+      let from = try P.civilDate(o["from"], "changes[\(i)].from")
+      let date = CivilDate(wire: from)!
+      if date < start { throw PayloadError("changes[\(i)].from is before start") }
+      if let end, end < date { throw PayloadError("changes[\(i)].from is after end") }
+      if let last, !(last < date) { throw PayloadError("changes[\(i)].from must be after the previous change") }
+      last = date
+      let mode = try P.oneOf(o["amount_mode"], "changes[\(i)].amount_mode", ["fixed", "variable"])
+      let amount = try P.minorV4(o["amount_minor"], "changes[\(i)].amount_minor", positive: true)
+      guard o["tolerance_bp"] != nil else { throw PayloadError("changes[\(i)].tolerance_bp is required") }
+      var tolerance: Int64?
+      if mode == "fixed" {
+        tolerance = try P.intV4(o["tolerance_bp"], "changes[\(i)].tolerance_bp", 0...5000)
+      } else if P.present(o["tolerance_bp"]) != nil {
+        throw PayloadError("changes[\(i)]: a variable change carries no tolerance_bp")
+      }
+      out.append(BillChange(from: from, amountMode: mode, amountMinor: amount, toleranceBp: tolerance))
+    }
+    return out
+  }
+
+  static func decodeBillPauses(_ v: JSONValue?, start: CivilDate) throws(PayloadError) -> [BillPause] {
+    guard let v = P.present(v) else { return [] }
+    guard let list = v.arrayValue else { throw PayloadError("pauses must be an array") }
+    guard list.count <= maxBillPauses else { throw PayloadError("pauses holds at most \(maxBillPauses) ranges") }
+    var out: [BillPause] = []
+    var previousUntil: CivilDate?
+    for (i, item) in list.enumerated() {
+      let o = try P.object(item, "pauses[\(i)]")
+      let from = try P.civilDate(o["from"], "pauses[\(i)].from")
+      let fromDate = CivilDate(wire: from)!
+      if fromDate < start { throw PayloadError("pauses[\(i)].from is before start") }
+      if i > 0 {
+        guard let previousUntil else { throw PayloadError("pauses[\(i - 1)] is open but is not the last range") }
+        if fromDate < previousUntil { throw PayloadError("pauses[\(i)] overlaps the previous range") }
+      }
+      guard o["until"] != nil else { throw PayloadError("pauses[\(i)].until is required (null for open)") }
+      var until: String?
+      if P.present(o["until"]) != nil {
+        let u = try P.civilDate(o["until"], "pauses[\(i)].until")
+        let untilDate = CivilDate(wire: u)!
+        if !(fromDate < untilDate) { throw PayloadError("pauses[\(i)].until must be after from") }
+        until = u
+        previousUntil = untilDate
+      } else {
+        previousUntil = nil
+      }
+      out.append(BillPause(from: from, until: until))
+    }
+    return out
   }
 
   mutating func applyBillOccurrenceSet(_ e: LogEntry) throws(PayloadError) {

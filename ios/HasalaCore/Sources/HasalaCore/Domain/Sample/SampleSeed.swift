@@ -223,6 +223,7 @@ public enum SampleSeed {
       if shiftedAt > targetMs { continue }
       d.at = Instant.iso(shiftedAt) ?? d.at
       d.payload = try Shift.payload(d.payload, type: d.type, months: months)
+      if d.type == .billSet { d.payload["created_at"] = .string(d.at) }
       d.payload = try ids.remap(d.payload)
       if let e = d.entity { d.entity = EntityRefDraft(kind: e.kind, id: try ids.remap(e.id)) }
       if let ingest = d.ingestID { d.ingestID = try ids.remap(ingest) }

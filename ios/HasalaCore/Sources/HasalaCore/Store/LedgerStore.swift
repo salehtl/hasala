@@ -368,15 +368,25 @@ public final class LedgerStore: Sendable {
       try Row.fetchAll(
         db, sql: "SELECT * FROM wire_rows WHERE seq > ? ORDER BY seq LIMIT ?", arguments: [seq, limit])
     }
-    return try rows.map { r throws(StoreError) in
-      guard let w = WriterID(r["writer_id"] as String), let bh = Hash32(r["blob_hash"] as Data),
-        let ph = Hash32(r["prev_hash"] as Data),
-        let d = WireRowRecord.Disposition(rawValue: r["disposition"] as String)
-      else { throw .corrupt("wire_rows") }
-      return WireRowRecord(
-        seq: r["seq"], writerID: w, counter: r["writer_counter"], sizeBucket: r["size_bucket"], blobHash: bh,
-        prevHash: ph, createdAt: r["created_at"], blob: r["blob"], headSig: r["head_sig"], disposition: d)
+    return try rows.map { r throws(StoreError) in try Self.wireRow(r) }
+  }
+
+  public func wireRows(before seq: Int64, limit: Int = 250) throws(StoreError) -> [WireRowRecord] {
+    let rows = try read { db in
+      try Row.fetchAll(
+        db, sql: "SELECT * FROM wire_rows WHERE seq < ? ORDER BY seq DESC LIMIT ?", arguments: [seq, limit])
     }
+    return try rows.map { r throws(StoreError) in try Self.wireRow(r) }
+  }
+
+  private static func wireRow(_ r: Row) throws(StoreError) -> WireRowRecord {
+    guard let w = WriterID(r["writer_id"] as String), let bh = Hash32(r["blob_hash"] as Data),
+      let ph = Hash32(r["prev_hash"] as Data),
+      let d = WireRowRecord.Disposition(rawValue: r["disposition"] as String)
+    else { throw .corrupt("wire_rows") }
+    return WireRowRecord(
+      seq: r["seq"], writerID: w, counter: r["writer_counter"], sizeBucket: r["size_bucket"], blobHash: bh,
+      prevHash: ph, createdAt: r["created_at"], blob: r["blob"], headSig: r["head_sig"], disposition: d)
   }
 
   public func wireRowCount() throws(StoreError) -> Int {

@@ -53,6 +53,23 @@ enum EdgeGoldens {
     (3, G.w2, [annotate(2, #"{"archived":"user"}"#, id: "op-archive-2")]),
   ]
 
+  static func bill(
+    _ extra: String, id: String, parent: Int? = nil, at: String, entity: String = "bm_0123456789abcdef0123456789abcdef",
+    source: String = "manual", status: String = "active", end: String? = nil, category: String = "subscriptions"
+  ) -> String {
+    let e = end.map { "\"\($0)\"" } ?? "null"
+    return G.op(
+      "bill_set",
+      #"{"name":"Netflix","keys":["netflix"],"direction":"debit","currency":"AED","amount_mode":"fixed","amount_minor":"5600","tolerance_bp":200,"cadence":{"unit":"month","every":1},"anchor":"2026-01-31","start":"2026-01-31","end":\#(e),"category":"\#(category)","account":null,"source":"\#(source)","status":"\#(status)"\#(extra)}"#,
+      id: id, entity: ("bill", entity), parent: parent, at: at)
+  }
+
+  static let lists =
+    #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#
+  static let lateChange =
+    #","changes":[{"from":"2026-11-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#
+  static let detected = "bd_netflix.debit.aed"
+
   static let pairs: [String: [String]] = [
     "pairing-skips-archived-and-held-rows": [],
     "pairing-takes-the-kept-copy": [G.ulid(1) + ">" + G.ulid(3)],
@@ -63,7 +80,7 @@ enum EdgeGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-edges.json",
     note:
-      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
+      "Edge cases of the v4 fold that the ledgerd TypeScript fold (schema 3, removed) could not express: held copies, the Undo pairs the app writes (a budget move, a budget edit, a same-purchase confirmation, a reopened copy), archived and held rows around same-purchase pairing, and money at the Int64 limits where the v4 fold records money_overflow or refuses the amount instead of carrying an unbounded number. Bills carry dated price changes and pause ranges as optional lists: on a create, absent, null and [] are the same record; on an edit, an absent key keeps the head's list and a present one replaces it, and the merged record must pass the grammar. A refused list consumes no version, created_at stays the create's, and a second create of a bill is a fork (or nothing, when it is the same record). Written by the Swift executor; a case listed in HasalaCoreConformanceTests EdgeGoldens.pairs also pins SamePurchase.pairs over its folded state.",
     cases: [
       FoldGoldenCase(
         name: "held-copy-at-the-int64-ceiling",
@@ -187,6 +204,97 @@ enum EdgeGoldens {
               row(2, "AED", max, at: "2026-10-09T15:12:00.000Z", merchant: "MAX"),
             ]
           ),
+        ]),
+      FoldGoldenCase(
+        name: "bill-empty-lists-are-the-old-record",
+        note: "A bill created with no changes or pauses, then edited with \"changes\":[] and \"pauses\":null: the record has neither list, and created_at stays the create's authored_at.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(#","changes":[],"pauses":null"#, id: "op-bill-2", parent: 1, at: "2026-10-01T08:00:00.000Z")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-price-change-pause-and-resume",
+        note: "A price change from 2026-06-30, a pause from 2026-08-01 left open, then the resume that closes it and a second change; an edit whose open pause is not the last range is refused and consumes no version.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (
+            2, G.w1,
+            [
+              bill(
+                #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200}],"pauses":[{"from":"2026-08-01","until":null}]"#,
+                id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")
+            ]
+          ),
+          (
+            3, G.w2,
+            [
+              bill(
+                #","pauses":[{"from":"2026-08-01","until":null},{"from":"2026-09-01","until":"2026-09-15"}]"#, id: "op-bill-bad",
+                parent: 2, at: "2026-09-02T08:00:00.000Z")
+            ]
+          ),
+          (
+            4, G.w1,
+            [
+              bill(
+                #","changes":[{"from":"2026-06-30","amount_mode":"fixed","amount_minor":"6300","tolerance_bp":200},{"from":"2026-10-31","amount_mode":"variable","amount_minor":"7000","tolerance_bp":null}],"pauses":[{"from":"2026-08-01","until":"2026-10-01"}]"#,
+                id: "op-bill-3", parent: 2, at: "2026-10-01T08:00:00.000Z")
+            ]
+          ),
+        ]),
+      FoldGoldenCase(
+        name: "bill-edit-without-lists-keeps-the-head-lists",
+        note: "An edit from a build that does not know changes and pauses names neither key: it keeps the head's price change and open pause, and its own fields apply (category).",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(lists, id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")]),
+          (3, G.w2, [bill("", id: "op-bill-old", parent: 2, at: "2026-09-01T08:00:00.000Z", category: "entertainment")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-explicit-empty-lists-clear",
+        note: "An edit with \"changes\":[] and \"pauses\":[] clears both lists; this is what a current build writes to remove them.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(lists, id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")]),
+          (3, G.w1, [bill(#","changes":[],"pauses":[]"#, id: "op-bill-3", parent: 2, at: "2026-10-01T08:00:00.000Z")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-edit-without-lists-checked-against-the-head-lists",
+        note: "An edit with no lists that ends the bill on 2026-10-31 would keep a price change from 2026-11-30, after the end: the merged record fails the grammar, so the edit is refused and consumes no version. The same edit ending on 2026-12-31 keeps the change and the open pause.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(lateChange, id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")]),
+          (3, G.w2, [bill("", id: "op-bill-bad", parent: 2, at: "2026-10-31T08:00:00.000Z", status: "cancelled", end: "2026-10-31")]),
+          (4, G.w2, [bill("", id: "op-bill-3", parent: 2, at: "2026-12-31T08:00:00.000Z", status: "cancelled", end: "2026-12-31")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-edit-without-lists-wins-a-fork-and-keeps-the-head-lists",
+        note: "An edit with no lists made on version 1 forks with a later version 2 that added the lists; it was authored later and wins, and takes the lists of the head it replaces. The fork notice names version 2 as the loser.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-bill-1", at: "2026-01-20T21:30:00.000Z")]),
+          (2, G.w1, [bill(lists, id: "op-bill-2", parent: 1, at: "2026-08-01T08:00:00.000Z")]),
+          (3, G.w2, [bill("", id: "op-bill-old", parent: 1, at: "2026-08-02T08:00:00.000Z", category: "entertainment")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-track-and-not-a-bill-at-once-fork",
+        note: "Two iPhones decide one detected candidate at once: one tracks it (a create, active), the other says Not a bill (a create of the same id, dismissed). The second create is a fork, not a duplicate_create: the later authored_at wins, a fork notice names the loser, and first_seq and created_at stay the first create's.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-track", at: "2026-10-01T08:00:00.000Z", entity: detected, source: "detected")]),
+          (2, G.w2, [bill("", id: "op-not-a-bill", at: "2026-10-01T08:00:05.000Z", entity: detected, source: "detected", status: "dismissed")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-not-a-bill-then-earlier-track-fork",
+        note: "The same decisions folded the other way: Not a bill reaches the log first, Track was authored earlier and arrives second. The incumbent keeps the record, the version advances, and the fork notice names Track as the loser.",
+        blobs: [
+          (1, G.w2, [bill("", id: "op-not-a-bill", at: "2026-10-01T08:00:05.000Z", entity: detected, source: "detected", status: "dismissed")]),
+          (2, G.w1, [bill("", id: "op-track", at: "2026-10-01T08:00:00.000Z", entity: detected, source: "detected")]),
+        ]),
+      FoldGoldenCase(
+        name: "bill-same-create-twice-is-absorbed",
+        note: "Two iPhones track one candidate with the same record: the second create changes nothing, records no anomaly and no fork, and the version stays 1.",
+        blobs: [
+          (1, G.w1, [bill("", id: "op-track-a", at: "2026-10-01T08:00:00.000Z", entity: detected, source: "detected")]),
+          (2, G.w2, [bill("", id: "op-track-b", at: "2026-10-01T08:00:05.000Z", entity: detected, source: "detected")]),
         ]),
     ])
 }

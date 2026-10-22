@@ -17,7 +17,7 @@ enum CausalPayload {
   case rule(Rule)
   case project(Project)
   case goal(Goal)
-  case bill(Bill)
+  case bill(Bill, BillInherit)
   case copyResolution(other: String, decision: String?)
 }
 
@@ -87,7 +87,7 @@ extension State {
 
     // Read BEFORE any causal decision: an unreadable payload never advances a
     // version or resolves a fork.
-    let payload = try decodeCausalPayload(e)
+    let decoded = try decodeCausalPayload(e)
     let authoredMs = (try? parseInstantMs(op.authoredAt)) ?? 0
 
     guard let parent else {
@@ -96,10 +96,14 @@ extension State {
         return
       }
       if let head = heads[key] {
+        if case .bill(let b, _) = decoded {
+          concurrentBillCreate(e, b, key: key, head: head, authoredMs: authoredMs)
+          return
+        }
         anomaly(seq, "duplicate_create", "\(op.opID) re-creates \(ref.kind) \(ref.id), already at version \(head.version)")
         return
       }
-      guard create(e, payload) else { return }
+      guard create(e, decoded) else { return }
       heads[key] = EntityHead(kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs)
       return
     }
@@ -121,6 +125,14 @@ extension State {
       return
     }
     // A payload-level refusal consumes no version.
+    var payload = decoded
+    if case .bill(let b, let inherit) = decoded, inherit != .none {
+      guard let old = bills[ref.id] else {
+        anomaly(seq, "unknown_entity", "\(op.opID) edits bill \(ref.id), which is not materialized")
+        return
+      }
+      payload = .bill(try State.inheritBillLists(b, from: old, inherit), .none)
+    }
     guard precheck(e, payload) else { return }
 
     if parent == head.version {
@@ -133,8 +145,25 @@ extension State {
       return
     }
 
-    // parent < head.version: a true concurrent fork. Strict comparison: a full
-    // tie keeps the incumbent.
+    resolveFork(e, payload, key: key, head: head, authoredMs: authoredMs)
+  }
+
+  private mutating func concurrentBillCreate(_ e: LogEntry, _ b: Bill, key: String, head: EntityHead, authoredMs: Int64) {
+    if let old = bills[e.op.entity!.id] {
+      var same = b
+      same.firstSeq = old.firstSeq
+      same.createdAt = old.createdAt
+      same.version = old.version
+      if same == old { return }
+    }
+    resolveFork(e, .bill(b, .none), key: key, head: head, authoredMs: authoredMs)
+  }
+
+  private mutating func resolveFork(_ e: LogEntry, _ payload: CausalPayload, key: String, head: EntityHead, authoredMs: Int64) {
+    let op = e.op
+    let ref = op.entity!
+    let seq = e.seq
+    var head = head
     let challengerWins =
       authoredMs > head.authoredAtMs || (authoredMs == head.authoredAtMs && compareUTF8(e.writerID, head.writerID) > 0)
     head.version += 1
@@ -193,9 +222,10 @@ extension State {
       g.createdAt = e.op.authoredAt
       goals[id] = g
       return true
-    case .bill(var b):
+    case .bill(var b, _):
       b.version = 1
       b.firstSeq = e.seq
+      b.createdAt = State.billCreatedAt(e.op)
       bills[id] = b
       return true
     case .txn(let p):
@@ -347,12 +377,13 @@ extension State {
       g.version = version
       goals[id] = g
       return
-    case .bill(var b):
+    case .bill(var b, _):
       guard let old = bills[id] else {
         anomaly(seq, "unknown_entity", "\(op.opID) edits bill \(id), which is not materialized")
         return
       }
       b.firstSeq = old.firstSeq
+      b.createdAt = old.createdAt
       b.version = version
       bills[id] = b
       return

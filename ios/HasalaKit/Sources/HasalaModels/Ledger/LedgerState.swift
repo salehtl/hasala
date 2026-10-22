@@ -268,6 +268,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var heldCopy: HeldCopy?
   public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
+  public var merchantKey: String?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -285,7 +286,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
     heldCopy: HeldCopy? = nil,
     samePurchase: SamePurchaseMatch? = nil,
-    reviewReason: TxnReviewReason? = nil
+    reviewReason: TxnReviewReason? = nil,
+    merchantKey: String? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -316,6 +318,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.heldCopy = heldCopy
     self.samePurchase = samePurchase
     self.reviewReason = reviewReason
+    self.merchantKey = merchantKey
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }
@@ -366,12 +369,13 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 }
 
 public enum BillCadence: String, Sendable, Hashable, Codable {
-  case monthly
+  case weekly, monthly, yearly
 }
 
 /// A bill or expected income (03b §3).
 public struct Bill: Sendable, Hashable, Identifiable, Codable {
-  public enum State: String, Sendable, Hashable, Codable { case tracked, dismissed }
+  public enum State: String, Sendable, Hashable, Codable { case tracked, paused, ended, dismissed }
+  public enum Source: String, Sendable, Hashable, Codable { case manual, detected }
 
   public var id: BillID
   public var name: String
@@ -392,11 +396,27 @@ public struct Bill: Sendable, Hashable, Identifiable, Codable {
   public var priceChangeFrom: Money?
   /// Dates of past payments, newest first (Bill detail timeline).
   public var history: [LocalDate]
+  public var source: Source
+  public var cadence: BillCadence
+  public var every: Int
+  public var pausedSince: LocalDate?
+  public var pausedUntil: LocalDate?
+  public var endedOn: LocalDate?
+  public var trackingSince: LocalDate?
+  public var nextAmount: Money?
+  public var nextAmountFrom: LocalDate?
+  public var payments: [BillPayment]
+  public var notices: [BillNotice]
+  public var keys: [String]
 
   public init(
     id: BillID, name: String, kind: String, categoryID: CategoryID, amount: Money, approximate: Bool = false,
     isIncome: Bool = false, usualDay: Int, nextDue: LocalDate, accountID: AccountID? = nil,
-    state: State = .tracked, priceChangeFrom: Money? = nil, history: [LocalDate] = []
+    state: State = .tracked, priceChangeFrom: Money? = nil, history: [LocalDate] = [],
+    source: Source = .detected, cadence: BillCadence = .monthly, every: Int = 1, pausedSince: LocalDate? = nil,
+    pausedUntil: LocalDate? = nil, endedOn: LocalDate? = nil, trackingSince: LocalDate? = nil,
+    nextAmount: Money? = nil, nextAmountFrom: LocalDate? = nil, payments: [BillPayment] = [],
+    notices: [BillNotice] = [], keys: [String] = []
   ) {
     self.id = id
     self.name = name
@@ -411,6 +431,44 @@ public struct Bill: Sendable, Hashable, Identifiable, Codable {
     self.state = state
     self.priceChangeFrom = priceChangeFrom
     self.history = history
+    self.source = source
+    self.cadence = cadence
+    self.every = every
+    self.pausedSince = pausedSince
+    self.pausedUntil = pausedUntil
+    self.endedOn = endedOn
+    self.trackingSince = trackingSince
+    self.nextAmount = nextAmount
+    self.nextAmountFrom = nextAmountFrom
+    self.payments = payments
+    self.notices = notices
+    self.keys = keys
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try c.decode(BillID.self, forKey: .id), name: try c.decode(String.self, forKey: .name),
+      kind: try c.decode(String.self, forKey: .kind), categoryID: try c.decode(CategoryID.self, forKey: .categoryID),
+      amount: try c.decode(Money.self, forKey: .amount), approximate: try c.decode(Bool.self, forKey: .approximate),
+      isIncome: try c.decode(Bool.self, forKey: .isIncome), usualDay: try c.decode(Int.self, forKey: .usualDay),
+      nextDue: try c.decode(LocalDate.self, forKey: .nextDue),
+      accountID: try c.decodeIfPresent(AccountID.self, forKey: .accountID),
+      state: try c.decode(State.self, forKey: .state),
+      priceChangeFrom: try c.decodeIfPresent(Money.self, forKey: .priceChangeFrom),
+      history: try c.decode([LocalDate].self, forKey: .history),
+      source: try c.decodeIfPresent(Source.self, forKey: .source) ?? .detected,
+      cadence: try c.decodeIfPresent(BillCadence.self, forKey: .cadence) ?? .monthly,
+      every: try c.decodeIfPresent(Int.self, forKey: .every) ?? 1,
+      pausedSince: try c.decodeIfPresent(LocalDate.self, forKey: .pausedSince),
+      pausedUntil: try c.decodeIfPresent(LocalDate.self, forKey: .pausedUntil),
+      endedOn: try c.decodeIfPresent(LocalDate.self, forKey: .endedOn),
+      trackingSince: try c.decodeIfPresent(LocalDate.self, forKey: .trackingSince),
+      nextAmount: try c.decodeIfPresent(Money.self, forKey: .nextAmount),
+      nextAmountFrom: try c.decodeIfPresent(LocalDate.self, forKey: .nextAmountFrom),
+      payments: try c.decodeIfPresent([BillPayment].self, forKey: .payments) ?? [],
+      notices: try c.decodeIfPresent([BillNotice].self, forKey: .notices) ?? [],
+      keys: try c.decodeIfPresent([String].self, forKey: .keys) ?? [])
   }
 }
 

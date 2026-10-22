@@ -3,7 +3,7 @@ import HasalaModels
 public enum MayaHistory {
   public static var state: LedgerState {
     var s = MayaLedger.state
-    s.txns += txns
+    s.txns += txns.map(MayaLedger.keyed)
     return s
   }
 

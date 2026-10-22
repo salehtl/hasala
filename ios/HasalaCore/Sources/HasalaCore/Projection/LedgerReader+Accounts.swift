@@ -3,6 +3,7 @@
 // and their resolutions, projects, income sources, sender trust. Every query
 // returns CoreReplay's record types as the fold materialized them, in a stable
 // order, with the pending overlay already applied by the projector.
+import CoreJSON
 import CoreReplay
 import Foundation
 import GRDB
@@ -64,9 +65,30 @@ extension LedgerReader {
             amountMinor: r["amount_minor"], toleranceBp: r["tolerance_bp"],
             cadence: BillCadence(unit: r["cadence_unit"], every: r["cadence_every"]), anchor: r["anchor"], start: r["start"],
             end: r["end"], category: r["category"], account: r["account"], source: r["source"], status: r["status"],
+            changes: Self.billChanges(r["changes_json"]), pauses: Self.billPauses(r["pauses_json"]), createdAt: r["created_at"],
             firstSeq: r["first_seq"], version: r["version"])
         )
       }
+    }
+  }
+
+  static func billChanges(_ json: String?) -> [BillChange] {
+    guard let json, let list = (try? JSONParser.parse(text: json))?.arrayValue else { return [] }
+    return list.compactMap { v in
+      guard let o = v.objectValue, let from = o["from"]?.stringValue, let mode = o["amount_mode"]?.stringValue,
+        let amount = o["amount_minor"]?.stringValue.flatMap({ Int64($0) })
+      else { return nil }
+      var tolerance: Int64?
+      if case .number(let n)? = o["tolerance_bp"] { tolerance = n.int64Value }
+      return BillChange(from: from, amountMode: mode, amountMinor: amount, toleranceBp: tolerance)
+    }
+  }
+
+  static func billPauses(_ json: String?) -> [BillPause] {
+    guard let json, let list = (try? JSONParser.parse(text: json))?.arrayValue else { return [] }
+    return list.compactMap { v in
+      guard let o = v.objectValue, let from = o["from"]?.stringValue else { return nil }
+      return BillPause(from: from, until: o["until"]?.stringValue)
     }
   }
 
@@ -83,6 +105,22 @@ extension LedgerReader {
     return try db.read { db in
       try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
         BillResolution(bill: r["bill"], due: r["due"], resolution: r["resolution"], txn: r["txn"], until: r["until"], atSeq: r["at_seq"])
+      }
+    }
+  }
+
+  public func forkNotices(kind: String? = nil) throws -> [ForkNotice] {
+    var sql = "SELECT * FROM fork_notice"
+    var args: [(any DatabaseValueConvertible)?] = []
+    if let kind {
+      sql += " WHERE entity_kind = ?"
+      args.append(kind)
+    }
+    sql += " ORDER BY ord"
+    let a = args
+    return try db.read { db in
+      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
+        ForkNotice(entityKind: r["entity_kind"], entityID: r["entity_id"], winnerOp: r["winner_op"], loserOp: r["loser_op"], atSeq: r["at_seq"])
       }
     }
   }

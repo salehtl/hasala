@@ -8,6 +8,7 @@ import CoreTime
 import CoreWire
 import Foundation
 import HasalaModels
+import Synchronization
 
 /// One screen gesture (`LedgerEdit`) as ops (spec 04 §15.1 `LedgerActions`; 03a/03b/03c):
 /// one blob per edit through CoreDomain's `OpAuthor`, built under the account's shared
@@ -19,6 +20,41 @@ import HasalaModels
 nonisolated struct LedgerEditAuthor: Sendable {
   let observer: LedgerPageObserver
   let outbox: Outbox
+  let candidates = CandidateCache()
+
+  final class CandidateCache: Sendable {
+    private struct Entry {
+      var generation: UInt64
+      var today: CivilDate
+      var list: [BillCandidateCore]
+    }
+
+    private let slot = Mutex<Entry?>(nil)
+
+    func put(_ list: [BillCandidateCore], generation: UInt64, today: CivilDate) {
+      slot.withLock { $0 = Entry(generation: generation, today: today, list: list) }
+    }
+
+    func get(generation: UInt64, today: CivilDate) -> [BillCandidateCore]? {
+      slot.withLock { e in
+        guard let e, e.generation == generation, e.today == today else { return nil }
+        return e.list
+      }
+    }
+  }
+
+  func map(_ reader: LedgerReader, context: LedgerStateMapper.Context) throws -> LedgerState {
+    let projection = observer.projection
+    let generation = projection.generation
+    let m = try LedgerStateMapper.mapped(reader, context: context)
+    if projection.generation == generation,
+      let t = CivilDate(year: context.today.year, month: context.today.month, day: context.today.day)
+    {
+      candidates.put(m.candidates, generation: generation, today: t)
+    }
+    return m.state
+  }
+
   var undoChunkSize = LedgerEditAuthor.undoChunk
 
   var reader: LedgerReader { observer.reader }
@@ -44,6 +80,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case copyReopened(txn: String)
     case copyUnmerged(txn: String, other: String, version: Int64)
     case bill(id: String, draft: OpAuthor.BillDraft)
+    case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
+    case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
   }
 
   enum Failure: Error, Equatable {
@@ -147,18 +185,60 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
       try await build { a throws(AuthorError) in a.setBillOccurrence(bill: id, due: d, .paid(txn: nil)) }
     case .acceptBillAmount(let id):
-      guard let shown = before.bill(id)?.amount else { throw Failure.notFound }
-      let old = try await editBill(id) { d in
-        d.amountMinor = shown.minor
+      guard let shownBill = before.bill(id) else { throw Failure.notFound }
+      for n in shownBill.notices {
+        guard case .priceChange(_, let charged, let from) = n.kind else { continue }
+        let f = try civil(from)
+        let old = try await editBill(id) { d throws in
+          try BillEdits.editAmount(&d, amountMinor: charged.minor, currency: charged.currency, variable: false, from: f)
+        }
+        return [.bill(id: id, draft: old)]
       }
-      return [.bill(id: id, draft: old)]
+      throw Failure.refused("no price change")
     case .stopTrackingBill(let id):
-      let old = try await editBill(id) { d in
-        d.status = .cancelled
-        let t = CivilDate(year: today.year, month: today.month, day: today.day) ?? d.start
-        d.end = d.start < t ? t : CivilDate(daysSinceEpoch: d.start.daysSinceEpoch + 1)
+      let t = try civil(today)
+      let old = try await editBill(id) { d throws in try BillEdits.end(&d, lastPayment: t) }
+      return [.bill(id: id, draft: old)]
+    case .addBill(let d):
+      return try await addBill(d)
+    case .editBillAmount(let id, let amount, let approximate, let from):
+      let f = try civil(from)
+      let old = try await editBill(id) { d throws in
+        try BillEdits.editAmount(&d, amountMinor: amount.minor, currency: amount.currency, variable: approximate, from: f)
       }
       return [.bill(id: id, draft: old)]
+    case .pauseBill(let id, let until):
+      let t = try civil(today)
+      let u = try until.map { try civil($0) }
+      let paid = Self.paidDues(before, id)
+      let old = try await editBill(id) { d throws in try BillEdits.pause(&d, today: t, until: u, paid: paid) }
+      return [.bill(id: id, draft: old)]
+    case .resumeBill(let id):
+      let t = try civil(today)
+      let old = try await editBill(id) { d throws in try BillEdits.resume(&d, today: t) }
+      return [.bill(id: id, draft: old)]
+    case .endBill(let id, let lastPayment):
+      let l = try civil(lastPayment)
+      let old = try await editBill(id) { d throws in try BillEdits.end(&d, lastPayment: l) }
+      return [.bill(id: id, draft: old)]
+    case .reactivateBill(let id):
+      let t = try civil(today)
+      let paid = Self.paidDues(before, id)
+      let old = try await editBill(id) { d throws in try BillEdits.reactivate(&d, today: t, paid: paid) }
+      return [.bill(id: id, draft: old)]
+    case .deleteBill(let id):
+      let old = try await editBill(id) { d throws in try BillEdits.delete(&d) }
+      return [.bill(id: id, draft: old)]
+    case .linkBillPayments(let id, let txns):
+      return try await linkPayments(id, txns)
+    case .reapplyBill(let id):
+      return try await reapply(id)
+    case .trackCandidate(let id):
+      return try await candidate(id, track: true, today: today)
+    case .dismissCandidate(let id):
+      return try await candidate(id, track: false, today: today)
+    case .editIncome(let id, let amount, let payday, let active):
+      return try await editIncome(id, amount: amount, payday: payday, active: active)
     case .setRate(let currency, let micro):
       try await build { a throws(AuthorError) in try a.setRate(currency: currency, rateMicro: micro) }
     case .unsetRate(let currency):
@@ -209,11 +289,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       try await authorCategory(edit, today: today)
-    case .trackCandidate, .dismissCandidate, .skipReview, .setNotifications, .setFaceIDLock,
-      .setDisplayName:
+    case .skipReview, .setNotifications, .setFaceIDLock,
+      .setDisplayName, .dismissBillNotice:
       break
     }
     return []
+  }
+
+  static func paidDues(_ s: LedgerState, _ id: String) -> Set<CivilDate> {
+    Set((s.bill(id)?.payments ?? []).compactMap { CivilDate(year: $0.due.year, month: $0.due.month, day: $0.due.day) })
   }
 
   static func budgetInverse(_ plan: CoreReplay.PlanState, category c: String, month m: CivilMonth, shown: YearMonth) -> Inverse {
@@ -369,6 +453,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .occurrence(let bill, let due):
           guard let d = CivilDate(year: due.year, month: due.month, day: due.day) else { continue }
           a.setBillOccurrence(bill: bill, due: d, .clear)
+        case .resolution(let bill, let due, let resolution, let txn, let until):
+          guard let d = CivilDate(wire: due) else { continue }
+          a.setBillOccurrence(bill: bill, due: d, Self.occurrence(resolution, txn: txn, until: until))
+        case .income(let id, let name, let category, let amount, let payday, let active):
+          a.setIncomeSource(id: id, name: name, category: category, amountMinor: amount, payday: payday, active: active)
         case .projectState(let id, let status, let completedOn, let countInPlan):
           guard let p = projects[id] else { continue }
           var d = Self.projectDraft(p)
@@ -429,12 +518,16 @@ nonisolated struct LedgerEditAuthor: Sendable {
   }
 
   /// A whole-record bill edit from the projected record.
-  private func editBill(_ id: String, _ change: (inout OpAuthor.BillDraft) -> Void) async throws -> OpAuthor.BillDraft {
-    guard let (_, b) = try reader.bills().first(where: { $0.id == id }), let old = Self.draft(b) else {
+  private func editBill(_ id: String, _ change: (inout OpAuthor.BillDraft) throws -> Void) async throws
+    -> OpAuthor.BillDraft
+  {
+    guard let (_, b) = try reader.bills().first(where: { $0.id == id }), b.status != "dismissed",
+      let old = Self.draft(b)
+    else {
       throw Failure.notFound
     }
     var d = old
-    change(&d)
+    try change(&d)
     let draft = d
     try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: b.version, draft) }
     return old
@@ -442,14 +535,243 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   static func draft(_ b: CoreReplay.Bill) -> OpAuthor.BillDraft? {
     guard let anchor = CivilDate(wire: b.anchor), let start = CivilDate(wire: b.start),
-      let unit = OpAuthor.CadenceUnit(rawValue: b.cadence.unit)
+      let unit = OpAuthor.CadenceUnit(rawValue: b.cadence.unit), let cs = try? Self.changes(b.changes),
+      let ps = try? Self.pauses(b.pauses)
     else { return nil }
+    var end: CivilDate?
+    if let e = b.end {
+      guard let d = CivilDate(wire: e) else { return nil }
+      end = d
+    }
     return OpAuthor.BillDraft(
       name: b.name, keys: b.keys, direction: b.direction, currency: b.currency,
       mode: b.amountMode == "variable" ? .variable : .fixed(toleranceBp: b.toleranceBp ?? 0), amountMinor: b.amountMinor,
       cadenceUnit: unit, cadenceEvery: b.cadence.every, anchor: anchor, start: start,
-      end: b.end.flatMap(CivilDate.init(wire:)), category: b.category, account: b.account,
-      source: OpAuthor.BillSource(rawValue: b.source) ?? .manual, status: OpAuthor.BillStatus(rawValue: b.status) ?? .active)
+      end: end, category: b.category, account: b.account,
+      source: OpAuthor.BillSource(rawValue: b.source) ?? .manual, status: OpAuthor.BillStatus(rawValue: b.status) ?? .active,
+      changes: cs, pauses: ps)
+  }
+
+  static func changes(_ list: [BillChange]) throws -> [OpAuthor.BillChangeDraft] {
+    try list.map { c in
+      guard let from = CivilDate(wire: c.from) else { throw Failure.refused("date") }
+      return OpAuthor.BillChangeDraft(
+        from: from,
+        terms: OpAuthor.BillTermsDraft(
+          mode: c.amountMode == "variable" ? .variable : .fixed(toleranceBp: c.toleranceBp ?? 0), amountMinor: c.amountMinor))
+    }
+  }
+
+  static func pauses(_ list: [BillPause]) throws -> [OpAuthor.BillPauseDraft] {
+    try list.map { p in
+      guard let from = CivilDate(wire: p.from) else { throw Failure.refused("date") }
+      var until: CivilDate?
+      if let u = p.until {
+        guard let d = CivilDate(wire: u) else { throw Failure.refused("date") }
+        until = d
+      }
+      return OpAuthor.BillPauseDraft(from: from, until: until)
+    }
+  }
+
+  static func occurrence(_ resolution: String, txn: String?, until: String?) -> OpAuthor.OccurrenceResolution {
+    switch resolution {
+    case "paid": return .paid(txn: txn)
+    case "skipped": return .skipped
+    case "snoozed":
+      guard let u = until.flatMap(CivilDate.init(wire:)) else { return .clear }
+      return .snoozed(until: u)
+    default: return .clear
+    }
+  }
+
+  private func civil(_ d: LocalDate) throws -> CivilDate {
+    guard let c = CivilDate(year: d.year, month: d.month, day: d.day) else { throw Failure.refused("date") }
+    return c
+  }
+
+  private struct Link {
+    var txn: String
+    var due: CivilDate
+  }
+
+  private func plannedLinks(_ ids: [String], billID: String?, draft d: OpAuthor.BillDraft) throws -> [Link] {
+    guard !ids.isEmpty, Set(ids).count == ids.count else { throw Failure.refused("payments") }
+    let live = Set(try reader.bills().filter { $0.bill.status != "dismissed" }.map(\.id))
+    let resolutions = try reader.billResolutions()
+    var dues = Set<CivilDate>()
+    var out: [Link] = []
+    for id in ids {
+      let row = try txn(id)
+      guard BillEdits.linkable(row, direction: d.direction) else { throw Failure.refused("payment") }
+      if resolutions.contains(where: { $0.resolution == "paid" && $0.txn == id && $0.bill != billID && live.contains($0.bill) }) {
+        throw Failure.refused("linked elsewhere")
+      }
+      guard let day = CivilDate(wire: row.localDate), let due = BillEdits.nearestUnbounded(d, to: day) else {
+        throw Failure.refused("date")
+      }
+      if let end = d.end, due > end { throw Failure.refused("after the end") }
+      guard dues.insert(due).inserted else { throw Failure.refused("one payment per due") }
+      if let billID,
+        resolutions.contains(where: {
+          $0.bill == billID && $0.due == due.wire && $0.resolution == "paid" && $0.txn != nil && $0.txn != id
+        })
+      {
+        throw Failure.refused("due already linked")
+      }
+      out.append(Link(txn: id, due: due))
+    }
+    return out
+  }
+
+  private func addBill(_ k: HasalaModels.BillDraft) async throws -> [Inverse] {
+    if k.refusal != nil { throw Failure.refused("draft") }
+    guard try reader.taxonomy().info(k.categoryID) != nil else { throw Failure.notFound }
+    if let a = k.accountID, !(try reader.accounts().contains { $0.id == a }) { throw Failure.notFound }
+    let first = try civil(k.firstDue)
+    let name = k.trimmedName
+    var d = OpAuthor.BillDraft(
+      name: name, keys: BillEdits.keys(name: name, given: k.keys), currency: k.amount.currency,
+      mode: k.approximate ? .variable : .fixed(toleranceBp: BillEdits.defaultToleranceBp), amountMinor: k.amount.minor,
+      cadenceUnit: BillEdits.cadence(k.cadence), cadenceEvery: Int64(k.every), anchor: first, start: first,
+      category: k.categoryID, account: k.accountID, source: .manual, status: .active)
+    let links = k.linkTxns.isEmpty ? [] : try plannedLinks(k.linkTxns, billID: nil, draft: d)
+    if let earliest = links.map(\.due).min(), earliest < d.start { d.start = earliest }
+    let draft = d
+    var minted = ""
+    try await build { a throws(AuthorError) in
+      let id = try a.newManualBillID()
+      minted = id
+      try a.setBill(id: id, draft)
+      for l in links { a.setBillOccurrence(bill: id, due: l.due, .paid(txn: l.txn)) }
+    }
+    guard !minted.isEmpty else { return [] }
+    var gone = draft
+    gone.status = .dismissed
+    return [.bill(id: minted, draft: gone)]
+      + links.map { .resolution(bill: minted, due: $0.due.wire, resolution: "clear", txn: nil, until: nil) }
+  }
+
+  private func linkPayments(_ id: String, _ ids: [String]) async throws -> [Inverse] {
+    guard let (_, b) = try reader.bills().first(where: { $0.id == id }), b.status != "dismissed",
+      let old = Self.draft(b)
+    else { throw Failure.notFound }
+    let links = try plannedLinks(ids, billID: id, draft: old)
+    var d = old
+    if let earliest = links.map(\.due).min(), earliest < d.start { d.start = earliest }
+    let moved = d.start != old.start
+    let draft = d
+    let own = try reader.billResolutions(bill: id)
+    let linked = Set(links.map(\.txn))
+    let dues = Set(links.map(\.due.wire))
+    let stale = own.filter { r in
+      r.resolution == "paid" && r.txn.map(linked.contains) == true && !dues.contains(r.due)
+    }
+    var inverses: [Inverse] = moved ? [.bill(id: id, draft: old)] : []
+    for l in links {
+      let prev = own.first { $0.due == l.due.wire }
+      inverses.append(
+        .resolution(bill: id, due: l.due.wire, resolution: prev?.resolution ?? "clear", txn: prev?.txn, until: prev?.until))
+    }
+    for r in stale {
+      inverses.append(.resolution(bill: id, due: r.due, resolution: r.resolution, txn: r.txn, until: r.until))
+    }
+    try await build { a throws(AuthorError) in
+      if moved { try a.setBill(id: id, parentVersion: b.version, draft) }
+      for r in stale {
+        if let due = CivilDate(wire: r.due) { a.setBillOccurrence(bill: id, due: due, .clear) }
+      }
+      for l in links { a.setBillOccurrence(bill: id, due: l.due, .paid(txn: l.txn)) }
+    }
+    return inverses
+  }
+
+  static func candidateDraft(_ c: BillCandidateCore) -> OpAuthor.BillDraft {
+    OpAuthor.BillDraft(
+      name: c.name, keys: [c.key], direction: "debit", currency: c.currency,
+      mode: c.variable ? .variable : .fixed(toleranceBp: BillEdits.defaultToleranceBp), amountMinor: c.amountMinor,
+      cadenceUnit: OpAuthor.CadenceUnit(rawValue: c.unit) ?? .month, cadenceEvery: c.every, anchor: c.anchor, start: c.start,
+      category: c.category, account: nil, source: .detected, status: .active)
+  }
+
+  static func withdrawn(_ d: OpAuthor.BillDraft, id: String) -> OpAuthor.BillDraft {
+    var w = d
+    w.status = .dismissed
+    w.keys = [id]
+    w.end = nil
+    w.changes = []
+    w.pauses = []
+    return w
+  }
+
+  private func candidate(_ id: String, track: Bool, today: LocalDate) async throws -> [Inverse] {
+    let t = try civil(today)
+    let generation = observer.projection.generation
+    let records = try reader.bills()
+    let found: [BillCandidateCore]
+    if let cached = candidates.get(generation: generation, today: t) {
+      found = cached
+    } else {
+      var rows = try reader.activity(limit: 1_000_000)
+      rows += try reader.archived(limit: 1_000_000)
+      found = LedgerStateMapper.detect(records, rows: rows, today: t)
+    }
+    guard let c = found.first(where: { $0.id == id }) else { throw Failure.notFound }
+    var d = Self.candidateDraft(c)
+    let taxonomy = try reader.taxonomy()
+    if d.category.flatMap({ taxonomy.info($0)?.kind }) != .spending {
+      d.category = taxonomy.info("subscriptions") == nil ? nil : "subscriptions"
+    }
+    if !track { d.status = .dismissed }
+    let existing = records.first { $0.id == id }?.bill
+    let draft = d
+    try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: existing?.version, draft) }
+    if let existing, let old = Self.draft(existing) { return [.bill(id: id, draft: old)] }
+    return [.bill(id: id, draft: Self.withdrawn(draft, id: id))]
+  }
+
+  private func reapply(_ id: String) async throws -> [Inverse] {
+    guard let (_, current) = try reader.bills().first(where: { $0.id == id }), let old = Self.draft(current) else {
+      throw Failure.notFound
+    }
+    let forks = try reader.forkNotices(kind: "bill").filter { $0.entityID == id }
+    let ops = await observer.ops(Set(forks.map(\.loserOp))).found
+    for f in forks.reversed() {
+      guard let op = ops[f.loserOp], let loser = Replay.billRecord(op, inheritingFrom: current),
+        LedgerStateMapper.forkSummary(loser: loser, current: current) != nil, let draft = Self.draft(loser)
+      else { continue }
+      try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: current.version, draft) }
+      return [.bill(id: id, draft: old)]
+    }
+    throw Failure.notFound
+  }
+
+  struct ForkLookup: Sendable {
+    var ops: [String: Op] = [:]
+    var settled: Set<String> = []
+  }
+
+  func forkLookup(_ ids: Set<String>) async -> ForkLookup {
+    guard !ids.isEmpty else { return ForkLookup() }
+    let lookup = await observer.ops(ids)
+    return ForkLookup(ops: lookup.found, settled: Set(lookup.found.keys).union(lookup.missing))
+  }
+
+  static let incomePrefix = "income."
+
+  private func editIncome(_ billID: String, amount: Money, payday: Int, active: Bool) async throws -> [Inverse] {
+    guard billID.hasPrefix(Self.incomePrefix) else { throw Failure.notFound }
+    let id = String(billID.dropFirst(Self.incomePrefix.count))
+    guard let s = try reader.incomeSources().first(where: { $0.id == id }) else { throw Failure.notFound }
+    guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw Failure.refused("amount") }
+    guard (1...31).contains(payday) else { throw Failure.refused("payday") }
+    try await build { a throws(AuthorError) in
+      a.setIncomeSource(
+        id: id, name: s.name, category: s.categoryID, amountMinor: amount.minor, payday: Int64(payday), active: active)
+    }
+    return [
+      .income(id: id, name: s.name, category: s.categoryID, amountMinor: s.amountMinor, payday: s.payday, active: s.active)
+    ]
   }
 
   private func ruleSnapshots() throws -> [OpAuthor.RuleSnapshot] {

@@ -3,18 +3,12 @@ import HasalaModels
 import SwiftUI
 
 /// One bill (Paper "Bills · AXA Insurance (late)" 1UD-0), pushed from Bills, Home, Activity's
-/// "Coming up" and Profile › Bills: the hero in the bill's wash (rose may be late, sand changed
-/// price, sky otherwise), what we noticed, the payment history, and what can be done.
-///
-/// A bill that may be late offers "I paid it — find the payment" (it marks the payment, as
-/// Bills' "I paid it" does) and "It's cancelled — stop tracking" (after a confirm); "Remind me
-/// tomorrow" is Debug only until reminders exist. A price change offers "Accept new amount".
-/// Income is read only. Paper's "More" (•••) has nothing drawn behind it, so it isn't here.
 struct BillDetailView: View {
   @Bindable var app: AppModel
   let bill: BillID
   @State private var model: BillsViewModel
-  @State private var confirmStop = false
+  @State private var sheet: RecurringSheet?
+  @State private var confirmDelete = false
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -31,6 +25,10 @@ struct BillDetailView: View {
     PushedPage(app: app, title: detail?.name ?? "Bill", wash: Self.wash(detail)) {
       if let detail {
         hero(detail).padding(.horizontal, HSpacing.insetPage)
+        if !detail.banners.isEmpty { banners(detail).padding(.horizontal, HSpacing.insetPage) }
+        ForEach(detail.notices) { notice in
+          noticeCard(notice, detail).padding(.horizontal, HSpacing.insetPage)
+        }
         if let noticed = detail.noticed { noticedCard(noticed).padding(.horizontal, HSpacing.insetPage) }
         if !detail.history.isEmpty { history(detail).padding(.horizontal, HSpacing.insetPage) }
         actions(detail).padding(.horizontal, HSpacing.insetPage)
@@ -39,21 +37,146 @@ struct BillDetailView: View {
           .padding(.horizontal, HSpacing.insetPage)
       }
     }
-    .alert("Stop tracking \(detail?.name ?? "this bill")?", isPresented: $confirmStop) {
-      Button("Stop tracking", role: .destructive) {
-        model.stopTracking(bill)
-        dismiss()
+    .toolbar {
+      if let detail, !detail.isIncome {
+        ToolbarItem(placement: .topBarTrailing) { manageMenu(detail) }
+      }
+    }
+    .sheet(item: $sheet) { RecurringSheetHost(app: app, sheet: $0) }
+    .alert(deleteTitle(detail), isPresented: $confirmDelete) {
+      Button(detail?.source == .manual ? "Delete" : "Not a bill", role: .destructive) {
+        if model.perform(.deleteBill(bill)) { dismiss() }
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("It leaves Recurring and Coming up. Its past payments stay in Activity.")
+      Text(detail?.source == .manual
+        ? "It leaves Recurring. Its payments stay in Activity."
+        : "Hasala won't suggest it again. Its payments stay in Activity.")
+    }
+  }
+
+  private func deleteTitle(_ d: BillDetail?) -> String {
+    d?.source == .manual ? "Delete \(d?.name ?? "this item")?" : "\(d?.name ?? "This") is not a bill?"
+  }
+
+  private func manageMenu(_ d: BillDetail) -> some View {
+    Menu {
+      if !d.isEnded {
+        Button { sheet = .editAmount(d.id) } label: { Label("Edit amount…", systemImage: "pencil") }
+          .accessibilityIdentifier("bills.manage.editAmount")
+        if d.isPaused {
+          Button { model.perform(.resumeBill(d.id)) } label: { Label("Resume", systemImage: "play") }
+            .accessibilityIdentifier("bills.manage.resume")
+        } else {
+          Button { sheet = .pause(d.id) } label: { Label("Pause…", systemImage: "pause") }
+            .accessibilityIdentifier("bills.manage.pause")
+        }
+        Button { sheet = .end(d.id) } label: { Label("End…", systemImage: "stop") }
+          .accessibilityIdentifier("bills.manage.end")
+      } else {
+        Button { model.perform(.reactivateBill(d.id)) } label: {
+          Label("Start tracking again", systemImage: "arrow.clockwise")
+        }
+        .accessibilityIdentifier("bills.manage.reactivate")
+      }
+      Button { sheet = .link(d.id) } label: { Label("Link past payments…", systemImage: "link") }
+        .accessibilityIdentifier("bills.manage.link")
+      Divider()
+      Button(role: .destructive) { confirmDelete = true } label: {
+        Label(d.source == .manual ? "Delete" : "Not a bill", systemImage: "trash")
+      }
+      .accessibilityIdentifier("bills.manage.delete")
+    } label: {
+      HIconView(.more, size: HSpacing.iconGlass, color: HColor.iconGlass)
+    }
+    .accessibilityLabel("Manage")
+    .accessibilityIdentifier("bills.detail.manage")
+  }
+
+  private func banners(_ d: BillDetail) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      ForEach(d.banners) { banner in
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          HIconView(Self.icon(banner.icon), size: 18, color: HColor.iconPrimary)
+            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+          PhraseText(banner.text, hidden: model.hidden)
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("bills.detail.banner.\(banner.id)")
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+  }
+
+  static func icon(_ icon: BillBannerIcon) -> HIcon {
+    switch icon {
+    case .clock: .clock
+    case .calendar: .calendar
+    case .tag: .tag
+    }
+  }
+
+  private func noticeCard(_ n: BillNoticeCard, _ d: BillDetail) -> some View {
+    BillCard(
+      hue: Self.hue(n.tone), glyph: .icon(d.glyph.icon), name: d.name, pill: StatusPill(n.title, tone: n.tone),
+      amount: Self.figure(n, d), message: n.body, hidden: model.hidden,
+      primary: .init(title: Self.title(n.primary, short: typeSize.isAccessibilitySize), id: Self.primaryID(n)) {
+        run(n.primary.action, n, d)
+      },
+      secondary: n.secondary.map { b in
+        .init(title: b.title, id: "bills.notice.\(n.id).secondary") { run(b.action, n, d) }
+      },
+      id: "bills.notice.\(n.id)")
+  }
+
+  static func hue(_ tone: StatusTone) -> Hue {
+    switch tone {
+    case .error: .rose
+    case .warning: .sand
+    case .accent, .success: .sky
+    }
+  }
+
+  static func figure(_ n: BillNoticeCard, _ d: BillDetail) -> Money {
+    if case .acceptPrice(let amount, _) = n.primary.action { return amount }
+    return d.amount
+  }
+
+  static func title(_ b: BillNoticeCard.Button, short: Bool) -> String {
+    if short, case .acceptPrice = b.action { return "Accept" }
+    return b.title
+  }
+
+  static func primaryID(_ n: BillNoticeCard) -> String {
+    if case .acceptPrice = n.primary.action { return "bills.detail.accept" }
+    return "bills.notice.\(n.id).primary"
+  }
+
+  private func run(_ action: BillNoticeCard.Action, _ n: BillNoticeCard, _ d: BillDetail) {
+    switch action {
+    case .acceptPrice(let amount, let from):
+      model.perform(.editBillAmount(d.id, amount, approximate: d.approximate, from: from))
+    case .resume:
+      model.perform(.resumeBill(d.id))
+    case .reactivate:
+      model.perform(.reactivateBill(d.id))
+    case .reapply:
+      model.perform(.reapplyBill(d.id))
+    case .dismiss:
+      model.perform(.dismissBillNotice(d.id, noticeID: n.id))
     }
   }
 
   static func wash(_ detail: BillDetail?) -> HWash {
     switch detail?.state {
     case .late: .overBudget
-    case .priceChange: .overPace
+    case .priceChange, .paused: .overPace
     default: .onTrack
     }
   }
@@ -129,8 +252,13 @@ struct BillDetailView: View {
 
   @ViewBuilder private func actions(_ d: BillDetail) -> some View {
     VStack(spacing: 16) {
-      if !d.isIncome {
-        VStack(spacing: 10) {
+      VStack(spacing: 10) {
+        if d.isIncome {
+          Button("Edit salary") { sheet = .salary(d.id) }
+            .buttonStyle(.pill(.primary, fill: true))
+            .pillHeight()
+            .accessibilityIdentifier("bills.detail.editSalary")
+        } else {
           if d.isLate {
             Button("I paid it — find the payment") { model.markPaid(d.id) }
               .buttonStyle(.pill(.primary, fill: true))
@@ -143,30 +271,41 @@ struct BillDetailView: View {
                 .accessibilityIdentifier("bills.detail.remind")
             }
           }
-          if d.isPriceChange {
+          if d.isPriceChange && !d.hasPriceNotice {
             Button("Accept new amount") { model.acceptAmount(d.id) }
               .buttonStyle(.pill(.primary, fill: true))
               .pillHeight()
               .accessibilityIdentifier("bills.detail.accept")
           }
-          Button { confirmStop = true } label: {
-            Text("It's cancelled — stop tracking")
-              .hType(.button)
-              .foregroundStyle(HColor.actionDestructive)
-              .multilineTextAlignment(.center)
-              .frame(maxWidth: .infinity, minHeight: 48)
-              .contentShape(Rectangle())
+          if d.isPaused {
+            Button("Resume") { model.perform(.resumeBill(d.id)) }
+              .buttonStyle(.pill(.primary, fill: true))
+              .pillHeight()
+              .accessibilityIdentifier("bills.detail.resume")
           }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("bills.detail.stop")
+          if d.isEnded {
+            Button("Start tracking again") { model.perform(.reactivateBill(d.id)) }
+              .buttonStyle(.pill(.primary, fill: true))
+              .pillHeight()
+              .accessibilityIdentifier("bills.detail.reactivate")
+          } else {
+            Button { sheet = .end(d.id) } label: {
+              Text("It's cancelled — end it")
+                .hType(.button)
+                .foregroundStyle(HColor.actionDestructive)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("bills.detail.end")
+          }
         }
-        .padding(.top, 16)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
       }
-      // Paper's footnote is 56 in from the actions' 20 (76 from the screen's edge), so its
-      // two lines break where the board's do.
+      .padding(.top, 16)
+      .padding(.horizontal, 16)
+      .padding(.bottom, 8)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
       Text(d.footnote)
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
@@ -198,9 +337,11 @@ private struct TimelineStep: View {
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        MoneyText(step.amount, figure: .row, hidden: hidden, hiddenGlyphs: 3,
-                  color: step.kind == .paid ? HColor.moneyOut : HColor.textSecondary)
-          .fixedSize()
+        if let amount = step.amount {
+          MoneyText(amount, figure: .row, hidden: hidden, hiddenGlyphs: 3,
+                    color: step.kind == .paid ? HColor.moneyOut : HColor.textSecondary)
+            .fixedSize()
+        }
       }
       .padding(.vertical, 6)
     }
@@ -244,7 +385,7 @@ private struct TimelineStep: View {
 
   /// "Wed 7 Oct, Expected · no bank email yet, AED 550.00" / "Mon 7 Sep, paid, AED 550.00".
   private var spoken: String {
-    let amount = hidden ? "Amount hidden" : "\(step.amount.currency) \(MoneyFormat.string(step.amount.minor))"
-    return [step.title, step.note ?? "paid", amount].joined(separator: ", ")
+    let amount = step.amount.map { hidden ? "Amount hidden" : "\($0.currency) \(MoneyFormat.string($0.minor))" }
+    return [step.title, step.note ?? "paid", amount].compactMap { $0 }.joined(separator: ", ")
   }
 }

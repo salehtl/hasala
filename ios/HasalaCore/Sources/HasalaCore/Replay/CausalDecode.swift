@@ -47,7 +47,8 @@ extension State {
     case .goalDefined:
       return .goal(try State.decodeGoal(p))
     case .billSet:
-      return .bill(try State.decodeBill(p))
+      let (bill, inherit) = try State.decodeBillPayload(p)
+      return .bill(bill, inherit)
     case .txnCopyResolved:
       let d = p["decision"]
       guard let d, d.isNull || d.stringValue == "merge" || d.stringValue == "keep_both" else {

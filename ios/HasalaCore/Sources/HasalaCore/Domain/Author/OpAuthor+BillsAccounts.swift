@@ -158,6 +158,36 @@ extension OpAuthor {
   public enum BillSource: String, Sendable, Equatable { case manual, detected }
   public enum CadenceUnit: String, Sendable, Equatable { case day, week, month, year }
 
+  public struct BillTermsDraft: Sendable, Equatable {
+    public var mode: AmountMode
+    public var amountMinor: Int64
+
+    public init(mode: AmountMode, amountMinor: Int64) {
+      self.mode = mode
+      self.amountMinor = amountMinor
+    }
+  }
+
+  public struct BillChangeDraft: Sendable, Equatable {
+    public var from: CivilDate
+    public var terms: BillTermsDraft
+
+    public init(from: CivilDate, terms: BillTermsDraft) {
+      self.from = from
+      self.terms = terms
+    }
+  }
+
+  public struct BillPauseDraft: Sendable, Equatable {
+    public var from: CivilDate
+    public var until: CivilDate?
+
+    public init(from: CivilDate, until: CivilDate? = nil) {
+      self.from = from
+      self.until = until
+    }
+  }
+
   /// A bill as the editor holds it (03b §3.2). `end` is required when cancelled.
   public struct BillDraft: Sendable, Equatable {
     public var name: String
@@ -176,12 +206,14 @@ extension OpAuthor {
     public var account: String?
     public var source: BillSource
     public var status: BillStatus
+    public var changes: [BillChangeDraft]
+    public var pauses: [BillPauseDraft]
 
     public init(
       name: String, keys: [String], direction: String = "debit", currency: String = "AED", mode: AmountMode,
       amountMinor: Int64, cadenceUnit: CadenceUnit = .month, cadenceEvery: Int64 = 1, anchor: CivilDate, start: CivilDate,
       end: CivilDate? = nil, category: String? = nil, account: String? = nil, source: BillSource = .manual,
-      status: BillStatus = .active
+      status: BillStatus = .active, changes: [BillChangeDraft] = [], pauses: [BillPauseDraft] = []
     ) {
       self.name = name
       self.keys = keys
@@ -198,7 +230,55 @@ extension OpAuthor {
       self.account = account
       self.source = source
       self.status = status
+      self.changes = changes
+      self.pauses = pauses
     }
+  }
+
+  static func modeJSON(_ m: AmountMode) -> (String, JSONValue) {
+    switch m {
+    case .fixed(let bp): ("fixed", .number(JSONNumber(bp)))
+    case .variable: ("variable", .null)
+    }
+  }
+
+  static func billChangesJSON(_ d: BillDraft) throws(AuthorError) -> JSONValue? {
+    guard !d.changes.isEmpty else { return nil }
+    guard d.changes.count <= 24 else { throw .refused("a bill holds at most 24 price changes") }
+    var last: CivilDate?
+    var out: [JSONValue] = []
+    for c in d.changes {
+      if c.from < d.start { throw .refused("a price change cannot start before the bill") }
+      if let e = d.end, e < c.from { throw .refused("a price change cannot start after the bill ends") }
+      if let last, !(last < c.from) { throw .refused("price changes must be in date order, one per date") }
+      last = c.from
+      guard c.terms.amountMinor > 0 else { throw .refused("the amount must be more than 0") }
+      if case .fixed(let bp) = c.terms.mode, !(0...5000).contains(bp) { throw .refused("the tolerance must be 0 to 5000 basis points") }
+      let (mode, tolerance) = modeJSON(c.terms.mode)
+      out.append(
+        .object(
+          JSONObject([
+            ("from", .string(c.from.wire)), ("amount_mode", .string(mode)), ("amount_minor", .string(String(c.terms.amountMinor))),
+            ("tolerance_bp", tolerance),
+          ])))
+    }
+    return .array(out)
+  }
+
+  static func billPausesJSON(_ d: BillDraft) throws(AuthorError) -> JSONValue? {
+    guard !d.pauses.isEmpty else { return nil }
+    guard d.pauses.count <= 24 else { throw .refused("a bill holds at most 24 pauses") }
+    var out: [JSONValue] = []
+    for (i, p) in d.pauses.enumerated() {
+      if p.from < d.start { throw .refused("a pause cannot start before the bill") }
+      if i > 0 {
+        guard let previous = d.pauses[i - 1].until else { throw .refused("only the last pause can be open") }
+        if p.from < previous { throw .refused("pauses cannot overlap") }
+      }
+      if let u = p.until, !(p.from < u) { throw .refused("a pause must end after it starts") }
+      out.append(.object(JSONObject([("from", .string(p.from.wire)), ("until", p.until.map { .string($0.wire) } ?? .null)])))
+    }
+    return .array(out)
   }
 
   /// `bill_set`: create (`parentVersion` nil) or whole-record edit of bill `id`.
@@ -206,31 +286,26 @@ extension OpAuthor {
     guard d.amountMinor > 0 else { throw .refused("the amount must be more than 0") }
     if let e = d.end, !(d.start < e) { throw .refused("the end date must be after the start date") }
     if d.status == .cancelled && d.end == nil { throw .refused("a cancelled bill needs an end date") }
+    let changes = try Self.billChangesJSON(d)
+    let pauses = try Self.billPausesJSON(d)
     let name = label(d.name, "name")
-    let tolerance: JSONValue
-    let mode: String
-    switch d.mode {
-    case .fixed(let bp):
-      mode = "fixed"
-      tolerance = .number(JSONNumber(bp))
-    case .variable:
-      mode = "variable"
-      tolerance = .null
-    }
-    add(
-      .billSet, entity: ("bill", id), parent: parentVersion,
-      [
-        ("name", .string(name)), ("keys", .array(d.keys.map(JSONValue.string))), ("direction", .string(d.direction)),
-        ("currency", .string(d.currency)), ("amount_mode", .string(mode)), ("amount_minor", .string(String(d.amountMinor))),
-        ("tolerance_bp", tolerance),
-        (
-          "cadence",
-          .object(JSONObject([("unit", .string(d.cadenceUnit.rawValue)), ("every", .number(JSONNumber(d.cadenceEvery)))]))
-        ),
-        ("anchor", .string(d.anchor.wire)), ("start", .string(d.start.wire)), ("end", d.end.map { .string($0.wire) } ?? .null),
-        ("category", d.category.map(JSONValue.string) ?? .null), ("account", d.account.map(JSONValue.string) ?? .null),
-        ("source", .string(d.source.rawValue)), ("status", .string(d.status.rawValue)),
-      ])
+    let (mode, tolerance) = Self.modeJSON(d.mode)
+    var p: [(String, JSONValue)] = [
+      ("name", .string(name)), ("keys", .array(d.keys.map(JSONValue.string))), ("direction", .string(d.direction)),
+      ("currency", .string(d.currency)), ("amount_mode", .string(mode)), ("amount_minor", .string(String(d.amountMinor))),
+      ("tolerance_bp", tolerance),
+      (
+        "cadence",
+        .object(JSONObject([("unit", .string(d.cadenceUnit.rawValue)), ("every", .number(JSONNumber(d.cadenceEvery)))]))
+      ),
+      ("anchor", .string(d.anchor.wire)), ("start", .string(d.start.wire)), ("end", d.end.map { .string($0.wire) } ?? .null),
+      ("category", d.category.map(JSONValue.string) ?? .null), ("account", d.account.map(JSONValue.string) ?? .null),
+      ("source", .string(d.source.rawValue)), ("status", .string(d.status.rawValue)),
+    ]
+    let edit = parentVersion != nil
+    if let changes = changes ?? (edit ? .array([]) : nil) { p.append(("changes", changes)) }
+    if let pauses = pauses ?? (edit ? .array([]) : nil) { p.append(("pauses", pauses)) }
+    add(.billSet, entity: ("bill", id), parent: parentVersion, p)
   }
 
   public enum OccurrenceResolution: Sendable, Equatable {
