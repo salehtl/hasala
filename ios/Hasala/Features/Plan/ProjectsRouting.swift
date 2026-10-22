@@ -38,7 +38,7 @@ extension AppModel {
 
   func projectSaved(_ id: ProjectID, created: Bool) {
     if projectsInProfile {
-      if let last = router.profile.last, last == .editProject(created ? nil : id) || Self.isStarter(last) {
+      if let last = router.profile.last, last == .editProject(created ? nil : id) || (created && Self.isStarter(last)) {
         router.profile.removeLast()
       }
       if created { router.profile.append(.project(id)) }
@@ -72,7 +72,7 @@ extension AppModel {
     }
   }
 
-  var planInProfile: Bool { router.sheet == .profile }
+  var planInProfile: Bool { projectsInProfile }
 
   func pushPlanCategory(_ id: CategoryID) {
     if planInProfile { router.profile.append(.category(id)) } else { router.plan.append(.category(id)) }

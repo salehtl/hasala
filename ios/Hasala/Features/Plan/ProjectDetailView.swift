@@ -7,6 +7,7 @@ struct ProjectDetailView: View {
   let project: ProjectID
   @State private var model: ProjectDetailViewModel
   @State private var confirmRemove = false
+  @Environment(\.inProfileSheet) private var inProfileSheet
 
   init(app: AppModel, project: ProjectID) {
     self.app = app
@@ -25,7 +26,7 @@ struct ProjectDetailView: View {
       ) {
         ProjectHero(detail: d, hidden: model.hidden)
         if let mark = d.mark, let line = mark.line {
-          NotCountedLine(mark, line: line, id: "project.notCounted", inProfileSheet: false, app: app)
+          NotCountedLine(mark, line: line, id: "project.notCounted", inProfileSheet: inProfileSheet, app: app)
             .padding(.horizontal, HSpacing.insetPage)
         }
         planSetting(d)

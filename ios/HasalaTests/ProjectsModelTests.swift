@@ -156,6 +156,13 @@ struct ProjectsModelTests {
     #expect(app.router.sheet == .profile)
   }
 
+  @Test func savingAnEditOverAQuickStartKeepsTheQuickStart() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.profile, profile: [.projects, .newProject(ProjectStarter.quickStarts[0])])
+    app.projectSaved("japan", created: false)
+    #expect(app.router.profile == [.projects, .newProject(ProjectStarter.quickStarts[0])])
+  }
+
   @Test func theTransactionPickerSetsAndClearsTheProject() {
     let app = AppModel(store: InMemoryLedger())
     #expect(app.perform(.assignProject(["emirates"], nil)))
