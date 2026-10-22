@@ -100,6 +100,26 @@ struct PlanModelTests {
     #expect(app.router.sheet == .moveMoney(to: nil))
   }
 
+  @Test func inTheProfilePlanPushesAndPresentsOverTheSheet() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.profile, profile: [.plan])
+    let plan = PlanViewModel(app: app)
+    plan.open("dining")
+    plan.open(project: "japan")
+    #expect(app.router.profile == [.plan, .category("dining"), .project("japan")])
+    plan.editBudget("dining")
+    #expect(app.router.sheet == .profile && app.router.overProfile == .budget("dining"))
+    let sheet = BudgetSheetViewModel(app: app, category: "dining")
+    sheet.close()
+    #expect(app.router.overProfile == nil && app.router.sheet == .profile)
+    let category = CategoryDetailViewModel(app: app, category: "dining")
+    category.moveMoneyIn()
+    #expect(app.router.overProfile == .moveMoney(to: "dining"))
+    app.router.overProfile = nil
+    category.openRules()
+    #expect(app.router.profile.last == .rules)
+  }
+
   /// Plan · Dining's actions: the budget sheet and Move money over the tab, a row's
   /// transaction sheet, and a rule's Categories and rules in Your profile.
   @Test func diningOpensWhatItNames() {

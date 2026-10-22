@@ -65,7 +65,7 @@ final class HomePeriodTests: XCTestCase {
     try audit(app)
     line.tap()
     XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
-    XCTAssertEqual(app.tabBars.firstMatch.buttons["Plan"].isSelected, true)
+    XCTAssertEqual(app.tabBars.firstMatch.buttons["Projects"].isSelected, true)
   }
 
   @MainActor

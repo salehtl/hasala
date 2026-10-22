@@ -21,6 +21,7 @@ final class ProfileViewModel: ProfileModel {
 
   @ObservationIgnored private var memo = Memo<Int, ProfileSnapshot>()
   @ObservationIgnored private var rulesMemo = Memo<Int, [RuleRowModel]>()
+  @ObservationIgnored private var planMemo = Memo<[AnyHashable], PlanSnapshot>()
 
   init(app: AppModel) { self.app = app }
 
@@ -30,6 +31,18 @@ final class ProfileViewModel: ProfileModel {
   var rules: [RuleRowModel] { rulesMemo.value(for: app.store.revision) { ProfileEngine.rules(app.store.state) } }
   var hidden: Bool { app.amountsHidden }
   var today: LocalDate { app.store.now.date }
+
+  var planLine: MoneyPhrase {
+    let plan = planMemo.value(for: [app.store.revision, app.store.now.date]) {
+      PlanEngine.snapshot(app.store.state, now: app.store.now)
+    }
+    let rta = plan.readyToAssign
+    if rta.isNegative {
+      return MoneyPhrase([.amount(Money(minor: -rta.minor, currency: rta.currency), hidden: 3), .text(" over-assigned")])
+    }
+    guard rta.minor > 0 else { return MoneyPhrase(stringLiteral: "\(plan.month.name) budgets") }
+    return MoneyPhrase([.amount(rta, hidden: 3), .text(" ready to assign")])
+  }
 
   /// Everything, archived rows included (Settings › Export your data, spec 04 §16.2 X6).
   var exportRows: [ExportRow] {

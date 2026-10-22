@@ -1,6 +1,6 @@
 import XCTest
 
-/// The shell on the Release surface: the tab bar holds Home, Plan, Review and Activity, and
+/// The shell on the Release surface: the tab bar holds Home, Projects, Review and Activity, and
 /// the add button beside them; Search, in the header, finds in this iPhone's own ledger. Each area's own checks are
 /// in its `ReleaseSurface*Tests` class (plan B7.4); the shared assertions are
 /// `ReleaseSurfaceTestCase`'s.
@@ -10,9 +10,10 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     let app = launchRelease()
     let tabBar = app.tabBars.firstMatch
     XCTAssertEqual(tabBar.buttons.count, 5, "tabs: \(tabBar.buttons.allElementsBoundByIndex.map(\.label))")
-    for tab in ["Home", "Plan", "Review", "Activity", "Add a transaction"] {
+    for tab in ["Home", "Projects", "Review", "Activity", "Add a transaction"] {
       XCTAssertTrue(tabBar.buttons[tab].exists, "no \(tab) tab")
     }
+    XCTAssertFalse(tabBar.buttons["Plan"].exists, "Plan is in the tab bar")
     assertNoPlaceholders(app, "Home")
     assertPersonalAccountsOnly(app, "Home")
   }
