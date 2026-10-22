@@ -42,10 +42,10 @@ public struct GlassIconButton: View {
       }
       .frame(width: paired ? HSpacing.targetMinimum : HSpacing.glassButton, height: HSpacing.glassButton)
       .hAnimation(.hideAmounts, value: icon)
-      .hGlass(in: Circle(), prominent: prominent)
       .contentShape(Capsule())
     }
     .buttonStyle(.plain)
+    .hGlass(in: Circle(), prominent: prominent)
     .overlay(alignment: .topLeading) {
       if let badge, !paired {
         GlassBadge(count: badge)
@@ -151,10 +151,10 @@ public struct GlassAvatarButton: View {
     Button(action: action) {
       AvatarDisc(initial: initial, size: 36, email: email)
         .frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
-        .hGlass(in: Circle())
         .contentShape(Circle())
     }
     .buttonStyle(.plain)
+    .hGlass(in: Circle())
     .accessibilityLabel(label)
     .accessibilityShowsLargeContentViewer {
       Text(label)
