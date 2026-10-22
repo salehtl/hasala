@@ -103,11 +103,11 @@ extension State {
         anomaly(seq, "duplicate_create", "\(op.opID) re-creates \(ref.kind) \(ref.id), already at version \(head.version)")
         return
       }
+      let predecessor = op.type == .txnSuperseded ? op.ingestID.flatMap { liveByIngestID[$0] } : nil
       guard create(e, decoded) else { return }
-      let filedByRule = utf8Equal(ref.kind, "txn") && txns[ref.id]?.category != nil && txns[ref.id]?.categorySource?.kind == .rule
       heads[key] = EntityHead(
         kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs,
-        categorizedAtMs: filedByRule ? Self.filedAt(authoredMs) : nil)
+        categorizedAtMs: createdFiledAt(ref, decoded, predecessor: predecessor, authoredMs: authoredMs))
       return
     }
 
@@ -189,6 +189,14 @@ extension State {
   }
 
   static func filedAt(_ authoredMs: Int64) -> Int64? { authoredMs == 0 ? nil : authoredMs }
+
+  private func createdFiledAt(_ ref: EntityRef, _ payload: CausalPayload, predecessor: String?, authoredMs: Int64) -> Int64? {
+    guard utf8Equal(ref.kind, "txn"), let t = txns[ref.id], case .txn(let p) = payload else { return nil }
+    if t.category != nil, t.categorySource?.kind == .rule { return Self.filedAt(authoredMs) }
+    guard Self.chosen(t.categorySource) else { return nil }
+    let from = Self.chosen(p.categorySource) ? predecessor : t.aliases.first?.txnID
+    return from.flatMap { heads[State.entityKey("txn", $0)]?.categorizedAtMs }
+  }
 
   static let creates: [OpType] = [.txnIngested, .txnSuperseded, .ruleAdded, .projectDefined, .goalDefined, .billSet]
   static let edits: [OpType] = [

@@ -82,7 +82,7 @@ import Testing
     }
     #expect(indexes == ["txn_merchant_group"])
     let statements: [(String, StatementArguments)] = [
-      (LedgerReader.groupSQL, ["n:x"]), (LedgerReader.groupSQL + " LIMIT ?", ["n:x", 2]), (LedgerReader.sweepGroupSQL, ["n:x"]),
+      (LedgerReader.groupSQL, ["n:x"]), (LedgerReader.groupSQL + " LIMIT ?", ["n:x", 2]),
     ]
     for (sql, arguments) in statements {
       let plan = try db.read { db in

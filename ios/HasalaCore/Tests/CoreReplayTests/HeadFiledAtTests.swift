@@ -59,6 +59,78 @@ import Testing
     #expect(rule.anomalies.isEmpty && dictionary.anomalies.isEmpty)
   }
 
+  static let october10 = "2026-10-10T09:00:00.000Z"
+  static let october10Ms: Int64 = 1_791_622_800_000
+
+  static func filed(_ id: String, op opID: Int, parent: Int, at: String = october10) -> String {
+    op(
+      "txn_categorized", #"{"category":"subscriptions","needs_review":false,"source":{"kind":"user"}}"#, id: opID,
+      entity: ("txn", id), parent: parent, at: at)
+  }
+
+  static func filedAt(_ s: State, _ id: String) -> Int64? { s.heads[State.entityKey("txn", id)]?.categorizedAtMs }
+
+  @Test func aVerifiedCopyTakesThePersonsFiledAt() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
+    try log.blob(Self.filed(Ids.t1, op: 50, parent: 1))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, mid: Copy.mid, gates: Copy.pass))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.mergedInto == Ids.t2)
+    #expect(s.txns[Ids.t2]?.category == "subscriptions" && s.txns[Ids.t2]?.categorySource == .user)
+    #expect(Self.filedAt(s, Ids.t2) == Self.october10Ms)
+    #expect(log.kinds.isEmpty)
+  }
+
+  @Test func aFilingOfAMergedCopyMovesTheWinnersFiledAt() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid, gates: Copy.fail))
+    let rule = op(
+      "txn_ingested",
+      #"{"amount_minor":"2700","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","posted_precision":"time","merchant_raw":"STARBUCKS DIFC","last4":"4412","needs_review":false,"category":"dining","category_source":{"kind":"rule","rule_id":"\#(Ids.r1)"},"tier":"template","entry_method":"mailbox","bank":"enbd","provenance":{"provider":"gmail","grant_id":"\#(Mbx.b)","message_id":"m2"}\#(Copy.pass),"dedupe":{"message_id":"\#(Copy.mid)"}}"#,
+      id: 1002, entity: ("txn", Ids.t2), ingest: Ids.ingest(2), at: "2026-10-02T08:00:00.000Z")
+    try log.blob(rule)
+    #expect(log.state.txns[Ids.t1]?.mergedInto == Ids.t2)
+    #expect(Self.filedAt(log.state, Ids.t2) == 1_790_928_000_000)
+    let version = Int(log.state.heads[State.entityKey("txn", Ids.t1)]!.version)
+    try log.blob(Self.filed(Ids.t1, op: 50, parent: version))
+    #expect(log.state.txns[Ids.t2]?.categorySource == .user)
+    #expect(Self.filedAt(log.state, Ids.t2) == Self.october10Ms)
+  }
+
+  @Test func aPromotedCopyKeepsThePersonsFiledAt() throws {
+    var log = Log()
+    try log.blob(Copy.alert(1, id: Ids.t1, grant: Mbx.a, mid: Copy.mid))
+    try log.blob(Copy.alert(2, id: Ids.t2, grant: Mbx.b, mid: Copy.mid))
+    try log.blob(Self.filed(Ids.t1, op: 50, parent: 1))
+    try log.blob(Mbx.retire(Mbx.a, id: 60))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.isLive == true && s.txns[Ids.t2]?.categorySource == .user)
+    #expect(Self.filedAt(s, Ids.t2) == Self.october10Ms)
+  }
+
+  @Test func aSupersedeCarriesThePersonsFiledAtOnlyWithTheirCategory() throws {
+    func supersede(_ fields: String) -> String {
+      op(
+        "txn_superseded",
+        #"{"amount_minor":"5100","currency":"AED","direction":"debit","posted_at":"2026-10-03T08:00:00.000Z","merchant_raw":"CARREFOUR MOE","last4":"4412","needs_review":false\#(fields)}"#,
+        id: 70, entity: ("txn", Ids.t2), ingest: Ids.ingest(1), at: "2026-10-15T09:00:00.000Z")
+    }
+    var user = Log()
+    try user.blob(CoreReplayTests.ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try user.blob(Self.filed(Ids.t1, op: 50, parent: 1))
+    try user.blob(supersede(#","category":"subscriptions","category_source":{"kind":"user"}"#))
+    #expect(user.state.txns[Ids.t1]?.supersededBy == "op-70")
+    #expect(Self.filedAt(user.state, Ids.t2) == Self.october10Ms)
+    #expect(user.kinds.isEmpty)
+
+    var reread = Log()
+    try reread.blob(CoreReplayTests.ingest(1, id: Ids.t1, extra: Mbx.prov(Mbx.a, message: "m1")))
+    try reread.blob(Self.filed(Ids.t1, op: 50, parent: 1))
+    try reread.blob(supersede(#","category":null,"category_source":{"kind":"none"}"#))
+    #expect(Self.filedAt(reread.state, Ids.t2) == nil)
+  }
+
   @Test func anUnreadableAuthoredTimeIsNoFiledAt() {
     #expect(State.filedAt(0) == nil)
     #expect(State.filedAt(1_792_486_800_000) == 1_792_486_800_000)

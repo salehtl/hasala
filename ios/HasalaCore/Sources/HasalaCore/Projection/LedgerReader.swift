@@ -301,7 +301,7 @@ public struct LedgerReader: Sendable {
 
   public func sweepRows(group: String) throws -> [SweepRow] {
     guard !group.isEmpty else { return [] }
-    return try sweepRows(sql: Self.sweepGroupSQL, [group])
+    return try sweepRows(sql: Self.groupSQL, [group])
   }
 
   public func group(_ key: String, limit: Int? = nil) throws -> [TxnRow] {
@@ -317,7 +317,6 @@ public struct LedgerReader: Sendable {
 
   static let sweepSQL = "SELECT * FROM txn WHERE superseded_by IS NULL ORDER BY posted_ms DESC, id DESC"
   static let groupSQL = "SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC, id DESC"
-  static let sweepGroupSQL = groupSQL
 
   private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
