@@ -20,6 +20,7 @@ protocol BillsModel: AnyObject, Observable {
   func stopTracking(_ bill: BillID)
   func track(_ candidate: String)
   func dismiss(_ candidate: String)
+  @discardableResult func perform(_ edit: LedgerEdit) -> Bool
 }
 
 @MainActor
@@ -57,6 +58,7 @@ final class BillsViewModel: BillsModel {
   func stopTracking(_ bill: BillID) { app.perform(.stopTrackingBill(bill)) }
   func track(_ candidate: String) { app.perform(.trackCandidate(candidate)) }
   func dismiss(_ candidate: String) { app.perform(.dismissCandidate(candidate)) }
+  @discardableResult func perform(_ edit: LedgerEdit) -> Bool { app.perform(edit) }
 }
 
 /// Recurring, pushed from Home (the Next bill widget) and Profile › Recurring: the next 14 days, the bills
@@ -70,6 +72,8 @@ struct BillsView: View {
   var showsToast = true
   @Environment(\.inProfileSheet) private var inProfileSheet
   @Environment(\.dynamicTypeSize) private var typeSize
+  @State private var sheet: RecurringSheet?
+  @State private var showsEnded = false
 
   private var snap: BillsSnapshot { model.snapshot }
   private var unfinished: Bool { BuildSurface.showsUnfinished }
@@ -83,23 +87,76 @@ struct BillsView: View {
       if !snap.needsALook.isEmpty { needsALook.padding(.horizontal, HSpacing.insetPage) }
       if !snap.found.isEmpty { found.padding(.horizontal, HSpacing.insetPage) }
       upcoming.padding(.horizontal, HSpacing.insetPage)
+      if !snap.paused.isEmpty { paused.padding(.horizontal, HSpacing.insetPage) }
       if !snap.recentlyPaid.isEmpty { recentlyPaid.padding(.horizontal, HSpacing.insetPage) }
+      if !snap.ended.isEmpty { ended.padding(.horizontal, HSpacing.insetPage) }
     }
     .toolbar {
-      // TODO(spec 04 §16.2 B1): "+" Add a bill (AddBillSheet).
-      if unfinished {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button { app.say("Adding a bill comes in a later build", icon: .add) } label: {
-            // Paper's glass Add: the plus at 22, stroke 2.3, in the glass ink.
-            HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
-          }
-          .accessibilityLabel("Add a bill")
+      ToolbarItem(placement: .topBarTrailing) {
+        Button { sheet = .add } label: {
+          HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
         }
+        .accessibilityLabel("Add recurring")
+        .accessibilityIdentifier("bills.add")
       }
+    }
+    .sheet(item: $sheet) { RecurringSheetHost(app: app, sheet: $0) }
+  }
+
+  private func open(_ row: BillRowModel) {
+    if row.isIncome {
+      sheet = .salary(row.id)
+    } else {
+      open(row.id)
     }
   }
 
   private func open(_ bill: BillID) { app.router.openBill(bill, inProfileSheet: inProfileSheet) }
+
+  private func rows(_ rows: [BillRowModel]) -> some View {
+    HListCard {
+      ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+        if index > 0 { HDivider(inset: .disc68) }
+        Button { open(row) } label: { BillsListRow(row: row, hidden: model.hidden) }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityIdentifier("bill.\(row.id)")
+      }
+    }
+  }
+
+  private var paused: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HSectionHeader("Paused", trailing: .fact("\(snap.paused.count)"))
+      rows(snap.paused)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bills.section.paused")
+  }
+
+  private var ended: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Button {
+        withAnimation(.easeInOut(duration: 0.2)) { showsEnded.toggle() }
+      } label: {
+        HStack(spacing: 8) {
+          Text("Ended").hType(.section).foregroundStyle(HColor.textPrimary)
+          CountBadge(snap.ended.count, style: .title24)
+          Spacer(minLength: 8)
+          HIconView(showsEnded ? .chevronUp : .chevronDown, size: HSpacing.iconSmall, color: HColor.textLink)
+        }
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Ended, \(snap.ended.count)")
+      .accessibilityValue(showsEnded ? "Shown" : "Hidden")
+      .accessibilityAddTraits(.isHeader)
+      .accessibilityIdentifier("bills.ended.toggle")
+      if showsEnded { rows(snap.ended) }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bills.section.ended")
+  }
 
   // MARK: Next 14 days
 
@@ -245,14 +302,7 @@ struct BillsView: View {
       if snap.upcoming.isEmpty {
         EmptyNote(systemImage: "calendar", message: "Nothing due in the next \(snap.range.rawValue) days.")
       } else {
-        HListCard {
-          ForEach(Array(snap.upcoming.enumerated()), id: \.element.id) { index, row in
-            if index > 0 { HDivider(inset: .disc68) }
-            Button { open(row.id) } label: { BillsListRow(row: row, hidden: model.hidden) }
-              .buttonStyle(HRowPressStyle())
-              .accessibilityIdentifier("bill.\(row.id)")
-          }
-        }
+        rows(snap.upcoming)
       }
     }
   }

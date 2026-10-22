@@ -137,6 +137,7 @@ struct SampleSeedProjectionTests {
     let r = p.reader
     let bills = try r.bills()
     #expect(bills.count == 8)
+    #expect(bills.allSatisfy { $0.bill.createdAt == "2026-09-01T04:00:00.000Z" })
     #expect(Set(bills.map(\.bill.name)) == ["AXA Insurance", "DEWA", "du", "Rent · Al Habtoor", "Netflix", "Spotify", "Savings standing order", "Sarwa"])
     let axa = try #require(bills.first { $0.bill.name == "AXA Insurance" })
     #expect(axa.bill.amountMinor == 55_000 && axa.bill.anchor == "2026-10-07" && axa.bill.cadence == BillCadence(unit: "month", every: 1))

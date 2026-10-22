@@ -34,7 +34,7 @@ fi
 classes=(
 	ReleaseSurfaceTests ReleaseSurfaceJoinTests ReleaseSurfaceSetupTests ReleaseSurfaceMailboxTests
 	ReleaseSurfaceSignInTests ReleaseSurfaceHomeTests ReleaseSurfaceInsightsTests ReleaseSurfaceActivityTests
-	ReleaseSurfacePlanTests ReleaseSurfaceProfileTests
+	ReleaseSurfacePlanTests ReleaseSurfaceProfileTests ReleaseSurfaceRecurringTests
 )
 only=()
 for c in "${classes[@]}"; do only+=("-only-testing:HasalaUITests/$c"); done

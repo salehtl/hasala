@@ -32,9 +32,14 @@ public final class InMemoryLedger: LedgerStore {
   private var undoRecords: [Int: UndoRecord] = [:]
   private var nextToken = 1
   private var nextManual = 1
+  private var nextBill = 1
   private var nextCategory = 1
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
+    var state = state
+    for i in state.txns.indices where state.txns[i].merchantKey == nil {
+      state.txns[i].merchantKey = state.txns[i].merchant.lowercased()
+    }
     self.state = state
     self.now = now
   }
@@ -57,12 +62,54 @@ public final class InMemoryLedger: LedgerStore {
 
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
 
+    let today = now.date
+
+    func billIndex(_ id: BillID) throws(ActionError) -> Int {
+      guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].state != .dismissed else { throw .notFound }
+      touchedBills = true
+      return i
+    }
+
+    func expenseIndex(_ id: BillID) throws(ActionError) -> Int {
+      let i = try billIndex(id)
+      if s.bills[i].isIncome { throw .invalidBill }
+      return i
+    }
+
+    func link(_ i: Int, _ ids: [TxnID]) throws(ActionError) {
+      guard !ids.isEmpty, Set(ids).count == ids.count else { throw .invalidBill }
+      let b = s.bills[i]
+      var dues = Set<LocalDate>()
+      var planned: [(TxnID, LocalDate, Money)] = []
+      for id in ids {
+        guard let t = s.txn(id) else { throw .notFound }
+        if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
+        if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
+        if let other = t.billID, other != b.id { throw .invalidBill }
+        let due = BillDueDates.nearest(b, to: t.postedAt.date)
+        if !dues.insert(due).inserted { throw .invalidBill }
+        if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
+        planned.append((id, due, t.amount))
+      }
+      for (id, due, amount) in planned {
+        try editTxn(id) { $0.billID = b.id }
+        s.bills[i].payments.removeAll { $0.due == due || $0.txnID == id }
+        s.bills[i].payments.append(BillPayment(due: due, txnID: id, amount: amount, link: .linked))
+        if let day = s.txn(id)?.postedAt.date, !s.bills[i].history.contains(day) { s.bills[i].history.append(day) }
+        if due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDueDates.shift(s.bills[i], from: due, by: 1) }
+      }
+      s.bills[i].payments.sort { $0.due > $1.due }
+      s.bills[i].history.sort(by: >)
+    }
+
     switch edit {
     case .addTransaction(let d):
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      s.txns.append(d.txn(id: "manual-\(nextManual)"))
+      var t = d.txn(id: "manual-\(nextManual)")
+      t.merchantKey = t.merchant.lowercased()
+      s.txns.append(t)
       nextManual += 1
       title = nil
     case .categorize(let id, let c, let learnRule, let project):
@@ -193,8 +240,13 @@ public final class InMemoryLedger: LedgerStore {
       touchedBills = true
       s.billCandidates.removeAll { $0.id == id }
       let next = c.last.adding(days: c.everyDays)
+      let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
       s.bills.append(Bill(id: "bill-\(id)", name: c.name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
-                          amount: c.amount, usualDay: c.last.day, nextDue: next, history: [c.last]))
+                          amount: c.amount, usualDay: c.last.day, nextDue: next, history: [c.last],
+                          source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
+                          trackingSince: today,
+                          payments: [BillPayment(due: c.last, amount: c.amount, link: .matched)],
+                          keys: [c.name.lowercased()]))
       title = "Tracking \(c.name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
@@ -207,18 +259,128 @@ public final class InMemoryLedger: LedgerStore {
       let due = s.bills[i].nextDue
       let next = due.yearMonth.next
       s.bills[i].history.insert(due, at: 0)
+      s.bills[i].payments.removeAll { $0.due == due }
+      s.bills[i].payments.insert(BillPayment(due: due, amount: s.bills[i].amount, link: .marked), at: 0)
       s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }),
+            s.bills[i].notices.contains(where: { if case .priceChange = $0.kind { true } else { false } })
+      else { throw .notFound }
       touchedBills = true
       s.bills[i].priceChangeFrom = nil
+      s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
       title = "New amount accepted"
     case .stopTrackingBill(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
-      touchedBills = true
-      s.bills[i].state = .dismissed
+      let i = try billIndex(id)
+      try Self.end(&s.bills[i], lastPayment: today)
       title = "Stopped tracking \(s.bills[i].name)"
+    case .addBill(let d):
+      if let refusal = d.refusal { throw refusal }
+      guard s.category(d.categoryID) != nil else { throw .notFound }
+      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
+      let name = d.trimmedName
+      let keys = d.keys.map { $0.trimmedSpaces.lowercased() }.filter { !$0.isEmpty }
+      touchedBills = true
+      s.bills.append(Bill(
+        id: "bill-manual-\(nextBill)", name: name, kind: categoryName(d.categoryID), categoryID: d.categoryID,
+        amount: d.amount, approximate: d.approximate, usualDay: d.firstDue.day, nextDue: d.firstDue,
+        accountID: d.accountID, source: .manual, cadence: d.cadence, every: d.every, trackingSince: today,
+        keys: keys.isEmpty ? [name.lowercased()] : keys))
+      nextBill += 1
+      let i = s.bills.count - 1
+      if !d.linkTxns.isEmpty { try link(i, d.linkTxns) }
+      let start = min(d.firstDue, s.bills[i].payments.map(\.due).min() ?? d.firstDue)
+      s.bills[i].trackingSince = max(start, today)
+      title = "Added \(name)"
+    case .editBillAmount(let id, let amount, let approximate, let from):
+      let i = try expenseIndex(id)
+      let b = s.bills[i]
+      guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor, amount.currency == b.amount.currency else {
+        throw .invalidAmount
+      }
+      guard BillDueDates.nearest(b, to: from) == from, from >= BillDueDates.start(b) else { throw .invalidBill }
+      if let end = b.endedOn, from > end { throw .invalidBill }
+      if from <= b.nextDue {
+        s.bills[i].amount = amount
+        s.bills[i].approximate = approximate
+        s.bills[i].nextAmount = nil
+        s.bills[i].nextAmountFrom = nil
+        s.bills[i].priceChangeFrom = nil
+        s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
+      } else {
+        s.bills[i].nextAmount = amount
+        s.bills[i].nextAmountFrom = from
+      }
+      title = "\(b.name) amount changed"
+    case .pauseBill(let id, let until):
+      let i = try expenseIndex(id)
+      guard s.bills[i].state == .tracked else { throw .invalidBill }
+      let from = Self.pauseStart(s.bills[i], today: today)
+      if let until, until <= from { throw .invalidBill }
+      s.bills[i].state = .paused
+      s.bills[i].pausedSince = from
+      s.bills[i].pausedUntil = until
+      title = "Paused \(s.bills[i].name)"
+    case .resumeBill(let id):
+      let i = try expenseIndex(id)
+      guard s.bills[i].state == .paused else { throw .invalidBill }
+      s.bills[i].state = .tracked
+      s.bills[i].pausedSince = nil
+      s.bills[i].pausedUntil = nil
+      s.bills[i].nextDue = BillDueDates.first(s.bills[i], onOrAfter: today)
+      title = "Resumed \(s.bills[i].name)"
+    case .endBill(let id, let lastPayment):
+      let i = try expenseIndex(id)
+      try Self.end(&s.bills[i], lastPayment: lastPayment)
+      title = "Ended \(s.bills[i].name)"
+    case .reactivateBill(let id):
+      let i = try expenseIndex(id)
+      guard s.bills[i].state == .ended else { throw .invalidBill }
+      s.bills[i].state = .tracked
+      s.bills[i].endedOn = nil
+      s.bills[i].trackingSince = max(s.bills[i].trackingSince ?? today, today)
+      s.bills[i].notices.removeAll { if case .chargedAfterEnd = $0.kind { true } else { false } }
+      s.bills[i].nextDue = BillDueDates.first(s.bills[i], onOrAfter: today)
+      title = "Tracking \(s.bills[i].name) again"
+    case .deleteBill(let id):
+      let i = try expenseIndex(id)
+      s.bills[i].state = .dismissed
+      title = s.bills[i].source == .manual ? "Deleted \(s.bills[i].name)" : "\(s.bills[i].name) is not a bill"
+    case .linkBillPayments(let id, let txns):
+      let i = try billIndex(id)
+      try link(i, txns)
+      title = txns.count == 1 ? "Linked 1 payment" : "Linked \(txns.count) payments"
+    case .reapplyBill(let id):
+      let i = try billIndex(id)
+      guard let n = s.bills[i].notices.firstIndex(where: {
+        if case .changedOnTwoDevices = $0.kind { true } else { false }
+      }) else { throw .notFound }
+      s.bills[i].notices.remove(at: n)
+      title = "Re-applied your change"
+    case .dismissBillNotice(let id, let noticeID):
+      guard let i = s.bills.firstIndex(where: { $0.id == id }),
+            s.bills[i].notices.contains(where: { $0.id == noticeID }) else { throw .notFound }
+      s.bills[i].notices.removeAll { $0.id == noticeID }
+      title = nil
+    case .editIncome(let id, let amount, let payday, let active):
+      guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }
+      guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw .invalidAmount }
+      guard (1...31).contains(payday) else { throw .invalidBill }
+      touchedBills = true
+      touchedPlan = true
+      s.bills[i].amount = amount
+      s.bills[i].usualDay = payday
+      s.bills[i].state = active ? .tracked : .ended
+      s.bills[i].endedOn = active ? nil : today
+      let ym = today.yearMonth
+      let thisMonth = LocalDate(ym.year, ym.month, min(payday, ym.days))
+      let next = ym.next
+      s.bills[i].nextDue = thisMonth >= today ? thisMonth : LocalDate(next.year, next.month, min(payday, next.days))
+      s.plan.income = active ? amount : Money(minor: 0, currency: amount.currency)
+      s.plan.payday = payday
+      for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
+      title = "Income updated"
 
     case .saveProject(let id, let draft):
       guard draft.refusal == nil else { throw .invalidProject }
@@ -319,6 +481,12 @@ public final class InMemoryLedger: LedgerStore {
       for key in Set(old.budgets.keys).union(new.budgets.keys) where s.plan.budgets[key] == new.budgets[key] {
         s.plan.budgets[key] = old.budgets[key]
       }
+      if s.plan.income == new.income { s.plan.income = old.income }
+      if s.plan.payday == new.payday { s.plan.payday = old.payday }
+      for m in Set(old.incomeByMonth.keys).union(new.incomeByMonth.keys)
+      where s.plan.incomeByMonth[m] == new.incomeByMonth[m] {
+        s.plan.incomeByMonth[m] = old.incomeByMonth[m]
+      }
     }
     if let (old, new) = r.bills { Self.revertElements(&s.bills, before: old, after: new) }
     if let (old, new) = r.candidates { Self.revertElements(&s.billCandidates, before: old, after: new) }
@@ -354,6 +522,33 @@ public final class InMemoryLedger: LedgerStore {
     field(\.homeMinor)
     field(\.samePurchase)
     field(\.heldCopy)
+    field(\.billID)
+  }
+
+  static func pauseStart(_ b: Bill, today: LocalDate) -> LocalDate {
+    let paid = Set(b.payments.map(\.due))
+    let from = max(today, BillDueDates.start(b))
+    var due = BillDueDates.first(b, onOrAfter: from)
+    guard paid.contains(due) else { return from }
+    var steps = 0
+    while paid.contains(due), steps < 5_000 {
+      due = BillDueDates.shift(b, from: due, by: 1)
+      steps += 1
+    }
+    return due
+  }
+
+  private static func end(_ b: inout Bill, lastPayment: LocalDate) throws(ActionError) {
+    guard b.state == .tracked || b.state == .paused else { throw .invalidBill }
+    guard lastPayment >= BillDueDates.start(b) else { throw .invalidBill }
+    b.state = .ended
+    b.endedOn = lastPayment
+    b.pausedSince = nil
+    b.pausedUntil = nil
+    if let from = b.nextAmountFrom, from > lastPayment {
+      b.nextAmount = nil
+      b.nextAmountFrom = nil
+    }
   }
 
   /// Element by element: an element still as the edit left it goes back to how it was

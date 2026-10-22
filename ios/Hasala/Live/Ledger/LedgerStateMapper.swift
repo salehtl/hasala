@@ -4,6 +4,7 @@ import CoreMailbox
 import CoreProjection
 import CoreReplay
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 
@@ -29,6 +30,8 @@ nonisolated enum LedgerStateMapper {
     var skippedDigests: Set<String> = []
     var digestSalt = ""
     var unreadSenders: [String: String] = [:]
+    var dismissedNotices: Set<String> = []
+    var forkOps: [String: Op] = [:]
   }
 
   enum MapError: Error { case date }
@@ -36,18 +39,26 @@ nonisolated enum LedgerStateMapper {
   /// Display names of the banks the beta reads (card accounts name their bank by id).
   static let bankNames = RuntimeMailboxLedger.bankNames
 
+  struct Mapped: Sendable {
+    var state: LedgerState
+    var candidates: [BillCandidateCore]
+  }
+
   static func map(_ r: LedgerReader, context c: Context) throws -> LedgerState {
+    try mapped(r, context: c).state
+  }
+
+  static func mapped(_ r: LedgerReader, context c: Context) throws -> Mapped {
     guard let today = CivilDate(year: c.today.year, month: c.today.month, day: c.today.day) else { throw MapError.date }
     let month = today.yearMonth
-    let engine = try r.planEngine(month: month, today: today)
-    let taxonomy = try r.taxonomy()
+    var rows = try r.activity(limit: 1_000_000)
+    rows += try r.archived(limit: 1_000_000)
+    let feed = try billFeed(r, rows: rows, today: today)
+    let engine = try r.planEngine(month: month, today: today, bills: feed.expectations)
+    let taxonomy = feed.taxonomy
 
     let categories = byParent(taxonomy.ordered).map { category($0, engine: engine) }
-    let resolutions = try r.billResolutions()
-    var billOfTxn: [String: String] = [:]
-    for res in resolutions where res.resolution == "paid" {
-      if let t = res.txn { billOfTxn[t] = res.bill }
-    }
+    let billOfTxn = feed.billOfTxn
 
     // Accounts: the latest check-in is the balance (03b §4.6).
     let cards = try r.cards()
@@ -64,8 +75,6 @@ nonisolated enum LedgerStateMapper {
     // Transactions: every live, parsed row (archived ones too, flagged).
     let rules = try r.rules()
     let ruleByID = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var rows = try r.activity(limit: 1_000_000)
-    rows += try r.archived(limit: 1_000_000)
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for row in rows {
@@ -94,23 +103,7 @@ nonisolated enum LedgerStateMapper {
       startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
       incomeByMonth: incomeByMonth)
 
-    // Bills, then each active income source as an income "bill" (Bills › Income).
-    var bills: [HasalaModels.Bill] = []
-    let paidAmount = Dictionary(txns.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    for (id, b) in try r.bills() {
-      if let mapped = bill(id: id, b, resolutions: resolutions.filter { $0.bill == id }, today: c.today,
-                           taxonomy: taxonomy, paidAmount: paidAmount)
-      {
-        bills.append(mapped)
-      }
-    }
-    for s in sources {
-      let next = nextPayday(Int(s.payday), after: c.today)
-      bills.append(
-        HasalaModels.Bill(
-          id: "income.\(s.id)", name: s.name, kind: taxonomy.info(s.categoryID)?.name ?? "Income",
-          categoryID: s.categoryID, amount: .aed(s.amountMinor), isIncome: true, usualDay: Int(s.payday), nextDue: next))
-    }
+    let bills = try liveBills(feed, r: r, context: c, txns: txns, income: engine.plan.incomeSources.values)
 
     let projects: [HasalaModels.Project] = try r.projects().map { id, p in
       HasalaModels.Project(
@@ -137,12 +130,13 @@ nonisolated enum LedgerStateMapper {
         learnedToday: rule.origin == "learned" && rule.createdAt.flatMap(localDay) == c.today)
     }
 
-    return LedgerState(
-      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: [],
+    let state = LedgerState(
+      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: feed.candidates,
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
       unreadMail: unreadMail)
+    return Mapped(state: state, candidates: feed.derived.candidates)
   }
 
   static func unreadMail(_ row: TxnRow, senders: [String: String] = [:], accounts: [CoreReplay.Account] = []) -> UnreadMail {
@@ -265,7 +259,7 @@ nonisolated enum LedgerStateMapper {
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
-      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) })
+      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey)
   }
 
 
@@ -296,81 +290,9 @@ nonisolated enum LedgerStateMapper {
 
   // MARK: Bills
 
-  static func bill(
-    id: String, _ b: CoreReplay.Bill, resolutions: [BillResolution], today: LocalDate, taxonomy: TaxonomyView,
-    paidAmount: [String: HasalaModels.Txn]
-  ) -> HasalaModels.Bill? {
-    guard b.direction == "debit", let anchor = CivilDate(wire: b.anchor).map(local),
-      let start = CivilDate(wire: b.start).map(local)
-    else { return nil }
-    let end = b.end.flatMap(CivilDate.init(wire:)).map(local)
-    let resolved = Dictionary(
-      resolutions.compactMap { r in CivilDate(wire: r.due).map { (local($0), r) } }, uniquingKeysWith: { a, _ in a })
-    let dues = schedule(anchor: anchor, start: start, end: end, unit: b.cadence.unit, every: Int(b.cadence.every),
-                        horizon: today.adding(days: 400))
-    let next = dues.first { d in
-      guard let r = resolved[d] else { return true }
-      switch r.resolution {
-      case "paid", "skipped": return false
-      case "snoozed": return (r.until.flatMap(CivilDate.init(wire:)).map(local) ?? d) < today
-      default: return true
-      }
-    } ?? dues.last ?? anchor
-    let paid = resolved.filter { $0.value.resolution == "paid" }
-    let history = paid.keys.sorted(by: >)
-    // A fixed bill whose latest payment was outside its tolerance shows the new price.
-    var amount = Money(minor: b.amountMinor, currency: b.currency)
-    var priceChangeFrom: Money?
-    if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn,
-      let charged = paidAmount[txn].flatMap({ Self.charged($0, in: b.currency) })
-    {
-      let tolerance = Fils.mulDiv(b.amountMinor, b.toleranceBp ?? 0, 10_000)
-      if charged.minor.minus(b.amountMinor).magnitude > tolerance.magnitude {
-        priceChangeFrom = amount
-        amount = charged
-      }
-    }
-    let category = b.category ?? "utilities"
-    return HasalaModels.Bill(
-      id: id, name: b.name, kind: taxonomy.info(category)?.name ?? "Bill", categoryID: category, amount: amount,
-      approximate: b.amountMode == "variable", isIncome: false, usualDay: anchor.day, nextDue: next,
-      accountID: b.account, state: b.status == "active" ? .tracked : .dismissed, priceChangeFrom: priceChangeFrom,
-      history: history)
-  }
-
   static func charged(_ t: HasalaModels.Txn, in currency: String) -> Money? {
     if t.amount.currency == currency { return t.amount }
     return currency == Money.home ? t.homeMinor.map(Money.aed) : nil
-  }
-
-  /// The due dates of a bill from `start` to `horizon`, stepping from `anchor` (03b §3.4):
-  /// monthly and yearly dues keep the anchor's day, clamped to short months.
-  static func schedule(anchor: LocalDate, start: LocalDate, end: LocalDate?, unit: String, every: Int, horizon: LocalDate)
-    -> [LocalDate]
-  {
-    let step = max(1, every)
-    func due(_ k: Int) -> LocalDate {
-      switch unit {
-      case "day": return anchor.adding(days: k * step)
-      case "week": return anchor.adding(days: 7 * k * step)
-      case "year": return clamp(anchor.year + k * step, anchor.month, anchor.day)
-      default:
-        let index = anchor.year * 12 + (anchor.month - 1) + k * step
-        return clamp(index / 12, index % 12 + 1, anchor.day)
-      }
-    }
-    var k = 0
-    while due(k) > start, k > -2_000 { k -= 1 }
-    var out: [LocalDate] = []
-    while out.count < 2_000 {
-      let d = due(k)
-      k += 1
-      if d < start { continue }
-      if let end, d > end { break }
-      if d > horizon { break }
-      out.append(d)
-    }
-    return out
   }
 
   static func clamp(_ year: Int, _ month: Int, _ day: Int) -> LocalDate {

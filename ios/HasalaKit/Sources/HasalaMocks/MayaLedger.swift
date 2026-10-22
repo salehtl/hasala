@@ -20,7 +20,7 @@ public enum MayaLedger {
 
   public static var state: LedgerState {
     LedgerState(
-      categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills,
+      categories: categories, accounts: accounts, txns: txns.map(keyed), plan: plan, bills: bills.map(filled),
       billCandidates: candidates, projects: projects, goals: goals, rules: rules,
       profile: ProfileInfo(displayName: Maya.displayName, email: "maya@example.com", signIn: .passkey),
       mailbox: MailboxHealth(status: .working, lastEmail: "4 min ago", banks: "Emirates NBD and DIB"),
@@ -183,6 +183,33 @@ public enum MayaLedger {
   ]
 
   // MARK: - Bills (9 tracked)
+
+  static func keyed(_ t: Txn) -> Txn {
+    var t = t
+    if t.merchantKey == nil { t.merchantKey = t.merchant.lowercased() }
+    return t
+  }
+
+  static func filled(_ b: Bill) -> Bill {
+    var b = b
+    let own = txns.filter { $0.billID == b.id }
+    if b.keys.isEmpty { b.keys = Array(Set(own.map { $0.merchant.lowercased() })).sorted() }
+    if b.keys.isEmpty { b.keys = [b.name.lowercased()] }
+    if b.payments.isEmpty {
+      b.payments = b.history.map { day in
+        let due = BillDueDates.nearest(b, to: day)
+        if let t = own.first(where: { $0.postedAt.date == day }) {
+          return BillPayment(due: due, txnID: t.id, amount: t.amount, link: .matched)
+        }
+        return BillPayment(due: due, amount: b.amount, link: .marked)
+      }
+    }
+    if b.id == "du", let usual = b.priceChangeFrom, b.notices.isEmpty {
+      b.notices = [BillNotice(id: "priceChange.du", kind: .priceChange(usual: usual, charged: b.amount,
+                                                                       from: LocalDate(2026, 10, 5)), txnID: "du")]
+    }
+    return b
+  }
 
   static let bills: [Bill] = [
     Bill(id: "axa", name: "AXA Insurance", kind: "Car insurance", categoryID: "insurance", amount: .aed(550_00),

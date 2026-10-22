@@ -129,7 +129,7 @@ struct ProfileModelTests {
     #expect(bills.detail("axa")?.state == .upcoming)
     #expect(bills.detail("axa")?.history.dropFirst().first?.title == "Wed 7 Oct")
     bills.stopTracking("axa")
-    #expect(bills.detail("axa") == nil)
+    #expect(bills.detail("axa")?.isEnded == true)
     #expect(bills.snapshot.tracked == 8)
   }
 

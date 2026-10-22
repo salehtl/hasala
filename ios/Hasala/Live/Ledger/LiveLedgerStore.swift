@@ -3,6 +3,7 @@ import CoreMailbox
 import CorePrimitives
 import CoreProjection
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 import Observation
@@ -51,6 +52,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private var reloadSeq = 0
   @ObservationIgnored private var writesInFlight = 0
   @ObservationIgnored var onWriteFailed: (@MainActor () -> Void)?
+  @ObservationIgnored private var forkOps: [String: Op] = [:]
+  @ObservationIgnored private var forksLookedUp: Set<String> = []
+  @ObservationIgnored private var forkLookup: Task<Void, Never>?
+  @ObservationIgnored var lookUpForks: (@Sendable (Set<String>) async -> LedgerEditAuthor.ForkLookup)?
 
   init(
     reader: LedgerReader, author: LedgerEditAuthor?, profile: ProfileInfo, prefs: DevicePrefsStore,
@@ -61,6 +66,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     self.profile = profile
     self.prefs = prefs
     self.clock = clock
+    if let author { lookUpForks = { @Sendable ids in await author.forkLookup(ids) } }
     let now = clock()
     self.now = now
     state = LedgerState(
@@ -132,12 +138,16 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     reloadSeq += 1
     let seq = reloadSeq
     let today = clock()
+    let reader = self.reader
+    let author = self.author
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
-      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders)
-    let reader = self.reader
-    let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
-      .value
+      skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
+      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps)
+    let mapped = await Task.detached(priority: .userInitiated) { () -> LedgerState? in
+      if let author { return try? author.map(reader, context: context) }
+      return try? LedgerStateMapper.map(reader, context: context)
+    }.value
     guard seq == reloadSeq, writesInFlight == 0, let mapped else { return }
     state = mapped
     now = today
@@ -145,6 +155,22 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let sample = mapped.txns.contains(where: \.isSample)
     if holdsSample != sample { holdsSample = sample }
     revision += 1
+    lookUpForkLosers()
+  }
+
+  private func lookUpForkLosers() {
+    guard forkLookup == nil, let lookUpForks, let forks = try? reader.forkNotices(kind: "bill") else { return }
+    let missing = Set(forks.map(\.loserOp)).subtracting(forksLookedUp)
+    guard !missing.isEmpty else { return }
+    forkLookup = Task { [weak self] in
+      let found = await lookUpForks(missing)
+      guard let self else { return }
+      forkLookup = nil
+      forksLookedUp.formUnion(found.settled)
+      guard !found.ops.isEmpty else { return }
+      forkOps.merge(found.ops) { a, _ in a }
+      await reload()
+    }
   }
 
   @discardableResult
@@ -161,6 +187,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .setNotifications(let level): prefs.update { $0.notifications = level }
     case .setFaceIDLock(let on): prefs.update { $0.faceIDLock = on }
     case .setDisplayName(let name): profile.displayName = name
+    case .dismissBillNotice(_, let noticeID): prefs.dismissNotice(noticeID)
     default: break
     }
     state = s
@@ -180,7 +207,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   static func authorsInverse(_ edit: LedgerEdit) -> Bool {
     switch edit {
-    case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill: true
+    case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .trackCandidate, .dismissCandidate, .reapplyBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
+      .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome:
+      true
     case .resolveCopy(_, let merge): merge
     default: false
     }
@@ -396,8 +425,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       }
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
       return ("Moved to \(name(to))", [])
-    case .trackCandidate, .dismissCandidate:
-      throw .notFound
     case .markBillPaid(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
       let due = s.bills[i].nextDue
@@ -406,13 +433,15 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
       return ("\(s.bills[i].name) marked paid", [.occurrence(bill: id, due: due)])
     case .acceptBillAmount(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }),
+        s.bills[i].notices.contains(where: { if case .priceChange = $0.kind { true } else { false } })
+      else { throw .notFound }
       s.bills[i].priceChangeFrom = nil
+      s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
       return ("New amount accepted", [])
-    case .stopTrackingBill(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
-      s.bills[i].state = .dismissed
-      return ("Stopped tracking \(s.bills[i].name)", [])
+    case .stopTrackingBill, .addBill, .editBillAmount, .pauseBill, .resumeBill, .endBill, .reactivateBill, .deleteBill,
+      .linkBillPayments, .reapplyBill, .editIncome, .dismissBillNotice, .trackCandidate, .dismissCandidate:
+      return (try BillPatch.apply(edit, &s, today: now.date), [])
     case .setRuleEnabled(let id, let enabled):
       guard let i = s.rules.firstIndex(where: { $0.id == id }) else { throw .notFound }
       s.rules[i].enabled = enabled
@@ -505,6 +534,7 @@ final class DevicePrefsStore {
   private static let skippedKey = "prefs.review.skipped.v2"
   /// The earlier form, which held transaction ids.
   private static let legacySkippedKey = "prefs.review.skipped.v1"
+  private static let noticesKey = "prefs.bills.notices.dismissed.v1"
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
@@ -549,8 +579,19 @@ final class DevicePrefsStore {
     if let d = try? JSONEncoder().encode(s) { defaults.set(d, forKey: Self.skippedKey) }
   }
 
+  var dismissedNoticeDigests: Set<String> {
+    Set(defaults.stringArray(forKey: Self.noticesKey) ?? [])
+  }
+
+  func dismissNotice(_ id: String) {
+    var ids = dismissedNoticeDigests
+    ids.insert(LocalAccountData.digest(id, salt: salt))
+    defaults.set(ids.sorted(), forKey: Self.noticesKey)
+  }
+
   /// The account's data left this iPhone: forget the skipped cards.
   func forgetAccountData() {
+    defaults.removeObject(forKey: Self.noticesKey)
     defaults.removeObject(forKey: Self.skippedKey)
     defaults.removeObject(forKey: Self.legacySkippedKey)
   }

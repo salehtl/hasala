@@ -251,7 +251,8 @@ public enum ProjectionSchema {
       id TEXT PRIMARY KEY, name TEXT NOT NULL, keys_json TEXT NOT NULL, direction TEXT NOT NULL, currency TEXT NOT NULL,
       amount_mode TEXT NOT NULL, amount_minor INTEGER NOT NULL, tolerance_bp INTEGER, cadence_unit TEXT NOT NULL,
       cadence_every INTEGER NOT NULL, anchor TEXT NOT NULL, start TEXT NOT NULL, end TEXT, category TEXT, account TEXT,
-      source TEXT NOT NULL, status TEXT NOT NULL, first_seq INTEGER NOT NULL, version INTEGER NOT NULL);
+      source TEXT NOT NULL, status TEXT NOT NULL, changes_json TEXT, pauses_json TEXT, created_at TEXT,
+      first_seq INTEGER NOT NULL, version INTEGER NOT NULL);
     CREATE TABLE bill_resolution (bill TEXT NOT NULL, due TEXT NOT NULL, resolution TEXT NOT NULL, txn TEXT, until TEXT,
       at_seq INTEGER NOT NULL, PRIMARY KEY (bill, due));
     CREATE TABLE checkin (
