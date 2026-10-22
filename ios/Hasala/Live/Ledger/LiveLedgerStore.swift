@@ -53,6 +53,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored var onWriteFailed: (@MainActor () -> Void)?
   @ObservationIgnored private var forkRecords: [String: LedgerStateMapper.BillRecord] = [:]
   @ObservationIgnored private var forksLookedUp: Set<String> = []
+  @ObservationIgnored private var forkLookup: Task<Void, Never>?
+  @ObservationIgnored var lookUpForks: (@Sendable (Set<String>) async -> LedgerEditAuthor.ForkLookup)?
 
   init(
     reader: LedgerReader, author: LedgerEditAuthor?, profile: ProfileInfo, prefs: DevicePrefsStore,
@@ -63,6 +65,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     self.profile = profile
     self.prefs = prefs
     self.clock = clock
+    if let author { lookUpForks = { @Sendable ids in await author.forkLookup(ids) } }
     let now = clock()
     self.now = now
     state = LedgerState(
@@ -135,19 +138,15 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let seq = reloadSeq
     let today = clock()
     let reader = self.reader
-    if let author, let forks = try? reader.forkNotices(kind: "bill") {
-      let missing = Set(forks.map(\.loserOp)).subtracting(forksLookedUp)
-      if !missing.isEmpty {
-        forksLookedUp.formUnion(missing)
-        forkRecords.merge(await author.billRecords(opIDs: missing)) { a, _ in a }
-      }
-    }
+    let author = self.author
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
       skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
       dismissedNotices: prefs.dismissedNoticeDigests, forkRecords: forkRecords)
-    let mapped = await Task.detached(priority: .userInitiated) { try? LedgerStateMapper.map(reader, context: context) }
-      .value
+    let mapped = await Task.detached(priority: .userInitiated) { () -> LedgerState? in
+      if let author { return try? author.map(reader, context: context) }
+      return try? LedgerStateMapper.map(reader, context: context)
+    }.value
     guard seq == reloadSeq, writesInFlight == 0, let mapped else { return }
     state = mapped
     now = today
@@ -155,6 +154,22 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let sample = mapped.txns.contains(where: \.isSample)
     if holdsSample != sample { holdsSample = sample }
     revision += 1
+    lookUpForkLosers()
+  }
+
+  private func lookUpForkLosers() {
+    guard forkLookup == nil, let lookUpForks, let forks = try? reader.forkNotices(kind: "bill") else { return }
+    let missing = Set(forks.map(\.loserOp)).subtracting(forksLookedUp)
+    guard !missing.isEmpty else { return }
+    forkLookup = Task { [weak self] in
+      let found = await lookUpForks(missing)
+      guard let self else { return }
+      forkLookup = nil
+      forksLookedUp.formUnion(found.settled)
+      guard !found.records.isEmpty else { return }
+      forkRecords.merge(found.records) { a, _ in a }
+      await reload()
+    }
   }
 
   @discardableResult
@@ -388,8 +403,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
       return ("\(s.bills[i].name) marked paid", [.occurrence(bill: id, due: due)])
     case .acceptBillAmount(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }),
+        s.bills[i].notices.contains(where: { if case .priceChange = $0.kind { true } else { false } })
+      else { throw .notFound }
       s.bills[i].priceChangeFrom = nil
+      s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
       return ("New amount accepted", [])
     case .stopTrackingBill, .addBill, .editBillAmount, .pauseBill, .resumeBill, .endBill, .reactivateBill, .deleteBill,
       .linkBillPayments, .reapplyBill, .editIncome, .dismissBillNotice, .trackCandidate, .dismissCandidate:

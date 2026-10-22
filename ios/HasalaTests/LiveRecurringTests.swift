@@ -1,6 +1,7 @@
 import CoreCategorize
 import CoreDomain
 import CoreInvariants
+import CoreJSON
 import CoreProjection
 import CoreReplay
 import CoreTime
@@ -8,6 +9,7 @@ import CoreWire
 import Foundation
 import HasalaMocks
 import HasalaModels
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -129,7 +131,7 @@ struct LiveRecurringTests {
     try await Mapper.eventually { try Self.record(a, netflix.id)?.status == "active" }
     let again = try #require(try Self.record(a, netflix.id))
     #expect(again.end == nil)
-    #expect(again.pauses == [BillPause(from: "2026-11-06", until: "2026-12-20")])
+    #expect(again.pauses == [BillPause(from: "2026-12-06", until: "2026-12-20")])
     try await Mapper.eventually { try Self.bill(store, "Netflix").state == .tracked }
     #expect(try Self.bill(store, "Netflix").nextDue == LocalDate(2027, 1, 6))
   }
@@ -360,7 +362,8 @@ struct LiveRecurringTests {
   }
 
   static func storeWith(
-    _ a: Mapper.Account, suite: String, extra: @escaping (inout OpAuthor) throws(AuthorError) -> Void
+    _ a: Mapper.Account, suite: String, clock: Clock = Clock(),
+    extra: @escaping (inout OpAuthor) throws(AuthorError) -> Void
   ) async throws -> LiveLedgerStore {
     for b in try await Mapper.seed(a) { try await a.outbox.enqueue(b.ops) }
     if let blob = try a.observer.stamps.build(try await a.observer.authorContext(), extra) {
@@ -371,7 +374,7 @@ struct LiveRecurringTests {
     defaults.removePersistentDomain(forName: suite)
     let store = LiveLedgerStore(
       reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
-      profile: Mapper.context().profile, prefs: DevicePrefsStore(defaults: defaults), clock: { MayaLedger.now })
+      profile: Mapper.context().profile, prefs: DevicePrefsStore(defaults: defaults), clock: { clock.now })
     await store.reload()
     return store
   }
@@ -453,6 +456,9 @@ struct LiveRecurringTests {
     let loser = blob.ops[0].opID
     #expect(try a.projection.reader.forkNotices(kind: "bill").map(\.loserOp) == [loser])
     await seeded.reload()
+    try await Mapper.eventually {
+      try Self.bill(seeded, "Netflix").notices.contains { $0.kind == .changedOnTwoDevices(summary: "Amount 63.00 from 6 Dec") }
+    }
     let forked = try Self.bill(seeded, "Netflix")
     #expect(forked.state == .paused)
     let card = try #require(forked.notices.first { $0.id == "fork.\(loser)" })
@@ -555,5 +561,283 @@ struct LiveRecurringTests {
     #expect(BillEdits.nearestUnbounded(d, to: Self.day(2026, 8, 20)) == Self.day(2026, 8, 6))
     #expect(BillEdits.nearestUnbounded(d, to: Self.day(2026, 8, 22)) == Self.day(2026, 9, 6))
     #expect(BillEdits.keys(name: "Gym  Club", given: []) == ["gym club"])
+  }
+
+  static func billSets(_ a: Mapper.Account, _ id: String) throws -> [JSONObject] {
+    try a.context.store.pendingOps().filter { $0.opType == "bill_set" && $0.entityID == id }.map {
+      try #require(try JSONParser.parse($0.opJSON).objectValue?["payload"]?.objectValue)
+    }
+  }
+
+  static func text(_ v: JSONValue?) -> String {
+    guard let v else { return "absent" }
+    if let s = v.stringValue { return s }
+    if let n = v.numberValue { return n.description }
+    if v.isNull { return "null" }
+    return "?"
+  }
+
+  static func flat(_ v: JSONValue?) -> [String] {
+    (v?.arrayValue ?? []).map { item in
+      (item.objectValue?.members ?? []).sorted { $0.key < $1.key }.map { "\($0.key)=\(text($0.value))" }
+        .joined(separator: " ")
+    }
+  }
+
+  static func monthly(_ o: inout OpAuthor, day d: Int, months: [Int], amounts: [Int64]? = nil) throws(AuthorError) -> [String] {
+    var ids: [String] = []
+    for (i, m) in months.enumerated() {
+      ids.append(
+        try o.manualEntry(
+          amountMinor: amounts?[i] ?? 200_00, currency: "AED", direction: "debit", localWallMs: try! wall(2026, m, d),
+          merchant: "Gym Club", category: "subscriptions"))
+    }
+    return ids
+  }
+
+  @Test func trackingAgainAfterEndingOnAMatchedDueLeavesThatDuePaid() async throws {
+    let a = try Mapper.account()
+    let clock = Clock()
+    var ids: [String] = []
+    let store = try await Self.storeWith(a, suite: "recurring.reactivate.matched", clock: clock) { o throws(AuthorError) in
+      try o.setBill(id: "bm_gym", Self.gym(start: Self.day(2026, 7, 10)))
+      ids = try Self.monthly(&o, day: 10, months: [7, 8, 9])
+    }
+    #expect(try Self.bill(store, "Gym Club").payments.map(\.due).contains(LocalDate(2026, 9, 10)))
+    try store.apply(.endBill("bm_gym", lastPayment: LocalDate(2026, 9, 10)))
+    try await Mapper.eventually { try Self.record(a, "bm_gym")?.status == "cancelled" }
+    clock.now = LocalDateTime(2026, 12, 20, 9, 0)
+    for _ in 0..<150 where store.now != clock.now {
+      await store.reload()
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    let sets = try Self.billSets(a, "bm_gym").count
+    try store.apply(.reactivateBill("bm_gym"))
+    try await Mapper.eventually { try Self.record(a, "bm_gym")?.status == "active" }
+    let written = try Self.billSets(a, "bm_gym")
+    #expect(written.count == sets + 1)
+    let p = try #require(written.last)
+    #expect(Self.text(p["status"]) == "active" && Self.text(p["end"]) == "null")
+    #expect(Self.text(p["start"]) == "2026-07-10" && Self.text(p["amount_minor"]) == "20000")
+    #expect(Self.flat(p["pauses"]) == ["from=2026-10-10 until=2026-12-20"])
+    #expect(p["changes"] == nil)
+    try await Mapper.eventually { try Self.bill(store, "Gym Club").state == .tracked }
+    let gym = try Self.bill(store, "Gym Club")
+    #expect(gym.notices.isEmpty)
+    #expect(gym.payments.first { $0.due == LocalDate(2026, 9, 10) }?.txnID == ids[2])
+  }
+
+  @Test func acceptingAPriceChangeKeepsALaterScheduledChange() async throws {
+    let a = try Mapper.account()
+    var ids: [String] = []
+    let store = try await Self.storeWith(a, suite: "recurring.accept.future") { o throws(AuthorError) in
+      var d = Self.gym(start: Self.day(2026, 7, 5))
+      d.changes = [
+        OpAuthor.BillChangeDraft(from: Self.day(2027, 2, 5), terms: OpAuthor.BillTermsDraft(mode: .fixed(toleranceBp: 200), amountMinor: 260_00))
+      ]
+      try o.setBill(id: "bm_gym", d)
+      ids = try Self.monthly(&o, day: 5, months: [7, 8, 9, 10], amounts: [200_00, 200_00, 200_00, 230_00])
+    }
+    let shown = try Self.bill(store, "Gym Club")
+    #expect(shown.notices.first?.kind == .priceChange(usual: .aed(200_00), charged: .aed(230_00), from: LocalDate(2026, 10, 5)))
+    let sets = try Self.billSets(a, "bm_gym").count
+    try store.apply(.acceptBillAmount("bm_gym"))
+    try await Mapper.eventually { try Self.record(a, "bm_gym")?.changes.count == 2 }
+    let written = try Self.billSets(a, "bm_gym")
+    #expect(written.count == sets + 1)
+    let p = try #require(written.last)
+    #expect(Self.text(p["amount_minor"]) == "20000" && Self.text(p["status"]) == "active")
+    #expect(
+      Self.flat(p["changes"]) == [
+        "amount_minor=23000 amount_mode=fixed from=2026-10-05 tolerance_bp=200",
+        "amount_minor=26000 amount_mode=fixed from=2027-02-05 tolerance_bp=200",
+      ])
+    #expect(p["pauses"] == nil)
+    try await Mapper.eventually { try Self.bill(store, "Gym Club").notices.isEmpty }
+    let gym = try Self.bill(store, "Gym Club")
+    #expect(gym.amount == .aed(230_00) && gym.nextAmount == .aed(260_00) && gym.nextAmountFrom == LocalDate(2027, 2, 5))
+    #expect(gym.payments.first?.txnID == ids[3])
+  }
+
+  @Test func acceptWithoutAPriceNoticeWritesNothing() async throws {
+    let a = try Mapper.account()
+    let suite = "recurring.accept.none"
+    let store = try await Self.storeWith(a, suite: suite) { o throws(AuthorError) in
+      var d = Self.gym(start: Self.day(2026, 7, 5))
+      d.changes = [
+        OpAuthor.BillChangeDraft(from: Self.day(2027, 2, 5), terms: OpAuthor.BillTermsDraft(mode: .fixed(toleranceBp: 200), amountMinor: 260_00))
+      ]
+      try o.setBill(id: "bm_gym", d)
+      _ = try Self.monthly(&o, day: 5, months: [7, 8, 9, 10], amounts: [200_00, 200_00, 200_00, 230_00])
+    }
+    let notice = try #require(try Self.bill(store, "Gym Club").notices.first)
+    try store.apply(.dismissBillNotice("bm_gym", noticeID: notice.id))
+    try await Mapper.eventually { try Self.bill(store, "Gym Club").priceChangeFrom == nil }
+    let dismissed = try Self.bill(store, "Gym Club")
+    #expect(dismissed.notices.isEmpty && dismissed.priceChangeFrom == nil && dismissed.amount == .aed(200_00))
+    #expect(throws: ActionError.notFound) { try store.apply(.acceptBillAmount("bm_gym")) }
+    let pending = try a.context.store.pendingCount()
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    await #expect(throws: LedgerEditAuthor.Failure.refused("no price change")) {
+      try await author.author(.acceptBillAmount("bm_gym"), before: store.state, today: MayaLedger.now.date)
+    }
+    #expect(try a.context.store.pendingCount() == pending)
+    #expect(try Self.record(a, "bm_gym")?.changes.map(\.amountMinor) == [260_00])
+  }
+
+  @Test func pausingOnTheDayOfAMatchedChargeStartsAfterIt() async throws {
+    let a = try Mapper.account()
+    var ids: [String] = []
+    let store = try await Self.storeWith(a, suite: "recurring.pause.matched") { o throws(AuthorError) in
+      try o.setBill(id: "bm_gym", Self.gym(start: Self.day(2026, 7, 10)))
+      ids = try Self.monthly(&o, day: 10, months: [7, 8, 9, 10])
+    }
+    #expect(try Self.bill(store, "Gym Club").payments.first?.due == LocalDate(2026, 10, 10))
+    let sets = try Self.billSets(a, "bm_gym").count
+    try store.apply(.pauseBill("bm_gym", until: nil))
+    #expect(try Self.bill(store, "Gym Club").state == .paused)
+    #expect(try Self.bill(store, "Gym Club").pausedSince == LocalDate(2026, 11, 10))
+    try await Mapper.eventually { try Self.record(a, "bm_gym")?.pauses.isEmpty == false }
+    let written = try Self.billSets(a, "bm_gym")
+    #expect(written.count == sets + 1)
+    let p = try #require(written.last)
+    #expect(Self.text(p["status"]) == "active" && Self.text(p["end"]) == "null")
+    #expect(Self.flat(p["pauses"]) == ["from=2026-11-10 until=null"])
+    #expect(p["changes"] == nil)
+    await store.reload()
+    let gym = try Self.bill(store, "Gym Club")
+    #expect(gym.state == .paused && gym.pausedSince == LocalDate(2026, 11, 10) && gym.pausedUntil == nil)
+    #expect(gym.notices.isEmpty)
+    #expect(gym.payments.first { $0.due == LocalDate(2026, 10, 10) }?.txnID == ids[3])
+    try store.apply(.resumeBill("bm_gym"))
+    try await Mapper.eventually { try Self.record(a, "bm_gym")?.pauses.isEmpty == true }
+    let resumed = try #require(try Self.billSets(a, "bm_gym").last)
+    #expect(resumed["pauses"] == nil)
+    try await Mapper.eventually { try Self.bill(store, "Gym Club").state == .tracked }
+  }
+
+  @Test func pauseAndReactivateSkipPaidDues() throws {
+    var d = Self.draft()
+    try BillEdits.pause(&d, today: Self.day(2026, 11, 6), until: nil, paid: [Self.day(2026, 11, 6), Self.day(2026, 12, 6)])
+    #expect(d.pauses == [OpAuthor.BillPauseDraft(from: Self.day(2027, 1, 6))])
+    try BillEdits.resume(&d, today: Self.day(2026, 11, 7))
+    #expect(d.pauses.isEmpty)
+    d = Self.draft()
+    try BillEdits.pause(&d, today: Self.day(2026, 11, 5), until: nil, paid: [Self.day(2026, 10, 6)])
+    #expect(d.pauses == [OpAuthor.BillPauseDraft(from: Self.day(2026, 11, 5))])
+    d = Self.draft()
+    #expect(throws: LedgerEditAuthor.Failure.refused("until")) {
+      try BillEdits.pause(&d, today: Self.day(2026, 11, 6), until: Self.day(2026, 11, 20), paid: [Self.day(2026, 11, 6)])
+    }
+    d = Self.draft()
+    try BillEdits.end(&d, lastPayment: Self.day(2026, 11, 6))
+    try BillEdits.reactivate(&d, today: Self.day(2027, 1, 20), paid: [Self.day(2026, 11, 6)])
+    #expect(d.pauses == [OpAuthor.BillPauseDraft(from: Self.day(2026, 12, 6), until: Self.day(2027, 1, 20))])
+    d = Self.draft()
+    try BillEdits.end(&d, lastPayment: Self.day(2026, 11, 6))
+    try BillEdits.reactivate(&d, today: Self.day(2026, 12, 6), paid: [])
+    #expect(d.pauses.isEmpty && d.status == .active && d.end == nil)
+  }
+
+  @Test func thePatchPausesAfterAPaidDueAndAcceptsOnlyANotice() throws {
+    var s = MayaLedger.state
+    let dewa = try #require(s.bills.firstIndex { $0.id == "dewa" })
+    s.bills[dewa].payments = [BillPayment(due: s.bills[dewa].nextDue, amount: s.bills[dewa].amount, link: .marked)]
+    let due = s.bills[dewa].nextDue
+    _ = try LiveLedgerStore.patch(.pauseBill("dewa", until: nil), &s, now: MayaLedger.now)
+    #expect(s.bills[dewa].pausedSince == BillPatch.shift(s.bills[dewa], from: due, by: 1))
+    var t = MayaLedger.state
+    let du = try #require(t.bills.firstIndex { $0.id == "du" })
+    t.bills[du].notices = []
+    #expect(throws: ActionError.notFound) { try LiveLedgerStore.patch(.acceptBillAmount("du"), &t, now: MayaLedger.now) }
+  }
+
+  final class LookupGate: Sendable {
+    let calls = Mutex(0)
+    let missFirst = Mutex(true)
+    let stream: AsyncStream<Void>
+    let release: AsyncStream<Void>.Continuation
+
+    init() {
+      (stream, release) = AsyncStream<Void>.makeStream()
+    }
+  }
+
+  @Test func reloadPublishesBeforeTheForkLookupFinishes() async throws {
+    let a = try Mapper.account()
+    let seeded = try await Self.store(a, suite: "recurring.fork.async")
+    let id = try Self.bill(seeded, "Netflix").id
+    let record = try #require(try Self.record(a, id))
+    var mine = try #require(LedgerEditAuthor.draft(record))
+    mine.changes = [OpAuthor.BillChangeDraft(from: Self.day(2026, 12, 6), terms: OpAuthor.BillTermsDraft(mode: .fixed(toleranceBp: 200), amountMinor: 63_00))]
+    var theirs = try #require(LedgerEditAuthor.draft(record))
+    theirs.pauses = [OpAuthor.BillPauseDraft(from: Self.day(2026, 10, 10))]
+    let m = mine
+    let t = theirs
+    let v = record.version
+    let blob = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        try o.setBill(id: id, parentVersion: v, m)
+        try o.setBill(id: id, parentVersion: v, t)
+      })
+    try await a.outbox.enqueue(blob.ops)
+    try await a.observer.reproject()
+    let loser = blob.ops[0].opID
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    let gate = LookupGate()
+    seeded.lookUpForks = { ids in
+      gate.calls.withLock { $0 += 1 }
+      if gate.missFirst.withLock({ m in
+        defer { m = false }
+        return m
+      }) {
+        return LedgerEditAuthor.ForkLookup()
+      }
+      for await _ in gate.stream { break }
+      return await author.forkLookup(ids)
+    }
+    await seeded.reload()
+    let generic = try #require(try Self.bill(seeded, "Netflix").notices.first { $0.id == "fork.\(loser)" })
+    #expect(generic.kind == .changedOnTwoDevices(summary: "A change made on your other iPhone was replaced"))
+    try await Mapper.eventually { gate.calls.withLock { $0 } == 1 }
+    await seeded.reload()
+    #expect(try Self.bill(seeded, "Netflix").notices.contains { $0.id == "fork.\(loser)" })
+    try await Mapper.eventually { gate.calls.withLock { $0 } == 2 }
+    #expect(gate.calls.withLock { $0 } == 2)
+    await seeded.reload()
+    #expect(gate.calls.withLock { $0 } == 2)
+    gate.release.yield()
+    try await Mapper.eventually {
+      try Self.bill(seeded, "Netflix").notices.contains { $0.kind == .changedOnTwoDevices(summary: "Amount 63.00 from 6 Dec") }
+    }
+    #expect(
+      try Self.bill(seeded, "Netflix").notices.contains { $0.kind == .changedOnTwoDevices(summary: "Amount 63.00 from 6 Dec") })
+    await seeded.reload()
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(gate.calls.withLock { $0 } == 2)
+  }
+
+  @Test func theMappedCandidatesAreReusedForTracking() async throws {
+    let a = try Mapper.account()
+    for b in try await Mapper.seed(a) { try await a.outbox.enqueue(b.ops) }
+    if let blob = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in try Self.gymSeries(&o) }) {
+      try await a.outbox.enqueue(blob.ops)
+    }
+    try await a.observer.reproject()
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    let today = Self.day(2026, 10, 10)
+    let generation = a.projection.generation
+    #expect(author.candidates.get(generation: generation, today: today) == nil)
+    let state = try author.map(a.projection.reader, context: Mapper.context())
+    let cached = try #require(author.candidates.get(generation: generation, today: today))
+    var rows = try a.projection.reader.activity(limit: 1_000_000)
+    rows += try a.projection.reader.archived(limit: 1_000_000)
+    #expect(cached == LedgerStateMapper.detect(try a.projection.reader.bills(), rows: rows, today: today))
+    #expect(state.billCandidates.map(\.id) == cached.map(\.id))
+    #expect(author.candidates.get(generation: generation, today: Self.day(2026, 10, 11)) == nil)
+    let id = OpAuthor.detectedBillID(key: "gym club", direction: "debit", currency: "AED")
+    try await author.author(.trackCandidate(id), before: state, today: MayaLedger.now.date)
+    #expect(try Self.record(a, id)?.status == "active")
+    #expect(a.projection.generation != generation)
   }
 }

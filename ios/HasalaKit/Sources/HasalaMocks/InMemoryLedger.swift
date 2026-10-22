@@ -248,7 +248,9 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }),
+            s.bills[i].notices.contains(where: { if case .priceChange = $0.kind { true } else { false } })
+      else { throw .notFound }
       touchedBills = true
       s.bills[i].priceChangeFrom = nil
       s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
@@ -298,9 +300,10 @@ public final class InMemoryLedger: LedgerStore {
     case .pauseBill(let id, let until):
       let i = try expenseIndex(id)
       guard s.bills[i].state == .tracked else { throw .invalidBill }
-      if let until, until <= today { throw .invalidBill }
+      let from = Self.pauseStart(s.bills[i], today: today)
+      if let until, until <= from { throw .invalidBill }
       s.bills[i].state = .paused
-      s.bills[i].pausedSince = today
+      s.bills[i].pausedSince = from
       s.bills[i].pausedUntil = until
       title = "Paused \(s.bills[i].name)"
     case .resumeBill(let id):
@@ -499,6 +502,19 @@ public final class InMemoryLedger: LedgerStore {
     field(\.samePurchase)
     field(\.heldCopy)
     field(\.billID)
+  }
+
+  static func pauseStart(_ b: Bill, today: LocalDate) -> LocalDate {
+    let paid = Set(b.payments.map(\.due))
+    let from = max(today, BillDueDates.start(b))
+    var due = BillDueDates.first(b, onOrAfter: from)
+    guard paid.contains(due) else { return from }
+    var steps = 0
+    while paid.contains(due), steps < 5_000 {
+      due = BillDueDates.shift(b, from: due, by: 1)
+      steps += 1
+    }
+    return due
   }
 
   private static func end(_ b: inout Bill, lastPayment: LocalDate) throws(ActionError) {

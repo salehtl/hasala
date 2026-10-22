@@ -84,45 +84,62 @@ nonisolated extension LedgerStateMapper {
     row.direction == "debit" && BillEdits.linkable(row, direction: "debit")
   }
 
-  static func derive(
-    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], rows: [TxnRow], today: CivilDate
-  ) -> Derived {
+  struct DeriveRows {
     var match: [MatchRow] = []
     var detect: [DetectRow] = []
     var days: [String: CivilDate] = [:]
-    match.reserveCapacity(rows.count)
-    detect.reserveCapacity(rows.count)
+  }
+
+  static func deriveRows(_ rows: [TxnRow], match wantMatch: Bool = true) -> DeriveRows {
+    var out = DeriveRows()
+    if wantMatch { out.match.reserveCapacity(rows.count) }
+    out.detect.reserveCapacity(rows.count)
     for row in rows {
       guard let day = CivilDate(wire: row.localDate) else { continue }
-      days[row.id] = day
       let eligible = billEligible(row)
-      match.append(
-        MatchRow(
-          txnID: row.id, merchantKey: row.merchantKey, direction: row.direction, amountMinor: row.amountMinor,
-          currency: row.currency, homeMinor: row.amountHomeMinor, day: day, eligible: eligible))
-      detect.append(
+      if wantMatch {
+        out.days[row.id] = day
+        out.match.append(
+          MatchRow(
+            txnID: row.id, merchantKey: row.merchantKey, direction: row.direction, amountMinor: row.amountMinor,
+            currency: row.currency, homeMinor: row.amountHomeMinor, day: day, eligible: eligible))
+      }
+      out.detect.append(
         DetectRow(
           txnID: row.id, merchantKey: row.merchantKey, merchantName: row.displayName, direction: row.direction,
           amountMinor: row.amountMinor, currency: row.currency, day: day, category: row.category,
           eligible: eligible && Grammar.isBillKey(row.merchantKey)))
     }
+    return out
+  }
+
+  static func derive(
+    _ records: [(id: String, bill: CoreReplay.Bill)], resolutions: [BillResolution], rows: [TxnRow], today: CivilDate
+  ) -> Derived {
+    let built = deriveRows(rows)
     let result = BillMatcher.run(
-      bills: records.map { BillMatchInput(id: $0.id, bill: $0.bill) }, resolutions: resolutions, rows: match, today: today)
+      bills: records.map { BillMatchInput(id: $0.id, bill: $0.bill) }, resolutions: resolutions, rows: built.match,
+      today: today)
     var matched: [String: [DerivedMatch]] = [:]
     for m in result.matches where !m.explicit {
       matched[m.bill, default: []].append(DerivedMatch(due: m.due, txnID: m.txnID))
     }
     var notices: [String: [BillNoticeCore]] = [:]
     for n in result.notices { notices[n.bill, default: []].append(n) }
-    let covered = Set(records.flatMap(\.bill.keys))
-    let candidates = BillDetector.run(rows: detect, coveredKeys: covered, today: today)
-    return Derived(result: result, matched: matched, notices: notices, days: days, candidates: candidates)
+    let candidates = detect(records, built.detect, today: today)
+    return Derived(result: result, matched: matched, notices: notices, days: built.days, candidates: candidates)
+  }
+
+  static func detect(_ records: [(id: String, bill: CoreReplay.Bill)], _ rows: [DetectRow], today: CivilDate)
+    -> [BillCandidateCore]
+  {
+    BillDetector.run(rows: rows, coveredKeys: Set(records.flatMap(\.bill.keys)), today: today)
   }
 
   static func detect(_ records: [(id: String, bill: CoreReplay.Bill)], rows: [TxnRow], today: CivilDate)
     -> [BillCandidateCore]
   {
-    derive(records, resolutions: [], rows: rows, today: today).candidates
+    detect(records, deriveRows(rows, match: false).detect, today: today)
   }
 
   static func candidates(_ found: [BillCandidateCore], taxonomy: TaxonomyView) -> [BillCandidate] {
@@ -365,6 +382,10 @@ nonisolated extension LedgerStateMapper {
     switch b.status {
     case "active":
       if let p = v.pauses.last(where: { $0.from <= t && ($0.until.map { t < $0 } ?? true) }) {
+        state = .paused
+        pausedSince = local(p.from)
+        pausedUntil = p.until.map(local)
+      } else if let p = v.pauses.last, p.from > t, next.map({ $0 >= p.from }) ?? true {
         state = .paused
         pausedSince = local(p.from)
         pausedUntil = p.until.map(local)

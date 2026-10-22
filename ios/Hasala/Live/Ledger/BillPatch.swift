@@ -36,6 +36,19 @@ nonisolated enum BillPatch {
     ([b.trackingSince, b.payments.map(\.due).min(), b.history.min()].compactMap { $0 } + [b.nextDue]).min() ?? b.nextDue
   }
 
+  static func pauseStart(_ b: Bill, today: LocalDate) -> LocalDate {
+    let paid = Set(b.payments.map(\.due))
+    let from = max(today, start(b))
+    var due = first(b, onOrAfter: from)
+    guard paid.contains(due) else { return from }
+    var steps = 0
+    while paid.contains(due), steps < 5_000 {
+      due = shift(b, from: due, by: 1)
+      steps += 1
+    }
+    return due
+  }
+
   static func index(_ s: LedgerState, _ id: BillID, expense: Bool = true) throws(ActionError) -> Int {
     guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].state != .dismissed else { throw .notFound }
     if expense, s.bills[i].isIncome { throw .invalidBill }
@@ -144,9 +157,10 @@ nonisolated enum BillPatch {
     case .pauseBill(let id, let until):
       let i = try index(s, id)
       guard s.bills[i].state == .tracked else { throw .invalidBill }
-      if let until, until <= today { throw .invalidBill }
+      let from = pauseStart(s.bills[i], today: today)
+      if let until, until <= from { throw .invalidBill }
       s.bills[i].state = .paused
-      s.bills[i].pausedSince = today
+      s.bills[i].pausedSince = from
       s.bills[i].pausedUntil = until
       return "Paused \(s.bills[i].name)"
     case .resumeBill(let id):

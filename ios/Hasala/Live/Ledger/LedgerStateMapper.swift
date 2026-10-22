@@ -38,7 +38,16 @@ nonisolated enum LedgerStateMapper {
   /// Display names of the banks the beta reads (card accounts name their bank by id).
   static let bankNames = RuntimeMailboxLedger.bankNames
 
+  struct Mapped: Sendable {
+    var state: LedgerState
+    var candidates: [BillCandidateCore]
+  }
+
   static func map(_ r: LedgerReader, context c: Context) throws -> LedgerState {
+    try mapped(r, context: c).state
+  }
+
+  static func mapped(_ r: LedgerReader, context c: Context) throws -> Mapped {
     guard let today = CivilDate(year: c.today.year, month: c.today.month, day: c.today.day) else { throw MapError.date }
     let month = today.yearMonth
     var rows = try r.activity(limit: 1_000_000)
@@ -120,12 +129,13 @@ nonisolated enum LedgerStateMapper {
         learnedToday: rule.origin == "learned" && rule.createdAt.flatMap(localDay) == c.today)
     }
 
-    return LedgerState(
+    let state = LedgerState(
       categories: categories, accounts: accounts, txns: txns, plan: plan, bills: bills, billCandidates: feed.candidates,
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
       unreadMail: unreadMail)
+    return Mapped(state: state, candidates: feed.derived.candidates)
   }
 
   static func unreadMail(_ row: TxnRow, senders: [String: String] = [:], accounts: [CoreReplay.Account] = []) -> UnreadMail {

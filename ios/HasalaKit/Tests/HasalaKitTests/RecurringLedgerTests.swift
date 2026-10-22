@@ -36,6 +36,24 @@ struct RecurringLedgerTests {
     #expect(throws: ActionError.invalidBill) { try ledger.apply(.resumeBill("netflix")) }
   }
 
+  @Test func pauseStartsAfterADueAlreadyPaid() throws {
+    let ledger = InMemoryLedger()
+    try ledger.apply(.markBillPaid("dewa"))
+    #expect(ledger.state.bill("dewa")?.payments.first?.due == LocalDate(2026, 10, 14))
+    #expect(throws: ActionError.invalidBill) { try ledger.apply(.pauseBill("dewa", until: LocalDate(2026, 11, 14))) }
+    try ledger.apply(.pauseBill("dewa", until: nil))
+    let b = try #require(ledger.state.bill("dewa"))
+    #expect(b.state == .paused && b.pausedSince == LocalDate(2026, 11, 14))
+    #expect(b.payments.first?.due == LocalDate(2026, 10, 14))
+  }
+
+  @Test func acceptNeedsAPriceNotice() throws {
+    let ledger = InMemoryLedger()
+    try ledger.apply(.dismissBillNotice("du", noticeID: "priceChange.du"))
+    #expect(throws: ActionError.notFound) { try ledger.apply(.acceptBillAmount("du")) }
+    #expect(throws: ActionError.notFound) { try ledger.apply(.acceptBillAmount("netflix")) }
+  }
+
   @Test func pauseUntilADateAndUndo() throws {
     let ledger = InMemoryLedger()
     #expect(throws: ActionError.invalidBill) { try ledger.apply(.pauseBill("netflix", until: today)) }

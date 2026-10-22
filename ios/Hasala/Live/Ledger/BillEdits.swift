@@ -100,9 +100,23 @@ nonisolated enum BillEdits {
     }
   }
 
-  static func pause(_ d: inout Draft, today: CivilDate, until: CivilDate?) throws {
+  static func firstUnpaidDue(_ v: BillScheduleView, onOrAfter day: CivilDate, paid: Set<CivilDate>) -> CivilDate? {
+    var cursor = v.due(onOrAfter: day)
+    var steps = 0
+    while let c = cursor, paid.contains(c), steps < 5_000 {
+      cursor = c.adding(days: 1).flatMap { v.due(onOrAfter: $0) }
+      steps += 1
+    }
+    return cursor
+  }
+
+  static func pause(_ d: inout Draft, today: CivilDate, until: CivilDate?, paid: Set<CivilDate> = []) throws {
     guard d.status == .active, !isPaused(d, on: today) else { throw Failure.refused("not running") }
-    let from = max(today, d.start)
+    var from = max(today, d.start)
+    if let v = view(d), let first = v.due(onOrAfter: from), paid.contains(first) {
+      guard let unpaid = firstUnpaidDue(v, onOrAfter: first, paid: paid) else { throw Failure.refused("no later due") }
+      from = unpaid
+    }
     if let until, until <= from { throw Failure.refused("until") }
     if let last = d.pauses.last {
       guard let lastUntil = last.until, lastUntil <= from else { throw Failure.refused("pauses overlap") }
@@ -111,13 +125,17 @@ nonisolated enum BillEdits {
   }
 
   static func resume(_ d: inout Draft, today: CivilDate) throws {
-    guard d.status == .active,
-      let i = d.pauses.lastIndex(where: { $0.from <= today && ($0.until.map { today < $0 } ?? true) })
-    else { throw Failure.refused("not paused") }
-    if d.pauses[i].from < today {
-      d.pauses[i].until = today
+    guard d.status == .active else { throw Failure.refused("not paused") }
+    if let i = d.pauses.lastIndex(where: { $0.from <= today && ($0.until.map { today < $0 } ?? true) }) {
+      if d.pauses[i].from < today {
+        d.pauses[i].until = today
+      } else {
+        d.pauses.remove(at: i)
+      }
+    } else if let last = d.pauses.last, last.from > today {
+      d.pauses.removeLast()
     } else {
-      d.pauses.remove(at: i)
+      throw Failure.refused("not paused")
     }
   }
 
@@ -134,12 +152,14 @@ nonisolated enum BillEdits {
     }
   }
 
-  static func reactivate(_ d: inout Draft, today: CivilDate) throws {
+  static func reactivate(_ d: inout Draft, today: CivilDate, paid: Set<CivilDate> = []) throws {
     guard d.status == .cancelled, let old = d.end else { throw Failure.refused("not ended") }
     d.status = .active
     d.end = nil
-    guard old < today else { return }
-    let from = max(old, d.pauses.last?.until ?? old)
+    guard old < today, let v = view(d), let next = old.adding(days: 1),
+      let first = firstUnpaidDue(v, onOrAfter: next, paid: paid)
+    else { return }
+    let from = max(first, d.pauses.last?.until ?? first)
     if from < today { d.pauses.append(OpAuthor.BillPauseDraft(from: from, until: today)) }
   }
 

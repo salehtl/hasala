@@ -8,6 +8,7 @@ import CoreTime
 import CoreWire
 import Foundation
 import HasalaModels
+import Synchronization
 
 /// One screen gesture (`LedgerEdit`) as ops (spec 04 §15.1 `LedgerActions`; 03a/03b/03c):
 /// one blob per edit through CoreDomain's `OpAuthor`, built under the account's shared
@@ -19,6 +20,40 @@ import HasalaModels
 nonisolated struct LedgerEditAuthor: Sendable {
   let observer: LedgerPageObserver
   let outbox: Outbox
+  let candidates = CandidateCache()
+
+  final class CandidateCache: Sendable {
+    private struct Entry {
+      var generation: UInt64
+      var today: CivilDate
+      var list: [BillCandidateCore]
+    }
+
+    private let slot = Mutex<Entry?>(nil)
+
+    func put(_ list: [BillCandidateCore], generation: UInt64, today: CivilDate) {
+      slot.withLock { $0 = Entry(generation: generation, today: today, list: list) }
+    }
+
+    func get(generation: UInt64, today: CivilDate) -> [BillCandidateCore]? {
+      slot.withLock { e in
+        guard let e, e.generation == generation, e.today == today else { return nil }
+        return e.list
+      }
+    }
+  }
+
+  func map(_ reader: LedgerReader, context: LedgerStateMapper.Context) throws -> LedgerState {
+    let projection = observer.projection
+    let generation = projection.generation
+    let m = try LedgerStateMapper.mapped(reader, context: context)
+    if projection.generation == generation,
+      let t = CivilDate(year: context.today.year, month: context.today.month, day: context.today.day)
+    {
+      candidates.put(m.candidates, generation: generation, today: t)
+    }
+    return m.state
+  }
 
   var reader: LedgerReader { observer.reader }
 
@@ -146,7 +181,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in a.setBillOccurrence(bill: id, due: d, .paid(txn: nil)) }
     case .acceptBillAmount(let id):
       guard let shownBill = before.bill(id) else { throw Failure.notFound }
-      let shown = shownBill.amount
       for n in shownBill.notices {
         guard case .priceChange(_, let charged, let from) = n.kind else { continue }
         let f = try civil(from)
@@ -155,14 +189,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
         }
         return [.bill(id: id, draft: old)]
       }
-      let old = try await editBill(id) { d in
-        if d.changes.isEmpty {
-          d.amountMinor = shown.minor
-        } else {
-          d.changes[d.changes.count - 1].terms.amountMinor = shown.minor
-        }
-      }
-      return [.bill(id: id, draft: old)]
+      throw Failure.refused("no price change")
     case .stopTrackingBill(let id):
       let t = try civil(today)
       let old = try await editBill(id) { d throws in try BillEdits.end(&d, lastPayment: t) }
@@ -178,7 +205,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .pauseBill(let id, let until):
       let t = try civil(today)
       let u = try until.map { try civil($0) }
-      let old = try await editBill(id) { d throws in try BillEdits.pause(&d, today: t, until: u) }
+      let paid = Self.paidDues(before, id)
+      let old = try await editBill(id) { d throws in try BillEdits.pause(&d, today: t, until: u, paid: paid) }
       return [.bill(id: id, draft: old)]
     case .resumeBill(let id):
       let t = try civil(today)
@@ -190,7 +218,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return [.bill(id: id, draft: old)]
     case .reactivateBill(let id):
       let t = try civil(today)
-      let old = try await editBill(id) { d throws in try BillEdits.reactivate(&d, today: t) }
+      let paid = Self.paidDues(before, id)
+      let old = try await editBill(id) { d throws in try BillEdits.reactivate(&d, today: t, paid: paid) }
       return [.bill(id: id, draft: old)]
     case .deleteBill(let id):
       let old = try await editBill(id) { d throws in try BillEdits.delete(&d) }
@@ -258,6 +287,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
       break
     }
     return []
+  }
+
+  static func paidDues(_ s: LedgerState, _ id: String) -> Set<CivilDate> {
+    Set((s.bill(id)?.payments ?? []).compactMap { CivilDate(year: $0.due.year, month: $0.due.month, day: $0.due.day) })
   }
 
   static func budgetInverse(_ plan: CoreReplay.PlanState, category c: String, month m: CivilMonth, shown: YearMonth) -> Inverse {
@@ -627,12 +660,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   private func candidate(_ id: String, track: Bool, today: LocalDate) async throws -> [Inverse] {
     let t = try civil(today)
+    let generation = observer.projection.generation
     let records = try reader.bills()
-    var rows = try reader.activity(limit: 1_000_000)
-    rows += try reader.archived(limit: 1_000_000)
-    guard let c = LedgerStateMapper.detect(records, rows: rows, today: t).first(where: { $0.id == id }) else {
-      throw Failure.notFound
+    let found: [BillCandidateCore]
+    if let cached = candidates.get(generation: generation, today: t) {
+      found = cached
+    } else {
+      var rows = try reader.activity(limit: 1_000_000)
+      rows += try reader.archived(limit: 1_000_000)
+      found = LedgerStateMapper.detect(records, rows: rows, today: t)
     }
+    guard let c = found.first(where: { $0.id == id }) else { throw Failure.notFound }
     var d = Self.candidateDraft(c)
     let taxonomy = try reader.taxonomy()
     if d.category.flatMap({ taxonomy.info($0)?.kind }) != .spending {
@@ -660,6 +698,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return [.bill(id: id, draft: old)]
     }
     throw Failure.notFound
+  }
+
+  struct ForkLookup: Sendable {
+    var records: [String: CoreReplay.Bill] = [:]
+    var settled: Set<String> = []
+  }
+
+  func forkLookup(_ ids: Set<String>) async -> ForkLookup {
+    guard !ids.isEmpty else { return ForkLookup() }
+    let ops = await observer.ops(ids)
+    return ForkLookup(records: ops.compactMapValues { Replay.billRecord($0) }, settled: Set(ops.keys))
   }
 
   func billRecords(opIDs: Set<String>) async -> [String: CoreReplay.Bill] {
