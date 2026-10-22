@@ -82,9 +82,16 @@ struct LiveMailboxTests {
     }
     #expect(throws: MailConnectFailure.offline) { try LiveMailboxConnecting.linked(.failed(.offline), provider: .outlook) }
     #expect(throws: MailConnectFailure.cancelled) { try LiveMailboxConnecting.linked(.cancelled, provider: .outlook) }
-    #expect(throws: MailConnectFailure.failed(LiveMailboxConnecting.message(.permissionMissing, provider: .outlook))) {
+    #expect(throws: MailConnectFailure.permissionMissing(.outlook)) {
       try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .outlook)
     }
+    #expect(throws: MailConnectFailure.permissionMissing(.gmail)) {
+      try LiveMailboxConnecting.linked(.failed(.permissionMissing), provider: .gmail)
+    }
+    #expect(MailConnectFailure.permissionMissing(.gmail).message(for: .gmail)
+      == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
+    #expect(LiveMailboxConnecting.message(.permissionMissing, provider: .gmail)
+      == MailConnectFailure.permissionMissingLine(.gmail))
     #expect(try LiveMailboxConnecting.linked(.connected(address: nil), provider: .outlook) == nil)
     #expect(try LiveMailboxConnecting.linked(.connected(address: "maya.k@example.com"), provider: .outlook) == nil)
     #expect(

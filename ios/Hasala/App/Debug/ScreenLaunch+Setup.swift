@@ -7,8 +7,7 @@
     static let setupScreens: [Screen] = [
       Screen("setup.bank", scenario: "setupBank"),
       Screen("setup.chooseEmail", scenario: "setupBank") { graph in
-        // "Continue with 2 banks": the chooser over the bank step (Debug reads two providers).
-        await setupModel(graph).continueWithBanks()
+        setupModel(graph).chooseEmail()
       },
       Screen("setup.scan", scenario: "setupEmail") { await setUp($0, to: .scan, scanStep: .milliseconds(450)) },
       Screen("setup.scanOutlook", scenario: "setupEmail") { graph in
@@ -22,6 +21,10 @@
       Screen("setup.plan", scenario: "setupEmail") { await setUp($0, to: .plan, scanStep: .milliseconds(450)) },
       // The import done by the time the result shows: "268 transactions, sorted."
       Screen("setup.result", scenario: "setupEmail") { await setUp($0, to: .result, scanStep: .milliseconds(5)) },
+      Screen("setup.resultNoAlerts", scenario: "setupEmail") { graph in
+        mock(graph)?.total = 0
+        await setUp(graph, to: .result, scanStep: .milliseconds(5))
+      },
       Screen("setup.sort", scenario: "setupEmail", drive: { await setUp($0, to: .sort, scanStep: .milliseconds(450)) }) { graph in
         (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
       },

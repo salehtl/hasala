@@ -499,6 +499,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     case .declined: throw .switchDeclined
     case .failed(.offline): throw .offline
     case .failed(.noMailbox): throw .noMailbox(provider)
+    case .failed(.permissionMissing): throw .permissionMissing(provider)
     case .failed(let f): throw .failed(message(f, provider: provider))
     }
   }
@@ -571,7 +572,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   static func message(_ f: ConnectFailure, provider: MailProviderKind = .gmail) -> String {
     switch f {
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."
-    case .permissionMissing: "Hasala needs permission to read your bank alerts. Try again and allow it."
+    case .permissionMissing: MailConnectFailure.permissionMissingLine(provider)
     case .noMailbox: MailConnectFailure.noMailboxLine(provider)
     case .stepUpFailed: "We couldn't confirm it's you. Try again."
     case .mailboxInUse:

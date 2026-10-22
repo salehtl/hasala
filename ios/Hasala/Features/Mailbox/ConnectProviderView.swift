@@ -29,13 +29,7 @@ struct ConnectProviderView: View {
   /// screen fits above its dock inside the profile sheet.
   var choiceIsBack: Bool
   var asksSwitch: Bool
-  /// The mailbox a confirmed sign-in replaces, while "Change your email?" asks.
-  @State private var switching: MailboxSnapshot?
-  @State private var switchImpact: MailboxDisconnectImpact?
-  @State private var askingImpact = false
-  /// The provider of the link a confirmed sign-in takes over from another iPhone, while
-  /// "Read your email on this iPhone?" asks.
-  @State private var takingOver: MailProviderKind?
+  @State private var asking: MailProviderKind?
 
   init(
     provider: MailProviderKind, coordinator: MailConnectCoordinator, banks: [SupportedBank],
@@ -138,31 +132,7 @@ struct ConnectProviderView: View {
     }
     // At large text sizes the screen scrolls under its dock: say so once.
     .scrollIndicatorsFlash(onAppear: true)
-    .alert(MailCopy.switchTitle, isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
-           presenting: switching) { _ in
-      if let impact = switchImpact {
-        Button(MailCopy.keepOnSwitch("Use \(provider.appName)", impact)) { run(replacing: true) }
-          .keyboardShortcut(.defaultAction)
-          .accessibilityIdentifier("mail.confirmSwitch")
-        Button("Use \(provider.appName), remove them", role: .destructive) { run(replacing: true, removingOld: true) }
-          .accessibilityIdentifier("mail.confirmSwitch.remove")
-        Button("Cancel", role: .cancel) {}
-      } else {
-        Button("Cancel", role: .cancel) {}
-        Button("Use \(provider.appName)") { run(replacing: true) }
-          .accessibilityIdentifier("mail.confirmSwitch")
-      }
-    } message: { old in
-      Text(MailCopy.switchMessage(from: old.provider, to: provider, impact: switchImpact))
-    }
-    .alert(MailCopy.takeoverTitle, isPresented: Binding(get: { takingOver != nil }, set: { if !$0 { takingOver = nil } }),
-           presenting: takingOver) { _ in
-      Button("Cancel", role: .cancel) {}
-      Button("Read it here") { run(replacing: true) }
-        .accessibilityIdentifier("mail.confirmTakeover")
-    } message: { held in
-      Text(MailCopy.takeoverMessage(from: held, to: provider))
-    }
+    .providerConnectQuestions(coordinator, provider: provider, request: $asking, run: run)
     .mailSwitchQuestion(coordinator, asks: asksSwitch)
     // Setup moves on to the first scan; the profile's moment is Bank alerts' new row.
     .hHaptic(.success, trigger: connectedOutcome) { _, new in isSetup && new != nil }
@@ -230,25 +200,11 @@ struct ConnectProviderView: View {
       : "Outlook: personal Microsoft accounts only."
   }
 
-  /// The provider's sign-in; once connected, on to the next screen. A sign-in that would
-  /// replace the account's link to another provider asks first.
   private func connect() {
-    if let held = coordinator.takesOver {
-      takingOver = held
-    } else if let old = coordinator.replaced(by: provider) {
-      guard !askingImpact else { return }
-      askingImpact = true
-      Task {
-        switchImpact = await coordinator.mailbox.disconnectImpact(old.id)
-        askingImpact = false
-        switching = old
-      }
-    } else {
-      run(replacing: false)
-    }
+    asking = provider
   }
 
-  private func run(replacing: Bool, removingOld: Bool = false) {
+  private func run(replacing: Bool, removingOld: Bool) {
     Task {
       await coordinator.connect(provider, replacing: replacing, removingOld: removingOld)
       if case .connected(let id)? = coordinator.outcome { onConnected(id) }
@@ -261,7 +217,77 @@ struct ConnectProviderView: View {
     switch failure {
     case .alreadyConnected: .accent
     case .offline, .takenByOtherIPhone, .cancelled, .switchDeclined: .warning
-    case .adminApprovalNeeded, .noMailbox, .failed: .error
+    case .adminApprovalNeeded, .noMailbox, .permissionMissing, .failed: .error
     }
+  }
+}
+
+private struct ProviderConnectQuestions: ViewModifier {
+  let coordinator: MailConnectCoordinator
+  let provider: MailProviderKind
+  @Binding var request: MailProviderKind?
+  let run: (_ replacing: Bool, _ removingOld: Bool) -> Void
+  @State private var switching: MailboxSnapshot?
+  @State private var switchImpact: MailboxDisconnectImpact?
+  @State private var askingImpact = false
+  @State private var takingOver: MailProviderKind?
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: request) { _, asked in
+        guard asked != nil else { return }
+        request = nil
+        start()
+      }
+      .alert(MailCopy.switchTitle, isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
+             presenting: switching) { _ in
+        if let impact = switchImpact {
+          Button(MailCopy.keepOnSwitch("Use \(provider.appName)", impact)) { run(true, false) }
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("mail.confirmSwitch")
+          Button("Use \(provider.appName), remove them", role: .destructive) { run(true, true) }
+            .accessibilityIdentifier("mail.confirmSwitch.remove")
+          Button("Cancel", role: .cancel) {}
+        } else {
+          Button("Cancel", role: .cancel) {}
+          Button("Use \(provider.appName)") { run(true, false) }
+            .accessibilityIdentifier("mail.confirmSwitch")
+        }
+      } message: { old in
+        Text(MailCopy.switchMessage(from: old.provider, to: provider, impact: switchImpact))
+      }
+      .alert(MailCopy.takeoverTitle, isPresented: Binding(get: { takingOver != nil }, set: { if !$0 { takingOver = nil } }),
+             presenting: takingOver) { _ in
+        Button("Cancel", role: .cancel) {}
+        Button("Read it here") { run(true, false) }
+          .accessibilityIdentifier("mail.confirmTakeover")
+      } message: { held in
+        Text(MailCopy.takeoverMessage(from: held, to: provider))
+      }
+  }
+
+  private func start() {
+    if let held = coordinator.takesOver {
+      takingOver = held
+    } else if let old = coordinator.replaced(by: provider) {
+      guard !askingImpact else { return }
+      askingImpact = true
+      Task {
+        switchImpact = await coordinator.mailbox.disconnectImpact(old.id)
+        askingImpact = false
+        switching = old
+      }
+    } else {
+      run(false, false)
+    }
+  }
+}
+
+extension View {
+  func providerConnectQuestions(
+    _ coordinator: MailConnectCoordinator, provider: MailProviderKind, request: Binding<MailProviderKind?>,
+    run: @escaping (_ replacing: Bool, _ removingOld: Bool) -> Void
+  ) -> some View {
+    modifier(ProviderConnectQuestions(coordinator: coordinator, provider: provider, request: request, run: run))
   }
 }

@@ -40,6 +40,7 @@
     var outlookCancelled = false
     var outlookNoMailbox = false
     var gmailNoMailbox = false
+    var gmailPermissionMissing = false
     var signInAgainReads: String?
     var switchRemoveFails = false
     private(set) var questions: [MailSwitchQuestion] = []
@@ -139,6 +140,10 @@
       if offline { throw .offline }
       if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
+      if provider == .gmail, gmailPermissionMissing {
+        gmailPermissionMissing = false
+        throw .permissionMissing(.gmail)
+      }
       if holdsOneLink {
         // One link, as live holds it: the same provider working is already connected; the
         // other provider's link goes only on a confirmed switch, and its row with it (the

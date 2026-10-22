@@ -727,8 +727,6 @@ struct SetupCloudSortTests: AccountSuite {
     s.cloudSort = cloudSort
     let m = SetupModel(services: s, displayName: "Maya Rahman", facts: .init(hasSession: true, keysReady: true)) {}
     await m.continueWithBanks()
-    m.pickProvider(.gmail)
-    await m.connectMail(.gmail)
     m.planWhileScanning()
     for d in [2, 5, 0, 0, 0] { m.incomeEntry.type(.digit(d)) }
     m.continueWithIncome()
