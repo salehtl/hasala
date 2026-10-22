@@ -19,45 +19,195 @@ nonisolated struct CoinTaps: Equatable {
   }
 }
 
+nonisolated enum CoinShow {
+  struct Beat: Equatable {
+    let at: TimeInterval
+    let haptic: HHaptic
+  }
+
+  static let sink = 0.1
+  static let settle = 0.18
+
+  static let crouch = 0.12
+  static let rise = 0.14
+  static let spinTime = 0.42
+  static let slam = 0.06
+  static let sinkAway = 0.05
+  static let showerFall = 0.08
+  static let showerCoins = 2
+  static let landing = 0.3
+  static let landed = 0.1
+  static let burst = 0.45
+  static let bumpUp = 0.04
+  static let stillGlow = 0.45
+
+  static let spins: CGFloat = 2
+  static let fallFrom: CGFloat = 70
+  static let dip: CGFloat = -18
+  static let lift: CGFloat = 46
+  static let crouchSquash: CGFloat = 0.2
+  static let stretch: CGFloat = -0.1
+  static let bumps: [CGFloat] = [0.12, 0.07, 0.05]
+
+  static var shower: TimeInterval { showerFall + sinkAway }
+
+  static var firstImpact: TimeInterval { crouch + spinTime + slam }
+
+  static var lastCoin: TimeInterval { firstImpact + sinkAway + Double(showerCoins) * shower }
+
+  static func impacts(_ trick: CoinTaps.Trick) -> [TimeInterval] {
+    switch trick {
+    case .deposit: [sink]
+    case .jackpot: (0...showerCoins).map { firstImpact + Double($0) * shower }
+    }
+  }
+
+  static func total(_ trick: CoinTaps.Trick) -> TimeInterval {
+    switch trick {
+    case .deposit: sink + settle
+    case .jackpot: lastCoin + landing
+    }
+  }
+
+  static func beats(_ trick: CoinTaps.Trick) -> [Beat] {
+    switch trick {
+    case .deposit:
+      return [Beat(at: sink, haptic: .impactLight)]
+    case .jackpot:
+      let hits = impacts(.jackpot)
+      return [Beat(at: hits[0], haptic: .impactRigid)]
+        + hits.dropFirst().map { Beat(at: $0, haptic: .impactLight) }
+        + [Beat(at: lastCoin + landed, haptic: .success)]
+    }
+  }
+}
+
+nonisolated struct CoinStage: Equatable {
+  enum Step: Equatable {
+    case play(after: TimeInterval)
+    case skip
+  }
+
+  private(set) var busyUntil = -TimeInterval.infinity
+  private(set) var jackpotQueued = false
+
+  mutating func step(_ trick: CoinTaps.Trick, at now: TimeInterval) -> Step {
+    if now >= busyUntil {
+      busyUntil = now + CoinShow.total(trick)
+      jackpotQueued = false
+      return .play(after: 0)
+    }
+    guard trick == .jackpot, !jackpotQueued else { return .skip }
+    jackpotQueued = true
+    let wait = busyUntil - now
+    busyUntil += CoinShow.total(.jackpot)
+    return .play(after: wait)
+  }
+
+  mutating func started(_ trick: CoinTaps.Trick) {
+    if trick == .jackpot { jackpotQueued = false }
+  }
+
+  mutating func reset() { self = CoinStage() }
+}
+
 struct HeaderMark: View {
   struct Coin {
     var drop: CGFloat = 0
     var spin: CGFloat = 0
+    var squash: CGFloat = 0
+    var bump: CGFloat = 0
+    var burst: CGFloat = 0
   }
 
   @State private var taps = CoinTaps()
+  @State private var stage = CoinStage()
   @State private var plays = 0
   @State private var trick = CoinTaps.Trick.deposit
-  @State private var clink = 0
-  @State private var jackpot = 0
-  @State private var busyUntil = -TimeInterval.infinity
-  @State private var jackpotQueued = false
-  @State private var player: Task<Void, Never>?
+  @State private var felt: [HHaptic: Int] = [:]
+  @State private var glow = false
+  @State private var players: [Task<Void, Never>] = []
   @Environment(\.hMotion) private var policy
 
   static let width: CGFloat = 54
   static let height: CGFloat = 32
   static let headroom: CGFloat = 6
-  static let sink = 0.12
-  static let spinTime = 0.42
-  static let settle = 0.3
-  static let fallFrom: CGFloat = 70
+  static let markSize = CGSize(width: width, height: height + headroom)
 
   var body: some View {
     ZStack {
       KeyframeAnimator(initialValue: Coin(), trigger: plays) { coin in
-        SlotMark(plate: .onWash, drop: coin.drop, spin: coin.spin)
-          .frame(width: Self.width, height: Self.height + Self.headroom)
+        SlotMark(plate: .onWash, drop: coin.drop, spin: coin.spin, squash: coin.squash)
+          .frame(width: Self.markSize.width, height: Self.markSize.height)
+          .scaleEffect(x: 1 + coin.bump, y: 1 - coin.bump * 0.4, anchor: .bottom)
+          .background { StillGlow().opacity(glow ? 1 : 0) }
+          .overlay {
+            if coin.burst > 0, coin.burst < 1 {
+              JackpotBurst(progress: coin.burst, mark: Self.markSize)
+                .frame(width: Self.markSize.width * 2, height: Self.markSize.height * 2)
+            }
+          }
       } keyframes: { _ in
-        KeyframeTrack(\.spin) {
-          CubicKeyframe(trick == .jackpot ? 2 : 0, duration: Self.lead(trick))
-          MoveKeyframe(0)
-        }
         KeyframeTrack(\.drop) {
-          CubicKeyframe(0, duration: Self.lead(trick))
-          CubicKeyframe(-300, duration: Self.sink)
-          MoveKeyframe(Self.fallFrom)
-          SpringKeyframe(0, duration: Self.settle, spring: Spring(response: 0.28, dampingRatio: 0.62))
+          if trick == .jackpot {
+            LinearKeyframe(CoinShow.dip, duration: CoinShow.crouch, timingCurve: .easeOut)
+            LinearKeyframe(CoinShow.lift, duration: CoinShow.rise, timingCurve: .easeOut)
+            LinearKeyframe(CoinShow.lift * 0.8, duration: CoinShow.spinTime - CoinShow.rise, timingCurve: .easeInOut)
+            LinearKeyframe(0, duration: CoinShow.slam, timingCurve: .easeIn)
+            LinearKeyframe(-300, duration: CoinShow.sinkAway)
+            MoveKeyframe(CoinShow.fallFrom)
+            LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
+            LinearKeyframe(-300, duration: CoinShow.sinkAway)
+            MoveKeyframe(CoinShow.fallFrom)
+            LinearKeyframe(0, duration: CoinShow.showerFall, timingCurve: .easeIn)
+            LinearKeyframe(-300, duration: CoinShow.sinkAway)
+            MoveKeyframe(CoinShow.fallFrom)
+            SpringKeyframe(0, duration: CoinShow.landing, spring: Spring(response: 0.28, dampingRatio: 0.55))
+          } else {
+            LinearKeyframe(-300, duration: CoinShow.sink, timingCurve: .easeIn)
+            MoveKeyframe(CoinShow.fallFrom)
+            SpringKeyframe(0, duration: CoinShow.settle, spring: Spring(response: 0.2, dampingRatio: 0.7))
+          }
+        }
+        KeyframeTrack(\.spin) {
+          if trick == .jackpot {
+            LinearKeyframe(0, duration: CoinShow.crouch)
+            LinearKeyframe(CoinShow.spins, duration: CoinShow.spinTime, timingCurve: .easeInOut)
+            MoveKeyframe(0)
+          } else {
+            MoveKeyframe(0)
+          }
+        }
+        KeyframeTrack(\.squash) {
+          if trick == .jackpot {
+            LinearKeyframe(CoinShow.crouchSquash, duration: CoinShow.crouch, timingCurve: .easeOut)
+            LinearKeyframe(CoinShow.stretch, duration: 0.07, timingCurve: .easeOut)
+            LinearKeyframe(0, duration: 0.12, timingCurve: .easeOut)
+          } else {
+            MoveKeyframe(0)
+          }
+        }
+        KeyframeTrack(\.bump) {
+          if trick == .jackpot {
+            LinearKeyframe(0, duration: CoinShow.firstImpact)
+            LinearKeyframe(CoinShow.bumps[0], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+            LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
+            LinearKeyframe(CoinShow.bumps[1], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+            LinearKeyframe(0, duration: CoinShow.shower - CoinShow.bumpUp, timingCurve: .easeIn)
+            LinearKeyframe(CoinShow.bumps[2], duration: CoinShow.bumpUp, timingCurve: .easeOut)
+            SpringKeyframe(0, duration: 0.2, spring: Spring(response: 0.2, dampingRatio: 0.6))
+          } else {
+            MoveKeyframe(0)
+          }
+        }
+        KeyframeTrack(\.burst) {
+          if trick == .jackpot {
+            LinearKeyframe(0, duration: CoinShow.firstImpact)
+            LinearKeyframe(1, duration: CoinShow.burst, timingCurve: .easeOut)
+            MoveKeyframe(0)
+          } else {
+            MoveKeyframe(0)
+          }
         }
       }
       .padding(.bottom, Self.headroom)
@@ -72,48 +222,153 @@ struct HeaderMark: View {
         .onTapGesture(perform: tapped)
         .accessibilityHidden(true)
     }
-    .hHaptic(.impactLight, trigger: clink)
-    .hHaptic(.success, trigger: jackpot)
+    .hHaptic(.impactLight, trigger: felt[.impactLight, default: 0])
+    .hHaptic(.impactRigid, trigger: felt[.impactRigid, default: 0])
+    .hHaptic(.success, trigger: felt[.success, default: 0])
+    .task { await autoplay() }
     .onDisappear {
-      player?.cancel()
-      player = nil
-      jackpotQueued = false
-      busyUntil = -TimeInterval.infinity
+      players.forEach { $0.cancel() }
+      players = []
+      stage.reset()
+      glow = false
     }
   }
-
-  static func lead(_ trick: CoinTaps.Trick) -> Double { trick == .jackpot ? spinTime : 0 }
 
   private func tapped() {
     let now = ProcessInfo.processInfo.systemUptime
-    let next = taps.tap(at: now)
+    perform(taps.tap(at: now), now: now)
+  }
+
+  private func perform(_ next: CoinTaps.Trick, now: TimeInterval) {
     if policy.isStill {
-      if next == .jackpot { jackpot += 1 } else { clink += 1 }
+      stillTrick(next)
       return
     }
-    if now >= busyUntil {
-      play(next, after: 0, now: now)
-    } else if next == .jackpot, !jackpotQueued {
-      jackpotQueued = true
-      play(.jackpot, after: busyUntil - now, now: now)
+    switch stage.step(next, at: now) {
+    case .skip:
+      return
+    case .play(let wait):
+      if wait == 0 {
+        players.forEach { $0.cancel() }
+        players = []
+      }
+      players.append(play(next, after: wait))
     }
   }
 
-  private func play(_ next: CoinTaps.Trick, after wait: TimeInterval, now: TimeInterval) {
-    busyUntil = now + wait + Self.lead(next) + Self.sink + Self.settle
-    player = Task { @MainActor in
+  private func stillTrick(_ next: CoinTaps.Trick) {
+    guard next == .jackpot else {
+      feel(.impactLight)
+      return
+    }
+    feel(.success)
+    guard !policy.settled else { return }
+    players.forEach { $0.cancel() }
+    players = [
+      Task { @MainActor in
+        withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = true }
+        try? await Task.sleep(for: .seconds(CoinShow.stillGlow))
+        withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = false }
+      }
+    ]
+  }
+
+  private func play(_ next: CoinTaps.Trick, after wait: TimeInterval) -> Task<Void, Never> {
+    Task { @MainActor in
       if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
       guard !Task.isCancelled else { return }
+      stage.started(next)
       trick = next
       plays += 1
-      try? await Task.sleep(for: .seconds(Self.lead(next) + Self.sink))
-      guard !Task.isCancelled else { return }
-      if next == .jackpot {
-        jackpotQueued = false
-        jackpot += 1
-      } else {
-        clink += 1
+      var clock: TimeInterval = 0
+      for beat in CoinShow.beats(next) {
+        try? await Task.sleep(for: .seconds(beat.at - clock))
+        guard !Task.isCancelled else { return }
+        clock = beat.at
+        feel(beat.haptic)
       }
     }
+  }
+
+  private func feel(_ haptic: HHaptic) {
+    felt[haptic, default: 0] += 1
+  }
+
+  private func autoplay() async {
+    #if HASALA_MOCKS
+      guard let every = JackpotLaunch.current else { return }
+      try? await Task.sleep(for: .seconds(1.5))
+      repeat {
+        guard !Task.isCancelled else { return }
+        perform(.jackpot, now: ProcessInfo.processInfo.systemUptime)
+        try? await Task.sleep(for: .seconds(every))
+      } while every > 0
+    #endif
+  }
+}
+
+#if HASALA_MOCKS
+  enum JackpotLaunch {
+    static let argument = "-HasalaJackpot"
+
+    static func from(_ arguments: [String]) -> TimeInterval? {
+      guard let i = arguments.firstIndex(of: argument) else { return nil }
+      guard i + 1 < arguments.count, let every = TimeInterval(arguments[i + 1]) else { return 0 }
+      return max(every, 0)
+    }
+
+    static let current = from(ProcessInfo.processInfo.arguments)
+  }
+#endif
+
+private struct JackpotBurst: View {
+  let progress: CGFloat
+  let mark: CGSize
+
+  static let sparks = 8
+
+  var body: some View {
+    Canvas { context, size in
+      let s = SlotMark.scale(in: mark)
+      let inMark = SlotMark.slotCentre(in: mark)
+      let c = CGPoint(x: inMark.x + (size.width - mark.width) / 2, y: inMark.y + (size.height - mark.height) / 2)
+      let p = progress
+      let fade = 1 - p
+      let ringW = 600 * s * (1 + 0.5 * p)
+      let ringH = 112 * s * (1 + 1.4 * p)
+      context.stroke(
+        Path(ellipseIn: CGRect(x: c.x - ringW / 2, y: c.y - ringH / 2, width: ringW, height: ringH)),
+        with: .color(SlotMark.coinDeep.opacity(0.9 * fade)), lineWidth: 0.6 + 1.8 * fade)
+      let glowR = 220 * s * (0.6 + 0.4 * p)
+      context.fill(
+        Path(ellipseIn: CGRect(x: c.x - glowR, y: c.y - glowR * 0.6, width: glowR * 2, height: glowR * 1.2)),
+        with: .radialGradient(
+          Gradient(colors: [SlotMark.coinLight.opacity(0.45 * fade), SlotMark.coinLight.opacity(0)]),
+          center: c, startRadius: 0, endRadius: glowR))
+      for index in 0..<Self.sparks {
+        let angle = Double.pi + Double.pi * (Double(index) + 0.5) / Double(Self.sparks)
+        let reach = (8 + 28 * p) * (index.isMultiple(of: 2) ? 1 : 0.8)
+        let point = CGPoint(x: c.x + reach * cos(angle), y: c.y - 4 + reach * 0.75 * sin(angle))
+        let r = 0.5 + 1.6 * fade
+        let color = index.isMultiple(of: 2) ? SlotMark.coinDeep : SlotMark.coinRim
+        context.fill(
+          Path(ellipseIn: CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)),
+          with: .color(color.opacity(Double(1 - p * p))))
+      }
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+}
+
+private struct StillGlow: View {
+  var body: some View {
+    Ellipse()
+      .fill(.radialGradient(
+        Gradient(colors: [SlotMark.coinLight.opacity(0.7), SlotMark.coinLight.opacity(0)]),
+        center: .center, startRadius: 0, endRadius: HeaderMark.width * 0.6))
+      .frame(width: HeaderMark.width * 1.3, height: HeaderMark.height * 1.1)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
   }
 }

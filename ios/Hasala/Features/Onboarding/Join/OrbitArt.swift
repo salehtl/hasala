@@ -100,16 +100,30 @@ struct SlotMark: View, Animatable {
   var coinShadow = false
   var drop: CGFloat = 0
   var spin: CGFloat = 0
+  var squash: CGFloat = 0
 
-  var animatableData: AnimatablePair<CGFloat, CGFloat> {
-    get { AnimatablePair(drop, spin) }
+  var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+    get { AnimatablePair(AnimatablePair(drop, spin), squash) }
     set {
-      drop = newValue.first
-      spin = newValue.second
+      drop = newValue.first.first
+      spin = newValue.first.second
+      squash = newValue.second
     }
   }
 
   static let aspect: CGFloat = 616 / 368
+
+  static func slotCentre(in size: CGSize) -> CGPoint {
+    let s = min(size.width / 616, size.height / 368)
+    let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
+    return CGPoint(x: ox + (512 - 204) * s, y: oy + (632 - 328) * s)
+  }
+
+  static func scale(in size: CGSize) -> CGFloat { min(size.width / 616, size.height / 368) }
+
+  static let coinRim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
+  static let coinLight = Color(HRGBA(0xF9, 0xDC, 0x94, 1))
+  static let coinDeep = Color(HRGBA(0xEB, 0xB0, 0x4A, 1))
 
   var body: some View {
     Canvas { context, size in
@@ -133,6 +147,12 @@ struct SlotMark: View, Animatable {
         coin.addFilter(.shadow(color: navy.opacity(0.22), radius: 18 * s, x: 0, y: 14 * s))
       }
       coin.translateBy(x: 0, y: -drop * s)
+      if squash != 0 {
+        let pivot = CGPoint(x: ox + (512 - 204) * s, y: oy + (632 - 328) * s)
+        coin.translateBy(x: pivot.x, y: pivot.y)
+        coin.scaleBy(x: 1 + squash * 0.6, y: max(1 - squash, 0.2))
+        coin.translateBy(x: -pivot.x, y: -pivot.y)
+      }
       if spin != 0 {
         let axis = ox + (512 - 204) * s
         coin.translateBy(x: axis, y: 0)
@@ -140,13 +160,13 @@ struct SlotMark: View, Animatable {
         coin.translateBy(x: -axis, y: 0)
       }
       coin.drawLayer { layer in
-        let rim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
+        let rim = Self.coinRim
         layer.fill(Path(ellipseIn: r(512 - 184, 538.2 - 184, 368, 368)), with: .color(rim))
         let faceRect = r(512 - 184, 519.8 - 184, 368, 368)
         layer.fill(
           Path(ellipseIn: faceRect),
           with: .linearGradient(
-            Gradient(colors: [Color(HRGBA(0xF9, 0xDC, 0x94, 1)), Color(HRGBA(0xEB, 0xB0, 0x4A, 1))]),
+            Gradient(colors: [Self.coinLight, Self.coinDeep]),
             startPoint: CGPoint(x: faceRect.midX, y: faceRect.minY),
             endPoint: CGPoint(x: faceRect.midX, y: faceRect.maxY)))
         if detailed {
