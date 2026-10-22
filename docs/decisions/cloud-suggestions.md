@@ -291,7 +291,8 @@ caps below and the AI Gateway spend limit now keep the cost bounded.
 
 **One engine.** The three entry points start the same run (`BacklogSort`, which replaces
 `FirstImportSort`). Its state is a device-local record in the device's own database, next
-to `fm_cache`: the run id, start time, request count, counts and the undo manifest. It
+to `fm_cache`: the run id, start time, request count, counts, the undo manifest, the day
+ledger and the cumulative manifest of every run's filed rows. It
 never syncs.
 
 **What it asks.**
@@ -315,12 +316,13 @@ never syncs.
 | Names per pass | 12 |
 | Pass spacing | 30 s, kept when new rows wake the run (at most 24 a minute, under `PER_IP` 30 per 60 s) |
 | Names per run | 250, then the run pauses ("Sort the next 147") |
-| Names per device per day | 400, over a rolling 24 h |
+| Names per device per day | 400, over a rolling 24 h, shared with the foreground sweep |
 | Tries per name | 3; a 429 or 503 doesn't use up a try |
 | 429 | waits of 1, 3 and 10 minutes, then the run pauses; the person can resume it |
 | 503 (spend limit, or the model gone) | the run pauses for 15 minutes, or until the person taps **Try now** |
 | Offline | the run pauses, and resumes on its own when the phone is back online |
 | In the background | the run pauses, and resumes on the next foreground |
+| 3 failed passes in a row (the database or the outbox failed) | the run ends; the person can start a new one |
 | Card shows when | Merchant suggestions is on, the build has the Worker URL, and at least 5 names may be asked |
 
 A 503 or 429 used to end the first-import sort silently. Now it pauses the run, and the
@@ -330,6 +332,15 @@ next launch continues from the saved record. Filed rows are no longer eligible, 
 names are not asked again. Turning Merchant suggestions off stops a run at once.
 Turning Sort automatically off lets the run go on, but nothing more is filed without
 review.
+
+**One day ledger.** Every Clef request counts toward the 400 a day: the run's, and the
+foreground sweep's (up to 40 per foreground). A request counts when it is sent, also when
+the pass fails afterwards (a cache write, the re-read, the outbox or the re-projection),
+and a pass that enqueued some of its blobs before a failure keeps those rows in its counts
+and its undo manifest. The foreground sweep asks Clef for at most what is left of the day.
+While a run is paused on the per-run or the per-day cap, the foreground sweep doesn't ask
+Clef at all; Apple's on-device model still runs. An upgrade never starts a run: a
+first-import sort that an older build had started is forgotten on the next open.
 
 **Authoring.** As before: `txn_categorized {source: model "cf-clef/1"}`. The run re-reads
 the rows before it authors and authors only rows still eligible at the same version. A row
@@ -359,8 +370,8 @@ when its mail gates passed; everything else at or above 0.6 / 0.2 is a suggestio
 Profile › Cloud suggestions shows a "Last sort" readout on the device once a run has
 ended: when it ended, names asked, payments sorted, suggestions, and the payments that
 stay on the phone (transfers and account alerts) when there are any. Under the switches,
-**Send Cloudflare's sorting back to Review** shows while any row is filed by Clef, and
-asks first. When Merchant suggestions is turned on there, after its consent sheet, and at
+**Send Cloudflare's sorting back to Review** shows while a row that a run on this device
+filed is still as the run left it, and asks first. When Merchant suggestions is turned on there, after its consent sheet, and at
 least 5 names wait, Profile offers the run ("Sort the 208 payments waiting in Review?",
 **Sort now** or **Later**).
 
@@ -372,8 +383,11 @@ race the run.
 
 **Check suggestions.** A sheet that lists Clef's suggestions, grouped by suggested
 category, each row checked by default. **Use N suggestions** confirms the checked rows
-with the same op as **Use suggestion** in Review (one `txn_categorized` per row). One toast
-**Undo** takes them all back. Using suggestions in bulk is the person's decision, so these
+with the same op as **Use suggestion** in Review (one `txn_categorized` per row), but only
+rows still in Review with the same suggestion; the toast counts the rows written. One toast
+**Undo** takes them all back. The undo writes in blobs of at most half the sweep size and
+skips rows already back in Review, so when a blob fails, the undo stays available and a
+second tap finishes the rest without writing a row twice. Using suggestions in bulk is the person's decision, so these
 rows are the person's, not Clef's.
 
 **Undoing a run.** Undo authors `txn_categorized {category: <same>, needs_review: true,
@@ -385,10 +399,11 @@ a category.
   manifest on this device: the txn ids the run filed and the version it left each at. It
   re-reads each row and authors only rows unchanged since the run (the `parentVersion`
   check). An edit on another device moves the version, and the undo skips that row.
-- **Send Cloudflare's sorting back to Review** (Profile, on any device) needs no manifest.
-  It is a query on the projection: the same op for every live row whose source is
-  `cf-clef/*` with `needs_review: false`. It works on a second device and after the
-  manifest is gone.
+- **Send Cloudflare's sorting back to Review** (Profile) covers every row that a run on
+  this device filed: the device keeps a cumulative manifest next to the run record (the
+  union of every run's filed rows and versions), and sends back only rows still at the
+  recorded version. Rows another device's runs filed, and rows the foreground sweep filed
+  with Sort automatically on, are not sent back; they stay filed. Undo of the last run takes its rows out of the cumulative manifest too.
 
 **No new op kind, no fold change.** The run, Check suggestions and both undos author only
 `txn_categorized`. There is no conformance change and no Worker or fence change.
