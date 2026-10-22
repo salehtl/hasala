@@ -17,6 +17,23 @@ extension Replay {
     guard op.type == .billSet, let p = op.payload.objectValue else { return nil }
     return try? State.decodeBill(p)
   }
+
+  public static func billRecord(_ op: Op, inheritingFrom current: Bill?) -> Bill? {
+    guard op.type == .billSet, let p = op.payload.objectValue, let decoded = try? State.decodeBillPayload(p) else {
+      return nil
+    }
+    let (b, inherit) = decoded
+    guard op.parentVersion != nil, inherit != .none else { return b }
+    guard let current else { return nil }
+    return try? State.inheritBillLists(b, from: current, inherit)
+  }
+}
+
+struct BillInherit: Equatable {
+  var changes: Bool
+  var pauses: Bool
+
+  static let none = BillInherit(changes: false, pauses: false)
 }
 
 extension State {
@@ -73,6 +90,32 @@ extension State {
       toleranceBp: tolerance, cadence: BillCadence(unit: unit, every: every), anchor: anchor, start: start, end: end,
       category: category, account: account, source: source, status: status, changes: changes, pauses: pauses,
       firstSeq: 0, version: 0)
+  }
+
+  static func decodeBillPayload(_ p: JSONObject) throws(PayloadError) -> (Bill, BillInherit) {
+    (try decodeBill(p), BillInherit(changes: p["changes"] == nil, pauses: p["pauses"] == nil))
+  }
+
+  static func inheritBillLists(_ b: Bill, from old: Bill, _ inherit: BillInherit) throws(PayloadError) -> Bill {
+    guard let start = CivilDate(wire: b.start) else { throw PayloadError("start is not a LocalDay") }
+    let end = b.end.flatMap(CivilDate.init(wire:))
+    var out = b
+    if inherit.changes {
+      for (i, c) in old.changes.enumerated() {
+        guard let from = CivilDate(wire: c.from) else { throw PayloadError("inherited changes[\(i)].from is not a LocalDay") }
+        if from < start { throw PayloadError("inherited changes[\(i)].from is before start") }
+        if let end, end < from { throw PayloadError("inherited changes[\(i)].from is after end") }
+      }
+      out.changes = old.changes
+    }
+    if inherit.pauses {
+      for (i, p) in old.pauses.enumerated() {
+        guard let from = CivilDate(wire: p.from) else { throw PayloadError("inherited pauses[\(i)].from is not a LocalDay") }
+        if from < start { throw PayloadError("inherited pauses[\(i)].from is before start") }
+      }
+      out.pauses = old.pauses
+    }
+    return out
   }
 
   static let maxBillChanges = 24

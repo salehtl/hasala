@@ -302,8 +302,9 @@ extension OpAuthor {
       ("category", d.category.map(JSONValue.string) ?? .null), ("account", d.account.map(JSONValue.string) ?? .null),
       ("source", .string(d.source.rawValue)), ("status", .string(d.status.rawValue)),
     ]
-    if let changes { p.append(("changes", changes)) }
-    if let pauses { p.append(("pauses", pauses)) }
+    let edit = parentVersion != nil
+    if let changes = changes ?? (edit ? .array([]) : nil) { p.append(("changes", changes)) }
+    if let pauses = pauses ?? (edit ? .array([]) : nil) { p.append(("pauses", pauses)) }
     add(.billSet, entity: ("bill", id), parent: parentVersion, p)
   }
 

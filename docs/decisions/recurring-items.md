@@ -35,8 +35,11 @@ work was split for parallel development.
 "pauses":  [{"from": "2026-12-01", "until": null}]
 ```
 
-- Absent or `[]` means none. Authors omit the key when the list is empty, so every
-  existing record, fixture and state hash stays byte for byte the same.
+- On a create, absent, `null` and `[]` all mean none, and authors omit an empty list, so
+  every existing record, fixture and state hash stays byte for byte the same.
+- On an edit, an absent key keeps the head's list (decision 28); a present key (`[]`,
+  `null` or a list) replaces it. Authors always write both keys on an edit, `[]` when
+  empty, and never write `null`.
 - Top-level `amount_mode`, `amount_minor`, `tolerance_bp` stay the **original terms**.
   The terms of a due date are those of the last change with `from <= due`, else the
   original terms. Older builds keep showing the original price; nothing breaks.
@@ -48,7 +51,8 @@ work was split for parallel development.
   (`next.from >= prev.until`). A due `d` is paused when `from <= d` and (`until == null` or
   `d < until`).
 - A grammar violation refuses the whole edit (payload anomaly, no version consumed),
-  exactly like today's refusals.
+  exactly like today's refusals. The grammar is checked on the merged record, so an
+  edit that keeps the head's lists must agree with them too.
 
 ### `status`
 
@@ -166,9 +170,14 @@ payment). The matcher never writes it.
     covered by any bill head (manual, active, ended or dismissed) never becomes a
     candidate, so "Not a bill" and ended items are never re-proposed, and a manual item
     is never duplicated by a detected one.
-26. Track writes a `bill_set` create with that derived id (two iPhones that track the same
-    candidate converge on one id; the second create is a `duplicate_create` anomaly and
-    changes nothing). Not a bill writes a create with `status: dismissed`, so it syncs.
+26. Track writes a `bill_set` create with that derived id, so two iPhones that decide the
+    same candidate converge on one id. Not a bill writes a create with
+    `status: dismissed`, so it syncs. A second create of a bill that exists is not a
+    `duplicate_create`: when its record is the same as the current one it changes
+    nothing (no anomaly, no notice); otherwise it is a concurrent edit of version 1 and
+    forks under decision 27 (Track on one iPhone and Not a bill on the other show
+    "Changed on two iPhones"). `first_seq` and `created_at` stay the first create's.
+    Every other kind keeps `duplicate_create`.
     When a record with that id exists already, both write an edit of it instead. Undo of
     either writes `status: dismissed` with `keys: [<the bill id>]`: no merchant key
     matches that, so the record covers nothing and the candidate is proposed again.
@@ -184,9 +193,18 @@ payment). The matcher never writes it.
     and is not shown when nothing differs, so a re-applied change hides it. Keep hides it
     on this device. When the losing op cannot be read, the card says a change was
     replaced and offers only Keep.
-28. A build without this change ignores `changes` and `pauses`: it shows the original
-    price and no pause, and an edit made there drops the lists (whole record). The What
-    to Test of the first build with this change asks testers to update every device.
+28. **Absent means inherit on edit.** A build without this change ignores `changes` and
+    `pauses` and writes neither key, so its whole-record edit would drop both lists. The
+    fold reads an edit (and a fork winner) with no `changes` key as keeping the head's
+    `changes`, and the same for `pauses`; the rest of the record is the edit's. A
+    present key replaces the list, so current builds always write both keys on an edit
+    (`[]` to clear), which keeps a clear apart from an old build's edit. The merged
+    record is checked with the same grammar; when it fails (an old build ends the bill
+    before a kept change, or moves `start` after a kept change or pause) the edit is
+    refused as a payload anomaly and consumes no version. An old build still shows the
+    original price and no pause. Undo and Re-apply author through `setBill`, so they
+    write both keys; a fork card reads a losing op with no lists through
+    `Replay.billRecord(_:inheritingFrom:)`.
 
 ### Plan
 
