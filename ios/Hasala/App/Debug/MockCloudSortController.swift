@@ -13,6 +13,8 @@
     private(set) var stops = 0
     private(set) var undos = 0
     private(set) var sentBack = 0
+    private(set) var opens = 0
+    private(set) var offersShown = 0
 
     init(_ status: CloudSortStatus = MockCloudSortController.sample(.idle)) {
       self.status = status
@@ -53,6 +55,7 @@
         s.waitingPayments = 162
         s.leftForYou = 25
         s.staysOnDevice = 18
+        s.offerDue = true
       case .running, .paused:
         s.waitingNames = 64
         s.waitingPayments = 71
@@ -85,6 +88,10 @@
     }
 
     func refresh() async { refreshes += 1 }
+
+    func reviewOpened() { opens += 1 }
+
+    func offerShown() { offersShown += 1 }
 
     func start() {
       starts += 1

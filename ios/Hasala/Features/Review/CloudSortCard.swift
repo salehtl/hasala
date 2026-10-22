@@ -12,23 +12,11 @@ nonisolated enum CloudSortCardState: Equatable, Sendable {
   static let minimumNames = 5
   static let namesPerMinute = 24
 
-  static func of(_ status: CloudSortStatus, dismissedRun: Int64?) -> CloudSortCardState? {
+  static func offer(_ status: CloudSortStatus) -> CloudSortCardState? {
     switch status.phase {
-    case .off:
-      return nil
-    case .running:
-      return .running
-    case .paused(let p):
-      return .paused(p)
-    case .done:
-      if let ended = status.lastRunEndedMs, ended != dismissedRun { return .done }
-      return waiting(status)
-    case .idle:
-      return waiting(status)
+    case .off, .running, .paused: return nil
+    case .idle, .done: break
     }
-  }
-
-  private static func waiting(_ status: CloudSortStatus) -> CloudSortCardState? {
     guard status.waitingNames >= minimumNames else { return nil }
     return status.remainingToday > 0 && status.nextRunNames > 0 ? .ready : .paused(.dayCap)
   }
@@ -101,12 +89,14 @@ nonisolated enum CloudSortCardState: Equatable, Sendable {
     f.dateFormat = "HH:mm"
     return f.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
   }
-
-  var offersCheckSuggestions: Bool { self == .done }
 }
 
 enum CloudSortDismissal {
   static let key = "app.hasala.prefs.cloudSort.dismissedRun"
+
+  static func forget(_ defaults: UserDefaults) {
+    defaults.removeObject(forKey: key)
+  }
 }
 
 struct CloudSortCard: View {

@@ -34,40 +34,47 @@ struct ReviewTabView: View {
           .foregroundStyle(HColor.textSecondary)
           .accessibilityIdentifier("review.tab.count")
       } content: {
-        let sortState = app.cloudSort.flatMap { CloudSortCardState.of($0.status, dismissedRun: Int64(dismissedRun)) }
+        let slot = SortSlot.of(SortSlot.Facts(
+          asks: asksCloudSort, status: app.cloudSort?.status, dismissedRun: Int64(dismissedRun),
+          importing: app.mailbox?.importing))
         VStack(alignment: .leading, spacing: 24) {
           if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
-          if let sort = app.cloudSort, let sortState {
-            CloudSortCard(app: app, sort: sort, state: sortState) {
-              dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
-            }
-            .background(cardSurface)
-          }
+          slotCard(slot)
           if cards.isEmpty {
             caughtUp(elsewhere)
-            if unread > 0 { unreadable(unread) }
           } else {
-            if sortState == nil, asksCloudSort {
-              CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
-            }
             startCard
-            if app.suggestionCount > 0, sortState?.offersCheckSuggestions != true {
-              CheckSuggestionsEntry(app: app, count: app.suggestionCount).background(cardSurface)
-            }
-            if unread > 0 { unreadable(unread) }
-            list(cards)
           }
+          if unread > 0 { unreadable(unread) }
+          if !cards.isEmpty { list(cards) }
         }
         .padding(.horizontal, HSpacing.insetPage)
+        .onChange(of: slot?.isOffer == true, initial: true) { _, offer in
+          if offer { app.cloudSort?.offerShown() }
+        }
       }
       .navigationDestination(for: ReviewRoute.self) { route in
         switch route {
         case .unreadMail: UnreadMailView(app: app)
         }
       }
+      .onChange(of: app.tab == .review, initial: true) { _, open in
+        guard open, let sort = app.cloudSort else { return }
+        sort.reviewOpened()
+        Task { await sort.refresh() }
+      }
       .task { await app.cloudSort?.refresh() }
+      .onChange(of: app.mailbox?.importing) {
+        guard let sort = app.cloudSort else { return }
+        Task { await sort.refresh() }
+      }
+      .onChange(of: cards.count) {
+        guard let sort = app.cloudSort else { return }
+        Task { await sort.refresh() }
+      }
       .onChange(of: scenePhase) { _, phase in
         guard phase == .active, let sort = app.cloudSort else { return }
+        if app.tab == .review { sort.reviewOpened() }
         Task { await sort.refresh() }
       }
     }
@@ -107,6 +114,54 @@ struct ReviewTabView: View {
 
   static func orderLine(months: Int) -> String {
     months > 1 ? "Newest month first" : "Oldest first"
+  }
+
+  // MARK: Sorting card
+
+  @ViewBuilder private func slotCard(_ slot: SortSlot?) -> some View {
+    switch slot {
+    case .ask?:
+      CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
+    case .importing(let mail)?:
+      importingCard(mail)
+    case let slot?:
+      if let sort = app.cloudSort, let state = slot.card {
+        CloudSortCard(app: app, sort: sort, state: state) {
+          dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
+        }
+        .background(cardSurface)
+      }
+    case nil:
+      EmptyView()
+    }
+  }
+
+  private func importingCard(_ mail: MailImport) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
+        .overlay { HIconView(.envelope, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
+      VStack(alignment: .leading, spacing: 4) {
+        Text(SortSlot.importingTitle(mail))
+          .hType(.headline)
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(SortSlot.importingLine(mail))
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      if mail.busy {
+        Spinner(size: 20, track: HColor.feedbackProgressTrack)
+      }
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(cardSurface)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(SortSlot.importingSpoken(mail))
+    .accessibilityAddTraits(.updatesFrequently)
+    .accessibilityIdentifier("review.slot.importing")
   }
 
   // MARK: Period

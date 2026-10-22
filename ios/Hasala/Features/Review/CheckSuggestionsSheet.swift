@@ -184,38 +184,3 @@ struct CheckSuggestionsSheet: View {
     .background(HColor.sheetSurfaceLarge.opacity(0.96).ignoresSafeArea(edges: .bottom))
   }
 }
-
-struct CheckSuggestionsEntry: View {
-  let app: AppModel
-  let count: Int
-
-  var body: some View {
-    Button { app.openCheckSuggestions() } label: {
-      HStack(spacing: 12) {
-        Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
-          .overlay { HIconView(.check, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 0) {
-          Text(SuggestionsEngine.entryLine(count))
-            .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-          Text("Use the right ones in one go")
-            .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
-            .foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
-          .accessibilityHidden(true)
-      }
-      .padding(.vertical, 14)
-      .padding(.horizontal, 16)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(HRowPressStyle())
-    .accessibilityElement(children: .combine)
-    .accessibilityHint("Opens Check suggestions")
-    .accessibilityAddTraits(.isButton)
-    .accessibilityIdentifier("review.tab.checkSuggestions")
-  }
-}

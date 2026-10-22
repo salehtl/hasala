@@ -8,6 +8,8 @@ import Observation
   func stop()
   func undoLastRun() async -> Int
   func sendAllBack() async -> Int
+  func reviewOpened()
+  func offerShown()
 }
 
 nonisolated struct CloudSortStatus: Equatable, Sendable {
@@ -28,6 +30,7 @@ nonisolated struct CloudSortStatus: Equatable, Sendable {
   var cloudSortedCount: Int
   var remainingToday: Int
   var nextRunNames: Int
+  var offerDue = false
 }
 
 extension CloudSortStatus {

@@ -1,4 +1,6 @@
 import CoreDomain
+import CoreMailbox
+import CoreSync
 import Foundation
 import Observation
 
@@ -17,14 +19,25 @@ final class LiveCloudSortController: CloudSortControlling {
   @ObservationIgnored private var listener: Task<Void, Never>?
   @ObservationIgnored private var recounting = false
   @ObservationIgnored private var recountAgain = false
+  @ObservationIgnored private let load: @MainActor () async -> RunOffer.Load
+  @ObservationIgnored private let offers: RunOffer.Store
+  @ObservationIgnored private var memory: RunOffer.Memory
+  @ObservationIgnored private var loaded: RunOffer.Load?
+  @ObservationIgnored private var facts: RunOffer.Facts?
+  @ObservationIgnored private var openPending = false
 
   init(
     sorter: BacklogSorter, view: @escaping @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView?,
     undo: @escaping @MainActor () async -> Int, sendBack: @escaping @MainActor () async -> Int,
     enabled: @escaping () -> Bool = { MerchantSuggestionsSetting.isEnabled() },
-    nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
+    nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
+    load: @escaping @MainActor () async -> RunOffer.Load = { RunOffer.Load() },
+    offers: RunOffer.Store = .inMemory()
   ) {
     self.sorter = sorter
+    self.load = load
+    self.offers = offers
+    memory = offers.load()
     self.view = view
     self.undo = undo
     self.sendBack = sendBack
@@ -45,7 +58,26 @@ final class LiveCloudSortController: CloudSortControlling {
     self.init(
       sorter: runtime.backlog, view: { await stage.backlogView(filedHere: $0) },
       undo: { [weak runtime] in await runtime?.undoLastRun() ?? 0 },
-      sendBack: { [weak runtime] in await runtime?.sendAllBack() ?? 0 })
+      sendBack: { [weak runtime] in await runtime?.sendAllBack() ?? 0 },
+      load: { [weak runtime] in
+        guard let runtime else { return RunOffer.Load() }
+        let phase = runtime.store.mailboxPhase
+        let sync = await runtime.engine.status
+        return Self.load(phase: phase, sync: sync)
+      },
+      offers: .live())
+  }
+
+  nonisolated static func load(phase: MailboxPhase?, sync: CoreSync.SyncStatus) -> RunOffer.Load {
+    let mailbox: RunOffer.Mailbox
+    switch phase {
+    case .active?: mailbox = .active
+    case .otherDevice?: mailbox = .elsewhere
+    case .scanning?, .authoringBackfill?: mailbox = .importing
+    case .awaitingCards?: mailbox = .awaitingCards
+    case .unlinked?, .halted?, .reconnectRequired?, nil: mailbox = .none
+    }
+    return RunOffer.Load(mailbox: mailbox, caughtUp: sync.phase == .idle && sync.lastSuccessAt != nil)
   }
 
   isolated deinit {
@@ -53,9 +85,25 @@ final class LiveCloudSortController: CloudSortControlling {
   }
 
   func refresh() async {
+    loaded = await load()
     snapshot = await sorter.snapshot
     counts = await view(snapshot?.record.filedHere ?? [:])
     compose()
+  }
+
+  func reviewOpened() {
+    openPending = true
+  }
+
+  func offerShown() {
+    guard let facts else { return }
+    remember(RunOffer.shown(memory, facts))
+  }
+
+  private func remember(_ next: RunOffer.Memory) {
+    guard next != memory else { return }
+    memory = next
+    offers.save(next)
   }
 
   func start() {
@@ -98,6 +146,7 @@ final class LiveCloudSortController: CloudSortControlling {
     let filed = snapshot?.record.filedHere ?? [:]
     Task {
       counts = await view(filed)
+      loaded = await load()
       recounting = false
       compose()
       if recountAgain { recount() }
@@ -105,8 +154,30 @@ final class LiveCloudSortController: CloudSortControlling {
   }
 
   private func compose() {
-    let next = Self.status(snapshot: snapshot, view: counts, enabled: enabled(), nowMs: nowMs())
+    var next = Self.status(snapshot: snapshot, view: counts, enabled: enabled(), nowMs: nowMs())
+    if counts != nil, let loaded {
+      let f = Self.facts(next, run: snapshot?.record.run, load: loaded)
+      facts = f
+      var m = RunOffer.observe(memory, f)
+      if openPending {
+        openPending = false
+        m = RunOffer.opened(m, f)
+      }
+      remember(m)
+      next.offerDue = RunOffer.due(memory, f)
+    }
     if next != status { status = next }
+  }
+
+  nonisolated static func facts(_ status: CloudSortStatus, run: BacklogRunRecord.Run?, load: RunOffer.Load) -> RunOffer.Facts {
+    let active: Bool
+    switch status.phase {
+    case .running, .paused: active = true
+    case .off, .idle, .done: active = false
+    }
+    return RunOffer.Facts(
+      enabled: status.phase != .off, load: load, waitingNames: status.waitingNames, runActive: active,
+      runStartedMs: run?.startedMs)
   }
 
   nonisolated static func status(

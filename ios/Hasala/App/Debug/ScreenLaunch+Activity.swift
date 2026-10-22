@@ -86,6 +86,19 @@
              prepare: cloudSort(.paused(.busy(untilMs: Int64(Date().timeIntervalSince1970 * 1000) + 15 * 60_000)),
                                 then: shell(.review))),
       Screen("review.sort.done", scenario: "mayaSuggestions", prepare: cloudSort(.done, then: shell(.review))),
+      Screen("review.importing", scenario: "maya", prepare: { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
+      Screen("review.cloudSort.importing", scenario: "maya", prepare: { graph in
+        (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
+      Screen("review.sort.importing", scenario: "maya", prepare: cloudSort(.running) { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
       Screen("review.sort.deck", scenario: "maya", prepare: cloudSort(.running) { graph in
         startDeck(graph, at: "lulu") { _ in }
       }),
