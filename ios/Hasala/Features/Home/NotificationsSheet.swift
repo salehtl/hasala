@@ -88,16 +88,9 @@ struct NotificationsSheet: View {
   /// A heading 22/28 bold over one white card of rows, 12 apart; dividers inset 68.
   private func section(_ title: String, _ items: [NotificationItem], markAll: Bool) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-          heading(title)
-          Spacer(minLength: 0)
-          if markAll { markAllButton.padding(.vertical, -8) }
-        }
-        VStack(alignment: .leading, spacing: 4) {
-          heading(title)
-          if markAll { markAllButton }
-        }
+      SideBySideOrStacked(spacing: 12, lineSpacing: 4) {
+        heading(title)
+        if markAll { markAllButton.padding(.vertical, -8) }
       }
       HListCard {
         ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
