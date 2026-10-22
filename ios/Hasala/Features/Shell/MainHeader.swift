@@ -32,11 +32,7 @@ struct MainHeader: ToolbarContent {
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .principal) {
-      Image("HasalaMark")
-        .resizable()
-        .scaledToFit()
-        .frame(width: 54, height: 32)
-        .accessibilityLabel("Hasala")
+      HeaderMark()
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .topBarTrailing) {
