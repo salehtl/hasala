@@ -86,6 +86,26 @@ struct GlassBadgeTests {
     }
   }
 
+  @Test(arguments: [12, 100])
+  func aLongCountStaysOnOneLine(count: Int) throws {
+    let views: [AnyView] = [
+      AnyView(GlassIconButton(.bell, label: "Notifications", badge: count) {}),
+      AnyView(
+        GlassButtonPair {
+          GlassIconButton(.magnifier, label: "Search") {}
+          GlassIconButton(.bell, label: "Notifications", badge: count) {}
+        }),
+    ]
+    for view in views {
+      let points = try render(view).badgePoints(near: badgeFill)
+      try #require(!points.isEmpty)
+      let height = points.map(\.y).max()! - points.map(\.y).min()! + 1
+      let width = points.map(\.x).max()! - points.map(\.x).min()! + 1
+      #expect(height <= 21)
+      #expect(width > height)
+    }
+  }
+
   @Test func aPairWithNoCountDrawsNoBadge() throws {
     let pixels = try render(
       GlassButtonPair {

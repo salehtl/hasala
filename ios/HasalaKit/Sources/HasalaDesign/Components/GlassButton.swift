@@ -88,18 +88,21 @@ public struct GlassButtonPair<Content: View>: View {
       .environment(\.hGlassPaired, true)
       .hGlass(in: Capsule())
       .overlayPreferenceValue(GlassBadgeAnchors.self) { anchors in
-        GeometryReader { proxy in
-          ForEach(anchors.indices, id: \.self) { index in
-            let frame = proxy[anchors[index].bounds]
-            Color.clear
-              .frame(width: frame.width, height: frame.height)
-              .overlay(alignment: .topLeading) { GlassBadge(count: anchors[index].count) }
-              .environment(\.layoutDirection, layoutDirection)
-              .position(x: frame.midX, y: frame.midY)
+        if !anchors.isEmpty {
+          GeometryReader { proxy in
+            ForEach(anchors.indices, id: \.self) { index in
+              let frame = proxy[anchors[index].bounds]
+              Color.clear
+                .frame(width: frame.width, height: frame.height)
+                .overlay(alignment: .topLeading) { GlassBadge(count: anchors[index].count) }
+                .environment(\.layoutDirection, layoutDirection)
+                .position(x: frame.midX, y: frame.midY)
+            }
           }
+          .environment(\.layoutDirection, .leftToRight)
         }
-        .environment(\.layoutDirection, .leftToRight)
       }
+      .transformPreference(GlassBadgeAnchors.self) { $0 = [] }
       .accessibilityElement(children: .contain)
   }
 }
@@ -109,6 +112,7 @@ struct GlassBadge: View {
 
   var body: some View {
     CountBadge(count, style: .glass20)
+      .fixedSize()
       .padding(.leading, 29)
       .offset(y: -3)
       .allowsHitTesting(false)
