@@ -14,7 +14,7 @@ struct ReviewPickSheet: View {
   let sort: (CategoryID, Bool, ProjectID?) -> Void
 
   @State private var project: ProjectID?
-  @State private var alwaysUse = true
+  @State private var alwaysUse = false
   /// The content's measured height, which the one detent fits; an estimate until then.
   @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
@@ -45,10 +45,6 @@ struct ReviewPickSheet: View {
     .presentationDragIndicator(.visible)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
-    .onAppear {
-      // A transfer is not a merchant's habit: no rule unless the person asks for one.
-      alwaysUse = pick.choice != .transfer
-    }
   }
 
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows

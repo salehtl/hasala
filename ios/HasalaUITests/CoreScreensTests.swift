@@ -72,6 +72,7 @@ final class CoreScreensTests: XCTestCase {
     element(app, "txn.category").tap()
     XCTAssertTrue(element(app, "picker.save").waitForExistence(timeout: uiWait))
     XCTAssertTrue(element(app, "picker.alwaysUse").exists)
+    XCTAssertEqual(element(app, "picker.alwaysUse").value as? String, "0")
     XCTAssertTrue(element(app, "picker.groceries").isSelected)
     attach(app, "Transaction · Category")
     try audit(app)
@@ -198,7 +199,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertFalse(element(app, "review.use").exists)
     element(app, "review.pill.want").tap()
     XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
-    element(app, "pick.alwaysUse").tap()
+    XCTAssertFalse(element(app, "pick.alwaysUse").isSelected)
     element(app, "pick.entertainment").tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
@@ -289,6 +290,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertEqual(card.frame.midX, rest.midX, accuracy: 1, "the card leans with Reduce Motion")
     XCTAssertEqual(card.frame.midY, rest.midY, accuracy: 1, "the card leans with Reduce Motion")
     attach(app, "Reduce Motion · Pick a need")
+    element(app, "pick.alwaysUse").tap()
     element(app, "pick.rent").tap()
     XCTAssertTrue(position.waitForLabel("2 of 6"))
     attach(app, "Reduce Motion · Deck")
@@ -308,10 +310,9 @@ final class CoreScreensTests: XCTestCase {
     // Steam's sender is not verified: no Use, so a pill and the pick sheet, without a rule.
     element(app, "review.pill.want").tap()
     XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
-    element(app, "pick.alwaysUse").tap()
     element(app, "pick.entertainment").tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
-    // Need asks to remember the merchant by default: one rule.
+    // "Always use" is off until the person turns it on: the one rule is the ATM's.
     XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
     attach(app, "Reduce Motion · All caught up")
     element(app, "review.close").tap()
