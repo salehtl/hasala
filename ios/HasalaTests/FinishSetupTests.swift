@@ -32,6 +32,20 @@ struct FinishSetupTests: AccountSuite {
     #expect(!m.noAlerts && m.isDone(.bankAlerts) && m.items.first == .bankAlerts)
   }
 
+  @Test func anAccountWithNoMailboxIsOfferedTheConnect() {
+    let m = FinishSetupModel(services: services(mailbox: MockMailbox()))
+    #expect(m.needsEmail && m.items.first == .connectEmail && !m.isDone(.connectEmail))
+    let connected = FinishSetupModel(services: services(mailbox: readMailbox()))
+    #expect(!connected.needsEmail && !connected.items.contains(.connectEmail))
+  }
+
+  @Test func aRefusedConnectIsNotOffered() {
+    let mailbox = MockMailbox()
+    mailbox.connectRefused = true
+    let m = FinishSetupModel(services: services(mailbox: mailbox))
+    #expect(!m.needsEmail && !m.items.contains(.connectEmail))
+  }
+
   @Test func theTwelveWordsComeFirstThenNoAlerts() {
     var s = services(mailbox: readMailbox())
     let unseen = InMemoryUnseenPhrase()

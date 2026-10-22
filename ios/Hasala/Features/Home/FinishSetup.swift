@@ -5,6 +5,7 @@ import SwiftUI
 
 enum FinishSetupItem: String, CaseIterable, Identifiable {
   case phrase
+  case connectEmail
   case bankAlerts
   case readingStopped
   case plan
@@ -52,6 +53,14 @@ final class FinishSetupModel {
 
   var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
 
+  var needsEmail: Bool {
+    let mailbox = services.mailbox
+    guard mailbox.mailboxesKnown, !mailbox.connectRefused, mailbox.capabilities.contains(.connect),
+      !mailbox.connectable.isEmpty, mailbox.heldElsewhere == nil
+    else { return false }
+    return !mailbox.mailboxes.contains { $0.state != .disconnected }
+  }
+
   var stoppedMailbox: MailboxSnapshot? {
     guard ledgerEmpty, !services.mailbox.firstScanFinished,
       let m = services.mailbox.mailboxes.first(where: { $0.state != .disconnected }),
@@ -66,6 +75,7 @@ final class FinishSetupModel {
       listed.insert(.phrase)
     }
     if let hasTransactions { ledgerEmpty = !hasTransactions }
+    if needsEmail { listed.insert(.connectEmail) }
     if noAlerts { listed.insert(.bankAlerts) }
     if stoppedMailbox != nil { listed.insert(.readingStopped) }
     let saved = services.setup.readBack()
@@ -83,6 +93,7 @@ final class FinishSetupModel {
   func isDone(_ item: FinishSetupItem) -> Bool {
     switch item {
     case .phrase: !services.unseenPhrase.unseen
+    case .connectEmail: !needsEmail
     case .readingStopped: stoppedMailbox == nil
     case .bankAlerts: !noAlerts
     case .plan: planDone
@@ -235,6 +246,11 @@ struct FinishSetupSection: View {
                 WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "home.finish.phraseTalk")
               }
             }
+          case .connectEmail:
+            FinishSetupRow(
+              icon: .envelope, title: "Connect your email",
+              detail: "Where your banks send alerts. Hasala reads them on this iPhone.",
+              enabled: true, identifier: "home.finish.connectEmail", action: openBankAlerts)
           case .readingStopped:
             let stopped = Self.stopped(model.stoppedMailbox)
             FinishSetupRow(

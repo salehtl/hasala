@@ -326,6 +326,7 @@ final class BootController {
     opening = nil
     BackgroundScheduler.shared.cancelAll()
     syncHalt = nil
+    setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)
     guard let rt = runtime else { return }
     runtime = nil
     app = nil
