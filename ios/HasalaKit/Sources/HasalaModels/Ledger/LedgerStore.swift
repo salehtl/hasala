@@ -32,6 +32,11 @@ public enum LedgerEdit: Sendable, Hashable {
   case resolveSamePurchase(TxnID, same: Bool)
   /// Review "Skip for now": device-local until the next local midnight (no op).
   case skipReview(TxnID)
+  case sortGroup(MerchantGroupRef, CategoryID, alwaysUse: Bool, project: ProjectID?)
+  case notThis(MerchantGroupRef, CategoryID)
+  case returnToReview([TxnID])
+  case stopRule(RuleID)
+  case dismissSortReceipt
 
   case saveProject(ProjectID, ProjectDraft)
   case setProjectCountInPlan(ProjectID, Bool)
@@ -177,7 +182,7 @@ public struct BillDraft: Sendable, Hashable {
 }
 
 /// An edit the person can take back from the toast (spec 04 §14.6: 5 s window).
-public struct UndoToken: Sendable, Hashable, Identifiable {
+public struct UndoToken: Sendable, Hashable, Identifiable, Codable {
   public var id: Int
   /// The toast's line: "Sorted into Groceries".
   public var title: String

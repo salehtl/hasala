@@ -410,6 +410,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])
+    case .sortGroup, .notThis, .returnToReview, .stopRule, .dismissSortReceipt:
+      throw .refused(LedgerEditAuthor.unsupported)
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
       s.plan.budgets[PlanState.key(c, month)] = amount
