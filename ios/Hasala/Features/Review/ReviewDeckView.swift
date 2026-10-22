@@ -136,6 +136,12 @@ struct ReviewDeckView: View {
             .numberRoll(Double(model.position))
             .accessibilityIdentifier("review.position")
         }
+        if model.waitingForCloud > 0 {
+          Text("Waiting for Cloudflare AI (\(model.waitingForCloud))")
+            .hType(.caption1)
+            .foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("review.waitingForCloud")
+        }
       }
       Spacer()
       moreMenu

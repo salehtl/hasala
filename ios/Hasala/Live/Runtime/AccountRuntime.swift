@@ -35,7 +35,9 @@ final class AccountRuntime {
   @ObservationIgnored let mailboxLedger: RuntimeMailboxLedger
   /// The server's mailbox routes (the lanes', and the link check below).
   @ObservationIgnored let mailboxServer: HTTPMailboxServer
-  @ObservationIgnored let firstImport: FirstImportSorter
+  @ObservationIgnored let backlog: BacklogSorter
+  @ObservationIgnored let suggestions: ModelSuggestionStage
+  @ObservationIgnored private var switchOff: NSObjectProtocol?
   let store: LiveLedgerStore
 
   /// The provider the running lane reads (observed: Profile names it).
@@ -64,7 +66,7 @@ final class AccountRuntime {
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
     lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
-    mailboxServer: HTTPMailboxServer, firstImport: FirstImportSorter, store: LiveLedgerStore
+    mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -79,7 +81,8 @@ final class AccountRuntime {
     activeProvider = active.lane?.provider
     self.mailboxLedger = mailboxLedger
     self.mailboxServer = mailboxServer
-    self.firstImport = firstImport
+    self.backlog = backlog
+    self.suggestions = suggestions
     self.store = store
   }
 
@@ -229,6 +232,8 @@ final class AccountRuntime {
         await active.cycle(trigger, deadlineMs)
       }
     }
+    let activity = BacklogActivity()
+    let link = BacklogLink()
     let suggestions = ModelSuggestionStage(
       observer: observer, outbox: outbox, cache: FMCache(context.store), dictionary: dictionary,
       onDevice: HasalaModelFactory.make(),
@@ -240,19 +245,19 @@ final class AccountRuntime {
           version: MerchantSuggestionsSetting.appVersion(marketing: build.marketingVersion, build: build.buildNumber))),
       onDeviceAlone: BuildSurface.showsUnfinished,
       nowMs: { context.clock.nowMs() },
-      firstImportActive: {
-        MerchantSuggestionsSetting.firstImport().map {
-          !FirstImportSort.expired(startedMs: $0.startedMs, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
-        } ?? false
-      },
-      autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader)
-    let firstImport = FirstImportSorter(
-      pass: { await suggestions.firstImportPass($0) }, nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
+      backlogActive: { activity.isActive },
+      autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
+      cloudBudget: { await link.budget() },
+      cloudSpent: { await link.spent($0) })
+    let backlog = BacklogSorter(
+      pass: { await suggestions.backlogPass($0, dayLeft: $1) }, store: .live(BacklogRunStore(context.store)),
+      nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
       importRunning: {
         guard let lane = active.lane else { return false }
         let phase = await lane.status().phase
         return phase == .scanning || phase == .authoringBackfill
-      })
+      }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity)
+    link.set(backlog)
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -279,13 +284,19 @@ final class AccountRuntime {
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
-      mailboxServer: mailboxServer, firstImport: firstImport, store: store)
+      mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions, store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
     await rt.followImports()
-    await firstImport.start()
+    rt.followSwitch()
+    await backlog.watchNetwork()
+    if MerchantSuggestionsSetting.takeRunRequest() {
+      await backlog.start()
+    } else {
+      await backlog.resume()
+    }
     return rt
   }
 
@@ -408,20 +419,39 @@ final class AccountRuntime {
   func close() async {
     closed = true
     stopFollowingImports()
-    await firstImport.stop()
+    if let switchOff { NotificationCenter.default.removeObserver(switchOff) }
+    switchOff = nil
+    await backlog.suspend()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
   }
 
+  func followSwitch() {
+    let sorter = backlog
+    switchOff = NotificationCenter.default.addObserver(forName: MerchantSuggestionsSetting.turnedOff, object: nil, queue: nil) { _ in
+      Task { await sorter.switchedOff() }
+    }
+  }
+
+  func undoLastRun() async -> Int {
+    let stage = suggestions
+    return await backlog.undoLastRun { await stage.undo(manifest: $0) }
+  }
+
+  func sendAllBack() async -> Int {
+    let stage = suggestions
+    return await backlog.sendAllBack { await stage.undo(manifest: $0) }
+  }
+
   func followImports() async {
-    let sorter = firstImport
+    let sorter = backlog
     let follower = ImportFollower(
       store: store,
       refreshStatus: { [weak self] in
         guard let self, let lane = self.lane else { return }
         self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
       },
-      imported: { Task { await sorter.nudge() } })
+      imported: { Task { await sorter.resume() } })
     follower.follow(lanes.values.map(\.events))
     for lane in lanes.values { await lane.relayEvents() }
     importFollower = follower

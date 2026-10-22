@@ -198,6 +198,7 @@ struct LaunchView: View {
         graph.app.refreshWork = { try? await Task.sleep(for: delay) }
       }
       if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
+      graph.app.cloudSort = MockCloudSortController.fromLaunchArguments(arguments)
       launch?.open(graph)
       return graph
     }

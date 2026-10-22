@@ -9,14 +9,14 @@ import SwiftUI
 /// runs the newest month first, each under its month.
 ///
 /// Start opens the deck at the top of the list, the newest month's oldest card, and reads on
-/// in the list's order; a row opens it at that row's card and reads on down the list. "Use N
-/// suggestions" is Debug only: it would be several edits in one gesture (plan D.2). The
+/// in the list's order; a row opens it at that row's card and reads on down the list. The
 /// "couldn't read" line counts the bank emails Hasala kept as empty rows and the ones it could
 /// not download; when there are rows, it opens the list where each is added by hand or dismissed,
 /// and with none it opens Add a transaction.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
-  @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.scenePhase) private var scenePhase
+  @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
 
   init(app: AppModel) {
     self.app = app
@@ -32,12 +32,22 @@ struct ReviewTabView: View {
           .foregroundStyle(HColor.textSecondary)
           .accessibilityIdentifier("review.tab.count")
       } content: {
+        let sortState = app.cloudSort.flatMap { CloudSortCardState.of($0.status, dismissedRun: Int64(dismissedRun)) }
         VStack(alignment: .leading, spacing: 24) {
+          if let sort = app.cloudSort, let sortState {
+            CloudSortCard(app: app, sort: sort, state: sortState) {
+              dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
+            }
+            .background(cardSurface)
+          }
           if cards.isEmpty {
             caughtUp
             if unread > 0 { unreadable(unread) }
           } else {
-            startCard(cards)
+            startCard
+            if app.suggestionCount > 0, sortState?.offersCheckSuggestions != true {
+              CheckSuggestionsEntry(app: app, count: app.suggestionCount).background(cardSurface)
+            }
             if unread > 0 { unreadable(unread) }
             list(cards)
           }
@@ -48,6 +58,11 @@ struct ReviewTabView: View {
         switch route {
         case .unreadMail: UnreadMailView(app: app)
         }
+      }
+      .task { await app.cloudSort?.refresh() }
+      .onChange(of: scenePhase) { _, phase in
+        guard phase == .active, let sort = app.cloudSort else { return }
+        Task { await sort.refresh() }
       }
     }
   }
@@ -67,12 +82,10 @@ struct ReviewTabView: View {
 
   // MARK: Start card
 
-  /// "Swipe through them" over a sky tint, the fanned cards, Start, and in Debug "Use N
-  /// suggestions" beside it. The pair are the kit's Large pills (54; Paper draws 50, a height
-  /// the pill set doesn't have).
-  private func startCard(_ cards: [ReviewCardModel]) -> some View {
-    let suggestions = cards.filter { $0.suggestion != nil }.count
-    return VStack(alignment: .leading, spacing: 16) {
+  /// "Swipe through them" over a sky tint, the fanned cards and Start, the kit's Large pill
+  /// (54; Paper draws 50, a height the pill set doesn't have).
+  private var startCard: some View {
+    VStack(alignment: .leading, spacing: 16) {
       HStack(alignment: .top, spacing: 12) {
         VStack(alignment: .leading, spacing: 4) {
           Text("Swipe through them")
@@ -88,11 +101,9 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      // Side by side, stacked at the accessibility sizes: one layout, so the pills stay the
-      // same views as the text grows.
-      let layout = typeSize.isAccessibilitySize
-        ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
-      layout { startButtons(suggestions) }
+      Button("Start") { ReviewEntry.open(app, at: nil) }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("review.tab.start")
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -109,28 +120,6 @@ struct ReviewTabView: View {
         }
         .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
         .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
-    }
-  }
-
-  @ViewBuilder
-  private func startButtons(_ suggestions: Int) -> some View {
-    Button("Start") { ReviewEntry.open(app, at: nil) }
-      .buttonStyle(.pill(.primary, fill: true))
-      .accessibilityIdentifier("review.tab.start")
-    if BuildSurface.showsUnfinished, suggestions > 0 {
-      // TODO(plan D.2 "Use N suggestions"): one gesture would author several edits.
-      Button {
-        app.say("Using every suggestion at once comes in a later build", icon: .info)
-      } label: {
-        // Paper sets this one smaller than Start (15/18 600, NTB-0) so the pair fits side by
-        // side; on one line it may shrink a little more, and at the larger sizes it wraps
-        // instead, as every pill does.
-        Text("Use \(suggestions) suggestion\(suggestions == 1 ? "" : "s")")
-          .hType(HType(size: 15, leading: 18, weight: .semibold, textStyle: .subheadline))
-          .minimumScaleFactor(0.8)
-      }
-      .buttonStyle(.pill(.secondary, fill: true))
-      .accessibilityIdentifier("review.tab.useSuggestions")
     }
   }
 

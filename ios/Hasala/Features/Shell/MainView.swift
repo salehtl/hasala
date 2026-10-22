@@ -111,6 +111,8 @@ struct MainView: View {
       // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
       case .search:
         SearchView(app: app)
+      case .checkSuggestions:
+        CheckSuggestionsSheet(app: app)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in

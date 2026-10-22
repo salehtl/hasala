@@ -101,6 +101,7 @@ enum SheetRoute: Hashable, Identifiable {
   case addTransaction
   case addFromEmail(TxnID)
   case search
+  case checkSuggestions
 
   var id: String {
     switch self {
@@ -117,6 +118,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .addTransaction: "addTransaction"
     case .addFromEmail(let id): "addFromEmail.\(id)"
     case .search: "search"
+    case .checkSuggestions: "checkSuggestions"
     }
   }
 }

@@ -19,6 +19,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   /// 1-based position of the top card in this session, and the session's size.
   var position: Int { get }
   var total: Int { get }
+  var waitingForCloud: Int { get }
   /// What this session sorted, for All caught up.
   var sorted: [SortedLine] { get }
   var hidden: Bool { get }
@@ -66,12 +67,32 @@ final class ReviewViewModel: ReviewDeckModel {
   /// The queue as it stands, in the session's order. A card that arrives mid-session goes
   /// last; a card that Undo puts back takes its old place.
   var cards: [ReviewCardModel] {
-    memo.value(for: app.store.revision) {
+    let ordered = memo.value(for: app.store.revision) {
       let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
       return ReviewEngine.cards(app.store.state).enumerated()
         .sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
         .map(\.element)
     }
+    return Self.holdingBack(ordered, waiting: cloudPending)
+  }
+
+  var waitingForCloud: Int {
+    let pending = cloudPending
+    guard !pending.isEmpty else { return 0 }
+    return cards.lazy.filter { pending.contains($0.id) }.count
+  }
+
+  private var cloudPending: Set<TxnID> {
+    guard let status = app.cloudSort?.status else { return [] }
+    switch status.phase {
+    case .running, .paused: return status.pendingTxnIDs
+    case .off, .idle, .done: return []
+    }
+  }
+
+  nonisolated static func holdingBack(_ cards: [ReviewCardModel], waiting: Set<TxnID>) -> [ReviewCardModel] {
+    guard !waiting.isEmpty else { return cards }
+    return cards.filter { !waiting.contains($0.id) } + cards.filter { waiting.contains($0.id) }
   }
 
   var position: Int { min(total, max(1, total - cards.count + 1)) }
