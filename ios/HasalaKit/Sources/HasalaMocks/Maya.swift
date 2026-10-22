@@ -134,7 +134,7 @@ public enum Maya {
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
       line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
-      when: "Today", destination: .review),
+      when: "Today", destination: .review(.allTime)),
     NotificationItem(
       id: "bill.axa", disc: .hue(.sand, .insurance), title: "AXA Insurance may be late",
       line: "Usually on the 7th · no email yet", status: .error, when: "Thu", destination: .bill("axa")),

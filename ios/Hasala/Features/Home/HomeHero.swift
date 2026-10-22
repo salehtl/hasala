@@ -58,7 +58,7 @@ struct HomeHero: View {
       if !noPlan {
         VStack(alignment: .leading, spacing: 10) {
           if hero.state == .range {
-            HeroMonthBars(bars: hero.bars, hidden: hidden)
+            if !hero.bars.isEmpty { HeroMonthBars(bars: hero.bars, hidden: hidden) }
           } else {
             MonthPaceBar(
               spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,

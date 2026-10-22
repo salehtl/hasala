@@ -105,8 +105,9 @@ final class HomeViewModel: HomeModel {
       // alerts pushed inside it (`AppRouter.open` queues it).
       router.open(.profile, profile: [.bankAlerts])
       return nil
-    case .review:
+    case .review(let preset):
       close()
+      if let preset { app.choose(preset) }
       router.tab = .review
       return { [app] in app.startReview() }
     case .unreadMail:

@@ -91,6 +91,8 @@ public struct FilterSummary: Sendable, Hashable {
   public var verdict: Verdict
   /// "40% of Dining's 1,600".
   public var caption: MoneyPhrase
+  /// False under All time: no budget to measure against, so no bar and no verdict.
+  public var budgeted = true
 }
 
 public struct ReviewSummary: Sendable, Hashable {
@@ -128,7 +130,7 @@ public enum ActivityEngine {
     let today = now.date.yearMonth
     let period = (period ?? .month(today)).clamped(to: today)
     let isThisMonth = period == .month(today)
-    let window = ReviewWindow(period)
+    let window = period.isAllTime ? ReviewWindow.all : ReviewWindow(period)
     let inPeriod = s.txns.filter { !$0.archived && window.contains($0.postedAt.date) }
     let reviewQueue = inPeriod.filter(\.inReview)
     let billCount = inPeriod.filter { isBill($0, s) && !$0.inReview }.count
@@ -306,6 +308,13 @@ public enum ActivityEngine {
   ) -> FilterSummary? {
     guard let cat = s.category(c) else { return nil }
     let total = Spending.spent(s, category: c, in: period)
+    guard period.showsBudgets else {
+      return FilterSummary(
+        title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille(0),
+        today: Permille(0), verdict: .onTrack,
+        caption: MoneyPhrase([.text("All time · since \(period.first.shortName) \(period.first.year)")]),
+        budgeted: false)
+    }
     let budget = Fils.sum(period.months) { s.plan.budget(c, $0).minor }
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)

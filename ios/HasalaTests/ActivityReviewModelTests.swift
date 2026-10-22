@@ -87,19 +87,21 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 0)
   }
 
-  @Test func theQueueIgnoresTheChosenPeriod() {
+  @Test func theBadgeIgnoresTheChosenPeriodAndTheDeckFollowsIt() {
     var state = MayaLedger.state
     state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
     #expect(app.reviewCount == 7)
+    #expect(ReviewViewModel(app: app).total == 6)
+    app.choose(.allTime)
     #expect(ReviewViewModel(app: app).cards.last?.id == "sep-shop")
     app.period = .month(YearMonth(2026, 9))
     #expect(app.reviewCount == 7)
     let deck = ReviewViewModel(app: app)
-    #expect(deck.total == 7 && deck.cards.map(\.id).suffix(1) == ["sep-shop"])
+    #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
     deck.sort("sep-shop", into: "groceries", alwaysUse: false, project: nil)
-    #expect(deck.cards.count == 6 && app.reviewCount == 6)
+    #expect(deck.cards.isEmpty && app.reviewCount == 6)
     #expect(deck.sorted.map(\.merchant) == ["Corner Shop"])
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
@@ -135,9 +137,9 @@ struct ActivityReviewModelTests {
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
     app.period = .month(YearMonth(2026, 9))
-    ReviewEntry.open(app, at: nil, inPeriod: true)
+    ReviewEntry.open(app, at: nil)
     let deck = ReviewViewModel(app: app)
-    #expect(!deck.allMonths && deck.periodTitle == "September 2026" && !deck.isThisMonth)
+    #expect(deck.periodTitle == "September 2026" && !deck.isThisMonth)
     #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
     #expect(deck.elsewhere?.line == "6 more in later months")
     deck.sort("sep-shop", into: "groceries", alwaysUse: false, project: nil)
@@ -148,20 +150,25 @@ struct ActivityReviewModelTests {
     #expect(deck.sorted.map(\.merchant) == ["Corner Shop"])
   }
 
-  @Test func aDeckFromOutsideReviewCoversEveryMonthUntilAPeriodIsPicked() {
+  @Test func aDeckFromOutsideReviewFollowsTheAppsPeriod() {
     var state = MayaLedger.state
     state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
                           postedAt: LocalDateTime(2026, 9, 20, 18, 0), accountID: "dib"))
     let app = AppModel(store: InMemoryLedger(state: state))
-    app.period = .month(YearMonth(2026, 8))
-    app.startReview()
-    let deck = ReviewViewModel(app: app)
-    #expect(deck.allMonths && deck.periodTitle == "All months" && !deck.isThisMonth)
-    #expect(deck.total == 7 && deck.total == app.reviewCount && deck.elsewhere == nil)
-    #expect(app.period == .month(YearMonth(2026, 8)))
     app.period = .month(YearMonth(2026, 9))
+    ActivityViewModel(app: app).startReview()
+    #expect(app.cover == .review)
+    let deck = ReviewViewModel(app: app)
+    #expect(deck.periodTitle == "September 2026" && !deck.isThisMonth)
+    #expect(deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
+    #expect(deck.elsewhere?.line == "6 more in later months")
+    app.choose(.allTime)
     deck.periodChanged()
-    #expect(!deck.allMonths && deck.total == 1 && deck.cards.map(\.id) == ["sep-shop"])
+    #expect(deck.periodTitle == "All time" && deck.total == 7 && deck.total == app.reviewCount)
+    #expect(deck.elsewhere == nil)
+    app.cover = nil
+    app.open(.review)
+    #expect(app.cover == .review && ReviewViewModel(app: app).total == 7)
   }
 
   @Test func aNewPeriodKeepsTheCardInFrontAndOneOrderForTheSession() {
@@ -171,7 +178,7 @@ struct ActivityReviewModelTests {
                             postedAt: LocalDateTime(2026, 9, day, 18, 0), accountID: "dib"))
     }
     let app = AppModel(store: InMemoryLedger(state: state))
-    ReviewEntry.open(app, at: "lulu", inPeriod: true)
+    ReviewEntry.open(app, at: "lulu")
     let deck = ReviewViewModel(app: app)
     #expect(deck.cards.first?.id == "lulu" && deck.total == 6)
     app.period = Period(YearMonth(2026, 9), MayaLedger.october)
@@ -184,7 +191,7 @@ struct ActivityReviewModelTests {
     #expect(deck.cards.map(\.id) == Array(order.dropFirst(2)))
   }
 
-  @Test func theBellTheBadgeTheTabAndTheDeckAgreeInAPastMonth() throws {
+  @Test func theBellOpensTheDeckAtAllTimeFromAPastMonth() throws {
     var state = MayaHistory.state
     for i in 0..<5 {
       state.txns.append(Txn(id: "jun-\(i)", merchant: "Corner Shop", amount: .aed(10_00 + Int64(i)),
@@ -197,11 +204,16 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 11)
     #expect(ReviewTabView.countLine(ReviewEngine.cards(app.store.state).count) == "11 to sort · about 2 minutes")
     let home = HomeViewModel(app: app)
+    #expect(bell.destination == .review(.allTime))
     let after = home.openNotification(bell.destination)
     #expect(app.tab == .review)
+    #expect(app.isAllTime && app.period.title == "All time")
+    #expect(app.period == .allTime(since: app.earliestMonth, today: MayaLedger.october))
     after?()
     #expect(app.cover == .review)
     let deck = ReviewViewModel(app: app)
+    #expect(deck.periodTitle == "All time" && !deck.isThisMonth && deck.elsewhere == nil)
+    #expect(app.reviewCards.count == 11 && app.reviewElsewhere == nil)
     #expect(deck.total == 11 && deck.position == 1)
     #expect(deck.cards.prefix(6).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
     #expect(deck.cards.suffix(5).map(\.id) == (0..<5).map { "jun-\($0)" })

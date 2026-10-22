@@ -160,12 +160,24 @@ final class AppModel {
   var mailOffer: MailOffer? { mailbox?.offer }
 
   var period: Period {
-    get { chosenPeriod?.clamped(to: store.now.date.yearMonth) ?? .month(store.now.date.yearMonth) }
+    get {
+      let today = store.now.date.yearMonth
+      guard let chosen = chosenPeriod else { return .month(today) }
+      return chosen.isAllTime ? .allTime(since: earliestMonth, today: today) : chosen.clamped(to: today)
+    }
     set {
       let today = store.now.date.yearMonth
-      let p = newValue.clamped(to: today)
+      let p = newValue.isAllTime ? .allTime(since: earliestMonth, today: today) : newValue.clamped(to: today)
       chosenPeriod = p == .month(today) ? nil : p
     }
+  }
+
+  var isAllTime: Bool { chosenPeriod?.isAllTime == true }
+
+  var showsBudgets: Bool { period.showsBudgets }
+
+  func choose(_ preset: PeriodPreset) {
+    period = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
   }
 
   var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
@@ -184,7 +196,7 @@ final class AppModel {
 
   /// What Home draws, recomputed once per ledger change or period.
   var snapshot: HomeSnapshot {
-    let period = chosenPeriod
+    let period = chosenPeriod == nil ? nil : self.period
     return homeMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
       HomeEngine.snapshot(store.state, now: store.now, period: period)
     }
