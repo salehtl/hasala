@@ -230,10 +230,12 @@ public struct CategoryDef: Sendable, Equatable, Codable {
   public var bucket: String?
   public var color: String?
   public var icon: String?
+  public var parent: String?
   public var active: Bool
 
   public init(
-    shape: Int, id: String, name: String, kind: String, bucket: String? = nil, color: String? = nil, icon: String? = nil, active: Bool
+    shape: Int, id: String, name: String, kind: String, bucket: String? = nil, color: String? = nil, icon: String? = nil, parent: String? = nil,
+    active: Bool
   ) {
     self.shape = shape
     self.id = id
@@ -242,6 +244,7 @@ public struct CategoryDef: Sendable, Equatable, Codable {
     self.bucket = bucket
     self.color = color
     self.icon = icon
+    self.parent = parent
     self.active = active
   }
 }

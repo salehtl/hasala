@@ -42,8 +42,11 @@ public struct CategoryInfo: Sendable, Equatable {
   public let builtin: Bool
   /// `category.ord`: the taxonomy ord for a built-in, `100 + first-definition index` for a user id.
   public let sortKey: Int
+  public let parent: String?
 
-  public init(id: String, name: String, kind: CategoryKind, bucket: Bucket?, icon: String, active: Bool, builtin: Bool, sortKey: Int) {
+  public init(
+    id: String, name: String, kind: CategoryKind, bucket: Bucket?, icon: String, active: Bool, builtin: Bool, sortKey: Int, parent: String? = nil
+  ) {
     self.id = id
     self.name = name
     self.kind = kind
@@ -52,6 +55,7 @@ public struct CategoryInfo: Sendable, Equatable {
     self.active = active
     self.builtin = builtin
     self.sortKey = sortKey
+    self.parent = parent
   }
 
   public var hue: Hue { Hue.of(kind, bucket) }
@@ -87,6 +91,23 @@ public enum TaxonomyV1 {
   }
 
   public static func builtin(_ id: String) -> CategoryInfo? { builtins.first { utf8Equal($0.id, id) } }
+
+  public static let maxActiveCustom = 20
+
+  public static let maxNameScalars = 24
+
+  public static let systemIDs = ["transfer", "refunds", "salary"]
+
+  public static let parentCandidates: [String] = builtins.map(\.id).filter { !utf8Equal($0, "transfer") && !utf8Equal($0, "refunds") }
+
+  public static func isSystem(_ id: String) -> Bool { systemIDs.contains { utf8Equal($0, id) } }
+
+  public static func isParentCandidate(_ id: String) -> Bool { parentCandidates.contains { utf8Equal($0, id) } }
+
+  public static func parentClass(_ id: String) -> (kind: CategoryKind, bucket: Bucket?)? {
+    guard isParentCandidate(id), let b = builtin(id) else { return nil }
+    return (b.kind, b.bucket)
+  }
 
   /// The default icon of a user category (03c §4.2).
   public static let userIcon = "tag"

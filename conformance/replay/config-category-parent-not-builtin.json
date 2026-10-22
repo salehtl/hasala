@@ -1,0 +1,241 @@
+{
+  "name": "category-parent-not-builtin",
+  "group": "config",
+  "note": "A parent that is not a built-in that can be a parent (a user id, transfer, refunds, a non-string, an empty or differently cased id, an unknown id) is ignored: the record is kept with no parent.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-1",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Coffee",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "dining"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-2",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "c_01jc0000000000000000000102"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-3",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "transfer"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-4",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "refunds"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-5",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": 7
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-6",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": ""
+          }
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-7",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000101",
+            "name": "Tea",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": "cup",
+            "active": true,
+            "parent": "Dining"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-not-builtin-8",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000102",
+            "name": "Ghost",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": null,
+            "active": true,
+            "parent": "no_such_category"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [
+        [
+          "c_01jc0000000000000000000101",
+          {
+            "active": true,
+            "bucket": "want",
+            "icon": "cup",
+            "id": "c_01jc0000000000000000000101",
+            "kind": "spending",
+            "name": "Tea"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000102",
+          {
+            "active": true,
+            "bucket": "want",
+            "icon": null,
+            "id": "c_01jc0000000000000000000102",
+            "kind": "spending",
+            "name": "Ghost"
+          }
+        ]
+      ],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "8"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "fa8a6d28fdff04366b92d7e90f2f0688cb7926b0894cf049ef6ff3a74faca076",
+    "order": {
+      "banks": [],
+      "categories": [
+        "c_01jc0000000000000000000101",
+        "c_01jc0000000000000000000102"
+      ]
+    }
+  }
+}

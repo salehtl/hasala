@@ -1,0 +1,247 @@
+{
+  "name": "category-parent-mismatch",
+  "group": "config",
+  "note": "A parent whose type and bucket differ from the record's kind and bucket is dropped: the record is kept, not nested, and counts by its own kind and bucket.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-1",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000201",
+            "name": "Bonus",
+            "kind": "income",
+            "bucket": null,
+            "icon": null,
+            "active": true,
+            "parent": "dining"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-2",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000202",
+            "name": "Lunch",
+            "kind": "spending",
+            "bucket": "need",
+            "icon": null,
+            "active": true,
+            "parent": "dining"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-3",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000203",
+            "name": "Gold",
+            "kind": "spending",
+            "bucket": "saving",
+            "icon": null,
+            "active": true,
+            "parent": "savings"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-4",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000204",
+            "name": "Tips",
+            "kind": "income",
+            "bucket": null,
+            "icon": null,
+            "active": true,
+            "parent": "salary"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-5",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000205",
+            "name": "Games",
+            "kind": "spending",
+            "bucket": "want",
+            "icon": null,
+            "active": true,
+            "parent": "salary"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "category_defined",
+          "op_id": "category-parent-mismatch-6",
+          "authored_at": "2026-10-22T08:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "id": "c_01jc0000000000000000000206",
+            "name": "Pension",
+            "kind": "excluded",
+            "bucket": null,
+            "icon": null,
+            "active": true,
+            "parent": "savings"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [],
+      "categories": [
+        [
+          "c_01jc0000000000000000000201",
+          {
+            "active": true,
+            "bucket": null,
+            "icon": null,
+            "id": "c_01jc0000000000000000000201",
+            "kind": "income",
+            "name": "Bonus"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000202",
+          {
+            "active": true,
+            "bucket": "need",
+            "icon": null,
+            "id": "c_01jc0000000000000000000202",
+            "kind": "spending",
+            "name": "Lunch"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000203",
+          {
+            "active": true,
+            "bucket": "saving",
+            "icon": null,
+            "id": "c_01jc0000000000000000000203",
+            "kind": "spending",
+            "name": "Gold",
+            "parent": "savings"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000204",
+          {
+            "active": true,
+            "bucket": null,
+            "icon": null,
+            "id": "c_01jc0000000000000000000204",
+            "kind": "income",
+            "name": "Tips",
+            "parent": "salary"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000205",
+          {
+            "active": true,
+            "bucket": "want",
+            "icon": null,
+            "id": "c_01jc0000000000000000000205",
+            "kind": "spending",
+            "name": "Games"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000206",
+          {
+            "active": true,
+            "bucket": null,
+            "icon": null,
+            "id": "c_01jc0000000000000000000206",
+            "kind": "excluded",
+            "name": "Pension"
+          }
+        ]
+      ],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [],
+      "homeCurrency": null,
+      "liveByIngestID": [],
+      "pendingByCurrency": [],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [],
+      "unreadable": []
+    },
+    "state_sha256": "931d79b37a947ff61112c55b6a480d99f858d20405471c64479280b7d102d346",
+    "order": {
+      "banks": [],
+      "categories": [
+        "c_01jc0000000000000000000201",
+        "c_01jc0000000000000000000202",
+        "c_01jc0000000000000000000203",
+        "c_01jc0000000000000000000204",
+        "c_01jc0000000000000000000205",
+        "c_01jc0000000000000000000206"
+      ]
+    }
+  }
+}

@@ -17,6 +17,9 @@
       Screen("profile.rulesLearned", scenario: "maya", drive: { graph in
         graph.app.perform(.categorize("lulu", "groceries", learnRule: true, project: nil))
       }, prepare: profile([.rules])),
+      Screen("profile.categoryNew", scenario: "maya", prepare: profile([.rules, .categoryEditor(nil)])),
+      Screen("profile.categoryEdit", scenario: "maya", prepare: profile([.rules, .categoryEditor("dining")])),
+      Screen("profile.categoryCustom", scenario: "maya", prepare: profile([.rules, .categoryEditor("emergency-fund")])),
       // Delete your account (69M-0; Sign-in & security's view).
       Screen("profile.delete", scenario: "passkeyUser", prepare: profile([.deleteAccount])),
       Screen("profile.help", scenario: "maya", prepare: profile([.help])),

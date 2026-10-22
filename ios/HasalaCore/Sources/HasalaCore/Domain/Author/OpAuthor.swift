@@ -433,14 +433,46 @@ public struct OpAuthor: Sendable {
 
   // MARK: Categories (03c §4.2)
 
-  public mutating func defineCategory(id: String, name: String, kind: CategoryKind, bucket: Bucket?, icon: String?, active: Bool) {
+  public mutating func defineCategory(
+    id: String, name: String, kind: CategoryKind, bucket: Bucket?, icon: String?, active: Bool, parent: String? = nil
+  ) {
     let name = label(name, "name")
-    add(
-      .categoryDefined,
-      [
-        ("id", .string(id.precomposedStringWithCanonicalMapping)), ("name", .string(name)), ("kind", .string(kind.rawValue)), ("bucket", bucket.map { .string($0.rawValue) } ?? .null),
-        ("icon", icon.map(JSONValue.string) ?? .null), ("active", .bool(active)),
-      ])
+    var payload: [(String, JSONValue)] = [
+      ("id", .string(id.precomposedStringWithCanonicalMapping)), ("name", .string(name)), ("kind", .string(kind.rawValue)), ("bucket", bucket.map { .string($0.rawValue) } ?? .null),
+      ("icon", icon.map(JSONValue.string) ?? .null), ("active", .bool(active)),
+    ]
+    if let parent { payload.append(("parent", .string(parent))) }
+    add(.categoryDefined, payload)
+  }
+
+  public mutating func createCategory(name: String, parent: String, icon: String? = nil, in view: TaxonomyView) throws(AuthorError) -> String {
+    let rules = CategoryRules(view)
+    if let r = rules.checkCreate(name: name, parent: parent, icon: icon) { throw .refused(r.message) }
+    guard let cls = rules.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
+    let id = try newCategoryID()
+    defineCategory(id: id, name: name, kind: cls.kind, bucket: cls.bucket, icon: icon, active: true, parent: parent)
+    return id
+  }
+
+  public mutating func editCategory(id: String, name: String? = nil, icon: String? = nil, parent: String? = nil, in view: TaxonomyView) throws(AuthorError) {
+    let rules = CategoryRules(view)
+    if let r = rules.checkEdit(id: id, name: name, icon: icon, parent: parent) { throw .refused(r.message) }
+    guard let c = view.info(id) else { throw .refused(CategoryRefusal.unknownCategory.message) }
+    var kind = c.kind
+    var bucket = c.bucket
+    if let parent {
+      guard let cls = rules.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
+      kind = cls.kind
+      bucket = cls.bucket
+    }
+    defineCategory(
+      id: c.id, name: name ?? c.name, kind: kind, bucket: bucket, icon: icon ?? c.icon, active: c.active, parent: c.builtin ? nil : (parent ?? c.parent))
+  }
+
+  public mutating func setCategoryActive(id: String, active: Bool, in view: TaxonomyView) throws(AuthorError) {
+    if let r = CategoryRules(view).checkSetActive(id: id, active: active) { throw .refused(r.message) }
+    guard let c = view.info(id) else { throw .refused(CategoryRefusal.unknownCategory.message) }
+    defineCategory(id: c.id, name: c.name, kind: c.kind, bucket: c.bucket, icon: c.icon, active: active, parent: c.builtin ? nil : c.parent)
   }
 
   /// A new user category id: `c_` + lower-case ULID.

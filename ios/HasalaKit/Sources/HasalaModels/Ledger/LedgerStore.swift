@@ -61,6 +61,11 @@ public enum LedgerEdit: Sendable, Hashable {
   /// `rule_added{enabled}`.
   case setRuleEnabled(RuleID, Bool)
 
+  case addCategory(CategoryDraft)
+  case editCategory(CategoryID, CategoryDraft)
+  case archiveCategory(CategoryID, moveTo: CategoryID?)
+  case restoreCategory(CategoryID)
+
   case setRate(currency: String, rateMicro: Int64)
   case unsetRate(currency: String)
 
@@ -142,6 +147,21 @@ public enum ActionError: Error, Sendable, Hashable {
   case invalidAmount
   case invalidProject
   case invalidMerchant
+  case refused(String)
+}
+
+public struct CategoryDraft: Sendable, Hashable {
+  public var name: String
+  public var glyph: Glyph
+  public var parent: CategoryID?
+
+  public init(name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+    self.name = name
+    self.glyph = glyph
+    self.parent = parent
+  }
+
+  public var trimmedName: String { name.trimmedSpaces }
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit

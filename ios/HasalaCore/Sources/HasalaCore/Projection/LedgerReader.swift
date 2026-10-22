@@ -304,6 +304,23 @@ public struct LedgerReader: Sendable {
     }
   }
 
+  public struct CategoryMemberRow: Sendable, Equatable {
+    public let id: String
+    public let version: Int64
+    public let needsReview: Bool
+  }
+
+  public func categoryMembers(_ category: String) throws -> [CategoryMemberRow] {
+    try db.read { db in
+      try Row.fetchAll(
+        db,
+        sql:
+          "SELECT id, version, needs_review FROM txn WHERE superseded_by IS NULL AND unparsed = 0 AND split = 0 AND category = ? ORDER BY posted_ms DESC, id DESC",
+        arguments: [category]
+      ).map { CategoryMemberRow(id: $0["id"], version: $0["version"], needsReview: $0["needs_review"]) }
+    }
+  }
+
   // MARK: Categories, rules, merchants, trust
 
   public func taxonomy() throws -> TaxonomyView {
@@ -313,7 +330,7 @@ public struct LedgerReader: Sendable {
           CategoryInfo(
             id: r["id"], name: r["name"], kind: CategoryKind(rawValue: r["kind"]) ?? .excluded,
             bucket: (r["bucket"] as String?).flatMap(Bucket.init(rawValue:)), icon: r["icon"], active: r["active"], builtin: r["builtin"],
-            sortKey: r["ord"])
+            sortKey: r["ord"], parent: r["parent"])
         })
     }
   }

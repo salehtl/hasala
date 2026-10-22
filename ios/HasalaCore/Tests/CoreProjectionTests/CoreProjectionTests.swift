@@ -149,6 +149,23 @@ struct MayaScenarioTests {
     #expect(try reader.reviewCounts()[.needsReview] == 6)
     #expect(try reader.activity(month: Maya.october, limit: 100).count == 26)
   }
+
+  @Test("category members: live, parsed, unsplit rows of one category, archived included")
+  func categoryMembers() throws {
+    let (reader, _) = try Self.projected()
+    let all = try reader.activity(limit: 100_000) + reader.archived(limit: 100_000)
+    let used = Set(all.compactMap(\.category))
+    #expect(!used.isEmpty)
+    for category in used {
+      let expected = all.filter { $0.category == category && !$0.split && !$0.unparsed }.sorted {
+        $0.postedMs != $1.postedMs ? $0.postedMs > $1.postedMs : $0.id > $1.id
+      }
+      let members = try reader.categoryMembers(category)
+      #expect(members.map(\.id) == expected.map(\.id), "\(category)")
+      #expect(members.map(\.version) == expected.map(\.version) && members.map(\.needsReview) == expected.map(\.needsReview))
+    }
+    #expect(try reader.categoryMembers("no_such_category").isEmpty)
+  }
 }
 
 @Suite("CoreProjection contracts")
@@ -164,6 +181,21 @@ struct ProjectionContractTests {
     #expect(try reader.isUsable())
     #expect(try reader.meta()?.cursorHot == 0)
     #expect(try reader.taxonomy().ordered.count == 18)
+  }
+
+  @Test("a custom category's parent is projected and read back")
+  func categoryParent() throws {
+    let maya = try Maya()
+    var s = maya.state
+    var a = OpAuthor(maya.context())
+    let id = try a.createCategory(name: "Coffee", parent: "dining", icon: "cup", in: TaxonomyView(state: s))
+    try Replay.foldOps(try a.build().ops, seq: s.cursors.hot + 1, writerID: Maya.writer, into: &s)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: Self.dictionary, projectedAtMs: 1, into: db)
+    let t = try LedgerReader(db).taxonomy()
+    #expect(t.info(id)?.parent == "dining" && t.info(id)?.bucket == .want)
+    #expect(t.info("dining")?.parent == nil)
+    #expect(t.ordered == TaxonomyView(state: s).ordered)
   }
 
   @Test("display names: rename beats the dictionary beats prettify; local dates at +04:00")

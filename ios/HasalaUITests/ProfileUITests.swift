@@ -87,7 +87,7 @@ final class ProfileUITests: XCTestCase {
 
     tap(app, "profile.rules")
     XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
-    XCTAssertTrue(el(app, "rules.segment").exists, "Debug shows the Categories segment")
+    XCTAssertTrue(el(app, "rules.segment").exists, "the page shows the Categories segment")
     attach(app, "Categories and rules")
     try audit(app)
     back(app)

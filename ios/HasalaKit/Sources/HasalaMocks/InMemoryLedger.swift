@@ -32,6 +32,7 @@ public final class InMemoryLedger: LedgerStore {
   private var undoRecords: [Int: UndoRecord] = [:]
   private var nextToken = 1
   private var nextManual = 1
+  private var nextCategory = 1
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     self.state = state
@@ -270,6 +271,11 @@ public final class InMemoryLedger: LedgerStore {
     case .unsetRate(let currency):
       guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
       s.unsetRate(currency)
+      title = nil
+    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      CategoriesEngine.apply(edit, to: &s, newID: "c_mock\(nextCategory)", month: now.date.yearMonth)
+      if case .addCategory = edit { nextCategory += 1 }
       title = nil
     case .setNotifications(let level):
       s.prefs.notifications = level

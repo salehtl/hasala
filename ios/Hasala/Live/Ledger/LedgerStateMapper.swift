@@ -42,7 +42,7 @@ nonisolated enum LedgerStateMapper {
     let engine = try r.planEngine(month: month, today: today)
     let taxonomy = try r.taxonomy()
 
-    let categories = taxonomy.ordered.map { category($0, engine: engine) }
+    let categories = byParent(taxonomy.ordered).map { category($0, engine: engine) }
     let resolutions = try r.billResolutions()
     var billOfTxn: [String: String] = [:]
     for res in resolutions where res.resolution == "paid" {
@@ -179,7 +179,17 @@ nonisolated enum LedgerStateMapper {
     }
     return HasalaModels.Category(
       id: info.id, name: info.name, kind: kind, bucket: bucket, glyph: glyph(info.icon), role: role,
-      archived: !info.active)
+      archived: !info.active, parent: info.parent, builtin: info.builtin)
+  }
+
+  static func byParent(_ infos: [CategoryInfo]) -> [CategoryInfo] {
+    let ids = Set(infos.map(\.id))
+    var children: [String: [CategoryInfo]] = [:]
+    var top: [CategoryInfo] = []
+    for c in infos {
+      if !c.builtin, let p = c.parent, ids.contains(p) { children[p, default: []].append(c) } else { top.append(c) }
+    }
+    return top.flatMap { [$0] + (children[$0.id] ?? []) }
   }
 
   /// 03c §1.7 icon tokens → HasalaModels' glyphs (the inverse of the seed export's table).

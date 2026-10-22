@@ -311,6 +311,10 @@ private struct ProfilePage: View {
       CategoryDetailView(app: app, category: id)
     case .rules:
       RulesPage(app: app, model: model)
+    case .categoryEditor(let id):
+      CategoryEditorPage(app: app, category: id)
+    case .categoryMove(let id):
+      CategoryMovePage(app: app, category: id)
     case .notifications:
       NotificationSettingsPage(model: model)
     case .exchangeRates:

@@ -67,6 +67,8 @@ enum ProfileRoute: Hashable {
   case bill(BillID)
   /// Categories and rules.
   case rules
+  case categoryEditor(CategoryID?)
+  case categoryMove(CategoryID)
   case project(ProjectID)
   case projects
   case addToProject(ProjectID)
