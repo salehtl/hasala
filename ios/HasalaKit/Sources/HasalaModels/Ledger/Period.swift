@@ -92,7 +92,7 @@ public struct Period: Sendable, Hashable, Codable, CustomStringConvertible {
 
   public func preset(today: YearMonth) -> PeriodPreset? {
     if isAllTime { return .allTime }
-    return PeriodPreset.allCases.first { $0 != .allTime && $0.period(today: today) == self }
+    return PeriodPreset.allCases.first { $0.period(today: today) == self }
   }
 }
 
