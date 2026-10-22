@@ -434,11 +434,16 @@ restore must not undo. `hasala-purge-replay` applies them again before
   and add its replay. The replay must be safe to run two times, and a replay
   on a database that was not restored must apply nothing.
 
-> **WARNING:** A `hasalad` from before the event kinds (before branch
-> `legal/accuracy-fixes`) does not read lines with a third field. Then
-> `hasala-purge-replay` fails and `hasalad` does not start. Before you deploy
-> an older `hasalad`, copy the ledger file. Then remove each line that has a
-> third field.
+- The reader skips a line of a kind it does not know, with a log line, and
+  keeps it in the file. Parsing of each known kind stays strict: a malformed
+  line fails the whole ledger.
+
+> **WARNING:** Older `hasalad` builds fail on a kind they do not know. Then
+> `hasala-purge-replay` fails and `hasalad` does not start. A build from before
+> the event kinds (before branch `legal/accuracy-fixes`) fails on each line
+> with a third field. A build from before `onboarding/w5-review-fixes` fails on
+> each kind newer than itself (for example `phrase-seen`). Before you deploy
+> one of these, copy the ledger file. Then remove each line it cannot read.
 
 ### Rules for agents on this Mac
 

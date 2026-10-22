@@ -88,16 +88,21 @@ For a passkey signup whose registration returned PRF output and whose passkey is
   `PhraseViewer` with all its rules: hidden until tapped, masked while the screen is
   captured, a screenshot warning, no copy). While the words are unseen, the viewer's
   heading asks for paper ("Write these down, in order"), as signup's screen did.
-- The card goes once the words were drawn for the person, from Home or from Sign-in &
-  security. A reveal while the screen is captured does not count.
+- The card goes after the first successful "View your 12 words", from Home or from
+  Sign-in & security (see "When the words count as seen").
 - If notifications are allowed, one local reminder fires 24 hours after signup while the
   words are still unseen. It carries no account data.
-- While the words are unseen, Sign-in & security does not remove a passkey ("Write down
-  your 12 words first"), because the passkey's PRF wrap is the only way to show them.
-  Removing a passkey is not in the beta build.
-- If the passkey can't show the words while they are unseen, the copy does not point to a
-  paper copy that doesn't exist: it says the data still opens on this iPhone, to keep it,
-  and to talk to us at hasala.app/support.
+- While the words are unseen, the passkey whose PRF wrap is the account's only one can't
+  be removed, and its wrap can't be deleted. The server refuses both with 409
+  `phrase_unseen` (`DELETE /api/v1/auth/passkeys/{id}`, `DELETE /api/v1/keys/wraps`), so an
+  older build or an iPhone whose cache is behind can't lose the words. The app also
+  stops it first and says "Write down your 12 words first". Another passkey with its own
+  PRF wrap, or a password, can still go. Removing a passkey is not in the beta build.
+- If the passkey can't show the words while they are unseen (also on Home, when the
+  account has no passkey on this iPhone), the words stay unseen and the card stays. The
+  copy does not point to a paper copy that doesn't exist: it says the data still opens on
+  this iPhone, to keep it, and to talk to us at hasala.app/support. Nothing is reported to
+  the server.
 
 Password signups, passkeys without PRF and passkeys that don't sync are unchanged: the
 words stay in signup. The interrupted signup (`finishInterruptedSetup`) is also unchanged.
@@ -133,20 +138,41 @@ bootstrap with `phrase_unseen`, which leaves it empty.
 
 - `GET /api/v1/account` reports `phrase_unseen_since` (the keys' creation time while the
   flag is empty, else null).
-- `POST /api/v1/keys/phrase/seen` (a session, no step-up, no body fields, no secret) sets
-  it once and answers 204; again, it changes nothing. The app calls it when the words were
-  drawn, and again on the next foreground until it went through.
+- `POST /api/v1/keys/phrase/view` sets it, in the same transaction that releases the
+  phrase box, records `phrase_viewed` and queues its security email, the first time it
+  succeeds. A later view changes nothing. There is no other way to set it: no endpoint
+  takes a "seen" report.
 - On the app, `StoredUnseenPhrase` is a cache of the server value. When the runtime reads
-  `GET /account` (at each launch and after a sign-in), the server value wins, unless this
-  iPhone drew the words and has not reported it yet: then it reports first. So the card
-  and the reminder come back after a sign-out, a session the server ended, a reinstall or
-  on another iPhone.
+  `GET /account` (at each launch, after a sign-in, and after the security wake that every
+  view sends to the other iPhones), the server value wins. So the card and the reminder
+  come back after a sign-out, a session the server ended, a reinstall or on another
+  iPhone, and go everywhere after the first view.
+- An older server answers 400 to `phrase_unseen` (it does not know the field). The app
+  then shows the words in signup for that signup, with the same passkey, ticket and keys,
+  and publishes without the field. Deploy the server first anyway.
+
+### When the words count as seen
+
+Decided 2026-10-22: **the server marks the words seen on the first successful view.** The
+view needs a fresh passkey step-up (Face ID) and emails the holder, so it is already a
+deliberate act that the holder hears about. The app's own cache drops the card only after
+the grid was drawn (a reveal while the screen is captured does not count), so on this
+iPhone the card stays until the person saw the words or the next `GET /account`.
+
+The consequence: a view that was opened but closed before the words were drawn counts as
+seen on the server, and the card goes at the next account read. The words are not lost:
+they can be shown again from Sign-in & security at any time while the passkey works. The
+other choice (a separate "seen" report from the app after the grid was drawn) needed an
+endpoint that only a session protects, with no step-up and no email, and an offline queue
+for the report. A leaked session could have cleared the reminder on every iPhone. That is
+worse than a card that goes after a view the person chose not to finish.
 
 A restore must not show the card again to someone who already wrote the words down. The
-first report is recorded in the restore ledger (kind `phrase-seen`: the account id and the
+first view is recorded in the restore ledger (kind `phrase-seen`: the account id and the
 time only), and `hasala-purge-replay` sets the flag again (only when it is still empty and
-the keys existed by then). An older `hasalad` can't read this kind; the restore runbook's
-rule for event lines applies.
+the keys existed by then). A `hasalad` from before this kind skips the line with a log
+line, if it is a build that skips unknown kinds; an older one fails (see the restore
+runbook).
 
 ### The window of exposure
 

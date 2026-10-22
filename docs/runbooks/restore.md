@@ -38,9 +38,16 @@ coming back:
   the summary counts it. The holder gets back in with the 12 words. Operator
   freezes are not recorded: no console or CLI command freezes or unfreezes an
   account yet.
-- An older `hasalad` cannot read the new event lines. Before you roll back past
-  this change, keep a copy of the ledger and remove the lines that have a third
-  field.
+- A `hasalad` from the branch `onboarding/w5-review-fixes` on skips a line of a
+  kind it does not know, with a log line (`purgeledger: skipped an entry of a
+  kind this hasalad does not know`), keeps it in the file until it is past
+  retention, and replays the rest. A line of a known kind that is malformed
+  still fails the whole ledger.
+- An older `hasalad` fails on a kind it does not know. A `hasalad` from before
+  the event kinds (before `legal/accuracy-fixes`) fails on every line with a
+  third field; one from before `onboarding/phrase-on-home` fails on
+  `phrase-seen`. Before you roll back to one of these, keep a copy of the
+  ledger and remove the lines it cannot read.
 - If the replay fails, `hasalad` and the console do not start.
 - Each daily and pre-migration backup keeps an encrypted copy of the ledger
   (`hasala-ledger-<tag>-<time>.tar.age`). A backup fails when the ledger file
