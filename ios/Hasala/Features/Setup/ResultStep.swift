@@ -13,8 +13,16 @@ struct ResultStep: View {
   static let windowDays = 90
 
   var body: some View {
+    if model.foundNoAlerts {
+      NoAlertsResult(model: model)
+    } else {
+      sorted
+    }
+  }
+
+  private var sorted: some View {
     let s = model.summary ?? SortSummary(total: 0, byRules: 0, byDictionary: 0, byModel: 0, toReview: 0)
-    CelebrationScreen(
+    return CelebrationScreen(
       badge: model.scanDone ? .check : nil,
       title: title(s),
       subtitle: subtitle(s),
@@ -40,7 +48,6 @@ struct ResultStep: View {
 
   private func title(_ s: SortSummary) -> String {
     if !model.scanDone { return "Importing your last \(Self.windowDays) days." }
-    if s.total == 0 { return "No bank alerts yet." }
     // None sorted itself (live Outlook while its trust gate is closed: each waits for review).
     return s.sortedThemselves == 0 ? "\(s.total) transactions found." : "\(s.total) transactions, sorted."
   }
@@ -49,12 +56,120 @@ struct ResultStep: View {
     if !model.scanDone {
       return "Carry on. They keep arriving in Hasala, newest included, and anything unsure waits for a quick swipe."
     }
-    if s.total == 0 {
-      return "We found no alerts from \(model.bankList) in the last \(Self.windowDays) days. New ones are read as they arrive."
-    }
     if s.toReview == 0 { return "All on this iPhone, and every one sorted itself." }
     if s.sortedThemselves == 0 { return "All on this iPhone. Each one waits for a quick swipe." }
     return "All on this iPhone. \(s.sortedThemselves) sorted themselves; \(s.toReview) wait for a quick swipe."
+  }
+}
+
+private struct NoAlertsResult: View {
+  var model: SetupModel
+  @State private var helping: SupportedBank?
+
+  private var mailbox: String { (model.connectedMailbox?.provider ?? model.provider).appName }
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 0) {
+        VStack(spacing: 20) {
+          Circle()
+            .fill(HColor.statusWarningSurface)
+            .frame(width: 72, height: 72)
+            .overlay { HIconView(.envelope, size: 32, color: HColor.statusWarningForeground, strokeWidth: 1.8) }
+            .accessibilityHidden(true)
+          VStack(spacing: 8) {
+            Text("No bank alerts yet.")
+              .hType(.largeTitle)
+              .foregroundStyle(HColor.textPrimary)
+              .accessibilityAddTraits(.isHeader)
+            Text("Hasala looked back \(ResultStep.windowDays) days in \(mailbox) for \(model.bankList). Your bank may send alerts only by SMS.")
+              .hType(.body)
+              .foregroundStyle(HColor.textOnWashSecondary)
+              .frame(maxWidth: 320)
+          }
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 28)
+        .padding(.top, 52)
+        VStack(spacing: 12) {
+          card
+          SetupFailureBanner(failure: model.failure)
+        }
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.top, 28)
+      }
+      .padding(.bottom, 16)
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .safeAreaBar(edge: .bottom) {
+      ActionDock(keyboardUp: false) {
+        Button("Check for new alerts") { Task { await model.checkAgain() } }
+          .buttonStyle(.pill(.primary, fill: true, loading: model.checkingAgain))
+          .dockPill()
+          .accessibilityIdentifier("result.checkAgain")
+        Button("Continue") { model.afterResult() }
+          .buttonStyle(.pill(.onGrouped, fill: true))
+          .disabled(model.checkingAgain)
+          .dockPill()
+          .accessibilityIdentifier("result.continue")
+      }
+    }
+    .background(alignment: .top) {
+      AmbientWash(.itWorks).ignoresSafeArea(edges: .top)
+    }
+    .background(HColor.surfaceSecondary)
+    .navigationBarBackButtonHidden()
+    .toolbar(.hidden, for: .navigationBar)
+    .sheet(item: $helping) { bank in
+      EmailAlertsHelpSheet(banks: [bank])
+    }
+  }
+
+  private var card: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Text("Turn on email alerts")
+        .hType(.overline)
+        .foregroundStyle(HColor.textSecondary)
+        .accessibilityAddTraits(.isHeader)
+        .padding(.bottom, 4)
+      ForEach(Array(model.orderedBanks.enumerated()), id: \.element) { i, bank in
+        if i > 0 { HColor.borderSubtle.frame(height: 1).accessibilityHidden(true) }
+        HStack(spacing: 12) {
+          Text(bank.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Button("How to") { helping = bank }
+            .buttonStyle(.plain)
+            .hType(HType.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textLink)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+            .accessibilityLabel("How to turn on email alerts, \(bank.name)")
+            .accessibilityIdentifier("result.howTo.\(bank.rawValue)")
+        }
+      }
+      Text("Check for new alerts reads what reached \(mailbox) since Hasala looked. Alerts go to another address? Use that mailbox instead.")
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.top, 8)
+      Button("Use a different email") { model.useDifferentEmail() }
+        .buttonStyle(.plain)
+        .hType(HType.subheadline.weight(.medium))
+        .foregroundStyle(HColor.textLink)
+        .disabled(model.checkingAgain)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("result.differentEmail")
+    }
+    .padding(.top, 18)
+    .padding(.horizontal, 16)
+    .padding(.bottom, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }
 }
 

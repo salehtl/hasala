@@ -6,9 +6,6 @@ import UIKit
 /// Profile › Categories and rules (Paper "Profile · Categories and rules" 68S-0): the rules
 /// Hasala learned, most used first, each with a switch that pauses it at once (its
 /// transactions go back to review). No Save: a switch saves the moment it flips.
-///
-/// The Categories view, "See all N rules" and "Add a rule" are not drawn yet: a Release build
-/// shows the rules alone, without the segmented control that would offer an empty view.
 struct RulesPage: View {
   enum Segment: Hashable { case categories, rules }
 
@@ -21,16 +18,11 @@ struct RulesPage: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        // TODO(spec 04 §16.2 P5): the Categories view; until it exists the control is Debug only.
-        if unfinished {
-          HSegmentedControl([Segment.categories, .rules], selection: $segment) { $0 == .categories ? "Categories" : "Rules" }
-            .accessibilityIdentifier("rules.segment")
-        }
+        HSegmentedControl([Segment.categories, .rules], selection: $segment) { $0 == .categories ? "Categories" : "Rules" }
+          .accessibilityIdentifier("rules.segment")
         switch segment {
         case .rules: rules
-        case .categories:
-          PlaceholderCard(systemImage: "tag", title: "Categories",
-                          message: "Your 18 categories and their buckets. This view comes in a later build.")
+        case .categories: CategoriesList(app: app)
         }
         if unfinished && segment == .rules {
           // TODO(spec 04 §16.2 P6): "Add a rule".

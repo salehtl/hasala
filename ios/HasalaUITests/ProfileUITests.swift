@@ -87,7 +87,7 @@ final class ProfileUITests: XCTestCase {
 
     tap(app, "profile.rules")
     XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
-    XCTAssertTrue(el(app, "rules.segment").exists, "Debug shows the Categories segment")
+    XCTAssertTrue(el(app, "rules.segment").exists, "the page shows the Categories segment")
     attach(app, "Categories and rules")
     try audit(app)
     back(app)
@@ -102,7 +102,7 @@ final class ProfileUITests: XCTestCase {
     app.buttons["header.hideAmounts"].firstMatch.tap()
     openProfile(app)
     XCTAssertTrue(el(app, "profile.accounts").waitForLabel(containing: "net worth Amount hidden"))
-    XCTAssertTrue(el(app, "profile.projects").label.contains("1 active"))
+    XCTAssertTrue(el(app, "profile.plan").label.contains("Amount hidden"))
     attach(app, "Profile · Amounts hidden")
     el(app, "profile.close").tap()
     app.tabBars.firstMatch.buttons["Activity"].tap()

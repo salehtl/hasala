@@ -194,10 +194,11 @@ public enum Projector {
   // MARK: Categories and rules
 
   private static func writeCategories(_ db: Database, _ taxonomy: TaxonomyView) throws {
-    let st = try db.makeStatement(sql: "INSERT INTO category (id, ord, name, kind, bucket, hue, icon, active, builtin) VALUES (?,?,?,?,?,?,?,?,?)")
+    let st = try db.makeStatement(
+      sql: "INSERT INTO category (id, ord, name, kind, bucket, hue, icon, active, builtin, parent) VALUES (?,?,?,?,?,?,?,?,?,?)")
     for c in taxonomy.ordered {
       let args: [(any DatabaseValueConvertible)?] = [
-        c.id, c.sortKey, c.name, c.kind.rawValue, c.bucket?.rawValue, c.hue.rawValue, c.icon, c.active, c.builtin,
+        c.id, c.sortKey, c.name, c.kind.rawValue, c.bucket?.rawValue, c.hue.rawValue, c.icon, c.active, c.builtin, c.parent,
       ]
       try st.execute(arguments: StatementArguments(args))
     }

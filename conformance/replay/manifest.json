@@ -625,6 +625,24 @@
       "note": "A spending category needs a bucket and the other kinds must not carry one; id, name, kind and active are required; an invalid redefinition leaves the previous one."
     },
     {
+      "file": "config-category-parent.json",
+      "name": "category-parent",
+      "group": "config",
+      "note": "category_defined v4 may name a built-in parent; an edit replaces it; v3 ignores the key."
+    },
+    {
+      "file": "config-category-parent-not-builtin.json",
+      "name": "category-parent-not-builtin",
+      "group": "config",
+      "note": "A parent that is not a parent built-in is ignored; the record is kept with no parent."
+    },
+    {
+      "file": "config-category-parent-mismatch.json",
+      "name": "category-parent-mismatch",
+      "group": "config",
+      "note": "A parent of another type or bucket than the record is dropped; the record is kept."
+    },
+    {
       "file": "blobs-unopenable-body-is-set-aside.json",
       "name": "unopenable-body-is-set-aside",
       "group": "blobs",

@@ -67,6 +67,8 @@ enum ProfileRoute: Hashable {
   case bill(BillID)
   /// Categories and rules.
   case rules
+  case categoryEditor(CategoryID?)
+  case categoryMove(CategoryID)
   case project(ProjectID)
   case projects
   case addToProject(ProjectID)
@@ -101,6 +103,7 @@ enum SheetRoute: Hashable, Identifiable {
   case addTransaction
   case addFromEmail(TxnID)
   case search
+  case checkSuggestions
 
   var id: String {
     switch self {
@@ -117,6 +120,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .addTransaction: "addTransaction"
     case .addFromEmail(let id): "addFromEmail.\(id)"
     case .search: "search"
+    case .checkSuggestions: "checkSuggestions"
     }
   }
 }

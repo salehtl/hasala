@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// How long a UI test waits for the app to show what a step expects. Not 5 s: on a
@@ -18,8 +19,13 @@ extension XCTestCase {
   @MainActor
   func launch(
     scenario: String? = "maya", screen: String? = nil, release: Bool = false, motion: String? = nil,
-    arguments: [String] = []
+    arguments: [String] = [], pasteboard: String? = nil
   ) -> XCUIApplication {
+    if let pasteboard {
+      UIPasteboard.general.string = pasteboard
+    } else {
+      UIPasteboard.general.items = []
+    }
     let app = XCUIApplication()
     var args: [String] = []
     if let scenario { args += ["-HasalaScenario", scenario] }

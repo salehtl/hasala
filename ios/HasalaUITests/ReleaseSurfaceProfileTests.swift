@@ -14,7 +14,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Profile")
     assertPersonalAccountsOnly(app, "Profile")
     assertAbsent(app, ["profile.notifications", "profile.connectGmail", "profile.faceID"], "Profile")
-    assertPresent(app, ["profile.accounts", "profile.bills", "profile.rules", "profile.projects", "profile.security",
+    assertPresent(app, ["profile.accounts", "profile.bills", "profile.rules", "profile.plan", "profile.security",
                         "profile.currency", "profile.editName", "profile.gravatar",
                         "profile.mailboxes",
                         "profile.export", "profile.privacy", "profile.help", "profile.signOut", "profile.delete",
@@ -58,7 +58,14 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
     tap(app, "profile.rules")
     XCTAssertTrue(el(app, "rule.r-carrefour").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Profile › Categories and rules")
-    assertAbsent(app, ["rules.segment", "rules.add", "rules.seeAll"], "Profile › Categories and rules")
+    assertAbsent(app, ["rules.add", "rules.seeAll"], "Profile › Categories and rules")
+    assertPresent(app, ["rules.segment"], "Profile › Categories and rules")
+    try audit(app)
+    app.buttons["Categories"].firstMatch.tap()
+    XCTAssertTrue(el(app, "categories.capLine").waitForExistence(timeout: uiWait))
+    attach(app, "Release · Categories")
+    assertNoPlaceholders(app, "Profile › Categories")
+    assertPresent(app, ["categories.add", "category.dining"], "Profile › Categories")
     try audit(app)
     back(app)
 
@@ -91,18 +98,19 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
   }
 
   @MainActor
-  func testProjectsRowOpensTheProjectsList() throws {
+  func testPlanRowOpensPlan() throws {
     let app = launchRelease()
     app.buttons["header.profile"].firstMatch.tap()
     XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
-    XCTAssertTrue(el(app, "profile.projects").label.contains("1 active"))
-    tap(app, "profile.projects", opening: "projects.new")
-    attach(app, "Release · Profile › Projects")
-    assertNoPlaceholders(app, "Profile › Projects")
-    assertPresent(app, ["projects.new"], "Profile › Projects")
+    assertAbsent(app, ["profile.projects"], "Profile")
+    XCTAssertTrue(el(app, "profile.plan").label.contains("ready to assign"))
+    tap(app, "profile.plan", opening: "plan.readyToAssign")
+    attach(app, "Release · Profile › Plan")
+    assertNoPlaceholders(app, "Profile › Plan")
+    assertPresent(app, ["plan.readyToAssign"], "Profile › Plan")
     try audit(app)
     back(app)
-    XCTAssertTrue(el(app, "profile.projects").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "profile.plan").waitForExistence(timeout: uiWait))
   }
 
   /// With no mailbox the card says so, and it is still the way to Bank alerts, where

@@ -149,6 +149,7 @@ public enum ProjectionSchema {
       icon    TEXT NOT NULL,
       active  INTEGER NOT NULL CHECK (active IN (0,1)),
       builtin INTEGER NOT NULL CHECK (builtin IN (0,1)),
+      parent  TEXT,
       CHECK ((kind = 'spending') = (bucket IS NOT NULL))
     );
 

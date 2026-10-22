@@ -17,11 +17,19 @@
       Screen("profile.rulesLearned", scenario: "maya", drive: { graph in
         graph.app.perform(.categorize("lulu", "groceries", learnRule: true, project: nil))
       }, prepare: profile([.rules])),
+      Screen("profile.categoryNew", scenario: "maya", prepare: profile([.rules, .categoryEditor(nil)])),
+      Screen("profile.categoryEdit", scenario: "maya", prepare: profile([.rules, .categoryEditor("dining")])),
+      Screen("profile.categoryCustom", scenario: "maya", prepare: profile([.rules, .categoryEditor("emergency-fund")])),
       // Delete your account (69M-0; Sign-in & security's view).
       Screen("profile.delete", scenario: "passkeyUser", prepare: profile([.deleteAccount])),
       Screen("profile.help", scenario: "maya", prepare: profile([.help])),
       Screen("profile.bills", scenario: "maya", prepare: profile([.bills])),
       Screen("profile.accounts", scenario: "maya", prepare: profile([.accounts])),
+      Screen("profile.cloudSort", scenario: "maya", prepare: cloudSort(.done, then: profile([]))),
+      Screen("profile.cloudSortOffer", scenario: "maya", prepare: cloudSort(.idle) { graph in
+        CloudSortOffer.launchOffer = true
+        profile([])(graph)
+      }),
       // Bills · Coming up and found (1K9-0), pushed from Home.
       Screen("bills", scenario: "maya", prepare: shell(.home, home: [.bills])),
       // Bills · AXA Insurance (late) (1UD-0), and the other states one bill can be in.

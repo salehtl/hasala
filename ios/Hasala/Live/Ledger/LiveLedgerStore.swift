@@ -45,7 +45,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored private let prefs: DevicePrefsStore
-  @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
+  @ObservationIgnored var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
   @ObservationIgnored private var nextToken = 1
   @ObservationIgnored private var writes: Task<Void, Never>?
@@ -175,6 +175,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    if let why = try categoryRefusal(edit) { throw .refused(why) }
     let before = state
     var s = state
     let (title, inverses) = try Self.patch(edit, &s, now: now)
@@ -218,12 +219,22 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     guard undoable.remove(token.id) != nil, let author else { return }
     enqueue { [weak self] in
       guard let inverses = await self?.takeUndo(token.id), !inverses.isEmpty else { return [] }
-      try await author.undo(inverses)
+      do {
+        try await author.undo(inverses)
+      } catch {
+        await self?.keepUndo(token.id, inverses)
+        throw error
+      }
       return []
     }
   }
 
   private func takeUndo(_ id: Int) -> [LedgerEditAuthor.Inverse]? { undos.removeValue(forKey: id) }
+
+  private func keepUndo(_ id: Int, _ inverses: [LedgerEditAuthor.Inverse]) {
+    undos[id] = inverses
+    undoable.insert(id)
+  }
 
   /// Runs `write` after every earlier one, then reloads (a failure reloads too, so the
   /// optimistic change is replaced by what the projection holds).
@@ -306,6 +317,24 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
       return ("Sorted into \(name(c))", inverses)
+    case .useSuggestions(let uses):
+      var inverses: [LedgerEditAuthor.Inverse] = []
+      var seen: Set<TxnID> = []
+      for u in uses where seen.insert(u.txn).inserted {
+        guard let i = s.txns.firstIndex(where: { $0.id == u.txn }), SuggestionsEngine.applies(u, to: s.txns[i]),
+          case .model(let tag) = s.txns[i].categorySource
+        else { continue }
+        let old = s.txns[i]
+        s.txns[i].categoryID = u.category
+        s.txns[i].categorySource = .user
+        s.txns[i].needsReview = false
+        s.txns[i].isTransfer = u.category == "transfer"
+        s.txns[i].splits = []
+        inverses.append(
+          .suggestion(txn: u.txn, category: old.categoryID, needsReview: old.needsReview, modelTag: tag, used: u.category))
+      }
+      guard !inverses.isEmpty else { throw .notFound }
+      return (SuggestionsEngine.usedLine(inverses.count), inverses)
     case .markTransfer(let id):
       let i = try index(id)
       let old = s.txns[i]
@@ -473,6 +502,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         project == nil ? "Taken out of the project" : ids.count == 1 ? "Added to \(name)" : "Added \(ids.count) to \(name)",
         inverses
       )
+    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+      CategoriesEngine.apply(
+        edit, to: &s, newID: "pending-category-\(UUID().uuidString.lowercased())", month: now.date.yearMonth)
+      return (nil, [])
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])

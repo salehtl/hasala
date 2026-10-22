@@ -243,7 +243,7 @@ final class MailConnectCoordinator {
     switch failure {
     case .adminApprovalNeeded, .noMailbox: true
     case .cancelled: provider != .gmail
-    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .permissionMissing, .failed: false
     }
   }
 }

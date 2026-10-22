@@ -33,6 +33,7 @@ public final class InMemoryLedger: LedgerStore {
   private var nextToken = 1
   private var nextManual = 1
   private var nextBill = 1
+  private var nextCategory = 1
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     var state = state
@@ -127,6 +128,21 @@ public final class InMemoryLedger: LedgerStore {
                             learnedToday: true))
       }
       title = "Sorted into \(categoryName(c))"
+    case .useSuggestions(let uses):
+      var used = 0
+      var seen: Set<TxnID> = []
+      for u in uses where seen.insert(u.txn).inserted && s.txn(u.txn).map({ SuggestionsEngine.applies(u, to: $0) }) == true {
+        try editTxn(u.txn) { t in
+          t.categoryID = u.category
+          t.categorySource = .user
+          t.needsReview = false
+          t.isTransfer = u.category == "transfer"
+          t.splits = []
+        }
+        used += 1
+      }
+      guard used > 0 else { throw .notFound }
+      title = SuggestionsEngine.usedLine(used)
     case .markTransfer(let id):
       try editTxn(id) { t in
         t.categoryID = "transfer"
@@ -417,6 +433,11 @@ public final class InMemoryLedger: LedgerStore {
     case .unsetRate(let currency):
       guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
       s.unsetRate(currency)
+      title = nil
+    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      CategoriesEngine.apply(edit, to: &s, newID: "c_mock\(nextCategory)", month: now.date.yearMonth)
+      if case .addCategory = edit { nextCategory += 1 }
       title = nil
     case .setNotifications(let level):
       s.prefs.notifications = level

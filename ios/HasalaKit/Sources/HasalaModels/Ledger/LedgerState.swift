@@ -44,10 +44,12 @@ public struct Category: Sendable, Hashable, Identifiable, Codable {
   public var glyph: Glyph
   public var role: CategoryRole
   public var archived: Bool
+  public var parent: CategoryID?
+  public var builtin: Bool
 
   public init(
     id: CategoryID, name: String, kind: CategoryKind = .spending, bucket: Bucket, glyph: Glyph,
-    role: CategoryRole = .everyday, archived: Bool = false
+    role: CategoryRole = .everyday, archived: Bool = false, parent: CategoryID? = nil, builtin: Bool = false
   ) {
     self.id = id
     self.name = name
@@ -56,6 +58,8 @@ public struct Category: Sendable, Hashable, Identifiable, Codable {
     self.glyph = glyph
     self.role = role
     self.archived = archived
+    self.parent = parent
+    self.builtin = builtin
   }
 
   /// The hue is a function of kind and bucket, never data (03c §4.1).

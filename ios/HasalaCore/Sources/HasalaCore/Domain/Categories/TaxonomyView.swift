@@ -38,7 +38,8 @@ public struct TaxonomyView: Sendable, CategoryLookup {
   private static func info(_ d: CategoryDef, sortKey: Int, builtin: Bool, defaultIcon: String) -> CategoryInfo {
     CategoryInfo(
       id: d.id, name: d.name, kind: CategoryKind(rawValue: d.kind) ?? .excluded, bucket: d.bucket.flatMap(Bucket.init(rawValue:)),
-      icon: d.shape >= 4 ? (d.icon ?? defaultIcon) : defaultIcon, active: d.active, builtin: builtin, sortKey: sortKey)
+      icon: d.shape >= 4 ? (d.icon ?? defaultIcon) : defaultIcon, active: d.active, builtin: builtin, sortKey: sortKey,
+      parent: builtin || d.shape < 4 ? nil : d.parent)
   }
 
   public func info(_ id: String) -> CategoryInfo? { byID[ExactKey(id)] }

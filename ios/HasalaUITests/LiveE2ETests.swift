@@ -32,7 +32,6 @@ final class LiveE2ETests: LiveE2ECase {
     let app = launchLive()
 
     tap(app, "stories.getStarted", timeout: 30)
-    tap(app, "welcome.join")
     type(app, "invite.field", invite)
     tap(app, "invite.continue")
 
@@ -69,12 +68,9 @@ final class LiveE2ETests: LiveE2ECase {
     // Publishing the keys (password register #45, then GET /keys and /account).
     tap(app, "ready.continue", timeout: 90)
 
-    // Setup: ENBD, then Choose your email (Gmail or Outlook), then the review account's
-    // sample instead of Gmail on its read-only screen, where the sample is the dock's one
-    // pill and Google's sign-in the text button under it.
+    // Setup: ENBD, then the review account's sample on the bank alerts step, where the
+    // sample is the dock's one pill and Google's sign-in the text button under it.
     tap(app, "bank.enbd", timeout: 30)
-    tap(app, "bank.continue")
-    tap(app, "mail.choose.gmail", timeout: 60)
     let sample = el(app, "mail.sample")
     XCTAssertTrue(sample.waitForExistence(timeout: 60),
                   "no 'Use sample data': the review flag (#40 review_account) did not reach setup")

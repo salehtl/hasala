@@ -15,6 +15,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
+  case useSuggestions([SuggestionUse])
   /// `txn_categorized{transfer}`.
   case markTransfer(TxnID)
   /// `txn_categorized{refunds}` + `txn_annotated{refund_of}`.
@@ -71,6 +72,11 @@ public enum LedgerEdit: Sendable, Hashable {
   /// `rule_added{enabled}`.
   case setRuleEnabled(RuleID, Bool)
 
+  case addCategory(CategoryDraft)
+  case editCategory(CategoryID, CategoryDraft)
+  case archiveCategory(CategoryID, moveTo: CategoryID?)
+  case restoreCategory(CategoryID)
+
   case setRate(currency: String, rateMicro: Int64)
   case unsetRate(currency: String)
 
@@ -79,6 +85,16 @@ public enum LedgerEdit: Sendable, Hashable {
   case setFaceIDLock(Bool)
 
   case setDisplayName(String)
+}
+
+public struct SuggestionUse: Sendable, Hashable {
+  public var txn: TxnID
+  public var category: CategoryID
+
+  public init(txn: TxnID, category: CategoryID) {
+    self.txn = txn
+    self.category = category
+  }
 }
 
 public struct ManualEntryDraft: Sendable, Hashable {
@@ -183,6 +199,21 @@ public enum ActionError: Error, Sendable, Hashable {
   case invalidProject
   case invalidMerchant
   case invalidBill
+  case refused(String)
+}
+
+public struct CategoryDraft: Sendable, Hashable {
+  public var name: String
+  public var glyph: Glyph
+  public var parent: CategoryID?
+
+  public init(name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+    self.name = name
+    self.glyph = glyph
+    self.parent = parent
+  }
+
+  public var trimmedName: String { name.trimmedSpaces }
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit

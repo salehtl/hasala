@@ -10,9 +10,11 @@
       // Setup, step 2 of 4.
       Screen("mail.connectGmail", scenario: "setupEmail") { _ = setupModel($0) },
       Screen("mail.connectOutlook", scenario: "setupEmail") { graph in
-        // Outlook picked in "Choose your email": its read-only screen.
-        let model = setupModel(graph)
-        model.navigationPath = [.connect(.outlook)]
+        setupModel(graph).pickProvider(.outlook)
+      },
+      Screen("mail.permissionMissing", scenario: "setupEmail") { graph in
+        mock(graph)?.gmailPermissionMissing = true
+        await setupModel(graph).connectMail(.gmail)
       },
       Screen("mail.connectedGmail", scenario: "setupEmail") { graph in
         // Connected, then Back from the first scan: the step shows it connected.
@@ -23,10 +25,7 @@
       Screen("mail.errorAdmin", scenario: "outlookAdmin") { await setupOutlookFails($0) },
       Screen("mail.errorCancelled", scenario: "outlookCancelled") { await setupOutlookFails($0) },
       // An App Review account: "Use sample data" leads, the provider's sign-in follows.
-      Screen("mail.connectGmail.review", scenario: "reviewAccount") { graph in
-        let model = setupModel(graph)
-        model.navigationPath = [.connect(.gmail)]
-      },
+      Screen("mail.connectGmail.review", scenario: "reviewAccount") { _ = setupModel($0) },
       // The profile.
       Screen("bankAlerts", scenario: "mailboxes2", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.oneGmail", scenario: "passkeyUser", prepare: profile([.bankAlerts])),
@@ -106,7 +105,7 @@
     /// scenario makes fail (an admin's approval, a sign-in that didn't finish).
     static func setupOutlookFails(_ graph: MockGraph) async {
       let model = setupModel(graph)
-      model.navigationPath = [.connect(.outlook)]
+      model.pickProvider(.outlook)
       await model.connectMail(.outlook)
     }
   }

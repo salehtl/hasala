@@ -27,6 +27,7 @@ final class SignupModel {
       if inviteFromLink, InviteCode.normalize(inviteText) != linkCode {
         linkKey = nil
         inviteFromLink = false
+        linkPasteboardChange = nil
       }
       // "Not found" goes as soon as the code changes (page 11: clear the error on fixing).
       if failure == .notInvited { failure = nil }
@@ -39,6 +40,8 @@ final class SignupModel {
   private var linkKey: String?
   private var linkCode: String?
   private(set) var invitePasted = false
+  private(set) var linkPasteboardChange: Int?
+  var clearPasteboard: @MainActor (Int) -> Void = { clearPastedPhrase(changeCount: $0) }
 
   // About you (§6.8)
   var displayName = ""
@@ -142,23 +145,35 @@ final class SignupModel {
     return nil
   }
 
-  func applyInviteLink(_ link: InviteLink) {
+  func applyInviteLink(_ link: InviteLink, pasteboardChange: Int? = nil) {
     linkCode = link.code.value
     inviteText = link.code.value
     linkKey = link.linkKey
     inviteFromLink = true
     invitePasted = false
+    linkPasteboardChange = pasteboardChange
   }
 
   /// The Paste button: a copied code (hyphens and spaces or not) replaces the field, and a
   /// copied invite link is taken as if it had been opened.
-  func paste(_ text: String) {
+  func paste(_ text: String, pasteboardChange: Int? = nil) {
     if let link = InviteLink.parse(pasted: text) {
-      applyInviteLink(link)
+      applyInviteLink(link, pasteboardChange: pasteboardChange)
       return
     }
     inviteText = InviteCode.entryCharacters(text)
     invitePasted = true
+  }
+
+  func usePastedInvite(_ text: String, pasteboardChange: Int? = nil) {
+    failure = nil
+    guard let link = InviteLink.parse(pasted: text) else {
+      if InviteCode(InviteCode.entryCharacters(text)) != nil { paste(text) }
+      path = [.invite]
+      return
+    }
+    applyInviteLink(link, pasteboardChange: pasteboardChange)
+    path = [.inviteReady]
   }
 
   func submitInvite() {
@@ -228,6 +243,7 @@ final class SignupModel {
                                             displayName: displayName)
       ticket = t
       ticketInvite = invite.value
+      clearPastedLink()
       emailVerified = false
       codeUsedUp = false
       email = t.email
@@ -245,7 +261,7 @@ final class SignupModel {
       // the same field, so it can be checked character by character.
       failure = .notInvited
       if path.contains(.inviteReady) {
-        path = [.welcome, .invite]
+        path = [.invite]
       } else {
         path.removeAll { $0 == .aboutYou }
       }
@@ -414,6 +430,7 @@ final class SignupModel {
       // The phrase leaves memory once it is published, and the link's key is no longer needed.
       self.phrase = nil
       linkKey = nil
+      clearPastedLink()
       newPassword = ""
       confirmPassword = ""
       passwordShown = false
@@ -426,7 +443,14 @@ final class SignupModel {
     }
   }
 
+  private func clearPastedLink() {
+    guard let change = linkPasteboardChange else { return }
+    clearPasteboard(change)
+    linkPasteboardChange = nil
+  }
+
   private func startAgain() {
+    clearPastedLink()
     let reason: AuthFailure = phraseSeen ? .signupExpiredPhrase : .signupExpired
     phrase = nil
     phraseRevealed = false

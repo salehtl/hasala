@@ -9,7 +9,7 @@ import Testing
 @Suite("Screen launch")
 struct ScreenLaunchTests {
   /// The ledger scenarios HasalaMocks knows besides the account ones.
-  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "firstDays", "mayaCopy", "mayaRange", "mayaSamePurchase", "mayaUnreadMail"]
+  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "firstDays", "mayaCopy", "mayaRange", "mayaSamePurchase", "mayaUnreadMail", "mayaSuggestions"]
 
   @Test func everyRegisteredScreenParsesAndHasAScenario() {
     let screens = ScreenLaunch.registry
@@ -72,7 +72,10 @@ struct ScreenLaunchTests {
     let done = try await opened("setup.done")
     #expect(done.onboarding.setup?.path.last == .done)
     let connected = try await opened("mail.connectedGmail")
-    #expect(connected.onboarding.setup?.path == [.connect(.gmail)] && connected.onboarding.setup?.mailConnected == true)
+    #expect(connected.onboarding.setup?.path == [] && connected.onboarding.setup?.mailConnected == true)
+    let grant = try await opened("mail.permissionMissing")
+    #expect(grant.onboarding.setup?.path == [] && grant.onboarding.setup?.failure
+      == .failed(MailConnectFailure.permissionMissingLine(.gmail)))
     let txn = try await opened("activity.txn")
     #expect(txn.app.router.tab == .activity && txn.app.router.pendingLaunch?.sheet == .transaction("carrefour"))
     let detail = try await opened("mail.detail")

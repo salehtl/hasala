@@ -18,7 +18,6 @@ struct SetupFlowView: View {
       BankStep(model: model)
         .navigationDestination(for: SetupRoute.self) { route in
           switch route {
-          case .connect(let provider): EmailStep(model: model, provider: provider)
           case .connectError(let provider): EmailErrorStep(model: model, provider: provider)
           case .scan: ScanStep(model: model)
           case .income: IncomeStep(model: model)
@@ -30,8 +29,8 @@ struct SetupFlowView: View {
           }
         }
     }
-    .sheet(isPresented: $model.choosingEmail) {
-      ChooseEmailSheet(mailbox: model.mailbox, title: .setup) { model.pickProvider($0) }
+    .sheet(isPresented: $model.choosingEmail, onDismiss: model.choosingEnded) {
+      ChooseEmailSheet(mailbox: model.mailbox, title: .setup) { model.choose($0) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("setup.chooseEmail")
     }
@@ -39,37 +38,6 @@ struct SetupFlowView: View {
     // The account's facts can arrive after setup first appeared (a runtime that opened on
     // "Try again"): the stack is built for them then.
     .onChange(of: model.step) { model.resume() }
-  }
-}
-
-/// Setup · 2 of 4 · your email, read-only, for one provider (Paper 6RN-0, 1MOH-0): the
-/// mailbox screens' view in setup's context, on the attempt the model keeps for the
-/// process, so coming back here shows it connected, with "Continue" and no second sign-in.
-/// A failure the design draws a screen for pushes it (an admin's approval, a Microsoft
-/// sign-in that didn't finish); a closed Google sign-in leaves the screen as it was.
-private struct EmailStep: View {
-  var model: SetupModel
-  let provider: MailProviderKind
-  @Environment(\.openURL) private var openURL
-
-  var body: some View {
-    let coordinator = model.coordinator(provider)
-    ConnectProviderView(
-      provider: provider, coordinator: coordinator, banks: model.orderedBanks,
-      sample: model.offersSampleData ? { Task { await model.useSampleData() } } : nil,
-      onConnected: { _ in model.continueFromEmail(provider) },
-      onChooseDifferent: chooseDifferent, asksSwitch: model.navigationPath.last == .connect(provider))
-      .onChange(of: coordinator.outcome) { _, outcome in
-        if case .failed? = outcome { model.connectFailed(provider) }
-      }
-      // A connect that already happened (a relaunch, the account's link) shows as connected.
-      .task { await model.settle(provider) }
-  }
-
-  /// "Not your email? Choose a different one.": the chooser, or, where this build reads
-  /// one provider, a note to us about the one it doesn't (plan B4.6 rule 2).
-  private func chooseDifferent() {
-    if model.canChooseEmail { model.chooseEmail() } else { openURL(BuildSurface.supportMail) }
   }
 }
 

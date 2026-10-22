@@ -32,12 +32,11 @@ struct WelcomeFlowView: View {
     guard let link = session.pendingInvite else { return }
     session.pendingInvite = nil
     store.signup.applyInviteLink(link)
-    store.signup.path = [.welcome, .inviteReady]
+    store.signup.path = [.inviteReady]
   }
 
   @ViewBuilder private func destination(_ route: WelcomeRoute) -> some View {
     switch route {
-    case .welcome: JoinWelcomeView(store: store)
     case .invite: InviteCodeView(store: store)
     case .inviteReady: InviteReadyView(store: store)
     case .aboutYou: AboutYouView(store: store)

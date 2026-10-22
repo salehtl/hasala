@@ -203,7 +203,7 @@ private struct QuestionBlock: View {
 /// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
 /// apart, 20 from the sides, on the home indicator's safe area. A soft scroll edge sits
 /// under it when content scrolls behind (`safeAreaBar`).
-private struct ActionDock<Content: View>: View {
+struct ActionDock<Content: View>: View {
   let keyboardUp: Bool
   @ViewBuilder let content: () -> Content
 
