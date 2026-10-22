@@ -3,6 +3,7 @@ import CoreMailbox
 import CorePrimitives
 import CoreProjection
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 import Observation
@@ -51,7 +52,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private var reloadSeq = 0
   @ObservationIgnored private var writesInFlight = 0
   @ObservationIgnored var onWriteFailed: (@MainActor () -> Void)?
-  @ObservationIgnored private var forkRecords: [String: LedgerStateMapper.BillRecord] = [:]
+  @ObservationIgnored private var forkOps: [String: Op] = [:]
   @ObservationIgnored private var forksLookedUp: Set<String> = []
   @ObservationIgnored private var forkLookup: Task<Void, Never>?
   @ObservationIgnored var lookUpForks: (@Sendable (Set<String>) async -> LedgerEditAuthor.ForkLookup)?
@@ -142,7 +143,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
       skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
-      dismissedNotices: prefs.dismissedNoticeDigests, forkRecords: forkRecords)
+      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps)
     let mapped = await Task.detached(priority: .userInitiated) { () -> LedgerState? in
       if let author { return try? author.map(reader, context: context) }
       return try? LedgerStateMapper.map(reader, context: context)
@@ -166,8 +167,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       guard let self else { return }
       forkLookup = nil
       forksLookedUp.formUnion(found.settled)
-      guard !found.records.isEmpty else { return }
-      forkRecords.merge(found.records) { a, _ in a }
+      guard !found.ops.isEmpty else { return }
+      forkOps.merge(found.ops) { a, _ in a }
       await reload()
     }
   }

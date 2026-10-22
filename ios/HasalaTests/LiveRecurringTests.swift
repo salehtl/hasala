@@ -620,7 +620,7 @@ struct LiveRecurringTests {
     #expect(Self.text(p["status"]) == "active" && Self.text(p["end"]) == "null")
     #expect(Self.text(p["start"]) == "2026-07-10" && Self.text(p["amount_minor"]) == "20000")
     #expect(Self.flat(p["pauses"]) == ["from=2026-10-10 until=2026-12-20"])
-    #expect(p["changes"] == nil)
+    #expect(p["changes"] == .array([]))
     try await Mapper.eventually { try Self.bill(store, "Gym Club").state == .tracked }
     let gym = try Self.bill(store, "Gym Club")
     #expect(gym.notices.isEmpty)
@@ -652,7 +652,7 @@ struct LiveRecurringTests {
         "amount_minor=23000 amount_mode=fixed from=2026-10-05 tolerance_bp=200",
         "amount_minor=26000 amount_mode=fixed from=2027-02-05 tolerance_bp=200",
       ])
-    #expect(p["pauses"] == nil)
+    #expect(p["pauses"] == .array([]))
     try await Mapper.eventually { try Self.bill(store, "Gym Club").notices.isEmpty }
     let gym = try Self.bill(store, "Gym Club")
     #expect(gym.amount == .aed(230_00) && gym.nextAmount == .aed(260_00) && gym.nextAmountFrom == LocalDate(2027, 2, 5))
@@ -703,7 +703,7 @@ struct LiveRecurringTests {
     let p = try #require(written.last)
     #expect(Self.text(p["status"]) == "active" && Self.text(p["end"]) == "null")
     #expect(Self.flat(p["pauses"]) == ["from=2026-11-10 until=null"])
-    #expect(p["changes"] == nil)
+    #expect(p["changes"] == .array([]))
     await store.reload()
     let gym = try Self.bill(store, "Gym Club")
     #expect(gym.state == .paused && gym.pausedSince == LocalDate(2026, 11, 10) && gym.pausedUntil == nil)
@@ -712,7 +712,7 @@ struct LiveRecurringTests {
     try store.apply(.resumeBill("bm_gym"))
     try await Mapper.eventually { try Self.record(a, "bm_gym")?.pauses.isEmpty == true }
     let resumed = try #require(try Self.billSets(a, "bm_gym").last)
-    #expect(resumed["pauses"] == nil)
+    #expect(resumed["pauses"] == .array([]))
     try await Mapper.eventually { try Self.bill(store, "Gym Club").state == .tracked }
   }
 

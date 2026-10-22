@@ -4,6 +4,7 @@ import CoreMailbox
 import CoreProjection
 import CoreReplay
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 
@@ -30,7 +31,7 @@ nonisolated enum LedgerStateMapper {
     var digestSalt = ""
     var unreadSenders: [String: String] = [:]
     var dismissedNotices: Set<String> = []
-    var forkRecords: [String: CoreReplay.Bill] = [:]
+    var forkOps: [String: Op] = [:]
   }
 
   enum MapError: Error { case date }

@@ -4,6 +4,7 @@ import CoreMailbox
 import CoreProjection
 import CoreReplay
 import CoreTime
+import CoreWire
 import Foundation
 import HasalaModels
 
@@ -44,7 +45,7 @@ nonisolated extension LedgerStateMapper {
     var byBill: [String: [BillResolution]] = [:]
     for res in feed.resolutions { byBill[res.bill, default: []].append(res) }
     let current = Dictionary(feed.records.map { ($0.id, $0.bill) }, uniquingKeysWith: { a, _ in a })
-    let forks = forkNotices(try r.forkNotices(kind: "bill"), records: current, losers: c.forkRecords)
+    let forks = forkNotices(try r.forkNotices(kind: "bill"), records: current, losers: c.forkOps)
     for (id, b) in feed.records {
       if var mapped = bill(
         id: id, b, resolutions: byBill[id] ?? [], matched: feed.derived.matched[id] ?? [], result: feed.derived.result,
@@ -226,15 +227,17 @@ nonisolated extension LedgerStateMapper {
     return out
   }
 
-  static func forkNotices(_ forks: [ForkNotice], records: [String: CoreReplay.Bill], losers: [String: CoreReplay.Bill])
+  static func forkNotices(_ forks: [ForkNotice], records: [String: CoreReplay.Bill], losers: [String: Op])
     -> [String: [BillNotice]]
   {
     var out: [String: [BillNotice]] = [:]
     var seen = Set<String>()
     for f in forks where f.entityKind == "bill" && seen.insert(f.loserOp).inserted {
-      guard let current = records[f.entityID], current.status != "dismissed" || losers[f.loserOp] != nil else { continue }
+      guard let current = records[f.entityID] else { continue }
+      let record = losers[f.loserOp].flatMap { Replay.billRecord($0, inheritingFrom: current) }
+      guard current.status != "dismissed" || record != nil else { continue }
       let summary: String
-      if let loser = losers[f.loserOp] {
+      if let loser = record {
         guard let s = forkSummary(loser: loser, current: current) else { continue }
         summary = s
       } else {

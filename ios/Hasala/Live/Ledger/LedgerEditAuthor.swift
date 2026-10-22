@@ -689,10 +689,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
       throw Failure.notFound
     }
     let forks = try reader.forkNotices(kind: "bill").filter { $0.entityID == id }
-    let records = await billRecords(opIDs: Set(forks.map(\.loserOp)))
+    let ops = await observer.ops(Set(forks.map(\.loserOp))).found
     for f in forks.reversed() {
-      guard let loser = records[f.loserOp], LedgerStateMapper.forkSummary(loser: loser, current: current) != nil,
-        let draft = Self.draft(loser)
+      guard let op = ops[f.loserOp], let loser = Replay.billRecord(op, inheritingFrom: current),
+        LedgerStateMapper.forkSummary(loser: loser, current: current) != nil, let draft = Self.draft(loser)
       else { continue }
       try await build { a throws(AuthorError) in try a.setBill(id: id, parentVersion: current.version, draft) }
       return [.bill(id: id, draft: old)]
@@ -701,19 +701,14 @@ nonisolated struct LedgerEditAuthor: Sendable {
   }
 
   struct ForkLookup: Sendable {
-    var records: [String: CoreReplay.Bill] = [:]
+    var ops: [String: Op] = [:]
     var settled: Set<String> = []
   }
 
   func forkLookup(_ ids: Set<String>) async -> ForkLookup {
     guard !ids.isEmpty else { return ForkLookup() }
-    let ops = await observer.ops(ids)
-    return ForkLookup(records: ops.compactMapValues { Replay.billRecord($0) }, settled: Set(ops.keys))
-  }
-
-  func billRecords(opIDs: Set<String>) async -> [String: CoreReplay.Bill] {
-    guard !opIDs.isEmpty else { return [:] }
-    return await observer.ops(opIDs).compactMapValues { Replay.billRecord($0) }
+    let lookup = await observer.ops(ids)
+    return ForkLookup(ops: lookup.found, settled: Set(lookup.found.keys).union(lookup.missing))
   }
 
   static let incomePrefix = "income."
