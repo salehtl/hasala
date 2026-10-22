@@ -14,7 +14,7 @@ struct CategoryPickerView: View {
   let done: () -> Void
 
   @State private var selected: CategoryID?
-  @State private var alwaysUse = true
+  @State private var alwaysUse = false
   @State private var query = ""
 
   var body: some View {
@@ -60,8 +60,6 @@ struct CategoryPickerView: View {
     .onAppear {
       guard selected == nil else { return }
       selected = model.detail?.category?.id ?? model.detail?.suggestion?.id
-      // A merchant still in review is new to the plan: teaching a rule is the likely wish.
-      alwaysUse = model.detail?.needsReview ?? true
     }
   }
 
