@@ -65,7 +65,8 @@ final class CloudSortCardUITests: XCTestCase {
     XCTAssertTrue(undo.waitForExistence(timeout: 30))
     XCTAssertEqual(el(app, "review.sort.line").label, "104 payments sorted, 33 suggestions to check, 25 for you to sort.")
     XCTAssertTrue(el(app, "review.sort.check").exists)
-    XCTAssertFalse(el(app, "review.tab.checkSuggestions").exists, "two ways to Check suggestions")
+    XCTAssertFalse(el(app, "review.tab.checkSuggestions").exists, "Check suggestions opens only from the result")
+    XCTAssertFalse(el(app, "review.slot.importing").exists, "two cards in the slot")
     attach(app, "Review · Sort done")
     try audit(app)
 
@@ -93,7 +94,39 @@ final class CloudSortCardUITests: XCTestCase {
     XCTAssertTrue(dismiss.waitForExistence(timeout: 30))
     dismiss.tap()
     XCTAssertTrue(el(app, "review.sort.card").waitForNonExistence(timeout: uiWait))
-    XCTAssertTrue(el(app, "review.tab.checkSuggestions").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.tab.checkSuggestions").exists, "Check suggestions outlived the result")
+    XCTAssertFalse(el(app, "review.sort.check").exists)
+    XCTAssertTrue(el(app, "review.tab.start").exists)
+  }
+
+  @MainActor
+  func testTheImportingCardShowsWhileMailIsRead() throws {
+    let app = launch(scenario: nil, screen: "review.importing")
+    let card = el(app, "review.slot.importing")
+    XCTAssertTrue(card.waitForExistence(timeout: 30))
+    XCTAssertTrue(card.label.hasPrefix("Reading your mail, 312 so far. You can start on the ones here now."), card.label)
+    XCTAssertTrue(el(app, "review.tab.start").exists, "the import hid the queue")
+    XCTAssertFalse(el(app, "review.sort.card").exists)
+    XCTAssertFalse(el(app, "review.cloudSort").exists)
+    attach(app, "Review · Reading your mail")
+    try audit(app)
+  }
+
+  @MainActor
+  func testARunShowsInsteadOfTheImport() throws {
+    let app = launch(scenario: nil, screen: "review.sort.importing")
+    XCTAssertTrue(el(app, "review.sort.stop").waitForExistence(timeout: 30))
+    XCTAssertFalse(el(app, "review.slot.importing").exists, "two cards in the slot")
+  }
+
+  @MainActor
+  func testNothingOffersARunWhileSuggestionsAreOff() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaCloudSortPhase", "off"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.sort.card").exists)
+    XCTAssertFalse(el(app, "review.cloudSort").exists)
   }
 
   @MainActor
@@ -113,6 +146,27 @@ final class CloudSortCardUITests: XCTestCase {
       arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
     XCTAssertTrue(el(app, "review.sort.stop").waitForExistence(timeout: 30))
     attach(app, "AX3 · Review · Sorting with Cloudflare AI")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testTheImportAtTheLargestSizes() throws {
+    let app = launch(
+      scenario: nil, screen: "review.importing",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    XCTAssertTrue(el(app, "review.slot.importing").waitForExistence(timeout: 30))
+    attach(app, "AX3 · Review · Reading your mail")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testTheResultAtTheLargestSizes() throws {
+    let app = launch(
+      scenario: nil, screen: "review.sort.done",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    XCTAssertTrue(el(app, "review.sort.undo").waitForExistence(timeout: 30))
+    XCTAssertTrue(el(app, "review.sort.check").exists)
+    attach(app, "AX3 · Review · Sort done")
     try audit(app, atLargeText: true)
   }
 

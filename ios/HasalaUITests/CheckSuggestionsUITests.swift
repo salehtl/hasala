@@ -7,13 +7,13 @@ final class CheckSuggestionsUITests: XCTestCase {
 
   @MainActor
   func testUntickOneUseTheRestAndUndo() throws {
-    let app = launch(scenario: "mayaSuggestions")
+    let app = launch(scenario: "mayaSuggestions", arguments: ["-HasalaCloudSortPhase", "done"])
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
     app.tabBars.firstMatch.buttons["Review"].tap()
-    let entry = el(app, "review.tab.checkSuggestions")
-    XCTAssertTrue(entry.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(entry.label.contains("Check 7 suggestions"), entry.label)
-    tap(app, "review.tab.checkSuggestions", opening: "suggestions.use")
+    let check = el(app, "review.sort.check")
+    XCTAssertTrue(check.waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.tab.checkSuggestions").exists, "Check suggestions opens only from the result")
+    tap(app, "review.sort.check", opening: "suggestions.use")
 
     XCTAssertTrue(app.staticTexts["Check suggestions"].waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "suggestions.lead").label.hasPrefix("Cloudflare's AI suggested these."))
@@ -36,8 +36,20 @@ final class CheckSuggestionsUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Used 6 suggestions"].exists)
     undo.tap()
     XCTAssertTrue(use.waitForNonExistence(timeout: uiWait))
-    XCTAssertTrue(entry.waitForLabel(containing: "Check 7 suggestions"), entry.label)
+    XCTAssertTrue(check.waitForExistence(timeout: uiWait))
     XCTAssertEqual(el(app, "review.tab.count").label, "10 to sort · about 2 minutes")
+    tap(app, "review.sort.check", opening: "suggestions.use")
+    XCTAssertEqual(el(app, "suggestions.use").label, "Use 7 suggestions")
+  }
+
+  @MainActor
+  func testNoEntryWithoutAResult() throws {
+    let app = launch(scenario: "mayaSuggestions")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.tab.checkSuggestions").exists)
+    XCTAssertFalse(el(app, "review.sort.check").exists)
   }
 
   @MainActor
