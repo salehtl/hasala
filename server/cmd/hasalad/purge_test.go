@@ -189,15 +189,16 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 		unfrozen.String() + " " + at + " unfreeze\n" +
 		entry + " " + at + " waitlist-leave\n" +
 		changed.String() + " " + at + " passkey " + strings.Repeat("55", 20) + "\n" +
-		bounced + " " + at + " waitlist-unsent\n"
+		bounced + " " + at + " waitlist-unsent\n" +
+		thawed.String() + " " + time.Now().Add(time.Minute).UTC().Format(time.RFC3339) + " phrase-seen\n"
 	if err := os.WriteFile(ledger, []byte(body), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
 	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
-	if code != 0 || !strings.Contains(out, "8 entries, 1 account(s) purged again") ||
+	if code != 0 || !strings.Contains(out, "9 entries, 1 account(s) purged again") ||
 		!strings.Contains(out, "2 freeze(s), 1 unfreeze(s), 0 device removal(s), 1 password change(s), 1 passkey removal(s), "+
-			"1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, 1 freeze(s) lifted because") {
+			"1 first view(s) of the 12 words, 1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, 1 freeze(s) lifted because") {
 		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
 	}
 	for _, id := range []string{gone.String(), changed.String(), frozen.String(), thawed.String(), unfrozen.String(), entry, bounced,
@@ -208,15 +209,16 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 	}
 	var n int
 	for q, want := range map[string]int{
-		`SELECT count(*) FROM users WHERE id = '` + gone.String() + `'`:                                  0,
-		`SELECT count(*) FROM users WHERE id = '` + changed.String() + `' AND password_hash IS NULL`:     1,
-		`SELECT count(*) FROM users WHERE id = '` + frozen.String() + `' AND frozen_by = 'holder'`:       1,
-		`SELECT count(*) FROM users WHERE id = '` + thawed.String() + `' AND frozen_at IS NULL`:          1,
-		`SELECT count(*) FROM users WHERE id = '` + unfrozen.String() + `' AND frozen_at IS NULL`:        1,
-		`SELECT count(*) FROM waitlist_entries WHERE id = '` + entry + `'`:                               0,
-		`SELECT count(*) FROM waitlist_entries WHERE id = '` + bounced + `'`:                             0,
-		`SELECT count(*) FROM webauthn_credentials WHERE user_id = '` + changed.String() + `'`:           0,
-		`SELECT count(*) FROM users WHERE id IN ('` + changed.String() + `', '` + frozen.String() + `')`: 2,
+		`SELECT count(*) FROM users WHERE id = '` + gone.String() + `'`:                                              0,
+		`SELECT count(*) FROM users WHERE id = '` + changed.String() + `' AND password_hash IS NULL`:                 1,
+		`SELECT count(*) FROM users WHERE id = '` + frozen.String() + `' AND frozen_by = 'holder'`:                   1,
+		`SELECT count(*) FROM users WHERE id = '` + thawed.String() + `' AND frozen_at IS NULL`:                      1,
+		`SELECT count(*) FROM users WHERE id = '` + unfrozen.String() + `' AND frozen_at IS NULL`:                    1,
+		`SELECT count(*) FROM waitlist_entries WHERE id = '` + entry + `'`:                                           0,
+		`SELECT count(*) FROM waitlist_entries WHERE id = '` + bounced + `'`:                                         0,
+		`SELECT count(*) FROM webauthn_credentials WHERE user_id = '` + changed.String() + `'`:                       0,
+		`SELECT count(*) FROM account_keys WHERE user_id = '` + thawed.String() + `' AND phrase_seen_at IS NOT NULL`: 1,
+		`SELECT count(*) FROM users WHERE id IN ('` + changed.String() + `', '` + frozen.String() + `')`:             2,
 	} {
 		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil || n != want {
 			t.Fatalf("%s: %d (%v), want %d", q, n, err, want)
@@ -225,7 +227,7 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 	code, out, _ = hasalad(t, env, "purge-user", "--replay-ledger")
 	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
 		!strings.Contains(out, "0 freeze(s), 0 unfreeze(s), 0 device removal(s), 0 password change(s), 0 passkey removal(s), "+
-			"0 waitlist leave(s) and 0 bounced-invite waitlist deletion(s) applied again, 0 freeze(s) lifted because") {
+			"0 first view(s) of the 12 words, 0 waitlist leave(s) and 0 bounced-invite waitlist deletion(s) applied again, 0 freeze(s) lifted because") {
 		t.Fatalf("a second replay exited %d with %q", code, out)
 	}
 }

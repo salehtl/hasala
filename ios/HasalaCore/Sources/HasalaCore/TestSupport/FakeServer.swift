@@ -32,6 +32,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
     let publicKey: P256.Signing.PublicKey
     let attestationHash: Data
     var signCount: UInt32
+    var backupEligible = false
+    var backedUp = false
   }
 
   struct Writer {
@@ -83,6 +85,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var deleted = false
     /// `users.review_account` (02 #40; 07's reviewer invite).
     var review = false
+    var phraseUnseenSince: String?
   }
 
   struct Session {
@@ -319,7 +322,11 @@ public final class FakeServer: Transport, @unchecked Sendable {
           display_name: user.displayName, has_password: user.passwordHash != nil,
           password_salt: Base64.encode(sSrv(user.emailNorm)),
           has_passkey: state.withLock { s in s.credentials.values.contains { $0.userID == user.id } }, frozen: user.frozen,
-          restricted: user.frozen, review_account: user.review))
+          restricted: user.frozen, review_account: user.review, phrase_unseen_since: user.phraseUnseenSince))
+    case "POST /api/v1/keys/phrase/seen":
+      guard user.keys != nil else { return Self.error(404, "no_keys") }
+      state.withLock { $0.users[user.id]?.phraseUnseenSince = nil }
+      return APIResponse(status: 204)
     case "GET /api/v1/keys":
       guard let k = user.keys else { return Self.error(404, "no_keys") }
       return Self.ok(k)

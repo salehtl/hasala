@@ -226,7 +226,7 @@ final class JoinUITests: XCTestCase {
   /// and the join flow runs to "Your account is ready" as usual.
   @MainActor
   func testJoinWithReduceMotion() throws {
-    let app = launch(scenario: "newUser", motion: "reduce")
+    let app = launch(scenario: "newUser", motion: "reduce", arguments: [Self.noPRF])
     let progress = el(app, "stories.progress")
     XCTAssertTrue(progress.waitForExistence(timeout: 15))
     el(app, "stories.pager").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3)).tap()
@@ -251,11 +251,29 @@ final class JoinUITests: XCTestCase {
     try audit(app)
   }
 
+  @MainActor
+  func testSignupWithAPasskeyThatDoesNotSyncShowsTheWords() throws {
+    let app = launch(scenario: "newUser", arguments: [Self.notSynced])
+    XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
+    tap(app, "stories.getStarted")
+    tap(app, "welcome.join")
+    type(app, "invite.field", Self.invite)
+    tap(app, "invite.continue")
+    type(app, "about.name", "Maya Rahman")
+    type(app, "about.email", "maya@example.com")
+    tap(app, "about.continue")
+    type(app, "code.field", "123456")
+    tap(app, "method.continue")
+    XCTAssertTrue(el(app, "phrase.start").waitForExistence(timeout: 10))
+    attach(app, "Passkey not synced · why it matters")
+    try audit(app)
+  }
+
   // MARK: - Signup with a passkey, up to setup
 
   @MainActor
-  func testSignupWithPasskeyToSetup() throws {
-    let app = launch(scenario: "newUser")
+  func testSignupWithPasskeyWithoutPRFShowsTheWords() throws {
+    let app = launch(scenario: "newUser", arguments: [Self.noPRF])
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "Stories")
     try audit(app)
@@ -313,6 +331,30 @@ final class JoinUITests: XCTestCase {
     tap(app, "whoSees.close")
     tap(app, "ready.continue")
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
+  }
+
+  /// A passkey with PRF can show the words again after Face ID, so signup makes the account
+  /// without them and setup follows; Home asks for them first.
+  @MainActor
+  func testSignupWithPRFPasskeyLeavesTheWordsForHome() throws {
+    let app = launch(scenario: "newUser")
+    tap(app, "stories.getStarted", timeout: 15)
+    tap(app, "welcome.join")
+    type(app, "invite.field", Self.invite)
+    tap(app, "invite.continue")
+    type(app, "about.name", "Maya Rahman")
+    type(app, "about.email", "maya@example.com")
+    tap(app, "about.continue")
+    type(app, "code.field", "123456")
+    XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: 10))
+    tap(app, "method.continue")
+    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow the passkey")
+    XCTAssertFalse(el(app, "phrase.start").exists)
+    XCTAssertFalse(el(app, "ready.continue").exists)
+    attach(app, "Setup · after the passkey")
+    tap(app, "mail.connect.gmail")
+    XCTAssertTrue(el(app, "home.finish.phrase").waitForExistence(timeout: 15), "Home doesn't ask for the 12 words")
+    try audit(app)
   }
 
   // MARK: - Signup with a password
@@ -388,7 +430,8 @@ final class JoinUITests: XCTestCase {
   @MainActor
   func testJoinScreensAtLargeTextSizes() throws {
     let app = launch(
-      scenario: "newUser", arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+      scenario: "newUser",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL", Self.noPRF])
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     attach(app, "AX3 · Stories")
     try audit(app, atLargeText: true)
@@ -427,6 +470,9 @@ final class JoinUITests: XCTestCase {
     attach(app, "AX3 · Account ready")
     try audit(app, atLargeText: true)
   }
+
+  static let noPRF = "-HasalaPasskeyNoPRF"
+  static let notSynced = "-HasalaPasskeyNotSynced"
 
   /// Some element's label is `label` or contains it (combined rows read as one).
   @MainActor

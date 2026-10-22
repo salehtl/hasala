@@ -94,6 +94,10 @@ public struct AuthClient: Sendable {
     try await api.call(.get, "/api/v1/account", bearer: bearer)
   }
 
+  public func phraseSeen(bearer: String) async throws(APIError) {
+    let _: Empty = try await api.call(.post, "/api/v1/keys/phrase/seen", json: Empty(), bearer: bearer)
+  }
+
   // MARK: Keys (#17, #18, #19)
 
   public func keys(bearer: String) async throws(APIError) -> KeysResponse {

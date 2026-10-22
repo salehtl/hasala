@@ -144,6 +144,7 @@ public struct BootstrapBody: Codable, Sendable, Hashable {
   public let authority_sig: String
   public let registration_sig: String
   public var step_up: StepUpJSON?
+  public var phrase_unseen: Bool?
 
   public init(
     amkCommitment: String, authorityPubkey: String, recoveryPubkey: String, recoveryWrap: String, phraseBox: String,
@@ -351,8 +352,9 @@ public struct AccountInfo: Codable, Sendable, Hashable {
   public let frozen: Bool?
   public let restricted: Bool?
   public let review_account: Bool?
+  public let phrase_unseen_since: String?
 
-  public init(user_id: String, status: String? = nil, has_keys: Bool? = nil, email: String? = nil, display_name: String? = nil, has_password: Bool? = nil, password_salt: String? = nil, has_passkey: Bool? = nil, frozen: Bool? = nil, restricted: Bool? = nil, review_account: Bool? = nil) {
+  public init(user_id: String, status: String? = nil, has_keys: Bool? = nil, email: String? = nil, display_name: String? = nil, has_password: Bool? = nil, password_salt: String? = nil, has_passkey: Bool? = nil, frozen: Bool? = nil, restricted: Bool? = nil, review_account: Bool? = nil, phrase_unseen_since: String? = nil) {
     self.user_id = user_id
     self.status = status
     self.has_keys = has_keys
@@ -364,6 +366,7 @@ public struct AccountInfo: Codable, Sendable, Hashable {
     self.frozen = frozen
     self.restricted = restricted
     self.review_account = review_account
+    self.phrase_unseen_since = phrase_unseen_since
   }
 }
 

@@ -778,9 +778,9 @@ final class CountingAccount: AccountService {
   func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
     try await mock.resendSignupCode(ticket)
   }
-  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) {
+  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey {
     passkeysSaved += 1
-    try await mock.registerPasskey(ticket)
+    return try await mock.registerPasskey(ticket)
   }
   func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
     phrasesMade += 1

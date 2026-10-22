@@ -93,8 +93,14 @@ struct HomeView: View {
         HomeImportPill(work: app.mailbox?.importing) { app.router.open(.profile, profile: [.bankAlerts]) }
           .padding(.bottom, 12)
       }
-      .task(id: app.store.revision) { finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty) }
+      .task(id: app.store.revision) {
+        finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty)
+        await finish?.remindAboutPhrase()
+      }
       .task { await finish?.resumeImport() }
+      .background {
+        if let security = finish?.phraseSecurity { PhraseOnHome(model: security) }
+      }
       .sheet(item: Binding(get: { finish?.planFlow }, set: { finish?.planFlow = $0 })) { MonthlyPlanSheet(model: $0) }
       .sheet(isPresented: Binding(get: { finish?.askingNotifications ?? false },
                                   set: { finish?.askingNotifications = $0 })) {

@@ -82,6 +82,7 @@ type Bootstrap struct {
 	Writer          Registration // Nonce and Sig: the writer nonce and registration_sig
 	AuthoritySig    []byte
 	StepUp          *StepUpObject
+	PhraseUnseen    bool
 }
 
 // Bootstrapped is the 201 answer.
@@ -192,6 +193,20 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 			return Bootstrapped{}, ErrStepUpRequired
 		}
 	}
+	if b.PhraseUnseen {
+		if !pendingPath || b.PRFCredentialID == nil {
+			return Bootstrapped{}, fmt.Errorf("%w: phrase_unseen needs the creating passkey and its PRF wrap", ErrKeysMalformed)
+		}
+		var synced bool
+		if err := k.Pool.QueryRow(ctx,
+			`SELECT backup_eligible AND backup_state FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`,
+			userID, b.PRFCredentialID).Scan(&synced); err != nil {
+			return Bootstrapped{}, fmt.Errorf("auth: bootstrap: %w", err)
+		}
+		if !synced {
+			return Bootstrapped{}, fmt.Errorf("%w: phrase_unseen needs a synced passkey", ErrKeysMalformed)
+		}
+	}
 	// 5. The writer nonce, spent by the attempt.
 	if err := consumeChallenge(ctx, k.Pool, k.now(), userID, b.Writer.Nonce); err != nil {
 		return Bootstrapped{}, err
@@ -260,9 +275,9 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 	now := k.now()
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
-		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
-		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7)`,
-		userID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now); err != nil {
+		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at, phrase_seen_at)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7, CASE WHEN $8::boolean THEN NULL ELSE $7::timestamptz END)`,
+		userID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now, b.PhraseUnseen); err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
 			if pg.ConstraintName == "account_keys_pkey" {

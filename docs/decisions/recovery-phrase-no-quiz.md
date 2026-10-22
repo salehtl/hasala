@@ -64,3 +64,119 @@ captured, a warning after a screenshot, no copy affordance, `.privacySensitive()
 The tests that drove the check now reveal the words and publish: `SignupFlowTests`
 (including "`finish()` before the reveal publishes nothing"), the live account tests'
 `signUp` helper, `JoinUITests`, `ReleaseSurfaceJoinTests` and `LiveE2ETests.test01_pathB`.
+
+## Amendment: the 12 words after the first value (accepted, 2026-10-22)
+
+**Status: accepted by the owner, 2026-10-22,** after a private security review. Built on
+branch `onboarding/phrase-on-home` (draft PR, stacked on `onboarding/setup-to-home`). Paper:
+page "X4 Exploration · Streamlined onboarding", "Proposal · Step 5".
+
+### What changes
+
+For a passkey signup whose registration returned PRF output and whose passkey is synced
+(see "The sync check"), in a build that can show the words again
+(`AccountCapabilities.viewPhrase`), signup no longer shows the words:
+
+- After the passkey step, `SignupModel` publishes the account at once
+  (`finishAccountWithoutWords`): the PRF wrap, the recovery wrap and the phrase box, as
+  before, and `phrase_unseen: true` in the bootstrap body. Nothing else about the keys
+  changes. Recovery Intro, Write these down and "Your account is ready" are skipped, and
+  setup follows.
+- The words are shown later, from Home: "Finish setting up" starts with the amber card
+  "Write down your 12 words". It can't be dismissed. It opens the existing "View your 12
+  words" path (`LiveAccountService.viewRecoveryPhrase`, step-up `phrase.view`, then
+  `PhraseViewer` with all its rules: hidden until tapped, masked while the screen is
+  captured, a screenshot warning, no copy). While the words are unseen, the viewer's
+  heading asks for paper ("Write these down, in order"), as signup's screen did.
+- The card goes once the words were drawn for the person, from Home or from Sign-in &
+  security. A reveal while the screen is captured does not count.
+- If notifications are allowed, one local reminder fires 24 hours after signup while the
+  words are still unseen. It carries no account data.
+- While the words are unseen, Sign-in & security does not remove a passkey ("Write down
+  your 12 words first"), because the passkey's PRF wrap is the only way to show them.
+  Removing a passkey is not in the beta build.
+- If the passkey can't show the words while they are unseen, the copy does not point to a
+  paper copy that doesn't exist: it says the data still opens on this iPhone, to keep it,
+  and to talk to us at hasala.app/support.
+
+Password signups, passkeys without PRF and passkeys that don't sync are unchanged: the
+words stay in signup. The interrupted signup (`finishInterruptedSetup`) is also unchanged.
+
+### The sync check
+
+`AccountCreation.registerPasskey` reads the backup flags of the new passkey from the
+authenticator data in its attestation object (BE, byte 32 bit 3; BS, bit 4;
+`BackupFlags.fromAttestationObject`). Only a passkey that is backup eligible **and** backed
+up skips the words. An attestation the app can't read counts as not synced. The server
+checks the same flags it stored at registration (`webauthn_credentials.backup_eligible`,
+`backup_state`) and refuses `phrase_unseen` (400) for a bootstrap that is not the creating
+passkey's, has no PRF wrap, or whose passkey is not synced.
+
+In the Debug mocks the passkey is synced; `-HasalaPasskeyNotSynced` makes it not synced
+(as `-HasalaPasskeyNoPRF` takes away its PRF).
+
+### The invariant now
+
+- **For a password account, a passkey without PRF, a passkey that isn't synced, or a build
+  without `viewPhrase`:** nothing is published before the words were shown (as above).
+- **For a synced passkey account with PRF:** the account is published before the words
+  were shown, and the server records "words not yet seen" until they are drawn for the
+  person once. The words can be shown again because the phrase box is published at signup
+  and the passkey's PRF wrap opens it.
+
+### The server flag
+
+Migration `00028_phrase_seen` adds `account_keys.phrase_seen_at` (a nullable timestamp; no
+words and no secret). Accounts created before it count as seen (`phrase_seen_at =
+created_at`). A bootstrap or a password signup sets it to the creation time, except a
+bootstrap with `phrase_unseen`, which leaves it empty.
+
+- `GET /api/v1/account` reports `phrase_unseen_since` (the keys' creation time while the
+  flag is empty, else null).
+- `POST /api/v1/keys/phrase/seen` (a session, no step-up, no body fields, no secret) sets
+  it once and answers 204; again, it changes nothing. The app calls it when the words were
+  drawn, and again on the next foreground until it went through.
+- On the app, `StoredUnseenPhrase` is a cache of the server value. When the runtime reads
+  `GET /account` (at each launch and after a sign-in), the server value wins, unless this
+  iPhone drew the words and has not reported it yet: then it reports first. So the card
+  and the reminder come back after a sign-out, a session the server ended, a reinstall or
+  on another iPhone.
+
+A restore must not show the card again to someone who already wrote the words down. The
+first report is recorded in the restore ledger (kind `phrase-seen`: the account id and the
+time only), and `hasala-purge-replay` sets the flag again (only when it is still empty and
+the keys existed by then). An older `hasalad` can't read this kind; the restore runbook's
+rule for event lines applies.
+
+### The window of exposure
+
+Until the words are written down, the passkey is the only way to open the data on a new
+device. If the person loses the passkey (iCloud Keychain off, Apple Account lost) before
+writing the words, the data can't be opened anywhere else. This iPhone still opens it while
+its keys are here. In the first days most of the data can be read again from the mailbox
+(the import window), except manual edits, rules and the plan.
+
+The words themselves are behind the same passkey. The account keys leave this iPhone's
+memory at signup; this iPhone keeps only the keys that read and write the data. The phrase
+box opens only with the key that the passkey's PRF wrap gives back. Thus:
+
+- If the passkey is lost or deleted before the words were drawn, the words are lost too,
+  also on this iPhone. This iPhone still reads the data, but no other iPhone can open it,
+  ever.
+- Nothing checks at signup that the passkey's PRF output at sign-in opens the wrap made
+  with its output at creation (device spike V15 is open). If it does not, "View your 12
+  words" fails and the words can't be shown at all. Before this flow, the words on paper
+  were the fallback for exactly this failure. **The owner accepted this risk on
+  2026-10-22:** the owner and every beta tester sign in with passkeys, and those passkeys
+  work. There is no round-trip PRF check at signup.
+- The sync flags come from the passkey provider. A provider that reports a passkey as
+  synced when it is not would skip the words for a passkey that lives on one iPhone.
+
+What limits the window: the card is first on Home, on every iPhone of the account, and
+can't be dismissed; the reminder after 24 hours; the words can be shown from Profile while
+the passkey works.
+
+Not decided, for the owner: whether the card becomes blocking after N days or before the
+first manual edit or rule, and whether the first view should skip the "you viewed your
+words" security email (it still sends today: `phrase_viewed`; changing it needs a server
+rule).

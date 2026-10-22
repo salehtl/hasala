@@ -91,11 +91,14 @@ final class BootController {
     let account = LiveAccountService(env: env.account, build: env.build)
     self.account = account
     let holder = RuntimeHolder()
+    let unseenPhrase = StoredUnseenPhrase()
+    unseenPhrase.report = { [weak account] in await account?.reportPhraseSeen() ?? false }
     services = AccountServices(
       account: account, mailbox: LiveMailboxConnecting(
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
-      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }))
+      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }),
+      unseenPhrase: unseenPhrase)
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -148,6 +151,8 @@ final class BootController {
     phaseChanged(session.phase)
     let env = self.env.account
     Task { await LiveAccountService.retryPendingLogout(env) }
+    let unseenPhrase = services.unseenPhrase
+    Task { await unseenPhrase.flush() }
   }
 
   /// Launched before first unlock, or the purge couldn't finish: decide once protected
@@ -224,6 +229,8 @@ final class BootController {
     if state == .waiting { start() }
     let env = self.env.account
     Task { await LiveAccountService.retryPendingLogout(env) }
+    let unseenPhrase = services.unseenPhrase
+    Task { await unseenPhrase.flush() }
     guard let rt = runtime else { return }
     if syncHalt != nil { return retrySync() }
     Task { await rt.coordinator.run(.foreground) }
@@ -282,6 +289,9 @@ final class BootController {
       rt.onAccount = { [weak self, weak rt] info in
         guard let self, let rt, self.runtime === rt else { return }
         account.noteAccount(info)
+        if info.has_keys == true {
+          await self.services.unseenPhrase.adopt(serverUnseenSince: LiveAccountService.instant(info.phrase_unseen_since))
+        }
         rt.store.profile = Self.profileInfo(account.profile, binding: binding)
         self.session.reviewAccount = rt.reviewAccount
         await rt.store.reload()

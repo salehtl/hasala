@@ -1,0 +1,130 @@
+import Foundation
+import Observation
+import UserNotifications
+
+@MainActor
+@Observable
+final class StoredUnseenPhrase: UnseenPhraseNoting {
+  static let sinceKey = "app.hasala.prefs.phrase.unseenSince"
+  static let remindedKey = "app.hasala.prefs.phrase.reminded"
+  static let unreportedKey = "app.hasala.prefs.phrase.seenUnreported"
+  static let reminderID = "app.hasala.phrase.reminder"
+  static let reminderDelay: TimeInterval = 24 * 60 * 60
+
+  struct Scheduler {
+    var allowed: @MainActor () async -> Bool
+    var schedule: @MainActor (_ id: String, _ fireAt: Date) async -> Bool
+    var cancel: @MainActor (_ id: String) -> Void
+  }
+
+  @ObservationIgnored private let defaults: UserDefaults
+  @ObservationIgnored private let scheduler: Scheduler
+  @ObservationIgnored private let now: () -> Date
+  @ObservationIgnored var report: (@MainActor () async -> Bool)?
+  @ObservationIgnored private var flushing = false
+  private var changes = 0
+
+  var unseen: Bool {
+    _ = changes
+    return defaults.object(forKey: Self.sinceKey) != nil
+  }
+
+  init(defaults: UserDefaults = .standard, scheduler: Scheduler = .system, now: @escaping () -> Date = { .now }) {
+    self.defaults = defaults
+    self.scheduler = scheduler
+    self.now = now
+  }
+
+  var since: Date? {
+    guard defaults.object(forKey: Self.sinceKey) != nil else { return nil }
+    return Date(timeIntervalSince1970: defaults.double(forKey: Self.sinceKey))
+  }
+
+  var reportPending: Bool { defaults.bool(forKey: Self.unreportedKey) }
+
+  func noteUnseen(at date: Date) {
+    defaults.set(date.timeIntervalSince1970, forKey: Self.sinceKey)
+    defaults.removeObject(forKey: Self.remindedKey)
+    defaults.removeObject(forKey: Self.unreportedKey)
+    changes += 1
+  }
+
+  func noteSeen() {
+    if unseen { defaults.set(true, forKey: Self.unreportedKey) }
+    clear()
+    if reportPending { Task { await flush() } }
+  }
+
+  private func clear() {
+    let had = unseen || defaults.object(forKey: Self.remindedKey) != nil
+    defaults.removeObject(forKey: Self.sinceKey)
+    defaults.removeObject(forKey: Self.remindedKey)
+    changes += 1
+    if had { scheduler.cancel(Self.reminderID) }
+  }
+
+  func adopt(serverUnseenSince: Date?) async {
+    if reportPending {
+      await flush()
+      return
+    }
+    if let serverUnseenSince {
+      if !unseen { noteUnseen(at: serverUnseenSince) }
+    } else if unseen {
+      clear()
+    }
+  }
+
+  func flush() async {
+    guard reportPending, !flushing, let report else { return }
+    flushing = true
+    defer { flushing = false }
+    if await report() { defaults.removeObject(forKey: Self.unreportedKey) }
+  }
+
+  func remindIfAllowed() async {
+    guard unseen, let since, !defaults.bool(forKey: Self.remindedKey) else { return }
+    let fireAt = since.addingTimeInterval(Self.reminderDelay)
+    guard fireAt > now() else { return }
+    guard await scheduler.allowed() else { return }
+    guard unseen, !defaults.bool(forKey: Self.remindedKey) else { return }
+    if await scheduler.schedule(Self.reminderID, fireAt) {
+      defaults.set(true, forKey: Self.remindedKey)
+    }
+  }
+
+  static func forget(_ defaults: UserDefaults = .standard) {
+    defaults.removeObject(forKey: sinceKey)
+    defaults.removeObject(forKey: remindedKey)
+    defaults.removeObject(forKey: unreportedKey)
+    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [reminderID])
+    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [reminderID])
+  }
+}
+
+extension StoredUnseenPhrase.Scheduler {
+  static var system: StoredUnseenPhrase.Scheduler {
+    StoredUnseenPhrase.Scheduler(
+      allowed: {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+      },
+      schedule: { id, fireAt in
+        let content = UNMutableNotificationContent()
+        content.title = "Write down your 12 words"
+        content.body = "Your spare key if you lose this iPhone and your passkey. Open Hasala to see them."
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(60, fireAt.timeIntervalSinceNow), repeats: false)
+        do {
+          try await UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+          return true
+        } catch {
+          return false
+        }
+      },
+      cancel: { id in
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
+      })
+  }
+}

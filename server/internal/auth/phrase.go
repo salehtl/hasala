@@ -56,6 +56,28 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 
 // SetDisplayName is #76: DisplayName, then the column. No step-up, no event,
 // no alert: a name is not an authenticator, a key or a mailbox.
+func (a *Accounts) NotePhraseSeen(ctx context.Context, userID uuid.UUID) error {
+	now := a.now()
+	tag, err := a.Pool.Exec(ctx,
+		`UPDATE account_keys SET phrase_seen_at = greatest(created_at, $2) WHERE user_id = $1 AND phrase_seen_at IS NULL`,
+		userID, now)
+	if err != nil {
+		return fmt.Errorf("auth: phrase seen: %w", err)
+	}
+	if tag.RowsAffected() == 1 {
+		a.recordPhraseSeen(userID, now)
+		return nil
+	}
+	var exists bool
+	if err := a.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM account_keys WHERE user_id = $1)`, userID).Scan(&exists); err != nil {
+		return fmt.Errorf("auth: phrase seen: %w", err)
+	}
+	if !exists {
+		return ErrNoKeys
+	}
+	return nil
+}
+
 func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name string) error {
 	n, err := DisplayName(name)
 	if err != nil {

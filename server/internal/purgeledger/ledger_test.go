@@ -138,7 +138,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "purged")
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	thawed, keyless, bounced := uuid.New(), uuid.New(), uuid.New()
+	thawed, keyless, bounced, wrote := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	cred := bytes.Repeat([]byte{0xc4}, 16)
 	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
@@ -152,6 +152,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: keyless, At: at, Kind: KindPasskey, Credential: cred},
 		{ID: keyless, At: at, Kind: KindPasskey, Credential: long},
 		{ID: bounced, At: at, Kind: KindWaitlistUnsent},
+		{ID: wrote, At: at, Kind: KindPhraseSeen},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -273,6 +274,7 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 		"passkey with trigger":   {ID: uuid.New(), At: at, Kind: KindPasskey, Credential: make([]byte, 16), Trigger: at},
 		"password with id":       {ID: uuid.New(), At: at, Kind: KindPassword, Credential: make([]byte, 16)},
 		"unsent with trigger":    {ID: uuid.New(), At: at, Kind: KindWaitlistUnsent, Trigger: at},
+		"phrase seen with id":    {ID: uuid.New(), At: at, Kind: KindPhraseSeen, Credential: make([]byte, 16)},
 		"freeze without trigger": {ID: uuid.New(), At: at, Kind: KindFreeze},
 		"device without device":  {ID: uuid.New(), At: at, Kind: KindDevice},
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},

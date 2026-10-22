@@ -74,6 +74,7 @@ func (s *Server) mountAccount(mux *http.ServeMux) {
 	if s.Accounts != nil {
 		mux.HandleFunc("PUT /api/v1/account/display-name", s.requireSession(s.userLimited(s.handleSetDisplayName)))
 		mux.HandleFunc("POST /api/v1/keys/phrase/view", s.requireSession(s.userLimited(s.handlePhraseView)))
+		mux.HandleFunc("POST /api/v1/keys/phrase/seen", s.requireSession(s.userLimited(s.handlePhraseSeen)))
 	}
 }
 

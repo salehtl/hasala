@@ -311,6 +311,11 @@ nonisolated struct AccountCapabilities: OptionSet, Sendable {
   ]
 }
 
+struct NewPasskey: Equatable, Sendable {
+  var prf: Bool
+  var synced: Bool
+}
+
 /// The account surface (spec 04 §6.2's ceremonies at the level of user intents).
 @MainActor
 protocol AccountService: AnyObject {
@@ -331,13 +336,14 @@ protocol AccountService: AnyObject {
   /// new ceremony (its id replaces the old one).
   func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket
   /// C1 steps 5-9: create the passkey (one Face ID prompt). A session exists afterwards.
-  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure)
+  @discardableResult func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey
   /// A fresh 12-word phrase made on this iPhone (01 §4.3).
   func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase
   /// After the phrase is confirmed: publish the keys (C1 steps 10-16, or C1-P's one
   /// `password/register`). Nothing is published before this call.
   func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
     async throws(AuthFailure) -> AccountProfile
+  func finishAccountWithoutWords(_ ticket: SignupTicket) async throws(AuthFailure) -> AccountProfile
 
   // MARK: Sign in (C2, C2-P, C3)
 
@@ -412,6 +418,10 @@ protocol AccountService: AnyObject {
 }
 
 extension AccountService {
+  func finishAccountWithoutWords(_ ticket: SignupTicket) async throws(AuthFailure) -> AccountProfile {
+    try await finishAccount(ticket, credential: .passkey, phrase: try makeRecoveryPhrase())
+  }
+
   /// Everything, so the Debug mocks and test doubles offer every screen unchanged. A
   /// live service overrides this with only the actions it has wired.
   var capabilities: AccountCapabilities { .all }

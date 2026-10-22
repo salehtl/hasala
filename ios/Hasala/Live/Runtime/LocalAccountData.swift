@@ -54,6 +54,7 @@ enum LocalAccountData {
     defaults.removeObject(forKey: mailboxProviderKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
+    StoredUnseenPhrase.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)
     PushRegistrar.forgetRegistration(defaults)
     #if DEBUG && targetEnvironment(simulator)

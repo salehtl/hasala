@@ -96,11 +96,14 @@ extension FakeServer {
     }
     guard case .success(let c) = claimable(cer.signup) else { return Self.error(403, "code_rejected") }
     let user = User(id: c.userID, emailNorm: c.emailNorm, displayName: c.displayName, authorityPending: cer.aak)
+    let backup = b.credential.response.attestationObject.flatMap { try? Base64.decodeURL($0) }
+      .flatMap(BackupFlags.fromAttestationObject)
     state.withLock { s in
       s.signups[c.id]?.claimed = true
       s.users[c.userID] = user
       s.credentials[cred.id] = Credential(
-        id: cred.id, userID: c.userID, publicKey: cred.key, attestationHash: cred.attHash, signCount: 0)
+        id: cred.id, userID: c.userID, publicKey: cred.key, attestationHash: cred.attHash, signCount: 0,
+        backupEligible: backup?.eligible == true, backedUp: backup?.backedUp == true)
       s.invites = s.invites.filter { _ in true }
     }
     return grant(mintSession(c.userID, writer: nil), user: user, writer: nil, status: 201)
@@ -352,10 +355,17 @@ extension FakeServer {
     guard let n = try? Base64.decode(b.nonce),
       state.withLock({ $0.writerNonces.removeValue(forKey: n) }) == sess.userID
     else { return Self.error(400, "bad_signature") }
+    if b.phrase_unseen == true {
+      let synced = state.withLock { s in
+        s.credentials.values.contains { $0.userID == user.id && $0.backupEligible && $0.backedUp }
+      }
+      guard kind == .passkey, b.prf_wrap != nil, synced else { return Self.error(400, "bad_request", "phrase_unseen") }
+    }
     switch applyBootstrap(b, to: &user, nonce: n, authKind: kind) {
     case .failure(let e): return e
     case .success(let w):
       user.authorityPending = nil
+      if b.phrase_unseen == true { user.phraseUnseenSince = "2026-10-22T08:00:00Z" }
       state.withLock { s in
         s.users[user.id] = user
         s.sessions[token]?.writerID = w

@@ -32,6 +32,16 @@ struct FinishSetupTests: AccountSuite {
     #expect(!m.noAlerts && m.isDone(.bankAlerts) && m.items.first == .bankAlerts)
   }
 
+  @Test func theTwelveWordsComeFirstThenNoAlerts() {
+    var s = services(mailbox: readMailbox())
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    s.unseenPhrase = unseen
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    #expect(m.items == [.phrase, .bankAlerts, .plan, .notifications])
+  }
+
   @Test func theNoAlertsItemIsDerivedSoItSurvivesARelaunch() {
     let s = services(mailbox: readMailbox())
     let first = FinishSetupModel(services: s)

@@ -35,6 +35,7 @@ const (
 	KindWaitlistLeave  Kind = "waitlist-leave"
 	KindPasskey        Kind = "passkey"
 	KindWaitlistUnsent Kind = "waitlist-unsent"
+	KindPhraseSeen     Kind = "phrase-seen"
 )
 
 type Entry struct {
@@ -195,7 +196,7 @@ func check(e Entry) error {
 		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
 	}
 	switch e.Kind {
-	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
@@ -232,7 +233,7 @@ func formatEntry(e Entry) string {
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
 	case KindPasskey:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -270,7 +271,7 @@ func parseLine(text string) (Entry, bool) {
 	}
 	e.Kind = Kind(f[2])
 	switch e.Kind {
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		if len(f) != 3 {
 			return Entry{}, false
 		}

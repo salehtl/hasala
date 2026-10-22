@@ -416,8 +416,9 @@ restore must not undo. `hasala-purge-replay` applies them again before
 `hasalad` starts. Refer to `docs/runbooks/restore.md`.
 
 - The ledger records account deletions, freezes and unfreezes, device
-  removals, password changes, passkey removals, waitlist leaves and waitlist
-  entries deleted after a bounced invite. It records only internal IDs and
+  removals, password changes, passkey removals, waitlist leaves, waitlist
+  entries deleted after a bounced invite, and the first view of the 12 words
+  after a signup that skipped them. It records only internal IDs and
   times. Do not add an email address or a name.
 - No command freezes an account as the operator yet. When you add one, record
   the freeze and the unfreeze in the ledger.

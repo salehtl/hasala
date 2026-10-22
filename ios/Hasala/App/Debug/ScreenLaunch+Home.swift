@@ -55,6 +55,10 @@
       Screen("home.finishSetup", scenario: "finishSetup", prepare: { graph in
         mock(graph)?.importing = MailImport(state: .reading, read: 40, total: 268)
       }),
+      Screen("home.finishSetup.words", scenario: "finishSetup", prepare: { graph in
+        graph.session.services.unseenPhrase.noteUnseen(at: .now)
+        mock(graph)?.importing = MailImport(state: .reading, read: 40, total: 268)
+      }),
       Screen("home.finishSetup.plan", scenario: "finishSetup") { graph in
         graph.onboarding.finishSetupModel().setPlan()
       },

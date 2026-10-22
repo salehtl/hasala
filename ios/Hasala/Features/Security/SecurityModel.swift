@@ -60,7 +60,16 @@ final class SecurityModel {
 
   /// The phrase while "View your 12 words" is open; cleared when it closes.
   var viewedPhrase: [String]?
-  var phraseRevealed = false
+  var phraseRevealed = false {
+    didSet {
+      if phraseRevealed, phraseMasked || viewedPhrase == nil { phraseRevealed = false }
+      if phraseRevealed { session.services.unseenPhrase.noteSeen() }
+    }
+  }
+  private(set) var phraseFirstView = false
+  var phraseMasked = false {
+    didSet { if phraseMasked { phraseRevealed = false } }
+  }
   /// A change of address under way (its cover is open).
   var emailChange: EmailChangeTicket?
 
@@ -118,6 +127,11 @@ final class SecurityModel {
     }
     // The app never attempts #66 for an operator freeze (spec 04 §6.11).
     if action == .unfreeze, state.frozen?.by != .holder { return }
+    if case .removePasskey = action, session.services.unseenPhrase.unseen {
+      notice = nil
+      failure = .wordsBeforeRemovingPasskey
+      return
+    }
     ask(.perform(action), host: host)
   }
 
@@ -194,6 +208,9 @@ final class SecurityModel {
     } catch .stepUpFailed {
       confirmPassword = ""
       failure = .stepUpFailed
+    } catch .passkeyCantShowPhrase {
+      closeConfirmation()
+      failure = session.services.unseenPhrase.unseen ? .passkeyCantShowUnseenPhrase : .passkeyCantShowPhrase
     } catch .noDeviceKey {
       confirmPassword = ""
       failure = nil
@@ -232,6 +249,7 @@ final class SecurityModel {
     if let words = pendingPhrase {
       pendingPhrase = nil
       phraseRevealed = false
+      phraseFirstView = session.services.unseenPhrase.unseen
       viewedPhrase = words
     }
     if let ticket = pendingEmailChange {
@@ -341,8 +359,8 @@ final class SecurityModel {
   // MARK: Phrase
 
   func closePhrase() {
-    viewedPhrase = nil
     phraseRevealed = false
+    viewedPhrase = nil
   }
 
   // MARK: Email change

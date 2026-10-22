@@ -77,6 +77,42 @@ struct AuthWireTests {
     #expect(!json.contains("="))
   }
 
+  static func attestation(flags: UInt8, packed: Bool = false) -> Data {
+    var authData = Data(repeating: 0x11, count: 32)
+    authData.append(flags)
+    authData.append(contentsOf: [0, 0, 0, 1])
+    var out = Data([0xa3, 0x63]) + Data("fmt".utf8)
+    if packed {
+      out += Data([0x66]) + Data("packed".utf8)
+      out += Data([0x67]) + Data("attStmt".utf8)
+      out += Data([0xa2, 0x63]) + Data("alg".utf8) + Data([0x26])
+      out += Data([0x63]) + Data("x5c".utf8) + Data([0x81, 0x43, 0x01, 0x02, 0x03])
+    } else {
+      out += Data([0x64]) + Data("none".utf8)
+      out += Data([0x67]) + Data("attStmt".utf8) + Data([0xa0])
+    }
+    out += Data([0x68]) + Data("authData".utf8) + Data([0x58, UInt8(authData.count)]) + authData
+    return out
+  }
+
+  @Test("the backup flags come from the attestation's authenticator data")
+  func backupFlags() {
+    #expect(BackupFlags.fromAttestationObject(Self.attestation(flags: 0x5d)) == BackupFlags(eligible: true, backedUp: true))
+    #expect(BackupFlags.fromAttestationObject(Self.attestation(flags: 0x5d))?.synced == true)
+    #expect(BackupFlags.fromAttestationObject(Self.attestation(flags: 0x4d, packed: true)) == BackupFlags(eligible: true, backedUp: false))
+    #expect(BackupFlags.fromAttestationObject(Self.attestation(flags: 0x45))?.synced == false)
+    #expect(BackupFlags.fromAttestationObject(Data([0xa0])) == nil)
+    var cut = Self.attestation(flags: 0x5d)
+    cut.removeLast()
+    #expect(BackupFlags.fromAttestationObject(cut) == nil)
+    #expect(BackupFlags.fromAttestationObject(Self.attestation(flags: 0x5d) + Data([0x00])) == nil)
+    #expect(BackupFlags.fromAttestationObject(Data([0xa1, 0x7f, 0xff])) == nil)
+    let reg = RawRegistration(
+      credentialID: Data([1]), rawClientDataJSON: Data("{}".utf8), rawAttestationObject: Self.attestation(flags: 0x5d),
+      prfFirst: nil)
+    #expect(reg.backupFlags?.synced == true)
+  }
+
   @Test("a key-history id arrives as a decimal string (Go) or a number")
   func flexibleDecimal() throws {
     struct W: Decodable { let id: FlexibleDecimal }

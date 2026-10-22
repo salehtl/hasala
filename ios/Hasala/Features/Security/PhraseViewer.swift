@@ -23,11 +23,13 @@ struct PhraseViewer: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
           VStack(alignment: .leading, spacing: 8) {
-            Text("Your recovery phrase")
+            Text(model.phraseFirstView ? "Write these down, in order" : "Your recovery phrase")
               .hType(.title1)
               .foregroundStyle(HColor.textPrimary)
               .accessibilityAddTraits(.isHeader)
-            Text("Shown after Face ID. Check them against your paper, then close.")
+            Text(model.phraseFirstView
+              ? "On paper, numbered, in this order. Check each word twice, then close."
+              : "Shown after Face ID. Check them against your paper, then close.")
               .hType(.body)
               .foregroundStyle(HColor.textOnWashSecondary)
           }
@@ -93,6 +95,6 @@ struct PhraseViewer: View {
   /// Captured, the words hide and stay hidden until capture stops.
   private func noteCapture() {
     captured = screenIsCaptured()
-    if captured { model.phraseRevealed = false }
+    model.phraseMasked = captured
   }
 }

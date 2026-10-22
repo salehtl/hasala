@@ -4,8 +4,9 @@ import Observation
 import SwiftUI
 
 enum FinishSetupItem: String, CaseIterable, Identifiable {
-  case readingStopped
+  case phrase
   case bankAlerts
+  case readingStopped
   case plan
   case notifications
 
@@ -18,6 +19,11 @@ final class FinishSetupModel {
   @ObservationIgnored private let services: AccountServices
   @ObservationIgnored private let firstScan: FirstScanRun
   @ObservationIgnored private var importResumed = false
+  @ObservationIgnored private let session: (() -> AccountSession)?
+  private(set) var phraseTracked = false
+  private(set) var phraseSecurity: SecurityModel?
+  private(set) var phraseLoading = false
+  private(set) var phraseFailure: AuthFailure?
   private(set) var planDone = false
   private(set) var notificationsDone = false
   var planFlow: MonthlyPlanModel?
@@ -33,9 +39,10 @@ final class FinishSetupModel {
   var showingNoAlerts = false
   @ObservationIgnored private var bankAlertsAfterSheet = false
 
-  init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun()) {
+  init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun(), session: (() -> AccountSession)? = nil) {
     self.services = services
     self.firstScan = firstScan
+    self.session = session
     refresh()
   }
 
@@ -54,6 +61,10 @@ final class FinishSetupModel {
   }
 
   func refresh(hasTransactions: Bool? = nil) {
+    if services.unseenPhrase.unseen {
+      phraseTracked = true
+      listed.insert(.phrase)
+    }
     if let hasTransactions { ledgerEmpty = !hasTransactions }
     if noAlerts { listed.insert(.bankAlerts) }
     if stoppedMailbox != nil { listed.insert(.readingStopped) }
@@ -71,11 +82,38 @@ final class FinishSetupModel {
 
   func isDone(_ item: FinishSetupItem) -> Bool {
     switch item {
+    case .phrase: !services.unseenPhrase.unseen
     case .readingStopped: stoppedMailbox == nil
     case .bankAlerts: !noAlerts
     case .plan: planDone
     case .notifications: notificationsDone
     }
+  }
+
+  var phraseProblem: AuthFailure? {
+    if let phraseFailure { return phraseFailure }
+    guard let phraseSecurity, phraseSecurity.confirming == nil, phraseSecurity.viewedPhrase == nil else { return nil }
+    return phraseSecurity.failure
+  }
+
+  func remindAboutPhrase() async {
+    await services.unseenPhrase.remindIfAllowed()
+  }
+
+  func writeDownPhrase() async {
+    guard !phraseLoading, let session else { return }
+    let security = phraseSecurity ?? SecurityModel(session: session())
+    phraseSecurity = security
+    phraseFailure = nil
+    phraseLoading = true
+    defer { phraseLoading = false }
+    if security.state == nil { await security.load() }
+    if security.state?.hasPasskey == false {
+      services.unseenPhrase.noteSeen()
+      return
+    }
+    security.requestPhrase()
+    if security.confirming == nil { phraseFailure = security.failure ?? .refused }
   }
 
   var noAlertsBanks: [SupportedBank] {
@@ -161,6 +199,7 @@ final class FinishSetupModel {
     _ = await services.notifications.requestAuthorization()
     notificationsDone = true
     askingNotifications = false
+    await services.unseenPhrase.remindIfAllowed()
   }
 
   func notificationsNotNow() {
@@ -183,6 +222,14 @@ struct FinishSetupSection: View {
         HSectionHeader("Finish setting up", trailing: .fact("\(items.count - open.count) of \(items.count)"))
         ForEach(open) { item in
           switch item {
+          case .phrase:
+            FinishSetupRow(
+              icon: .paper, title: "Write down your 12 words",
+              detail: "Your spare key if you lose this iPhone and your passkey. 2 minutes, pen and paper.",
+              enabled: !model.phraseLoading, tone: .urgent, identifier: "home.finish.phrase") {
+                Task { await model.writeDownPhrase() }
+              }
+            if let failure = model.phraseProblem { FailureBanner(failure: failure) }
           case .readingStopped:
             let stopped = Self.stopped(model.stoppedMailbox)
             FinishSetupRow(
@@ -229,40 +276,52 @@ extension FinishSetupSection {
 }
 
 private struct FinishSetupRow: View {
+  enum Tone { case normal, urgent }
+
   let icon: HIcon
   let title: String
   let detail: String
   let enabled: Bool
+  var tone: Tone = .normal
   let identifier: String
   var action: () -> Void
+
+  private var urgent: Bool { tone == .urgent }
 
   var body: some View {
     Button(action: action) {
       HStack(spacing: 14) {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-          .fill(enabled ? HColor.blue50 : HColor.neutral100)
+          .fill(urgent ? HColor.surfacePrimary : enabled ? HColor.blue50 : HColor.neutral100)
           .frame(width: 44, height: 44)
           .overlay {
-            HIconView(icon, size: 22, color: enabled ? HColor.actionAccent : HColor.neutral600, strokeWidth: 1.6)
+            HIconView(icon, size: 22, color: iconColor, strokeWidth: 1.6)
           }
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 2) {
           Text(title)
             .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
-            .foregroundStyle(HColor.textPrimary)
+            .foregroundStyle(urgent ? HColor.amber950 : HColor.textPrimary)
           Text(detail)
             .hType(HType(size: 14, leading: 19, weight: .regular, textStyle: .subheadline))
-            .foregroundStyle(HColor.textSecondary)
+            .foregroundStyle(urgent ? HColor.statusWarningForeground : HColor.textSecondary)
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-        if enabled {
-          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.neutral400)
+        if enabled || urgent {
+          HIconView(.chevronRight, size: HSpacing.iconSmall,
+                    color: urgent ? HColor.statusWarningForeground : HColor.neutral400)
         }
       }
       .padding(16)
-      .background(HColor.widgetSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-      .opacity(enabled ? 1 : 0.6)
+      .background(urgent ? HColor.statusWarningSurface : HColor.widgetSurface,
+                  in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+      .overlay {
+        if urgent {
+          RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(HColor.amber300, lineWidth: 1)
+        }
+      }
+      .opacity(enabled || urgent ? 1 : 0.6)
       .contentShape(Rectangle())
     }
     .buttonStyle(HRowPressStyle())
@@ -270,6 +329,26 @@ private struct FinishSetupRow: View {
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier(identifier)
+  }
+
+  private var iconColor: Color {
+    if urgent { return HColor.statusWarningForeground }
+    return enabled ? HColor.actionAccent : HColor.neutral600
+  }
+}
+
+struct PhraseOnHome: View {
+  @Bindable var model: SecurityModel
+
+  var body: some View {
+    Color.clear
+      .frame(width: 0, height: 0)
+      .accessibilityHidden(true)
+      .confirmSheet(model)
+      .fullScreenCover(isPresented: Binding(get: { model.viewedPhrase != nil },
+                                            set: { if !$0 { model.closePhrase() } })) {
+        PhraseViewer(model: model)
+      }
   }
 }
 

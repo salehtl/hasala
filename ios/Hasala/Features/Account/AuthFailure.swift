@@ -30,6 +30,8 @@ enum AuthFailure: Error, Equatable, Sendable {
   case stepUpFailed
   /// "View your 12 words" with a passkey that gave no PRF output, so it can't open them.
   case passkeyCantShowPhrase
+  case passkeyCantShowUnseenPhrase
+  case wordsBeforeRemovingPasskey
   case noDeviceKey
   case offline
   /// The local RK check failed: real words, another account (S-15).
@@ -80,6 +82,10 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .sessionEnded: "You're signed out. Sign in again."
     case .stepUpFailed: "That didn't confirm. Try again."
     case .passkeyCantShowPhrase: "This passkey can't show your 12 words. Use the copy you wrote down."
+    case .passkeyCantShowUnseenPhrase:
+      "This passkey can't show your 12 words. Your data still opens on this iPhone, so keep it, and talk to us at hasala.app/support."
+    case .wordsBeforeRemovingPasskey:
+      "Write down your 12 words first. Until then, this passkey is the only way to show them."
     case .noDeviceKey:
       "This iPhone can't confirm yet. Changes need your password plus the key of an iPhone where your data is open."
     case .offline: "Try again in a moment."

@@ -15,8 +15,9 @@ coming back:
   "Restore records" row).
 - The ledger also records holder freezes and unfreezes, device removals,
   password changes, resets and removals, passkey removals (by the holder, and
-  the old passkeys that a recovery removes), waitlist leaves, and waitlist
-  entries deleted because their invite email bounced, with internal ids and
+  the old passkeys that a recovery removes), waitlist leaves, waitlist
+  entries deleted because their invite email bounced, and the first time the
+  12 words were shown after a signup that skipped them, with internal ids and
   times only (a passkey by its credential id). These are written after the
   change commits; a failed write is logged and does not stop the change. The
   replay applies each one again: a freeze (unless an unfreeze came later), an
@@ -29,8 +30,9 @@ coming back:
   passkey (the passkey and its key wrap go, and the sessions it signed in end,
   with every passkey session the server cannot attribute; an account left with
   no passkey and no password gets back in with its 12 words), a waitlist leave,
-  and a bounced-invite deletion (the entry goes again and its invite is
-  revoked). A replay never leaves an account frozen with no passkey and no
+  a bounced-invite deletion (the entry goes again and its invite is
+  revoked), and a first view of the 12 words (the account's "words not yet
+  seen" flag is cleared again, so Home does not ask for them again). A replay never leaves an account frozen with no passkey and no
   password, because then nothing could lift the freeze: it lifts that holder
   freeze (the sessions stay ended), records an `account_unfrozen` event, and
   the summary counts it. The holder gets back in with the 12 words. Operator

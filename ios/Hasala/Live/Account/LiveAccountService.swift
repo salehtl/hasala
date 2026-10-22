@@ -144,11 +144,13 @@ final class LiveAccountService: AccountService {
     }
   }
 
-  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) {
+  @discardableResult func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey {
     guard let s = signup, s.id == ticket.id else { throw .refused }
     let k = try freshKeys()
     do {
-      registered = try await AccountCreation.registerPasskey(env, signup: s, keys: k)
+      let r = try await AccountCreation.registerPasskey(env, signup: s, keys: k)
+      registered = r
+      return NewPasskey(prf: r.prf != nil, synced: r.backup?.synced == true)
     } catch {
       throw Self.map(error)
     }
@@ -166,12 +168,23 @@ final class LiveAccountService: AccountService {
   func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
     async throws(AuthFailure) -> AccountProfile
   {
+    try await finish(ticket, credential: credential, phraseUnseen: false)
+  }
+
+  func finishAccountWithoutWords(_ ticket: SignupTicket) async throws(AuthFailure) -> AccountProfile {
+    guard let r = registered, r.prf != nil, r.backup?.synced == true else { throw .refused }
+    return try await finish(ticket, credential: .passkey, phraseUnseen: true)
+  }
+
+  private func finish(_ ticket: SignupTicket, credential: NewCredential, phraseUnseen: Bool)
+    async throws(AuthFailure) -> AccountProfile
+  {
     guard let s = signup, s.id == ticket.id, let k = keys else { throw .refused }
     do {
       switch credential {
       case .passkey:
         guard let r = registered else { throw AuthFailure.refused }
-        enrolled = try await AccountCreation.bootstrapPasskey(env, registered: r, keys: k)
+        enrolled = try await AccountCreation.bootstrapPasskey(env, registered: r, keys: k, phraseUnseen: phraseUnseen)
         r.prf?.wipe()
       case .password(let pw):
         enrolled = try await AccountCreation.createWithPassword(env, signup: s, password: pw, keys: k)
@@ -714,6 +727,22 @@ final class LiveAccountService: AccountService {
     } catch {
       throw .refused
     }
+  }
+
+  func reportPhraseSeen() async -> Bool {
+    guard let token = try? env.secrets.session()?.token else { return false }
+    do {
+      try await env.client.phraseSeen(bearer: token)
+      return true
+    } catch {
+      if case .refused(let f) = error, f.status == 404 { return true }
+      return false
+    }
+  }
+
+  static func instant(_ s: String?) -> Date? {
+    guard let s, let ms = try? parseInstantMs(s) else { return nil }
+    return Date(timeIntervalSince1970: Double(ms) / 1000)
   }
 
   private func bearer() throws(CeremonyError) -> String {
