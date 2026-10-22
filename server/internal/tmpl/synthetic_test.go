@@ -860,6 +860,89 @@ func syntheticDIBAccountNotices(t *testing.T) syntheticGroup {
 	}
 }
 
+func dibCardRefund(amount, card string) string {
+	return "عزيزي المتعامل,\nتم إرجاع مبلغ " + amount + " على بطاقة بنك دبي الإسلامي الخاصة بك" + card +
+		".\nمع اطيب التحيات،\nبنك دبي الإسلامي"
+}
+
+func dibCardReversal(amount, merchant, card string) string {
+	return "عزيزي المتعامل,\nA transaction to the value of " + amount + " made at " + merchant +
+		" on your DIB card ending with " + card + " has been reversed.\nمع اطيب التحيات،\nبنك دبي الإسلامي"
+}
+
+const dibRefundCard = " والمنتهية بالرقم XX1234"
+
+func syntheticDIBCardRefund(t *testing.T) syntheticGroup {
+	t.Helper()
+	return syntheticGroup{
+		file:       "synthetic-dib-card-refund.json",
+		template:   "dib.card-refund.v1",
+		definition: readSeed(t, "dib.card-refund.v1.json"),
+		cases: []syntheticCase{
+			{"refund", "an amount returned to a card: a credit dated from the email, with the card's last four",
+				"DIB Notification", dibCardRefund("123.45 درهم", dibRefundCard)},
+			{"thousands-separator", "the [0-9,]{0,24} run", "DIB Notification",
+				dibCardRefund("1,234.50 درهم", dibRefundCard)},
+			{"no-thousands-separator", "a large amount written without a comma", "DIB Notification",
+				dibCardRefund("4321.00 درهم", dibRefundCard)},
+			{"no-card-line", "the card is optional; the row still files", "DIB Notification",
+				dibCardRefund("123.45 درهم", "")},
+			{"amount-without-decimals", "the pattern needs two decimals, so the amount is missing", "DIB Notification",
+				dibCardRefund("123 درهم", dibRefundCard)},
+			{"other-currency-word", "only an amount in dirhams is read; another currency goes to review",
+				"DIB Notification", dibCardRefund("12.50 دولار", dibRefundCard)},
+			{"reversal-body", "the English reversal: dib.card-reversal.v1 owns it", "DIB Notification",
+				dibCardReversal("AED 52.00", "SAMPLE SHOP", "XX1234")},
+			{"purchase-body", "a card purchase alert: dib.card.v1 owns it", "DIB Notification",
+				"إشعار مشتريات\nالمبلغ\nAED 250.00\nبتاريخ 05-06-2026\nالدفع الى\nSHOP\nرقم البطاقة\nXXXX1234"},
+		},
+	}
+}
+
+func syntheticDIBCardReversal(t *testing.T) syntheticGroup {
+	t.Helper()
+	return syntheticGroup{
+		file:       "synthetic-dib-card-reversal.json",
+		template:   "dib.card-reversal.v1",
+		definition: readSeed(t, "dib.card-reversal.v1.json"),
+		cases: []syntheticCase{
+			{"reversal", "a card transaction reversed: a credit dated from the email, with the merchant and card",
+				"DIB Notification", dibCardReversal("AED 52.00", "SAMPLE SHOP LLC", "XX1234")},
+			{"thousands-separator", "the [0-9,]{0,24} run", "DIB Notification",
+				dibCardReversal("AED 1,052.75", "SAMPLE SHOP LLC", "XX1234")},
+			{"foreign-currency", "the ccy group wins over default_currency", "DIB Notification",
+				dibCardReversal("USD 19.99", "EXAMPLE.COM", "XX1234")},
+			{"no-currency", "without a code default_currency applies", "DIB Notification",
+				dibCardReversal("52.00", "SAMPLE SHOP LLC", "XX1234")},
+			{"merchant-with-spaces-and-dots", "the merchant runs up to the card phrase", "DIB Notification",
+				dibCardReversal("AED 2.00", "WWW.EXAMPLE.COM ON LINE", "XX1234")},
+			{"empty-merchant", "no merchant text: the constant applies", "DIB Notification",
+				dibCardReversal("AED 2.00", "", "XX1234")},
+			{"three-decimals", "a third decimal is refused", "DIB Notification",
+				dibCardReversal("AED 2.000", "SAMPLE SHOP LLC", "XX1234")},
+			{"not-reversed", "a transaction that was not reversed is not gated in", "DIB Notification",
+				"A transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with " +
+					"XX1234 has been approved."},
+			{"refund-body", "the Arabic refund: dib.card-refund.v1 owns it", "DIB Notification",
+				dibCardRefund("123.45 درهم", dibRefundCard)},
+		},
+	}
+}
+
+func syntheticDIBAccountRefunds(t *testing.T) syntheticGroup {
+	t.Helper()
+	return syntheticGroup{
+		file: "synthetic-dib-account-refunds.json", template: "dib.account.v1",
+		definition: readSeed(t, "dib.account.v1.json"),
+		cases: []syntheticCase{
+			{"refund", "the account template does not read a card refund: body_not_contains names it",
+				"DIB Notification", dibCardRefund("123.45 درهم", dibRefundCard)},
+			{"reversal", "the account template does not read a card reversal either", "DIB Notification",
+				dibCardReversal("AED 52.00", "SAMPLE SHOP LLC", "XX1234")},
+		},
+	}
+}
+
 func repeatRune(r rune, n int) string {
 	out := make([]rune, n)
 	for i := range out {
@@ -885,6 +968,7 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 	out = append(out, syntheticDefaultCurrencyExponent())
 	out = append(out, syntheticDIBSeedAmounts(t))
 	out = append(out, syntheticDIBTransfer(t), syntheticDIBMoneyTransfer(t), syntheticDIBAccountNotices(t))
+	out = append(out, syntheticDIBCardRefund(t), syntheticDIBCardReversal(t), syntheticDIBAccountRefunds(t))
 	return append(out, syntheticDIB(t)...)
 }
 

@@ -69,6 +69,8 @@ var IDs = []string{
 	"dib.account.v1",
 	"dib.transfer.v1",
 	"dib.money-transfer.v1",
+	"dib.card-refund.v1",
+	"dib.card-reversal.v1",
 	"enbd.transfer.v1",
 	"enbd.alert.v1",
 	"adib.alert.v1",

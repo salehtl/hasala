@@ -1,7 +1,7 @@
 # salehtl/hasala-fixtures: the private real-mail fixtures this commit expects.
 # Written by scripts/private-fixtures-lock.sh write; checked by scripts/check.sh
 # when HASALA_PRIVATE_FIXTURES is set. Do not edit by hand.
-commit bc98bc2d801c6859f6629a6ada2442d799fbeec2
+commit a7511b14d489072d2ba21302b7d5ad8fa15a27e3
 e44a95198ce56c9e766ef228ef9a90007a218f2121bbdef4ec38f28cf795aafa  conformance/normalizer/apple-forward-dib-01.json
 c066cd81b25b6625de3570e7bf78dcd52df1b8f4305cdf57435323318a9b46ed  conformance/normalizer/apple-forward-dib-02.json
 805a183bedcb6fcdfb6d9f216c5e91a94a4640677c06ca2258974424d388a745  conformance/normalizer/apple-forward-enbd-alert.json
@@ -43,6 +43,8 @@ e5f193c6b68c6659487d8bb2d5090b588b2fb00733b7cfa78ac0a181025dff9c  conformance/no
 88d05ccefca3acd705bfa8318214a15b847f36416fbfae31f2d0ca6ee6676c86  conformance/templates/corpus-adib.account.v1.json
 bf31d46103fa567f0f034dd0e3a46672cbbdc6823ca187319d29e901e8689cc7  conformance/templates/corpus-adib.alert.v1.json
 01db7d2c9359d897b8594336be706b28a9a47ae62d79ad423caf2e724a206d75  conformance/templates/corpus-dib.account.v1.json
+6285c8c136b8508ed59934951b8212bc8d88c5f0a68999af56099f5b77154875  conformance/templates/corpus-dib.card-refund.v1.json
+59678d6170e4fb810514eb126ef3e18f464fa8c7d926c3513a0dbe900ddca91c  conformance/templates/corpus-dib.card-reversal.v1.json
 30c4f16c2f7417b8cab05d0a9217759cd29de6ef129ad07399becb2f4dc26321  conformance/templates/corpus-dib.card.v1.json
 cd52a92628c76d73327ef8507e944df1f189fc645533297cb7ec70c95009f094  conformance/templates/corpus-dib.money-transfer.v1.json
 668dd407244aeb183efa37fbdad1dfebdca70f3580abf4541c5a8e261d0870c0  conformance/templates/corpus-dib.transfer.v1.json

@@ -341,8 +341,8 @@ struct BundledTemplateTests {
     #expect(r.skipped == [])
     #expect(
       r.templates.map(\.definition.id) == [
-        "adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card.v1", "dib.money-transfer.v1", "dib.transfer.v1",
-        "enbd.alert.v1", "enbd.transfer.v1",
+        "adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card-refund.v1", "dib.card-reversal.v1", "dib.card.v1",
+        "dib.money-transfer.v1", "dib.transfer.v1", "enbd.alert.v1", "enbd.transfer.v1",
       ])
     let seed = repoRoot().appendingPathComponent("server/internal/tmpl/seed")
     let seedFiles = try FileManager.default.contentsOfDirectory(atPath: seed.path).filter { $0.hasSuffix(".json") }.sorted()

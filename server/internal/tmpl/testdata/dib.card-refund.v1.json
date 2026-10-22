@@ -1,0 +1,56 @@
+{
+  "id": "dib.card-refund.v1",
+  "version": 1,
+  "bank": "dib",
+  "normalizer_version": 1,
+  "match": {
+    "sender_domain": [
+      "dib.ae"
+    ],
+    "body_contains": [
+      "تم إرجاع مبلغ"
+    ],
+    "body_not_contains": [
+      "إشعار مشتريات",
+      "إشعار تحويل الأموال",
+      "Money Transfer\n",
+      "A transaction to the value of"
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "email",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "patterns": [
+        "تم إرجاع مبلغ (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) درهم "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "DIB CARD REFUND"
+    },
+    {
+      "field": "last4",
+      "type": "last4",
+      "source": "body",
+      "patterns": [
+        "والمنتهية بالرقم (?P<v>[^ \\n.]+)"
+      ]
+    },
+    {
+      "field": "direction",
+      "type": "const",
+      "source": "body",
+      "value": "credit"
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}
