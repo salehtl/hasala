@@ -209,20 +209,104 @@ struct CategoryManagementTests {
     #expect(op.payload.objectValue?.keys.map { $0 } == ["id", "name", "kind", "bucket", "icon", "active"])
   }
 
-  @Test("the fold refuses a parent that is not a parent built-in, and keeps the record before it")
-  func foldRefusesParent() throws {
+  @Test("the fold ignores a parent that is not a parent built-in, and keeps the record")
+  func foldIgnoresParent() throws {
     var s = State()
     try Self.v4Category(#"{"id":"c_1x","name":"Coffee","kind":"spending","bucket":"want","icon":null,"parent":"dining","active":true}"#, seq: 1, &s)
     #expect(s.anomalies.isEmpty && s.categories[ExactKey("c_1x")]?.parent == "dining")
-    for (i, bad) in [#""c_2x""#, #""transfer""#, #""refunds""#, "7", #""""#, #""Dining""#].enumerated() {
+    for (i, bad) in [#""c_2x""#, #""transfer""#, #""refunds""#, "7", #""""#, #""Dining""#, #""no_such""#, "{}"].enumerated() {
       try Self.v4Category(
-        #"{"id":"c_1x","name":"Tea","kind":"spending","bucket":"want","icon":null,"parent":\#(bad),"active":true}"#, seq: Int64(2 + i), &s)
-      #expect(s.anomalies.last?.kind == "invalid_payload", "\(bad)")
+        #"{"id":"c_1x","name":"Tea \#(i)","kind":"spending","bucket":"want","icon":null,"parent":\#(bad),"active":true}"#, seq: Int64(2 + i), &s)
+      #expect(s.categories[ExactKey("c_1x")]?.name == "Tea \(i)" && s.categories[ExactKey("c_1x")]?.parent == nil, "\(bad)")
     }
-    #expect(s.anomalies.count == 6)
-    #expect(s.categories[ExactKey("c_1x")]?.name == "Coffee")
+    #expect(s.anomalies.isEmpty)
     try Self.v4Category(#"{"id":"c_1x","name":"Tea","kind":"spending","bucket":"want","icon":null,"parent":null,"active":true}"#, seq: 20, &s)
     #expect(s.categories[ExactKey("c_1x")]?.name == "Tea" && s.categories[ExactKey("c_1x")]?.parent == nil)
+  }
+
+  @Test("the fold drops a parent of another kind or bucket than the record")
+  func foldDropsMismatchedParent() throws {
+    var s = State()
+    let cases: [(String, String, String, String?)] = [
+      ("c_1x", "income", "null", nil), ("c_2x", "spending", #""need""#, nil), ("c_3x", "spending", #""want""#, "dining"),
+      ("c_4x", "excluded", "null", nil),
+    ]
+    for (i, (id, kind, bucket, _)) in cases.enumerated() {
+      try Self.v4Category(
+        #"{"id":"\#(id)","name":"N\#(i)","kind":"\#(kind)","bucket":\#(bucket),"icon":null,"parent":"dining","active":true}"#, seq: Int64(1 + i), &s)
+    }
+    #expect(s.anomalies.isEmpty)
+    for (id, kind, _, parent) in cases {
+      #expect(s.categories[ExactKey(id)]?.kind == kind && s.categories[ExactKey(id)]?.parent == parent, "\(id)")
+    }
+    let t = TaxonomyView(state: s)
+    #expect(t.info("c_1x")?.kind == .income && t.info("c_1x")?.parent == nil)
+    try Self.v4Category(#"{"id":"c_5x","name":"Tips","kind":"income","bucket":null,"icon":null,"parent":"salary","active":true}"#, seq: 10, &s)
+    #expect(s.categories[ExactKey("c_5x")]?.parent == "salary")
+  }
+
+  @Test("the fold's parent classes are the taxonomy's")
+  func grammarParentClasses() {
+    for id in TaxonomyV1.parentCandidates {
+      let t = TaxonomyV1.parentClass(id)!
+      let g = Grammar.categoryParentClass(id)!
+      #expect(t.kind.rawValue == g.kind && t.bucket?.rawValue == g.bucket, "\(id)")
+    }
+    #expect(Grammar.categoryParentClass("transfer") == nil)
+  }
+
+  @Test("restore refuses a name that an active category already has")
+  func restoreDuplicateName() {
+    let hiddenDining = CategoryInfo(
+      id: "dining", name: "Dining", kind: .spending, bucket: .want, icon: "fork_knife", active: false, builtin: true, sortKey: 7)
+    let infos = TaxonomyV1.builtins.filter { $0.id != "dining" } + [
+      hiddenDining, Self.custom(1, name: "Coffee", active: false), Self.custom(2, name: " coffee"), Self.custom(3, name: "dining"),
+      Self.custom(4, name: "Pets", active: false),
+    ]
+    let r = CategoryRules(TaxonomyView(infos))
+    #expect(r.checkSetActive(id: "c_1", active: true) == .nameTaken(" coffee"))
+    #expect(r.checkSetActive(id: "dining", active: true) == .nameTaken("dining"))
+    #expect(r.checkSetActive(id: "c_4", active: true) == nil)
+    var a = OpAuthor(ctx())
+    #expect(Self.refusal { () throws(AuthorError) in try a.setCategoryActive(id: "c_1", active: true, in: TaxonomyView(infos)) } == CategoryRefusal.nameTaken(" coffee").message)
+    #expect(a.count == 0)
+  }
+
+  @Test("a hidden built-in is not offered as a parent, and its children keep working")
+  func hiddenParent() {
+    let debt = CategoryInfo(id: "debt", name: "Debt", kind: .spending, bucket: .saving, icon: "card", active: false, builtin: true, sortKey: 14)
+    let child = CategoryInfo(
+      id: "c_1", name: "Loan", kind: .spending, bucket: .saving, icon: "tag", active: true, builtin: false, sortKey: 101, parent: "debt")
+    let r = CategoryRules(TaxonomyView(TaxonomyV1.builtins.filter { $0.id != "debt" } + [debt, child, Self.custom(2)]))
+    #expect(!r.isOfferedParent("debt") && r.isOfferedParent("savings"))
+    #expect(r.checkCreate(name: "Car loan", parent: "debt") == .parentNotAllowed)
+    #expect(r.checkEdit(id: "c_1", name: "Car loan") == nil)
+    #expect(r.checkEdit(id: "c_1", name: "Car loan", parent: "debt") == nil)
+    #expect(r.checkEdit(id: "c_2", parent: "debt") == .parentNotAllowed)
+    #expect(r.checkEdit(id: "c_1", parent: "savings") == nil)
+  }
+
+  @Test("editing a parentless custom category keeps its kind and bucket and writes no parent")
+  func editParentless() throws {
+    var s = State()
+    try Self.v4Category(#"{"id":"c_01jc0000000000000000000009","name":"House fund","kind":"spending","bucket":"saving","icon":"jar","active":true}"#, seq: 1, &s)
+    let t = TaxonomyView(state: s)
+    #expect(CategoryRules(t).checkEdit(id: "c_01jc0000000000000000000009", name: "Home fund") == nil)
+    var a = OpAuthor(ctx())
+    try a.editCategory(id: "c_01jc0000000000000000000009", name: "Home fund", icon: "house", in: t)
+    let op = try #require(try a.build().ops.first)
+    #expect(op.payload["parent"] == nil)
+    try Self.apply(a, &s, seq: 2)
+    let c = try #require(TaxonomyView(state: s).info("c_01jc0000000000000000000009"))
+    #expect(c.name == "Home fund" && c.icon == "house" && c.kind == .spending && c.bucket == .saving && c.parent == nil && !c.builtin)
+
+    var income = State()
+    try Self.v4Category(#"{"id":"c_01jc0000000000000000000008","name":"Rent in","kind":"income","bucket":null,"icon":null,"active":true}"#, seq: 1, &income)
+    var b = OpAuthor(ctx())
+    try b.editCategory(id: "c_01jc0000000000000000000008", name: "Rental income", in: TaxonomyView(state: income))
+    try Self.apply(b, &income, seq: 2)
+    let d = try #require(TaxonomyView(state: income).info("c_01jc0000000000000000000008"))
+    #expect(d.kind == .income && d.bucket == nil && d.parent == nil && d.name == "Rental income")
   }
 
   @Test("a v3 category_defined ignores parent")
@@ -237,8 +321,8 @@ struct CategoryManagementTests {
   @Test("a built-in override never carries a parent in the view")
   func builtinOverrideNoParent() throws {
     var s = State()
-    try Self.v4Category(#"{"id":"dining","name":"Food","kind":"spending","bucket":"want","icon":null,"parent":"rent","active":true}"#, seq: 1, &s)
-    #expect(s.categories[ExactKey("dining")]?.parent == "rent")
+    try Self.v4Category(#"{"id":"dining","name":"Food","kind":"spending","bucket":"want","icon":null,"parent":"shopping","active":true}"#, seq: 1, &s)
+    #expect(s.categories[ExactKey("dining")]?.parent == "shopping")
     #expect(TaxonomyView(state: s).info("dining")?.parent == nil)
   }
 

@@ -87,4 +87,38 @@ struct CategoryEditorModelTests {
     CategoriesViewModel(app: app).restore(id)
     #expect(app.store.state.category(id)?.archived == false)
   }
+
+  @Test func editingAParentlessCustomNeedsNoCountsAs() throws {
+    var state = MayaLedger.state
+    state.categories.append(Category(id: "house-fund", name: "House fund", bucket: .savings, glyph: .savingsJar, role: .saving))
+    let app = AppModel(store: InMemoryLedger(state: state))
+    app.router.profile = [.rules, .categoryEditor("house-fund")]
+    let m = CategoryEditorModel(app: app, category: "house-fund")
+    #expect(m.parentOptional && m.parent == nil && m.parentLabel == "None" && m.parentNote == nil)
+    m.name = "Home fund"
+    m.save()
+    #expect(m.refusal == nil)
+    let c = try #require(app.store.state.category("house-fund"))
+    #expect(c.name == "Home fund" && c.parent == nil && c.kind == .spending && c.bucket == .savings)
+    #expect(app.router.profile == [.rules])
+    #expect(!CategoryEditorModel(app: app, category: nil).parentOptional)
+    #expect(!CategoryEditorModel(app: app, category: "emergency-fund").parentOptional)
+  }
+
+  @Test func aHiddenBuiltInIsNotOfferedAsCountsAs() {
+    let m = CategoryEditorModel(app: app(), category: nil)
+    let ids = m.parentGroups.flatMap(\.rows).map(\.id)
+    #expect(!ids.contains("debt") && ids.contains("savings"))
+  }
+
+  @Test func anErrorIsShownOnce() {
+    let app = app()
+    let why = app.refusal(applying: .categorize("no-such-txn", "dining", learnRule: false, project: nil))
+    #expect(why == AppModel.message(for: .notFound))
+    #expect(app.toast == nil)
+    let m = CategoryEditorModel(app: app, category: "no-such-category")
+    m.save()
+    #expect(m.refusal == CategoryLimits.unknown)
+    #expect(app.toast == nil)
+  }
 }

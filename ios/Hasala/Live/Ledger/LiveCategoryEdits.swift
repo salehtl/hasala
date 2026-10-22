@@ -74,9 +74,7 @@ extension LedgerEditAuthor {
     let next = m.adding(months: 1)
     let onward = next.map { engine.assigned($0, id) } ?? 0
     let budgetTo = moveTo.flatMap { view.info($0)?.kind == .spending ? $0 : nil }
-    let rows =
-      moveTo == nil
-      ? [] : try reader.activity(limit: 1_000_000).filter { $0.category == id && !$0.split }
+    let rows = moveTo == nil ? [] : try reader.categoryMembers(id)
     let ctx = try await observer.authorContext()
     let blobs = try observer.stamps.authoring {
       (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in

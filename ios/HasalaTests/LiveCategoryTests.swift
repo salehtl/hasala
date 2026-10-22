@@ -93,4 +93,34 @@ struct LiveCategoryTests {
     ]
     #expect(LedgerStateMapper.byParent(ordered).map(\.id) == ["dining", "c_b", "travel", "c_a", "c_old"])
   }
+
+  @Test func liveRulesKeepAParentlessCustomAndRefuseADuplicateRestore() {
+    let parentless = CategoryInfo(
+      id: "c_fund", name: "House fund", kind: .spending, bucket: .saving, icon: "jar", active: true, builtin: false, sortKey: 100)
+    let old = CategoryInfo(
+      id: "c_old", name: "Coffee", kind: .spending, bucket: .want, icon: "tag", active: false, builtin: false, sortKey: 101, parent: "dining")
+    let new = CategoryInfo(
+      id: "c_new", name: "Coffee", kind: .spending, bucket: .want, icon: "tag", active: true, builtin: false, sortKey: 102, parent: "dining")
+    let view = TaxonomyView(TaxonomyV1.builtins + [parentless, old, new])
+    let state = MayaLedger.state
+    #expect(LedgerEditAuthor.categoryRefusal(.editCategory("c_fund", CategoryDraft(name: "Home fund", glyph: .savingsJar)), view: view, state: state) == nil)
+    #expect(LedgerEditAuthor.changedParent(CategoryDraft(name: "Home fund"), of: parentless) == nil)
+    #expect(
+      LedgerEditAuthor.categoryRefusal(.restoreCategory("c_old"), view: view, state: state) == CategoryRefusal.nameTaken("Coffee").message)
+  }
+
+  @Test func theAppLimitsMatchTheCore() {
+    #expect(CategoryLimits.maxActiveCustom == TaxonomyV1.maxActiveCustom)
+    #expect(CategoryLimits.maxName == TaxonomyV1.maxNameScalars)
+    #expect(CategoryLimits.systemIDs == Set(TaxonomyV1.systemIDs))
+    #expect(CategoryLimits.parentIDs == TaxonomyV1.parentCandidates)
+    #expect(CategoryLimits.atCap == CategoryRefusal.atCap(max: TaxonomyV1.maxActiveCustom).message)
+    #expect(CategoryLimits.nameEmpty == CategoryRefusal.nameEmpty.message)
+    #expect(CategoryLimits.nameTooLong == CategoryRefusal.nameTooLong(max: TaxonomyV1.maxNameScalars).message)
+    #expect(CategoryLimits.parentNotAllowed == CategoryRefusal.parentNotAllowed.message)
+    #expect(CategoryLimits.unknown == CategoryRefusal.unknownCategory.message)
+    #expect(CategoryLimits.builtinLocked == CategoryRefusal.builtinLocked.message)
+    #expect(CategoryLimits.systemCannotHide == CategoryRefusal.systemCannotHide.message)
+    #expect(CategoryLimits.nameTaken("Coffee") == CategoryRefusal.nameTaken("Coffee").message)
+  }
 }

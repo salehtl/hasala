@@ -1,7 +1,7 @@
 {
   "name": "category-parent",
   "group": "config",
-  "note": "category_defined v4 may name a built-in parent: absent or null means none; an edit replaces it with the rest of the record; the record's own kind and bucket are kept even when they differ from the parent's; v3 ignores the key.",
+  "note": "category_defined v4 may name a built-in parent: absent or null means none; an edit replaces it with the rest of the record; a parent of another kind or bucket than the record is dropped (category-parent-mismatch); v3 ignores the key.",
   "schema_version": 1,
   "log": [
     {
@@ -145,7 +145,7 @@
             "bucket": "need",
             "icon": null,
             "active": true,
-            "parent": "dining"
+            "parent": "groceries"
           }
         }
       ]
@@ -192,7 +192,7 @@
             "id": "c_01jc0000000000000000000103",
             "kind": "spending",
             "name": "Old custom",
-            "parent": "dining"
+            "parent": "groceries"
           }
         ],
         [
@@ -223,7 +223,7 @@
       "txns": [],
       "unreadable": []
     },
-    "state_sha256": "27adee4edb51a473194abf152c49b96b83994637e98c0f4a1061476e53efdb7e",
+    "state_sha256": "244794e8f8a4bdd286110fd1a686d48e34805c9d05b4380eca764f23742d61a4",
     "order": {
       "banks": [],
       "categories": [

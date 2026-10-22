@@ -62,7 +62,7 @@ public struct CategoryRules: Sendable {
   public func checkCreate(name: String, parent: String, icon: String? = nil) -> CategoryRefusal? {
     if let r = checkName(name) { return r }
     if let r = checkIcon(icon) { return r }
-    guard TaxonomyV1.isParentCandidate(parent) else { return .parentNotAllowed }
+    guard isOfferedParent(parent) else { return .parentNotAllowed }
     guard canAddActive else { return .atCap(max: TaxonomyV1.maxActiveCustom) }
     return nil
   }
@@ -73,7 +73,8 @@ public struct CategoryRules: Sendable {
     if let r = checkIcon(icon) { return r }
     if let parent {
       if current.builtin { return .builtinLocked }
-      guard TaxonomyV1.isParentCandidate(parent) else { return .parentNotAllowed }
+      let unchanged = current.parent.map { utf8Equal($0, parent) } ?? false
+      guard unchanged ? TaxonomyV1.isParentCandidate(parent) : isOfferedParent(parent) else { return .parentNotAllowed }
     }
     return nil
   }
@@ -81,13 +82,17 @@ public struct CategoryRules: Sendable {
   public func checkSetActive(id: String, active: Bool) -> CategoryRefusal? {
     guard let current = view.info(id) else { return .unknownCategory }
     if !active { return current.builtin && TaxonomyV1.isSystem(current.id) ? .systemCannotHide : nil }
-    if current.active || current.builtin { return nil }
+    if current.active { return nil }
+    if let r = checkName(current.name, excluding: current.id), case .nameTaken = r { return r }
+    if current.builtin { return nil }
     return canAddActive ? nil : .atCap(max: TaxonomyV1.maxActiveCustom)
   }
 
+  public func isOfferedParent(_ parent: String) -> Bool {
+    TaxonomyV1.isParentCandidate(parent) && (view.info(parent)?.active ?? true)
+  }
+
   public func parentClass(_ parent: String) -> (kind: CategoryKind, bucket: Bucket?)? {
-    guard TaxonomyV1.isParentCandidate(parent) else { return nil }
-    if let p = view.info(parent) { return (p.kind, p.bucket) }
-    return TaxonomyV1.parentClass(parent)
+    TaxonomyV1.parentClass(parent)
   }
 }

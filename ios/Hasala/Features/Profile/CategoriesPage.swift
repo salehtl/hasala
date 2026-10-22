@@ -132,6 +132,8 @@ final class CategoryEditorModel {
   var isBuiltin: Bool { category?.builtin ?? false }
   var canHide: Bool { isBuiltin && !CategoryLimits.isSystem(id ?? "") }
   var isHidden: Bool { category?.archived ?? false }
+  var parentOptional: Bool { !isNew && !isBuiltin && category?.parent == nil }
+  var parentLabel: String { parentName ?? (parentOptional ? "None" : "Choose a category") }
   var hidden: Bool { app.amountsHidden }
   var parentGroups: [CategorySectionModel] { CategoriesEngine.parentGroups(app.store.state) }
   var parentName: String? { parent.flatMap { app.store.state.category($0)?.name } }
@@ -165,7 +167,7 @@ final class CategoryEditorModel {
   var draft: CategoryDraft { CategoryDraft(name: name, glyph: glyph, parent: isBuiltin ? nil : parent) }
 
   func save() {
-    if !isBuiltin, parent == nil {
+    if isNew, parent == nil {
       refusal = CategoryLimits.parentNotAllowed
       return
     }
@@ -345,6 +347,10 @@ struct CategoryEditorPage: View {
     field("Counts as") {
       VStack(alignment: .leading, spacing: 6) {
         Menu {
+          if model.parentOptional {
+            Button("None") { model.parent = nil }
+              .accessibilityIdentifier("categoryEditor.parent.none")
+          }
           ForEach(model.parentGroups) { group in
             Section(group.title) {
               ForEach(group.rows) { row in
@@ -354,12 +360,12 @@ struct CategoryEditorPage: View {
             }
           }
         } label: {
-          HListRow(title: model.parentName ?? "Choose a category", trailing: .chevron)
+          HListRow(title: model.parentLabel, trailing: .chevron)
             .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Counts as")
-        .accessibilityValue(model.parentName ?? "Not chosen")
+        .accessibilityValue(model.parentOptional ? model.parentLabel : (model.parentName ?? "Not chosen"))
         .accessibilityIdentifier("categoryEditor.parent")
         if let note = model.parentNote {
           Text(note).hType(.footnote).foregroundStyle(HColor.textSecondary)

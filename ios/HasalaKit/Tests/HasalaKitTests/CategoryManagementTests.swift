@@ -139,8 +139,64 @@ struct CategoryManagementTests {
     let groups = CategoriesEngine.parentGroups(MayaLedger.state)
     #expect(groups.map(\.title) == ["Needs", "Wants", "Savings", "Income"])
     let ids = groups.flatMap(\.rows).map(\.id)
-    #expect(ids.count == 16)
+    #expect(ids.count == 15)
     #expect(!ids.contains("transfer") && !ids.contains("refunds") && !ids.contains("emergency-fund"))
-    #expect(ids.contains("debt"))
+    #expect(!ids.contains("debt"))
+  }
+
+  @Test func restoringRefusesANameThatAnActiveCategoryHas() throws {
+    let ledger = InMemoryLedger()
+    let old = try add(ledger, "Coffee")
+    try ledger.apply(.archiveCategory(old, moveTo: nil))
+    _ = try add(ledger, "coffee")
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("coffee"))) { try ledger.apply(.restoreCategory(old)) }
+    #expect(ledger.state.category(old)?.archived == true)
+    try ledger.apply(.archiveCategory("dining", moveTo: nil))
+    _ = try add(ledger, "Dining", parent: "travel")
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Dining"))) { try ledger.apply(.restoreCategory("dining")) }
+  }
+
+  @Test func aHiddenBuiltInIsNotOfferedAsAParentButItsChildrenKeepWorking() throws {
+    var state = MayaLedger.state
+    state.categories.append(
+      Category(id: "loan", name: "Loan", bucket: .savings, glyph: .debt, role: .saving, parent: "debt"))
+    let ledger = InMemoryLedger(state: state)
+    #expect(state.category("debt")?.archived == true)
+    #expect(!CategoriesEngine.isOfferedParent("debt", in: state) && CategoriesEngine.isOfferedParent("savings", in: state))
+    #expect(throws: ActionError.refused(CategoryLimits.parentNotAllowed)) {
+      try ledger.apply(.addCategory(CategoryDraft(name: "Car loan", parent: "debt")))
+    }
+    let coffee = try add(ledger, "Coffee")
+    #expect(throws: ActionError.refused(CategoryLimits.parentNotAllowed)) {
+      try ledger.apply(.editCategory(coffee, CategoryDraft(name: "Coffee", parent: "debt")))
+    }
+    try ledger.apply(.editCategory("loan", CategoryDraft(name: "Car loan", glyph: .debt, parent: "debt")))
+    let loan = try #require(ledger.state.category("loan"))
+    #expect(loan.name == "Car loan" && loan.parent == "debt" && loan.bucket == .savings)
+  }
+
+  @Test func editingAParentlessCustomKeepsItsTypeWithoutAParent() throws {
+    var state = MayaLedger.state
+    state.categories.append(Category(id: "house-fund", name: "House fund", bucket: .savings, glyph: .savingsJar, role: .saving))
+    state.categories.append(Category(id: "rent-in", name: "Rent in", kind: .income, bucket: .income, glyph: .salary, role: .none))
+    let ledger = InMemoryLedger(state: state)
+    try ledger.apply(.editCategory("house-fund", CategoryDraft(name: "Home fund", glyph: .rent)))
+    let c = try #require(ledger.state.category("house-fund"))
+    #expect(c.name == "Home fund" && c.glyph == .rent && c.parent == nil && c.kind == .spending && c.bucket == .savings && c.role == .saving)
+    try ledger.apply(.editCategory("rent-in", CategoryDraft(name: "Rental income", glyph: .salary)))
+    let d = try #require(ledger.state.category("rent-in"))
+    #expect(d.kind == .income && d.bucket == .income && d.parent == nil)
+  }
+
+  @Test func theLimitsAreTheCoreTaxonomyValues() {
+    #expect(CategoryLimits.maxActiveCustom == 20 && CategoryLimits.maxName == 24)
+    #expect(CategoryLimits.systemIDs == ["transfer", "refunds", "salary"])
+    #expect(
+      CategoryLimits.parentIDs == [
+        "rent", "utilities", "groceries", "transport", "healthcare", "insurance", "dining", "entertainment", "shopping", "travel",
+        "subscriptions", "savings", "investments", "debt", "salary", "freelance",
+      ])
+    #expect(CategoryLimits.atCap == "You have 20 categories. Archive one to add another.")
+    #expect(CategoryLimits.nameTooLong == "Use 24 characters or fewer.")
   }
 }

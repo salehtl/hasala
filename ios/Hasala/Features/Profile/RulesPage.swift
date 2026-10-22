@@ -6,8 +6,6 @@ import UIKit
 /// Profile › Categories and rules (Paper "Profile · Categories and rules" 68S-0): the rules
 /// Hasala learned, most used first, each with a switch that pauses it at once (its
 /// transactions go back to review). No Save: a switch saves the moment it flips.
-///
-/// "See all N rules" and "Add a rule" are not drawn yet: a Release build leaves them out.
 struct RulesPage: View {
   enum Segment: Hashable { case categories, rules }
 

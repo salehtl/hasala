@@ -148,7 +148,7 @@ public enum CategoriesEngine {
   }
 
   public static func parentGroups(_ s: LedgerState) -> [CategorySectionModel] {
-    let parents = s.categories.filter { $0.builtin && CategoryLimits.isParent($0.id) }
+    let parents = s.categories.filter { isOfferedParent($0.id, in: s) }
     return sectionOrder.compactMap { b in
       let rows = parents.filter { sectionBucket($0) == b }.map { row($0, s) }
       return rows.isEmpty ? nil : CategorySectionModel(title: section(b), rows: rows)
@@ -181,14 +181,14 @@ public enum CategoriesEngine {
     switch edit {
     case .addCategory(let d):
       if let r = nameRefusal(d.trimmedName, in: s, excluding: nil) { return r }
-      guard let p = d.parent, CategoryLimits.isParent(p) else { return CategoryLimits.parentNotAllowed }
+      guard let p = d.parent, isOfferedParent(p, in: s) else { return CategoryLimits.parentNotAllowed }
       return activeCustomCount(s) < CategoryLimits.maxActiveCustom ? nil : CategoryLimits.atCap
     case .editCategory(let id, let d):
       guard let c = s.category(id) else { return CategoryLimits.unknown }
       if d.trimmedName != c.name, let r = nameRefusal(d.trimmedName, in: s, excluding: id) { return r }
       if let p = d.parent, p != c.parent {
         if c.builtin { return CategoryLimits.builtinLocked }
-        if !CategoryLimits.isParent(p) { return CategoryLimits.parentNotAllowed }
+        if !isOfferedParent(p, in: s) { return CategoryLimits.parentNotAllowed }
       }
       return nil
     case .archiveCategory(let id, let moveTo):
@@ -196,7 +196,9 @@ public enum CategoriesEngine {
       return archiveRefusal(c, moveTo: moveTo, in: s)
     case .restoreCategory(let id):
       guard let c = s.category(id) else { return CategoryLimits.unknown }
-      if c.builtin || !c.archived { return nil }
+      if !c.archived { return nil }
+      if let clash = nameClash(c.name, in: s, excluding: id) { return CategoryLimits.nameTaken(clash.name) }
+      if c.builtin { return nil }
       return activeCustomCount(s) < CategoryLimits.maxActiveCustom ? nil : CategoryLimits.atCap
     default:
       return nil
@@ -215,11 +217,18 @@ public enum CategoriesEngine {
   static func nameRefusal(_ name: String, in s: LedgerState, excluding id: CategoryID?) -> String? {
     if name.isEmpty { return CategoryLimits.nameEmpty }
     if name.unicodeScalars.count > CategoryLimits.maxName { return CategoryLimits.nameTooLong }
-    let key = name.lowercased()
-    if let clash = s.categories.first(where: { !$0.archived && $0.id != id && $0.name.lowercased() == key }) {
-      return CategoryLimits.nameTaken(clash.name)
-    }
+    if let clash = nameClash(name, in: s, excluding: id) { return CategoryLimits.nameTaken(clash.name) }
     return nil
+  }
+
+  static func nameClash(_ name: String, in s: LedgerState, excluding id: CategoryID?) -> Category? {
+    let key = name.trimmedSpaces.lowercased()
+    return s.categories.first { !$0.archived && $0.id != id && $0.name.trimmedSpaces.lowercased() == key }
+  }
+
+  public static func isOfferedParent(_ id: CategoryID, in s: LedgerState) -> Bool {
+    guard CategoryLimits.isParent(id), let c = s.category(id) else { return false }
+    return c.builtin && !c.archived
   }
 
   static func classOf(_ parent: Category) -> (CategoryKind, Bucket, CategoryRole) {

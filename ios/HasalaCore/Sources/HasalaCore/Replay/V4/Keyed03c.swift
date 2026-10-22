@@ -101,10 +101,9 @@ extension State {
       icon = s
     }
     var parent: String?
-    if let v = P.present(p["parent"]) {
-      guard let s = v.stringValue, Grammar.isCategoryParent(s) else {
-        throw PayloadError("parent must be a built-in category that can be a parent, got \(showValue(v))")
-      }
+    if let s = P.present(p["parent"])?.stringValue, let cls = Grammar.categoryParentClass(s), utf8Equal(cls.kind, kind),
+      cls.bucket.map({ b in bucket.map { utf8Equal($0, b) } ?? false }) ?? (bucket == nil)
+    {
       parent = s
     }
     let active = try P.boolField(p["active"], "active")

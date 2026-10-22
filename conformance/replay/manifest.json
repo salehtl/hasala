@@ -634,7 +634,13 @@
       "file": "config-category-parent-not-builtin.json",
       "name": "category-parent-not-builtin",
       "group": "config",
-      "note": "A parent that is not a parent built-in is an invalid_payload and leaves the previous record."
+      "note": "A parent that is not a parent built-in is ignored; the record is kept with no parent."
+    },
+    {
+      "file": "config-category-parent-mismatch.json",
+      "name": "category-parent-mismatch",
+      "group": "config",
+      "note": "A parent of another type or bucket than the record is dropped; the record is kept."
     },
     {
       "file": "blobs-unopenable-body-is-set-aside.json",

@@ -46,12 +46,22 @@ public enum Grammar {
   /// 03c §1.7 `IconId`: a `Token`.
   public static func isIconID(_ s: String) -> Bool { TextRules.isToken(s) }
 
-  public static let categoryParentIDs = [
-    "rent", "utilities", "groceries", "transport", "healthcare", "insurance", "dining", "entertainment", "shopping", "travel",
-    "subscriptions", "savings", "investments", "debt", "salary", "freelance",
+  public static let categoryParents: [(id: String, kind: String, bucket: String?)] = [
+    ("rent", "spending", "need"), ("utilities", "spending", "need"), ("groceries", "spending", "need"), ("transport", "spending", "need"),
+    ("healthcare", "spending", "need"), ("insurance", "spending", "need"), ("dining", "spending", "want"),
+    ("entertainment", "spending", "want"), ("shopping", "spending", "want"), ("travel", "spending", "want"),
+    ("subscriptions", "spending", "want"), ("savings", "spending", "saving"), ("investments", "spending", "saving"),
+    ("debt", "spending", "saving"), ("salary", "income", nil), ("freelance", "income", nil),
   ]
 
+  public static let categoryParentIDs = categoryParents.map(\.id)
+
   public static func isCategoryParent(_ s: String) -> Bool { categoryParentIDs.contains { utf8Equal($0, s) } }
+
+  public static func categoryParentClass(_ s: String) -> (kind: String, bucket: String?)? {
+    guard let p = categoryParents.first(where: { utf8Equal($0.id, s) }) else { return nil }
+    return (p.kind, p.bucket)
+  }
 
   /// 03c §1.7 `EntityId` / `OpId`: a ULID, `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`.
   public static func isULID(_ s: String) -> Bool {

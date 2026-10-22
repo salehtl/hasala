@@ -1,7 +1,7 @@
 {
   "name": "category-parent-not-builtin",
   "group": "config",
-  "note": "A parent that is not a built-in that can be a parent (a user id, transfer, refunds, another type, an empty or differently cased id, an unknown id) is an invalid_payload and leaves the previous record.",
+  "note": "A parent that is not a built-in that can be a parent (a user id, transfer, refunds, a non-string, an empty or differently cased id, an unknown id) is ignored: the record is kept with no parent.",
   "schema_version": 1,
   "log": [
     {
@@ -184,43 +184,7 @@
   "expect": {
     "error": null,
     "state": {
-      "anomalies": [
-        {
-          "at_seq": "2",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "3",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "4",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "5",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "6",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "7",
-          "detail": "",
-          "kind": "invalid_payload"
-        },
-        {
-          "at_seq": "8",
-          "detail": "",
-          "kind": "invalid_payload"
-        }
-      ],
+      "anomalies": [],
       "banks": [],
       "budgetMonthlyTotal": null,
       "budgetSplit": null,
@@ -234,8 +198,18 @@
             "icon": "cup",
             "id": "c_01jc0000000000000000000101",
             "kind": "spending",
-            "name": "Coffee",
-            "parent": "dining"
+            "name": "Tea"
+          }
+        ],
+        [
+          "c_01jc0000000000000000000102",
+          {
+            "active": true,
+            "bucket": "want",
+            "icon": null,
+            "id": "c_01jc0000000000000000000102",
+            "kind": "spending",
+            "name": "Ghost"
           }
         ]
       ],
@@ -255,11 +229,12 @@
       "txns": [],
       "unreadable": []
     },
-    "state_sha256": "2f891c1a457a13af94a3f1386a022be1d2bb74173758c951e6628c35e6cbeb50",
+    "state_sha256": "fa8a6d28fdff04366b92d7e90f2f0688cb7926b0894cf049ef6ff3a74faca076",
     "order": {
       "banks": [],
       "categories": [
-        "c_01jc0000000000000000000101"
+        "c_01jc0000000000000000000101",
+        "c_01jc0000000000000000000102"
       ]
     }
   }

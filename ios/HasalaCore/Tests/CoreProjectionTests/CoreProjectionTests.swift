@@ -149,6 +149,23 @@ struct MayaScenarioTests {
     #expect(try reader.reviewCounts()[.needsReview] == 6)
     #expect(try reader.activity(month: Maya.october, limit: 100).count == 26)
   }
+
+  @Test("category members: live, parsed, unsplit rows of one category, archived included")
+  func categoryMembers() throws {
+    let (reader, _) = try Self.projected()
+    let all = try reader.activity(limit: 100_000) + reader.archived(limit: 100_000)
+    let used = Set(all.compactMap(\.category))
+    #expect(!used.isEmpty)
+    for category in used {
+      let expected = all.filter { $0.category == category && !$0.split && !$0.unparsed }.sorted {
+        $0.postedMs != $1.postedMs ? $0.postedMs > $1.postedMs : $0.id > $1.id
+      }
+      let members = try reader.categoryMembers(category)
+      #expect(members.map(\.id) == expected.map(\.id), "\(category)")
+      #expect(members.map(\.version) == expected.map(\.version) && members.map(\.needsReview) == expected.map(\.needsReview))
+    }
+    #expect(try reader.categoryMembers("no_such_category").isEmpty)
+  }
 }
 
 @Suite("CoreProjection contracts")

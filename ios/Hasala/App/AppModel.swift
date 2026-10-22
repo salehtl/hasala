@@ -261,8 +261,6 @@ final class AppModel {
       try store.apply(edit)
       return nil
     } catch {
-      if case .refused(let why) = error { return why }
-      show(Toast(disc: .note(.info), title: Self.message(for: error)))
       return Self.message(for: error)
     }
   }
