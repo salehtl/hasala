@@ -24,7 +24,7 @@ final class MonthlyPlanModel: Identifiable {
     self.done = done
     let readBack = setup.readBack()
     saved = readBack
-    if let minor = readBack.incomeMinor, minor > 0 { entry = AmountEntry(minor: minor - minor % 100) }
+    if let minor = readBack.incomeMinor, minor > 0 { entry = AmountEntry(minor: minor) }
     payday = readBack.payday.map { .day($0) }
     split = readBack.split
   }
@@ -34,7 +34,7 @@ final class MonthlyPlanModel: Identifiable {
   var incomeEntry: AmountEntry {
     get { entry }
     set {
-      guard !newValue.text.contains(".") else { return }
+      guard !newValue.text.contains(".") || entry.text.contains(".") else { return }
       entry = newValue
     }
   }

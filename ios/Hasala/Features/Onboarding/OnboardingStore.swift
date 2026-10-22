@@ -31,6 +31,7 @@ final class OnboardingStore {
   /// C1 interrupted: the replacement phrase, made once (not on every re-render).
   @ObservationIgnored private(set) var replacement: SignupModel?
   @ObservationIgnored private var finish: FinishSetupModel?
+  @ObservationIgnored private var firstScan = FirstScanRun()
   /// The facts setup was last brought in line with.
   @ObservationIgnored private var reconciledFacts: OnboardingStep.Facts?
   @ObservationIgnored private var lastPhase: AccountSession.Phase?
@@ -55,7 +56,9 @@ final class OnboardingStore {
       return setup
     }
     let session = self.session
-    let made = SetupModel(services: services, displayName: displayName, facts: facts) { session().setupFinished() }
+    let made = SetupModel(services: services, displayName: displayName, facts: facts, firstScan: firstScan) {
+      session().setupFinished()
+    }
     setup = made
     reconcile(made, facts)
     return made
@@ -68,7 +71,7 @@ final class OnboardingStore {
 
   func finishSetupModel() -> FinishSetupModel {
     if let finish { return finish }
-    let made = FinishSetupModel(services: services)
+    let made = FinishSetupModel(services: services, firstScan: firstScan)
     finish = made
     return made
   }
@@ -97,9 +100,28 @@ final class OnboardingStore {
   func forgetAccountDrafts() {
     setup = nil
     finish = nil
+    firstScan = FirstScanRun()
     reconciledFacts = nil
     replacement = nil
     signup = SignupModel(account: services.account)
     signIn = Self.signInModel(services.account, session)
+  }
+}
+
+@MainActor
+final class FirstScanRun {
+  private(set) var running = false
+  private var generation = 0
+
+  func start(_ mailbox: MailboxConnecting, again: Bool = false) {
+    guard again || !running else { return }
+    running = true
+    generation += 1
+    let id = generation
+    let stream = mailbox.firstScan()
+    Task { [weak self] in
+      for await _ in stream {}
+      if self?.generation == id { self?.running = false }
+    }
   }
 }

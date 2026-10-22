@@ -134,10 +134,10 @@ struct FinishSetupTests: AccountSuite {
     #expect(onlySplit.isDone(.plan))
     let onlyIncome = FinishSetupModel(services: services(MockSetupAuthoring(
       saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))))
-    #expect(!onlyIncome.isDone(.plan))
+    #expect(onlyIncome.isDone(.plan))
   }
 
-  @Test func anIncomeWithoutASplitKeepsThePlanItem() async throws {
+  @Test func anIncomeWithoutASplitCompletesThePlanItem() async throws {
     let setup = MockSetupAuthoring()
     let m = FinishSetupModel(services: services(setup))
     m.setPlan()
@@ -146,13 +146,7 @@ struct FinishSetupTests: AccountSuite {
     flow.continueWithIncome()
     await flow.savePlan(skip: true)
     #expect(setup.savePlanCalls == 1 && setup.income == 2_500_000 && setup.plan == nil)
-    #expect(!m.isDone(.plan) && m.planFlow == nil)
-    m.setPlan()
-    let again = try #require(m.planFlow)
-    #expect(again !== flow && again.incomeEntry.text == "25000")
-    again.continueWithIncome()
-    await again.savePlan()
-    #expect(setup.savePlanCalls == 2 && setup.plan == StartingPlan() && m.isDone(.plan))
+    #expect(m.isDone(.plan) && m.planFlow == nil)
   }
 
   @Test func closingThePlanWithNothingChosenSendsNothingAndKeepsTheItem() async throws {
@@ -189,11 +183,18 @@ struct FinishSetupTests: AccountSuite {
     let setup = MockSetupAuthoring(saved: saved)
     var outcome: SetupReadBack?
     let flow = MonthlyPlanModel(setup: setup) { outcome = $0 }
-    #expect(flow.incomeEntry.display == "25,000" && flow.paydayChoice == .day(25) && flow.plan.needsPercent == 60)
+    #expect(flow.incomeMinor == 2_500_050 && flow.paydayChoice == .day(25) && flow.plan.needsPercent == 60)
     #expect(flow.today == MayaLedger.now.date && flow.nextPayday == LocalDate(2026, 10, 25))
-    flow.incomeEntry = AmountEntry(typing: "25000")
     flow.continueWithIncome()
     await flow.savePlan()
+    #expect(setup.savePlanCalls == 0 && outcome?.incomeMinor == 2_500_050 && outcome?.split?.needsPercent == 60)
+    outcome = nil
+    let edited = MonthlyPlanModel(setup: setup) { outcome = $0 }
+    #expect(edited.incomeEntry.text == "25000.50")
+    for _ in 0..<3 { edited.incomeEntry.type(.delete) }
+    #expect(edited.incomeEntry.text == "25000")
+    edited.continueWithIncome()
+    await edited.savePlan()
     #expect(setup.savePlanCalls == 1 && outcome?.incomeMinor == 2_500_000 && outcome?.split?.needsPercent == 60)
     let unchanged = MockSetupAuthoring(saved: SetupReadBack(
       incomeMinor: 2_500_000, payday: 25, split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)))
@@ -202,5 +203,70 @@ struct FinishSetupTests: AccountSuite {
     same.continueWithIncome()
     await same.savePlan()
     #expect(unchanged.savePlanCalls == 0 && outcome?.split != nil)
+  }
+
+  @Test func aFirstScanThatStoppedIsAnItemThatOpensBankAlerts() {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.needingSignIn(MockMailbox.gmail)])
+    let m = FinishSetupModel(services: services(mailbox: mailbox))
+    #expect(m.stoppedMailbox == nil && !m.items.contains(.readingStopped))
+    m.refresh(hasTransactions: false)
+    #expect(m.stoppedMailbox?.id == MockMailbox.gmail.id && m.items.first == .readingStopped)
+    #expect(!m.isDone(.readingStopped) && !m.noAlerts)
+    #expect(FinishSetupSection.stopped(m.stoppedMailbox).title == "Sign in to your email again")
+    m.refresh(hasTransactions: true)
+    #expect(m.isDone(.readingStopped) && m.items.first == .readingStopped)
+  }
+
+  @Test func theTotalStaysTheSameOnceAnItemIsDone() async {
+    let m = FinishSetupModel(services: services(mailbox: readMailbox(total: 24)))
+    m.refresh(hasTransactions: false)
+    #expect(m.items == [.bankAlerts, .plan, .notifications])
+    await m.checkAgain()
+    m.refresh(hasTransactions: true)
+    #expect(m.items == [.bankAlerts, .plan, .notifications] && m.isDone(.bankAlerts))
+  }
+
+  @Test func checkAgainWhileTheImportReadsSaysSo() async {
+    let mailbox = readMailbox()
+    let m = FinishSetupModel(services: services(mailbox: mailbox))
+    m.refresh(hasTransactions: false)
+    #expect(m.noAlerts)
+    mailbox.importing = MailImport(state: .reading, read: 0, total: 10)
+    #expect(m.alreadyChecking)
+    await m.checkAgain()
+    #expect(m.checkNote == FinishSetupModel.alreadyCheckingLine(.gmail) && !m.checkingAgain)
+  }
+
+  @Test func aCheckThatEndsAtOnceSaysOneIsRunning() async {
+    let mailbox = CountingMailbox(readMailbox())
+    mailbox.scanEndsAtOnce = true
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    await m.checkAgain()
+    #expect(mailbox.scans == 1 && m.checkNote == FinishSetupModel.alreadyCheckingLine(.gmail) && m.showingNoAlerts)
+  }
+
+  @Test func useADifferentEmailClosesTheSheetForBankAlerts() {
+    let m = FinishSetupModel(services: services(mailbox: readMailbox()))
+    m.openNoAlerts()
+    m.useDifferentEmail()
+    #expect(!m.showingNoAlerts && m.takeBankAlertsRequest() && !m.takeBankAlertsRequest())
+  }
+
+  @Test func homeRestartsAFirstScanLeftRunning() async throws {
+    var syncing = MockMailbox.gmail
+    syncing.state = .syncing
+    let base = MockMailbox(mailboxes: [syncing])
+    base.step = .milliseconds(1)
+    let mailbox = CountingMailbox(base)
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    await m.resumeImport()
+    await m.resumeImport()
+    #expect(mailbox.scans == 1)
   }
 }

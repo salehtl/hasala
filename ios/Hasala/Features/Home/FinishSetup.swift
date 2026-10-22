@@ -4,6 +4,7 @@ import Observation
 import SwiftUI
 
 enum FinishSetupItem: String, CaseIterable, Identifiable {
+  case readingStopped
   case bankAlerts
   case plan
   case notifications
@@ -15,6 +16,8 @@ enum FinishSetupItem: String, CaseIterable, Identifiable {
 @Observable
 final class FinishSetupModel {
   @ObservationIgnored private let services: AccountServices
+  @ObservationIgnored private let firstScan: FirstScanRun
+  @ObservationIgnored private var importResumed = false
   private(set) var planDone = false
   private(set) var notificationsDone = false
   var planFlow: MonthlyPlanModel?
@@ -22,33 +25,53 @@ final class FinishSetupModel {
   var askingNotifications = false
   var showDetails = false
   private(set) var ledgerEmpty = false
-  private(set) var noAlertsTracked = false
+  private var listed: Set<FinishSetupItem> = [.plan, .notifications]
   private(set) var alertsFound = false
   private(set) var checkingAgain = false
   var checkFailure: SetupFailure?
+  private(set) var checkNote: String?
   var showingNoAlerts = false
+  @ObservationIgnored private var bankAlertsAfterSheet = false
 
-  init(services: AccountServices) {
+  init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun()) {
     self.services = services
+    self.firstScan = firstScan
     refresh()
   }
 
   var items: [FinishSetupItem] {
-    noAlertsTracked || noAlerts ? FinishSetupItem.allCases : FinishSetupItem.allCases.filter { $0 != .bankAlerts }
+    FinishSetupItem.allCases.filter { listed.contains($0) || !isDone($0) }
   }
 
   var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
 
+  var stoppedMailbox: MailboxSnapshot? {
+    guard ledgerEmpty, !services.mailbox.firstScanFinished,
+      let m = services.mailbox.mailboxes.first(where: { $0.state != .disconnected }),
+      m.state == .needsSignIn || m.readElsewhere || m.note != nil
+    else { return nil }
+    return m
+  }
+
   func refresh(hasTransactions: Bool? = nil) {
     if let hasTransactions { ledgerEmpty = !hasTransactions }
-    if noAlerts { noAlertsTracked = true }
+    if noAlerts { listed.insert(.bankAlerts) }
+    if stoppedMailbox != nil { listed.insert(.readingStopped) }
     let saved = services.setup.readBack()
-    if !planDone, saved.split != nil { planDone = true }
+    if !planDone, saved.split != nil || saved.incomeMinor != nil { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
+  }
+
+  func resumeImport() async {
+    guard !importResumed else { return }
+    importResumed = true
+    guard !firstScan.running, await services.mailbox.linkState() == .scanning else { return }
+    firstScan.start(services.mailbox)
   }
 
   func isDone(_ item: FinishSetupItem) -> Bool {
     switch item {
+    case .readingStopped: stoppedMailbox == nil
     case .bankAlerts: !noAlerts
     case .plan: planDone
     case .notifications: notificationsDone
@@ -64,26 +87,53 @@ final class FinishSetupModel {
     services.mailbox.mailboxes.first { $0.state != .disconnected }?.provider ?? services.mailbox.linkedProvider ?? .gmail
   }
 
+  var alreadyChecking: Bool { !checkingAgain && services.mailbox.importing?.busy == true }
+
   func openNoAlerts() {
     checkFailure = nil
+    checkNote = nil
     showingNoAlerts = true
   }
 
+  func useDifferentEmail() {
+    bankAlertsAfterSheet = true
+    showingNoAlerts = false
+  }
+
+  func takeBankAlertsRequest() -> Bool {
+    defer { bankAlertsAfterSheet = false }
+    return bankAlertsAfterSheet
+  }
+
   func checkAgain() async {
-    guard noAlerts, !checkingAgain else { return }
+    guard !checkingAgain else { return }
+    checkFailure = nil
+    checkNote = nil
+    guard !alreadyChecking else {
+      checkNote = Self.alreadyCheckingLine(noAlertsMailbox)
+      return
+    }
+    guard noAlerts else { return }
     checkingAgain = true
     defer { checkingAgain = false }
-    checkFailure = nil
+    var ended = false
     for await p in services.mailbox.firstScan() {
       switch p.phase {
       case .finished, .background:
+        ended = true
         if let s = p.summary, s.total > 0 { alertsFound = true }
       case .failed(let message):
+        ended = true
         checkFailure = .failed(message)
       default: break
       }
     }
+    if !ended { checkNote = Self.alreadyCheckingLine(noAlertsMailbox) }
     if alertsFound { showingNoAlerts = false }
+  }
+
+  static func alreadyCheckingLine(_ provider: MailProviderKind) -> String {
+    "Hasala is already reading \(provider.appName). New alerts show on Home as they're read."
   }
 
   var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
@@ -92,7 +142,7 @@ final class FinishSetupModel {
     let flow = draft ?? MonthlyPlanModel(setup: services.setup) { [weak self] held in
       if let held {
         self?.draft = nil
-        if held.split != nil { self?.planDone = true }
+        if held.split != nil || held.incomeMinor != nil { self?.planDone = true }
       }
       self?.planFlow = nil
     }
@@ -124,6 +174,7 @@ struct FinishSetupSection: View {
   let model: FinishSetupModel
   let items: [FinishSetupItem]
   let importing: Bool
+  var openBankAlerts: () -> Void = {}
 
   var body: some View {
     let open = items.filter { !model.isDone($0) }
@@ -132,6 +183,11 @@ struct FinishSetupSection: View {
         HSectionHeader("Finish setting up", trailing: .fact("\(items.count - open.count) of \(items.count)"))
         ForEach(open) { item in
           switch item {
+          case .readingStopped:
+            let stopped = Self.stopped(model.stoppedMailbox)
+            FinishSetupRow(
+              icon: .envelope, title: stopped.title, detail: stopped.detail,
+              enabled: true, identifier: "home.finish.readingStopped", action: openBankAlerts)
           case .bankAlerts:
             FinishSetupRow(
               icon: .envelope, title: "No bank alerts yet",
@@ -156,6 +212,19 @@ struct FinishSetupSection: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("home.finish")
     }
+  }
+}
+
+extension FinishSetupSection {
+  static func stopped(_ m: MailboxSnapshot?) -> (title: String, detail: String) {
+    guard let m else { return ("Reading your alerts stopped", "Open Bank alerts to try again.") }
+    if m.state == .needsSignIn {
+      return ("Sign in to your email again", "Hasala can't read \(m.address) right now. Open Bank alerts to sign in.")
+    }
+    if m.readElsewhere {
+      return ("Read on your other iPhone", "Its transactions show here once that iPhone syncs them.")
+    }
+    return ("Reading your alerts stopped", "Open Bank alerts to try again.")
   }
 }
 

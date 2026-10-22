@@ -31,6 +31,7 @@ struct SetupDraft: Equatable, Sendable {
 final class SetupModel {
   private let services: AccountServices
   private let onFinished: () -> Void
+  @ObservationIgnored private let firstScan: FirstScanRun
   var path: [SetupRoute] = []
   /// The path as the navigation stack changes it: the system back button or its swipe
   /// (plan decision 7) leaves the failure of the step it left behind, as `back()` does.
@@ -65,8 +66,10 @@ final class SetupModel {
   var failure: SetupFailure?
   var displayName: String
 
-  init(services: AccountServices, displayName: String, facts: OnboardingStep.Facts, onFinished: @escaping () -> Void) {
+  init(services: AccountServices, displayName: String, facts: OnboardingStep.Facts,
+       firstScan: FirstScanRun = FirstScanRun(), onFinished: @escaping () -> Void) {
     self.services = services
+    self.firstScan = firstScan
     self.displayName = displayName
     self.facts = facts
     self.onFinished = onFinished
@@ -119,6 +122,7 @@ final class SetupModel {
   }
 
   func resume() {
+    if facts.mailbox == .scanning, !facts.sampleLoaded { startImport() }
     guard !didResume, step == .finished else { return }
     didResume = true
     finish()
@@ -303,7 +307,7 @@ final class SetupModel {
       draft.provider = provider
       facts.mailSkipped = false
       facts.mailbox = .scanning
-      startImport()
+      startImport(again: fresh)
     }
     if let line = coordinators[provider]?.takeRemovalFailure() {
       failure = .failed(line)
@@ -361,11 +365,10 @@ final class SetupModel {
 
   // MARK: The import
 
-  private func startImport() {
+  private func startImport(again: Bool = false) {
     guard !importStarted else { return }
     importStarted = true
-    let stream = services.mailbox.firstScan()
-    Task { for await _ in stream {} }
+    firstScan.start(services.mailbox, again: again)
   }
 
   func finish() {

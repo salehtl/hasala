@@ -294,6 +294,9 @@ ends once the mailbox is connected, and its ask moved to Review.)
     of the same size, on the card and on the sheet.
   - **Turn on** sets both switches (`MerchantSuggestionsSetting.turnOnForFirstImport`)
     and starts a run. **Not now** leaves both off.
+  - The ask can be answered at any time, not only after the first scan. Turn on starts a
+    run then, over what waits in Review; rows the import adds wake the run while it is
+    active.
 - **Review, with Merchant suggestions on:** the **Sort with Cloudflare AI** card at the
   top of Review (below). It starts a run with the switches as they are, and never turns
   them on. The ask and this card never show together.

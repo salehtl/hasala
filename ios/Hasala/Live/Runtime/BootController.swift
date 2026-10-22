@@ -140,6 +140,7 @@ final class BootController {
     startRetry = nil
     account.loadProfile()
     LocalAccountData.migrate(boundUserID: facts.binding?.user_id)
+    MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: LocalAccountData.setupFinished())
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
     self.wall = wall
     session = AccountSession(services: services, phase: phase)

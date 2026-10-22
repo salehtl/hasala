@@ -39,6 +39,15 @@ struct NoAlertsSheet: View {
         VStack(spacing: 12) {
           card
           SetupFailureBanner(failure: model.checkFailure)
+          if let note = model.checkNote ?? (model.alreadyChecking ? FinishSetupModel.alreadyCheckingLine(model.noAlertsMailbox) : nil) {
+            Text(note)
+              .hType(.footnote)
+              .foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.horizontal, 4)
+              .accessibilityIdentifier("noAlerts.alreadyChecking")
+          }
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 28)
@@ -49,8 +58,8 @@ struct NoAlertsSheet: View {
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaBar(edge: .bottom) {
       ActionDock(keyboardUp: false) {
-        Button("Check again") { Task { await model.checkAgain() } }
-          .buttonStyle(.pill(.primary, fill: true, loading: model.checkingAgain))
+        Button("Check for new alerts") { Task { await model.checkAgain() } }
+          .buttonStyle(.pill(.primary, fill: true, loading: model.checkingAgain || model.alreadyChecking))
           .dockPill()
           .accessibilityIdentifier("noAlerts.checkAgain")
         Button("Go to Home") { dismiss() }
@@ -94,11 +103,19 @@ struct NoAlertsSheet: View {
             .accessibilityIdentifier("noAlerts.howTo.\(bank.rawValue)")
         }
       }
-      Text("New alerts are read when you open Hasala. Alerts go to another address? Use that mailbox instead.")
+      Text("Check for new alerts reads what reached \(model.noAlertsMailbox.appName) since Hasala looked. Alerts go to another address? Use that mailbox instead.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 8)
+      Button("Use a different email") { model.useDifferentEmail() }
+        .buttonStyle(.plain)
+        .hType(HType.subheadline.weight(.medium))
+        .foregroundStyle(HColor.textLink)
+        .disabled(model.checkingAgain)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("noAlerts.differentEmail")
     }
     .padding(.top, 18)
     .padding(.horizontal, 16)

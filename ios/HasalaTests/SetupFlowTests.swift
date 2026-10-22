@@ -78,7 +78,7 @@ struct SetupFlowTests: AccountSuite {
     async let second: Void = m.connectMail(.gmail)
     _ = await (first, second)
     #expect(lane.connectCalls == 1 && !m.connecting)
-    #expect(m.path.isEmpty && m.step == .finished)
+    #expect(m.path.isEmpty && m.facts.mailbox == .scanning)
   }
 
   @Test func aPickInTheChooserStartsItsConnect() async throws {
@@ -94,6 +94,16 @@ struct SetupFlowTests: AccountSuite {
     m.connectRequest = nil
     m.choosingEnded()
     #expect(m.connectRequest == nil)
+  }
+
+  @Test func aRelaunchMidScanRestartsTheImportOnce() async throws {
+    let base = MockMailbox()
+    let mailbox = CountingMailbox(base)
+    let m = model(services(with: mailbox),
+                  facts: .init(hasSession: true, keysReady: true, banksChosen: true, mailbox: .scanning))
+    m.resume()
+    m.resume()
+    #expect(mailbox.scans == 1)
   }
 
   @Test func aConnectThatReplacesTheMailboxScansTheNewOne() async throws {
@@ -358,6 +368,7 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored let base: MockMailbox
   @ObservationIgnored private(set) var scans = 0
   @ObservationIgnored var cancelGmail = false
+  @ObservationIgnored var scanEndsAtOnce = false
   /// The link a relaunch remembers before the lane's rows are read.
   @ObservationIgnored var linkedOverride: MailProviderKind?
   /// The account's link held by another iPhone (live: a new install or a recovered account).
@@ -391,7 +402,10 @@ final class CountingMailbox: MailboxConnecting {
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? { await base.disconnectImpact(mailboxID) }
   func firstScan() -> AsyncStream<ScanProgress> {
     scans += 1
+    if scanEndsAtOnce { return AsyncStream { $0.finish() } }
     return base.firstScan()
   }
   func loadSampleData() async throws(SetupFailure) { try await base.loadSampleData() }
+  var importing: MailImport? { base.importing }
+  var firstScanFinished: Bool { base.firstScanFinished }
 }
