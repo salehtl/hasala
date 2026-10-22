@@ -173,13 +173,76 @@ import Testing
     #expect(try r.txn(Self.id(3))?.categorizedMs == nil)
   }
 
-  @Test func anUnreadableAuthoredTimeIsNoFiledAt() throws {
+  static func uncategorize(_ n: Int, op: String, parent: Int, at: String) -> String {
+    #"{"v":4,"type":"txn_categorized","op_id":"\#(op)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(id(n))"},"parent_version":\#(parent),"payload":{"category":null,"needs_review":true,"source":{"kind":"none"}}}"#
+  }
+
+  static func editHome(_ n: Int, op: String, parent: Int, at: String) -> String {
+    #"{"v":4,"type":"txn_edited","op_id":"\#(op)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(id(n))"},"parent_version":\#(parent),"payload":{"amount_home_minor":"9200"}}"#
+  }
+
+  @Test func anEditAfterAFilingKeepsTheFiledAt() throws {
+    var s = State()
+    let rule = #","category":"subscriptions","category_source":{"kind":"rule","rule_id":"01JC0000000000000000000R10"},"needs_review":false"#
+    let usd = { (raw: String) in raw.replacingOccurrences(of: #""currency":"AED""#, with: #""currency":"USD""#) }
+    try Self.blob(
+      1,
+      [
+        usd(Self.txn(1, "TAILSCALE INC", posted: "2026-10-03T08:00:00.000Z", at: "2026-10-03T09:15:00.000Z", extra: rule)),
+        usd(Self.txn(2, "TAILSCALE INC", posted: "2026-10-04T08:00:00.000Z")),
+      ], into: &s)
+    try Self.blob(
+      2,
+      [
+        Self.editHome(1, op: "e1", parent: 1, at: "2026-10-05T09:00:00.000Z"),
+        Self.categorize(2, op: "c2", parent: 1, at: "2026-10-06T09:00:00.000Z"),
+        Self.editHome(2, op: "e2", parent: 2, at: "2026-10-07T09:00:00.000Z"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty)
+    let (_, r) = try Self.project(s)
+    let one = try #require(try r.txn(Self.id(1)))
+    #expect(one.amountHomeMinor == 9200 && one.categorySource == "rule")
+    #expect(one.categorizedMs == Self.ms("2026-10-03T09:15:00.000Z"))
+    #expect(try r.txn(Self.id(2))?.categorizedMs == Self.ms("2026-10-06T09:00:00.000Z"))
+  }
+
+  @Test func aCategorizeThatClearsTheCategoryIsNoFiledAt() throws {
+    var s = State()
+    try Self.blob(1, [Self.txn(1, "TAILSCALE INC", posted: "2026-08-03T08:00:00.000Z")], into: &s)
+    try Self.blob(
+      2,
+      [
+        Self.categorize(1, op: "c1", parent: 1, at: "2026-10-20T09:00:00.000Z"),
+        Self.uncategorize(1, op: "u1", parent: 2, at: "2026-10-21T09:00:00.000Z"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty)
+    let (_, r) = try Self.project(s)
+    let row = try #require(try r.txn(Self.id(1)))
+    #expect(row.category == nil && row.needsReview)
+    #expect(row.categorizedMs == nil)
+  }
+
+  @Test func rowsWithAPunctuationMerchantShareNoGroup() throws {
+    var s = State()
+    try Self.blob(
+      1,
+      [
+        Self.txn(1, "-", posted: "2026-10-03T08:00:00.000Z"),
+        Self.txn(2, "-", posted: "2026-10-04T08:00:00.000Z"),
+        Self.txn(3, "*", posted: "2026-10-05T08:00:00.000Z"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty)
+    let (_, r) = try Self.project(s)
+    for n in 1...3 { #expect(try #require(try r.txn(Self.id(n))).merchantGroup == nil) }
+  }
+
+  @Test func theFiledAtComesFromTheHead() throws {
     var s = State()
     try Self.blob(1, [Self.txn(1, "TAILSCALE INC", posted: "2026-08-03T08:00:00.000Z")], into: &s)
     try Self.blob(2, [Self.categorize(1, op: "c1", parent: 1, at: "2026-10-20T09:00:00.000Z")], into: &s)
     let key = State.entityKey("txn", Self.id(1))
-    #expect(s.heads[key]?.authoredAtMs == Self.ms("2026-10-20T09:00:00.000Z"))
-    s.heads[key]?.authoredAtMs = 0
+    #expect(s.heads[key]?.categorizedAtMs == Self.ms("2026-10-20T09:00:00.000Z"))
+    s.heads[key]?.categorizedAtMs = nil
     let (_, r) = try Self.project(s)
     #expect(try r.txn(Self.id(1))?.categorizedMs == nil)
   }

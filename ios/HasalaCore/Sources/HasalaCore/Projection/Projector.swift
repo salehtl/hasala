@@ -182,10 +182,8 @@ public enum Projector {
   }
 
   static func categorizedMs(_ s: State, _ id: String, _ t: Txn) -> Int64? {
-    guard let head = s.heads[State.entityKey("txn", id)], head.authoredAtMs != 0, let type = head.opType else { return nil }
-    if utf8Equal(type, OpType.txnCategorized.rawValue) { return head.authoredAtMs }
-    let created = utf8Equal(type, OpType.txnIngested.rawValue) || utf8Equal(type, OpType.txnSuperseded.rawValue)
-    return created && t.categorySource?.kind == .rule ? head.authoredAtMs : nil
+    guard t.category != nil, t.splits.isEmpty else { return nil }
+    return s.heads[State.entityKey("txn", id)]?.categorizedAtMs
   }
 
   static func userTouched(_ t: Txn) -> Bool {

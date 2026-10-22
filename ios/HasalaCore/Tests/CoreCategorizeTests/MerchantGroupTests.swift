@@ -58,7 +58,21 @@ import Testing
     #expect(Self.key("SOME SHOP*REF 123") == "n:some shop")
     #expect(Self.key("OTHER SHOP*REF 123") == "n:other shop")
     #expect(Self.key("*TAILSCALE") == "n:tailscale")
-    #expect(Self.key("**") == "n:**")
+    #expect(Self.key("**") == "")
+  }
+
+  @Test func aSubjectWithNoLetterOrDigitHasNoKey() {
+    for raw in ["-", "*", ".", "**", " - ", "*-*", "\u{2014}"] { #expect(Self.key(raw) == "", "\(raw)") }
+    #expect(Self.key("-7") == "n:7")
+  }
+
+  @Test func aFacilitatorBeforeANamedPrefixKeepsBothParts() {
+    #expect(Self.key("TST CAFE ONE*ONLINE") == "n:tst cafe one online")
+    #expect(Self.key("TST CAFE ONE*ONLINE") != Self.key("TST CAFE TWO*ONLINE"))
+    #expect(Self.key("SP AMAZING STORE*REF") != Self.key("SP OTHER STORE*REF"))
+    #expect(Self.key("GOOGLE PLAY*WEB") != Self.key("GOOGLE CLOUD*WEB"))
+    #expect(Self.key("PAYPAL *FIGMA") == "n:figma")
+    #expect(Self.key("AMZN Mktp US*2K1AB3CD4") == "n:amzn mktp")
   }
 
   @Test func noiseIsStrippedOnlyAtTheEdges() {
@@ -71,6 +85,10 @@ import Testing
     #expect(Self.key("INC") == "n:inc")
     #expect(Self.key("US") == "n:us")
     #expect(Self.key("مطعم السلام 12") == "n:مطعم السلام")
+    #expect(Self.key("ZEN INC GARDEN") == "n:zen inc garden")
+    #expect(Self.key("ZEN INC GARDEN") != Self.key("ZEN GARDEN"))
+    #expect(Self.key("ALPHA LIMITED EDITION BOOKS") == "n:alpha limited edition books")
+    #expect(Self.key("ZEN GARDEN LLC 1234 AE") == "n:zen garden")
   }
 
   @Test func theDictionaryWinsInMatcherOrder() {

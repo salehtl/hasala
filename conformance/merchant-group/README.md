@@ -20,7 +20,8 @@ All merchant strings are synthetic.
 ## The key
 
 `subject` is `Canon.subject(raw)` (canonical, lower case, at most 512
-scalars). An empty subject has the key `""`, which means "no group": the
+scalars). An empty subject, or one with no letter and no digit (`[\p{L}\p{N}]`,
+for example `-`, `*`, `.` or `**`), has the key `""`, which means "no group": the
 projection writes `merchant_group` as NULL for it, and `LedgerReader.group("")`
 and `sweepRows(group: "")` return nothing. A row with no merchant (an
 unparsed row, or a parsed alert with no merchant name) never shares a card, a
@@ -44,31 +45,44 @@ Bytes of the subject, split on U+0020:
    - A prefix whose first token is a payment facilitator (`paypal`, `pp`,
      `google`, `sq`, `sp`, `tst`, `sumup`, `iz`, `izettle`, `zettle`, `amzn`,
      `apple.com/bill`, `paddle.net`, `fs`, `2co.com`, `dd`, `dlo`, `dlocal`,
-     `payu`): keep the rest, which names the merchant. To judge the rest, its
-     stars become spaces and it is cleaned (steps 2 to 4). Keep the prefix
-     instead only when the cleaned rest is empty, or when each of its tokens
-     holds a digit (an order reference) and the cleaned prefix has a token
-     after the facilitator (`AMZN Mktp US*2K1AB3CD4` is `amzn mktp`). A bare
-     facilitator never becomes the key of a rest that names something:
-     `PAYPAL *1PASSWORD` is `1password` and `PAYPAL *500PX` is `500px`. This
-     gives more cards, never one card for two merchants.
+     `payu`). To judge the rest, its stars become spaces and it is cleaned
+     (steps 2 and 3). The cleaned prefix decides what is kept:
+     - A bare facilitator (the cleaned prefix is one token): keep the rest,
+       which names the merchant (`PAYPAL *FIGMA` is `figma`). When the
+       cleaned rest is empty, keep the prefix (`PAYPAL *` is `paypal`). A
+       bare facilitator never becomes the key of a rest that names
+       something: `PAYPAL *1PASSWORD` is `1password` and `PAYPAL *500PX` is
+       `500px`.
+     - A facilitator and a name (the cleaned prefix has a token after the
+       facilitator): when the cleaned rest is empty or each of its tokens
+       holds a digit (an order reference), keep the prefix
+       (`AMZN Mktp US*2K1AB3CD4` is `amzn mktp`). Otherwise keep both: the
+       prefix, a space and the rest with its stars as spaces
+       (`TST CAFE ONE*ONLINE` is `tst cafe one online`, apart from
+       `TST CAFE TWO*ONLINE`).
+     This gives more cards, never one card for two merchants.
    - Any other prefix: keep the prefix and drop the star and the rest.
    - Repeat while a star is left.
 2. Each token loses its leading and trailing ASCII characters that are not a
    letter or a digit, a leading `www.` and a trailing `.com`. Empty tokens are
    dropped.
-3. A legal suffix after the first token is dropped: `llc`, `l.l.c`, `inc`,
-   `ltd`, `limited`, `trdg`, `fze`, `fzco`, `fz`, `fz-llc`, `fzllc`, `est`,
-   `corp`, `plc`, `gmbh`.
-4. While more than one token is left, the last token is dropped when it holds
-   an ASCII digit (a reference, a store number or a phone number) or is a
+3. While more than one token is left, the last token is dropped when it holds
+   an ASCII digit (a reference, a store number or a phone number), is a
+   legal suffix (`llc`, `l.l.c`, `inc`, `ltd`, `limited`, `trdg`, `fze`,
+   `fzco`, `fz`, `fz-llc`, `fzllc`, `est`, `corp`, `plc`, `gmbh`) or is a
    country code (`ae`, `are`, `uae`, `us`, `usa`, `gb`, `gbr`, `uk`, `ie`,
    `irl`, `nl`, `nld`, `sg`, `sgp`, `lu`, `lux`, `au`, `aus`, `ca`, `deu`,
    `fra`, `ind`, `sa`, `sau`, `ksa`, `qa`, `qat`, `om`, `omn`, `bh`, `bhr`,
-   `kw`, `kwt`, `eg`, `egy`, `hk`, `hkg`, `ch`, `che`).
-5. The tokens, joined with one space. When nothing is left, the subject with
+   `kw`, `kwt`, `eg`, `egy`, `hk`, `hkg`, `ch`, `che`). Only this trailing
+   run is cut: a legal word inside the name stays (`ZEN INC GARDEN` is
+   `zen inc garden`, apart from `ZEN GARDEN`), and the first token is
+   always kept (`INC` is `inc`).
+4. The tokens, joined with one space. When nothing is left, the subject with
    its stars as spaces is cleaned again; when that is empty too, the subject
    itself.
+5. A subject with no letter and no digit never gets here: its key is `""`
+   (no group), so a bank alert that prints `-` or `*` for a missing merchant
+   shares no card.
 
 No fuzzy matching: two spellings share a key only when these steps make them
 equal byte for byte. City names are kept, so branches in two cities stay two
@@ -94,5 +108,8 @@ cards.
   fails the test. The pairs also hold the bare facilitators
   (`PAYPAL *1PASSWORD` and `PAYPAL *500PX`, `GOOGLE*ADS…` and
   `GOOGLE*GSUITE…`, `SQ *CAFE21` and `SQ *BAR22`, `DLO*TAILSCALE` and
-  `DLO*FIGMA`).
+  `DLO*FIGMA`), the facilitators before a name (`TST CAFE ONE*ONLINE` and
+  `TST CAFE TWO*ONLINE`, `SP AMAZING STORE*REF` and `SP OTHER STORE*REF`,
+  `GOOGLE PLAY*WEB` and `GOOGLE CLOUD*WEB`) and a legal word inside a name
+  (`ZEN INC GARDEN` and `ZEN GARDEN`).
 - Non-ASCII code points are written as `\uXXXX` escapes.

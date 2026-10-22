@@ -14,7 +14,7 @@ public struct MerchantGroup: Sendable {
   public func key(raw: String) -> String {
     let subject = Canon.subject(raw)
     let bytes = Array(subject.utf8)
-    if bytes.isEmpty { return "" }
+    if bytes.isEmpty || !subject.unicodeScalars.contains(where: Matcher.isAlnum) { return "" }
     if let hit = entries.first(where: { $0.hits(bytes) }) {
       let name = hit.display.map(Canon.canonical) ?? ""
       let key = name.isEmpty ? "e:\(hit.match.rawValue):\(hit.pattern)" : "d:" + name
@@ -62,8 +62,11 @@ public struct MerchantGroup: Sendable {
         continue
       }
       let merchant = cleaned(spaced(after))
-      if merchant.isEmpty || (merchant.allSatisfy(hasDigit) && cleaned(before).count > 1) {
+      let named = cleaned(before).count > 1
+      if merchant.isEmpty || (named && merchant.allSatisfy(hasDigit)) {
         rest = before
+      } else if named {
+        rest = before + [space] + spaced(after)
       } else {
         rest = after
       }
@@ -78,10 +81,9 @@ public struct MerchantGroup: Sendable {
       if t.count > 4, t.starts(with: Array("www.".utf8)) { t = trimmedPunctuation(Array(t.dropFirst(4))) }
       if t.count > 4, t.suffix(4).elementsEqual(".com".utf8) { t = trimmedPunctuation(Array(t.dropLast(4))) }
       if t.isEmpty { continue }
-      if !tokens.isEmpty && legal.contains(t) { continue }
       tokens.append(t)
     }
-    while tokens.count > 1, let last = tokens.last, hasDigit(last) || countries.contains(last) {
+    while tokens.count > 1, let last = tokens.last, hasDigit(last) || countries.contains(last) || legal.contains(last) {
       tokens.removeLast()
     }
     return tokens

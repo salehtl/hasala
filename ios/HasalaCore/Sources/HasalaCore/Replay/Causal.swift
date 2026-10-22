@@ -104,8 +104,10 @@ extension State {
         return
       }
       guard create(e, decoded) else { return }
+      let filedByRule = utf8Equal(ref.kind, "txn") && txns[ref.id]?.category != nil && txns[ref.id]?.categorySource?.kind == .rule
       heads[key] = EntityHead(
-        kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs, opType: op.type.rawValue)
+        kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs,
+        categorizedAtMs: filedByRule ? Self.filedAt(authoredMs) : nil)
       return
     }
 
@@ -141,7 +143,7 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
-      head.opType = op.type.rawValue
+      if op.type == .txnCategorized { head.categorizedAtMs = Self.filedAt(authoredMs) }
       heads[key] = head
       edit(e, payload, version: head.version)
       return
@@ -177,7 +179,7 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
-      head.opType = op.type.rawValue
+      if op.type == .txnCategorized { head.categorizedAtMs = Self.filedAt(authoredMs) }
       heads[key] = head
       edit(e, payload, version: head.version)
       return
@@ -185,6 +187,8 @@ extension State {
     heads[key] = head
     setVersion(ref.kind, ref.id, head.version)
   }
+
+  static func filedAt(_ authoredMs: Int64) -> Int64? { authoredMs == 0 ? nil : authoredMs }
 
   static let creates: [OpType] = [.txnIngested, .txnSuperseded, .ruleAdded, .projectDefined, .goalDefined, .billSet]
   static let edits: [OpType] = [

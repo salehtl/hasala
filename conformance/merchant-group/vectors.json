@@ -314,6 +314,76 @@
       "expect": {
         "key": "n:homeware studio"
       }
+    },
+    {
+      "name": "dash-alone",
+      "raw": "-",
+      "expect": {
+        "key": ""
+      }
+    },
+    {
+      "name": "star-alone",
+      "raw": "*",
+      "expect": {
+        "key": ""
+      }
+    },
+    {
+      "name": "dot-alone",
+      "raw": ".",
+      "expect": {
+        "key": ""
+      }
+    },
+    {
+      "name": "two-stars",
+      "raw": "**",
+      "expect": {
+        "key": ""
+      }
+    },
+    {
+      "name": "facilitator-named-prefix-tst-one",
+      "raw": "TST CAFE ONE*ONLINE",
+      "expect": {
+        "key": "n:tst cafe one online"
+      }
+    },
+    {
+      "name": "facilitator-named-prefix-tst-two",
+      "raw": "TST CAFE TWO*ONLINE",
+      "expect": {
+        "key": "n:tst cafe two online"
+      }
+    },
+    {
+      "name": "facilitator-named-prefix-sp-amazing",
+      "raw": "SP AMAZING STORE*REF",
+      "expect": {
+        "key": "n:sp amazing store ref"
+      }
+    },
+    {
+      "name": "facilitator-named-prefix-sp-other",
+      "raw": "SP OTHER STORE*REF",
+      "expect": {
+        "key": "n:sp other store ref"
+      }
+    },
+    {
+      "name": "legal-token-mid-name",
+      "raw": "ZEN INC GARDEN",
+      "expect": {
+        "key": "n:zen inc garden"
+      }
+    },
+    {
+      "name": "legal-token-trailing-run",
+      "raw": "ZEN GARDEN LLC 1234 AE",
+      "expect": {
+        "key": "n:zen garden"
+      }
     }
   ],
   "pairs": [
@@ -417,6 +487,30 @@
       "name": "dlo-tailscale-is-not-dlo-figma",
       "a": "DLO*TAILSCALE",
       "b": "DLO*FIGMA",
+      "same": false
+    },
+    {
+      "name": "tst-cafe-one-is-not-tst-cafe-two",
+      "a": "TST CAFE ONE*ONLINE",
+      "b": "TST CAFE TWO*ONLINE",
+      "same": false
+    },
+    {
+      "name": "sp-amazing-store-is-not-sp-other-store",
+      "a": "SP AMAZING STORE*REF",
+      "b": "SP OTHER STORE*REF",
+      "same": false
+    },
+    {
+      "name": "google-play-is-not-google-cloud",
+      "a": "GOOGLE PLAY*WEB",
+      "b": "GOOGLE CLOUD*WEB",
+      "same": false
+    },
+    {
+      "name": "zen-inc-garden-is-not-zen-garden",
+      "a": "ZEN INC GARDEN",
+      "b": "ZEN GARDEN",
       "same": false
     }
   ]
