@@ -104,7 +104,8 @@ extension State {
         return
       }
       guard create(e, decoded) else { return }
-      heads[key] = EntityHead(kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs)
+      heads[key] = EntityHead(
+        kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs, opType: op.type.rawValue)
       return
     }
 
@@ -140,6 +141,7 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
+      head.opType = op.type.rawValue
       heads[key] = head
       edit(e, payload, version: head.version)
       return
@@ -175,6 +177,7 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
+      head.opType = op.type.rawValue
       heads[key] = head
       edit(e, payload, version: head.version)
       return

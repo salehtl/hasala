@@ -259,9 +259,10 @@ public struct EntityHead: Sendable, Equatable, Codable {
   public var opID: String
   public var writerID: String
   public var authoredAtMs: Int64
+  public var opType: String?
 
   public init(
-    kind: String, id: String, version: Int64, opID: String, writerID: String, authoredAtMs: Int64
+    kind: String, id: String, version: Int64, opID: String, writerID: String, authoredAtMs: Int64, opType: String? = nil
   ) {
     self.kind = kind
     self.id = id
@@ -269,6 +270,7 @@ public struct EntityHead: Sendable, Equatable, Codable {
     self.opID = opID
     self.writerID = writerID
     self.authoredAtMs = authoredAtMs
+    self.opType = opType
   }
 }
 
