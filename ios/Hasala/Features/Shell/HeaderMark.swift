@@ -170,7 +170,9 @@ struct HeaderMark: View {
     .hHaptic(.impactLight, trigger: felt[.impactLight, default: 0])
     .hHaptic(.impactRigid, trigger: felt[.impactRigid, default: 0])
     .hHaptic(.success, trigger: felt[.success, default: 0])
-    .task { await autoplay() }
+    #if HASALA_MOCKS
+      .task { await autoplay() }
+    #endif
     .onDisappear {
       stopPlayers()
       stage.reset()
@@ -269,6 +271,7 @@ struct HeaderMark: View {
     feel(.success)
     guard !policy.settled else { return }
     stopPlayers()
+    stage.reset()
     players = [
       Task { @MainActor in
         withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = true }
@@ -305,17 +308,17 @@ struct HeaderMark: View {
     felt[haptic, default: 0] += 1
   }
 
-  private func autoplay() async {
-    #if HASALA_MOCKS
+  #if HASALA_MOCKS
+    private func autoplay() async {
       guard let every = JackpotLaunch.current else { return }
       try? await Task.sleep(for: .seconds(1.5))
       repeat {
         guard !Task.isCancelled else { return }
         perform(.jackpot, now: ProcessInfo.processInfo.systemUptime)
-        try? await Task.sleep(for: .seconds(every))
+        try? await Task.sleep(for: .seconds(max(every, CoinShow.total(.jackpot))))
       } while every > 0
-    #endif
-  }
+    }
+  #endif
 }
 
 private struct JackpotBurst: View {

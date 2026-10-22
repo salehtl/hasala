@@ -115,10 +115,15 @@ struct SlotMark: View, Animatable {
 
   static func scale(in size: CGSize) -> CGFloat { min(size.width / 616, size.height / 368) }
 
+  static func origin(in size: CGSize) -> CGPoint {
+    let s = scale(in: size)
+    return CGPoint(x: (size.width - 616 * s) / 2, y: size.height - 368 * s)
+  }
+
   static func slotCentre(in size: CGSize) -> CGPoint {
     let s = scale(in: size)
-    let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
-    return CGPoint(x: ox + (512 - 204) * s, y: oy + (632 - 328) * s)
+    let o = origin(in: size)
+    return CGPoint(x: o.x + (512 - 204) * s, y: o.y + (632 - 328) * s)
   }
 
   static let coinRim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
@@ -129,7 +134,8 @@ struct SlotMark: View, Animatable {
     Canvas { context, size in
       let s = Self.scale(in: size)
       let slot = Self.slotCentre(in: size)
-      let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
+      let o = Self.origin(in: size)
+      let ox = o.x, oy = o.y
       func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
         CGRect(x: ox + (x - 204) * s, y: oy + (y - 328) * s, width: w * s, height: h * s)
       }
