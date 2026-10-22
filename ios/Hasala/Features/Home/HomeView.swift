@@ -62,7 +62,7 @@ struct HomeView: View {
           changePeriod: { app.sheet = .period },
           backToThisMonth: { app.period = .month(app.store.now.date.yearMonth) },
           insights: { app.router.home.append(.insights) },
-          setPlan: { app.tab = .plan },
+          setPlan: { app.openPlan() },
           openNotCounted: { model.openNotCounted($0) },
           openRates: { mark in
             app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))

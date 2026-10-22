@@ -6,11 +6,11 @@ final class ProjectsUITests: XCTestCase {
   }
 
   @MainActor
-  private func launchPlan(arguments: [String] = []) -> XCUIApplication {
+  private func launchProjects(arguments: [String] = []) -> XCUIApplication {
     let app = launch(scenario: "maya", motion: "off", arguments: arguments)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
-    app.tabBars.firstMatch.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+    app.tabBars.firstMatch.buttons["Projects"].tap()
+    XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
     return app
   }
 
@@ -21,9 +21,9 @@ final class ProjectsUITests: XCTestCase {
 
   @MainActor
   private func makeKitchen(_ app: XCUIApplication, large: Bool = false) throws {
-    let new = el(app, "plan.newProject")
+    let new = el(app, "projects.new")
     XCTAssertTrue(reveal(app, new))
-    attach(app, large ? "AX3 · Plan · Projects section" : "Plan · Projects section")
+    attach(app, large ? "AX3 · Projects tab" : "Projects tab")
     new.tap()
     let name = el(app, "projectEditor.name")
     XCTAssertTrue(name.waitForExistence(timeout: uiWait))
@@ -38,7 +38,7 @@ final class ProjectsUITests: XCTestCase {
 
   @MainActor
   func testCreateAssignSeeAndComplete() throws {
-    let app = launchPlan()
+    let app = launchProjects()
     try makeKitchen(app)
 
     let hero = el(app, "project.hero")
@@ -83,11 +83,6 @@ final class ProjectsUITests: XCTestCase {
     attach(app, "Project · Kitchen refresh · Completed hero")
 
     back(app)
-    let all = el(app, "plan.allProjects")
-    XCTAssertTrue(reveal(app, all))
-    XCTAssertEqual(app.descendants(matching: .any).matching(
-      NSPredicate(format: "identifier BEGINSWITH 'plan.project.' AND label BEGINSWITH 'Kitchen'")).count, 0)
-    all.tap()
     let done = first(app, prefix: "projects.project.p-")
     XCTAssertTrue(done.waitForExistence(timeout: uiWait))
     XCTAssertTrue(done.label.contains("Kitchen refresh"), done.label)
@@ -186,7 +181,7 @@ final class ProjectsUITests: XCTestCase {
   @MainActor
   func testProjectsAtLargeText() throws {
     let large = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
-    let app = launchPlan(arguments: large)
+    let app = launchProjects(arguments: large)
     try makeKitchen(app, large: true)
     attach(app, "AX3 · Project · Kitchen refresh")
     try audit(app, atLargeText: true)
@@ -199,13 +194,100 @@ final class ProjectsUITests: XCTestCase {
     try audit(app, atLargeText: true)
     back(app)
     back(app)
-    let all = el(app, "plan.allProjects")
-    XCTAssertTrue(reveal(app, all))
-    all.tap()
     XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Projects")
     try audit(app, atLargeText: true)
     XCTAssertTrue(reveal(app, el(app, "projects.project.japan")))
     try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testRemoveFromEditThenStartFromATrip() throws {
+    let app = launchProjects()
+    XCTAssertFalse(app.navigationBars.buttons["Back"].exists)
+    attach(app, "Projects tab · Japan trip")
+    try audit(app)
+    tap(app, "projects.project.japan", opening: "project.hero")
+    tap(app, "plan.more")
+    XCTAssertTrue(app.buttons["Edit project"].waitForExistence(timeout: uiWait))
+    app.buttons["Edit project"].tap()
+    let remove = el(app, "projectEditor.remove")
+    XCTAssertTrue(remove.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, remove))
+    attach(app, "Edit project · Remove")
+    remove.tap()
+    let confirm = app.buttons["project.removeConfirm"].firstMatch
+    XCTAssertTrue(confirm.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["Remove Japan trip?"].exists)
+    confirm.tap()
+
+    let trip = el(app, "projects.start.travel")
+    XCTAssertTrue(trip.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["Set money aside for one thing"].exists)
+    XCTAssertTrue(el(app, "projects.start.rent").exists)
+    XCTAssertTrue(el(app, "projects.start.shopping").exists)
+    XCTAssertTrue(el(app, "projects.new").exists)
+    XCTAssertFalse(el(app, "projects.project.japan").exists)
+    attach(app, "Projects · Empty")
+    try audit(app)
+
+    trip.tap()
+    let name = el(app, "projectEditor.name")
+    XCTAssertTrue(name.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(name.value as? String, "Trip")
+    XCTAssertTrue(el(app, "projectEditor.icon.travel").isSelected)
+    XCTAssertFalse(el(app, "projectEditor.remove").exists)
+    attach(app, "New project · Trip")
+    try audit(app, overSheet: true)
+    tap(app, "projectEditor.save", opening: "project.hero")
+    XCTAssertTrue(app.navigationBars["Trip"].exists)
+  }
+
+  @MainActor
+  func testProfileOpensPlan() throws {
+    let app = launch(scenario: "maya", motion: "off")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.buttons["header.profile"].firstMatch.tap()
+    let row = el(app, "profile.plan")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "profile.projects").exists)
+    XCTAssertTrue(row.label.contains("Plan"), row.label)
+    attach(app, "Profile · Plan row")
+    XCTAssertTrue(reveal(app, row))
+    row.tap()
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.navigationBars["Plan"].exists)
+    attach(app, "Profile · Plan")
+    try audit(app)
+
+    let dining = el(app, "plan.row.dining")
+    XCTAssertTrue(reveal(app, dining))
+    dining.tap()
+    XCTAssertTrue(el(app, "category.hero").waitForExistence(timeout: uiWait))
+    let change = el(app, "category.changeBudget")
+    XCTAssertTrue(reveal(app, change))
+    change.tap()
+    XCTAssertTrue(el(app, "budget.amount").waitForExistence(timeout: uiWait))
+    attach(app, "Profile · Plan · Dining budget")
+    tap(app, "budget.close")
+    XCTAssertTrue(el(app, "budget.amount").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "category.hero").exists)
+    back(app)
+    let rta = el(app, "plan.readyToAssign")
+    XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(scroll(app, toShow: rta))
+    let assign = app.buttons["plan.assign"]
+    XCTAssertTrue(reveal(app, assign))
+    assign.tap()
+    XCTAssertTrue(el(app, "move.to").waitForExistence(timeout: uiWait))
+    tap(app, "move.close")
+    XCTAssertTrue(el(app, "move.to").waitForNonExistence(timeout: uiWait))
+    let card = el(app, "plan.project.japan")
+    XCTAssertTrue(reveal(app, card))
+    card.tap()
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
+    back(app)
+    back(app)
+    XCTAssertTrue(el(app, "profile.plan").waitForExistence(timeout: uiWait))
   }
 }

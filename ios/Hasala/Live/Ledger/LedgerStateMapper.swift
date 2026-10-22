@@ -82,7 +82,7 @@ nonisolated enum LedgerStateMapper {
     }
     markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
-      unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
+      Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.

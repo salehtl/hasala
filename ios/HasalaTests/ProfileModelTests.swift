@@ -106,6 +106,19 @@ struct ProfileModelTests {
     #expect(profile.snapshot.projects.rendered(hidden: profile.hidden) == "1 active")
   }
 
+  @Test func thePlanRowShowsOverAssignedAndFollowsTheMonth() {
+    let ledger = InMemoryLedger()
+    let app = AppModel(store: ledger)
+    let profile = ProfileViewModel(app: app)
+    #expect(profile.planLine.rendered(hidden: false).hasSuffix(" ready to assign"))
+    #expect(app.perform(.setBudget("dining", YearMonth(2026, 10), .aed(3_000_00))))
+    let over = profile.planLine.rendered(hidden: false)
+    #expect(over.hasSuffix(" over-assigned"))
+    #expect(over.contains("400"))
+    ledger.setNow(LocalDateTime(2026, 11, 2, 9, 0))
+    #expect(profile.planLine.rendered(hidden: false) != over)
+  }
+
   /// Bills' view model: one bill's page, and what stopping it does.
   @Test func aBillCanBeStoppedFromItsPage() throws {
     let app = AppModel(store: InMemoryLedger())

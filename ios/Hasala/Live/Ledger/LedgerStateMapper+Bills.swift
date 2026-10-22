@@ -211,7 +211,7 @@ nonisolated extension LedgerStateMapper {
         if latestPrice.map({ due > $0.due }) ?? true { latestPrice = (due, notice) }
       case .chargedWhilePaused(let due):
         let t = paidAmount[n.txnID]
-        let charged = t.flatMap { charged($0, in: currency) } ?? Money(minor: 0, currency: currency)
+        let charged = t.flatMap { Self.charged($0, in: currency) } ?? Money(minor: 0, currency: currency)
         out.append(
           BillNotice(
             id: "chargedWhilePaused.\(n.txnID)", kind: .chargedWhilePaused(charged: charged, on: t?.postedAt.date ?? local(due)),
@@ -312,12 +312,12 @@ nonisolated extension LedgerStateMapper {
     var dues = Set<String>()
     for r in resolutions where r.resolution == "paid" {
       guard let due = CivilDate(wire: r.due), dues.insert(r.due).inserted else { continue }
-      let amount = r.txn.flatMap { paidAmount[$0] }.flatMap { charged($0, in: currency) }
+      let amount = r.txn.flatMap { paidAmount[$0] }.flatMap { Self.charged($0, in: currency) }
       out.append(BillPayment(due: local(due), txnID: r.txn, amount: amount, link: r.txn == nil ? .marked : .linked))
     }
     let decided = Set(resolutions.filter { $0.resolution != "clear" }.map(\.due))
     for m in matched where !decided.contains(m.due.wire) && dues.insert(m.due.wire).inserted {
-      let amount = paidAmount[m.txnID].flatMap { charged($0, in: currency) }
+      let amount = paidAmount[m.txnID].flatMap { Self.charged($0, in: currency) }
       out.append(BillPayment(due: local(m.due), txnID: m.txnID, amount: amount, link: .matched))
     }
     return out.sorted { $0.due > $1.due }
@@ -371,7 +371,7 @@ nonisolated extension LedgerStateMapper {
     var priceChangeFrom: Money?
     if !terms.variable, let last = payments.first, let txn = last.txnID,
       let lastDue = CivilDate(year: last.due.year, month: last.due.month, day: last.due.day),
-      v.terms(at: lastDue) == terms, let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
+      v.terms(at: lastDue) == terms, let charged = paidAmount[txn].flatMap({ Self.charged($0, in: b.currency) })
     {
       let tolerance = Fils.mulDiv(terms.amountMinor, terms.toleranceBp, 10_000)
       if charged.minor.minus(terms.amountMinor).magnitude > tolerance.magnitude {

@@ -62,8 +62,8 @@ final class SmokeTests: XCTestCase {
 
     // Every tab opens; coming back to Home shows the hero as it was (no replay).
     let tabBar = app.tabBars.firstMatch
-    tabBar.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+    tabBar.buttons["Projects"].tap()
+    XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
     try audit(app)
     tabBar.buttons["Review"].tap()
     XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait))
@@ -126,7 +126,7 @@ final class SmokeTests: XCTestCase {
     let profile = app.buttons["header.profile"].firstMatch
     let search = app.buttons["header.search"].firstMatch
     let mark = app.images["Hasala"].firstMatch
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+    for (tab, id) in [("Projects", "projects.new"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
@@ -196,22 +196,11 @@ final class SmokeTests: XCTestCase {
     tap(app, "search.close")
     XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
 
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count")] {
+    for (tab, id) in [("Projects", "projects.new"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       attach(app, "AX3 · \(tab)")
-      if tab == "Plan" {
-        // As PlanUITests.testPlanAtLargeTextSizes does: every check but clipped text, then
-        // clipped text alone, letting through only the "READY TO ASSIGN" overline, which the
-        // audit reads as cut off and which wraps instead
-        // (`PlanUITests.testReadyToAssignWrapsAtTheLargestSize`).
-        try audit(app)
-        try app.performAccessibilityAudit(for: .textClipped) { issue in
-          issue.element?.label.localizedCaseInsensitiveCompare("Ready to assign") == .orderedSame
-        }
-      } else {
-        try audit(app, atLargeText: true)
-      }
+      try audit(app, atLargeText: true)
     }
   }
 
@@ -320,7 +309,7 @@ final class SmokeTests: XCTestCase {
   @MainActor
   func testAPullOnEveryTabReturnsToTheTop() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "8000", "-HasalaPullHold", "5000"])
-    let tabs = [("Home", "home.period"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+    let tabs = [("Home", "home.period"), ("Projects", "projects.new"), ("Review", "review.tab.count"),
                 ("Activity", "activity.period")]
     for (tab, anchor) in tabs {
       app.tabBars.firstMatch.buttons[tab].tap()

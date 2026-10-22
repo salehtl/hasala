@@ -1,0 +1,210 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.card-refund.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.card-refund.v1",
+    "version": 1,
+    "bank": "dib",
+    "normalizer_version": 1,
+    "match": {
+      "sender_domain": [
+        "dib.ae"
+      ],
+      "body_contains": [
+        "تم إرجاع مبلغ"
+      ],
+      "body_not_contains": [
+        "إشعار مشتريات",
+        "إشعار تحويل الأموال",
+        "Money Transfer\n",
+        "A transaction to the value of"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "email",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "تم إرجاع مبلغ (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) درهم "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB CARD REFUND"
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "والمنتهية بالرقم (?P<v>[^ \\n.]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.card-refund.v1/refund",
+      "source": "SYNTHETIC: an amount returned to a card: a credit dated from the email, with the card's last four",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogMTIzLjQ1INiv2LHZh9mFINi52YTZiSDYqNi32KfZgtipINio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2K7Yp9i12Kkg2KjZgyDZiNin2YTZhdmG2KrZh9mK2Kkg2KjYp9mE2LHZgtmFIFhYMTIzNC4K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "12345",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/thousands-separator",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogMSwyMzQuNTAg2K/YsdmH2YUg2LnZhNmJINio2LfYp9mC2Kkg2KjZhtmDINiv2KjZiiDYp9mE2KXYs9mE2KfZhdmKINin2YTYrtin2LXYqSDYqNmDINmI2KfZhNmF2YbYqtmH2YrYqSDYqNin2YTYsdmC2YUgWFgxMjM0LgrZhdi5INin2LfZitioINin2YTYqtit2YrYp9iq2IwK2KjZhtmDINiv2KjZiiDYp9mE2KXYs9mE2KfZhdmK",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123450",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/no-thousands-separator",
+      "source": "SYNTHETIC: a large amount written without a comma",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogNDMyMS4wMCDYr9ix2YfZhSDYudmE2Ykg2KjYt9in2YLYqSDYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yog2KfZhNiu2KfYtdipINio2YMg2YjYp9mE2YXZhtiq2YfZitipINio2KfZhNix2YLZhSBYWDEyMzQuCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432100",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/no-card-line",
+      "source": "SYNTHETIC: the card is optional; the row still files",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogMTIzLjQ1INiv2LHZh9mFINi52YTZiSDYqNi32KfZgtipINio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2K7Yp9i12Kkg2KjZgy4K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "12345",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/amount-without-decimals",
+      "source": "SYNTHETIC: the pattern needs two decimals, so the amount is missing",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogMTIzINiv2LHZh9mFINi52YTZiSDYqNi32KfZgtipINio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2K7Yp9i12Kkg2KjZgyDZiNin2YTZhdmG2KrZh9mK2Kkg2KjYp9mE2LHZgtmFIFhYMTIzNC4K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/other-currency-word",
+      "source": "SYNTHETIC: only an amount in dirhams is read; another currency goes to review",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELArYqtmFINil2LHYrNin2Lkg2YXYqNmE2LogMTIuNTAg2K/ZiNmE2KfYsSDYudmE2Ykg2KjYt9in2YLYqSDYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yog2KfZhNiu2KfYtdipINio2YMg2YjYp9mE2YXZhtiq2YfZitipINio2KfZhNix2YLZhSBYWDEyMzQuCtmF2Lkg2KfYt9mK2Kgg2KfZhNiq2K3Zitin2KrYjArYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yo=",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/reversal-body",
+      "source": "SYNTHETIC: the English reversal: dib.card-reversal.v1 owns it",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmELApBIHRyYW5zYWN0aW9uIHRvIHRoZSB2YWx1ZSBvZiBBRUQgNTIuMDAgbWFkZSBhdCBTQU1QTEUgU0hPUCBvbiB5b3VyIERJQiBjYXJkIGVuZGluZyB3aXRoIFhYMTIzNCBoYXMgYmVlbiByZXZlcnNlZC4K2YXYuSDYp9i32YrYqCDYp9mE2KrYrdmK2KfYqtiMCtio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZig==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.card-refund.v1/purchase-body",
+      "source": "SYNTHETIC: a card purchase alert: dib.card.v1 owns it",
+      "subject_base64": "RElCIE5vdGlmaWNhdGlvbg==",
+      "normalized_body_base64": "2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqgrYp9mE2YXYqNmE2LoKQUVEIDI1MC4wMArYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNgrYp9mE2K/Zgdi5INin2YTZiQpTSE9QCtix2YLZhSDYp9mE2KjYt9in2YLYqQpYWFhYMTIzNA==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

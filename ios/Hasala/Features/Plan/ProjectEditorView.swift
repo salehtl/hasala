@@ -18,11 +18,18 @@ final class ProjectEditorModel {
   var refusal: String?
   private let decimalSeparator: String
 
-  init(app: AppModel, project: ProjectID?, decimalSeparator: String = Locale.current.decimalSeparator ?? ".") {
+  init(
+    app: AppModel, project: ProjectID?, starter: ProjectStarter? = nil,
+    decimalSeparator: String = Locale.current.decimalSeparator ?? "."
+  ) {
     self.app = app
     self.project = project
     self.decimalSeparator = decimalSeparator
-    let d = project.flatMap { app.store.state.project($0)?.draft } ?? ProjectDraft(name: "")
+    var d = project.flatMap { app.store.state.project($0)?.draft } ?? ProjectDraft(name: "")
+    if project == nil, let starter {
+      d.name = starter.name
+      d.glyph = starter.glyph
+    }
     let today = ProjectDates.date(app.store.now.date)
     name = d.name
     budgetText = d.budget.map { MoneyFormat.draft($0.minor) } ?? ""
@@ -65,12 +72,27 @@ final class ProjectEditorModel {
     app.projectSaved(id, created: isNew)
   }
 
+  var storedName: String { project.flatMap { app.store.state.project($0)?.name } ?? "Project" }
+
+  func remove() {
+    guard let project else { return }
+    let name = storedName
+    guard app.perform(.removeProject(project)) else { return }
+    app.say("\(name) removed")
+    app.projectRemovedFromEditor(project)
+  }
+
   func cancel() {
-    if app.projectsInProfile, app.router.profile.last == .editProject(project) {
+    if app.projectsInProfile, let last = app.router.profile.last, last == .editProject(project) || isStarter(last) {
       app.router.profile.removeLast()
     } else {
       app.router.sheet = nil
     }
+  }
+
+  private func isStarter(_ route: ProfileRoute) -> Bool {
+    if project == nil, case .newProject = route { return true }
+    return false
   }
 }
 
@@ -94,10 +116,11 @@ enum ProjectDates {
 struct ProjectEditorSheet: View {
   @Bindable var app: AppModel
   let project: ProjectID?
+  var starter: ProjectStarter?
 
   var body: some View {
     NavigationStack {
-      ProjectEditorView(app: app, project: project, inSheet: true)
+      ProjectEditorView(app: app, project: project, starter: starter, inSheet: true)
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .planLargeSheet()
@@ -109,13 +132,14 @@ struct ProjectEditorView: View {
   let inSheet: Bool
   @State private var model: ProjectEditorModel
   @FocusState private var focused: Field?
+  @State private var confirmRemove = false
 
   enum Field { case name, budget }
 
-  init(app: AppModel, project: ProjectID?, inSheet: Bool = false) {
+  init(app: AppModel, project: ProjectID?, starter: ProjectStarter? = nil, inSheet: Bool = false) {
     self.app = app
     self.inSheet = inSheet
-    _model = State(initialValue: ProjectEditorModel(app: app, project: project))
+    _model = State(initialValue: ProjectEditorModel(app: app, project: project, starter: starter))
   }
 
   var body: some View {
@@ -222,8 +246,25 @@ struct ProjectEditorView: View {
         Button(model.isNew ? "Create project" : "Save") { model.save() }
           .buttonStyle(.pill(.primary, fill: true))
           .accessibilityIdentifier("projectEditor.save")
+        if !model.isNew, model.exists {
+          Button { confirmRemove = true } label: {
+            Text("Remove project")
+              .hType(.subheadline.weight(.medium))
+              .foregroundStyle(HColor.actionDestructive)
+              .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("projectEditor.remove")
+        }
       }
       .padding(HSpacing.insetPage)
+    }
+    .confirmationDialog("Remove \(model.storedName)?", isPresented: $confirmRemove, titleVisibility: .visible) {
+      Button("Remove project", role: .destructive) { model.remove() }
+        .accessibilityIdentifier("project.removeConfirm")
+    } message: {
+      Text("Its transactions stay, and count in your monthly plan again.")
     }
     .background(HColor.sheetSurfaceLarge)
     .navigationTitle(model.isNew ? "New project" : "Edit project")

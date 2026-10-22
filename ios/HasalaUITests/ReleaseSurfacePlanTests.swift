@@ -8,7 +8,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
   @MainActor
   func testPlanShowsOnlyWhatWorks() throws {
     let app = launchRelease()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    openPlan(app)
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     attach(app, "Release · Plan")
     assertNoPlaceholders(app, "Plan")
@@ -64,7 +64,8 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     app.buttons["Edit project"].tap()
     XCTAssertTrue(el(app, "projectEditor.name").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Plan › Japan trip › Edit project")
-    tap(app, "projectEditor.close")
+    XCTAssertTrue(reveal(app, el(app, "projectEditor.remove")))
+    back(app)
     XCTAssertTrue(el(app, "project.addTransactions").waitForExistence(timeout: uiWait))
     tap(app, "project.addTransactions", opening: "projectAdd.merchant")
     assertNoPlaceholders(app, "Plan › Japan trip › Add transactions")
@@ -80,6 +81,30 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
     tap(app, "projects.new", opening: "projectEditor.name")
     assertNoPlaceholders(app, "Plan › New project")
     try audit(app, overSheet: true)
+  }
+
+  @MainActor
+  func testProjectsTabShowsOnlyWhatWorks() throws {
+    let app = launchRelease()
+    app.tabBars.firstMatch.buttons["Projects"].tap()
+    XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
+    attach(app, "Release · Projects")
+    assertNoPlaceholders(app, "Projects")
+    assertPersonalAccountsOnly(app, "Projects")
+    XCTAssertTrue(app.buttons["header.profile"].exists)
+    XCTAssertFalse(app.navigationBars.buttons["Back"].exists)
+    try audit(app)
+    tap(app, "projects.project.japan", opening: "project.hero")
+    assertNoPlaceholders(app, "Projects › Japan trip")
+    tap(app, "plan.more")
+    XCTAssertTrue(app.buttons["Edit project"].waitForExistence(timeout: uiWait))
+    app.buttons["Edit project"].tap()
+    XCTAssertTrue(el(app, "projectEditor.name").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, el(app, "projectEditor.remove")))
+    assertNoPlaceholders(app, "Projects › Japan trip › Edit project")
+    try audit(app, overSheet: true)
+    tap(app, "projectEditor.close")
+    XCTAssertTrue(el(app, "project.hero").waitForExistence(timeout: uiWait))
   }
 
   /// Waits until `element` stops moving (a sheet settling into its detent), at most 5 s.
@@ -99,7 +124,7 @@ final class ReleaseSurfacePlanTests: ReleaseSurfaceTestCase {
   @MainActor
   func testAssignAndMoveMoney() throws {
     let app = launchRelease()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    openPlan(app)
     tap(app, "plan.assign")
     XCTAssertTrue(el(app, "move.to").waitForExistence(timeout: uiWait))
     assertNoPlaceholders(app, "Plan › Assign")
