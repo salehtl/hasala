@@ -63,6 +63,8 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var heldCopy: Bool
   public var reviewReason: TxnGates.ReviewReason?
   public var senderCheck: String?
+  public var merchantGroup: String
+  public var categorizedMs: Int64?
 
   init(_ r: Row) {
     id = r["id"]
@@ -112,6 +114,8 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     copyOf = r["copy_of"]
     copyDecision = r["copy_decision"]
     heldCopy = r["held_copy"]
+    merchantGroup = r["merchant_group"]
+    categorizedMs = r["categorized_ms"]
     let gates = Self.gates(r["gates_json"])
     reviewReason = Self.reviewReason(gates)
     senderCheck = Self.senderCheck(gates)
@@ -292,14 +296,33 @@ public struct LedgerReader: Sendable {
 
   /// The sweep's view of every row (03c §8.4).
   public func sweepRows() throws -> [SweepRow] {
+    try sweepRows(where: "superseded_by IS NULL", [])
+  }
+
+  public func sweepRows(group: String) throws -> [SweepRow] {
+    try sweepRows(where: "superseded_by IS NULL AND merchant_group = ?", [group])
+  }
+
+  public func group(_ key: String, limit: Int = 1_000) throws -> [TxnRow] {
     try db.read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM txn WHERE superseded_by IS NULL ORDER BY posted_ms DESC, id DESC").map { r in
+      try Row.fetchAll(
+        db, sql: "SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC, id DESC LIMIT ?",
+        arguments: [key, limit]
+      ).map(TxnRow.init)
+    }
+  }
+
+  private func sweepRows(where condition: String, _ arguments: [String]) throws -> [SweepRow] {
+    try db.read { db in
+      try Row.fetchAll(
+        db, sql: "SELECT * FROM txn WHERE \(condition) ORDER BY posted_ms DESC, id DESC", arguments: StatementArguments(arguments)
+      ).map { r in
         let t = TxnRow(r)
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
-          template: TxnRow.template(gatesJSON: r["gates_json"]))
+          template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs)
       }
     }
   }
