@@ -189,8 +189,9 @@ final class LiveCloudSortController: CloudSortControlling {
 
   private func compose() {
     var next = Self.status(snapshot: snapshot, view: counts, enabled: enabled(), nowMs: nowMs())
-    if counts != nil, let loaded {
-      let f = Self.facts(next, run: snapshot?.record.run, load: loaded)
+    if counts != nil, var load = loaded {
+      if let watched { load.mailbox = watched }
+      let f = Self.facts(next, run: snapshot?.record.run, load: load)
       facts = f
       var m = RunOffer.observe(memory, f)
       if openPending {

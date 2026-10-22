@@ -99,6 +99,19 @@
         mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
         shell(.review)(graph)
       }),
+      Screen("review.sort.done.importing", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
+        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
+        shell(.review)(graph)
+      }),
+      Screen("review.sort.done.returning", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
+        if let sort = graph.app.cloudSort as? MockCloudSortController {
+          sort.status.waitingNames = 30
+          sort.status.waitingPayments = 34
+          sort.status.nextRunNames = 30
+          sort.status.offerDue = true
+        }
+        shell(.review)(graph)
+      }),
       Screen("review.empty.importing", scenario: "mayaCaughtUp", prepare: { graph in
         mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
         shell(.review)(graph)

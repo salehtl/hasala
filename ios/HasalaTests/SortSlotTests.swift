@@ -45,20 +45,43 @@ struct SortSlotTests {
     #expect(SortSlot.of(F(status: due)) == nil)
   }
 
-  @Test func aRunShowsOverTheResultTheOfferAndTheImport() {
+  @Test func aRunningRunShowsOverTheImportAndAPausedOneUnderIt() {
     #expect(SortSlot.of(F(status: Self.status(.running), importing: Self.reading)) == .run(.running))
     let paused = Self.status(.paused(.busy(untilMs: 5)))
-    #expect(SortSlot.of(F(status: paused, importing: Self.reading)) == .run(.paused(.busy(untilMs: 5))))
+    #expect(SortSlot.of(F(status: paused, importing: Self.reading)) == .importing(Self.reading))
+    #expect(SortSlot.of(F(status: paused)) == .run(.paused(.busy(untilMs: 5))))
     #expect(SortSlot.of(F(status: Self.status(.paused(.runCap)))) == .run(.paused(.runCap)))
+    #expect(SortSlot.of(F(status: Self.status(.paused(.dayCap)), importing: Self.reading)) == .importing(Self.reading))
   }
 
   @Test func theResultStaysUntilItsRunIsDismissed() {
     let done = Self.status(.done) { $0.lastRunEndedMs = 1_000 }
     #expect(SortSlot.of(F(status: done)) == .result)
-    #expect(SortSlot.of(F(status: done, dismissedRun: 999, importing: Self.reading)) == .result)
+    #expect(SortSlot.of(F(status: done, dismissedRun: 999)) == .result)
+    #expect(SortSlot.of(F(status: done, dismissedRun: 999, importing: Self.reading)) == .importing(Self.reading))
     #expect(SortSlot.of(F(status: done, dismissedRun: 1_000)) == nil)
     #expect(SortSlot.of(F(status: done, dismissedRun: 1_000, importing: Self.reading)) == .importing(Self.reading))
     #expect(SortSlot.result.card == .done)
+  }
+
+  @Test func aDueReturnOfferReplacesAnOldResult() {
+    let old = Self.status(.done) {
+      $0.lastRunEndedMs = 7
+      $0.waitingNames = 30
+      $0.nextRunNames = 30
+      $0.remainingToday = 300
+      $0.offerDue = false
+    }
+    #expect(SortSlot.of(F(status: old)) == .result)
+    var returning = old
+    returning.offerDue = true
+    #expect(SortSlot.of(F(status: returning)) == .offer(.ready))
+    #expect(SortSlot.of(F(status: returning))?.isOffer == true)
+    var capped = returning
+    capped.remainingToday = 0
+    capped.nextRunNames = 0
+    #expect(SortSlot.of(F(status: capped)) == .result)
+    #expect(SortSlot.of(F(status: capped, dismissedRun: 7)) == .offer(.paused(.dayCap)))
   }
 
   @Test func theOfferShowsOnlyWhenItIsDue() {
@@ -438,6 +461,48 @@ struct CloudSortFirstLoadTests {
     #expect(c.status.offerDue && offers.load().importSeen && !offers.load().wasImporting)
     c.offerShown()
     #expect(offers.load().stage == .open && !offers.load().importSeen)
+  }
+
+  nonisolated final class Hold: Sendable {
+    let held = Mutex(false)
+    let calls = Mutex(0)
+
+    func view(_ waiting: Int) -> @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView? {
+      { _ in
+        self.calls.withLock { $0 += 1 }
+        while self.held.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(5)) }
+        return CloudSortStatusTests.view(waiting)
+      }
+    }
+  }
+
+  @Test func aStaleCountDoesNotTurnTheEndOfTheFirstImportIntoANewOne() async throws {
+    let phase = Phase()
+    phase.mailbox = .importing
+    let hold = Hold()
+    let offers = RunOffer.Store.inMemory()
+    let sorter = Self.sorter()
+    let c = LiveCloudSortController(
+      sorter: sorter, view: hold.view(12), undo: { 0 }, sendBack: { 0 }, enabled: { true },
+      nowMs: { BacklogSorterTests.start }, load: { RunOffer.Load(mailbox: phase.mailbox, caughtUp: true) }, offers: offers,
+      watch: { phase.mailbox })
+    await c.refresh()
+    await sorter.start()
+    await sorter.finished()
+    try await LiveLedgerMapperTests.eventually { offers.load().stage == .spent && c.status.phase == .done }
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(offers.load().wasImporting && !offers.load().importSeen)
+    let before = hold.calls.withLock { $0 }
+    hold.held.withLock { $0 = true }
+    phase.mailbox = .active
+    try await LiveLedgerMapperTests.eventually { hold.calls.withLock { $0 } > before }
+    #expect(!offers.load().wasImporting)
+    await sorter.spent(1)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(!offers.load().importSeen)
+    hold.held.withLock { $0 = false }
+    await c.refresh()
+    #expect(c.status.phase == .done && !c.status.offerDue && !offers.load().importSeen)
   }
 
   @Test func anOfferDueWhileAnotherTabIsOpenStaysUnshown() async {

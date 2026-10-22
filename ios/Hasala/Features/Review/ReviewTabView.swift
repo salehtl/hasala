@@ -14,6 +14,7 @@ import SwiftUI
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(AccountSession.self) private var session: AccountSession?
   @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
   @State private var cloudSortAnswered = false
@@ -134,22 +135,35 @@ struct ReviewTabView: View {
   }
 
   private func importingCard(_ mail: MailImport, queued: Bool) -> some View {
-    HStack(alignment: .top, spacing: 12) {
-      Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
-        .overlay { HIconView(.envelope, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
-      VStack(alignment: .leading, spacing: 4) {
-        Text(SortSlot.importingTitle(mail))
-          .hType(.headline)
-          .foregroundStyle(HColor.textPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-        Text(SortSlot.importingLine(mail, queued: queued))
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      if mail.busy {
-        Spinner(size: 20, track: HColor.feedbackProgressTrack)
+    let disc = Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
+      .overlay { HIconView(.envelope, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
+    let text = VStack(alignment: .leading, spacing: 4) {
+      Text(SortSlot.importingTitle(mail))
+        .hType(.headline)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(SortSlot.importingLine(mail, queued: queued))
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(alignment: .center, spacing: 12) {
+            disc
+            Spacer(minLength: 0)
+            if mail.busy { Spinner(size: 20, track: HColor.feedbackProgressTrack) }
+          }
+          text
+        }
+      } else {
+        HStack(alignment: .top, spacing: 12) {
+          disc
+          text
+          if mail.busy { Spinner(size: 20, track: HColor.feedbackProgressTrack) }
+        }
       }
     }
     .padding(20)
@@ -363,19 +377,32 @@ struct ReviewTabView: View {
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
   private func unreadableRow(_ n: Int, detail: String, chevron: Bool) -> some View {
-    HStack(spacing: 12) {
-      Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-        .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
-      VStack(alignment: .leading, spacing: 0) {
-        Text(Self.unreadableLine(n))
-          .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-        Text(detail)
-          .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
-          .foregroundStyle(HColor.textSecondary)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      if chevron {
-        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+    let disc = Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
+      .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+    let text = VStack(alignment: .leading, spacing: 0) {
+      Text(Self.unreadableLine(n))
+        .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(detail)
+        .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          disc
+          text
+        }
+      } else {
+        HStack(spacing: 12) {
+          disc
+          text
+          if chevron {
+            HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+          }
+        }
       }
     }
     .padding(.vertical, 14)

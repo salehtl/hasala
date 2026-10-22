@@ -179,19 +179,18 @@ enum SortSlot: Equatable {
 
   static func of(_ f: Facts) -> SortSlot? {
     if f.asks, f.status.map({ $0.phase == .off }) ?? true { return .ask }
-    if let status = f.status {
-      switch status.phase {
-      case .running: return .run(.running)
-      case .paused(let p): return .run(.paused(p))
-      case .done:
-        if let ended = status.lastRunEndedMs, ended != f.dismissedRun { return .result }
-      case .off, .idle:
-        break
-      }
-      if status.offerDue, let card = CloudSortCardState.offer(status) { return .offer(card) }
-    }
+    if f.status?.phase == .running { return .run(.running) }
     if let mail = f.importing, mail.showsInSlot { return .importing(mail) }
-    return nil
+    guard let status = f.status else { return nil }
+    let offer = status.offerDue ? CloudSortCardState.offer(status) : nil
+    switch status.phase {
+    case .paused(let p): return .run(.paused(p))
+    case .done:
+      if offer != .ready, let ended = status.lastRunEndedMs, ended != f.dismissedRun { return .result }
+    case .off, .idle, .running:
+      break
+    }
+    return offer.map(SortSlot.offer)
   }
 
   var card: CloudSortCardState? {

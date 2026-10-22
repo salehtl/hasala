@@ -153,6 +153,21 @@ final class CloudSortCardUITests: XCTestCase {
   }
 
   @MainActor
+  func testANewImportShowsInsteadOfAnOldResult() throws {
+    let app = launch(scenario: nil, screen: "review.sort.done.importing")
+    XCTAssertTrue(el(app, "review.slot.importing").waitForExistence(timeout: 30))
+    XCTAssertFalse(el(app, "review.sort.card").exists, "two cards in the slot")
+  }
+
+  @MainActor
+  func testAReturningOfferReplacesAnOldResult() throws {
+    let app = launch(scenario: nil, screen: "review.sort.done.returning")
+    XCTAssertTrue(el(app, "review.sort.start").waitForExistence(timeout: 30))
+    XCTAssertFalse(el(app, "review.sort.undo").exists)
+    XCTAssertFalse(el(app, "review.sort.dismiss").exists)
+  }
+
+  @MainActor
   func testNothingOffersARunWhileSuggestionsAreOff() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaCloudSortPhase", "off"])
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30))
