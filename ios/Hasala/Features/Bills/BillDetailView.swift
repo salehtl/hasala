@@ -3,7 +3,6 @@ import HasalaModels
 import SwiftUI
 
 /// One bill (Paper "Bills · AXA Insurance (late)" 1UD-0), pushed from Bills, Home, Activity's
-/// "Coming up" and Profile › Bills: the hero in the bill's wash, its state, notices, payments and actions.
 struct BillDetailView: View {
   @Bindable var app: AppModel
   let bill: BillID

@@ -159,8 +159,6 @@ extension State {
     resolveFork(e, .bill(b, .none), key: key, head: head, authoredMs: authoredMs)
   }
 
-  // parent < head.version: a true concurrent fork. Strict comparison: a full
-  // tie keeps the incumbent.
   private mutating func resolveFork(_ e: LogEntry, _ payload: CausalPayload, key: String, head: EntityHead, authoredMs: Int64) {
     let op = e.op
     let ref = op.entity!

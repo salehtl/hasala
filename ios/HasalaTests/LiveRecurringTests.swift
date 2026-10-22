@@ -187,6 +187,22 @@ struct LiveRecurringTests {
     #expect(store.state.txn(paid.id)?.billID == nil)
   }
 
+  @Test func aBillCanUseACustomCategory() async throws {
+    let a = try Mapper.account()
+    let store = try await Self.store(a, suite: "recurring.custom.tests")
+    try store.apply(.addCategory(CategoryDraft(name: "Gym", glyph: .dining, parent: "subscriptions")))
+    try await Mapper.eventually { try LiveCategoryTests.custom(a, "Gym") != nil && store.state.categories.contains { $0.name == "Gym" && !$0.id.hasPrefix("pending") } }
+    let gym = try #require(try LiveCategoryTests.custom(a, "Gym"))
+    #expect(CategoryGroup.all(store.state).flatMap(\.options).contains { $0.id == gym.id })
+    let due = MayaLedger.now.date.yearMonth.adding(months: 1)
+    let draft = BillDraft(name: "Iron Gym", amount: .aed(250_00), firstDue: LocalDate(due.year, due.month, 5), categoryID: gym.id)
+    try store.apply(.addBill(draft))
+    try await Mapper.eventually { try a.projection.reader.bills().first { $0.bill.name == "Iron Gym" }?.bill.category == gym.id }
+    try await Mapper.eventually { store.state.bills.contains { $0.name == "Iron Gym" && !$0.id.hasPrefix("pending") } }
+    let shown = try Self.bill(store, "Iron Gym")
+    #expect(shown.categoryID == gym.id && shown.kind == "Gym" && shown.amount == .aed(250_00))
+  }
+
   @Test func aPaymentLinkedToAnotherBillIsRefused() async throws {
     let a = try Mapper.account()
     let store = try await Self.store(a, suite: "recurring.link.tests")
