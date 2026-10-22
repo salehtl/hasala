@@ -133,7 +133,9 @@ protocol SetupAuthoring: AnyObject {
 protocol CloudSortOffering: AnyObject {
   var isOffered: Bool { get }
   var isOn: Bool { get }
+  var answered: Bool { get }
   func turnOn()
+  func notNow()
 }
 
 /// Notification permission (spec 04 §9.3). Notifications are generic by default (PO-7).
@@ -141,6 +143,8 @@ protocol CloudSortOffering: AnyObject {
 protocol NotificationPermissionAsking: AnyObject {
   /// Asks iOS; returns whether the user allowed.
   func requestAuthorization() async -> Bool
+  var answered: Bool { get }
+  func decline()
   /// "Show amounts and merchants" on the Lock Screen (off by default).
   var showsDetails: Bool { get set }
 }

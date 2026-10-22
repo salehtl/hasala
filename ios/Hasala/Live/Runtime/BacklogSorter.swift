@@ -527,7 +527,14 @@ final class LiveCloudSort: CloudSortOffering {
 
   var isOn: Bool { MerchantSuggestionsSetting.isAutoSortEnabled(defaults) }
 
+  var answered: Bool { MerchantSuggestionsSetting.reviewAskAnswered(defaults) }
+
+  func notNow() {
+    MerchantSuggestionsSetting.answerReviewAsk(defaults)
+  }
+
   func turnOn() {
+    MerchantSuggestionsSetting.answerReviewAsk(defaults)
     MerchantSuggestionsSetting.turnOnForFirstImport(defaults)
     guard let sorter = runtime()?.backlog else { return }
     MerchantSuggestionsSetting.takeRunRequest(defaults)

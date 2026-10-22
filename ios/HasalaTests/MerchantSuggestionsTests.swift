@@ -134,6 +134,16 @@ struct MerchantSuggestionsTests {
     #expect(value == MerchantSuggestionsSetting.isAutoSortEnabled())
   }
 
+  @Test func anIPhoneThatFinishedTheOldSetupCountsAsAnswered() {
+    let old = freshDefaults()
+    MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: true, old)
+    #expect(MerchantSuggestionsSetting.reviewAskAnswered(old) && !MerchantSuggestionsSetting.isEnabled(old))
+    let fresh = freshDefaults()
+    MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: false, fresh)
+    MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: true, fresh)
+    #expect(!MerchantSuggestionsSetting.reviewAskAnswered(fresh))
+  }
+
   @Test func notNowKeepsTheSwitchOff() {
     let d = freshDefaults()
     let consent = MerchantSuggestionsConsent(defaults: d)

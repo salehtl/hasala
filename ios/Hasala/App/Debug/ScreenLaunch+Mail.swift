@@ -7,7 +7,6 @@
   // in the profile, from Bank alerts › Add a mailbox.
   extension ScreenLaunch {
     static let mailScreens: [Screen] = [
-      // Setup, step 2 of 4.
       Screen("mail.connectGmail", scenario: "setupEmail") { _ = setupModel($0) },
       Screen("mail.connectOutlook", scenario: "setupEmail") { graph in
         setupModel(graph).pickProvider(.outlook)
@@ -15,12 +14,6 @@
       Screen("mail.permissionMissing", scenario: "setupEmail") { graph in
         mock(graph)?.gmailPermissionMissing = true
         await setupModel(graph).connectMail(.gmail)
-      },
-      Screen("mail.connectedGmail", scenario: "setupEmail") { graph in
-        // Connected, then Back from the first scan: the step shows it connected.
-        let model = setupModel(graph)
-        await model.connectMail(.gmail)
-        model.back()
       },
       Screen("mail.errorAdmin", scenario: "outlookAdmin") { await setupOutlookFails($0) },
       Screen("mail.errorCancelled", scenario: "outlookCancelled") { await setupOutlookFails($0) },

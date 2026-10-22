@@ -2,19 +2,18 @@ import HasalaDesign
 import HasalaModels
 import SwiftUI
 
-/// Setup · 4 of 4 · Starting plan (Paper 5GY-0): the split with its two handles, the three
-/// buckets with what each gets a month (whole dirhams, following the handles), the scan's
-/// pill, and "Use this plan". The split and the salary stay as they were left through Back
+/// Set your monthly plan · Starting plan (Paper 5GY-0): the split with its two handles, the three
+/// buckets with what each gets a month (whole dirhams, following the handles), and "Use this
+/// plan". The split and the salary stay as they were left through Back
 /// and Forward.
 struct PlanStep: View {
-  @Bindable var model: SetupModel
+  @Bindable var model: MonthlyPlanModel
 
   var body: some View {
     let p = model.plan
     AccountScreen(
       title: "Here's a plan to start with.",
       subtitle: "\(p.needsPercent)% for needs, \(p.wantsPercent)% for wants, \(p.savingsPercent)% for savings. Drag the handles to change the split. Hasala fills in your categories.",
-      steps: model.steps(4),
       back: .system,
       trailing: ("Skip", { Task { await model.savePlan(skip: true) } })
     ) {
@@ -35,8 +34,6 @@ struct PlanStep: View {
         .padding(.top, 24)
       }
     } footer: {
-      ScanPill(scan: model.scan, running: model.scanRunning)
-        .padding(.bottom, 6)
       BusyButton(title: "Use this plan", busy: model.busy, enabled: model.plan.isValid, identifier: "plan.use") {
         Task { await model.savePlan() }
       }

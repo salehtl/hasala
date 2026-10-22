@@ -9,11 +9,6 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
   case bank
   /// Your email: a provider's read-only connect (or the review account's sample).
   case mail
-  case scan
-  case income
-  case plan
-  case notifications
-  case done
   /// Every step is complete: the app opens.
   case finished
 
@@ -32,14 +27,6 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     /// "Skip" on your email's step.
     var mailSkipped = false
     var sampleLoaded = false
-    /// "Set up your plan" was tapped in this process while the scan runs.
-    var scanDeferred = false
-    var incomeSet = false
-    var incomeSkipped = false
-    var planSet = false
-    var planSkipped = false
-    var notificationsAsked = false
-    var finished = false
   }
 
   static func derive(_ f: Facts) -> OnboardingStep {
@@ -47,29 +34,9 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     guard f.hasSession else { return .account }
     guard f.keysReady else { return .keys }
     guard f.banksChosen || f.bankSkipped || f.sampleLoaded else { return .bank }
-    // Skipping the bank skips your email and the scan: nothing can be listed.
     let manual = f.bankSkipped && !f.banksChosen
     let mailDone = manual || f.mailbox != .unlinked || f.mailSkipped || f.sampleLoaded
     guard mailDone else { return .mail }
-    let noScan = manual || f.mailSkipped || f.sampleLoaded || f.mailbox == .otherDevice
-    if !noScan, f.mailbox == .scanning, !f.scanDeferred { return .scan }
-    guard f.incomeSet || f.incomeSkipped || f.sampleLoaded else { return .income }
-    guard f.planSet || f.planSkipped || f.sampleLoaded else { return .plan }
-    // A scan still running doesn't hold setup up: it carries on in the background.
-    guard f.notificationsAsked else { return .notifications }
-    guard f.finished else { return .done }
     return .finished
-  }
-
-  /// The step indicator: bank 1, your email and the scan 2, income 3, plan 4 "of 4"; later
-  /// boards carry no number.
-  var indicator: Int? {
-    switch self {
-    case .bank: 1
-    case .mail, .scan: 2
-    case .income: 3
-    case .plan: 4
-    default: nil
-    }
   }
 }

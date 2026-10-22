@@ -69,10 +69,8 @@ struct ScreenLaunchTests {
     #expect(saved.onboarding.signup.path.last == .accountReady && saved.onboarding.signup.phrase == nil)
     let wrong = try await opened("join.codeWrong")
     #expect(wrong.onboarding.signup.failure == .codeWrong(triesLeft: 4))
-    let done = try await opened("setup.done")
-    #expect(done.onboarding.setup?.path.last == .done)
-    let connected = try await opened("mail.connectedGmail")
-    #expect(connected.onboarding.setup?.path == [] && connected.onboarding.setup?.mailConnected == true)
+    let plan = try await opened("home.finishSetup.plan")
+    #expect(plan.onboarding.finishSetupModel().planFlow != nil)
     let grant = try await opened("mail.permissionMissing")
     #expect(grant.onboarding.setup?.path == [] && grant.onboarding.setup?.failure
       == .failed(MailConnectFailure.permissionMissingLine(.gmail)))

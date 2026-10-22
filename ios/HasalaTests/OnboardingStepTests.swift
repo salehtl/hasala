@@ -20,58 +20,30 @@ struct OnboardingStepTests {
     f.banksChosen = true
     #expect(OnboardingStep.derive(f) == .mail)
     f.mailbox = .scanning
-    #expect(OnboardingStep.derive(f) == .scan)
-    f.scanDeferred = true
-    #expect(OnboardingStep.derive(f) == .income)
-    f.incomeSet = true
-    #expect(OnboardingStep.derive(f) == .plan)
-    f.planSet = true
-    // No cards step: a scan still running doesn't hold setup up.
-    #expect(OnboardingStep.derive(f) == .notifications)
+    #expect(OnboardingStep.derive(f) == .finished)
     f.mailbox = .linked
-    #expect(OnboardingStep.derive(f) == .notifications)
-    f.notificationsAsked = true
-    #expect(OnboardingStep.derive(f) == .done)
-    f.finished = true
     #expect(OnboardingStep.derive(f) == .finished)
   }
 
-  @Test func skippingTheBankSkipsTheEmailAndTheScan() {
+  @Test func skippingTheBankFinishesSetup() {
     var f = F(hasSession: true, keysReady: true)
     f.bankSkipped = true
-    #expect(OnboardingStep.derive(f) == .income)
-    f.incomeSkipped = true
-    f.planSkipped = true
-    #expect(OnboardingStep.derive(f) == .notifications)
+    #expect(OnboardingStep.derive(f) == .finished)
   }
 
-  @Test func sampleDataCompletesTheEmailAndTheScan() {
+  @Test func sampleDataFinishesSetup() {
     var f = F(hasSession: true, keysReady: true, banksChosen: true)
     f.sampleLoaded = true
-    #expect(OnboardingStep.derive(f) == .notifications)
+    #expect(OnboardingStep.derive(f) == .finished)
   }
 
-  /// Your email's step is `.mail` (any provider), and skipping it is `mailSkipped`: the
-  /// scan is skipped too, and setup goes on to income.
   @Test func theEmailStepIsProviderNeutral() {
     var f = F(hasSession: true, keysReady: true, banksChosen: true)
     #expect(OnboardingStep.derive(f) == .mail)
     f.mailSkipped = true
-    #expect(OnboardingStep.derive(f) == .income)
+    #expect(OnboardingStep.derive(f) == .finished)
     f.mailSkipped = false
     f.mailbox = .otherDevice
-    // Read on another iPhone: no scan here.
-    #expect(OnboardingStep.derive(f) == .income)
-    f.mailbox = .linked
-    #expect(OnboardingStep.derive(f) == .income)
-    #expect(OnboardingStep.mail.indicator == 2 && OnboardingStep.income.indicator == 3)
-  }
-
-  @Test func indicatorNumbers() {
-    #expect(OnboardingStep.bank.indicator == 1)
-    #expect(OnboardingStep.scan.indicator == 2)
-    #expect(OnboardingStep.plan.indicator == 4)
-    #expect(OnboardingStep.notifications.indicator == nil)
-    #expect(OnboardingStep.done.indicator == nil)
+    #expect(OnboardingStep.derive(f) == .finished)
   }
 }

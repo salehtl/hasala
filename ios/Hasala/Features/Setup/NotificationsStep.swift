@@ -3,15 +3,17 @@ import HasalaModels
 import SwiftUI
 
 /// Setup · Notifications · Lock Screen stays generic (Paper GMV-0): what a notification
-/// looks like on the Lock Screen by default, before iOS asks. No header. Once iOS has asked
-/// here, the button only continues (plan B3.2 rule 2).
+/// looks like on the Lock Screen by default, before iOS asks. No header.
 ///
 /// This build writes no notifications yet (`CoreSignals` is empty; the owner kept the step),
 /// so a Release build says so before the system asks (Guideline 5.1.1). Nor can it change
 /// the Lock Screen choice later (Profile has no Notifications row), so it offers none:
 /// notes show no amounts or names.
 struct NotificationsStep: View {
-  @Bindable var model: SetupModel
+  let today: LocalDate
+  @Binding var showDetails: Bool
+  var allow: () async -> Void
+  var notNow: () -> Void
 
   private var subtitle: String {
     BuildSurface.showsUnfinished
@@ -24,7 +26,7 @@ struct NotificationsStep: View {
     SetupScreen(title: "A nudge when money moves.", subtitle: subtitle, wash: .notifications, top: 28) {
       VStack(spacing: 0) {
         VStack(spacing: 10) {
-          LockScreenPreview(date: model.today, details: model.showDetails)
+          LockScreenPreview(date: today, details: showDetails)
           if BuildSurface.showsUnfinished {
             Text("What your Lock Screen shows by default")
               .hType(.footnote.weight(.medium))
@@ -40,24 +42,19 @@ struct NotificationsStep: View {
         }
         .padding(.top, 24)
         if BuildSurface.showsUnfinished {
-          DetailsSwitch(isOn: $model.showDetails)
+          DetailsSwitch(isOn: $showDetails)
             .padding(.top, 20)
         }
       }
       .padding(.horizontal, HSpacing.insetPage)
     } dock: {
       VStack(spacing: 4) {
-        // Once iOS has asked, the step only goes on.
-        Button(model.systemAskedForNotifications ? "Continue" : "Allow notifications") {
-          Task { await model.allowNotifications() }
-        }
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("notifications.allow")
-        if !model.systemAskedForNotifications {
-          Button("Not now") { model.notNow() }
-            .buttonStyle(.pill(.tertiary, fill: true))
-            .accessibilityIdentifier("notifications.notNow")
-        }
+        Button("Allow notifications") { Task { await allow() } }
+          .buttonStyle(.pill(.primary, fill: true))
+          .accessibilityIdentifier("notifications.allow")
+        Button("Not now", action: notNow)
+          .buttonStyle(.pill(.tertiary, fill: true))
+          .accessibilityIdentifier("notifications.notNow")
       }
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 8)

@@ -1,0 +1,309 @@
+import HasalaDesign
+import HasalaModels
+import Observation
+import SwiftUI
+
+enum FinishSetupItem: String, CaseIterable, Identifiable {
+  case readingStopped
+  case bankAlerts
+  case plan
+  case notifications
+
+  var id: String { rawValue }
+}
+
+@MainActor
+@Observable
+final class FinishSetupModel {
+  @ObservationIgnored private let services: AccountServices
+  @ObservationIgnored private let firstScan: FirstScanRun
+  @ObservationIgnored private var importResumed = false
+  private(set) var planDone = false
+  private(set) var notificationsDone = false
+  var planFlow: MonthlyPlanModel?
+  @ObservationIgnored private var draft: MonthlyPlanModel?
+  var askingNotifications = false
+  var showDetails = false
+  private(set) var ledgerEmpty = false
+  private var listed: Set<FinishSetupItem> = [.plan, .notifications]
+  private(set) var alertsFound = false
+  private(set) var checkingAgain = false
+  var checkFailure: SetupFailure?
+  private(set) var checkNote: String?
+  var showingNoAlerts = false
+  @ObservationIgnored private var bankAlertsAfterSheet = false
+
+  init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun()) {
+    self.services = services
+    self.firstScan = firstScan
+    refresh()
+  }
+
+  var items: [FinishSetupItem] {
+    FinishSetupItem.allCases.filter { listed.contains($0) || !isDone($0) }
+  }
+
+  var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
+
+  var stoppedMailbox: MailboxSnapshot? {
+    guard ledgerEmpty, !services.mailbox.firstScanFinished,
+      let m = services.mailbox.mailboxes.first(where: { $0.state != .disconnected }),
+      m.state == .needsSignIn || m.readElsewhere || m.note != nil
+    else { return nil }
+    return m
+  }
+
+  func refresh(hasTransactions: Bool? = nil) {
+    if let hasTransactions { ledgerEmpty = !hasTransactions }
+    if noAlerts { listed.insert(.bankAlerts) }
+    if stoppedMailbox != nil { listed.insert(.readingStopped) }
+    let saved = services.setup.readBack()
+    if !planDone, saved.split != nil || saved.incomeMinor != nil { planDone = true }
+    if !notificationsDone, services.notifications.answered { notificationsDone = true }
+  }
+
+  func resumeImport() async {
+    guard !importResumed else { return }
+    importResumed = true
+    guard !firstScan.running, await services.mailbox.linkState() == .scanning else { return }
+    firstScan.start(services.mailbox)
+  }
+
+  func isDone(_ item: FinishSetupItem) -> Bool {
+    switch item {
+    case .readingStopped: stoppedMailbox == nil
+    case .bankAlerts: !noAlerts
+    case .plan: planDone
+    case .notifications: notificationsDone
+    }
+  }
+
+  var noAlertsBanks: [SupportedBank] {
+    let chosen = Set(services.mailbox.chosenBanks())
+    return SupportedBank.allCases.filter { chosen.contains($0) }
+  }
+
+  var noAlertsMailbox: MailProviderKind {
+    services.mailbox.mailboxes.first { $0.state != .disconnected }?.provider ?? services.mailbox.linkedProvider ?? .gmail
+  }
+
+  var alreadyChecking: Bool { !checkingAgain && services.mailbox.importing?.busy == true }
+
+  func openNoAlerts() {
+    checkFailure = nil
+    checkNote = nil
+    showingNoAlerts = true
+  }
+
+  func useDifferentEmail() {
+    bankAlertsAfterSheet = true
+    showingNoAlerts = false
+  }
+
+  func takeBankAlertsRequest() -> Bool {
+    defer { bankAlertsAfterSheet = false }
+    return bankAlertsAfterSheet
+  }
+
+  func checkAgain() async {
+    guard !checkingAgain else { return }
+    checkFailure = nil
+    checkNote = nil
+    guard !alreadyChecking else {
+      checkNote = Self.alreadyCheckingLine(noAlertsMailbox)
+      return
+    }
+    guard noAlerts else { return }
+    checkingAgain = true
+    defer { checkingAgain = false }
+    var ended = false
+    for await p in services.mailbox.firstScan() {
+      switch p.phase {
+      case .finished, .background:
+        ended = true
+        if let s = p.summary, s.total > 0 { alertsFound = true }
+      case .failed(let message):
+        ended = true
+        checkFailure = .failed(message)
+      default: break
+      }
+    }
+    if !ended { checkNote = Self.alreadyCheckingLine(noAlertsMailbox) }
+    if alertsFound { showingNoAlerts = false }
+  }
+
+  static func alreadyCheckingLine(_ provider: MailProviderKind) -> String {
+    "Hasala is already reading \(provider.appName). New alerts show on Home as they're read."
+  }
+
+  var today: LocalDate { (services.setup as? SetupClock)?.today() ?? LedgerToday.device() }
+
+  func setPlan() {
+    let flow = draft ?? MonthlyPlanModel(setup: services.setup) { [weak self] held in
+      if let held {
+        self?.draft = nil
+        if held.split != nil || held.incomeMinor != nil { self?.planDone = true }
+      }
+      self?.planFlow = nil
+    }
+    flow.path = []
+    draft = flow
+    planFlow = flow
+  }
+
+  func askNotifications() {
+    showDetails = services.notifications.showsDetails
+    askingNotifications = true
+  }
+
+  func allowNotifications() async {
+    services.notifications.showsDetails = showDetails
+    _ = await services.notifications.requestAuthorization()
+    notificationsDone = true
+    askingNotifications = false
+  }
+
+  func notificationsNotNow() {
+    services.notifications.decline()
+    notificationsDone = true
+    askingNotifications = false
+  }
+}
+
+struct FinishSetupSection: View {
+  let model: FinishSetupModel
+  let items: [FinishSetupItem]
+  let importing: Bool
+  var openBankAlerts: () -> Void = {}
+
+  var body: some View {
+    let open = items.filter { !model.isDone($0) }
+    if !open.isEmpty {
+      VStack(alignment: .leading, spacing: 12) {
+        HSectionHeader("Finish setting up", trailing: .fact("\(items.count - open.count) of \(items.count)"))
+        ForEach(open) { item in
+          switch item {
+          case .readingStopped:
+            let stopped = Self.stopped(model.stoppedMailbox)
+            FinishSetupRow(
+              icon: .envelope, title: stopped.title, detail: stopped.detail,
+              enabled: true, identifier: "home.finish.readingStopped", action: openBankAlerts)
+          case .bankAlerts:
+            FinishSetupRow(
+              icon: .envelope, title: "No bank alerts yet",
+              detail: "Turn on email alerts with your bank, then check again.",
+              enabled: true, identifier: "home.finish.bankAlerts", action: model.openNoAlerts)
+          case .plan:
+            FinishSetupRow(
+              icon: .clock, title: "Set your monthly plan",
+              detail: "Your salary and a split, so Hasala can say what's left.",
+              enabled: true, identifier: "home.finish.plan", action: model.setPlan)
+          case .notifications:
+            FinishSetupRow(
+              icon: .bell, title: "A note when money moves",
+              detail: importing
+                ? "Offered once your alerts are read."
+                : "Choose whether Hasala can send you a short note.",
+              enabled: !importing, identifier: "home.finish.notifications", action: model.askNotifications)
+          }
+        }
+      }
+      .padding(.horizontal, HSpacing.insetPage)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("home.finish")
+    }
+  }
+}
+
+extension FinishSetupSection {
+  static func stopped(_ m: MailboxSnapshot?) -> (title: String, detail: String) {
+    guard let m else { return ("Reading your alerts stopped", "Open Bank alerts to try again.") }
+    if m.state == .needsSignIn {
+      return ("Sign in to your email again", "Hasala can't read \(m.address) right now. Open Bank alerts to sign in.")
+    }
+    if m.readElsewhere {
+      return ("Read on your other iPhone", "Its transactions show here once that iPhone syncs them.")
+    }
+    return ("Reading your alerts stopped", "Open Bank alerts to try again.")
+  }
+}
+
+private struct FinishSetupRow: View {
+  let icon: HIcon
+  let title: String
+  let detail: String
+  let enabled: Bool
+  let identifier: String
+  var action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 14) {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+          .fill(enabled ? HColor.blue50 : HColor.neutral100)
+          .frame(width: 44, height: 44)
+          .overlay {
+            HIconView(icon, size: 22, color: enabled ? HColor.actionAccent : HColor.neutral600, strokeWidth: 1.6)
+          }
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title)
+            .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
+            .foregroundStyle(HColor.textPrimary)
+          Text(detail)
+            .hType(HType(size: 14, leading: 19, weight: .regular, textStyle: .subheadline))
+            .foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if enabled {
+          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.neutral400)
+        }
+      }
+      .padding(16)
+      .background(HColor.widgetSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+      .opacity(enabled ? 1 : 0.6)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .disabled(!enabled)
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier(identifier)
+  }
+}
+
+struct MonthlyPlanSheet: View {
+  @Bindable var model: MonthlyPlanModel
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack(path: $model.path) {
+      IncomeStep(model: model)
+        .toolbar {
+          ToolbarItem(placement: .topBarLeading) {
+            Button(role: .close) { dismiss() }
+              .tint(HColor.iconGlass)
+              .accessibilityIdentifier("plan.setup.close")
+          }
+        }
+        .navigationDestination(for: MonthlyPlanModel.Route.self) { _ in
+          PlanStep(model: model)
+        }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("plan.setup")
+  }
+}
+
+struct NotificationsAskSheet: View {
+  @Bindable var model: FinishSetupModel
+
+  var body: some View {
+    NotificationsStep(
+      today: model.today, showDetails: $model.showDetails,
+      allow: { await model.allowNotifications() }, notNow: model.notificationsNotNow)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("notifications.ask")
+  }
+}

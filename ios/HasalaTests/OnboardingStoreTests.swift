@@ -47,7 +47,6 @@ struct OnboardingStoreTests: AccountSuite {
     let (store, session) = store(phase: .onboarding(.bank))
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: facts)
-    setup.incomeText = "25000"
     setup.toggle(.dib)
     setup.toggle(.adib)
     for _ in 0..<3 {
@@ -56,7 +55,7 @@ struct OnboardingStoreTests: AccountSuite {
       store.phaseChanged(from: nil, to: session.phase)
     }
     let again = store.setupModel(displayName: "Maya", facts: facts)
-    #expect(again === setup && again.incomeText == "25000" && again.orderedBanks == [.enbd])
+    #expect(again === setup && again.orderedBanks == [.enbd])
     store.storyPage = 2
     store.phaseChanged(from: .onboarding(.bank), to: .ready)
     #expect(store.setup === setup && store.storyPage == 2)
@@ -88,71 +87,52 @@ struct OnboardingStoreTests: AccountSuite {
   }
 
   /// After a relaunch the draft is empty: done flags come from the account (OR-ed with what
-  /// this process did), the mailbox from the lane, and values are read back.
+  /// this process did), the mailbox from the lane, and the banks are read back.
   @Test func reconcileOrsTheFactsAndFillsAnEmptyDraft() {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
-    let saved = SetupReadBack(incomeMinor: 2_500_000, payday: 25,
-                              split: StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20))
     let mailbox = MockMailbox()
     mailbox.banks = [.dib]
-    let services = AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(saved: saved),
+    let services = AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                                    notifications: MockNotificationPermission())
     let session = AccountSession(services: services, phase: .onboarding(.bank))
     let store = OnboardingStore(services: services, session: { session })
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
-    facts.incomeSet = true
-    facts.mailbox = .linked
     let setup = store.setupModel(displayName: "Maya", facts: facts)
-    #expect(setup.incomeText == "25000" && setup.payday == 25 && setup.plan.needsPercent == 60)
     #expect(setup.orderedBanks == [.dib])
-    #expect(setup.step == .plan)
-    // What the account holds counts as sent: the same plan again sends nothing.
-    #expect(setup.draft.authored.plan == saved && setup.draft.authored.banks == [.dib])
+    #expect(setup.step == .mail)
+    #expect(setup.draft.authored.banks == [.dib])
 
-    // The same process: what was done here stays done, what was typed wins.
-    setup.incomeText = "30000"
-    var later = facts
-    later.incomeSet = false  // a runtime opened again, the projection not read yet
-    later.mailbox = .scanning
-    _ = store.setupModel(displayName: "Maya", facts: later)
-    #expect(setup.facts.incomeSet && setup.facts.mailbox == .scanning && setup.incomeText == "30000")
+    setup.toggle(.enbd)
+    facts.banksChosen = false
+    facts.mailbox = .scanning
+    _ = store.setupModel(displayName: "Maya", facts: facts)
+    #expect(setup.facts.banksChosen && setup.facts.mailbox == .scanning && setup.orderedBanks == [.enbd, .dib])
+    #expect(setup.step == .finished)
   }
 
   /// A store that failed to open draws setup under its wall with the gate's placeholder
-  /// facts (the bank step), so the first `resume()` has nothing to build; once the runtime
-  /// opens on "Try again", the real facts reach the same model and its stack is built for
-  /// them, as a fresh model's would be. A person who moved on in this process keeps their
-  /// place.
+  /// facts (the bank step), so the first `resume()` stays there; once the runtime opens on
+  /// "Try again", the real facts reach the same model, and an account already past the
+  /// email step opens Home.
   @Test func aResumeAtThePlaceholderStepWaitsForTheRealFacts() {
-    let (store, _) = store(phase: .onboarding(.bank))
+    let (store, session) = store(phase: .onboarding(.bank))
     let placeholder = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: placeholder)
     setup.resume()
-    #expect(setup.step == .bank && setup.path.isEmpty)
+    #expect(setup.step == .bank && setup.path.isEmpty && session.phase == .onboarding(.bank))
     var real = placeholder
     real.banksChosen = true
     real.mailbox = .linked
-    real.incomeSet = true
     #expect(store.setupModel(displayName: "Maya", facts: real) === setup)
     setup.resume()
-    let (other, _) = self.store(phase: .onboarding(.plan))
-    let fresh = other.setupModel(displayName: "Maya", facts: real)
-    fresh.resume()
-    #expect(setup.step == .plan && fresh.step == .plan)
-    #expect(setup.path == fresh.path && setup.path == [.income, .plan])
-    // Built once: Back, then a later call, leave the stack as the person left it.
-    setup.back()
-    setup.resume()
-    #expect(setup.path == [.income])
+    #expect(setup.step == .finished && session.phase == .ready)
 
-    // Moved on here before the facts changed: nothing is rebuilt over that place.
-    let (third, _) = self.store(phase: .onboarding(.bank))
-    let moving = third.setupModel(displayName: "Maya", facts: placeholder)
+    let (other, otherSession) = self.store(phase: .onboarding(.bank))
+    let moving = other.setupModel(displayName: "Maya", facts: placeholder)
     moving.resume()
     moving.skipBanks()
-    moving.resume()
-    #expect(moving.path == [.income])
+    #expect(otherSession.phase == .ready)
   }
 
   /// The replacement phrase is made once, not on every render of its flow.
@@ -180,9 +160,9 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(signup.failure == .notInvited)
 
     let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
-    setup.path = [.scan, .income]
+    setup.path = [.connectError(.outlook)]
     setup.failure = .offline
-    setup.navigationPath = [.scan]
-    #expect(setup.failure == nil && setup.path == [.scan])
+    setup.navigationPath = []
+    #expect(setup.failure == nil && setup.path.isEmpty)
   }
 }

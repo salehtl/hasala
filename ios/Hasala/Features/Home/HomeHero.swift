@@ -23,8 +23,7 @@ struct HomeHero: View {
   let backToThisMonth: () -> Void
   /// "Insights": pushes Insights for Home's period.
   let insights: (() -> Void)?
-  /// "Set your plan" with no plan yet: the Plan tab.
-  let setPlan: () -> Void
+  var reading = false
   let openNotCounted: (SpendHero.NotCounted) -> Void
   let openRates: (TotalMark) -> Void
 
@@ -39,6 +38,12 @@ struct HomeHero: View {
 
   private var isLive: Bool { hero.state == .live }
 
+  private var noPlan: Bool { hero.state == .noPlan }
+
+  private var caption: MoneyPhrase {
+    noPlan && reading ? MoneyPhrase(hero.caption.parts + [.text(" · still reading your alerts")]) : hero.caption
+  }
+
   /// Spent as a share of the plan, for the bar's geometry only.
   private var hasBar: Bool { hero.state == .live || hero.state == .ended }
 
@@ -50,19 +55,21 @@ struct HomeHero: View {
     VStack(alignment: .leading, spacing: 16) {
       periodRow
       figureBlock
-      VStack(alignment: .leading, spacing: 10) {
-        if hero.state == .range {
-          HeroMonthBars(bars: hero.bars, hidden: hidden)
-        } else {
-          MonthPaceBar(
-            spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
-            verdict: hero.verdict ?? .onTrack, overflow: 18, hidden: hidden, live: isLive, phase: phase)
+      if !noPlan {
+        VStack(alignment: .leading, spacing: 10) {
+          if hero.state == .range {
+            HeroMonthBars(bars: hero.bars, hidden: hidden)
+          } else {
+            MonthPaceBar(
+              spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
+              verdict: hero.verdict ?? .onTrack, overflow: 18, hidden: hidden, live: isLive, phase: phase)
+          }
+          verdictLine
+            .opacity(phase.verdictVisible ? 1 : 0)
         }
-        verdictLine
-          .opacity(phase.verdictVisible ? 1 : 0)
       }
       VStack(alignment: .leading, spacing: typeSize.isAccessibilitySize ? 8 : 2) {
-        tiles
+        if !noPlan { tiles }
         if let line = hero.notCounted {
           NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden), icon: .project,
                          id: "home.hero.notCounted") { openNotCounted(line) }
@@ -115,9 +122,9 @@ struct HomeHero: View {
       // live change rolls it on the bar's own 250 ms curve, so both land together.
       HeroFigure(amount: phase.figure(hero.spent), hidden: hidden)
         .hAnimation(.fillUpdate, value: hero.spent)
-        .accessibilityValue(hero.caption.spoken(hidden: hidden))
+        .accessibilityValue(caption.spoken(hidden: hidden))
         .accessibilityIdentifier("home.hero.left")
-      Text(hero.caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
+      Text(caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityHidden(true)
     }
   }
@@ -140,10 +147,7 @@ struct HomeHero: View {
     switch hero.state {
     case .syncing:
       Text(hero.word.rendered(hidden: hidden)).hType(.subheadline).foregroundStyle(HColor.textOnWashSecondary)
-    case .noPlan:
-      HeroVerdictLine(verdict: nil, word: hero.word, fact: nil, hidden: hidden,
-                      link: .init("Set your plan", identifier: "home.setPlan", action: setPlan))
-    case .live, .ended:
+    case .live, .ended, .noPlan:
       HeroVerdictLine(verdict: hero.verdict, word: hero.word, fact: hero.fact, hidden: hidden,
                       link: insights.map { .init("Insights", identifier: "home.insights", action: $0) })
     case .range:

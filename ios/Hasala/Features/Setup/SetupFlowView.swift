@@ -19,13 +19,6 @@ struct SetupFlowView: View {
         .navigationDestination(for: SetupRoute.self) { route in
           switch route {
           case .connectError(let provider): EmailErrorStep(model: model, provider: provider)
-          case .scan: ScanStep(model: model)
-          case .income: IncomeStep(model: model)
-          case .plan: PlanStep(model: model)
-          case .result: ResultStep(model: model)
-          case .sort: SortStep(model: model)
-          case .notifications: NotificationsStep(model: model)
-          case .done: DoneStep(model: model)
           }
         }
     }
@@ -62,8 +55,7 @@ private struct EmailErrorStep: View {
       onChooseDifferent: {
         if model.canChooseEmail { model.chooseEmail() } else { openURL(BuildSurface.supportMail) }
       },
-      // Paper draws setup's error screens as step 2 of 4 (1MUP-0, 1NQF-0; requests/p3.md 1).
-      steps: model.steps(2))
+      steps: nil)
       .mailSwitchQuestion(coordinator)
       .onChange(of: model.connectFailure(provider), initial: true) { _, failure in
         if let failure { shown = failure }

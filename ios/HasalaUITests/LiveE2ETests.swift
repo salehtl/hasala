@@ -77,9 +77,12 @@ final class LiveE2ETests: LiveE2ECase {
     attach(app, "Your email · sample offered")
     sample.tap()
 
-    // Notifications: Allow (the reviewer taps "Not now"; either finishes setup). Allowing
-    // is what lets A receive E3's push: the simulator delivers only a push with visible
-    // content, and only to an app the user allowed (see ios/scripts/e2e/wake.apns).
+    // Setup ends on Home. Notifications from its Finish setting up: Allow (the reviewer
+    // taps "Not now"). Allowing is what lets A receive E3's push: the simulator delivers
+    // only a push with visible content, and only to an app the user allowed (see
+    // ios/scripts/e2e/wake.apns).
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 90), "the sample did not open Home")
+    tap(app, "home.finish.notifications", timeout: 60)
     try recordNotificationsAllowed(allowNotifications(app))
     driveToHome(app)
     try markSignedIn(true)

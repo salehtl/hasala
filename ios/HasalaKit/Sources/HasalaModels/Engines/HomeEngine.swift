@@ -65,7 +65,7 @@ public enum HomeEngine {
     guard budget > 0 else {
       return SpendHero(
         state: .noPlan, overline: overline, spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
-        word: "No plan yet", fact: nil, caption: "spent this month", tiles: tiles, wash: .sky,
+        word: "No plan yet", fact: nil, caption: "spent so far", tiles: tiles, wash: .sky,
         notCounted: notCounted(s, in: .month(month)))
     }
 

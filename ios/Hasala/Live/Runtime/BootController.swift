@@ -140,6 +140,7 @@ final class BootController {
     startRetry = nil
     account.loadProfile()
     LocalAccountData.migrate(boundUserID: facts.binding?.user_id)
+    MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: LocalAccountData.setupFinished())
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
     self.wall = wall
     session = AccountSession(services: services, phase: phase)
@@ -449,9 +450,6 @@ final class BootController {
     let r = rt.projection.reader
     f.banksChosen = !((try? r.senderTrust()) ?? [:]).isEmpty
     f.sampleLoaded = ((try? r.activity(limit: 1_000)) ?? []).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true }
-    f.incomeSet = !((try? r.incomeSources()) ?? []).isEmpty
-    f.planSet = (try? r.budgetTemplate()) != nil
-    f.notificationsAsked = UserDefaults.standard.bool(forKey: "prefs.setup.notificationsAsked")
     return f
   }
 
