@@ -40,10 +40,47 @@ struct FinishSetupTests: AccountSuite {
   }
 
   @Test func aRefusedConnectIsNotOffered() {
-    let mailbox = MockMailbox()
-    mailbox.connectRefused = true
-    let m = FinishSetupModel(services: services(mailbox: mailbox))
-    #expect(!m.needsEmail && !m.items.contains(.connectEmail))
+    for refusal in [MailConnectRefusal.reviewAccount, .sampleData] {
+      let mailbox = MockMailbox()
+      mailbox.connectRefusal = refusal
+      let m = FinishSetupModel(services: services(mailbox: mailbox))
+      #expect(!m.needsEmail && !m.items.contains(.connectEmail))
+    }
+  }
+
+  func counting(_ change: (CountingMailbox) -> Void) -> FinishSetupModel {
+    let mailbox = CountingMailbox(MockMailbox())
+    change(mailbox)
+    return FinishSetupModel(services: AccountServices(
+      account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+      setup: MockSetupAuthoring(), notifications: MockNotificationPermission()))
+  }
+
+  @Test func theConnectRowFollowsTheLanesOffer() {
+    #expect(counting { _ in }.needsEmail)
+    #expect(!counting { $0.offerOverride = .some(nil) }.needsEmail)
+    #expect(!counting { $0.offerOverride = .signInAgain(mailboxID: "gmail-1", provider: .gmail) }.needsEmail)
+    #expect(!counting { $0.known = false }.needsEmail)
+    #expect(!counting { $0.heldElsewhere = .gmail }.items.contains(.connectEmail))
+  }
+
+  @Test func hidingTheConnectRowIsKeptOnThisDevice() throws {
+    let suite = "FinishSetupTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var s = services(mailbox: MockMailbox())
+    s.manualEntry = ManualEntryChoice(defaults: defaults)
+    let m = FinishSetupModel(services: s)
+    #expect(m.items.first == .connectEmail)
+    m.enterByHand()
+    #expect(m.entersByHand && !m.items.contains(.connectEmail) && m.items == [.plan, .notifications])
+    var relaunched = services(mailbox: MockMailbox())
+    relaunched.manualEntry = ManualEntryChoice(defaults: defaults)
+    #expect(!FinishSetupModel(services: relaunched).items.contains(.connectEmail))
+    ManualEntryChoice.forget(defaults)
+    var forgotten = services(mailbox: MockMailbox())
+    forgotten.manualEntry = ManualEntryChoice(defaults: defaults)
+    #expect(FinishSetupModel(services: forgotten).items.first == .connectEmail)
   }
 
   @Test func theTwelveWordsComeFirstThenNoAlerts() {

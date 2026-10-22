@@ -140,6 +140,11 @@ struct LiveMailboxTests {
     #expect(seen.withLock { $0.map(\.newAddress) } == Array(repeating: "maya.home@example.com", count: 3))
   }
 
+  @Test func aRefusedConnectSaysItsOwnReason() {
+    #expect(!MailConnectRefusal.reviewAccount.message.contains("sample"))
+    #expect(MailConnectRefusal.sampleData.message.contains("sample data"))
+  }
+
   @Test func aMailboxOnAnotherAccountIsSaidInWords() {
     let gmail = LiveMailboxConnecting.message(.mailboxInUse)
     #expect(gmail.contains("This Gmail address is connected to another Hasala account"))

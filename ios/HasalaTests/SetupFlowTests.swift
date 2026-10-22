@@ -373,13 +373,17 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var linkedOverride: MailProviderKind?
   /// The account's link held by another iPhone (live: a new install or a recovered account).
   @ObservationIgnored var heldElsewhere: MailProviderKind?
+  @ObservationIgnored var known = true
+  @ObservationIgnored var offerOverride: MailOffer??
 
   init(_ base: MockMailbox) { self.base = base }
+
+  var mailboxesKnown: Bool { known }
 
   var connectable: [MailProviderKind] { base.connectable }
   var capabilities: MailboxCapabilities { base.capabilities }
   var mailboxes: [MailboxSnapshot] { base.mailboxes }
-  var offer: MailOffer? { base.offer }
+  var offer: MailOffer? { offerOverride ?? base.offer }
   var linkedProvider: MailProviderKind? { linkedOverride ?? base.linkedProvider }
   var offersSampleData: Bool { base.offersSampleData }
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }

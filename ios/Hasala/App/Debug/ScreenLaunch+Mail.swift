@@ -24,7 +24,11 @@
       Screen("bankAlerts.oneGmail", scenario: "passkeyUser", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.none", scenario: "noMailbox", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.refused", scenario: "noMailbox", prepare: { graph in
-        mock(graph)?.connectRefused = true
+        mock(graph)?.connectRefusal = .sampleData
+        profile([.bankAlerts])(graph)
+      }),
+      Screen("bankAlerts.refusedReview", scenario: "noMailbox", prepare: { graph in
+        mock(graph)?.connectRefusal = .reviewAccount
         profile([.bankAlerts])(graph)
       }),
       Screen("bankAlerts.syncing", scenario: "passkeyUser", prepare: { graph in

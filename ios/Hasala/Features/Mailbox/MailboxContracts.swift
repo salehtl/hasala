@@ -22,6 +22,18 @@ enum MailOffer: Hashable, Identifiable {
   }
 }
 
+enum MailConnectRefusal: Equatable, Sendable {
+  case reviewAccount
+  case sampleData
+
+  var message: String {
+    switch self {
+    case .reviewAccount: MailCopy.reviewAccountRefusal
+    case .sampleData: MailCopy.sampleDataRefusal
+    }
+  }
+}
+
 /// Why a connect, a sign-in again or a disconnect didn't happen (Paper "Connect email ·
 /// Work or school account needs an admin", "Microsoft sign-in didn't finish").
 enum MailConnectFailure: Error, Equatable {
@@ -111,7 +123,7 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// What the bell, the Profile card and Bank alerts offer; nil when nothing needs doing,
   /// the lane's state isn't known yet, or the account loaded the App Review sample.
   var offer: MailOffer? { get }
-  var connectRefused: Bool { get }
+  var connectRefusal: MailConnectRefusal? { get }
   /// The banks the account reads (its sender-trust ops).
   func chosenBanks() -> [SupportedBank]
   /// The provider the account's link is to, while there is one, known before the mailbox
@@ -236,7 +248,9 @@ extension MailboxConnecting {
   /// No other iPhone where the mailboxes are held in memory (the mock).
   var heldElsewhere: MailProviderKind? { nil }
 
-  var connectRefused: Bool { false }
+  var connectRefusal: MailConnectRefusal? { nil }
+
+  var connectRefused: Bool { connectRefusal != nil }
 
   /// A connect that replaces nothing: a first link, another mailbox beside one that works,
   /// or the same provider again.

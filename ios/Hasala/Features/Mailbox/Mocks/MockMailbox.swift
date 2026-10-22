@@ -38,7 +38,7 @@
     var outlookAdmin = false
     /// An Outlook sign-in is closed, or its permissions declined.
     var outlookCancelled = false
-    var connectRefused = false
+    var connectRefusal: MailConnectRefusal?
     var outlookNoMailbox = false
     var gmailNoMailbox = false
     var gmailPermissionMissing = false
@@ -118,7 +118,7 @@
     // MARK: MailboxConnecting
 
     var offer: MailOffer? {
-      guard !sampleLoaded else { return nil }
+      guard !sampleLoaded, connectRefusal == nil else { return nil }
       if let m = mailboxes.first(where: { $0.state == .needsSignIn }) {
         return .signInAgain(mailboxID: m.id, provider: m.provider)
       }

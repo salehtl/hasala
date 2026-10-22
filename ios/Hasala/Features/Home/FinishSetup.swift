@@ -15,6 +15,28 @@ enum FinishSetupItem: String, CaseIterable, Identifiable {
 }
 
 @MainActor
+final class ManualEntryChoice {
+  static let key = "prefs.home.finish.byHand.v1"
+
+  private let defaults: UserDefaults?
+  private var chosenInMemory = false
+
+  init(defaults: UserDefaults? = nil) {
+    self.defaults = defaults
+  }
+
+  var chosen: Bool { defaults?.bool(forKey: Self.key) ?? chosenInMemory }
+
+  func choose() {
+    if let defaults { defaults.set(true, forKey: Self.key) } else { chosenInMemory = true }
+  }
+
+  static func forget(_ defaults: UserDefaults) {
+    defaults.removeObject(forKey: key)
+  }
+}
+
+@MainActor
 @Observable
 final class FinishSetupModel {
   @ObservationIgnored private let services: AccountServices
@@ -27,6 +49,7 @@ final class FinishSetupModel {
   private(set) var phraseFailure: AuthFailure?
   private(set) var planDone = false
   private(set) var notificationsDone = false
+  private(set) var entersByHand = false
   var planFlow: MonthlyPlanModel?
   @ObservationIgnored private var draft: MonthlyPlanModel?
   var askingNotifications = false
@@ -44,21 +67,24 @@ final class FinishSetupModel {
     self.services = services
     self.firstScan = firstScan
     self.session = session
+    entersByHand = services.manualEntry.chosen
     refresh()
   }
 
   var items: [FinishSetupItem] {
-    FinishSetupItem.allCases.filter { listed.contains($0) || !isDone($0) }
+    FinishSetupItem.allCases.filter { (listed.contains($0) || !isDone($0)) && !($0 == .connectEmail && entersByHand) }
   }
 
   var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
 
   var needsEmail: Bool {
     let mailbox = services.mailbox
-    guard mailbox.mailboxesKnown, !mailbox.connectRefused, mailbox.capabilities.contains(.connect),
-      !mailbox.connectable.isEmpty, mailbox.heldElsewhere == nil
-    else { return false }
-    return !mailbox.mailboxes.contains { $0.state != .disconnected }
+    return mailbox.mailboxesKnown && mailbox.heldElsewhere == nil && mailbox.offer == .connect
+  }
+
+  func enterByHand() {
+    services.manualEntry.choose()
+    entersByHand = true
   }
 
   var stoppedMailbox: MailboxSnapshot? {
@@ -251,6 +277,8 @@ struct FinishSetupSection: View {
               icon: .envelope, title: "Connect your email",
               detail: "Where your banks send alerts. Hasala reads them on this iPhone.",
               enabled: true, identifier: "home.finish.connectEmail", action: openBankAlerts)
+            TextLinkRow(lead: "Adding transactions by hand?", link: "Hide this.",
+                        identifier: "home.finish.connectEmail.byHand", action: model.enterByHand)
           case .readingStopped:
             let stopped = Self.stopped(model.stoppedMailbox)
             FinishSetupRow(

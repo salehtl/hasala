@@ -147,13 +147,14 @@
       let arguments = ProcessInfo.processInfo.arguments
       let unseenPhrase = InMemoryUnseenPhrase()
       if arguments.contains("-HasalaPhraseUnseen") { unseenPhrase.noteUnseen(at: .now) }
+      let manualEntry = ManualEntryChoice()
       func services(_ account: MockAccountService) -> AccountServices {
         account.passkeyPRF = !arguments.contains("-HasalaPasskeyNoPRF")
         account.passkeySynced = !arguments.contains("-HasalaPasskeyNotSynced")
         return AccountServices(
           account: account, mailbox: mailbox, setup: setup,
           notifications: MockNotificationPermission(answered: !fresh), hasPasscode: { scenario != .noPasscode },
-          cloudSort: cloudSort, unseenPhrase: unseenPhrase)
+          cloudSort: cloudSort, unseenPhrase: unseenPhrase, manualEntry: manualEntry)
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,

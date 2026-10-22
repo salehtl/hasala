@@ -34,9 +34,10 @@ struct MailboxLaneWorkTests {
   }
 
   @MainActor @Test func aReviewOrSampleAccountIsRefusedAConnect() {
-    #expect(LiveMailboxConnecting.refusesConnect(reviewAccount: true, holdsSample: false))
-    #expect(LiveMailboxConnecting.refusesConnect(reviewAccount: false, holdsSample: true))
-    #expect(!LiveMailboxConnecting.refusesConnect(reviewAccount: false, holdsSample: false))
+    #expect(LiveMailboxConnecting.refusal(reviewAccount: true, holdsSample: false) == .reviewAccount)
+    #expect(LiveMailboxConnecting.refusal(reviewAccount: false, holdsSample: true) == .sampleData)
+    #expect(LiveMailboxConnecting.refusal(reviewAccount: true, holdsSample: true) == .sampleData)
+    #expect(LiveMailboxConnecting.refusal(reviewAccount: false, holdsSample: false) == nil)
   }
 
   @MainActor @Test func onlyNewlyTrustedSendersAreBackfilled() {

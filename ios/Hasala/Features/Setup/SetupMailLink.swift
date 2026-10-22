@@ -45,7 +45,7 @@ final class SetupMailLink: MailboxConnecting {
   var linkedProvider: MailProviderKind? { base.linkedProvider }
   var heldElsewhere: MailProviderKind? { base.heldElsewhere }
   var offersSampleData: Bool { base.offersSampleData }
-  var connectRefused: Bool { base.connectRefused }
+  var connectRefusal: MailConnectRefusal? { base.connectRefusal }
   var importing: MailImport? { base.importing }
   var firstScanFinished: Bool { base.firstScanFinished }
 
