@@ -488,12 +488,30 @@ import Testing
     #expect(rf.postedAt == "2026-05-28T20:26:40.000Z" && rf.precision == "time")
     let d = MessageDisposer.finalize(refund, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
     #expect(d.payload["unparsed"] == .bool(false) && d.payload["direction"] == .string("credit"))
+    #expect(d.payload["category"] == .string("refunds"))
+    let source = try #require(d.payload["category_source"]?.objectValue)
+    #expect(source["kind"] == .string("dictionary") && source["entry"] == .string("template:dib.card-refund.v1"))
 
     let reversal = try dib(
       "r1",
       "عزيزي المتعامل,\nA transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with XX1234 has been reversed.")
     #expect(reversal.gates.template == "dib.card-reversal.v1@1" && reversal.last4 == "1234")
     #expect(reversal.fields?.amountMinor == 5_200 && reversal.fields?.direction == "credit" && reversal.fields?.merchant == "SAMPLE SHOP LLC")
+    let rd = MessageDisposer.finalize(reversal, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    #expect(rd.payload["category"] == .string("refunds"))
+
+    let grocer = try dib(
+      "r4",
+      "A transaction to the value of AED 9.00 made at SAMPLE GROCER on your DIB card ending with XX1234 has been reversed.")
+    let gd = MessageDisposer.finalize(grocer, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    #expect(gd.payload["category"] == .string("groceries"))
+
+    let approved = try dib(
+      "r3",
+      "عزيزي المتعامل,\nA transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with XX1234 has been approved.")
+    #expect(approved.fields == nil && approved.gates.template == nil)
+    let ad = MessageDisposer.finalize(approved, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    #expect(ad.needsReview && ad.payload["unparsed"] == .bool(true))
 
     let dollars = try dib("r2", "تم إرجاع مبلغ 12.50 دولار على بطاقة بنك دبي الإسلامي الخاصة بك والمنتهية بالرقم XX1234.")
     #expect(dollars.fields == nil && dollars.gates.template == nil)
