@@ -263,29 +263,52 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
-  public func ops(_ ids: Set<String>) -> [String: Op] {
-    var out: [String: Op] = [:]
+  public func ops(_ ids: Set<String>) -> OpLookup {
+    var out = OpLookup()
     guard !ids.isEmpty else { return out }
-    for u in unconfirmed where ids.contains(u.opID) { out[u.opID] = u.op }
-    if let rows = try? context.store.pendingOps() {
-      for r in rows where ids.contains(r.opID) && out[r.opID] == nil {
-        if let op = try? Pusher.decodeStored(r) { out[r.opID] = op }
-      }
-    }
-    guard out.count < ids.count else { return out }
-    let store = context.store
+    for u in unconfirmed where ids.contains(u.opID) { out.found[u.opID] = u.op }
+    var incomplete = false
     do {
-      let sync = try context.storeCall { () throws(StoreError) in try store.syncState() }
-      let opener = Opener(epochHWM: sync.epochHWM, keys: try context.epochKeys(upTo: sync.epochHWM))
-      try storedPages(upTo: sync.cursorHot) { (rows: [WireRowRecord]) throws(SyncStop) in
-        guard out.count < ids.count else { return }
-        for r in rows where r.disposition == .folded {
-          guard case .opened(_, let ops) = try reopen(r, opener) else { continue }
-          for op in ops where ids.contains(op.opID) { out[op.opID] = op }
-        }
+      for r in try context.store.pendingOps() where ids.contains(r.opID) && out.found[r.opID] == nil {
+        do { out.found[r.opID] = try Pusher.decodeStored(r) } catch { incomplete = true }
       }
-    } catch {}
+    } catch {
+      incomplete = true
+    }
+    if out.found.count < ids.count {
+      incomplete = !scanStored(for: ids, into: &out.found) || incomplete
+    }
+    let unfound = ids.subtracting(out.found.keys)
+    if incomplete { out.failed = unfound } else { out.missing = unfound }
     return out
+  }
+
+  private func scanStored(for ids: Set<String>, into found: inout [String: Op]) -> Bool {
+    let store = context.store
+    let sync: SyncStateRow
+    do { sync = try store.syncState() } catch { return false }
+    var opener: Opener?
+    var before = sync.cursorHot + 1
+    var complete = true
+    while before > 1 && found.count < ids.count {
+      let rows: [WireRowRecord]
+      do { rows = try store.wireRows(before: before, limit: 50) } catch { return false }
+      guard let oldest = rows.last else { break }
+      for r in rows where r.disposition == .folded {
+        if opener == nil {
+          guard let keys = try? context.epochKeys(upTo: sync.epochHWM) else { return false }
+          opener = Opener(epochHWM: sync.epochHWM, keys: keys)
+        }
+        guard let opener, case .opened(_, let ops)? = try? reopen(r, opener) else {
+          complete = false
+          continue
+        }
+        for op in ops where ids.contains(op.opID) { found[op.opID] = op }
+        if found.count == ids.count { return true }
+      }
+      before = oldest.seq
+    }
+    return complete || found.count == ids.count
   }
 
   // MARK: Projection
@@ -428,6 +451,18 @@ public actor LedgerPageObserver: PageObserver {
       for x in v where !ids.contains(x.id) { ids.append(x.id) }
       return .halted(.inconsistent(ids.joined(separator: ",")))
     }
+  }
+}
+
+public struct OpLookup: Sendable, Equatable {
+  public var found: [String: Op] = [:]
+  public var missing: Set<String> = []
+  public var failed: Set<String> = []
+
+  public init(found: [String: Op] = [:], missing: Set<String> = [], failed: Set<String> = []) {
+    self.found = found
+    self.missing = missing
+    self.failed = failed
   }
 }
 

@@ -322,4 +322,19 @@ struct LedgerPageObserverTests {
     #expect(await refusal(pending, Self.account(review: true)) == .hasTransactions)
     #expect(try pending.store.pendingCount() == 1)
   }
+
+  @Test("ops: outbox ops are found; with no stored rows an unknown id is missing; a stored row that does not open makes it failed")
+  func opsLookup() async throws {
+    let r = try Rig()
+    try await r.observer.open()
+    let mine = try Self.ingest("STARBUCKS DIFC", 2_700, writer: Self.me)
+    try r.store.enqueue(
+      try mine.map { PendingOp(opID: $0.opID, opJSON: try Self.canonical($0), opType: $0.type.rawValue, entityKind: "txn", entityID: $0.entity?.id, enqueuedAt: 1) })
+    let empty = await r.observer.ops([mine[0].opID, "op-nowhere"])
+    #expect(empty.found.keys.sorted() == [mine[0].opID] && empty.missing == ["op-nowhere"] && empty.failed.isEmpty)
+    #expect(await r.observer.ops([]) == OpLookup())
+    try await r.page([(1, try Self.setup())], counterBase: 1)
+    let sealed = await r.observer.ops([mine[0].opID, "op-nowhere"])
+    #expect(sealed.found.keys.sorted() == [mine[0].opID] && sealed.missing.isEmpty && sealed.failed == ["op-nowhere"])
+  }
 }

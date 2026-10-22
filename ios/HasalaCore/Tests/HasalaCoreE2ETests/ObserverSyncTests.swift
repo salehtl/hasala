@@ -47,6 +47,24 @@ struct ObserverSyncTests {
     #expect(try a.reader.txn(id)?.category == "entertainment")
   }
 
+  @Test("ops finds ops in sealed stored rows, newest first, and tells a missing id from a failed lookup")
+  func opsLookup() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    var ids: [String] = []
+    for (i, m) in ["Zuma", "Talabat", "Careem"].enumerated() {
+      let blob = try await a.author { x in _ = try Self.manual(&x, m, 1_000 + Int64(i), at: w.clock.nowMs() + LocalClock.offsetMs) }
+      ids.append(blob.ops[0].opID)
+      #expect(await a.run(.authored).stop == nil)
+    }
+    #expect(await b.run(.launch).stop == nil)
+    let r = await b.observer.ops(Set(ids + ["op-nowhere"]))
+    #expect(Set(r.found.keys) == Set(ids) && r.found.values.allSatisfy { ids.contains($0.opID) })
+    #expect(r.missing == ["op-nowhere"] && r.failed.isEmpty)
+    let newest = await b.observer.ops([ids[2]])
+    #expect(newest.found.keys.sorted() == [ids[2]] && newest.missing.isEmpty && newest.failed.isEmpty)
+  }
+
   @Test("a rejected snapshot is rebuilt from the stored rows: same state, no network")
   func coldRefold() async throws {
     let (w, a, b) = try await twoRuntimes()
