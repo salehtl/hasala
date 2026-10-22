@@ -63,7 +63,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var heldCopy: Bool
   public var reviewReason: TxnGates.ReviewReason?
   public var senderCheck: String?
-  public var merchantGroup: String
+  public var merchantGroup: String?
   public var categorizedMs: Int64?
 
   init(_ r: Row) {
@@ -296,27 +296,32 @@ public struct LedgerReader: Sendable {
 
   /// The sweep's view of every row (03c §8.4).
   public func sweepRows() throws -> [SweepRow] {
-    try sweepRows(where: "superseded_by IS NULL", [])
+    try sweepRows(sql: Self.sweepSQL, [])
   }
 
   public func sweepRows(group: String) throws -> [SweepRow] {
-    try sweepRows(where: "superseded_by IS NULL AND merchant_group = ?", [group])
+    guard !group.isEmpty else { return [] }
+    return try sweepRows(sql: Self.sweepGroupSQL, [group])
   }
 
-  public func group(_ key: String, limit: Int = 1_000) throws -> [TxnRow] {
-    try db.read { db in
+  public func group(_ key: String, limit: Int? = nil) throws -> [TxnRow] {
+    guard !key.isEmpty else { return [] }
+    if let limit, limit <= 0 { return [] }
+    return try db.read { db in
       try Row.fetchAll(
-        db, sql: "SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC, id DESC LIMIT ?",
-        arguments: [key, limit]
+        db, sql: limit == nil ? Self.groupSQL : Self.groupSQL + " LIMIT ?",
+        arguments: limit.map { [key, $0] } ?? [key]
       ).map(TxnRow.init)
     }
   }
 
-  private func sweepRows(where condition: String, _ arguments: [String]) throws -> [SweepRow] {
+  static let sweepSQL = "SELECT * FROM txn WHERE superseded_by IS NULL ORDER BY posted_ms DESC, id DESC"
+  static let groupSQL = "SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC, id DESC"
+  static let sweepGroupSQL = groupSQL
+
+  private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
-      try Row.fetchAll(
-        db, sql: "SELECT * FROM txn WHERE \(condition) ORDER BY posted_ms DESC, id DESC", arguments: StatementArguments(arguments)
-      ).map { r in
+      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
         let t = TxnRow(r)
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,

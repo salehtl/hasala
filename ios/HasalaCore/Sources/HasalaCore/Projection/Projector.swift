@@ -164,7 +164,7 @@ public enum Projector {
         refundTarget, refundOf == nil ? nil : Attribution.refundState(t, target: refundTarget.flatMap { s.txns[$0] }), peer, peerTarget,
         peer == nil ? nil : Attribution.transferState(t, target: peerTarget.flatMap { s.txns[$0] }, targetPeer: peerBack),
         isNew, t.version, pending.contains(id), ReviewQueue.lane(t)?.rawValue, t.sourceMailbox, t.sourceProvider,
-        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(t.merchantRaw)] ?? "", categorizedMs(s, id),
+        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(t.merchantRaw)].flatMap { $0.isEmpty ? nil : $0 }, categorizedMs(s, id, t),
       ]
       try insert.execute(arguments: StatementArguments(args))
       for (k, a) in t.aliases.enumerated() {
@@ -181,11 +181,11 @@ public enum Projector {
     }
   }
 
-  static func categorizedMs(_ s: State, _ id: String) -> Int64? {
-    guard let head = s.heads[State.entityKey("txn", id)], head.opType.map({ utf8Equal($0, OpType.txnCategorized.rawValue) }) == true else {
-      return nil
-    }
-    return head.authoredAtMs
+  static func categorizedMs(_ s: State, _ id: String, _ t: Txn) -> Int64? {
+    guard let head = s.heads[State.entityKey("txn", id)], head.authoredAtMs != 0, let type = head.opType else { return nil }
+    if utf8Equal(type, OpType.txnCategorized.rawValue) { return head.authoredAtMs }
+    let created = utf8Equal(type, OpType.txnIngested.rawValue) || utf8Equal(type, OpType.txnSuperseded.rawValue)
+    return created && t.categorySource?.kind == .rule ? head.authoredAtMs : nil
   }
 
   static func userTouched(_ t: Txn) -> Bool {

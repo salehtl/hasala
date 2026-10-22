@@ -8,11 +8,13 @@ import Testing
 @testable import CoreProjection
 
 @Suite struct MerchantGroupProjectionTests {
-  static func id(_ n: Int) -> String { "01JC00000000000000000000\(n)0" }
+  static func id(_ n: Int) -> String { "01JC" + String(repeating: "0", count: 21 - "\(n)".count) + "\(n)0" }
 
-  static func txn(_ n: Int, _ merchant: String, posted: String, direction: String = "debit") -> String {
-    let ingest = String(repeating: "0", count: 63) + "\(n)"
-    return #"{"v":4,"type":"txn_ingested","op_id":"t\#(n)","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(id(n))"},"parent_version":null,"ingest_id":"\#(ingest)","payload":{"amount_minor":"\#(1000 + n)","currency":"AED","direction":"\#(direction)","posted_at":"\#(posted)","merchant_raw":"\#(merchant)","last4":"4412","needs_review":true}}"#
+  static func txn(
+    _ n: Int, _ merchant: String, posted: String, direction: String = "debit", at: String = "2026-10-01T08:00:00.000Z", extra: String = #","needs_review":true"#
+  ) -> String {
+    let ingest = String(repeating: "0", count: 64 - "\(n)".count) + "\(n)"
+    return #"{"v":4,"type":"txn_ingested","op_id":"t\#(n)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(id(n))"},"parent_version":null,"ingest_id":"\#(ingest)","payload":{"amount_minor":"\#(1000 + n)","currency":"AED","direction":"\#(direction)","posted_at":"\#(posted)","merchant_raw":"\#(merchant)","last4":"4412"\#(extra)}}"#
   }
 
   static func categorize(_ n: Int, op: String, parent: Int, at: String, category: String = "subscriptions") -> String {
@@ -64,6 +66,7 @@ import Testing
     let tailscale = try r.group("n:tailscale")
     #expect(tailscale.map(\.id) == [7, 3, 2, 1].map(Self.id))
     #expect(try r.group("n:tailscale", limit: 2).map(\.id) == [7, 3].map(Self.id))
+    #expect(try r.group("n:tailscale", limit: 0).isEmpty)
     #expect(try r.group("n:al noor").isEmpty)
     let sweep = try r.sweepRows(group: "n:tailscale")
     #expect(sweep.map(\.id) == tailscale.map(\.id))
@@ -78,12 +81,48 @@ import Testing
       try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'txn' AND sql LIKE '%merchant_group%'")
     }
     #expect(indexes == ["txn_merchant_group"])
-    let plan = try db.read { db in
-      try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC", arguments: ["n:x"])
-        .map { $0["detail"] as String }
+    let statements: [(String, StatementArguments)] = [
+      (LedgerReader.groupSQL, ["n:x"]), (LedgerReader.groupSQL + " LIMIT ?", ["n:x", 2]), (LedgerReader.sweepGroupSQL, ["n:x"]),
+    ]
+    for (sql, arguments) in statements {
+      let plan = try db.read { db in
+        try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN " + sql, arguments: arguments).map { $0["detail"] as String }
+      }
+      #expect(plan.contains { $0.contains("txn_merchant_group") }, "\(sql): \(plan)")
+      #expect(!plan.contains { $0.contains("TEMP B-TREE") }, "\(sql): \(plan)")
     }
-    #expect(plan.contains { $0.contains("txn_merchant_group") })
     #expect(try r.isUsable())
+  }
+
+  @Test func aGroupIsNotCutWithoutALimit() throws {
+    var s = State()
+    for chunk in 0..<6 {
+      try Self.blob(Int64(chunk + 1), (1...200).map { Self.txn(chunk * 200 + $0, "TAILSCALE INC", posted: "2026-08-03T08:00:00.000Z") }, into: &s)
+    }
+    #expect(s.anomalies.isEmpty)
+    let (_, r) = try Self.project(s)
+    #expect(try r.group("n:tailscale").count == 1_200)
+    #expect(try r.group("n:tailscale", limit: 1_000).count == 1_000)
+    #expect(try r.sweepRows(group: "n:tailscale").count == 1_200)
+  }
+
+  @Test func rowsWithNoMerchantShareNoGroup() throws {
+    var s = State()
+    try Self.blob(
+      1,
+      [
+        Self.txn(1, "", posted: "2026-10-03T08:00:00.000Z"),
+        Self.txn(2, "", posted: "2026-10-04T08:00:00.000Z"),
+        Self.txn(3, "   ", posted: "2026-10-05T08:00:00.000Z"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty)
+    let (db, r) = try Self.project(s)
+    for n in 1...3 { #expect(try #require(try r.txn(Self.id(n))).merchantGroup == nil) }
+    #expect(try r.group("").isEmpty)
+    #expect(try r.sweepRows(group: "").isEmpty)
+    #expect(try r.sweepRows().filter { $0.merchantGroup == nil }.count == 3)
+    let nulls = try db.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM txn WHERE merchant_group IS NULL") }
+    #expect(nulls == 3)
   }
 
   @Test func filedAtIsTheAuthoredTimeOfTheCategorizeAtTheHead() throws {
@@ -111,6 +150,38 @@ import Testing
     #expect(try r.txn(Self.id(3))?.categorizedMs == nil)
     let sweep = try r.sweepRows()
     #expect(sweep.first { $0.id == Self.id(2) }?.categorizedMs == Self.ms("2026-10-21T10:30:00.000Z"))
+  }
+
+  @Test func aRuleFilingOnIngestIsFiledAtTheIngest() throws {
+    var s = State()
+    let rule = #","category":"subscriptions","category_source":{"kind":"rule","rule_id":"01JC0000000000000000000R10"},"needs_review":false"#
+    let dictionary = #","category":"subscriptions","category_source":{"kind":"dictionary","bundle":"2026.10.21-1","entry":"contains:netflix"},"needs_review":false"#
+    try Self.blob(
+      1,
+      [
+        Self.txn(1, "TAILSCALE INC", posted: "2026-10-03T08:00:00.000Z", at: "2026-10-03T09:15:00.000Z", extra: rule),
+        Self.txn(2, "NETFLIX.COM", posted: "2026-10-03T08:00:00.000Z", at: "2026-10-03T09:15:00.000Z", extra: dictionary),
+        Self.txn(3, "TAILSCALE INC", posted: "2026-10-04T08:00:00.000Z", at: "2026-10-04T09:15:00.000Z", extra: rule),
+      ], into: &s)
+    try Self.blob(2, [Self.split(3, op: "s3", parent: 1, at: "2026-10-05T09:00:00.000Z")], into: &s)
+    #expect(s.anomalies.isEmpty)
+    let (_, r) = try Self.project(s)
+    #expect(try r.txn(Self.id(1))?.categorySource == "rule")
+    #expect(try r.txn(Self.id(1))?.categorizedMs == Self.ms("2026-10-03T09:15:00.000Z"))
+    #expect(try r.txn(Self.id(2))?.categorySource == "dictionary")
+    #expect(try r.txn(Self.id(2))?.categorizedMs == nil)
+    #expect(try r.txn(Self.id(3))?.categorizedMs == nil)
+  }
+
+  @Test func anUnreadableAuthoredTimeIsNoFiledAt() throws {
+    var s = State()
+    try Self.blob(1, [Self.txn(1, "TAILSCALE INC", posted: "2026-08-03T08:00:00.000Z")], into: &s)
+    try Self.blob(2, [Self.categorize(1, op: "c1", parent: 1, at: "2026-10-20T09:00:00.000Z")], into: &s)
+    let key = State.entityKey("txn", Self.id(1))
+    #expect(s.heads[key]?.authoredAtMs == Self.ms("2026-10-20T09:00:00.000Z"))
+    s.heads[key]?.authoredAtMs = 0
+    let (_, r) = try Self.project(s)
+    #expect(try r.txn(Self.id(1))?.categorizedMs == nil)
   }
 
   @Test func aRowNeverCategorizedHasNoFiledAt() throws {
