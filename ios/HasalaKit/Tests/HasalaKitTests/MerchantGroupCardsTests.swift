@@ -16,7 +16,7 @@ struct MerchantGroupCardsTests {
     #expect(g.count == 30)
     #expect(g.otherMonths == 0)
     #expect(g.merchant == "Tailscale")
-    #expect(g.spellings == ["PAYPAL *TAILSCALE", "TAILSCALE INC", "TAILSCALE.COM"])
+    #expect(g.spellings == ["TAILSCALE.COM", "TAILSCALE INC", "PAYPAL *TAILSCALE"])
     #expect(g.totals == [Money(minor: 360_00, currency: "USD")])
     #expect(g.amount.rendered(hidden: false) == "USD 360.00")
     #expect(g.amount.rendered(hidden: true) == "USD ••••")
@@ -332,5 +332,49 @@ struct MerchantGroupCardsTests {
     let row = try #require(s.txn("bl-bright-10"))
     #expect(ReviewEngine.card(row, s).suggestion == nil)
     #expect(!SuggestionsEngine.snapshot(s).rows.contains { $0.id.hasPrefix("bl-bright") })
+  }
+
+  @Test func spellingsLeadWithTheMostUsed() throws {
+    var s = Scenario.mayaBacklog.state
+    let raws = ["TAILSCALE INC", "PAYPAL *TAILSCALE", "TAILSCALE INC", "TAILSCALE.COM"]
+    for (i, raw) in raws.enumerated() {
+      s.txns.append(Txn(
+        id: "sp-\(i)", merchant: "Tailscale", amount: Money(minor: 6_00, currency: "USD"),
+        postedAt: LocalDateTime(2026, 6, 2 + i, 9, 0), needsReview: true,
+        provenance: Provenance(title: "Alert", readAt: "Read automatically", rawMerchant: raw),
+        merchantKey: raw.lowercased(), merchantGroup: "n:tailscale"))
+    }
+    let g = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, MockReach.refreshed(s)))
+    #expect(g.count == 34)
+    #expect(g.spellings == ["TAILSCALE INC", "TAILSCALE.COM", "PAYPAL *TAILSCALE"])
+    let june = ReviewWindow(from: LocalDate(2026, 6, 1), to: LocalDate(2026, 6, 30))
+    var only = s
+    only.txns.removeAll { $0.merchantGroup == "n:tailscale" && !$0.id.hasPrefix("sp-") }
+    let h = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, MockReach.refreshed(only), in: june))
+    #expect(h.spellings == ["TAILSCALE INC", "PAYPAL *TAILSCALE", "TAILSCALE.COM"])
+  }
+
+  @Test func oneMoreInAnotherMonthIsSaidAsTheCardShowsIt() throws {
+    let g = try group(MayaBacklog.alNoorTradingGroup, in: october)
+    #expect(g.otherMonths == 1)
+    #expect(g.countLine == "2 payments · 1 more in another month")
+    #expect(g.spoken(hidden: true)
+      == "Al Noor Trading, 2 payments from 1 October to 9 October, AED Amount hidden, 1 more in another month.")
+  }
+
+  @Test func aRejectedModelCategoryIsNotShownInTheSheet() throws {
+    var s = s
+    for i in s.txns.indices where s.txns[i].merchantGroup == "n:brightwell academy" {
+      s.txns[i].rejectedCategories = [MayaBacklog.wrongGuess]
+    }
+    let detail = try #require(TransactionEngine.detail("bl-bright-10", s, now: MayaLedger.now))
+    #expect(detail.category == nil)
+    #expect(detail.sortedBy == nil)
+    #expect(detail.suggestion == nil)
+    #expect(detail.needsReview)
+    #expect(detail.glyph == .review)
+    let kept = try #require(TransactionEngine.detail("bl-bright-10", Scenario.mayaBacklog.state, now: MayaLedger.now))
+    #expect(kept.category?.id == MayaBacklog.wrongGuess)
+    #expect(kept.sortedBy?.title == "Suggested by Cloudflare AI")
   }
 }

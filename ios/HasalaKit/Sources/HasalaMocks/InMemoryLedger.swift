@@ -27,6 +27,7 @@ public final class InMemoryLedger: LedgerStore {
     var rules: (before: [Rule], after: [Rule])?
     var projects: (before: [Project], after: [Project])?
     var unread: (before: [UnreadMail], after: [UnreadMail])?
+    var receipt: SortReceipt??
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -357,7 +358,7 @@ public final class InMemoryLedger: LedgerStore {
                           source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
                           trackingSince: today,
                           payments: [BillPayment(due: c.last, amount: c.amount, link: .matched)],
-                          keys: [c.name.lowercased()]))
+                          keys: [c.key ?? c.name.lowercased()]))
       title = "Tracking \(c.name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
@@ -580,6 +581,7 @@ public final class InMemoryLedger: LedgerStore {
     if touchedRules { record.rules = (before.rules, s.rules) }
     if touchedProjects { record.projects = (before.projects, s.projects) }
     if touchedUnread { record.unread = (before.unreadMail, s.unreadMail) }
+    if receipt != nil { record.receipt = .some(before.sortReceipt) }
     let token = UndoToken(id: nextToken, title: title)
     nextToken += 1
     undoRecords[token.id] = record
@@ -609,7 +611,10 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
-    if s.sortReceipt?.id == token.id { s.sortReceipt = nil }
+    if s.sortReceipt?.id == token.id {
+      let previous = r.receipt ?? nil
+      s.sortReceipt = previous.flatMap { undoRecords[$0.id] != nil ? $0 : nil }
+    }
     MockReach.refresh(&s)
     state = s
     revision += 1

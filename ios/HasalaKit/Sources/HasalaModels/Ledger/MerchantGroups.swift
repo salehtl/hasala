@@ -49,8 +49,12 @@ extension Txn {
     return false
   }
 
+  public var modelGuessRejected: Bool {
+    isModelSourced && categoryID.map(rejectedCategories.contains) == true
+  }
+
   public var autoFiledByCloudflare: Bool {
-    guard !needsReview, categoryID != nil, case .model(let tag) = categorySource else { return false }
+    guard !needsReview, !modelGuessRejected, categoryID != nil, case .model(let tag) = categorySource else { return false }
     return tag?.hasPrefix(CategorySource.cloudflareModelPrefix) == true
   }
 

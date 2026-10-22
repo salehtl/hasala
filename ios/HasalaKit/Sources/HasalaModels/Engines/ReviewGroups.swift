@@ -110,7 +110,7 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
     let when = first == last ? "on \(spokenDateRange)" : "from \(spokenDateRange)"
     var line = "\(merchant), \(payments) \(when), \(isIncome ? "plus " : "")\(amount.spoken(hidden: hidden))"
     if let estimateLine { line += ", " + estimateLine.spoken(hidden: hidden) }
-    if otherMonths > 0 { line += ", \(otherMonths) more in other months" }
+    if otherMonths > 0 { line += ", \(otherMonths) more in \(otherMonths == 1 ? "another month" : "other months")" }
     if repeatsMonthly { line += ", repeats monthly" }
     if isNewMerchant { line += ", new merchant" }
     line += "."
@@ -284,8 +284,16 @@ extension ReviewEngine {
   }
 
   static func spellings(_ rows: [Txn]) -> [String] {
-    var seen: Set<String> = []
-    return rows.map(\.spelling).filter { seen.insert($0).inserted }.sorted()
+    var counts: [String: Int] = [:]
+    var order: [String] = []
+    for t in rows {
+      if counts[t.spelling] == nil { order.append(t.spelling) }
+      counts[t.spelling, default: 0] += 1
+    }
+    return order.enumerated().sorted { a, b in
+      let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
+      return ca == cb ? a.offset < b.offset : ca > cb
+    }.map(\.element)
   }
 
   public static func filedAs(_ ref: MerchantGroupRef, _ s: LedgerState) -> [FiledCount] {

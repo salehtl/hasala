@@ -284,7 +284,7 @@ extension Txn {
     if isHeldCopy { return true }
     if samePurchase != nil { return true }
     if isTransfer { return false }
-    if needsReview { return true }
+    if needsReview || modelGuessRejected { return true }
     return categoryID == nil && splits.isEmpty
   }
 

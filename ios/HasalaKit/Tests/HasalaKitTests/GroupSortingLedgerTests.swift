@@ -306,4 +306,68 @@ struct GroupSortingLedgerTests {
     l.undo(token)
     #expect(l.state.txn("bl-ts-01")?.reachable == true)
   }
+
+  @Test func trackingTheBillKeepsTheGroupRepeatingMonthly() throws {
+    let l = ledger()
+    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
+    try l.apply(.trackCandidate(MayaBacklog.candidate.id))
+    #expect(!l.state.billCandidates.contains { $0.id == MayaBacklog.candidate.id })
+    #expect(l.state.bills.first { $0.id == "bill-\(MayaBacklog.candidate.id)" }?.keys == ["tailscale.com"])
+    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
+  }
+
+  @Test func undoingTheBatchThatReplacedARowBringsTheEarlierRowBack() throws {
+    let l = ledger()
+    let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
+    let second = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
+    #expect(l.state.sortReceipt?.merchant == "Qasr Corner Store")
+    l.undo(second)
+    let row = try #require(SortResultEngine.row(l.state))
+    #expect(row.line == "Sorted 30 Tailscale as Subscriptions")
+    #expect(row.undo == first)
+    l.undo(try #require(row.undo))
+    #expect(l.state.sortReceipt == nil)
+    #expect(tailscaleRows(l).allSatisfy { $0.categoryID == nil })
+  }
+
+  @Test func anEarlierRowWhoseBatchIsGoneDoesNotComeBack() throws {
+    let l = ledger()
+    let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
+    l.undo(first)
+    let second = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
+    l.undo(second)
+    #expect(l.state.sortReceipt == nil)
+    try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil))
+    try l.apply(.dismissSortReceipt)
+    let third = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
+    l.undo(third)
+    #expect(l.state.sortReceipt == nil)
+  }
+
+  @Test func anAutoFiledGuessThatWasRejectedComesBackToReview() throws {
+    var s = Scenario.mayaBacklog.state
+    for i in s.txns.indices where s.txns[i].merchantGroup == "n:brightwell academy" {
+      s.txns[i].needsReview = false
+      s.txns[i].categorizedAt = LocalDateTime(2026, 10, 8, 9, 0)
+    }
+    let filed = InMemoryLedger(state: s)
+    #expect(SortedForYouEngine.snapshot(filed.state, now: filed.now).items.flatMap(\.txnIDs).contains("bl-bright-10"))
+    for i in s.txns.indices where s.txns[i].merchantGroup == "n:brightwell academy" {
+      s.txns[i].rejectedCategories = [MayaBacklog.wrongGuess]
+    }
+    let l = InMemoryLedger(state: s)
+    let row = try #require(l.state.txn("bl-bright-10"))
+    #expect(row.modelGuessRejected && row.inReview && !row.autoFiledByCloudflare && !row.reachable)
+    let cards = ReviewEngine.items(l.state).filter { $0.txnIDs.contains("bl-bright-10") }
+    #expect(cards.count == 1)
+    guard case .single(let card) = try #require(cards.first) else {
+      Issue.record("expected a single card")
+      return
+    }
+    #expect(card.suggestion == nil && card.suggestedBy == nil)
+    let snap = SortedForYouEngine.snapshot(l.state, now: l.now)
+    #expect(!snap.items.flatMap(\.txnIDs).contains { $0.hasPrefix("bl-bright") })
+    #expect(ActivityEngine.row(row, l.state).toReview)
+    #expect(ActivityEngine.row(row, l.state).glyph == .review)
+  }
 }

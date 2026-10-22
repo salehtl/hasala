@@ -226,7 +226,7 @@ public enum ActivityEngine {
 
   /// One list row: "Dining · 13:20"; to-review rows read "To review · 18:42".
   public static func row(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
-    let c = s.category(t.categoryID)
+    let c = t.modelGuessRejected ? nil : s.category(t.categoryID)
     let detail: String
     if let reason = t.activeReviewReason {
       detail = t.joined(reason.label, t.postedTime)
