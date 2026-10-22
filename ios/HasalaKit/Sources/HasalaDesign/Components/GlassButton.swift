@@ -47,12 +47,13 @@ public struct GlassIconButton: View {
     .buttonStyle(.plain)
     .hGlass(in: Circle(), prominent: prominent)
     .overlay(alignment: .topLeading) {
-      if let badge {
-        CountBadge(badge, style: .glass20)
-          // Paper: left 29, top −3 on the 48 circle.
-          .offset(x: 29, y: -3)
-          .allowsHitTesting(false)
+      if let badge, !paired {
+        GlassBadge(count: badge)
       }
+    }
+    .anchorPreference(key: GlassBadgeAnchors.self, value: .bounds) { bounds in
+      guard paired, let badge, badge > 0 else { return [] }
+      return [GlassBadgeAnchor(count: badge, bounds: bounds)]
     }
     .accessibilityLabel(label)
     .accessibilityAddTraits(selected == true ? .isSelected : [])
@@ -76,6 +77,7 @@ public struct GlassIconButton: View {
 
 public struct GlassButtonPair<Content: View>: View {
   let content: Content
+  @Environment(\.layoutDirection) private var layoutDirection
 
   public init(@ViewBuilder content: () -> Content) {
     self.content = content()
@@ -85,7 +87,48 @@ public struct GlassButtonPair<Content: View>: View {
     HStack(spacing: 0) { content }
       .environment(\.hGlassPaired, true)
       .hGlass(in: Capsule())
+      .overlayPreferenceValue(GlassBadgeAnchors.self) { anchors in
+        if !anchors.isEmpty {
+          GeometryReader { proxy in
+            ForEach(anchors.indices, id: \.self) { index in
+              let frame = proxy[anchors[index].bounds]
+              Color.clear
+                .frame(width: frame.width, height: frame.height)
+                .overlay(alignment: .topLeading) { GlassBadge(count: anchors[index].count) }
+                .environment(\.layoutDirection, layoutDirection)
+                .position(x: frame.midX, y: frame.midY)
+            }
+          }
+          .environment(\.layoutDirection, .leftToRight)
+        }
+      }
+      .transformPreference(GlassBadgeAnchors.self) { $0 = [] }
       .accessibilityElement(children: .contain)
+  }
+}
+
+struct GlassBadge: View {
+  let count: Int
+
+  var body: some View {
+    CountBadge(count, style: .glass20)
+      .fixedSize()
+      .padding(.leading, 29)
+      .offset(y: -3)
+      .allowsHitTesting(false)
+  }
+}
+
+struct GlassBadgeAnchor {
+  let count: Int
+  let bounds: Anchor<CGRect>
+}
+
+struct GlassBadgeAnchors: PreferenceKey {
+  static let defaultValue: [GlassBadgeAnchor] = []
+
+  static func reduce(value: inout [GlassBadgeAnchor], nextValue: () -> [GlassBadgeAnchor]) {
+    value.append(contentsOf: nextValue())
   }
 }
 
