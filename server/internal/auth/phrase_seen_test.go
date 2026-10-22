@@ -18,13 +18,11 @@ func (f *keyFixture) phraseSeenAt() *time.Time {
 	return at
 }
 
-func TestTheWordsSeenSurviveARestore(t *testing.T) {
+func TestTheFirstViewMarksTheWordsSeenAndSurvivesARestore(t *testing.T) {
 	f := newKeyFixtureUnbootstrapped(t)
 	path, rec := ledgerRecorder(t)
-	acct := &Accounts{Pool: f.pool, Now: f.clock.now, Record: rec}
-	if err := acct.NotePhraseSeen(bgctx, f.user); !errors.Is(err, ErrNoKeys) {
-		t.Fatalf("an account without keys: %v", err)
-	}
+	acct := &Accounts{Pool: f.pool, Sessions: f.sessions, Passkeys: f.passkeys, StepUp: f.stepUp, Mail: &Mailer{},
+		Now: f.clock.now, Record: rec}
 	b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)
 	b.PhraseUnseen = true
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); err != nil {
@@ -33,14 +31,19 @@ func TestTheWordsSeenSurviveARestore(t *testing.T) {
 	if at := f.phraseSeenAt(); at != nil {
 		t.Fatalf("phrase_seen_at %v after a bootstrap without the words", at)
 	}
-	f.clock.advance(time.Hour + 300*time.Millisecond)
+	f.clock.advance(10*time.Minute + 300*time.Millisecond)
+	first := f.clock.now()
 	for range 2 {
-		if err := acct.NotePhraseSeen(bgctx, f.user); err != nil {
+		if _, err := acct.ViewPhrase(bgctx, f.info(f.token), f.stepUpPasskey(f.token, keyproto.ActionPhraseView)); err != nil {
 			t.Fatal(err)
 		}
+		f.clock.advance(time.Minute)
 	}
-	if at := f.phraseSeenAt(); at == nil || !at.Equal(f.clock.now()) {
-		t.Fatalf("phrase_seen_at %v, want %v", at, f.clock.now())
+	if at := f.phraseSeenAt(); at == nil || !at.Equal(first) {
+		t.Fatalf("phrase_seen_at %v, want the first view %v", at, first)
+	}
+	if n := f.count(`SELECT count(*) FROM auth_events WHERE kind = 'phrase_viewed'`); n != 2 {
+		t.Fatalf("%d phrase_viewed events, want one per view", n)
 	}
 	entries := readLedger(t, path)
 	if len(entries) != 1 || entries[0].Kind != purgeledger.KindPhraseSeen || entries[0].ID != f.user {
@@ -56,7 +59,7 @@ func TestTheWordsSeenSurviveARestore(t *testing.T) {
 	if err != nil || rep.PhrasesSeen != 1 {
 		t.Fatalf("reapply %+v %v, want one first view", rep, err)
 	}
-	if at := f.phraseSeenAt(); at == nil || at.After(f.clock.now()) || at.Before(f.clock.now().Add(-time.Second)) {
+	if at := f.phraseSeenAt(); at == nil || at.After(first) || at.Before(first.Add(-time.Second)) {
 		t.Fatalf("after the replay phrase_seen_at %v", at)
 	}
 	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.PhrasesSeen != 0 {
@@ -64,51 +67,42 @@ func TestTheWordsSeenSurviveARestore(t *testing.T) {
 	}
 }
 
-func TestAReplayNeverMarksWordsSeenBeforeTheKeysExisted(t *testing.T) {
+func TestAFailedViewLeavesTheWordsUnseen(t *testing.T) {
 	f := newKeyFixtureUnbootstrapped(t)
+	path, rec := ledgerRecorder(t)
+	acct := &Accounts{Pool: f.pool, Sessions: f.sessions, Passkeys: f.passkeys, StepUp: f.stepUp, Mail: &Mailer{},
+		Now: f.clock.now, Record: rec}
 	b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)
 	b.PhraseUnseen = true
 	if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); err != nil {
 		t.Fatal(err)
 	}
-	early := []purgeledger.Entry{{ID: f.user, At: f.clock.now().Add(-time.Hour), Kind: purgeledger.KindPhraseSeen}}
-	if rep, err := Reapply(bgctx, f.pool, early, f.clock.now()); err != nil || rep.PhrasesSeen != 0 {
-		t.Fatalf("reapply %+v %v, want nothing", rep, err)
+	if _, err := f.owner.Exec(bgctx, `DELETE FROM account_key_wraps WHERE user_id = $1`, f.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := acct.ViewPhrase(bgctx, f.info(f.token), f.stepUpPasskey(f.token, keyproto.ActionPhraseView)); !errors.Is(err, ErrStepUpFailed) {
+		t.Fatalf("a view with a passkey without a wrap: %v", err)
 	}
 	if at := f.phraseSeenAt(); at != nil {
-		t.Fatalf("phrase_seen_at %v", at)
+		t.Fatalf("phrase_seen_at %v after a refused view", at)
+	}
+	if entries := readLedger(t, path); len(entries) != 0 {
+		t.Fatalf("ledger %+v after a refused view", entries)
 	}
 }
 
-func TestPhraseUnseenIsOnlyForTheSyncedCreatingPasskey(t *testing.T) {
-	t.Run("no PRF wrap", func(t *testing.T) {
-		f := newKeyFixtureUnbootstrapped(t)
-		b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), false)
-		b.PhraseUnseen = true
-		if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); !errors.Is(err, ErrKeysMalformed) {
-			t.Fatalf("bootstrap: %v", err)
-		}
-	})
-	for _, c := range []struct{ name, set string }{
-		{"not backed up", "backup_state = false"},
-		{"not backup eligible", "backup_eligible = false, backup_state = false"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			f := newKeyFixtureUnbootstrapped(t)
-			if _, err := f.owner.Exec(bgctx, `UPDATE webauthn_credentials SET `+c.set+` WHERE user_id = $1`, f.user); err != nil {
-				t.Fatal(err)
-			}
-			b := f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)
-			b.PhraseUnseen = true
-			if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), b); !errors.Is(err, ErrKeysMalformed) {
-				t.Fatalf("bootstrap: %v", err)
-			}
-			if _, err := f.keys.Bootstrap(bgctx, f.info(f.token), f.bootstrap(f.device, keyproto.AuthKindPasskey, f.attestation(), true)); err != nil {
-				t.Fatal(err)
-			}
-			if f.phraseSeenAt() == nil {
-				t.Fatal("an ordinary bootstrap left the words unseen")
-			}
-		})
+func TestTheSyncedCheckIsABadRequestWhenTheCredentialIsMissing(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t)
+	if err := checkSyncedPasskey(bgctx, f.pool, f.user, []byte("not-a-credential")); !errors.Is(err, ErrKeysMalformed) {
+		t.Fatalf("a credential that is not there: %v", err)
+	}
+	if err := checkSyncedPasskey(bgctx, f.pool, f.user, f.credID); err != nil {
+		t.Fatalf("the synced creating passkey: %v", err)
+	}
+	if _, err := f.owner.Exec(bgctx, `UPDATE webauthn_credentials SET backup_state = false WHERE user_id = $1`, f.user); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkSyncedPasskey(bgctx, f.pool, f.user, f.credID); !errors.Is(err, ErrKeysMalformed) {
+		t.Fatalf("a passkey that is not backed up: %v", err)
 	}
 }

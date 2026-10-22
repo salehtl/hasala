@@ -176,6 +176,7 @@ func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) 
 		{auth.ErrSessionBound, http.StatusConflict, "session_bound"},
 		{auth.ErrKeysExist, http.StatusConflict, "keys_exist"},
 		{auth.ErrNoKeys, http.StatusNotFound, "no_keys"},
+		{auth.ErrPhraseUnseen, http.StatusConflict, "phrase_unseen"},
 		{auth.ErrBadAuthorityKey, http.StatusBadRequest, "bad_request"},
 		// The account ceremonies (spec 02 §6.3).
 		{auth.ErrCodeRejected, http.StatusForbidden, "code_rejected"},

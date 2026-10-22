@@ -39,7 +39,6 @@ var appRoutes = []struct{ method, path string }{
 	{"POST", "/api/v1/account/bootstrap"},
 	{"GET", "/api/v1/keys"},
 	{"GET", "/api/v1/key-history"},
-	{"POST", "/api/v1/keys/phrase/seen"},
 	{"POST", "/api/v1/sync"},
 	{"GET", "/api/v1/sync"},
 	{"PUT", "/api/v1/push/apns"},

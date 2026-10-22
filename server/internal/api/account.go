@@ -128,15 +128,3 @@ func (s *Server) handlePhraseView(w http.ResponseWriter, r *http.Request, _ uuid
 	s.wakeOthers(r.Context(), info.UserID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusOK, PhraseViewResponse{PhraseBox: b64(box)})
 }
-
-func (s *Server) handlePhraseSeen(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
-	var req struct{}
-	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
-		return
-	}
-	if err := s.Accounts.NotePhraseSeen(r.Context(), userID); err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}

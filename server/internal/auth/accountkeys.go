@@ -48,7 +48,40 @@ var (
 	ErrKeysMalformed = errors.New("auth: key material is malformed")          // 400 bad_request
 	ErrNotYours      = errors.New("auth: no such credential on this account") // 404 not_found
 	ErrNoKeys        = errors.New("auth: the account has no keys")            // 404 no_keys
+	ErrPhraseUnseen  = errors.New("auth: the 12 words are not seen yet")      // 409 phrase_unseen
 )
+
+func checkSyncedPasskey(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, credentialID []byte) error {
+	var synced bool
+	err := pool.QueryRow(ctx,
+		`SELECT COALESCE(backup_eligible AND backup_state, false) FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`,
+		userID, credentialID).Scan(&synced)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: phrase_unseen needs the creating passkey", ErrKeysMalformed)
+	}
+	if err != nil {
+		return fmt.Errorf("auth: bootstrap: %w", err)
+	}
+	if !synced {
+		return fmt.Errorf("%w: phrase_unseen needs a synced passkey", ErrKeysMalformed)
+	}
+	return nil
+}
+
+func refuseIfLastUnseenWrapTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, credentialID []byte) error {
+	var last bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = $1 AND k.phrase_seen_at IS NULL)
+		    AND EXISTS (SELECT 1 FROM account_key_wraps w WHERE w.user_id = $1 AND w.credential_id = $2)
+		    AND NOT EXISTS (SELECT 1 FROM account_key_wraps w WHERE w.user_id = $1 AND w.credential_id <> $2)`,
+		userID, credentialID).Scan(&last); err != nil {
+		return fmt.Errorf("auth: words seen check: %w", err)
+	}
+	if last {
+		return ErrPhraseUnseen
+	}
+	return nil
+}
 
 // AccountKeys owns account_keys and account_key_wraps.
 type AccountKeys struct {
@@ -197,14 +230,8 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		if !pendingPath || b.PRFCredentialID == nil {
 			return Bootstrapped{}, fmt.Errorf("%w: phrase_unseen needs the creating passkey and its PRF wrap", ErrKeysMalformed)
 		}
-		var synced bool
-		if err := k.Pool.QueryRow(ctx,
-			`SELECT backup_eligible AND backup_state FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`,
-			userID, b.PRFCredentialID).Scan(&synced); err != nil {
-			return Bootstrapped{}, fmt.Errorf("auth: bootstrap: %w", err)
-		}
-		if !synced {
-			return Bootstrapped{}, fmt.Errorf("%w: phrase_unseen needs a synced passkey", ErrKeysMalformed)
+		if err := checkSyncedPasskey(ctx, k.Pool, userID, b.PRFCredentialID); err != nil {
+			return Bootstrapped{}, err
 		}
 	}
 	// 5. The writer nonce, spent by the attempt.
@@ -467,6 +494,12 @@ func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, crede
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionKeysWrapDelete, ParamsHash: ph, StepUp: su}
 	return k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, session.UserID); err != nil {
+			return err
+		}
+		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, session.UserID, credentialID)
 		return err
 	})
