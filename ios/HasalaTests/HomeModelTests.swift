@@ -99,7 +99,7 @@ struct HomeModelTests {
     #expect(router.sheet == nil)
     #expect(router.tab == .review)
     #expect(app.cover == nil)
-    #expect(app.isAllTime && app.period.title == "All time")
+    #expect(app.period.isAllTime && app.period.title == "All time")
     after?()
     #expect(app.cover == .review)
     app.cover = nil

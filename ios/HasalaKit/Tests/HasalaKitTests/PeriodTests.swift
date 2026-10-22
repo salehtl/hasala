@@ -336,6 +336,18 @@ struct HomePeriodTests {
     #expect(snap.countLine.hasSuffix(" · All time"))
   }
 
+  @Test func allTimeActivityEndsThisMonthLikeItsTotal() {
+    var later = s
+    later.txns.append(Txn(id: "next-month", merchant: "Zuma", amount: .aed(60_00),
+                          postedAt: LocalDateTime(2026, 11, 3, 10, 0), categoryID: "dining"))
+    let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
+    let a = ActivityEngine.snapshot(later, now: now, filter: .all, period: all)
+    #expect(!a.days.flatMap(\.rows).contains { $0.id == "next-month" })
+    let dining = ActivityEngine.snapshot(later, now: now, filter: TxnFilter(category: "dining"), period: all)
+    #expect(!dining.rows.contains { $0.id == "next-month" })
+    #expect(dining.summary?.total == .aed(Spending.spent(later, category: "dining", in: all)))
+  }
+
   @Test func reviewUnderAllTimeIsTheWholeQueue() {
     let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
     #expect(ReviewEngine.window(all, today: MayaLedger.october) == .all)

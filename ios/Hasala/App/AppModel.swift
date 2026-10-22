@@ -172,10 +172,6 @@ final class AppModel {
     }
   }
 
-  var isAllTime: Bool { chosenPeriod?.isAllTime == true }
-
-  var showsBudgets: Bool { period.showsBudgets }
-
   func choose(_ preset: PeriodPreset) {
     period = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
   }

@@ -91,7 +91,6 @@ public struct FilterSummary: Sendable, Hashable {
   public var verdict: Verdict
   /// "40% of Dining's 1,600".
   public var caption: MoneyPhrase
-  /// False under All time: no budget to measure against, so no bar and no verdict.
   public var budgeted = true
 }
 
@@ -130,7 +129,7 @@ public enum ActivityEngine {
     let today = now.date.yearMonth
     let period = (period ?? .month(today)).clamped(to: today)
     let isThisMonth = period == .month(today)
-    let window = period.isAllTime ? ReviewWindow.all : ReviewWindow(period)
+    let window = ReviewWindow(period)
     let inPeriod = s.txns.filter { !$0.archived && window.contains($0.postedAt.date) }
     let reviewQueue = inPeriod.filter(\.inReview)
     let billCount = inPeriod.filter { isBill($0, s) && !$0.inReview }.count
