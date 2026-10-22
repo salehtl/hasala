@@ -21,7 +21,9 @@ struct MerchantGroupCardsTests {
     #expect(g.amount.rendered(hidden: false) == "USD 360.00")
     #expect(g.amount.rendered(hidden: true) == "USD ••••")
     #expect(g.estimate == nil)
-    #expect(g.dateRange == "3 Jul – 9 Oct")
+    #expect(g.dateRange == "3 Jul to 9 Oct")
+    #expect(g.metaLine == "Spent · 30 payments · 3 Jul to 9 Oct")
+    #expect(!g.isIncome && !g.isNewMerchant)
     #expect(g.repeatsMonthly)
     #expect(g.id == "out.n:tailscale")
     #expect(g.countLine == "30 payments")
@@ -33,10 +35,11 @@ struct MerchantGroupCardsTests {
     #expect(g.otherMonths == 22)
     #expect(g.total == 30)
     #expect(g.totals == [Money(minor: 96_00, currency: "USD")])
-    #expect(g.dateRange == "1 Oct – 9 Oct")
+    #expect(g.dateRange == "1 Oct to 9 Oct")
     #expect(g.countLine == "8 payments · 22 more in other months")
     #expect(g.spoken(hidden: true)
-      == "Tailscale, 8 payments, USD Amount hidden, 1 October to 9 October, 22 more in other months, repeats monthly")
+      == "Tailscale, 8 payments from 1 October to 9 October, USD Amount hidden, 22 more in other months, repeats monthly."
+        + " 1 more payment gets its own card. Hasala couldn't verify its sender.")
   }
 
   @Test func anUnverifiedRowAndARefundStayTheirOwnCards() {
@@ -55,6 +58,103 @@ struct MerchantGroupCardsTests {
       Issue.record("the unverified row is not a single card")
     }
     #expect(items.first { $0.id == "bl-ts-refund" }?.group == MayaBacklog.tailscaleRefunds)
+  }
+
+  @Test func aGroupNamesThePaymentsItLeavesOut() throws {
+    let g = try group(MayaBacklog.tailscale)
+    #expect(g.leftOut == [ReviewLeftOut(txnID: "bl-ts-unverified", reason: .senderUnverified)])
+    #expect(g.leftOutLine == "1 more payment gets its own card. Hasala couldn't verify its sender.")
+    #expect(try group(MayaBacklog.tailscale, in: .month(YearMonth(2026, 9))).leftOut.isEmpty)
+    #expect(try group(MayaBacklog.qasrGroup).leftOutLine == nil)
+
+    var two = s
+    for i in two.txns.indices where two.txns[i].id == "bl-ts-02" {
+      two.txns[i].reviewReason = .senderUnverified
+      two.txns[i].reachable = false
+    }
+    let plural = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, two))
+    #expect(plural.count == 29)
+    #expect(plural.leftOut.map(\.txnID) == ["bl-ts-02", "bl-ts-unverified"].sorted { a, b in
+      (two.txn(a)?.postedAt ?? MayaLedger.now) < (two.txn(b)?.postedAt ?? MayaLedger.now)
+    })
+    #expect(plural.leftOutLine == "2 more payments get their own cards. Hasala couldn't verify their sender.")
+
+    var copy = s
+    for i in copy.txns.indices where copy.txns[i].id == "bl-ts-unverified" {
+      copy.txns[i].reviewReason = nil
+      copy.txns[i].heldCopy = HeldCopy(of: "bl-ts-01", fromOtherInbox: true)
+    }
+    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, copy)?.leftOutLine
+      == "1 more payment gets its own card. It may be a copy.")
+
+    var pair = s
+    for i in pair.txns.indices where pair.txns[i].id == "bl-ts-unverified" {
+      pair.txns[i].reviewReason = nil
+      pair.txns[i].samePurchase = SamePurchaseMatch(of: "bl-ts-01")
+    }
+    for i in pair.txns.indices where pair.txns[i].id == "bl-ts-01" { pair.txns[i].reachable = false }
+    let same = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, pair))
+    #expect(Set(same.leftOut) == [
+      ReviewLeftOut(txnID: "bl-ts-01", reason: .samePurchase), ReviewLeftOut(txnID: "bl-ts-unverified", reason: .samePurchase),
+    ])
+    #expect(same.leftOutLine == "2 more payments get their own cards. Each may be the same purchase twice.")
+
+    var mixed = two
+    for i in mixed.txns.indices where mixed.txns[i].id == "bl-ts-unverified" {
+      mixed.txns[i].reviewReason = nil
+      mixed.txns[i].heldCopy = HeldCopy(of: "bl-ts-01", fromOtherInbox: true)
+    }
+    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, mixed)?.leftOutLine == "2 more payments get their own cards.")
+  }
+
+  @Test func aGroupGuessCoversEveryPaymentOrNone() throws {
+    var one = s
+    for i in one.txns.indices where one.txns[i].id == "bl-ts-05" {
+      one.txns[i].categoryID = "subscriptions"
+      one.txns[i].categorySource = .model(tag: "cf-clef/1")
+    }
+    let partial = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, one))
+    #expect(partial.suggestion == nil && partial.suggestedBy == nil)
+
+    var all = s
+    for i in all.txns.indices where all.txns[i].groupRef == MayaBacklog.tailscale && all.txns[i].reachable {
+      all.txns[i].categoryID = "subscriptions"
+      all.txns[i].categorySource = .model(tag: i % 2 == 0 ? "cf-clef/1" : "apple-fm/1")
+    }
+    let every = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, all))
+    #expect(every.suggestion?.id == "subscriptions")
+    #expect(every.suggestedBy != nil)
+    #expect(every.count == 30)
+  }
+
+  @Test func aGroupOfRefundsReadsAsMoneyIn() throws {
+    var s = s
+    var second = try #require(s.txn("bl-ts-refund"))
+    second.id = "bl-ts-refund-2"
+    second.postedAt = LocalDateTime(2026, 10, 8, 20, 5)
+    s.txns.append(second)
+    let g = try #require(ReviewEngine.groupCard(MayaBacklog.tailscaleRefunds, s))
+    #expect(g.count == 2)
+    #expect(g.isIncome)
+    #expect(g.verb == "Received")
+    #expect(g.metaLine == "Received · 2 payments · 7 Oct to 8 Oct")
+    #expect(g.spoken(hidden: false) == "Tailscale, 2 payments received from 7 October to 8 October, plus USD 12.00, repeats monthly.")
+    #expect(g.spoken(hidden: true).contains("plus USD Amount hidden"))
+    #expect(ReviewEngine.items(s).contains { $0.id == "group.in.n:tailscale" })
+  }
+
+  @Test func aGroupWithANewMerchantSaysSo() throws {
+    var s = s
+    for i in s.txns.indices where s.txns[i].id == "bl-alnoor-t-1" { s.txns[i].isNewMerchant = true }
+    let g = try #require(ReviewEngine.groupCard(MayaBacklog.alNoorTradingGroup, s))
+    #expect(g.isNewMerchant)
+    #expect(g.spoken(hidden: false).contains(", new merchant."))
+    #expect(try !group(MayaBacklog.alNoorTradingGroup).isNewMerchant)
+  }
+
+  @Test func theSpokenCardEndsWithItsGuess() throws {
+    let g = try group(MayaBacklog.brightwellGroup)
+    #expect(g.spoken(hidden: false).hasSuffix(". Looks like Shopping, suggested by Cloudflare AI."))
   }
 
   @Test func aShopFiledTwoWaysIsMixed() throws {
@@ -116,9 +216,11 @@ struct MerchantGroupCardsTests {
     #expect(ReviewEngine.payments(items) == 25)
     #expect(ReviewEngine.toSortLine(items) == "Tailscale and 14 more · 25 payments")
     #expect(Array(items.prefix(4).map(\.id)) == [
-      "group.out.n:tailscale", "group.out.n:al noor trading", "group.out.n:qasr corner store",
+      "group.out.n:tailscale", "group.out.n:qasr corner store", "group.out.n:al noor trading",
       "group.out.n:brightwell academy",
     ])
+    #expect(Array(items.prefix(3).map(\.payments)) == [8, 3, 2])
+    #expect(zip(items, items.dropFirst()).allSatisfy { $0.payments >= $1.payments })
     #expect(ReviewEngine.toSortLine([]) == nil)
     #expect(ReviewEngine.toSortLine(Array(items.prefix(1))) == "Tailscale · 8 payments")
   }
@@ -141,6 +243,25 @@ struct MerchantGroupCardsTests {
     #expect(months.map(\.title) == ["September"])
     #expect(months.flatMap(\.items).filter { $0.id == "group.out.n:tailscale" }.count == 1)
     #expect(months[0].items.first { $0.id == "group.out.n:tailscale" }?.payments == 22)
+    #expect(months[0].items.first?.id == "group.out.n:tailscale")
+    #expect(zip(months[0].items, months[0].items.dropFirst()).allSatisfy { $0.payments >= $1.payments })
+    let everything = ReviewEngine.itemMonths(ReviewEngine.items(s), now: MayaLedger.now)
+    #expect(everything.flatMap(\.items) == ReviewEngine.items(s))
+  }
+
+  @Test func mostPaymentsLeadInsideEachMonth() {
+    let fourMonths = ReviewWindow.range(LocalDate(2026, 7, 1), LocalDate(2026, 10, 31))
+    var s = s
+    for i in s.txns.indices where s.txns[i].id == "bl-saffron" { s.txns[i].postedAt = LocalDateTime(2026, 9, 6, 17, 45) }
+    let items = ReviewEngine.items(s, in: fourMonths)
+    let months = ReviewEngine.itemMonths(items, now: MayaLedger.now)
+    #expect(months.map(\.month) == months.map(\.month).sorted(by: >))
+    #expect(months.flatMap(\.items) == items)
+    for m in months {
+      #expect(zip(m.items, m.items.dropFirst()).allSatisfy { $0.payments >= $1.payments })
+    }
+    #expect(months.count == 2)
+    #expect(months[1].items.contains { $0.id == "bl-saffron" })
   }
 
   @Test func ungroupedScenariosKeepTheirCards() {

@@ -76,6 +76,54 @@ struct MayaBacklogScenarioTests {
     #expect(base.txns.allSatisfy { $0.merchantGroup == nil && !$0.reachable })
   }
 
+  static func waiting(_ id: TxnID, in s: LedgerState, _ change: (inout Txn) -> Void = { _ in }) -> Bool? {
+    var s = s
+    for i in s.txns.indices where s.txns[i].id == id {
+      s.txns[i].needsReview = true
+      s.txns[i].categorySource = s.txns[i].categorySource == .dictionary ? nil : s.txns[i].categorySource
+      change(&s.txns[i])
+    }
+    return MockReach.refreshed(s).txn(id)?.reachable
+  }
+
+  @Test func aHeldCopyIsNeverWaiting() throws {
+    let s = Scenario.mayaCopy.state
+    #expect(try #require(s.txn("starbucks-copy")).isHeldCopy)
+    #expect(MockReach.refreshed(s).txn("starbucks-copy")?.reachable == false)
+    #expect(Self.waiting("starbucks-copy", in: s) == false)
+    #expect(Self.waiting("starbucks-copy", in: s) { $0.heldCopy = nil } == true)
+  }
+
+  @Test func bothSidesOfASamePurchaseAreNeverWaiting() {
+    let s = Scenario.mayaSamePurchase.state
+    #expect(MockReach.refreshed(s).txn("amazon-aed")?.reachable == false)
+    #expect(MockReach.refreshed(s).txn("amazon-usd")?.reachable == false)
+    #expect(Self.waiting("amazon-aed", in: s) == false)
+    #expect(Self.waiting("amazon-usd", in: s) == false)
+    var unpaired = s
+    for i in unpaired.txns.indices where unpaired.txns[i].id == "amazon-aed" { unpaired.txns[i].samePurchase = nil }
+    #expect(Self.waiting("amazon-aed", in: unpaired) == true)
+    #expect(Self.waiting("amazon-usd", in: unpaired) == true)
+  }
+
+  @Test func aPaymentThePersonFiledIsNeverWaiting() {
+    let s = Scenario.mayaBacklog.state
+    #expect(Self.waiting("bl-ts-01", in: s) == true)
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.categoryID = "subscriptions"; $0.categorySource = .user } == false)
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.categoryID = "subscriptions"; $0.categorySource = .manual } == false)
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.categoryID = "shopping"; $0.categorySource = .model(tag: "cf-clef/1") } == true)
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.needsReview = false; $0.categoryID = "subscriptions" } == false)
+  }
+
+  @Test func aPaymentWithAReviewReasonIsNeverWaiting() {
+    let s = Scenario.mayaBacklog.state
+    #expect(MockReach.refreshed(s).txn("bl-ts-unverified")?.reachable == false)
+    for reason in [TxnReviewReason.senderUnverified, .probableCopy, .samePurchase] {
+      #expect(Self.waiting("bl-ts-01", in: s) { $0.reviewReason = reason } == false)
+    }
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.archived = true } == false)
+  }
+
   @Test func foreignRowsCarryTheirHomeEstimate() {
     for t in MayaBacklog.txns where t.amount.currency != Money.home {
       #expect(t.homeSource == .rate)

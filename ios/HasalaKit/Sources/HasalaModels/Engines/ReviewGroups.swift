@@ -10,6 +10,18 @@ public struct FiledCount: Sendable, Hashable, Identifiable {
   public var id: CategoryID { category.id }
 }
 
+public struct ReviewLeftOut: Sendable, Hashable, Identifiable {
+  public var txnID: TxnID
+  public var reason: TxnReviewReason?
+
+  public init(txnID: TxnID, reason: TxnReviewReason?) {
+    self.txnID = txnID
+    self.reason = reason
+  }
+
+  public var id: TxnID { txnID }
+}
+
 public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
   public var group: MerchantGroupRef
   public var merchant: String
@@ -27,11 +39,29 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
   public var filedAs: [FiledCount]
   public var isMixed: Bool
   public var month: YearMonth
+  public var leftOut: [ReviewLeftOut] = []
+  public var isNewMerchant: Bool = false
 
   public var id: String { group.id }
   public var count: Int { txnIDs.count }
   public var total: Int { count + otherMonths }
   public var isIncome: Bool { group.direction == .in }
+  public var verb: String { isIncome ? "Received" : "Spent" }
+  public var metaLine: String { "\(verb) · \(ReviewEngine.payments(count)) · \(dateRange)" }
+
+  public var leftOutLine: String? {
+    guard let first = leftOut.first else { return nil }
+    let n = leftOut.count
+    let lead = n == 1 ? "1 more payment gets its own card." : "\(n) more payments get their own cards."
+    guard Set(leftOut.map(\.reason)).count == 1, let reason = first.reason else { return lead }
+    let why =
+      switch reason {
+      case .senderUnverified: n == 1 ? "Hasala couldn't verify its sender." : "Hasala couldn't verify their sender."
+      case .probableCopy: n == 1 ? "It may be a copy." : "They may be copies."
+      case .samePurchase: n == 1 ? "It may be the same purchase twice." : "Each may be the same purchase twice."
+      }
+    return "\(lead) \(why)"
+  }
 
   public var countLine: String {
     let here = ReviewEngine.payments(count)
@@ -41,8 +71,8 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
 
   public var dateRange: String {
     if first == last { return first.dayMonth }
-    if first.year == last.year { return "\(first.dayMonth) – \(last.dayMonth)" }
-    return "\(first.dayMonth) \(first.year) – \(last.dayMonth) \(last.year)"
+    if first.year == last.year { return "\(first.dayMonth) to \(last.dayMonth)" }
+    return "\(first.dayMonth) \(first.year) to \(last.dayMonth) \(last.year)"
   }
 
   public var spokenDateRange: String {
@@ -76,10 +106,19 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
   }
 
   public func spoken(hidden: Bool) -> String {
-    var line = "\(merchant), \(ReviewEngine.payments(count)), \(amount.spoken(hidden: hidden)), \(spokenDateRange)"
+    let payments = ReviewEngine.payments(count) + (isIncome ? " received" : "")
+    let when = first == last ? "on \(spokenDateRange)" : "from \(spokenDateRange)"
+    var line = "\(merchant), \(payments) \(when), \(isIncome ? "plus " : "")\(amount.spoken(hidden: hidden))"
     if let estimateLine { line += ", " + estimateLine.spoken(hidden: hidden) }
     if otherMonths > 0 { line += ", \(otherMonths) more in other months" }
     if repeatsMonthly { line += ", repeats monthly" }
+    if isNewMerchant { line += ", new merchant" }
+    line += "."
+    if let leftOutLine { line += " " + leftOutLine }
+    if let suggestion {
+      let by = suggestedBy.map { ", " + $0.prefix(1).lowercased() + $0.dropFirst() } ?? ""
+      line += " Looks like \(suggestion.name)\(by)."
+    }
     return line
   }
 }
@@ -145,17 +184,23 @@ extension ReviewEngine {
       guard let ref = t.groupRef else { continue }
       reachable[ref, default: []].append(t)
     }
+    let pairs = Set(s.txns.compactMap { $0.samePurchase?.of })
     var out: [ReviewItem] = []
     var emitted: Set<MerchantGroupRef> = []
     for t in queue(s, in: window) {
       if t.reachable, let ref = t.groupRef, let rows = reachable[ref], rows.count >= 2 {
         guard emitted.insert(ref).inserted else { continue }
-        out.append(.group(groupCard(ref, rows: rows, s, in: window)))
+        out.append(.group(groupCard(ref, rows: rows, s, in: window, pairs: pairs)))
       } else {
         out.append(.single(card(t, s)))
       }
     }
-    return out
+    return out.enumerated().sorted { a, b in
+      let am = a.element.month, bm = b.element.month
+      if am != bm, let am, let bm { return am > bm }
+      if a.element.payments != b.element.payments { return a.element.payments > b.element.payments }
+      return a.offset < b.offset
+    }.map(\.element)
   }
 
   public static func groupCard(_ ref: MerchantGroupRef, _ s: LedgerState, in window: ReviewWindow = .all)
@@ -163,22 +208,27 @@ extension ReviewEngine {
   {
     let rows = queue(s).filter { $0.reachable && $0.groupRef == ref }
     guard rows.contains(where: { window.contains($0.postedAt.date) }) else { return nil }
-    return groupCard(ref, rows: rows, s, in: window)
+    return groupCard(ref, rows: rows, s, in: window, pairs: Set(s.txns.compactMap { $0.samePurchase?.of }))
   }
 
-  static func groupCard(_ ref: MerchantGroupRef, rows: [Txn], _ s: LedgerState, in window: ReviewWindow)
-    -> ReviewGroupCardModel
-  {
+  static func groupCard(
+    _ ref: MerchantGroupRef, rows: [Txn], _ s: LedgerState, in window: ReviewWindow, pairs: Set<TxnID>
+  ) -> ReviewGroupCardModel {
     let inside = rows.filter { window.contains($0.postedAt.date) }
     let shown = inside.isEmpty ? rows : inside
     let dates = shown.map(\.postedAt.date)
     let merchant = displayName(shown)
     let totals = currencyTotals(shown)
     let estimate: HomeTotal? = totals.count >= 2 ? homeEstimate(shown) : nil
-    let suggestions = Set(rows.compactMap(\.reviewSuggestion))
-    let suggested = suggestions.count == 1 ? suggestions.first.flatMap { s.category($0) } : nil
+    let guesses = rows.map(\.reviewSuggestion)
+    let suggestions = Set(guesses.compactMap { $0 })
+    let common = guesses.first.flatMap { g in guesses.allSatisfy { $0 == g } ? g : nil }
+    let suggested = common.flatMap { s.category($0) }
     let suggestedBy = suggested.flatMap { c in
-      rows.first { $0.reviewSuggestion == c.id }?.categorySource?.suggestionLabel(needsReview: true)
+      mostCommon(rows.filter { $0.reviewSuggestion == c.id }.compactMap { $0.categorySource?.suggestionLabel(needsReview: true) })
+    }
+    let leftOut = queue(s, in: window).filter { $0.groupRef == ref && !$0.reachable }.map { t in
+      ReviewLeftOut(txnID: t.id, reason: t.activeReviewReason ?? (pairs.contains(t.id) ? .samePurchase : nil))
     }
     let history = filedAs(ref, s)
     let mixedIDs = Set(history.map(\.id)).union(suggestions)
@@ -188,7 +238,14 @@ extension ReviewEngine {
       first: dates.min() ?? LocalDate(1970, 1, 1), last: dates.max() ?? LocalDate(1970, 1, 1),
       totals: totals, estimate: estimate, spellings: spellings(rows), repeatsMonthly: repeatsMonthly(ref, s),
       suggestion: suggested.map(CategoryOption.init), suggestedBy: suggestedBy, filedAs: history,
-      isMixed: mixedIDs.count >= 2, month: shown.first?.postedAt.date.yearMonth ?? LocalDate(1970, 1, 1).yearMonth)
+      isMixed: mixedIDs.count >= 2, month: shown.first?.postedAt.date.yearMonth ?? LocalDate(1970, 1, 1).yearMonth,
+      leftOut: leftOut, isNewMerchant: rows.contains(where: \.isNewMerchant))
+  }
+
+  static func mostCommon(_ labels: [String]) -> String? {
+    var counts: [String: Int] = [:]
+    for l in labels { counts[l, default: 0] += 1 }
+    return counts.max { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }?.key
   }
 
   public static func displayName(_ rows: [Txn]) -> String {
@@ -259,15 +316,17 @@ extension ReviewEngine {
 
   public static func itemMonths(_ items: [ReviewItem], now: LocalDateTime) -> [ReviewItemMonth] {
     var out: [ReviewItemMonth] = []
+    var index: [YearMonth: Int] = [:]
     for item in items {
       let m = item.month ?? now.date.yearMonth
-      if out.last?.month == m {
-        out[out.count - 1].items.append(item)
+      if let i = index[m] {
+        out[i].items.append(item)
       } else {
+        index[m] = out.count
         out.append(ReviewItemMonth(month: m, title: monthTitle(m, now: now), items: [item]))
       }
     }
-    return out
+    return out.sorted { $0.month > $1.month }
   }
 
   public static func payments(_ items: [ReviewItem]) -> Int { items.reduce(0) { $0 + $1.payments } }

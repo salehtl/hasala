@@ -27,7 +27,7 @@ struct GroupSortingLedgerTests {
 
     let row = try #require(SortResultEngine.row(l.state, in: october))
     #expect(row.line == "Sorted 30 Tailscale as Subscriptions")
-    #expect(row.detail == "including 22 from other months")
+    #expect(row.detail == "Including 22 from other months")
     #expect(row.spoken == "Sorted 30 Tailscale as Subscriptions, including 22 from other months.")
     #expect(!row.canStopRule)
     #expect(row.undo == token)
@@ -58,14 +58,13 @@ struct GroupSortingLedgerTests {
     #expect(l.state.txn("bl-alnoor-t-1")?.inReview == true)
   }
 
-  @Test func theRuleAlsoReachesWaitingPaymentsTheOtherWay() throws {
+  @Test func theRuleLeavesWaitingPaymentsTheOtherWay() throws {
     let l = ledger()
-    try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil))
+    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil)))
+    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
     let refund = try #require(l.state.txn("bl-ts-refund"))
-    #expect(refund.categoryID == "subscriptions")
-    #expect(refund.filedByRule)
-    #expect(refund.ruleID == l.state.sortReceipt?.ruleID)
-    #expect(l.state.sortReceipt?.count == 31)
+    #expect(refund.inReview && refund.categoryID == nil && refund.reachable)
+    #expect(l.state.sortReceipt?.count == 30)
     let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
     #expect(Set(rule.patterns) == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
     let unverified = try #require(l.state.txn("bl-ts-unverified"))
@@ -199,7 +198,7 @@ struct GroupSortingLedgerTests {
     let token = try #require(try l.apply(.stopRule(ruleID)))
     #expect(token.title == "Stopped sorting Tailscale as Subscriptions")
     #expect(l.state.rule(ruleID) == nil)
-    #expect(l.state.txn("bl-ts-refund")?.categoryID == "subscriptions")
+    #expect(l.state.txn("bl-ts-01")?.categoryID == "subscriptions")
     #expect(SortResultEngine.row(l.state)?.canStopRule == false)
     l.undo(token)
     #expect(l.state.rule(ruleID) != nil)
@@ -233,6 +232,47 @@ struct GroupSortingLedgerTests {
     #expect(throws: ActionError.notFound) {
       try l.apply(.notThis(MerchantGroupRef(key: "nobody", direction: .out), "groceries"))
     }
+  }
+
+  @Test func alwaysUseItFilesExactlyWhatTheCardCounted() throws {
+    let l = ledger()
+    try l.apply(.skipReview("bl-ts-01"))
+    let card = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state))
+    #expect(card.total == 29)
+    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil)))
+    #expect(token.title == "Sorted 29 Tailscale as Subscriptions")
+    #expect(l.state.sortReceipt?.count == card.total)
+    #expect(Set(l.state.sortReceipt?.txnIDs ?? []) == Set(card.txnIDs))
+    let skipped = try #require(l.state.txn("bl-ts-01"))
+    #expect(skipped.inReview && skipped.categoryID == nil)
+    #expect(l.state.txn("bl-ts-refund")?.inReview == true)
+  }
+
+  @Test func reachBackFromOneCardLeavesSkippedPayments() throws {
+    let l = ledger()
+    try l.apply(.skipReview("bl-qasr-2"))
+    let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))
+    #expect(token.title == "Sorted 5 Qasr Corner Store as Groceries")
+    #expect(l.state.txn("bl-qasr-2")?.inReview == true)
+    #expect(l.state.txn("bl-qasr-2")?.categoryID == nil)
+  }
+
+  @Test func aRuleLearnedAgainAfterStopGetsItsOwnID() throws {
+    let l = ledger()
+    try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil))
+    let first = try #require(l.state.sortReceipt?.ruleID)
+    #expect(first == "learned-bl-qasr-1")
+    try l.apply(.stopRule(first))
+    try l.apply(.categorize("bl-qasr-1", "shopping", learnRule: true, project: nil))
+    let second = try #require(l.state.rules.first { $0.categoryID == "shopping" && $0.learnedToday })
+    #expect(second.id != first)
+    #expect(l.state.rule(first) == nil)
+    let items = SortedForYouEngine.snapshot(l.state, now: l.now).items
+    let old = try #require(items.first { $0.category.id == "groceries" })
+    #expect(old.count == 5)
+    #expect(!old.canStopRule)
+    #expect(old.ruleID == nil)
+    #expect(l.state.txns.filter { $0.ruleID == second.id }.isEmpty)
   }
 
   @Test func aGroupSortCanAddToAProject() throws {

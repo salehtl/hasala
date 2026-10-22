@@ -13,10 +13,10 @@ public struct SortResultRow: Sendable, Hashable, Identifiable {
 
   public var detail: String? {
     guard otherMonths > 0 else { return nil }
-    return "including \(otherMonths) from \(otherMonths == 1 ? "another month" : "other months")"
+    return "Including \(otherMonths) from \(otherMonths == 1 ? "another month" : "other months")"
   }
 
-  public var spoken: String { [line, detail].compactMap { $0 }.joined(separator: ", ") + "." }
+  public var spoken: String { [line, detail?.lowercased()].compactMap { $0 }.joined(separator: ", ") + "." }
 
   public var canStopRule: Bool { ruleID != nil }
 }
