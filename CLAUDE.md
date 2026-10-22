@@ -624,7 +624,9 @@ the approval of the owner for that deployment.
   "Sort automatically", a second opt-in. With it, a Clef answer at or above
   the auto-file threshold (0.8, margin 0.4) files the row with
   `needs_review: false`. Apple's model never files a row
-  (`ModelTier.autoConfirm = false`). Do not send other data
+  (`ModelTier.autoConfirm = false`). A bulk sort of what waits in Review
+  (2026-10-21) runs only when the person starts it, still one name per
+  request. Do not send other data
   through this path: no amount, date, card, bank, custom category name or
   email. Refer to `docs/decisions/cloud-suggestions.md`.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;

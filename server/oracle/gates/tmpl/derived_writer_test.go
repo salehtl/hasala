@@ -16,6 +16,8 @@ import (
 var derivedCorpusSources = map[string]string{
 	"dib.transfer.v1":       "dib.account.v1",
 	"dib.money-transfer.v1": "dib.account.v1",
+	"dib.card-refund.v1":    "dib.account.v1",
+	"dib.card-reversal.v1":  "dib.account.v1",
 }
 
 func TestWriteDerivedTemplateFixtures(t *testing.T) {

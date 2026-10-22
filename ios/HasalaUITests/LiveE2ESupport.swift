@@ -304,15 +304,15 @@ class LiveE2ECase: XCTestCase {
     attach(app, "Profile")
     if el(app, "profile.close").exists { el(app, "profile.close").tap() }
 
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    app.tabBars.firstMatch.buttons["Projects"].tap()
     let project = labelled(app, containing: MayaSample.project)
     var swipes = 0
     while !project.exists && swipes < 8 {
       app.swipeUp()
       swipes += 1
     }
-    XCTAssertTrue(project.waitForExistence(timeout: 10), "Plan shows no '\(MayaSample.project)'", file: file, line: line)
-    attach(app, "Plan")
+    XCTAssertTrue(project.waitForExistence(timeout: 10), "Projects shows no '\(MayaSample.project)'", file: file, line: line)
+    attach(app, "Projects")
     app.tabBars.firstMatch.buttons["Home"].tap()
   }
 

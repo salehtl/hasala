@@ -62,8 +62,8 @@ final class SmokeTests: XCTestCase {
 
     // Every tab opens; coming back to Home shows the hero as it was (no replay).
     let tabBar = app.tabBars.firstMatch
-    tabBar.buttons["Plan"].tap()
-    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
+    tabBar.buttons["Projects"].tap()
+    XCTAssertTrue(el(app, "projects.new").waitForExistence(timeout: uiWait))
     try audit(app)
     tabBar.buttons["Review"].tap()
     XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait))
@@ -117,6 +117,19 @@ final class SmokeTests: XCTestCase {
   }
 
   @MainActor
+  func testTappingTheMarkOpensNothing() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let mark = app.images["Hasala"].firstMatch
+    XCTAssertTrue(mark.waitForExistence(timeout: uiWait))
+    for _ in 0..<5 { mark.tap() }
+    XCTAssertFalse(el(app, "bell.sheet").waitForExistence(timeout: 2), "the mark opened the notifications")
+    XCTAssertTrue(app.buttons["header.notifications"].firstMatch.isHittable)
+    XCTAssertTrue(el(app, "home.hero.left").exists, "the mark left Home")
+    XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "the mark is off centre")
+  }
+
+  @MainActor
   func testTheBellIsOnEveryTab() throws {
     let app = launch(scenario: "maya")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
@@ -126,17 +139,18 @@ final class SmokeTests: XCTestCase {
     let profile = app.buttons["header.profile"].firstMatch
     let search = app.buttons["header.search"].firstMatch
     let mark = app.images["Hasala"].firstMatch
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+    for (tab, id) in [("Projects", "projects.new"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
       XCTAssertEqual(bell.label, "Notifications, 4 need a look")
-      XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
+      XCTAssertLessThan(profile.frame.maxX, search.frame.minX, "\(tab): the profile is not before search and the bell")
       XCTAssertTrue(search.isHittable, "\(tab) has no search")
       XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")
       XCTAssertGreaterThanOrEqual(search.frame.width, 44)
       XCTAssertGreaterThanOrEqual(search.frame.height, 44)
       if mark.exists {
+        XCTAssertLessThanOrEqual(profile.frame.maxX, mark.frame.minX, "\(tab): the profile overlaps the mark")
         XCTAssertLessThanOrEqual(mark.frame.maxX, search.frame.minX, "\(tab): search overlaps the mark")
         XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "\(tab): the mark is off centre")
       }
@@ -196,22 +210,11 @@ final class SmokeTests: XCTestCase {
     tap(app, "search.close")
     XCTAssertTrue(el(app, "search.placeholder").waitForNonExistence(timeout: uiWait))
 
-    for (tab, id) in [("Plan", "plan.readyToAssign"), ("Activity", "activity.count")] {
+    for (tab, id) in [("Projects", "projects.new"), ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       attach(app, "AX3 · \(tab)")
-      if tab == "Plan" {
-        // As PlanUITests.testPlanAtLargeTextSizes does: every check but clipped text, then
-        // clipped text alone, letting through only the "READY TO ASSIGN" overline, which the
-        // audit reads as cut off and which wraps instead
-        // (`PlanUITests.testReadyToAssignWrapsAtTheLargestSize`).
-        try audit(app)
-        try app.performAccessibilityAudit(for: .textClipped) { issue in
-          issue.element?.label.localizedCaseInsensitiveCompare("Ready to assign") == .orderedSame
-        }
-      } else {
-        try audit(app, atLargeText: true)
-      }
+      try audit(app, atLargeText: true)
     }
   }
 
@@ -320,7 +323,7 @@ final class SmokeTests: XCTestCase {
   @MainActor
   func testAPullOnEveryTabReturnsToTheTop() throws {
     let app = launch(scenario: "maya", arguments: ["-HasalaRefreshDelay", "8000", "-HasalaPullHold", "5000"])
-    let tabs = [("Home", "home.period"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+    let tabs = [("Home", "home.period"), ("Projects", "projects.new"), ("Review", "review.tab.count"),
                 ("Activity", "activity.period")]
     for (tab, anchor) in tabs {
       app.tabBars.firstMatch.buttons[tab].tap()

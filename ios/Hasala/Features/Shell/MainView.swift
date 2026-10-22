@@ -49,8 +49,14 @@ struct MainView: View {
       Tab("Home", image: "TabHome", value: AppTab.home) {
         HomeView(app: app, model: home)
       }
-      Tab("Plan", image: "TabPlan", value: AppTab.plan) {
-        PlanView(app: app, model: plan)
+      if BuildSurface.showsPlanTab {
+        Tab("Plan", image: "TabPlan", value: AppTab.plan) {
+          PlanView(app: app, model: plan)
+        }
+      } else {
+        Tab("Projects", image: "TabProjects", value: AppTab.projects) {
+          ProjectsTabView(app: app)
+        }
       }
       Tab("Review", image: "TabReview", value: AppTab.review) {
         ReviewTabView(app: app)
@@ -96,6 +102,8 @@ struct MainView: View {
         WidgetConfigSheet(app: app, kind: kind, entry: entry)
       case .project(let id):
         ProjectEditorSheet(app: app, project: id)
+      case .newProject(let starter):
+        ProjectEditorSheet(app: app, project: nil, starter: starter)
       case .addTransaction:
         AddTransactionHost(app: app)
       case .addFromEmail(let id):
@@ -103,6 +111,8 @@ struct MainView: View {
       // TODO(spec 04 §13.1): direct answers; the results as you type are the ledger's own.
       case .search:
         SearchView(app: app)
+      case .checkSuggestions:
+        CheckSuggestionsSheet(app: app)
       }
     }
     .fullScreenCover(item: Bindable(app.router).cover) { cover in
@@ -123,6 +133,7 @@ struct MainView: View {
       guard let launch = app.router.pendingLaunch else { return }
       app.router.pendingLaunch = nil
       app.router.profile = launch.profile
+      app.router.overProfile = launch.overProfile
       app.router.transaction = launch.transaction
       app.router.sheet = launch.sheet
       app.router.cover = launch.cover
@@ -144,7 +155,7 @@ struct TransactionHost: View {
 }
 
 /// Change a budget keeps one view model while it is up.
-private struct BudgetHost: View {
+struct BudgetHost: View {
   @State private var model: BudgetSheetViewModel
 
   init(app: AppModel, category: CategoryID) {
@@ -155,7 +166,7 @@ private struct BudgetHost: View {
 }
 
 /// Move money keeps one view model while it is up.
-private struct MoveMoneyHost: View {
+struct MoveMoneyHost: View {
   @State private var model: BudgetSheetViewModel
 
   init(app: AppModel, category: CategoryID?) {

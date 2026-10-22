@@ -32,17 +32,26 @@ final class SweepModel: CategoryModel, Sendable {
 }
 
 final class MemoryCache: ModelAnswerCache, Sendable {
-  let rows = Mutex<[String: Int64]>([:])
+  let rows = Mutex<[String: (expires: Int64, answer: CachedAnswer)]>([:])
 
-  func isCached(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> Bool {
+  func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer? {
     let key = ModelTier.cacheKey(subject: subject, taxonomyHash: taxonomyHash, modelTag: modelTag)
-    return rows.withLock { ($0[key] ?? Int64.min) > now }
+    return rows.withLock { r in r[key].flatMap { $0.expires > now ? $0.answer : nil } }
   }
 
   func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws {
     rows.withLock { r in
       for e in entries {
-        r[ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag)] = now + 30 * 86_400_000
+        r[ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag)] = (now + 30 * 86_400_000, .unknown)
+      }
+    }
+  }
+
+  func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws {
+    rows.withLock { r in
+      for e in entries {
+        r[ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag)] =
+          (now + 30 * 86_400_000, .category(e.category, autoFile: e.autoFile))
       }
     }
   }
@@ -99,7 +108,8 @@ struct ModelSuggestionSweepTests {
       state.txns.values.map { t in
         SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
-          sourceKind: SweepRow.SourceKind(rawValue: t.categorySource?.kind.rawValue ?? "none") ?? .none, sourceRef: nil,
+          sourceKind: SweepRow.SourceKind(rawValue: t.categorySource?.kind.rawValue ?? "none") ?? .none,
+          sourceRef: t.categorySource?.model,
           needsReview: t.needsReview, candidate: !t.unparsed && t.splits.isEmpty, version: t.version, template: templates[t.id])
       }.sorted { $0.id < $1.id }
     }
@@ -231,6 +241,31 @@ struct ModelSuggestionSweepTests {
     try l.fold(blobs[0])
     #expect(ids.allSatisfy { l.state.txns[$0]?.categorySource == CategorySource(kind: .model, model: "cf-clef/1") })
     #expect(device.calls == ["cafe example jbr"])
+  }
+
+  @Test("the sweep reports its cloud calls even when the run fails after them, and keeps within its cloud cap")
+  func cloudSpend() async throws {
+    struct Boom: Error {}
+    var l = Ledger()
+    _ = try l.ingest([(Self.arabic, "debit"), ("ANOTHER CAFE SPOT", "debit"), ("THIRD CAFE SPOT", "debit")])
+    let device = SweepModel("apple-fm/26.1")
+    let cloud = SweepModel("cf-clef/1", fallback: .category("dining"))
+    let spent = Mutex<[Int]>([])
+    do {
+      _ = try await ModelSuggestionSweep.run(
+        rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: [.cloud(cloud), .onDevice(device)],
+        context: .foreground, cache: MemoryCache(), now: { now }, maxCloudCalls: 2, spent: { n in spent.withLock { $0.append(n) } },
+        stamps: AuthorStamps(), reread: { throw Boom() })
+      Issue.record("the reread failed, so the run must throw")
+    } catch is Boom {}
+    #expect(spent.withLock { $0 } == [2] && cloud.calls.count == 2)
+    #expect(device.calls.count == 1 && !cloud.calls.contains(device.calls[0]))
+    let quiet = SweepModel("cf-clef/1", fallback: .category("dining"))
+    let none = Mutex<[Int]>([])
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: [.cloud(quiet)], context: .foreground,
+      cache: MemoryCache(), now: { now }, maxCloudCalls: 0, spent: { n in none.withLock { $0.append(n) } })
+    #expect(quiet.calls.isEmpty && none.withLock { $0 }.isEmpty)
   }
 
   @Test("more than 500 suggestions split into blobs that each fold clean")

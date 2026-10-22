@@ -49,7 +49,7 @@ struct ProfileSheet: View {
           money
           settings
           GravatarSection()
-          if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection() }
+          if BuildSurface.showsCloudSuggestions { CloudSuggestionsSection(app: app) }
           footer
         }
         .padding(.horizontal, HSpacing.sheetPadding)
@@ -84,6 +84,17 @@ struct ProfileSheet: View {
     // Sign-in & security › Delete: the same CSV as "Export your data" (requests/p4.md 2).
     .environment(\.accountExport, CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)))
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
+    .sheet(item: Bindable(app.router).overProfile) { route in
+      switch route {
+      case .budget(let id):
+        BudgetHost(app: app, category: id)
+          .presentationDetents([.large])
+      case .moveMoney(let id):
+        MoveMoneyHost(app: app, category: id)
+      default:
+        EmptyView()
+      }
+    }
     .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
   }
@@ -127,9 +138,16 @@ struct ProfileSheet: View {
           MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
-        row(.projects, id: "profile.projects") {
-          MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
-                        hidden: model.hidden)
+        if BuildSurface.showsPlanTab {
+          row(.projects, id: "profile.projects") {
+            MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
+                          hidden: model.hidden)
+          }
+        } else {
+          row(.plan, id: "profile.plan") {
+            MoneyThingRow(plate: HuePlate(hue: .sky, icon: .tabPlan), title: "Plan", detail: model.planLine,
+                          hidden: model.hidden)
+          }
         }
       }
     }
@@ -285,6 +303,12 @@ private struct ProfilePage: View {
       ProjectAddTransactionsView(app: app, project: id)
     case .editProject(let id):
       ProjectEditorView(app: app, project: id)
+    case .newProject(let starter):
+      ProjectEditorView(app: app, project: nil, starter: starter)
+    case .plan:
+      PlanPage(app: app)
+    case .category(let id):
+      CategoryDetailView(app: app, category: id)
     case .rules:
       RulesPage(app: app, model: model)
     case .notifications:

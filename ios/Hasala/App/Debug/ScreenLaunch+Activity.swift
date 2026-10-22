@@ -75,6 +75,16 @@
       }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
+      Screen("review.suggestions", scenario: "mayaSuggestions", prepare: shell(.review, sheet: .checkSuggestions)),
+      Screen("review.sort.ready", scenario: "maya", prepare: cloudSort(.idle, then: shell(.review))),
+      Screen("review.sort.running", scenario: "maya", prepare: cloudSort(.running, then: shell(.review))),
+      Screen("review.sort.paused", scenario: "maya",
+             prepare: cloudSort(.paused(.busy(untilMs: Int64(Date().timeIntervalSince1970 * 1000) + 15 * 60_000)),
+                                then: shell(.review))),
+      Screen("review.sort.done", scenario: "mayaSuggestions", prepare: cloudSort(.done, then: shell(.review))),
+      Screen("review.sort.deck", scenario: "maya", prepare: cloudSort(.running) { graph in
+        startDeck(graph, at: "lulu") { _ in }
+      }),
       // Search · Ready.
       Screen("search", scenario: "maya", prepare: shell(.home, sheet: .search)),
       // Search · Results as you type ("carre").

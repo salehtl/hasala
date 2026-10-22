@@ -26,6 +26,21 @@ public enum MayaHistory {
     return s
   }
 
+  public static var suggested: [Txn] {
+    func row(_ id: String, _ merchant: String, _ minor: Int64, _ day: Int, _ hour: Int, _ category: CategoryID,
+             _ raw: String) -> Txn {
+      Txn(id: id, merchant: merchant, amount: .aed(minor), postedAt: LocalDateTime(2026, 10, day, hour, 15),
+          accountID: "dib", categorySource: .model(tag: "cf-clef/1"), needsReview: true, isNewMerchant: true,
+          suggestion: category, provenance: MayaLedger.alert(MayaLedger.dib, "\(hour):15", raw))
+    }
+    return [
+      row("sug-shake-9", "Shake Shack", 72_00, 9, 20, "dining", "SHAKE SHACK MOE"),
+      row("sug-tim-8", "Tim Hortons", 18_50, 8, 8, "dining", "TIM HORTONS JLT"),
+      row("sug-shake-4", "Shake Shack", 64_50, 4, 19, "dining", "SHAKE SHACK MOE"),
+      row("sug-almaya-7", "Al Maya Supermarket", 96_40, 7, 18, "groceries", "AL MAYA SUPERMARKET"),
+    ]
+  }
+
   public static var rangeReview: [Txn] {
     var copy = h("talabat-8", "Talabat", 88_55, 8, 6, "dining", hour: 20)
     copy.id = "aug-talabat-copy"

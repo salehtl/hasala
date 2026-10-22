@@ -73,7 +73,7 @@ nonisolated enum LedgerStateMapper {
     }
     markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
-      unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
+      Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
@@ -312,7 +312,7 @@ nonisolated enum LedgerStateMapper {
     var amount = Money(minor: b.amountMinor, currency: b.currency)
     var priceChangeFrom: Money?
     if b.amountMode == "fixed", let last = history.first, let txn = paid[last]?.txn,
-      let charged = paidAmount[txn].flatMap({ charged($0, in: b.currency) })
+      let charged = paidAmount[txn].flatMap({ Self.charged($0, in: b.currency) })
     {
       let tolerance = Fils.mulDiv(b.amountMinor, b.toleranceBp ?? 0, 10_000)
       if charged.minor.minus(b.amountMinor).magnitude > tolerance.magnitude {

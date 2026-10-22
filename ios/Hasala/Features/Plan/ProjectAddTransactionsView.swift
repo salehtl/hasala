@@ -49,8 +49,8 @@ final class ProjectAddModel {
     selected = []
     if app.projectsInProfile {
       if app.router.profile.last == .addToProject(project) { app.router.profile.removeLast() }
-    } else if app.router.plan.last == .addToProject(project) {
-      app.router.plan.removeLast()
+    } else if app.router.projectsPath.last == .addToProject(project) {
+      app.router.projectsPath.removeLast()
     }
   }
 }
@@ -65,12 +65,10 @@ struct ProjectAddTransactionsView: View {
     _model = State(initialValue: ProjectAddModel(app: app, project: project))
   }
 
-  private var inPlan: Bool { app.router.plan.contains(.addToProject(model.project)) }
-
   var body: some View {
     let rows = model.shown
     let chosen = rows.filter { model.selected.contains($0.id) }
-    PlanDetailScreen(app: app, title: "Add transactions", wash: .hue(.peach), hostsToast: inPlan) {
+    PlanDetailScreen(app: app, title: "Add transactions", wash: .hue(.peach)) {
       filters
         .padding(.horizontal, HSpacing.insetPage)
       VStack(alignment: .leading, spacing: 12) {

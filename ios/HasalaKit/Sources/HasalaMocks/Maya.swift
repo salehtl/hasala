@@ -22,6 +22,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaRange
   case mayaSamePurchase
   case mayaUnreadMail
+  case mayaSuggestions
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -71,6 +72,12 @@ public enum Scenario: String, Sendable, CaseIterable {
         UnreadMail(id: "unread-outlook", provider: .outlook, receivedOn: LocalDate(2026, 10, 7)),
       ]
       s.mailbox.unreadable = 1
+    }
+    if self == .mayaSuggestions {
+      for i in s.txns.indices where ["dubai-taxi", "apple"].contains(s.txns[i].id) {
+        s.txns[i].categorySource = .model(tag: "cf-clef/1")
+      }
+      s.txns += MayaHistory.suggested
     }
     if self == .mayaRange {
       s.txns += MayaHistory.rangeReview

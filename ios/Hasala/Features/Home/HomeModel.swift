@@ -125,9 +125,12 @@ final class HomeViewModel: HomeModel {
       router.home = [.bills]
       return nil
     case .category(let id):
-      close()
-      router.tab = .plan
-      router.plan = [.category(id)]
+      if BuildSurface.showsPlanTab {
+        close()
+        app.openPlan(category: id)
+      } else {
+        router.open(.profile, profile: [.plan, .category(id)])
+      }
       return nil
     }
   }
@@ -140,7 +143,7 @@ final class HomeViewModel: HomeModel {
   func openWidget(_ id: String) -> HomeRoute? {
     switch id {
     case "budgetPace":
-      app.tab = .plan
+      app.openPlan()
       return nil
     case "today":
       app.tab = .activity
@@ -156,21 +159,20 @@ final class HomeViewModel: HomeModel {
       return nil
     default:
       if id.hasPrefix(Self.categoryPrefix) {
-        app.tab = .plan
-        app.router.plan = [.category(String(id.dropFirst(Self.categoryPrefix.count)))]
+        app.openPlan(category: String(id.dropFirst(Self.categoryPrefix.count)))
         return nil
       }
-      app.tab = .plan
       if id.hasPrefix(Self.projectPrefix) {
-        app.router.plan = [.project(String(id.dropFirst(Self.projectPrefix.count)))]
+        app.openProjectsTab(String(id.dropFirst(Self.projectPrefix.count)))
+        return nil
       }
+      app.openPlan()
       return nil
     }
   }
 
   func openNotCounted(_ line: SpendHero.NotCounted) {
-    app.tab = .plan
-    app.router.plan = line.projectID.map { [.project($0)] } ?? [.projects]
+    app.openProjectsTab(line.projectID)
   }
 
   static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."

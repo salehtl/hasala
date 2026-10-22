@@ -106,6 +106,28 @@ struct ModelStageTests {
     #expect(r.unknown.count == 40)
   }
 
+  @Test("a cloud cap limits only the calls that leave the device; on-device still runs")
+  func cloudCap() async {
+    let device = StageFake("apple-fm/26.1")
+    let cloud = StageFake("cf-clef/1")
+    let subjects = ["one shop", "two shop", "three shop"]
+    let r = await ModelTier.run(
+      subjects: subjects, stages: [.cloud(cloud), .onDevice(device)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      maxCloudCalls: 1)
+    #expect(cloud.calls == ["one shop"] && r.cloudRequests == 1)
+    #expect(device.calls == subjects && r.requests == 4)
+    let none = StageFake("cf-clef/1")
+    let device2 = StageFake("apple-fm/26.1")
+    let z = await ModelTier.run(
+      subjects: subjects, stages: [.cloud(none), .onDevice(device2)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      maxCloudCalls: 0)
+    #expect(none.calls.isEmpty && z.cloudRequests == 0 && device2.calls == subjects)
+    let alone = StageFake("cf-clef/1")
+    let c = await ModelTier.run(
+      subjects: subjects, stages: [.cloud(alone)], allowed: Self.allowed, context: .backlog, now: { 0 }, maxCloudCalls: 2, concurrency: 3)
+    #expect(alone.calls.count == 2 && c.cloudRequests == 2)
+  }
+
   @Test("the phase budget is shared across stages")
   func phaseBudget() async {
     let clock = Mutex<Int64>(0)

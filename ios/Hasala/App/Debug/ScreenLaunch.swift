@@ -120,8 +120,9 @@
     /// A tab with its push path, and a sheet or the cover over it, as the shell applies
     /// them when it appears.
     static func shell(
-      _ tab: AppTab, home: [HomeRoute] = [], plan: [PlanRoute] = [], activity: [ActivityRoute] = [],
-      sheet: SheetRoute? = nil, cover: CoverRoute? = nil, profile: [ProfileRoute] = [],
+      _ tab: AppTab, home: [HomeRoute] = [], plan: [PlanRoute] = [], projects: [PlanRoute] = [],
+      activity: [ActivityRoute] = [], sheet: SheetRoute? = nil, cover: CoverRoute? = nil,
+      profile: [ProfileRoute] = [], overProfile: SheetRoute? = nil,
       transaction: [TransactionRoute] = [], review: [ReviewRoute] = []
     ) -> @MainActor (MockGraph) -> Void {
       { graph in
@@ -129,10 +130,12 @@
         router.tab = tab
         router.home = home
         router.plan = plan
+        router.projects = projects
         router.activity = activity
         router.review = review
         if sheet != nil || cover != nil {
-          router.pendingLaunch = PendingLaunch(sheet: sheet, cover: cover, profile: profile, transaction: transaction)
+          router.pendingLaunch = PendingLaunch(
+            sheet: sheet, cover: cover, profile: profile, overProfile: overProfile, transaction: transaction)
         }
       }
     }
@@ -140,6 +143,15 @@
     /// The profile sheet with `path` pushed inside it.
     static func profile(_ path: [ProfileRoute]) -> @MainActor (MockGraph) -> Void {
       shell(.home, sheet: .profile, profile: path)
+    }
+
+    static func cloudSort(
+      _ phase: CloudSortStatus.Phase, then next: @escaping @MainActor (MockGraph) -> Void
+    ) -> @MainActor (MockGraph) -> Void {
+      { graph in
+        if graph.app.cloudSort == nil { graph.app.cloudSort = MockCloudSortController(MockCloudSortController.sample(phase)) }
+        next(graph)
+      }
     }
   }
 

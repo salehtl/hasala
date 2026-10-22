@@ -33,10 +33,10 @@ final class PlanViewModel: PlanModel {
   }
   var hidden: Bool { app.amountsHidden }
 
-  func editBudget(_ category: CategoryID) { app.router.open(.budget(category)) }
-  func moveMoney(to category: CategoryID?) { app.router.open(.moveMoney(to: category)) }
-  func open(_ category: CategoryID) { app.router.plan.append(.category(category)) }
-  func open(project: ProjectID) { app.router.plan.append(.project(project)) }
+  func editBudget(_ category: CategoryID) { app.openPlanSheet(.budget(category)) }
+  func moveMoney(to category: CategoryID?) { app.openPlanSheet(.moveMoney(to: category)) }
+  func open(_ category: CategoryID) { app.pushPlanCategory(category) }
+  func open(project: ProjectID) { app.pushPlanProject(project) }
 
   // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign funds targets first, then follows the
   // split, as one `budget_moved` batch with a preview sheet.
@@ -44,7 +44,7 @@ final class PlanViewModel: PlanModel {
   func autoAssign() { app.say("Auto-assign isn't in this build yet", icon: .wand) }
 
   func newProject() { app.editProject(nil) }
-  func openProjects() { app.router.plan.append(.projects) }
+  func openProjects() { app.pushPlanProjects() }
 }
 
 // MARK: - Plan · Dining
@@ -83,10 +83,12 @@ final class CategoryDetailViewModel: CategoryDetailModel {
   }
   var hidden: Bool { app.amountsHidden }
 
-  func changeBudget() { app.router.open(.budget(category)) }
-  func moveMoneyIn() { app.router.open(.moveMoney(to: category)) }
+  func changeBudget() { app.openPlanSheet(.budget(category)) }
+  func moveMoneyIn() { app.openPlanSheet(.moveMoney(to: category)) }
   func open(_ txn: TxnID) { app.open(txn) }
-  func openRules() { app.router.open(.profile, profile: [.rules]) }
+  func openRules() {
+    if app.planInProfile { app.router.profile.append(.rules) } else { app.router.open(.profile, profile: [.rules]) }
+  }
 
   // TODO(spec 12 §7): "Add a rule" needs a rule-making screen (Categories and rules).
   func addRule() { app.say("Adding a rule here isn't in this build yet", icon: .wand) }
@@ -286,5 +288,5 @@ final class BudgetSheetViewModel: BudgetSheetModel {
     return ok
   }
 
-  func close() { app.sheet = nil }
+  func close() { app.closePlanSheet() }
 }

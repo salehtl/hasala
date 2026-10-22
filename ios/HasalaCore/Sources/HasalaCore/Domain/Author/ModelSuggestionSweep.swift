@@ -41,7 +41,8 @@ public enum ModelSuggestionSweep {
 
   public static func suggest(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
-    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
+    maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }
   ) async throws -> [Suggestion] {
     guard context.budget.calls > 0, !allowed.isEmpty, !stages.isEmpty else { return [] }
     let queued = queue(rows: rows, categorizer: categorizer).map { (row: $0, subject: Canon.subject($0.merchantRaw)) }
@@ -56,27 +57,40 @@ public enum ModelSuggestionSweep {
     for q in queued where !mayLeaveDevice(q.row) { blocked.insert(q.subject) }
     let held = blocked
     var cached: Set<[String]> = []
-    for s in subjects {
-      for stage in stages where stage.accepts(s) {
+    var answer: [String: ModelTier.StagedSuggestion] = [:]
+    subjects: for s in subjects {
+      for stage in stages where stage.accepts(s) && !(stage.leavesDevice && held.contains(s)) {
         let tag = stage.model.modelTag
-        if try cache.isCached(subject: s, taxonomyHash: taxonomy, modelTag: tag, now: started) { cached.insert([s, tag]) }
+        switch try cache.answer(subject: s, taxonomyHash: taxonomy, modelTag: tag, now: started) {
+        case .unknown?:
+          cached.insert([s, tag])
+        case .category(let c, let a)? where allowed.contains(where: { $0.id == c }):
+          answer[s] = ModelTier.StagedSuggestion(subject: s, category: c, modelTag: tag, autoFile: a)
+          continue subjects
+        case .category?:
+          cached.insert([s, tag])
+        case nil:
+          continue subjects
+        }
       }
     }
     let hits = cached
     let r = await ModelTier.run(
-      subjects: subjects, stages: stages, allowed: allowed, context: context, now: now, callTimeout: callTimeout,
-      isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) })
+      subjects: subjects.filter { answer[$0] == nil }, stages: stages, allowed: allowed, context: context, now: now,
+      callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) },
+      maxCloudCalls: maxCloudCalls)
+    if r.cloudRequests > 0 { spent(r.cloudRequests) }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
-    var answer: [String: ModelTier.StagedSuggestion] = [:]
+    try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
     for s in r.suggestions { answer[s.subject] = s }
     return queued.compactMap { q in
       guard let a = answer[q.subject], let v = q.row.version else { return nil }
-      return Suggestion(txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile)
+      return Suggestion(txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile)
     }
   }
 
-  public static func author(_ suggestions: [Suggestion], current: [SweepRow], context: AuthorContext) throws(AuthorError)
-    -> [AuthoredBlob]
+  public static func items(_ suggestions: [Suggestion], current: [SweepRow])
+    -> [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)]
   {
     var now: [String: SweepRow] = [:]
     for r in current { now[r.id] = r }
@@ -87,18 +101,26 @@ public enum ModelSuggestionSweep {
       items.append(
         (s.txnID, s.version, s.category, r.needsReview || s.needsReview, CategorySource(kind: .model, model: s.modelTag)))
     }
+    return items
+  }
+
+  public static func author(_ suggestions: [Suggestion], current: [SweepRow], context: AuthorContext) throws(AuthorError)
+    -> [AuthoredBlob]
+  {
+    let items = items(suggestions, current: current)
     guard !items.isEmpty else { return [] }
     return try OpAuthor.categorizations(items, context: context)
   }
 
   public static func run(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
-    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, stamps: AuthorStamps,
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
+    maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }, stamps: AuthorStamps,
     reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext)
   ) async throws -> [AuthoredBlob] {
     let suggestions = try await suggest(
       rows: rows, categorizer: categorizer, allowed: allowed, stages: stages, context: context, cache: cache, now: now,
-      callTimeout: callTimeout)
+      callTimeout: callTimeout, autoFile: autoFile, maxCloudCalls: maxCloudCalls, spent: spent)
     guard !suggestions.isEmpty else { return [] }
     try Task.checkCancellation()
     let fresh = try await reread()

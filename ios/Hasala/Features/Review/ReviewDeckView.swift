@@ -38,6 +38,7 @@ struct ReviewDeckView: View {
   @State private var reasonInfo: ReviewCardModel?
   @State private var pendingArchive: ReviewCardModel?
   @State private var pendingCopy: (card: ReviewCardModel, merge: Bool)?
+  @State private var choosingRange = false
 
   private struct PendingSort {
     let pick: ReviewPick
@@ -62,6 +63,7 @@ struct ReviewDeckView: View {
     let top = model.cards.first
     VStack(spacing: 0) {
       header(done: !showsDeck)
+      rangeRow
       progress
       Group {
         if showsDeck {
@@ -136,6 +138,12 @@ struct ReviewDeckView: View {
             .numberRoll(Double(model.position))
             .accessibilityIdentifier("review.position")
         }
+        if model.waitingForCloud > 0 {
+          Text("Waiting for Cloudflare AI (\(model.waitingForCloud))")
+            .hType(.caption1)
+            .foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("review.waitingForCloud")
+        }
       }
       Spacer()
       moreMenu
@@ -145,6 +153,17 @@ struct ReviewDeckView: View {
     .padding(.horizontal, HSpacing.insetPage)
     .padding(.top, 6)
     .frame(minHeight: 54)
+  }
+
+  private var rangeRow: some View {
+    PeriodPill(model.periodTitle, tinted: !model.isThisMonth) { choosingRange = true }
+      .accessibilityIdentifier("review.period")
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.top, 8)
+      .sheet(isPresented: $choosingRange) {
+        PeriodSheet(app: app) { model.periodChanged() }
+      }
   }
 
   private var moreMenu: some View {

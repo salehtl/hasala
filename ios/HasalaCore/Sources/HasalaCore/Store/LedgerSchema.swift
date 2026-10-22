@@ -177,6 +177,15 @@ enum LedgerSchema {
     "CREATE INDEX fm_cache_expires ON fm_cache (expires_at_ms)",
   ]
 
+  static let fmCacheAnswers: [String] = [
+    "ALTER TABLE fm_cache ADD COLUMN category TEXT",
+    "ALTER TABLE fm_cache ADD COLUMN auto_file INTEGER NOT NULL DEFAULT 0",
+  ]
+
+  static let backlogRun: [String] = [
+    "CREATE TABLE backlog_run (id INTEGER PRIMARY KEY CHECK (id = 1), json BLOB NOT NULL)"
+  ]
+
   static let mailboxSenderAddress: [String] = [
     "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID"
   ]
@@ -212,6 +221,12 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_unparsed_sender") { db in
       for sql in mailboxUnparsedSender { try db.execute(sql: sql) }
+    }
+    m.registerMigration("fm_cache_answers") { db in
+      for sql in fmCacheAnswers { try db.execute(sql: sql) }
+    }
+    m.registerMigration("backlog_run") { db in
+      for sql in backlogRun { try db.execute(sql: sql) }
     }
     return m
   }

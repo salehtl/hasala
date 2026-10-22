@@ -1,9 +1,11 @@
 import CoreCategorize
 import CoreDomain
 import CoreOutbox
+import CorePrimitives
 import CoreStore
 import CoreSync
 import Foundation
+import HasalaCloud
 import Synchronization
 
 struct ModelSuggestionStage: Sendable {
@@ -15,8 +17,10 @@ struct ModelSuggestionStage: Sendable {
   let cloud: (any CategoryModel)?
   let onDeviceAlone: Bool
   let nowMs: @Sendable () -> Int64
-  var firstImportActive: @Sendable () -> Bool = { false }
+  var backlogActive: @Sendable () -> Bool = { false }
   var autoFileEnabled: @Sendable () -> Bool = { false }
+  var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
+  var cloudSpent: @Sendable (Int) async -> Void = { _ in }
   let gate = SweepGate()
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
@@ -36,7 +40,7 @@ struct ModelSuggestionStage: Sendable {
   }
 
   func run(_ trigger: WorkCoordinator.Trigger) async -> Bool {
-    guard Self.runs(trigger), !firstImportActive() else { return false }
+    guard Self.runs(trigger), !backlogActive() else { return false }
     return await gate.run { await sweep() }
   }
 
@@ -44,39 +48,89 @@ struct ModelSuggestionStage: Sendable {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
+    let tally = CallTally()
+    let done: Bool
     do {
       let taxonomy = try reader.taxonomy()
-      let stages = Self.stages(onDevice: onDevice, cloud: cloud, onDeviceAlone: onDeviceAlone)
-      guard !stages.isEmpty else { return false }
-      let blobs = try await ModelSuggestionSweep.run(
-        rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
-        stages: stages, context: .foreground, cache: cache, now: nowMs, stamps: observer.stamps,
-        reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-      return try await commit(blobs)
+      let all = Self.stages(onDevice: onDevice, cloud: cloud, onDeviceAlone: onDeviceAlone)
+      let budget = all.contains(where: \.leavesDevice) ? max(0, await cloudBudget()) : 0
+      let stages = budget > 0 ? all : all.filter { !$0.leavesDevice }
+      if stages.isEmpty {
+        done = false
+      } else {
+        let blobs = try await ModelSuggestionSweep.run(
+          rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
+          stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
+          spent: { tally.add($0) }, stamps: observer.stamps,
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
+        done = try await commit(blobs)
+      }
     } catch {
-      return false
+      done = false
     }
+    let calls = tally.value
+    if calls > 0 { await cloudSpent(calls) }
+    return done
   }
 
-  func firstImportPass(_ memo: FirstImportSort.Memo) async -> FirstImportSort.Pass? {
-    guard let cloud else { return FirstImportSort.Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
-    return await gate.run { () async -> FirstImportSort.Pass? in
+  func backlogPass(_ memo: BacklogSort.Memo, dayLeft: Int) async -> BacklogSorter.PassResult? {
+    guard let cloud else { return .init(pass: BacklogSort.Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off)) }
+    return await gate.run { () async -> BacklogSorter.PassResult? in
       let observer = self.observer
       let reader = observer.reader
       do {
         let taxonomy = try reader.taxonomy()
-        let r = try await FirstImportSort.run(
+        let left = min(dayLeft, await cloudBudget())
+        let r = try await BacklogSort.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
-          cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), stamps: observer.stamps,
-          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-        do {
-          _ = try await commit(r.blobs)
-        } catch {
-          return .failed(r.pass.memo)
+          cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
+          stamps: observer.stamps, reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
+        let outbox = self.outbox
+        let c = await BacklogSort.commit(r.blobs, filing: r.filing) { try await outbox.enqueue($0.ops) }
+        var failed = c.failed
+        if !r.blobs.isEmpty {
+          do { try await observer.reproject() } catch { failed = true }
         }
-        return r.pass
-      } catch let e as FirstImportSort.Interrupted {
-        return .failed(e.memo)
+        guard !failed else {
+          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: c.filing)
+        }
+        return .init(pass: r.pass, filing: r.filing)
+      } catch let e as BacklogSort.Interrupted {
+        return .init(pass: .failed(e.memo, calls: e.calls))
+      } catch {
+        return nil
+      }
+    }
+  }
+
+  struct BacklogView: Sendable, Equatable {
+    var counts: BacklogSort.Counts
+    var cloudSorted: Int
+  }
+
+  func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
+    let reader = observer.reader
+    do {
+      let taxonomy = try reader.taxonomy()
+      let rows = try reader.sweepRows()
+      let counts = try BacklogSort.counts(
+        rows: rows, categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
+        modelTag: cloud?.modelTag ?? CloudCategoryModel.defaultTag, cache: cache, now: nowMs())
+      return BacklogView(counts: counts, cloudSorted: BacklogSort.undoItems(manifest: filedHere, current: rows).count)
+    } catch {
+      return nil
+    }
+  }
+
+  func undo(manifest: [String: Int64]) async -> Int? {
+    await gate.run { () async -> Int? in
+      let observer = self.observer
+      do {
+        let r = try await BacklogSort.undo(
+          manifest: manifest, stamps: observer.stamps,
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
+        _ = try await commit(r.blobs)
+        return r.rows
       } catch {
         return nil
       }
@@ -98,6 +152,13 @@ struct ModelSuggestionStage: Sendable {
     try await observer.reproject()
     return true
   }
+}
+
+nonisolated final class CallTally: Sendable {
+  private let count = Mutex(0)
+
+  var value: Int { count.withLock { $0 } }
+  func add(_ n: Int) { count.withLock { $0 += n } }
 }
 
 nonisolated final class SweepGate: Sendable {
