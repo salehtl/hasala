@@ -19,7 +19,7 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 | `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
 | `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
 | `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models and the Maya mock. |
-| `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Six sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |
+| `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Seven sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |
 | `web/` | The hasala.app website: Astro and Bun, static output. Refer to "Website" below. |
 | `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
@@ -52,7 +52,7 @@ is reachable.
   `server/internal/tmpl/seed`. After you change a seed template, run
   `swift ios/tools/templates/sync.swift`.
 - The golden fixtures check. The sets `authres`, `categorize`, `fx`,
-  `norm-dates`, `outlook-sender` and `replay` are golden files: the Swift tests own their
+  `merchant-group`, `norm-dates`, `outlook-sender` and `replay` are golden files: the Swift tests own their
   expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
   (`conformance/README.md`). The gate fails when a branch changes one of these
   sets and changes nothing under `ios/HasalaCore/Tests`.

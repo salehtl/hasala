@@ -1,0 +1,330 @@
+{
+  "note": "Swift-owned golden set: the Swift test owns each case's `expect` and the `dictionary` header, and rewrites them with HASALA_UPDATE_GOLDEN=1 (conformance/README.md). `pairs` are asserted by hand: update mode never rewrites them. All merchant strings are synthetic. See README.md.",
+  "schema_version": 1,
+  "dictionary": {
+    "bundle": "2026.10.21-1",
+    "sha256": "d63b07e36995a1363ad2523490eec8775a8c93b4fb7ed6e5ead591470ace38fc",
+    "entries": 168
+  },
+  "cases": [
+    {
+      "name": "tailscale-plain",
+      "raw": "TAILSCALE",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-legal-suffix",
+      "raw": "TAILSCALE INC",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-legal-suffix-dotted",
+      "raw": "Tailscale  Inc.",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-dot-com-phone-country",
+      "raw": "TAILSCALE.COM 4155550100 US",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-www",
+      "raw": "www.tailscale.com",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-facilitator",
+      "raw": "PADDLE.NET* TAILSCALE",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "tailscale-leading-star",
+      "raw": "*TAILSCALE",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "paypal-netflix-dictionary",
+      "raw": "PAYPAL *NETFLIX",
+      "expect": {
+        "key": "d:netflix"
+      }
+    },
+    {
+      "name": "netflix-dot-com-dictionary",
+      "raw": "NETFLIX.COM",
+      "expect": {
+        "key": "d:netflix"
+      }
+    },
+    {
+      "name": "paypal-spotify-dictionary",
+      "raw": "PAYPAL *SPOTIFY",
+      "expect": {
+        "key": "d:spotify"
+      }
+    },
+    {
+      "name": "paypal-figma",
+      "raw": "PAYPAL *FIGMA",
+      "expect": {
+        "key": "n:figma"
+      }
+    },
+    {
+      "name": "figma-plain",
+      "raw": "FIGMA",
+      "expect": {
+        "key": "n:figma"
+      }
+    },
+    {
+      "name": "paypal-linear-ref",
+      "raw": "PAYPAL *LINEAR 4029357733",
+      "expect": {
+        "key": "n:linear"
+      }
+    },
+    {
+      "name": "paypal-alone",
+      "raw": "PAYPAL *",
+      "expect": {
+        "key": "n:paypal"
+      }
+    },
+    {
+      "name": "google-facilitator",
+      "raw": "GOOGLE *DUOLINGO",
+      "expect": {
+        "key": "n:duolingo"
+      }
+    },
+    {
+      "name": "square-facilitator",
+      "raw": "SQ *BLUE BOTTLE CAFE 12",
+      "expect": {
+        "key": "n:blue bottle cafe"
+      }
+    },
+    {
+      "name": "shopify-facilitator",
+      "raw": "SP * HOMEWARE STUDIO",
+      "expect": {
+        "key": "n:homeware studio"
+      }
+    },
+    {
+      "name": "amazon-marketplace-ref-a",
+      "raw": "AMZN Mktp US*2K1AB3CD4",
+      "expect": {
+        "key": "n:amzn mktp"
+      }
+    },
+    {
+      "name": "amazon-marketplace-ref-b",
+      "raw": "AMZN MKTP US*9Z8YX7W",
+      "expect": {
+        "key": "n:amzn mktp"
+      }
+    },
+    {
+      "name": "star-suffix-dropped",
+      "raw": "SOME SHOP*REF 123",
+      "expect": {
+        "key": "n:some shop"
+      }
+    },
+    {
+      "name": "star-suffix-dropped-other",
+      "raw": "OTHER SHOP*REF 123",
+      "expect": {
+        "key": "n:other shop"
+      }
+    },
+    {
+      "name": "al-noor-trading",
+      "raw": "AL NOOR TRADING LLC",
+      "expect": {
+        "key": "n:al noor trading"
+      }
+    },
+    {
+      "name": "al-noor-trading-dotted",
+      "raw": "Al Noor Trading L.L.C.",
+      "expect": {
+        "key": "n:al noor trading"
+      }
+    },
+    {
+      "name": "al-noor-pharmacy",
+      "raw": "AL NOOR PHARMACY",
+      "expect": {
+        "key": "n:al noor pharmacy"
+      }
+    },
+    {
+      "name": "free-zone-fze",
+      "raw": "ZEN GARDEN FZE",
+      "expect": {
+        "key": "n:zen garden"
+      }
+    },
+    {
+      "name": "free-zone-fzco",
+      "raw": "ZEN GARDEN FZCO",
+      "expect": {
+        "key": "n:zen garden"
+      }
+    },
+    {
+      "name": "trading-establishment",
+      "raw": "BLUE OCEAN TRDG EST",
+      "expect": {
+        "key": "n:blue ocean"
+      }
+    },
+    {
+      "name": "branch-number-and-city-kept",
+      "raw": "CAFE NERO 0042 DUBAI AE",
+      "expect": {
+        "key": "n:cafe nero 0042 dubai"
+      }
+    },
+    {
+      "name": "careem-dictionary",
+      "raw": "CAREEM RIDE",
+      "expect": {
+        "key": "d:careem"
+      }
+    },
+    {
+      "name": "careem-food-dictionary",
+      "raw": "CAREEM FOOD 12",
+      "expect": {
+        "key": "d:careem food"
+      }
+    },
+    {
+      "name": "digits-in-the-only-token",
+      "raw": "7-ELEVEN 1234",
+      "expect": {
+        "key": "n:7-eleven"
+      }
+    },
+    {
+      "name": "all-digits",
+      "raw": "123456",
+      "expect": {
+        "key": "n:123456"
+      }
+    },
+    {
+      "name": "arabic-name-ref",
+      "raw": "\u0645\u0637\u0639\u0645 \u0627\u0644\u0633\u0644\u0627\u0645 12",
+      "expect": {
+        "key": "n:\u0645\u0637\u0639\u0645 \u0627\u0644\u0633\u0644\u0627\u0645"
+      }
+    },
+    {
+      "name": "arabic-dictionary",
+      "raw": "\u0637\u0644\u0628\u0627\u062a",
+      "expect": {
+        "key": "d:talabat"
+      }
+    },
+    {
+      "name": "empty",
+      "raw": "",
+      "expect": {
+        "key": ""
+      }
+    }
+  ],
+  "pairs": [
+    {
+      "name": "tailscale-spellings-share-a-key-1",
+      "a": "TAILSCALE INC",
+      "b": "TAILSCALE.COM 4155550100 US",
+      "same": true
+    },
+    {
+      "name": "tailscale-spellings-share-a-key-2",
+      "a": "TAILSCALE INC",
+      "b": "PADDLE.NET* TAILSCALE",
+      "same": true
+    },
+    {
+      "name": "al-noor-trading-is-not-al-noor-pharmacy",
+      "a": "AL NOOR TRADING LLC",
+      "b": "AL NOOR PHARMACY",
+      "same": false
+    },
+    {
+      "name": "al-noor-trading-spellings",
+      "a": "AL NOOR TRADING LLC",
+      "b": "Al Noor Trading L.L.C.",
+      "same": true
+    },
+    {
+      "name": "paypal-netflix-is-not-paypal-spotify",
+      "a": "PAYPAL *NETFLIX",
+      "b": "PAYPAL *SPOTIFY",
+      "same": false
+    },
+    {
+      "name": "paypal-figma-is-not-paypal-linear",
+      "a": "PAYPAL *FIGMA",
+      "b": "PAYPAL *LINEAR 4029357733",
+      "same": false
+    },
+    {
+      "name": "paypal-figma-is-figma",
+      "a": "PAYPAL *FIGMA",
+      "b": "FIGMA",
+      "same": true
+    },
+    {
+      "name": "paypal-netflix-is-netflix-dot-com",
+      "a": "PAYPAL *NETFLIX",
+      "b": "NETFLIX.COM",
+      "same": true
+    },
+    {
+      "name": "careem-is-not-careem-food",
+      "a": "CAREEM RIDE",
+      "b": "CAREEM FOOD 12",
+      "same": false
+    },
+    {
+      "name": "amazon-marketplace-refs",
+      "a": "AMZN Mktp US*2K1AB3CD4",
+      "b": "AMZN MKTP US*9Z8YX7W",
+      "same": true
+    },
+    {
+      "name": "non-facilitator-star-keeps-the-shop",
+      "a": "SOME SHOP*REF 123",
+      "b": "OTHER SHOP*REF 123",
+      "same": false
+    },
+    {
+      "name": "free-zone-suffixes",
+      "a": "ZEN GARDEN FZE",
+      "b": "ZEN GARDEN FZCO",
+      "same": true
+    }
+  ]
+}
