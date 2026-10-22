@@ -340,6 +340,25 @@ final class SmokeTests: XCTestCase {
   }
 
   @MainActor
+  func testTheUpdatingLineNeverCoversBackToThisMonth() throws {
+    let app = launch(scenario: "maya", motion: "off", arguments: ["-HasalaRefreshDelay", "10000"])
+    XCTAssertTrue(el(app, "home.period").waitForExistence(timeout: uiWait))
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    let back = el(app, "home.backToThisMonth")
+    XCTAssertTrue(back.waitForExistence(timeout: uiWait))
+    waitForStill(app)
+    pull(app)
+    let status = el(app, "sync.status")
+    XCTAssertTrue(status.waitForExistence(timeout: 3), "no Updating line")
+    attach(app, "Refresh · Home · September · updating")
+    XCTAssertFalse(status.frame.intersects(back.frame), "\(status.frame) covers \(back.frame)")
+    XCTAssertTrue(back.isHittable)
+    _ = status.waitForNonExistence(timeout: 15)
+  }
+
+  @MainActor
   private func top(_ app: XCUIApplication, _ mark: XCUIElement) -> CGFloat {
     let search = app.searchFields.firstMatch
     return mark.frame.minY - (search.exists ? search.frame.maxY : 0)

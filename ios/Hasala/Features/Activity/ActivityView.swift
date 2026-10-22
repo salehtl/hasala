@@ -88,15 +88,8 @@ struct ActivityFilterBar: View {
       ReflowingRow(spacing: 12) {
         pill
       } trailing: {
-        Button { model.backToThisMonth() } label: {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("activity.backToThisMonth")
+        BackToThisMonthLink { model.backToThisMonth() }
+          .accessibilityIdentifier("activity.backToThisMonth")
       }
     }
   }

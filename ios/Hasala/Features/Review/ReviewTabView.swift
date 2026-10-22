@@ -128,15 +128,8 @@ struct ReviewTabView: View {
         .accessibilityHint("Shows \(elsewhere.widened.title)")
         .accessibilityIdentifier("review.tab.elsewhere")
       } else if !isThisMonth {
-        Button { app.period = .month(app.store.now.date.yearMonth) } label: {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("review.tab.backToThisMonth")
+        BackToThisMonthLink { app.period = .month(app.store.now.date.yearMonth) }
+          .accessibilityIdentifier("review.tab.backToThisMonth")
       }
     }
   }

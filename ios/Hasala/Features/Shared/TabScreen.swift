@@ -53,13 +53,7 @@ struct TabScreen<Header: View, Content: View>: View {
           .padding(.horizontal, HSpacing.insetPage)
         }
         content()
-      }
-      .overlay(alignment: .topTrailing) {
-        if title == nil {
-          SyncStatus(syncing: app.sync.isSyncing)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .padding(.trailing, HSpacing.insetPage)
-        }
+          .environment(\.periodRowSyncing, title == nil ? app.sync.isSyncing : nil)
       }
       .padding(.top, 20)
       .padding(.bottom, HSpacing.scrollContentBottom)
@@ -147,15 +141,63 @@ struct SyncStatus: View {
   var body: some View {
     ZStack(alignment: .trailing) {
       if syncing {
-        HStack(spacing: 6) {
-          ProgressView().controlSize(.mini)
-          Text("Updating…").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(SyncActivity.startedMessage)
-        .accessibilityIdentifier("sync.status")
-        .hTransition(.fade)
+        SyncStatusLabel()
+          .hTransition(.fade)
       }
+    }
+    .hAnimation(.fade, value: syncing)
+  }
+}
+
+private struct SyncStatusLabel: View {
+  var compact = false
+
+  var body: some View {
+    HStack(spacing: 6) {
+      ProgressView().controlSize(.mini)
+      if !compact {
+        Text("Updating…").hType(.footnote).foregroundStyle(HColor.textSecondary)
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(SyncActivity.startedMessage)
+    .accessibilityIdentifier("sync.status")
+  }
+}
+
+extension EnvironmentValues {
+  @Entry var periodRowSyncing: Bool? = nil
+}
+
+struct BackToThisMonthLink: View {
+  var tint: Color = HColor.textLink
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Text("Back to this month")
+        .hType(.subheadline.weight(.medium))
+        .foregroundStyle(tint)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+struct PeriodRowTrailing<Link: View>: View {
+  var hasLink: Bool
+  @ViewBuilder let link: () -> Link
+  @Environment(\.periodRowSyncing) private var syncing
+
+  var body: some View {
+    HStack(spacing: 12) {
+      if syncing == true {
+        SyncStatusLabel(compact: hasLink)
+          .frame(minHeight: HSpacing.targetMinimum)
+          .hTransition(.fade)
+      }
+      if hasLink { link() }
     }
     .hAnimation(.fade, value: syncing)
   }
