@@ -90,6 +90,22 @@ struct SuggestionsEngineTests {
     #expect(SuggestionsEngine.snapshot(ledger.state).count == 7)
   }
 
+  @Test func onlyRowsStillSuggestedThatCategoryAreUsed() throws {
+    var state = Scenario.mayaSuggestions.state
+    let i = try #require(state.txns.firstIndex { $0.id == "sug-tim-8" })
+    state.txns[i].categorySource = .rule(pattern: "TIM")
+    let ledger = InMemoryLedger(state: state)
+    let uses = [
+      SuggestionUse(txn: "sug-shake-9", category: "dining"), SuggestionUse(txn: "sug-shake-4", category: "groceries"),
+      SuggestionUse(txn: "sug-tim-8", category: "dining"), SuggestionUse(txn: "sug-shake-9", category: "dining"),
+    ]
+    let token = try #require(try ledger.apply(.useSuggestions(uses)))
+    #expect(token.title == "Used 1 suggestion")
+    #expect(ledger.state.txn("sug-shake-9")?.categorySource == .user)
+    #expect(ledger.state.txn("sug-shake-4")?.categorySource == .model(tag: "cf-clef/1"))
+    #expect(ledger.state.txn("sug-tim-8")?.needsReview == true)
+  }
+
   @Test func usingNothingIsRefused() {
     let ledger = InMemoryLedger(state: Scenario.mayaSuggestions.state)
     #expect(throws: ActionError.notFound) { try ledger.apply(.useSuggestions([])) }

@@ -19,6 +19,7 @@ import HasalaModels
 nonisolated struct LedgerEditAuthor: Sendable {
   let observer: LedgerPageObserver
   let outbox: Outbox
+  var undoChunkSize = LedgerEditAuthor.undoChunk
 
   var reader: LedgerReader { observer.reader }
 
@@ -298,10 +299,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   /// Writes an undo back.
   func undo(_ inverses: [Inverse]) async throws {
+    let size = max(1, undoChunkSize)
     var i = 0
     while i < inverses.count {
-      try await undoBlob(Array(inverses[i..<min(i + Self.undoChunk, inverses.count)]))
-      i += Self.undoChunk
+      try await undoBlob(Array(inverses[i..<min(i + size, inverses.count)]))
+      i += size
     }
   }
 
@@ -314,7 +316,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
-      case .suggestion(let t, _, _, _, _): rows[t] = try reader.txn(t)
+      case .suggestion(let t, _, _, _, _), .note(let t, _), .project(let t, _), .archived(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       default: break
       }
@@ -331,7 +333,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       for inv in inverses {
         switch inv {
         case .category(let t, let c, let review):
-          guard let row = rows[t] else { continue }
+          guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
         case .suggestion(let t, let c, let review, let tag, let used):
           guard let row = rows[t], row.category == used, row.categorySource == "user", !row.needsReview else { continue }
@@ -339,13 +341,16 @@ nonisolated struct LedgerEditAuthor: Sendable {
             txnID: t, parentVersion: row.version, category: c, needsReview: review,
             source: CoreReplay.CategorySource(kind: .model, model: tag))
         case .note(let t, let n):
+          if let row = rows[t], (row.note ?? "") == n { continue }
           a.annotate(txnID: t, set: [("note", n.isEmpty ? nil : n)])
         case .displayName(let t, let shown):
           guard let row = rows[t] else { continue }
           a.renameMerchant(raw: row.merchantRaw, to: shown == Self.unrenamed(row.merchantRaw) ? nil : shown)
         case .project(let t, let project):
+          if let row = rows[t], row.projectID == project { continue }
           a.annotate(txnID: t, set: [("project_id", project)])
         case .archived(let t, let archived):
+          if let row = rows[t], (row.archived != nil) == archived { continue }
           a.annotate(txnID: t, set: [("archived", archived ? "user" : nil)])
         case .split(let t, let lines):
           guard let row = rows[t] else { continue }

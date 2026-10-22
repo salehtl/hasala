@@ -90,6 +90,64 @@ struct CheckSuggestionsTests {
     #expect(store.state.txn(ids[2])?.categoryID == "groceries")
   }
 
+  @Test func theToastCountsOnlyTheRowsTheAuthorWrites() async throws {
+    let a = try Mapper.account()
+    let (store, ids) = try await Self.suggested(a, suite: "suggestions.filter.tests")
+    let app = AppModel(store: store)
+    let uses = [
+      SuggestionUse(txn: ids[0], category: "dining"), SuggestionUse(txn: ids[1], category: "groceries"),
+      SuggestionUse(txn: ids[2], category: "dining"), SuggestionUse(txn: ids[0], category: "dining"),
+    ]
+    #expect(app.perform(.useSuggestions(uses)))
+    #expect(app.toast?.title == "Used 2 suggestions")
+    #expect(store.state.txn(ids[1])?.inReview == true && store.state.txn(ids[1])?.categorySource == .model(tag: "cf-clef/1"))
+    try await Mapper.eventually { try a.projection.reader.txn(ids[2])?.categorySource == "user" }
+    let written = try ids.filter { try a.projection.reader.txn($0)?.categorySource == "user" }
+    #expect(written == [ids[0], ids[2]])
+    #expect(store.state.txn(ids[1])?.inReview == true)
+  }
+
+  @Test func aFailedUndoKeepsItsTokenAndARetryFinishesWithoutWritingTwice() async throws {
+    let a = try Mapper.account()
+    let (_, ids) = try await Self.suggested(a, suite: "suggestions.retry.seed")
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox, undoChunkSize: 2),
+      profile: Mapper.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "suggestions.retry.tests")!),
+      clock: { MayaLedger.now })
+    await store.reload()
+    var failed = 0
+    store.onWriteFailed = { failed += 1 }
+    func row(_ id: String) throws -> TxnRow? { try a.projection.reader.txn(id) }
+    let token = try #require(try store.apply(.useSuggestions(ids.map { SuggestionUse(txn: $0, category: "dining") })))
+    try await Mapper.eventually { try ids.allSatisfy { try row($0)?.categorySource == "user" } }
+    store.undos[token.id]?.append(.category(txn: "no-such-txn", category: nil, needsReview: true))
+    store.undo(token)
+    try await Mapper.eventually { failed == 1 }
+    #expect(failed == 1 && store.canUndo(token))
+    #expect(try row(ids[0])?.categorySource == "model" && row(ids[1])?.categorySource == "model")
+    #expect(try row(ids[2])?.categorySource == "user")
+    let versions = try ids.prefix(2).map { try #require(try row($0)).version }
+    store.undos[token.id]?.removeLast()
+    store.undo(token)
+    try await Mapper.eventually { try row(ids[2])?.categorySource == "model" }
+    #expect(try row(ids[2])?.needsReview == true && failed == 1)
+    #expect(try ids.prefix(2).map { try #require(try row($0)).version } == versions)
+    #expect(!store.canUndo(token))
+  }
+
+  @Test func anUndoRunTwiceWritesOnce() async throws {
+    let a = try Mapper.account()
+    let (_, ids) = try await Self.suggested(a, suite: "suggestions.twice.tests")
+    let author = LedgerEditAuthor(observer: a.observer, outbox: a.outbox)
+    let before = try #require(try a.projection.reader.txn(ids[0]))
+    let inverse = LedgerEditAuthor.Inverse.category(txn: ids[0], category: "groceries", needsReview: false)
+    try await author.undo([inverse, .note(txn: ids[0], note: "")])
+    let once = try #require(try a.projection.reader.txn(ids[0]))
+    #expect(once.category == "groceries" && once.version == before.version + 1)
+    try await author.undo([inverse, .note(txn: ids[0], note: "")])
+    #expect(try a.projection.reader.txn(ids[0])?.version == once.version)
+  }
+
   @Test func undoWritesBackInBlobsOfAtMostTheSweepSize() {
     #expect(LedgerEditAuthor.undoChunk * 2 <= Sweep.maxOpsPerBlob)
   }

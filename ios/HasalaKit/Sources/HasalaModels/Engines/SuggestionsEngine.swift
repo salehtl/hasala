@@ -78,6 +78,11 @@ public enum SuggestionsEngine {
     }
   }
 
+  public static func applies(_ u: SuggestionUse, to t: Txn) -> Bool {
+    guard t.id == u.txn, t.needsReview, case .model = t.categorySource else { return false }
+    return t.reviewSuggestion == u.category
+  }
+
   public static func uses(_ snapshot: SuggestionsSnapshot, unticked: Set<TxnID>) -> [SuggestionUse] {
     snapshot.rows.filter { !unticked.contains($0.id) }.map { SuggestionUse(txn: $0.id, category: $0.category) }
   }

@@ -82,7 +82,8 @@ public final class InMemoryLedger: LedgerStore {
       title = "Sorted into \(categoryName(c))"
     case .useSuggestions(let uses):
       var used = 0
-      for u in uses where s.category(u.category) != nil && s.txn(u.txn)?.inReview == true {
+      var seen: Set<TxnID> = []
+      for u in uses where seen.insert(u.txn).inserted && s.txn(u.txn).map({ SuggestionsEngine.applies(u, to: $0) }) == true {
         try editTxn(u.txn) { t in
           t.categoryID = u.category
           t.categorySource = .user

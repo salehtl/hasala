@@ -44,7 +44,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored private let prefs: DevicePrefsStore
-  @ObservationIgnored private var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
+  @ObservationIgnored var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
   @ObservationIgnored private var nextToken = 1
   @ObservationIgnored private var writes: Task<Void, Never>?
@@ -189,12 +189,22 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     guard undoable.remove(token.id) != nil, let author else { return }
     enqueue { [weak self] in
       guard let inverses = await self?.takeUndo(token.id), !inverses.isEmpty else { return [] }
-      try await author.undo(inverses)
+      do {
+        try await author.undo(inverses)
+      } catch {
+        await self?.keepUndo(token.id, inverses)
+        throw error
+      }
       return []
     }
   }
 
   private func takeUndo(_ id: Int) -> [LedgerEditAuthor.Inverse]? { undos.removeValue(forKey: id) }
+
+  private func keepUndo(_ id: Int, _ inverses: [LedgerEditAuthor.Inverse]) {
+    undos[id] = inverses
+    undoable.insert(id)
+  }
 
   /// Runs `write` after every earlier one, then reloads (a failure reloads too, so the
   /// optimistic change is replaced by what the projection holds).
@@ -279,20 +289,19 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return ("Sorted into \(name(c))", inverses)
     case .useSuggestions(let uses):
       var inverses: [LedgerEditAuthor.Inverse] = []
-      for u in uses where s.category(u.category) != nil {
-        guard let i = s.txns.firstIndex(where: { $0.id == u.txn }), s.txns[i].inReview else { continue }
+      var seen: Set<TxnID> = []
+      for u in uses where seen.insert(u.txn).inserted {
+        guard let i = s.txns.firstIndex(where: { $0.id == u.txn }), SuggestionsEngine.applies(u, to: s.txns[i]),
+          case .model(let tag) = s.txns[i].categorySource
+        else { continue }
         let old = s.txns[i]
         s.txns[i].categoryID = u.category
         s.txns[i].categorySource = .user
         s.txns[i].needsReview = false
         s.txns[i].isTransfer = u.category == "transfer"
         s.txns[i].splits = []
-        if case .model(let tag) = old.categorySource {
-          inverses.append(
-            .suggestion(txn: u.txn, category: old.categoryID, needsReview: old.needsReview, modelTag: tag, used: u.category))
-        } else {
-          inverses.append(.category(txn: u.txn, category: old.categoryID, needsReview: old.needsReview))
-        }
+        inverses.append(
+          .suggestion(txn: u.txn, category: old.categoryID, needsReview: old.needsReview, modelTag: tag, used: u.category))
       }
       guard !inverses.isEmpty else { throw .notFound }
       return (SuggestionsEngine.usedLine(inverses.count), inverses)
