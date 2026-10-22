@@ -36,7 +36,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
 <Base
   title="Your invite"
-  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and type your invite code."
+  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and paste your invite."
   path="/i"
   noindex
   nav="invite"
@@ -68,13 +68,28 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
         </p>
 
         <div class="invite__ctas for-code">
-          <a class="btn btn--primary invite__cta" href={TESTFLIGHT_OPEN}>Open invite in TestFlight</a>
-          <a class="btn btn--glass invite__cta invite__cta--second" href={SITE.testFlightAppStore}>No TestFlight yet? Get it first</a>
+          <a class="btn btn--primary invite__cta" href={TESTFLIGHT_OPEN} data-copy-go>Open invite in TestFlight</a>
+          <a class="btn btn--glass invite__cta invite__cta--second" href={SITE.testFlightAppStore} data-copy-go>No TestFlight yet? Get it first</a>
         </div>
 
         <ol class="isteps" role="list">
-          <li>
+          <li class="for-code">
             <span class="coin-badge">1</span>
+            <div class="isteps__text">
+              <h2>Copy your invite first</h2>
+              <p data-copy-hint>
+                <span class="is-wide">Before you leave this page. After installing, Hasala reads it when you tap Paste.</span>
+                <span class="is-narrow">Before you leave this page. Hasala reads it when you tap Paste.</span>
+              </p>
+              <p data-copy-manual hidden>Copy this link before you leave this page. After installing, paste it in Hasala.</p>
+              <input class="isteps__field" type="text" readonly aria-label="Your invite" data-copy-field hidden />
+            </div>
+            <button class="btn btn--subtle btn--sm isteps__btn" type="button" data-copy-code hidden>
+              <Icon name="copy" size={16} stroke={1.6} /><span></span>
+            </button>
+          </li>
+          <li>
+            <span class="coin-badge"><span class="for-code">2</span><span class="no-code">1</span></span>
             <div class="isteps__text">
               <h2>Get TestFlight</h2>
               <p>
@@ -85,7 +100,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
             <a class="btn btn--subtle btn--sm isteps__btn" href={SITE.testFlightAppStore}>Get TestFlight</a>
           </li>
           <li>
-            <span class="coin-badge">2</span>
+            <span class="coin-badge"><span class="for-code">3</span><span class="no-code">2</span></span>
             <div class="isteps__text">
               <h2><span class="for-code">Open your invite</span><span class="no-code">Accept Apple’s invitation</span></h2>
               <p class="for-code">
@@ -97,15 +112,12 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
             <a class="btn btn--primary btn--sm isteps__btn" href={TESTFLIGHT_OPEN}>Open in TestFlight</a>
           </li>
           <li>
-            <span class="coin-badge">3</span>
+            <span class="coin-badge"><span class="for-code">4</span><span class="no-code">3</span></span>
             <div class="isteps__text">
               <h2><span class="is-wide">Install and set up</span><span class="is-narrow">Set up</span></h2>
-              <p class="for-code">Choose Face ID or a password, write down your 12 words, connect your email.</p>
+              <p class="for-code">Open Hasala and tap Paste. Then choose Face ID or a password, write down your 12 words and connect your email.</p>
               <p class="no-code">Open Hasala and type the code from your invite email. Then choose Face ID or a password, and connect your email.</p>
             </div>
-            <button class="btn btn--subtle btn--sm isteps__btn for-code" type="button" data-copy-code hidden>
-              <Icon name="copy" size={16} stroke={1.6} /><span>Copy code</span>
-            </button>
           </li>
         </ol>
 
@@ -181,23 +193,65 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       el.hidden = false;
     });
 
+    const link = `https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`;
+    const copied = linkKey ? link : shown;
+    const idle = linkKey ? 'Copy invite link' : 'Copy code';
     const copy = document.querySelector<HTMLButtonElement>('[data-copy-code]');
+    const field = document.querySelector<HTMLInputElement>('[data-copy-field]');
+    const hint = document.querySelector<HTMLElement>('[data-copy-hint]');
+    const manual = document.querySelector<HTMLElement>('[data-copy-manual]');
+    const showManual = (focus: boolean) => {
+      if (!field) return;
+      field.value = copied;
+      field.hidden = false;
+      if (hint) hint.hidden = true;
+      if (manual) manual.hidden = false;
+      if (focus) {
+        field.scrollIntoView({ block: 'center' });
+        field.focus();
+        field.select();
+      }
+    };
+    field?.addEventListener('focus', () => field.select(), { signal });
     if (copy && navigator.clipboard) {
+      const label = copy.querySelector('span')!;
+      label.textContent = idle;
       copy.hidden = false;
+      let reset = 0;
       copy.addEventListener(
         'click',
         async () => {
-          const label = copy.querySelector('span')!;
+          clearTimeout(reset);
           try {
-            await navigator.clipboard.writeText(shown);
+            await navigator.clipboard.writeText(copied);
             label.textContent = 'Copied';
+            reset = window.setTimeout(() => (label.textContent = idle), 2000);
           } catch {
-            label.textContent = shown;
+            label.textContent = idle;
+            showManual(true);
           }
-          setTimeout(() => (label.textContent = 'Copy code'), 2000);
         },
         { signal },
       );
+      const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
+      if (go) go.textContent = 'Copy invite and open TestFlight';
+      document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]').forEach((a) =>
+        a.addEventListener(
+          'click',
+          async (event) => {
+            event.preventDefault();
+            try {
+              await navigator.clipboard.writeText(copied);
+              location.href = a.href;
+            } catch {
+              showManual(true);
+            }
+          },
+          { signal },
+        ),
+      );
+    } else {
+      showManual(false);
     }
 
     // A QR code of this link, link key included, for people reading on a computer.
@@ -205,7 +259,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       import('uqr').then(({ encode }) => {
         const box = document.querySelector('[data-qr]');
         if (signal.aborted || !box) return;
-        const { data, size } = encode(`https://hasala.app/i/${code}${linkKey ? `#${linkKey}` : ''}`, { ecc: 'M', border: 0 });
+        const { data, size } = encode(link, { ecc: 'M', border: 0 });
         const ns = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(ns, 'svg');
         svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
@@ -371,6 +425,21 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     display: inline-flex;
     grid-column: 2;
     justify-self: start;
+  }
+  .isteps__field {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--neutral-200);
+    border-radius: 12px;
+    background: var(--white);
+    color: var(--text-body);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    line-height: 22px;
+  }
+  .isteps__field[hidden] {
+    display: none;
   }
   .invite__qr {
     display: none;

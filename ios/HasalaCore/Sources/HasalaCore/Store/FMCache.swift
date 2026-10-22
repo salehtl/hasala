@@ -8,10 +8,15 @@ public final class FMCache: ModelAnswerCache {
 
   public init(_ store: LedgerStore) { db = store.db }
 
-  public func isCached(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> Bool {
+  public func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer? {
     let key = ModelTier.cacheKey(subject: subject, taxonomyHash: taxonomyHash, modelTag: modelTag)
     return try db.read { db in
-      try Bool.fetchOne(db, sql: "SELECT 1 FROM fm_cache WHERE key = ? AND expires_at_ms > ?", arguments: [key, now]) ?? false
+      guard
+        let row = try Row.fetchOne(
+          db, sql: "SELECT category, auto_file FROM fm_cache WHERE key = ? AND expires_at_ms > ?", arguments: [key, now])
+      else { return nil }
+      guard let category: String = row["category"] else { return .unknown }
+      return .category(category, autoFile: row["auto_file"] as Bool? ?? false)
     }
   }
 
@@ -23,6 +28,20 @@ public final class FMCache: ModelAnswerCache {
     try db.write { db in
       for (key, expires) in rows {
         try db.execute(sql: "INSERT OR REPLACE INTO fm_cache (key, expires_at_ms) VALUES (?, ?)", arguments: [key, expires])
+      }
+    }
+  }
+
+  public func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws {
+    guard !entries.isEmpty else { return }
+    try db.write { db in
+      for e in entries {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO fm_cache (key, expires_at_ms, category, auto_file) VALUES (?, ?, ?, ?)",
+          arguments: [
+            ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag), now + Self.ttlMs, e.category,
+            e.autoFile,
+          ])
       }
     }
   }

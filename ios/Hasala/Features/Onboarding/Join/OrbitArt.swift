@@ -99,10 +99,14 @@ struct SlotMark: View, Animatable {
   /// The coin's drop shadow (story 3: dy 14, blur 18, blue 950 at 22%).
   var coinShadow = false
   var drop: CGFloat = 0
+  var spin: CGFloat = 0
 
-  var animatableData: CGFloat {
-    get { drop }
-    set { drop = newValue }
+  var animatableData: AnimatablePair<CGFloat, CGFloat> {
+    get { AnimatablePair(drop, spin) }
+    set {
+      drop = newValue.first
+      spin = newValue.second
+    }
   }
 
   static let aspect: CGFloat = 616 / 368
@@ -129,6 +133,12 @@ struct SlotMark: View, Animatable {
         coin.addFilter(.shadow(color: navy.opacity(0.22), radius: 18 * s, x: 0, y: 14 * s))
       }
       coin.translateBy(x: 0, y: -drop * s)
+      if spin != 0 {
+        let axis = ox + (512 - 204) * s
+        coin.translateBy(x: axis, y: 0)
+        coin.scaleBy(x: max(abs(cos(spin * .pi * 2)), 0.04), y: 1)
+        coin.translateBy(x: -axis, y: 0)
+      }
       coin.drawLayer { layer in
         let rim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
         layer.fill(Path(ellipseIn: r(512 - 184, 538.2 - 184, 368, 368)), with: .color(rim))

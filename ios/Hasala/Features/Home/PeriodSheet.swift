@@ -4,13 +4,15 @@ import SwiftUI
 
 struct PeriodSheet: View {
   @Bindable var app: AppModel
+  var onShow: (() -> Void)?
   @State private var picking: PeriodPicking
   @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  init(app: AppModel) {
+  init(app: AppModel, onShow: (() -> Void)? = nil) {
     self.app = app
+    self.onShow = onShow
     let today = app.store.now.date.yearMonth
     _picking = State(initialValue: PeriodPicking(period: app.period, today: today, earliest: app.earliestMonth))
   }
@@ -30,6 +32,7 @@ struct PeriodSheet: View {
             .accessibilityIdentifier("period.hint")
           Button(picking.confirmTitle) {
             app.period = picking.period
+            onShow?()
             dismiss()
           }
           .buttonStyle(PillButtonStyle(.primary, size: .large, fill: true))

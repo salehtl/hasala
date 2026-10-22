@@ -226,7 +226,7 @@ final class BootController {
     guard let rt = runtime else { return }
     if syncHalt != nil { return retrySync() }
     Task { await rt.coordinator.run(.foreground) }
-    Task { await rt.firstImport.nudge() }
+    Task { await rt.backlog.resume() }
   }
 
   private func openRuntimeIfNeeded() {
@@ -270,6 +270,7 @@ final class BootController {
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(store: rt.store, mailbox: self.services.mailbox, layouts: layouts)
+      if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }

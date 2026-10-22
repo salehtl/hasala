@@ -144,6 +144,15 @@
     static func profile(_ path: [ProfileRoute]) -> @MainActor (MockGraph) -> Void {
       shell(.home, sheet: .profile, profile: path)
     }
+
+    static func cloudSort(
+      _ phase: CloudSortStatus.Phase, then next: @escaping @MainActor (MockGraph) -> Void
+    ) -> @MainActor (MockGraph) -> Void {
+      { graph in
+        if graph.app.cloudSort == nil { graph.app.cloudSort = MockCloudSortController(MockCloudSortController.sample(phase)) }
+        next(graph)
+      }
+    }
   }
 
   /// `-HasalaMotion off|reduce` (plan B6): screenshots with every animation at its end

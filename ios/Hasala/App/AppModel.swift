@@ -35,6 +35,7 @@ final class AppModel {
   /// The mail lane as setup uses it: the mailboxes, and what the bell, Profile and Bank
   /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
+  var cloudSort: (any CloudSortControlling)?
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
@@ -69,6 +70,9 @@ final class AppModel {
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
+  @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
+  @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
+  @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
   @ObservationIgnored private var canvasMemo = Memo<CanvasMemoKey, [HomeCanvasItem]>()
@@ -164,6 +168,20 @@ final class AppModel {
     }
   }
 
+  var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
+
+  var reviewCards: [ReviewCardModel] {
+    reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      ReviewEngine.cards(store.state, in: reviewWindow)
+    }
+  }
+
+  var reviewElsewhere: ReviewElsewhere? {
+    elsewhereMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      ReviewEngine.elsewhere(store.state, in: period, today: store.now.date.yearMonth)
+    }
+  }
+
   /// What Home draws, recomputed once per ledger change or period.
   var snapshot: HomeSnapshot {
     let period = chosenPeriod
@@ -187,10 +205,16 @@ final class AppModel {
   var avatarEmail: String { store.state.profile.email }
 
   /// Transactions waiting to be sorted, whatever the period: the Review tab's badge, once per
-  /// ledger change. The bell, the Review tab and the deck count the same queue.
+  /// ledger change.
   var reviewCount: Int {
     reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
   }
+
+  var suggestionCount: Int {
+    suggestionMemo.value(for: store.revision) { SuggestionsEngine.count(store.state) }
+  }
+
+  func openCheckSuggestions() { router.open(.checkSuggestions) }
 
   var showingProfile: Bool {
     get { sheet == .profile }

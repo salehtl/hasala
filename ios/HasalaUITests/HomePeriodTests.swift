@@ -88,7 +88,7 @@ final class HomePeriodTests: XCTestCase {
   }
 
   @MainActor
-  func testAPastMonthKeepsTheBellTheBadgeAndReviewTogether() throws {
+  func testAPastMonthKeepsTheBellTheBadgeAndItsDeckOnTheWholeQueue() throws {
     let app = launch(scenario: "mayaRange", motion: "off")
     tap(app, "home.period", opening: "period.sheet")
     tap(app, "period.preset.lastMonth")
@@ -109,9 +109,9 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue("\(tab.label) \(tab.value as? String ?? "")".contains("9"), "\(tab.label) \(String(describing: tab.value))")
     tab.tap()
     let count = el(app, "review.tab.count")
-    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
-    XCTAssertTrue(app.staticTexts["Newest month first"].exists)
-    XCTAssertTrue(el(app, "review.tab.month.2026-10").exists)
+    XCTAssertTrue(count.waitForLabel("1 to sort · about a minute"), count.label)
+    XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, September 2026")
+    XCTAssertEqual(app.buttons["review.tab.elsewhere"].label, "8 more in other months")
     XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
     attach(app, "Review · September chosen")
     try audit(app)
@@ -120,6 +120,7 @@ final class HomePeriodTests: XCTestCase {
     tap(app, "bell.row.review")
     let position = el(app, "review.position")
     XCTAssertTrue(position.waitForLabel("1 of 9"), position.label)
+    XCTAssertEqual(app.buttons["review.period"].label, "Period, All months")
     el(app, "review.close").tap()
     XCTAssertTrue(count.waitForExistence(timeout: uiWait))
   }
@@ -168,6 +169,91 @@ final class HomePeriodTests: XCTestCase {
     tabBar.buttons["Home"].tap()
     XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, October 2026"))
     tabBar.buttons["Review"].tap()
-    XCTAssertTrue(el(app, "review.tab.count").waitForLabel("9 to sort · about 2 minutes"))
+    XCTAssertTrue(el(app, "review.tab.count").waitForLabel("6 to sort · about a minute"))
+    XCTAssertEqual(app.buttons["review.tab.elsewhere"].label, "3 more in earlier months")
+  }
+
+  @MainActor
+  func testReviewsPillIsTheAppsPeriod() throws {
+    let app = launch(scenario: "mayaRange", motion: "off")
+    let tabBar = app.tabBars.firstMatch
+    tabBar.buttons["Review"].tap()
+    let pill = app.buttons["review.tab.period"]
+    XCTAssertTrue(pill.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(pill.label, "Period, October 2026")
+    let count = el(app, "review.tab.count")
+    XCTAssertTrue(count.waitForLabel("6 to sort · about a minute"), count.label)
+    let elsewhere = app.buttons["review.tab.elsewhere"]
+    XCTAssertEqual(elsewhere.label, "3 more in earlier months")
+
+    tap(app, "review.tab.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    XCTAssertTrue(pill.waitForLabel("Period, September 2026"))
+    XCTAssertTrue(count.waitForLabel("1 to sort · about a minute"), count.label)
+    XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
+    XCTAssertFalse(el(app, "review.tab.row.aug-corner-shop").exists)
+    XCTAssertEqual(elsewhere.label, "8 more in other months")
+    let tab = tabBar.buttons["Review"]
+    XCTAssertTrue("\(tab.label) \(tab.value as? String ?? "")".contains("9"), "\(tab.label) \(String(describing: tab.value))")
+    attach(app, "Review · September")
+    try audit(app)
+
+    tap(app, "review.tab.start")
+    let deckPill = app.buttons["review.period"]
+    XCTAssertTrue(deckPill.waitForLabel("Period, September 2026"))
+    XCTAssertTrue(el(app, "review.position").waitForLabel("1 of 1"))
+    attach(app, "Deck · September")
+    try audit(app)
+    tap(app, "review.period", opening: "period.sheet")
+    tap(app, "period.month.2026-08")
+    tap(app, "period.month.2026-10")
+    tap(app, "period.show")
+    XCTAssertTrue(deckPill.waitForLabel("Period, Aug – Oct 2026"))
+    XCTAssertTrue(el(app, "review.position").waitForLabel("1 of 9"))
+    el(app, "review.close").tap()
+    XCTAssertTrue(pill.waitForLabel("Period, Aug – Oct 2026"))
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
+    tabBar.buttons["Activity"].tap()
+    XCTAssertTrue(app.buttons["activity.period"].waitForLabel("Period, Aug – Oct 2026"))
+
+    tabBar.buttons["Review"].tap()
+    tap(app, "review.tab.period", opening: "period.sheet")
+    tap(app, "period.month.2026-07")
+    tap(app, "period.show")
+    XCTAssertTrue(pill.waitForLabel("Period, July 2026"))
+    let empty = el(app, "review.tab.empty")
+    XCTAssertTrue(empty.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(empty.label.contains("9 more in later months"), empty.label)
+    XCTAssertTrue(count.waitForLabel("Nothing to sort in July 2026"), count.label)
+    attach(app, "Review · July · empty")
+    try audit(app)
+    tap(app, "review.tab.elsewhere")
+    XCTAssertTrue(pill.waitForLabel("Period, Jul – Oct 2026"))
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
+    tabBar.buttons["Home"].tap()
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, Jul – Oct 2026"))
+  }
+
+  @MainActor
+  func testReviewsPillAtLargeTextSizes() throws {
+    let app = launch(
+      scenario: "mayaRange", motion: "off",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    let pill = app.buttons["review.tab.period"]
+    XCTAssertTrue(pill.waitForExistence(timeout: 15))
+    tap(app, "review.tab.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    XCTAssertTrue(pill.waitForLabel("Period, September 2026"))
+    attach(app, "AX3 · Review · September")
+    try audit(app, atLargeText: true)
+    let start = app.buttons["review.tab.start"]
+    XCTAssertTrue(reveal(app, start))
+    start.tap()
+    XCTAssertTrue(app.buttons["review.period"].waitForLabel("Period, September 2026"))
+    attach(app, "AX3 · Deck · September")
+    try audit(app, atLargeText: true)
   }
 }
