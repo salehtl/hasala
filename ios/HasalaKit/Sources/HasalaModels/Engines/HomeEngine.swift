@@ -17,6 +17,13 @@ public enum HomeEngine {
         header: header, hero: h, notifications: notifications,
         widgets: widgets(s, now: now, plan: plan))
     }
+    if p.isAllTime {
+      var h = allTimeHero(s, period: p, now: now)
+      h.unrated = Spending.unrated(s, in: p)
+      return HomeSnapshot(
+        header: header, hero: h, notifications: notifications, widgets: [],
+        period: p, canvasTitle: p.title, aboutNow: aboutNow(s, now: now))
+    }
     if p.isMonth {
       let month = p.first
       let plan = PlanEngine.snapshot(s, now: LocalDateTime(date: month.lastDay, hour: 23, minute: 59))
@@ -176,6 +183,33 @@ public enum HomeEngine {
       wash: .sky, bars: bars, notCounted: notCounted(s, in: period))
   }
 
+  public static func allTimeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
+    let today = now.date.yearMonth
+    var needs: Int64 = 0
+    var wants: Int64 = 0
+    var saved: Int64 = 0
+    var full: [Int64] = []
+    for m in period.months {
+      needs.add(bucketSpent(s, .needs, m))
+      wants.add(bucketSpent(s, .wants, m))
+      saved.add(bucketSpent(s, .savings, m))
+      if m < today { full.append(Spending.total(s, in: m)) }
+    }
+    let total = Spending.total(s, in: period)
+    let average = InsightsEngine.average(full)
+    let since = "Since \(period.first.shortName) \(period.first.year)"
+    return SpendHero(
+      state: .range, overline: "All time · \(since)", spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
+      word: full.isEmpty ? "" : MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]),
+      fact: full.isEmpty ? nil : "full months only",
+      caption: "spent, all time",
+      tiles: [
+        HeroTile("Needs", .aed(needs), style: .rounded), HeroTile("Wants", .aed(wants), style: .rounded),
+        HeroTile("Savings", .aed(saved), style: .rounded),
+      ],
+      wash: .sky, bars: [], notCounted: notCounted(s, in: period))
+  }
+
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
     Fils.sum(s.categories(in: b)) { Spending.spent(s, category: $0.id, in: m) }
   }
@@ -203,7 +237,7 @@ public enum HomeEngine {
     }
     let waiting = ReviewEngine.queue(s).count
     if waiting > 0 {
-      rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review))
+      rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review(nil)))
     }
     return rows
   }

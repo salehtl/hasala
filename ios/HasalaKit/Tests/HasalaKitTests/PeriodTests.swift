@@ -1,3 +1,4 @@
+import Foundation
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -82,6 +83,69 @@ struct PeriodTests {
     p.choose(.thisYear)
     #expect(p.period == Period(YearMonth(2026, 1), oct))
     #expect(p.year == 2026)
+  }
+
+  @Test func allTimeRunsFromTheOldestMonthToThisMonth() {
+    let since = YearMonth(2025, 6)
+    let all = PeriodPreset.allTime.period(today: oct, earliest: since)
+    #expect(all.isAllTime && all.first == since && all.last == oct && all.count == 17)
+    #expect(all.title == "All time" && PeriodPreset.allTime.title == "All time")
+    #expect(!all.showsBudgets && Period(since, oct).showsBudgets)
+    #expect(all.preset(today: oct) == .allTime)
+    #expect(all != Period(since, oct))
+    #expect(Period(since, oct).preset(today: oct) == nil)
+    #expect(Period(YearMonth(2026, 1), oct).preset(today: oct) == .thisYear)
+    #expect(PeriodPreset.allTime.period(today: oct, earliest: YearMonth(2027, 2)) == .allTime(since: oct, today: oct))
+  }
+
+  @Test func allTimeWithoutTransactionsIsThisMonthButStillAllTime() {
+    let all = PeriodPreset.allTime.period(today: oct)
+    #expect(all.isAllTime && all.range == oct...oct && all.isMonth)
+    #expect(all != .month(oct))
+    #expect(all.title == "All time")
+    #expect(all.preset(today: oct) == .allTime)
+    #expect(Period.month(oct).preset(today: oct) == .thisMonth)
+  }
+
+  @Test func allTimeGrowsWithTheDayAndKeepsItsMeaning() {
+    let all = Period.allTime(since: YearMonth(2026, 8), today: oct)
+    let later = all.clamped(to: YearMonth(2026, 12))
+    #expect(later.isAllTime && later.first == YearMonth(2026, 8) && later.last == YearMonth(2026, 12))
+    #expect(Period(YearMonth(2026, 8), oct).clamped(to: YearMonth(2026, 12)).last == oct)
+  }
+
+  @Test func allTimeSurvivesCodingAndOlderDataStillDecodes() throws {
+    let all = Period.allTime(since: YearMonth(2026, 8), today: oct)
+    let data = try JSONEncoder().encode(all)
+    #expect(try JSONDecoder().decode(Period.self, from: data) == all)
+    let range = Period(YearMonth(2026, 8), oct)
+    let plain = try JSONEncoder().encode(range)
+    #expect(!String(decoding: plain, as: UTF8.self).contains("isAllTime"))
+    #expect(try JSONDecoder().decode(Period.self, from: plain) == range)
+  }
+
+  @Test func theAllTimeChipPicksFromTheOldestMonth() {
+    var p = PeriodPicking(period: .month(oct), today: oct, earliest: YearMonth(2025, 6))
+    p.tap(YearMonth(2026, 2))
+    p.choose(.allTime)
+    #expect(p.period == .allTime(since: YearMonth(2025, 6), today: oct))
+    #expect(p.preset == .allTime)
+    #expect(p.year == 2026)
+    #expect(p.hint == "Since June 2025. Tap a month to start again.")
+    #expect(p.confirmTitle == "Show all time")
+    #expect(p.cell(YearMonth(2026, 1)) == .between)
+    #expect(p.cell(oct) == .end)
+    p.tap(YearMonth(2026, 5))
+    #expect(p.period == .month(YearMonth(2026, 5)) && p.preset == nil)
+
+    var empty = PeriodPicking(period: .month(oct), today: oct)
+    empty.choose(.allTime)
+    #expect(empty.period.isAllTime && empty.period.range == oct...oct && empty.preset == .allTime)
+    #expect(empty.confirmTitle == "Show all time")
+
+    let reopened = PeriodPicking(period: .allTime(since: YearMonth(2025, 6), today: oct), today: oct,
+                                 earliest: YearMonth(2025, 6))
+    #expect(reopened.preset == .allTime && reopened.period.isAllTime)
   }
 }
 
@@ -190,7 +254,7 @@ struct HomePeriodTests {
     #expect(pace.monthGone == "Ended 30 Sep")
     #expect(home.aboutNow.map(\.title) == ["Next bill · DEWA", "To review"])
     #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) } == ["~489.15 · in 4 days", "6 waiting"])
-    #expect(home.aboutNow.map(\.destination) == [.bills, .review])
+    #expect(home.aboutNow.map(\.destination) == [.bills, .review(nil)])
   }
 
   @Test func aClosedMonthOverItsPlanNamesTheTopWant() {
@@ -228,6 +292,54 @@ struct HomePeriodTests {
     #expect(h.tiles.map { MoneyFormat.string($0.value.minor, style: $0.style) } == ["9,731", "1,248", "5,000"])
     #expect(home.widgets.isEmpty)
     #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) }.last == "6 waiting")
+  }
+
+  @Test func allTimeIsEveryMonthWithoutABudget() {
+    let earliest = s.txns.map(\.postedAt.date.yearMonth).min()!
+    let all = Period.allTime(since: earliest, today: MayaLedger.october)
+    let home = HomeEngine.snapshot(s, now: now, period: all)
+    let h = home.hero
+    #expect(!home.isThisMonth && home.period == all && home.canvasTitle == "All time")
+    #expect(h.state == .range && h.bars.isEmpty)
+    #expect(h.plan == .aed(0) && h.verdict == nil && h.tick == nil)
+    #expect(h.spent == .aed(Spending.total(s, in: Period(earliest, MayaLedger.october))))
+    #expect(h.overline == "All time · Since \(earliest.shortName) \(earliest.year)")
+    #expect(h.caption.rendered(hidden: false) == "spent, all time")
+    #expect(!h.caption.rendered(hidden: false).contains("planned"))
+    #expect(home.widgets.isEmpty)
+    #expect(home.aboutNow.last?.destination == .review(nil))
+  }
+
+  @Test func allTimeCountsSortedAndUnsortedSpending() {
+    var older = s
+    older.txns.append(Txn(id: "old-unsorted", merchant: "Corner Shop", amount: .aed(40_00),
+                          postedAt: LocalDateTime(2025, 3, 2, 10, 0), accountID: "dib"))
+    older.txns.append(Txn(id: "old-dining", merchant: "Zuma", amount: .aed(60_00),
+                          postedAt: LocalDateTime(2025, 3, 3, 10, 0), categoryID: "dining"))
+    let before = HomeEngine.snapshot(s, now: now, period: .allTime(since: s.txns.map(\.postedAt.date.yearMonth).min(),
+                                                                     today: MayaLedger.october)).hero.spent
+    let h = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2025, 3), today: MayaLedger.october)).hero
+    #expect(h.spent == .aed(before.minor + 100_00))
+    #expect(h.overline == "All time · Since Mar 2025")
+    #expect(h.word.rendered(hidden: false).hasPrefix("Average "))
+  }
+
+  @Test func aCategoryUnderAllTimeHasNoBudget() {
+    let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
+    let snap = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries"), period: all)
+    let summary = snap.summary!
+    #expect(!summary.budgeted && summary.progress == Permille(0))
+    #expect(summary.caption.rendered(hidden: false) == "All time · since Aug 2026")
+    #expect(summary.total == .aed(Spending.spent(s, category: "groceries", in: Period(YearMonth(2026, 8), MayaLedger.october))))
+    let month = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries")).summary!
+    #expect(month.budgeted)
+    #expect(snap.countLine.hasSuffix(" · All time"))
+  }
+
+  @Test func reviewUnderAllTimeIsTheWholeQueue() {
+    let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
+    #expect(ReviewEngine.window(all, today: MayaLedger.october) == .all)
+    #expect(ReviewEngine.elsewhere(s, in: all, today: MayaLedger.october) == nil)
   }
 
   @Test func aPastRangeHasNoToday() {

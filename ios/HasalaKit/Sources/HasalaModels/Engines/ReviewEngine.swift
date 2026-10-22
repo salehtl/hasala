@@ -310,12 +310,14 @@ public enum ReviewEngine {
   }
 
   public static func window(_ period: Period, today: YearMonth) -> ReviewWindow {
+    if period.isAllTime { return .all }
     var w = ReviewWindow(period)
     if period.last >= today { w.to = nil }
     return w
   }
 
   public static func elsewhere(_ s: LedgerState, in period: Period, today: YearMonth) -> ReviewElsewhere? {
+    if period.isAllTime { return nil }
     let months = queue(s).map { min($0.postedAt.date.yearMonth, today) }.filter { !period.contains($0) }
     guard let first = months.min(), let last = months.max() else { return nil }
     let side: ReviewElsewhere.Side = last < period.first ? .earlier : first > period.last ? .later : .other

@@ -55,7 +55,6 @@ final class ReviewViewModel: ReviewDeckModel {
   /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private var order: [TxnID]
   private(set) var total: Int
-  private(set) var allMonths: Bool
   private var window: ReviewWindow
   var picking: ReviewPick?
   var celebrated = false
@@ -68,13 +67,12 @@ final class ReviewViewModel: ReviewDeckModel {
 
   init(app: AppModel) {
     self.app = app
-    let entry = ReviewEntry.take(for: app)
-    allMonths = !entry.inPeriod
-    let window = entry.inPeriod ? app.reviewWindow : .all
+    let start = ReviewEntry.take(for: app)
+    let window = app.reviewWindow
     self.window = window
     let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
     total = queue.count
-    order = ReviewEngine.order(queue, startingAt: entry.card)
+    order = ReviewEngine.order(queue, startingAt: start)
     #if HASALA_MOCKS
       ReviewEntry.takeScript(for: app)?(self)
     #endif
@@ -112,12 +110,11 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   var position: Int { min(total, max(1, total - cards.count + 1)) }
-  var periodTitle: String { allMonths ? "All months" : app.period.title }
-  var isThisMonth: Bool { !allMonths && app.period == .month(app.store.now.date.yearMonth) }
-  var elsewhere: ReviewElsewhere? { allMonths ? nil : app.reviewElsewhere }
+  var periodTitle: String { app.period.title }
+  var isThisMonth: Bool { app.period == .month(app.store.now.date.yearMonth) }
+  var elsewhere: ReviewElsewhere? { app.reviewElsewhere }
 
   func periodChanged() {
-    allMonths = false
     restart()
   }
 
@@ -129,7 +126,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   private func restart() {
     let top = cards.first?.id
-    window = allMonths ? .all : app.reviewWindow
+    window = app.reviewWindow
     let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: top)
@@ -228,29 +225,26 @@ extension ReviewDeckModel {
 enum ReviewEntry {
   private static weak var requester: AppModel?
   private static var start: TxnID?
-  private static var inPeriod = false
 
-  /// Opens the deck, at `card` when given.
-  static func open(_ app: AppModel, at card: TxnID?, inPeriod: Bool = false) {
-    request(app, at: card, inPeriod: inPeriod)
+  /// Opens the deck, at `card` when given, in the app's period.
+  static func open(_ app: AppModel, at card: TxnID?) {
+    request(app, at: card)
     app.startReview()
   }
 
   /// The next session for `app` starts at `card` (the cover opens it).
-  static func request(_ app: AppModel, at card: TxnID?, inPeriod: Bool = false) {
+  static func request(_ app: AppModel, at card: TxnID?) {
     requester = app
     start = card
-    self.inPeriod = inPeriod
   }
 
   /// The card a new session for `app` starts at; the request is used up.
-  static func take(for app: AppModel) -> (card: TxnID?, inPeriod: Bool) {
+  static func take(for app: AppModel) -> TxnID? {
     defer {
       requester = nil
       start = nil
-      inPeriod = false
     }
-    return requester === app ? (start, inPeriod) : (nil, false)
+    return requester === app ? start : nil
   }
 
   #if HASALA_MOCKS
