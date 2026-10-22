@@ -144,12 +144,13 @@ final class SmokeTests: XCTestCase {
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
       XCTAssertEqual(bell.label, "Notifications, 4 need a look")
-      XCTAssertLessThan(bell.frame.maxX, profile.frame.minX, "\(tab): the bell is not before the profile")
+      XCTAssertLessThan(profile.frame.maxX, search.frame.minX, "\(tab): the profile is not before search and the bell")
       XCTAssertTrue(search.isHittable, "\(tab) has no search")
       XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")
       XCTAssertGreaterThanOrEqual(search.frame.width, 44)
       XCTAssertGreaterThanOrEqual(search.frame.height, 44)
       if mark.exists {
+        XCTAssertLessThanOrEqual(profile.frame.maxX, mark.frame.minX, "\(tab): the profile overlaps the mark")
         XCTAssertLessThanOrEqual(mark.frame.maxX, search.frame.minX, "\(tab): search overlaps the mark")
         XCTAssertEqual(mark.frame.midX, app.frame.midX, accuracy: 2, "\(tab): the mark is off centre")
       }

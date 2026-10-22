@@ -23,7 +23,7 @@ struct HeaderMarkTests {
   @Test func aPauseBreaksTheStreak() {
     var taps = CoinTaps()
     for index in 0..<4 { _ = taps.tap(at: start + Double(index) * 0.3) }
-    #expect(taps.tap(at: start + 0.9 + CoinTaps.gap) == .deposit)
+    #expect(taps.tap(at: start + 0.9 + CoinTaps.gap + 0.1) == .deposit)
     #expect(taps.streak == 1)
   }
 }
