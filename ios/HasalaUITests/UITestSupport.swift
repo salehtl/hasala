@@ -92,6 +92,17 @@ extension XCTestCase {
     e.typeText(text)
   }
 
+  @MainActor
+  func openPlan(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    app.buttons["header.profile"].firstMatch.tap()
+    let row = el(app, "profile.plan")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait), "Profile has no Plan row", file: file, line: line)
+    XCTAssertTrue(reveal(app, row), "could not reach Profile's Plan row", file: file, line: line)
+    row.tap()
+    XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait), "Plan did not open",
+                  file: file, line: line)
+  }
+
   /// Back on a pushed screen: the first button of the navigation bar.
   @MainActor
   func back(_ app: XCUIApplication) {

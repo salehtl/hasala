@@ -28,6 +28,7 @@ struct PlanDetailScreen<Content: View>: View {
   /// screen covers it; the profile sheet hosts one over all its pages).
   var hostsToast = true
   @ViewBuilder let content: () -> Content
+  @Environment(\.inProfileSheet) private var inProfileSheet
 
   var body: some View {
     ScrollView {
@@ -47,7 +48,7 @@ struct PlanDetailScreen<Content: View>: View {
     .navigationBarTitleDisplayMode(.inline)
     .modifier(MoreMenu(items: more))
     .overlay(alignment: .bottom) {
-      if hostsToast { ToastHost(app: app) }
+      if hostsToast && !inProfileSheet { ToastHost(app: app) }
     }
   }
 }

@@ -54,7 +54,7 @@ final class AddTransactionUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     let tabBar = app.tabBars.firstMatch
     let add = tabBar.buttons["Add a transaction"]
-    for (tab, id) in [("Home", "home.hero.left"), ("Plan", "plan.readyToAssign"), ("Review", "review.tab.count"),
+    for (tab, id) in [("Home", "home.hero.left"), ("Projects", "projects.new"), ("Review", "review.tab.count"),
                       ("Activity", "activity.count")] {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))

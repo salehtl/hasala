@@ -9,7 +9,7 @@ import HasalaModels
 /// The tabs, in the bar's order: Home, Plan, Review and Activity, and the add button beside
 /// them, which opens Add a transaction and is never the selected tab.
 enum AppTab: Hashable {
-  case home, plan, review, activity, add
+  case home, plan, projects, review, activity, add
 }
 
 /// Pushed inside the Home tab.
@@ -71,6 +71,9 @@ enum ProfileRoute: Hashable {
   case projects
   case addToProject(ProjectID)
   case editProject(ProjectID?)
+  case newProject(ProjectStarter)
+  case plan
+  case category(CategoryID)
   /// Sign-in & security.
   case security
   case editName
@@ -94,6 +97,7 @@ enum SheetRoute: Hashable, Identifiable {
   case widgetGallery
   case widgetConfig(HomeWidgetKind, entry: String?)
   case project(ProjectID?)
+  case newProject(ProjectStarter)
   case addTransaction
   case addFromEmail(TxnID)
   case search
@@ -110,6 +114,7 @@ enum SheetRoute: Hashable, Identifiable {
     case .widgetGallery: "widgetGallery"
     case .widgetConfig(let kind, let entry): "widgetConfig.\(kind.rawValue).\(entry ?? "new")"
     case .project(let id): "project.\(id ?? "new")"
+    case .newProject(let starter): "project.new.\(starter.name)"
     case .addTransaction: "addTransaction"
     case .addFromEmail(let id): "addFromEmail.\(id)"
     case .search: "search"
@@ -123,4 +128,15 @@ enum CoverRoute: Hashable, Identifiable {
   /// The review deck.
   case review
   var id: Self { self }
+}
+
+struct ProjectStarter: Hashable {
+  let name: String
+  let glyph: Glyph
+
+  static let quickStarts: [ProjectStarter] = [
+    ProjectStarter(name: "Trip", glyph: .travel),
+    ProjectStarter(name: "Move", glyph: .rent),
+    ProjectStarter(name: "Eid gifts", glyph: .shopping),
+  ]
 }

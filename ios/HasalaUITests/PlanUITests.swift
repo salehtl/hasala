@@ -33,7 +33,7 @@ final class PlanUITests: XCTestCase {
   @MainActor
   func testPlanMoveMoneyAndBudget() throws {
     let app = launchHome()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    openPlan(app)
     let rta = el(app, "plan.readyToAssign")
     XCTAssertTrue(rta.waitForExistence(timeout: uiWait))
     XCTAssertEqual(rta.label, "AED 1,000.00")
@@ -125,7 +125,8 @@ final class PlanUITests: XCTestCase {
     // The medium sheet is drawn at 386/402 of its size (the system's inset sheet); its
     // small targets still take 44 on the screen.
     for button in ["Add 200", "Less", "More", "Close"] {
-      XCTAssertGreaterThanOrEqual(app.buttons[button].firstMatch.frame.height, 44, button)
+      let target = app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != 'plan.more'", button)).firstMatch
+      XCTAssertGreaterThanOrEqual(target.frame.height, 44, button)
     }
     app.buttons["Add 200"].tap()
     attach(app, "Plan · Dining budget · 1,800")
@@ -166,13 +167,6 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Dining")
     try audit(app)
 
-    let zuma = el(app, "plan.txn.zuma")
-    XCTAssertTrue(reveal(app, zuma))
-    attach(app, "Plan · Dining · This month")
-    zuma.tap()
-    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
-    tap(app, "txn.close")
-
     let rule = el(app, "plan.rule.r-talabat")
     XCTAssertTrue(reveal(app, rule))
     XCTAssertTrue(rule.label.contains("Merchant contains"))
@@ -180,6 +174,15 @@ final class PlanUITests: XCTestCase {
     try audit(app)
     rule.tap()
     XCTAssertTrue(el(app, "rule.r-talabat").waitForExistence(timeout: uiWait))
+    back(app)
+
+    let zuma = el(app, "plan.txn.zuma")
+    XCTAssertTrue(zuma.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, zuma))
+    attach(app, "Plan · Dining · This month")
+    zuma.tap()
+    XCTAssertTrue(el(app, "txn.merchant").waitForExistence(timeout: uiWait))
+    tap(app, "txn.close")
   }
 
   /// Assign from Ready to assign: Move money with "To" to choose, pushed inside the sheet.
@@ -222,7 +225,7 @@ final class PlanUITests: XCTestCase {
   @MainActor
   func testJapanTripFromItsCard() throws {
     let app = launchHome()
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    openPlan(app)
     let card = el(app, "plan.project.japan")
     XCTAssertTrue(reveal(app, card))
     XCTAssertEqual(card.label,
@@ -294,7 +297,7 @@ final class PlanUITests: XCTestCase {
     // then clipped text alone, where the audit reads the "READY TO ASSIGN" overline as text
     // that may be cut off at larger sizes. It is not: it wraps
     // (`testReadyToAssignWrapsAtTheLargestSize`). Anything else clipped still fails.
-    app.tabBars.firstMatch.buttons["Plan"].tap()
+    openPlan(app)
     XCTAssertTrue(el(app, "plan.readyToAssign").waitForExistence(timeout: uiWait))
     attach(app, "AX3 · Plan")
     try audit(app)
