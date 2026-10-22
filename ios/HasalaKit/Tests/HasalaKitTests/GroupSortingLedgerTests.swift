@@ -28,7 +28,8 @@ struct GroupSortingLedgerTests {
     let row = try #require(SortResultEngine.row(l.state, in: october))
     #expect(row.line == "Sorted 30 Tailscale as Subscriptions")
     #expect(row.detail == "Including 22 from other months")
-    #expect(row.spoken == "Sorted 30 Tailscale as Subscriptions, including 22 from other months.")
+    #expect(row.spoken == "Sorted 30 Tailscale payments as Subscriptions, including 22 from other months.")
+    #expect(SortResultEngine.row(l.state)?.spoken == "Sorted 30 Tailscale payments as Subscriptions.")
     #expect(!row.canStopRule)
     #expect(row.undo == token)
     #expect(SortResultEngine.row(l.state)?.detail == nil)
@@ -165,6 +166,20 @@ struct GroupSortingLedgerTests {
       #expect(t.categoryID == MayaBacklog.wrongGuess && t.isModelSourced && t.rejectedCategories.isEmpty)
     }
     #expect(SuggestionsEngine.count(l.state) == before)
+  }
+
+  @Test func undoingTheFirstOfTwoNotThisBringsItsGuessBack() throws {
+    let l = ledger()
+    let first = try #require(try l.apply(.notThis(MayaBacklog.brightwellGroup, MayaBacklog.wrongGuess)))
+    try l.apply(.notThis(MayaBacklog.brightwellGroup, "entertainment"))
+    l.undo(first)
+    for t in l.state.txns where t.merchantGroup == "n:brightwell academy" {
+      #expect(t.categoryID == MayaBacklog.wrongGuess && t.isModelSourced)
+      #expect(t.rejectedCategories == ["entertainment"])
+      #expect(t.reviewSuggestion == MayaBacklog.wrongGuess)
+    }
+    let card = try #require(ReviewEngine.groupCard(MayaBacklog.brightwellGroup, l.state))
+    #expect(card.suggestion?.id == MayaBacklog.wrongGuess)
   }
 
   @Test func aRejectedPairStaysRejectedForANewGuess() throws {

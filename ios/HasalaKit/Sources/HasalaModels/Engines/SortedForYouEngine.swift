@@ -16,7 +16,10 @@ public struct SortResultRow: Sendable, Hashable, Identifiable {
     return "Including \(otherMonths) from \(otherMonths == 1 ? "another month" : "other months")"
   }
 
-  public var spoken: String { [line, detail?.lowercased()].compactMap { $0 }.joined(separator: ", ") + "." }
+  public var spoken: String {
+    let said = "Sorted \(count) \(merchant) payment\(count == 1 ? "" : "s") as \(category?.name ?? "Uncategorized")"
+    return [said, detail?.lowercased()].compactMap { $0 }.joined(separator: ", ") + "."
+  }
 
   public var canStopRule: Bool { ruleID != nil }
 }

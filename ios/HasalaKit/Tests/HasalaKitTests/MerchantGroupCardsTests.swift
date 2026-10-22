@@ -138,9 +138,12 @@ struct MerchantGroupCardsTests {
     #expect(g.isIncome)
     #expect(g.verb == "Received")
     #expect(g.metaLine == "Received · 2 payments · 7 Oct to 8 Oct")
-    #expect(g.spoken(hidden: false) == "Tailscale, 2 payments received from 7 October to 8 October, plus USD 12.00, repeats monthly.")
+    #expect(g.spoken(hidden: false) == "Tailscale, 2 payments received from 7 October to 8 October, plus USD 12.00.")
     #expect(g.spoken(hidden: true).contains("plus USD Amount hidden"))
     #expect(ReviewEngine.items(s).contains { $0.id == "group.in.n:tailscale" })
+    #expect(!g.repeatsMonthly)
+    #expect(ReviewEngine.groupCard(MayaBacklog.tailscaleRefunds, s)?.repeatsMonthly == false)
+    #expect(try group(MayaBacklog.tailscale).repeatsMonthly)
   }
 
   @Test func aGroupWithANewMerchantSaysSo() throws {
@@ -165,6 +168,32 @@ struct MerchantGroupCardsTests {
     #expect(g.filedAs.map(\.count) == [4, 3])
     #expect(g.historyLine == "You sorted Qasr Corner Store as Groceries (4) and Shopping (3) before")
     #expect(g.suggestion == nil)
+  }
+
+  @Test func aCloudflareFilingIsNotSortedByThePerson() throws {
+    var s = s
+    for i in s.txns.indices {
+      switch s.txns[i].id {
+      case "bl-bright-7":
+        s.txns[i].categoryID = "entertainment"
+        s.txns[i].categorySource = .user
+        s.txns[i].needsReview = false
+      case "bl-bright-8":
+        s.txns[i].needsReview = false
+      case "bl-bright-9", "bl-bright-10":
+        s.txns[i].categoryID = nil
+        s.txns[i].categorySource = nil
+      default: break
+      }
+    }
+    #expect(s.txn("bl-bright-8")?.autoFiledByCloudflare == true)
+    let g = try #require(ReviewEngine.groupCard(MayaBacklog.brightwellGroup, s))
+    #expect(g.count == 2)
+    #expect(g.filedAs.map(\.id) == ["entertainment"])
+    #expect(g.filedAs.map(\.count) == [1])
+    #expect(!g.isMixed)
+    #expect(g.historyLine == nil)
+    #expect(ReviewEngine.filedAs(MayaBacklog.brightwellGroup, s).map(\.id) == ["entertainment"])
   }
 
   @Test func aGroupCarriesItsModelGuess() throws {

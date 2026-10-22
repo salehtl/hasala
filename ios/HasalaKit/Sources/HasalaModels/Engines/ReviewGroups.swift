@@ -184,13 +184,14 @@ extension ReviewEngine {
       guard let ref = t.groupRef else { continue }
       reachable[ref, default: []].append(t)
     }
-    let pairs = Set(s.txns.compactMap { $0.samePurchase?.of })
+    let inWindow = queue(s, in: window)
+    let index = GroupIndex(s, windowQueue: inWindow)
     var out: [ReviewItem] = []
     var emitted: Set<MerchantGroupRef> = []
-    for t in queue(s, in: window) {
+    for t in inWindow {
       if t.reachable, let ref = t.groupRef, let rows = reachable[ref], rows.count >= 2 {
         guard emitted.insert(ref).inserted else { continue }
-        out.append(.group(groupCard(ref, rows: rows, s, in: window, pairs: pairs)))
+        out.append(.group(groupCard(ref, rows: rows, s, in: window, index: index)))
       } else {
         out.append(.single(card(t, s)))
       }
@@ -208,11 +209,12 @@ extension ReviewEngine {
   {
     let rows = queue(s).filter { $0.reachable && $0.groupRef == ref }
     guard rows.contains(where: { window.contains($0.postedAt.date) }) else { return nil }
-    return groupCard(ref, rows: rows, s, in: window, pairs: Set(s.txns.compactMap { $0.samePurchase?.of }))
+    let index = GroupIndex(s, windowQueue: queue(s, in: window), only: ref)
+    return groupCard(ref, rows: rows, s, in: window, index: index)
   }
 
   static func groupCard(
-    _ ref: MerchantGroupRef, rows: [Txn], _ s: LedgerState, in window: ReviewWindow, pairs: Set<TxnID>
+    _ ref: MerchantGroupRef, rows: [Txn], _ s: LedgerState, in window: ReviewWindow, index: GroupIndex
   ) -> ReviewGroupCardModel {
     let inside = rows.filter { window.contains($0.postedAt.date) }
     let shown = inside.isEmpty ? rows : inside
@@ -227,19 +229,16 @@ extension ReviewEngine {
     let suggestedBy = suggested.flatMap { c in
       mostCommon(rows.filter { $0.reviewSuggestion == c.id }.compactMap { $0.categorySource?.suggestionLabel(needsReview: true) })
     }
-    let leftOut = queue(s, in: window).filter { $0.groupRef == ref && !$0.reachable }.map { t in
-      ReviewLeftOut(txnID: t.id, reason: t.activeReviewReason ?? (pairs.contains(t.id) ? .samePurchase : nil))
-    }
-    let history = filedAs(ref, s)
+    let history = index.filedAs(ref, s)
     let mixedIDs = Set(history.map(\.id)).union(suggestions)
     return ReviewGroupCardModel(
       group: ref, merchant: merchant, monogram: String(merchant.prefix(1)).uppercased(),
       txnIDs: inside.map(\.id), otherMonths: rows.count - inside.count,
       first: dates.min() ?? LocalDate(1970, 1, 1), last: dates.max() ?? LocalDate(1970, 1, 1),
-      totals: totals, estimate: estimate, spellings: spellings(rows), repeatsMonthly: repeatsMonthly(ref, s),
+      totals: totals, estimate: estimate, spellings: spellings(rows), repeatsMonthly: index.repeatsMonthly(ref),
       suggestion: suggested.map(CategoryOption.init), suggestedBy: suggestedBy, filedAs: history,
       isMixed: mixedIDs.count >= 2, month: shown.first?.postedAt.date.yearMonth ?? LocalDate(1970, 1, 1).yearMonth,
-      leftOut: leftOut, isNewMerchant: rows.contains(where: \.isNewMerchant))
+      leftOut: index.leftOut[ref] ?? [], isNewMerchant: rows.contains(where: \.isNewMerchant))
   }
 
   static func mostCommon(_ labels: [String]) -> String? {
@@ -290,28 +289,11 @@ extension ReviewEngine {
   }
 
   public static func filedAs(_ ref: MerchantGroupRef, _ s: LedgerState) -> [FiledCount] {
-    var counts: [CategoryID: Int] = [:]
-    for t in s.txns where t.groupRef == ref && !t.archived && !t.inReview && t.splits.isEmpty {
-      guard let c = t.categoryID else { continue }
-      counts[c, default: 0] += 1
-    }
-    return counts.compactMap { id, n in s.category(id).map { FiledCount(category: CategoryOption($0), count: n) } }
-      .sorted { $0.count == $1.count ? $0.category.name < $1.category.name : $0.count > $1.count }
+    GroupIndex(s, windowQueue: [], only: ref).filedAs(ref, s)
   }
 
   public static func repeatsMonthly(_ ref: MerchantGroupRef, _ s: LedgerState) -> Bool {
-    var keys: Set<String> = [ref.key]
-    for t in s.txns where t.groupRef == ref {
-      if let k = t.merchantKey { keys.insert(k) }
-    }
-    let billed = s.bills.contains { b in
-      (b.state == .tracked || b.state == .paused) && b.cadence == .monthly && b.every == 1
-        && b.keys.contains { keys.contains($0) }
-    }
-    if billed { return true }
-    return s.billCandidates.contains { c in
-      (26...35).contains(c.everyDays) && keys.contains(c.key ?? c.name.lowercased())
-    }
+    GroupIndex(s, windowQueue: [], only: ref).repeatsMonthly(ref)
   }
 
   public static func itemMonths(_ items: [ReviewItem], now: LocalDateTime) -> [ReviewItemMonth] {
@@ -361,5 +343,43 @@ extension ReviewEngine {
     case 2: "\(names[0]) and \(names[1])"
     default: names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
     }
+  }
+}
+
+struct GroupIndex {
+  var leftOut: [MerchantGroupRef: [ReviewLeftOut]] = [:]
+  var filed: [MerchantGroupRef: [CategoryID: Int]] = [:]
+  var keys: [MerchantGroupRef: Set<String>] = [:]
+  var monthly: [Direction: Set<String>] = [:]
+
+  init(_ s: LedgerState, windowQueue: [Txn], only: MerchantGroupRef? = nil) {
+    let pairs = Set(s.txns.compactMap { $0.samePurchase?.of })
+    for t in windowQueue where !t.reachable {
+      guard let ref = t.groupRef, only == nil || only == ref else { continue }
+      let reason = t.activeReviewReason ?? (pairs.contains(t.id) ? .samePurchase : nil)
+      leftOut[ref, default: []].append(ReviewLeftOut(txnID: t.id, reason: reason))
+    }
+    for t in s.txns {
+      guard let ref = t.groupRef, only == nil || only == ref else { continue }
+      if let k = t.merchantKey { keys[ref, default: []].insert(k) }
+      guard !t.archived, !t.inReview, t.splits.isEmpty, t.filedByPerson, let c = t.categoryID else { continue }
+      filed[ref, default: [:]][c, default: 0] += 1
+    }
+    for b in s.bills where (b.state == .tracked || b.state == .paused) && b.cadence == .monthly && b.every == 1 {
+      monthly[b.isIncome ? .in : .out, default: []].formUnion(b.keys)
+    }
+    for c in s.billCandidates where (26...35).contains(c.everyDays) {
+      monthly[.out, default: []].insert(c.key ?? c.name.lowercased())
+    }
+  }
+
+  func filedAs(_ ref: MerchantGroupRef, _ s: LedgerState) -> [FiledCount] {
+    (filed[ref] ?? [:]).compactMap { id, n in s.category(id).map { FiledCount(category: CategoryOption($0), count: n) } }
+      .sorted { $0.count == $1.count ? $0.category.name < $1.category.name : $0.count > $1.count }
+  }
+
+  func repeatsMonthly(_ ref: MerchantGroupRef) -> Bool {
+    guard let covered = monthly[ref.direction] else { return false }
+    return covered.contains(ref.key) || !(keys[ref] ?? []).isDisjoint(with: covered)
   }
 }

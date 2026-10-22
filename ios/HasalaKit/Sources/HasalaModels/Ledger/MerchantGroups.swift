@@ -59,6 +59,13 @@ extension Txn {
     return true
   }
 
+  public var filedByPerson: Bool {
+    switch categorySource {
+    case .user, .manual, .rule: true
+    case .dictionary, .model, nil: false
+    }
+  }
+
   public func inGroup(_ key: String) -> Bool { (merchantGroup ?? merchantKey) == key }
 }
 
