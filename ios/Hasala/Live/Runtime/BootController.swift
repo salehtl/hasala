@@ -272,7 +272,9 @@ final class BootController {
       self.opening = nil
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
-      let app = AppModel(store: rt.store, mailbox: self.services.mailbox, layouts: layouts)
+      let app = AppModel(
+        store: rt.store, mailbox: self.services.mailbox, layouts: layouts,
+        notificationReads: NotificationReads(defaults: .standard))
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.

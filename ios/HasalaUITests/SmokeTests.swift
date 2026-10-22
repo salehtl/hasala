@@ -169,6 +169,24 @@ final class SmokeTests: XCTestCase {
     XCTAssertEqual(tabBar.buttons["Home"].isSelected, true)
   }
 
+  @MainActor
+  func testMarkAllNotificationsRead() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let bell = app.buttons["header.notifications"].firstMatch
+    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+    bell.tap()
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
+    tap(app, "bell.markAllRead")
+    XCTAssertTrue(el(app, "bell.markAllRead").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bell.row.review").exists, "marking read removed the rows")
+    attach(app, "Bell · All read")
+    try audit(app)
+    el(app, "bell.close").tap()
+    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
+    XCTAssertEqual(bell.label, "Notifications")
+  }
+
   /// Home and the tabs at `.accessibility3` (UIKit's AccessibilityXL): the layouts reflow
   /// instead of truncating, and the audit passes (spec 04 §17).
   @MainActor

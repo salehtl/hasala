@@ -1,3 +1,4 @@
+import Foundation
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -50,6 +51,37 @@ struct HomeModelTests {
     app.perform(.markBillPaid("axa"))
     #expect(home.snapshot != first)
     #expect(home.bell.count == 3)
+  }
+
+  @Test func markAllReadClearsTheBadgeUntilSomethingChanges() {
+    let app = AppModel(store: InMemoryLedger())
+    let home = HomeViewModel(app: app)
+    #expect(home.bell.unread == 4)
+    #expect(app.bellCount == 4)
+    home.markAllRead()
+    #expect(home.bell.unread == 0)
+    #expect(app.bellCount == 0)
+    #expect(home.bell.count == 4)
+    app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
+    #expect(home.bell.needsALook[0].title == "5 transactions to sort")
+    #expect(home.bell.unread == 1)
+    #expect(app.bellCount == 1)
+  }
+
+  @Test func readsPersistAsDigestsAndAreForgotten() throws {
+    let suite = "test.bell.reads.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let first = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    HomeViewModel(app: first).markAllRead()
+    let stored = defaults.stringArray(forKey: NotificationReads.key) ?? []
+    #expect(stored.count == 4)
+    #expect(!stored.contains { $0.contains("review") || $0.contains("AXA") })
+    let again = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    #expect(again.bellCount == 0)
+    NotificationReads.forget(defaults)
+    let after = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    #expect(after.bellCount == 4)
   }
 
   /// Mail's offer is the bell's last row (plan B4.3); Home's board stays Maya's.

@@ -79,14 +79,16 @@ final class AppModel {
   @ObservationIgnored private var previewMemo = Memo<Int, [HomeWidgetKind: HomeCanvasItem]>()
 
   @ObservationIgnored let layouts: HomeLayoutStore?
+  let notificationReads: NotificationReads
   private(set) var homeLayout: HomeLayout?
   var editingHome = false
 
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
-    layouts: HomeLayoutStore? = nil
+    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads()
   ) {
     self.store = store
+    self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
     self.layouts = layouts

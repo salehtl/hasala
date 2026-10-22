@@ -35,10 +35,10 @@ struct NotificationsSheet: View {
             NothingNeedsYou()
               .accessibilityIdentifier("bell.allClear")
           } else {
-            section("Needs a look", bell.needsALook)
+            section("Needs a look", bell.needsALook, markAll: bell.unread > 0)
           }
           if !bell.earlier.isEmpty {
-            section("Earlier", bell.earlier)
+            section("Earlier", bell.earlier, markAll: false)
           }
           if BuildSurface.showsUnfinished {
             Button { app.router.open(.profile, profile: [.notifications]) } label: {
@@ -86,10 +86,19 @@ struct NotificationsSheet: View {
   }
 
   /// A heading 22/28 bold over one white card of rows, 12 apart; dividers inset 68.
-  private func section(_ title: String, _ items: [NotificationItem]) -> some View {
+  private func section(_ title: String, _ items: [NotificationItem], markAll: Bool) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text(title).hType(.section).foregroundStyle(HColor.textPrimary)
-        .accessibilityAddTraits(.isHeader)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+          heading(title)
+          Spacer(minLength: 0)
+          if markAll { markAllButton.padding(.vertical, -8) }
+        }
+        VStack(alignment: .leading, spacing: 4) {
+          heading(title)
+          if markAll { markAllButton }
+        }
+      }
       HListCard {
         ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
           if i > 0 { HDivider(inset: .disc68) }
@@ -99,6 +108,23 @@ struct NotificationsSheet: View {
         }
       }
     }
+  }
+
+  private func heading(_ title: String) -> some View {
+    Text(title).hType(.section).foregroundStyle(HColor.textPrimary)
+      .accessibilityAddTraits(.isHeader)
+  }
+
+  private var markAllButton: some View {
+    Button { model.markAllRead() } label: {
+      Text("Mark all as read")
+        .hType(.subheadline.weight(.medium))
+        .foregroundStyle(HColor.textLink)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("bell.markAllRead")
   }
 
   private func open(_ item: NotificationItem) {
