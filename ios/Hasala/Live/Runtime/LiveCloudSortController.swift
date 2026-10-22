@@ -7,7 +7,7 @@ import Observation
 final class LiveCloudSortController: CloudSortControlling {
   private(set) var status: CloudSortStatus = .off
   @ObservationIgnored private let sorter: BacklogSorter
-  @ObservationIgnored private let view: @Sendable () async -> ModelSuggestionStage.BacklogView?
+  @ObservationIgnored private let view: @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView?
   @ObservationIgnored private let undo: @MainActor () async -> Int
   @ObservationIgnored private let sendBack: @MainActor () async -> Int
   @ObservationIgnored private let enabled: () -> Bool
@@ -16,9 +16,10 @@ final class LiveCloudSortController: CloudSortControlling {
   @ObservationIgnored private var counts: ModelSuggestionStage.BacklogView?
   @ObservationIgnored private var listener: Task<Void, Never>?
   @ObservationIgnored private var recounting = false
+  @ObservationIgnored private var recountAgain = false
 
   init(
-    sorter: BacklogSorter, view: @escaping @Sendable () async -> ModelSuggestionStage.BacklogView?,
+    sorter: BacklogSorter, view: @escaping @Sendable ([String: Int64]) async -> ModelSuggestionStage.BacklogView?,
     undo: @escaping @MainActor () async -> Int, sendBack: @escaping @MainActor () async -> Int,
     enabled: @escaping () -> Bool = { MerchantSuggestionsSetting.isEnabled() },
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -42,7 +43,7 @@ final class LiveCloudSortController: CloudSortControlling {
   convenience init(runtime: AccountRuntime) {
     let stage = runtime.suggestions
     self.init(
-      sorter: runtime.backlog, view: { await stage.backlogView() },
+      sorter: runtime.backlog, view: { await stage.backlogView(filedHere: $0) },
       undo: { [weak runtime] in await runtime?.undoLastRun() ?? 0 },
       sendBack: { [weak runtime] in await runtime?.sendAllBack() ?? 0 })
   }
@@ -53,7 +54,7 @@ final class LiveCloudSortController: CloudSortControlling {
 
   func refresh() async {
     snapshot = await sorter.snapshot
-    counts = await view()
+    counts = await view(snapshot?.record.filedHere ?? [:])
     compose()
   }
 
@@ -83,12 +84,23 @@ final class LiveCloudSortController: CloudSortControlling {
     let moved = snapshot?.record != s.record
     snapshot = s
     compose()
-    guard moved, !recounting else { return }
+    guard moved else { return }
+    recount()
+  }
+
+  private func recount() {
+    guard !recounting else {
+      recountAgain = true
+      return
+    }
     recounting = true
+    recountAgain = false
+    let filed = snapshot?.record.filedHere ?? [:]
     Task {
-      counts = await view()
+      counts = await view(filed)
       recounting = false
       compose()
+      if recountAgain { recount() }
     }
   }
 
@@ -104,10 +116,16 @@ final class LiveCloudSortController: CloudSortControlling {
     let run = record.run
     let c = view?.counts ?? BacklogSort.Counts()
     let today = BacklogSort.dayLeft(record.day, nowMs: nowMs)
+    let shown: CloudSortStatus.Phase = enabled ? phase(run, hold: snapshot?.hold) : .off
+    let holding: Bool
+    switch shown {
+    case .running, .paused: holding = true
+    case .off, .idle, .done: holding = false
+    }
     return CloudSortStatus(
-      phase: enabled ? phase(run, hold: snapshot?.hold) : .off, waitingNames: c.waitingNames, waitingPayments: c.waitingPayments,
+      phase: shown, waitingNames: c.waitingNames, waitingPayments: c.waitingPayments,
       askedNames: run?.asked ?? 0, totalNames: run?.totalNames ?? 0, filed: run?.filed ?? 0, suggested: run?.suggested ?? 0,
-      leftForYou: c.leftForYou, staysOnDevice: c.staysOnDevice, pendingTxnIDs: c.pendingTxnIDs, lastRunEndedMs: run?.endedMs,
+      leftForYou: c.leftForYou, staysOnDevice: c.staysOnDevice, pendingTxnIDs: holding ? c.pendingTxnIDs : [], lastRunEndedMs: run?.endedMs,
       canUndoLastRun: record.canUndo, cloudSortedCount: view?.cloudSorted ?? 0, remainingToday: today,
       nextRunNames: min(c.waitingNames, BacklogSort.runNames, today))
   }

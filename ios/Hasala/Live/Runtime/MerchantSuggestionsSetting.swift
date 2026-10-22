@@ -44,7 +44,7 @@ nonisolated enum MerchantSuggestionsSetting {
   }
 
   static func hasRunRequest(_ defaults: UserDefaults = .standard) -> Bool {
-    isEnabled(defaults) && (defaults.bool(forKey: runRequestKey) || defaults.object(forKey: firstImportStartedKey) != nil)
+    isEnabled(defaults) && defaults.bool(forKey: runRequestKey)
   }
 
   @discardableResult

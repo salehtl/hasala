@@ -166,14 +166,27 @@ struct BacklogSorterTests {
     #expect(saved.value.canUndo && !saved.value.isActive)
   }
 
-  @Test func aRunResumesAfterARelaunch() async {
+  @Test func threeFailedPassesEndTheRunAndFreeTheSweepAndTheDeck() async {
     let saved = Saved()
     let script = Script([(4, 10, nil), nil, nil, nil])
     let s = sorter(script, saved)
     await s.start()
     await s.finished()
     #expect(script.passes == 1 + BacklogSorter.maxFailures)
-    #expect(saved.run?.phase == .running && saved.run?.requests == 10)
+    #expect(saved.run?.phase == .done && saved.run?.reason == .failed && saved.run?.requests == 10)
+    #expect(!s.activity.isActive && !saved.value.isActive && saved.run?.endedMs != nil)
+    let status = LiveCloudSortController.status(
+      snapshot: await s.snapshot, view: CloudSortStatusTests.view(9), enabled: true, nowMs: BacklogSorterTests.start)
+    #expect(status.phase == .done && status.pendingTxnIDs.isEmpty)
+    let again = Script([(0, 2, nil)])
+    let t = sorter(again, saved)
+    await t.start()
+    await t.finished()
+    #expect(again.memos == [0] && saved.run?.phase == .done && saved.run?.reason == nil)
+  }
+
+  @Test func aRunResumesAfterARelaunch() async {
+    let saved = Saved.running(requests: 10)
     let next = Script([(0, 2, nil)])
     let t = sorter(next, saved)
     #expect(await t.snapshot.record == saved.value)
@@ -181,6 +194,72 @@ struct BacklogSorterTests {
     await t.finished()
     #expect(next.memos == [10])
     #expect(saved.run?.phase == .done && saved.run?.requests == 12)
+  }
+
+  @Test func aFailedPassStillCountsItsRequestsAgainstTheDay() async {
+    let saved = Saved()
+    let script = Script([Step(pending: 3, calls: 4, stop: nil, filed: ["a": 2]), nil, nil])
+    let failing = BacklogSorter(
+      pass: { memo, left in
+        guard var r = await script.run(memo, left) else { return nil }
+        r.pass = .failed(r.pass.memo, calls: r.pass.calls)
+        return r
+      }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: Sleeps().sleep)
+    await failing.start()
+    await failing.finished()
+    #expect(saved.value.day.count == 4 && saved.run?.requests == 4 && saved.run?.filed == 1 && saved.run?.manifest == ["a": 2])
+    #expect(saved.value.filedHere == ["a": 2])
+  }
+
+  @Test func theForegroundSweepSharesTheDayLedgerAndStopsAtTheCaps() async {
+    let clock = Clock()
+    let saved = Saved(BacklogRunRecord(day: Array(repeating: BacklogSorterTests.start - 10, count: 390)))
+    let s = sorter(Script([Step?]()), saved, clock: clock)
+    #expect(await s.cloudBudget() == 10)
+    await s.spent(4)
+    let left = await s.cloudBudget()
+    #expect(saved.value.day.count == 394 && left == 6)
+    await s.spent(0)
+    #expect(saved.value.day.count == 394)
+    for reason in [BacklogRunRecord.Reason.dayCap, .runCap] {
+      var run = BacklogRunRecord.Run(id: "r", startedMs: 0)
+      run.phase = .paused
+      run.reason = reason
+      let capped = Saved(BacklogRunRecord(run: run))
+      #expect(await sorter(Script([Step?]()), capped).cloudBudget() == 0)
+    }
+    var busy = BacklogRunRecord.Run(id: "r", startedMs: 0)
+    busy.phase = .paused
+    busy.reason = .busy
+    #expect(await sorter(Script([Step?]()), Saved(BacklogRunRecord(run: busy))).cloudBudget() == BacklogSort.dayNames)
+    let script = Script([(0, 1, nil)])
+    let t = sorter(script, saved, clock: clock)
+    await t.start()
+    await t.finished()
+    #expect(script.dayLefts == [6])
+  }
+
+  @Test func sendingBackCoversEveryRunOnThisDeviceAndNothingElse() async {
+    let saved = Saved()
+    let first = Script([Step(pending: 0, calls: 2, stop: nil, filed: ["a": 2, "b": 3])])
+    let s = sorter(first, saved)
+    await s.start()
+    await s.finished()
+    let second = Script([Step(pending: 0, calls: 1, stop: nil, filed: ["c": 4])])
+    let t = sorter(second, saved)
+    await t.start()
+    await t.finished()
+    #expect(saved.value.filedHere == ["a": 2, "b": 3, "c": 4] && saved.run?.manifest == ["c": 4])
+    #expect(await t.undoLastRun { $0.count } == 1)
+    #expect(saved.value.filedHere == ["a": 2, "b": 3])
+    let given = Mutex<[String: Int64]?>(nil)
+    #expect(await t.sendAllBack { m in
+      given.withLock { $0 = m }
+      return m.count
+    } == 2)
+    #expect(given.withLock { $0 } == ["a": 2, "b": 3] && saved.value.filedHere.isEmpty)
+    #expect(await t.sendAllBack { _ in 9 } == 0)
   }
 
   @Test func aRateLimitWaitsThreeTimesThenPausesUntilATapOrALaterForeground() async {
@@ -349,8 +428,8 @@ struct BacklogSorterTests {
     let s = sorter(Script([Step?]()), saved)
     #expect(await s.undoLastRun { _ in nil } == 0)
     #expect(saved.value.canUndo)
-    #expect(await s.sendAllBack { 4 } == 4)
-    #expect(!saved.value.canUndo)
+    #expect(await s.sendAllBack { _ in 4 } == 0)
+    #expect(saved.value.canUndo)
   }
 
   @Test func turningSuggestionsOffStopsARunAtOnce() async {
@@ -412,8 +491,10 @@ struct BacklogSorterTests {
     run.reason = .busy
     run.untilMs = 9
     run.manifest = ["a": 2]
-    let r = BacklogRunRecord(run: run, day: [1, 2])
+    let r = BacklogRunRecord(run: run, day: [1, 2], filedHere: ["a": 2, "b": 4])
     #expect(try JSONDecoder().decode(BacklogRunRecord.self, from: JSONEncoder().encode(r)) == r)
+    let older = try JSONDecoder().decode(BacklogRunRecord.self, from: Data(#"{"day":[1]}"#.utf8))
+    #expect(older == BacklogRunRecord(day: [1]))
   }
 
   @Test nonisolated func theGateRunsOneSweepAtATime() async {
@@ -489,7 +570,13 @@ struct CloudSortStatusTests {
     let s = C.status(
       snapshot: BacklogSnapshot(record: record, hold: nil, looping: false), view: Self.view(300), enabled: true, nowMs: now)
     #expect(s.phase == .done && s.askedNames == 40 && s.totalNames == 300 && s.filed == 20 && s.suggested == 5)
-    #expect(s.waitingPayments == 303 && s.staysOnDevice == 4 && s.leftForYou == 6 && s.pendingTxnIDs == ["t"])
+    #expect(s.waitingPayments == 303 && s.staysOnDevice == 4 && s.leftForYou == 6 && s.pendingTxnIDs.isEmpty)
+    var going = run
+    going.phase = .running
+    let held = C.status(
+      snapshot: BacklogSnapshot(record: BacklogRunRecord(run: going), hold: nil, looping: true), view: Self.view(300), enabled: true,
+      nowMs: now)
+    #expect(held.pendingTxnIDs == ["t"])
     #expect(s.lastRunEndedMs == 99 && s.canUndoLastRun && s.remainingToday == 50 && s.nextRunNames == 50)
     let fresh = C.status(
       snapshot: BacklogSnapshot(record: BacklogRunRecord(run: run), hold: nil, looping: false), view: Self.view(300), enabled: true,
@@ -505,7 +592,7 @@ struct CloudSortStatusTests {
       importRunning: { false }, enabled: { true }, network: BacklogSorterTests.Net(), sleep: { _ in })
     let undone = Mutex(0)
     let c = LiveCloudSortController(
-      sorter: sorter, view: { Self.view(12) }, undo: { undone.withLock { $0 += 1 }; return 3 }, sendBack: { 5 }, enabled: { true },
+      sorter: sorter, view: { _ in Self.view(12) }, undo: { undone.withLock { $0 += 1 }; return 3 }, sendBack: { 5 }, enabled: { true },
       nowMs: { BacklogSorterTests.start })
     await c.refresh()
     #expect(c.status.phase == .idle && c.status.waitingNames == 12 && c.status.nextRunNames == 12)
@@ -514,6 +601,35 @@ struct CloudSortStatusTests {
     #expect(c.status.phase == .done && c.status.askedNames == 2)
     #expect(await c.undoLastRun() == 3 && undone.withLock { $0 } == 1)
     #expect(await c.sendAllBack() == 5)
+  }
+
+  @Test func aRecountAskedForWhileOneRunsRunsOnceMore() async {
+    let saved = BacklogSorterTests.Saved()
+    let sorter = BacklogSorter(
+      pass: { _, _ in nil }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
+      importRunning: { false }, enabled: { true }, network: BacklogSorterTests.Net(), sleep: { _ in })
+    let calls = Mutex(0)
+    let open = Mutex(false)
+    let c = LiveCloudSortController(
+      sorter: sorter,
+      view: { _ in
+        let n = calls.withLock { n -> Int in
+          n += 1
+          return n
+        }
+        while !open.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(2)) }
+        return Self.view(n * 10)
+      }, undo: { 0 }, sendBack: { 0 }, enabled: { true }, nowMs: { BacklogSorterTests.start })
+    for _ in 0..<400 where calls.withLock({ $0 }) < 1 { try? await Task.sleep(for: .milliseconds(5)) }
+    await sorter.spent(1)
+    await sorter.spent(1)
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(calls.withLock { $0 } == 1)
+    open.withLock { $0 = true }
+    for _ in 0..<400 where c.status.waitingNames != 20 { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.waitingNames == 20)
+    try? await Task.sleep(for: .milliseconds(30))
+    #expect(calls.withLock { $0 } == 2)
   }
 
   @Test func theMockTakesAPhaseFromItsLaunchArgument() {
@@ -544,12 +660,13 @@ struct BacklogSortSettingTests {
     #expect(!MerchantSuggestionsSetting.takeRunRequest(d))
   }
 
-  @Test func aFirstImportFromAnOlderBuildStillCountsAsARequest() {
+  @Test func aFirstImportFromAnOlderBuildIsNotARequestAndIsForgotten() {
     let d = freshDefaults()
     MerchantSuggestionsSetting.setEnabled(true, d)
     d.set(Double(1_000), forKey: MerchantSuggestionsSetting.firstImportStartedKey)
     d.set(12, forKey: MerchantSuggestionsSetting.firstImportRequestsKey)
-    #expect(MerchantSuggestionsSetting.takeRunRequest(d))
+    #expect(!MerchantSuggestionsSetting.hasRunRequest(d))
+    #expect(!MerchantSuggestionsSetting.takeRunRequest(d))
     #expect(d.object(forKey: MerchantSuggestionsSetting.firstImportStartedKey) == nil)
     #expect(d.object(forKey: MerchantSuggestionsSetting.firstImportRequestsKey) == nil)
   }

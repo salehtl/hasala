@@ -233,6 +233,7 @@ final class AccountRuntime {
       }
     }
     let activity = BacklogActivity()
+    let link = BacklogLink()
     let suggestions = ModelSuggestionStage(
       observer: observer, outbox: outbox, cache: FMCache(context.store), dictionary: dictionary,
       onDevice: HasalaModelFactory.make(),
@@ -245,7 +246,9 @@ final class AccountRuntime {
       onDeviceAlone: BuildSurface.showsUnfinished,
       nowMs: { context.clock.nowMs() },
       backlogActive: { activity.isActive },
-      autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader)
+      autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
+      cloudBudget: { await link.budget() },
+      cloudSpent: { await link.spent($0) })
     let backlog = BacklogSorter(
       pass: { await suggestions.backlogPass($0, dayLeft: $1) }, store: .live(BacklogRunStore(context.store)),
       nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
@@ -254,6 +257,7 @@ final class AccountRuntime {
         let phase = await lane.status().phase
         return phase == .scanning || phase == .authoringBackfill
       }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity)
+    link.set(backlog)
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
         sync: { trigger, deadline in
@@ -436,7 +440,7 @@ final class AccountRuntime {
 
   func sendAllBack() async -> Int {
     let stage = suggestions
-    return await backlog.sendAllBack { await stage.undo(manifest: nil) }
+    return await backlog.sendAllBack { await stage.undo(manifest: $0) }
   }
 
   func followImports() async {

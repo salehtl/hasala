@@ -1,5 +1,9 @@
 import CoreCategorize
+import CoreDomain
+import CoreJSON
+import CoreStore
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -41,6 +45,65 @@ struct ModelSuggestionStageTests {
       ModelSuggestionStage.stages(onDevice: apple, cloud: refused, onDeviceAlone: false).map(\.model.modelTag) == ["apple-fm/27.1"])
     #expect(
       ModelSuggestionStage.stages(onDevice: apple, cloud: refused, onDeviceAlone: true).map(\.model.modelTag) == ["apple-fm/27.1"])
+  }
+
+  nonisolated final class Counting: CategoryModel, Sendable {
+    let modelTag: String
+    let answer: ModelAnswer
+    let log = Mutex<[String]>([])
+    init(_ tag: String, answer: ModelAnswer) {
+      modelTag = tag
+      self.answer = answer
+    }
+    func availability() -> ModelAvailability { .available }
+    func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
+      log.withLock { $0.append(subject) }
+      return answer
+    }
+    var calls: [String] { log.withLock { $0 } }
+  }
+
+  @MainActor
+  static func waiting(_ a: LiveLedgerMapperTests.Account, suite: String) async throws -> [String] {
+    var ids: [String] = []
+    var blobs: [AuthoredBlob] = []
+    let merchants = [("QWERTY BISTRO", "10:00:00", "4100", "3"), ("ASDF GRILL", "12:00:00", "5200", "4"),
+                     ("ZXCV NOODLES", "14:00:00", "6300", "5")]
+    if let b = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+      for (i, m) in merchants.enumerated() {
+        var row = LiveUndoTests.alert(grant: "u/mbx-a", message: "w\(i)", at: m.1, merchant: m.0, minor: m.2)
+        row["category"] = .null
+        row["category_source"] = nil
+        row["needs_review"] = .bool(true)
+        row["gates"] = .object(JSONObject([
+          ("ar", .string("pass")), ("sender", .string("trusted")), ("template", .string("dib.card.v1@1")), ("card", .string("known")),
+          ("forwarded", .bool(false)),
+        ]))
+        ids.append(try o.ingest(payload: row, ingestID: String(repeating: m.3, count: 64)))
+      }
+    }) { blobs.append(b) }
+    _ = try await LiveUndoTests.store(a, suite: suite, extra: blobs)
+    return ids
+  }
+
+  @MainActor
+  @Test func theForegroundSweepSpendsTheSharedDayBudgetAndSkipsClefWhenNoneIsLeft() async throws {
+    let a = try LiveLedgerMapperTests.account()
+    _ = try await Self.waiting(a, suite: "stage.budget.tests")
+    let anchor = LiveLedgerMapperTests.anchor
+    let budget = Mutex(0)
+    let spent = Mutex<[Int]>([])
+    let device = Counting("apple-fm/27.1", answer: .unknown)
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    let stage = ModelSuggestionStage(
+      observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
+      onDevice: device, cloud: cloud, onDeviceAlone: false, nowMs: { anchor },
+      cloudBudget: { budget.withLock { $0 } }, cloudSpent: { n in spent.withLock { $0.append(n) } })
+    _ = await stage.run(.foreground)
+    #expect(cloud.calls.isEmpty && device.calls.count == 3 && spent.withLock { $0 }.isEmpty)
+    budget.withLock { $0 = 2 }
+    _ = await stage.run(.foreground)
+    #expect(cloud.calls.count == 2 && spent.withLock { $0 } == [2])
   }
 
   @Test func onlyForegroundTriggersRunTheSweep() {

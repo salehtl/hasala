@@ -7,7 +7,7 @@ import UIKit
 
 nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
   enum Phase: String, Codable, Sendable { case running, paused, done }
-  enum Reason: String, Codable, Sendable { case off, refused, rateLimited, busy, runCap, dayCap, stopped }
+  enum Reason: String, Codable, Sendable { case off, refused, rateLimited, busy, runCap, dayCap, stopped, failed }
 
   struct Run: Codable, Equatable, Sendable {
     var id: String
@@ -26,6 +26,20 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
 
   var run: Run?
   var day: [Int64] = []
+  var filedHere: [String: Int64] = [:]
+
+  init(run: Run? = nil, day: [Int64] = [], filedHere: [String: Int64] = [:]) {
+    self.run = run
+    self.day = day
+    self.filedHere = filedHere
+  }
+
+  init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    run = try c.decodeIfPresent(Run.self, forKey: .run)
+    day = try c.decodeIfPresent([Int64].self, forKey: .day) ?? []
+    filedHere = try c.decodeIfPresent([String: Int64].self, forKey: .filedHere) ?? [:]
+  }
 
   var isActive: Bool {
     guard let run else { return false }
@@ -39,6 +53,15 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
   var canUndo: Bool {
     guard let run else { return false }
     return run.phase != .running && !run.manifest.isEmpty
+  }
+
+  var capped: Bool {
+    guard let run, run.phase == .paused else { return false }
+    return run.reason == .dayCap || run.reason == .runCap
+  }
+
+  mutating func spend(_ calls: Int, nowMs: Int64) {
+    day = day.filter { $0 > nowMs - BacklogSort.dayWindowMs } + Array(repeating: nowMs, count: max(0, calls))
   }
 
   static func reason(_ stop: BacklogSort.Stop) -> Reason {
@@ -97,6 +120,22 @@ nonisolated final class BacklogActivity: Sendable {
 
   var isActive: Bool { active.withLock { $0 } }
   func set(_ on: Bool) { active.withLock { $0 = on } }
+}
+
+nonisolated final class BacklogLink: Sendable {
+  private let sorter = Mutex<BacklogSorter?>(nil)
+
+  func set(_ s: BacklogSorter) { sorter.withLock { $0 = s } }
+
+  func budget() async -> Int {
+    guard let s = sorter.withLock({ $0 }) else { return 0 }
+    return await s.cloudBudget()
+  }
+
+  func spent(_ calls: Int) async {
+    guard let s = sorter.withLock({ $0 }) else { return }
+    await s.spent(calls)
+  }
 }
 
 actor BacklogSorter {
@@ -265,21 +304,35 @@ actor BacklogSorter {
     stop()
     guard let run = record.run, !run.manifest.isEmpty else { return 0 }
     guard let n = await author(run.manifest) else { return 0 }
-    if record.run?.id == run.id {
-      record.run?.manifest = [:]
-      save()
-    }
+    if record.run?.id == run.id { record.run?.manifest = [:] }
+    for (id, v) in run.manifest where record.filedHere[id] == v { record.filedHere[id] = nil }
+    save()
     return n
   }
 
-  func sendAllBack(_ author: @Sendable () async -> Int?) async -> Int {
+  func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
     stop()
-    guard let n = await author() else { return 0 }
-    if record.run?.manifest.isEmpty == false {
-      record.run?.manifest = [:]
-      save()
+    let sent = record.filedHere
+    guard !sent.isEmpty else { return 0 }
+    guard let n = await author(sent) else { return 0 }
+    for (id, v) in sent where record.filedHere[id] == v { record.filedHere[id] = nil }
+    if var run = record.run {
+      for (id, v) in sent where run.manifest[id] == v { run.manifest[id] = nil }
+      record.run = run
     }
+    save()
     return n
+  }
+
+  func cloudBudget() -> Int {
+    guard !record.capped else { return 0 }
+    return BacklogSort.dayLeft(record.day, nowMs: nowMs())
+  }
+
+  func spent(_ calls: Int) {
+    guard calls > 0 else { return }
+    record.spend(calls, nowMs: nowMs())
+    save()
   }
 
   private func halt() {
@@ -335,8 +388,8 @@ actor BacklogSorter {
   }
 
   private func apply(_ r: PassResult, to runID: String) {
-    let now = nowMs()
-    record.day = record.day.filter { $0 > now - BacklogSort.dayWindowMs } + Array(repeating: now, count: r.pass.calls)
+    record.spend(r.pass.calls, nowMs: nowMs())
+    record.filedHere.merge(r.filing.filed) { _, new in new }
     guard var run = record.run, run.id == runID else { return save() }
     run.requests = r.pass.memo.requests
     run.asked += r.pass.settled
@@ -388,7 +441,7 @@ actor BacklogSorter {
       if Task.isCancelled || generation != id { return }
       guard let r = result, !r.pass.failed else {
         failures += 1
-        if failures >= Self.maxFailures { return }
+        if failures >= Self.maxFailures { return end(.failed) }
         await idle(since: started)
         continue
       }
