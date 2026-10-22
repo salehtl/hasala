@@ -186,14 +186,18 @@ public enum HomeEngine {
   public static func allTimeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
     let today = now.date.yearMonth
     var byMonth: [YearMonth: Int64] = [:]
+    var byCategory: [CategoryID: Int64] = [:]
     for t in s.txns where period.contains(t.postedAt.date) {
       byMonth[t.postedAt.date.yearMonth, default: 0].add(Spending.spent(t, in: s))
+      guard Spending.includes(t, in: s) else { continue }
+      for line in t.lines { byCategory[line.category, default: 0].add(line.minor) }
     }
+    func bucket(_ b: Bucket) -> Int64 { Fils.sum(s.categories(in: b)) { byCategory[$0.id] ?? 0 } }
     let full = period.months.filter { $0 < today }.map { byMonth[$0] ?? 0 }
     let total = Fils.sum(byMonth.values)
-    let needs = bucketSpent(s, .needs, in: period)
-    let wants = bucketSpent(s, .wants, in: period)
-    let saved = bucketSpent(s, .savings, in: period)
+    let needs = bucket(.needs)
+    let wants = bucket(.wants)
+    let saved = bucket(.savings)
     let average = InsightsEngine.average(full)
     let since = "Since \(period.first.shortName) \(period.first.year)"
     return SpendHero(
@@ -210,10 +214,6 @@ public enum HomeEngine {
 
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
     Fils.sum(s.categories(in: b)) { Spending.spent(s, category: $0.id, in: m) }
-  }
-
-  static func bucketSpent(_ s: LedgerState, _ b: Bucket, in period: Period) -> Int64 {
-    Fils.sum(s.categories(in: b)) { Spending.spent(s, category: $0.id, in: period) }
   }
 
   static func bucketBudget(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {

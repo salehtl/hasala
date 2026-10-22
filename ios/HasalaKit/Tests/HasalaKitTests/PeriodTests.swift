@@ -306,6 +306,11 @@ struct HomePeriodTests {
     #expect(h.overline == "All time · Since \(earliest.shortName) \(earliest.year)")
     #expect(h.caption.rendered(hidden: false) == "spent, all time")
     #expect(!h.caption.rendered(hidden: false).contains("planned"))
+    let range = Period(earliest, MayaLedger.october)
+    let buckets = [Bucket.needs, .wants, .savings].map { b in
+      Fils.sum(s.categories(in: b)) { Spending.spent(s, category: $0.id, in: range) }
+    }
+    #expect(h.tiles.map(\.value.minor) == buckets)
     #expect(home.widgets.isEmpty)
     #expect(home.aboutNow.last?.destination == .review(nil))
   }
