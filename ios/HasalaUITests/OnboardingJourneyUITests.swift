@@ -40,7 +40,20 @@ final class OnboardingJourneyUITests: XCTestCase {
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open after the connect")
     XCTAssertTrue(el(app, "home.finish").waitForExistence(timeout: uiWait), "Home has no Finish setting up")
+    let words = el(app, "home.finish.phrase")
+    XCTAssertTrue(words.waitForExistence(timeout: uiWait), "Home doesn't ask for the 12 words")
+    XCTAssertLessThan(words.frame.minY, el(app, "home.finish.plan").frame.minY, "the 12 words aren't first")
     attach(app, "Home · Finish setting up")
+    words.tap()
+    XCTAssertTrue(app.staticTexts["Show your 12 words"].waitForExistence(timeout: uiWait), "Face ID wasn't asked first")
+    tap(app, "confirm.submit")
+    XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["scissors"].exists, "the words weren't hidden until tapped")
+    tap(app, "phrase.reveal")
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
+    attach(app, "Home · the 12 words")
+    tap(app, "phrase.done")
+    XCTAssertTrue(words.waitForNonExistence(timeout: uiWait), "the 12 words stayed after they were shown")
     tap(app, "home.finish.plan")
 
     XCTAssertTrue(el(app, "keypad.2").waitForExistence(timeout: uiWait))
@@ -188,9 +201,8 @@ final class OnboardingJourneyUITests: XCTestCase {
   static let groupedInvite = "ABCD-EFGH-IJKL-MNOP-QRST-UVWX"
 
   /// A new person from the stories to setup's bank step: the four stories swiped through,
-  /// Get started, the invite, About you, the email code, the passkey (the default method),
-  /// the words shown, "I've written them down" (it waits for the reveal, and no word check
-  /// follows), then "Your account is ready".
+  /// Get started, the invite, About you, the email code, the passkey (the default method,
+  /// with PRF), then setup: the words wait for Home.
   @MainActor
   private func joinWithPasskey(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     let progress = el(app, "stories.progress")
@@ -212,20 +224,8 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(passkey.isSelected, "the passkey isn't the default", file: file, line: line)
     tap(app, "method.continue", file: file, line: line)
 
-    tap(app, "phrase.start", file: file, line: line)
-    let written = el(app, "phrase.written")
-    XCTAssertTrue(written.waitForExistence(timeout: 10), file: file, line: line)
-    XCTAssertFalse(written.isEnabled, "the words could be skipped unseen", file: file, line: line)
-    tap(app, "phrase.reveal", file: file, line: line)
-    XCTAssertTrue(el(app, "phrase.hide").waitForExistence(timeout: uiWait), file: file, line: line)
-    attach(app, "Recovery phrase · revealed")
-    tap(app, "phrase.written", file: file, line: line)
-
-    XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10), "the words led to a check",
-                  file: file, line: line)
-    attach(app, "Account ready")
-    tap(app, "ready.continue", file: file, line: line)
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow", file: file, line: line)
+    XCTAssertFalse(el(app, "phrase.start").exists, "the words came before setup", file: file, line: line)
   }
 
   /// The banks as `testSetupRemembersEverything` leaves them: Emirates NBD only.

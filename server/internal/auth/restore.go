@@ -30,6 +30,12 @@ func (a *Accounts) recordPassword(userID uuid.UUID, at time.Time) {
 	}
 }
 
+func (a *Accounts) recordPhraseSeen(userID uuid.UUID, at time.Time) {
+	if a.Record != nil {
+		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPhraseSeen})
+	}
+}
+
 func (a *Accounts) recordUnfreeze(userID uuid.UUID, at time.Time) {
 	if a.Record != nil {
 		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindUnfreeze})
@@ -46,13 +52,14 @@ func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, cre
 }
 
 type ReapplyReport struct {
-	Freezes   int
-	Unfreezes int
-	Devices   int
-	Passwords int
-	Passkeys  int
-	Unsigned  int
-	Lifted    int
+	Freezes     int
+	Unfreezes   int
+	Devices     int
+	Passwords   int
+	Passkeys    int
+	PhrasesSeen int
+	Unsigned    int
+	Lifted      int
 }
 
 type reapplied int
@@ -145,6 +152,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count, locks = reapplyPasswordTx, &rep.Passwords, true
 		case purgeledger.KindPasskey:
 			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
+		case purgeledger.KindPhraseSeen:
+			step, count = reapplyPhraseSeenTx, &rep.PhrasesSeen
 		default:
 			continue
 		}
@@ -386,6 +395,16 @@ func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now t
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, e.ID, e.Credential)
+	if err != nil || tag.RowsAffected() != 1 {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyPhraseSeenTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ time.Time) (reapplied, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE account_keys SET phrase_seen_at = greatest(created_at, $2)
+		  WHERE user_id = $1 AND phrase_seen_at IS NULL AND date_trunc('second', created_at) <= $2`, e.ID, e.At)
 	if err != nil || tag.RowsAffected() != 1 {
 		return reappliedNothing, err
 	}

@@ -67,6 +67,45 @@ struct AccountTests {
     #expect(try a.binding?.writer_id == account.writerID.string)
   }
 
+  @Test("C1 with the words later: a synced passkey only; an older server's 400 leaves the same passkey and keys to publish")
+  func passkeyCreationWithoutTheWords() async throws {
+    for (synced, olderServer) in [(false, false), (true, false), (true, true)] {
+      let w = World()
+      let shared = SoftPasskey()
+      shared.setBackup(eligible: true, backedUp: synced)
+      let a = w.phone("a", passkeys: shared)
+      let signup = try await AccountCreation.beginSignup(
+        a.env, inviteCode: invite, email: "maya@example.com", displayName: "Maya", inviteLinkKey: nil)
+      try await AccountCreation.verifySignup(a.env, signup, code: try #require(w.server.lastCode))
+      let keys = try NewAccountKeys.generate(random: a.env.random)
+      let reg = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+      #expect(reg.backup == BackupFlags(eligible: true, backedUp: synced))
+      let token = try #require(try a.env.secrets.session()).token
+      if !synced {
+        await #expect(throws: CeremonyError.self) {
+          _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys, phraseUnseen: true)
+        }
+        continue
+      }
+      if olderServer {
+        w.server.refuseNext("POST /api/v1/account/bootstrap", status: 400, code: "bad_request")
+        do {
+          _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys, phraseUnseen: true)
+          Issue.record("the older server took phrase_unseen")
+        } catch {
+          guard case .api(.refused(let f)) = error else { throw error }
+          #expect(f.status == 400)
+        }
+        _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys)
+        #expect(try await a.env.client.account(bearer: token).has_keys == true)
+        #expect(try await a.env.client.account(bearer: token).phrase_unseen_since == nil)
+        continue
+      }
+      _ = try await AccountCreation.bootstrapPasskey(a.env, registered: reg, keys: keys, phraseUnseen: true)
+      #expect(try await a.env.client.account(bearer: token).phrase_unseen_since != nil)
+    }
+  }
+
   @Test("C1 interrupted: a new phrase bootstraps behind step-up keys.bootstrap, auth_kind 0, with the PRF wrap")
   func interruptedPasskeyCreation() async throws {
     let w = World()

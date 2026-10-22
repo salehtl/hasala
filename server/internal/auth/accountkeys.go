@@ -48,7 +48,40 @@ var (
 	ErrKeysMalformed = errors.New("auth: key material is malformed")          // 400 bad_request
 	ErrNotYours      = errors.New("auth: no such credential on this account") // 404 not_found
 	ErrNoKeys        = errors.New("auth: the account has no keys")            // 404 no_keys
+	ErrPhraseUnseen  = errors.New("auth: the 12 words are not seen yet")      // 409 phrase_unseen
 )
+
+func checkSyncedPasskey(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, credentialID []byte) error {
+	var synced bool
+	err := pool.QueryRow(ctx,
+		`SELECT COALESCE(backup_eligible AND backup_state, false) FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`,
+		userID, credentialID).Scan(&synced)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: phrase_unseen needs the creating passkey", ErrKeysMalformed)
+	}
+	if err != nil {
+		return fmt.Errorf("auth: bootstrap: %w", err)
+	}
+	if !synced {
+		return fmt.Errorf("%w: phrase_unseen needs a synced passkey", ErrKeysMalformed)
+	}
+	return nil
+}
+
+func refuseIfLastUnseenWrapTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, credentialID []byte) error {
+	var last bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = $1 AND k.phrase_seen_at IS NULL)
+		    AND EXISTS (SELECT 1 FROM account_key_wraps w WHERE w.user_id = $1 AND w.credential_id = $2)
+		    AND NOT EXISTS (SELECT 1 FROM account_key_wraps w WHERE w.user_id = $1 AND w.credential_id <> $2)`,
+		userID, credentialID).Scan(&last); err != nil {
+		return fmt.Errorf("auth: words seen check: %w", err)
+	}
+	if last {
+		return ErrPhraseUnseen
+	}
+	return nil
+}
 
 // AccountKeys owns account_keys and account_key_wraps.
 type AccountKeys struct {
@@ -82,6 +115,7 @@ type Bootstrap struct {
 	Writer          Registration // Nonce and Sig: the writer nonce and registration_sig
 	AuthoritySig    []byte
 	StepUp          *StepUpObject
+	PhraseUnseen    bool
 }
 
 // Bootstrapped is the 201 answer.
@@ -192,6 +226,14 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 			return Bootstrapped{}, ErrStepUpRequired
 		}
 	}
+	if b.PhraseUnseen {
+		if !pendingPath || b.PRFCredentialID == nil {
+			return Bootstrapped{}, fmt.Errorf("%w: phrase_unseen needs the creating passkey and its PRF wrap", ErrKeysMalformed)
+		}
+		if err := checkSyncedPasskey(ctx, k.Pool, userID, b.PRFCredentialID); err != nil {
+			return Bootstrapped{}, err
+		}
+	}
 	// 5. The writer nonce, spent by the attempt.
 	if err := consumeChallenge(ctx, k.Pool, k.now(), userID, b.Writer.Nonce); err != nil {
 		return Bootstrapped{}, err
@@ -260,9 +302,9 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 	now := k.now()
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
-		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
-		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7)`,
-		userID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now); err != nil {
+		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at, phrase_seen_at)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7, CASE WHEN $8::boolean THEN NULL ELSE $7::timestamptz END)`,
+		userID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now, b.PhraseUnseen); err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
 			if pg.ConstraintName == "account_keys_pkey" {
@@ -452,6 +494,12 @@ func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, crede
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionKeysWrapDelete, ParamsHash: ph, StepUp: su}
 	return k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, session.UserID); err != nil {
+			return err
+		}
+		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, session.UserID, credentialID)
 		return err
 	})

@@ -6,6 +6,8 @@ import Observation
 @Observable
 final class SignupModel {
   private let account: AccountService
+  private let unseenPhrase: any UnseenPhraseNoting
+  private let accountCreated: () -> Void
   var path: [WelcomeRoute] = []
   /// The path as the navigation stack changes it: the system back button or its swipe
   /// (plan decision 7) leaves the failure of the screen it left behind, as `back()` does.
@@ -108,6 +110,13 @@ final class SignupModel {
   /// asks Face ID to save a second one for the same signup.
   private var passkeyTicketID: String?
   var passkeyRegistered: Bool { ticket != nil && passkeyTicketID == ticket?.id }
+  private(set) var passkeyPRF = false
+  private(set) var passkeySynced = false
+  private(set) var wordsInSignup = false
+  var wordsLater: Bool {
+    !replacing && !wordsInSignup && method == .passkey && passkeyPRF && passkeySynced && passkeyRegistered
+      && capabilities.contains(.viewPhrase)
+  }
   var busy = false
   var failure: AuthFailure?
   var now: () -> Date = { .now }
@@ -118,8 +127,13 @@ final class SignupModel {
   /// What this build can do (`AccountService.capabilities`); the copy follows it.
   var capabilities: AccountCapabilities { account.capabilities }
 
-  init(account: AccountService) {
+  init(
+    account: AccountService, unseenPhrase: any UnseenPhraseNoting = InMemoryUnseenPhrase(),
+    accountCreated: @escaping () -> Void = {}
+  ) {
     self.account = account
+    self.unseenPhrase = unseenPhrase
+    self.accountCreated = accountCreated
   }
 
   func go(_ route: WelcomeRoute) {
@@ -338,6 +352,12 @@ final class SignupModel {
     }
     // Saved already for this signup (the person went Back, then Forward): no second sheet.
     if passkeyRegistered {
+      if wordsLater {
+        busy = true
+        defer { busy = false }
+        await finishWithoutWords()
+        return
+      }
       if phrase == nil {
         do {
           try startPhrase()
@@ -353,8 +373,15 @@ final class SignupModel {
     busy = true
     defer { busy = false }
     do {
-      try await account.registerPasskey(ticket)
+      let made = try await account.registerPasskey(ticket)
       passkeyTicketID = ticket.id
+      passkeyPRF = made.prf
+      passkeySynced = made.synced
+      wordsInSignup = false
+      if wordsLater {
+        await finishWithoutWords()
+        return
+      }
       try startPhrase()
       go(.phraseIntro)
     } catch .unsupported {
@@ -427,6 +454,7 @@ final class SignupModel {
       } else if let ticket {
         profile = try await account.finishAccount(ticket, credential: credential, phrase: phrase)
       }
+      unseenPhrase.noteSeen()
       // The phrase leaves memory once it is published, and the link's key is no longer needed.
       self.phrase = nil
       linkKey = nil
@@ -447,6 +475,36 @@ final class SignupModel {
     guard let change = linkPasteboardChange else { return }
     clearPasteboard(change)
     linkPasteboardChange = nil
+  }
+
+  private func finishWithoutWords() async {
+    guard wordsLater, let ticket else { return }
+    if ticket.isExpired(now: now()) {
+      startAgain()
+      return
+    }
+    do {
+      profile = try await account.finishAccountWithoutWords(ticket)
+      unseenPhrase.noteUnseen(at: now())
+      self.phrase = nil
+      linkKey = nil
+      failure = nil
+      accountCreated()
+    } catch .codeExpired {
+      startAgain()
+    } catch .wordsInSignup {
+      wordsInSignup = true
+      do {
+        try startPhrase()
+      } catch {
+        failure = error
+        return
+      }
+      failure = nil
+      go(.phraseIntro)
+    } catch {
+      failure = error
+    }
   }
 
   private func startAgain() {

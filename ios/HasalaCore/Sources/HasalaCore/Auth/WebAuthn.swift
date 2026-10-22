@@ -216,3 +216,119 @@ public protocol PasskeyProvider: Sendable {
   func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion
 }
+
+public struct BackupFlags: Sendable, Hashable {
+  public let eligible: Bool
+  public let backedUp: Bool
+
+  public init(eligible: Bool, backedUp: Bool) {
+    self.eligible = eligible
+    self.backedUp = backedUp
+  }
+
+  public var synced: Bool { eligible && backedUp }
+
+  public static func fromAuthenticatorData(_ authData: Data) -> BackupFlags? {
+    guard authData.count >= 37 else { return nil }
+    let flags = authData[authData.startIndex + 32]
+    return BackupFlags(eligible: flags & 0x08 != 0, backedUp: flags & 0x10 != 0)
+  }
+
+  public static func fromAttestationObject(_ attestation: Data) -> BackupFlags? {
+    AttestationReader.authData(attestation).flatMap(fromAuthenticatorData)
+  }
+}
+
+extension RawRegistration {
+  public var backupFlags: BackupFlags? { BackupFlags.fromAttestationObject(rawAttestationObject) }
+}
+
+enum AttestationReader {
+  static func authData(_ attestation: Data) -> Data? {
+    let b = [UInt8](attestation)
+    var i = 0
+    guard let top = head(b, &i), top.major == 5 else { return nil }
+    var found: Data?
+    for _ in 0..<top.n {
+      guard let k = head(b, &i) else { return nil }
+      var key: String?
+      if k.major == 3 {
+        guard let end = advance(i, k.n, b.count) else { return nil }
+        key = String(bytes: b[i..<end], encoding: .utf8)
+        i = end
+      } else if !skipBody(b, &i, k, depth: 1) {
+        return nil
+      }
+      if key == "authData" {
+        guard let v = head(b, &i), v.major == 2, let end = advance(i, v.n, b.count), found == nil else { return nil }
+        found = Data(b[i..<end])
+        i = end
+      } else if !skip(b, &i, depth: 1) {
+        return nil
+      }
+    }
+    return i == b.count ? found : nil
+  }
+
+  struct Head {
+    let major: UInt8
+    let n: UInt64
+  }
+
+  static func advance(_ i: Int, _ n: UInt64, _ count: Int) -> Int? {
+    guard n <= UInt64(count - i) else { return nil }
+    return i + Int(n)
+  }
+
+  static func head(_ b: [UInt8], _ i: inout Int) -> Head? {
+    guard i < b.count else { return nil }
+    let first = b[i]
+    i += 1
+    let major = first >> 5
+    let info = first & 0x1f
+    switch info {
+    case 0..<24:
+      return Head(major: major, n: UInt64(info))
+    case 24...27:
+      let width = 1 << Int(info - 24)
+      guard b.count - i >= width else { return nil }
+      var n: UInt64 = 0
+      for _ in 0..<width {
+        n = n << 8 | UInt64(b[i])
+        i += 1
+      }
+      return Head(major: major, n: n)
+    default:
+      return nil
+    }
+  }
+
+  static func skip(_ b: [UInt8], _ i: inout Int, depth: Int) -> Bool {
+    guard let h = head(b, &i) else { return false }
+    return skipBody(b, &i, h, depth: depth)
+  }
+
+  static func skipBody(_ b: [UInt8], _ i: inout Int, _ h: Head, depth: Int) -> Bool {
+    guard depth <= 8 else { return false }
+    switch h.major {
+    case 0, 1, 7:
+      return true
+    case 2, 3:
+      guard let end = advance(i, h.n, b.count) else { return false }
+      i = end
+      return true
+    case 4, 5:
+      let remaining = UInt64(b.count - i)
+      guard h.n <= remaining else { return false }
+      let items = h.major == 5 ? h.n * 2 : h.n
+      for _ in 0..<items {
+        if !skip(b, &i, depth: depth + 1) { return false }
+      }
+      return true
+    case 6:
+      return skip(b, &i, depth: depth + 1)
+    default:
+      return false
+    }
+  }
+}

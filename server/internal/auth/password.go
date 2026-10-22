@@ -394,8 +394,8 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO account_keys (user_id, format_version, amk_commitment, authority_pubkey, recovery_pubkey,
-		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at)
-		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7)`,
+		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at, phrase_seen_at)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7, $7)`,
 		s.UserID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now); err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {

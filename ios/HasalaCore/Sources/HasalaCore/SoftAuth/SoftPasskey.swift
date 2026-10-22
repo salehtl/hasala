@@ -33,6 +33,7 @@ public final class SoftPasskey: PasskeyProvider {
   private let uv = Mutex(true)
   private let failure = Mutex<PasskeyError?>(nil)
   private let prfSupported = Mutex(true)
+  private let backup = Mutex<UInt8>(0)
 
   public init(rpID: String = "hasala.app", origin: String = "https://hasala.app") {
     self.rpID = rpID
@@ -43,6 +44,9 @@ public final class SoftPasskey: PasskeyProvider {
   public func setUserVerified(_ v: Bool) { uv.withLock { $0 = v } }
   /// Whether the authenticator evaluates PRF (an iCloud Keychain without it returns none).
   public func setPRFSupported(_ v: Bool) { prfSupported.withLock { $0 = v } }
+  public func setBackup(eligible: Bool, backedUp: Bool) {
+    backup.withLock { $0 = (eligible ? 0x08 : 0) | (backedUp ? 0x10 : 0) }
+  }
   /// The next ceremony fails with `error`, once.
   public func failNext(_ error: PasskeyError) { failure.withLock { $0 = error } }
 
@@ -124,6 +128,7 @@ public final class SoftPasskey: PasskeyProvider {
     var f: UInt8 = 0x01  // UP
     if uv.withLock({ $0 }) { f |= 0x04 }  // UV
     if attested { f |= 0x40 }  // AT
+    f |= backup.withLock { $0 }
     return f
   }
 

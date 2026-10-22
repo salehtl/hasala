@@ -125,8 +125,14 @@
       return t
     }
 
-    func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) {
+    var passkeyPRF = false
+    var passkeySynced = true
+    private(set) var passkeysMade = 0
+
+    @discardableResult func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey {
       await pause()
+      passkeysMade += 1
+      return NewPasskey(prf: passkeyPRF, synced: passkeySynced)
     }
 
     func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
@@ -408,6 +414,7 @@
 
     func viewRecoveryPhrase() async throws(AuthFailure) -> [String] {
       await pause()
+      try injected()
       guard security.hasPasskey else { throw .stepUpFailed }
       return Self.phraseWords
     }

@@ -39,8 +39,12 @@ final class OnboardingStore {
   init(services: AccountServices, session: @escaping () -> AccountSession) {
     self.services = services
     self.session = session
-    signup = SignupModel(account: services.account)
+    signup = Self.signupModel(services, session)
     signIn = Self.signInModel(services.account, session)
+  }
+
+  private static func signupModel(_ services: AccountServices, _ session: @escaping () -> AccountSession) -> SignupModel {
+    SignupModel(account: services.account, unseenPhrase: services.unseenPhrase) { session().accountCreated() }
   }
 
   private static func signInModel(_ account: AccountService, _ session: @escaping () -> AccountSession) -> SignInModel {
@@ -71,7 +75,7 @@ final class OnboardingStore {
 
   func finishSetupModel() -> FinishSetupModel {
     if let finish { return finish }
-    let made = FinishSetupModel(services: services, firstScan: firstScan)
+    let made = FinishSetupModel(services: services, firstScan: firstScan, session: session)
     finish = made
     return made
   }
@@ -79,7 +83,7 @@ final class OnboardingStore {
   /// The replacement phrase's model (`.needsKeys`): one, its phrase made once.
   func replacementModel() -> SignupModel {
     if let replacement { return replacement }
-    let made = SignupModel(account: services.account)
+    let made = SignupModel(account: services.account, unseenPhrase: services.unseenPhrase)
     made.startReplacement()
     replacement = made
     return made
@@ -103,7 +107,7 @@ final class OnboardingStore {
     firstScan = FirstScanRun()
     reconciledFacts = nil
     replacement = nil
-    signup = SignupModel(account: services.account)
+    signup = Self.signupModel(services, session)
     signIn = Self.signInModel(services.account, session)
   }
 }

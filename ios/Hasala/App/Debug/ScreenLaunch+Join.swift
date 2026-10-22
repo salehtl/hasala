@@ -108,6 +108,7 @@
     /// or a password for `.password`), stopping on `stop`.
     static func signUp(_ graph: MockGraph, to stop: JoinStop, invite prefix: String = "") async {
       let signup = graph.onboarding.signup
+      (graph.session.account as? MockAccountService)?.passkeyPRF = false
       signup.path = [.invite]
       signup.inviteText = prefix + String(inviteCode.dropFirst(prefix.count))
       signup.submitInvite()

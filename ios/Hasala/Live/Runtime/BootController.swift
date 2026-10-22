@@ -91,11 +91,13 @@ final class BootController {
     let account = LiveAccountService(env: env.account, build: env.build)
     self.account = account
     let holder = RuntimeHolder()
+    let unseenPhrase = StoredUnseenPhrase()
     services = AccountServices(
       account: account, mailbox: LiveMailboxConnecting(
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
-      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }))
+      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }),
+      unseenPhrase: unseenPhrase)
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -282,6 +284,9 @@ final class BootController {
       rt.onAccount = { [weak self, weak rt] info in
         guard let self, let rt, self.runtime === rt else { return }
         account.noteAccount(info)
+        if info.has_keys == true {
+          await self.services.unseenPhrase.adopt(serverUnseenSince: LiveAccountService.instant(info.phrase_unseen_since))
+        }
         rt.store.profile = Self.profileInfo(account.profile, binding: binding)
         self.session.reviewAccount = rt.reviewAccount
         await rt.store.reload()

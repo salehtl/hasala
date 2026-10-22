@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,6 +36,7 @@ const (
 	KindWaitlistLeave  Kind = "waitlist-leave"
 	KindPasskey        Kind = "passkey"
 	KindWaitlistUnsent Kind = "waitlist-unsent"
+	KindPhraseSeen     Kind = "phrase-seen"
 )
 
 type Entry struct {
@@ -118,7 +120,20 @@ func Read(path string) ([]Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("purgeledger: read %s: %w", path, err)
 	}
-	return parse(path, raw)
+	lines, err := parse(path, raw)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]Entry, 0, len(lines))
+	for _, l := range lines {
+		if l.unknown {
+			slog.Warn("purgeledger: skipped an entry of a kind this hasalad does not know",
+				"path", path, "line", l.n, "kind", string(l.e.Kind))
+			continue
+		}
+		entries = append(entries, l.e)
+	}
+	return entries, nil
 }
 
 func Prune(path string, cutoff time.Time) (int, error) {
@@ -134,18 +149,29 @@ func Prune(path string, cutoff time.Time) (int, error) {
 }
 
 func pruneLocked(path string, cutoff time.Time) (int, error) {
-	entries, err := Read(path)
-	if err != nil || len(entries) == 0 {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	lines, err := parse(path, raw)
+	if err != nil || len(lines) == 0 {
 		return 0, err
 	}
 	var keep bytes.Buffer
 	dropped := 0
-	for _, e := range entries {
-		if e.At.Before(cutoff) {
+	for _, l := range lines {
+		if l.e.At.Before(cutoff) {
 			dropped++
 			continue
 		}
-		keep.WriteString(formatEntry(e))
+		if l.unknown {
+			keep.WriteString(l.text + "\n")
+			continue
+		}
+		keep.WriteString(formatEntry(l.e))
 	}
 	if dropped == 0 {
 		return 0, nil
@@ -195,7 +221,7 @@ func check(e Entry) error {
 		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
 	}
 	switch e.Kind {
-	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
@@ -232,7 +258,7 @@ func formatEntry(e Entry) string {
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
 	case KindPasskey:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -249,6 +275,48 @@ func parseHex(s string, n int) ([]byte, bool) {
 	}
 	b, err := hex.DecodeString(s)
 	return b, err == nil
+}
+
+func unknownKind(k Kind) bool {
+	switch k {
+	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
+		KindPhraseSeen:
+		return false
+	}
+	for _, r := range string(k) {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+type line struct {
+	n       int
+	e       Entry
+	unknown bool
+	text    string
+}
+
+func parseUnknown(text string) (Entry, bool) {
+	f := strings.Split(text, " ")
+	if len(f) < 3 || len(f[0]) != 36 {
+		return Entry{}, false
+	}
+	id, err := uuid.Parse(f[0])
+	if err != nil || id == uuid.Nil || id.String() != f[0] {
+		return Entry{}, false
+	}
+	at, ok := parseTime(f[1])
+	if !ok || !unknownKind(Kind(f[2])) {
+		return Entry{}, false
+	}
+	for _, x := range f[3:] {
+		if x == "" {
+			return Entry{}, false
+		}
+	}
+	return Entry{ID: id, At: at, Kind: Kind(f[2])}, true
 }
 
 func parseLine(text string) (Entry, bool) {
@@ -270,7 +338,7 @@ func parseLine(text string) (Entry, bool) {
 	}
 	e.Kind = Kind(f[2])
 	switch e.Kind {
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
 		if len(f) != 3 {
 			return Entry{}, false
 		}
@@ -312,23 +380,28 @@ func parseLine(text string) (Entry, bool) {
 	return e, check(e) == nil
 }
 
-func parse(path string, raw []byte) ([]Entry, error) {
+func parse(path string, raw []byte) ([]line, error) {
 	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
 		return nil, fmt.Errorf("purgeledger: %s does not end with a newline: its last entry is incomplete", path)
 	}
-	var entries []Entry
+	var lines []line
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	for n := 1; sc.Scan(); n++ {
-		e, ok := parseLine(sc.Text())
+		text := sc.Text()
+		if e, ok := parseLine(text); ok {
+			lines = append(lines, line{n: n, e: e, text: text})
+			continue
+		}
+		e, ok := parseUnknown(text)
 		if !ok {
 			return nil, fmt.Errorf("purgeledger: %s line %d is not \"<id> <RFC 3339 time> [<kind> <fields>]\"", path, n)
 		}
-		entries = append(entries, e)
+		lines = append(lines, line{n: n, e: e, unknown: true, text: text})
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("purgeledger: read %s: %w", path, err)
 	}
-	return entries, nil
+	return lines, nil
 }
 
 func openAppend(path string) (*os.File, bool, error) {

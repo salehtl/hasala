@@ -41,6 +41,7 @@ type AccountResponse struct {
 	FrozenBy               *string      `json:"frozen_by"`
 	Restricted             bool         `json:"restricted"`
 	ReviewAccount          bool         `json:"review_account"`
+	PhraseUnseenSince      *time.Time   `json:"phrase_unseen_since"`
 }
 
 func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
@@ -62,11 +63,12 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 		        u.email_norm, u.email_verified_at, u.email_undeliverable_at, u.reverify_requested_at, u.display_name,
 		        u.password_hash IS NOT NULL, u.password_set_at,
 		        EXISTS (SELECT 1 FROM webauthn_credentials c WHERE c.user_id = u.id),
-		        u.frozen_at, u.freeze_trigger_at, u.frozen_by, u.review_account
+		        u.frozen_at, u.freeze_trigger_at, u.frozen_by, u.review_account,
+		        (SELECT k.created_at FROM account_keys k WHERE k.user_id = u.id AND k.phrase_seen_at IS NULL)
 		   FROM users u WHERE u.id = $1`, userID).
 		Scan(&out.CreatedAt, &out.Status, &out.HasKeys, &out.Usage.OplogHotBytes, &out.Usage.Limit,
 			&out.Email, &out.EmailVerifiedAt, &undeliv, &reverify, &out.DisplayName, &out.HasPassword, &out.PasswordSetAt,
-			&out.HasPasskey, &frozenAt, &out.FreezeTriggerAt, &out.FrozenBy, &out.ReviewAccount)
+			&out.HasPasskey, &frozenAt, &out.FreezeTriggerAt, &out.FrozenBy, &out.ReviewAccount, &out.PhraseUnseenSince)
 	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return

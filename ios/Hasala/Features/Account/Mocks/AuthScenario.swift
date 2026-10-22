@@ -144,10 +144,16 @@
       // The bank ops are what the lane reads, as live's sender trust is.
       setup.choseBanks = { [weak mailbox] in mailbox?.banks = $0 }
       let cloudSort = MockCloudSort()
+      let arguments = ProcessInfo.processInfo.arguments
+      let unseenPhrase = InMemoryUnseenPhrase()
+      if arguments.contains("-HasalaPhraseUnseen") { unseenPhrase.noteUnseen(at: .now) }
       func services(_ account: MockAccountService) -> AccountServices {
-        AccountServices(account: account, mailbox: mailbox, setup: setup,
-                        notifications: MockNotificationPermission(answered: !fresh), hasPasscode: { scenario != .noPasscode },
-                        cloudSort: cloudSort)
+        account.passkeyPRF = !arguments.contains("-HasalaPasskeyNoPRF")
+        account.passkeySynced = !arguments.contains("-HasalaPasskeyNotSynced")
+        return AccountServices(
+          account: account, mailbox: mailbox, setup: setup,
+          notifications: MockNotificationPermission(answered: !fresh), hasPasscode: { scenario != .noPasscode },
+          cloudSort: cloudSort, unseenPhrase: unseenPhrase)
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,

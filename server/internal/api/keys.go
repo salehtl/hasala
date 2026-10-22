@@ -77,6 +77,7 @@ type BootstrapRequest struct {
 	AuthoritySig    string            `json:"authority_sig"`
 	RegistrationSig string            `json:"registration_sig"`
 	StepUp          *StepUpWire       `json:"step_up,omitempty"`
+	PhraseUnseen    bool              `json:"phrase_unseen,omitempty"`
 }
 
 // BootstrapResponse is #18's 201.
@@ -117,7 +118,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, userID 
 
 // decodeBootstrap decodes the §10.1 fields (everything but step_up).
 func decodeBootstrap(w http.ResponseWriter, req BootstrapRequest) (auth.Bootstrap, bool) {
-	b := auth.Bootstrap{FormatVersion: req.FormatVersion, AuthKind: req.AuthKind}
+	b := auth.Bootstrap{FormatVersion: req.FormatVersion, AuthKind: req.AuthKind, PhraseUnseen: req.PhraseUnseen}
 	for _, f := range []struct {
 		dst   *[]byte
 		value string

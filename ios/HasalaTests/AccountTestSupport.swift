@@ -47,7 +47,9 @@ final class StubPhraseAccount: AccountService {
   func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
     try await mock.resendSignupCode(ticket)
   }
-  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) { try await mock.registerPasskey(ticket) }
+  func registerPasskey(_ ticket: SignupTicket) async throws(AuthFailure) -> NewPasskey {
+    try await mock.registerPasskey(ticket)
+  }
   func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
     async throws(AuthFailure) -> AccountProfile
   { try await mock.finishAccount(ticket, credential: credential, phrase: phrase) }

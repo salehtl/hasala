@@ -60,6 +60,38 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
   }
 
+  /// Path A on the Release surface: a passkey with PRF makes the account without the words,
+  /// setup follows, and Home asks for them first, behind Face ID, with the viewer's rules.
+  @MainActor
+  func testPasskeySignupAsksForTheWordsOnHome() throws {
+    let app = launchRelease("newUser", waitForHome: false)
+    tap(app, "stories.getStarted", timeout: 15)
+    type(app, "invite.field", "ABCDEFGHIJKLMNOPQRSTUVWX")
+    tap(app, "invite.continue")
+    type(app, "about.name", "Maya Rahman")
+    type(app, "about.email", "maya@example.com")
+    tap(app, "about.continue")
+    type(app, "code.field", "123456")
+    XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: 10))
+    tap(app, "method.continue")
+    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow the passkey")
+    XCTAssertFalse(el(app, "phrase.start").exists)
+    tap(app, "mail.connect.gmail")
+    let card = el(app, "home.finish.phrase")
+    XCTAssertTrue(card.waitForExistence(timeout: 15), "Home doesn't ask for the 12 words")
+    assertNoPlaceholders(app, "Home · Finish setting up")
+    attach(app, "Release · Home · 12 words")
+    try audit(app)
+    card.tap()
+    tap(app, "confirm.submit")
+    XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
+    assertNoPlaceholders(app, "Your recovery phrase")
+    tap(app, "phrase.reveal")
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
+    tap(app, "phrase.done")
+    XCTAssertTrue(card.waitForNonExistence(timeout: uiWait), "the card stayed after the words were shown")
+  }
+
   /// The stories and "Who can see what" name what a Release build connects: the mail row
   /// says "Google or Microsoft" (Outlook is on, for personal accounts), and nothing reads
   /// like a placeholder.

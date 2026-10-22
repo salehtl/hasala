@@ -295,6 +295,44 @@ final class SignInSecurityUITests: XCTestCase {
 
   /// The four alerts ask first (Paper HS1, HWP, I1C, I5Z), and "Confirm it's you" names
   /// the change (IHY); closing it changes nothing.
+  /// Words not yet written: Home asks for them, and seeing them in Sign-in & security
+  /// answers it too; a look that stops at Face ID or the hidden grid doesn't.
+  @MainActor
+  func testSeeingTheWordsInSecurityAnswersHomesCard() throws {
+    let app = launch(scenario: "passkeyUser", arguments: ["-HasalaPhraseUnseen"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let card = el(app, "home.finish.phrase")
+    XCTAssertTrue(card.waitForExistence(timeout: uiWait), "Home doesn't ask for the 12 words")
+    attach(app, "Home · 12 words to write down")
+    try audit(app)
+    card.tap()
+    tap(app, "confirm.cancel")
+    XCTAssertTrue(card.waitForExistence(timeout: uiWait), "a cancelled Face ID answered the card")
+    card.tap()
+    tap(app, "confirm.submit")
+    XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10), "Home's card didn't open the words")
+    XCTAssertTrue(app.staticTexts["Write these down, in order"].exists, "the first view doesn't ask for paper")
+    tap(app, "phrase.close")
+    XCTAssertTrue(card.waitForExistence(timeout: uiWait), "closing the hidden grid answered the card")
+
+    app.buttons["header.profile"].firstMatch.tap()
+    tap(app, "profile.security")
+    tap(app, "security.viewPhrase")
+    tap(app, "confirm.submit")
+    XCTAssertTrue(el(app, "phrase.reveal").waitForExistence(timeout: 10))
+    tap(app, "phrase.close")
+    tap(app, "security.viewPhrase")
+    tap(app, "confirm.submit")
+    tap(app, "phrase.reveal")
+    XCTAssertTrue(app.staticTexts["scissors"].waitForExistence(timeout: uiWait))
+    tap(app, "phrase.done")
+    XCTAssertTrue(el(app, "security.viewPhrase").waitForExistence(timeout: uiWait))
+    back(app)
+    tap(app, "profile.close")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(card.waitForNonExistence(timeout: uiWait), "the card stayed after the words were shown")
+  }
+
   @MainActor
   func testRemovingAPasskeyAsksThenConfirms() throws {
     let app = launch(scenario: "passkeyUser")

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -19,7 +20,10 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 	if err != nil {
 		return nil, err
 	}
-	var box []byte
+	var (
+		box       []byte
+		firstSeen time.Time
+	)
 	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionPhraseView, ParamsHash: ph, StepUp: su}
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
@@ -45,10 +49,23 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 		if err := tx.QueryRow(ctx, `SELECT phrase_box FROM account_keys WHERE user_id = $1`, session.UserID).Scan(&box); err != nil {
 			return ErrNoKeys
 		}
-		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventPhraseViewed, CredentialID: p.CredentialID}, a.now())
+		now := a.now()
+		tag, err := tx.Exec(ctx,
+			`UPDATE account_keys SET phrase_seen_at = greatest(created_at, $2) WHERE user_id = $1 AND phrase_seen_at IS NULL`,
+			session.UserID, now)
+		if err != nil {
+			return fmt.Errorf("auth: phrase view: mark seen: %w", err)
+		}
+		if tag.RowsAffected() == 1 {
+			firstSeen = now
+		}
+		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventPhraseViewed, CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
 		return nil, err
+	}
+	if !firstSeen.IsZero() {
+		a.recordPhraseSeen(session.UserID, firstSeen)
 	}
 	a.Mail.Kick()
 	return box, nil

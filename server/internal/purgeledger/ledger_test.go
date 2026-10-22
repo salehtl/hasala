@@ -138,7 +138,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "purged")
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	thawed, keyless, bounced := uuid.New(), uuid.New(), uuid.New()
+	thawed, keyless, bounced, wrote := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	cred := bytes.Repeat([]byte{0xc4}, 16)
 	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
@@ -152,6 +152,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: keyless, At: at, Kind: KindPasskey, Credential: cred},
 		{ID: keyless, At: at, Kind: KindPasskey, Credential: long},
 		{ID: bounced, At: at, Kind: KindWaitlistUnsent},
+		{ID: wrote, At: at, Kind: KindPhraseSeen},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -222,7 +223,11 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 	h32, h64 := strings.Repeat("ab", 32), strings.Repeat("cd", 64)
 	at := " 2026-10-20T05:30:00Z "
 	for name, line := range map[string]string{
-		"unknown kind":         id + at + "spare",
+		"unknown kind upper":   id + at + "Spare",
+		"unknown kind symbol":  id + at + "spare_kind",
+		"unknown kind gap":     id + at + "spare  x",
+		"unknown kind bad id":  strings.ToUpper(id) + at + "spare",
+		"unknown kind bad at":  id + " yesterday spare",
 		"passkey without id":   id + at + "passkey",
 		"passkey short id":     id + at + "passkey " + h32[:30],
 		"passkey odd hex":      id + at + "passkey " + h32 + "a",
@@ -273,6 +278,7 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 		"passkey with trigger":   {ID: uuid.New(), At: at, Kind: KindPasskey, Credential: make([]byte, 16), Trigger: at},
 		"password with id":       {ID: uuid.New(), At: at, Kind: KindPassword, Credential: make([]byte, 16)},
 		"unsent with trigger":    {ID: uuid.New(), At: at, Kind: KindWaitlistUnsent, Trigger: at},
+		"phrase seen with id":    {ID: uuid.New(), At: at, Kind: KindPhraseSeen, Credential: make([]byte, 16)},
 		"freeze without trigger": {ID: uuid.New(), At: at, Kind: KindFreeze},
 		"device without device":  {ID: uuid.New(), At: at, Kind: KindDevice},
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},
@@ -315,5 +321,44 @@ func TestAppendKeepsEntriesPastRetentionUntilAPrune(t *testing.T) {
 	}
 	if st, _ := os.Stat(path); st.Mode().Perm() != FileMode {
 		t.Fatalf("mode %v", st.Mode().Perm())
+	}
+}
+
+func TestAKindThisBuildDoesNotKnowIsSkippedAndKept(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
+	a, b, c := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	future := c + " " + now.Format(time.RFC3339) + " phrase-shown-again 0a0b ff\n"
+	body := a + " " + now.Format(time.RFC3339) + " password\n" +
+		b + " " + old.Format(time.RFC3339) + " spare\n" +
+		future +
+		a + " " + now.Format(time.RFC3339) + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].Kind != KindPassword || entries[1].Kind != KindPurge {
+		t.Fatalf("entries %+v, want the two known ones", entries)
+	}
+	n, err := Prune(path, now.Add(-Retention))
+	if err != nil || n != 1 {
+		t.Fatalf("prune %d %v, want the old unknown entry dropped", n, err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), future) || strings.Contains(string(raw), b) {
+		t.Fatalf("after the prune the ledger is %q", raw)
+	}
+	if entries, err = Read(path); err != nil || len(entries) != 2 {
+		t.Fatalf("after the prune %+v %v", entries, err)
+	}
+	if err := AppendEntries(path, Entry{ID: uuid.New(), At: now, Kind: "phrase-shown-again"}); err == nil {
+		t.Fatal("an unknown kind was written")
 	}
 }

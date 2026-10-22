@@ -203,6 +203,12 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		var err error
 		removedAt = p.now()
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, session.UserID); err != nil {
+			return err
+		}
+		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
+			return err
+		}
 		revoked, err = deleteCredentialTx(ctx, tx, session.UserID, credentialID, session.Hash, removedAt)
 		if err != nil {
 			return err

@@ -83,6 +83,7 @@ public struct RegisteredPasskey: @unchecked Sendable {  // `prf` is wiped by the
   public let attestationHash: Data
   /// The creation's PRF output, when the authenticator gave one.
   public let prf: SecureBytes?
+  public let backup: BackupFlags?
 }
 
 public enum AccountCreation {
@@ -171,13 +172,13 @@ public enum AccountCreation {
     try writeSession(env, grant)
     return RegisteredPasskey(
       signup: signup, userID: signup.userID, credentialID: reg.credentialID,
-      attestationHash: sha256(reg.rawAttestationObject), prf: reg.prfFirst)
+      attestationHash: sha256(reg.rawAttestationObject), prf: reg.prfFirst, backup: reg.backupFlags)
   }
 
   /// C1 steps 11–15 (16: TODO below).
-  public static func bootstrapPasskey(_ env: AccountEnvironment, registered: RegisteredPasskey, keys: NewAccountKeys)
-    async throws(CeremonyError) -> EnrolledAccount
-  {
+  public static func bootstrapPasskey(
+    _ env: AccountEnvironment, registered: RegisteredPasskey, keys: NewAccountKeys, phraseUnseen: Bool = false
+  ) async throws(CeremonyError) -> EnrolledAccount {
     let bearer = try currentBearer(env)
     let user = registered.userID
     let device = try await NewDevice.mint(env, userID: user)
@@ -191,9 +192,10 @@ public enum AccountCreation {
     }
     let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
     let nonce = try b64(challenge.nonce, "writer nonce")
-    let (body, _) = try buildBootstrap(
+    var (body, _) = try buildBootstrap(
       env, userID: user, emailNorm: registered.signup.emailNorm, keys: keys, device: device, authKind: .passkey,
       authHash: registered.attestationHash, prfWrap: prfWrap, nonce: nonce)
+    if phraseUnseen { body.phrase_unseen = true }
     let r = try await apiStep { () async throws(APIError) in try await env.client.bootstrap(body, bearer: bearer) }
     guard r.writer_id == device.writerID.string else { throw .badResponse("bootstrap writer_id") }
     let grant = SessionGrant(
