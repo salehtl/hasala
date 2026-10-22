@@ -193,7 +193,7 @@ public enum HomeEngine {
       for line in t.lines { byCategory[line.category, default: 0].add(line.minor) }
     }
     func bucket(_ b: Bucket) -> Int64 { Fils.sum(s.categories(in: b)) { byCategory[$0.id] ?? 0 } }
-    let full = period.months.filter { $0 < today }.map { byMonth[$0] ?? 0 }
+    let full = period.months.filter { $0 > period.first && $0 < today }.map { byMonth[$0] ?? 0 }
     let total = Fils.sum(byMonth.values)
     let needs = bucket(.needs)
     let wants = bucket(.wants)

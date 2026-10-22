@@ -329,6 +329,17 @@ struct HomePeriodTests {
     #expect(h.word.rendered(hidden: false).hasPrefix("Average "))
   }
 
+  @Test func allTimeAverageLeavesOutTheFirstMonth() {
+    var older = s
+    older.txns.append(Txn(id: "old-dining", merchant: "Zuma", amount: .aed(60_00),
+                          postedAt: LocalDateTime(2026, 8, 28, 10, 0), categoryID: "dining"))
+    let h = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2026, 8), today: MayaLedger.october)).hero
+    let september = Spending.total(older, in: .month(YearMonth(2026, 9)))
+    #expect(h.word.rendered(hidden: false) == MoneyPhrase([.text("Average "), .amount(.aed(september), hidden: 3)]).rendered(hidden: false))
+    let new = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2026, 9), today: MayaLedger.october)).hero
+    #expect(new.word.rendered(hidden: false) == "" && new.fact == nil)
+  }
+
   @Test func aCategoryUnderAllTimeHasNoBudget() {
     let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
     let snap = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries"), period: all)
