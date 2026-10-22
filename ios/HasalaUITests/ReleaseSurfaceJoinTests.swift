@@ -66,7 +66,6 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
   func testPasskeySignupAsksForTheWordsOnHome() throws {
     let app = launchRelease("newUser", waitForHome: false)
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", "ABCDEFGHIJKLMNOPQRSTUVWX")
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")

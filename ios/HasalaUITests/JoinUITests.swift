@@ -65,7 +65,7 @@ final class JoinUITests: XCTestCase {
 
   @MainActor
   func testACopiedInviteLinkNeedsNoCode() throws {
-    let app = launch(scenario: "newUser", pasteboard: Self.inviteLink)
+    let app = launch(scenario: "newUser", arguments: [Self.noPRF], pasteboard: Self.inviteLink)
     XCTAssertTrue(el(app, "stories.inviteFound").waitForExistence(timeout: 15))
     XCTAssertTrue(el(app, "stories.getStarted").exists)
     attach(app, "Stories · invite link found")
@@ -256,7 +256,6 @@ final class JoinUITests: XCTestCase {
     let app = launch(scenario: "newUser", arguments: [Self.notSynced])
     XCTAssertTrue(el(app, "stories.getStarted").waitForExistence(timeout: 15))
     tap(app, "stories.getStarted")
-    tap(app, "welcome.join")
     type(app, "invite.field", Self.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
@@ -339,7 +338,6 @@ final class JoinUITests: XCTestCase {
   func testSignupWithPRFPasskeyLeavesTheWordsForHome() throws {
     let app = launch(scenario: "newUser")
     tap(app, "stories.getStarted", timeout: 15)
-    tap(app, "welcome.join")
     type(app, "invite.field", Self.invite)
     tap(app, "invite.continue")
     type(app, "about.name", "Maya Rahman")
