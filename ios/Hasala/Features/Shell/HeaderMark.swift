@@ -143,7 +143,9 @@ struct HeaderMark: View {
         SlotMark(plate: .onWash, drop: coin.drop, spin: coin.spin, squash: coin.squash)
           .frame(width: Self.markSize.width, height: Self.markSize.height)
           .scaleEffect(x: 1 + coin.bump, y: 1 - coin.bump * 0.4, anchor: .bottom)
-          .background { StillGlow().opacity(glow ? 1 : 0) }
+          .background {
+            if glow { StillGlow().transition(.opacity) }
+          }
           .overlay {
             if coin.burst > 0, coin.burst < 1 {
               JackpotBurst(progress: coin.burst, mark: Self.markSize)
@@ -170,10 +172,8 @@ struct HeaderMark: View {
     .hHaptic(.success, trigger: felt[.success, default: 0])
     .task { await autoplay() }
     .onDisappear {
-      players.forEach { $0.cancel() }
-      players = []
+      stopPlayers()
       stage.reset()
-      glow = false
     }
   }
 
@@ -256,10 +256,7 @@ struct HeaderMark: View {
     case .skip:
       return
     case .play(let wait):
-      if wait == 0 {
-        players.forEach { $0.cancel() }
-        players = []
-      }
+      if wait == 0 { stopPlayers() }
       players.append(play(next, after: wait))
     }
   }
@@ -271,7 +268,7 @@ struct HeaderMark: View {
     }
     feel(.success)
     guard !policy.settled else { return }
-    players.forEach { $0.cancel() }
+    stopPlayers()
     players = [
       Task { @MainActor in
         withAnimation(HMotion.easeOutSoft(HMotion.reduceMotionFade)) { glow = true }
@@ -289,14 +286,19 @@ struct HeaderMark: View {
       stage.started(next)
       trick = next
       plays += 1
-      var clock: TimeInterval = 0
+      let start = ContinuousClock.now
       for beat in CoinShow.beats(next) {
-        try? await Task.sleep(for: .seconds(beat.at - clock))
+        try? await Task.sleep(until: start + .seconds(beat.at), clock: .continuous)
         guard !Task.isCancelled else { return }
-        clock = beat.at
         feel(beat.haptic)
       }
     }
+  }
+
+  private func stopPlayers() {
+    players.forEach { $0.cancel() }
+    players = []
+    glow = false
   }
 
   private func feel(_ haptic: HHaptic) {
@@ -315,20 +317,6 @@ struct HeaderMark: View {
     #endif
   }
 }
-
-#if HASALA_MOCKS
-  enum JackpotLaunch {
-    static let argument = "-HasalaJackpot"
-
-    static func from(_ arguments: [String]) -> TimeInterval? {
-      guard let i = arguments.firstIndex(of: argument) else { return nil }
-      guard i + 1 < arguments.count, let every = TimeInterval(arguments[i + 1]) else { return 0 }
-      return max(every, 0)
-    }
-
-    static let current = from(ProcessInfo.processInfo.arguments)
-  }
-#endif
 
 private struct JackpotBurst: View {
   let progress: CGFloat

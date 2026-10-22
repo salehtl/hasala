@@ -139,3 +139,16 @@ struct CoinShowTests {
     #expect(end.burst == 0)
   }
 }
+
+@Suite("Header mark jackpot launch")
+struct JackpotLaunchTests {
+  @Test func theArgumentParses() {
+    #expect(JackpotLaunch.from([]) == nil)
+    #expect(JackpotLaunch.from(["-HasalaJackpot"]) == 0)
+    #expect(JackpotLaunch.from(["-HasalaJackpot", "-HasalaScenario"]) == 0)
+    #expect(JackpotLaunch.from(["-HasalaJackpot", "2.5"]) == 2.5)
+    #expect(JackpotLaunch.from(["-HasalaJackpot", "-3"]) == 0)
+    #expect(JackpotLaunch.from(["-HasalaJackpot", "nan"]) == 0)
+    #expect(JackpotLaunch.from(["-HasalaJackpot", "inf"]) == 0)
+  }
+}
