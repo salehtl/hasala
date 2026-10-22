@@ -11,10 +11,6 @@ public struct MerchantGroup: Sendable {
     entries = Matcher.prepare(rules: [], entries: dictionary.entries).entries
   }
 
-  public static func key(raw: String, dictionary: MerchantDictionary) -> String {
-    MerchantGroup(dictionary: dictionary).key(raw: raw)
-  }
-
   public func key(raw: String) -> String {
     let subject = Canon.subject(raw)
     let bytes = Array(subject.utf8)
@@ -27,10 +23,10 @@ public struct MerchantGroup: Sendable {
     return Canon.truncateRunes("n:" + Self.name(subject), Self.maxKeyRunes)
   }
 
-  public static func name(_ subject: String) -> String {
+  static func name(_ subject: String) -> String {
     let bytes = Array(subject.utf8)
     var tokens = cleaned(unstarred(bytes))
-    if tokens.isEmpty { tokens = cleaned(bytes.filter { $0 != star }) }
+    if tokens.isEmpty { tokens = cleaned(spaced(bytes)) }
     if tokens.isEmpty { return subject }
     return String(decoding: Array(tokens.joined(separator: [space])), as: UTF8.self)
   }
@@ -40,7 +36,7 @@ public struct MerchantGroup: Sendable {
 
   static let facilitators: [[UInt8]] = [
     "paypal", "pp", "google", "sq", "sp", "tst", "sumup", "iz", "izettle", "zettle", "amzn", "apple.com/bill", "paddle.net", "fs",
-    "2co.com", "dd",
+    "2co.com", "dd", "dlo", "dlocal", "payu",
   ].map { Array($0.utf8) }
 
   static let legal: [[UInt8]] = [
@@ -65,8 +61,8 @@ public struct MerchantGroup: Sendable {
         rest = before
         continue
       }
-      let merchant = cleaned(after.filter { $0 != star })
-      if merchant.isEmpty || merchant.allSatisfy(hasDigit) {
+      let merchant = cleaned(spaced(after))
+      if merchant.isEmpty || (merchant.allSatisfy(hasDigit) && cleaned(before).count > 1) {
         rest = before
       } else {
         rest = after
@@ -85,11 +81,13 @@ public struct MerchantGroup: Sendable {
       if !tokens.isEmpty && legal.contains(t) { continue }
       tokens.append(t)
     }
-    while tokens.count > 1, let last = tokens.last, hasDigit(last) || countries.contains(last) || legal.contains(last) {
+    while tokens.count > 1, let last = tokens.last, hasDigit(last) || countries.contains(last) {
       tokens.removeLast()
     }
     return tokens
   }
+
+  static func spaced(_ bytes: [UInt8]) -> [UInt8] { bytes.map { $0 == star ? space : $0 } }
 
   static func isFacilitator(_ prefix: [UInt8]) -> Bool {
     guard let first = prefix.split(separator: space).first else { return false }

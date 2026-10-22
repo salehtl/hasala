@@ -251,6 +251,69 @@
       "expect": {
         "key": ""
       }
+    },
+    {
+      "name": "paypal-bare-ref-like-name-1password",
+      "raw": "PAYPAL *1PASSWORD",
+      "expect": {
+        "key": "n:1password"
+      }
+    },
+    {
+      "name": "paypal-bare-ref-like-name-500px",
+      "raw": "PAYPAL *500PX",
+      "expect": {
+        "key": "n:500px"
+      }
+    },
+    {
+      "name": "google-bare-ads-ref",
+      "raw": "GOOGLE*ADS1234567890",
+      "expect": {
+        "key": "n:ads1234567890"
+      }
+    },
+    {
+      "name": "google-bare-gsuite-ref",
+      "raw": "GOOGLE*GSUITE1234",
+      "expect": {
+        "key": "n:gsuite1234"
+      }
+    },
+    {
+      "name": "sq-bare-cafe-number",
+      "raw": "SQ *CAFE21",
+      "expect": {
+        "key": "n:cafe21"
+      }
+    },
+    {
+      "name": "paypal-nested-star-ref",
+      "raw": "PAYPAL *TAILSCALE*ABC123",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "dlo-facilitator",
+      "raw": "DLO*TAILSCALE",
+      "expect": {
+        "key": "n:tailscale"
+      }
+    },
+    {
+      "name": "dlocal-facilitator",
+      "raw": "DLOCAL *FIGMA",
+      "expect": {
+        "key": "n:figma"
+      }
+    },
+    {
+      "name": "payu-facilitator",
+      "raw": "PAYU*HOMEWARE STUDIO",
+      "expect": {
+        "key": "n:homeware studio"
+      }
     }
   ],
   "pairs": [
@@ -325,6 +388,36 @@
       "a": "ZEN GARDEN FZE",
       "b": "ZEN GARDEN FZCO",
       "same": true
+    },
+    {
+      "name": "paypal-1password-is-not-paypal-500px",
+      "a": "PAYPAL *1PASSWORD",
+      "b": "PAYPAL *500PX",
+      "same": false
+    },
+    {
+      "name": "google-ads-is-not-google-workspace",
+      "a": "GOOGLE*ADS1234567890",
+      "b": "GOOGLE*GSUITE1234",
+      "same": false
+    },
+    {
+      "name": "paypal-tailscale-ref-is-not-paypal-figma-ref",
+      "a": "PAYPAL *TAILSCALE*ABC123",
+      "b": "PAYPAL *FIGMA*X12",
+      "same": false
+    },
+    {
+      "name": "sq-cafe-is-not-sq-bar",
+      "a": "SQ *CAFE21",
+      "b": "SQ *BAR22",
+      "same": false
+    },
+    {
+      "name": "dlo-tailscale-is-not-dlo-figma",
+      "a": "DLO*TAILSCALE",
+      "b": "DLO*FIGMA",
+      "same": false
     }
   ]
 }

@@ -31,9 +31,27 @@ import Testing
     #expect(Self.key("PAYPAL *GOOGLE *DUOLINGO") == "n:duolingo")
   }
 
-  @Test func aReferenceAfterAFacilitatorKeepsThePrefix() {
+  @Test func aReferenceAfterAFacilitatorKeepsANamedPrefix() {
     #expect(Self.key("AMZN Mktp US*2K1AB3CD4") == "n:amzn mktp")
     #expect(Self.key("AMZN MKTP US*9Z8YX7W") == "n:amzn mktp")
+  }
+
+  @Test func aBareFacilitatorNeverPutsTwoMerchantsOnOneKey() {
+    #expect(Self.key("PAYPAL *1PASSWORD") == "n:1password")
+    #expect(Self.key("PAYPAL *500PX") == "n:500px")
+    #expect(Self.key("GOOGLE*ADS1234567890") == "n:ads1234567890")
+    #expect(Self.key("GOOGLE*GSUITE1234") == "n:gsuite1234")
+    #expect(Self.key("SQ *CAFE21") == "n:cafe21")
+    #expect(Self.key("SQ *BAR22") == "n:bar22")
+    #expect(Self.key("PAYPAL *TAILSCALE*ABC123") == "n:tailscale")
+    #expect(Self.key("PAYPAL *FIGMA*X12") == "n:figma")
+  }
+
+  @Test func moreFacilitatorsKeepTheMerchant() {
+    #expect(Self.key("DLO*TAILSCALE") == "n:tailscale")
+    #expect(Self.key("DLOCAL *FIGMA") == "n:figma")
+    #expect(Self.key("PAYU*HOMEWARE STUDIO") == "n:homeware studio")
+    #expect(Self.key("DLO*TAILSCALE") != Self.key("DLO*FIGMA"))
   }
 
   @Test func otherStarsDropWhatFollows() {
@@ -74,8 +92,8 @@ import Testing
 
   @Test func anEntryWithoutADisplayNameKeysByItsPattern() throws {
     let bare = MerchantDictionary(bundle: "2026.01.01-1", entries: [DictEntry(pattern: "tailscale", match: "contains", category: "subscriptions")], defects: [])
-    #expect(MerchantGroup.key(raw: "TAILSCALE INC", dictionary: bare) == "e:contains:tailscale")
-    #expect(MerchantGroup.key(raw: "TAILSCALE INC", dictionary: .empty) == "n:tailscale")
+    #expect(MerchantGroup(dictionary: bare).key(raw: "TAILSCALE INC") == "e:contains:tailscale")
+    #expect(MerchantGroup(dictionary: .empty).key(raw: "TAILSCALE INC") == "n:tailscale")
   }
 
   @Test func emptyAndSpaceOnlySubjectsHaveNoKey() {

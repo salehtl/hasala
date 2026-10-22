@@ -1,6 +1,8 @@
 # conformance/merchant-group
 
-The merchant group key (CoreCategorize `MerchantGroup.key(raw:)`): the
+The merchant group key (CoreCategorize `MerchantGroup(dictionary:).key(raw:)`;
+build one `MerchantGroup` and reuse it, because `init` prepares the whole
+dictionary): the
 projection's `txn.merchant_group`, which puts the spellings of one merchant
 on one Review card. The key is a function of the raw merchant string and the
 bundled merchant dictionary only. User rules, the category table and the
@@ -18,7 +20,11 @@ All merchant strings are synthetic.
 ## The key
 
 `subject` is `Canon.subject(raw)` (canonical, lower case, at most 512
-scalars). An empty subject has the key `""`.
+scalars). An empty subject has the key `""`, which means "no group": the
+projection writes `merchant_group` as NULL for it, and `LedgerReader.group("")`
+and `sweepRows(group: "")` return nothing. A row with no merchant (an
+unparsed row, or a parsed alert with no merchant name) never shares a card, a
+group sort or a reach-back with another row.
 
 1. Dictionary: the first dictionary entry that hits the subject, in the
    matcher's order (`Matcher.prepare` with no rules and no category table).
@@ -37,9 +43,15 @@ Bytes of the subject, split on U+0020:
    - An empty prefix: keep the rest.
    - A prefix whose first token is a payment facilitator (`paypal`, `pp`,
      `google`, `sq`, `sp`, `tst`, `sumup`, `iz`, `izettle`, `zettle`, `amzn`,
-     `apple.com/bill`, `paddle.net`, `fs`, `2co.com`, `dd`): keep the rest,
-     which names the merchant. When the cleaned rest is empty or each of its
-     tokens holds a digit (an order reference), keep the prefix.
+     `apple.com/bill`, `paddle.net`, `fs`, `2co.com`, `dd`, `dlo`, `dlocal`,
+     `payu`): keep the rest, which names the merchant. To judge the rest, its
+     stars become spaces and it is cleaned (steps 2 to 4). Keep the prefix
+     instead only when the cleaned rest is empty, or when each of its tokens
+     holds a digit (an order reference) and the cleaned prefix has a token
+     after the facilitator (`AMZN Mktp US*2K1AB3CD4` is `amzn mktp`). A bare
+     facilitator never becomes the key of a rest that names something:
+     `PAYPAL *1PASSWORD` is `1password` and `PAYPAL *500PX` is `500px`. This
+     gives more cards, never one card for two merchants.
    - Any other prefix: keep the prefix and drop the star and the rest.
    - Repeat while a star is left.
 2. Each token loses its leading and trailing ASCII characters that are not a
@@ -54,8 +66,8 @@ Bytes of the subject, split on U+0020:
    `irl`, `nl`, `nld`, `sg`, `sgp`, `lu`, `lux`, `au`, `aus`, `ca`, `deu`,
    `fra`, `ind`, `sa`, `sau`, `ksa`, `qa`, `qat`, `om`, `omn`, `bh`, `bhr`,
    `kw`, `kwt`, `eg`, `egy`, `hk`, `hkg`, `ch`, `che`).
-5. The tokens, joined with one space. When nothing is left, the subject
-   without its stars is cleaned again; when that is empty too, the subject
+5. The tokens, joined with one space. When nothing is left, the subject with
+   its stars as spaces is cleaned again; when that is empty too, the subject
    itself.
 
 No fuzzy matching: two spellings share a key only when these steps make them
@@ -79,5 +91,8 @@ cards.
 - `pairs` are the near misses, written and asserted by hand. Update mode never
   rewrites them: a change that makes `AL NOOR TRADING LLC` and
   `AL NOOR PHARMACY` share a key, or `PAYPAL *NETFLIX` and `PAYPAL *SPOTIFY`,
-  fails the test.
+  fails the test. The pairs also hold the bare facilitators
+  (`PAYPAL *1PASSWORD` and `PAYPAL *500PX`, `GOOGLE*ADS…` and
+  `GOOGLE*GSUITE…`, `SQ *CAFE21` and `SQ *BAR22`, `DLO*TAILSCALE` and
+  `DLO*FIGMA`).
 - Non-ASCII code points are written as `\uXXXX` escapes.

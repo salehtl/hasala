@@ -47,15 +47,11 @@ struct MerchantGroupConformanceTests {
     }
   }
 
-  @Test func casesHaveUniqueNamesAndKeys() throws {
+  @Test func casesHaveUniqueNamesAndInputs() throws {
     let cases = try #require(try Fixtures.json(Self.file)["cases"]?.arrayValue)
     let names = try cases.map { try $0.string("name") }
     #expect(Set(names).count == names.count)
-    let groups = try Self.groups()
-    for c in cases {
-      let raw = try c.string("raw")
-      let expect = try #require(c["expect"])
-      #expect(try expect.string("key") == groups.key(raw: raw))
-    }
+    let raws = try cases.map { try $0.string("raw") }
+    #expect(Set(raws).count == raws.count)
   }
 }
