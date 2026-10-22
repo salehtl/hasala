@@ -197,6 +197,30 @@ public struct ReviewMonth: Sendable, Hashable, Identifiable {
   public var id: YearMonth { month }
 }
 
+public struct ReviewElsewhere: Sendable, Hashable {
+  public enum Side: Sendable, Hashable { case earlier, later, other }
+
+  public var count: Int
+  public var side: Side
+  public var widened: Period
+
+  public init(count: Int, side: Side, widened: Period) {
+    self.count = count
+    self.side = side
+    self.widened = widened
+  }
+
+  public var line: String {
+    let one = count == 1
+    let months = switch side {
+    case .earlier: one ? "an earlier month" : "earlier months"
+    case .later: one ? "a later month" : "later months"
+    case .other: one ? "another month" : "other months"
+    }
+    return "\(count) more in \(months)"
+  }
+}
+
 /// One line of the All caught up list.
 public struct SortedLine: Sendable, Hashable, Identifiable {
   public var id: TxnID
@@ -283,6 +307,20 @@ public enum ReviewEngine {
         let a = $0.postedAt.date.yearMonth, b = $1.postedAt.date.yearMonth
         return a == b ? $0.postedAt < $1.postedAt : b < a
       }
+  }
+
+  public static func window(_ period: Period, today: YearMonth) -> ReviewWindow {
+    var w = ReviewWindow(period)
+    if period.last >= today { w.to = nil }
+    return w
+  }
+
+  public static func elsewhere(_ s: LedgerState, in period: Period, today: YearMonth) -> ReviewElsewhere? {
+    let months = queue(s).map { min($0.postedAt.date.yearMonth, today) }.filter { !period.contains($0) }
+    guard let first = months.min(), let last = months.max() else { return nil }
+    let side: ReviewElsewhere.Side = last < period.first ? .earlier : first > period.last ? .later : .other
+    let widened = Period(min(first, period.first), max(last, period.last))
+    return ReviewElsewhere(count: months.count, side: side, widened: widened)
   }
 
   public static func unreadMail(_ s: LedgerState) -> [UnreadMail] {
