@@ -25,9 +25,10 @@ final class CategoriesUITests: XCTestCase {
     tap(app, "categories.add", opening: "categoryEditor.name")
     type(app, "categoryEditor.name", "Coffee")
     tap(app, "categoryEditor.parent")
-    let dining = app.buttons["Dining"].firstMatch
-    XCTAssertTrue(dining.waitForExistence(timeout: uiWait))
-    dining.tap()
+    XCTAssertTrue(app.buttons["Needs"].firstMatch.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.buttons["Savings"].firstMatch.exists)
+    XCTAssertFalse(app.buttons["Dining"].exists, "Counts as lists the buckets, not categories")
+    app.buttons["Wants"].firstMatch.tap()
     XCTAssertTrue(el(app, "categoryEditor.parentNote").waitForLabel("Its spending counts in Wants."))
     tap(app, "categoryEditor.icon.dining")
     attach(app, "New category")
@@ -36,7 +37,7 @@ final class CategoriesUITests: XCTestCase {
     XCTAssertTrue(el(app, "categories.capLine").waitForLabel("2 of 20 custom categories"))
     let row = el(app, "category.c_mock1")
     XCTAssertTrue(row.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(row.label.contains("Counts as Dining"), row.label)
+    XCTAssertTrue(row.label.contains("Counts as Wants"), row.label)
 
     tap(app, "category.c_mock1", opening: "categoryEditor.name")
     let name = el(app, "categoryEditor.name")
