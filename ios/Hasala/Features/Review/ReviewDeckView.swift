@@ -109,9 +109,11 @@ struct ReviewDeckView: View {
       }
     }
     .onAppear {
+      SortSound.shared.prepare()
       // A pick sheet already up (a Debug screen launch): hold the card toward it.
       if let p = model.picking { holdToward(edge(for: p.choice), animated: false) }
     }
+    .onDisappear { SortSound.shared.rest() }
   }
 
   private var pickBinding: Binding<ReviewPick?> {
@@ -522,6 +524,7 @@ struct ReviewDeckView: View {
     if let p = pendingSort {
       pendingSort = nil
       let edge = held ?? edge(for: p.pick.choice)
+      SortSound.shared.play()
       file(p.pick.card, toward: edge, as: p.pick.choice.label) {
         model.sort(p.pick.card.id, into: p.category, alwaysUse: p.alwaysUse, project: p.project)
       }
@@ -538,6 +541,7 @@ struct ReviewDeckView: View {
   private func use(_ card: ReviewCardModel) {
     guard card.reviewReason == nil, let s = card.suggestion else { return }
     tap += 1
+    SortSound.shared.play()
     file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name) {
       model.useSuggestion(card.id)
     }
