@@ -111,14 +111,20 @@ payment). The matcher never writes it.
    `{from: that due, amount_minor: the charge}`. Not now is device-local for that payment.
    The proposal never writes on its own, also not for detected bills and not for "Sort
    automatically" users. A variable bill never proposes. Only the newest such payment of
-   a bill is proposed, and Not now shows the bill at its usual amount again.
+   a bill is proposed, and Not now shows the bill at its usual amount again. Accept
+   exists only while that notice is shown; it never rewrites a change dated after the
+   notice's due. Without a notice the edit is refused.
 9. **Foreign currency**: a bill in AED matches a foreign charge by its home amount when the
    row has one; otherwise it does not match on amount and is offered for manual linking.
 
 ### Pause and resume
 
-10. Pause asks "Until I resume" (default) or "Until" a date. It appends a range from today
-    (or the next due when today is past it). Resume sets `until` = today on the open range.
+10. Pause asks "Until I resume" (default) or "Until" a date. It appends a range from today.
+    When the due on or after today is already paid or matched, the range starts at the
+    first unpaid due after those paid dues, so a paid due is never paused. Until that day
+    the bill shows as Paused from that date. Resume sets `until` = today on the open range,
+    and removes a range that has not started yet. A range that would start on or after its
+    `until` is refused.
 11. Paused dues are not expected: not late, not "to come", not in the plan.
 12. A payment matched to a paused due marks it paid and raises "Charged while paused".
 13. Ending while paused closes the open range at `end`.
@@ -131,8 +137,10 @@ payment). The matcher never writes it.
 15. A payment matched after `end` (same keys, within tolerance, within one cadence of the
     next due that would have been) raises "Charged after you ended it" with
     "Start tracking again" and "It's fine" (device-local).
-16. Start tracking again: `status: active`, `end: null`, and a pause range
-    `[old end, today)` appended so the gap is not counted as unpaid.
+16. Start tracking again: `status: active`, `end: null`, and a pause range from the first
+    unpaid due after the old `end` until today, so the gap is not counted as unpaid and a
+    paid or matched due is never inside it. No range is added when that due is today or
+    later.
 17. Delete (manual items) and Not a bill (detected) both write `status: dismissed`. Both
     have undo.
 
