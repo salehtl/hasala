@@ -11,6 +11,8 @@ struct Mail: Codable {
 }
 
 struct Truth: Codable, Equatable {
+  static let labelExponent = 2
+
   var isTransaction: Bool
   var amountMinor: Int64?
   var currency: String?

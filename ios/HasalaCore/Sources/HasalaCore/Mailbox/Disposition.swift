@@ -31,7 +31,7 @@ import Foundation
 /// The per-message size cap (fetch.ts MAILBOX_MAX_MESSAGE_BYTES): at or over it, unreadable.
 public enum MailboxLimits {
   public static let maxMessageBytes = 1_000_000
-  public static let maxAmountMinor: Int64 = 9_999_999_999_999
+  public static let maxAmountMinor: Int64 = ExtractReading.maxAmountMinor
 }
 
 /// The trust and parse facts a row records in its `gates` object (03c §3.1), display only.
@@ -216,27 +216,23 @@ public enum MessageDisposer {
         var f = usableFields(x, posted: posted)
       else { continue }
       mail.bank = t.definition.bank
-      let pending = CombinedReader.pending(input, direction: ExtractDirection(rawValue: f.direction))
-      if pending == .status {
-        reader?.bump(mail.bank) { $0.pendingSetAside += 1 }
-        return .setAside(domain: setAsideDomain)
-      }
       var reading: ExtractReading?
-      if reader != nil {
+      let verdict = CombinedReader.templateVerdict(
+        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction)
+      ) {
+        guard reader != nil else { return nil }
         let (r, next) = CombinedReader.read(input, reader!.layouts)
         if learn { reader!.layouts = next }
         reading = r
+        return r
       }
-      if let aed = CombinedReader.aedAmount(input, foreign: f.amountMinor, currency: f.currency),
-        aed <= MailboxLimits.maxAmountMinor
-      {
-        f.amountMinor = aed
-        f.currency = "AED"
-        let confirmed =
-          reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
-        if !confirmed { mail.held = true }
+      guard let verdict else {
+        reader?.bump(mail.bank) { $0.pendingSetAside += 1 }
+        return .setAside(domain: setAsideDomain)
       }
-      if pending == .phrase { mail.held = true }
+      f.amountMinor = verdict.amountMinor
+      f.currency = verdict.currency
+      if verdict.held { mail.held = true }
       mail.templateHasCardField = t.definition.extract.contains { $0.field == "last4" }
       mail.last4 = x.last4
       mail.gates.template = "\(t.definition.id)@\(t.definition.version)"
@@ -293,8 +289,7 @@ public enum MessageDisposer {
   static let readerMerchantLimit = 200
 
   static func readerFields(_ r: ExtractReading, stated: ExtractStatedDate?, internalDateMs: Int64) -> ParsedFields? {
-    guard let amount = r.amountMinor, amount > 0, amount <= MailboxLimits.maxAmountMinor, let currency = r.currency,
-      currency.utf8.count == 3, currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }), let direction = r.direction,
+    guard r.isUsable, let amount = r.amountMinor, let currency = r.currency, let direction = r.direction,
       let posted = readerPostedAt(stated, internalDateMs: internalDateMs)
     else { return nil }
     let last4 = r.last4.flatMap { $0.utf8.count == 4 && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } ? $0 : nil } ?? ""
@@ -496,9 +491,7 @@ public enum MessageDisposer {
   /// letters and the direction is debit or credit; otherwise it is a miss (the safe direction:
   /// the message becomes the empty review shape).
   static func usableFields(_ x: Extraction, posted: (String, String)) -> ParsedFields? {
-    guard x.amountMinor > 0, x.amountMinor <= MailboxLimits.maxAmountMinor, x.currency.utf8.count == 3,
-      x.currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }),
-      x.direction == "debit" || x.direction == "credit"
+    guard ExtractReading.usableAmount(x.amountMinor, currency: x.currency), ExtractDirection(rawValue: x.direction) != nil
     else { return nil }
     return ParsedFields(
       amountMinor: x.amountMinor, currency: x.currency, direction: x.direction, merchant: x.merchant, last4: x.last4,

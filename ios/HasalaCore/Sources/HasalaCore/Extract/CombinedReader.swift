@@ -32,6 +32,26 @@ public enum CombinedReader {
     return MailRules.pendingSignal(input)
   }
 
+  public static func templateVerdict(
+    _ input: ExtractInput, amountMinor: Int64, currency: String, direction: ExtractDirection?,
+    read: () -> ExtractReading?
+  ) -> ExtractTemplateVerdict? {
+    let signal = pending(input, direction: direction)
+    if signal == .status { return nil }
+    let reading = read()
+    var out = ExtractTemplateVerdict(amountMinor: amountMinor, currency: currency)
+    if let aed = aedAmount(input, foreign: amountMinor, currency: currency), aed <= ExtractReading.maxAmountMinor {
+      out.amountMinor = aed
+      out.currency = "AED"
+      out.aedOver = currency
+      let confirmed =
+        reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
+      if !confirmed { out.holds.append(.aedNotConfirmed) }
+    }
+    if signal == .phrase { out.holds.append(.pendingPhrase) }
+    return out
+  }
+
   public static func statedDate(_ input: ExtractInput) -> ExtractStatedDate? {
     RuleDate.stated(strip(input))
   }

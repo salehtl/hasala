@@ -107,3 +107,25 @@ enum RuleLexicon {
     ["success", "successful", "successfully", "completed", "approved", "pending", "processed", "credited to beneficiary"],
     ["تمت بنجاح", "ناجحه", "مكتمله", "قيد التنفيذ"])
 }
+
+public enum ExtractLexicon {
+  static let phrases = [
+    RuleLexicon.amountLabel, RuleLexicon.balance, RuleLexicon.fee, RuleLexicon.rate, RuleLexicon.txnVerb,
+    RuleLexicon.hardNegative, RuleLexicon.softNegative, RuleLexicon.debit, RuleLexicon.credit, RuleLexicon.incomingTransfer,
+    RuleLexicon.closing, RuleLexicon.greeting, RuleLexicon.statusValue,
+  ].map { RuleText.re("^(?:" + $0.pattern + ")$") }
+
+  public static func contains(_ phrase: String) -> Bool {
+    let folded = RuleText.fold(RuleText.clean(RuleText.asciiDigits(phrase)))
+    if RuleLexicon.strongMerchantLabels.contains(folded) || RuleLexicon.weakMerchantLabels.contains(folded)
+      || RuleLexicon.otherLabels.contains(folded)
+    {
+      return true
+    }
+    return phrases.contains { RuleText.has($0, folded) }
+  }
+
+  public static func isPromoLine(_ line: String) -> Bool {
+    PromoFilter.strip(line).isEmpty && !line.isEmpty
+  }
+}

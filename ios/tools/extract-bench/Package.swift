@@ -9,6 +9,7 @@ let package = Package(
     .executableTarget(
       name: "ExtractBench",
       dependencies: [
+        .product(name: "CoreExtract", package: "HasalaCore"),
         .product(name: "CoreNorm", package: "HasalaCore"),
         .product(name: "CoreTemplate", package: "HasalaCore"),
         .product(name: "CoreTime", package: "HasalaCore"),
