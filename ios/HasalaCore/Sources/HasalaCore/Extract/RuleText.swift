@@ -83,19 +83,26 @@ enum RuleText {
 }
 
 enum PromoFilter {
-  static let promo = [
-    "earn", "win ", "cashback", "cash back", "offer", "discount", "reward", "points", "save up", "up to", "promo", "exclusive",
-    "apply now", "eligible", "voucher", "bonus", "free ", "% off",
-    "اربح", "استرداد نقدي", "عرض", "عروض", "مكافأة", "مكافاة", "نقاط", "وفر", "قسيمة", "حصري", "مجانا", "مجاناً", "احصل",
-  ]
-  static let posted = ["has been", "was ", "debited", "credited", "تم ", "تمت"]
+  static let promo = RuleText.re(
+    "(?<![a-z0-9])(?:earn|earned|win|cashback|cash\\s+back|offers?|discounts?|rewards?|points|save\\s+up|up\\s+to|promo|promotion|exclusive|apply\\s+now|eligible|vouchers?|bonus|free)(?![a-z0-9])|%\\s*off(?![a-z])"
+      + "|(?<!\\p{L})(?:وال|بال|فال|لل|ال|و|ب|ل|ف)?(?:اربح|استرداد\\s+نقدي|عرض|عروض|مكافاه|مكافات|نقاط|وفر|قسيمه|حصري|مجانا|احصل)(?!\\p{L})")
+  static let posted = RuleText.words(
+    [
+      "has been", "have been", "was", "were", "debited", "credited", "spent", "paid", "purchased", "used", "transferred",
+      "withdrawn", "deducted", "charged", "refunded", "reversed", "purchase of",
+    ],
+    ["تم ", "تمت", "تم خصم", "تم ايداع"])
+
+  static func isPromo(_ folded: String) -> Bool {
+    RuleText.has(promo, folded)
+  }
 
   static func strip(_ text: String) -> String {
     text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
-      let l = line.lowercased()
+      let l = RuleText.fold(String(line))
       guard l.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) }) else { return true }
-      guard promo.contains(where: { l.contains($0) }) else { return true }
-      return posted.contains(where: { l.contains($0) })
+      guard isPromo(l) else { return true }
+      return RuleText.has(posted, l)
     }.joined(separator: "\n")
   }
 }

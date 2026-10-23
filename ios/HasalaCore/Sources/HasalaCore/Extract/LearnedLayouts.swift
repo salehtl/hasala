@@ -1,8 +1,9 @@
 public struct LearnedLayouts: Codable, Sendable, Equatable {
-  public static let senderLimit = 64
+  public static let senderLimit = 32
   public static let layoutLimitPerSender = 40
   public static let exampleLimitPerLayout = 16
   public static let tokenLimitPerMail = 400
+  public static let tokenBudgetPerSender = 24_000
 
   public internal(set) var senders: [String: SenderLayouts]
   var clock: Int64
@@ -95,6 +96,7 @@ enum FillerToken: Codable, Sendable, Equatable {
       self = .free(raw, cls: cls, spaceBefore: try c.decode(Bool.self))
     } else {
       let e = try c.decode(Int.self)
+      guard e >= 0 else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "anchor")) }
       let space = try c.decode(Bool.self)
       self = .anchor(e, spaceBefore: space, raw: try c.decode(String.self))
     }
@@ -155,7 +157,7 @@ enum LayoutCodec {
 
   static func defaultRaw(_ key: String, _ cls: IClass) -> String { cls == .nl ? "\n" : key }
 
-  static func decode(_ f: SlotFillers, template: [IElem], _ interner: inout IInterner) -> [IToken] {
+  static func decode(_ f: SlotFillers, template: [IElem], _ interner: inout IInterner) -> [IToken]? {
     var out: [IToken] = []
     out.reserveCapacity(f.tokens.count)
     var line = 0
@@ -163,6 +165,7 @@ enum LayoutCodec {
       var tok: IToken
       switch t {
       case .anchor(let e, let space, let raw):
+        guard template.indices.contains(e) else { return nil }
         let el = template[e]
         tok = IToken(raw: raw ?? defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
       case .free(let raw, let cls, let space):

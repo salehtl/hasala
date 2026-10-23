@@ -76,8 +76,11 @@ struct Reading: Equatable {
   var isTransaction = false
   var amountMinor: Int64?
   var currency: String?
+  var currencyExplicit = false
   var merchant: String?
   var direction: String?
+  var directionGuessed = false
+  var fromLayout = false
   var confidence = 0
   var note = ""
   var negative = false

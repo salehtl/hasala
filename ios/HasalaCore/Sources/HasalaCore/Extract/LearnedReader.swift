@@ -45,7 +45,7 @@ enum LearnedReader {
     if let (i, pre, oldT) = best {
       let stored = sender.layouts[i]
       var l = RuntimeLayout(
-        template: oldT, examples: stored.examples.map { LayoutCodec.decode($0, template: oldT, &interner) }, seen: stored.seen,
+        template: oldT, examples: stored.examples.compactMap { LayoutCodec.decode($0, template: oldT, &interner) }, seen: stored.seen,
         lastUsed: stored.lastUsed)
       let wasAnalyzed = l.seen >= minExamples
       let preFit = pre.fit
@@ -65,9 +65,11 @@ enum LearnedReader {
         examples: zip(l.examples, applied).map { LayoutCodec.encode($0, template: newT, applied: $1) }, seen: l.seen,
         lastUsed: l.lastUsed)
       if revised && preFit < spawnBelow { addLayout(toks, &interner, clock: clock, to: &sender) }
+      trim(&sender)
       return learned(l, analysis, applied, toks, m, preFit: preFit, revised: revised)
     }
     addLayout(toks, &interner, clock: clock, to: &sender)
+    trim(&sender)
     var r = bare(toks, m)
     r.note = "unlearned layout (1 seen); " + r.note
     return r
@@ -80,6 +82,18 @@ enum LearnedReader {
         anchors: LayoutCodec.slots(t), examples: [LayoutCodec.encode(toks, template: t, applied: IAlign.apply(t, toks))], seen: 1,
         lastUsed: clock))
     if sender.layouts.count > LearnedLayouts.layoutLimitPerSender,
+      let idx = sender.layouts.indices.min(by: { sender.layouts[$0].lastUsed < sender.layouts[$1].lastUsed })
+    {
+      sender.layouts.remove(at: idx)
+    }
+  }
+
+  static func tokenCount(_ sender: SenderLayouts) -> Int {
+    sender.layouts.reduce(0) { $0 + $1.anchors.count + $1.examples.reduce(0) { $0 + $1.tokens.count } }
+  }
+
+  static func trim(_ sender: inout SenderLayouts) {
+    while sender.layouts.count > 1, tokenCount(sender) > LearnedLayouts.tokenBudgetPerSender,
       let idx = sender.layouts.indices.min(by: { sender.layouts[$0].lastUsed < sender.layouts[$1].lastUsed })
     {
       sender.layouts.remove(at: idx)
@@ -134,10 +148,10 @@ enum LearnedReader {
     return s
   }
 
-  static func currency(_ toks: [IToken], _ idx: Int) -> String {
-    if idx > 0, toks[idx - 1].cls == .cur, let c = ILex.currency(toks[idx - 1].raw) { return c }
-    if idx + 1 < toks.count, toks[idx + 1].cls == .cur, let c = ILex.currency(toks[idx + 1].raw) { return c }
-    return "AED"
+  static func currency(_ toks: [IToken], _ idx: Int) -> (String, Bool) {
+    if idx > 0, toks[idx - 1].cls == .cur, let c = ILex.currency(toks[idx - 1].raw) { return (c, true) }
+    if idx + 1 < toks.count, toks[idx + 1].cls == .cur, let c = ILex.currency(toks[idx + 1].raw) { return (c, true) }
+    return ("AED", false)
   }
 
   static func direction(_ toks: [IToken], amountAt idx: Int?) -> (String?, Int) {
@@ -193,23 +207,19 @@ enum LearnedReader {
     let idx = pick.0
     if excluded(toks, amountAt: idx) { return Reading(note: "excluded word near amount", negative: true) }
     guard hasTxEvidence(toks, amountAt: idx) else { return Reading(note: "money without movement verb") }
-    var cur = currency(toks, idx)
-    guard var minor = ITokenizer.minor(toks[idx].raw, currency: cur) else { return Reading(note: "unparsable amount") }
-    var aedNote = ""
-    if cur != "AED", let aed = RuleReader.aedAmount(m) {
-      aedNote = "; aed over \(cur)"
-      minor = aed
-      cur = "AED"
-    }
+    let (cur, curExplicit) = currency(toks, idx)
+    guard let minor = ITokenizer.minor(toks[idx].raw, currency: cur) else { return Reading(note: "unparsable amount") }
     let (dir, _) = direction(toks, amountAt: idx)
     var r = Reading()
     r.isTransaction = true
     r.amountMinor = minor
     r.currency = cur
+    r.currencyExplicit = curExplicit
     r.direction = dir ?? "debit"
+    r.directionGuessed = dir == nil
     r.merchant = bareMerchant(toks, after: idx) ?? labeledValue(toks, allowed: nil)
     r.confidence = m.listUnsubscribe ? 25 : 40
-    r.note = "bare: money+verb" + aedNote
+    r.note = "bare: money+verb"
     return r
   }
 
@@ -413,18 +423,16 @@ enum LearnedReader {
       return Reading(confidence: conf, note: notes.joined(separator: "; ") + "; no money slot")
     }
     if excluded(toks, amountAt: ai) { return Reading(note: notes.joined(separator: "; ") + "; excluded word", negative: true) }
-    var cur = currency(toks, ai)
-    guard var minor = ITokenizer.minor(toks[ai].raw, currency: cur) else { return Reading(note: "unparsable amount") }
-    if cur != "AED", let aed = RuleReader.aedAmount(m) {
-      notes.append("aed over \(cur)")
-      minor = aed
-      cur = "AED"
-    }
+    let (cur, curExplicit) = currency(toks, ai)
+    guard let minor = ITokenizer.minor(toks[ai].raw, currency: cur) else { return Reading(note: "unparsable amount") }
     var r = Reading()
     r.amountMinor = minor
     r.currency = cur
+    r.currencyExplicit = curExplicit
+    r.fromLayout = l.seen >= minExamples
     let (dir, src) = direction(toks, amountAt: ai)
     r.direction = dir ?? "debit"
+    r.directionGuessed = dir == nil
     if src == 2 { conf -= 5 }
     if dir == nil { conf -= 15; notes.append("no direction word") }
     let strong: Set<String> = ["amount", "المبلغ", "مبلغ", "value", "بقيمة", "sum"]

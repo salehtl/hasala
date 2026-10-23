@@ -50,6 +50,21 @@ import Testing
 }
 
 @Suite struct PromoFilterTests {
+  @Test(arguments: [
+    "Purchase of AED 45.00 at LEARNING HUB",
+    "مبلغ 45.00 درهم لدى معرض السيارات",
+    "الرصيد المتوفر 45.00 درهم",
+    "Your card was used for AED 45.00 at FREE ZONE MART",
+  ])
+  func transactionLinesSurvive(_ line: String) {
+    #expect(PromoFilter.strip(line) == line)
+  }
+
+  @Test(arguments: ["Earn 5% cashback up to AED 500 this month", "احصل على خصم 20% عند الدفع", "وفر 50 درهم مع عروضنا"])
+  func promoLinesGo(_ line: String) {
+    #expect(PromoFilter.strip(line) == "")
+  }
+
   @Test func dropsOfferLinesWithNumbersButKeepsPostedLines() {
     let text = ["Earn 5% cashback up to AED 500 this month", "AED 20.00 cashback has been credited", "Plain line 12"].joined(
       separator: "\n")
@@ -68,6 +83,13 @@ import Testing
 }
 
 @Suite struct PendingTests {
+  @Test func submittedSuccessfullyButProcessingIsPending() {
+    let m = Mails.input(
+      subject: "Transfer request",
+      ["Dear Customer,", "Your transfer request of AED 900.00 has been submitted successfully and is being processed."])
+    #expect(CombinedReader.readRules(m).outcome == .pending)
+  }
+
   @Test(arguments: ["قيد التنفيذ", "قيد المعالجة", "جاري التنفيذ"])
   func arabicPendingStatus(_ status: String) {
     let (r, _) = CombinedReader.read(Mails.transferAR(amount: "500.00", status: status), LearnedLayouts())
@@ -134,12 +156,30 @@ import Testing
         "Dear Customer,", "Here is the status of your Telegraphic Transfer.", "Debit Amount:", "AED 3,673.00", "Transaction Amount:",
         "USD 1,000.00", "Beneficiary Name:", "SAMPLE BROKER LLC", "Status:", "Success",
       ])
-    let (r, _) = CombinedReader.read(m, LearnedLayouts())
+    let (r, mem) = CombinedReader.read(m, LearnedLayouts())
     #expect(r.outcome == .transaction)
     #expect(r.amountMinor == 367_300)
     #expect(r.currency == "AED")
     #expect(r.kind == .transferNotice)
-    #expect(r.agreed)
+    #expect(!r.agreed)
+    var again = m
+    again.receivedAtMs += 1
+    let (r2, _) = CombinedReader.read(again, mem)
+    #expect(r2.amountMinor == 367_300)
+    #expect(r2.agreed)
+  }
+
+  @Test(arguments: [
+    ["Your card ending 4242 was used for USD 20.00 at SAMPLE SHOP. Cashback of AED 1.00 has been credited."],
+    ["Your card ending 4242 was used for USD 20.00 at SAMPLE SHOP.", "Cashback of AED 1.00 has been credited."],
+  ])
+  func cashbackIsNotTheAEDAmount(_ lines: [String]) {
+    let m = Mails.input(subject: "Card transaction alert", lines)
+    let r = CombinedReader.readRules(m)
+    #expect(r.amountMinor == 2_000)
+    #expect(r.currency == "USD")
+    let (c, _) = CombinedReader.read(m, LearnedLayouts())
+    #expect(c.currency != "AED" || c.amountMinor != 100)
   }
 
   @Test func aedConversionAfterForeignAmount() {
@@ -179,6 +219,16 @@ import Testing
     #expect(r.last4 == "4321")
   }
 
+  @Test func transferInBodyBeatsAccountDebit() {
+    let m = Mails.input(
+      subject: "Notification",
+      [
+        "Dear Customer,", "Thank you for banking with us.", "Please see the details below.",
+        "AED 500.00 has been debited from your account and transferred to SAMPLE TRADING.",
+      ])
+    #expect(CombinedReader.readRules(m).kind == .transferNotice)
+  }
+
   @Test func last4FromMaskedCard() {
     #expect(CombinedReader.readRules(Mails.cardPurchaseAR(amount: "12.00", merchant: "SAMPLE")).last4 == "4821")
     #expect(CombinedReader.readRules(Mails.accountDebitAR(amount: "12.00")).last4 == nil)
@@ -186,8 +236,51 @@ import Testing
 }
 
 @Suite struct AgreementTests {
-  func reading(_ amount: Int64, _ conf: Int, _ cur: String = "AED", merchant: String? = nil) -> Reading {
-    Reading(isTransaction: true, amountMinor: amount, currency: cur, merchant: merchant, direction: "debit", confidence: conf)
+  func reading(
+    _ amount: Int64, _ conf: Int, _ cur: String = "AED", merchant: String? = nil, direction: String = "debit",
+    guessed: Bool = false, explicit: Bool = true, layout: Bool = true
+  ) -> Reading {
+    Reading(
+      isTransaction: true, amountMinor: amount, currency: cur, currencyExplicit: explicit, merchant: merchant,
+      direction: direction, directionGuessed: guessed, fromLayout: layout, confidence: conf)
+  }
+
+  @Test func directionConflictIsNotAgreement() {
+    let (a, agreed) = CombinedReader.combine(learned: reading(100, 90), rules: reading(100, 90, direction: "credit"))
+    #expect(!agreed)
+    #expect(a.confidence == 50)
+    let (b, ok) = CombinedReader.combine(learned: reading(100, 90, guessed: true), rules: reading(100, 85, direction: "credit"))
+    #expect(ok)
+    #expect(b.direction == "credit")
+  }
+
+  @Test func defaultedCurrencyOnBothSidesIsNotAgreement() {
+    let (a, agreed) = CombinedReader.combine(learned: reading(100, 90, explicit: false), rules: reading(100, 90, explicit: false))
+    #expect(!agreed)
+    #expect(a.confidence <= 60)
+    #expect(CombinedReader.combine(learned: reading(100, 90, explicit: false), rules: reading(100, 90)).1)
+  }
+
+  @Test func unlearnedLayoutIsNotAVote() {
+    let (a, agreed) = CombinedReader.combine(learned: reading(100, 40, layout: false), rules: reading(100, 90))
+    #expect(!agreed)
+    #expect(a.confidence == 60)
+  }
+
+  @Test func unknownCurrencyMarkIsNotAED() {
+    #expect(ILex.currency("د.ا") == nil)
+    #expect(ILex.currency("د.إ") == "AED")
+    var mem = LearnedLayouts()
+    var last: ExtractReading?
+    for (i, amt) in ["150.00", "75.00", "20.00", "64.00"].enumerated() {
+      let m = Mails.input(
+        "bank-s.example", subject: "Card alert", ["Dear Customer,", "SR \(amt) spent at SAMPLE \(i) with your card ending 4242."],
+        at: Int64(i))
+      let (r, next) = CombinedReader.read(m, mem)
+      mem = next
+      last = r
+    }
+    #expect(last?.meetsAgreementBar == false)
   }
 
   @Test func agreeTakesTheHigherPlusFiveCappedAt95() {
@@ -331,6 +424,51 @@ import Testing
       many = CombinedReader.read(m, many).1
     }
     #expect(many.senders["bank-z.example"]?.layouts.count == LearnedLayouts.layoutLimitPerSender)
+  }
+
+  @Test func corruptAnchorIndexDoesNotTrap() throws {
+    var mem = LearnedLayouts()
+    for i in 0..<3 {
+      mem = CombinedReader.read(Mails.cardPurchaseEN(amount: "\(i + 1).00", merchant: "SAMPLE \(i)", at: Int64(i)), mem).1
+    }
+    var sender = try #require(mem.senders["bank-b.example"])
+    sender.layouts[0].examples[0].tokens[0] = .anchor(9_999, spaceBefore: false, raw: nil)
+    sender.layouts[0].examples[1].tokens[0] = .anchor(9_999, spaceBefore: true, raw: "x")
+    mem.senders["bank-b.example"] = sender
+    let trip = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(mem))
+    let (r, _) = CombinedReader.read(Mails.cardPurchaseEN(amount: "9.00", merchant: "SAMPLE NEW", at: 9), trip)
+    #expect(r.amountMinor == 900)
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(FillerToken.self, from: Data("[-4, true, \"x\"]".utf8)) }
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(FillerToken.self, from: Data("-4".utf8)) }
+  }
+
+  @Test func senderTokenBudgetHolds() {
+    var mem = LearnedLayouts()
+    let letters = Array("abcdefghij")
+    for i in 0..<120 {
+      let tag = String(String(i).map { letters[Int(String($0))!] })
+      let words = (0..<300).map { "w" + tag + String(letters[$0 % 10]) + String($0) }
+      let m = Mails.input(
+        "bank-z.example", subject: "s\(i)", [words.joined(separator: " "), "Amount AED \(i + 1).00 debited"], at: Int64(i))
+      mem = CombinedReader.read(m, mem).1
+    }
+    let sender = mem.layouts(for: "bank-z.example")
+    #expect(LearnedReader.tokenCount(sender) <= LearnedLayouts.tokenBudgetPerSender)
+    #expect(!sender.layouts.isEmpty)
+  }
+
+  @Test func notATransactionLeavesMemoryAlone() {
+    let m = Mails.input(subject: "Your OTP", ["Your one time password for the purchase of AED 300.00 at SAMPLE STORE is 482913."])
+    let (r, next) = CombinedReader.read(m, LearnedLayouts())
+    #expect(r.outcome == .notTransaction)
+    #expect(next.isEmpty)
+  }
+
+  @Test func exponentTableMatchesMinorExponentV1() {
+    #expect(Exponent.of("KWD") == 3)
+    #expect(Exponent.of("JPY") == 0)
+    #expect(Exponent.of("USD") == 2)
+    #expect(Exponent.of("aed") == 2)
   }
 
   @Test func tokenLimitBoundsEachExample() {

@@ -36,7 +36,7 @@ enum ILex {
     "CNY", "SGD", "HKD", "TRY", "LKR", "PHP", "THB", "MYR", "IDR", "KRW", "NZD", "ZAR", "SEK", "NOK", "DKK", "RUB", "BDT",
     "NPR", "MAD", "TND", "LBP", "IQD", "LYD", "CNH", "MXN", "BRL", "PLN", "CZK", "HUF", "ILS", "KES", "NGN", "VND", "TWD",
   ]
-  static let aedAliases: Set<String> = ["dhs", "dh", "dhs.", "درهم", "د.إ", "د.ا", "دراهم", "aed."]
+  static let aedAliases: Set<String> = ["dhs", "dh", "dhs.", "درهم", "د.إ", "دراهم", "aed."]
 
   static func currency(_ raw: String) -> String? {
     let u = raw.uppercased()

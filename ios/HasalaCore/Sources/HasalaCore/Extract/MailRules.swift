@@ -28,7 +28,7 @@ enum StatusLexicon {
     [
       "credited to beneficiary", "credited to the beneficiary", "has been credited", "have been credited", "has been debited",
       "have been debited", "has been transferred", "has been sent", "has been completed", "was successful",
-      "is successful", "has been processed", "successfully",
+      "is successful",
     ],
     ["تمت بنجاح", "تم تحويل", "تم خصم", "تم ايداع", "تم التحويل", "تم تنفيذ"])
 }
@@ -117,7 +117,7 @@ enum MailRules {
     let heading = ([RuleText.fold(RuleText.clean(input.subject))] + lines.filter { !$0.isEmpty }.prefix(3)).joined(separator: "\n")
     if let k = kind(of: heading) { return k }
     let body = lines.joined(separator: "\n")
-    if let k = kind(of: body) { return k }
+    if let k = kind(of: body, transferFirst: true) { return k }
     let card = RuleText.has(KindLexicon.card, body)
     let account = RuleText.has(KindLexicon.account, body)
     switch direction {
@@ -132,7 +132,10 @@ enum MailRules {
     return .other
   }
 
-  static func kind(of text: String) -> ExtractMailKind? {
+  static func kind(of text: String, transferFirst: Bool = false) -> ExtractMailKind? {
+    if transferFirst && RuleText.has(KindLexicon.transfer, text) && !RuleText.has(KindLexicon.accountCredit, text) {
+      return .transferNotice
+    }
     if RuleText.has(KindLexicon.accountDebit, text) { return .accountDebitAlert }
     if RuleText.has(KindLexicon.accountCredit, text) { return .accountCreditAlert }
     let card = RuleText.has(KindLexicon.card, text)

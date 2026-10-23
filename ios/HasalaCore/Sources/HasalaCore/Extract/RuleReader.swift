@@ -34,18 +34,24 @@ enum RuleReader {
     readLines(RuleText.cleanLines(m.text), m)
   }
 
-  static func aedAlternative(_ cands: [Scored]) -> RuleMoney? {
-    cands.filter {
-      $0.money.currency == "AED" && $0.money.explicit && $0.money.minor > 0 && !$0.money.badScale && !$0.balanceLike
-        && !$0.fromSubject && ($0.labelled || $0.verb || $0.conversion)
-    }.max { $0.score < $1.score }?.money
-  }
+  static let aedDebitLabel = RuleText.words(
+    ["debit", "debited", "deducted", "charged", "billed", "billing", "withdrawn", "equivalent", "local"],
+    ["خصم", "المخصوم", "مدين", "يعادل", "المعادل"])
 
-  static func aedAmount(_ m: ExtractInput) -> Int64? {
+  static func aedAmount(_ m: ExtractInput, foreign: Int64, currency: String) -> Int64? {
     let lines = RuleText.cleanLines(m.text)
     var cands = candidates(lines, lines.map(RuleText.fold), fromSubject: false)
     for i in cands.indices { cands[i].score -= 0.25 * Double(i) }
-    return aedAlternative(cands)?.minor
+    let foreignLines = Set(cands.filter { $0.money.currency == currency && $0.money.minor == foreign }.map(\.money.line))
+    let eligible = cands.filter {
+      $0.money.currency == "AED" && $0.money.explicit && $0.money.minor > 0 && !$0.money.badScale && !$0.balanceLike
+        && !$0.fromSubject && !PromoFilter.isPromo($0.clause)
+    }
+    let tied = eligible.filter {
+      foreignLines.contains($0.money.line) || $0.conversion || ($0.labelled && RuleText.has(aedDebitLabel, $0.clause))
+    }
+    let sameLine = tied.filter { foreignLines.contains($0.money.line) }
+    return (sameLine.isEmpty ? tied : sameLine).max { $0.score < $1.score }?.money.minor
   }
 
   static func readLines(_ lines: [String], _ m: ExtractInput) -> Reading {
@@ -103,17 +109,9 @@ enum RuleReader {
     if msource == "weak-label" || msource == "inline-to" || msource == "inline-from" { c -= 5 }
     c = min(95, max(5, c))
 
-    var amount = best.money.minor
-    var currency = best.money.currency
-    if currency != "AED", let aed = aedAlternative(cands) {
-      notes.append("aed over \(currency)")
-      amount = aed.minor
-      currency = "AED"
-    }
-
     return Reading(
-      isTransaction: true, amountMinor: amount, currency: currency, merchant: merchant, direction: dir,
-      confidence: c, note: notes.joined(separator: "; "))
+      isTransaction: true, amountMinor: best.money.minor, currency: best.money.currency, currencyExplicit: best.money.explicit,
+      merchant: merchant, direction: dir, directionGuessed: dirMargin == 0, confidence: c, note: notes.joined(separator: "; "))
   }
 
   static func prevLabel(_ lines: [String], _ i: Int) -> String {
