@@ -11,16 +11,19 @@
 //      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
 //   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
 //      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
-//      the trusted set T, a template hit with a usable amount, a card not marked "not mine", not
+//      the trusted set T, a template hit with a usable amount (or a template-free reading that both
+//      readers agree on at 0.8 or more), a card not marked "not mine", not
 //      forwarded, not in Spam, and a recipient check that is not a mismatch. Anything less is
 //      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
 //      ledger doesn't know (`unknown`) files like a known one: setup has no cards step. When the
 //      To or Cc naming it is unsigned, or there is none, only a known card files.
 import CoreCategorize
+import CoreExtract
 import CoreJSON
 import CoreMail
 import CoreNorm
 import CorePrimitives
+import CoreReplay
 import CoreTemplate
 import CoreTime
 import Foundation
@@ -41,6 +44,8 @@ public struct MailGates: Sendable, Equatable, Codable {
   /// `<id>@<version>` of the template that read the message, nil when none did.
   public var template: String?
   public var forwarded: Bool
+  public var kind: String? = nil
+  public var reader: String? = nil
 }
 
 public struct ParsedFields: Sendable, Equatable, Codable {
@@ -77,6 +82,7 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var recipient: RecipientCheck? = nil
   public var spam: Bool? = nil
   public var senderDomain: String? = nil
+  public var readerConfident: Bool? = nil
 }
 
 public struct CardKey: Sendable, Hashable, Codable, Comparable {
@@ -145,6 +151,18 @@ public enum MessageDisposer {
     templates: [CompiledTemplate], bankDomains: [String], trusted: [String], provider: MailProviderID,
     linkedAddress: String?, spam: Bool, analyze: (String) -> AuthResults.Analysis
   ) -> Parse {
+    var none: MailReaderState?
+    return parse(
+      raw: raw, messageID: messageID, internalDateMs: internalDateMs, topLevelFrom: topLevelFrom, templates: templates,
+      bankDomains: bankDomains, trusted: trusted, provider: provider, linkedAddress: linkedAddress, spam: spam,
+      reader: &none, analyze: analyze)
+  }
+
+  public static func parse(
+    raw: [UInt8], messageID: String, internalDateMs: Int64, topLevelFrom: String,
+    templates: [CompiledTemplate], bankDomains: [String], trusted: [String], provider: MailProviderID,
+    linkedAddress: String?, spam: Bool, reader: inout MailReaderState?, analyze: (String) -> AuthResults.Analysis
+  ) -> Parse {
     let headers = MailHeaders.headerBlock(rawMessage: raw)
     let analysis = analyze(headers)
     let verified = analysis.verdict.trusted ? analysis.domain : nil
@@ -175,6 +193,11 @@ public enum MessageDisposer {
     mail.senderDomain = domains.first { BankDomains.isMember($0, of: bankDomains) }
 
     guard let norm else { return .mail(mail) }
+    let fromDomain = BankDomains.domainOf(norm.from)
+    let input = ExtractInput(
+      sender: fromDomain.isEmpty ? (mail.senderDomain ?? "") : fromDomain, subject: norm.subject, text: norm.text,
+      receivedAtMs: internalDateMs, listUnsubscribe: hasListUnsubscribe(headers))
+    let setAsideDomain = mail.senderDomain ?? domains.first ?? ""
     for t in templates where t.definition.match.senderDomain.contains(where: { want in
       domains.contains { BankDomains.isMember($0, of: [asciiLowerString(want)]) }
     }) {
@@ -188,17 +211,87 @@ public enum MessageDisposer {
       }
       guard x.matched else { continue }
       guard let posted = postedAt(x, template: t, internalDateMs: internalDateMs),
-        let f = usableFields(x, posted: posted)
+        var f = usableFields(x, posted: posted)
       else { continue }
+      if let aed = CombinedReader.aedAmount(input, foreign: f.amountMinor, currency: f.currency),
+        aed <= MailboxLimits.maxAmountMinor
+      {
+        f.amountMinor = aed
+        f.currency = "AED"
+      }
       mail.bank = t.definition.bank
       mail.templateHasCardField = t.definition.extract.contains { $0.field == "last4" }
       mail.last4 = x.last4
       mail.gates.template = "\(t.definition.id)@\(t.definition.version)"
+      mail.gates.kind = DuplicateRules.templateKind(t.definition.id)
       mail.fields = f
+      if reader != nil {
+        let (reading, next) = CombinedReader.read(input, reader!.layouts)
+        reader!.layouts = next
+        if reading.outcome == .pending {
+          reader!.bump(mail.bank) { $0.pendingSetAside += 1 }
+          return .setAside(domain: setAsideDomain)
+        }
+        let agrees = reading.outcome == .transaction && reading.amountMinor == f.amountMinor && reading.currency == f.currency
+        reader!.bump(mail.bank) {
+          $0.templateHit += 1
+          if agrees { $0.readerAgreed += 1 } else { $0.readerDisagreed += 1 }
+        }
+      }
       return .mail(mail)
     }
     if Task.isCancelled { return .interrupted }
+    guard reader != nil else { return .mail(mail) }
+    let (reading, next) = CombinedReader.read(input, reader!.layouts)
+    reader!.layouts = next
+    let bank = bankOf(domains, templates: templates)
+    switch reading.outcome {
+    case .pending:
+      reader!.bump(bank.isEmpty ? setAsideDomain : bank) { $0.pendingSetAside += 1 }
+      return .setAside(domain: setAsideDomain)
+    case .transaction:
+      guard let f = readerFields(reading, internalDateMs: internalDateMs) else { break }
+      mail.bank = bank
+      mail.last4 = f.last4
+      mail.templateHasCardField = !f.last4.isEmpty
+      mail.gates.reader = MailReaderState.marker
+      mail.gates.kind = reading.kind == .other ? nil : reading.kind.rawValue
+      mail.fields = f
+      mail.readerConfident = reading.meetsAgreementBar
+      reader!.bump(bank.isEmpty ? setAsideDomain : bank) { $0.readerOnly += 1 }
+    default:
+      break
+    }
     return .mail(mail)
+  }
+
+  static func bankOf(_ domains: [String], templates: [CompiledTemplate]) -> String {
+    for d in domains {
+      for t in templates where t.definition.match.senderDomain.contains(where: { BankDomains.isMember(d, of: [asciiLowerString($0)]) }) {
+        return t.definition.bank
+      }
+    }
+    return ""
+  }
+
+  static func hasListUnsubscribe(_ headers: String) -> Bool {
+    headers.split(whereSeparator: { $0 == "\n" || $0 == "\r\n" }).contains {
+      $0.utf8.count >= 17 && asciiLowerString(String($0.prefix(17))) == "list-unsubscribe:"
+    }
+  }
+
+  static let readerMerchantLimit = 200
+
+  static func readerFields(_ r: ExtractReading, internalDateMs: Int64) -> ParsedFields? {
+    guard let amount = r.amountMinor, amount > 0, amount <= MailboxLimits.maxAmountMinor, let currency = r.currency,
+      currency.utf8.count == 3, currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }), let direction = r.direction,
+      let posted = Instant.iso(internalDateMs)
+    else { return nil }
+    let last4 = r.last4.flatMap { $0.utf8.count == 4 && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } ? $0 : nil } ?? ""
+    return ParsedFields(
+      amountMinor: amount, currency: currency, direction: direction.rawValue,
+      merchant: String((r.merchant ?? "").prefix(readerMerchantLimit)), last4: last4, postedAt: posted, precision: "time",
+      isTransfer: r.kind == .transferNotice)
   }
 
   public static func unparsed(raw: [UInt8], messageID: String, internalDateMs: Int64, spam: Bool) -> ParsedMail {
@@ -250,6 +343,7 @@ public enum MessageDisposer {
       && m.spam == false
       && (m.recipient == .confirmed || (m.recipient == .unconfirmed && card == "known"))
       && card != "not_mine"
+      && (m.gates.reader == nil || m.readerConfident == true)
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision = decided.category == nil ? refundDecision(m, f) ?? decided : decided
 
@@ -264,10 +358,10 @@ public enum MessageDisposer {
     }
     p["needs_review"] = .bool(!filesItself)
     p["unparsed"] = .bool(false)
-    p["tier"] = .string("template")
+    p["tier"] = .string(m.gates.reader == nil ? "template" : "heuristic")
     p["entry_method"] = .string("mailbox")
     p["provenance"] = provenance
-    p["bank"] = .string(m.bank)
+    if !m.bank.isEmpty { p["bank"] = .string(m.bank) }
     p["gates"] = gatesJSON(m.gates, template: m.gates.template ?? "none", card: card)
     if let h = m.headerIDHash { p["dedupe"] = .object(JSONObject([("message_id", .string(h))])) }
     return MailboxIngestDraft(
@@ -327,11 +421,13 @@ public enum MessageDisposer {
   }
 
   static func gatesJSON(_ g: MailGates, template: String, card: String) -> JSONValue {
-    .object(
-      JSONObject([
-        ("ar", .string(g.ar)), ("sender", .string(g.senderTrusted ? "trusted" : "untrusted")),
-        ("template", .string(template)), ("card", .string(card)), ("forwarded", .bool(g.forwarded)),
-      ]))
+    var o = JSONObject([
+      ("ar", .string(g.ar)), ("sender", .string(g.senderTrusted ? "trusted" : "untrusted")),
+      ("template", .string(template)), ("card", .string(card)), ("forwarded", .bool(g.forwarded)),
+    ])
+    if let k = g.kind { o["kind"] = .string(k) }
+    if let r = g.reader { o["reader"] = .string(r) }
+    return .object(o)
   }
 
   /// hex(SHA-256(raw)), lower case.

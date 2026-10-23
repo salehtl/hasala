@@ -56,6 +56,7 @@ public struct MailboxEngineConfig: Sendable {
   public var authoringMarginMs: Int64 = 5_000
   public var backfillBatch = 200
   public var firstScanCommitEvery = 25
+  public var readerSaveEvery = 25
   /// Downloads in flight at once. Each message is two `messages.get` calls (5 quota units each)
   /// against Gmail's 250 units per user per second; 6 at once on a fast link went over it.
   public var downloadWidth = 4
@@ -1302,6 +1303,12 @@ public actor MailboxEngine {
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:])
   }
 
+  public func readerCounts() async -> [String: ReaderCounts] {
+    guard let r = (try? await store.loadReader()) ?? nil else { return [:] }
+    let address = (try? await store.loadState())?.address
+    return r.belongs(to: address) ? r.counts : [:]
+  }
+
   static func unparsedSender(_ m: ParsedMail, from: String = "", at: Int64) -> UnparsedSenderRecord? {
     guard m.fields == nil else { return nil }
     let domain = m.senderDomain ?? BankDomains.domainOf(from)
@@ -1349,6 +1356,9 @@ public actor MailboxEngine {
     var stop: MailboxHaltCode?
     var pagedBase: Int?
     var senderAddresses: [String]?
+    var reader: MailReaderState?
+    var readerLoaded = false
+    var readerUnsaved = 0
   }
 
   enum Mode { case author, stage }
@@ -1387,7 +1397,7 @@ public actor MailboxEngine {
       var exhausted = true
       for (pass, since) in passes.enumerated() {
         let (listed, done) = try await list(source, domains: domains, sinceSec: since, maxPages: maxPages)
-        for id in listed where seen.insert(id).inserted { ids.append(id) }
+        for id in listed.reversed() where seen.insert(id).inserted { ids.append(id) }
         if pass == 0 && passes.count > 1 { run.firstPass = seen }
         exhausted = done
       }
@@ -1405,7 +1415,7 @@ public actor MailboxEngine {
         repeat {
           if shouldStop(deadlineMs) { return true }
           let page = try await source.list(senders: group, since: since, pageToken: token)
-          let ids = page.ids.filter { seen.insert($0).inserted }
+          let ids = page.ids.reversed().filter { seen.insert($0).inserted }
           report.listed += ids.count
           token = page.nextPageToken
           pages += 1
@@ -1447,6 +1457,27 @@ public actor MailboxEngine {
   /// Steps 7a-7g over `ids`. Returns whether the run was cut short (deadline or staging cap).
   /// Throws only a fatal mail API error (401/403 or a transient one that outlived its retries).
   func process(
+    _ source: any MailSource, ids all: [String], mode: Mode, run: inout Run, report: inout CycleReport,
+    deadlineMs: Int64?
+  ) async throws -> Bool {
+    do {
+      let cut = try await processIDs(source, ids: all, mode: mode, run: &run, report: &report, deadlineMs: deadlineMs)
+      await saveReader(&run)
+      return cut
+    } catch {
+      await saveReader(&run)
+      throw error
+    }
+  }
+
+  func saveReader(_ run: inout Run) async {
+    guard run.readerUnsaved > 0, let reader = run.reader else { return }
+    var c = MailboxCommit()
+    c.reader = reader
+    if (try? await store.commit(c)) != nil { run.readerUnsaved = 0 }
+  }
+
+  func processIDs(
     _ source: any MailSource, ids all: [String], mode: Mode, run: inout Run, report: inout CycleReport,
     deadlineMs: Int64?
   ) async throws -> Bool {
@@ -1633,10 +1664,24 @@ public actor MailboxEngine {
         try await store.markParsing(id)
         if run.senderAddresses == nil { run.senderAddresses = (try? await store.senderAddresses()) ?? [] }
         let senders = run.senderAddresses ?? []
+        if !run.readerLoaded {
+          let loaded = (try? await store.loadReader()) ?? nil
+          run.reader = loaded.flatMap { $0.belongs(to: run.address) ? $0 : nil } ?? MailReaderState(address: run.address)
+          run.readerLoaded = true
+        }
+        var reader = run.reader
         parsed = MessageDisposer.parse(
           raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
           bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
-          analyze: { provider.analyzeAuthResults($0, inInbox: raw.inInbox, senderAddresses: senders) })
+          reader: &reader, analyze: { provider.analyzeAuthResults($0, inInbox: raw.inInbox, senderAddresses: senders) })
+        if parsed != .interrupted, reader != run.reader {
+          run.reader = reader
+          run.readerUnsaved += 1
+          if run.readerUnsaved >= max(1, config.readerSaveEvery) {
+            c.reader = reader
+            run.readerUnsaved = 0
+          }
+        }
         try await store.clearParsing(id)
       }
       switch parsed {

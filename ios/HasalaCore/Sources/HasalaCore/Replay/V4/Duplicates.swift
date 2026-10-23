@@ -12,6 +12,12 @@ public enum DuplicateRules {
 
   enum TransferRole: Sendable, Equatable { case notice, alert }
 
+  public static func templateKind(_ templateID: String) -> String? {
+    if transferNoticeTemplates.contains(where: { utf8Equal($0, templateID) }) { return TxnGates.kinds[0] }
+    if transferAlertTemplates.contains(where: { utf8Equal($0, templateID) }) { return TxnGates.kinds[1] }
+    return nil
+  }
+
   static func templateID(_ gate: String?) -> String? {
     guard let gate else { return nil }
     let u = Array(gate.utf8)

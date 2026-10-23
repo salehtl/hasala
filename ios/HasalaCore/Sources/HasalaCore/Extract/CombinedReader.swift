@@ -21,6 +21,11 @@ public enum CombinedReader {
     return (result, result.outcome == .notTransaction ? memory : next)
   }
 
+  public static func aedAmount(_ input: ExtractInput, foreign: Int64, currency: String) -> Int64? {
+    guard currency != "AED", foreign > 0 else { return nil }
+    return RuleReader.aedAmount(strip(input), foreign: foreign, currency: currency)
+  }
+
   static func strip(_ input: ExtractInput) -> ExtractInput {
     var stripped = input
     stripped.text = PromoFilter.strip(input.text)
