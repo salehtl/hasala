@@ -7,9 +7,7 @@ nonisolated enum MerchantSuggestionsSetting {
   static let reviewAskAnsweredKey = "app.hasala.prefs.merchantSuggestions.reviewAskAnswered"
   static let reviewAskMigratedKey = "app.hasala.prefs.merchantSuggestions.reviewAskMigrated"
   static let refusedVersionKey = "app.hasala.prefs.merchantSuggestions.refusedVersion"
-  static let firstImportStartedKey = "app.hasala.prefs.merchantSuggestions.firstImport.startedMs"
-  static let firstImportRequestsKey = "app.hasala.prefs.merchantSuggestions.firstImport.requests"
-  static let runRequestKey = "app.hasala.prefs.merchantSuggestions.backlog.requested"
+  static let turnedOn = Notification.Name("app.hasala.merchantSuggestions.turnedOn")
   static let turnedOff = Notification.Name("app.hasala.merchantSuggestions.turnedOff")
 
   static func isEnabled(_ defaults: UserDefaults = .standard) -> Bool {
@@ -19,11 +17,8 @@ nonisolated enum MerchantSuggestionsSetting {
   static func setEnabled(_ on: Bool, _ defaults: UserDefaults = .standard) {
     defaults.set(on, forKey: key)
     defaults.set(true, forKey: reviewAskAnsweredKey)
-    if !on {
-      defaults.set(false, forKey: autoSortKey)
-      forgetRunRequest(defaults)
-      NotificationCenter.default.post(name: turnedOff, object: nil)
-    }
+    if !on { defaults.set(false, forKey: autoSortKey) }
+    NotificationCenter.default.post(name: on ? turnedOn : turnedOff, object: defaults)
   }
 
   static func isAutoSortEnabled(_ defaults: UserDefaults = .standard) -> Bool {
@@ -52,30 +47,22 @@ nonisolated enum MerchantSuggestionsSetting {
     defaults.removeObject(forKey: key)
     defaults.removeObject(forKey: autoSortKey)
     defaults.removeObject(forKey: reviewAskAnsweredKey)
-    forgetRunRequest(defaults)
+    for retired in retiredKeys { defaults.removeObject(forKey: retired) }
   }
 
-  static func turnOnForFirstImport(_ defaults: UserDefaults = .standard) {
-    setEnabled(true, defaults)
-    setAutoSortEnabled(true, defaults)
-    defaults.set(true, forKey: runRequestKey)
-  }
+  static let retiredKeys = [
+    "app.hasala.prefs.merchantSuggestions.backlog.requested",
+    "app.hasala.prefs.merchantSuggestions.firstImport.startedMs",
+    "app.hasala.prefs.merchantSuggestions.firstImport.requests",
+    "app.hasala.prefs.cloudSort.runOffer",
+    "app.hasala.prefs.cloudSort.dismissedRun",
+  ]
 
-  static func hasRunRequest(_ defaults: UserDefaults = .standard) -> Bool {
-    isEnabled(defaults) && defaults.bool(forKey: runRequestKey)
-  }
-
-  @discardableResult
-  static func takeRunRequest(_ defaults: UserDefaults = .standard) -> Bool {
-    let requested = hasRunRequest(defaults)
-    forgetRunRequest(defaults)
-    return requested
-  }
-
-  static func forgetRunRequest(_ defaults: UserDefaults = .standard) {
-    defaults.removeObject(forKey: runRequestKey)
-    defaults.removeObject(forKey: firstImportStartedKey)
-    defaults.removeObject(forKey: firstImportRequestsKey)
+  static func turnOnBoth(_ defaults: UserDefaults = .standard) {
+    defaults.set(true, forKey: key)
+    defaults.set(true, forKey: reviewAskAnsweredKey)
+    defaults.set(true, forKey: autoSortKey)
+    NotificationCenter.default.post(name: turnedOn, object: defaults)
   }
 
   static func appVersion(marketing: String, build: String) -> String {

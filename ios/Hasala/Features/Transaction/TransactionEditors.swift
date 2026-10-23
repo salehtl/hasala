@@ -25,7 +25,7 @@ struct CategoryPickerView: View {
         if let s = model.detail?.suggestion, matches(s) {
           group("Suggested", [s])
         }
-        ruleCard
+        if model.detail?.canAlwaysUse == true { ruleCard }
         ForEach(groups) { g in group(g.bucket.label, g.options) }
       }
       .padding(.horizontal, HSpacing.insetPage)
@@ -35,8 +35,9 @@ struct CategoryPickerView: View {
     .background(HColor.sheetSurfaceLarge)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       Button("Save") {
-        if let selected, Self.changes(model.detail, to: selected, alwaysUse: alwaysUse) {
-          model.choose(selected, alwaysUse: alwaysUse)
+        let rule = alwaysUse && model.detail?.canAlwaysUse == true
+        if let selected, Self.changes(model.detail, to: selected, alwaysUse: rule) {
+          model.choose(selected, alwaysUse: rule)
         }
         done()
       }
@@ -98,7 +99,7 @@ struct CategoryPickerView: View {
             Text("Always use \(selectedName ?? "this category") for \(merchant)")
               .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
               .fixedSize(horizontal: false, vertical: true)
-            Text("Next time, \(merchant) is sorted for you. Undo any time in Rules.")
+            Text("Also re-files \(merchant)\u{2019}s other payments, except ones you sorted. Undo puts them back.")
               .hType(.footnote).foregroundStyle(HColor.textSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }

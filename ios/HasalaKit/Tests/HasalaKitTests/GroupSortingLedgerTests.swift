@@ -77,7 +77,7 @@ struct GroupSortingLedgerTests {
     let first = try #require(l.state.txn("bl-ts-01"))
     #expect(first.spelling == "TAILSCALE.COM")
     let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
-    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
+    #expect(token.title == "Subscriptions for all 30 Tailscale payments")
     let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
     #expect(rule.match == .exact && rule.patterns == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
     #expect(!rule.matches("paypal *netflix") && !rule.matches("tailscale"))
@@ -114,7 +114,7 @@ struct GroupSortingLedgerTests {
   @Test func alwaysUseFromOneCardReachesBackWithinItsGroup() throws {
     let l = ledger()
     let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))
-    #expect(token.title == "Sorted 6 Qasr Corner Store as Groceries")
+    #expect(token.title == "Groceries for all 6 Qasr Corner Store payments")
     let open = (1...6).map { "bl-qasr-\($0)" }
     #expect(open.allSatisfy { l.state.txn($0)?.categoryID == "groceries" && l.state.txn($0)?.needsReview == false })
     #expect(l.state.txn("bl-qasr-1")?.categorySource == .user)
@@ -235,14 +235,15 @@ struct GroupSortingLedgerTests {
   }
 
   @Test func notThisWorksOnACardWithoutAGroup() throws {
-    let l = InMemoryLedger()
-    #expect(l.state.txn("lulu")?.reviewSuggestion == "groceries")
-    let lulu = try #require(l.state.txn("lulu"))
-    let ref = try #require(ReviewEngine.card(lulu, l.state).group)
-    #expect(ref.key == "lulu hypermarket")
-    try l.apply(.notThis(ref, "groceries"))
-    #expect(l.state.txn("lulu")?.reviewSuggestion == nil)
-    #expect(l.state.txn("lulu")?.inReview == true)
+    let l = InMemoryLedger(state: Scenario.mayaSuggestions.state)
+    #expect(l.state.txn("sug-tim-8")?.reviewSuggestion == "dining")
+    let tim = try #require(l.state.txn("sug-tim-8"))
+    #expect(tim.merchantGroup == nil)
+    let ref = try #require(ReviewEngine.card(tim, l.state).group)
+    #expect(ref.key == "tim hortons")
+    try l.apply(.notThis(ref, "dining"))
+    #expect(l.state.txn("sug-tim-8")?.reviewSuggestion == nil)
+    #expect(l.state.txn("sug-tim-8")?.inReview == true)
   }
 
   @Test func stopThisRuleKeepsWhatItSorted() throws {
@@ -302,13 +303,13 @@ struct GroupSortingLedgerTests {
     #expect(l.state.txn("bl-ts-refund")?.inReview == true)
   }
 
-  @Test func reachBackFromOneCardLeavesSkippedPayments() throws {
+  @Test func alwaysUseFromOneCardFilesASkippedPaymentToo() throws {
     let l = ledger()
     try l.apply(.skipReview("bl-qasr-2"))
     let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))
-    #expect(token.title == "Sorted 5 Qasr Corner Store as Groceries")
-    #expect(l.state.txn("bl-qasr-2")?.inReview == true)
-    #expect(l.state.txn("bl-qasr-2")?.categoryID == nil)
+    #expect(token.title == "Groceries for all 6 Qasr Corner Store payments")
+    #expect(l.state.txn("bl-qasr-2")?.inReview == false)
+    #expect(l.state.txn("bl-qasr-2")?.categoryID == "groceries")
   }
 
   @Test func aRuleLearnedAgainAfterStopGetsItsOwnID() throws {
@@ -322,11 +323,11 @@ struct GroupSortingLedgerTests {
     #expect(second.id != first)
     #expect(l.state.rule(first) == nil)
     let items = SortedForYouEngine.snapshot(l.state, now: l.now).items
-    let old = try #require(items.first { $0.category.id == "groceries" })
-    #expect(old.count == 5)
-    #expect(!old.canStopRule)
-    #expect(old.ruleID == nil)
-    #expect(l.state.txns.filter { $0.ruleID == second.id }.isEmpty)
+    #expect(!items.contains { $0.category.id == "groceries" })
+    let refiled = try #require(items.first { $0.category.id == "shopping" })
+    #expect(refiled.count == 5 && refiled.ruleID == second.id && refiled.canStopRule)
+    #expect(l.state.txns.filter { $0.ruleID == second.id }.count == 5)
+    #expect(l.state.txns.filter { $0.ruleID == first }.isEmpty)
   }
 
   @Test func aGroupSortCanAddToAProject() throws {

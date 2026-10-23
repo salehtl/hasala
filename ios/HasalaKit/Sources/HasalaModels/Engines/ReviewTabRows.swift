@@ -58,10 +58,6 @@ extension ReviewGroupCardModel {
   }
 }
 
-extension ReviewCardModel {
-  public var canAlwaysUse: Bool { GroupRule.pattern(rawMerchant ?? merchant) != nil }
-}
-
 extension ReviewEngine {
   public static func tabRow(_ item: ReviewItem, _ s: LedgerState) -> ReviewTabRow {
     switch item {

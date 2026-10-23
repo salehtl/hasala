@@ -222,6 +222,24 @@ public struct SamePurchaseMatch: Sendable, Hashable, Codable {
   }
 }
 
+public struct PriorFiling: Sendable, Hashable, Codable {
+  public var categoryID: CategoryID?
+  public var categorySource: CategorySource?
+  public var ruleID: RuleID?
+  public var needsReview: Bool
+  public var categorizedAt: LocalDateTime?
+
+  public init(
+    categoryID: CategoryID?, categorySource: CategorySource?, ruleID: RuleID?, needsReview: Bool, categorizedAt: LocalDateTime? = nil
+  ) {
+    self.categoryID = categoryID
+    self.categorySource = categorySource
+    self.ruleID = ruleID
+    self.needsReview = needsReview
+    self.categorizedAt = categorizedAt
+  }
+}
+
 public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var id: TxnID
   /// The display name ("Carrefour"); a rename changes this (03c §3.6).
@@ -271,6 +289,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var merchantKey: String?
   public var merchantGroup: String?
   public var reachable: Bool
+  public var ruled: Bool
+  public var priorFiling: PriorFiling?
   public var rejectedCategories: Set<CategoryID>
   public var categorizedAt: LocalDateTime?
   public var ruleID: RuleID?
@@ -295,6 +315,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     merchantKey: String? = nil,
     merchantGroup: String? = nil,
     reachable: Bool = false,
+    ruled: Bool = false,
+    priorFiling: PriorFiling? = nil,
     rejectedCategories: Set<CategoryID> = [],
     categorizedAt: LocalDateTime? = nil,
     ruleID: RuleID? = nil
@@ -331,6 +353,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.merchantKey = merchantKey
     self.merchantGroup = merchantGroup
     self.reachable = reachable
+    self.ruled = ruled
+    self.priorFiling = priorFiling
     self.rejectedCategories = rejectedCategories
     self.categorizedAt = categorizedAt
     self.ruleID = ruleID

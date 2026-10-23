@@ -38,6 +38,7 @@ final class AccountRuntime {
   @ObservationIgnored let backlog: BacklogSorter
   @ObservationIgnored let suggestions: ModelSuggestionStage
   @ObservationIgnored private var switchOff: NSObjectProtocol?
+  @ObservationIgnored private var switchOn: NSObjectProtocol?
   let store: LiveLedgerStore
 
   /// The provider the running lane reads (observed: Profile names it).
@@ -251,13 +252,14 @@ final class AccountRuntime {
       cloudSpent: { await link.spent($0) },
       trusts: TrustCounts.shared.autoFile)
     let backlog = BacklogSorter(
-      pass: { await suggestions.backlogPass($0, dayLeft: $1) }, store: .live(BacklogRunStore(context.store)),
+      pass: { await suggestions.backlogPass($0, dayLeft: $1) }, waiting: { await suggestions.backlogWaiting($0) },
+      store: .live(BacklogRunStore(context.store)),
       nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
       importRunning: {
         guard let lane = active.lane else { return false }
         let phase = await lane.status().phase
         return phase == .scanning || phase == .authoringBackfill
-      }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity)
+      }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity, mayRun: false)
     link.set(backlog)
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
@@ -265,7 +267,9 @@ final class AccountRuntime {
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
           let phase = await engine.status.phase
-          return (out.newData, Self.shownStop(out.stop, phase: phase))
+          let shown = Self.shownStop(out.stop, phase: phase)
+          if shown == nil { await backlog.allowRuns(true) }
+          return (out.newData, shown)
         },
         mailbox: mailboxStage,
         categorize: { trigger in
@@ -280,8 +284,12 @@ final class AccountRuntime {
           }
           await store.reload()
           await afterRun.run()
+          Task { await backlog.ensure() }
         },
-        stopped: stopped))
+        stopped: { stop in
+          await backlog.allowRuns(false)
+          await stopped(stop)
+        }))
     box.set(coordinator)
     try await observer.open()
     if let lane = active.lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
@@ -297,11 +305,7 @@ final class AccountRuntime {
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()
-    if MerchantSuggestionsSetting.takeRunRequest() {
-      await backlog.start()
-    } else {
-      await backlog.resume()
-    }
+    Task { await backlog.ensure(retry: true) }
     return rt
   }
 
@@ -318,10 +322,12 @@ final class AccountRuntime {
     switch probe {
     case .frozen:
       // Only `GET /account` and the unfreeze are allowed while frozen (§6.11).
+      await backlog.allowRuns(false)
       await stopped(.frozen)
       await refreshAccount()
       return
     case .updateRequired:
+      await backlog.allowRuns(false)
       await stopped(.halted(.updateRequired))
       return
     case .unbound:
@@ -330,8 +336,10 @@ final class AccountRuntime {
     case .stop(let stop) where WorkCoordinator.endsTheAccount(stop):
       await stopped(stop)
       return
-    case .ok, .stop:
+    case .stop(.halted):
       break
+    case .ok, .stop:
+      await backlog.allowRuns(true)
     }
     await refreshAccount()
     let launched = await coordinator.run(.launch)
@@ -424,8 +432,9 @@ final class AccountRuntime {
   func close() async {
     closed = true
     stopFollowingImports()
-    if let switchOff { NotificationCenter.default.removeObserver(switchOff) }
+    for token in [switchOff, switchOn].compactMap({ $0 }) { NotificationCenter.default.removeObserver(token) }
     switchOff = nil
+    switchOn = nil
     await backlog.suspend()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
@@ -433,19 +442,19 @@ final class AccountRuntime {
 
   func followSwitch() {
     let sorter = backlog
-    switchOff = NotificationCenter.default.addObserver(forName: MerchantSuggestionsSetting.turnedOff, object: nil, queue: nil) { _ in
+    let center = NotificationCenter.default
+    let defaults = UserDefaults.standard
+    switchOff = center.addObserver(forName: MerchantSuggestionsSetting.turnedOff, object: defaults, queue: nil) { _ in
       Task { await sorter.switchedOff() }
     }
-  }
-
-  func undoLastRun() async -> Int {
-    let stage = suggestions
-    return await backlog.undoLastRun { await stage.undo(manifest: $0) }
+    switchOn = center.addObserver(forName: MerchantSuggestionsSetting.turnedOn, object: defaults, queue: nil) { _ in
+      Task { await sorter.ensure(retry: true) }
+    }
   }
 
   func sendAllBack() async -> Int {
     let stage = suggestions
-    return await backlog.sendAllBack { await stage.undo(manifest: $0) }
+    return await backlog.sendAllBack { await stage.sendBack(filed: $0) }
   }
 
   func followImports() async {
@@ -456,7 +465,7 @@ final class AccountRuntime {
         guard let self, let lane = self.lane else { return }
         self.store.noteMailbox(await lane.status(), nowMs: self.context.clock.nowMs())
       },
-      imported: { Task { await sorter.resume() } })
+      imported: { Task { await sorter.ensure() } })
     follower.follow(lanes.values.map(\.events))
     for lane in lanes.values { await lane.relayEvents() }
     importFollower = follower

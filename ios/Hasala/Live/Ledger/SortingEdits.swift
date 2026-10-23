@@ -8,6 +8,14 @@ import Foundation
 import HasalaCloud
 import HasalaModels
 
+nonisolated extension SortMemory {
+  var priors: [String: Prior] {
+    var out: [String: Prior] = [:]
+    for b in batches { out.merge(b.prior) { _, new in new } }
+    return out
+  }
+}
+
 nonisolated extension LedgerEditAuthor {
   static let rerunWindowMs: Int64 = 86_400_000
 
@@ -41,8 +49,14 @@ nonisolated extension LedgerEditAuthor {
     .refile(txn: r.id, writtenVersion: r.version + 1, category: r.category, needsReview: r.needsReview, source: source(r))
   }
 
-  static func prior(_ r: RuleReach.Row) -> SortMemory.Prior {
-    SortMemory.Prior(category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1)
+  static func restored(_ r: RuleReach.Row, to p: SortMemory.Prior) -> Bool {
+    p.restored(version: r.version, category: r.category, needsReview: r.needsReview, kind: r.sourceKind.rawValue, ref: r.sourceRef)
+  }
+
+  static func prior(_ r: RuleReach.Row, after kept: SortMemory.Prior?) -> SortMemory.Prior {
+    let at = if let kept, restored(r, to: kept) { kept.categorizedMs } else { r.categorizedMs }
+    return SortMemory.Prior(
+      category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1, categorizedMs: at)
   }
 
   static func direction(_ ref: MerchantGroupRef) -> String { ref.direction == .in ? "credit" : "debit" }
@@ -116,7 +130,7 @@ nonisolated extension LedgerEditAuthor {
       m.noteAuto(autoOps)
       if let ruleID {
         var prior: [String: SortMemory.Prior] = [:]
-        for r in filed { prior[r.id] = Self.prior(r) }
+        for r in filed { prior[r.id] = Self.prior(r, after: m.prior(of: r.id)) }
         m.add(
           SortMemory.Batch(
             id: "\(ruleID).\(now)", ruleID: ruleID, group: group, direction: direction, category: category, seen: seen,
@@ -126,16 +140,13 @@ nonisolated extension LedgerEditAuthor {
     }
   }
 
-  func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, skipped: Set<TxnID>, receiptID: Int?) async throws
-    -> [Inverse]
-  {
+  func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, receiptID: Int?) async throws -> [Inverse] {
     guard let group = row.merchantGroup else { return [] }
     let (rows, home) = try reach()
-    let members = RuleReach.members(rows: rows, group: group, direction: row.direction, home: home)
-      .filter { $0.id != row.id && !skipped.contains($0.id) }
+    let pool = RuleReach.eligible(rows: rows, group: group, direction: row.direction, home: home).filter { $0.id != row.id }
     let existing = try ruleSnapshots()
     let plan = OpAuthor.groupRule(
-      patterns: RuleReach.patterns(filed: row.merchantRaw, members: members), category: c, existing: existing)
+      patterns: RuleReach.patterns(filed: row.merchantRaw, members: pool, filing: c), category: c, existing: existing)
     let ctx = try await observer.authorContext()
     var ruleID: String?
     var targets: [RuleReach.Target] = []
@@ -151,8 +162,7 @@ nonisolated extension LedgerEditAuthor {
         let id = try Self.authorRules(plan, &a)
         ruleID = id
         targets = RuleReach.plan(
-          rows: rows, rule: ruleInput(id, plan.draft), group: group, direction: row.direction, home: home,
-          except: Set(skipped).union([row.id]))
+          rows: rows, rule: ruleInput(id, plan.draft), group: group, direction: row.direction, home: home, except: [row.id])
         let first = try a.build()
         cx.ownLastMs = first.lastAuthoredMs
         if !targets.isEmpty {
@@ -172,10 +182,11 @@ nonisolated extension LedgerEditAuthor {
     let filed = targets.compactMap { byID[$0.txnID] }
     var receipt: SortMemory.Receipt?
     if !filed.isEmpty {
-      let ids = [row.id] + filed.map(\.id)
+      let ids = (RuleReach.settled(row.reachRow, in: c) ? [] : [row.id]) + filed.map(\.id)
       receipt = SortMemory.Receipt(
-        id: receiptID ?? Int(nowMs), group: group, direction: row.direction, merchant: try displayName(group: group, ids: Set(ids)),
-        category: c, txnIDs: ids, ruleID: ruleID, atMs: nowMs)
+        id: receiptID ?? Int(nowMs), group: group, direction: row.direction,
+        merchant: try displayName(group: group, ids: Set([row.id] + filed.map(\.id))), category: c, txnIDs: ids, ruleID: ruleID,
+        atMs: nowMs)
       inverses.append(.receipt(id: receipt!.id))
     }
     try remember(
@@ -230,7 +241,7 @@ nonisolated extension LedgerEditAuthor {
       if let plan, let id = ruleID {
         targets = RuleReach.plan(
           rows: rows, rule: ruleInput(id, plan.draft), group: ref.key, direction: direction, home: home,
-          except: memberIDs.union(skipped))
+          except: memberIDs.union(skipped), scope: .waiting)
         if !targets.isEmpty {
           let rest = try OpAuthor.categorizations(RuleReach.items(targets, ruleID: id, category: c), context: cx)
           reachOps = rest.flatMap(\.ops)
@@ -337,6 +348,7 @@ nonisolated extension LedgerEditAuthor {
       guard byRule || byCloud else { continue }
       if let p = mem.prior(of: id), p.written == row.version {
         items.append((id, row.version, p.category, p.needsReview, p.source))
+        inverses.append(.prior(txn: id, prior: p))
       } else if byRule {
         items.append((id, row.version, nil, true, .none))
       } else {
@@ -437,7 +449,10 @@ nonisolated extension LedgerEditAuthor {
       for i in m.batches.indices where dueIDs.contains(m.batches[i].id) {
         m.batches[i].cursor = cursor
         m.batches[i].seen.formUnion(groupIDs[m.batches[i].group] ?? [])
-        for r in filedBy[m.batches[i].id] ?? [] { m.batches[i].prior[r.id] = Self.prior(r) }
+        for r in filedBy[m.batches[i].id] ?? [] {
+          let p = Self.prior(r, after: m.prior(of: r.id))
+          m.batches[i].prior[r.id] = p
+        }
       }
     }
     return !ops.isEmpty
