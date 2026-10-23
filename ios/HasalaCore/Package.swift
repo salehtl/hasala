@@ -29,7 +29,7 @@ import PackageDescription
 let l0: [Target.Dependency] = [
   "CorePrimitives", "HasalaText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
 ]
-let l1: [Target.Dependency] = ["CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreMail"]
+let l1: [Target.Dependency] = ["CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail"]
 let l2: [Target.Dependency] = ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain"]
 let l3: [Target.Dependency] = ["CoreStore", "CoreProjection"]
 let l4: [Target.Dependency] = ["CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals"]
@@ -50,7 +50,7 @@ func core(
 /// `<Module>Tests` unit-test target in `Tests/<Module>Tests`.
 let libraries = [
   "CorePrimitives", "HasalaText", "CoreJSON", "CoreTime", "CoreMoney", "CoreResources",
-  "CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreMail",
+  "CoreWire", "CoreCrypto", "CoreAuth", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail",
   "CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain",
   "CoreStore", "CoreProjection",
   "CoreSync", "CoreOutbox", "CoreMailbox", "CoreSignals",
@@ -106,6 +106,7 @@ let package = Package(
     core("CoreNorm", "Norm", l0),
     // §2.3: ICU's C API (uregex_*) through a module map over libicucore.
     core("CoreTemplate", "Template", l0 + ["HasalaICU"]),
+    core("CoreExtract", "Extract"),
     core("CoreMail", "Mail", l0),
 
     // L2
@@ -148,7 +149,7 @@ let package = Package(
       name: "HasalaCoreConformanceTests",
       // What its files import, and no more: none of them needs L3, L4 or
       // CoreTestSupport, so this target builds beside them, not after them.
-      dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate", "CoreMail"]
+      dependencies: l0 + ["CoreWire", "CoreCrypto", "CoreNorm", "CoreTemplate", "CoreExtract", "CoreMail"]
         + ["CoreReplay", "CoreInvariants", "CoreCategorize", "CoreDomain", "CoreSoftAuth"],
       path: "Tests/HasalaCoreConformanceTests"),
     .testTarget(
