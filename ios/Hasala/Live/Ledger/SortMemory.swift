@@ -23,6 +23,11 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
     var source: CoreReplay.CategorySource
     var written: Int64
     var categorizedMs: Int64?
+
+    func restored(version: Int64, category: String?, needsReview: Bool, kind: String, ref: String?) -> Bool {
+      version == written + 1 && self.category == category && self.needsReview == needsReview
+        && source.kind.rawValue == kind && source.ref == ref
+    }
   }
 
   struct Batch: Codable, Sendable, Equatable {
@@ -68,6 +73,10 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
 
   func prior(of txn: String) -> Prior? {
     batches.reversed().lazy.compactMap { $0.prior[txn] }.first
+  }
+
+  mutating func refiled(_ txn: String, from p: Prior, written: Int64) {
+    for i in batches.indices where batches[i].prior[txn] == p { batches[i].prior[txn]?.written = written }
   }
 
   var ownOps: Set<String> { Set(autoOps) }

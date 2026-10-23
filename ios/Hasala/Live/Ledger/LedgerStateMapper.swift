@@ -277,8 +277,9 @@ nonisolated enum LedgerStateMapper {
   }
 
   static func restored(_ row: TxnRow, to p: SortMemory.Prior) -> Bool {
-    row.version == p.written + 1 && row.category == p.category && row.needsReview == p.needsReview
-      && row.categorySource == p.source.kind.rawValue && row.categorySourceRef == p.source.ref
+    p.restored(
+      version: row.version, category: row.category, needsReview: row.needsReview, kind: row.categorySource,
+      ref: row.categorySourceRef)
   }
 
   static func source(kind: String, ref: String?, ruleByID: [String: RuleRow]) -> HasalaModels.CategorySource? {

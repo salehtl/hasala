@@ -715,6 +715,63 @@ struct LiveSortingTests {
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef == rule.id } }
   }
 
+  static func undoAll(_ l: Ledger, _ rule: String, _ reached: [String]) async throws -> UndoToken {
+    try await Mapper.eventually {
+      reached.allSatisfy { l.store.state.txn($0)?.ruleID == rule && l.store.state.txn($0)?.priorFiling != nil }
+    }
+    let item = try #require(SortedForYouEngine.snapshot(l.store.state, now: MayaLedger.now).items.first { $0.ruleID == rule })
+    #expect(Set(reached).isSubset(of: Set(item.txnIDs)))
+    let token = try #require(try l.store.apply(item.undoAll))
+    #expect(token.title.hasSuffix(" put back as they were"), "\(token.title)")
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef != rule } }
+    await l.store.reload()
+    return token
+  }
+
+  @Test func undoAllAfterUndoingAnUndoAllPutsEachPaymentBackAgain() async throws {
+    let (l, old) = try await Self.wideLedger(suite: "sorting.wide.undoall.twice", clock: MovableClock(ms: Self.weeksAgo))
+    let id = { (name: String) in l.ids[name]![0] }
+    let reached = ["waiting", "dict", "ruled", "auto"].map(id)
+    let before = try Dictionary(uniqueKeysWithValues: reached.map { ($0, try #require(try l.row($0))) })
+    try l.store.apply(.categorize(id("pick"), "subscriptions", learnRule: true, project: nil))
+    try await Mapper.eventually { try l.reader.rules().contains { $0.origin == "learned" } }
+    let rule = try #require(try l.reader.rules().first { $0.origin == "learned" })
+    let first = try await Self.undoAll(l, rule.id, reached)
+    l.store.undo(first)
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef == rule.id } }
+    await l.store.reload()
+    _ = try await Self.undoAll(l, rule.id, reached)
+    for r in reached {
+      let now = try #require(try l.row(r))
+      let was = try #require(before[r])
+      #expect(now.category == was.category && now.categorySource == was.categorySource, "\(r)")
+      #expect(now.categorySourceRef == was.categorySourceRef && now.needsReview == was.needsReview, "\(r)")
+    }
+    let shown = l.store.state
+    #expect(shown.txn(id("dict"))?.inReview == false && shown.txn(id("auto"))?.inReview == false)
+    #expect(shown.txn(id("ruled"))?.ruleID == old && shown.txn(id("ruled"))?.inReview == false)
+    #expect(shown.txn(id("waiting"))?.inReview == true && shown.txn(id("waiting"))?.reachable == true)
+    #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
+  }
+
+  @Test func aSecondAlwaysUseAfterUndoAllKeepsEachPaymentsEarlierFilingTime() async throws {
+    let (l, old) = try await Self.wideLedger(suite: "sorting.wide.again", clock: MovableClock(ms: Self.weeksAgo))
+    let id = { (name: String) in l.ids[name]![0] }
+    let reached = ["waiting", "dict", "ruled", "auto"].map(id)
+    try l.store.apply(.categorize(id("pick"), "subscriptions", learnRule: true, project: nil))
+    try await Mapper.eventually { try l.reader.rules().contains { $0.origin == "learned" } }
+    let rule = try #require(try l.reader.rules().first { $0.origin == "learned" })
+    _ = try await Self.undoAll(l, rule.id, reached)
+    try l.store.apply(.categorize(id("pick"), "entertainment", learnRule: true, project: nil))
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.category == "entertainment" } }
+    let again = try #require(try l.reader.rules().first { $0.category == "entertainment" })
+    await l.store.reload()
+    _ = try await Self.undoAll(l, again.id, reached)
+    #expect(try l.row(id("dict"))?.categorySource == "dictionary" && l.row(id("auto"))?.categorySource == "model")
+    #expect(try l.row(id("ruled"))?.categorySourceRef == old)
+    #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
+  }
+
   @Test func aGroupCardsAlwaysUseFilesOnlyTheWaitingRowsItCounts() async throws {
     let (l, _) = try await Self.wideLedger(suite: "sorting.wide.group")
     let id = { (name: String) in l.ids[name]![0] }

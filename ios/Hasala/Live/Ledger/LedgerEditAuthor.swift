@@ -100,6 +100,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
     case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
     case refile(txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource)
+    case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case rejection(keys: [String], category: String, rejected: Bool)
     case receipt(id: Int)
@@ -428,7 +429,28 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
       let receipts = inverses.compactMap { if case .receipt(let id) = $0 { id } else { nil } }
       if !receipts.isEmpty { memory.update { m in if let r = m.receipt, receipts.contains(r.id) { m.receipt = nil } } }
+      try keepPriors(inverses)
     }
+  }
+
+  private func keepPriors(_ inverses: [Inverse]) throws {
+    var refiles: [String: SortMemory.Prior] = [:]
+    var priors: [(txn: String, prior: SortMemory.Prior)] = []
+    for inv in inverses {
+      switch inv {
+      case .refile(let t, let w, let c, let review, let source):
+        refiles[t] = SortMemory.Prior(category: c, needsReview: review, source: source, written: w)
+      case .prior(let t, let p): priors.append((t, p))
+      default: continue
+      }
+    }
+    var back: [(txn: String, prior: SortMemory.Prior, written: Int64)] = []
+    for (t, p) in priors {
+      guard let refile = refiles[t], let row = try reader.txn(t), LedgerStateMapper.restored(row, to: refile) else { continue }
+      back.append((t, p, row.version))
+    }
+    guard !back.isEmpty else { return }
+    memory.update { m in for b in back { m.refiled(b.txn, from: b.prior, written: b.written) } }
   }
 
   private func undoBlob(_ inverses: [Inverse]) async throws -> AuthoredBlob? {
@@ -470,7 +492,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.rule(id: id, parentVersion: version, restore)
         case .rejection(let keys, let c, let rejected):
           a.reject(keys: keys, category: c, rejected: rejected)
-        case .receipt, .trust:
+        case .receipt, .trust, .prior:
           continue
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }

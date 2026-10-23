@@ -51,8 +51,9 @@ authentication included), is not a held copy, a copy or a possible duplicate, is
 same-purchase pair, is not archived, a transfer or a split, and its source is not the
 person's (`user`) or held. A row a dictionary entry or a rule already filed does not wait.
 The live mapper sets `Txn.reachable` from this predicate, so every count on a card is the
-number of rows a tap files. A row that fails it stays its own card with its own strip
-("Couldn't verify sender").
+number of rows a tap files. `Txn.waits` (HasalaModels) is the same test on a `Txn`: the
+mock sets `reachable` from it, and so does the screen after Undo all. A row that fails it
+stays its own card with its own strip ("Couldn't verify sender").
 
 A rule from "Always use it" reaches further (sorting rebuild, 2026-10-23). It files every
 payment of that merchant group and direction whose spelling the rule holds, in every month,
@@ -78,16 +79,20 @@ it files, then those of the rows already in its category. "Always use it" is hid
 row with no merchant group, on a split, and when no spelling fits a pattern. Every pattern
 is exact, so `PAYPAL *TAILSCALE` gives the exact pattern, not `contains paypal`. A payment
 skipped in Review today is filed too. The result reads "Software for all 14 Tailscale
-payments" and counts only the payments whose category changed; it drops "all" when a
-spelling of the group did not fit in the 8 patterns. A rule's filings never count as
-corrections for Trust on this phone.
+payments" and counts only the payments whose category changed; it drops "all" when the
+rule leaves a payment of the group unfiled that it may file (its spelling did not fit in
+the 8 patterns, or cannot be a pattern). A rule's filings never count as corrections for
+Trust on this phone.
 
 Undo puts each row back exactly (`Inverse.refile`). Undo all in Sorted for you does the
 same: each row gets back the category, source and review state it had before the rule
 filed it (`SortMemory.Batch.prior`). A payment that the merchant list or Cloudflare filed
 goes back to that filing, not to Review. A row with no recorded state goes back to Review.
-After either Undo, a row keeps the time of its earlier filing (`Prior.categorizedMs`), so
-an earlier rule or Cloudflare filing does not show again in Sorted for you as new.
+After either Undo, a row keeps the time of its earlier filing (`Prior.categorizedMs`) while
+the iPhone keeps that batch (the last 40), so an earlier rule or Cloudflare filing does not
+show again in Sorted for you as new. A later Always use on the same group keeps that time
+too. Undo on the toast of Undo all files the rows by the rule again and keeps their earlier
+state, so a second Undo all puts them back the same way.
 
 After a pull, the iPhone that made the rule reaches back once more, for 24 hours, to rows
 that arrived since and that it has not considered yet. Rows put back with Undo all are

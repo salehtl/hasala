@@ -49,9 +49,14 @@ nonisolated extension LedgerEditAuthor {
     .refile(txn: r.id, writtenVersion: r.version + 1, category: r.category, needsReview: r.needsReview, source: source(r))
   }
 
-  static func prior(_ r: RuleReach.Row) -> SortMemory.Prior {
-    SortMemory.Prior(
-      category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1, categorizedMs: r.categorizedMs)
+  static func restored(_ r: RuleReach.Row, to p: SortMemory.Prior) -> Bool {
+    p.restored(version: r.version, category: r.category, needsReview: r.needsReview, kind: r.sourceKind.rawValue, ref: r.sourceRef)
+  }
+
+  static func prior(_ r: RuleReach.Row, after kept: SortMemory.Prior?) -> SortMemory.Prior {
+    let at = if let kept, restored(r, to: kept) { kept.categorizedMs } else { r.categorizedMs }
+    return SortMemory.Prior(
+      category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1, categorizedMs: at)
   }
 
   static func direction(_ ref: MerchantGroupRef) -> String { ref.direction == .in ? "credit" : "debit" }
@@ -125,7 +130,7 @@ nonisolated extension LedgerEditAuthor {
       m.noteAuto(autoOps)
       if let ruleID {
         var prior: [String: SortMemory.Prior] = [:]
-        for r in filed { prior[r.id] = Self.prior(r) }
+        for r in filed { prior[r.id] = Self.prior(r, after: m.prior(of: r.id)) }
         m.add(
           SortMemory.Batch(
             id: "\(ruleID).\(now)", ruleID: ruleID, group: group, direction: direction, category: category, seen: seen,
@@ -343,6 +348,7 @@ nonisolated extension LedgerEditAuthor {
       guard byRule || byCloud else { continue }
       if let p = mem.prior(of: id), p.written == row.version {
         items.append((id, row.version, p.category, p.needsReview, p.source))
+        inverses.append(.prior(txn: id, prior: p))
       } else if byRule {
         items.append((id, row.version, nil, true, .none))
       } else {
@@ -443,7 +449,10 @@ nonisolated extension LedgerEditAuthor {
       for i in m.batches.indices where dueIDs.contains(m.batches[i].id) {
         m.batches[i].cursor = cursor
         m.batches[i].seen.formUnion(groupIDs[m.batches[i].group] ?? [])
-        for r in filedBy[m.batches[i].id] ?? [] { m.batches[i].prior[r.id] = Self.prior(r) }
+        for r in filedBy[m.batches[i].id] ?? [] {
+          let p = Self.prior(r, after: m.prior(of: r.id))
+          m.batches[i].prior[r.id] = p
+        }
       }
     }
     return !ops.isEmpty

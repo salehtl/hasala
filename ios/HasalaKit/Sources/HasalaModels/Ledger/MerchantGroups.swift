@@ -76,6 +76,16 @@ extension Txn {
 
   public func settled(in c: CategoryID) -> Bool { !needsReview && categoryID == c }
 
+  public var waits: Bool {
+    guard ruled else { return false }
+    switch categorySource {
+    case .user?, .manual?: return false
+    case .dictionary?, .rule?: return categoryID == nil
+    case .model(let tag)?: return needsReview || categoryID == nil || tag?.hasPrefix(CategorySource.cloudflareModelPrefix) != true
+    case nil: return needsReview || categoryID == nil
+    }
+  }
+
   public var filing: PriorFiling {
     PriorFiling(
       categoryID: categoryID, categorySource: categorySource, ruleID: ruleID, needsReview: needsReview, categorizedAt: categorizedAt)

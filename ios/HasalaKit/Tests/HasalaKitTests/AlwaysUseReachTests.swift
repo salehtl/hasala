@@ -118,6 +118,40 @@ struct AlwaysUseReachTests {
     #expect(item.txnIDs.allSatisfy { l.state.txn($0)?.categoryID == "subscriptions" && l.state.txn($0)?.filedByRule == true })
   }
 
+  @Test func undoAllAfterUndoingAnUndoAllPutsEachRowBackAgain() throws {
+    let before = try Self.state()
+    let l = InMemoryLedger(state: before)
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let item = try #require(SortedForYouEngine.snapshot(l.state, now: l.now).items.first { $0.category.id == "subscriptions" })
+    l.undo(try #require(try l.apply(item.undoAll)))
+    #expect(Self.refiled.allSatisfy { l.state.txn($0)?.filedByRule == true && l.state.txn($0)?.priorFiling != nil })
+    let token = try #require(try l.apply(item.undoAll))
+    #expect(token.title == "32 payments put back as they were")
+    for id in Self.refiled {
+      let t = try #require(l.state.txn(id))
+      let was = try #require(before.txn(id))
+      #expect(t.categoryID == was.categoryID && t.categorySource == was.categorySource && !t.inReview, "\(id)")
+    }
+  }
+
+  @Test func aRowWaitsAsRuleReachWaitingDecides() throws {
+    let s = MockReach.refreshed(try Self.state())
+    func waits(_ id: String, _ change: (inout Txn) -> Void) throws -> Bool {
+      var t = try #require(s.txn(id))
+      change(&t)
+      return t.waits
+    }
+    #expect(try waits("ts-dict") { $0.needsReview = true } == false)
+    #expect(try waits("ts-dict") { $0.categoryID = nil } == true)
+    #expect(try waits("ts-rule") { $0.needsReview = true } == false)
+    #expect(try waits("ts-model") { $0.needsReview = true } == true)
+    #expect(try waits("ts-model") { _ in } == false)
+    #expect(try waits("ts-model") { $0.categorySource = .model(tag: "apple-fm/1") } == true)
+    #expect(try waits("ts-user") { $0.needsReview = true } == false)
+    #expect(try waits("ts-split") { $0.needsReview = true } == false)
+    #expect(s.txns.allSatisfy { $0.reachable == $0.waits })
+  }
+
   @Test func aGroupCardsAlwaysUseFilesOnlyTheRowsTheCardCounts() throws {
     let before = try Self.state()
     let l = InMemoryLedger(state: before)

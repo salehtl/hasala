@@ -20,14 +20,6 @@ nonisolated enum SortPatch {
     s.txns.indices.filter { s.txns[$0].reachable && s.txns[$0].groupRef == ref && !s.skippedReview.contains(s.txns[$0].id) }
   }
 
-  static func waits(_ t: Txn) -> Bool {
-    guard t.ruled, t.needsReview || t.categoryID == nil else { return false }
-    switch t.categorySource {
-    case .dictionary?, .rule?: return t.categoryID == nil
-    default: return true
-    }
-  }
-
   static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
     s.txns.indices.filter { s.txns[$0].ruled && s.txns[$0].groupRef == ref }
   }
@@ -113,7 +105,7 @@ nonisolated enum SortPatch {
           s.txns[i].isTransfer = false
         }
       }
-      s.txns[i].reachable = waits(s.txns[i])
+      s.txns[i].reachable = s.txns[i].waits
     }
     guard returned > 0 else { throw .notFound }
     return SortedForYouItem.undoneLine(count: returned, settled: settled)
