@@ -103,6 +103,34 @@ struct BacklogSortTests {
     #expect(!second.suggestions.contains { $0.txnID == later[1] || $0.txnID == later[2] })
   }
 
+  @Test("an answer held from earlier in the session for a category that is gone files nothing; the name is asked again")
+  func goneCategory() async throws {
+    var l = T.Ledger()
+    let ids = try l.ingest([("UNSURE SHOP", "debit"), ("SURE SHOP", "debit")])
+    var memo = BacklogSort.Memo()
+    memo.asked = ["unsure shop", "sure shop"]
+    memo.answers["unsure shop"] = .init(category: "dining", modelTag: "cf-clef/1", autoFile: true)
+    memo.answers["sure shop"] = .init(category: "groceries", modelTag: "cf-clef/1", autoFile: true)
+    let allowed = T.allowed.filter { $0.id != "dining" }
+    #expect(allowed.count == T.allowed.count - 1)
+    let waiting = try BacklogSort.counts(
+      rows: l.rows(), categorizer: T.categorizer, allowed: allowed, modelTag: "cf-clef/1", cache: MemoryCache(), now: now, memo: memo)
+    #expect(waiting.waitingNames == 1 && waiting.pendingTxnIDs == [ids[0]])
+    let quiet = BacklogCloud()
+    let held = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: allowed, cloud: quiet, memo: memo, cache: MemoryCache(), now: { now },
+      autoFile: true, dayLeft: 0)
+    #expect(quiet.calls.isEmpty && held.stop == .dayCap)
+    #expect(held.suggestions.map(\.txnID) == [ids[1]] && held.suggestions.allSatisfy { $0.category != "dining" })
+    let cloud = BacklogCloud(["unsure shop": (.category("shopping"), false)])
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: MemoryCache(), now: { now },
+      autoFile: true)
+    #expect(cloud.calls == ["unsure shop"])
+    #expect(Dictionary(uniqueKeysWithValues: p.suggestions.map { ($0.txnID, $0.category) }) == [ids[0]: "shopping", ids[1]: "groceries"])
+    #expect(p.memo.answers["unsure shop"]?.category == "shopping")
+  }
+
   @Test("a name that timed out is asked again on later passes, at most three times; a 429 is not a try")
   func retries() async throws {
     var l = T.Ledger()

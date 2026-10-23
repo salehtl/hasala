@@ -259,7 +259,7 @@ final class AccountRuntime {
         guard let lane = active.lane else { return false }
         let phase = await lane.status().phase
         return phase == .scanning || phase == .authoringBackfill
-      }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity)
+      }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity, mayRun: false)
     link.set(backlog)
     let coordinator = WorkCoordinator(
       stages: WorkCoordinator.Stages(
@@ -267,7 +267,9 @@ final class AccountRuntime {
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
           let phase = await engine.status.phase
-          return (out.newData, Self.shownStop(out.stop, phase: phase))
+          let shown = Self.shownStop(out.stop, phase: phase)
+          if shown == nil { await backlog.allowRuns(true) }
+          return (out.newData, shown)
         },
         mailbox: mailboxStage,
         categorize: { trigger in
@@ -284,7 +286,10 @@ final class AccountRuntime {
           await afterRun.run()
           Task { await backlog.ensure() }
         },
-        stopped: stopped))
+        stopped: { stop in
+          await backlog.allowRuns(false)
+          await stopped(stop)
+        }))
     box.set(coordinator)
     try await observer.open()
     if let lane = active.lane { store.noteMailbox(await lane.status(), nowMs: context.clock.nowMs()) }
@@ -317,10 +322,12 @@ final class AccountRuntime {
     switch probe {
     case .frozen:
       // Only `GET /account` and the unfreeze are allowed while frozen (§6.11).
+      await backlog.allowRuns(false)
       await stopped(.frozen)
       await refreshAccount()
       return
     case .updateRequired:
+      await backlog.allowRuns(false)
       await stopped(.halted(.updateRequired))
       return
     case .unbound:
@@ -329,8 +336,10 @@ final class AccountRuntime {
     case .stop(let stop) where WorkCoordinator.endsTheAccount(stop):
       await stopped(stop)
       return
-    case .ok, .stop:
+    case .stop(.halted):
       break
+    case .ok, .stop:
+      await backlog.allowRuns(true)
     }
     await refreshAccount()
     let launched = await coordinator.run(.launch)

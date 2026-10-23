@@ -14,6 +14,10 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     var reason: Reason?
     var untilMs: Int64?
 
+    private enum CodingKeys: String, CodingKey {
+      case phase, reason, untilMs, id, startedMs, requests, asked, totalNames, filed, suggested, manifest
+    }
+
     init(phase: Phase = .running, reason: Reason? = nil, untilMs: Int64? = nil) {
       self.phase = phase
       self.reason = reason
@@ -30,6 +34,16 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
         phase = .done
         untilMs = nil
       }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+      var c = encoder.container(keyedBy: CodingKeys.self)
+      try c.encode(phase, forKey: .phase)
+      try c.encodeIfPresent(reason, forKey: .reason)
+      try c.encodeIfPresent(untilMs, forKey: .untilMs)
+      try c.encode("", forKey: .id)
+      for k in [CodingKeys.startedMs, .requests, .asked, .totalNames, .filed, .suggested] { try c.encode(0, forKey: k) }
+      try c.encode([String: Int64](), forKey: .manifest)
     }
 
     var retriesOnlyAtOpen: Bool {
@@ -205,6 +219,7 @@ actor BacklogSorter {
   private var checking = false
   private var checkAgain = false
   private var closed = false
+  private var mayRun: Bool
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
@@ -216,7 +231,7 @@ actor BacklogSorter {
     pass: @escaping PassRunner, waiting: @escaping Waiting = { _ in true }, store: Store, nowMs: @escaping @Sendable () -> Int64,
     appActive: @escaping @Sendable () async -> Bool = BacklogSorter.foreground,
     importRunning: @escaping @Sendable () async -> Bool, enabled: @escaping @Sendable () -> Bool,
-    network: any NetworkWatching = PathWatcher(), activity: BacklogActivity = BacklogActivity(),
+    network: any NetworkWatching = PathWatcher(), activity: BacklogActivity = BacklogActivity(), mayRun: Bool = true,
     sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   ) {
     self.pass = pass
@@ -228,6 +243,7 @@ actor BacklogSorter {
     self.enabled = enabled
     self.network = network
     self.activity = activity
+    self.mayRun = mayRun
     self.sleep = sleep
     record = store.load()
     activity.set(record.isActive)
@@ -255,6 +271,7 @@ actor BacklogSorter {
   func ensure(retry: Bool = false) async {
     guard !closed else { return }
     if retry { retryArmed = true }
+    guard mayRun else { return }
     guard enabled() else { return resume() }
     if let run = record.run, run.phase != .done { return resume() }
     if checking {
@@ -276,7 +293,7 @@ actor BacklogSorter {
   }
 
   private var mayStart: Bool {
-    guard !closed, task == nil else { return false }
+    guard !closed, mayRun, task == nil else { return false }
     guard let run = record.run else { return true }
     return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
@@ -287,6 +304,7 @@ actor BacklogSorter {
       if run.phase != .done { end(.off) }
       return
     }
+    guard mayRun else { return }
     switch run.phase {
     case .running:
       if task == nil { launch() } else { wake.fire() }
@@ -309,6 +327,12 @@ actor BacklogSorter {
     case .done:
       return
     }
+  }
+
+  func allowRuns(_ ok: Bool) {
+    guard ok != mayRun else { return }
+    mayRun = ok
+    if ok { resume() } else { halt() }
   }
 
   func switchedOff() {

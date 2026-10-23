@@ -320,6 +320,17 @@ The open and the coordinator's run don't wait for the check: each calls `ensure(
 task of its own. One check runs at a time; calls that arrive while it runs share one more
 check after it.
 
+The stage is held while the account is stopped (`BacklogSorter.allowRuns`). It starts held
+when the account opens. `AccountRuntime` releases it when the launch check (`LaunchProbe`)
+passes, or stops on anything but a freeze, a halt, **Update Hasala** or a stop that closes
+the account (offline, for example), and after each sync that ends without a stop. It holds
+it again when the launch check finds the account frozen or this build too old, and when a
+run of the coordinator stops on a freeze, a halt, **Update Hasala** or a stop that closes
+the account. While it is held, `ensure()` and the resume start nothing (a call to
+`ensure(retry: true)` still arms the open's retry), and a run that is going stops where it
+is and keeps its phase. The release resumes a run that is running or paused under the
+pause's own rules, and the next `ensure()` starts a new one.
+
 For a run that is running or paused, `ensure()` only resumes it under the pause's own
 rules (below); it never restarts a paused run. A run that ended after three failed passes,
 after a refusal, or because Clef was not available is tried again at the next open, or when
@@ -334,7 +345,13 @@ background, and a run that is already going holds until the next foreground.
 app) holds the run. Its state is a device-local record in the device's own database, next
 to `fm_cache` (`backlog_run`): the run's phase, its pause reason and until-time, the day
 ledger, the time of the last pass, and the rows a run on this device filed. It never syncs.
-The names a session has settled are kept in memory and forgotten at the next open.
+The names a session has settled are kept in memory and forgotten at the next open. Each
+pass first drops an answer kept in memory whose category is no longer on the list Clef is
+offered (for example a category deleted or turned off since). The name is then planned
+again under the current list (the cache, else Clef), so a run never files a row into a
+category that is gone. The record still writes the fields the run card build needs to
+read a run (an empty id, zeros and an empty manifest), so after a downgrade that build
+keeps the day ledger and the rows filed here.
 
 **What it asks.**
 

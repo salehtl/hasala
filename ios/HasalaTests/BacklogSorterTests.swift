@@ -135,7 +135,8 @@ struct BacklogSorterTests {
 
   func sorter(
     _ script: Script, _ saved: Saved, sleeps: Sleeps = Sleeps(), active: Flag = Flag(), importing: Bool = false,
-    clock: Clock = Clock(), enabled: Flag = Flag(), network: Net = Net(), waiting: Flag = Flag(), asked: Asked = Asked()
+    clock: Clock = Clock(), enabled: Flag = Flag(), network: Net = Net(), waiting: Flag = Flag(), asked: Asked = Asked(),
+    mayRun: Bool = true
   ) -> BacklogSorter {
     BacklogSorter(
       pass: { await script.run($0, $1) },
@@ -143,7 +144,7 @@ struct BacklogSorterTests {
         asked.memos.withLock { $0.append(memo.asked.count) }
         return waiting.value
       }, store: saved.store, nowMs: clock.now, appActive: { active.value }, importRunning: { importing }, enabled: { enabled.value },
-      network: network, sleep: sleeps.sleep)
+      network: network, mayRun: mayRun, sleep: sleeps.sleep)
   }
 
   func waitFor(_ condition: @Sendable () async -> Bool) async {
@@ -622,6 +623,49 @@ struct BacklogSorterTests {
     #expect(await !t.isRunning && running.run?.phase == .running && script.passes == 0)
   }
 
+  @Test func nothingStartsOrResumesWhileTheAccountIsStoppedAndWorkGoesOnOnceItClears() async {
+    let saved = Saved()
+    let script = Script([(0, 1, nil)])
+    let asked = Asked()
+    let s = sorter(script, saved, asked: asked, mayRun: false)
+    await s.ensure(retry: true)
+    await s.resume()
+    #expect(await !s.isRunning && saved.run == nil && asked.all.isEmpty && script.passes == 0)
+    await s.allowRuns(true)
+    await s.ensure()
+    await s.finished()
+    #expect(script.passes == 1 && saved.run?.phase == .done)
+    let running = Saved.running()
+    let next = Script([(0, 1, nil)])
+    let t = sorter(next, running, mayRun: false)
+    await t.ensure(retry: true)
+    #expect(await !t.isRunning && running.run?.phase == .running && next.passes == 0)
+    await t.allowRuns(true)
+    await t.finished()
+    #expect(next.passes == 1 && running.run?.phase == .done)
+  }
+
+  @Test func aStoppedAccountHaltsARunningSortWithoutEndingIt() async throws {
+    let saved = Saved.running()
+    let script = Script([(1, 2, nil), (0, 1, nil)])
+    let clock = Clock()
+    let s = BacklogSorter(
+      pass: { await script.run($0, $1) }, store: saved.store, nowMs: clock.now, appActive: { true }, importRunning: { false },
+      enabled: { true }, network: Net(), sleep: { d in try? await Task.sleep(for: d > .zero ? .seconds(30) : .zero) })
+    await s.ensure()
+    await waitFor { script.passes >= 1 }
+    await s.allowRuns(false)
+    #expect(await !s.isRunning)
+    try await Task.sleep(for: .milliseconds(20))
+    await s.ensure()
+    await s.resume()
+    #expect(await !s.isRunning && script.passes == 1 && saved.run?.phase == .running)
+    clock.advance(BacklogSort.passSpacingMs)
+    await s.allowRuns(true)
+    await s.finished()
+    #expect(script.passes == 2 && saved.run?.phase == .done && saved.value.day.count == 3)
+  }
+
   @Test func newRowsWakeASortThatWaitsForTheImport() async throws {
     let saved = Saved()
     let script = Script([(0, 2, nil), (0, 0, nil), (0, 0, nil)])
@@ -662,6 +706,51 @@ struct BacklogSorterTests {
     #expect(stopped.run == BacklogRunRecord.Run(phase: .done) && stopped.day == [3])
     let busy = try decode(#"{"run":{"id":"r","startedMs":5,"requests":4,"phase":"paused","reason":"busy","untilMs":8,"manifest":{}}}"#)
     #expect(busy.run == BacklogRunRecord.Run(phase: .paused, reason: .busy, untilMs: 8))
+  }
+
+  @Test func theRunCardBuildCanStillReadTheRecord() throws {
+    nonisolated struct Old: Decodable {
+      nonisolated enum Phase: String, Decodable { case running, paused, done }
+      nonisolated enum Reason: String, Decodable { case off, refused, rateLimited, busy, runCap, dayCap, stopped, failed }
+      nonisolated struct Run: Decodable {
+        var id: String
+        var startedMs: Int64
+        var requests = 0
+        var asked = 0
+        var totalNames = 0
+        var filed = 0
+        var suggested = 0
+        var phase: Phase = .running
+        var reason: Reason?
+        var untilMs: Int64?
+        var endedMs: Int64?
+        var manifest: [String: Int64] = [:]
+      }
+      var run: Run?
+      var day: [Int64] = []
+      var filedHere: [String: Int64] = [:]
+
+      private enum CodingKeys: String, CodingKey { case run, day, filedHere }
+
+      init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        run = try c.decodeIfPresent(Run.self, forKey: .run)
+        day = try c.decodeIfPresent([Int64].self, forKey: .day) ?? []
+        filedHere = try c.decodeIfPresent([String: Int64].self, forKey: .filedHere) ?? [:]
+      }
+    }
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(Old.Run.self, from: Data(#"{"phase":"done"}"#.utf8)) }
+    let runs = [
+      BacklogRunRecord.Run(phase: .paused, reason: .busy, untilMs: 9), BacklogRunRecord.Run(),
+      BacklogRunRecord.Run(phase: .done, reason: .failed),
+    ]
+    for run in runs {
+      let r = BacklogRunRecord(run: run, day: [1, 2], filedHere: ["a": 2], lastPassMs: 7)
+      let old = try JSONDecoder().decode(Old.self, from: JSONEncoder().encode(r))
+      #expect(old.day == [1, 2] && old.filedHere == ["a": 2])
+      #expect(old.run?.phase.rawValue == run.phase.rawValue && old.run?.reason?.rawValue == run.reason?.rawValue)
+      #expect(old.run?.untilMs == run.untilMs && old.run?.manifest.isEmpty == true)
+    }
   }
 
   @Test nonisolated func theGateRunsOneSweepAtATime() async {

@@ -31,6 +31,17 @@ public enum BacklogSort {
     public var tries: [String: Int] = [:]
 
     public init() {}
+
+    public func keeping(_ allowed: [AllowedCategory]) -> Memo {
+      let ids = Set(allowed.map(\.id))
+      var m = self
+      for (s, a) in answers where !ids.contains(a.category) {
+        m.answers[s] = nil
+        m.asked.remove(s)
+        m.tries[s] = nil
+      }
+      return m
+    }
   }
 
   public struct Interrupted: Error, Sendable {
@@ -209,7 +220,7 @@ public enum BacklogSort {
   ) throws -> Counts {
     let taxonomy = ModelTier.taxonomyHash(allowed)
     return try counts(
-      rows: rows, categorizer: categorizer, memo: memo, kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }
+      rows: rows, categorizer: categorizer, memo: memo.keeping(allowed), kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }
     ) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: modelTag, now: now)
     }
@@ -221,7 +232,7 @@ public enum BacklogSort {
     concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
     trusts: @Sendable (String) -> Bool = { _ in true }
   ) async throws -> Pass {
-    var memo = memo
+    var memo = memo.keeping(allowed)
     guard cloud.availability() == .available else { return Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
     guard !allowed.isEmpty else { return Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: nil) }
     let taxonomy = ModelTier.taxonomyHash(allowed)
