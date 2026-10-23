@@ -83,6 +83,7 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var spam: Bool? = nil
   public var senderDomain: String? = nil
   public var readerConfident: Bool? = nil
+  public var held: Bool? = nil
 }
 
 public struct CardKey: Sendable, Hashable, Codable, Comparable {
@@ -194,13 +195,14 @@ public enum MessageDisposer {
 
     guard let norm else { return .mail(mail) }
     let fromDomain = BankDomains.domainOf(norm.from)
+    let learn = senderTrusted && !forwarded && !spam
+    let readAs = fromDomain.isEmpty ? (mail.senderDomain ?? "") : fromDomain
     let input = ExtractInput(
-      sender: fromDomain.isEmpty ? (mail.senderDomain ?? "") : fromDomain, subject: norm.subject, text: norm.text,
+      sender: learn ? (verified ?? readAs) : readAs, subject: norm.subject, text: norm.text,
       receivedAtMs: internalDateMs, listUnsubscribe: hasListUnsubscribe(headers))
     let setAsideDomain = mail.senderDomain ?? domains.first ?? ""
-    for t in templates where t.definition.match.senderDomain.contains(where: { want in
-      domains.contains { BankDomains.isMember($0, of: [asciiLowerString(want)]) }
-    }) {
+    let matching = templatesMatching(templates, domains: domains)
+    for t in matching {
       let x: Extraction
       do {
         x = try t.execute(subject: norm.subject, normalizedBody: norm.text)
@@ -213,25 +215,33 @@ public enum MessageDisposer {
       guard let posted = postedAt(x, template: t, internalDateMs: internalDateMs),
         var f = usableFields(x, posted: posted)
       else { continue }
+      mail.bank = t.definition.bank
+      let pending = CombinedReader.pending(input, direction: ExtractDirection(rawValue: f.direction))
+      if pending == .status {
+        reader?.bump(mail.bank) { $0.pendingSetAside += 1 }
+        return .setAside(domain: setAsideDomain)
+      }
+      var reading: ExtractReading?
+      if reader != nil {
+        let (r, next) = CombinedReader.read(input, reader!.layouts)
+        if learn { reader!.layouts = next }
+        reading = r
+      }
       if let aed = CombinedReader.aedAmount(input, foreign: f.amountMinor, currency: f.currency),
         aed <= MailboxLimits.maxAmountMinor
       {
         f.amountMinor = aed
         f.currency = "AED"
+        let confirmed =
+          reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
+        if !confirmed { mail.held = true }
       }
-      mail.bank = t.definition.bank
+      if pending == .phrase { mail.held = true }
       mail.templateHasCardField = t.definition.extract.contains { $0.field == "last4" }
       mail.last4 = x.last4
       mail.gates.template = "\(t.definition.id)@\(t.definition.version)"
-      mail.gates.kind = DuplicateRules.templateKind(t.definition.id)
       mail.fields = f
-      if reader != nil {
-        let (reading, next) = CombinedReader.read(input, reader!.layouts)
-        reader!.layouts = next
-        if reading.outcome == .pending {
-          reader!.bump(mail.bank) { $0.pendingSetAside += 1 }
-          return .setAside(domain: setAsideDomain)
-        }
+      if let reading {
         let agrees = reading.outcome == .transaction && reading.amountMinor == f.amountMinor && reading.currency == f.currency
         reader!.bump(mail.bank) {
           $0.templateHit += 1
@@ -243,14 +253,15 @@ public enum MessageDisposer {
     if Task.isCancelled { return .interrupted }
     guard reader != nil else { return .mail(mail) }
     let (reading, next) = CombinedReader.read(input, reader!.layouts)
-    reader!.layouts = next
-    let bank = bankOf(domains, templates: templates)
+    if learn { reader!.layouts = next }
+    let bank = matching.first?.definition.bank ?? ""
     switch reading.outcome {
     case .pending:
       reader!.bump(bank.isEmpty ? setAsideDomain : bank) { $0.pendingSetAside += 1 }
       return .setAside(domain: setAsideDomain)
     case .transaction:
-      guard let f = readerFields(reading, internalDateMs: internalDateMs) else { break }
+      guard let f = readerFields(reading, stated: CombinedReader.statedDate(input), internalDateMs: internalDateMs)
+      else { break }
       mail.bank = bank
       mail.last4 = f.last4
       mail.templateHasCardField = !f.last4.isEmpty
@@ -265,13 +276,12 @@ public enum MessageDisposer {
     return .mail(mail)
   }
 
-  static func bankOf(_ domains: [String], templates: [CompiledTemplate]) -> String {
-    for d in domains {
-      for t in templates where t.definition.match.senderDomain.contains(where: { BankDomains.isMember(d, of: [asciiLowerString($0)]) }) {
-        return t.definition.bank
+  static func templatesMatching(_ templates: [CompiledTemplate], domains: [String]) -> [CompiledTemplate] {
+    templates.filter { t in
+      t.definition.match.senderDomain.contains { want in
+        domains.contains { BankDomains.isMember($0, of: [asciiLowerString(want)]) }
       }
     }
-    return ""
   }
 
   static func hasListUnsubscribe(_ headers: String) -> Bool {
@@ -282,16 +292,25 @@ public enum MessageDisposer {
 
   static let readerMerchantLimit = 200
 
-  static func readerFields(_ r: ExtractReading, internalDateMs: Int64) -> ParsedFields? {
+  static func readerFields(_ r: ExtractReading, stated: ExtractStatedDate?, internalDateMs: Int64) -> ParsedFields? {
     guard let amount = r.amountMinor, amount > 0, amount <= MailboxLimits.maxAmountMinor, let currency = r.currency,
       currency.utf8.count == 3, currency.utf8.allSatisfy({ $0 >= 0x41 && $0 <= 0x5a }), let direction = r.direction,
-      let posted = Instant.iso(internalDateMs)
+      let posted = readerPostedAt(stated, internalDateMs: internalDateMs)
     else { return nil }
     let last4 = r.last4.flatMap { $0.utf8.count == 4 && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } ? $0 : nil } ?? ""
     return ParsedFields(
       amountMinor: amount, currency: currency, direction: direction.rawValue,
-      merchant: String((r.merchant ?? "").prefix(readerMerchantLimit)), last4: last4, postedAt: posted, precision: "time",
+      merchant: String((r.merchant ?? "").prefix(readerMerchantLimit)), last4: last4, postedAt: posted.0, precision: posted.1,
       isTransfer: r.kind == .transferNotice)
+  }
+
+  static func readerPostedAt(_ stated: ExtractStatedDate?, internalDateMs: Int64) -> (String, String)? {
+    guard let stated, let d = CivilDate(year: stated.year, month: stated.month, day: stated.day),
+      d != LocalClock.localDate(internalDateMs)
+    else { return Instant.iso(internalDateMs).map { ($0, "time") } }
+    let start = LocalClock.startOfDay(d)
+    if let m = stated.minuteOfDay { return Instant.iso(start + Int64(m) * 60_000).map { ($0, "time") } }
+    return Instant.iso(start).map { ($0, "day") }
   }
 
   public static func unparsed(raw: [UInt8], messageID: String, internalDateMs: Int64, spam: Bool) -> ParsedMail {
@@ -344,6 +363,7 @@ public enum MessageDisposer {
       && (m.recipient == .confirmed || (m.recipient == .unconfirmed && card == "known"))
       && card != "not_mine"
       && (m.gates.reader == nil || m.readerConfident == true)
+      && m.held != true
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision = decided.category == nil ? refundDecision(m, f) ?? decided : decided
 

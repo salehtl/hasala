@@ -103,13 +103,18 @@ enum MailRules {
   }
 
   static func isPending(_ input: ExtractInput) -> Bool {
+    pendingSignal(input) != .none
+  }
+
+  static func pendingSignal(_ input: ExtractInput) -> ExtractPending {
     let lines = foldedLines(input.text)
     let statuses = statusValues(lines)
     if !statuses.isEmpty {
-      return statuses.contains { RuleText.has(StatusLexicon.pendingValue, $0) }
+      return statuses.contains { RuleText.has(StatusLexicon.pendingValue, $0) } ? .status : .none
     }
     let body = ([RuleText.fold(input.subject)] + lines).joined(separator: "\n")
     return RuleText.has(StatusLexicon.pendingPhrase, body) && !RuleText.has(StatusLexicon.completedPhrase, body)
+      ? .phrase : .none
   }
 
   static func kind(_ input: ExtractInput, direction: String?) -> ExtractMailKind {

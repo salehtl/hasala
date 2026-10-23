@@ -1,4 +1,5 @@
 import CoreExtract
+import CorePrimitives
 import Foundation
 
 public struct ReaderCounts: Sendable, Equatable, Codable {
@@ -60,14 +61,23 @@ public struct MailReaderState: Sendable, Equatable, Codable {
     change(&counts[key, default: ReaderCounts()])
   }
 
-  public func encoded() -> Data? {
+  static let log = CoreLog(category: "CoreMailbox")
+
+  public func encoded(limit: Int = byteLimit) -> Data? {
     let enc = JSONEncoder()
     enc.outputFormatting = [.sortedKeys]
-    guard let data = try? enc.encode(self) else { return nil }
-    if data.count <= Self.byteLimit { return data }
     var trimmed = self
-    trimmed.layouts = LearnedLayouts()
-    return try? enc.encode(trimmed)
+    var dropped = 0
+    while true {
+      guard let data = try? enc.encode(trimmed) else { return nil }
+      if data.count <= limit || !trimmed.layouts.dropLeastRecentSender() {
+        if dropped > 0 {
+          Self.log.notice("mailbox.reader_layouts_trimmed", .count("senders", dropped), .count("bytes", data.count))
+        }
+        return data
+      }
+      dropped += 1
+    }
   }
 
   public static func decoded(_ data: Data?) -> MailReaderState? {

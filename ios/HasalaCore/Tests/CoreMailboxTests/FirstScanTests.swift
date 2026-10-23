@@ -187,12 +187,7 @@ final class CommitLog: @unchecked Sendable {
       batches.append(order[at..<at + n].compactMap { dates[$0] })
       at += n
     }
-    let monthBatches = batches.filter { $0.allSatisfy { $0 >= Self.monthStart } }
-    let olderBatches = batches.filter { $0.allSatisfy { $0 < Self.monthStart } }
-    #expect(monthBatches.count + olderBatches.count == batches.count)
-    for run in [monthBatches, olderBatches] {
-      #expect(zip(run, run.dropFirst()).allSatisfy { ($0.max() ?? 0) <= ($1.min() ?? 0) })
-    }
+    #expect(zip(batches, batches.dropFirst()).allSatisfy { ($0.min() ?? 0) >= ($1.max() ?? 0) })
 
     let first = rig.listRequests.first?.query.first { $0.0 == "q" }?.1 ?? ""
     #expect(first.contains("after:\(Self.monthStart / 1000)"), "\(first)")

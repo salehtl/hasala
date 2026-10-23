@@ -21,6 +21,15 @@ public struct LearnedLayouts: Codable, Sendable, Equatable {
     senders[Self.senderKey(sender)] ?? SenderLayouts()
   }
 
+  @discardableResult
+  public mutating func dropLeastRecentSender() -> Bool {
+    guard let oldest = senders.min(by: { ($0.value.lastRead, $0.key) < ($1.value.lastRead, $1.key) })?.key else {
+      return false
+    }
+    senders.removeValue(forKey: oldest)
+    return true
+  }
+
   mutating func store(_ s: SenderLayouts, for sender: String) {
     clock += 1
     var s = s

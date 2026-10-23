@@ -1397,7 +1397,7 @@ public actor MailboxEngine {
       var exhausted = true
       for (pass, since) in passes.enumerated() {
         let (listed, done) = try await list(source, domains: domains, sinceSec: since, maxPages: maxPages)
-        for id in listed.reversed() where seen.insert(id).inserted { ids.append(id) }
+        for id in listed where seen.insert(id).inserted { ids.append(id) }
         if pass == 0 && passes.count > 1 { run.firstPass = seen }
         exhausted = done
       }
@@ -1415,7 +1415,7 @@ public actor MailboxEngine {
         repeat {
           if shouldStop(deadlineMs) { return true }
           let page = try await source.list(senders: group, since: since, pageToken: token)
-          let ids = page.ids.reversed().filter { seen.insert($0).inserted }
+          let ids = page.ids.filter { seen.insert($0).inserted }
           report.listed += ids.count
           token = page.nextPageToken
           pages += 1
@@ -1670,12 +1670,13 @@ public actor MailboxEngine {
           run.readerLoaded = true
         }
         var reader = run.reader
+        run.reader = nil
         parsed = MessageDisposer.parse(
           raw: [UInt8](bytes), messageID: id, internalDateMs: date, topLevelFrom: from, templates: templates,
           bankDomains: run.trusted, trusted: run.trusted, provider: provider.id, linkedAddress: run.address, spam: raw.spam,
           reader: &reader, analyze: { provider.analyzeAuthResults($0, inInbox: raw.inInbox, senderAddresses: senders) })
-        if parsed != .interrupted, reader != run.reader {
-          run.reader = reader
+        run.reader = reader
+        if parsed != .interrupted {
           run.readerUnsaved += 1
           if run.readerUnsaved >= max(1, config.readerSaveEvery) {
             c.reader = reader
