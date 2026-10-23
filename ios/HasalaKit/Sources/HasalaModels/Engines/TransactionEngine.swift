@@ -96,7 +96,9 @@ public enum TransactionEngine {
 
     var sortedBy: SortedBy?
     switch t.categorySource {
-    case .rule(let pattern): sortedBy = SortedBy(title: "Sorted by your rule", detail: "\(pattern) → \(c?.name ?? "")")
+    case .rule(let pattern):
+      let exact = s.rule(t.ruleID)?.match == .exact
+      sortedBy = SortedBy(title: "Sorted by your rule", detail: "\(exact ? t.merchant : pattern) → \(c?.name ?? "")")
     case .dictionary: sortedBy = SortedBy(title: "Sorted by Hasala's merchant list", detail: "\(t.merchant) → \(c?.name ?? "")")
     case .model where rejected: sortedBy = nil
     case .model(let tag):

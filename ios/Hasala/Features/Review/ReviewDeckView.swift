@@ -965,7 +965,10 @@ struct ReviewCardView<Actions: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
       .accessibilityElement(children: .combine)
-      HStack(spacing: 10) {
+      let buttons = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+        : AnyLayout(HStackLayout(spacing: 10))
+      buttons {
         if let notThis {
           Button("Not this", action: notThis)
             .buttonStyle(.pill(.secondary, size: .small))

@@ -28,7 +28,7 @@ struct ReviewGroupCardView<Actions: View>: View {
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(group.spoken(hidden: hidden))
       .accessibilityActions { actions() }
-      .accessibilityIdentifier("review.merchant")
+      .accessibilityIdentifier("review.card.group.\(group.id)")
       if let line = group.leftOutLine { leftOut(line) }
       if let note {
         ReviewNoteStrip(note: note, undo: undoNote)
@@ -48,8 +48,6 @@ struct ReviewGroupCardView<Actions: View>: View {
         .shadow(color: (lean?.pillHue.end ?? .clear).opacity(0.9 * strength), radius: 20,
                 x: ReviewGlow.shift(leanEdge).width, y: ReviewGlow.shift(leanEdge).height)
     }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("review.card.group.\(group.id)")
   }
 
   private var identity: some View {

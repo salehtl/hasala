@@ -234,6 +234,8 @@ public enum ActivityEngine {
       detail = t.joined("To review", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
+    } else if let source = t.autoSourceLabel, c != nil {
+      detail = t.joined(t.joined(c?.name ?? "", source), t.detailOverride ?? t.postedTime)
     } else {
       detail = t.joined(c?.name ?? "Uncategorized", t.detailOverride ?? t.postedTime)
     }

@@ -22,6 +22,7 @@ enum HomeRoute: Hashable {
   case accounts
   /// Insights, from the hero's "Insights" link, for Home's period.
   case insights
+  case sortedForYou
 }
 
 /// Pushed inside the Plan tab.

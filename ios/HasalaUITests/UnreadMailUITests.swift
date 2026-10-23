@@ -25,7 +25,7 @@ final class UnreadMailUITests: XCTestCase {
     let line = el(app, "review.tab.unreadable")
     XCTAssertTrue(line.waitForExistence(timeout: uiWait))
     XCTAssertTrue(line.label.contains("3 bank emails we couldn't read"), line.label)
-    XCTAssertEqual(el(app, "review.tab.count").label, "6 to sort · about a minute")
+    XCTAssertTrue(el(app, "review.tab.count").waitForLabel(containing: "6 payments to sort, from "), el(app, "review.tab.count").label)
     attach(app, "Unread mail · Review tab")
     try audit(app)
     line.tap()

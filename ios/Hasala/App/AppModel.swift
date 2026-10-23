@@ -73,6 +73,7 @@ final class AppModel {
   @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
   @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
   @ObservationIgnored private var reviewItemsMemo = Memo<HomeMemoKey, [ReviewItem]>()
+  @ObservationIgnored private var sortedForYouMemo = Memo<Int, SortedForYouSnapshot>()
   @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
@@ -195,6 +196,15 @@ final class AppModel {
     reviewItemsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
       ReviewEngine.items(store.state, in: reviewWindow)
     }
+  }
+
+  var sortedForYou: SortedForYouSnapshot {
+    sortedForYouMemo.value(for: store.revision) { SortedForYouEngine.snapshot(store.state, now: store.now) }
+  }
+
+  func fixCategory(_ txn: TxnID) {
+    router.open(.transaction(txn))
+    router.transaction = [.category]
   }
 
   var sortResult: SortResultRow? {

@@ -196,9 +196,15 @@ struct SortEachSheet: View {
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("review.sortEach.rest")
       }
-      Button("Done") { dismiss() }
-        .buttonStyle(.pill(.secondary, fill: true))
-        .accessibilityIdentifier("review.sortEach.done")
+      Button { dismiss() } label: {
+        Text("Done")
+          .hType(.callout.weight(.semibold))
+          .foregroundStyle(HColor.textLink)
+          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("review.sortEach.done")
     }
   }
 }

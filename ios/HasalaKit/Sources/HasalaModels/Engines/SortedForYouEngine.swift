@@ -90,6 +90,51 @@ public struct SortedForYouSnapshot: Sendable, Hashable {
 
 extension Txn {
   public var sortedForYou: Bool { !archived && splits.isEmpty && (filedByRule || autoFiledByCloudflare) }
+
+  public var autoSourceLabel: String? {
+    guard !inReview, splits.isEmpty else { return nil }
+    if filedByRule { return "Your rule" }
+    if autoFiledByCloudflare { return "Cloudflare AI" }
+    return nil
+  }
+
+  public var autoSourceSpoken: String? {
+    guard let label = autoSourceLabel else { return nil }
+    return "sorted by " + (label == "Your rule" ? "your rule" : label)
+  }
+}
+
+extension SortedForYouItem {
+  public static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+  public var sourceName: String {
+    switch source {
+    case .rule: "Your rule"
+    case .cloudflare: "Cloudflare AI"
+    }
+  }
+
+  public var overline: String { "\(sourceName) · \(latest.date.short)".uppercased() }
+
+  public var title: String { "\(merchant) → \(category.name)" }
+
+  public var spokenHeader: String {
+    let d = latest.date
+    let day = "\(Self.weekdays[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
+    return "\(sourceName), \(day). \(merchant) to \(category.name), \(ReviewEngine.payments(count))."
+  }
+}
+
+extension SortedForYouSnapshot {
+  public static let footnote =
+    "Payments Hasala's merchant list sorts are not listed here. You can still change any of them in Activity."
+  public static let intro = "What Hasala filed on its own this week. Tap a category to fix one."
+  public static let emptyLine = "Nothing sorted for you in the last 7 days."
+
+  public var homeSpoken: String? {
+    guard payments > 0 else { return nil }
+    return "\(payments) payment\(payments == 1 ? "" : "s") sorted for you this week. Look."
+  }
 }
 
 public enum SortedForYouEngine {

@@ -223,7 +223,7 @@ final class ReviewViewModel: ReviewDeckModel {
     guard case .some = app.performQuietly(.sortGroup(group.group, category, alwaysUse: alwaysUse, project: project)) else {
       return false
     }
-    for id in group.txnIDs { record(id, learnedRule: alwaysUse) }
+    for (i, id) in group.txnIDs.enumerated() { record(id, learnedRule: alwaysUse && i == 0) }
     return true
   }
 

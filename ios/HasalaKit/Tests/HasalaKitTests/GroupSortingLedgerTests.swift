@@ -410,3 +410,36 @@ struct GroupSortingLedgerTests {
     #expect(ActivityEngine.row(row, l.state).glyph == .review)
   }
 }
+
+@MainActor
+@Suite("Sorted for you · source lines")
+struct SortedForYouLineTests {
+  @Test func automaticFilingsNameTheirSourceInActivityAndTheSheet() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil))
+    let ruled = try #require(l.state.txn("bl-qasr-2"))
+    #expect(ruled.autoSourceLabel == "Your rule" && ruled.autoSourceSpoken == "sorted by your rule")
+    #expect(ActivityEngine.row(ruled, l.state).detail.hasPrefix("Groceries · Your rule · "))
+    let person = try #require(l.state.txn("bl-qasr-1"))
+    #expect(person.autoSourceLabel == nil)
+    #expect(!ActivityEngine.row(person, l.state).detail.contains("Your rule"))
+    let detail = try #require(TransactionEngine.detail("bl-qasr-2", l.state, now: l.now))
+    #expect(detail.sortedBy?.title == "Sorted by your rule")
+    #expect(detail.sortedBy?.detail == "Qasr Corner Store → Groceries")
+
+    var s = Scenario.mayaBacklog.state
+    for i in s.txns.indices where s.txns[i].merchantGroup == "n:brightwell academy" {
+      s.txns[i].needsReview = false
+      s.txns[i].categorizedAt = LocalDateTime(2026, 10, 8, 21, 10)
+    }
+    let cloud = try #require(s.txn("bl-bright-10"))
+    #expect(cloud.autoSourceLabel == "Cloudflare AI")
+    #expect(ActivityEngine.row(cloud, s).detail.hasPrefix("Shopping · Cloudflare AI · "))
+    let snapshot = SortedForYouEngine.snapshot(s, now: MayaLedger.now)
+    let item = try #require(snapshot.items.first { $0.source == .cloudflare })
+    #expect(item.overline == "CLOUDFLARE AI · THU 8 OCT")
+    #expect(item.title == "Brightwell Academy → Shopping")
+    #expect(item.spokenHeader == "Cloudflare AI, Thursday 8 October. Brightwell Academy to Shopping, \(ReviewEngine.payments(item.count)).")
+    #expect(snapshot.homeSpoken == "\(snapshot.payments) payments sorted for you this week. Look.")
+  }
+}
