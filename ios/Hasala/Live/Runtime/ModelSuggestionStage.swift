@@ -108,7 +108,7 @@ struct ModelSuggestionStage: Sendable {
     var cloudSorted: Int
   }
 
-  func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
+  nonisolated func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
     let reader = observer.reader
     do {
       let taxonomy = try reader.taxonomy()
@@ -137,7 +137,7 @@ struct ModelSuggestionStage: Sendable {
     }
   }
 
-  private func categorizer(_ taxonomy: TaxonomyView) throws -> Categorizer {
+  private nonisolated func categorizer(_ taxonomy: TaxonomyView) throws -> Categorizer {
     let rules = try observer.reader.rules().map {
       RuleInput(
         id: $0.id, patterns: $0.patterns, match: $0.match, category: $0.category, priority: $0.priority, enabled: $0.enabled,

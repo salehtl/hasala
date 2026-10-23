@@ -70,7 +70,7 @@ struct HomeModelTests {
 
   @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
     func item(_ id: String, _ title: String) -> NotificationItem {
-      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review)
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(nil))
     }
     let reads = NotificationReads()
     reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])

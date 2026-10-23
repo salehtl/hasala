@@ -17,31 +17,17 @@ struct CloudSortCardTests {
     return s
   }
 
-  @Test func thePhaseDecidesTheCard() {
-    #expect(S.of(Self.status(.off), dismissedRun: nil) == nil)
-    #expect(S.of(Self.status(.idle), dismissedRun: nil) == .ready)
-    #expect(S.of(Self.status(.idle) { $0.waitingNames = 4 }, dismissedRun: nil) == nil)
-    #expect(S.of(Self.status(.idle) { $0.waitingNames = 5 }, dismissedRun: nil) == .ready)
-    #expect(S.of(Self.status(.idle) { $0.remainingToday = 0; $0.nextRunNames = 0 }, dismissedRun: nil) == .paused(.dayCap))
-    #expect(S.of(Self.status(.running), dismissedRun: nil) == .running)
+  @Test func theOfferCardNeedsFiveNamesAndNoRun() {
+    #expect(S.offer(Self.status(.off)) == nil)
+    #expect(S.offer(Self.status(.idle)) == .ready)
+    #expect(S.offer(Self.status(.idle) { $0.waitingNames = 4 }) == nil)
+    #expect(S.offer(Self.status(.idle) { $0.waitingNames = 5 }) == .ready)
+    #expect(S.offer(Self.status(.idle) { $0.remainingToday = 0; $0.nextRunNames = 0 }) == .paused(.dayCap))
+    #expect(S.offer(Self.status(.running)) == nil)
     for pause: CloudSortStatus.Pause in [.offline, .background, .busy(untilMs: 1), .rateLimited(untilMs: 2), .runCap, .dayCap] {
-      #expect(S.of(Self.status(.paused(pause)), dismissedRun: nil) == .paused(pause))
+      #expect(S.offer(Self.status(.paused(pause))) == nil)
     }
-  }
-
-  @Test func theDoneCardStaysUntilItsRunIsDismissed() {
-    let done = Self.status(.done) { $0.lastRunEndedMs = 1_000 }
-    #expect(S.of(done, dismissedRun: nil) == .done)
-    #expect(S.of(done, dismissedRun: 999) == .done)
-    #expect(S.of(done, dismissedRun: 1_000) == nil)
-    let more = Self.status(.done) {
-      $0.lastRunEndedMs = 1_000
-      $0.waitingNames = 12
-      $0.remainingToday = 100
-      $0.nextRunNames = 12
-    }
-    #expect(S.of(more, dismissedRun: 1_000) == .ready)
-    #expect(S.done.offersCheckSuggestions && !S.ready.offersCheckSuggestions && !S.running.offersCheckSuggestions)
+    #expect(S.offer(Self.status(.done) { $0.waitingNames = 12; $0.remainingToday = 100; $0.nextRunNames = 12 }) == .ready)
   }
 
   @Test func theTimeLeftIsTheNamesLeftAt24AMinuteRoundedUp() {
