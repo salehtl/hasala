@@ -10,31 +10,6 @@ public struct MerchantGroupRef: Sendable, Hashable, Codable, Identifiable {
   public var id: String { "\(direction.rawValue).\(key)" }
 }
 
-public struct SortReceipt: Sendable, Hashable, Codable, Identifiable {
-  public var id: Int
-  public var group: MerchantGroupRef?
-  public var merchant: String
-  public var categoryID: CategoryID
-  public var txnIDs: [TxnID]
-  public var ruleID: RuleID?
-  public var undo: UndoToken?
-
-  public init(
-    id: Int, group: MerchantGroupRef?, merchant: String, categoryID: CategoryID, txnIDs: [TxnID],
-    ruleID: RuleID? = nil, undo: UndoToken? = nil
-  ) {
-    self.id = id
-    self.group = group
-    self.merchant = merchant
-    self.categoryID = categoryID
-    self.txnIDs = txnIDs
-    self.ruleID = ruleID
-    self.undo = undo
-  }
-
-  public var count: Int { txnIDs.count }
-}
-
 extension Txn {
   public var groupRef: MerchantGroupRef? { merchantGroup.map { MerchantGroupRef(key: $0, direction: direction) } }
 
@@ -69,8 +44,6 @@ extension Txn {
     case .dictionary, .model, nil: false
     }
   }
-
-  public func inGroup(_ key: String) -> Bool { (merchantGroup ?? merchantKey) == key }
 
   public var canAlwaysUse: Bool { merchantGroup != nil && splits.isEmpty && GroupRule.pattern(spelling) != nil }
 

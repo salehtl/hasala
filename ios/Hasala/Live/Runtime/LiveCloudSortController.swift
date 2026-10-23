@@ -104,13 +104,7 @@ final class LiveCloudSortController: CloudSortControlling {
     snapshot: BacklogSnapshot?, view: ModelSuggestionStage.BacklogView?, enabled: Bool
   ) -> CloudSortStatus {
     let shown: CloudSortStatus.Phase = enabled ? phase(snapshot?.record.run, hold: snapshot?.hold) : .off
-    let holding: Bool
-    switch shown {
-    case .running, .paused: holding = true
-    case .off, .idle, .done: holding = false
-    }
-    return CloudSortStatus(
-      phase: shown, pendingTxnIDs: holding ? view?.pendingTxnIDs ?? [] : [], cloudSortedCount: view?.cloudSorted ?? 0)
+    return CloudSortStatus(phase: shown, cloudSortedCount: view?.cloudSorted ?? 0)
   }
 
   nonisolated static func phase(_ run: BacklogRunRecord.Run?, hold: BacklogSnapshot.Hold?) -> CloudSortStatus.Phase {

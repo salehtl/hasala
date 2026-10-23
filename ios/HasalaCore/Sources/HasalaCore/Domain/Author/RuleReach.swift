@@ -213,17 +213,6 @@ public enum RuleReach {
 }
 
 extension OpAuthor {
-  public mutating func rejectCategory(merchantKey: String, category: String, rejected: Bool) {
-    add(
-      .merchantCategoryRejected,
-      [("merchant_key", .string(merchantKey)), ("category", .string(category)), ("rejected", .bool(rejected))])
-  }
-
-  public mutating func reject(keys: [String], category: String, rejected: Bool) {
-    var seen: Set<String> = []
-    for k in keys where seen.insert(k).inserted { rejectCategory(merchantKey: k, category: category, rejected: rejected) }
-  }
-
   public typealias GroupRulePlan = (
     id: String?, parentVersion: Int64?, draft: RuleDraft, unchanged: Bool, trims: [RuleSnapshot]
   )

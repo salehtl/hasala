@@ -337,7 +337,8 @@ struct CategoryManagementTests {
     #expect(c.id == "c_mock1")
     #expect(ledger.state.rules.contains { $0.categoryID == c.id })
     #expect(ledger.state.txns.filter { $0.categoryID == c.id }.count > 1)
-    #expect(ledger.state.sortReceipt?.txnIDs.first == row.id)
+    #expect(token.batch && token.title.hasPrefix("VPN for "))
+    #expect(ledger.state.txn(row.id)?.categorySource == .user)
 
     ledger.undo(token)
     #expect(ledger.state.txns == before.txns)

@@ -29,6 +29,7 @@ final class AppModel {
     /// The edit the toast's "Undo" takes back.
     var undo: UndoToken?
     var earlier: [UndoToken] = []
+    var lasting = false
   }
 
   let store: any LedgerStore
@@ -71,7 +72,6 @@ final class AppModel {
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
   @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
-  @ObservationIgnored private var reviewItemsMemo = Memo<HomeMemoKey, [ReviewItem]>()
   @ObservationIgnored private var sortedForYouMemo = Memo<Int, SortedForYouSnapshot>()
   @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
@@ -187,12 +187,6 @@ final class AppModel {
     }
   }
 
-  var reviewItems: [ReviewItem] {
-    reviewItemsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
-      ReviewEngine.items(store.state, in: reviewWindow)
-    }
-  }
-
   var sortedForYou: SortedForYouSnapshot {
     sortedForYouMemo.value(for: store.revision) { SortedForYouEngine.snapshot(store.state, now: store.now) }
   }
@@ -200,35 +194,6 @@ final class AppModel {
   func fixCategory(_ txn: TxnID) {
     router.open(.transaction(txn))
     router.transaction = [.category]
-  }
-
-  var sortResult: SortResultRow? {
-    guard var row = SortResultEngine.row(store.state, in: reviewWindow) else { return nil }
-    if let undo = row.undo, (store as? UndoAvailability)?.canUndo(undo) == false { row.undo = nil }
-    return row
-  }
-
-  func undoSortResult() {
-    guard let undo = sortResult?.undo else { return }
-    store.undo(undo)
-    dismissToast()
-  }
-
-  func stopSortResultRule() {
-    guard let rule = sortResult?.ruleID else { return }
-    perform(.stopRule(rule))
-  }
-
-  func dismissSortResult() { perform(.dismissSortReceipt) }
-
-  @discardableResult
-  func performQuietly(_ edit: LedgerEdit) -> UndoToken?? {
-    do {
-      return .some(try store.apply(edit))
-    } catch {
-      show(Toast(disc: .note(.info), title: Self.message(for: error)))
-      return nil
-    }
   }
 
   var reviewElsewhere: ReviewElsewhere? {
@@ -315,7 +280,7 @@ final class AppModel {
         show(Toast(disc: .done, title: last.title))
       } else {
         let earlier = tokens.reversed().filter { check?.canUndo($0) != false }
-        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
+        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier, lasting: last.batch))
       }
     }
     return true
@@ -396,12 +361,17 @@ final class AppModel {
 
   private func scheduleToastEnd() {
     toastTask?.cancel()
-    let dwell = UIAccessibility.isVoiceOverRunning ? HMotion.toastDwellVoiceOver : HMotion.toastDwell
+    let dwell = Self.dwell(lasting: toast?.lasting == true, voiceOver: UIAccessibility.isVoiceOverRunning)
     toastTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(dwell))
       guard !Task.isCancelled else { return }
       self?.toast = nil
     }
+  }
+
+  static func dwell(lasting: Bool, voiceOver: Bool) -> Double {
+    let base = lasting ? HMotion.undoLineDwell : HMotion.toastDwell
+    return voiceOver ? max(base, HMotion.toastDwellVoiceOver) : base
   }
 
   /// What VoiceOver says when a toast appears: the message, then the action it offers.

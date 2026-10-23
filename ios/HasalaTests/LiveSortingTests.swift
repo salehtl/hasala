@@ -17,7 +17,7 @@ import Testing
 @testable import Hasala
 
 @MainActor
-@Suite("Live sorting: groups, reach-back, Not this and undo")
+@Suite("Live sorting: merchant groups, reach-back and undo")
 struct LiveSortingTests {
   typealias Mapper = LiveLedgerMapperTests
 
@@ -136,7 +136,7 @@ struct LiveSortingTests {
   static let tailscaleRef = MerchantGroupRef(key: "n:tailscale", direction: .out)
   static let brightwellRef = MerchantGroupRef(key: "n:brightwell academy", direction: .out)
 
-  @Test func theMapperFillsGroupsReachAndTheGroupCard() async throws {
+  @Test func theMapperFillsGroupsAndReachAndEachPaymentIsItsOwnCard() async throws {
     let l = try await Self.ledger(suite: "sorting.map", rows: Self.tailscale, guesses: ["bright": "shopping"])
     let s = l.store.state
     let ts = Set((l.ids["com"] ?? []) + (l.ids["inc"] ?? []) + (l.ids["paypal"] ?? []))
@@ -148,92 +148,9 @@ struct LiveSortingTests {
     #expect(s.txn(l.ids["refund"]![0])?.groupRef == MerchantGroupRef(key: "n:tailscale", direction: .in))
     #expect(s.txn(l.ids["alnoorT"]![0])?.merchantGroup == "n:al noor trading")
     #expect(s.txn(l.ids["alnoorP"]![0])?.merchantGroup == "n:al noor pharmacy")
-    let card = try #require(ReviewEngine.groupCard(Self.tailscaleRef, s))
-    #expect(card.total == 5 && Set(card.spellings) == ["TAILSCALE.COM", "TAILSCALE INC", "PAYPAL *TAILSCALE"])
-    #expect(card.leftOut.map(\.txnID) == l.ids["unverified"])
-    let items = ReviewEngine.items(s)
-    #expect(items.contains { if case .group(let g) = $0 { g.group == Self.tailscaleRef } else { false } })
-  }
-
-  @Test func theJourneySortsAGroupRejectsAGuessUndoesAndASecondDeviceAgrees() async throws {
-    let l = try await Self.ledger(suite: "sorting.journey", rows: Self.tailscale, guesses: ["bright": "shopping"])
-    let ts = (l.ids["com"] ?? []) + (l.ids["inc"] ?? []) + (l.ids["paypal"] ?? [])
-    let before = try ts.map { try #require(try l.row($0)) }
-    let sort = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: true, project: nil)))
-    #expect(sort.title == "Sorted 5 Tailscale.com as Subscriptions" || sort.title.hasPrefix("Sorted 5 "))
-    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.category == "subscriptions" } }
-    for id in ts {
-      let r = try #require(try l.row(id))
-      #expect(r.categorySource == "user" && !r.needsReview && r.reviewLane == nil)
-    }
-    #expect(try l.row(l.ids["unverified"]![0])?.category == nil)
-    #expect(try l.row(l.ids["unverified"]![0])?.needsReview == true)
-    #expect(try l.row(l.ids["refund"]![0])?.category == nil)
-    let rule = try #require(try l.reader.rules().first { $0.origin == "learned" })
-    #expect(rule.match == "exact" && Set(rule.patterns) == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
-    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID == rule.id }
-    let receipt = try #require(l.store.state.sortReceipt)
-    #expect(receipt.count == 5 && receipt.undo == sort && receipt.categoryID == "subscriptions")
-    let row = try #require(SortResultEngine.row(l.store.state, in: .month(MayaLedger.october)))
-    #expect(row.otherMonths == 2 && row.canStopRule && row.detail == "Including 2 from other months")
-
-    let bright = l.ids["bright"] ?? []
-    let notThis = try #require(try l.store.apply(.notThis(Self.brightwellRef, "shopping")))
-    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == nil } }
-    #expect(try l.reader.rejections()["n:brightwell academy"] == ["shopping"])
-    #expect(try bright.allSatisfy { try l.row($0)?.categorySource == "none" && l.row($0)?.needsReview == true })
-    try await Mapper.eventually { l.store.state.txn(bright[0])?.rejectedCategories == ["shopping"] }
-    #expect(l.store.state.txn(bright[0])?.reviewSuggestion == nil)
-    let pending = try l.a.context.store.pendingOps()
-    #expect(pending.filter { $0.opType == "merchant_category_rejected" }.count == 1)
-
-    l.store.undo(notThis)
-    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == "shopping" } }
-    for id in bright {
-      let r = try #require(try l.row(id))
-      #expect(r.categorySource == "model" && r.categorySourceRef == "cf-clef/1" && r.needsReview)
-    }
-    #expect(try l.reader.rejections().isEmpty)
-
-    l.store.undo(sort)
-    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.category == nil } }
-    for (id, old) in zip(ts, before) {
-      let r = try #require(try l.row(id))
-      #expect(r.categorySource == old.categorySource && r.needsReview == old.needsReview && r.reviewLane == old.reviewLane)
-    }
-    try await Mapper.eventually { try l.reader.rules().isEmpty }
-    try await Mapper.eventually { l.store.state.sortReceipt == nil }
-
-    let ops = try l.a.context.store.pendingOps().map { try Self.decode($0) }
-    let other = try Mapper.account()
-    var rows: [FoldRow] = []
-    var seq: Int64 = 0
-    var blob: [Op] = []
-    for op in ops {
-      if op.type.travelsAlone || blob.contains(where: { $0.type.travelsAlone }) {
-        if !blob.isEmpty {
-          seq += 1
-          rows.append(FoldRow(seq: seq, writerID: Mapper.writer.string, counter: seq, outcome: .opened(plaintext: Data(try OpCodec.encodeBlobOps(blob)), ops: blob)))
-        }
-        blob = []
-      }
-      blob.append(op)
-    }
-    if !blob.isEmpty {
-      seq += 1
-      rows.append(FoldRow(seq: seq, writerID: Mapper.writer.string, counter: seq, outcome: .opened(plaintext: Data(try OpCodec.encodeBlobOps(blob)), ops: blob)))
-    }
-    let state = try LedgerFold.page(rows, onto: State())
-    #expect(state.anomalies.isEmpty)
-    try other.projection.project(state, pending: [], writerID: Mapper.writer.string, dictionary: AccountRuntime.dictionary, projectedAtMs: Mapper.anchor)
-    let mapped = try LedgerStateMapper.map(other.projection.reader, context: Mapper.context())
-    for id in ts + bright + (l.ids["unverified"] ?? []) {
-      #expect(mapped.txn(id)?.categoryID == l.store.state.txn(id)?.categoryID)
-      #expect(mapped.txn(id)?.needsReview == l.store.state.txn(id)?.needsReview)
-      #expect(mapped.txn(id)?.reachable == l.store.state.txn(id)?.reachable)
-    }
-    #expect(try other.projection.reader.rejections().isEmpty)
-    #expect(state.merchantRejections.values.allSatisfy { !$0.rejected })
+    let cards = ReviewEngine.cards(s)
+    #expect(Set(cards.map(\.id)).isSuperset(of: ts) && cards.count == Set(cards.map(\.id)).count)
+    #expect(cards.filter { ts.contains($0.id) }.allSatisfy { $0.group == Self.tailscaleRef && $0.canAlwaysUse })
   }
 
   @Test func alwaysUseItFromOneRowReachesTheGroupWithExactPatternsAndUndoesExactly() async throws {
@@ -253,7 +170,7 @@ struct LiveSortingTests {
     }
     #expect(try l.row(com[0])?.categorySource == "user")
     #expect(try l.row(l.ids["alnoorT"]![0])?.category == nil)
-    try await Mapper.eventually { l.store.state.sortReceipt?.count == 5 }
+    #expect(token.batch)
 
     l.store.undo(token)
     try await Mapper.eventually { try l.row(paypal)?.category == "shopping" }
@@ -268,13 +185,13 @@ struct LiveSortingTests {
       (0..<(10 - n)).map { k in ("shop", Row(raw: "SOME SHOP*REF \(n)", minor: Int64(1_000 + n * 10 + k), currency: "AED", day: 1 + (k % 9))) }
     }
     let l = try await Self.ledger(suite: "sorting.nine", rows: rows)
-    let ref = MerchantGroupRef(key: "n:some shop", direction: .out)
-    let token = try #require(try l.store.apply(.sortGroup(ref, "shopping", alwaysUse: true, project: nil)))
-    try await Mapper.eventually { try (l.ids["shop"] ?? []).allSatisfy { try l.row($0)?.category == "shopping" } }
+    let first = try #require(l.ids["shop"]?.first)
+    let token = try #require(try l.store.apply(.categorize(first, "shopping", learnRule: true, project: nil)))
+    try await Mapper.eventually { try (l.ids["shop"] ?? []).filter { try l.row($0)?.category == "shopping" }.count == 44 }
     let rule = try #require(try l.reader.rules().first)
     #expect(rule.patterns.count == 8 && rule.defect == nil)
     #expect(try l.reader.forkNotices(kind: "rule").isEmpty)
-    #expect(token.title.hasPrefix("Sorted 45 "))
+    #expect(token.title.hasPrefix("Shopping for 44 ") && token.batch, "\(token.title)")
   }
 
   @Test func stopThisRuleRemovesTheRuleAndKeepsWhatItSorted() async throws {
@@ -295,27 +212,6 @@ struct LiveSortingTests {
     l.store.undo(stop)
     try await Mapper.eventually { try l.reader.rules().count == 1 }
     #expect(try l.reader.rules().first?.enabled == true)
-  }
-
-  @Test func theResultRowSurvivesARelaunchWithoutUndoAndCanBeDismissed() async throws {
-    let l = try await Self.ledger(suite: "sorting.relaunch", rows: Self.tailscale)
-    let token = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: true, project: nil)))
-    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID != nil }
-    #expect(l.store.state.sortReceipt?.undo == token)
-    let relaunched = LiveLedgerStore(
-      reader: l.a.projection.reader,
-      author: LedgerEditAuthor(observer: l.a.observer, outbox: l.a.outbox, memory: SortKeeper(store: SortMemoryStore(l.a.context.store)), trust: l.trust),
-      profile: Mapper.context().profile, prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "sorting.relaunch")!), clock: { MayaLedger.now })
-    await relaunched.reload()
-    let receipt = try #require(relaunched.state.sortReceipt)
-    #expect(receipt.undo == nil && receipt.ruleID != nil && receipt.count == 5)
-    let row = try #require(SortResultEngine.row(relaunched.state))
-    #expect(row.undo == nil && row.canStopRule)
-    try relaunched.apply(.dismissSortReceipt)
-    #expect(relaunched.state.sortReceipt == nil)
-    try await Mapper.eventually { SortKeeper(store: SortMemoryStore(l.a.context.store)).value.receipt == nil }
-    await relaunched.reload()
-    #expect(relaunched.state.sortReceipt == nil)
   }
 
   @Test func undoAllInSortedForYouKeepsRowsInReviewAfterTheNextPull() async throws {
@@ -449,22 +345,6 @@ struct LiveSortingTests {
     #expect(try l.reader.rules().count == 1)
   }
 
-  @Test func undoingAGroupSortWithAProjectTakesTheProjectOffEveryPayment() async throws {
-    let l = try await Self.ledger(suite: "sorting.project", rows: Self.tailscale)
-    let project = l.store.newProjectID()
-    try l.store.apply(.saveProject(project, ProjectDraft(name: "Home lab")))
-    try await Mapper.eventually { try l.reader.projects().contains { $0.id == project } }
-    await l.store.reload()
-    let ts = (l.ids["com"] ?? []) + (l.ids["inc"] ?? []) + (l.ids["paypal"] ?? [])
-    let token = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: false, project: project)))
-    #expect(ts.allSatisfy { l.store.state.txn($0)?.projectID == project })
-    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.projectID == project && l.row($0)?.category == "subscriptions" } }
-    l.store.undo(token)
-    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.projectID == nil && l.row($0)?.category == nil } }
-    await l.store.reload()
-    #expect(ts.allSatisfy { l.store.state.txn($0)?.projectID == nil })
-  }
-
   @Test func alwaysUseItOnANineSpellingGroupCountsOnlyWhatItsEightPatternsFile() async throws {
     let rows: [(String, Row)] = (1...9).flatMap { n in
       (0..<(10 - n)).map { k in ("shop\(n)", Row(raw: "SOME SHOP*REF \(n)", minor: Int64(1_000 + n * 10 + k), currency: "AED", day: 1 + (k % 9))) }
@@ -472,37 +352,12 @@ struct LiveSortingTests {
     let l = try await Self.ledger(suite: "sorting.nine.learn", rows: rows)
     let filed = try #require(l.ids["shop9"]?.first)
     let token = try #require(try l.store.apply(.categorize(filed, "shopping", learnRule: true, project: nil)))
-    #expect(token.title.hasPrefix("Shopping for 43 ") && token.title.hasSuffix(" payments"), "\(token.title)")
-    #expect(l.store.state.sortReceipt?.count == 43)
+    #expect(token.title.hasPrefix("Shopping for 43 ") && token.title.hasSuffix(" payments") && token.batch, "\(token.title)")
     let left = l.ids["shop8"] ?? []
     #expect(left.count == 2 && left.allSatisfy { l.store.state.txn($0)?.needsReview == true })
     try await Mapper.eventually { try (l.ids["shop1"] ?? []).allSatisfy { try l.row($0)?.category == "shopping" } }
-    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID != nil }
-    #expect(l.store.state.sortReceipt?.count == 43)
+    try await Mapper.eventually { try l.reader.rules().count == 1 }
     #expect(try left.allSatisfy { try l.row($0)?.category == nil })
-  }
-
-  @Test func undoingANotThisTakesBackTheCorrectionsItCounted() async throws {
-    let l = try await Self.ledger(suite: "sorting.trust.undo", rows: Self.tailscale)
-    let bright = l.ids["bright"] ?? []
-    let reader = l.reader
-    let filed = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
-      for id in bright {
-        guard let v = try? reader.txn(id)?.version else { continue }
-        o.categorize(txnID: id, parentVersion: v, category: "shopping", needsReview: false, source: CategorySource(kind: .model, model: "cf-clef/1"))
-      }
-    }
-    try await l.a.outbox.enqueue(try #require(filed).ops)
-    try await l.a.observer.reproject()
-    await l.store.reload()
-    #expect(l.trust.autoFiles("shopping"))
-    let token = try #require(try l.store.apply(.notThis(Self.brightwellRef, "shopping")))
-    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == nil } }
-    #expect(!l.trust.autoFiles("shopping"))
-    l.store.undo(token)
-    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == "shopping" } }
-    try await Mapper.eventually { l.trust.autoFiles("shopping") }
-    #expect(l.trust.counts.corrections["shopping"] == nil)
   }
 
   @Test func pausingARuleThatReachedBackHoldsEveryRowItFiled() async throws {
@@ -557,29 +412,6 @@ struct LiveSortingTests {
     l.store.undo(token)
     try await Mapper.eventually { try l.row(id)?.category == "entertainment" }
     #expect(try l.row(id)?.categorySource == "model" && l.row(id)?.needsReview == true)
-  }
-
-  @Test func aNotThisKeepsTheRejectedCloudflareGuessSoNoSweepSendsTheNameAgain() async throws {
-    let l = try await Self.ledger(suite: "sorting.kept", rows: Self.tailscale, guesses: ["bright": "shopping"])
-    let bright = l.ids["bright"] ?? []
-    let cache = FMCache(l.a.context.store)
-    let subject = Canon.subject("BRIGHTWELL ACADEMY FZE")
-    #expect(try cache.keptAnswer(subject: subject, modelTag: "cf-clef/1") == nil)
-    _ = try #require(try l.store.apply(.notThis(Self.brightwellRef, "shopping")))
-    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == nil } }
-    try await Mapper.eventually { try cache.keptAnswer(subject: subject, modelTag: "cf-clef/1") == "shopping" }
-    let cloud = ModelSuggestionStageTests.Counting("cf-clef/1", answer: .category("shopping"))
-    let device = ModelSuggestionStageTests.Counting("apple-fm/27.1", answer: .unknown)
-    let anchor = Mapper.anchor
-    let stage = ModelSuggestionStage(
-      observer: l.a.observer, outbox: l.a.outbox, cache: cache, dictionary: AccountRuntime.dictionary, onDevice: device, cloud: cloud,
-      onDeviceAlone: false, nowMs: { anchor + 400 * 86_400_000 })
-    _ = await stage.run(.foreground)
-    #expect(!cloud.calls.contains(subject))
-    #expect(device.calls.contains(subject))
-    _ = await stage.backlogPass(BacklogSort.Memo(), dayLeft: 100)
-    #expect(!cloud.calls.contains(subject))
-    #expect(try bright.allSatisfy { try l.row($0)?.category == nil })
   }
 
   static let wide: [(String, Row)] = [
@@ -658,9 +490,9 @@ struct LiveSortingTests {
       let was = try #require(before[id(name)])
       #expect(now.version == was.version && now.category == was.category && now.categorySource == was.categorySource, "\(name)")
     }
-    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID == rule.id }
-    let receipt = try #require(l.store.state.sortReceipt)
-    #expect(Set(receipt.txnIDs) == Set([id("pick")] + reached))
+    #expect(token.batch)
+    try await Mapper.eventually { l.memory.value.batches.last?.ruleID == rule.id }
+    #expect(Set(try #require(l.memory.value.batches.last).prior.keys) == Set(reached))
     #expect(l.trust.counts.corrections == corrections && l.trust.autoFiles("shopping"))
 
     l.store.undo(token)
@@ -770,26 +602,6 @@ struct LiveSortingTests {
     #expect(try l.row(id("dict"))?.categorySource == "dictionary" && l.row(id("auto"))?.categorySource == "model")
     #expect(try l.row(id("ruled"))?.categorySourceRef == old)
     #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
-  }
-
-  @Test func aGroupCardsAlwaysUseFilesOnlyTheWaitingRowsItCounts() async throws {
-    let (l, _) = try await Self.wideLedger(suite: "sorting.wide.group")
-    let id = { (name: String) in l.ids[name]![0] }
-    let card = try #require(ReviewEngine.groupCard(Self.tailscaleRef, l.store.state))
-    #expect(card.total == 2)
-    let filed = ["dict", "ruled", "auto", "mine", "already", "split"]
-    let before = try Dictionary(uniqueKeysWithValues: filed.map { (id($0), try #require(try l.row(id($0)))) })
-    let token = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: true, project: nil)))
-    #expect(token.title.hasPrefix("Sorted 2 ") && token.title.hasSuffix(" as Subscriptions"), "\(token.title)")
-    try await Mapper.eventually { try ["pick", "waiting"].allSatisfy { try l.row(id($0))?.category == "subscriptions" } }
-    try await Mapper.eventually { try l.reader.rules().contains { $0.origin == "learned" } }
-    for name in filed {
-      let now = try #require(try l.row(id(name)))
-      let was = try #require(before[id(name)])
-      #expect(now.version == was.version && now.category == was.category && now.categorySource == was.categorySource, "\(name)")
-    }
-    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID != nil }
-    #expect(l.store.state.sortReceipt?.count == 2)
   }
 
   @Test func aTalabatRuleNeverReachesTalabatMart() async throws {

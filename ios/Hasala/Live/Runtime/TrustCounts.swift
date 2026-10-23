@@ -33,11 +33,6 @@ nonisolated final class TrustCounts: Sendable {
     }
   }
 
-  func accepted(_ category: String, modelTag: String?) {
-    guard Self.cloud(modelTag), builtins.contains(category) else { return }
-    change { $0.accepts[category, default: 0] += 1 }
-  }
-
   @discardableResult
   func corrected(_ category: String, modelTag: String?) -> Bool {
     guard Self.cloud(modelTag), builtins.contains(category) else { return false }

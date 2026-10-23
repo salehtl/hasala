@@ -98,6 +98,7 @@ public enum HMotion {
   /// How long a toast stays (Proposed on page 14); longer while VoiceOver runs.
   public static let toastDwell = 4.0
   public static let toastDwellVoiceOver = 8.0
+  public static let undoLineDwell = 6.0
 
   // MARK: Distances, scales and angles
 

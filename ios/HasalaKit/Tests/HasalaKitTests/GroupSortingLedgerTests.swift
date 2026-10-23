@@ -3,81 +3,18 @@ import HasalaModels
 import Testing
 
 @MainActor
-@Suite("In-memory ledger · group sorting")
+@Suite("In-memory ledger · sorting by merchant")
 struct GroupSortingLedgerTests {
-  let october = ReviewWindow.month(MayaLedger.october)
-
   func ledger() -> InMemoryLedger { InMemoryLedger(state: Scenario.mayaBacklog.state) }
 
   func tailscaleRows(_ l: InMemoryLedger) -> [Txn] { l.state.txns.filter { $0.groupRef == MayaBacklog.tailscale } }
-
-  @Test func sortingAGroupFilesEveryWaitingPaymentInOneEdit() throws {
-    let l = ledger()
-    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
-    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
-    let filed = tailscaleRows(l).filter { $0.id != "bl-ts-unverified" }
-    #expect(filed.count == 30)
-    #expect(filed.allSatisfy { $0.categoryID == "subscriptions" && $0.categorySource == .user && !$0.needsReview })
-    #expect(filed.allSatisfy { $0.categorizedAt == MayaLedger.now && !$0.reachable })
-    let unverified = try #require(l.state.txn("bl-ts-unverified"))
-    #expect(unverified.needsReview && unverified.categoryID == nil && unverified.reviewReason == .senderUnverified)
-    #expect(l.state.txn("bl-ts-refund")?.inReview == true)
-    #expect(l.state.rules == Scenario.mayaBacklog.state.rules)
-    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state) == nil)
-
-    let row = try #require(SortResultEngine.row(l.state, in: october))
-    #expect(row.line == "Sorted 30 Tailscale as Subscriptions")
-    #expect(row.detail == "Including 22 from other months")
-    #expect(row.spoken == "Sorted 30 Tailscale payments as Subscriptions, including 22 from other months.")
-    #expect(SortResultEngine.row(l.state)?.spoken == "Sorted 30 Tailscale payments as Subscriptions.")
-    #expect(!row.canStopRule)
-    #expect(row.undo == token)
-    #expect(SortResultEngine.row(l.state)?.detail == nil)
-
-    l.undo(token)
-    #expect(l.state.sortReceipt == nil)
-    #expect(try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)).count == 30)
-    #expect(tailscaleRows(l).allSatisfy { $0.categoryID == nil && $0.categorizedAt == nil })
-  }
-
-  @Test func alwaysUseItMakesARuleThatReachesBackOnlyInTheGroup() throws {
-    let l = ledger()
-    let token = try #require(
-      try l.apply(.sortGroup(MayaBacklog.alNoorTradingGroup, "groceries", alwaysUse: true, project: nil)))
-    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
-    #expect(rule.match == .exact)
-    #expect(rule.patterns == ["al noor trading llc"])
-    #expect(rule.categoryID == "groceries")
-    #expect(l.state.sortReceipt?.ruleID == rule.id)
-    #expect(SortResultEngine.row(l.state)?.canStopRule == true)
-    for id in ["bl-alnoor-p-1", "bl-alnoor-p-2"] {
-      #expect(l.state.txn(id)?.inReview == true)
-      #expect(l.state.txn(id)?.categoryID == nil)
-    }
-    l.undo(token)
-    #expect(!l.state.rules.contains { $0.id == rule.id })
-    #expect(l.state.txn("bl-alnoor-t-1")?.inReview == true)
-  }
-
-  @Test func theRuleLeavesWaitingPaymentsTheOtherWay() throws {
-    let l = ledger()
-    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil)))
-    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
-    let refund = try #require(l.state.txn("bl-ts-refund"))
-    #expect(refund.inReview && refund.categoryID == nil && refund.reachable)
-    #expect(l.state.sortReceipt?.count == 30)
-    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
-    #expect(Set(rule.patterns) == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
-    let unverified = try #require(l.state.txn("bl-ts-unverified"))
-    #expect(unverified.needsReview && unverified.categoryID == nil)
-  }
 
   @Test func alwaysUseFromOneSpellingReachesAllThreeTailscaleSpellingsWithExactPatterns() throws {
     let l = ledger()
     let first = try #require(l.state.txn("bl-ts-01"))
     #expect(first.spelling == "TAILSCALE.COM")
     let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
-    #expect(token.title == "Subscriptions for all 30 Tailscale payments")
+    #expect(token.title == "Subscriptions for all 30 Tailscale payments" && token.batch)
     let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
     #expect(rule.match == .exact && rule.patterns == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
     #expect(!rule.matches("paypal *netflix") && !rule.matches("tailscale"))
@@ -104,8 +41,8 @@ struct GroupSortingLedgerTests {
     }
     let l = InMemoryLedger(state: s)
     #expect(l.state.txns.filter { $0.groupRef == ref && $0.reachable }.count == 45)
-    try l.apply(.sortGroup(ref, "shopping", alwaysUse: true, project: nil))
-    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
+    try l.apply(.categorize("shop-1", "shopping", learnRule: true, project: nil))
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
     #expect(rule.patterns == (1...8).map { "some shop*ref \($0)" })
     #expect(GroupRule.patterns(filed: nil, members: []).isEmpty)
     #expect(GroupRule.pattern(String(repeating: "x", count: 129)) == nil && GroupRule.pattern("A  B ") == "a b")
@@ -114,13 +51,12 @@ struct GroupSortingLedgerTests {
   @Test func alwaysUseFromOneCardReachesBackWithinItsGroup() throws {
     let l = ledger()
     let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))
-    #expect(token.title == "Groceries for all 6 Qasr Corner Store payments")
+    #expect(token.title == "Groceries for all 6 Qasr Corner Store payments" && token.batch)
     let open = (1...6).map { "bl-qasr-\($0)" }
     #expect(open.allSatisfy { l.state.txn($0)?.categoryID == "groceries" && l.state.txn($0)?.needsReview == false })
     #expect(l.state.txn("bl-qasr-1")?.categorySource == .user)
     #expect(open.dropFirst().allSatisfy { l.state.txn($0)?.filedByRule == true })
     #expect(l.state.txn("bl-qasr-filed-2")?.categoryID == "shopping")
-    #expect(l.state.sortReceipt?.txnIDs.count == 6)
 
     let mine = SortedForYouEngine.snapshot(l.state, now: l.now)
     #expect(mine.items.count == 1)
@@ -174,133 +110,27 @@ struct GroupSortingLedgerTests {
     #expect(snap.payments == 3)
     #expect(snap.items.first?.sourceLine == "Sorted by Cloudflare AI")
     #expect(snap.items.first?.canStopRule == false)
-    let before = SuggestionsEngine.count(l.state)
+    func guesses() -> Int { ReviewEngine.queue(l.state).filter { $0.reviewSuggestion != nil }.count }
+    let before = guesses()
     try l.apply(.returnToReview(snap.items[0].txnIDs))
-    #expect(SuggestionsEngine.count(l.state) == before + 3)
+    #expect(guesses() == before + 3)
     #expect(l.state.txn("bl-bright-8")?.categoryID == MayaBacklog.wrongGuess)
     #expect(l.state.txn("bl-bright-8")?.needsReview == true)
     #expect(l.state.txn("bl-bright-7")?.needsReview == false)
     #expect(l.state.txn("dictionary-filed")?.needsReview == false)
   }
 
-  @Test func notThisForgetsTheGuessForTheWholeGroup() throws {
-    let l = ledger()
-    let before = SuggestionsEngine.count(l.state)
-    let token = try #require(try l.apply(.notThis(MayaBacklog.brightwellGroup, MayaBacklog.wrongGuess)))
-    #expect(token.title == "Hasala won't suggest Shopping for Brightwell Academy again")
-    let rows = l.state.txns.filter { $0.merchantGroup == "n:brightwell academy" }
-    #expect(rows.count == 4)
-    for t in rows {
-      #expect(t.categoryID == nil && t.categorySource == nil && t.needsReview && t.reachable)
-      #expect(t.rejectedCategories == [MayaBacklog.wrongGuess])
-      #expect(t.reviewSuggestion == nil)
-    }
-    #expect(SuggestionsEngine.count(l.state) == before - 4)
-    let card = try #require(ReviewEngine.groupCard(MayaBacklog.brightwellGroup, l.state))
-    #expect(card.suggestion == nil && card.count == 4)
-    #expect(l.state.txn("bl-saffron")?.rejectedCategories.isEmpty == true)
-
-    l.undo(token)
-    for t in l.state.txns where t.merchantGroup == "n:brightwell academy" {
-      #expect(t.categoryID == MayaBacklog.wrongGuess && t.isModelSourced && t.rejectedCategories.isEmpty)
-    }
-    #expect(SuggestionsEngine.count(l.state) == before)
-  }
-
-  @Test func undoingTheFirstOfTwoNotThisBringsItsGuessBack() throws {
-    let l = ledger()
-    let first = try #require(try l.apply(.notThis(MayaBacklog.brightwellGroup, MayaBacklog.wrongGuess)))
-    try l.apply(.notThis(MayaBacklog.brightwellGroup, "entertainment"))
-    l.undo(first)
-    for t in l.state.txns where t.merchantGroup == "n:brightwell academy" {
-      #expect(t.categoryID == MayaBacklog.wrongGuess && t.isModelSourced)
-      #expect(t.rejectedCategories == ["entertainment"])
-      #expect(t.reviewSuggestion == MayaBacklog.wrongGuess)
-    }
-    let card = try #require(ReviewEngine.groupCard(MayaBacklog.brightwellGroup, l.state))
-    #expect(card.suggestion?.id == MayaBacklog.wrongGuess)
-  }
-
-  @Test func aRejectedPairStaysRejectedForANewGuess() throws {
-    let l = ledger()
-    try l.apply(.notThis(MayaBacklog.qasrGroup, "groceries"))
-    #expect(l.state.txn("bl-qasr-filed-1")?.categoryID == "groceries")
-    #expect(l.state.txn("bl-qasr-filed-1")?.rejectedCategories == ["groceries"])
-    var s = l.state
-    for i in s.txns.indices where s.txns[i].id == "bl-qasr-2" {
-      s.txns[i].categoryID = "groceries"
-      s.txns[i].categorySource = .model(tag: "apple-fm/1")
-    }
-    #expect(s.txn("bl-qasr-2")?.reviewSuggestion == nil)
-  }
-
-  @Test func notThisWorksOnACardWithoutAGroup() throws {
-    let l = InMemoryLedger(state: Scenario.mayaSuggestions.state)
-    #expect(l.state.txn("sug-tim-8")?.reviewSuggestion == "dining")
-    let tim = try #require(l.state.txn("sug-tim-8"))
-    #expect(tim.merchantGroup == nil)
-    let ref = try #require(ReviewEngine.card(tim, l.state).group)
-    #expect(ref.key == "tim hortons")
-    try l.apply(.notThis(ref, "dining"))
-    #expect(l.state.txn("sug-tim-8")?.reviewSuggestion == nil)
-    #expect(l.state.txn("sug-tim-8")?.inReview == true)
-  }
-
   @Test func stopThisRuleKeepsWhatItSorted() throws {
     let l = ledger()
-    try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil))
-    let ruleID = try #require(l.state.sortReceipt?.ruleID)
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let ruleID = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") }?.id)
     let token = try #require(try l.apply(.stopRule(ruleID)))
-    #expect(token.title == "Stopped sorting Tailscale as Subscriptions")
+    #expect(token.title == "Stopped sorting Tailscale as Subscriptions" && !token.batch)
     #expect(l.state.rule(ruleID) == nil)
-    #expect(l.state.txn("bl-ts-01")?.categoryID == "subscriptions")
-    #expect(SortResultEngine.row(l.state)?.canStopRule == false)
+    #expect(l.state.txn("bl-ts-02")?.categoryID == "subscriptions")
     l.undo(token)
     #expect(l.state.rule(ruleID) != nil)
     #expect(throws: ActionError.notFound) { try l.apply(.stopRule("no-such-rule")) }
-  }
-
-  @Test func theResultRowStaysUntilDismissedOrReplaced() throws {
-    let l = ledger()
-    try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil))
-    try l.apply(.categorize("steam", "entertainment", learnRule: false, project: nil))
-    #expect(l.state.sortReceipt?.merchant == "Tailscale")
-    try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil))
-    #expect(l.state.sortReceipt?.merchant == "Qasr Corner Store")
-    #expect(try l.apply(.dismissSortReceipt) == nil)
-    #expect(l.state.sortReceipt == nil)
-    #expect(SortResultEngine.row(l.state) == nil)
-  }
-
-  @Test func aGroupSortLeavesSkippedPaymentsAndRefusesAnEmptyGroup() throws {
-    let l = ledger()
-    try l.apply(.skipReview("bl-ts-01"))
-    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
-    #expect(token.title == "Sorted 29 Tailscale as Subscriptions")
-    #expect(l.state.txn("bl-ts-01")?.inReview == true)
-    #expect(throws: ActionError.notFound) {
-      try l.apply(.sortGroup(MayaBacklog.brightwellGroup, "no-such-category", alwaysUse: false, project: nil))
-    }
-    #expect(throws: ActionError.notFound) {
-      try l.apply(.sortGroup(MerchantGroupRef(key: "nobody", direction: .out), "groceries", alwaysUse: false, project: nil))
-    }
-    #expect(throws: ActionError.notFound) {
-      try l.apply(.notThis(MerchantGroupRef(key: "nobody", direction: .out), "groceries"))
-    }
-  }
-
-  @Test func alwaysUseItFilesExactlyWhatTheCardCounted() throws {
-    let l = ledger()
-    try l.apply(.skipReview("bl-ts-01"))
-    let card = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state))
-    #expect(card.total == 29)
-    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil)))
-    #expect(token.title == "Sorted 29 Tailscale as Subscriptions")
-    #expect(l.state.sortReceipt?.count == card.total)
-    #expect(Set(l.state.sortReceipt?.txnIDs ?? []) == Set(card.txnIDs))
-    let skipped = try #require(l.state.txn("bl-ts-01"))
-    #expect(skipped.inReview && skipped.categoryID == nil)
-    #expect(l.state.txn("bl-ts-refund")?.inReview == true)
   }
 
   @Test func alwaysUseFromOneCardFilesASkippedPaymentToo() throws {
@@ -315,7 +145,7 @@ struct GroupSortingLedgerTests {
   @Test func aRuleLearnedAgainAfterStopGetsItsOwnID() throws {
     let l = ledger()
     try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil))
-    let first = try #require(l.state.sortReceipt?.ruleID)
+    let first = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") }?.id)
     #expect(first == "learned-bl-qasr-1")
     try l.apply(.stopRule(first))
     try l.apply(.categorize("bl-qasr-1", "shopping", learnRule: true, project: nil))
@@ -330,18 +160,13 @@ struct GroupSortingLedgerTests {
     #expect(l.state.txns.filter { $0.ruleID == first }.isEmpty)
   }
 
-  @Test func aGroupSortCanAddToAProject() throws {
-    let l = ledger()
-    try l.apply(.sortGroup(MayaBacklog.nimbusGroup, "subscriptions", alwaysUse: false, project: "japan"))
-    #expect(l.state.txns.filter { $0.merchantGroup == "n:nimbusnotes" }.allSatisfy { $0.projectID == "japan" })
-  }
-
   @Test func reachableFollowsEveryEdit() throws {
     let l = ledger()
     #expect(l.state.txn("bl-ts-01")?.reachable == true)
     #expect(l.state.txn("bl-ts-unverified")?.reachable == false)
     #expect(l.state.txn("bl-qasr-filed-1")?.reachable == false)
     let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: false, project: nil)))
+    #expect(token.title == "Sorted into Subscriptions" && !token.batch)
     #expect(l.state.txn("bl-ts-01")?.reachable == false)
     l.undo(token)
     #expect(l.state.txn("bl-ts-01")?.reachable == true)
@@ -349,51 +174,11 @@ struct GroupSortingLedgerTests {
 
   @Test func trackingTheBillKeepsTheGroupRepeatingMonthly() throws {
     let l = ledger()
-    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
+    #expect(ReviewEngine.repeatsMonthly(MayaBacklog.tailscale, l.state))
     try l.apply(.trackCandidate(MayaBacklog.candidate.id))
     #expect(!l.state.billCandidates.contains { $0.id == MayaBacklog.candidate.id })
     #expect(l.state.bills.first { $0.id == "bill-\(MayaBacklog.candidate.id)" }?.keys == ["tailscale.com"])
-    #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
-  }
-
-  @Test func aResultOfOnePaymentReadsWithoutACount() throws {
-    let l = ledger()
-    _ = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
-    var one = try #require(SortResultEngine.row(l.state))
-    one.count = 1
-    #expect(one.line == "Sorted Tailscale as Subscriptions")
-    #expect(one.spoken == "Sorted 1 Tailscale payment as Subscriptions.")
-    one.count = 2
-    #expect(one.line == "Sorted 2 Tailscale as Subscriptions")
-    #expect(SortResultRow.line(count: 1, merchant: "Tailscale", category: "Software") == "Sorted Tailscale as Software")
-  }
-
-  @Test func undoingTheBatchThatReplacedARowBringsTheEarlierRowBack() throws {
-    let l = ledger()
-    let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
-    let second = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
-    #expect(l.state.sortReceipt?.merchant == "Qasr Corner Store")
-    l.undo(second)
-    let row = try #require(SortResultEngine.row(l.state))
-    #expect(row.line == "Sorted 30 Tailscale as Subscriptions")
-    #expect(row.undo == first)
-    l.undo(try #require(row.undo))
-    #expect(l.state.sortReceipt == nil)
-    #expect(tailscaleRows(l).allSatisfy { $0.categoryID == nil })
-  }
-
-  @Test func anEarlierRowWhoseBatchIsGoneDoesNotComeBack() throws {
-    let l = ledger()
-    let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
-    l.undo(first)
-    let second = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
-    l.undo(second)
-    #expect(l.state.sortReceipt == nil)
-    try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil))
-    try l.apply(.dismissSortReceipt)
-    let third = try #require(try l.apply(.sortGroup(MayaBacklog.qasrGroup, "groceries", alwaysUse: false, project: nil)))
-    l.undo(third)
-    #expect(l.state.sortReceipt == nil)
+    #expect(ReviewEngine.repeatsMonthly(MayaBacklog.tailscale, l.state))
   }
 
   @Test func anAutoFiledGuessThatWasRejectedComesBackToReview() throws {
@@ -410,12 +195,9 @@ struct GroupSortingLedgerTests {
     let l = InMemoryLedger(state: s)
     let row = try #require(l.state.txn("bl-bright-10"))
     #expect(row.modelGuessRejected && row.inReview && !row.autoFiledByCloudflare && !row.reachable)
-    let cards = ReviewEngine.items(l.state).filter { $0.txnIDs.contains("bl-bright-10") }
+    let cards = ReviewEngine.cards(l.state).filter { $0.id == "bl-bright-10" }
     #expect(cards.count == 1)
-    guard case .single(let card) = try #require(cards.first) else {
-      Issue.record("expected a single card")
-      return
-    }
+    let card = try #require(cards.first)
     #expect(card.suggestion == nil && card.suggestedBy == nil)
     let snap = SortedForYouEngine.snapshot(l.state, now: l.now)
     #expect(!snap.items.flatMap(\.txnIDs).contains { $0.hasPrefix("bl-bright") })

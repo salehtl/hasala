@@ -109,7 +109,7 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue("\(tab.label) \(tab.value as? String ?? "")".contains("9"), "\(tab.label) \(String(describing: tab.value))")
     tab.tap()
     let count = el(app, "review.tab.count")
-    XCTAssertTrue(count.waitForLabel(containing: "1 payment to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("1 to sort · about a minute"), count.label)
     XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, September 2026")
     XCTAssertEqual(app.buttons["review.tab.elsewhere"].label, "8 more in other months")
     XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
@@ -124,7 +124,7 @@ final class HomePeriodTests: XCTestCase {
     attach(app, "Deck · All time from the bell")
     try audit(app)
     el(app, "review.close").tap()
-    XCTAssertTrue(count.waitForLabel(containing: "9 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
     XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, All time")
     XCTAssertFalse(app.buttons["review.tab.elsewhere"].exists)
     app.tabBars.firstMatch.buttons["Home"].tap()
@@ -170,7 +170,7 @@ final class HomePeriodTests: XCTestCase {
 
     tabBar.buttons["Review"].tap()
     let count = el(app, "review.tab.count")
-    XCTAssertTrue(count.waitForLabel(containing: "9 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
     XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, All time")
     XCTAssertFalse(app.buttons["review.tab.elsewhere"].exists)
     tap(app, "review.tab.start")
@@ -217,7 +217,7 @@ final class HomePeriodTests: XCTestCase {
 
     tabBar.buttons["Review"].tap()
     let count = el(app, "review.tab.count")
-    XCTAssertTrue(count.waitForLabel(containing: "9 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
     XCTAssertTrue(el(app, "review.tab.row.aug-corner-shop").waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
     XCTAssertTrue(el(app, "review.tab.row.aug-talabat-copy").exists)
@@ -234,7 +234,7 @@ final class HomePeriodTests: XCTestCase {
     tabBar.buttons["Home"].tap()
     XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, October 2026"))
     tabBar.buttons["Review"].tap()
-    XCTAssertTrue(el(app, "review.tab.count").waitForLabel(containing: "6 payments to sort, from "))
+    XCTAssertTrue(el(app, "review.tab.count").waitForLabel("6 to sort · about a minute"))
     XCTAssertEqual(app.buttons["review.tab.elsewhere"].label, "3 more in earlier months")
   }
 
@@ -247,7 +247,7 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue(pill.waitForExistence(timeout: uiWait))
     XCTAssertEqual(pill.label, "Period, October 2026")
     let count = el(app, "review.tab.count")
-    XCTAssertTrue(count.waitForLabel(containing: "6 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("6 to sort · about a minute"), count.label)
     let elsewhere = app.buttons["review.tab.elsewhere"]
     XCTAssertEqual(elsewhere.label, "3 more in earlier months")
 
@@ -255,7 +255,7 @@ final class HomePeriodTests: XCTestCase {
     tap(app, "period.preset.lastMonth")
     tap(app, "period.show")
     XCTAssertTrue(pill.waitForLabel("Period, September 2026"))
-    XCTAssertTrue(count.waitForLabel(containing: "1 payment to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("1 to sort · about a minute"), count.label)
     XCTAssertTrue(el(app, "review.tab.row.sep-steam").exists)
     XCTAssertFalse(el(app, "review.tab.row.aug-corner-shop").exists)
     XCTAssertEqual(elsewhere.label, "8 more in other months")
@@ -278,7 +278,7 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue(el(app, "review.position").waitForLabel("1 of 9"))
     el(app, "review.close").tap()
     XCTAssertTrue(pill.waitForLabel("Period, Aug – Oct 2026"))
-    XCTAssertTrue(count.waitForLabel(containing: "9 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
     tabBar.buttons["Activity"].tap()
     XCTAssertTrue(app.buttons["activity.period"].waitForLabel("Period, Aug – Oct 2026"))
 
@@ -295,7 +295,7 @@ final class HomePeriodTests: XCTestCase {
     try audit(app)
     tap(app, "review.tab.elsewhere")
     XCTAssertTrue(pill.waitForLabel("Period, Jul – Oct 2026"))
-    XCTAssertTrue(count.waitForLabel(containing: "9 payments to sort, from "), count.label)
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
     tabBar.buttons["Home"].tap()
     XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, Jul – Oct 2026"))
   }

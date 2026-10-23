@@ -107,7 +107,6 @@ struct ModelSuggestionStage: Sendable {
   }
 
   struct BacklogView: Sendable, Equatable {
-    var pendingTxnIDs: Set<String>
     var cloudSorted: Int
   }
 
@@ -128,15 +127,9 @@ struct ModelSuggestionStage: Sendable {
   }
 
   nonisolated func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
-    let reader = observer.reader
     do {
-      let taxonomy = try reader.taxonomy()
-      let rows = try reader.sweepRows()
-      let counts = try BacklogSort.counts(
-        rows: rows, categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
-        modelTag: cloud?.modelTag ?? CloudCategoryModel.defaultTag, cache: cache, now: nowMs())
-      return BacklogView(
-        pendingTxnIDs: counts.pendingTxnIDs, cloudSorted: BacklogSort.sendBackItems(filed: filedHere, current: rows).count)
+      let rows = try observer.reader.sweepRows()
+      return BacklogView(cloudSorted: BacklogSort.sendBackItems(filed: filedHere, current: rows).count)
     } catch {
       return nil
     }

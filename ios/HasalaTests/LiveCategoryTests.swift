@@ -373,8 +373,8 @@ struct LiveCategoryTests {
     #expect(Set(added.filter { $0.opType == "txn_categorized" }.compactMap(\.entityID)) == Set(filed))
     let rule = try #require(try l.reader.rules().first)
     #expect(rule.category == id)
-    let receipt = try #require(l.memory.value.receipt)
-    #expect(receipt.txnIDs.first == txn && Set(receipt.txnIDs) == Set(filed) && receipt.ruleID == rule.id)
+    let batch = try #require(l.memory.value.batches.last)
+    #expect(batch.ruleID == rule.id && Set(batch.prior.keys) == Set(filed).subtracting([txn]))
     #expect(try l.row(txn)?.categorySource == "user")
 
     try await author.undo(inverses)
@@ -426,7 +426,7 @@ struct LiveCategoryTests {
     #expect(try l.reader.taxonomy().info(id) == nil)
     #expect(try Self.filings(l) == before)
     #expect(try l.reader.rules().isEmpty)
-    #expect(l.memory.value.batches.isEmpty && l.memory.value.receipt == nil)
+    #expect(l.memory.value.batches.isEmpty)
     #expect(!failed)
   }
 }

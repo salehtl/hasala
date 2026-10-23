@@ -351,29 +351,6 @@ public struct LedgerReader: Sendable {
     return out
   }
 
-  public func memberKeys(group: String) throws -> [String] {
-    guard !group.isEmpty else { return [] }
-    return try db.read { db in
-      try String.fetchAll(
-        db, sql: "SELECT DISTINCT merchant_key FROM txn WHERE merchant_group = ? AND merchant_key <> '' ORDER BY merchant_key",
-        arguments: [group])
-    }
-  }
-
-  public func rejectedKeys(group: String, category: String) throws -> [String] {
-    guard !group.isEmpty else { return [] }
-    return try db.read { db in
-      try String.fetchAll(
-        db,
-        sql: """
-          SELECT merchant_key FROM merchant_rejection WHERE category = ? AND rejected = 1
-             AND (merchant_group = ? OR merchant_key IN (SELECT merchant_key FROM txn WHERE merchant_group = ?))
-           ORDER BY merchant_key
-          """,
-        arguments: [category, group, group])
-    }
-  }
-
   public struct CategoryMemberRow: Sendable, Equatable {
     public let id: String
     public let version: Int64

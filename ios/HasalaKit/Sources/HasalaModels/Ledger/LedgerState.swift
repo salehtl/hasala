@@ -818,7 +818,6 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var skippedReview: Set<TxnID>
   public var rates: [CurrencyRate]
   public var unreadMail: [UnreadMail]
-  public var sortReceipt: SortReceipt?
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
@@ -826,10 +825,8 @@ public struct LedgerState: Sendable, Hashable, Codable {
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
     netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
     rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)],
-    unreadMail: [UnreadMail] = [],
-    sortReceipt: SortReceipt? = nil
+    unreadMail: [UnreadMail] = []
   ) {
-    self.sortReceipt = sortReceipt
     self.unreadMail = unreadMail
     self.rates = rates
     self.netWorth = netWorth

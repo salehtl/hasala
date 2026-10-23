@@ -88,12 +88,14 @@ final class CloudSortUITests: XCTestCase {
   }
 
   @MainActor
-  func testTheDeckSaysWhatWaitsForCloudflare() throws {
+  func testTheDeckHoldsNoCardBackWhileCloudflareSorts() throws {
     let app = launch(scenario: nil, screen: "review.sort.deck")
-    let waiting = el(app, "review.waitingForCloud")
-    XCTAssertTrue(waiting.waitForExistence(timeout: 30))
-    XCTAssertEqual(waiting.label, "Waiting for Cloudflare AI (2)")
-    attach(app, "Review deck · waiting for Cloudflare AI")
+    let position = el(app, "review.position")
+    XCTAssertTrue(position.waitForLabel("1 of 6"), position.label)
+    XCTAssertTrue(el(app, "review.merchant").label.hasPrefix("Lulu Hypermarket"), el(app, "review.merchant").label)
+    XCTAssertFalse(el(app, "review.waitingForCloud").exists)
+    XCTAssertFalse(app.staticTexts["Waiting for Cloudflare AI (2)"].exists)
+    attach(app, "Review deck · while Cloudflare AI sorts")
     try audit(app)
   }
 

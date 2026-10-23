@@ -31,6 +31,7 @@ struct MotionTests {
     #expect(HMotion.celebrateLimit == 0.6)
     #expect(HMotion.toastDwell == 4.0)
     #expect(HMotion.toastDwellVoiceOver == 8.0)
+    #expect(HMotion.undoLineDwell == 6.0)
   }
 
   @Test func springsAreTheOwnersValues() {

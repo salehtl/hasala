@@ -16,16 +16,12 @@ nonisolated enum SortPatch {
 
   static func name(_ s: LedgerState, _ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
 
-  static func members(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
-    s.txns.indices.filter { s.txns[$0].reachable && s.txns[$0].groupRef == ref && !s.skippedReview.contains(s.txns[$0].id) }
-  }
-
   static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
     s.txns.indices.filter { s.txns[$0].ruled && s.txns[$0].groupRef == ref }
   }
 
   static func reach(
-    _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime, receiptID: Int
+    _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime
   ) -> String? {
     let pool = ruled(s, ref).filter { s.txns[$0].id != old.id }
     let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] }, filing: c)
@@ -47,41 +43,7 @@ nonisolated enum SortPatch {
     }
     let filed = (old.settled(in: c) ? [] : [old.id]) + others.map { s.txns[$0].id }
     let merchant = ReviewEngine.displayName(named)
-    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed)
-    return SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: name(s, c), all: others.count == open.count)
-  }
-
-  static func sortGroup(
-    _ s: inout LedgerState, _ ref: MerchantGroupRef, _ c: CategoryID, project: ProjectID?, at: LocalDateTime, receiptID: Int
-  ) throws(ActionError) -> String {
-    let idx = members(s, ref)
-    guard !idx.isEmpty else { throw .notFound }
-    let merchant = ReviewEngine.displayName(idx.map { s.txns[$0] })
-    for i in idx {
-      file(&s.txns[i], c, at: at)
-      if let project { s.txns[i].projectID = project }
-    }
-    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: idx.map { s.txns[$0].id })
-    return SortResultRow.line(count: idx.count, merchant: merchant, category: name(s, c))
-  }
-
-  static func notThis(_ s: inout LedgerState, _ ref: MerchantGroupRef, _ c: CategoryID) throws(ActionError) -> String {
-    let idx = s.txns.indices.filter { s.txns[$0].inGroup(ref.key) }
-    guard !idx.isEmpty else { throw .notFound }
-    let shown = idx.filter { s.txns[$0].direction == ref.direction }
-    let merchant = ReviewEngine.displayName((shown.isEmpty ? idx : shown).map { s.txns[$0] })
-    for i in idx {
-      s.txns[i].rejectedCategories.insert(c)
-      let t = s.txns[i]
-      guard t.isModelSourced, t.categoryID == c || (t.categoryID == nil && t.suggestion == c) else { continue }
-      s.txns[i].categoryID = nil
-      s.txns[i].categorySource = nil
-      s.txns[i].suggestion = nil
-      s.txns[i].ruleID = nil
-      s.txns[i].needsReview = true
-      s.txns[i].isTransfer = false
-    }
-    return "Hasala won't suggest \(name(s, c)) for \(merchant) again"
+    return ReviewEngine.reachTitle(count: filed.count, merchant: merchant, category: name(s, c), all: others.count == open.count)
   }
 
   static func returnToReview(_ s: inout LedgerState, _ ids: [TxnID], at: LocalDateTime) throws(ActionError) -> String {

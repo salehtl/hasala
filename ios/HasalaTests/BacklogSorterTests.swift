@@ -242,7 +242,7 @@ struct BacklogSorterTests {
     #expect(saved.run?.phase == .done && saved.run?.reason == .failed && saved.value.day.count == 10)
     #expect(!s.activity.isActive && !saved.value.isActive)
     let status = LiveCloudSortController.status(snapshot: await s.snapshot, view: CloudSortStatusTests.view(9), enabled: true)
-    #expect(status.phase == .done && status.pendingTxnIDs.isEmpty)
+    #expect(status.phase == .done && status.cloudSortedCount == 9)
     for _ in 0..<3 {
       await s.ensure()
       #expect(await !s.isRunning)
@@ -780,14 +780,14 @@ struct CloudSortStatusTests {
   typealias C = LiveCloudSortController
 
   nonisolated static func view(_ cloudSorted: Int) -> ModelSuggestionStage.BacklogView {
-    ModelSuggestionStage.BacklogView(pendingTxnIDs: ["t"], cloudSorted: cloudSorted)
+    ModelSuggestionStage.BacklogView(cloudSorted: cloudSorted)
   }
 
   @Test func theSwitchOffReadsOff() {
     let s = C.status(snapshot: nil, view: Self.view(7), enabled: false)
-    #expect(s == CloudSortStatus(phase: .off, pendingTxnIDs: [], cloudSortedCount: 7))
+    #expect(s == CloudSortStatus(phase: .off, cloudSortedCount: 7))
     let idle = C.status(snapshot: nil, view: Self.view(7), enabled: true)
-    #expect(idle.phase == .idle && idle.pendingTxnIDs.isEmpty)
+    #expect(idle == CloudSortStatus(phase: .idle, cloudSortedCount: 7))
   }
 
   @Test func phasesMapFromTheRecord() {
@@ -808,11 +808,11 @@ struct CloudSortStatusTests {
     #expect(C.phase(run, hold: nil) == .done)
   }
 
-  @Test func waitingRowsAreHeldBackOnlyWhileARunIsActive() {
-    for (phase, held) in [(BacklogRunRecord.Phase.running, true), (.paused, true), (.done, false)] {
+  @Test func theStatusCountsWhatCloudflareSortedInEveryPhase() {
+    for phase in [BacklogRunRecord.Phase.running, .paused, .done] {
       let record = BacklogRunRecord(run: BacklogRunRecord.Run(phase: phase, reason: phase == .paused ? .busy : nil))
       let s = C.status(snapshot: BacklogSnapshot(record: record, hold: nil, looping: false), view: Self.view(3), enabled: true)
-      #expect(s.pendingTxnIDs == (held ? ["t"] : []) && s.cloudSortedCount == 3)
+      #expect(s.cloudSortedCount == 3)
     }
   }
 
