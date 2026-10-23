@@ -177,4 +177,16 @@
     var settled: Bool { self == .off }
     var reduceMotion: Bool { self == .reduce }
   }
+
+  enum JackpotLaunch {
+    static let argument = "-HasalaJackpot"
+
+    static func from(_ arguments: [String]) -> TimeInterval? {
+      guard let i = arguments.firstIndex(of: argument) else { return nil }
+      guard i + 1 < arguments.count, let every = TimeInterval(arguments[i + 1]), every.isFinite else { return 0 }
+      return max(every, 0)
+    }
+
+    static let current = from(ProcessInfo.processInfo.arguments)
+  }
 #endif
