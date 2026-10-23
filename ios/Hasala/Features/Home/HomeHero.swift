@@ -96,16 +96,9 @@ struct HomeHero: View {
       PeriodPill(period, tinted: !isThisMonth, action: changePeriod)
         .accessibilityIdentifier("home.period")
     } trailing: {
-      if !isThisMonth {
-        Button(action: backToThisMonth) {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textOnWashLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("home.backToThisMonth")
+      PeriodRowTrailing(hasLink: !isThisMonth) {
+        BackToThisMonthLink(tint: HColor.textOnWashLink, action: backToThisMonth)
+          .accessibilityIdentifier("home.backToThisMonth")
       }
     }
   }

@@ -187,7 +187,7 @@ public enum ActivityEngine {
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }
     switch f.kind {
-    case .all: return !t.archived && (f.isSearching || f.category != nil || !t.inReview)
+    case .all: return !t.archived
     case .toReview: return t.inReview
     case .bills: return !t.archived && !t.inReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
@@ -203,7 +203,7 @@ public enum ActivityEngine {
     for t in txns {
       let d = t.postedAt.date
       let row = row(t, s)
-      let signed = t.homeSigned ?? 0
+      let signed = t.isHeldCopy ? 0 : t.homeSigned ?? 0
       if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor.add(signed)

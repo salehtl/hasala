@@ -109,9 +109,11 @@ struct ReviewDeckView: View {
       }
     }
     .onAppear {
+      SortSound.shared.prepare()
       // A pick sheet already up (a Debug screen launch): hold the card toward it.
       if let p = model.picking { holdToward(edge(for: p.choice), animated: false) }
     }
+    .onDisappear { SortSound.shared.rest() }
   }
 
   private var pickBinding: Binding<ReviewPick?> {
@@ -522,7 +524,7 @@ struct ReviewDeckView: View {
     if let p = pendingSort {
       pendingSort = nil
       let edge = held ?? edge(for: p.pick.choice)
-      file(p.pick.card, toward: edge, as: p.pick.choice.label) {
+      file(p.pick.card, toward: edge, as: p.pick.choice.label, chime: true) {
         model.sort(p.pick.card.id, into: p.category, alwaysUse: p.alwaysUse, project: p.project)
       }
       return
@@ -538,7 +540,7 @@ struct ReviewDeckView: View {
   private func use(_ card: ReviewCardModel) {
     guard card.reviewReason == nil, let s = card.suggestion else { return }
     tap += 1
-    file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name) {
+    file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name, chime: true) {
       model.useSuggestion(card.id)
     }
   }
@@ -576,7 +578,9 @@ struct ReviewDeckView: View {
 
   /// Takes the card off the deck: it flies from where it is now (or fades, for a skip and
   /// with Reduce Motion) while the edit lands and the next card rises.
-  private func file(_ card: ReviewCardModel, toward edge: SwipeEdge?, as filedAs: String?, _ edit: () -> Bool) {
+  private func file(
+    _ card: ReviewCardModel, toward edge: SwipeEdge?, as filedAs: String?, chime: Bool = false, _ edit: () -> Bool
+  ) {
     let from = drag
     let tilt = tilt
     var done = false
@@ -595,6 +599,7 @@ struct ReviewDeckView: View {
       }
       return
     }
+    if chime { SortSound.shared.play() }
     if let edge { departures[card.id] = edge }
     if !motion.settled {
       flights.append(Flight(card: card, from: from, tilt: tilt, edge: edge))

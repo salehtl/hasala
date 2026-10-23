@@ -315,6 +315,8 @@ struct ActivityReviewModelTests {
     activity.select(.income)
     #expect(activity.snapshot.rowCount == 0)
     activity.select(.all)
+    #expect(activity.snapshot.rowCount == 26)
+    #expect(activity.snapshot.days.flatMap(\.rows).filter(\.toReview).count == 6)
     activity.search("talabat")
     #expect(activity.snapshot.rowCount == 2)
     #expect(activity.exportRows.count == 2)

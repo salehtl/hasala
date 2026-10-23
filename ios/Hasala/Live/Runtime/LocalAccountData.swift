@@ -57,6 +57,7 @@ enum LocalAccountData {
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)
+    NotificationReads.forget(defaults)
     PushRegistrar.forgetRegistration(defaults)
     #if DEBUG && targetEnvironment(simulator)
       SimulatorApprovalKey.forgetAll(defaults)

@@ -105,10 +105,27 @@ struct CategoryEditorModelTests {
     #expect(!CategoryEditorModel(app: app, category: "emergency-fund").parentOptional)
   }
 
-  @Test func aHiddenBuiltInIsNotOfferedAsCountsAs() {
-    let m = CategoryEditorModel(app: app(), category: nil)
-    let ids = m.parentGroups.flatMap(\.rows).map(\.id)
-    #expect(!ids.contains("debt") && ids.contains("savings"))
+  @Test func countsAsListsTheThreeBuckets() throws {
+    let app = app()
+    let m = CategoryEditorModel(app: app, category: nil)
+    #expect(m.countsAs.map(\.title) == ["Needs", "Wants", "Savings"])
+    #expect(!m.countsAs.map(\.parent).contains("debt"))
+    #expect(m.parentLabel == "Choose a category")
+    m.parent = try #require(m.countsAs.first { $0.bucket == .wants }).parent
+    #expect(m.parentLabel == "Wants" && m.parentNote == "Its spending counts in Wants.")
+  }
+
+  @Test func countsAsKeepsACurrentValueOutsideTheBuckets() throws {
+    var state = MayaLedger.state
+    state.categories.append(
+      Category(id: "tutoring", name: "Tutoring", kind: .income, bucket: .income, glyph: .freelance, role: .none, parent: "freelance"))
+    let app = AppModel(store: InMemoryLedger(state: state))
+    let m = CategoryEditorModel(app: app, category: "tutoring")
+    #expect(m.countsAs.map(\.title) == ["Needs", "Wants", "Savings", "Income"])
+    #expect(m.parentLabel == "Income")
+    m.parent = try #require(m.countsAs.first { $0.bucket == .needs }).parent
+    #expect(m.countsAs.map(\.title) == ["Needs", "Wants", "Savings", "Income"])
+    #expect(m.countsAs.last?.parent == "freelance")
   }
 
   @Test func anErrorIsShownOnce() {

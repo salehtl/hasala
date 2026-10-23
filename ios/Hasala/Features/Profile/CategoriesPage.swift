@@ -135,8 +135,10 @@ final class CategoryEditorModel {
   var parentOptional: Bool { !isNew && !isBuiltin && category?.parent == nil }
   var parentLabel: String { parentName ?? (parentOptional ? "None" : "Choose a category") }
   var hidden: Bool { app.amountsHidden }
-  var parentGroups: [CategorySectionModel] { CategoriesEngine.parentGroups(app.store.state) }
-  var parentName: String? { parent.flatMap { app.store.state.category($0)?.name } }
+  var countsAs: [CountsAsOption] {
+    CategoriesEngine.countsAsOptions(app.store.state, keeping: [parent, category?.parent])
+  }
+  var parentName: String? { CategoriesEngine.countsAsTitle(parent, in: app.store.state) }
   var moveTargets: [CategorySectionModel] { id.map { CategoriesEngine.moveTargets(app.store.state, from: $0) } ?? [] }
 
   var hue: Hue {
@@ -238,6 +240,8 @@ struct CategoryEditorPage: View {
   @Bindable var app: AppModel
   @State private var model: CategoryEditorModel
   @FocusState private var nameFocused: Bool
+  @ScaledMetric(relativeTo: .body) private var iconCell: CGFloat = 52
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   init(app: AppModel, category: CategoryID?) {
     self.app = app
@@ -294,14 +298,14 @@ struct CategoryEditorPage: View {
       }
       if !model.isBuiltin { parentField }
       field("Icon") {
-        FlowLayout(spacing: 12) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: iconCell), spacing: 8)], spacing: 8) {
           ForEach(CategoryLimits.glyphs, id: \.self) { g in
             Button { model.glyph = g } label: {
-              CategoryDisc(hue: model.hue, icon: g.icon, size: .s40)
+              CategoryDisc(hue: model.hue, icon: g.icon, size: typeSize.isAccessibilitySize ? .s56 : .s40)
                 .padding(3)
                 .overlay { Circle().strokeBorder(model.glyph == g ? model.hue.ink : .clear, lineWidth: 2) }
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Circle())
+                .frame(maxWidth: .infinity, minHeight: max(44, iconCell))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(CategoryLimits.glyphName(g))
@@ -351,13 +355,15 @@ struct CategoryEditorPage: View {
             Button("None") { model.parent = nil }
               .accessibilityIdentifier("categoryEditor.parent.none")
           }
-          ForEach(model.parentGroups) { group in
-            Section(group.title) {
-              ForEach(group.rows) { row in
-                Button(row.name) { model.parent = row.id }
-                  .accessibilityIdentifier("categoryEditor.parent.\(row.id)")
+          ForEach(model.countsAs) { option in
+            Button { model.parent = option.parent } label: {
+              if option.parent == model.parent {
+                Label(option.title, systemImage: "checkmark")
+              } else {
+                Text(option.title)
               }
             }
+            .accessibilityIdentifier("categoryEditor.parent.\(option.id)")
           }
         } label: {
           HListRow(title: model.parentLabel, trailing: .chevron)

@@ -227,7 +227,9 @@ struct ReviewScopeReasonTests {
     let toReview = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .toReview))
     #expect(toReview.days.flatMap(\.rows).contains { $0.id == "starbucks-copy" })
     let all = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .all))
-    #expect(!all.days.flatMap(\.rows).contains { $0.id == "starbucks-copy" })
+    #expect(all.days.flatMap(\.rows).contains { $0.id == "starbucks-copy" })
+    let maya = ActivityEngine.snapshot(MayaLedger.state, now: now, filter: .all)
+    #expect(all.days.map(\.total.minor) == maya.days.map(\.total.minor))
 
     _ = try ledger.apply(.resolveCopy("starbucks-copy", merge: false))
     #expect(!ReviewEngine.queue(ledger.state, in: october).contains { $0.id == "starbucks-copy" })

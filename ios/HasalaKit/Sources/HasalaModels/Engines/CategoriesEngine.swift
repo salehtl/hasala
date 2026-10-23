@@ -70,6 +70,13 @@ public struct CategorySectionModel: Sendable, Hashable, Identifiable {
   public var rows: [CategoryRowModel]
 }
 
+public struct CountsAsOption: Sendable, Hashable, Identifiable {
+  public var id: String { bucket.rawValue }
+  public var bucket: Bucket
+  public var title: String
+  public var parent: CategoryID
+}
+
 public struct CategoriesSnapshot: Sendable, Hashable {
   public var customCount: Int
   public var capLine: String
@@ -141,17 +148,27 @@ public enum CategoriesEngine {
 
   static func row(_ c: Category, _ s: LedgerState) -> CategoryRowModel {
     let supporting: String? =
-      if !c.builtin, let p = c.parent, let parent = s.category(p) { "Counts as \(parent.name)" } else { nil }
+      if !c.builtin, let title = countsAsTitle(c.parent, in: s) { "Counts as \(title)" } else { nil }
     return CategoryRowModel(
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, supporting: supporting, hidden: c.builtin && c.archived,
       builtin: c.builtin)
   }
 
-  public static func parentGroups(_ s: LedgerState) -> [CategorySectionModel] {
-    let parents = s.categories.filter { isOfferedParent($0.id, in: s) }
-    return sectionOrder.compactMap { b in
-      let rows = parents.filter { sectionBucket($0) == b }.map { row($0, s) }
-      return rows.isEmpty ? nil : CategorySectionModel(title: section(b), rows: rows)
+  public static let countsAsBuckets: [Bucket] = [.needs, .wants, .savings]
+
+  public static func countsAsTitle(_ parent: CategoryID?, in s: LedgerState) -> String? {
+    parent.flatMap { s.category($0) }.map { section(sectionBucket($0)) }
+  }
+
+  public static func countsAsOptions(_ s: LedgerState, keeping current: [CategoryID?]) -> [CountsAsOption] {
+    let kept = current.compactMap { $0.flatMap { s.category($0) } }
+    var buckets = countsAsBuckets
+    for c in kept where !buckets.contains(sectionBucket(c)) { buckets.append(sectionBucket(c)) }
+    return buckets.compactMap { b in
+      let parent =
+        kept.first { sectionBucket($0) == b }?.id
+        ?? s.categories.first { sectionBucket($0) == b && isOfferedParent($0.id, in: s) }?.id
+      return parent.map { CountsAsOption(bucket: b, title: section(b), parent: $0) }
     }
   }
 
