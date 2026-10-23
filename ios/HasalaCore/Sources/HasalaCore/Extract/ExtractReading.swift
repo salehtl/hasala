@@ -68,11 +68,15 @@ public struct ExtractReading: Sendable, Equatable {
   public var confidencePercent: Int
   public var agreed: Bool
   public var notes: [String]
+  public var rulesConfidencePercent: Int
+  public var learnedConfidencePercent: Int
+  public var readersAgree: Bool
 
   public init(
     outcome: ExtractOutcome, amountMinor: Int64? = nil, currency: String? = nil, direction: ExtractDirection? = nil,
     merchant: String? = nil, last4: String? = nil, kind: ExtractMailKind = .other, confidencePercent: Int = 0,
-    agreed: Bool = false, notes: [String] = []
+    agreed: Bool = false, notes: [String] = [], rulesConfidencePercent: Int = 0, learnedConfidencePercent: Int = 0,
+    readersAgree: Bool = false
   ) {
     self.outcome = outcome
     self.amountMinor = amountMinor
@@ -84,12 +88,22 @@ public struct ExtractReading: Sendable, Equatable {
     self.confidencePercent = confidencePercent
     self.agreed = agreed
     self.notes = notes
+    self.rulesConfidencePercent = rulesConfidencePercent
+    self.learnedConfidencePercent = learnedConfidencePercent
+    self.readersAgree = readersAgree
   }
 
   public var meetsAgreementBar: Bool {
     outcome == .transaction && agreed && amountMinor != nil && currency != nil
       && confidencePercent >= Self.agreementBarPercent
   }
+
+  public var readersConfirm: Bool {
+    outcome == .transaction && readersAgree && amountMinor != nil && currency != nil && direction != nil
+      && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
+  }
+
+  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm }
 
   public static let maxAmountMinor: Int64 = 9_999_999_999_999
 
@@ -107,6 +121,8 @@ public struct ExtractReading: Sendable, Equatable {
 public enum ExtractHold: String, Sendable, Equatable {
   case aedNotConfirmed = "aed_not_confirmed"
   case pendingPhrase = "pending_phrase"
+  case readersDisagree = "readers_disagree"
+  case currencyNotISO = "currency_not_iso"
 }
 
 public struct ExtractTemplateVerdict: Sendable, Equatable {

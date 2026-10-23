@@ -11,8 +11,9 @@
 //      shown), or becomes an op: filed, prefilled-for-review, or the EMPTY review shape.
 //   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
 //      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
-//      the trusted set T, a template hit with a usable amount (or a template-free reading that both
-//      readers agree on at 0.8 or more), a card not marked "not mine", not
+//      the trusted set T, a template hit with a usable amount and an ISO currency that confident
+//      readers do not contradict (or a template-free reading on which both readers, each at 0.8 or
+//      more, agree on amount, currency and direction), a card not marked "not mine", not
 //      forwarded, not in Spam, and a recipient check that is not a mismatch. Anything less is
 //      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
 //      ledger doesn't know (`unknown`) files like a known one: setup has no cards step. When the
@@ -264,7 +265,7 @@ public enum MessageDisposer {
       mail.gates.reader = MailReaderState.marker
       mail.gates.kind = reading.kind == .other ? nil : reading.kind.rawValue
       mail.fields = f
-      mail.readerConfident = reading.meetsAgreementBar
+      mail.readerConfident = reading.meetsFilingBar
       reader!.bump(bank.isEmpty ? setAsideDomain : bank) { $0.readerOnly += 1 }
     default:
       break

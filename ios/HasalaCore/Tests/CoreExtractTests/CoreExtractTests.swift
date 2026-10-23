@@ -557,3 +557,98 @@ import Testing
     #expect(!ExtractLexicon.isPromoLine(""))
   }
 }
+
+@Suite struct FilingGateTests {
+  func reading(_ amount: Int64, _ conf: Int, _ cur: String = "AED", direction: String = "debit", guessed: Bool = false) -> Reading {
+    Reading(
+      isTransaction: true, amountMinor: amount, currency: cur, currencyExplicit: true, direction: direction,
+      directionGuessed: guessed, fromLayout: true, confidence: conf)
+  }
+
+  func confirmed(rules: Int = 85, learned: Int = 85, agree: Bool = true) -> ExtractReading {
+    ExtractReading(
+      outcome: .transaction, amountMinor: 1_000, currency: "AED", direction: .debit, confidencePercent: 90, agreed: true,
+      rulesConfidencePercent: rules, learnedConfidencePercent: learned, readersAgree: agree)
+  }
+
+  @Test func theReadersAgreeOnlyOnTheSameAmountCurrencyAndStatedDirection() {
+    #expect(CombinedReader.readersAgree(reading(100, 90), reading(100, 85)))
+    #expect(!CombinedReader.readersAgree(reading(100, 90), reading(101, 85)))
+    #expect(!CombinedReader.readersAgree(reading(100, 90), reading(100, 85, "USD")))
+    #expect(!CombinedReader.readersAgree(reading(100, 90), reading(100, 85, direction: "credit")))
+    #expect(!CombinedReader.readersAgree(reading(100, 90), reading(100, 85, guessed: true)))
+    #expect(!CombinedReader.readersAgree(reading(100, 90), .none))
+  }
+
+  @Test func eachReaderMustReachTheBarOnItsOwn() {
+    #expect(confirmed().meetsFilingBar)
+    #expect(confirmed(rules: 80, learned: 80).meetsFilingBar)
+    #expect(!confirmed(rules: 79).meetsFilingBar)
+    #expect(!confirmed(learned: 79).meetsFilingBar)
+    #expect(!confirmed(agree: false).meetsFilingBar)
+    var low = confirmed()
+    low.confidencePercent = 70
+    #expect(low.readersConfirm && !low.meetsFilingBar)
+  }
+
+  @Test func aFirstMailOfAnUnlearnedLayoutNeverFiles() {
+    var mem = LearnedLayouts()
+    var readings: [ExtractReading] = []
+    for (i, amt) in ["10.00", "20.00", "30.00", "40.00", "50.00", "60.00"].enumerated() {
+      let (r, next) = CombinedReader.read(Mails.cardPurchaseAR(amount: amt, merchant: "SAMPLE \(i)", at: Int64(i)), mem)
+      mem = next
+      readings.append(r)
+    }
+    #expect(!readings[0].meetsFilingBar && readings[0].learnedConfidencePercent < ExtractReading.agreementBarPercent)
+    #expect(readings[0].rulesConfidencePercent > 0)
+    let last = readings[5]
+    #expect(last.meetsFilingBar, "\(last)")
+    #expect(last.readersAgree && last.rulesConfidencePercent >= 80 && last.learnedConfidencePercent >= 80)
+  }
+
+  @Test func aTemplateHitThatConfidentReadersContradictIsHeld() {
+    let input = Mails.cardPurchaseEN(amount: "10.00", merchant: "SAMPLE SHOP")
+    let sure = confirmed()
+    let v = CombinedReader.templateVerdict(input, amountMinor: 100, currency: "AED", direction: .debit) { sure }
+    #expect(v == ExtractTemplateVerdict(amountMinor: 100, currency: "AED", holds: [.readersDisagree]))
+    var otherCurrency = sure
+    otherCurrency.amountMinor = 100
+    otherCurrency.currency = "SAR"
+    #expect(
+      CombinedReader.templateVerdict(input, amountMinor: 100, currency: "AED", direction: .debit) { otherCurrency }?.holds
+        == [.readersDisagree])
+    #expect(CombinedReader.templateVerdict(input, amountMinor: 1_000, currency: "AED", direction: .debit) { sure }?.held == false)
+  }
+
+  @Test func readersBelowTheBarDoNotOverruleATemplate() {
+    let input = Mails.cardPurchaseEN(amount: "10.00", merchant: "SAMPLE SHOP")
+    for unsure in [confirmed(rules: 70), confirmed(learned: 79), confirmed(agree: false)] {
+      #expect(
+        CombinedReader.templateVerdict(input, amountMinor: 100, currency: "AED", direction: .debit) { unsure }
+          == ExtractTemplateVerdict(amountMinor: 100, currency: "AED"))
+    }
+  }
+}
+
+@Suite struct TemplateCurrencyTests {
+  @Test(arguments: ["DHS", "DH", "dhs", "Dhs.", "AED", "aed", "درهم", "د.إ", "دراهم", " DHS "])
+  func aedAliasesReadAsAED(_ s: String) {
+    #expect(ExtractCurrency.iso(s) == "AED")
+  }
+
+  @Test func knownCodesStayAndOthersAreUnknown() {
+    #expect(ExtractCurrency.iso("USD") == "USD")
+    #expect(ExtractCurrency.iso("sar") == "SAR")
+    for s in ["XYZ", "CNH", "US$", "", "DIRHAMZ"] { #expect(ExtractCurrency.iso(s) == nil, "\(s)") }
+  }
+
+  @Test func aTemplateCurrencyIsNormalizedOrHeld() {
+    let input = Mails.cardPurchaseEN(amount: "12.00", merchant: "SAMPLE SHOP")
+    #expect(
+      CombinedReader.templateVerdict(input, amountMinor: 1_200, currency: "DHS", direction: .debit) { nil }
+        == ExtractTemplateVerdict(amountMinor: 1_200, currency: "AED"))
+    #expect(
+      CombinedReader.templateVerdict(input, amountMinor: 1_200, currency: "XYZ", direction: .debit) { nil }
+        == ExtractTemplateVerdict(amountMinor: 1_200, currency: "XYZ", holds: [.currencyNotISO]))
+  }
+}
