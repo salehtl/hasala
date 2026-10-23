@@ -136,7 +136,8 @@ func (a *Accounts) signInTx(ctx context.Context, tx pgx.Tx, st accountState, min
 }
 
 // PasskeyLoginFinish is #6: the assertion, then the optional device binding
-// (checked under the account the credential resolved to), then one
+// (checked under the account the credential resolved to; a writer of another
+// account is ErrDeviceOtherAccount), then one
 // transaction that mints the session and records an unbound sign-in.
 func (a *Accounts) PasskeyLoginFinish(ctx context.Context, ceremonyID string, response []byte, device *DeviceBinding) (SignedIn, error) {
 	r, err := a.Passkeys.FinishLoginResult(ctx, ceremonyID, response)
@@ -145,6 +146,14 @@ func (a *Accounts) PasskeyLoginFinish(ctx context.Context, ceremonyID string, re
 	}
 	writer := ""
 	if device != nil {
+		var mine bool
+		if err := a.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM writers WHERE user_id = $1 AND writer_id = $2)`,
+			r.UserID, device.WriterID).Scan(&mine); err != nil {
+			return SignedIn{}, fmt.Errorf("auth: read the binding writer: %w", err)
+		}
+		if !mine {
+			return SignedIn{}, ErrDeviceOtherAccount
+		}
 		if err := checkBinding(ctx, a.Pool, &r.UserID, r.Challenge, device); err != nil {
 			return SignedIn{}, err
 		}

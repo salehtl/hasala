@@ -27,6 +27,15 @@ struct SyncPieceTests {
     #expect(AuthInput.inviteCode("HSL-ABCD") == nil)
   }
 
+  @Test("a sign-in's device refusals have their own classes")
+  func deviceRefusalClasses() {
+    func f(_ s: Int, _ c: String) -> CeremonyError { .api(.refused(APIFailure(status: s, code: c))) }
+    #expect(f(409, "other_account_device").failureClass == .otherAccountDevice)
+    #expect(f(400, "bad_signature").failureClass == .deviceRefused)
+    #expect(f(403, "writer_revoked").failureClass == .deviceRefused)
+    #expect(f(403, "passkey_rejected").failureClass == .rejected)
+  }
+
   @Test("the common answers of §5.5 / §6.4")
   func commonStops() {
     func f(_ s: Int, _ c: String) -> APIError { .refused(APIFailure(status: s, code: c)) }

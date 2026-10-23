@@ -171,6 +171,7 @@ func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) 
 		{auth.ErrNoSuchWriter, http.StatusNotFound, "not_found"},
 		{auth.ErrNotYours, http.StatusNotFound, "not_found"},
 		{auth.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
+		{auth.ErrDeviceOtherAccount, http.StatusConflict, "other_account_device"},
 		{oplog.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
 		{oplog.ErrUnknownWriter, http.StatusForbidden, "writer_unbound"},
 		{auth.ErrSessionBound, http.StatusConflict, "session_bound"},

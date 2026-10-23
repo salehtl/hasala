@@ -530,6 +530,9 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     /// The operator freezes the account just before #66 runs (a stale `frozen_by`), which
     /// revokes the session #66 was sent with.
     var operatorFreezesBeforeUnfreeze = false
+    var passkeyLogins: Set<String> = []
+    var passkeySignsInAs: String?
+    var passkeyLoginRefusal: (status: Int, code: String)?
   }
 
   private let lock = NSLock()
@@ -555,6 +558,20 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
+  var passkeySignsInAs: String? {
+    get { state.withLock { $0.passkeySignsInAs } }
+    set { state.withLock { $0.passkeySignsInAs = newValue } }
+  }
+  var passkeyLoginRefusal: (status: Int, code: String)? {
+    get { state.withLock { $0.passkeyLoginRefusal } }
+    set { state.withLock { $0.passkeyLoginRefusal = newValue } }
+  }
+
+  func addUser(email: String) -> String {
+    let id = UUID().uuidString.lowercased()
+    state.withLock { $0.users[id] = User(id: id, email: email, name: "Omar", verifierHash: Data(), keys: [:]) }
+    return id
+  }
   var operatorFreezesBeforeUnfreeze: Bool {
     get { state.withLock { $0.operatorFreezesBeforeUnfreeze } }
     set { state.withLock { $0.operatorFreezesBeforeUnfreeze = newValue } }
@@ -636,6 +653,22 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
         u.verifierHash == Data(SHA256.hash(data: v))
       else { return error(403, "password_rejected") }
       let writer = (b["device"] as? [String: Any])?["writer_id"] as? String
+      let t = token()
+      s.sessions[t] = (u.id, writer, false)
+      return grant(t, u, writer: writer)
+    case "POST /api/v1/auth/passkey/login/begin":
+      let id = token()
+      s.passkeyLogins.insert(id)
+      return ok(["ceremony_id": id, "options": ["publicKey": ["challenge": Base64.encodeURL(bytes(32)), "rpId": "hasala.app"]]])
+    case "POST /api/v1/auth/passkey/login/finish":
+      guard let id = b["ceremony_id"] as? String, s.passkeyLogins.remove(id) != nil, let uid = s.passkeySignsInAs,
+        let u = s.users[uid], !u.deleted
+      else { return error(403, "passkey_rejected") }
+      if let r = s.passkeyLoginRefusal { return error(r.status, r.code) }
+      let writer = (b["device"] as? [String: Any])?["writer_id"] as? String
+      if let writer, !u.writers.contains(where: { $0["writer_id"] as? String == writer }) {
+        return error(409, "other_account_device")
+      }
       let t = token()
       s.sessions[t] = (u.id, writer, false)
       return grant(t, u, writer: writer)

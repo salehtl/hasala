@@ -95,7 +95,7 @@ public enum CeremonyError: Error, Sendable {
 public enum CeremonyFailureClass: Sendable, Hashable {
   case cancelled, unsupported, noCredential, notInvited, badName, rejected, wrongCredentials, recoveryRefused,
     resetRefused, emailInUse, codeRejected, badEmail, lastAuthenticator, frozen, notApproved, stepUpFailed,
-    noDeviceKey, rateLimited, offline, unavailable, integrity, other
+    noDeviceKey, rateLimited, offline, unavailable, integrity, otherAccountDevice, deviceRefused, other
 }
 
 extension CeremonyError {
@@ -124,6 +124,8 @@ extension CeremonyError {
       case (403, "account_frozen"): return .frozen
       case (409, "not_approved"): return .notApproved
       case (403, "step_up_failed"): return .stepUpFailed
+      case (409, "other_account_device"): return .otherAccountDevice
+      case (400, "bad_signature"), (403, "writer_revoked"): return .deviceRefused
       case (429, _): return .rateLimited
       case (500..., _): return .unavailable
       default: return .other

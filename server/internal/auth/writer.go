@@ -84,14 +84,15 @@ const (
 // Writer errors. The HTTP layer maps each to spec 02 §6.3's code; the reason
 // inside is for the operator log.
 var (
-	ErrKeysRequired    = errors.New("auth: the account has no keys yet")                 // 403 keys_required
-	ErrBadWriterID     = errors.New("auth: writer id does not match the §4.8 grammar")   // 400 bad_writer_id
-	ErrWriterMalformed = errors.New("auth: writer request is malformed")                 // 400 bad_request
-	ErrBadSignature    = errors.New("auth: signature or nonce did not verify")           // 400 bad_signature
-	ErrTooManyDevices  = errors.New("auth: the account has the maximum of live writers") // 409 too_many_devices
-	ErrHeadMoved       = errors.New("auth: the target's head is not the pinned one")     // 409 head_moved
-	ErrNoSuchWriter    = errors.New("auth: no such writer")                              // 404 not_found
-	ErrWriterRevoked   = errors.New("auth: the writer is revoked")                       // 403 writer_revoked
+	ErrKeysRequired       = errors.New("auth: the account has no keys yet")                           // 403 keys_required
+	ErrBadWriterID        = errors.New("auth: writer id does not match the §4.8 grammar")             // 400 bad_writer_id
+	ErrWriterMalformed    = errors.New("auth: writer request is malformed")                           // 400 bad_request
+	ErrBadSignature       = errors.New("auth: signature or nonce did not verify")                     // 400 bad_signature
+	ErrTooManyDevices     = errors.New("auth: the account has the maximum of live writers")           // 409 too_many_devices
+	ErrHeadMoved          = errors.New("auth: the target's head is not the pinned one")               // 409 head_moved
+	ErrNoSuchWriter       = errors.New("auth: no such writer")                                        // 404 not_found
+	ErrWriterRevoked      = errors.New("auth: the writer is revoked")                                 // 403 writer_revoked
+	ErrDeviceOtherAccount = errors.New("auth: the signing-in device is not a writer of this account") // 409 other_account_device
 )
 
 // Writer is one row of a user's roster.
