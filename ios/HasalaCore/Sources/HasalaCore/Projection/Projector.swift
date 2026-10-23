@@ -80,12 +80,13 @@ public enum Projector {
     let taxonomy = TaxonomyView(state: state)
     let rules = state.rules.map { id, r in RuleInput(id: id, patterns: r.patterns, match: r.match, category: r.category, priority: r.priority, enabled: r.enabled, removed: r.removed) }
     let categorizer = Categorizer(rules: rules, dictionary: dictionary, categories: taxonomy)
+    let groups = MerchantGroup(dictionary: dictionary)
     try db.write { db in
       try ensureSchema(db)
       try db.execute(sql: "UPDATE projection_meta SET value = '0' WHERE key = 'complete'")
       // Children before parents: `txn_part` and `rule_pattern` reference `txn` and `rule`.
       for t in ProjectionSchema.tables.reversed() where t != "projection_meta" { try db.execute(sql: "DELETE FROM \(t)") }
-      try writeTxns(db, state, categorizer: categorizer, pending: pendingIDs)
+      try writeTxns(db, state, categorizer: categorizer, groups: groups, pending: pendingIDs)
       try writeCategories(db, taxonomy)
       try writeRules(db, state, taxonomy: taxonomy)
       try writeConfig(db, state)
@@ -105,15 +106,18 @@ public enum Projector {
 
   // MARK: Transactions
 
-  private static func writeTxns(_ db: Database, _ s: State, categorizer: Categorizer, pending: Set<String>) throws {
+  private static func writeTxns(_ db: Database, _ s: State, categorizer: Categorizer, groups: MerchantGroup, pending: Set<String>) throws {
     let txnView = OrderedDictionaryView(s)
     let cards = Array(s.cards.values)
     // is_new_merchant: no earlier live row (by posted instant, then fold order) with the same key.
     var firstByKey: [String: (Int64, Int)] = [:]
     var keys: [String: String] = [:]
+    var groupOf: [ExactKey: String] = [:]
     for (i, (id, t)) in s.txns.enumerated() {
       let key = Canon.merchantKey(t.merchantRaw)
       keys[id] = key
+      let raw = ExactKey(t.merchantRaw)
+      if groupOf[raw] == nil { groupOf[raw] = groups.key(raw: t.merchantRaw) }
       guard t.isLive, !t.unparsed else { continue }
       let ms = (try? parseInstantMs(t.postedAt)) ?? 0
       if let f = firstByKey[key], f <= (ms, i) { continue }
@@ -127,8 +131,8 @@ public enum Projector {
           successor_id, possible_duplicate_of, duplicate_disposition, mailbox_message_id, note, archived, account_id,
           effective_account_id, counter_account_id, project_id, refund_of, refund_target, refund_state, transfer_peer,
           transfer_target, transfer_state, is_new_merchant, version, pending, review_lane, source_mailbox, source_provider,
-          user_touched, copy_of, copy_decision, held_copy)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          user_touched, copy_of, copy_decision, held_copy, merchant_group, categorized_ms)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)
     let part = try db.makeStatement(
       sql: "INSERT INTO txn_part (txn_id, idx, category, amount_minor, amount_home_minor, note) VALUES (?,?,?,?,?,?)")
@@ -160,7 +164,7 @@ public enum Projector {
         refundTarget, refundOf == nil ? nil : Attribution.refundState(t, target: refundTarget.flatMap { s.txns[$0] }), peer, peerTarget,
         peer == nil ? nil : Attribution.transferState(t, target: peerTarget.flatMap { s.txns[$0] }, targetPeer: peerBack),
         isNew, t.version, pending.contains(id), ReviewQueue.lane(t)?.rawValue, t.sourceMailbox, t.sourceProvider,
-        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy,
+        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(t.merchantRaw)].flatMap { $0.isEmpty ? nil : $0 }, categorizedMs(s, id, t),
       ]
       try insert.execute(arguments: StatementArguments(args))
       for (k, a) in t.aliases.enumerated() {
@@ -175,6 +179,11 @@ public enum Projector {
         }
       }
     }
+  }
+
+  static func categorizedMs(_ s: State, _ id: String, _ t: Txn) -> Int64? {
+    guard t.category != nil, t.splits.isEmpty else { return nil }
+    return s.heads[State.entityKey("txn", id)]?.categorizedAtMs
   }
 
   static func userTouched(_ t: Txn) -> Bool {

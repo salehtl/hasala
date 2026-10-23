@@ -103,8 +103,11 @@ extension State {
         anomaly(seq, "duplicate_create", "\(op.opID) re-creates \(ref.kind) \(ref.id), already at version \(head.version)")
         return
       }
+      let predecessor = op.type == .txnSuperseded ? op.ingestID.flatMap { liveByIngestID[$0] } : nil
       guard create(e, decoded) else { return }
-      heads[key] = EntityHead(kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs)
+      heads[key] = EntityHead(
+        kind: ref.kind, id: ref.id, version: 1, opID: op.opID, writerID: e.writerID, authoredAtMs: authoredMs,
+        categorizedAtMs: createdFiledAt(ref, decoded, predecessor: predecessor, authoredMs: authoredMs))
       return
     }
 
@@ -140,6 +143,7 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
+      if op.type == .txnCategorized { head.categorizedAtMs = Self.filedAt(authoredMs) }
       heads[key] = head
       edit(e, payload, version: head.version)
       return
@@ -175,12 +179,23 @@ extension State {
       head.opID = op.opID
       head.writerID = e.writerID
       head.authoredAtMs = authoredMs
+      if op.type == .txnCategorized { head.categorizedAtMs = Self.filedAt(authoredMs) }
       heads[key] = head
       edit(e, payload, version: head.version)
       return
     }
     heads[key] = head
     setVersion(ref.kind, ref.id, head.version)
+  }
+
+  static func filedAt(_ authoredMs: Int64) -> Int64? { authoredMs == 0 ? nil : authoredMs }
+
+  private func createdFiledAt(_ ref: EntityRef, _ payload: CausalPayload, predecessor: String?, authoredMs: Int64) -> Int64? {
+    guard utf8Equal(ref.kind, "txn"), let t = txns[ref.id], case .txn(let p) = payload else { return nil }
+    if t.category != nil, t.categorySource?.kind == .rule { return Self.filedAt(authoredMs) }
+    guard Self.chosen(t.categorySource) else { return nil }
+    let from = Self.chosen(p.categorySource) ? predecessor : t.aliases.first?.txnID
+    return from.flatMap { heads[State.entityKey("txn", $0)]?.categorizedAtMs }
   }
 
   static let creates: [OpType] = [.txnIngested, .txnSuperseded, .ruleAdded, .projectDefined, .goalDefined, .billSet]
