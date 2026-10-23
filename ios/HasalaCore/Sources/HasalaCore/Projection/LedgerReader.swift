@@ -63,6 +63,8 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var heldCopy: Bool
   public var reviewReason: TxnGates.ReviewReason?
   public var senderCheck: String?
+  public var merchantGroup: String?
+  public var categorizedMs: Int64?
 
   init(_ r: Row) {
     id = r["id"]
@@ -112,6 +114,8 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     copyOf = r["copy_of"]
     copyDecision = r["copy_decision"]
     heldCopy = r["held_copy"]
+    merchantGroup = r["merchant_group"]
+    categorizedMs = r["categorized_ms"]
     let gates = Self.gates(r["gates_json"])
     reviewReason = Self.reviewReason(gates)
     senderCheck = Self.senderCheck(gates)
@@ -292,14 +296,37 @@ public struct LedgerReader: Sendable {
 
   /// The sweep's view of every row (03c §8.4).
   public func sweepRows() throws -> [SweepRow] {
+    try sweepRows(sql: Self.sweepSQL, [])
+  }
+
+  public func sweepRows(group: String) throws -> [SweepRow] {
+    guard !group.isEmpty else { return [] }
+    return try sweepRows(sql: Self.groupSQL, [group])
+  }
+
+  public func group(_ key: String, limit: Int? = nil) throws -> [TxnRow] {
+    guard !key.isEmpty else { return [] }
+    if let limit, limit <= 0 { return [] }
+    return try db.read { db in
+      try Row.fetchAll(
+        db, sql: limit == nil ? Self.groupSQL : Self.groupSQL + " LIMIT ?",
+        arguments: limit.map { [key, $0] } ?? [key]
+      ).map(TxnRow.init)
+    }
+  }
+
+  static let sweepSQL = "SELECT * FROM txn WHERE superseded_by IS NULL ORDER BY posted_ms DESC, id DESC"
+  static let groupSQL = "SELECT * FROM txn WHERE superseded_by IS NULL AND merchant_group = ? ORDER BY posted_ms DESC, id DESC"
+
+  private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM txn WHERE superseded_by IS NULL ORDER BY posted_ms DESC, id DESC").map { r in
+      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
         let t = TxnRow(r)
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
-          template: TxnRow.template(gatesJSON: r["gates_json"]))
+          template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs)
       }
     }
   }

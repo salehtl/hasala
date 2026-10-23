@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 7
+  public static let version = 8
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
@@ -103,13 +103,16 @@ public enum ProjectionSchema {
       user_touched          INTEGER NOT NULL DEFAULT 0 CHECK (user_touched IN (0,1)),
       copy_of               TEXT,
       copy_decision         TEXT CHECK (copy_decision IN ('keep_both')),
-      held_copy             INTEGER NOT NULL DEFAULT 0 CHECK (held_copy IN (0,1))
+      held_copy             INTEGER NOT NULL DEFAULT 0 CHECK (held_copy IN (0,1)),
+      merchant_group        TEXT CHECK (merchant_group IS NULL OR merchant_group <> ''),
+      categorized_ms        INTEGER
     );
     CREATE INDEX txn_local_month ON txn(local_month, posted_ms DESC);
     CREATE INDEX txn_category    ON txn(category);
     CREATE INDEX txn_project     ON txn(project_id) WHERE project_id IS NOT NULL;
     CREATE INDEX txn_source_ref  ON txn(category_source, category_source_ref);
     CREATE INDEX txn_merchant    ON txn(merchant_key);
+    CREATE INDEX txn_merchant_group ON txn(merchant_group, posted_ms DESC, id DESC);
     CREATE INDEX txn_mailbox_message ON txn(mailbox_message_id) WHERE mailbox_message_id IS NOT NULL;
     CREATE INDEX txn_needs_review    ON txn(needs_review) WHERE needs_review = 1;
     CREATE INDEX txn_review_lane     ON txn(review_lane) WHERE review_lane IS NOT NULL;
