@@ -143,7 +143,7 @@
       signup.go(.recoverCode)
       guard stop != .recoverCode else { return }
       signIn.recoverCode = MockAccountService.emailCode
-      guard signIn.submitRecoveryCode() else { return }
+      guard await signIn.submitRecoveryCode() else { return }
       signup.go(.recoverMethod)
     }
 

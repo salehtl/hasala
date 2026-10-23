@@ -108,7 +108,8 @@ final class BootController {
       pause: { [weak self] in await self?.runtime?.coordinator.pause() },
       resume: { [weak self] in await self?.runtime?.coordinator.resume() },
       left: { [weak self] in await self?.left() },
-      otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) })
+      otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) },
+      deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
     // can launch the app cold, before the account has opened: it waits for the opening.
     BackgroundScheduler.shared.install { kind, _ in
