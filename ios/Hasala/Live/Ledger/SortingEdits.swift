@@ -140,8 +140,13 @@ nonisolated extension LedgerEditAuthor {
     }
   }
 
-  func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, receiptID: Int?) async throws -> [Inverse] {
-    guard let group = row.merchantGroup else { return [] }
+  static func reaches(_ row: TxnRow) -> Bool { row.merchantGroup != nil && !row.split }
+
+  func categorizeReaching(
+    _ row: TxnRow, category c: String, project: ProjectID?, receiptID: Int?,
+    leading: (inout OpAuthor) throws(AuthorError) -> Void = { _ throws(AuthorError) in }
+  ) async throws -> [Inverse] {
+    guard let group = row.merchantGroup else { throw Failure.notFound }
     let (rows, home) = try reach()
     let pool = RuleReach.eligible(rows: rows, group: group, direction: row.direction, home: home).filter { $0.id != row.id }
     let existing = try ruleSnapshots()
@@ -155,6 +160,7 @@ nonisolated extension LedgerEditAuthor {
       (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
       var cx = ctx.raised(to: floor)
       var a = OpAuthor(cx)
+      try leading(&a)
       a.categorize(txnID: row.id, parentVersion: row.version, category: c, needsReview: false)
       if let project { a.annotate(txnID: row.id, set: [("project_id", project)]) }
       var rest: [AuthoredBlob] = []

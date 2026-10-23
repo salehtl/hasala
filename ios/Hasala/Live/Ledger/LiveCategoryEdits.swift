@@ -77,29 +77,27 @@ extension LedgerEditAuthor {
   }
 
   nonisolated func addCategoryAndSort(
-    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?, before: LedgerState, today: LocalDate, receiptID: Int?
+    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?, receiptID: Int?
   ) async throws -> [Inverse] {
     guard let category = d.id else { throw Failure.notFound }
     guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
     guard let row = try reader.txn(id) else { throw Failure.notFound }
     let view = try reader.taxonomy()
-    try await build { a throws(AuthorError) in
-      try a.createCategoryAndFile(
-        id: category, name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view, txnID: id, parentVersion: row.version,
-        project: project)
+    let icon = Self.icon(d.glyph)
+    let inverses: [Inverse]
+    if alwaysUse, Self.reaches(row) {
+      inverses = try await categorizeReaching(row, category: category, project: project, receiptID: receiptID) {
+        a throws(AuthorError) in
+        _ = try a.createCategory(id: category, name: d.name, parent: parent, icon: icon, in: view)
+      }
+    } else {
+      try await build { a throws(AuthorError) in
+        try a.createCategoryAndFile(
+          id: category, name: d.name, parent: parent, icon: icon, in: view, txnID: id, parentVersion: row.version, project: project)
+      }
+      inverses = row.split ? [] : [Self.refile(row, written: row.version + 1)]
     }
-    let corrections = noteCorrection(row, to: category)
-    guard alwaysUse else { return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + corrections }
-    let reached = try await authorNow(
-      .categorize(id, category, learnRule: true, project: nil), before: before, today: today, receiptID: receiptID)
-    return corrections + Self.keepingPrior(row, reached)
-  }
-
-  nonisolated static func keepingPrior(_ row: TxnRow, _ inverses: [Inverse]) -> [Inverse] {
-    inverses.map { inverse in
-      guard case .refile(let t, let written, _, _, _) = inverse, t == row.id else { return inverse }
-      return refile(row, written: written)
-    }
+    return inverses + noteCorrection(row, to: category)
   }
 
   nonisolated private func archiveCategory(_ id: String, moveTo: String?, view: TaxonomyView, today: LocalDate) async throws {

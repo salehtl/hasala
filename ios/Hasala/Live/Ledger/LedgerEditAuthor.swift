@@ -130,7 +130,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
-      if learnRule, row.merchantGroup != nil, !row.split {
+      if learnRule, Self.reaches(row) {
         let inverses = try await categorizeReaching(row, category: c, project: project, receiptID: receiptID)
         return inverses + noteCorrection(row, to: c)
       }
@@ -312,8 +312,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       try await authorCategory(edit, today: today)
     case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
-      return try await addCategoryAndSort(
-        d, txn: id, alwaysUse: alwaysUse, project: project, before: before, today: today, receiptID: receiptID)
+      return try await addCategoryAndSort(d, txn: id, alwaysUse: alwaysUse, project: project, receiptID: receiptID)
     case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break

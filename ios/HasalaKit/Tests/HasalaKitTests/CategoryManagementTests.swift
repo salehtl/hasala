@@ -313,4 +313,35 @@ struct CategoryManagementTests {
     }
     #expect(ledger.state == full)
   }
+
+  @Test func alwaysUseIsOneWriteAndARefusalWritesNothing() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let row = try waiting(ledger)
+    let before = ledger.state
+    let start = ledger.revision
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Subscriptions"))) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: " subscriptions", parent: "subscriptions"), row.id, alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.notFound) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), "no-such-row", alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.notFound) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), row.id, alwaysUse: true, project: "no-such-project"))
+    }
+    #expect(ledger.revision == start && ledger.state == before)
+
+    let draft = CategoryDraft(name: "VPN", glyph: .subscriptions, parent: "subscriptions")
+    let token = try #require(try ledger.apply(.addCategoryAndSort(draft, row.id, alwaysUse: true, project: nil)))
+    #expect(ledger.revision == start + 1)
+    let c = try #require(ledger.state.categories.first { $0.name == "VPN" })
+    #expect(c.id == "c_mock1")
+    #expect(ledger.state.rules.contains { $0.categoryID == c.id })
+    #expect(ledger.state.txns.filter { $0.categoryID == c.id }.count > 1)
+    #expect(ledger.state.sortReceipt?.txnIDs.first == row.id)
+
+    ledger.undo(token)
+    #expect(ledger.state.txns == before.txns)
+    #expect(ledger.state.rules == before.rules)
+    #expect(ledger.state.category(c.id) != nil)
+  }
 }

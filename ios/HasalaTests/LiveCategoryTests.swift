@@ -1,10 +1,12 @@
 import CoreCategorize
 import CoreDomain
+import CoreOutbox
 import CoreProjection
 import CoreTime
 import Foundation
 import HasalaMocks
 import HasalaModels
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -140,6 +142,39 @@ struct LiveCategoryTests {
 
   static func newOps(_ a: Mapper.Account, after count: Int) throws -> [String] {
     try a.context.store.pendingOps().dropFirst(count).map(\.opType)
+  }
+
+  nonisolated final class Enqueues: CoreTime.Clock, Sendable {
+    let ms: Int64
+    private let reads = Mutex(0)
+    init(ms: Int64) { self.ms = ms }
+    var count: Int { reads.withLock { $0 } }
+    func nowMs() -> Int64 {
+      reads.withLock { $0 += 1 }
+      return ms
+    }
+  }
+
+  static func counted(_ l: Sorting.Ledger) -> (LedgerEditAuthor, Enqueues) {
+    let enqueues = Enqueues(ms: Mapper.anchor)
+    let outbox = Outbox(store: l.a.context.store, clock: enqueues, debounce: .seconds(3600), onAuthored: {})
+    return (LedgerEditAuthor(observer: l.a.observer, outbox: outbox, memory: l.memory, trust: l.trust), enqueues)
+  }
+
+  struct Filing: Equatable {
+    var category: String?
+    var needsReview: Bool
+    var source: String
+    var ref: String?
+  }
+
+  static func filings(_ l: Sorting.Ledger) throws -> [String: Filing] {
+    var out: [String: Filing] = [:]
+    for id in l.ids.values.joined() {
+      let r = try #require(try l.row(id))
+      out[id] = Filing(category: r.category, needsReview: r.needsReview, source: r.categorySource, ref: r.categorySourceRef)
+    }
+    return out
   }
 
   @Test func theStoreMakesCategoryIDsInTheAuthorsFormat() async throws {
@@ -316,5 +351,82 @@ struct LiveCategoryTests {
     #expect(try l.reader.taxonomy().info(id) == nil)
     #expect(try l.row(txn) == before)
     #expect(try l.reader.rules().isEmpty)
+  }
+
+  @Test func alwaysUseWritesTheCategoryTheSortTheRuleAndTheReachInOneEnqueue() async throws {
+    let l = try await Sorting.ledger(suite: "categories.sort.once", rows: Sorting.tailscale)
+    let (author, enqueues) = Self.counted(l)
+    let txn = try #require(l.ids["com"]?.first)
+    let before = try Self.filings(l)
+    let pending = try l.a.context.store.pendingCount()
+    let id = l.store.newCategoryID()
+    let inverses = try await author.author(
+      .addCategoryAndSort(Self.vpn(id), txn, alwaysUse: true, project: nil), before: l.store.state, today: MayaLedger.now.date)
+    #expect(enqueues.count == 1)
+    let added = try l.a.context.store.pendingOps().dropFirst(pending)
+    let filed = try l.ids.values.joined().filter { try l.row($0)?.category == id }
+    #expect(filed.count > 1 && filed.contains(txn))
+    #expect(
+      added.map(\.opType)
+        == ["category_defined", "txn_categorized", "rule_added"] + Array(repeating: "txn_categorized", count: filed.count - 1))
+    #expect(added.filter { $0.entityID == txn }.count == 1)
+    #expect(Set(added.filter { $0.opType == "txn_categorized" }.compactMap(\.entityID)) == Set(filed))
+    let rule = try #require(try l.reader.rules().first)
+    #expect(rule.category == id)
+    let receipt = try #require(l.memory.value.receipt)
+    #expect(receipt.txnIDs.first == txn && Set(receipt.txnIDs) == Set(filed) && receipt.ruleID == rule.id)
+    #expect(try l.row(txn)?.categorySource == "user")
+
+    try await author.undo(inverses)
+    #expect(try Self.filings(l) == before)
+    #expect(try l.reader.rules().isEmpty)
+    #expect(try l.reader.taxonomy().info(id)?.active == true)
+  }
+
+  @Test func aRefusedAlwaysUseWriteEnqueuesNothing() async throws {
+    let l = try await Sorting.ledger(suite: "categories.sort.refused.once", rows: Sorting.tailscale)
+    let (author, enqueues) = Self.counted(l)
+    let suite = "categories.sort.refused.once.store"
+    let store = LiveLedgerStore(
+      reader: l.reader, author: author, profile: Mapper.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: suite)!), clock: { MayaLedger.now })
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let txn = try #require(l.ids["com"]?.first)
+    let before = try Self.filings(l)
+    let shown = store.state
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Subscriptions"))) {
+      try store.apply(.addCategoryAndSort(CategoryDraft(name: " subscriptions", parent: "subscriptions"), txn, alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.refused(CategoryLimits.cannotAdd)) {
+      try store.apply(.addCategoryAndSort(CategoryDraft(id: "subscriptions", name: "VPN", parent: "subscriptions"), txn, alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.notFound) {
+      try store.apply(.addCategoryAndSort(Self.vpn(store.newCategoryID()), txn, alwaysUse: true, project: "no-such-project"))
+    }
+    #expect(store.state == shown)
+
+    let id = store.newCategoryID()
+    let synced = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+      o.defineCategory(
+        id: "c_01jc0000000000000000000078", name: "vpn", kind: .spending, bucket: .want, icon: "tag", active: true,
+        parent: "subscriptions")
+    }
+    try await l.a.outbox.enqueue(try #require(synced).ops)
+    try await l.a.observer.reproject()
+    let pending = try l.a.context.store.pendingCount()
+    await #expect(throws: AuthorError.refused(CategoryRefusal.nameTaken("vpn").message)) {
+      try await author.author(
+        .addCategoryAndSort(Self.vpn(id), txn, alwaysUse: true, project: nil), before: store.state, today: MayaLedger.now.date)
+    }
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(enqueues.count == 0)
+    #expect(try l.a.context.store.pendingCount() == pending)
+    #expect(try l.reader.taxonomy().info(id) == nil)
+    #expect(try Self.filings(l) == before)
+    #expect(try l.reader.rules().isEmpty)
+    #expect(l.memory.value.batches.isEmpty && l.memory.value.receipt == nil)
+    #expect(!failed)
   }
 }

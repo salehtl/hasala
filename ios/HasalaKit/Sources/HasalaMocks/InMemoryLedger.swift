@@ -140,17 +140,7 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].history.sort(by: >)
     }
 
-    switch edit {
-    case .addTransaction(let d):
-      if let refusal = d.refusal { throw refusal }
-      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
-      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      var t = d.txn(id: "manual-\(nextManual)")
-      t.merchantKey = t.merchant.lowercased()
-      s.txns.append(t)
-      nextManual += 1
-      title = nil
-    case .categorize(let id, let c, let learnRule, let project):
+    func sort(_ id: TxnID, into c: CategoryID, learnRule: Bool, project: ProjectID?) throws(ActionError) {
       guard s.category(c) != nil else { throw .notFound }
       let old = s.txn(id)
       try editTxn(id) { t in
@@ -161,7 +151,7 @@ public final class InMemoryLedger: LedgerStore {
       if learnRule, let t = old, t.canAlwaysUse, let ref = t.groupRef {
         let pool = s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != id }
         let patterns = GroupRule.patterns(filed: t, members: pool, filing: c)
-        guard !patterns.isEmpty else { break }
+        guard !patterns.isEmpty else { return }
         touchedRules = true
         let rule: Rule
         let overlapping = s.rules.firstIndex { r in
@@ -191,6 +181,20 @@ public final class InMemoryLedger: LedgerStore {
           title = SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: categoryName(c), all: !left)
         }
       }
+    }
+
+    switch edit {
+    case .addTransaction(let d):
+      if let refusal = d.refusal { throw refusal }
+      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
+      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
+      var t = d.txn(id: "manual-\(nextManual)")
+      t.merchantKey = t.merchant.lowercased()
+      s.txns.append(t)
+      nextManual += 1
+      title = nil
+    case .categorize(let id, let c, let learnRule, let project):
+      try sort(id, into: c, learnRule: learnRule, project: project)
     case .sortGroup(let ref, let c, let alwaysUse, let project):
       guard s.category(c) != nil else { throw .notFound }
       if let project, s.project(project) == nil { throw .notFound }
@@ -580,8 +584,14 @@ public final class InMemoryLedger: LedgerStore {
       if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
       CategoriesEngine.apply(edit, to: &s, month: now.date.yearMonth)
       title = nil
-    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
-      return try addCategoryAndSort(d, txn: id, alwaysUse: alwaysUse, project: project)
+    case .addCategoryAndSort(var d, let id, let alwaysUse, let project):
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      guard s.txn(id) != nil else { throw .notFound }
+      if let project, s.project(project) == nil { throw .notFound }
+      if d.id == nil { d.id = newCategoryID() }
+      guard let c = d.id else { throw .notFound }
+      CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
+      try sort(id, into: c, learnRule: alwaysUse, project: project)
     case .setNotifications(let level):
       s.prefs.notifications = level
       title = nil
@@ -623,26 +633,6 @@ public final class InMemoryLedger: LedgerStore {
     while state.category("c_mock\(nextCategory)") != nil { nextCategory += 1 }
     defer { nextCategory += 1 }
     return "c_mock\(nextCategory)"
-  }
-
-  private func addCategoryAndSort(_ d: CategoryDraft, txn id: TxnID, alwaysUse: Bool, project: ProjectID?) throws(ActionError)
-    -> UndoToken?
-  {
-    var draft = d
-    if draft.id == nil { draft.id = newCategoryID() }
-    guard let category = draft.id else { throw .notFound }
-    if let why = CategoriesEngine.refusal(.addCategory(draft), in: state) { throw .refused(why) }
-    guard state.txn(id) != nil else { throw .notFound }
-    if let project, state.project(project) == nil { throw .notFound }
-    let saved = state
-    try apply(.addCategory(draft))
-    do {
-      return try apply(.categorize(id, category, learnRule: alwaysUse, project: project))
-    } catch {
-      state = saved
-      revision += 1
-      throw error
-    }
   }
 
   public func undo(_ token: UndoToken) {
