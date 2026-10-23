@@ -25,8 +25,12 @@ struct LiveCategoryTests {
     store.onWriteFailed = { failed = true }
 
     #expect(try store.apply(.addCategory(CategoryDraft(name: "Coffee", glyph: .dining, parent: "dining"))) == nil)
-    try await Mapper.eventually { try Self.custom(a, "Coffee") != nil && store.state.categories.contains { $0.name == "Coffee" && !$0.id.hasPrefix("pending") } }
+    let shown = try #require(store.state.categories.first { $0.name == "Coffee" })
+    #expect(OpAuthor.isNewCategoryID(shown.id))
+    try await Mapper.eventually { try Self.custom(a, "Coffee") != nil }
     let coffee = try #require(try Self.custom(a, "Coffee"))
+    #expect(coffee.id == shown.id)
+    #expect(store.state.categories.filter { $0.name == "Coffee" }.map(\.id) == [shown.id])
     #expect(coffee.parent == "dining" && coffee.kind == .spending && coffee.bucket == .want && coffee.icon == "fork_knife" && coffee.active)
     let ids = store.state.categories.map(\.id)
     #expect(ids.firstIndex(of: coffee.id) == ids.firstIndex(of: "dining").map { $0 + 1 })

@@ -13,7 +13,7 @@ public enum CategoryIconGuess {
     (.investments, ["investment", "stock", "shares", "crypto", "gold", "استثمار", "أسهم", "ذهب"]),
     (.savingsJar, ["savings", "saving", "emergency", "fund", "ادخار", "توفير"]),
     (.subscriptions, ["subscription", "membership", "streaming", "اشتراك", "اشتراكات"]),
-    (.utilities, ["utilities", "electricity", "water", "internet", "phone", "mobile", "كهرباء", "ماء", "مياه", "إنترنت", "هاتف", "جوال"]),
+    (.utilities, ["utilities", "utility", "electricity", "water", "internet", "phone", "mobile", "كهرباء", "ماء", "مياه", "إنترنت", "هاتف", "جوال"]),
     (.rent, ["rent", "home", "house", "housing", "apartment", "flat", "إيجار", "بيت", "منزل", "شقة", "سكن"]),
     (.groceries, ["grocery", "groceries", "supermarket", "market", "vegetables", "fruit", "بقالة", "سوبرماركت", "خضار", "فواكه"]),
     (.dining, ["coffee", "cafe", "restaurant", "food", "lunch", "dinner", "breakfast", "snack", "قهوة", "مطعم", "مطاعم", "طعام", "أكل", "غداء", "عشاء", "فطور"]),
@@ -48,9 +48,17 @@ public enum CategoryIconGuess {
     fold(name).split { !$0.isLetter && !$0.isNumber }.map(String.init)
   }
 
+  static let article = "\u{0627}\u{0644}"
+  static let prefixes = ["\u{0648}", "\u{0628}", "\u{0644}\u{0644}", "\u{0644}"]
+  static let sibilants = ["s", "x", "z", "ch", "sh"]
+
   static func forms(_ word: String) -> [String] {
     var out = [word]
-    if word.hasPrefix("\u{0627}\u{0644}"), word.count > 3 { out.append(String(word.dropFirst(2))) }
+    for p in prefixes where word.hasPrefix(p) && word.count >= p.count + 3 { out.append(String(word.dropFirst(p.count))) }
+    for w in out where w.hasPrefix(article) && w.count > 3 { out.append(String(w.dropFirst(2))) }
+    if word.hasSuffix("ies"), word.count > 4 { out.append(String(word.dropLast(3)) + "y") }
+    let stem = String(word.dropLast(2))
+    if word.hasSuffix("es"), word.count > 3, sibilants.contains(where: { stem.hasSuffix($0) }) { out.append(stem) }
     if word.hasSuffix("s"), word.count > 3 { out.append(String(word.dropLast())) }
     return out
   }

@@ -275,15 +275,14 @@ public enum CategoriesEngine {
     s.categories.insert(c, at: j)
   }
 
-  public static func apply(_ edit: LedgerEdit, to s: inout LedgerState, newID: CategoryID, month: YearMonth) {
+  public static func apply(_ edit: LedgerEdit, to s: inout LedgerState, month: YearMonth) {
     switch edit {
     case .addCategory(let d):
-      guard let p = d.parent, let parent = s.category(p) else { return }
+      guard let id = d.id, let p = d.parent, let parent = s.category(p) else { return }
       let (kind, bucket, role) = classOf(parent)
       place(
         Category(
-          id: d.id ?? newID, name: d.trimmedName, kind: kind, bucket: bucket, glyph: d.glyph, role: role, parent: p,
-          builtin: false),
+          id: id, name: d.trimmedName, kind: kind, bucket: bucket, glyph: d.glyph, role: role, parent: p, builtin: false),
         in: &s)
     case .editCategory(let id, let d):
       guard var c = s.category(id) else { return }

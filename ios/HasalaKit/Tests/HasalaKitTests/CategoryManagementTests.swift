@@ -228,6 +228,16 @@ struct CategoryManagementTests {
     #expect(!ledger.state.categories.contains { $0.name == "Juice" })
   }
 
+  @Test func anIDLessAddSkipsAnIDAnotherDraftAlreadyUsed() throws {
+    let ledger = InMemoryLedger()
+    try ledger.apply(.addCategory(CategoryDraft(id: "c_mock1", name: "Coffee", parent: "dining")))
+    try ledger.apply(.addCategory(CategoryDraft(id: "c_mock3", name: "Juice", parent: "dining")))
+    #expect(try add(ledger, "Tea") == "c_mock2")
+    #expect(try add(ledger, "Water") == "c_mock4")
+    #expect(ledger.state.category("c_mock1")?.name == "Coffee" && ledger.state.category("c_mock3")?.name == "Juice")
+    #expect(ledger.newCategoryID() == "c_mock5")
+  }
+
   @Test func addingAndSortingFilesThePaymentInOneEdit() throws {
     let ledger = InMemoryLedger(state: Scenario.mayaBacklog.state)
     let row = try waiting(ledger)

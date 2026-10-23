@@ -38,6 +38,22 @@ struct CategoryIconGuessTests {
     #expect(CategoryIconGuess.glyph(for: "هدايا") == .shopping)
   }
 
+  @Test func pluralsAndArabicPrefixes() {
+    #expect(CategoryIconGuess.glyph(for: "Pharmacies") == .healthcare)
+    #expect(CategoryIconGuess.glyph(for: "Utility bills") == .utilities)
+    #expect(CategoryIconGuess.glyph(for: "Lunches") == .dining)
+    #expect(CategoryIconGuess.glyph(for: "Buses") == .transport)
+    #expect(CategoryIconGuess.glyph(for: "للسيارة") == .transport)
+    #expect(CategoryIconGuess.glyph(for: "بالسيارة") == .transport)
+    #expect(CategoryIconGuess.glyph(for: "والبيت") == .rent)
+    #expect(CategoryIconGuess.glyph(for: "للبيت") == .rent)
+    #expect(CategoryIconGuess.glyph(for: "لعشاء") == .dining)
+    #expect(CategoryIconGuess.glyph(for: "وقود") == .transport)
+    #expect(CategoryIconGuess.glyph(for: "Cares") == .tag)
+    #expect(CategoryIconGuess.glyph(for: "Rates") == .tag)
+    #expect(CategoryIconGuess.glyph(for: "Bills") == .tag)
+  }
+
   @Test func anUnknownOrEmptyNameKeepsTheTag() {
     #expect(CategoryIconGuess.glyph(for: "") == .tag)
     #expect(CategoryIconGuess.glyph(for: "   ") == .tag)

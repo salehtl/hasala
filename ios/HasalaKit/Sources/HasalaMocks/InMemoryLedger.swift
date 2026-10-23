@@ -551,10 +551,14 @@ public final class InMemoryLedger: LedgerStore {
       guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
       s.unsetRate(currency)
       title = nil
-    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+    case .addCategory(var d):
       if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
-      CategoriesEngine.apply(edit, to: &s, newID: "c_mock\(nextCategory)", month: now.date.yearMonth)
-      if case .addCategory(let d) = edit, d.id == nil { nextCategory += 1 }
+      if d.id == nil { d.id = newCategoryID() }
+      CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
+      title = nil
+    case .editCategory, .archiveCategory, .restoreCategory:
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      CategoriesEngine.apply(edit, to: &s, month: now.date.yearMonth)
       title = nil
     case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
       return try addCategoryAndSort(d, txn: id, alwaysUse: alwaysUse, project: project)
@@ -596,6 +600,7 @@ public final class InMemoryLedger: LedgerStore {
   }
 
   public func newCategoryID() -> CategoryID {
+    while state.category("c_mock\(nextCategory)") != nil { nextCategory += 1 }
     defer { nextCategory += 1 }
     return "c_mock\(nextCategory)"
   }
