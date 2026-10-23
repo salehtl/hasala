@@ -70,7 +70,6 @@ final class AppModel {
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
-  @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
   @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
   @ObservationIgnored private var reviewItemsMemo = Memo<HomeMemoKey, [ReviewItem]>()
   @ObservationIgnored private var sortedForYouMemo = Memo<Int, SortedForYouSnapshot>()
@@ -265,12 +264,6 @@ final class AppModel {
   var reviewCount: Int {
     reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
   }
-
-  var suggestionCount: Int {
-    suggestionMemo.value(for: store.revision) { SuggestionsEngine.count(store.state) }
-  }
-
-  func openCheckSuggestions() { router.open(.checkSuggestions) }
 
   var showingProfile: Bool {
     get { sheet == .profile }

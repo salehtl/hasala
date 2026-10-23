@@ -13,12 +13,9 @@ import SwiftUI
 /// and with none it opens Add a transaction.
 struct ReviewTabView: View {
   @Bindable var app: AppModel
-  @Environment(\.scenePhase) private var scenePhase
   @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(AccountSession.self) private var session: AccountSession?
-  @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
   @State private var cloudSortAnswered = false
-  @State private var foregrounds = SortSlot.Foregrounds()
 
   init(app: AppModel) {
     self.app = app
@@ -38,9 +35,7 @@ struct ReviewTabView: View {
           .accessibilityLabel(ReviewEngine.toSortSpoken(items) ?? Self.countLine(items, elsewhere: elsewhere, period: app.period.title))
           .accessibilityIdentifier("review.tab.count")
       } content: {
-        let slot = SortSlot.of(SortSlot.Facts(
-          asks: asksCloudSort, status: app.cloudSort?.status, dismissedRun: Int64(dismissedRun),
-          importing: app.mailbox?.importing, suggestions: app.suggestionCount))
+        let slot = SortSlot.of(SortSlot.Facts(asks: asksCloudSort, status: app.cloudSort?.status, importing: app.mailbox?.importing))
         VStack(alignment: .leading, spacing: 24) {
           if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
           if let row = app.sortResult {
@@ -57,31 +52,14 @@ struct ReviewTabView: View {
           if !items.isEmpty { list(items) }
         }
         .padding(.horizontal, HSpacing.insetPage)
-        .onChange(
-          of: SortSlot.offerSeen(slot, onReview: app.tab == .review, phase: scenePhase, covered: app.router.cover != nil),
-          initial: true
-        ) { _, seen in
-          if seen { app.cloudSort?.offerShown() }
-        }
       }
       .navigationDestination(for: ReviewRoute.self) { route in
         switch route {
         case .unreadMail: UnreadMailView(app: app)
         }
       }
-      .onChange(of: app.tab == .review, initial: true) { _, open in
-        guard open, let sort = app.cloudSort else { return }
-        sort.reviewOpened()
-        Task { await sort.refresh() }
-      }
-      .task { await app.cloudSort?.refresh() }
       .onChange(of: cards.count) {
         app.cloudSort?.countsChanged()
-      }
-      .onChange(of: scenePhase) { _, phase in
-        guard foregrounds.note(phase), let sort = app.cloudSort else { return }
-        if app.tab == .review { sort.reviewOpened() }
-        Task { await sort.refresh() }
       }
     }
   }
@@ -100,7 +78,6 @@ struct ReviewTabView: View {
   private func turnOnCloudSort() {
     session?.services.cloudSort?.turnOn()
     cloudSortAnswered = true
-    if let sort = app.cloudSort { Task { await sort.refresh() } }
     app.say("Cloudflare AI is on. It sorts a few names at a time while Hasala is open.", icon: .cloud)
   }
 
@@ -129,13 +106,6 @@ struct ReviewTabView: View {
       CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
     case .importing(let mail)?:
       importingCard(mail, queued: !app.reviewCards.isEmpty)
-    case let slot?:
-      if let sort = app.cloudSort, let state = slot.card {
-        CloudSortCard(app: app, sort: sort, state: state) {
-          dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
-        }
-        .background(cardSurface)
-      }
     case nil:
       EmptyView()
     }
