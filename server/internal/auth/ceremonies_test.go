@@ -673,7 +673,7 @@ func TestPasskeySignInBindsADeviceAndRecordsOnlyUnboundSignIns(t *testing.T) {
 	if _, err := login(d, true); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("a tampered binding: %v", err)
 	}
-	if _, err := login(authtest.NewDevice(t), false); !errors.Is(err, ErrBadSignature) {
+	if _, err := login(authtest.NewDevice(t), false); !errors.Is(err, ErrDeviceOtherAccount) {
 		t.Fatalf("another account's or no writer: %v", err)
 	}
 	if in, err = login(nil, false); err != nil || in.WriterID != "" {

@@ -5,6 +5,7 @@ import CoreStore
 import CoreSync
 import CoreTime
 import Foundation
+import os
 
 /// `AccountService` over CoreSync's ceremonies (spec 04 §6.2): signup (C1, C1-P), the
 /// interrupted C1, sign-in (C2, C2-P, C2b, C2b-P), unlock (C2's PRF, C3), sign-out, and
@@ -231,12 +232,22 @@ final class LiveAccountService: AccountService {
       Self.logOutLater(stale, env)
       return await outcome(r, passkeyCanUnlock: r.assertion?.prfFirst != nil)
     } catch {
-      if error.failureClass == .rejected {
+      switch error.failureClass {
+      case .rejected:
         // Unbound: the server no longer knows this passkey (the beta was reset). Bound:
         // the passkey is another account's, or this iPhone's account is gone; either way
         // only removing this iPhone's data lets a sign-in proceed.
         guard let bound else { throw .orphanedPasskey }
         throw otherAccountHere(bound)
+      case .otherAccountDevice:
+        if let bound { throw otherAccountHere(bound) }
+      case .deviceRefused:
+        if bound != nil {
+          hooks.deviceUnenrolled()
+          throw .cancelled
+        }
+      default:
+        break
       }
       throw Self.map(error)
     }
@@ -818,7 +829,20 @@ final class LiveAccountService: AccountService {
     case .rateLimited: return .rateLimited
     case .offline, .unavailable: return .offline
     case .integrity: return .integrity
-    case .notApproved, .other: return .refused
+    case .otherAccountDevice, .deviceRefused, .notApproved, .other:
+      log.notice("auth refused: \(Self.describe(e), privacy: .public)")
+      return .refused
+    }
+  }
+
+  private static let log = Logger(subsystem: "app.hasala.ios", category: "auth")
+
+  static func describe(_ e: CeremonyError) -> String {
+    switch e {
+    case .api(.refused(let f)): "\(f.status) \(f.code)"
+    case .api: "api"
+    case .passkey(let p): "passkey \(p)"
+    default: String(String(describing: e).prefix { $0 != "(" })
     }
   }
 }
@@ -863,4 +887,5 @@ struct LiveAccountHooks {
   /// This iPhone holds the data of the account at this address, and a signup or a
   /// sign-in to another account was asked for: show the "Remove this iPhone's data" wall.
   var otherAccountHere: @MainActor (_ email: String?) -> Void = { _ in }
+  var deviceUnenrolled: @MainActor () -> Void = {}
 }

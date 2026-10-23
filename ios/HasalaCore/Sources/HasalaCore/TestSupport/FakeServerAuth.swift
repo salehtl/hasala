@@ -193,7 +193,8 @@ extension FakeServer {
     guard let user = state.withLock({ $0.users[id] }) else { return Self.error(403, "passkey_rejected") }
     var writer: WriterID?
     if let d = device {
-      guard let w = user.writers[d.writer_id], let sig = try? Base64.decode(d.sig),
+      guard let w = user.writers[d.writer_id] else { return Self.error(409, "other_account_device") }
+      guard let sig = try? Base64.decode(d.sig),
         let msg = try? SigningMessage.sessionBind(loginChallenge: challenge, writerID: w.id),
         Ed25519.verify(publicKey: w.dwk, signature: sig, message: msg)
       else { return Self.error(400, "bad_signature") }

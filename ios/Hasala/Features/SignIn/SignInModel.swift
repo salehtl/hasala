@@ -275,13 +275,25 @@ final class SignInModel {
     verifiedRecoveryKind = nil
   }
 
-  /// The six digits are only kept here: `recover/verify` needs the new way to sign in
-  /// too (spec 04 §6.2 C4 step 3), so it is sent from the method screen.
-  func submitRecoveryCode() -> Bool {
-    guard recovery != nil, recoverCode.count == 6, recoverCode.allSatisfy(\.isASCII), recoverCode.allSatisfy(\.isNumber)
+  /// `recover/verify` needs the new way to sign in too (spec 04 §6.2 C4 step 3): sent
+  /// here when a new passkey is the only way, else from the method screen.
+  func submitRecoveryCode() async -> Bool {
+    guard let recovery, recoverCode.count == 6, recoverCode.allSatisfy(\.isASCII), recoverCode.allSatisfy(\.isNumber)
     else { return false }
     clearFailure()
-    return true
+    guard !capabilities.contains(.recoverWithPassword), verifiedRecoveryKind == nil else { return true }
+    busy = true
+    defer { busy = false }
+    do {
+      try await account.verifyRecovery(recovery, code: recoverCode, kind: .passkey)
+      verifiedRecoveryKind = .passkey
+      return true
+    } catch {
+      if case .codeWrong = error { recoverCode = "" }
+      if error == .codeExpired { recoverCode = "" }
+      fail(error, on: .recoverCode)
+      return false
+    }
   }
 
   enum RecoveryResult: Equatable {

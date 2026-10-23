@@ -24,10 +24,10 @@ struct LiveAccountServiceTests {
   static let password = "copper lantern quietly 42"
 
   /// One iPhone: its own Keychain and approval key, the shared server.
-  static func phone(_ server: MiniHasalad) -> AccountEnvironment {
+  static func phone(_ server: MiniHasalad, passkeys: (any PasskeyProvider)? = nil) -> AccountEnvironment {
     AccountEnvironment(
       client: AuthClient(transport: server), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
-      approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(), random: SystemRandom(),
+      approvalKeys: SoftDAK(), passkeys: passkeys, clock: SystemClock(), random: SystemRandom(),
       apiBase: "https://api.hasala.app", accountsDirectory: nil)
   }
 
@@ -221,6 +221,37 @@ struct LiveAccountServiceTests {
     // The bound account's own address (any case) signs in again (C2b-P).
     #expect(try await again.signInWithPassword(email: "Maya@Example.com", password: Self.password) == .ready)
     #expect(walls.count == 2)
+  }
+
+  @Test func anotherAccountsPasskeyOnABoundIPhoneAsksToRemoveItsData() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server, passkeys: AssertingPasskeys())
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let binding = try #require(try env.secrets.binding())
+    server.passkeySignsInAs = server.addUser(email: "omar@example.com")
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    var unenrolled = 0
+    again.hooks = LiveAccountHooks(
+      otherAccountHere: { walls.append($0) }, deviceUnenrolled: { unenrolled += 1 })
+    await #expect(throws: AuthFailure.cancelled) { _ = try await again.signInWithPasskey() }
+    #expect(walls == [Self.email])
+    #expect(unenrolled == 0)
+    #expect(try env.secrets.binding() == binding)
+    #expect(try env.secrets.session() == nil)
+
+    server.passkeySignsInAs = binding.user_id
+    server.passkeyLoginRefusal = (400, "bad_signature")
+    await #expect(throws: AuthFailure.cancelled) { _ = try await again.signInWithPasskey() }
+    server.passkeyLoginRefusal = (403, "writer_revoked")
+    await #expect(throws: AuthFailure.cancelled) { _ = try await again.signInWithPasskey() }
+    #expect(unenrolled == 2)
+    #expect(walls.count == 1)
+
+    server.passkeyLoginRefusal = nil
+    #expect(try await again.signInWithPasskey() == .ready)
   }
 
   /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the

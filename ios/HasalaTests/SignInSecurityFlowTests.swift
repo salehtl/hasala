@@ -69,12 +69,12 @@ struct SignInSecurityFlowTests: AccountSuite {
     // The code is kept until the new way to sign in is chosen: `recover/verify` sends
     // both (spec 04 §6.2 C4 step 3).
     m.recoverCode = "000000"
-    #expect(m.submitRecoveryCode())
+    #expect(await m.submitRecoveryCode())
     #expect(await m.finishRecovery(.passkey) == .codeRejected)
     #expect(m.failure == .codeWrong(triesLeft: 4))
     #expect(m.recoverCode.isEmpty)
     m.recoverCode = MockAccountService.emailCode
-    #expect(m.submitRecoveryCode())
+    #expect(await m.submitRecoveryCode())
     #expect(await m.finishRecovery(.passkey) == .done)
     #expect(account.recoveryKind == .passkey)
     let after = try? await account.securityState()
@@ -84,6 +84,38 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(outcome == .ready)
   }
 
+  @Test func aPasskeyOnlyRecoveryVerifiesTheCodeOnItsOwnScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = "000000"
+    #expect(!(await m.submitRecoveryCode()))
+    #expect(m.failure(on: .recoverCode) == .codeWrong(triesLeft: 4))
+    #expect(m.recoverCode.isEmpty)
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.submitRecoveryCode())
+    #expect(m.failure(on: .recoverCode) == nil)
+    #expect(account.recoveryKind == .passkey)
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(account.verifiedRecoveryCodes == ["000000", MockAccountService.emailCode])
+  }
+
+  @Test func anotherAccountsWordsStopAtTheCode() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    account.failNext = .cancelled
+    #expect(!(await m.submitRecoveryCode()))
+    #expect(m.failure(on: .recoverCode)?.message == nil)
+  }
+
   @Test func anOfflineVerifyKeepsTheCodeForTheRetry() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero
@@ -91,7 +123,7 @@ struct SignInSecurityFlowTests: AccountSuite {
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
     m.recoverCode = MockAccountService.emailCode
-    #expect(m.submitRecoveryCode())
+    #expect(await m.submitRecoveryCode())
     account.failNext = .offline
     #expect(await m.finishRecovery(.passkey) == .failed)
     #expect(m.failure(on: .recoverMethod) == .offline)
@@ -121,7 +153,7 @@ struct SignInSecurityFlowTests: AccountSuite {
     m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
     #expect(await m.submitRecoveryWords())
     m.recoverCode = MockAccountService.emailCode
-    #expect(m.submitRecoveryCode())
+    #expect(await m.submitRecoveryCode())
     m.newPassword = "a brand new passphrase"
     m.confirmPassword = "a brand new passphrase"
     #expect(await m.finishRecovery(.password("a brand new passphrase")) == .done)
