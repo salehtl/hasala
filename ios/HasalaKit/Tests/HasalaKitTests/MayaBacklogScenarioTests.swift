@@ -71,7 +71,7 @@ struct MayaBacklogScenarioTests {
     #expect(s.rates.contains { $0.currency == "EUR" })
     let reachable = Set(s.txns.filter(\.reachable).map(\.id))
     let waiting = Set(s.txns.filter(\.inReview).map(\.id))
-    #expect(waiting.subtracting(reachable) == ["bl-ts-unverified", "steam"])
+    #expect(waiting.subtracting(reachable) == ["bl-ts-unverified", "bl-mirdif-unverified", "steam"])
     #expect(reachable.isSubset(of: waiting))
     #expect(base.txns.allSatisfy { $0.merchantGroup == nil && !$0.reachable })
   }

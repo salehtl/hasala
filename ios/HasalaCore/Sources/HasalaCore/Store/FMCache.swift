@@ -46,6 +46,20 @@ public final class FMCache: ModelAnswerCache {
     }
   }
 
+  public func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws {
+    guard !entries.isEmpty else { return }
+    try db.write { db in
+      for e in entries {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO fm_cache (key, expires_at_ms, category, auto_file) VALUES (?, ?, ?, ?)",
+          arguments: [
+            ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag), Int64.max, e.category,
+            e.autoFile,
+          ])
+      }
+    }
+  }
+
   @discardableResult
   public func purgeExpired(now: Int64) throws -> Int {
     try db.write { db in

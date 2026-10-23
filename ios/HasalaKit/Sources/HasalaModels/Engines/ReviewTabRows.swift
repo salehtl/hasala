@@ -46,11 +46,6 @@ extension ReviewGroupCardModel {
 
   public var canAlwaysUse: Bool { spellings.contains { GroupRule.pattern($0) != nil } }
 
-  public var shownAmount: MoneyPhrase {
-    guard totals.count >= 2, let estimate else { return amount }
-    return MoneyPhrase([.text("≈ "), .amount(estimate.money)])
-  }
-
   public var estimateBreakdown: MoneyPhrase? {
     guard totals.count >= 2 else { return nil }
     var parts: [MoneyPhrase.Part] = [.text("Estimate · ")]

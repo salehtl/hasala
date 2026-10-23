@@ -118,6 +118,7 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
       let by = suggestedBy.map { ", " + $0.prefix(1).lowercased() + $0.dropFirst() } ?? ""
       line += " Looks like \(suggestion.name)\(by)."
     }
+    if let historyLine { line += " \(historyLine)." }
     return line
   }
 }

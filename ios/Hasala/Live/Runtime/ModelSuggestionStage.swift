@@ -93,12 +93,8 @@ struct ModelSuggestionStage: Sendable {
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
           trusts: trusts, stamps: observer.stamps, serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
-          enqueue: { try await outbox.enqueue($0.ops) })
-        var failed = r.failed
-        if r.authored {
-          do { try await observer.reproject() } catch { failed = true }
-        }
-        guard !failed else {
+          enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
+        guard !r.failed else {
           return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: r.filing)
         }
         return .init(pass: r.pass, filing: r.filing)

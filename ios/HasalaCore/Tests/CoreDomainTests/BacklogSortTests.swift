@@ -156,6 +156,7 @@ struct BacklogSortTests {
       func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer? { nil }
       func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws { throw Boom() }
       func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws { throw Boom() }
+      func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws { throw Boom() }
     }
     var l = T.Ledger()
     _ = try l.ingest([("SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit")])

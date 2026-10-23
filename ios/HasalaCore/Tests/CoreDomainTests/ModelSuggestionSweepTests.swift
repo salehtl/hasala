@@ -55,6 +55,15 @@ final class MemoryCache: ModelAnswerCache, Sendable {
       }
     }
   }
+
+  func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws {
+    rows.withLock { r in
+      for e in entries {
+        r[ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag)] =
+          (.max, .category(e.category, autoFile: e.autoFile))
+      }
+    }
+  }
 }
 
 @Suite("ModelSuggestionSweep")

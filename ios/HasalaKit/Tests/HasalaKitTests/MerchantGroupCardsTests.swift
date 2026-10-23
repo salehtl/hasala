@@ -167,6 +167,7 @@ struct MerchantGroupCardsTests {
     #expect(g.filedAs.map(\.id) == ["groceries", "shopping"])
     #expect(g.filedAs.map(\.count) == [4, 3])
     #expect(g.historyLine == "You sorted Qasr Corner Store as Groceries (4) and Shopping (3) before")
+    #expect(g.spoken(hidden: false).hasSuffix(". You sorted Qasr Corner Store as Groceries (4) and Shopping (3) before."))
     #expect(g.suggestion == nil)
   }
 
@@ -224,6 +225,17 @@ struct MerchantGroupCardsTests {
     #expect(g.estimateLine?.rendered(hidden: false).hasSuffix(" estimated · Not counted: 1 in EUR") == true)
   }
 
+  @Test func aDenseGroupHasTwoCurrenciesThreeSpellingsAndALeftOutRow() throws {
+    let g = try group(MayaBacklog.mirdifGroup)
+    #expect(g.count == 4)
+    #expect(g.totals.map(\.currency) == ["AED", "USD"])
+    #expect(g.spellings.count == 3)
+    #expect(g.leftOut.map(\.txnID) == ["bl-mirdif-unverified"])
+    #expect(g.leftOutLine == "1 more payment gets its own card. Hasala couldn't verify its sender.")
+    #expect(g.estimateBreakdown != nil && g.estimate != nil)
+    #expect(g.suggestion?.id == MayaBacklog.wrongGuess)
+  }
+
   @Test func nearMissesStayApart() throws {
     let trading = try group(MayaBacklog.alNoorTradingGroup)
     let pharmacy = try group(MayaBacklog.alNoorPharmacyGroup)
@@ -240,15 +252,15 @@ struct MerchantGroupCardsTests {
 
   @Test func theTabCountsCardsAndPayments() {
     let items = ReviewEngine.items(s, in: october)
-    #expect(items.count == 15)
+    #expect(items.count == 17)
     #expect(ReviewEngine.payments(items) == ReviewEngine.queue(s, in: october).count)
-    #expect(ReviewEngine.payments(items) == 25)
-    #expect(ReviewEngine.toSortLine(items) == "Tailscale and 14 more · 25 payments")
+    #expect(ReviewEngine.payments(items) == 30)
+    #expect(ReviewEngine.toSortLine(items) == "Tailscale and 16 more · 30 payments")
     #expect(Array(items.prefix(4).map(\.id)) == [
-      "group.out.n:tailscale", "group.out.n:qasr corner store", "group.out.n:al noor trading",
-      "group.out.n:brightwell academy",
+      "group.out.n:tailscale", "group.out.n:mirdif books", "group.out.n:qasr corner store",
+      "group.out.n:al noor trading",
     ])
-    #expect(Array(items.prefix(3).map(\.payments)) == [8, 3, 2])
+    #expect(Array(items.prefix(3).map(\.payments)) == [8, 4, 3])
     #expect(zip(items, items.dropFirst()).allSatisfy { $0.payments >= $1.payments })
     #expect(ReviewEngine.toSortLine([]) == nil)
     #expect(ReviewEngine.toSortLine(Array(items.prefix(1))) == "Tailscale · 8 payments")

@@ -61,6 +61,7 @@ public enum ModelSuggestionSweep {
     let rejected = refused
     let rejects: @Sendable (String, String) -> Bool = { s, c in rejected[s]?.contains(c) == true }
     var cached: Set<[String]> = []
+    var keep: [ModelTier.StagedSuggestion] = []
     var answer: [String: ModelTier.StagedSuggestion] = [:]
     subjects: for s in subjects {
       for stage in stages where stage.accepts(s) && !(stage.leavesDevice && held.contains(s)) {
@@ -68,8 +69,9 @@ public enum ModelSuggestionSweep {
         switch try cache.answer(subject: s, taxonomyHash: taxonomy, modelTag: tag, now: started) {
         case .unknown?:
           cached.insert([s, tag])
-        case .category(let c, _)? where rejects(s, c):
+        case .category(let c, let a)? where rejects(s, c):
           cached.insert([s, tag])
+          if stage.leavesDevice { keep.append(ModelTier.StagedSuggestion(subject: s, category: c, modelTag: tag, autoFile: a)) }
         case .category(let c, let a)? where allowed.contains(where: { $0.id == c }):
           answer[s] = ModelTier.StagedSuggestion(subject: s, category: c, modelTag: tag, autoFile: a)
           continue subjects
@@ -88,6 +90,9 @@ public enum ModelSuggestionSweep {
     if r.cloudRequests > 0 { spent(r.cloudRequests) }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
     try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
+    let cloudTags = Set(stages.filter(\.leavesDevice).map(\.model.modelTag))
+    keep += r.suggestions.filter { cloudTags.contains($0.modelTag) && rejects($0.subject, $0.category) }
+    try cache.keepAnswers(keep, taxonomyHash: taxonomy)
     for s in r.suggestions where answer[s.subject] == nil && !rejects(s.subject, s.category) { answer[s.subject] = s }
     return queued.compactMap { q in
       guard let a = answer[q.subject], let v = q.row.version, !q.row.rejects(a.category) else { return nil }

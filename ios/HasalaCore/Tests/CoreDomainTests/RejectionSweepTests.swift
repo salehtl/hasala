@@ -81,6 +81,48 @@ struct RejectionSweepTests {
     #expect(accepted.count == 2 && accepted.allSatisfy { $0.category == "shopping" && $0.autoFile })
   }
 
+  @Test("a rejected cloud answer outlives the cache's 30 days, so the name never goes to Cloudflare again")
+  func keptPastExpiry() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit"), ("SECOND SHOP DXB", "debit")])
+    let hash = ModelTier.taxonomyHash(T.allowed)
+    let later = now + 61 * 86_400_000
+    let cache = MemoryCache()
+    try cache.recordAnswers(
+      [ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)],
+      taxonomyHash: hash, now: now)
+    let rows = Self.rejecting(l.rows(), ["shopping", "dining"])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let device = RecordingModel("apple-fm/26.1", reply: .unknown)
+    let first = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)], context: .foreground,
+      cache: cache, now: { now })
+    #expect(first.isEmpty && cloud.calls.map(\.subject) == ["second shop dxb"])
+    let again = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)], context: .foreground,
+      cache: cache, now: { later })
+    #expect(again.isEmpty && cloud.calls.count == 1)
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == .category("shopping", autoFile: true))
+    #expect(try cache.answer(subject: "second shop dxb", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == .category("dining", autoFile: false))
+
+    let backlogCache = MemoryCache()
+    try backlogCache.recordAnswers(
+      [ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)],
+      taxonomyHash: hash, now: now)
+    let backlog = BacklogCloud(["second shop dxb": (.category("dining"), true)])
+    let p = try await BacklogSort.pass(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: .init(), cache: backlogCache, now: { now },
+      autoFile: true)
+    #expect(p.suggestions.isEmpty && backlog.calls == ["second shop dxb"])
+    let counts = try BacklogSort.counts(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: backlogCache, now: later)
+    #expect(counts.waitingNames == 0)
+    let next = try await BacklogSort.pass(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: .init(), cache: backlogCache, now: { later },
+      autoFile: true)
+    #expect(next.suggestions.isEmpty && next.calls == 0 && backlog.calls == ["second shop dxb"])
+  }
+
   @Test("the request and the cache key are the same with and without rejections")
   func sameRequest() async throws {
     var l = T.Ledger()
@@ -205,6 +247,45 @@ struct RejectionSweepTests {
     let blobs = try await sweep.value
     #expect(blobs.count == 1)
     #expect(order.withLock { $0 } == ["edit-start", "edit-end", "reread", "commit"])
+  }
+}
+
+extension RejectionSweepTests {
+  @Test("the bulk sort reprojects before it lets the next write in")
+  func backlogReprojectsInsideTheSerial() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let serial = WriteSerial()
+    let order = Mutex<[String]>([])
+    let cloud = BacklogCloud(fallback: (.category("dining"), false))
+    let waiter = Mutex<Task<Void, Error>?>(nil)
+    let r = try await BacklogSort.run(
+      rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: MemoryCache(),
+      now: { now }, autoFile: false, stamps: AuthorStamps(), serial: serial,
+      reread: { (snapshot.rows(), snapshot.context()) },
+      enqueue: { _ in
+        order.withLock { $0.append("enqueue") }
+        waiter.withLock { $0 = Task { try await serial.run { order.withLock { $0.append("next write") } } } }
+        try await Task.sleep(for: .milliseconds(50))
+      },
+      reproject: { order.withLock { $0.append("reproject") } })
+    try await waiter.withLock { $0 }?.value
+    #expect(r.authored && !r.failed)
+    #expect(order.withLock { $0 } == ["enqueue", "reproject", "next write"])
+  }
+
+  @Test("a bulk sort whose reproject fails reports the pass as failed")
+  func backlogReprojectFailure() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let r = try await BacklogSort.run(
+      rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: BacklogCloud(fallback: (.category("dining"), false)),
+      memo: .init(), cache: MemoryCache(), now: { now }, autoFile: false, stamps: AuthorStamps(), serial: WriteSerial(),
+      reread: { (snapshot.rows(), snapshot.context()) }, enqueue: { _ in }, reproject: { throw Boom() })
+    #expect(r.authored && r.failed)
   }
 }
 

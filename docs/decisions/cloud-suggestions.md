@@ -435,7 +435,7 @@ a category.
 `merchant_category_rejected`, with its own fold map and replay goldens. Rejections are
 applied on the phone after the answer: a rejected answer reads as unknown for that stage,
 so Apple's model is asked next, and a cached Cloudflare answer that was rejected is never
-sent again. The request, the `allowed` list and the cache key are unchanged.
+sent again (the phone keeps that cached answer past the usual 30 days). The request, the `allowed` list and the cache key are unchanged.
 
 **What leaves the phone is unchanged:** one canonical merchant string and the built-in
 categories per request, from card-payment alerts only. A bulk run changes how many

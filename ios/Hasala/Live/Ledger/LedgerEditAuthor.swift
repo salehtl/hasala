@@ -126,10 +126,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
-      let counted = noteCorrection(row, to: c)
       if learnRule, row.merchantGroup != nil, !row.split {
-        return try await categorizeReaching(row, category: c, project: project, skipped: before.skippedReview, receiptID: receiptID)
-          + counted
+        let inverses = try await categorizeReaching(
+          row, category: c, project: project, skipped: before.skippedReview, receiptID: receiptID)
+        return inverses + noteCorrection(row, to: c)
       }
       var snapshots: [OpAuthor.RuleSnapshot] = []
       var filed: [(merchantRaw: String, category: String)] = []
@@ -145,7 +145,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
         }
       }
-      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + counted
+      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + noteCorrection(row, to: c)
     case .useSuggestions(let uses):
       try await useSuggestions(uses)
     case .markTransfer(let id):

@@ -31,6 +31,14 @@ struct ReviewPickSheet: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         header
+        if let history = pick.group?.historyLine {
+          Text(history)
+            .hType(.footnote)
+            .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("pick.history")
+        }
         list
         if showsProjects { projects }
         if canAlwaysUse { ruleRow }
@@ -86,7 +94,8 @@ struct ReviewPickSheet: View {
     let projects: CGFloat = showsProjects ? 66 + 20 : 0
     let commit: CGFloat = pick.group == nil ? 0 : 20 + 54 * 2 + 10
     let rule: CGFloat = canAlwaysUse ? 20 + 44 : 0
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + commit + 28
+    let history: CGFloat = pick.group?.historyLine == nil ? 0 : 20 + 36
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + commit + history + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.

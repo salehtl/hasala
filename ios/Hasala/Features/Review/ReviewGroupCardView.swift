@@ -17,14 +17,12 @@ struct ReviewGroupCardView<Actions: View>: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      VStack(alignment: .leading, spacing: 0) {
-        identity
-        Spacer(minLength: 24)
-        amount
+      ViewThatFits(in: .vertical) {
+        summary
+        ScrollView { summary }
+          .scrollBounceBehavior(.basedOnSize)
+          .scrollIndicators(.automatic)
       }
-      .padding(.top, 24)
-      .padding(.horizontal, 24)
-      .padding(.bottom, 22)
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(group.spoken(hidden: hidden))
       .accessibilityActions { actions() }
@@ -48,6 +46,17 @@ struct ReviewGroupCardView<Actions: View>: View {
         .shadow(color: (lean?.pillHue.end ?? .clear).opacity(0.9 * strength), radius: 20,
                 x: ReviewGlow.shift(leanEdge).width, y: ReviewGlow.shift(leanEdge).height)
     }
+  }
+
+  private var summary: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      identity
+      Spacer(minLength: 24)
+      amount
+    }
+    .padding(.top, 24)
+    .padding(.horizontal, 24)
+    .padding(.bottom, 22)
   }
 
   private var identity: some View {
@@ -104,6 +113,12 @@ struct ReviewGroupCardView<Actions: View>: View {
         .fixedSize(horizontal: false, vertical: true)
       if let breakdown = group.estimateBreakdown {
         PhraseText(breakdown, hidden: hidden)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      if let history = group.historyLine {
+        Text(history)
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -199,28 +214,22 @@ extension ReviewGroupCardView where Actions == EmptyView {
 struct ReviewNoteStrip: View {
   let note: RejectedNote
   let undo: () -> Void
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: 12) {
-      Circle().fill(HColor.surfacePrimary).frame(width: 32, height: 32)
-        .overlay { HIconView(.minus, size: 16, color: HColor.iconSecondary, strokeWidth: 2) }
-        .accessibilityHidden(true)
-      Text(note.line)
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textPrimary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier("review.notThis.note")
-      if note.undo != nil {
-        Button(action: undo) {
-          Text("Undo")
-            .hType(.subheadline.weight(.semibold))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 8) {
+          disc
+          line
+          undoLink
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("review.notThis.undo")
+      } else {
+        HStack(spacing: 12) {
+          disc
+          line
+          undoLink
+        }
       }
     }
     .padding(.vertical, 10)
@@ -229,6 +238,35 @@ struct ReviewNoteStrip: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(HColor.reviewSuggestionSurface)
     .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
+  }
+
+  private var disc: some View {
+    Circle().fill(HColor.surfacePrimary).frame(width: 32, height: 32)
+      .overlay { HIconView(.minus, size: 16, color: HColor.iconSecondary, strokeWidth: 2) }
+      .accessibilityHidden(true)
+  }
+
+  private var line: some View {
+    Text(note.line)
+      .hType(.subheadline)
+      .foregroundStyle(HColor.textPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityIdentifier("review.notThis.note")
+  }
+
+  @ViewBuilder private var undoLink: some View {
+    if note.undo != nil {
+      Button(action: undo) {
+        Text("Undo")
+          .hType(.subheadline.weight(.semibold))
+          .foregroundStyle(HColor.textLink)
+          .frame(minHeight: HSpacing.targetMinimum)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("review.notThis.undo")
+    }
   }
 }
 

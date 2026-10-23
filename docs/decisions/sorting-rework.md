@@ -93,7 +93,8 @@ everything else. When it updates, the cold fold reads the blob again.
 
 Rejections are applied on the phone after the answer: a rejected answer reads as unknown
 for that stage, so Apple's model is asked next, and a cached Cloudflare answer that was
-rejected is never sent to Cloudflare again. The `allowed` list, the request bytes and the
+rejected is never sent to Cloudflare again: the phone keeps that cached answer past the
+cache's 30 days (`FMCache.keepAnswers`). The `allowed` list, the request bytes and the
 cache key never change (`RejectionSweepTests`). A model-sourced row whose guess is
 rejected shows as a plain "You decide" card.
 
@@ -153,7 +154,11 @@ do not survive one. It goes with the account's files when the account leaves the
 A group card shows the merchant, the spellings it covers, the total per currency (never
 summed across currencies; with two or more, an estimate in AED from the home amounts,
 labelled as an estimate), the date range, "repeats monthly" when a bill covers the
-merchant, and the rows left out and why. Its buttons say what a tap files: "Use for all
+merchant, the rows left out and why, and, when the person filed the merchant two or more
+ways before, a footnote such as "You sorted Qasr Corner Store as Groceries (4) and
+Shopping (3) before" (also on the pick sheet and read by VoiceOver). When this does not fit
+in the card at the default sizes, the top of the card scrolls and the suggestion strip stays
+in view. Its buttons say what a tap files: "Use for all
 30", "Sort all 30 as Software" count the group's waiting rows in every month, and the meta
 line names the ones from other months. A swipe or a flick opens the pick sheet; it never
 files 30 rows. The tab badge counts payments, the count line reads "Tailscale and 39 more ·
@@ -173,6 +178,9 @@ payments as Software. 39 left." after a group sort.
 - Stop this rule writes `rule_added removed: true` and keeps what the rule filed. Pausing a
   rule in Profile still holds its rows (`setRule` with held rows), the reach-back rows
   included.
+- A group rule never drops a spelling an existing rule holds. Re-filing edits the
+  existing rule in place when its spellings and the group's fit in 8 patterns; otherwise
+  the group's spellings move out of it into a new rule, and the old rule keeps the rest.
 - After a pull, a person's filing that lost a fork to this iPhone's automatic op (a
   reach-back, a re-file or an undo) is written again at the head.
 

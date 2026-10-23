@@ -49,6 +49,19 @@ struct FMCacheTests {
     try cache.recordUnknown([], taxonomyHash: Self.taxonomy, now: 0)
   }
 
+  @Test("a kept answer survives the purge and the 30 days")
+  func kept() throws {
+    let cache = FMCache(try LedgerStore.inMemory())
+    let day: Int64 = 86_400_000
+    let answer = ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)
+    try cache.recordAnswers([answer], taxonomyHash: Self.taxonomy, now: 1_000)
+    try cache.keepAnswers([answer], taxonomyHash: Self.taxonomy)
+    #expect(try cache.purgeExpired(now: 400 * day) == 0)
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: Self.taxonomy, modelTag: "cf-clef/1", now: 400 * day) == .category("shopping", autoFile: true))
+    try cache.keepAnswers([], taxonomyHash: Self.taxonomy)
+    #expect(try cache.count() == 1)
+  }
+
   @Test("category answers are kept for 30 days with their grade, keyed by subject, taxonomy and model tag")
   func answers() throws {
     let cache = FMCache(try LedgerStore.inMemory())

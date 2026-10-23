@@ -10,6 +10,7 @@ import CoreWire
 import Foundation
 import HasalaMocks
 import HasalaModels
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -487,6 +488,59 @@ struct LiveSortingTests {
     #expect(l.trust.counts.corrections["shopping"] == nil)
   }
 
+  @Test func pausingARuleThatReachedBackHoldsEveryRowItFiled() async throws {
+    let l = try await Self.ledger(suite: "sorting.pause", rows: Self.tailscale)
+    let filed = try #require(l.ids["com"]?.first)
+    try l.store.apply(.categorize(filed, "subscriptions", learnRule: true, project: nil))
+    try await Mapper.eventually { try l.reader.rules().count == 1 }
+    let rule = try #require(try l.reader.rules().first)
+    let reached = Array(l.ids["com"]!.dropFirst()) + l.ids["inc"]! + l.ids["paypal"]!
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef == rule.id } }
+    #expect(try reached.allSatisfy { try l.row($0)?.categorySource == "rule" && l.row($0)?.needsReview == false })
+    try l.store.apply(.setRuleEnabled(rule.id, false))
+    try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource == "held" } }
+    for id in reached {
+      let r = try #require(try l.row(id))
+      #expect(r.needsReview && r.categorySourceRef == rule.id && r.category == "subscriptions")
+    }
+    #expect(try l.row(filed)?.categorySource == "user" && l.row(filed)?.needsReview == false)
+    try l.store.apply(.setRuleEnabled(rule.id, true))
+    try await Mapper.eventually { try l.reader.rules().first?.enabled == true }
+    _ = await l.author.followUp()
+    #expect(try reached.allSatisfy { try l.row($0)?.categorySource == "held" && l.row($0)?.needsReview == true })
+  }
+
+  @Test func aBulkSortReprojectsBeforeAWaitingCategorizeReadsTheRow() async throws {
+    let l = try await Self.ledger(
+      suite: "sorting.serial", rows: [("a", Row(raw: "LANTERN FILM CLUB", minor: 40_00, currency: "AED", day: 1))])
+    let id = try #require(l.ids["a"]?.first)
+    let cloud = ModelSuggestionStageTests.Counting("cf-clef/1", answer: .category("entertainment"))
+    let anchor = Mapper.anchor
+    let stage = ModelSuggestionStage(
+      observer: l.a.observer, outbox: l.a.outbox, cache: FMCache(l.a.context.store), dictionary: AccountRuntime.dictionary,
+      onDevice: ModelSuggestionStageTests.Counting("apple-fm/27.1", answer: .unknown), cloud: cloud, onDeviceAlone: false,
+      nowMs: { anchor })
+    let hold = Hold()
+    let serial = l.a.observer.writes
+    let held = Task { try await hold.keep(serial) }
+    try await Mapper.eventually { serial.isBusy }
+    let pass = Task { await stage.backlogPass(BacklogSort.Memo(), dayLeft: 100) }
+    try await Mapper.eventually { !cloud.calls.isEmpty }
+    try await Task.sleep(for: .milliseconds(200))
+    let token = try #require(try l.store.apply(.categorize(id, "dining", learnRule: false, project: nil)))
+    try await Task.sleep(for: .milliseconds(100))
+    hold.open()
+    try await held.value
+    let result = await pass.value
+    #expect(result?.pass.failed == false)
+    try await Mapper.eventually { try l.row(id)?.category == "dining" }
+    #expect(try l.row(id)?.categorySource == "user")
+    #expect(try l.reader.forkNotices(kind: "txn").isEmpty)
+    l.store.undo(token)
+    try await Mapper.eventually { try l.row(id)?.category == "entertainment" }
+    #expect(try l.row(id)?.categorySource == "model" && l.row(id)?.needsReview == true)
+  }
+
   @Test func theBacklogMocksSpellingsAreOffTheDictionaryAndKeyAsCoreKeysThem() {
     let groups = MerchantGroup(dictionary: AccountRuntime.dictionary)
     let categorizer = Categorizer(rules: [], dictionary: AccountRuntime.dictionary, categories: BuiltinCategories())
@@ -498,3 +552,31 @@ struct LiveSortingTests {
   }
 }
 
+
+nonisolated final class Hold: Sendable {
+  private let state = Mutex<(open: Bool, waiter: CheckedContinuation<Void, Never>?)>((false, nil))
+
+  func wait() async {
+    await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+      let now = state.withLock { s -> Bool in
+        if s.open { return true }
+        s.waiter = k
+        return false
+      }
+      if now { k.resume() }
+    }
+  }
+
+  func keep(_ serial: WriteSerial) async throws {
+    try await serial.run { await wait() }
+  }
+
+  func open() {
+    let k = state.withLock { s -> CheckedContinuation<Void, Never>? in
+      s.open = true
+      defer { s.waiter = nil }
+      return s.waiter
+    }
+    k?.resume()
+  }
+}

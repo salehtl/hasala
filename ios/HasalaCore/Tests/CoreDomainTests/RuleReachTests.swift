@@ -163,7 +163,7 @@ struct RuleReachTests {
     #expect(plan?.trims.map(\.id) == ["rb"] && plan?.trims.first?.draft.removed == true && plan?.trims.first?.version == 5)
     let d = OpAuthor.RuleSnapshot(
       id: "rd", version: 7,
-      draft: OpAuthor.RuleDraft(patterns: ["tailscale inc", "kite studio"], match: .exact, category: "dining", priority: 100, origin: "learned"))
+      draft: OpAuthor.RuleDraft(patterns: ["tailscale.com", "kite studio"], match: .exact, category: "dining", priority: 100, origin: "learned"))
     let trimmed = OpAuthor.groupRule(patterns: ["tailscale.com"], category: "subscriptions", existing: [a, d])
     #expect(trimmed?.trims.first?.id == "rd" && trimmed?.trims.first?.draft.patterns == ["kite studio"])
     #expect(trimmed?.trims.first?.draft.removed == false)
@@ -171,7 +171,40 @@ struct RuleReachTests {
       RuleInput(id: "x\(i)", patterns: d.patterns, match: d.match.rawValue, category: d.category, priority: d.priority, enabled: d.enabled, removed: d.removed)
     }
     let prepared = Matcher.prepare(rules: rules, entries: []).rules
-    #expect(prepared.filter { Matcher.hits($0, merchantRaw: "TAILSCALE INC") }.map(\.category) == ["subscriptions"])
+    #expect(prepared.filter { Matcher.hits($0, merchantRaw: "TAILSCALE.COM") }.map(\.category) == ["subscriptions"])
+  }
+
+  @Test("a full rule that shares one spelling with the group keeps its other eight and the group gets its own rule")
+  func groupRuleFullPrimary() {
+    let own = (1...8).map { "some shop*ref \($0)" }
+    let wanted = ["some shop*ref 1", "some shop*ref 9", "some shop*ref 10"]
+    let full = OpAuthor.RuleSnapshot(
+      id: "rf", version: 4, draft: OpAuthor.RuleDraft(patterns: own, match: .exact, category: "shopping", priority: 100, origin: "learned"))
+    for category in ["subscriptions", "shopping"] {
+      let plan = OpAuthor.groupRule(patterns: wanted, category: category, existing: [full])
+      #expect(plan?.id == nil && plan?.parentVersion == nil && plan?.unchanged == false)
+      #expect(plan?.draft.patterns == wanted && plan?.draft.category == category && plan?.draft.origin == "learned")
+      #expect(plan?.trims.count == 1)
+      let trim = plan?.trims.first
+      #expect(trim?.id == "rf" && trim?.version == 4 && trim?.draft.removed == false)
+      #expect(trim?.draft.patterns == Array(own.dropFirst()) && trim?.draft.category == "shopping")
+      let kept = Set((plan?.draft.patterns ?? []) + (trim?.draft.patterns ?? []))
+      #expect(Set(own).isSubset(of: kept))
+    }
+  }
+
+  @Test("a rule's spelling outside the group stays in it, and another rule that shares that spelling is not trimmed")
+  func groupRuleOutsideSpelling() {
+    let primary = OpAuthor.RuleSnapshot(
+      id: "rp", version: 2,
+      draft: OpAuthor.RuleDraft(patterns: ["tailscale.com", "kite studio"], match: .exact, category: "shopping", priority: 100, origin: "learned"))
+    let other = OpAuthor.RuleSnapshot(
+      id: "ro", version: 3,
+      draft: OpAuthor.RuleDraft(patterns: ["kite studio", "lantern film club"], match: .exact, category: "dining", priority: 100, origin: "learned"))
+    let plan = OpAuthor.groupRule(patterns: ["tailscale.com", "tailscale inc"], category: "subscriptions", existing: [primary, other])
+    #expect(plan?.id == "rp" && plan?.parentVersion == 2)
+    #expect(plan?.draft.patterns == ["tailscale.com", "tailscale inc", "kite studio"])
+    #expect(plan?.trims.isEmpty == true)
   }
 
   @Test("a learned pattern never starts with a payment facilitator")

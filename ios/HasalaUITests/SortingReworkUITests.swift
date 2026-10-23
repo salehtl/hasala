@@ -4,6 +4,7 @@ final class SortingReworkUITests: XCTestCase {
   static let tailscale = "out.n:tailscale"
   static let brightwell = "out.n:brightwell academy"
   static let qasr = "out.n:qasr corner store"
+  static let mirdif = "out.n:mirdif books"
   static let largeText = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
 
   override func setUp() {
@@ -218,5 +219,56 @@ final class SortingReworkUITests: XCTestCase {
     XCTAssertTrue(el(app, "pick.commit").waitForExistence(timeout: uiWait))
     attach(app, "Review · Pick sheet · group · accessibility3")
     try audit(app, atLargeText: true, overSheet: true)
+  }
+
+  @MainActor
+  func testTheLeftOutCardAndTheNotThisNoteReadAtTheLargestTextSizes() throws {
+    let app = launch(scenario: "mayaBacklog", arguments: Self.largeText)
+    openReview(app)
+    openGroup(app, Self.tailscale)
+    let card = el(app, "review.card.group.\(Self.tailscale)")
+    XCTAssertTrue(card.label.contains("repeats monthly"), card.label)
+    XCTAssertTrue(el(app, "review.card.leftOut").exists, "the unverified payment is named as left out")
+    attach(app, "Review · Deck · group card with a left-out row · accessibility3")
+    try audit(app, atLargeText: true)
+    let sortEach = el(app, "review.sortEach")
+    let skip = el(app, "review.skip")
+    XCTAssertTrue(reveal(app, skip))
+    XCTAssertTrue(sortEach.isHittable)
+    XCTAssertLessThan(sortEach.frame.maxY, skip.frame.minY + 1, "Sort each one and Skip for now stack")
+    attach(app, "Review · Deck · footer · accessibility3")
+    try audit(app, atLargeText: true)
+
+    tap(app, "review.close")
+    openGroup(app, Self.brightwell)
+    tap(app, "review.strip.notThis")
+    let note = el(app, "review.notThis.note")
+    XCTAssertTrue(note.waitForExistence(timeout: uiWait))
+    let undo = el(app, "review.notThis.undo")
+    XCTAssertTrue(reveal(app, undo))
+    XCTAssertGreaterThanOrEqual(undo.frame.minY, note.frame.maxY - 1, "the Undo link sits under the note")
+    attach(app, "Review · Deck · after Not this · accessibility3")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testADenseGroupCardKeepsItsSuggestionInViewAtDefaultAndLargerText() throws {
+    for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryXXXL"] {
+      let app = launch(scenario: "mayaBacklog", arguments: ["-UIPreferredContentSizeCategoryName", size])
+      openReview(app)
+      openGroup(app, Self.mirdif)
+      let card = el(app, "review.card.group.\(Self.mirdif)")
+      XCTAssertTrue(card.label.hasPrefix("Mirdif Books, 4 payments"), card.label)
+      let leftOut = el(app, "review.card.leftOut")
+      let use = el(app, "review.strip.use")
+      let notThis = el(app, "review.strip.notThis")
+      XCTAssertTrue(leftOut.exists && use.waitForExistence(timeout: uiWait))
+      XCTAssertTrue(use.isHittable && notThis.isHittable, "the strip's buttons are on screen at \(size)")
+      XCTAssertLessThanOrEqual(use.frame.maxY + 14 - card.frame.minY, 431, "the strip ends inside the card at \(size)")
+      XCTAssertLessThanOrEqual(card.frame.maxY, leftOut.frame.minY + 1)
+      attach(app, "Review · Deck · dense group card · \(size)")
+      try audit(app)
+      app.terminate()
+    }
   }
 }

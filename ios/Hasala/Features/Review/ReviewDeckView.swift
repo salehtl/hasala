@@ -462,7 +462,24 @@ struct ReviewDeckView: View {
 
   // MARK: Footer
 
+  @ViewBuilder
   private func footer(_ top: ReviewItem?) -> some View {
+    if typeSize.isAccessibilitySize, case .group(let g)? = top {
+      VStack(spacing: 0) {
+        footerLink(ReviewEngine.sortEachLabel, id: "review.sortEach") { model.sortingEach = g }
+        footerLink("Skip for now", id: "review.skip") {
+          if let top { skip(top) }
+        }
+      }
+      .padding(.horizontal, HSpacing.insetPage)
+      .opacity(model.picking == nil ? 1 : 0)
+      .hAnimation(.fade, value: model.picking == nil)
+    } else {
+      footerRow(top)
+    }
+  }
+
+  private func footerRow(_ top: ReviewItem?) -> some View {
     HStack(spacing: 0) {
       if case .group(let g)? = top {
         footerLink(ReviewEngine.sortEachLabel, id: "review.sortEach") { model.sortingEach = g }

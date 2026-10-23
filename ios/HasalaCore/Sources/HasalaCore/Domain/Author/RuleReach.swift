@@ -199,26 +199,31 @@ extension OpAuthor {
     var parentVersion: Int64?
     var draft = RuleDraft(patterns: patterns, match: .exact, category: category, priority: 100, origin: "learned")
     var unchanged = false
+    var trims: [RuleSnapshot] = []
     if let primary {
-      id = primary.id
-      parentVersion = primary.version
-      var merged = patterns
-      for p in primary.draft.patterns where merged.count < RuleReach.maxPatterns && !merged.contains(p) { merged.append(p) }
-      let covers = wanted.isSubset(of: Set(primary.draft.patterns))
+      let own = Set(primary.draft.patterns)
+      let covers = wanted.isSubset(of: own)
       if primary.draft.category == category && primary.draft.enabled && covers {
+        id = primary.id
+        parentVersion = primary.version
         draft = primary.draft
         unchanged = true
-      } else {
+      } else if wanted.union(own).count <= RuleReach.maxPatterns {
+        id = primary.id
+        parentVersion = primary.version
         draft = primary.draft
         draft.category = category
         draft.enabled = true
-        if !covers { draft.patterns = merged }
+        if !covers { draft.patterns = patterns + primary.draft.patterns.filter { !wanted.contains($0) } }
+      } else {
+        var d = primary.draft
+        d.patterns = primary.draft.patterns.filter { !wanted.contains($0) }
+        if d.patterns.isEmpty { d.removed = true }
+        trims.append(RuleSnapshot(id: primary.id, version: primary.version, draft: d))
       }
     }
-    let kept = Set(draft.patterns)
-    var trims: [RuleSnapshot] = []
-    for r in exact where r.id != id && r.draft.enabled && r.draft.category != category {
-      let left = r.draft.patterns.filter { !kept.contains($0) }
+    for r in exact where r.id != id && r.id != primary?.id && r.draft.enabled && r.draft.category != category {
+      let left = r.draft.patterns.filter { !wanted.contains($0) }
       guard left.count != r.draft.patterns.count else { continue }
       var d = r.draft
       if left.isEmpty { d.removed = true } else { d.patterns = left }
