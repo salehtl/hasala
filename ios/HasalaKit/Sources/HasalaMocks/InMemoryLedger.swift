@@ -588,8 +588,8 @@ public final class InMemoryLedger: LedgerStore {
       if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
       guard s.txn(id) != nil else { throw .notFound }
       if let project, s.project(project) == nil { throw .notFound }
-      if d.id == nil { d.id = newCategoryID() }
-      guard let c = d.id else { throw .notFound }
+      let c = d.id ?? newCategoryID()
+      d.id = c
       CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
       try sort(id, into: c, learnRule: alwaysUse, project: project)
     case .setNotifications(let level):

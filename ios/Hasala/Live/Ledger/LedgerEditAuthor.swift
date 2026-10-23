@@ -119,7 +119,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     try await observer.writes.run { try await authorNow(edit, before: before, today: today, receiptID: receiptID) }
   }
 
-  func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int?) async throws -> [Inverse] {
+  private func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int?) async throws -> [Inverse] {
     switch edit {
     case .addTransaction(let d):
       let wall = try Self.localWallMs(d.postedAt)
