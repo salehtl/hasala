@@ -1,0 +1,204 @@
+import CoreCategorize
+import CoreReplay
+import CoreTestSupport
+import Foundation
+import Synchronization
+import Testing
+
+@testable import CoreDomain
+
+final class RecordingModel: CategoryModel, Sendable {
+  let modelTag: String
+  let reply: ModelAnswer
+  let seen = Mutex<[(subject: String, allowed: [String])]>([])
+
+  init(_ tag: String, reply: ModelAnswer) {
+    modelTag = tag
+    self.reply = reply
+  }
+
+  func availability() -> ModelAvailability { .available }
+
+  func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
+    seen.withLock { $0.append((subject, allowed.map(\.id))) }
+    return reply
+  }
+
+  var calls: [(subject: String, allowed: [String])] { seen.withLock { $0 } }
+}
+
+@Suite("Not this in the model sweep and the bulk sort")
+struct RejectionSweepTests {
+  typealias T = ModelSuggestionSweepTests
+
+  static func rejecting(_ rows: [SweepRow], _ categories: Set<String>) -> [SweepRow] {
+    rows.map { r in
+      SweepRow(
+        id: r.id, merchantRaw: r.merchantRaw, direction: r.direction, category: r.category, sourceKind: r.sourceKind,
+        sourceRef: r.sourceRef, needsReview: r.needsReview, candidate: r.candidate, version: r.version, template: r.template,
+        merchantGroup: r.merchantGroup, categorizedMs: r.categorizedMs, rejected: categories)
+    }
+  }
+
+  @Test("a rejected cloud answer reads as unknown, so Apple's model is asked next")
+  func nextStage() async throws {
+    var l = T.Ledger()
+    let ids = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("shopping"))
+    let device = RecordingModel("apple-fm/26.1", reply: .category("dining"))
+    let cache = MemoryCache()
+    let s = try await ModelSuggestionSweep.suggest(
+      rows: Self.rejecting(l.rows(), ["shopping"]), categorizer: T.categorizer, allowed: T.allowed,
+      stages: [.cloud(cloud), .onDevice(device)], context: .foreground, cache: cache, now: { now })
+    #expect(s.map(\.txnID) == ids && s.map(\.category) == ["dining"] && s.map(\.modelTag) == ["apple-fm/26.1"])
+    #expect(cloud.calls.count == 1 && device.calls.count == 1)
+    let hash = ModelTier.taxonomyHash(T.allowed)
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: hash, modelTag: "cf-clef/1", now: now) == .category("shopping", autoFile: false))
+  }
+
+  @Test("a cached cloud answer that was rejected is never sent to Cloudflare again")
+  func cachedRejection() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit"), ("CAFE EXAMPLE JBR", "debit")])
+    let cache = MemoryCache()
+    let hash = ModelTier.taxonomyHash(T.allowed)
+    try cache.recordAnswers(
+      [ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)],
+      taxonomyHash: hash, now: now)
+    let cloud = RecordingModel("cf-clef/1", reply: .category("shopping"))
+    let device = RecordingModel("apple-fm/26.1", reply: .unknown)
+    for _ in 0..<2 {
+      let s = try await ModelSuggestionSweep.suggest(
+        rows: Self.rejecting(l.rows(), ["shopping"]), categorizer: T.categorizer, allowed: T.allowed,
+        stages: [.cloud(cloud), .onDevice(device)], context: .foreground, cache: cache, now: { now })
+      #expect(s.isEmpty)
+    }
+    #expect(cloud.calls.isEmpty)
+    #expect(device.calls.count == 1)
+    let accepted = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)],
+      context: .foreground, cache: cache, now: { now })
+    #expect(accepted.count == 2 && accepted.allSatisfy { $0.category == "shopping" && $0.autoFile })
+  }
+
+  @Test("the request and the cache key are the same with and without rejections")
+  func sameRequest() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let plain = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let refusing = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let plainCache = MemoryCache()
+    let refusingCache = MemoryCache()
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(plain)], context: .foreground,
+      cache: plainCache, now: { now })
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: Self.rejecting(l.rows(), ["dining", "shopping"]), categorizer: T.categorizer, allowed: T.allowed,
+      stages: [.cloud(refusing)], context: .foreground, cache: refusingCache, now: { now })
+    #expect(plain.calls.map(\.subject) == refusing.calls.map(\.subject))
+    #expect(plain.calls.map(\.allowed) == refusing.calls.map(\.allowed))
+    #expect(plain.calls.first?.allowed == T.allowed.map(\.id))
+    #expect(ModelTier.prompt(subject: "cafe example jbr") == "Merchant: cafe example jbr")
+    #expect(plainCache.rows.withLock { Set($0.keys) } == refusingCache.rows.withLock { Set($0.keys) })
+  }
+
+  @Test("a suggestion whose category was rejected after the read is dropped at authoring")
+  func afterReread() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let s = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(s.count == 1)
+    #expect(ModelSuggestionSweep.items(s, current: Self.rejecting(l.rows(), ["dining"])).isEmpty)
+    #expect(ModelSuggestionSweep.items(s, current: Self.rejecting(l.rows(), ["shopping"])).count == 1)
+  }
+
+  @Test("the bulk sort skips a rejected cached answer and never suggests a rejected fresh one")
+  func backlog() async throws {
+    var l = T.Ledger()
+    let ids = try l.ingest([("CAFE EXAMPLE JBR", "debit"), ("SECOND SHOP DXB", "debit")])
+    let cache = MemoryCache()
+    let hash = ModelTier.taxonomyHash(T.allowed)
+    try cache.recordAnswers(
+      [ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)],
+      taxonomyHash: hash, now: now)
+    let rows = Self.rejecting(l.rows(), ["shopping"])
+    let counts = try BacklogSort.counts(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: cache, now: now)
+    #expect(counts.waitingNames == 1)
+    let cloud = BacklogCloud(["second shop dxb": (.category("shopping"), true)])
+    let p = try await BacklogSort.pass(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: cache, now: { now },
+      autoFile: true)
+    #expect(cloud.calls == ["second shop dxb"])
+    #expect(p.suggestions.isEmpty)
+    #expect(p.pending == 0)
+    let open = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: p.memo, cache: cache, now: { now },
+      autoFile: true)
+    #expect(Set(open.suggestions.map(\.txnID)) == Set(ids))
+    #expect(cloud.calls == ["second shop dxb"])
+  }
+
+  @Test("the sweep commits under the write serial, after a write already in it")
+  func serial() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let serial = WriteSerial()
+    let order = Mutex<[String]>([])
+    let snapshot = l
+    let gate = AsyncGate()
+    let held = Task {
+      try await serial.run {
+        order.withLock { $0.append("edit-start") }
+        await gate.wait()
+        order.withLock { $0.append("edit-end") }
+      }
+    }
+    while !serial.isBusy { await Task.yield() }
+    let sweep = Task {
+      try await ModelSuggestionSweep.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground,
+        cache: MemoryCache(), now: { now }, stamps: AuthorStamps(), serial: serial,
+        reread: {
+          order.withLock { $0.append("reread") }
+          return (snapshot.rows(), snapshot.context())
+        },
+        commit: { _ in order.withLock { $0.append("commit") } })
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(order.withLock { $0 } == ["edit-start"])
+    gate.open()
+    try await held.value
+    let blobs = try await sweep.value
+    #expect(blobs.count == 1)
+    #expect(order.withLock { $0 } == ["edit-start", "edit-end", "reread", "commit"])
+  }
+}
+
+final class AsyncGate: Sendable {
+  private let state = Mutex<(open: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, []))
+
+  func wait() async {
+    await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+      let now = state.withLock { s -> Bool in
+        if s.open { return true }
+        s.waiters.append(k)
+        return false
+      }
+      if now { k.resume() }
+    }
+  }
+
+  func open() {
+    let waiters = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+      s.open = true
+      defer { s.waiters = [] }
+      return s.waiters
+    }
+    for k in waiters { k.resume() }
+  }
+}

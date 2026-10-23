@@ -12,10 +12,10 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 8
+  public static let version = 9
 
   static let tables = [
-    "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "sender_trust", "project", "goal",
+    "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "merchant_rejection", "sender_trust", "project", "goal",
     "plan_cell", "plan_move", "income_source", "category_plan_role", "plan_overwrite", "budget_split", "rate", "account", "card",
     "bill", "bill_resolution", "checkin", "fork_notice", "anomaly",
   ]
@@ -174,6 +174,9 @@ public enum ProjectionSchema {
       PRIMARY KEY (rule_id, idx));
 
     CREATE TABLE merchant_name (merchant_key TEXT PRIMARY KEY, display_name TEXT, op_id TEXT NOT NULL);
+    CREATE TABLE merchant_rejection (merchant_key TEXT NOT NULL, category TEXT NOT NULL, rejected INTEGER NOT NULL,
+      merchant_group TEXT, op_id TEXT NOT NULL, PRIMARY KEY (merchant_key, category));
+    CREATE INDEX merchant_rejection_group ON merchant_rejection (merchant_group);
 
     CREATE TABLE sender_trust (
       domain  TEXT PRIMARY KEY, trusted INTEGER NOT NULL CHECK (trusted IN (0,1)),

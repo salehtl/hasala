@@ -312,7 +312,7 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 48)
+    #expect(s.cursors.hot == 50)
     #expect(s.bills["bd_axa"]?.changes.map(\.amountMinor) == [60000] && s.bills["bd_axa"]?.version == 3)
     #expect(s.bills["bd_netflix"]?.status == "dismissed" && s.bills["bd_netflix"]?.firstSeq == 47)
     #expect(s.forks.filter { $0.entityKind == "bill" }.map(\.loserOp) == ["canary-v4-39"])
@@ -327,6 +327,9 @@ struct SnapshotTests {
     #expect(s.anomalies.map(\.kind) == ["duplicate_ingest"])
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")
+    #expect(s.merchantRejections.count == 1)
+    #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.rejected == false)
+    #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.opID == "canary-v4-43")
     #expect(s.plan.overwrites.count == 1)
     #expect(FoldCanary.foldPrint.utf8.count == 32)
   }

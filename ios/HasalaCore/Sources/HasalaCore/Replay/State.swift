@@ -796,6 +796,20 @@ public struct Checkin: Sendable, Equatable, Codable {
   }
 }
 
+public struct MerchantRejection: Sendable, Equatable, Codable {
+  public var merchantKey: String
+  public var category: String
+  public var rejected: Bool
+  public var opID: String
+
+  public init(merchantKey: String, category: String, rejected: Bool, opID: String) {
+    self.merchantKey = merchantKey
+    self.category = category
+    self.rejected = rejected
+    self.opID = opID
+  }
+}
+
 // MARK: - State
 
 public struct State: Sendable, Equatable, Codable {
@@ -827,6 +841,7 @@ public struct State: Sendable, Equatable, Codable {
 
   // v4 (witnessed when non-empty, 03c §1.9)
   public var merchantNames: OrderedDictionary<ExactKey, Keyed<String?>> = [:]
+  public var merchantRejections: OrderedDictionary<String, MerchantRejection> = [:]
   public var senderTrust: OrderedDictionary<String, Keyed<Bool>> = [:]
   public var projects: OrderedDictionary<String, Project> = [:]
   public var goals: OrderedDictionary<String, Goal> = [:]

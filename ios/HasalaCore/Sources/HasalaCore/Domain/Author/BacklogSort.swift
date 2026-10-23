@@ -171,6 +171,8 @@ public enum BacklogSort {
       .filter { !$0.subject.isEmpty }
     var blocked: Set<String> = []
     for q in queued where !ModelSuggestionSweep.mayLeaveDevice(q.row) { blocked.insert(q.subject) }
+    var rejected: [String: Set<String>] = [:]
+    for q in queued where !q.row.rejected.isEmpty { rejected[q.subject, default: []].formUnion(q.row.rejected) }
     var seen: Set<String> = []
     var pending: [String] = []
     var hits: [String: Answer] = [:]
@@ -179,6 +181,7 @@ public enum BacklogSort {
       guard !blocked.contains(s), ModelStage.hasLetter(s), !memo.asked.contains(s), memo.answers[s] == nil else { continue }
       switch try cached(s) {
       case .unknown?: continue
+      case .category(let c, _)? where rejected[s]?.contains(c) == true: continue
       case .category(let c, let autoFile)?:
         hits[s] = Answer(category: c, modelTag: "", autoFile: autoFile)
       case nil:
@@ -269,7 +272,8 @@ public enum BacklogSort {
       }
     }
     let suggestions = work.queued.compactMap { q -> ModelSuggestionSweep.Suggestion? in
-      guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version else { return nil }
+      guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version, !q.row.rejects(a.category)
+      else { return nil }
       return ModelSuggestionSweep.Suggestion(
         txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile)
     }
@@ -312,6 +316,50 @@ public enum BacklogSort {
         }
       }
       return (blobs, p, filing)
+    } catch {
+      throw Interrupted(memo: p.memo, calls: p.calls)
+    }
+  }
+
+  public struct Committed: Sendable {
+    public var pass: Pass
+    public var filing: Filing
+    public var failed: Bool
+    public var authored: Bool
+  }
+
+  public static func run(
+    rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
+    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil, stamps: AuthorStamps,
+    serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
+    enqueue: @Sendable (AuthoredBlob) async throws -> Void
+  ) async throws -> Committed {
+    let p = try await pass(
+      rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
+      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout)
+    guard !p.suggestions.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
+    do {
+      try Task.checkCancellation()
+      return try await serial.run {
+        let fresh = try await reread()
+        let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
+        guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
+        let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
+          let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))
+          return (blobs, blobs.last?.lastAuthoredMs)
+        }
+        var filing = Filing()
+        for it in items {
+          if it.needsReview {
+            filing.suggested.insert(it.txnID)
+          } else {
+            filing.filed[it.txnID] = it.version + 1
+          }
+        }
+        let c = await commit(blobs, filing: filing, enqueue: enqueue)
+        return Committed(pass: p, filing: c.filing, failed: c.failed, authored: !blobs.isEmpty)
+      }
     } catch {
       throw Interrupted(memo: p.memo, calls: p.calls)
     }

@@ -58,7 +58,8 @@ extension ModelTier {
   public static func run(
     subjects: [String], stages: [ModelStage], allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
-    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1
+    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1,
+    rejects: @Sendable (_ subject: String, _ category: String) -> Bool = { _, _ in false }
   ) async -> StagedRun {
     let budget = context.budget
     let callCap = min(budget.calls, maxCalls ?? budget.calls)
@@ -98,6 +99,7 @@ extension ModelTier {
         switch reply.answer {
         case .category(let id) where allowed.contains(where: { $0.id == id }):
           out.append(StagedSuggestion(subject: subject, category: id, modelTag: tag, autoFile: reply.autoFile))
+          if rejects(subject, id) { continue }
           continue subjects
         case .category, .unknown:
           unknown.append((subject, tag))

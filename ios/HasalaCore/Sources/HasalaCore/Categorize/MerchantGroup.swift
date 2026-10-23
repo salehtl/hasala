@@ -96,6 +96,10 @@ public struct MerchantGroup: Sendable {
     return facilitators.contains(trimmedPunctuation(Array(first)))
   }
 
+  public static func isFacilitatorToken(_ token: String) -> Bool {
+    facilitators.contains(trimmedPunctuation(Array(token.utf8)))
+  }
+
   static func hasDigit(_ token: [UInt8]) -> Bool { token.contains(where: ASCII.isDigit) }
 
   static func trimmedSpaces(_ bytes: [UInt8]) -> [UInt8] {

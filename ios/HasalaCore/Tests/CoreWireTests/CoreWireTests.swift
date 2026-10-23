@@ -27,15 +27,18 @@ let rateSet = #"{"v":4,"type":"rate_set","op_id":"01J0000000000000000000000R","a
 
 @Suite("CoreWire: registry")
 struct RegistryTests {
-  @Test("30 types in 00 §3's wire order, then mailbox_retired and txn_copy_resolved; profile_set is reserved")
+  @Test("31 types in 00 §3's wire order, then mailbox_retired, txn_copy_resolved and merchant_category_rejected; profile_set is reserved")
   func order() {
-    #expect(OpType.allCases.count == 30)
+    #expect(OpType.allCases.count == 31)
     #expect(
       OpType.allCases.dropFirst(14).map(\.rawValue) == [
         "budget_set", "budget_moved", "income_source_set", "category_plan_role_set", "bill_set",
         "bill_occurrence_set", "account_set", "card_linked", "account_checkin", "txn_annotated", "merchant_named",
         "sender_trust_set", "project_defined", "goal_defined", "mailbox_retired", "txn_copy_resolved",
+        "merchant_category_rejected",
       ])
+    #expect(OpType.allCases.filter(\.travelsAlone) == [.merchantCategoryRejected])
+    #expect(OpType.merchantCategoryRejected.isParentFree && OpType.merchantCategoryRejected.minVersion == 4)
     #expect(OpType(rawValue: "profile_set") == nil)
     #expect(OpType.reserved == ["profile_set"])
     #expect(SchemaVersion.current == 4 && SchemaVersion.author == 4)

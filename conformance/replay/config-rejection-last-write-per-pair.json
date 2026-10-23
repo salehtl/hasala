@@ -1,0 +1,326 @@
+{
+  "name": "rejection-last-write-per-pair",
+  "group": "config",
+  "note": "merchant_category_rejected is last write by position per (merchant_key, category): two devices rejecting two categories of one merchant both survive, a later rejected:false takes one back even with an older authored_at, and a malformed op installs nothing.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "txn_ingested",
+          "op_id": "rejection-pair-1",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "01JC0000000000000000000201"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000501",
+          "payload": {
+            "amount_minor": "600",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2026-10-01T08:00:00.000Z",
+            "merchant_raw": "TAILSCALE.COM",
+            "last4": "4412",
+            "needs_review": true
+          }
+        },
+        {
+          "v": 4,
+          "type": "txn_ingested",
+          "op_id": "rejection-pair-2",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "01JC0000000000000000000202"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000502",
+          "payload": {
+            "amount_minor": "600",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2026-10-02T08:00:00.000Z",
+            "merchant_raw": "TAILSCALE INC",
+            "last4": "4412",
+            "needs_review": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rejection-pair-3",
+          "authored_at": "2026-10-21T09:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "category": "shopping",
+            "rejected": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rejection-pair-4",
+          "authored_at": "2026-10-21T09:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "category": "dining",
+            "rejected": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rejection-pair-5",
+          "authored_at": "2026-10-21T09:01:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale inc",
+            "category": "shopping",
+            "rejected": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rejection-pair-6",
+          "authored_at": "2026-10-20T09:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "category": "dining",
+            "rejected": false
+          }
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rejection-pair-7",
+          "authored_at": "2026-10-21T09:02:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale inc",
+            "category": "Shopping!",
+            "rejected": true
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [
+        {
+          "at_seq": "6",
+          "detail": "",
+          "kind": "invalid_payload"
+        }
+      ],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "4412|600|debit|TAILSCALE INC|2026-10-02",
+          [
+            "01JC0000000000000000000202"
+          ]
+        ],
+        [
+          "4412|600|debit|TAILSCALE.COM|2026-10-01",
+          [
+            "01JC0000000000000000000201"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "6"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u000001JC0000000000000000000201",
+          {
+            "authored_at_ms": 1792569600000,
+            "id": "01JC0000000000000000000201",
+            "kind": "txn",
+            "op_id": "rejection-pair-1",
+            "version": 1,
+            "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+          }
+        ],
+        [
+          "txn\u000001JC0000000000000000000202",
+          {
+            "authored_at_ms": 1792569600000,
+            "id": "01JC0000000000000000000202",
+            "kind": "txn",
+            "op_id": "rejection-pair-2",
+            "version": 1,
+            "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "0000000000000000000000000000000000000000000000000000000000000501",
+          "01JC0000000000000000000201"
+        ],
+        [
+          "0000000000000000000000000000000000000000000000000000000000000502",
+          "01JC0000000000000000000202"
+        ]
+      ],
+      "merchantRejections": [
+        [
+          "tailscale inc\u0000shopping",
+          {
+            "category": "shopping",
+            "merchant_key": "tailscale inc",
+            "op_id": "rejection-pair-5",
+            "rejected": true
+          }
+        ],
+        [
+          "tailscale.com\u0000dining",
+          {
+            "category": "dining",
+            "merchant_key": "tailscale.com",
+            "op_id": "rejection-pair-6",
+            "rejected": false
+          }
+        ],
+        [
+          "tailscale.com\u0000shopping",
+          {
+            "category": "shopping",
+            "merchant_key": "tailscale.com",
+            "op_id": "rejection-pair-3",
+            "rejected": true
+          }
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "USD",
+          [
+            "01JC0000000000000000000201",
+            "01JC0000000000000000000202"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "01JC0000000000000000000201",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "600",
+            "category": null,
+            "category_source": {
+              "kind": "none"
+            },
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "01JC0000000000000000000201",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000501",
+            "last4": "4412",
+            "mailbox_message_id": null,
+            "merchant_raw": "TAILSCALE.COM",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-10-01T08:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ],
+        [
+          "01JC0000000000000000000202",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "600",
+            "category": null,
+            "category_source": {
+              "kind": "none"
+            },
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "01JC0000000000000000000202",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000502",
+            "last4": "4412",
+            "mailbox_message_id": null,
+            "merchant_raw": "TAILSCALE INC",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-10-02T08:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "bb40e07451f9999f2be30acb21f1558882529411573e4c87edc76111ec585ece",
+    "order": {
+      "banks": [],
+      "categories": []
+    }
+  }
+}

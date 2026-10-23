@@ -72,6 +72,11 @@ extension State {
     if !merchantNames.isEmpty {
       o.append(("merchantNames", pairs(merchantNames) { k in obj(["display_name": k.value.map(JSONValue.string) ?? .null, "op_id": .string(k.opID)]) }))
     }
+    if !merchantRejections.isEmpty {
+      o.append(("merchantRejections", pairs(merchantRejections) { r in
+        obj(["category": .string(r.category), "merchant_key": .string(r.merchantKey), "op_id": .string(r.opID), "rejected": .bool(r.rejected)])
+      }))
+    }
     if !senderTrust.isEmpty {
       o.append(("senderTrust", pairs(senderTrust) { k in obj(["op_id": .string(k.opID), "trusted": .bool(k.value)]) }))
     }

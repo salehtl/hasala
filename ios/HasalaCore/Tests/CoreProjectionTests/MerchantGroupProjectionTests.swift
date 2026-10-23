@@ -75,7 +75,7 @@ import Testing
   }
 
   @Test func theGroupColumnIsIndexedAndTheSchemaIsBumped() throws {
-    #expect(ProjectionSchema.version == 8)
+    #expect(ProjectionSchema.version == 9)
     let (db, r) = try Self.project(State())
     let indexes = try db.read { db in
       try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'txn' AND sql LIKE '%merchant_group%'")

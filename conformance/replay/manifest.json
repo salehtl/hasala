@@ -731,6 +731,18 @@
       "name": "set-aside-blob-still-consumes-its-seq",
       "group": "hard_stops",
       "note": "An undecodable blob advances the cursor, so its seq cannot be re-delivered with other content."
+    },
+    {
+      "file": "config-rejection-last-write-per-pair.json",
+      "name": "rejection-last-write-per-pair",
+      "group": "config",
+      "note": "merchant_category_rejected is last write by position per (merchant_key, category): two devices rejecting two categories of one merchant both survive, a later rejected:false takes one back even with an older authored_at, and a malformed op installs nothing."
+    },
+    {
+      "file": "config-rename-and-rejection-two-writers.json",
+      "name": "rename-and-rejection-two-writers",
+      "group": "config",
+      "note": "A rename on one device and a Not this on another, for the same merchant key, are two records: neither replaces the other, whichever lands first."
     }
   ]
 }
