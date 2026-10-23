@@ -130,18 +130,27 @@ struct CategoryManagementTests {
     #expect(ledger.state.plan.budget("dining", MayaLedger.october) == .aed(1_700_00))
     #expect(ledger.state.plan.budget(coffee, MayaLedger.october) == .aed(0))
     #expect(CategoriesEngine.snapshot(ledger.state).archived.map(\.id) == [coffee])
-    #expect(CategoriesEngine.snapshot(ledger.state).archived.first?.supporting == "Counts as Dining")
+    #expect(CategoriesEngine.snapshot(ledger.state).archived.first?.supporting == "Counts as Wants")
     try ledger.apply(.restoreCategory(coffee))
     #expect(ledger.state.category(coffee)?.archived == false)
   }
 
-  @Test func theParentPickerOffersTheBuiltInParentsBySection() {
-    let groups = CategoriesEngine.parentGroups(MayaLedger.state)
-    #expect(groups.map(\.title) == ["Needs", "Wants", "Savings", "Income"])
-    let ids = groups.flatMap(\.rows).map(\.id)
-    #expect(ids.count == 15)
-    #expect(!ids.contains("transfer") && !ids.contains("refunds") && !ids.contains("emergency-fund"))
-    #expect(!ids.contains("debt"))
+  @Test func countsAsOffersTheThreeBuckets() {
+    let s = MayaLedger.state
+    let fresh = CategoriesEngine.countsAsOptions(s, keeping: [nil])
+    #expect(fresh.map(\.title) == ["Needs", "Wants", "Savings"])
+    #expect(fresh.map(\.id) == ["needs", "wants", "savings"])
+    #expect(fresh.map(\.parent) == ["rent", "dining", "savings"])
+    #expect(fresh.allSatisfy { CategoriesEngine.isOfferedParent($0.parent, in: s) })
+    let travel = CategoriesEngine.countsAsOptions(s, keeping: ["travel"])
+    #expect(travel.map(\.parent) == ["rent", "travel", "savings"])
+    let income = CategoriesEngine.countsAsOptions(s, keeping: ["rent", "freelance"])
+    #expect(income.map(\.title) == ["Needs", "Wants", "Savings", "Income"])
+    #expect(income.map(\.parent) == ["rent", "dining", "savings", "freelance"])
+    let hidden = CategoriesEngine.countsAsOptions(s, keeping: ["debt"])
+    #expect(hidden.map(\.parent) == ["rent", "dining", "debt"])
+    #expect(CategoriesEngine.countsAsTitle("freelance", in: s) == "Income")
+    #expect(CategoriesEngine.countsAsTitle(nil, in: s) == nil)
   }
 
   @Test func restoringRefusesANameThatAnActiveCategoryHas() throws {
