@@ -294,7 +294,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   func newCategoryID() -> CategoryID {
     (try? OpAuthor.newCategoryID(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom()))
-      ?? "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30)
+      ?? CategoryDraft.fallbackID()
   }
 
   func withCategoryID(_ edit: LedgerEdit) -> LedgerEdit {
@@ -545,6 +545,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return (nil, [])
     case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
       guard let c = d.id, d.parent.flatMap({ s.category($0) }) != nil else { throw .notFound }
+      if let project, s.project(project) == nil { throw .notFound }
       CategoriesEngine.apply(.addCategory(d), to: &s, newID: c, month: now.date.yearMonth)
       return try patch(.categorize(id, c, learnRule: alwaysUse, project: project), &s, now: now, receiptID: receiptID)
     case .setNotifications(let level):

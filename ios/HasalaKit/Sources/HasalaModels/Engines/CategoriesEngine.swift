@@ -20,12 +20,19 @@ public enum CategoryLimits {
   public static let unknown = "This category no longer exists."
   public static let builtinLocked = "A built-in category keeps its type."
   public static let systemCannotHide = "This category is needed and cannot be hidden."
+  public static let cannotAdd = "This category could not be added."
 
   public static func nameTaken(_ name: String) -> String { "You already have a category named \(name)." }
 
   public static func isSystem(_ id: CategoryID) -> Bool { systemIDs.contains(id) }
 
   public static func isParent(_ id: CategoryID) -> Bool { parentIDs.contains(id) }
+
+  public static func isNewID(_ id: CategoryID) -> Bool {
+    let u = Array(id.utf8)
+    guard (2...32).contains(u.count), u.starts(with: "c_".utf8) else { return false }
+    return u.allSatisfy { (0x61...0x7a).contains($0) || (0x30...0x39).contains($0) || $0 == 0x5f }
+  }
 
   public static func glyphName(_ g: Glyph) -> String {
     switch g {
@@ -197,7 +204,7 @@ public enum CategoriesEngine {
   public static func refusal(_ edit: LedgerEdit, in s: LedgerState) -> String? {
     switch edit {
     case .addCategory(let d), .addCategoryAndSort(let d, _, _, _):
-      if let id = d.id, let taken = s.category(id) { return CategoryLimits.nameTaken(taken.name) }
+      if let id = d.id, !CategoryLimits.isNewID(id) || s.category(id) != nil { return CategoryLimits.cannotAdd }
       if let r = nameRefusal(d.trimmedName, in: s, excluding: nil) { return r }
       guard let p = d.parent, isOfferedParent(p, in: s) else { return CategoryLimits.parentNotAllowed }
       return activeCustomCount(s) < CategoryLimits.maxActiveCustom ? nil : CategoryLimits.atCap

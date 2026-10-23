@@ -122,6 +122,12 @@ struct LiveCategoryTests {
     #expect(CategoryLimits.builtinLocked == CategoryRefusal.builtinLocked.message)
     #expect(CategoryLimits.systemCannotHide == CategoryRefusal.systemCannotHide.message)
     #expect(CategoryLimits.nameTaken("Coffee") == CategoryRefusal.nameTaken("Coffee").message)
+    let ids = [
+      "c_", "c_01jc0000000000000000000009", "c_mock1", "c_X", "c-1", "dining", "", "c_caf\u{E9}",
+      "c_" + String(repeating: "a", count: 30), "c_" + String(repeating: "a", count: 31),
+    ]
+    for id in ids { #expect(CategoryLimits.isNewID(id) == OpAuthor.isNewCategoryID(id), "\(id)") }
+    #expect((0..<20).allSatisfy { _ in OpAuthor.isNewCategoryID(CategoryDraft.fallbackID()) })
   }
 
   typealias Sorting = LiveSortingTests
@@ -148,6 +154,12 @@ struct LiveCategoryTests {
     let before = try #require(try l.row(txn))
     let pending = try l.a.context.store.pendingCount()
     let id = l.store.newCategoryID()
+    let unknown = l.store.newCategoryID()
+    let shown = l.store.state
+    #expect(throws: ActionError.notFound) {
+      try l.store.apply(.addCategoryAndSort(Self.vpn(unknown), txn, alwaysUse: false, project: "no-such-project"))
+    }
+    #expect(l.store.state == shown)
     let token = try #require(try l.store.apply(.addCategoryAndSort(Self.vpn(id), txn, alwaysUse: false, project: nil)))
     #expect(token.title == "Sorted into VPN")
     #expect(l.store.state.category(id)?.name == "VPN" && l.store.state.txn(txn)?.categoryID == id)
@@ -233,14 +245,48 @@ struct LiveCategoryTests {
     #expect(throws: ActionError.refused(CategoryRefusal.nameInvalid.message)) { try add("Tea\u{202E}") }
     #expect(throws: ActionError.refused(CategoryRefusal.nameTooLong(max: 24).message)) { try add(String(repeating: "a", count: 25)) }
     #expect(throws: ActionError.refused(CategoryRefusal.atCap(max: 20).message)) { try add("Tea") }
-    #expect(throws: ActionError.refused(CategoryRefusal.nameTaken("Cap 0").message)) {
-      try store.apply(.addCategoryAndSort(CategoryDraft(id: "c_cap0", name: "Tea", parent: "dining"), row.id, alwaysUse: false, project: nil))
+    for id in ["c_cap0", "dining", "c_Tea"] {
+      #expect(throws: ActionError.refused(CategoryLimits.cannotAdd)) {
+        try store.apply(.addCategoryAndSort(CategoryDraft(id: id, name: "Tea", parent: "dining"), row.id, alwaysUse: false, project: nil))
+      }
     }
     try await Task.sleep(for: .milliseconds(200))
     #expect(try a.context.store.pendingCount() == pending)
     #expect(try a.projection.reader.taxonomy().ordered.map(\.id) == taxonomy)
     #expect(try a.projection.reader.txn(row.id) == before)
     #expect(store.state.txn(row.id)?.categoryID == row.categoryID)
+    #expect(!failed)
+  }
+
+  @Test func aCategoryStillBeingWrittenCountsForTheNameAndTheCap() async throws {
+    let a = try Mapper.account()
+    let store = try await LiveUndoTests.store(a, suite: "categories.sort.queued")
+    let room = CategoryLimits.maxActiveCustom - CategoriesEngine.activeCustomCount(store.state)
+    let filled = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      for i in 0..<(room - 1) {
+        o.defineCategory(
+          id: "c_fill\(i)", name: "Fill \(i)", kind: .spending, bucket: .want, icon: "tag", active: true, parent: "dining")
+      }
+    }
+    try await a.outbox.enqueue(try #require(filled).ops)
+    try await a.observer.reproject()
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let row = try #require(store.state.txns.first { !$0.archived && $0.splits.isEmpty && !$0.isHeldCopy })
+    let before = try #require(try a.projection.reader.txn(row.id))
+    func add(_ name: String) throws {
+      try store.apply(.addCategoryAndSort(CategoryDraft(name: name, parent: "dining"), row.id, alwaysUse: false, project: nil))
+    }
+
+    try store.apply(.addCategory(CategoryDraft(name: "Juice", parent: "dining")))
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Juice"))) { try add(" juice") }
+    #expect(throws: ActionError.refused(CategoryLimits.atCap)) { try add("Tea") }
+    try await Mapper.eventually { try Self.custom(a, "Juice") != nil }
+    try await Mapper.eventually { !a.observer.writes.isBusy }
+    #expect(try a.projection.reader.taxonomy().ordered.filter { CategoryRules.nameKey($0.name) == "juice" }.count == 1)
+    #expect(try Self.custom(a, "Tea") == nil)
+    #expect(try a.projection.reader.txn(row.id) == before)
     #expect(!failed)
   }
 

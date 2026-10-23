@@ -13,7 +13,17 @@ extension LiveLedgerStore {
     }
     let view: TaxonomyView
     do { view = try reader.taxonomy() } catch { throw .notFound }
-    return LedgerEditAuthor.categoryRefusal(edit, view: view, state: state)
+    return LedgerEditAuthor.categoryRefusal(edit, view: view, state: state) ?? Self.shownRefusal(edit, in: state)
+  }
+
+  static func shownRefusal(_ edit: LedgerEdit, in s: LedgerState) -> String? {
+    switch edit {
+    case .addCategory(var d), .addCategoryAndSort(var d, _, _, _):
+      d.name = UserText.normalize(d.name)
+      return CategoriesEngine.refusal(.addCategory(d), in: s)
+    default:
+      return nil
+    }
   }
 }
 
@@ -29,7 +39,7 @@ extension LedgerEditAuthor {
     let rules = CategoryRules(view)
     switch edit {
     case .addCategory(let d), .addCategoryAndSort(let d, _, _, _):
-      if let id = d.id, let taken = view.info(id) { return CategoryRefusal.nameTaken(taken.name).message }
+      if let id = d.id, !OpAuthor.isNewCategoryID(id) || view.info(id) != nil { return CategoryLimits.cannotAdd }
       return rules.checkCreate(name: d.name, parent: d.parent ?? "", icon: icon(d.glyph))?.message
     case .editCategory(let id, let d):
       return rules.checkEdit(id: id, name: d.name, icon: icon(d.glyph), parent: changedParent(d, of: view.info(id)))?.message
@@ -67,7 +77,7 @@ extension LedgerEditAuthor {
   }
 
   nonisolated func addCategoryAndSort(
-    _ d: CategoryDraft, txn id: String, project: String?, alwaysUse: (String) async throws -> [Inverse]?
+    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?, before: LedgerState, today: LocalDate, receiptID: Int?
   ) async throws -> [Inverse] {
     guard let category = d.id else { throw Failure.notFound }
     guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
@@ -79,9 +89,9 @@ extension LedgerEditAuthor {
         project: project)
     }
     let corrections = noteCorrection(row, to: category)
-    guard let reached = try await alwaysUse(category) else {
-      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + corrections
-    }
+    guard alwaysUse else { return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + corrections }
+    let reached = try await authorNow(
+      .categorize(id, category, learnRule: true, project: nil), before: before, today: today, receiptID: receiptID)
     return corrections + Self.keepingPrior(row, reached)
   }
 

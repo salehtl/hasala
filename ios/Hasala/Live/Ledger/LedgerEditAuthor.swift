@@ -115,7 +115,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     try await observer.writes.run { try await authorNow(edit, before: before, today: today, receiptID: receiptID) }
   }
 
-  private func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int?) async throws -> [Inverse] {
+  func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int?) async throws -> [Inverse] {
     switch edit {
     case .addTransaction(let d):
       let wall = try Self.localWallMs(d.postedAt)
@@ -319,10 +319,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       try await authorCategory(edit, today: today)
     case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
-      return try await addCategoryAndSort(d, txn: id, project: project) { c in
-        guard alwaysUse else { return nil }
-        return try await authorNow(.categorize(id, c, learnRule: true, project: nil), before: before, today: today, receiptID: receiptID)
-      }
+      return try await addCategoryAndSort(
+        d, txn: id, alwaysUse: alwaysUse, project: project, before: before, today: today, receiptID: receiptID)
     case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break

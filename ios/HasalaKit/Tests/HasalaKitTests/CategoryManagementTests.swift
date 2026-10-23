@@ -220,11 +220,10 @@ struct CategoryManagementTests {
     try ledger.apply(.addCategory(CategoryDraft(id: made, name: "Coffee", parent: "dining")))
     #expect(ledger.state.category(made)?.name == "Coffee")
     #expect(try add(ledger, "Tea") == "c_mock3")
-    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Coffee"))) {
-      try ledger.apply(.addCategory(CategoryDraft(id: made, name: "Juice", parent: "dining")))
-    }
-    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Dining"))) {
-      try ledger.apply(.addCategory(CategoryDraft(id: "dining", name: "Juice", parent: "dining")))
+    for id in [made, "dining", "c_Juice", "juice", "c-juice"] {
+      #expect(throws: ActionError.refused(CategoryLimits.cannotAdd)) {
+        try ledger.apply(.addCategory(CategoryDraft(id: id, name: "Juice", parent: "dining")))
+      }
     }
     #expect(!ledger.state.categories.contains { $0.name == "Juice" })
   }
@@ -283,6 +282,12 @@ struct CategoryManagementTests {
     }
     #expect(throws: ActionError.refused(CategoryLimits.nameEmpty)) {
       try ledger.apply(.addCategoryAndSort(CategoryDraft(name: " ", parent: "subscriptions"), row.id, alwaysUse: false, project: nil))
+    }
+    #expect(throws: ActionError.refused(CategoryLimits.cannotAdd)) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(id: "subscriptions", name: "VPN", parent: "subscriptions"), row.id, alwaysUse: false, project: nil))
+    }
+    #expect(throws: ActionError.refused(CategoryLimits.cannotAdd)) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(id: "c_VPN", name: "VPN", parent: "subscriptions"), row.id, alwaysUse: false, project: nil))
     }
     #expect(throws: ActionError.notFound) {
       try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), "no-such-row", alwaysUse: false, project: nil))

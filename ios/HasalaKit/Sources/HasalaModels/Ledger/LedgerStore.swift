@@ -222,6 +222,8 @@ public struct CategoryDraft: Sendable, Hashable {
   }
 
   public var trimmedName: String { name.trimmedSpaces }
+
+  public static func fallbackID() -> CategoryID { "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30) }
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit
@@ -246,5 +248,5 @@ public protocol LedgerStore: AnyObject, Observable {
 public extension LedgerStore {
   var month: YearMonth { now.date.yearMonth }
   func newProjectID() -> ProjectID { "p-" + UUID().uuidString.lowercased() }
-  func newCategoryID() -> CategoryID { "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30) }
+  func newCategoryID() -> CategoryID { CategoryDraft.fallbackID() }
 }
