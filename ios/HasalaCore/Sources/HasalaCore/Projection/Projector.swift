@@ -198,6 +198,7 @@ public enum Projector {
     if let v = g.template { o.append(("template", .string(v))) }
     if let v = g.card { o.append(("card", .string(v))) }
     if let v = g.forwarded { o.append(("forwarded", .bool(v))) }
+    if let v = g.kind { o.append(("kind", .string(v))) }
     return JSONWriter().string(.object(JSONObject(o)))
   }
 

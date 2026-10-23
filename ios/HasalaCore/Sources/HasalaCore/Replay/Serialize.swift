@@ -152,6 +152,7 @@ extension State {
       if let v = g.template { go["template"] = .string(v) }
       if let v = g.card { go["card"] = .string(v) }
       if let v = g.forwarded { go["forwarded"] = .bool(v) }
+      if let v = g.kind { go["kind"] = .string(v) }
       o["gates"] = obj(go)
     }
     if let v = t.successorID { o["successor_id"] = .string(v) }

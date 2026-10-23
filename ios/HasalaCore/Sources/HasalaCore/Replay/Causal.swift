@@ -318,10 +318,8 @@ extension State {
       return true
     }
     detectCopy(id, e)
-    if txns[id]!.copyOf != nil {
-      indexFingerprintIfAbsent(id, seq: seq)
-    } else if txns[id]!.mergedInto == nil {
-      indexFingerprint(id, seq: seq)
+    if txns[id]!.mergedInto == nil {
+      if txns[id]!.copyOf != nil { indexFingerprintIfAbsent(id, seq: seq) } else { indexFingerprint(id, seq: seq) }
     }
     return true
   }
