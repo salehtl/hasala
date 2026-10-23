@@ -306,6 +306,11 @@ struct HomePeriodTests {
     #expect(h.overline == "All time · Since \(earliest.shortName) \(earliest.year)")
     #expect(h.caption.rendered(hidden: false) == "spent, all time")
     #expect(!h.caption.rendered(hidden: false).contains("planned"))
+    let range = Period(earliest, MayaLedger.october)
+    let buckets = [Bucket.needs, .wants, .savings].map { b in
+      Fils.sum(s.categories(in: b)) { Spending.spent(s, category: $0.id, in: range) }
+    }
+    #expect(h.tiles.map(\.value.minor) == buckets)
     #expect(home.widgets.isEmpty)
     #expect(home.aboutNow.last?.destination == .review(nil))
   }
@@ -324,6 +329,17 @@ struct HomePeriodTests {
     #expect(h.word.rendered(hidden: false).hasPrefix("Average "))
   }
 
+  @Test func allTimeAverageLeavesOutTheFirstMonth() {
+    var older = s
+    older.txns.append(Txn(id: "old-dining", merchant: "Zuma", amount: .aed(60_00),
+                          postedAt: LocalDateTime(2026, 8, 28, 10, 0), categoryID: "dining"))
+    let h = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2026, 8), today: MayaLedger.october)).hero
+    let september = Spending.total(older, in: .month(YearMonth(2026, 9)))
+    #expect(h.word.rendered(hidden: false) == MoneyPhrase([.text("Average "), .amount(.aed(september), hidden: 3)]).rendered(hidden: false))
+    let new = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2026, 9), today: MayaLedger.october)).hero
+    #expect(new.word.rendered(hidden: false) == "" && new.fact == nil)
+  }
+
   @Test func aCategoryUnderAllTimeHasNoBudget() {
     let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
     let snap = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries"), period: all)
@@ -334,6 +350,18 @@ struct HomePeriodTests {
     let month = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(category: "groceries")).summary!
     #expect(month.budgeted)
     #expect(snap.countLine.hasSuffix(" · All time"))
+  }
+
+  @Test func allTimeActivityEndsThisMonthLikeItsTotal() {
+    var later = s
+    later.txns.append(Txn(id: "next-month", merchant: "Zuma", amount: .aed(60_00),
+                          postedAt: LocalDateTime(2026, 11, 3, 10, 0), categoryID: "dining"))
+    let all = Period.allTime(since: YearMonth(2026, 8), today: MayaLedger.october)
+    let a = ActivityEngine.snapshot(later, now: now, filter: .all, period: all)
+    #expect(!a.days.flatMap(\.rows).contains { $0.id == "next-month" })
+    let dining = ActivityEngine.snapshot(later, now: now, filter: TxnFilter(category: "dining"), period: all)
+    #expect(!dining.rows.contains { $0.id == "next-month" })
+    #expect(dining.summary?.total == .aed(Spending.spent(later, category: "dining", in: all)))
   }
 
   @Test func reviewUnderAllTimeIsTheWholeQueue() {

@@ -100,21 +100,42 @@ struct SlotMark: View, Animatable {
   var coinShadow = false
   var drop: CGFloat = 0
   var spin: CGFloat = 0
+  var squash: CGFloat = 0
 
-  var animatableData: AnimatablePair<CGFloat, CGFloat> {
-    get { AnimatablePair(drop, spin) }
+  var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+    get { AnimatablePair(AnimatablePair(drop, spin), squash) }
     set {
-      drop = newValue.first
-      spin = newValue.second
+      drop = newValue.first.first
+      spin = newValue.first.second
+      squash = newValue.second
     }
   }
 
   static let aspect: CGFloat = 616 / 368
 
+  static func scale(in size: CGSize) -> CGFloat { min(size.width / 616, size.height / 368) }
+
+  static func origin(in size: CGSize) -> CGPoint {
+    let s = scale(in: size)
+    return CGPoint(x: (size.width - 616 * s) / 2, y: size.height - 368 * s)
+  }
+
+  static func slotCentre(in size: CGSize) -> CGPoint {
+    let s = scale(in: size)
+    let o = origin(in: size)
+    return CGPoint(x: o.x + (512 - 204) * s, y: o.y + (632 - 328) * s)
+  }
+
+  static let coinRim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
+  static let coinLight = Color(HRGBA(0xF9, 0xDC, 0x94, 1))
+  static let coinDeep = Color(HRGBA(0xEB, 0xB0, 0x4A, 1))
+
   var body: some View {
     Canvas { context, size in
-      let s = min(size.width / 616, size.height / 368)
-      let ox = (size.width - 616 * s) / 2, oy = size.height - 368 * s
+      let s = Self.scale(in: size)
+      let slot = Self.slotCentre(in: size)
+      let o = Self.origin(in: size)
+      let ox = o.x, oy = o.y
       func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
         CGRect(x: ox + (x - 204) * s, y: oy + (y - 328) * s, width: w * s, height: h * s)
       }
@@ -128,25 +149,29 @@ struct SlotMark: View, Animatable {
       }
       // The coin, halfway in: everything below the slot's centre line is cut away.
       var coin = context
-      coin.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: oy + (632 - 328) * s)))
+      coin.clip(to: Path(CGRect(x: 0, y: 0, width: size.width, height: slot.y)))
       if coinShadow {
         coin.addFilter(.shadow(color: navy.opacity(0.22), radius: 18 * s, x: 0, y: 14 * s))
       }
       coin.translateBy(x: 0, y: -drop * s)
+      if squash != 0 {
+        coin.translateBy(x: slot.x, y: slot.y)
+        coin.scaleBy(x: 1 + squash * 0.6, y: max(1 - squash, 0.2))
+        coin.translateBy(x: -slot.x, y: -slot.y)
+      }
       if spin != 0 {
-        let axis = ox + (512 - 204) * s
-        coin.translateBy(x: axis, y: 0)
+        coin.translateBy(x: slot.x, y: 0)
         coin.scaleBy(x: max(abs(cos(spin * .pi * 2)), 0.04), y: 1)
-        coin.translateBy(x: -axis, y: 0)
+        coin.translateBy(x: -slot.x, y: 0)
       }
       coin.drawLayer { layer in
-        let rim = Color(HRGBA(0xC9, 0x8A, 0x1E, 1))
+        let rim = Self.coinRim
         layer.fill(Path(ellipseIn: r(512 - 184, 538.2 - 184, 368, 368)), with: .color(rim))
         let faceRect = r(512 - 184, 519.8 - 184, 368, 368)
         layer.fill(
           Path(ellipseIn: faceRect),
           with: .linearGradient(
-            Gradient(colors: [Color(HRGBA(0xF9, 0xDC, 0x94, 1)), Color(HRGBA(0xEB, 0xB0, 0x4A, 1))]),
+            Gradient(colors: [Self.coinLight, Self.coinDeep]),
             startPoint: CGPoint(x: faceRect.midX, y: faceRect.minY),
             endPoint: CGPoint(x: faceRect.midX, y: faceRect.maxY)))
         if detailed {

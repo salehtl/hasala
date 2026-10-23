@@ -292,7 +292,7 @@ seal mocks-resource
 inspect mocks-resource 40
 only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
 
-# The Debug launch hook's arguments (-HasalaScreen, -HasalaMotion) are mock code too.
+# The Debug launch hook's arguments (-HasalaScreen, -HasalaMotion, -HasalaJackpot) are mock code too.
 app="$(variant screen-hook)"
 printf 'const char *const hook = "%s";\nint main(void) { return hook[0] == 0; }\n' "-HasalaScreen" >"$work/hook.c"
 compile "$app/Hasala" "$work/hook.c"
@@ -304,6 +304,12 @@ app="$(variant motion-hook)"
 printf '{"launch": "%s"}\n' "-HasalaMotion off" >"$app/motion.json"
 seal motion-hook
 inspect motion-hook 40
+only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
+
+app="$(variant jackpot-hook)"
+printf '{"launch": "%s"}\n' "-HasalaJackpot 2" >"$app/jackpot.json"
+seal jackpot-hook
+inspect jackpot-hook 40
 only_failed "AT-REV-4 no mock data (HasalaMocks) in any file"
 
 # The hook as the app writes it, in Swift: "-HasalaScreen" inline is 13 bytes, which the

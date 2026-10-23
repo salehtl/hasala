@@ -70,7 +70,7 @@ struct HomeModelTests {
 
   @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
     func item(_ id: String, _ title: String) -> NotificationItem {
-      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(nil))
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(.allTime))
     }
     let reads = NotificationReads()
     reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])
@@ -145,7 +145,7 @@ struct HomeModelTests {
     #expect(router.sheet == nil)
     #expect(router.tab == .review)
     #expect(app.cover == nil)
-    #expect(app.isAllTime && app.period.title == "All time")
+    #expect(app.period.isAllTime && app.period.title == "All time")
     after?()
     #expect(app.cover == .review)
     app.cover = nil

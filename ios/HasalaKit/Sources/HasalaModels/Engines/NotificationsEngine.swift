@@ -8,8 +8,7 @@
 
 /// Where a notification row goes when tapped (spec 10 §4.4: "Tapping an item opens its screen").
 public enum NotificationDestination: Sendable, Hashable {
-  /// The review deck, over the Review tab: at `period` when given (the period becomes the app's),
-  /// or at the period the app shows.
+  /// The review deck, over the Review tab.
   case review(PeriodPreset?)
   /// One bill (Bills · AXA Insurance): one that may be late, or a new price to accept or check.
   case bill(BillID)

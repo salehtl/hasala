@@ -207,7 +207,7 @@ struct ActivityReviewModelTests {
     #expect(bell.destination == .review(.allTime))
     let after = home.openNotification(bell.destination)
     #expect(app.tab == .review)
-    #expect(app.isAllTime && app.period.title == "All time")
+    #expect(app.period.isAllTime && app.period.title == "All time")
     #expect(app.period == .allTime(since: app.earliestMonth, today: MayaLedger.october))
     after?()
     #expect(app.cover == .review)

@@ -164,21 +164,17 @@ final class AppModel {
   var mailOffer: MailOffer? { mailbox?.offer }
 
   var period: Period {
-    get {
-      let today = store.now.date.yearMonth
-      guard let chosen = chosenPeriod else { return .month(today) }
-      return chosen.isAllTime ? .allTime(since: earliestMonth, today: today) : chosen.clamped(to: today)
-    }
+    get { chosenPeriod.map(shown) ?? .month(store.now.date.yearMonth) }
     set {
-      let today = store.now.date.yearMonth
-      let p = newValue.isAllTime ? .allTime(since: earliestMonth, today: today) : newValue.clamped(to: today)
-      chosenPeriod = p == .month(today) ? nil : p
+      let p = shown(newValue)
+      chosenPeriod = p == .month(store.now.date.yearMonth) ? nil : p
     }
   }
 
-  var isAllTime: Bool { chosenPeriod?.isAllTime == true }
-
-  var showsBudgets: Bool { period.showsBudgets }
+  private func shown(_ p: Period) -> Period {
+    let today = store.now.date.yearMonth
+    return p.isAllTime ? .allTime(since: earliestMonth, today: today) : p.clamped(to: today)
+  }
 
   func choose(_ preset: PeriodPreset) {
     period = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
