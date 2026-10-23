@@ -29,7 +29,7 @@ struct InMemoryLedgerTests {
     #expect(token.title == "Sorted into Groceries")
     #expect(ReviewEngine.queue(ledger.state).count == 5)
     #expect(ledger.state.spent("groceries", in: MayaLedger.october) == .aed(1_026_70))
-    #expect(ledger.state.rules.contains { $0.patterns == ["lulu hypermarket"] && $0.learnedToday })
+    #expect(ledger.state.rules.contains { $0.patterns == ["lulu hypermarket dxb marina"] && $0.match == .exact && $0.learnedToday })
     ledger.undo(token)
     #expect(ReviewEngine.queue(ledger.state).count == 6)
     #expect(ledger.state.spent("groceries", in: MayaLedger.october) == .aed(812_40))

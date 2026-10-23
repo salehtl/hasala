@@ -42,38 +42,70 @@ Rules come only from the "Always use it" switch, which stays off by default (#17
 automatic rule after two matching filings was proposed and not built: it would have
 reversed the owner's #176 default on the same evening. See [Proposals](#proposals-for-the-owner).
 
-### D3 and D3b Waiting rows and reach-back
+### D3 and D3b Waiting rows and the reach of a rule
 
-One Core predicate decides which rows a group action may file:
-`RuleReach.waiting(row, samePurchase:)` (HasalaCore `Domain/Author/RuleReach.swift`). A
-row waits when its review lane is `needs_review` or `uncategorized` and it has no review
-reason (a sender that failed authentication included), is not a held copy, a copy or a
-possible duplicate, is not in a same-purchase pair, is not archived, a transfer or a
-split, and its source is not the person's (`user`) or held. A row a dictionary entry or a
-rule already filed does not wait. The live mapper sets `Txn.reachable` from this
-predicate, so every count on a card is the number of rows a tap files. A row that fails
-it stays its own card with its own strip ("Couldn't verify sender").
+`RuleReach.waiting(row, samePurchase:)` (HasalaCore `Domain/Author/RuleReach.swift`)
+decides which rows a group card counts and files. A row waits when its review lane is
+`needs_review` or `uncategorized` and it has no review reason (a sender that failed
+authentication included), is not a held copy, a copy or a possible duplicate, is not in a
+same-purchase pair, is not archived, a transfer or a split, and its source is not the
+person's (`user`) or held. A row a dictionary entry or a rule already filed does not wait.
+The live mapper sets `Txn.reachable` from this predicate, so every count on a card is the
+number of rows a tap files. `Txn.waits` (HasalaModels) is the same test on a `Txn`: the
+mock sets `reachable` from it, and so does the screen after Undo all. A row that fails it
+stays its own card with its own strip ("Couldn't verify sender").
 
-A rule made from a group reaches back to rows that the rule hits, that are in the same
-group and direction, and that wait (`RuleReach.plan`). It writes
-`txn_categorized {category, needs_review: false, source: rule}` for each. Rows a model
-filed automatically and rows the person filed are left alone. A group rule is exact
-patterns of the group's spellings, at most 8 (the limit of `rule_added`), the filed
-spelling first, then the most used. "Always use it" is hidden when no spelling fits a
-pattern. A learned pattern never starts with a payment facilitator, so
-`PAYPAL *TAILSCALE` gives the exact pattern, not `contains paypal`.
+A rule from "Always use it" reaches further (sorting rebuild, 2026-10-23). It files every
+payment of that merchant group and direction whose spelling the rule holds, in every month,
+past and future, except the payments the person sorted. `RuleReach.ruled(row, samePurchase:)`
+decides it. A row is in when its source is `none`, `dictionary`, `rule` or `model`,
+whatever its category or review lane. A row is out when the person sorted it (`user`), a paused rule holds it
+(`held`), it is an unreadable alert, its sender failed authentication, it is a held copy, a
+copy or a possible duplicate, it is in a same-purchase pair, or it is archived, a transfer
+or a split. A row already in the rule's category and out of Review is left as it is. The
+live mapper sets `Txn.ruled` from this predicate, so the screen files the same rows as the
+ops at once.
+
+The bank's spelling decides the merchant, through `MerchantGroup.key` and the dictionary. A
+rule never reaches another merchant group: the dictionary keeps `talabat` and
+`talabat mart` apart, so "Always use Dining for talabat" never files a talabat mart
+payment.
+
+The rule writes `txn_categorized {category, needs_review: false, source: rule}` for each
+row, in the same `Outbox.enqueue` as the person's own filing. Its patterns are exact
+patterns of the spellings of every row of the group that the rule may file, at most 8 (the
+limit of `rule_added`): the filed spelling first, then the most used spellings of the rows
+it files, then those of the rows already in its category. "Always use it" is hidden on a
+row with no merchant group, on a split, and when no spelling fits a pattern. Every pattern
+is exact, so `PAYPAL *TAILSCALE` gives the exact pattern, not `contains paypal`. A payment
+skipped in Review today is filed too. The result reads "Software for all 14 Tailscale
+payments" and counts only the payments whose category changed; it drops "all" when the
+rule leaves a payment of the group unfiled that it may file (its spelling did not fit in
+the 8 patterns, or cannot be a pattern). A rule's filings never count as corrections for
+Trust on this phone.
+
+Undo puts each row back exactly (`Inverse.refile`). Undo all in Sorted for you does the
+same: each row gets back the category, source and review state it had before the rule
+filed it (`SortMemory.Batch.prior`). A payment that the merchant list or Cloudflare filed
+goes back to that filing, not to Review. A row with no recorded state goes back to Review.
+After either Undo, a row keeps the time of its earlier filing (`Prior.categorizedMs`) while
+the iPhone keeps that batch (the last 40), so an earlier rule or Cloudflare filing does not
+show again in Sorted for you as new. A later Always use on the same group keeps that time
+too. Undo on the toast of Undo all files the rows by the rule again and keeps their earlier
+state, so a second Undo all puts them back the same way.
 
 After a pull, the iPhone that made the rule reaches back once more, for 24 hours, to rows
-that arrived since and that it has not considered yet. Rows the person sent back to
-Review with Undo all are never filed again by that pass.
+that arrived since and that it has not considered yet. Rows put back with Undo all are
+never filed again by that pass.
 
 ### D4 and D5 Sorting a group
 
 "Sort all N as X" files the group's waiting rows in every month as the person's own
-choice (`source: user`). It makes a rule only when "Always use it" is on. "Sort each one"
-is always there on a group card. "Always use it" from one row, in Review, Activity or the
-transaction sheet, writes the same group rule and reaches back the same way, with the
-same result row and Undo.
+choice (`source: user`). It makes a rule only when "Always use it" is on, and that rule
+files only the waiting rows the card counts (`RuleReach.Scope.waiting`), so the button,
+the result and the ops agree. "Sort each one" is always there on a group card. "Always
+use it" from one row, in Review, Activity or the transaction sheet, writes the same kind
+of group rule and reaches every payment D3 names, with the same result row and Undo.
 
 ### D6, D6b and D7 Not this
 

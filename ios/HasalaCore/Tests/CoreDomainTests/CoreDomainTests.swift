@@ -134,25 +134,14 @@ struct CoreDomainTests {
     #expect(e2.income(CivilMonth(year: 2026, month: 9)!).total == 2_500_000)
   }
 
-  @Test("OpAuthor refuses an op the fold would refuse; learned rules dedup")
+  @Test("OpAuthor refuses an op the fold would refuse")
   func authorRefusals() throws {
     var a = OpAuthor(ctx())
     a.categorize(txnID: "01JC0000000000000000000001", parentVersion: 1, category: "Groceries")
     #expect(throws: AuthorError.self) { try a.build() }
     var b = OpAuthor(ctx())
     #expect(throws: AuthorError.refused("the split must add up to 100")) { try b.setBudgetTemplate(need: 60, want: 30, saving: 20) }
-    let existing = OpAuthor.RuleSnapshot(
-      id: "01JC0000000000000000000004", version: 2, draft: .init(patterns: ["lulu"], match: .contains, category: "groceries", priority: 100, origin: "learned"))
-    try b.learnRule(merchantRaw: "LULU HYPERMARKET DXB MARINA", category: "groceries", existing: [existing], userRows: [])
     #expect(try b.build().ops.isEmpty)
-    var c = OpAuthor(ctx())
-    try c.learnRule(merchantRaw: "LULU HYPERMARKET DXB MARINA", category: "shopping", existing: [existing], userRows: [])
-    let edit = try c.build().ops
-    #expect(edit.count == 1 && edit[0].parentVersion == 2 && edit[0].entity?.id == existing.id)
-    var d = OpAuthor(ctx())
-    try d.learnRule(merchantRaw: "DU TELECOM 0423", category: "utilities", existing: [], userRows: [])
-    let made = try d.build().ops
-    #expect(made.count == 1 && made[0].payload["match"]?.stringValue == "starts_with" && made[0].payload["origin"]?.stringValue == "learned")
   }
 
   @Test("review lanes follow 03c §3.7's precedence")

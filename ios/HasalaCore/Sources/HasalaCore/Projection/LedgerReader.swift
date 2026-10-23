@@ -583,7 +583,7 @@ extension TxnRow {
       sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, sourceRef: categorySourceRef, needsReview: needsReview,
       lane: reviewLane.flatMap(ReviewLane.init(rawValue:)), unverified: reviewReason != nil, heldCopy: heldCopy, copyOf: copyOf,
       possibleDuplicateOf: possibleDuplicateOf, archived: archived != nil, transfer: category == "transfer" || transferState != nil,
-      split: split, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
+      split: split, unparsed: unparsed, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
   }
 }
 

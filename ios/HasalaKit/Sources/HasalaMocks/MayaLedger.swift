@@ -187,6 +187,7 @@ public enum MayaLedger {
   static func keyed(_ t: Txn) -> Txn {
     var t = t
     if t.merchantKey == nil { t.merchantKey = t.merchant.lowercased() }
+    if t.merchantGroup == nil { t.merchantGroup = "n:" + t.merchant.lowercased() }
     return t
   }
 

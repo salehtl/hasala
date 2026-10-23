@@ -113,7 +113,7 @@ import Testing
     #expect(old.txns[M.id(1)]?.category == "subscriptions" && current.txns[M.id(1)]?.category == "subscriptions")
   }
 
-  @Test func reachBackFilesTheGroupsWaitingRowsAndPausingHoldsThem() throws {
+  @Test func reachBackFilesTheGroupsRowsButNotTheUnreadableAndPausingHoldsThem() throws {
     let random = SeededRandom(seed: "reach-projection")
     var s = State()
     let unverified = #","needs_review":true,"gates":{"ar":"fail","sender":"untrusted","template":"dib.card.v1@1","card":"known","forwarded":false}"#
@@ -128,18 +128,23 @@ import Testing
         M.txn(5, "TAILSCALE.COM", posted: "2026-10-03T08:00:00.000Z", extra: dictionary),
         M.txn(6, "AL NOOR PHARMACY", posted: "2026-10-04T08:00:00.000Z"),
         M.txn(7, "TAILSCALE INC", posted: "2026-10-05T08:00:00.000Z", direction: "credit"),
+        #"{"v":4,"type":"txn_ingested","op_id":"t8","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.id(8))"},"parent_version":null,"ingest_id":"\#(String(repeating: "0", count: 63))8","payload":{"posted_at":"2026-10-06T08:00:00.000Z","merchant_raw":"TAILSCALE.COM","unparsed":true,"tier":"none","needs_review":true}}"#,
       ], into: &s)
     #expect(s.anomalies.isEmpty, "\(s.anomalies)")
     let (_, r) = try M.project(s)
     let rows = try r.reachRows()
+    #expect(rows.first { $0.id == M.id(8) }?.unparsed == true)
+    #expect(rows.filter(\.unparsed).map(\.id) == [M.id(8)])
     let members = RuleReach.members(rows: rows, group: "n:tailscale", direction: "debit", home: "AED")
     #expect(Set(members.map(\.id)) == Set([1, 2, 3].map(M.id)))
-    let patterns = RuleReach.patterns(filed: "TAILSCALE.COM", members: members)
+    let eligible = RuleReach.eligible(rows: rows, group: "n:tailscale", direction: "debit", home: "AED")
+    #expect(Set(eligible.map(\.id)) == Set([1, 2, 3, 5].map(M.id)))
+    let patterns = RuleReach.patterns(filed: "TAILSCALE.COM", members: eligible)
     var a = OpAuthor(Self.context(s, random: random))
     let ruleID = try a.rule(OpAuthor.RuleDraft(patterns: patterns, match: .exact, category: "subscriptions", priority: 100, origin: "learned"))
     let input = RuleInput(id: ruleID, patterns: patterns, match: "exact", category: "subscriptions", priority: 100)
     let targets = RuleReach.plan(rows: rows, rule: input, group: "n:tailscale", direction: "debit", home: "AED")
-    #expect(Set(targets.map(\.txnID)) == Set([1, 2, 3].map(M.id)))
+    #expect(Set(targets.map(\.txnID)) == Set([1, 2, 3, 5].map(M.id)))
     for t in targets {
       a.categorize(txnID: t.txnID, parentVersion: t.version, category: "subscriptions", source: CategorySource(kind: .rule, ruleID: ruleID))
     }
@@ -147,20 +152,20 @@ import Testing
     try Self.fold([try a.build()], seq: &seq, into: &s)
     #expect(s.anomalies.isEmpty)
     let (_, filed) = try M.project(s)
-    for n in [1, 2, 3] {
+    for n in [1, 2, 3, 5] {
       let t = try #require(try filed.txn(M.id(n)))
       #expect(t.category == "subscriptions" && t.categorySource == "rule" && t.categorySourceRef == ruleID && !t.needsReview)
       #expect(t.reviewLane == nil && t.categorizedMs != nil)
     }
     #expect(try filed.txn(M.id(4))?.needsReview == true && filed.txn(M.id(4))?.category == nil)
-    #expect(try filed.txn(M.id(5))?.categorySource == "dictionary")
     #expect(try filed.txn(M.id(6))?.category == nil && filed.txn(M.id(7))?.category == nil)
+    #expect(try filed.txn(M.id(8))?.category == nil && filed.txn(M.id(8))?.unparsed == true)
 
     let rule = try #require(try filed.rules().first { $0.id == ruleID })
     let held = try filed.activity(limit: 1_000).filter {
       $0.categorySource == "rule" && $0.categorySourceRef == ruleID && !$0.needsReview && $0.category != nil
     }.map { (id: $0.id, version: $0.version, category: $0.category ?? "") }
-    #expect(held.count == 3)
+    #expect(held.count == 4)
     let snapshot = OpAuthor.RuleSnapshot(
       id: ruleID, version: rule.version,
       draft: OpAuthor.RuleDraft(patterns: rule.patterns, match: .exact, category: rule.category, priority: rule.priority, origin: rule.origin))
@@ -168,7 +173,7 @@ import Testing
     ctx.ownLastMs = 1_791_000_100_000
     try Self.fold(try OpAuthor.setRule(snapshot, enabled: false, heldRows: held, context: ctx), seq: &seq, into: &s)
     let (_, paused) = try M.project(s)
-    for n in [1, 2, 3] {
+    for n in [1, 2, 3, 5] {
       let t = try #require(try paused.txn(M.id(n)))
       #expect(t.categorySource == "held" && t.needsReview && t.reviewLane == "needs_review")
     }
