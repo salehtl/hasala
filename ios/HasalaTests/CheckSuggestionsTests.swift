@@ -107,7 +107,7 @@ struct CheckSuggestionsTests {
     #expect(store.state.txn(ids[1])?.inReview == true)
   }
 
-  @Test func aFailedUndoKeepsItsTokenAndARetryFinishesWithoutWritingTwice() async throws {
+  @Test func aFailedUndoWritesNothingKeepsItsTokenAndARetryWritesOnce() async throws {
     let a = try Mapper.account()
     let (_, ids) = try await Self.suggested(a, suite: "suggestions.retry.seed")
     let store = LiveLedgerStore(
@@ -120,18 +120,19 @@ struct CheckSuggestionsTests {
     func row(_ id: String) throws -> TxnRow? { try a.projection.reader.txn(id) }
     let token = try #require(try store.apply(.useSuggestions(ids.map { SuggestionUse(txn: $0, category: "dining") })))
     try await Mapper.eventually { try ids.allSatisfy { try row($0)?.categorySource == "user" } }
+    let pendingBefore = await a.outbox.pendingCount()
     store.undos[token.id]?.append(.category(txn: "no-such-txn", category: nil, needsReview: true))
     store.undo(token)
     try await Mapper.eventually { failed == 1 }
     #expect(failed == 1 && store.canUndo(token))
-    #expect(try row(ids[0])?.categorySource == "model" && row(ids[1])?.categorySource == "model")
-    #expect(try row(ids[2])?.categorySource == "user")
-    let versions = try ids.prefix(2).map { try #require(try row($0)).version }
+    #expect(try ids.allSatisfy { try row($0)?.categorySource == "user" })
+    #expect(await a.outbox.pendingCount() == pendingBefore)
+    let versions = try ids.map { try #require(try row($0)).version }
     store.undos[token.id]?.removeLast()
     store.undo(token)
-    try await Mapper.eventually { try row(ids[2])?.categorySource == "model" }
-    #expect(try row(ids[2])?.needsReview == true && failed == 1)
-    #expect(try ids.prefix(2).map { try #require(try row($0)).version } == versions)
+    try await Mapper.eventually { try ids.allSatisfy { try row($0)?.categorySource == "model" } }
+    #expect(try ids.allSatisfy { try row($0)?.needsReview == true } && failed == 1)
+    #expect(try ids.map { try #require(try row($0)).version } == versions.map { $0 + 1 })
     #expect(!store.canUndo(token))
   }
 

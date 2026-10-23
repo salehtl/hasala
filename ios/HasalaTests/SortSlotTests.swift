@@ -218,9 +218,17 @@ struct RunOfferTests {
     #expect(!O.due(m, Self.facts(.active, running: true)))
   }
 
-  @Test func anotherIPhonesMailboxCountsOnceThisOneIsCaughtUp() {
+  @Test func anotherIPhonesMailboxWaitsForTheSecondReviewOpenOnceThisOneIsCaughtUp() {
+    let f = Self.facts(.elsewhere)
     #expect(!O.due(M(), Self.facts(.elsewhere, caughtUp: false)))
-    #expect(O.due(M(), Self.facts(.elsewhere)))
+    #expect(!O.due(M(), f))
+    var m = O.opened(M(), f)
+    #expect(!O.due(m, f))
+    m = O.opened(m, f)
+    #expect(O.due(m, f))
+    #expect(!O.due(m, Self.facts(.elsewhere, caughtUp: false)))
+    let shown = O.shown(m, f)
+    #expect(shown.stage == .open && O.due(shown, f))
   }
 
   @Test func aMailboxStuckWaitingForCardsOffersOnTheSecondReviewOpen() {
@@ -397,7 +405,10 @@ struct CloudSortFirstLoadTests {
     let load = RunOffer.Load(mailbox: .active, caughtUp: true)
     let run = BacklogRunRecord.Run(id: "r", startedMs: 44)
     var f = C.facts(s, run: run, load: load)
-    #expect(f.enabled && f.runActive && f.runStartedMs == 44 && f.waitingNames == s.waitingNames && f.load == load)
+    #expect(f.enabled && f.runActive && f.runStartedMs == 44 && f.waitingNames == s.waitingGroups && f.load == load)
+    s.waitingNames = 90
+    s.waitingGroups = 21
+    #expect(C.facts(s, run: run, load: load).waitingNames == 21)
     s.phase = .paused(.offline)
     #expect(C.facts(s, run: run, load: load).runActive)
     s.phase = .done

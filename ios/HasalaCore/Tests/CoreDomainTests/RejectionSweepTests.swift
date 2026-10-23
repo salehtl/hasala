@@ -142,6 +142,35 @@ struct RejectionSweepTests {
     #expect(cloud.calls == ["second shop dxb"])
   }
 
+  @Test("a category this phone stopped trusting is still suggested, never filed")
+  func trust() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit"), ("SECOND SHOP DXB", "debit")])
+    let cloud = BacklogCloud(["cafe example jbr": (.category("dining"), true), "second shop dxb": (.category("shopping"), true)])
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: MemoryCache(),
+      now: { now }, autoFile: true, trusts: { $0 != "dining" })
+    #expect(Dictionary(uniqueKeysWithValues: p.suggestions.map { ($0.category, $0.autoFile) }) == ["dining": false, "shopping": true])
+    let s = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(RecordingModel("cf-clef/1", reply: .category("dining")))],
+      context: .foreground, cache: MemoryCache(), now: { now }, trusts: { $0 != "dining" })
+    #expect(s.allSatisfy { !$0.autoFile } && s.count == 2)
+  }
+
+  @Test("the backlog counts each waiting merchant group once")
+  func groups() throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("TAILSCALE.COM", "debit"), ("TAILSCALE INC", "debit"), ("PAYPAL *TAILSCALE", "debit"), ("KITE STUDIO JLT", "debit")])
+    let rows = l.rows().map { r in
+      SweepRow(
+        id: r.id, merchantRaw: r.merchantRaw, direction: r.direction, category: r.category, sourceKind: r.sourceKind,
+        sourceRef: r.sourceRef, needsReview: r.needsReview, candidate: r.candidate, version: r.version, template: r.template,
+        merchantGroup: RuleReachTests.groups.key(raw: r.merchantRaw))
+    }
+    let c = try BacklogSort.counts(rows: rows, categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: MemoryCache(), now: now)
+    #expect(c.waitingNames == 4 && c.waitingGroups == 2 && c.waitingPayments == 4)
+  }
+
   @Test("the sweep commits under the write serial, after a write already in it")
   func serial() async throws {
     var l = T.Ledger()

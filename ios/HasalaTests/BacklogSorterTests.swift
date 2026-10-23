@@ -523,9 +523,11 @@ struct BacklogSorterTests {
 struct CloudSortStatusTests {
   typealias C = LiveCloudSortController
 
-  nonisolated static func view(_ waiting: Int) -> ModelSuggestionStage.BacklogView {
+  nonisolated static func view(_ waiting: Int, groups: Int? = nil) -> ModelSuggestionStage.BacklogView {
     ModelSuggestionStage.BacklogView(
-      counts: BacklogSort.Counts(waitingNames: waiting, waitingPayments: waiting + 3, staysOnDevice: 4, leftForYou: 6, pendingTxnIDs: ["t"]),
+      counts: BacklogSort.Counts(
+        waitingNames: waiting, waitingPayments: waiting + 3, staysOnDevice: 4, leftForYou: 6, pendingTxnIDs: ["t"],
+        waitingGroups: groups ?? waiting),
       cloudSorted: 7)
   }
 

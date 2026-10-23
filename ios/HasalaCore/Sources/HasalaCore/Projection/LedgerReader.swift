@@ -427,6 +427,21 @@ public struct LedgerReader: Sendable {
     }
   }
 
+  public func rulesIncludingRemoved() throws -> [RuleRow] {
+    try db.read { db in
+      var patterns: [String: [String]] = [:]
+      for r in try Row.fetchAll(db, sql: "SELECT rule_id, pattern FROM rule_pattern ORDER BY rule_id, idx") {
+        patterns[r["rule_id"], default: []].append(r["pattern"])
+      }
+      return try Row.fetchAll(db, sql: "SELECT * FROM rule ORDER BY created_ms DESC, id").map { r in
+        let id: String = r["id"]
+        return RuleRow(
+          id: id, patterns: patterns[id] ?? [], match: r["match"], category: r["category"], priority: r["priority"], enabled: r["enabled"],
+          removed: r["removed"], origin: r["origin"], createdAt: r["created_at"], version: r["version"], defect: r["defect"], matchCount: 0)
+      }
+    }
+  }
+
   /// Trusted domains the Gmail lane may list (03c §7.2 `queryDomains`).
   public func queryDomains() throws -> [String] {
     try db.read { db in

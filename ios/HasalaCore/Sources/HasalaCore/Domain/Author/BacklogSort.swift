@@ -119,8 +119,13 @@ public enum BacklogSort {
     public var staysOnDevice: Int
     public var leftForYou: Int
     public var pendingTxnIDs: Set<String>
+    public var waitingGroups: Int
 
-    public init(waitingNames: Int = 0, waitingPayments: Int = 0, staysOnDevice: Int = 0, leftForYou: Int = 0, pendingTxnIDs: Set<String> = []) {
+    public init(
+      waitingNames: Int = 0, waitingPayments: Int = 0, staysOnDevice: Int = 0, leftForYou: Int = 0, pendingTxnIDs: Set<String> = [],
+      waitingGroups: Int = 0
+    ) {
+      self.waitingGroups = waitingGroups
       self.waitingNames = waitingNames
       self.waitingPayments = waitingPayments
       self.staysOnDevice = staysOnDevice
@@ -197,14 +202,17 @@ public enum BacklogSort {
     let p = try plan(rows: rows, categorizer: categorizer, memo: memo, cached: cached)
     let waiting = Set(p.pending)
     var c = Counts(waitingNames: p.pending.count)
+    var groups: Set<String> = []
     for q in p.queued {
       if p.blocked.contains(q.subject) {
         c.staysOnDevice += 1
       } else if waiting.contains(q.subject) {
         c.waitingPayments += 1
         c.pendingTxnIDs.insert(q.row.id)
+        groups.insert(q.row.merchantGroup.map { "g:" + $0 } ?? "s:" + q.subject)
       }
     }
+    c.waitingGroups = groups.count
     c.leftForYou = p.queued.count - c.waitingPayments
     return c
   }
@@ -221,7 +229,8 @@ public enum BacklogSort {
   public static func pass(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
-    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil
+    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
+    trusts: @Sendable (String) -> Bool = { _ in true }
   ) async throws -> Pass {
     var memo = memo
     guard cloud.availability() == .available else { return Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
@@ -275,7 +284,7 @@ public enum BacklogSort {
       guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version, !q.row.rejects(a.category)
       else { return nil }
       return ModelSuggestionSweep.Suggestion(
-        txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile)
+        txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile && trusts(a.category))
     }
     let pending = work.pending.filter { !memo.asked.contains($0) && memo.answers[$0] == nil }.count
     if stop == nil, pending > 0 {
@@ -331,13 +340,14 @@ public enum BacklogSort {
   public static func run(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
-    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil, stamps: AuthorStamps,
+    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
+    trusts: @Sendable (String) -> Bool = { _ in true }, stamps: AuthorStamps,
     serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
     enqueue: @Sendable (AuthoredBlob) async throws -> Void
   ) async throws -> Committed {
     let p = try await pass(
       rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
-      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout)
+      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout, trusts: trusts)
     guard !p.suggestions.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
     do {
       try Task.checkCancellation()

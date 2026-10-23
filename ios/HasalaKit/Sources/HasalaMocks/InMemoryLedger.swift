@@ -82,7 +82,7 @@ public final class InMemoryLedger: LedgerStore {
       guard let ref else { return [] }
       let hits = s.txns.filter { t in
         t.reachable && t.groupRef == ref && !s.skippedReview.contains(t.id) && !except.contains(t.id)
-          && (rule.matches(t.merchant) || rule.matches(t.spelling))
+          && rule.matches(GroupRule.pattern(t.spelling) ?? t.spelling)
       }.map(\.id)
       for id in hits {
         try editTxn(id) { t in
@@ -153,12 +153,18 @@ public final class InMemoryLedger: LedgerStore {
         if let project { t.projectID = project }
       }
       title = "Sorted into \(categoryName(c))"
-      if learnRule, let t = s.txn(id), !s.rules.contains(where: { $0.matches(t.merchant) }) {
+      if learnRule, let t = s.txn(id),
+        !s.rules.contains(where: { $0.matches(t.groupRef == nil ? t.merchant : GroupRule.pattern(t.spelling) ?? t.spelling) })
+      {
+        let members = s.txns.filter { $0.reachable && $0.groupRef == t.groupRef && $0.id != id && !s.skippedReview.contains($0.id) }
+        let patterns = t.groupRef == nil ? [t.merchant.lowercased()] : GroupRule.patterns(filed: t, members: members)
+        guard !patterns.isEmpty else { break }
         touchedRules = true
         let taken = Set(s.rules.map(\.id)).union(s.txns.compactMap(\.ruleID))
         let base = "learned-\(id)"
         let ruleID = taken.contains(base) ? "\(base)-\(nextToken)" : base
-        let rule = Rule(id: ruleID, patterns: [t.merchant.lowercased()], categoryID: c, learnedToday: true)
+        let rule = Rule(
+          id: ruleID, patterns: patterns, match: t.groupRef == nil ? .contains : .exact, categoryID: c, learnedToday: true)
         s.rules.append(rule)
         let reached = try reachBack(rule, group: t.groupRef, except: [id])
         if !reached.isEmpty {
@@ -182,9 +188,8 @@ public final class InMemoryLedger: LedgerStore {
       }
       var filed = members.map(\.id)
       var ruleID: RuleID?
-      if alwaysUse {
-        var seen: Set<String> = []
-        let patterns = members.map { $0.spelling.lowercased() }.filter { seen.insert($0).inserted }
+      let patterns = alwaysUse ? GroupRule.patterns(filed: nil, members: members) : []
+      if !patterns.isEmpty {
         let rule = Rule(id: "group-\(nextToken)", patterns: patterns, match: .exact, categoryID: c, learnedToday: true)
         touchedRules = true
         s.rules.append(rule)

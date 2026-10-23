@@ -18,6 +18,7 @@ nonisolated struct CloudSortStatus: Equatable, Sendable {
   enum Phase: Equatable, Sendable { case off, idle, running, paused(Pause), done }
   var phase: Phase
   var waitingNames: Int
+  var waitingGroups: Int = 0
   var waitingPayments: Int
   var askedNames: Int
   var totalNames: Int

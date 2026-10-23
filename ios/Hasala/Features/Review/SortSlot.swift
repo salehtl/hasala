@@ -76,8 +76,8 @@ nonisolated enum RunOffer {
   static func opened(_ m: Memory, _ f: Facts) -> Memory {
     var m = observe(m, f)
     switch f.load.mailbox {
-    case .awaitingCards, .none: m.opens = min(m.opens + 1, opensBeforeFallback)
-    case .active, .elsewhere, .importing: break
+    case .awaitingCards, .elsewhere, .none: m.opens = min(m.opens + 1, opensBeforeFallback)
+    case .active, .importing: break
     }
     return m
   }
@@ -93,9 +93,9 @@ nonisolated enum RunOffer {
 
   static func loaded(_ m: Memory, _ load: Load) -> Bool {
     switch load.mailbox {
-    case .active, .elsewhere: load.caughtUp
+    case .active: load.caughtUp
     case .importing: false
-    case .awaitingCards, .none: load.caughtUp && m.opens >= opensBeforeFallback
+    case .awaitingCards, .elsewhere, .none: load.caughtUp && m.opens >= opensBeforeFallback
     }
   }
 

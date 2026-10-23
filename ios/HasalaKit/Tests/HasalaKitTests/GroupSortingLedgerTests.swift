@@ -72,6 +72,45 @@ struct GroupSortingLedgerTests {
     #expect(unverified.needsReview && unverified.categoryID == nil)
   }
 
+  @Test func alwaysUseFromOneSpellingReachesAllThreeTailscaleSpellingsWithExactPatterns() throws {
+    let l = ledger()
+    let first = try #require(l.state.txn("bl-ts-01"))
+    #expect(first.spelling == "TAILSCALE.COM")
+    let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
+    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
+    #expect(rule.match == .exact && rule.patterns == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
+    #expect(!rule.matches("paypal *netflix") && !rule.matches("tailscale"))
+    #expect(l.state.txn("bl-ts-unverified")?.categoryID == nil && l.state.txn("bl-ts-refund")?.categoryID == nil)
+    #expect(tailscaleRows(l).filter { $0.id != "bl-ts-unverified" }.allSatisfy { $0.categoryID == "subscriptions" })
+  }
+
+  @Test func aNineSpellingGroupGetsARuleOfTheEightMostUsed() throws {
+    var s = Scenario.mayaBacklog.state
+    let ref = MerchantGroupRef(key: "n:some shop", direction: .out)
+    var n = 0
+    for spelling in 1...9 {
+      for k in 0..<(10 - spelling) {
+        n += 1
+        var t = try #require(s.txn("bl-saffron"))
+        t.id = "shop-\(n)"
+        t.merchant = "Some Shop"
+        t.merchantKey = "some shop*ref \(spelling)"
+        t.merchantGroup = ref.key
+        t.provenance?.rawMerchant = "SOME SHOP*REF \(spelling)"
+        t.postedAt = LocalDateTime(2026, 10, 1 + k, 12, spelling)
+        s.txns.append(t)
+      }
+    }
+    let l = InMemoryLedger(state: s)
+    #expect(l.state.txns.filter { $0.groupRef == ref && $0.reachable }.count == 45)
+    try l.apply(.sortGroup(ref, "shopping", alwaysUse: true, project: nil))
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
+    #expect(rule.patterns == (1...8).map { "some shop*ref \($0)" })
+    #expect(GroupRule.patterns(filed: nil, members: []).isEmpty)
+    #expect(GroupRule.pattern(String(repeating: "x", count: 129)) == nil && GroupRule.pattern("A  B ") == "a b")
+  }
+
   @Test func alwaysUseFromOneCardReachesBackWithinItsGroup() throws {
     let l = ledger()
     let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))

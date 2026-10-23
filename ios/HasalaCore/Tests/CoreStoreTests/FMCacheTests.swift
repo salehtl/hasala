@@ -19,7 +19,7 @@ struct FMCacheTests {
     #expect(
       migrations == [
         "v1", "fm_cache", "mailbox_sender_address", "mailbox_parsing", "mailbox_pending_import", "mailbox_unparsed_sender",
-        "fm_cache_answers", "backlog_run",
+        "fm_cache_answers", "backlog_run", "sort_memory",
       ])
     let cache = FMCache(s)
     try cache.recordUnknown([(subject: "cafe example jbr", modelTag: "apple-fm/26.1")], taxonomyHash: Self.taxonomy, now: 0)
@@ -88,6 +88,17 @@ struct FMCacheTests {
     try store.save(Data("{\"a\":1}".utf8))
     try store.save(Data("{\"a\":2}".utf8))
     #expect(try store.load() == Data("{\"a\":2}".utf8))
+    try store.clear()
+    #expect(try store.load() == nil)
+  }
+
+  @Test("the sort memory is one row, replaced on save, and erased with the store")
+  func sortMemory() throws {
+    let store = SortMemoryStore(try LedgerStore.inMemory())
+    #expect(try store.load() == nil)
+    try store.save(Data("{\"r\":1}".utf8))
+    try store.save(Data("{\"r\":2}".utf8))
+    #expect(try store.load() == Data("{\"r\":2}".utf8))
     try store.clear()
     #expect(try store.load() == nil)
   }

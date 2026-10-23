@@ -149,7 +149,7 @@ nonisolated extension LedgerStateMapper {
       return BillCandidate(
         id: c.id, name: c.name, categoryID: category ?? "subscriptions",
         amount: Money(minor: c.amountMinor, currency: c.currency), seenCount: c.seen,
-        everyDays: everyDays(c.unit, every: Int(c.every)), last: local(c.last))
+        everyDays: everyDays(c.unit, every: Int(c.every)), last: local(c.last), key: c.key)
     }
   }
 
