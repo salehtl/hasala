@@ -30,6 +30,22 @@ final class SetupCloudSortUITests: XCTestCase {
     tap(app, "review.cloudSort.notNow", timeout: 30)
     XCTAssertTrue(el(app, "review.cloudSort").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "review.tab.start").exists)
+    XCTAssertFalse(el(app, "review.sort.card").exists, "Not now offered a run")
+    app.tabBars.firstMatch.buttons["Home"].tap()
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.cloudSort").exists, "asked again after Not now")
+  }
+
+  @MainActor
+  func testTheAskComesBeforeTheImport() throws {
+    let app = launch(scenario: nil, screen: "review.cloudSort.importing")
+    XCTAssertTrue(el(app, "review.cloudSort").waitForExistence(timeout: 30))
+    XCTAssertFalse(el(app, "review.slot.importing").exists, "two cards in the slot")
+    tap(app, "review.cloudSort.notNow")
+    XCTAssertTrue(el(app, "review.slot.importing").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.cloudSort").exists)
   }
 
   @MainActor

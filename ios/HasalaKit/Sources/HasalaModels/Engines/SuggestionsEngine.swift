@@ -91,7 +91,5 @@ public enum SuggestionsEngine {
 
   public static func usedLine(_ n: Int) -> String { "Used \(count(n, "suggestion"))" }
 
-  public static func entryLine(_ n: Int) -> String { "Check \(count(n, "suggestion"))" }
-
   static func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
 }

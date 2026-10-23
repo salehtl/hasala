@@ -54,6 +54,8 @@ enum LocalAccountData {
     defaults.removeObject(forKey: mailboxProviderKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
+    RunOffer.Store.forget(defaults)
+    CloudSortDismissal.forget(defaults)
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)
