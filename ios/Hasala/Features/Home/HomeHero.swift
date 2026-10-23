@@ -58,7 +58,7 @@ struct HomeHero: View {
       if !noPlan {
         VStack(alignment: .leading, spacing: 10) {
           if hero.state == .range {
-            HeroMonthBars(bars: hero.bars, hidden: hidden)
+            if !hero.bars.isEmpty { HeroMonthBars(bars: hero.bars, hidden: hidden) }
           } else {
             MonthPaceBar(
               spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
@@ -96,16 +96,9 @@ struct HomeHero: View {
       PeriodPill(period, tinted: !isThisMonth, action: changePeriod)
         .accessibilityIdentifier("home.period")
     } trailing: {
-      if !isThisMonth {
-        Button(action: backToThisMonth) {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textOnWashLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("home.backToThisMonth")
+      PeriodRowTrailing(hasLink: !isThisMonth) {
+        BackToThisMonthLink(tint: HColor.textOnWashLink, action: backToThisMonth)
+          .accessibilityIdentifier("home.backToThisMonth")
       }
     }
   }

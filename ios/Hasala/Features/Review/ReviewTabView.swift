@@ -128,15 +128,8 @@ struct ReviewTabView: View {
         .accessibilityHint("Shows \(elsewhere.widened.title)")
         .accessibilityIdentifier("review.tab.elsewhere")
       } else if !isThisMonth {
-        Button { app.period = .month(app.store.now.date.yearMonth) } label: {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("review.tab.backToThisMonth")
+        BackToThisMonthLink { app.period = .month(app.store.now.date.yearMonth) }
+          .accessibilityIdentifier("review.tab.backToThisMonth")
       }
     }
   }
@@ -162,7 +155,7 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      Button("Start") { ReviewEntry.open(app, at: nil, inPeriod: true) }
+      Button("Start") { ReviewEntry.open(app, at: nil) }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("review.tab.start")
     }
@@ -208,7 +201,7 @@ struct ReviewTabView: View {
             .accessibilityIdentifier("review.tab.month.\(month.month)")
         }
         ForEach(month.cards) { card in
-          Button { ReviewEntry.open(app, at: card.id, inPeriod: true) } label: { row(card) }
+          Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spoken(card))

@@ -79,14 +79,16 @@ final class AppModel {
   @ObservationIgnored private var previewMemo = Memo<Int, [HomeWidgetKind: HomeCanvasItem]>()
 
   @ObservationIgnored let layouts: HomeLayoutStore?
+  let notificationReads: NotificationReads
   private(set) var homeLayout: HomeLayout?
   var editingHome = false
 
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
-    layouts: HomeLayoutStore? = nil
+    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads()
   ) {
     self.store = store
+    self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
     self.layouts = layouts
@@ -160,12 +162,20 @@ final class AppModel {
   var mailOffer: MailOffer? { mailbox?.offer }
 
   var period: Period {
-    get { chosenPeriod?.clamped(to: store.now.date.yearMonth) ?? .month(store.now.date.yearMonth) }
+    get { chosenPeriod.map(shown) ?? .month(store.now.date.yearMonth) }
     set {
-      let today = store.now.date.yearMonth
-      let p = newValue.clamped(to: today)
-      chosenPeriod = p == .month(today) ? nil : p
+      let p = shown(newValue)
+      chosenPeriod = p == .month(store.now.date.yearMonth) ? nil : p
     }
+  }
+
+  private func shown(_ p: Period) -> Period {
+    let today = store.now.date.yearMonth
+    return p.isAllTime ? .allTime(since: earliestMonth, today: today) : p.clamped(to: today)
+  }
+
+  func choose(_ preset: PeriodPreset) {
+    period = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
   }
 
   var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
@@ -184,7 +194,7 @@ final class AppModel {
 
   /// What Home draws, recomputed once per ledger change or period.
   var snapshot: HomeSnapshot {
-    let period = chosenPeriod
+    let period = chosenPeriod == nil ? nil : self.period
     return homeMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
       HomeEngine.snapshot(store.state, now: store.now, period: period)
     }

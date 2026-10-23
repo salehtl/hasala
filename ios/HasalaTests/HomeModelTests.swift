@@ -1,3 +1,4 @@
+import Foundation
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -52,6 +53,51 @@ struct HomeModelTests {
     #expect(home.bell.count == 3)
   }
 
+  @Test func markAllReadClearsTheBadgeUntilSomethingChanges() {
+    let app = AppModel(store: InMemoryLedger())
+    let home = HomeViewModel(app: app)
+    #expect(home.bell.unread == 4)
+    #expect(app.bellCount == 4)
+    home.markAllRead()
+    #expect(home.bell.unread == 0)
+    #expect(app.bellCount == 0)
+    #expect(home.bell.count == 4)
+    app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
+    #expect(home.bell.needsALook[0].title == "5 transactions to sort")
+    #expect(home.bell.unread == 0)
+    #expect(app.bellCount == 0)
+  }
+
+  @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
+    func item(_ id: String, _ title: String) -> NotificationItem {
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(.allTime))
+    }
+    let reads = NotificationReads()
+    reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])
+    #expect(reads.isRead(item("review", "9 transactions to sort")))
+    #expect(reads.isRead(item("review", "8 transactions to sort")))
+    #expect(!reads.isRead(item("review", "10 transactions to sort")))
+    #expect(reads.isRead(item("bill.axa", "AXA Insurance may be late")))
+    #expect(!reads.isRead(item("bill.axa", "AXA Insurance is late")))
+    #expect(!reads.isRead(item("bill.du", "du may be late")))
+  }
+
+  @Test func readsPersistAsDigestsAndAreForgotten() throws {
+    let suite = "test.bell.reads.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let first = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    HomeViewModel(app: first).markAllRead()
+    let stored = defaults.stringArray(forKey: NotificationReads.key) ?? []
+    #expect(stored.count == 4)
+    #expect(!stored.contains { $0.contains("review") || $0.contains("AXA") })
+    let again = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    #expect(again.bellCount == 0)
+    NotificationReads.forget(defaults)
+    let after = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
+    #expect(after.bellCount == 4)
+  }
+
   /// Mail's offer is the bell's last row (plan B4.3); Home's board stays Maya's.
   @Test func mailNeedsAreTheBellsLastRow() {
     let mailbox = MockMailbox()
@@ -95,13 +141,20 @@ struct HomeModelTests {
 
     // To sort: the Review tab, and the deck once the sheet has gone.
     router.open(.notifications)
-    let after = home.openNotification(.review)
+    let after = home.openNotification(.review(.allTime))
     #expect(router.sheet == nil)
     #expect(router.tab == .review)
     #expect(app.cover == nil)
+    #expect(app.period.isAllTime && app.period.title == "All time")
     after?()
     #expect(app.cover == .review)
     app.cover = nil
+    app.period = .month(YearMonth(2026, 9))
+    router.open(.notifications)
+    home.openNotification(.review(nil))?()
+    #expect(app.cover == .review && app.period == .month(YearMonth(2026, 9)))
+    app.cover = nil
+    app.period = .month(MayaLedger.october)
 
     // A late bill: Home, pushed to the bill.
     router.tab = .plan

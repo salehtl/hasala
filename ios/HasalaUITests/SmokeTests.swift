@@ -169,6 +169,24 @@ final class SmokeTests: XCTestCase {
     XCTAssertEqual(tabBar.buttons["Home"].isSelected, true)
   }
 
+  @MainActor
+  func testMarkAllNotificationsRead() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    let bell = app.buttons["header.notifications"].firstMatch
+    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+    bell.tap()
+    XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
+    tap(app, "bell.markAllRead")
+    XCTAssertTrue(el(app, "bell.markAllRead").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "bell.row.review").exists, "marking read removed the rows")
+    attach(app, "Bell · All read")
+    try audit(app)
+    el(app, "bell.close").tap()
+    XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
+    XCTAssertEqual(bell.label, "Notifications")
+  }
+
   /// Home and the tabs at `.accessibility3` (UIKit's AccessibilityXL): the layouts reflow
   /// instead of truncating, and the audit passes (spec 04 §17).
   @MainActor
@@ -337,6 +355,25 @@ final class SmokeTests: XCTestCase {
       waitForStill(app)
       XCTAssertEqual(top(app, mark), rest, accuracy: 1, "\(tab) stayed offset after the refresh")
     }
+  }
+
+  @MainActor
+  func testTheUpdatingLineNeverCoversBackToThisMonth() throws {
+    let app = launch(scenario: "maya", motion: "off", arguments: ["-HasalaRefreshDelay", "10000"])
+    XCTAssertTrue(el(app, "home.period").waitForExistence(timeout: uiWait))
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    let back = el(app, "home.backToThisMonth")
+    XCTAssertTrue(back.waitForExistence(timeout: uiWait))
+    waitForStill(app)
+    pull(app)
+    let status = el(app, "sync.status")
+    XCTAssertTrue(status.waitForExistence(timeout: 3), "no Updating line")
+    attach(app, "Refresh · Home · September · updating")
+    XCTAssertFalse(status.frame.intersects(back.frame), "\(status.frame) covers \(back.frame)")
+    XCTAssertTrue(back.isHittable)
+    _ = status.waitForNonExistence(timeout: 15)
   }
 
   @MainActor

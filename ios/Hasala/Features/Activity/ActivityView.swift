@@ -88,15 +88,8 @@ struct ActivityFilterBar: View {
       ReflowingRow(spacing: 12) {
         pill
       } trailing: {
-        Button { model.backToThisMonth() } label: {
-          Text("Back to this month")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("activity.backToThisMonth")
+        BackToThisMonthLink { model.backToThisMonth() }
+          .accessibilityIdentifier("activity.backToThisMonth")
       }
     }
   }
@@ -303,7 +296,7 @@ private struct EmptyListCard: View {
   let isThisMonth: Bool
   var category: String?
 
-  private var when: String { isThisMonth ? "this month" : "in \(period.title)" }
+  private var when: String { isThisMonth ? "this month" : period.isAllTime ? "yet" : "in \(period.title)" }
 
   var body: some View {
     VStack(spacing: 8) {
@@ -392,12 +385,16 @@ struct FilterSummaryCard: View {
                   unitColor: HColor.textPrimary, unitGap: 5)
           .accessibilityIdentifier("activity.summary.total")
       }
-      CategoryPaceBar(spent: summary.progress, tick: summary.today, verdict: summary.verdict, phase: phase)
-        .paceFillSequence($phase, target: min(1, summary.progress.fraction), policy: policy)
-      ReflowingRow(spacing: 12) {
+      if summary.budgeted {
+        CategoryPaceBar(spent: summary.progress, tick: summary.today, verdict: summary.verdict, phase: phase)
+          .paceFillSequence($phase, target: min(1, summary.progress.fraction), policy: policy)
+        ReflowingRow(spacing: 12) {
+          PhraseText(summary.caption, hidden: hidden).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        } trailing: {
+          StatusDotLine(words: summary.verdict.label, verdict: summary.verdict)
+        }
+      } else {
         PhraseText(summary.caption, hidden: hidden).hType(.footnote).foregroundStyle(HColor.textSecondary)
-      } trailing: {
-        StatusDotLine(words: summary.verdict.label, verdict: summary.verdict)
       }
     }
     .padding(16)

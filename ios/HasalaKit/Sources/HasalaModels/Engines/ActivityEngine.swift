@@ -91,6 +91,7 @@ public struct FilterSummary: Sendable, Hashable {
   public var verdict: Verdict
   /// "40% of Dining's 1,600".
   public var caption: MoneyPhrase
+  public var budgeted = true
 }
 
 public struct ReviewSummary: Sendable, Hashable {
@@ -186,7 +187,7 @@ public enum ActivityEngine {
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }
     switch f.kind {
-    case .all: return !t.archived && (f.isSearching || f.category != nil || !t.inReview)
+    case .all: return !t.archived
     case .toReview: return t.inReview
     case .bills: return !t.archived && !t.inReview && isBill(t, s)
     case .transfers: return !t.archived && t.isTransfer
@@ -202,7 +203,7 @@ public enum ActivityEngine {
     for t in txns {
       let d = t.postedAt.date
       let row = row(t, s)
-      let signed = t.homeSigned ?? 0
+      let signed = t.isHeldCopy ? 0 : t.homeSigned ?? 0
       if let i = index[d] {
         groups[i].rows.append(row)
         groups[i].total.minor.add(signed)
@@ -306,6 +307,13 @@ public enum ActivityEngine {
   ) -> FilterSummary? {
     guard let cat = s.category(c) else { return nil }
     let total = Spending.spent(s, category: c, in: period)
+    guard period.showsBudgets else {
+      return FilterSummary(
+        title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille(0),
+        today: Permille(0), verdict: .onTrack,
+        caption: MoneyPhrase([.text("All time · since \(period.first.shortName) \(period.first.year)")]),
+        budgeted: false)
+    }
     let budget = Fils.sum(period.months) { s.plan.budget(c, $0).minor }
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)

@@ -44,7 +44,7 @@ struct AppModelTests {
     }
     let app = AppModel(store: InMemoryLedger(state: state))
     func homeWaiting() -> Int {
-      guard let row = app.snapshot.aboutNow.first(where: { $0.destination == .review }) else { return 0 }
+      guard let row = app.snapshot.aboutNow.first(where: { $0.destination == .review(nil) }) else { return 0 }
       return Int(row.detail.rendered(hidden: false).prefix { $0.isNumber }) ?? -1
     }
     app.period = .month(YearMonth(2026, 9))
@@ -63,6 +63,40 @@ struct AppModelTests {
     #expect(app.earliestMonth == YearMonth(2026, 4))
     let empty = AppModel(store: InMemoryLedger(state: MayaHistory.firstDays, now: MayaHistory.firstDaysNow))
     #expect(empty.earliestMonth == MayaLedger.october)
+  }
+
+  @Test func allTimeIsRememberedAsAllTimeAndGrowsWithOlderTransactions() throws {
+    let store = InMemoryLedger(state: MayaHistory.state)
+    let app = AppModel(store: store)
+    #expect(!app.period.isAllTime && app.period.showsBudgets)
+    app.choose(.allTime)
+    #expect(app.period.isAllTime && !app.period.showsBudgets)
+    #expect(app.period == .allTime(since: YearMonth(2026, 4), today: MayaLedger.october))
+    #expect(app.period.title == "All time" && app.period.preset(today: MayaLedger.october) == .allTime)
+    #expect(app.snapshot.period?.isAllTime == true && !app.snapshot.isThisMonth)
+    #expect(app.snapshot.hero.plan == .aed(0) && app.snapshot.hero.bars.isEmpty)
+    #expect(app.reviewWindow == .all && app.reviewElsewhere == nil)
+    let before = app.snapshot.hero.spent.minor
+    try store.apply(.addTransaction(ManualEntryDraft(
+      amount: .aed(25_00), merchant: "Corner Shop", categoryID: nil, postedAt: LocalDateTime(2025, 11, 4, 9, 0))))
+    #expect(app.earliestMonth == YearMonth(2025, 11))
+    #expect(app.period.isAllTime && app.period.first == YearMonth(2025, 11) && app.period.last == MayaLedger.october)
+    #expect(app.snapshot.hero.spent.minor == before + 25_00)
+
+    app.period = Period(YearMonth(2025, 11), MayaLedger.october)
+    #expect(!app.period.isAllTime && app.period.showsBudgets && app.period.title == "Nov 2025 – Oct 2026")
+    app.choose(.allTime)
+    app.period = .month(MayaLedger.october)
+    #expect(!app.period.isAllTime && app.snapshot.isThisMonth)
+    #expect(AppModel(store: store).period == .month(MayaLedger.october))
+  }
+
+  @Test func allTimeWithNothingOlderIsThisMonthStillCalledAllTime() {
+    let app = AppModel(store: InMemoryLedger(state: MayaHistory.firstDays, now: MayaHistory.firstDaysNow))
+    app.choose(.allTime)
+    #expect(app.period.isAllTime && app.period.range == MayaLedger.october...MayaLedger.october)
+    #expect(app.period.title == "All time" && !app.snapshot.isThisMonth)
+    #expect(app.snapshot.hero.caption.rendered(hidden: false) == "spent, all time")
   }
 
   @Test func theHiddenScenarioStartsHidden() {

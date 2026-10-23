@@ -6,12 +6,13 @@ import Observation
 #endif
 
 /// The bell (Paper "Home · Notifications" 11Y9-0): what needs a look, then what came before.
-/// Its count is the bell's badge; the Review tab's badge counts only transactions to sort.
+/// Its unread items are the bell's badge; the Review tab's badge counts only transactions to sort.
 struct Bell: Equatable {
   /// Newest first: the ledger's items, then mail's ("Connect your email", "Sign in again").
   var needsALook: [NotificationItem]
   /// Notifications sent before. Only a Debug feed has any (plan B7.6, decision 12).
   var earlier: [NotificationItem]
+  var unread: Int = 0
 
   var count: Int { needsALook.count }
 
@@ -41,6 +42,7 @@ protocol HomeModel: AnyObject, Observable {
   /// the row's screen. What can open under a closing sheet opens now (a tab, a push, the next
   /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
   func openNotification(_ destination: NotificationDestination) -> (@MainActor () -> Void)?
+  func markAllRead()
 }
 
 @MainActor
@@ -74,7 +76,14 @@ final class HomeViewModel: HomeModel {
   var hidden: Bool { app.amountsHidden }
 
   var bell: Bell {
-    Bell(needsALook: app.needsALook, earlier: feed?.earlier(now: app.store.now) ?? [])
+    let items = app.needsALook
+    return Bell(
+      needsALook: items, earlier: feed?.earlier(now: app.store.now) ?? [],
+      unread: app.notificationReads.unread(items).count)
+  }
+
+  func markAllRead() {
+    app.notificationReads.markAllRead(app.needsALook)
   }
 
   /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
@@ -105,8 +114,9 @@ final class HomeViewModel: HomeModel {
       // alerts pushed inside it (`AppRouter.open` queues it).
       router.open(.profile, profile: [.bankAlerts])
       return nil
-    case .review:
+    case .review(let preset):
       close()
+      if let preset { app.choose(preset) }
       router.tab = .review
       return { [app] in app.startReview() }
     case .unreadMail:
@@ -194,7 +204,7 @@ extension AppModel {
       + [HomeViewModel.mailItem(mailOffer, mailboxes: mailbox?.mailboxes ?? [])].compactMap { $0 }
   }
 
-  var bellCount: Int { needsALook.count }
+  var bellCount: Int { notificationReads.unread(needsALook).count }
 }
 
 /// Notifications Hasala sent before (Paper "Earlier"). The app keeps no notification history
