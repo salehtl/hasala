@@ -16,7 +16,7 @@ public struct ReviewTabRow: Sendable, Hashable, Identifiable {
   public var reason: TxnReviewReason? = nil
 
   public func spoken(hidden: Bool) -> String {
-    [title, spokenDetail, spokenAmount.spoken(hidden: hidden), subtitle.prefix(1).lowercased() + subtitle.dropFirst()]
+    [title, spokenDetail, spokenAmount.spoken(hidden: hidden), subtitle]
       .filter { !$0.isEmpty }.joined(separator: ", ")
   }
 }
