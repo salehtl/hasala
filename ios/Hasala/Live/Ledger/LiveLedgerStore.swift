@@ -419,7 +419,12 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .sortGroup(let ref, let c, _, let project):
       guard s.category(c) != nil else { throw .notFound }
       if let project, s.project(project) == nil { throw .notFound }
-      return (try SortPatch.sortGroup(&s, ref, c, project: project, at: now, receiptID: receiptID), [])
+      let inverses: [LedgerEditAuthor.Inverse] = project.map { p in
+        SortPatch.members(s, ref).compactMap { i in
+          s.txns[i].projectID == p ? nil : .project(txn: s.txns[i].id, project: s.txns[i].projectID)
+        }
+      } ?? []
+      return (try SortPatch.sortGroup(&s, ref, c, project: project, at: now, receiptID: receiptID), inverses)
     case .notThis(let ref, let c):
       guard s.category(c) != nil else { throw .notFound }
       return (try SortPatch.notThis(&s, ref, c), [])

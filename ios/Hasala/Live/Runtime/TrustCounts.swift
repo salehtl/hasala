@@ -38,9 +38,19 @@ nonisolated final class TrustCounts: Sendable {
     change { $0.accepts[category, default: 0] += 1 }
   }
 
-  func corrected(_ category: String, modelTag: String?) {
-    guard Self.cloud(modelTag), builtins.contains(category) else { return }
+  @discardableResult
+  func corrected(_ category: String, modelTag: String?) -> Bool {
+    guard Self.cloud(modelTag), builtins.contains(category) else { return false }
     change { $0.corrections[category, default: 0] += 1 }
+    return true
+  }
+
+  func uncorrected(_ category: String, modelTag: String?, by n: Int = 1) {
+    guard n > 0, Self.cloud(modelTag), builtins.contains(category) else { return }
+    change { c in
+      let left = max(0, (c.corrections[category] ?? 0) - n)
+      c.corrections[category] = left == 0 ? nil : left
+    }
   }
 
   func autoFiles(_ category: String) -> Bool {

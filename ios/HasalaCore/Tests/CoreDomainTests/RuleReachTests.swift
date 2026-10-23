@@ -125,8 +125,53 @@ struct RuleReachTests {
     #expect(same?.id == "r9" && same?.unchanged == true)
     let moved = OpAuthor.groupRule(patterns: ["tailscale inc", "tailscale.com"], category: "subscriptions", existing: existing)
     #expect(moved?.id == "r9" && moved?.parentVersion == 3 && moved?.draft.category == "subscriptions" && moved?.unchanged == false)
-    let fresh = OpAuthor.groupRule(patterns: ["tailscale.com"], category: "subscriptions", existing: existing)
+    let fresh = OpAuthor.groupRule(patterns: ["brightwell academy"], category: "education", existing: existing)
     #expect(fresh?.id == nil && fresh?.draft.origin == "learned" && fresh?.draft.priority == 100 && fresh?.draft.match == .exact)
+    #expect(fresh?.trims.isEmpty == true)
+  }
+
+  @Test("re-filing one spelling of a ruled group edits that rule in place, so no second rule disagrees with it")
+  func groupRuleOverlap() {
+    let draft = OpAuthor.RuleDraft(patterns: ["tailscale.com", "tailscale inc"], match: .exact, category: "shopping", priority: 100, origin: "learned")
+    let existing = [OpAuthor.RuleSnapshot(id: "r9", version: 3, draft: draft)]
+    let refiled = OpAuthor.groupRule(patterns: ["tailscale.com"], category: "subscriptions", existing: existing)
+    #expect(refiled?.id == "r9" && refiled?.parentVersion == 3 && refiled?.unchanged == false)
+    #expect(refiled?.draft.category == "subscriptions" && refiled?.draft.enabled == true)
+    #expect(refiled?.draft.patterns == ["tailscale.com", "tailscale inc"] && refiled?.trims.isEmpty == true)
+    let again = OpAuthor.groupRule(patterns: ["tailscale inc"], category: "shopping", existing: existing)
+    #expect(again?.id == "r9" && again?.unchanged == true)
+    let wider = OpAuthor.groupRule(patterns: ["paypal *tailscale", "tailscale.com"], category: "shopping", existing: existing)
+    #expect(wider?.id == "r9" && wider?.unchanged == false)
+    #expect(wider?.draft.patterns == ["paypal *tailscale", "tailscale.com", "tailscale inc"])
+    var paused = draft
+    paused.enabled = false
+    let resumed = OpAuthor.groupRule(patterns: ["tailscale inc"], category: "shopping", existing: [OpAuthor.RuleSnapshot(id: "r9", version: 4, draft: paused)])
+    #expect(resumed?.id == "r9" && resumed?.unchanged == false && resumed?.draft.enabled == true)
+  }
+
+  @Test("other rules that file a shared spelling elsewhere lose that spelling, or are removed when it was their only one")
+  func groupRuleTrims() {
+    let a = OpAuthor.RuleSnapshot(
+      id: "ra", version: 2,
+      draft: OpAuthor.RuleDraft(patterns: ["tailscale.com", "tailscale inc"], match: .exact, category: "shopping", priority: 100, origin: "learned"))
+    let b = OpAuthor.RuleSnapshot(
+      id: "rb", version: 5, draft: OpAuthor.RuleDraft(patterns: ["tailscale.com"], match: .exact, category: "software", priority: 100, origin: "learned"))
+    let c = OpAuthor.RuleSnapshot(
+      id: "rc", version: 1, draft: OpAuthor.RuleDraft(patterns: ["tailscale.com"], match: .contains, category: "travel", priority: 100, origin: "learned"))
+    let plan = OpAuthor.groupRule(patterns: ["tailscale.com"], category: "subscriptions", existing: [b, a, c])
+    #expect(plan?.id == "ra" && plan?.draft.category == "subscriptions")
+    #expect(plan?.trims.map(\.id) == ["rb"] && plan?.trims.first?.draft.removed == true && plan?.trims.first?.version == 5)
+    let d = OpAuthor.RuleSnapshot(
+      id: "rd", version: 7,
+      draft: OpAuthor.RuleDraft(patterns: ["tailscale inc", "kite studio"], match: .exact, category: "dining", priority: 100, origin: "learned"))
+    let trimmed = OpAuthor.groupRule(patterns: ["tailscale.com"], category: "subscriptions", existing: [a, d])
+    #expect(trimmed?.trims.first?.id == "rd" && trimmed?.trims.first?.draft.patterns == ["kite studio"])
+    #expect(trimmed?.trims.first?.draft.removed == false)
+    let rules = ([trimmed!.draft] + trimmed!.trims.map(\.draft)).enumerated().map { i, d in
+      RuleInput(id: "x\(i)", patterns: d.patterns, match: d.match.rawValue, category: d.category, priority: d.priority, enabled: d.enabled, removed: d.removed)
+    }
+    let prepared = Matcher.prepare(rules: rules, entries: []).rules
+    #expect(prepared.filter { Matcher.hits($0, merchantRaw: "TAILSCALE INC") }.map(\.category) == ["subscriptions"])
   }
 
   @Test("a learned pattern never starts with a payment facilitator")

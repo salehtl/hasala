@@ -252,6 +252,8 @@ struct ReviewTabView: View {
 
   // MARK: To sort
 
+  /// "To sort", oldest first within a month (Paper writes "Newest first"): each row opens the
+  /// deck at its own card.
   private func list(_ items: [ReviewItem]) -> some View {
     let months = ReviewEngine.itemMonths(items, now: app.store.now)
     let grouped = items.contains { if case .group = $0 { true } else { false } }
@@ -338,8 +340,6 @@ struct ReviewTabView: View {
     case .decide: HColor.textSecondary
     }
   }
-
-  static func supporting(_ card: ReviewCardModel) -> String { ReviewEngine.rowSupporting(card) }
 
   // MARK: Others
 

@@ -155,6 +155,56 @@ final class SortingReworkUITests: XCTestCase {
   }
 
   @MainActor
+  func testAnActivityRowSaysWhichRuleSortedIt() throws {
+    let app = launch(scenario: "mayaBacklog")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30))
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    let ruled = app.buttons.matching(NSPredicate(format: "label CONTAINS ', sorted by your rule'")).firstMatch
+    XCTAssertTrue(ruled.waitForExistence(timeout: uiWait), "no Activity row says it was sorted by your rule")
+    XCTAssertFalse(ruled.label.contains("Your rule"), ruled.label)
+    XCTAssertTrue(ruled.label.contains(" · "), ruled.label)
+    attach(app, "Activity · sorted by your rule")
+    try audit(app)
+  }
+
+  @MainActor
+  func testSortEachOneTheResultRowAndSortedForYouReadAtTheLargestTextSizes() throws {
+    let app = launch(scenario: "mayaBacklog", arguments: Self.largeText)
+    openReview(app)
+    openGroup(app, Self.qasr)
+    tap(app, "review.sortEach", opening: "review.sortEach.done")
+    attach(app, "Review · Sort each one · accessibility3")
+    try audit(app, atLargeText: true, overSheet: true)
+    let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'review.sortEach.row.'")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    row.tap()
+    tap(app, "pick.alwaysUse")
+    tap(app, "pick.groceries")
+    let result = el(app, "review.result")
+    XCTAssertTrue(result.waitForExistence(timeout: uiWait))
+    attach(app, "Review · Deck · after Sort each one · accessibility3")
+    try audit(app, atLargeText: true)
+    tap(app, "review.close")
+    let tabResult = el(app, "review.result")
+    XCTAssertTrue(tabResult.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, el(app, "review.result.dismiss")))
+    attach(app, "Review · Tab · result row · accessibility3")
+    try audit(app, atLargeText: true)
+
+    app.tabBars.firstMatch.buttons["Home"].tap()
+    let look = el(app, "home.sortedForYou")
+    XCTAssertTrue(look.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(scroll(app, toShow: look))
+    attach(app, "Home · sorted for you row · accessibility3")
+    try audit(app, atLargeText: true)
+    look.tap()
+    let undoAll = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'sortedForYou.undoAll.'")).firstMatch
+    XCTAssertTrue(undoAll.waitForExistence(timeout: uiWait))
+    attach(app, "Home · Sorted for you · accessibility3")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
   func testTheGroupCardAndThePickSheetReadAtTheLargestTextSizes() throws {
     let app = launch(scenario: "mayaBacklog", arguments: Self.largeText)
     openReview(app)

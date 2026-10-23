@@ -21,7 +21,10 @@ nonisolated enum SortPatch {
   static func reach(
     _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime, receiptID: Int
   ) -> String? {
-    let others = members(s, ref).filter { s.txns[$0].id != old.id }
+    let pool = members(s, ref).filter { s.txns[$0].id != old.id }
+    let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] })
+    guard !patterns.isEmpty else { return nil }
+    let others = pool.filter { i in GroupRule.pattern(s.txns[i].spelling).map(patterns.contains) == true }
     guard !others.isEmpty else { return nil }
     let filed = [old] + others.map { s.txns[$0] }
     for i in others {

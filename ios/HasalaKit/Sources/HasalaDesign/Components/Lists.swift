@@ -125,14 +125,19 @@ public struct HListRow: View {
   let trailing: Trailing
   let hidden: Bool
   let project: String?
+  let spokenSupporting: String?
+  let supportingID: String?
   @Environment(\.dynamicTypeSize) private var typeSize
 
   /// `titleColor` is `listRowAction` for an action row ("Add a rule") and `listRowDestructive`
   /// for a destructive one ("Archive", in its own card, last).
   public init(leading: Leading = .none, title: String, supporting: Supporting? = nil, trailing: Trailing = .none,
-              titleColor: Color = HColor.listRowTitle, hidden: Bool = false, project: String? = nil)
+              titleColor: Color = HColor.listRowTitle, hidden: Bool = false, project: String? = nil,
+              spokenSupporting: String? = nil, supportingID: String? = nil)
   {
     self.project = project
+    self.spokenSupporting = spokenSupporting
+    self.supportingID = supportingID
     self.leading = leading
     self.title = title
     self.supporting = supporting
@@ -197,9 +202,9 @@ public struct HListRow: View {
       Text(title).hType(.rowTitle).foregroundStyle(titleColor).singleLineAtDefaultTextSize()
       if let supporting {
         if let project {
-          ProjectChipFlow(project) { SupportingLine(supporting, hidden: hidden) }
+          ProjectChipFlow(project) { SupportingLine(supporting, hidden: hidden, id: supportingID) }
         } else {
-          SupportingLine(supporting, hidden: hidden)
+          SupportingLine(supporting, hidden: hidden, id: supportingID)
         }
       } else if let project {
         ProjectChip(project)
@@ -240,7 +245,7 @@ public struct HListRow: View {
 
   private var spokenLabel: String {
     var parts = [title]
-    if let supporting { parts.append(supporting.spoken(hidden: hidden)) }
+    if let supporting { parts.append(spokenSupporting ?? supporting.spoken(hidden: hidden)) }
     if let project { parts.append(ProjectChip.spoken(project)) }
     return parts.joined(separator: ", ")
   }
@@ -282,13 +287,23 @@ struct RowAccessibility: ViewModifier {
 struct SupportingLine: View {
   let line: HListRow.Supporting
   let hidden: Bool
+  let id: String?
 
-  init(_ line: HListRow.Supporting, hidden: Bool) {
+  init(_ line: HListRow.Supporting, hidden: Bool, id: String? = nil) {
     self.line = line
     self.hidden = hidden
+    self.id = id
   }
 
-  var body: some View {
+  @ViewBuilder var body: some View {
+    if let id {
+      content.accessibilityIdentifier(id)
+    } else {
+      content
+    }
+  }
+
+  @ViewBuilder private var content: some View {
     switch line {
     case .text(let s):
       Text(s).hType(.footnote).foregroundStyle(HColor.listRowSupporting).singleLineAtDefaultTextSize()
@@ -529,7 +544,9 @@ public struct TransactionRow: View {
       supporting: row.toReview ? .status(row.detail, Self.tone(row.reviewReason)) : .text(row.detail),
       trailing: row.notCounted ? .value("Not counted") : .amount(row.amount, in: row.isIncome, approx: row.estimate),
       hidden: hidden,
-      project: row.project?.name)
+      project: row.project?.name,
+      spokenSupporting: row.toReview ? nil : row.spokenDetail,
+      supportingID: row.spokenDetail == nil || row.toReview ? nil : "activity.row.source")
   }
 }
 

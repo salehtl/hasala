@@ -38,8 +38,8 @@ struct MerchantGroupCardsTests {
     #expect(g.dateRange == "1 Oct to 9 Oct")
     #expect(g.countLine == "8 payments · 22 more in other months")
     #expect(g.spoken(hidden: true)
-      == "Tailscale, 8 payments from 1 October to 9 October, USD Amount hidden, 22 more in other months, repeats monthly."
-        + " 1 more payment gets its own card. Hasala couldn't verify its sender.")
+      == "Tailscale, 8 payments from 1 October to 9 October, USD Amount hidden, 22 more in other months, repeats monthly.")
+    #expect(!g.spoken(hidden: false).contains(g.leftOutLine ?? "-"))
   }
 
   @Test func anUnverifiedRowAndARefundStayTheirOwnCards() {

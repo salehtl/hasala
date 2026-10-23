@@ -47,9 +47,10 @@ nonisolated extension LedgerEditAuthor {
 
   var nowMs: Int64 { observer.context.clock.nowMs() }
 
-  func noteCorrection(_ row: TxnRow, to category: String) {
-    guard row.categorySource == "model", !row.needsReview, let old = row.category, old != category else { return }
-    trust.corrected(old, modelTag: row.categorySourceRef)
+  func noteCorrection(_ row: TxnRow, to category: String) -> [Inverse] {
+    guard row.categorySource == "model", !row.needsReview, let old = row.category, old != category else { return [] }
+    guard trust.corrected(old, modelTag: row.categorySourceRef) else { return [] }
+    return [.trust(category: old, modelTag: row.categorySourceRef, corrections: 1)]
   }
 
   func enqueueAll(_ blobs: [AuthoredBlob], auto: Bool = false) async throws {
@@ -79,14 +80,27 @@ nonisolated extension LedgerEditAuthor {
     RuleInput(id: id, patterns: draft.patterns, match: draft.match.rawValue, category: draft.category, priority: draft.priority)
   }
 
-  private func ruleInverse(_ plan: (id: String?, parentVersion: Int64?, draft: OpAuthor.RuleDraft, unchanged: Bool), id: String, existing: [OpAuthor.RuleSnapshot])
-    -> Inverse?
-  {
-    if plan.unchanged { return nil }
-    if let old = existing.first(where: { $0.id == id }) { return .rule(id: id, restore: old.draft) }
-    var gone = plan.draft
-    gone.removed = true
-    return .rule(id: id, restore: gone)
+  private func ruleInverses(_ plan: OpAuthor.GroupRulePlan, id: String, existing: [OpAuthor.RuleSnapshot]) -> [Inverse] {
+    var out: [Inverse] = []
+    if !plan.unchanged {
+      if let old = existing.first(where: { $0.id == id }) {
+        out.append(.rule(id: id, restore: old.draft))
+      } else {
+        var gone = plan.draft
+        gone.removed = true
+        out.append(.rule(id: id, restore: gone))
+      }
+    }
+    for t in plan.trims {
+      if let old = existing.first(where: { $0.id == t.id }) { out.append(.rule(id: t.id, restore: old.draft)) }
+    }
+    return out
+  }
+
+  private static func authorRules(_ plan: OpAuthor.GroupRulePlan, _ a: inout OpAuthor) throws(AuthorError) -> String {
+    let id = plan.unchanged ? (plan.id ?? "") : try a.rule(id: plan.id, parentVersion: plan.parentVersion, plan.draft)
+    for t in plan.trims { try a.rule(id: t.id, parentVersion: t.version, t.draft) }
+    return id
   }
 
   private func remember(
@@ -132,7 +146,7 @@ nonisolated extension LedgerEditAuthor {
       if let project { a.annotate(txnID: row.id, set: [("project_id", project)]) }
       var rest: [AuthoredBlob] = []
       if let plan {
-        let id = plan.unchanged ? (plan.id ?? "") : try a.rule(id: plan.id, parentVersion: plan.parentVersion, plan.draft)
+        let id = try Self.authorRules(plan, &a)
         ruleID = id
         targets = RuleReach.plan(
           rows: rows, rule: ruleInput(id, plan.draft), group: group, direction: row.direction, home: home,
@@ -165,7 +179,7 @@ nonisolated extension LedgerEditAuthor {
     try remember(
       ruleID: ruleID, group: group, direction: row.direction, category: c, rows: rows, filed: filed, receipt: receipt, autoOps: reachOps)
     inverses += filed.map(Self.refile)
-    if let r = ruleInverse(plan, id: ruleID, existing: existing) { inverses.append(r) }
+    inverses += ruleInverses(plan, id: ruleID, existing: existing)
     return inverses
   }
 
@@ -196,7 +210,7 @@ nonisolated extension LedgerEditAuthor {
         a = OpAuthor(cx)
       }
       if let plan {
-        ruleID = plan.unchanged ? (plan.id ?? "") : try a.rule(id: plan.id, parentVersion: plan.parentVersion, plan.draft)
+        ruleID = try Self.authorRules(plan, &a)
       }
       for m in members {
         try roll()
@@ -235,7 +249,7 @@ nonisolated extension LedgerEditAuthor {
     try remember(
       ruleID: ruleID, group: ref.key, direction: direction, category: c, rows: rows, filed: filed, receipt: receipt, autoOps: reachOps)
     var inverses: [Inverse] = [.receipt(id: receipt.id)] + filed.map(Self.refile)
-    if let plan, let ruleID, let r = ruleInverse(plan, id: ruleID, existing: existing) { inverses.append(r) }
+    if let plan, let ruleID { inverses += ruleInverses(plan, id: ruleID, existing: existing) }
     return inverses
   }
 
@@ -274,9 +288,11 @@ nonisolated extension LedgerEditAuthor {
       return (out, out.last?.lastAuthoredMs)
     }
     try await enqueueAll(blobs, auto: true)
-    for r in resets where !r.needsReview { trust.corrected(c, modelTag: r.sourceRef) }
+    var counted: [String?: Int] = [:]
+    for r in resets where !r.needsReview && trust.corrected(c, modelTag: r.sourceRef) { counted[r.sourceRef, default: 0] += 1 }
     var inverses: [Inverse] = fresh.isEmpty ? [] : [.rejection(keys: fresh, category: c, rejected: false)]
     inverses += resets.map(Self.refile)
+    inverses += counted.sorted { ($0.key ?? "") < ($1.key ?? "") }.map { .trust(category: c, modelTag: $0.key, corrections: $0.value) }
     return inverses
   }
 

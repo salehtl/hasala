@@ -297,6 +297,27 @@ struct CoreReplayV4Tests {
     }
   }
 
+  @Test("an old build that does not know merchant_category_rejected sets aside only the blob holding it")
+  func oldBuildSetsAsideOnlyTheRejection() throws {
+    let rejection = op(
+      "merchant_category_rejected", #"{"merchant_key":"tailscale.com","category":"shopping","rejected":true}"#, id: 2)
+    let note = op("txn_annotated", #"{"txn_id":"\#(Ids.t1)","set":{"note":"x"}}"#, id: 3)
+    var now = Log()
+    try now.blob(ingest(1, id: Ids.t1))
+    try now.blob(rejection)
+    try now.blob(note)
+    #expect(now.state.unreadable.isEmpty && now.state.merchantRejections.count == 1)
+    var old = Log()
+    try old.blob(ingest(1, id: Ids.t1))
+    let middle = try old.blob(rejection.replacingOccurrences(of: "merchant_category_rejected", with: "merchant_category_unknown"))
+    try old.blob(note)
+    #expect(old.state.unreadable.map(\.seq) == [middle])
+    #expect(old.state.txns[Ids.t1] != nil)
+    #expect(old.state.txns[Ids.t1]?.annotations["note"]?.opID == "op-3")
+    #expect(old.state.merchantRejections.isEmpty && old.kinds.isEmpty)
+    #expect(old.state.cursors.hot == 3)
+  }
+
   @Test("maxAuthored is per writer, over every op visited, and not witnessed")
   func maxAuthored() throws {
     var log = Log()

@@ -8,7 +8,6 @@ struct SortEachSheet: View {
   let group: ReviewGroupCardModel
 
   static let firstPage = 4
-  static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
   @State private var expanded = false
   @State private var picking: ReviewPick?
@@ -150,8 +149,7 @@ struct SortEachSheet: View {
       }
     }
     return Button {
-      guard category == nil else { return }
-      picking = ReviewPick(card: card, choice: ReviewChoice(filing: card.suggestion?.bucket ?? .needs))
+      picking = ReviewPick(card: card, choice: ReviewChoice(filing: category?.bucket ?? card.suggestion?.bucket ?? .needs))
     } label: {
       Group {
         if typeSize.isAccessibilitySize {
@@ -172,13 +170,13 @@ struct SortEachSheet: View {
     .buttonStyle(HRowPressStyle())
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(spoken(card, date: t?.postedAt.date, category: category?.name))
-    .accessibilityHint(category == nil ? "Double-tap to pick" : "")
+    .accessibilityHint(category == nil ? "Double-tap to pick" : "Double-tap to change")
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("review.sortEach.row.\(card.id)")
   }
 
   private func spoken(_ card: ReviewCardModel, date: LocalDate?, category: String?) -> String {
-    let when = date.map { "\(Self.weekdays[$0.weekday]) \($0.day) \(CivilCalendar.monthNames[$0.month - 1])" } ?? ""
+    let when = date.map { "\(ReviewEngine.weekdayNames[$0.weekday]) \($0.day) \(CivilCalendar.monthNames[$0.month - 1])" } ?? ""
     let amount = app.amountsHidden ? "Amount hidden" : "\(card.amount.currency) \(MoneyFormat.string(card.amount.minor))"
     return [when, card.rawMerchant ?? card.merchant, amount, category ?? "Not sorted yet"].filter { !$0.isEmpty }
       .joined(separator: ", ")

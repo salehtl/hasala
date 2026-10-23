@@ -114,7 +114,6 @@ public struct ReviewGroupCardModel: Sendable, Hashable, Identifiable {
     if repeatsMonthly { line += ", repeats monthly" }
     if isNewMerchant { line += ", new merchant" }
     line += "."
-    if let leftOutLine { line += " " + leftOutLine }
     if let suggestion {
       let by = suggestedBy.map { ", " + $0.prefix(1).lowercased() + $0.dropFirst() } ?? ""
       line += " Looks like \(suggestion.name)\(by)."

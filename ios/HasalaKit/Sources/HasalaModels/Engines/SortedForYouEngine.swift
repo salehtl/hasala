@@ -105,8 +105,6 @@ extension Txn {
 }
 
 extension SortedForYouItem {
-  public static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
   public var sourceName: String {
     switch source {
     case .rule: "Your rule"
@@ -120,7 +118,7 @@ extension SortedForYouItem {
 
   public var spokenHeader: String {
     let d = latest.date
-    let day = "\(Self.weekdays[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
+    let day = "\(ReviewEngine.weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
     return "\(sourceName), \(day). \(merchant) to \(category.name), \(ReviewEngine.payments(count))."
   }
 }

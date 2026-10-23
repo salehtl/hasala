@@ -398,6 +398,95 @@ struct LiveSortingTests {
     #expect(UserDefaults(suiteName: suite)!.data(forKey: TrustCounts.key) == nil)
   }
 
+  @Test func reFilingOnePaymentOfARuledGroupMovesItsRuleSoTheNextPaymentFollows() async throws {
+    let l = try await Self.ledger(suite: "sorting.refile", rows: Self.tailscale)
+    let com = l.ids["com"] ?? []
+    let inc = l.ids["inc"] ?? []
+    try l.store.apply(.categorize(com[0], "shopping", learnRule: true, project: nil))
+    try await Mapper.eventually { try (com + inc).allSatisfy { try l.row($0)?.category == "shopping" } }
+    let first = try #require(try l.reader.rules().first)
+    let changed = try #require(try l.store.apply(.categorize(com[1], "subscriptions", learnRule: true, project: nil)))
+    try await Mapper.eventually { try l.reader.rules().first?.category == "subscriptions" }
+    let rules = try l.reader.rules()
+    let hitting = rules.filter { $0.enabled && !$0.removed && $0.match == "exact" && $0.patterns.contains("tailscale.com") }
+    #expect(rules.count == 1 && hitting.count == 1 && hitting.first?.id == first.id)
+    let ctx = try await l.a.observer.authorContext()
+    var late = ""
+    let blob = try l.a.observer.stamps.build(ctx) { o throws(AuthorError) in
+      late = try o.ingest(payload: Self.payload(Row(raw: "TAILSCALE.COM", minor: 6_00, day: 9), n: 78), ingestID: String(repeating: "f", count: 64))
+    }
+    try await l.a.outbox.enqueue(try #require(blob).ops)
+    try await l.a.observer.reproject()
+    let inputs = try l.reader.rules().map {
+      RuleInput(id: $0.id, patterns: $0.patterns, match: $0.match, category: $0.category, priority: $0.priority, enabled: $0.enabled, removed: $0.removed)
+    }
+    let categorizer = Categorizer(rules: inputs, dictionary: AccountRuntime.dictionary, categories: BuiltinCategories())
+    #expect(categorizer.decide(merchantRaw: "TAILSCALE.COM", direction: .debit).category == "subscriptions")
+    l.memory.update { m in for i in m.batches.indices { m.batches[i].cursor = -1 } }
+    #expect(await l.author.followUp())
+    #expect(try l.row(late)?.category == "subscriptions" && l.row(late)?.categorySourceRef == first.id)
+
+    l.store.undo(changed)
+    try await Mapper.eventually { try l.reader.rules().first?.category == "shopping" }
+    #expect(try l.reader.rules().count == 1)
+  }
+
+  @Test func undoingAGroupSortWithAProjectTakesTheProjectOffEveryPayment() async throws {
+    let l = try await Self.ledger(suite: "sorting.project", rows: Self.tailscale)
+    let project = l.store.newProjectID()
+    try l.store.apply(.saveProject(project, ProjectDraft(name: "Home lab")))
+    try await Mapper.eventually { try l.reader.projects().contains { $0.id == project } }
+    await l.store.reload()
+    let ts = (l.ids["com"] ?? []) + (l.ids["inc"] ?? []) + (l.ids["paypal"] ?? [])
+    let token = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: false, project: project)))
+    #expect(ts.allSatisfy { l.store.state.txn($0)?.projectID == project })
+    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.projectID == project && l.row($0)?.category == "subscriptions" } }
+    l.store.undo(token)
+    try await Mapper.eventually { try ts.allSatisfy { try l.row($0)?.projectID == nil && l.row($0)?.category == nil } }
+    await l.store.reload()
+    #expect(ts.allSatisfy { l.store.state.txn($0)?.projectID == nil })
+  }
+
+  @Test func alwaysUseItOnANineSpellingGroupCountsOnlyWhatItsEightPatternsFile() async throws {
+    let rows: [(String, Row)] = (1...9).flatMap { n in
+      (0..<(10 - n)).map { k in ("shop\(n)", Row(raw: "SOME SHOP*REF \(n)", minor: Int64(1_000 + n * 10 + k), currency: "AED", day: 1 + (k % 9))) }
+    }
+    let l = try await Self.ledger(suite: "sorting.nine.learn", rows: rows)
+    let filed = try #require(l.ids["shop9"]?.first)
+    let token = try #require(try l.store.apply(.categorize(filed, "shopping", learnRule: true, project: nil)))
+    #expect(token.title.hasPrefix("Sorted 43 "), "\(token.title)")
+    #expect(l.store.state.sortReceipt?.count == 43)
+    let left = l.ids["shop8"] ?? []
+    #expect(left.count == 2 && left.allSatisfy { l.store.state.txn($0)?.needsReview == true })
+    try await Mapper.eventually { try (l.ids["shop1"] ?? []).allSatisfy { try l.row($0)?.category == "shopping" } }
+    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID != nil }
+    #expect(l.store.state.sortReceipt?.count == 43)
+    #expect(try left.allSatisfy { try l.row($0)?.category == nil })
+  }
+
+  @Test func undoingANotThisTakesBackTheCorrectionsItCounted() async throws {
+    let l = try await Self.ledger(suite: "sorting.trust.undo", rows: Self.tailscale)
+    let bright = l.ids["bright"] ?? []
+    let reader = l.reader
+    let filed = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+      for id in bright {
+        guard let v = try? reader.txn(id)?.version else { continue }
+        o.categorize(txnID: id, parentVersion: v, category: "shopping", needsReview: false, source: CategorySource(kind: .model, model: "cf-clef/1"))
+      }
+    }
+    try await l.a.outbox.enqueue(try #require(filed).ops)
+    try await l.a.observer.reproject()
+    await l.store.reload()
+    #expect(l.trust.autoFiles("shopping"))
+    let token = try #require(try l.store.apply(.notThis(Self.brightwellRef, "shopping")))
+    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == nil } }
+    #expect(!l.trust.autoFiles("shopping"))
+    l.store.undo(token)
+    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == "shopping" } }
+    try await Mapper.eventually { l.trust.autoFiles("shopping") }
+    #expect(l.trust.counts.corrections["shopping"] == nil)
+  }
+
   @Test func theBacklogMocksSpellingsAreOffTheDictionaryAndKeyAsCoreKeysThem() {
     let groups = MerchantGroup(dictionary: AccountRuntime.dictionary)
     let categorizer = Categorizer(rules: [], dictionary: AccountRuntime.dictionary, categories: BuiltinCategories())

@@ -308,10 +308,11 @@ struct SortResultRowView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       Button(action: dismiss) {
         HIconView(.close, size: 14, color: HColor.iconSecondary, strokeWidth: 2)
-          .frame(width: 36, height: 36)
+          .frame(width: HSpacing.targetMinimum, height: HSpacing.targetMinimum)
           .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .padding(-(HSpacing.targetMinimum - 36) / 2)
       .accessibilityLabel("Dismiss")
       .accessibilityIdentifier("review.result.dismiss")
     }
@@ -334,10 +335,11 @@ struct SortResultRowView: View {
       Text(title)
         .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textLink)
-        .frame(minHeight: 28)
+        .frame(minHeight: HSpacing.targetMinimum)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .padding(.vertical, typeSize.isAccessibilitySize ? 0 : -(HSpacing.targetMinimum - 28) / 2)
     .accessibilityIdentifier(id)
   }
 }

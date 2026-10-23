@@ -6,22 +6,36 @@ struct SortedForYouRow: View {
   let line: String
   let spoken: String
   let open: () -> Void
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
+    let disc = Circle().fill(HColor.statusSuccessSurface).frame(width: 32, height: 32)
+      .overlay { HIconView(.check, size: 16, color: HColor.statusSuccessForeground, strokeWidth: 2.2) }
+    let title = Text(line)
+      .hType(.subheadline.weight(.semibold))
+      .foregroundStyle(HColor.textPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    let look = HStack(spacing: 4) {
+      Text("Look").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textLink)
+      HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
+    }
+    .frame(minHeight: HSpacing.targetMinimum)
     Button(action: open) {
-      HStack(spacing: 12) {
-        Circle().fill(HColor.statusSuccessSurface).frame(width: 32, height: 32)
-          .overlay { HIconView(.check, size: 16, color: HColor.statusSuccessForeground, strokeWidth: 2.2) }
-        Text(line)
-          .hType(.subheadline.weight(.semibold))
-          .foregroundStyle(HColor.textPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: .infinity, alignment: .leading)
-        HStack(spacing: 4) {
-          Text("Look").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textLink)
-          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.textLink)
+      Group {
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: .leading, spacing: 8) {
+            disc
+            title
+            look
+          }
+        } else {
+          HStack(spacing: 12) {
+            disc
+            title
+            look
+          }
         }
-        .frame(minHeight: HSpacing.targetMinimum)
       }
       .padding(.vertical, 10)
       .padding(.leading, 14)

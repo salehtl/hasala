@@ -428,7 +428,7 @@ public enum ReviewEngine {
   }
 
   /// Monday first, as `LocalDate.weekday` counts.
-  static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+  public static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
   /// The categories a pick sheet offers for a direction. Transfer offers the
   /// not-spending categories, and income ones for money in (PWA `panelGroups`).

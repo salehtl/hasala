@@ -174,18 +174,56 @@ extension OpAuthor {
     for k in keys where seen.insert(k).inserted { rejectCategory(merchantKey: k, category: category, rejected: rejected) }
   }
 
-  public static func groupRule(
-    patterns: [String], category: String, existing: [RuleSnapshot]
-  ) -> (id: String?, parentVersion: Int64?, draft: RuleDraft, unchanged: Bool)? {
+  public typealias GroupRulePlan = (
+    id: String?, parentVersion: Int64?, draft: RuleDraft, unchanged: Bool, trims: [RuleSnapshot]
+  )
+
+  public static func groupRule(patterns: [String], category: String, existing: [RuleSnapshot]) -> GroupRulePlan? {
     guard !patterns.isEmpty, patterns.count <= RuleReach.maxPatterns else { return nil }
     let wanted = Set(patterns)
-    if let same = existing.first(where: { !$0.draft.removed && $0.draft.match == .exact && Set($0.draft.patterns) == wanted }) {
-      if same.draft.category == category && same.draft.enabled { return (same.id, same.version, same.draft, true) }
-      var d = same.draft
-      d.category = category
-      d.enabled = true
-      return (same.id, same.version, d, false)
+    let exact = existing.filter { !$0.draft.removed && $0.draft.match == .exact }
+    let overlapping = exact.filter { !Set($0.draft.patterns).isDisjoint(with: wanted) }
+    func shared(_ r: RuleSnapshot) -> Int { Set(r.draft.patterns).intersection(wanted).count }
+    let primary = overlapping.enumerated().max { a, b in
+      let sa = shared(a.element), sb = shared(b.element)
+      if sa != sb { return sa < sb }
+      let fa = a.element.draft.patterns.contains(patterns[0]), fb = b.element.draft.patterns.contains(patterns[0])
+      if fa != fb { return !fa }
+      if a.element.draft.enabled != b.element.draft.enabled { return !a.element.draft.enabled }
+      if a.element.draft.patterns.count != b.element.draft.patterns.count {
+        return a.element.draft.patterns.count < b.element.draft.patterns.count
+      }
+      return a.offset > b.offset
+    }?.element
+    var id: String?
+    var parentVersion: Int64?
+    var draft = RuleDraft(patterns: patterns, match: .exact, category: category, priority: 100, origin: "learned")
+    var unchanged = false
+    if let primary {
+      id = primary.id
+      parentVersion = primary.version
+      var merged = patterns
+      for p in primary.draft.patterns where merged.count < RuleReach.maxPatterns && !merged.contains(p) { merged.append(p) }
+      let covers = wanted.isSubset(of: Set(primary.draft.patterns))
+      if primary.draft.category == category && primary.draft.enabled && covers {
+        draft = primary.draft
+        unchanged = true
+      } else {
+        draft = primary.draft
+        draft.category = category
+        draft.enabled = true
+        if !covers { draft.patterns = merged }
+      }
     }
-    return (nil, nil, RuleDraft(patterns: patterns, match: .exact, category: category, priority: 100, origin: "learned"), false)
+    let kept = Set(draft.patterns)
+    var trims: [RuleSnapshot] = []
+    for r in exact where r.id != id && r.draft.enabled && r.draft.category != category {
+      let left = r.draft.patterns.filter { !kept.contains($0) }
+      guard left.count != r.draft.patterns.count else { continue }
+      var d = r.draft
+      if left.isEmpty { d.removed = true } else { d.patterns = left }
+      trims.append(RuleSnapshot(id: r.id, version: r.version, draft: d))
+    }
+    return (id, parentVersion, draft, unchanged, trims)
   }
 }

@@ -100,6 +100,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case rejection(keys: [String], category: String, rejected: Bool)
     case receipt(id: Int)
+    case trust(category: String, modelTag: String?, corrections: Int)
   }
 
   enum Failure: Error, Equatable {
@@ -125,9 +126,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
-      noteCorrection(row, to: c)
+      let counted = noteCorrection(row, to: c)
       if learnRule, row.merchantGroup != nil, !row.split {
         return try await categorizeReaching(row, category: c, project: project, skipped: before.skippedReview, receiptID: receiptID)
+          + counted
       }
       var snapshots: [OpAuthor.RuleSnapshot] = []
       var filed: [(merchantRaw: String, category: String)] = []
@@ -143,7 +145,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
         }
       }
-      return row.split ? [] : [Self.refile(row, written: row.version + 1)]
+      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + counted
     case .useSuggestions(let uses):
       try await useSuggestions(uses)
     case .markTransfer(let id):
@@ -436,6 +438,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
         memory.update { $0.noteAuto(ops) }
         try await observer.reproject()
       }
+      for inv in inverses {
+        if case .trust(let c, let tag, let n) = inv { trust.uncorrected(c, modelTag: tag, by: n) }
+      }
       let receipts = inverses.compactMap { if case .receipt(let id) = $0 { id } else { nil } }
       if !receipts.isEmpty { memory.update { m in if let r = m.receipt, receipts.contains(r.id) { m.receipt = nil } } }
     }
@@ -480,7 +485,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.rule(id: id, parentVersion: version, restore)
         case .rejection(let keys, let c, let rejected):
           a.reject(keys: keys, category: c, rejected: rejected)
-        case .receipt:
+        case .receipt, .trust:
           continue
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
