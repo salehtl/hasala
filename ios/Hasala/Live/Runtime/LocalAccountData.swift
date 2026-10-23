@@ -55,8 +55,6 @@ enum LocalAccountData {
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
     TrustCounts.forget(defaults)
-    defaults.removeObject(forKey: "app.hasala.prefs.cloudSort.runOffer")
-    defaults.removeObject(forKey: "app.hasala.prefs.cloudSort.dismissedRun")
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)

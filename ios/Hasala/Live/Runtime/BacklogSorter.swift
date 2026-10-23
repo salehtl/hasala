@@ -202,6 +202,9 @@ actor BacklogSorter {
   private var record: BacklogRunRecord
   private var memo = BacklogSort.Memo()
   private var retryArmed = false
+  private var checking = false
+  private var checkAgain = false
+  private var closed = false
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
@@ -250,21 +253,36 @@ actor BacklogSorter {
   }
 
   func ensure(retry: Bool = false) async {
+    guard !closed else { return }
     if retry { retryArmed = true }
     guard enabled() else { return resume() }
     if let run = record.run, run.phase != .done { return resume() }
-    guard await appActive() else { return }
-    if record.run?.retriesOnlyAtOpen == true, !retryArmed { return }
-    guard await waiting(memo) else { return }
-    guard enabled(), task == nil, record.run.map({ $0.phase == .done }) ?? true else { return resume() }
-    retryArmed = false
-    record.run = BacklogRunRecord.Run()
-    save()
-    launch()
+    if checking {
+      checkAgain = true
+      return
+    }
+    checking = true
+    defer { checking = false }
+    repeat {
+      checkAgain = false
+      if enabled(), mayStart, await appActive(), mayStart, await waiting(memo) {
+        guard enabled(), mayStart else { return resume() }
+        retryArmed = false
+        record.run = BacklogRunRecord.Run()
+        save()
+        return launch()
+      }
+    } while checkAgain
+  }
+
+  private var mayStart: Bool {
+    guard !closed, task == nil else { return false }
+    guard let run = record.run else { return true }
+    return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
 
   func resume() {
-    guard var run = record.run else { return }
+    guard !closed, var run = record.run else { return }
     guard enabled() else {
       if run.phase != .done { end(.off) }
       return
@@ -294,11 +312,13 @@ actor BacklogSorter {
   }
 
   func switchedOff() {
+    guard !enabled() else { return }
     halt()
     if let run = record.run, run.phase != .done { end(.off) }
   }
 
   func suspend() {
+    closed = true
     halt()
     if watching {
       network.cancel()
@@ -367,6 +387,7 @@ actor BacklogSorter {
     run.reason = reason
     run.untilMs = nil
     record.run = run
+    retryArmed = false
     hold = nil
     save()
   }

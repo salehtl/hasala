@@ -282,7 +282,7 @@ final class AccountRuntime {
           }
           await store.reload()
           await afterRun.run()
-          await backlog.ensure()
+          Task { await backlog.ensure() }
         },
         stopped: stopped))
     box.set(coordinator)
@@ -300,7 +300,7 @@ final class AccountRuntime {
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()
-    await backlog.ensure(retry: true)
+    Task { await backlog.ensure(retry: true) }
     return rt
   }
 

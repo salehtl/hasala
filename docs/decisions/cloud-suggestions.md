@@ -316,11 +316,17 @@ not settled earlier in this session). It is called:
 - when Merchant suggestions is turned on, in Profile or from the ask
   (`MerchantSuggestionsSetting.turnedOn`, next to `turnedOff`).
 
+The open and the coordinator's run don't wait for the check: each calls `ensure()` in a
+task of its own. One check runs at a time; calls that arrive while it runs share one more
+check after it.
+
 For a run that is running or paused, `ensure()` only resumes it under the pause's own
 rules (below); it never restarts a paused run. A run that ended after three failed passes,
 after a refusal, or because Clef was not available is tried again at the next open, or when
-the person turns the switch on again, never in a loop. Turning Merchant suggestions off
-stops a run at once (`turnedOff`, `BacklogSorter.switchedOff`). It never runs in a
+the person turns the switch on again, never in a loop. This holds also for a run that the
+open resumed: when it ends this way, the open's retry is used up. Turning Merchant
+suggestions off stops a run at once (`turnedOff`, `BacklogSorter.switchedOff`, which does
+nothing when the switch reads on again by then). It never runs in a
 background refresh or a push wake: `ensure()` starts nothing while the app is in the
 background, and a run that is already going holds until the next foreground.
 
@@ -336,10 +342,12 @@ The names a session has settled are kept in memory and forgotten at the next ope
   foreground sweep (`Sweep.plan`), with the same eligibility (a debit with no category,
   source not user or held) and the same card-template allowlist (`cloudTemplates`). A
   name is not sent when it shares a subject with a row that may not leave the phone.
-- Clef only. It never runs Apple's model, so the D1 order holds: while a run is active,
-  the foreground sweep waits (`backlogActive`), so Apple's model never answers a name Clef
-  hasn't been asked about. Once the run ends, the foreground sweep runs Clef and then
-  Apple's model, as before.
+- Clef only. It never runs Apple's model. While a run is running, or paused for a 429 or
+  a 503, the foreground sweep waits (`backlogActive`). While the run is paused on the day
+  cap, the sweep runs Apple's model only, so it can answer names Clef was not asked about
+  that day. When the day has fewer requests left than the sweep has names, Clef is asked
+  about as many as are left and Apple's model about the rest. Once the run ends, the
+  foreground sweep runs Clef and then Apple's model, as before.
 - One request per distinct canonical subject, asked in a random (shuffled) order, not by
   date. Answers are reused for rows that load later with the same subject.
 - Category answers are cached in `fm_cache` for 30 days, as `unknown` answers already

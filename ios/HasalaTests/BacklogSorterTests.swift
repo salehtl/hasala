@@ -536,14 +536,90 @@ struct BacklogSorterTests {
   @Test func theActivityFlagFollowsTheRun() async {
     let saved = Saved()
     let script = Script([(3, 1, .busy)])
-    let s = sorter(script, saved)
+    let enabled = Flag()
+    let s = sorter(script, saved, enabled: enabled)
     #expect(!s.activity.isActive)
     await s.ensure(retry: true)
     #expect(s.activity.isActive)
     await s.finished()
     #expect(s.activity.isActive && saved.run?.reason == .busy)
+    enabled.set(false)
     await s.switchedOff()
     #expect(!s.activity.isActive)
+  }
+
+  @Test func aLateTurnedOffWithTheSwitchBackOnLeavesTheRunGoing() async {
+    let saved = Saved()
+    let script = Script([(3, 1, nil), (0, 1, nil)])
+    let held = Flag()
+    let s = BacklogSorter(
+      pass: { await script.run($0, $1) }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false },
+      enabled: { true }, network: Net(),
+      sleep: { _ in
+        while held.value { try? await Task.sleep(for: .milliseconds(2)) }
+      })
+    await s.ensure(retry: true)
+    await waitFor { script.passes >= 1 }
+    await s.switchedOff()
+    #expect(await s.isRunning && saved.run?.phase == .running)
+    held.set(false)
+    await s.finished()
+    #expect(script.passes == 2 && saved.run?.phase == .done && saved.run?.reason == nil)
+  }
+
+  @Test func aRunTheOpenResumedThatFailsIsTriedAgainOnlyAtTheNextOpen() async {
+    let saved = Saved.running()
+    let script = Script([nil, nil, nil, (0, 1, nil)])
+    let asked = Asked()
+    let s = sorter(script, saved, asked: asked)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == BacklogSorter.maxFailures && saved.run?.reason == .failed)
+    for _ in 0..<3 {
+      await s.ensure()
+      #expect(await !s.isRunning)
+    }
+    #expect(script.passes == BacklogSorter.maxFailures && asked.all.isEmpty)
+    let reopened = sorter(script, saved, asked: asked)
+    await reopened.ensure(retry: true)
+    await reopened.finished()
+    #expect(script.passes == 4 && saved.run?.phase == .done && saved.run?.reason == nil)
+  }
+
+  @Test func callsThatArriveDuringACheckShareOneMoreCheck() async {
+    let saved = Saved()
+    let calls = Mutex(0)
+    let open = Mutex(false)
+    let s = BacklogSorter(
+      pass: { _, _ in nil },
+      waiting: { _ in
+        calls.withLock { $0 += 1 }
+        while !open.withLock({ $0 }) { try? await Task.sleep(for: .milliseconds(2)) }
+        return false
+      }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: Sleeps().sleep)
+    let first = Task { await s.ensure(retry: true) }
+    await waitFor { calls.withLock { $0 } == 1 }
+    for _ in 0..<5 { await s.ensure() }
+    #expect(calls.withLock { $0 } == 1)
+    open.withLock { $0 = true }
+    await first.value
+    #expect(calls.withLock { $0 } == 2 && saved.run == nil && saved.saves.withLock { $0 } == 0)
+  }
+
+  @Test func aClosedSorterStartsNothing() async {
+    let saved = Saved()
+    let script = Script([(0, 1, nil)])
+    let asked = Asked()
+    let s = sorter(script, saved, asked: asked)
+    await s.suspend()
+    await s.ensure(retry: true)
+    #expect(await !s.isRunning && saved.run == nil && asked.all.isEmpty && script.passes == 0)
+    let running = Saved.running()
+    let t = sorter(script, running)
+    await t.suspend()
+    await t.ensure(retry: true)
+    #expect(await !t.isRunning && running.run?.phase == .running && script.passes == 0)
   }
 
   @Test func newRowsWakeASortThatWaitsForTheImport() async throws {

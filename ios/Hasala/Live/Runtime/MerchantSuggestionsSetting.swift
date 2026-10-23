@@ -54,6 +54,8 @@ nonisolated enum MerchantSuggestionsSetting {
     "app.hasala.prefs.merchantSuggestions.backlog.requested",
     "app.hasala.prefs.merchantSuggestions.firstImport.startedMs",
     "app.hasala.prefs.merchantSuggestions.firstImport.requests",
+    "app.hasala.prefs.cloudSort.runOffer",
+    "app.hasala.prefs.cloudSort.dismissedRun",
   ]
 
   static func turnOnBoth(_ defaults: UserDefaults = .standard) {
