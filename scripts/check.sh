@@ -170,7 +170,7 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
-GOLDEN_SETS=(authres categorize fx merchant-group norm-dates outlook-sender replay)
+GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"
 if [[ -n "$CI_RUN" ]]; then
@@ -405,7 +405,7 @@ bun test
 #
 # The Swift port (HasalaCore's HasalaCoreConformanceTests, CI's `swift` job)
 # reads every set. Some sets have no Go executor, on purpose and visibly:
-#   authres, categorize, fx, merchant-group, norm-dates, outlook-sender, replay
+#   authres, categorize, extract, fx, merchant-group, norm-dates, outlook-sender, replay
 #           Golden files. The ledgerd TypeScript reference wrote them; the
 #           Swift tests now own their expected output and rewrite it with
 #           HASALA_UPDATE_GOLDEN=1 (conformance/README.md), and the step
@@ -433,6 +433,7 @@ CONFORMANCE=(
 	"crypto-v3|./cmd/gen-crypto-vectors ./internal/cryptoref ./internal/pg ./internal/api"
 	"dialect|./internal/tmpl"
 	"dict|./internal/dict"
+	"extract|"
 	"fx|"
 	"import|./oracle/v1ref/importer"
 	"merchant-group|"
