@@ -264,7 +264,7 @@ enum Scenarios {
       return
     }
     let done = await engine.runCycle(trigger: .launch)
-    #expect(done.ops == 4 && done.haltedOn == nil, "\(done)")
+    #expect(done.ops == 3 && done.setAside == 1 && done.haltedOn == nil, "\(done)")
 
     #expect(await b.run(.launch).stop == nil)
     let rows = try b.reader.activity(limit: 50)
@@ -279,7 +279,10 @@ enum Scenarios {
     #expect(try b.reader.review(lanes: [.copy]).isEmpty)
     let lines = try b.reader.moneyLines(from: CivilDate(year: 2000, month: 1, day: 1)!, to: CivilDate(year: 2100, month: 1, day: 1)!)
     #expect(lines.filter { $0.txnID == notice.id }.count == 1 && !lines.contains { $0.txnID == alert.id })
-    #expect(try b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "t3" && $0.unparsed })
+    #expect(try !b.reader.review(lanes: ReviewLane.allCases).contains { $0.mailboxMessageID == "t3" })
+    #expect(!rows.contains { $0.mailboxMessageID == "t3" })
+    #expect(await engine.status().setAside.contains { $0.domain == "dib.ae" && $0.count == 1 })
+    #expect(await engine.readerCounts()["dib"]?.pendingSetAside == 1)
     #expect(try await a.state().serialized() == b.state().serialized())
   }
 

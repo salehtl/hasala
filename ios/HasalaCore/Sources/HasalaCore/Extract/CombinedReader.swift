@@ -21,6 +21,21 @@ public enum CombinedReader {
     return (result, result.outcome == .notTransaction ? memory : next)
   }
 
+  public static func aedAmount(_ input: ExtractInput, foreign: Int64, currency: String) -> Int64? {
+    guard currency != "AED", foreign > 0 else { return nil }
+    return RuleReader.aedAmount(strip(input), foreign: foreign, currency: currency)
+  }
+
+  public static func pending(_ input: ExtractInput, direction: ExtractDirection?) -> ExtractPending {
+    let kind = MailRules.kind(input, direction: direction?.rawValue)
+    if kind == .cardPurchase || kind == .cardRefund { return .none }
+    return MailRules.pendingSignal(input)
+  }
+
+  public static func statedDate(_ input: ExtractInput) -> ExtractStatedDate? {
+    RuleDate.stated(strip(input))
+  }
+
   static func strip(_ input: ExtractInput) -> ExtractInput {
     var stripped = input
     stripped.text = PromoFilter.strip(input.text)
@@ -84,15 +99,24 @@ public enum CombinedReader {
     let kind = MailRules.kind(input, direction: r.isTransaction ? r.direction : nil)
     var notes = [r.note]
     let outcome: ExtractOutcome
+    let card = kind == .cardPurchase || kind == .cardRefund
     if r.isTransaction {
-      if kind != .cardPurchase && kind != .cardRefund && MailRules.isPending(input) {
+      if !card && MailRules.isPending(input) {
         outcome = .pending
         notes.append("pending status")
       } else {
         outcome = .transaction
       }
+    } else if negative {
+      outcome = .notTransaction
     } else {
-      outcome = negative ? .notTransaction : .unknown
+      let signal = card ? ExtractPending.none : MailRules.pendingSignal(input)
+      if signal == .status || (signal == .phrase && kind == .transferNotice) {
+        outcome = .pending
+        notes.append("pending status, no amount")
+      } else {
+        outcome = .unknown
+      }
     }
     guard r.isTransaction else {
       return ExtractReading(outcome: outcome, kind: kind, confidencePercent: 0, notes: notes)

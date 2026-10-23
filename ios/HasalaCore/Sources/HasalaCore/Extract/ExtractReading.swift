@@ -21,6 +21,26 @@ public enum ExtractOutcome: String, Sendable, Codable, CaseIterable {
   case unknown
 }
 
+public enum ExtractPending: String, Sendable, Equatable {
+  case none
+  case phrase
+  case status
+}
+
+public struct ExtractStatedDate: Sendable, Equatable {
+  public var year: Int
+  public var month: Int
+  public var day: Int
+  public var minuteOfDay: Int?
+
+  public init(year: Int, month: Int, day: Int, minuteOfDay: Int? = nil) {
+    self.year = year
+    self.month = month
+    self.day = day
+    self.minuteOfDay = minuteOfDay
+  }
+}
+
 public enum ExtractDirection: String, Sendable, Codable, CaseIterable {
   case debit
   case credit
