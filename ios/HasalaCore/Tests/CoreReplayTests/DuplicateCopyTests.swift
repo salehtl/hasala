@@ -169,13 +169,15 @@ struct TransferCopyTests {
     #expect(log.kinds.isEmpty)
   }
 
-  @Test("a notice that follows its alert is the held one; the English notice pairs too")
+  @Test("a notice that follows its alert stays the row and the alert merges into it; the English notice pairs too")
   func noticeAfterAlert() throws {
     var log = Log()
     try log.blob(Notice.alert(1, id: Ids.t1, at: "2026-10-03T10:00:00.000Z"))
     try log.blob(
       Notice.row(2, id: Ids.t2, template: Notice.english, merchant: "SAMPLE BANK PJSC", last4: "0202", at: "2026-10-03T10:20:00.000Z"))
-    #expect(log.state.txns[Ids.t2]?.copyOf == Ids.t1 && log.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.copyOf == Ids.t2 && s.txns[Ids.t1]?.mergedInto == Ids.t2 && s.txns[Ids.t1]?.mergeKind == "transfer")
+    #expect(s.txns[Ids.t2]?.copyOf == nil && s.txns[Ids.t2]?.isLive == true && s.txns[Ids.t2]?.merchantRaw == "SAMPLE BANK PJSC")
   }
 
   @Test("more than thirty minutes apart, another amount, a credit, a card purchase or a day-precision row stays separate")
@@ -242,9 +244,9 @@ struct TransferCopyTests {
       Notice.row(2, id: Ids.t2, template: Notice.arabic, at: "2026-10-03T10:01:00.000Z", grant: Mbx.a, mid: Copy.mid, verified: false))
     try log.blob(Notice.row(3, id: Ids.t3, template: Notice.arabic, at: "2026-10-03T10:01:30.000Z", grant: Mbx.b, mid: Copy.mid))
     let s = log.state
-    #expect(s.txns[Ids.t2]?.mergedInto == Ids.t1 && s.txns[Ids.t2]?.copyOf == Ids.t1)
-    #expect(s.txns[Ids.t3]?.copyOf == Ids.t1 && s.txns[Ids.t3]?.mergedInto == Ids.t1 && s.txns[Ids.t3]?.mergeKind == "transfer")
-    #expect(s.txns.values.filter(\.isLive).map(\.id) == [Ids.t1])
+    #expect(s.txns[Ids.t2]?.mergedInto == Ids.t3)
+    #expect(s.txns[Ids.t1]?.copyOf == Ids.t3 && s.txns[Ids.t1]?.mergedInto == Ids.t3 && s.txns[Ids.t1]?.mergeKind == "transfer")
+    #expect(s.txns.values.filter(\.isLive).map(\.id) == [Ids.t3])
   }
 
   @Test("removing the notice's mailbox releases the held alert")
@@ -289,7 +291,7 @@ struct TransferCopyTests {
     try log.blob(Notice.row(1, id: Ids.t1, template: "none", merchant: "SAMPLE PAYEE", kind: #""transfer_notice""#))
     try log.blob(
       Notice.row(
-        2, id: Ids.t2, template: "none", merchant: "ACCOUNT DEBIT", last4: "0606", at: "2026-10-03T10:04:00.000Z",
+        2, id: Ids.t2, template: "none", merchant: "FUNDS TRANSFER DEBIT", last4: "0606", at: "2026-10-03T10:04:00.000Z",
         kind: #""account_debit_alert""#))
     let s = log.state
     #expect(s.txns[Ids.t1]?.gates?.kind == "transfer_notice" && s.txns[Ids.t2]?.gates?.kind == "account_debit_alert")
@@ -299,7 +301,7 @@ struct TransferCopyTests {
     var mixed = Log()
     try mixed.blob(Notice.alert(1, id: Ids.t1, at: "2026-10-03T10:00:00.000Z"))
     try mixed.blob(Notice.row(2, id: Ids.t2, template: "none", at: "2026-10-03T10:05:00.000Z", kind: #""transfer_notice""#))
-    #expect(mixed.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+    #expect(mixed.state.txns[Ids.t1]?.mergedInto == Ids.t2 && mixed.state.txns[Ids.t2]?.isLive == true)
   }
 
   @Test("an unknown or malformed gates.kind is ignored, and two notices by marker never pair")
@@ -345,5 +347,102 @@ struct TransferCopyTests {
     try again.blob(Notice.alert(2, id: Ids.t3, at: "2026-10-03T10:02:00.000Z"))
     #expect(again.state.txns[Ids.t3] == nil && again.kinds == ["duplicate_ingest"])
     #expect(again.state.txns[Ids.t1]?.aliases.count == 1)
+  }
+
+  @Test("after keep both, a copy of the notice or the alert from a second mailbox merges into its own row")
+  func keepBothThenCrossMailboxCopies() throws {
+    let other = "fedcba9876543210fedcba9876543210"
+    var log = Log()
+    try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic, grant: Mbx.a, mid: Copy.mid))
+    try log.blob(
+      Notice.row(
+        2, id: Ids.t2, template: Notice.account, merchant: "MB FUND TRANSFER DEBIT", last4: "0606", at: "2026-10-03T10:02:00.000Z",
+        grant: Mbx.a, mid: other))
+    #expect(log.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 1, op: 50))
+    #expect(log.state.byDedupeKey["mid:" + other] == Ids.t2)
+    try log.blob(Notice.row(3, id: Ids.t3, template: Notice.arabic, grant: Mbx.b, mid: Copy.mid))
+    try log.blob(
+      Notice.row(
+        4, id: Ids.ulid(7), template: Notice.account, merchant: "MB FUND TRANSFER DEBIT", last4: "0606",
+        at: "2026-10-03T10:02:00.000Z", grant: Mbx.b, mid: other))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.isLive == true && s.txns[Ids.t2]?.isLive == true)
+    #expect(s.txns[Ids.t2]?.copyOf == Ids.t1 && s.txns[Ids.t2]?.copyDecision == "keep_both")
+    #expect(s.txns[Ids.t1]?.copyOf == nil && s.txns[Ids.t1]?.mergedInto == nil)
+    #expect(s.txns[Ids.t3]?.mergedInto == Ids.t1 && s.txns[Ids.t3]?.mergeKind == "certain")
+    #expect(s.txns[Ids.ulid(7)]?.mergedInto == Ids.t2 && s.txns[Ids.ulid(7)]?.mergeKind == "certain")
+    #expect(s.byDedupeKey["mid:" + other] == Ids.t2 && s.byDedupeKey["mid:" + Copy.mid] == Ids.t1)
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 2, op: 51))
+    #expect(log.state.txns[Ids.t2]?.mergedInto == Ids.t1 && log.state.byDedupeKey["mid:" + other] == Ids.t1)
+    #expect(log.kinds.isEmpty)
+  }
+
+  @Test("an account alert that does not describe a transfer is held for the person, not merged")
+  func nonTransferAlertHeld() throws {
+    var log = Log()
+    try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try log.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:03:00.000Z", merchant: "CREDIT CARD PAYMENT"))
+    let held = try #require(log.state.txns[Ids.t2])
+    #expect(held.copyOf == Ids.t1 && held.isHeldCopy && held.mergedInto == nil)
+
+    var arabic = Log()
+    try arabic.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try arabic.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:03:00.000Z", merchant: "تحويل أموال"))
+    #expect(arabic.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+
+    var short = Log()
+    try short.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try short.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:03:00.000Z", merchant: "OUTWARD FUNDS TRANS"))
+    #expect(short.state.txns[Ids.t2]?.mergedInto == Ids.t1)
+
+    var transport = Log()
+    try transport.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try transport.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:03:00.000Z", merchant: "TRANSPORT FARE"))
+    #expect(transport.state.txns[Ids.t2]?.isHeldCopy == true)
+  }
+
+  @Test("an alert the person filed before its notice came carries its category to the notice")
+  func alertFirstCarriesEdits() throws {
+    var log = Log()
+    try log.blob(Notice.alert(1, id: Ids.t1, at: "2026-10-03T10:00:00.000Z"))
+    try log.blob(
+      op(
+        "txn_categorized", #"{"category":"dining","needs_review":false,"source":{"kind":"user"}}"#, id: 40, entity: ("txn", Ids.t1),
+        parent: 1))
+    try log.blob(Notice.row(2, id: Ids.t2, template: Notice.arabic, merchant: "SAMPLE PAYEE", at: "2026-10-03T10:04:00.000Z"))
+    let s = log.state
+    #expect(s.txns[Ids.t1]?.mergedInto == Ids.t2)
+    #expect(s.txns[Ids.t2]?.category == "dining" && s.txns[Ids.t2]?.categorySource?.kind == .user)
+    #expect(s.txns[Ids.t2]?.needsReview == false)
+    #expect(log.kinds.isEmpty)
+  }
+
+  @Test("clearing keep both carries what the person set on the alert to the row that stays")
+  func undoCarriesEdits() throws {
+    var log = Log()
+    try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try log.blob(Notice.alert(2, id: Ids.t2, at: "2026-10-03T10:02:00.000Z"))
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, "keep_both", parent: 1, op: 50))
+    try log.blob(
+      op(
+        "txn_categorized", #"{"category":"dining","needs_review":false,"source":{"kind":"user"}}"#, id: 51, entity: ("txn", Ids.t2),
+        parent: 2))
+    try log.blob(Copy.resolve(Ids.t2, other: Ids.t1, nil, parent: 3, op: 52))
+    let s = log.state
+    #expect(s.txns[Ids.t2]?.mergedInto == Ids.t1)
+    #expect(s.txns[Ids.t1]?.category == "dining" && s.txns[Ids.t1]?.categorySource?.kind == .user)
+  }
+
+  @Test("gates.kind does not make a transfer of a row that a known non-transfer template read")
+  func kindIgnoredForKnownTemplate() throws {
+    var log = Log()
+    try log.blob(Notice.row(1, id: Ids.t1, template: Notice.arabic))
+    try log.blob(
+      Notice.row(
+        2, id: Ids.t2, template: Notice.card, merchant: "MB FUND TRANSFER DEBIT", last4: "0606", at: "2026-10-03T10:02:00.000Z",
+        kind: #""account_debit_alert""#))
+    #expect(log.state.txns[Ids.t2]?.copyOf == nil && log.state.txns[Ids.t2]?.mergedInto == nil)
+    #expect(DuplicateRules.transferRole(log.state.txns[Ids.t2]!) == nil)
   }
 }
