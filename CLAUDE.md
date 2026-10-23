@@ -638,12 +638,14 @@ the approval of the owner for that deployment.
   email. Refer to `docs/decisions/cloud-suggestions.md`.
 - **Sorting rework (2026-10-23)**: Review shows one card per merchant group
   (`MerchantGroup.key`, from the raw merchant and the dictionary only). A rule comes only
-  from "Always use it" (off by default) and also files the group's waiting rows
-  (`RuleReach`); no rule is made after repeated filings. **Not this** is the op
-  `merchant_category_rejected`, which travels alone in its wire blob; rejections apply
-  after the model's answer, so the Cloudflare request does not change. Trust on a phone
-  may only raise the auto-file bar. Refer to `docs/decisions/sorting-rework.md`. The crowd
-  merchant list is a proposal only (`docs/decisions/crowd-merchant-list.md`).
+  from "Always use it" (off by default). It also files every payment of that merchant
+  group and direction whose spelling the rule holds (at most 8 exact patterns), in every
+  month, except the ones the person sorted (`RuleReach.ruled`); no rule is made after
+  repeated filings. **Not this** is the op `merchant_category_rejected`, which travels
+  alone in its wire blob; rejections apply after the model's answer, so the Cloudflare
+  request does not change. Trust on a phone may only raise the auto-file bar. Refer to
+  `docs/decisions/sorting-rework.md`. The crowd merchant list is a proposal only
+  (`docs/decisions/crowd-merchant-list.md`).
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
   invite codes; a WebAuthn step-up for each operation that changes auth,
   keys or mailboxes.

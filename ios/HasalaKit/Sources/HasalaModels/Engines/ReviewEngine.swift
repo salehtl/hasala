@@ -189,6 +189,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var samePurchase: Bool = false
   public var month: YearMonth? = nil
   public var group: MerchantGroupRef? = nil
+  public var canAlwaysUse: Bool = false
 }
 
 public struct ReviewMonth: Sendable, Hashable, Identifiable {
@@ -406,6 +407,7 @@ public enum ReviewEngine {
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
     card.group = t.rejectionRef
+    card.canAlwaysUse = t.canAlwaysUse
     return card
   }
 

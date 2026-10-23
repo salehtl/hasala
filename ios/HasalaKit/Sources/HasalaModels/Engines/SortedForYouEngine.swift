@@ -24,6 +24,11 @@ public struct SortResultRow: Sendable, Hashable, Identifiable {
   }
 
   public var canStopRule: Bool { ruleID != nil }
+
+  public static func reachTitle(count: Int, merchant: String, category: String, all: Bool = true) -> String {
+    if count == 1 { return "\(category) for 1 \(merchant) payment" }
+    return "\(category) for \(all ? "all " : "")\(count) \(merchant) payments"
+  }
 }
 
 public enum SortResultEngine {
@@ -70,6 +75,11 @@ public struct SortedForYouItem: Sendable, Hashable, Identifiable {
   public var undoAllLabel: String { count == 1 ? "Undo" : "Undo all \(count)" }
 
   public var undoAll: LedgerEdit { .returnToReview(txnIDs) }
+
+  public static func undoneLine(count: Int, settled: Int) -> String {
+    let payments = count == 1 ? "1 payment" : "\(count) payments"
+    return settled == 0 ? "\(payments) back in Review" : "\(payments) put back as \(count == 1 ? "it was" : "they were")"
+  }
 }
 
 public struct SortedForYouSnapshot: Sendable, Hashable {
