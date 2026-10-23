@@ -90,6 +90,39 @@ public struct ExtractReading: Sendable, Equatable {
     outcome == .transaction && agreed && amountMinor != nil && currency != nil
       && confidencePercent >= Self.agreementBarPercent
   }
+
+  public static let maxAmountMinor: Int64 = 9_999_999_999_999
+
+  public static func usableAmount(_ amountMinor: Int64, currency: String) -> Bool {
+    amountMinor > 0 && amountMinor <= maxAmountMinor && currency.utf8.count == 3
+      && currency.utf8.allSatisfy { $0 >= 0x41 && $0 <= 0x5a }
+  }
+
+  public var isUsable: Bool {
+    guard let amountMinor, let currency, direction != nil else { return false }
+    return Self.usableAmount(amountMinor, currency: currency)
+  }
+}
+
+public enum ExtractHold: String, Sendable, Equatable {
+  case aedNotConfirmed = "aed_not_confirmed"
+  case pendingPhrase = "pending_phrase"
+}
+
+public struct ExtractTemplateVerdict: Sendable, Equatable {
+  public var amountMinor: Int64
+  public var currency: String
+  public var aedOver: String?
+  public var holds: [ExtractHold]
+
+  public init(amountMinor: Int64, currency: String, aedOver: String? = nil, holds: [ExtractHold] = []) {
+    self.amountMinor = amountMinor
+    self.currency = currency
+    self.aedOver = aedOver
+    self.holds = holds
+  }
+
+  public var held: Bool { !holds.isEmpty }
 }
 
 struct Reading: Equatable {

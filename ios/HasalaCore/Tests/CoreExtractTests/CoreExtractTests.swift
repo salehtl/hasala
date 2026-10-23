@@ -479,3 +479,81 @@ import Testing
     #expect((layout?.anchors.count ?? 0) <= LearnedLayouts.tokenLimitPerMail)
   }
 }
+
+@Suite struct TemplateVerdictTests {
+  let foreign = Mails.input(
+    "bank-c.example", subject: "Transaction advice",
+    ["USD12.50 has been debited from your account 012XXX34XXX56. AED 45.91 debited in local currency."])
+
+  @Test func aPendingStatusIsDisregardedBeforeTheReadersRun() {
+    var ran = false
+    let v = CombinedReader.templateVerdict(
+      Mails.transferAR(amount: "500.00", status: "قيد التنفيذ"), amountMinor: 50_000, currency: "AED", direction: .debit
+    ) {
+      ran = true
+      return nil
+    }
+    #expect(v == nil)
+    #expect(!ran)
+  }
+
+  @Test func theAEDAmountIsHeldUnlessTheReadersConfirmIt() {
+    let unconfirmed = CombinedReader.templateVerdict(foreign, amountMinor: 1_250, currency: "USD", direction: .debit) { nil }
+    #expect(unconfirmed == ExtractTemplateVerdict(amountMinor: 4_591, currency: "AED", aedOver: "USD", holds: [.aedNotConfirmed]))
+    let agreed = ExtractReading(outcome: .transaction, amountMinor: 4_591, currency: "AED", direction: .debit, agreed: true)
+    let confirmed = CombinedReader.templateVerdict(foreign, amountMinor: 1_250, currency: "USD", direction: .debit) { agreed }
+    #expect(confirmed?.amountMinor == 4_591 && confirmed?.held == false)
+    var other = agreed
+    other.amountMinor = 4_592
+    #expect(CombinedReader.templateVerdict(foreign, amountMinor: 1_250, currency: "USD", direction: .debit) { other }?.held == true)
+  }
+
+  @Test func anAEDTemplateHitKeepsItsAmount() {
+    let v = CombinedReader.templateVerdict(
+      Mails.cardPurchaseEN(amount: "12.00", merchant: "SAMPLE SHOP"), amountMinor: 1_200, currency: "AED", direction: .debit
+    ) { nil }
+    #expect(v == ExtractTemplateVerdict(amountMinor: 1_200, currency: "AED"))
+  }
+
+  @Test func aPendingPhraseHoldsATemplateHit() {
+    let input = Mails.input(
+      "bank-c.example", subject: "Transaction advice",
+      ["AED120.00 has been withdrawn from your account 012XXX34XXX56. Any remaining instalments will be processed as scheduled."])
+    let v = CombinedReader.templateVerdict(input, amountMinor: 12_000, currency: "AED", direction: .debit) { nil }
+    #expect(v?.holds == [.pendingPhrase])
+  }
+}
+
+@Suite struct UsableReadingTests {
+  @Test func aUsableReadingHasAnAmountInRangeACurrencyAndADirection() {
+    let ok = ExtractReading(outcome: .transaction, amountMinor: 100, currency: "AED", direction: .debit)
+    #expect(ok.isUsable)
+    for bad in [
+      ExtractReading(outcome: .transaction, amountMinor: 0, currency: "AED", direction: .debit),
+      ExtractReading(outcome: .transaction, amountMinor: ExtractReading.maxAmountMinor + 1, currency: "AED", direction: .debit),
+      ExtractReading(outcome: .transaction, amountMinor: 100, currency: "aed", direction: .debit),
+      ExtractReading(outcome: .transaction, amountMinor: 100, currency: "AED"),
+      ExtractReading(outcome: .transaction, currency: "AED", direction: .debit),
+    ] {
+      #expect(!bad.isUsable)
+    }
+    #expect(ExtractReading.usableAmount(ExtractReading.maxAmountMinor, currency: "USD"))
+  }
+}
+
+@Suite struct ExtractLexiconTests {
+  @Test func knowsItsOwnPhrases() {
+    #expect(ExtractLexicon.contains("Merchant"))
+    #expect(ExtractLexicon.contains("Transaction of"))
+    #expect(ExtractLexicon.contains("  Dear "))
+    #expect(ExtractLexicon.contains("الحالة"))
+    #expect(!ExtractLexicon.contains("Dear Customer Service"))
+    #expect(!ExtractLexicon.contains("Shopfront"))
+  }
+
+  @Test func knowsAPromoLine() {
+    #expect(ExtractLexicon.isPromoLine("Enjoy 20% off dining, up to AED 50."))
+    #expect(!ExtractLexicon.isPromoLine("AED 10.00 was debited."))
+    #expect(!ExtractLexicon.isPromoLine(""))
+  }
+}

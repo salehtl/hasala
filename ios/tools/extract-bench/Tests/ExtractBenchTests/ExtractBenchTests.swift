@@ -1,4 +1,5 @@
 import Foundation
+import CoreExtract
 import Testing
 
 @testable import ExtractBench
@@ -75,6 +76,74 @@ func purchaseAR(_ amount: String, _ merchant: String, at: Int64) -> Mail {
     let r = RulesReader().read(mail(["Dear Customer,", "Your card ending 7310 was used for a purchase of JPY 1,200 at SAMPLE SHOP."]))
     #expect(r.currency == "JPY")
     #expect(r.amountMinor == nil)
+  }
+}
+
+func enbdTransfer(status: String, at: Int64 = 1_800_000_000_000) -> Mail {
+  mail(
+    [
+      "Dear Customer,", "Here is the status of your transfer.", "Debit Amount:", "AED 500.00", "Transaction Date:", "29/May/2026 06:29 PM",
+      "Beneficiary Name:", "SAMPLE PERSON", "Status:", status,
+    ], subject: "Fund transfer", sender: "emiratesnbd.com", at: at)
+}
+
+func enbd(_ line: String, at: Int64 = 1_800_000_000_000) -> Mail {
+  mail([line], subject: "Transaction advice for your account ending with 8642", sender: "emiratesnbd.com", at: at)
+}
+
+func enbdForeign(usd: String = "12.50", aed: String = "45.91", at: Int64 = 1_800_000_000_000) -> Mail {
+  enbd("USD\(usd) has been debited from your account 012XXX34XXX56. AED \(aed) debited in local currency.", at: at)
+}
+
+@Suite struct ChainTemplateTests {
+  @Test func theFixturesHitATemplate() {
+    let t = TemplateReader()
+    #expect(t.read(enbdTransfer(status: "Pending")).isTransaction)
+    #expect(t.read(enbdForeign()).isTransaction)
+  }
+
+  @Test func aPendingStatusTemplateHitIsDisregardedAndTeachesNothing() {
+    let c = ChainReader()
+    let r = c.read(enbdTransfer(status: "Pending"))
+    #expect(!r.isTransaction)
+    #expect(c.memory == LearnedLayouts())
+    let done = c.read(enbdTransfer(status: "Success"))
+    #expect(done.isTransaction && done.amountMinor == 50_000 && done.confidence == 1)
+    #expect(c.memory != LearnedLayouts())
+  }
+
+  @Test func aPendingPhraseHoldsATemplateHit() {
+    let c = ChainReader()
+    let r = c.read(enbd("AED120.00 has been withdrawn from your account 012XXX34XXX56. Any remaining instalments will be processed as scheduled."))
+    #expect(r.isTransaction && r.amountMinor == 12_000)
+    #expect(r.confidence < 0.8)
+    let plain = c.read(enbd("AED120.00 has been withdrawn from your account 012XXX34XXX56. Thank you.", at: 1_800_000_060_000))
+    #expect(plain.confidence == 1)
+  }
+
+  @Test func theAEDAmountOfATemplateHitIsHeldUntilTheReadersConfirmIt() {
+    let c = ChainReader()
+    let first = c.read(enbdForeign())
+    #expect(first.amountMinor == 4_591 && first.currency == "AED")
+    #expect(first.confidence < 0.8)
+    var last = first
+    for i in 1..<6 { last = c.read(enbdForeign(usd: "\(12 + i).50", aed: "\(45 + i * 4).91", at: 1_800_000_000_000 + Int64(i) * 60_000)) }
+    #expect(last.amountMinor == 6_591 && last.currency == "AED")
+    #expect(last.confidence == 1)
+  }
+}
+
+@Suite struct HeldOutTests {
+  @Test func heldOutPhrasingsStayOutOfTheLexicons() {
+    for (_, unseen) in HeldOut.rewordEn + HeldOut.rewordEnPhrases + HeldOut.rewordAr + HeldOut.rewordArPhrases {
+      #expect(!ExtractLexicon.contains(unseen), "\(unseen)")
+    }
+  }
+
+  @Test func heldOutPromoLinesStayOutOfThePromoFilter() {
+    for line in HeldOut.promoEn + HeldOut.promoAr {
+      #expect(!ExtractLexicon.isPromoLine(line.replacingOccurrences(of: "{n}", with: "250")), "\(line)")
+    }
   }
 }
 

@@ -76,14 +76,13 @@ enum MU {
 
   static func findAmount(_ text: String, minor: Int64, currency: String?) -> Found? {
     let norm = normDigits(text) as NSString
-    let exp = 2
     let target = Decimal(minor)
     for r in numRe.matches(in: norm as String, range: NSRange(location: 0, length: norm.length)) {
       let ip = norm.substring(with: r.range(at: 1)).replacingOccurrences(of: ",", with: "")
       let fr = r.range(at: 2).location == NSNotFound ? "" : norm.substring(with: r.range(at: 2))
       guard let v = Decimal(string: fr.isEmpty ? ip : ip + "." + fr) else { continue }
       var scaled = v
-      for _ in 0..<exp { scaled *= 10 }
+      for _ in 0..<Truth.labelExponent { scaled *= 10 }
       if scaled == target {
         return Found(
           range: r.range, number: norm.substring(with: r.range), intPart: ip, frac: fr,
