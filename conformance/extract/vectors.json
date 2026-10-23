@@ -67,7 +67,11 @@
           "last4": "4821",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -79,7 +83,11 @@
           "last4": "4821",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 67,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -91,7 +99,11 @@
           "last4": "4821",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 75,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -103,7 +115,11 @@
           "last4": "4821",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
         }
       ]
     },
@@ -165,7 +181,11 @@
           "last4": "7310",
           "confidence_percent": 50,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -177,7 +197,11 @@
           "last4": "7310",
           "confidence_percent": 50,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 67,
+          "readers_agree": false,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -189,7 +213,11 @@
           "last4": "7310",
           "confidence_percent": 50,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 75,
+          "readers_agree": false,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -201,7 +229,11 @@
           "last4": "7310",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -213,7 +245,11 @@
           "last4": "7310",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -225,7 +261,11 @@
           "last4": "7310",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
         }
       ]
     },
@@ -252,7 +292,11 @@
           "last4": "7310",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -279,7 +323,11 @@
           "last4": "7310",
           "confidence_percent": 50,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -306,7 +354,11 @@
           "last4": "7310",
           "confidence_percent": 50,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -333,7 +385,11 @@
           "last4": "7310",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -367,7 +423,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -379,7 +439,11 @@
           "last4": null,
           "confidence_percent": 75,
           "agreed": true,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 67,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -406,7 +470,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -433,7 +501,11 @@
           "last4": null,
           "confidence_percent": 45,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 45,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -460,7 +532,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 65,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -487,7 +563,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -514,7 +594,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -541,7 +625,11 @@
           "last4": "5555",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 82,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -568,7 +656,11 @@
           "last4": "5555",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -602,7 +694,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         },
         {
           "outcome": "transaction",
@@ -614,7 +710,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -641,7 +741,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -668,7 +772,11 @@
           "last4": "4321",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -695,7 +803,11 @@
           "last4": "9012",
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -722,7 +834,11 @@
           "last4": null,
           "confidence_percent": 0,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -749,7 +865,11 @@
           "last4": null,
           "confidence_percent": 0,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -776,7 +896,11 @@
           "last4": null,
           "confidence_percent": 0,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -803,7 +927,11 @@
           "last4": null,
           "confidence_percent": 0,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
         }
       ]
     },
@@ -830,7 +958,11 @@
           "last4": null,
           "confidence_percent": 60,
           "agreed": false,
-          "meets_agreement_bar": false
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
         }
       ]
     }

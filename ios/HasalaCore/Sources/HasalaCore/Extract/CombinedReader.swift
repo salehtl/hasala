@@ -3,8 +3,15 @@ public enum CombinedReader {
     let stripped = strip(input)
     let (l, next) = LearnedReader.read(stripped, memory)
     let r = RuleReader.read(stripped)
-    let (out, agreed) = combine(learned: aedOverride(l, stripped), rules: aedOverride(r, stripped))
-    let result = reading(out, input, agreed: agreed, negative: l.negative || r.negative)
+    let lo = aedOverride(l, stripped)
+    let ro = aedOverride(r, stripped)
+    let (out, agreed) = combine(learned: lo, rules: ro)
+    var result = reading(out, input, agreed: agreed, negative: l.negative || r.negative)
+    if out.isTransaction {
+      result.rulesConfidencePercent = ro.isTransaction ? ro.confidence : 0
+      result.learnedConfidencePercent = lo.isTransaction ? lo.confidence : 0
+      result.readersAgree = readersAgree(lo, ro)
+    }
     return (result, result.outcome == .notTransaction ? memory : next)
   }
 
@@ -40,16 +47,32 @@ public enum CombinedReader {
     if signal == .status { return nil }
     let reading = read()
     var out = ExtractTemplateVerdict(amountMinor: amountMinor, currency: currency)
-    if let aed = aedAmount(input, foreign: amountMinor, currency: currency), aed <= ExtractReading.maxAmountMinor {
-      out.amountMinor = aed
-      out.currency = "AED"
-      out.aedOver = currency
-      let confirmed =
-        reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
-      if !confirmed { out.holds.append(.aedNotConfirmed) }
+    if let iso = ExtractCurrency.iso(currency) {
+      out.currency = iso
+      if let aed = aedAmount(input, foreign: amountMinor, currency: iso), aed <= ExtractReading.maxAmountMinor {
+        out.amountMinor = aed
+        out.currency = "AED"
+        out.aedOver = iso
+        let confirmed =
+          reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
+        if !confirmed { out.holds.append(.aedNotConfirmed) }
+      }
+      if let reading, reading.readersConfirm,
+        reading.amountMinor != out.amountMinor || reading.currency != out.currency || reading.direction != direction
+      {
+        out.holds.append(.readersDisagree)
+      }
+    } else {
+      out.holds.append(.currencyNotISO)
     }
     if signal == .phrase { out.holds.append(.pendingPhrase) }
     return out
+  }
+
+  static func readersAgree(_ l: Reading, _ r: Reading) -> Bool {
+    l.isTransaction && r.isTransaction && l.amountMinor != nil && l.amountMinor == r.amountMinor
+      && l.currency != nil && l.currency == r.currency && l.direction != nil && l.direction == r.direction
+      && !l.directionGuessed && !r.directionGuessed
   }
 
   public static func statedDate(_ input: ExtractInput) -> ExtractStatedDate? {

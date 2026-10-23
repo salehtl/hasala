@@ -20,6 +20,9 @@ struct ExtractConformanceTests {
       ("direction", text(r.direction?.rawValue)), ("merchant", text(r.merchant)), ("last4", text(r.last4)),
       ("confidence_percent", .number(JSONNumber(Int64(r.confidencePercent)))), ("agreed", .bool(r.agreed)),
       ("meets_agreement_bar", .bool(r.meetsAgreementBar)),
+      ("rules_confidence_percent", .number(JSONNumber(Int64(r.rulesConfidencePercent)))),
+      ("learned_confidence_percent", .number(JSONNumber(Int64(r.learnedConfidencePercent)))),
+      ("readers_agree", .bool(r.readersAgree)), ("meets_filing_bar", .bool(r.meetsFilingBar)),
     ])
   }
 

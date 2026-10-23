@@ -28,6 +28,13 @@ case, edit its input by hand, run update mode, and review the diff.
    most 50. When only one reader reads a transaction, the confidence is at
    most 60. `meets_agreement_bar` is true only for an agreed transaction at
    `agreement_bar_percent` (80) or more.
+   `rules_confidence_percent` and `learned_confidence_percent` are each
+   reader's own confidence (0 when it read no transaction). `readers_agree`
+   is true when both read the same amount, currency and direction, and
+   neither only guessed the direction. `meets_filing_bar` is true only when
+   `meets_agreement_bar` and `readers_agree` are true and each reader's own
+   confidence is 80 or more; a mail that no template reads files without
+   review only then.
 2. Pending. A notice whose status (a `Status` or `الحالة` label, its value on
    the same line after a colon or on the next line) says the transfer or
    payment is pending, in process, in progress, processing, initiated, or
@@ -91,7 +98,11 @@ only what fills the slots and the gaps, with references to the anchors.
           "last4": "4821",
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 85,
+          "readers_agree": true,
+          "meets_filing_bar": true
         }
       ]
     }

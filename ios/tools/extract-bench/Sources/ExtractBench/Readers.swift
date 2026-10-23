@@ -65,7 +65,7 @@ final class ChainReader: Reader {
   static func filed(_ x: ExtractReading) -> Reading {
     guard x.outcome == .transaction, x.isUsable else { return Adapt.reading(ExtractReading(outcome: .unknown, notes: x.notes)) }
     let r = Adapt.reading(x)
-    return x.meetsAgreementBar ? r : Adapt.held(r, "below the agreement bar")
+    return x.meetsFilingBar ? r : Adapt.held(r, "below the filing bar")
   }
 
   func combined(_ input: ExtractInput) -> ExtractReading {

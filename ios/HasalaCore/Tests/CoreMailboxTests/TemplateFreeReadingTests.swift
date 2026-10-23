@@ -327,3 +327,90 @@ extension NovelMail {
     #expect(try await rig.store.loadReader() == nil)
   }
 }
+
+@Suite struct TemplateCrossCheckTests {
+  let trusted = ["dib.ae", "emiratesnbd.com"]
+
+  static func template(_ amountPattern: String) throws -> CompiledTemplate {
+    let json = """
+      {"id": "test.card.v1", "version": 1, "bank": "dib", "normalizer_version": 1,
+       "match": {"sender_domain": ["dib.ae"]}, "default_currency": "AED", "date_from": "email",
+       "extract": [{"field": "amount", "type": "amount", "source": "body", "flags": ["i"],
+                    "patterns": ["\(amountPattern)"], "on_match": {"direction": "debit"}}],
+       "required": ["amount", "direction"]}
+      """
+    return try CompiledTemplate(json: Array(json.utf8))
+  }
+
+  func mail(_ m: FakeGmail.Message, _ templates: [CompiledTemplate], _ reader: inout MailReaderState?) throws -> ParsedMail {
+    let r = MessageDisposer.parse(
+      raw: m.raw, messageID: m.id, internalDateMs: m.internalDateMs, topLevelFrom: m.from, templates: templates,
+      bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false,
+      reader: &reader, analyze: AuthResults.analyze)
+    guard case .mail(let p) = r else { throw CancellationError() }
+    return p
+  }
+
+  func finalize(_ p: ParsedMail) -> MailboxIngestDraft {
+    MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+  }
+
+  func run(_ t: CompiledTemplate) throws -> (ParsedMail, ParsedMail, MailReaderState?) {
+    var reader: MailReaderState? = MailReaderState()
+    var first: ParsedMail?
+    var last: ParsedMail?
+    for i in 0..<7 {
+      let p = try mail(NovelMail.card(i, amount: "\(17 + i * 7).\(10 + i)", dateMs: Rig.t0 + Int64(i) * 60_000), [t], &reader)
+      if first == nil { first = p }
+      last = p
+    }
+    return (try #require(first), try #require(last), reader)
+  }
+
+  @Test func aTemplateHitThatConfidentReadersContradictGoesToReview() throws {
+    let drifted = try Self.template("AED [0-9](?P<amt>[0-9]*\\\\.[0-9]{2}) at")
+    let (first, last, reader) = try run(drifted)
+    #expect(first.gates.template == "test.card.v1@1" && first.fields?.amountMinor == 710)
+    #expect(first.held == nil && !finalize(first).needsReview)
+    #expect(last.fields?.amountMinor == 916 && last.fields?.currency == "AED", "\(last)")
+    #expect(last.gates.template == "test.card.v1@1" && last.gates.reader == nil)
+    #expect(last.held == true && finalize(last).needsReview)
+    #expect(finalize(last).payload["amount_minor"] == .string("916"))
+    let counts = try #require(reader?.counts["dib"])
+    #expect(counts.templateHit == 7 && counts.readerAgreed == 0 && counts.readerDisagreed == 7)
+  }
+
+  @Test func aTemplateHitThatConfidentReadersConfirmFiles() throws {
+    let (_, last, reader) = try run(try Self.template("AED (?P<amt>[0-9]+\\\\.[0-9]{2}) at"))
+    #expect(last.fields?.amountMinor == 5_916 && last.held == nil && !finalize(last).needsReview)
+    #expect(reader?.counts["dib"]?.readerAgreed == 7)
+  }
+
+  func enbd(_ id: String, _ ccy: String) -> FakeGmail.Message {
+    let from = "Emirates NBD <alerts@emiratesnbd.com>"
+    let body = "\(ccy)120.00 has been withdrawn from your account 012XXX34XXX56. Thank you."
+    return FakeGmail.Message(
+      id: id,
+      raw: SyntheticMail.rfc822(
+        from: from, subject: "Transaction advice for your account ending with 8642", body: body, dateMs: Rig.t0,
+        authDomain: "emiratesnbd.com"),
+      internalDateMs: Rig.t0, from: from)
+  }
+
+  @Test func anAEDAliasCapturedByATemplateFilesAsAED() throws {
+    var none: MailReaderState?
+    let templates = BundledTemplates.load().templates
+    let p = try mail(enbd("d1", "DHS"), templates, &none)
+    #expect(p.gates.template?.hasPrefix("enbd.alert.v1@") == true)
+    #expect(p.fields?.currency == "AED" && p.fields?.amountMinor == 12_000 && p.held == nil)
+    #expect(!finalize(p).needsReview && finalize(p).payload["currency"] == .string("AED"))
+  }
+
+  @Test func aCurrencyThatIsNotISOGoesToReview() throws {
+    var none: MailReaderState?
+    let templates = BundledTemplates.load().templates
+    let p = try mail(enbd("x1", "XYZ"), templates, &none)
+    #expect(p.gates.template?.hasPrefix("enbd.alert.v1@") == true && p.fields?.currency == "XYZ")
+    #expect(p.held == true && finalize(p).needsReview)
+  }
+}

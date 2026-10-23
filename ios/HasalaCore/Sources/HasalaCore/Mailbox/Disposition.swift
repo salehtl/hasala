@@ -264,7 +264,7 @@ public enum MessageDisposer {
       mail.gates.reader = MailReaderState.marker
       mail.gates.kind = reading.kind == .other ? nil : reading.kind.rawValue
       mail.fields = f
-      mail.readerConfident = reading.meetsAgreementBar
+      mail.readerConfident = reading.meetsFilingBar
       reader!.bump(bank.isEmpty ? setAsideDomain : bank) { $0.readerOnly += 1 }
     default:
       break
