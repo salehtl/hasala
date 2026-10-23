@@ -12,9 +12,12 @@ struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
   let sort: (CategoryID, Bool, ProjectID?) -> Void
+  var sortEach: (() -> Void)? = nil
 
   @State private var project: ProjectID?
   @State private var alwaysUse = false
+  @State private var chosen: CategoryID?
+  @State private var seeded = false
   /// The content's measured height, which the one detent fits; an estimate until then.
   @State private var contentHeight: CGFloat?
   @Environment(\.dismiss) private var dismiss
@@ -30,7 +33,8 @@ struct ReviewPickSheet: View {
         header
         list
         if showsProjects { projects }
-        ruleRow
+        if canAlwaysUse { ruleRow }
+        if let group = pick.group { commit(group) }
       }
       .padding(.top, 8)
       .padding(.horizontal, HSpacing.insetPage)
@@ -45,6 +49,33 @@ struct ReviewPickSheet: View {
     .presentationDragIndicator(.visible)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
+    .onAppear {
+      guard !seeded else { return }
+      seeded = true
+      if let id = pick.group?.suggestion?.id, options.contains(where: { $0.id == id }) { chosen = id }
+    }
+  }
+
+  private var suggested: CategoryID? { pick.group?.suggestion?.id ?? pick.card.suggestion?.id }
+
+  private var canAlwaysUse: Bool { pick.group?.canAlwaysUse ?? pick.card.canAlwaysUse }
+
+  private var ruleSubject: String { pick.group?.merchant ?? pick.card.merchant }
+
+  private func commit(_ group: ReviewGroupCardModel) -> some View {
+    let name = chosen.flatMap { id in options.first { $0.id == id }?.name }
+    return VStack(spacing: 10) {
+      Button(name.map(group.sortAllLabel) ?? "Pick a category") {
+        if let chosen { sort(chosen, alwaysUse, project) }
+      }
+      .buttonStyle(.pill(.primary, fill: true))
+      .disabled(chosen == nil)
+      .accessibilityLabel(name.map(group.sortAllSpoken) ?? "Pick a category first")
+      .accessibilityIdentifier("pick.commit")
+      Button(ReviewEngine.sortEachLabel) { sortEach?() }
+        .buttonStyle(.pill(.secondary, fill: true))
+        .accessibilityIdentifier("pick.sortEach")
+    }
   }
 
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
@@ -53,7 +84,9 @@ struct ReviewPickSheet: View {
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
     let projects: CGFloat = showsProjects ? 66 + 20 : 0
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + 20 + projects + 44 + 28
+    let commit: CGFloat = pick.group == nil ? 0 : 20 + 54 * 2 + 10
+    let rule: CGFloat = canAlwaysUse ? 20 + 44 : 0
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + commit + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
@@ -80,24 +113,29 @@ struct ReviewPickSheet: View {
         if i > 0 {
           HColor.borderSubtle.frame(height: 1).padding(.leading, 52).accessibilityHidden(true)
         }
-        Button { sort(o.id, alwaysUse, project) } label: {
+        Button {
+          if pick.group != nil { chosen = o.id } else { sort(o.id, alwaysUse, project) }
+        } label: {
           HStack(spacing: 12) {
             CategoryDisc(hue: o.hue, icon: o.glyph.icon)
             Text(o.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
               .fixedSize(horizontal: false, vertical: true)
-            if pick.card.suggestion?.id == o.id {
+            if suggested == o.id {
               InfoChip("Suggested", style: .suggested)
             }
             Spacer(minLength: 8)
+            if pick.group != nil, chosen == o.id {
+              HIconView(.check, size: 18, color: HColor.actionAccent, strokeWidth: 2.4)
+            }
           }
           .frame(minHeight: 56)
           .contentShape(Rectangle())
         }
         .buttonStyle(HRowPressStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(pick.card.suggestion?.id == o.id ? "\(o.name), suggested" : o.name)
-        .accessibilityHint("Sorts it now")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(suggested == o.id ? "\(o.name), suggested" : o.name)
+        .accessibilityHint(pick.group == nil ? "Sorts it now" : "Picks it")
+        .accessibilityAddTraits(pick.group != nil && chosen == o.id ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("pick.\(o.id)")
       }
     }
@@ -127,7 +165,7 @@ struct ReviewPickSheet: View {
 
   private var ruleRow: some View {
     Toggle(isOn: $alwaysUse) {
-      Text("Always use it for \(pick.card.merchant)")
+      Text("Always use it for \(ruleSubject)")
         .hType(.subheadline.weight(.medium))
         .foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)

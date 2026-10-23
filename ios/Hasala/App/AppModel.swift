@@ -72,6 +72,7 @@ final class AppModel {
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
   @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
   @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
+  @ObservationIgnored private var reviewItemsMemo = Memo<HomeMemoKey, [ReviewItem]>()
   @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
   @ObservationIgnored private var earliestMemo = Memo<Int, YearMonth?>()
@@ -187,6 +188,41 @@ final class AppModel {
   var reviewCards: [ReviewCardModel] {
     reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
       ReviewEngine.cards(store.state, in: reviewWindow)
+    }
+  }
+
+  var reviewItems: [ReviewItem] {
+    reviewItemsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+      ReviewEngine.items(store.state, in: reviewWindow)
+    }
+  }
+
+  var sortResult: SortResultRow? {
+    guard var row = SortResultEngine.row(store.state, in: reviewWindow) else { return nil }
+    if let undo = row.undo, (store as? UndoAvailability)?.canUndo(undo) == false { row.undo = nil }
+    return row
+  }
+
+  func undoSortResult() {
+    guard let undo = sortResult?.undo else { return }
+    store.undo(undo)
+    dismissToast()
+  }
+
+  func stopSortResultRule() {
+    guard let rule = sortResult?.ruleID else { return }
+    perform(.stopRule(rule))
+  }
+
+  func dismissSortResult() { perform(.dismissSortReceipt) }
+
+  @discardableResult
+  func performQuietly(_ edit: LedgerEdit) -> UndoToken?? {
+    do {
+      return .some(try store.apply(edit))
+    } catch {
+      show(Toast(disc: .note(.info), title: Self.message(for: error)))
+      return nil
     }
   }
 

@@ -217,9 +217,8 @@ struct AppModelTests {
     #expect(app.reviewCount == 6)
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
     #expect(app.reviewCount == 5)
-    #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
-    #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
-    #expect(ReviewTabView.countLine(0) == "All caught up")
+    #expect(ReviewTabView.countLine(app.reviewItems).hasSuffix(" and 4 more · 5 payments"))
+    #expect(ReviewTabView.countLine([]) == "All caught up")
   }
 
   @Test func editsMadeAsOneGestureAreAllTakenBack() {
