@@ -312,7 +312,7 @@ struct RejectionSweepTests {
     _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
     let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
     let serial = WriteSerial()
-    let order = Mutex<[String]>([])
+    let order = Locked<[String]>([])
     let snapshot = l
     let gate = AsyncGate()
     let held = Task {
@@ -350,9 +350,9 @@ extension RejectionSweepTests {
     _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
     let snapshot = l
     let serial = WriteSerial()
-    let order = Mutex<[String]>([])
+    let order = Locked<[String]>([])
     let cloud = BacklogCloud(fallback: (.category("dining"), false))
-    let waiter = Mutex<Task<Void, Error>?>(nil)
+    let waiter = Locked<Task<Void, Error>?>(nil)
     let r = try await BacklogSort.run(
       rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: MemoryCache(),
       now: { now }, autoFile: false, stamps: AuthorStamps(), serial: serial,
@@ -379,6 +379,18 @@ extension RejectionSweepTests {
       memo: .init(), cache: MemoryCache(), now: { now }, autoFile: false, stamps: AuthorStamps(), serial: WriteSerial(),
       reread: { (snapshot.rows(), snapshot.context()) }, enqueue: { _ in }, reproject: { throw Boom() })
     #expect(r.authored && r.failed)
+  }
+}
+
+final class Locked<Value: Sendable>: Sendable {
+  private let state: Mutex<Value>
+
+  init(_ value: Value) {
+    state = Mutex(value)
+  }
+
+  func withLock<R: Sendable>(_ body: (inout Value) -> R) -> R {
+    state.withLock { body(&$0) }
   }
 }
 
