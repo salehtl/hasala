@@ -72,6 +72,11 @@ struct HomeView: View {
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)
+        if snapshot.isThisMonth, let line = app.sortedForYou.homeLine {
+          SortedForYouRow(line: line, spoken: app.sortedForYou.homeSpoken ?? line) { app.router.home.append(.sortedForYou) }
+            .padding(.horizontal, HSpacing.insetPage)
+            .padding(.top, -8)
+        }
         if let finish, snapshot.isThisMonth {
           FinishSetupSection(model: finish, items: finish.items, importing: app.mailbox?.importing != nil) {
             app.router.open(.profile, profile: [.bankAlerts])
@@ -121,6 +126,7 @@ struct HomeView: View {
         case .bill(let id): BillDetailView(app: app, bill: id)
         case .accounts: AccountsView(app: app)
         case .insights: InsightsView(app: app)
+        case .sortedForYou: SortedForYouView(app: app)
         }
       }
     }

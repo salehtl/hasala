@@ -61,6 +61,7 @@ public enum OpType: String, CaseIterable, Sendable, Hashable {
   case goalDefined = "goal_defined"
   case mailboxRetired = "mailbox_retired"
   case txnCopyResolved = "txn_copy_resolved"
+  case merchantCategoryRejected = "merchant_category_rejected"
 
   /// Type strings that are never registered and never reused. An op carrying
   /// one is an unknown type (03c §17).
@@ -74,7 +75,7 @@ public enum OpType: String, CaseIterable, Sendable, Hashable {
     case .bankDeclared, .budgetSplitSet, .categoryDefined: 3
     case .budgetSet, .budgetMoved, .incomeSourceSet, .categoryPlanRoleSet, .billSet, .billOccurrenceSet,
       .accountSet, .cardLinked, .accountCheckin, .txnAnnotated, .merchantNamed, .senderTrustSet,
-      .projectDefined, .goalDefined, .mailboxRetired, .txnCopyResolved:
+      .projectDefined, .goalDefined, .mailboxRetired, .txnCopyResolved, .merchantCategoryRejected:
       4
     default: 1
     }
@@ -97,6 +98,8 @@ public enum OpType: String, CaseIterable, Sendable, Hashable {
     default: nil
     }
   }
+
+  public var travelsAlone: Bool { self == .merchantCategoryRejected }
 
   /// Whether the op carries an `ingest_id` (a 64-hex-character SHA-256).
   public var carriesIngestID: Bool { self == .txnIngested || self == .txnSuperseded }

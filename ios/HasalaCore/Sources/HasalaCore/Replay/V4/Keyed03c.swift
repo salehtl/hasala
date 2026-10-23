@@ -80,6 +80,19 @@ extension State {
     merchantNames[ExactKey(key)] = Keyed(name, opID: e.op.opID)
   }
 
+  mutating func applyMerchantCategoryRejected(_ e: LogEntry) throws(PayloadError) {
+    let p = try P.object(e.op)
+    guard let key = p["merchant_key"]?.stringValue, Grammar.isMerchantKey(key) else {
+      throw PayloadError("merchant_key must be 1-256 scalars with no forbidden scalar, got \(showValue(p["merchant_key"]))")
+    }
+    let category = try P.categoryID(p["category"], "category")
+    let rejected = try P.boolField(p["rejected"], "rejected")
+    merchantRejections[State.rejectionKey(key, category)] = MerchantRejection(
+      merchantKey: key, category: category, rejected: rejected, opID: e.op.opID)
+  }
+
+  public static func rejectionKey(_ merchantKey: String, _ category: String) -> String { merchantKey + "\u{0}" + category }
+
   mutating func applySenderTrustSet(_ e: LogEntry) throws(PayloadError) {
     let p = try P.object(e.op)
     guard let domain = p["domain"]?.stringValue, Grammar.isDomain(domain) else {

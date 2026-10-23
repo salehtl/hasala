@@ -269,6 +269,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
   public var merchantKey: String?
+  public var merchantGroup: String?
+  public var reachable: Bool
+  public var rejectedCategories: Set<CategoryID>
+  public var categorizedAt: LocalDateTime?
+  public var ruleID: RuleID?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -287,7 +292,12 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     heldCopy: HeldCopy? = nil,
     samePurchase: SamePurchaseMatch? = nil,
     reviewReason: TxnReviewReason? = nil,
-    merchantKey: String? = nil
+    merchantKey: String? = nil,
+    merchantGroup: String? = nil,
+    reachable: Bool = false,
+    rejectedCategories: Set<CategoryID> = [],
+    categorizedAt: LocalDateTime? = nil,
+    ruleID: RuleID? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -319,6 +329,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.samePurchase = samePurchase
     self.reviewReason = reviewReason
     self.merchantKey = merchantKey
+    self.merchantGroup = merchantGroup
+    self.reachable = reachable
+    self.rejectedCategories = rejectedCategories
+    self.categorizedAt = categorizedAt
+    self.ruleID = ruleID
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }
@@ -481,9 +496,11 @@ public struct BillCandidate: Sendable, Hashable, Identifiable, Codable {
   public var seenCount: Int
   public var everyDays: Int
   public var last: LocalDate
+  public var key: String?
 
   public init(id: String, name: String, categoryID: CategoryID, amount: Money, seenCount: Int, everyDays: Int,
-              last: LocalDate) {
+              last: LocalDate, key: String? = nil) {
+    self.key = key
     self.id = id
     self.name = name
     self.categoryID = categoryID
@@ -777,6 +794,7 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var skippedReview: Set<TxnID>
   public var rates: [CurrencyRate]
   public var unreadMail: [UnreadMail]
+  public var sortReceipt: SortReceipt?
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
@@ -784,8 +802,10 @@ public struct LedgerState: Sendable, Hashable, Codable {
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
     netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
     rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)],
-    unreadMail: [UnreadMail] = []
+    unreadMail: [UnreadMail] = [],
+    sortReceipt: SortReceipt? = nil
   ) {
+    self.sortReceipt = sortReceipt
     self.unreadMail = unreadMail
     self.rates = rates
     self.netWorth = netWorth

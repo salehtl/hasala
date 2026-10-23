@@ -14,9 +14,11 @@ import SwiftUI
 struct ReviewTabView: View {
   @Bindable var app: AppModel
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(AccountSession.self) private var session: AccountSession?
   @AppStorage(CloudSortDismissal.key) private var dismissedRun = 0
   @State private var cloudSortAnswered = false
+  @State private var foregrounds = SortSlot.Foregrounds()
 
   init(app: AppModel) {
     self.app = app
@@ -25,49 +27,60 @@ struct ReviewTabView: View {
   var body: some View {
     NavigationStack(path: Bindable(app.router).review) {
       let cards = app.reviewCards
+      let items = app.reviewItems
       let elsewhere = app.reviewElsewhere
       let isThisMonth = app.period == .month(app.store.now.date.yearMonth)
       let unread = ReviewEngine.unreadCount(app.store.state)
       TabScreen(app: app, title: "Review", spacing: 24, titleGap: 4) {
-        Text(Self.countLine(cards.count, elsewhere: elsewhere, period: app.period.title))
+        Text(Self.countLine(items, elsewhere: elsewhere, period: app.period.title))
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
+          .accessibilityLabel(ReviewEngine.toSortSpoken(items) ?? Self.countLine(items, elsewhere: elsewhere, period: app.period.title))
           .accessibilityIdentifier("review.tab.count")
       } content: {
-        let sortState = app.cloudSort.flatMap { CloudSortCardState.of($0.status, dismissedRun: Int64(dismissedRun)) }
+        let slot = SortSlot.of(SortSlot.Facts(
+          asks: asksCloudSort, status: app.cloudSort?.status, dismissedRun: Int64(dismissedRun),
+          importing: app.mailbox?.importing, suggestions: app.suggestionCount))
         VStack(alignment: .leading, spacing: 24) {
           if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
-          if let sort = app.cloudSort, let sortState {
-            CloudSortCard(app: app, sort: sort, state: sortState) {
-              dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
-            }
-            .background(cardSurface)
+          if let row = app.sortResult {
+            SortResultRowView(
+              row: row, undo: { app.undoSortResult() }, stopRule: { app.stopSortResultRule() }, dismiss: { app.dismissSortResult() })
           }
+          slotCard(slot)
           if cards.isEmpty {
             caughtUp(elsewhere)
-            if unread > 0 { unreadable(unread) }
           } else {
-            if sortState == nil, asksCloudSort {
-              CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
-            }
             startCard
-            if app.suggestionCount > 0, sortState?.offersCheckSuggestions != true {
-              CheckSuggestionsEntry(app: app, count: app.suggestionCount).background(cardSurface)
-            }
-            if unread > 0 { unreadable(unread) }
-            list(cards)
           }
+          if unread > 0 { unreadable(unread) }
+          if !items.isEmpty { list(items) }
         }
         .padding(.horizontal, HSpacing.insetPage)
+        .onChange(
+          of: SortSlot.offerSeen(slot, onReview: app.tab == .review, phase: scenePhase, covered: app.router.cover != nil),
+          initial: true
+        ) { _, seen in
+          if seen { app.cloudSort?.offerShown() }
+        }
       }
       .navigationDestination(for: ReviewRoute.self) { route in
         switch route {
         case .unreadMail: UnreadMailView(app: app)
         }
       }
+      .onChange(of: app.tab == .review, initial: true) { _, open in
+        guard open, let sort = app.cloudSort else { return }
+        sort.reviewOpened()
+        Task { await sort.refresh() }
+      }
       .task { await app.cloudSort?.refresh() }
+      .onChange(of: cards.count) {
+        app.cloudSort?.countsChanged()
+      }
       .onChange(of: scenePhase) { _, phase in
-        guard phase == .active, let sort = app.cloudSort else { return }
+        guard foregrounds.note(phase), let sort = app.cloudSort else { return }
+        if app.tab == .review { sort.reviewOpened() }
         Task { await sort.refresh() }
       }
     }
@@ -96,17 +109,77 @@ struct ReviewTabView: View {
     cloudSortAnswered = true
   }
 
-  /// "6 to sort · about a minute": about ten seconds a card.
-  static func countLine(_ n: Int, elsewhere: ReviewElsewhere? = nil, period: String = "") -> String {
-    guard n > 0 else { return elsewhere == nil ? "All caught up" : "Nothing to sort in \(period)" }
-    let minutes = (n + 5) / 6
-    return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
+  static func countLine(_ items: [ReviewItem], elsewhere: ReviewElsewhere? = nil, period: String = "") -> String {
+    guard let line = ReviewEngine.toSortLine(items) else {
+      return elsewhere == nil ? "All caught up" : "Nothing to sort in \(period)"
+    }
+    return line
   }
 
   static let emptyLine = "New transactions Hasala can't sort on its own show up here."
 
-  static func orderLine(months: Int) -> String {
-    months > 1 ? "Newest month first" : "Oldest first"
+  static func orderLine(months: Int, grouped: Bool = false) -> String {
+    if months > 1 { return "Newest month first" }
+    return grouped ? "Most payments first" : "Oldest first"
+  }
+
+  @ViewBuilder private func slotCard(_ slot: SortSlot?) -> some View {
+    switch slot {
+    case .ask?:
+      CloudSortAskCard(turnOn: turnOnCloudSort, notNow: cloudSortNotNow)
+    case .importing(let mail)?:
+      importingCard(mail, queued: !app.reviewCards.isEmpty)
+    case let slot?:
+      if let sort = app.cloudSort, let state = slot.card {
+        CloudSortCard(app: app, sort: sort, state: state) {
+          dismissedRun = Int(sort.status.lastRunEndedMs ?? 0)
+        }
+        .background(cardSurface)
+      }
+    case nil:
+      EmptyView()
+    }
+  }
+
+  private func importingCard(_ mail: MailImport, queued: Bool) -> some View {
+    let disc = Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
+      .overlay { HIconView(.envelope, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
+    let text = VStack(alignment: .leading, spacing: 4) {
+      Text(SortSlot.importingTitle(mail))
+        .hType(.headline)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(SortSlot.importingLine(mail, queued: queued))
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(alignment: .center, spacing: 12) {
+            disc
+            Spacer(minLength: 0)
+            if mail.busy { Spinner(size: 20, track: HColor.feedbackProgressTrack) }
+          }
+          text
+        }
+      } else {
+        HStack(alignment: .top, spacing: 12) {
+          disc
+          text
+          if mail.busy { Spinner(size: 20, track: HColor.feedbackProgressTrack) }
+        }
+      }
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(cardSurface)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(SortSlot.importingSpoken(mail, queued: queued))
+    .accessibilityAddTraits(.updatesFrequently)
+    .accessibilityIdentifier("review.slot.importing")
   }
 
   // MARK: Period
@@ -146,7 +219,7 @@ struct ReviewTabView: View {
             .hType(HType.title3.weight(.bold))
             .foregroundStyle(HColor.textPrimary)
             .accessibilityAddTraits(.isHeader)
-          Text("Need, want or save. One card at a time.")
+          Text("Need, want or save. One card per merchant.")
             .hType(.footnote)
             .foregroundStyle(HColor.textSecondary)
             .frame(maxWidth: 200, alignment: .leading)
@@ -181,14 +254,15 @@ struct ReviewTabView: View {
 
   /// "To sort", oldest first within a month (Paper writes "Newest first"): each row opens the
   /// deck at its own card.
-  private func list(_ cards: [ReviewCardModel]) -> some View {
-    let months = ReviewEngine.months(cards, now: app.store.now)
+  private func list(_ items: [ReviewItem]) -> some View {
+    let months = ReviewEngine.itemMonths(items, now: app.store.now)
+    let grouped = items.contains { if case .group = $0 { true } else { false } }
     return VStack(alignment: .leading, spacing: 4) {
       HStack(alignment: .firstTextBaseline) {
         Text("To sort").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        Text(Self.orderLine(months: months.count)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text(Self.orderLine(months: months.count, grouped: grouped)).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
       .padding(.bottom, 4)
       ForEach(months) { month in
@@ -200,14 +274,15 @@ struct ReviewTabView: View {
             .accessibilityAddTraits(.isHeader)
             .accessibilityIdentifier("review.tab.month.\(month.month)")
         }
-        ForEach(month.cards) { card in
-          Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
+        ForEach(month.items) { item in
+          let r = ReviewEngine.tabRow(item, app.store.state)
+          Button { ReviewEntry.open(app, at: r.item) } label: { row(r) }
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(spoken(card))
-            .accessibilityHint("Opens the deck at this one")
+            .accessibilityLabel(r.spoken(hidden: app.amountsHidden))
+            .accessibilityHint("Opens the cards")
             .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier("review.tab.row.\(card.id)")
+            .accessibilityIdentifier(r.identifier)
         }
       }
     }
@@ -217,46 +292,53 @@ struct ReviewTabView: View {
     .background(cardSurface)
   }
 
-  /// Monogram 32 (no ring), name 15/20 600 over "Looks like Groceries" in accent (or what the
-  /// person decides, in grey), the amount 15/20 bold. 52 tall.
-  private func row(_ card: ReviewCardModel) -> some View {
-    HStack(spacing: 12) {
-      MerchantMonogram(letter: card.monogram, size: 32, ring: false)
-      VStack(alignment: .leading, spacing: 0) {
-        Text(card.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-        Text(Self.supporting(card))
-          .hType(HType(size: 13, leading: 16, weight: card.reviewReason != nil ? .medium : .regular, textStyle: .footnote))
-          .foregroundStyle(supportingColor(card))
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      MoneyText(card.amount, figure: .compact, hidden: app.amountsHidden, hiddenGlyphs: 3,
-                color: card.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: card.isIncome ? .income : .none)
-        .fixedSize()
+  private func row(_ r: ReviewTabRow) -> some View {
+    let text = VStack(alignment: .leading, spacing: 0) {
+      Text(r.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(r.subtitle)
+        .hType(HType(size: 13, leading: 16, weight: r.tone == .reason ? .medium : .regular, textStyle: .footnote))
+        .foregroundStyle(r.reason.map(ReviewReasonStyle.ink) ?? tone(r.tone))
+        .fixedSize(horizontal: false, vertical: true)
     }
-    .frame(minHeight: 52)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    let trailing = VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
+      PhraseText(r.amount, hidden: app.amountsHidden)
+        .hFigure(.compact)
+        .foregroundStyle(r.isIncome ? HColor.moneyIn : HColor.moneyOut)
+      if !r.detail.isEmpty {
+        Text(r.detail)
+          .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
+          .foregroundStyle(HColor.textSecondary)
+      }
+    }
+    return Group {
+      if typeSize.isAccessibilitySize {
+        HStack(alignment: .top, spacing: 12) {
+          MerchantMonogram(letter: r.monogram, size: 32, ring: false)
+          VStack(alignment: .leading, spacing: 4) {
+            text
+            trailing
+          }
+        }
+      } else {
+        HStack(spacing: 12) {
+          MerchantMonogram(letter: r.monogram, size: 32, ring: false)
+          text
+          trailing.fixedSize()
+        }
+      }
+    }
+    .frame(minHeight: 56)
     .contentShape(Rectangle())
   }
 
-  private func spoken(_ card: ReviewCardModel) -> String {
-    let amount = app.amountsHidden
-      ? "Amount hidden"
-      : (card.isIncome ? "plus " : "") + "\(card.amount.currency) \(MoneyFormat.string(card.amount.minor))"
-    return [card.merchant, Self.supporting(card), amount].joined(separator: ", ")
-  }
-
-  private func supportingColor(_ card: ReviewCardModel) -> Color {
-    if let reason = card.reviewReason { return ReviewReasonStyle.ink(reason) }
-    return card.suggestion == nil ? HColor.textSecondary : HColor.actionAccent
-  }
-
-  /// "Looks like Groceries", or what the person decides.
-  static func supporting(_ card: ReviewCardModel) -> String {
-    if let reason = card.reviewReason { return "\(reason.label) · you decide" }
-    if let s = card.suggestion { return "Looks like \(s.name)" }
-    if card.isIncome { return "Income or a transfer?" }
-    return card.isNewMerchant ? "New merchant · you decide" : "You decide"
+  private func tone(_ t: ReviewTabRow.Tone) -> Color {
+    switch t {
+    case .reason: HColor.statusWarningForeground
+    case .suggestion: HColor.actionAccent
+    case .decide: HColor.textSecondary
+    }
   }
 
   // MARK: Others
@@ -311,19 +393,32 @@ struct ReviewTabView: View {
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
   private func unreadableRow(_ n: Int, detail: String, chevron: Bool) -> some View {
-    HStack(spacing: 12) {
-      Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-        .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
-      VStack(alignment: .leading, spacing: 0) {
-        Text(Self.unreadableLine(n))
-          .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-        Text(detail)
-          .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
-          .foregroundStyle(HColor.textSecondary)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      if chevron {
-        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+    let disc = Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
+      .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+    let text = VStack(alignment: .leading, spacing: 0) {
+      Text(Self.unreadableLine(n))
+        .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(detail)
+        .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          disc
+          text
+        }
+      } else {
+        HStack(spacing: 12) {
+          disc
+          text
+          if chevron {
+            HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+          }
+        }
       }
     }
     .padding(.vertical, 14)

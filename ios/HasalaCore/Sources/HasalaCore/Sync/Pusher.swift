@@ -119,7 +119,8 @@ enum Pusher {
     for p in pending {
       let op = try decodeStored(p)
       let add = p.opJSON.count + (current.isEmpty ? 0 : 1)
-      if size + add > maxBlobPlaintext, !current.isEmpty {
+      let alone = op.type.travelsAlone || currentOps.contains { $0.type.travelsAlone }
+      if !current.isEmpty, alone || size + add > maxBlobPlaintext {
         try close()
         size = wrapper
         if groups.count == maxUploadBlobs { break }

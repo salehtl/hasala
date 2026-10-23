@@ -89,10 +89,14 @@ public struct SweepRow: Sendable, Equatable {
   public let candidate: Bool
   public let version: Int64?
   public let template: String?
+  public let merchantGroup: String?
+  public let categorizedMs: Int64?
+  public let rejected: Set<String>
 
   public init(
     id: String, merchantRaw: String, direction: Direction?, category: String?, sourceKind: SourceKind, sourceRef: String?,
-    needsReview: Bool, candidate: Bool, version: Int64? = nil, template: String? = nil
+    needsReview: Bool, candidate: Bool, version: Int64? = nil, template: String? = nil, merchantGroup: String? = nil, categorizedMs: Int64? = nil,
+    rejected: Set<String> = []
   ) {
     self.id = id
     self.merchantRaw = merchantRaw
@@ -104,7 +108,12 @@ public struct SweepRow: Sendable, Equatable {
     self.candidate = candidate
     self.version = version
     self.template = template
+    self.merchantGroup = merchantGroup
+    self.categorizedMs = categorizedMs
+    self.rejected = rejected
   }
+
+  public func rejects(_ category: String) -> Bool { rejected.contains(category) }
 }
 
 /// One `txn_categorized` the sweep wants authored (needs_review unchanged).
@@ -187,6 +196,9 @@ public enum LearnedPattern {
     }
     guard let (match, pattern) = candidate else { return nil }
     let fits = { (p: String) in p.unicodeScalars.count <= maxScalars }
+    if match != .exact, MerchantGroup.isFacilitatorToken(t1) {
+      return s.unicodeScalars.count >= 2 && fits(s) ? (.exact, s) : nil
+    }
     if match != .exact {
       let p = PreparedPattern(id: "", pattern: pattern, match: match, category: category, priority: 100)
       if userRows.contains(where: { $0.category != category && Matcher.hits(p, merchantRaw: $0.merchantRaw) }) {

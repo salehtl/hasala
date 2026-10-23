@@ -12,23 +12,11 @@ nonisolated enum CloudSortCardState: Equatable, Sendable {
   static let minimumNames = 5
   static let namesPerMinute = 24
 
-  static func of(_ status: CloudSortStatus, dismissedRun: Int64?) -> CloudSortCardState? {
+  static func offer(_ status: CloudSortStatus) -> CloudSortCardState? {
     switch status.phase {
-    case .off:
-      return nil
-    case .running:
-      return .running
-    case .paused(let p):
-      return .paused(p)
-    case .done:
-      if let ended = status.lastRunEndedMs, ended != dismissedRun { return .done }
-      return waiting(status)
-    case .idle:
-      return waiting(status)
+    case .off, .running, .paused: return nil
+    case .idle, .done: break
     }
-  }
-
-  private static func waiting(_ status: CloudSortStatus) -> CloudSortCardState? {
     guard status.waitingNames >= minimumNames else { return nil }
     return status.remainingToday > 0 && status.nextRunNames > 0 ? .ready : .paused(.dayCap)
   }
@@ -102,11 +90,17 @@ nonisolated enum CloudSortCardState: Equatable, Sendable {
     return f.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
   }
 
-  var offersCheckSuggestions: Bool { self == .done }
+  static func dismissHint(suggestions: Int) -> String {
+    suggestions > 0 ? "Check suggestions is no longer offered. The suggestions stay as cards to sort." : ""
+  }
 }
 
 enum CloudSortDismissal {
   static let key = "app.hasala.prefs.cloudSort.dismissedRun"
+
+  static func forget(_ defaults: UserDefaults) {
+    defaults.removeObject(forKey: key)
+  }
 }
 
 struct CloudSortCard: View {
@@ -121,37 +115,20 @@ struct CloudSortCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .top, spacing: 12) {
-        Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
-          .overlay { HIconView(.cloud, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 4) {
-          Text(title)
-            .hType(.headline)
-            .foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityIdentifier("review.sort.title")
-          ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-            Text(line.text)
-              .hType(.footnote)
-              .foregroundStyle(HColor.textSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-              .accessibilityIdentifier(line.id)
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(alignment: .top, spacing: 12) {
+            disc
+            Spacer(minLength: 0)
+            dismissButton
           }
+          heading
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        if state == .done {
-          Button(action: dismiss) {
-            HIconView(.close, size: HSpacing.iconSmall, color: HColor.iconSecondary)
-              .frame(width: HSpacing.targetMinimum, height: HSpacing.targetMinimum)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .padding(.top, -12)
-          .padding(.trailing, -12)
-          .accessibilityLabel("Dismiss")
-          .accessibilityIdentifier("review.sort.dismiss")
+      } else {
+        HStack(alignment: .top, spacing: 12) {
+          disc
+          heading
+          dismissButton
         }
       }
       if showsProgress {
@@ -177,6 +154,47 @@ struct CloudSortCard: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text(CloudSortCardState.sendBackMessage)
+    }
+  }
+
+  private var disc: some View {
+    Circle().fill(HColor.reviewSuggestionSurface).frame(width: 32, height: 32)
+      .overlay { HIconView(.cloud, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
+      .accessibilityHidden(true)
+  }
+
+  private var heading: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title)
+        .hType(.headline)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("review.sort.title")
+      ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+        Text(line.text)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier(line.id)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder private var dismissButton: some View {
+    if state == .done {
+      Button(action: dismiss) {
+        HIconView(.close, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+          .frame(width: HSpacing.targetMinimum, height: HSpacing.targetMinimum)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .padding(.top, -12)
+      .padding(.trailing, -12)
+      .accessibilityLabel("Dismiss")
+      .accessibilityHint(CloudSortCardState.dismissHint(suggestions: app.suggestionCount))
+      .accessibilityIdentifier("review.sort.dismiss")
     }
   }
 

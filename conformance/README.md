@@ -7,10 +7,11 @@ every set.
 
 ## Golden files
 
-These six sets are golden files: `authres`, `categorize`, `fx`, `norm-dates`,
-`outlook-sender` and `replay`. The ledgerd TypeScript client wrote them; it was
-removed after commit 9b4aae2, and that commit still has its generators. The
-inputs are now edited by hand. The Swift tests in
+These seven sets are golden files: `authres`, `categorize`, `fx`,
+`merchant-group`, `norm-dates`, `outlook-sender` and `replay`. The ledgerd
+TypeScript client wrote six of them; it was removed after commit 9b4aae2, and
+that commit still has its generators. The Swift tests wrote `merchant-group`
+first. The inputs are now edited by hand. The Swift tests in
 `ios/HasalaCore/Tests/HasalaCoreConformanceTests` own the expected output:
 
 | Set | Swift test |
@@ -18,6 +19,7 @@ inputs are now edited by hand. The Swift tests in
 | `authres` | `AuthResultsConformanceTests/golden` |
 | `categorize` | `CategorizeConformanceTests/golden` |
 | `fx` | `FXConformanceTests/golden` |
+| `merchant-group` | `MerchantGroupConformanceTests/golden` |
 | `norm-dates` | `NormDatesConformanceTests/golden` |
 | `outlook-sender` | `OutlookSenderConformanceTests/golden` |
 | `replay` | `ReplayConformanceTests/golden` |
@@ -42,8 +44,13 @@ the old values, so run the suite again without the variable. Then review the
 diff in `conformance/` line by line: it is the record of what changed.
 
 Update mode rewrites only the `expect` of each case. It does not touch the
-inputs, the notes or the manifests. To add a case, add its input (and, for
-`replay` and `fx`, its `manifest.json` entry) by hand, then run update mode.
+inputs, the notes or the manifests.
+
+One exception: `merchant-group` also rewrites its `dictionary` header, so a
+dictionary rebuild shows in the diff.
+
+To add a case, add its input (and, for `replay` and `fx`, its `manifest.json`
+entry) by hand, then run update mode.
 
 In `replay`, `expect.diagnostics` holds the TypeScript oracle's anomaly and
 unreadable text, for reference. Update mode keeps it when the state hash does
@@ -51,7 +58,7 @@ not change, and drops it when the state changes.
 
 ### The gate
 
-`scripts/check.sh` fails when a file under one of the six sets changes on a
+`scripts/check.sh` fails when a file under one of the seven sets changes on a
 branch with no change under `ios/HasalaCore/Tests`. In CI it compares with
 `HEAD^1`; locally, with the merge base of `origin/main`.
 

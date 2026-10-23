@@ -213,7 +213,7 @@ struct HomeModelTests {
         let deck = ReviewViewModel(app: app)
         #expect(item.title == "\(deck.total) transactions to sort")
         #expect(deck.cards.contains { $0.id == "jun-shop" })
-        #expect(ReviewTabView.countLine(deck.total).hasPrefix("\(app.reviewCount) to sort"))
+        #expect(ReviewTabView.countLine(deck.items).hasSuffix("· \(app.reviewCount) payments"))
       case .bill(let id):
         #expect(router.tab == .home && router.home == [.bill(id)])
         let detail = try #require(BillsViewModel(app: app).detail(id))

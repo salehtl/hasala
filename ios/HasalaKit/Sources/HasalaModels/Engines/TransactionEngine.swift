@@ -71,7 +71,8 @@ public struct SplitLineModel: Sendable, Hashable, Identifiable {
 public enum TransactionEngine {
   public static func detail(_ id: TxnID, _ s: LedgerState, now: LocalDateTime) -> TransactionDetail? {
     guard let t = s.txn(id) else { return nil }
-    let c = s.category(t.categoryID)
+    let rejected = t.modelGuessRejected
+    let c = rejected ? nil : s.category(t.categoryID)
     var meta = t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
 
@@ -95,8 +96,11 @@ public enum TransactionEngine {
 
     var sortedBy: SortedBy?
     switch t.categorySource {
-    case .rule(let pattern): sortedBy = SortedBy(title: "Sorted by your rule", detail: "\(pattern) → \(c?.name ?? "")")
+    case .rule(let pattern):
+      let exact = s.rule(t.ruleID)?.match == .exact
+      sortedBy = SortedBy(title: "Sorted by your rule", detail: "\(exact ? t.merchant : pattern) → \(c?.name ?? "")")
     case .dictionary: sortedBy = SortedBy(title: "Sorted by Hasala's merchant list", detail: "\(t.merchant) → \(c?.name ?? "")")
+    case .model where rejected: sortedBy = nil
     case .model(let tag):
       let suggested = c ?? s.category(t.reviewSuggestion)
       sortedBy = SortedBy(title: CategorySource.suggestionLabel(modelTag: tag, needsReview: t.needsReview), detail: "\(t.merchant) → \(suggested?.name ?? "")")

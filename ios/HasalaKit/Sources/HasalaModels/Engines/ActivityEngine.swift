@@ -225,14 +225,18 @@ public enum ActivityEngine {
 
   /// One list row: "Dining · 13:20"; to-review rows read "To review · 18:42".
   public static func row(_ t: Txn, _ s: LedgerState) -> MiniTxnRow {
-    let c = s.category(t.categoryID)
+    let c = t.modelGuessRejected ? nil : s.category(t.categoryID)
     let detail: String
+    var spokenDetail: String?
     if let reason = t.activeReviewReason {
       detail = t.joined(reason.label, t.postedTime)
     } else if t.inReview {
       detail = t.joined("To review", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
+    } else if let source = t.autoSourceLabel, c != nil {
+      detail = t.joined(t.joined(c?.name ?? "", source), t.detailOverride ?? t.postedTime)
+      spokenDetail = t.autoSourceSpoken.map { t.joined(c?.name ?? "", t.detailOverride ?? t.postedTime) + ", " + $0 }
     } else {
       detail = t.joined(c?.name ?? "Uncategorized", t.detailOverride ?? t.postedTime)
     }
@@ -244,6 +248,7 @@ public enum ActivityEngine {
       toReview: t.inReview, reviewReason: t.activeReviewReason,
       project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) }
     )
+    r.spokenDetail = spokenDetail
     r.showHome(t)
     return r
   }
@@ -253,6 +258,7 @@ public enum ActivityEngine {
     var r = row(t, s)
     if !t.inReview && t.splits.isEmpty {
       r.detail = t.joined(t.postedAt.date.short, t.detailOverride ?? t.postedTime)
+      r.spokenDetail = nil
     }
     return r
   }

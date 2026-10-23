@@ -9,7 +9,7 @@ import Testing
 @Suite("Screen launch")
 struct ScreenLaunchTests {
   /// The ledger scenarios HasalaMocks knows besides the account ones.
-  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "firstDays", "mayaCopy", "mayaRange", "mayaSamePurchase", "mayaUnreadMail", "mayaSuggestions"]
+  static let ledgerScenarios: Set<String> = ["maya", "mayaHidden", "mayaCaughtUp", "mayaSample", "firstDays", "mayaCopy", "mayaRange", "mayaSamePurchase", "mayaUnreadMail", "mayaSuggestions", "mayaBacklog"]
 
   @Test func everyRegisteredScreenParsesAndHasAScenario() {
     let screens = ScreenLaunch.registry
@@ -78,5 +78,9 @@ struct ScreenLaunchTests {
     #expect(txn.app.router.tab == .activity && txn.app.router.pendingLaunch?.sheet == .transaction("carrefour"))
     let detail = try await opened("mail.detail")
     #expect(detail.app.router.pendingLaunch?.profile == [.bankAlerts, .mailbox("outlook-1")])
+    let tabResult = try await opened("review.tab.result")
+    #expect(tabResult.app.store.state.sortReceipt?.categoryID == "subscriptions" && tabResult.app.router.tab == .review)
+    let sorted = try await opened("home.sortedForYou.list")
+    #expect(sorted.app.sortedForYou.homeLine != nil && sorted.app.router.home == [.sortedForYou])
   }
 }

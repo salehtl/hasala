@@ -25,7 +25,7 @@ struct SuggestionsEngineTests {
   @Test func theDefaultScenarioHasOnlyLulu() {
     let snap = SuggestionsEngine.snapshot(Scenario.maya.state)
     #expect(snap.rows.map(\.id) == ["lulu"])
-    #expect(SuggestionsEngine.entryLine(snap.count) == "Check 1 suggestion")
+    #expect(snap.count == 1)
   }
 
   @Test func onlyRowsInReviewWithAModelSuggestionCount() {

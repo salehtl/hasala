@@ -75,12 +75,19 @@ nonisolated enum LedgerStateMapper {
     // Transactions: every live, parsed row (archived ones too, flagged).
     let rules = try r.rules()
     let ruleByID = Dictionary(rules.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let home = try r.homeCurrency() ?? "AED"
+    let reachRows = rows.map(\.reachRow)
+    let paired = RuleReach.paired(reachRows, home: home)
+    let rejections = try r.rejections()
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
-    for row in rows {
-      txns.append(try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id]))
+    for (i, row) in rows.enumerated() {
+      var t = try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id])
+      t.reachable = RuleReach.waiting(reachRows[i], samePurchase: paired)
+      if let g = row.merchantGroup, let rejected = rejections[g] { t.rejectedCategories = rejected }
+      txns.append(t)
     }
-    markSamePurchases(&txns, rows: rows, home: try r.homeCurrency() ?? "AED")
+    markSamePurchases(&txns, rows: rows, home: home)
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
       Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
@@ -259,18 +266,18 @@ nonisolated enum LedgerStateMapper {
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
-      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey)
+      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey,
+      merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
+      ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
   }
 
-
-  static func samePurchaseRow(_ row: TxnRow) -> SamePurchase.Row {
-    SamePurchase.Row(
-      id: row.id, live: row.supersededBy == nil, unparsed: row.unparsed, archived: row.archived != nil,
-      manual: row.entryMethod == "manual", amountMinor: row.amountMinor, currency: row.currency,
-      amountHomeMinor: row.amountHomeMinor, direction: row.direction, bank: row.bank, last4: row.last4,
-      postedMs: row.postedMs, merchantKey: row.merchantKey, possibleDuplicateOf: row.possibleDuplicateOf,
-      duplicateDisposition: row.duplicateDisposition, heldCopy: row.heldCopy)
+  static func localTime(_ ms: Int64) -> LocalDateTime {
+    let date = LocalClock.localDate(ms).map(local) ?? LocalDate(1970, 1, 1)
+    let minutes = Int(((ms + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
+    return LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
   }
+
+  static func samePurchaseRow(_ row: TxnRow) -> SamePurchase.Row { row.samePurchaseRow }
 
   static func markSamePurchases(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], home: String) {
     let pairs = SamePurchase.pairs(rows.map(samePurchaseRow), home: home)

@@ -166,17 +166,20 @@ extension State {
 
   mutating func carryUserEdits(from source: String, to target: String) {
     guard let from = txns[source], let to = txns[target], !to.unparsed else { return }
-    func chosen(_ c: CategorySource?) -> Bool { c?.kind == .user || c?.kind == .held }
-    if chosen(from.categorySource), !chosen(to.categorySource) {
+    if Self.chosen(from.categorySource), !Self.chosen(to.categorySource) {
       txns[target]!.category = from.category
       txns[target]!.categorySource = from.categorySource
       txns[target]!.needsReview = from.needsReview
+      let filedAt = heads[State.entityKey("txn", source)]?.categorizedAtMs
+      heads[State.entityKey("txn", target)]?.categorizedAtMs = filedAt
       if to.splits.isEmpty, !from.splits.isEmpty, from.amountMinor == to.amountMinor { txns[target]!.splits = from.splits }
     }
     for f in from.annotations.keys where to.annotations[f] == nil {
       txns[target]!.annotations[f] = from.annotations[f]
     }
   }
+
+  static func chosen(_ c: CategorySource?) -> Bool { c?.kind == .user || c?.kind == .held }
 
   func mergeWinner(_ id: String) -> String? {
     guard let t = txns[id], t.retiredBy == nil, t.supersededBy == nil, let w = t.mergedInto,

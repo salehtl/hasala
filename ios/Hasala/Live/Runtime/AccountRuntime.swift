@@ -221,9 +221,9 @@ final class AccountRuntime {
         presenter: WebAuthenticationPresenter(for: p))
     }
     let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
+    let editor = LedgerEditAuthor(observer: observer, outbox: outbox)
     let store = LiveLedgerStore(
-      reader: projection.reader, author: LedgerEditAuthor(observer: observer, outbox: outbox), profile: profile,
-      prefs: DevicePrefsStore(), clock: LiveLedgerStore.runClock())
+      reader: projection.reader, author: editor, profile: profile, prefs: DevicePrefsStore(), clock: LiveLedgerStore.runClock())
     // The running lane's cycle (nil in a build that connects no mailbox). Typed apart: the
     // coordinator's initializer is too much for the type checker with it inline.
     var mailboxStage: WorkCoordinator.MailboxStage?
@@ -248,7 +248,8 @@ final class AccountRuntime {
       backlogActive: { activity.isActive },
       autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
       cloudBudget: { await link.budget() },
-      cloudSpent: { await link.spent($0) })
+      cloudSpent: { await link.spent($0) },
+      trusts: TrustCounts.shared.autoFile)
     let backlog = BacklogSorter(
       pass: { await suggestions.backlogPass($0, dayLeft: $1) }, store: .live(BacklogRunStore(context.store)),
       nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
@@ -267,7 +268,11 @@ final class AccountRuntime {
           return (out.newData, Self.shownStop(out.stop, phase: phase))
         },
         mailbox: mailboxStage,
-        categorize: { trigger in await suggestions.run(trigger) },
+        categorize: { trigger in
+          let followed = await editor.followUp()
+          let suggested = await suggestions.run(trigger)
+          return followed || suggested
+        },
         committed: {
           if let lane = active.lane {
             let status = await lane.status()

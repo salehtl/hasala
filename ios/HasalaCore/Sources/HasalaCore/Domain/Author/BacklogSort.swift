@@ -106,6 +106,9 @@ public enum BacklogSort {
     public let pending: [String]
     public let blocked: Set<String>
     public let cached: [String: Answer]
+    public var rejected: [String: Set<String>] = [:]
+    public var kept: [String: Answer] = [:]
+    public var stale: [String] = []
 
     public struct Queued: Sendable, Equatable {
       public let row: SweepRow
@@ -119,8 +122,13 @@ public enum BacklogSort {
     public var staysOnDevice: Int
     public var leftForYou: Int
     public var pendingTxnIDs: Set<String>
+    public var waitingGroups: Int
 
-    public init(waitingNames: Int = 0, waitingPayments: Int = 0, staysOnDevice: Int = 0, leftForYou: Int = 0, pendingTxnIDs: Set<String> = []) {
+    public init(
+      waitingNames: Int = 0, waitingPayments: Int = 0, staysOnDevice: Int = 0, leftForYou: Int = 0, pendingTxnIDs: Set<String> = [],
+      waitingGroups: Int = 0
+    ) {
+      self.waitingGroups = waitingGroups
       self.waitingNames = waitingNames
       self.waitingPayments = waitingPayments
       self.staysOnDevice = staysOnDevice
@@ -164,44 +172,59 @@ public enum BacklogSort {
   }
 
   public static func plan(
-    rows: [SweepRow], categorizer: Categorizer, memo: Memo, cached: (String) throws -> CachedAnswer?
+    rows: [SweepRow], categorizer: Categorizer, memo: Memo, kept keptAnswer: (String) throws -> String? = { _ in nil },
+    cached: (String) throws -> CachedAnswer?
   ) rethrows -> Plan {
     let queued = ModelSuggestionSweep.queue(rows: rows, categorizer: categorizer)
       .map { Plan.Queued(row: $0, subject: Canon.subject($0.merchantRaw)) }
       .filter { !$0.subject.isEmpty }
     var blocked: Set<String> = []
     for q in queued where !ModelSuggestionSweep.mayLeaveDevice(q.row) { blocked.insert(q.subject) }
+    var rejected: [String: Set<String>] = [:]
+    for q in queued where !q.row.rejected.isEmpty { rejected[q.subject, default: []].formUnion(q.row.rejected) }
     var seen: Set<String> = []
     var pending: [String] = []
     var hits: [String: Answer] = [:]
+    var kept: [String: Answer] = [:]
+    var stale: [String] = []
     for q in queued where seen.insert(q.subject).inserted {
       let s = q.subject
       guard !blocked.contains(s), ModelStage.hasLetter(s), !memo.asked.contains(s), memo.answers[s] == nil else { continue }
+      if let k = try keptAnswer(s) {
+        if rejected[s]?.contains(k) == true { continue }
+        stale.append(s)
+      }
       switch try cached(s) {
       case .unknown?: continue
+      case .category(let c, let autoFile)? where rejected[s]?.contains(c) == true:
+        kept[s] = Answer(category: c, modelTag: "", autoFile: autoFile)
       case .category(let c, let autoFile)?:
         hits[s] = Answer(category: c, modelTag: "", autoFile: autoFile)
       case nil:
         pending.append(s)
       }
     }
-    return Plan(queued: queued, pending: pending, blocked: blocked, cached: hits)
+    return Plan(queued: queued, pending: pending, blocked: blocked, cached: hits, rejected: rejected, kept: kept, stale: stale)
   }
 
-  public static func counts(rows: [SweepRow], categorizer: Categorizer, memo: Memo = .init(), cached: (String) throws -> CachedAnswer?)
-    rethrows -> Counts
-  {
-    let p = try plan(rows: rows, categorizer: categorizer, memo: memo, cached: cached)
+  public static func counts(
+    rows: [SweepRow], categorizer: Categorizer, memo: Memo = .init(), kept: (String) throws -> String? = { _ in nil },
+    cached: (String) throws -> CachedAnswer?
+  ) rethrows -> Counts {
+    let p = try plan(rows: rows, categorizer: categorizer, memo: memo, kept: kept, cached: cached)
     let waiting = Set(p.pending)
     var c = Counts(waitingNames: p.pending.count)
+    var groups: Set<String> = []
     for q in p.queued {
       if p.blocked.contains(q.subject) {
         c.staysOnDevice += 1
       } else if waiting.contains(q.subject) {
         c.waitingPayments += 1
         c.pendingTxnIDs.insert(q.row.id)
+        groups.insert(q.row.merchantGroup.map { "g:" + $0 } ?? "s:" + q.subject)
       }
     }
+    c.waitingGroups = groups.count
     c.leftForYou = p.queued.count - c.waitingPayments
     return c
   }
@@ -210,7 +233,7 @@ public enum BacklogSort {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], modelTag: String, cache: any ModelAnswerCache, now: Int64
   ) throws -> Counts {
     let taxonomy = ModelTier.taxonomyHash(allowed)
-    return try counts(rows: rows, categorizer: categorizer) {
+    return try counts(rows: rows, categorizer: categorizer, kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: modelTag, now: now)
     }
   }
@@ -218,7 +241,8 @@ public enum BacklogSort {
   public static func pass(
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
-    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil
+    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
+    trusts: @Sendable (String) -> Bool = { _ in true }
   ) async throws -> Pass {
     var memo = memo
     guard cloud.availability() == .available else { return Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
@@ -226,13 +250,16 @@ public enum BacklogSort {
     let taxonomy = ModelTier.taxonomyHash(allowed)
     let tag = cloud.modelTag
     let started = now()
-    let work = try plan(rows: rows, categorizer: categorizer, memo: memo) {
+    let work = try plan(rows: rows, categorizer: categorizer, memo: memo, kept: { try cache.keptAnswer(subject: $0, modelTag: tag) }) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: tag, now: started)
     }
     for (s, a) in work.cached { memo.answers[s] = Answer(category: a.category, modelTag: tag, autoFile: a.autoFile) }
     var stop: Stop?
     var calls = 0
     var settledCount = 0
+    var keep = work.kept.sorted { $0.key < $1.key }.map {
+      ModelTier.StagedSuggestion(subject: $0.key, category: $0.value.category, modelTag: tag, autoFile: $0.value.autoFile)
+    }
     if !work.pending.isEmpty {
       let runLeft = runNames - memo.requests
       let left = min(runLeft, dayLeft)
@@ -266,12 +293,20 @@ public enum BacklogSort {
         } catch {
           throw Interrupted(memo: memo, calls: calls)
         }
+        keep += r.suggestions.filter { work.rejected[$0.subject]?.contains($0.category) == true }
       }
     }
+    do {
+      try cache.dropKept(work.stale.map { (subject: $0, modelTag: tag) })
+      try cache.keepAnswers(keep)
+    } catch {
+      throw Interrupted(memo: memo, calls: calls)
+    }
     let suggestions = work.queued.compactMap { q -> ModelSuggestionSweep.Suggestion? in
-      guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version else { return nil }
+      guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version, !q.row.rejects(a.category)
+      else { return nil }
       return ModelSuggestionSweep.Suggestion(
-        txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile)
+        txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile && trusts(a.category))
     }
     let pending = work.pending.filter { !memo.asked.contains($0) && memo.answers[$0] == nil }.count
     if stop == nil, pending > 0 {
@@ -312,6 +347,55 @@ public enum BacklogSort {
         }
       }
       return (blobs, p, filing)
+    } catch {
+      throw Interrupted(memo: p.memo, calls: p.calls)
+    }
+  }
+
+  public struct Committed: Sendable {
+    public var pass: Pass
+    public var filing: Filing
+    public var failed: Bool
+    public var authored: Bool
+  }
+
+  public static func run(
+    rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
+    cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
+    concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
+    trusts: @Sendable (String) -> Bool = { _ in true }, stamps: AuthorStamps,
+    serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
+    enqueue: @Sendable (AuthoredBlob) async throws -> Void, reproject: @Sendable () async throws -> Void = {}
+  ) async throws -> Committed {
+    let p = try await pass(
+      rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
+      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout, trusts: trusts)
+    guard !p.suggestions.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
+    do {
+      try Task.checkCancellation()
+      return try await serial.run {
+        let fresh = try await reread()
+        let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
+        guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
+        let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
+          let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))
+          return (blobs, blobs.last?.lastAuthoredMs)
+        }
+        var filing = Filing()
+        for it in items {
+          if it.needsReview {
+            filing.suggested.insert(it.txnID)
+          } else {
+            filing.filed[it.txnID] = it.version + 1
+          }
+        }
+        let c = await commit(blobs, filing: filing, enqueue: enqueue)
+        var failed = c.failed
+        if !blobs.isEmpty {
+          do { try await reproject() } catch { failed = true }
+        }
+        return Committed(pass: p, filing: c.filing, failed: failed, authored: !blobs.isEmpty)
+      }
     } catch {
       throw Interrupted(memo: p.memo, calls: p.calls)
     }

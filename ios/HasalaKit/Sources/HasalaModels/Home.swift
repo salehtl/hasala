@@ -332,6 +332,7 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   public var project: Project?
   public var estimate: Bool = false
   public var notCounted: Bool = false
+  public var spokenDetail: String?
 
   public struct Project: Sendable, Hashable, Codable {
     public var id: ProjectID
