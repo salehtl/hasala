@@ -56,13 +56,26 @@ final class MemoryCache: ModelAnswerCache, Sendable {
     }
   }
 
-  func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws {
-    rows.withLock { r in
-      for e in entries {
-        r[ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag)] =
-          (.max, .category(e.category, autoFile: e.autoFile))
-      }
+  let kept = Mutex<[String: String]>([:])
+
+  func keptAnswer(subject: String, modelTag: String) throws -> String? {
+    kept.withLock { $0[ModelTier.keptKey(subject: subject, modelTag: modelTag)] }
+  }
+
+  func keepAnswers(_ entries: [ModelTier.StagedSuggestion]) throws {
+    kept.withLock { k in
+      for e in entries { k[ModelTier.keptKey(subject: e.subject, modelTag: e.modelTag)] = e.category }
     }
+  }
+
+  func dropKept(_ entries: [(subject: String, modelTag: String)]) throws {
+    kept.withLock { k in
+      for e in entries { k[ModelTier.keptKey(subject: e.subject, modelTag: e.modelTag)] = nil }
+    }
+  }
+
+  func purgeExpired(now: Int64) {
+    rows.withLock { r in r = r.filter { $0.value.expires > now } }
   }
 }
 

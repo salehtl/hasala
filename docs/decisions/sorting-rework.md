@@ -93,8 +93,12 @@ everything else. When it updates, the cold fold reads the blob again.
 
 Rejections are applied on the phone after the answer: a rejected answer reads as unknown
 for that stage, so Apple's model is asked next, and a cached Cloudflare answer that was
-rejected is never sent to Cloudflare again: the phone keeps that cached answer past the
-cache's 30 days (`FMCache.keepAnswers`). The `allowed` list, the request bytes and the
+rejected is never sent to Cloudflare again. The phone keeps that answer in its own record
+(`fm_kept`, keyed by a hash of the name and the model tag only), apart from the 30-day cache.
+Not this writes it at once, so it does not depend on the cache entry still being there, and
+a change to the category list does not undo it. When the rejection is undone, on this phone
+or another, the next sweep drops the record and the name is asked again. The `allowed` list,
+the request bytes and the
 cache key never change (`RejectionSweepTests`). A model-sourced row whose guess is
 rejected shows as a plain "You decide" card.
 

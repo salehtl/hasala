@@ -190,7 +190,9 @@ public protocol ModelAnswerCache: Sendable {
   func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer?
   func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws
   func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws
-  func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws
+  func keptAnswer(subject: String, modelTag: String) throws -> String?
+  func keepAnswers(_ entries: [ModelTier.StagedSuggestion]) throws
+  func dropKept(_ entries: [(subject: String, modelTag: String)]) throws
 }
 
 extension ModelAnswerCache {

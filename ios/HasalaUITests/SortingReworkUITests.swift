@@ -169,6 +169,26 @@ final class SortingReworkUITests: XCTestCase {
   }
 
   @MainActor
+  func testAPickInSortEachOneKeepsThePaymentInItsDatePlace() throws {
+    let app = launch(scenario: "mayaBacklog")
+    openReview(app)
+    openGroup(app, Self.qasr)
+    tap(app, "review.sortEach", opening: "review.sortEach.done")
+    let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'review.sortEach.row.'"))
+    XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: uiWait))
+    let before = (0..<min(rows.count, 4)).map { rows.element(boundBy: $0).identifier }
+    XCTAssertEqual(before, ["bl-qasr-6", "bl-qasr-5", "bl-qasr-4", "bl-qasr-3"].map { "review.sortEach.row.\($0)" })
+    tap(app, before[1])
+    tap(app, "pick.groceries")
+    let picked = el(app, before[1])
+    let filed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label ENDSWITH 'Groceries'"), object: picked)
+    XCTAssertEqual(XCTWaiter.wait(for: [filed], timeout: uiWait), .completed, picked.label)
+    let after = (0..<min(rows.count, 4)).map { rows.element(boundBy: $0).identifier }
+    XCTAssertEqual(after, before, "the picked payment keeps its place in date order")
+    attach(app, "Review · Sort each one · one picked")
+  }
+
+  @MainActor
   func testSortEachOneTheResultRowAndSortedForYouReadAtTheLargestTextSizes() throws {
     let app = launch(scenario: "mayaBacklog", arguments: Self.largeText)
     openReview(app)

@@ -190,6 +190,10 @@ enum LedgerSchema {
     "CREATE TABLE sort_memory (id INTEGER PRIMARY KEY CHECK (id = 1), json BLOB NOT NULL)"
   ]
 
+  static let fmKept: [String] = [
+    "CREATE TABLE fm_kept (key TEXT PRIMARY KEY, category TEXT NOT NULL) WITHOUT ROWID"
+  ]
+
   static let mailboxSenderAddress: [String] = [
     "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID"
   ]
@@ -234,6 +238,9 @@ enum LedgerSchema {
     }
     m.registerMigration("sort_memory") { db in
       for sql in sortMemory { try db.execute(sql: sql) }
+    }
+    m.registerMigration("fm_kept") { db in
+      for sql in fmKept { try db.execute(sql: sql) }
     }
     return m
   }

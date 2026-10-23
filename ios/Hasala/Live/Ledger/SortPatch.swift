@@ -39,7 +39,7 @@ nonisolated enum SortPatch {
     }
     let merchant = ReviewEngine.displayName(filed)
     s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed.map(\.id))
-    return "Sorted \(filed.count) \(merchant) as \(name(s, c))"
+    return SortResultRow.line(count: filed.count, merchant: merchant, category: name(s, c))
   }
 
   static func sortGroup(
@@ -53,7 +53,7 @@ nonisolated enum SortPatch {
       if let project { s.txns[i].projectID = project }
     }
     s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: idx.map { s.txns[$0].id })
-    return "Sorted \(idx.count) \(merchant) as \(name(s, c))"
+    return SortResultRow.line(count: idx.count, merchant: merchant, category: name(s, c))
   }
 
   static func notThis(_ s: inout LedgerState, _ ref: MerchantGroupRef, _ c: CategoryID) throws(ActionError) -> String {

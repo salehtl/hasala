@@ -108,6 +108,7 @@ public enum BacklogSort {
     public let cached: [String: Answer]
     public var rejected: [String: Set<String>] = [:]
     public var kept: [String: Answer] = [:]
+    public var stale: [String] = []
 
     public struct Queued: Sendable, Equatable {
       public let row: SweepRow
@@ -171,7 +172,8 @@ public enum BacklogSort {
   }
 
   public static func plan(
-    rows: [SweepRow], categorizer: Categorizer, memo: Memo, cached: (String) throws -> CachedAnswer?
+    rows: [SweepRow], categorizer: Categorizer, memo: Memo, kept keptAnswer: (String) throws -> String? = { _ in nil },
+    cached: (String) throws -> CachedAnswer?
   ) rethrows -> Plan {
     let queued = ModelSuggestionSweep.queue(rows: rows, categorizer: categorizer)
       .map { Plan.Queued(row: $0, subject: Canon.subject($0.merchantRaw)) }
@@ -184,9 +186,14 @@ public enum BacklogSort {
     var pending: [String] = []
     var hits: [String: Answer] = [:]
     var kept: [String: Answer] = [:]
+    var stale: [String] = []
     for q in queued where seen.insert(q.subject).inserted {
       let s = q.subject
       guard !blocked.contains(s), ModelStage.hasLetter(s), !memo.asked.contains(s), memo.answers[s] == nil else { continue }
+      if let k = try keptAnswer(s) {
+        if rejected[s]?.contains(k) == true { continue }
+        stale.append(s)
+      }
       switch try cached(s) {
       case .unknown?: continue
       case .category(let c, let autoFile)? where rejected[s]?.contains(c) == true:
@@ -197,13 +204,14 @@ public enum BacklogSort {
         pending.append(s)
       }
     }
-    return Plan(queued: queued, pending: pending, blocked: blocked, cached: hits, rejected: rejected, kept: kept)
+    return Plan(queued: queued, pending: pending, blocked: blocked, cached: hits, rejected: rejected, kept: kept, stale: stale)
   }
 
-  public static func counts(rows: [SweepRow], categorizer: Categorizer, memo: Memo = .init(), cached: (String) throws -> CachedAnswer?)
-    rethrows -> Counts
-  {
-    let p = try plan(rows: rows, categorizer: categorizer, memo: memo, cached: cached)
+  public static func counts(
+    rows: [SweepRow], categorizer: Categorizer, memo: Memo = .init(), kept: (String) throws -> String? = { _ in nil },
+    cached: (String) throws -> CachedAnswer?
+  ) rethrows -> Counts {
+    let p = try plan(rows: rows, categorizer: categorizer, memo: memo, kept: kept, cached: cached)
     let waiting = Set(p.pending)
     var c = Counts(waitingNames: p.pending.count)
     var groups: Set<String> = []
@@ -225,7 +233,7 @@ public enum BacklogSort {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], modelTag: String, cache: any ModelAnswerCache, now: Int64
   ) throws -> Counts {
     let taxonomy = ModelTier.taxonomyHash(allowed)
-    return try counts(rows: rows, categorizer: categorizer) {
+    return try counts(rows: rows, categorizer: categorizer, kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: modelTag, now: now)
     }
   }
@@ -242,7 +250,7 @@ public enum BacklogSort {
     let taxonomy = ModelTier.taxonomyHash(allowed)
     let tag = cloud.modelTag
     let started = now()
-    let work = try plan(rows: rows, categorizer: categorizer, memo: memo) {
+    let work = try plan(rows: rows, categorizer: categorizer, memo: memo, kept: { try cache.keptAnswer(subject: $0, modelTag: tag) }) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: tag, now: started)
     }
     for (s, a) in work.cached { memo.answers[s] = Answer(category: a.category, modelTag: tag, autoFile: a.autoFile) }
@@ -289,7 +297,8 @@ public enum BacklogSort {
       }
     }
     do {
-      try cache.keepAnswers(keep, taxonomyHash: taxonomy)
+      try cache.dropKept(work.stale.map { (subject: $0, modelTag: tag) })
+      try cache.keepAnswers(keep)
     } catch {
       throw Interrupted(memo: memo, calls: calls)
     }

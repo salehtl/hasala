@@ -7,8 +7,10 @@ public struct SortResultRow: Sendable, Hashable, Identifiable {
   public var undo: UndoToken?
   public var ruleID: RuleID?
 
-  public var line: String {
-    "Sorted \(count) \(merchant) as \(category?.name ?? "Uncategorized")"
+  public var line: String { Self.line(count: count, merchant: merchant, category: category?.name ?? "Uncategorized") }
+
+  public static func line(count: Int, merchant: String, category: String) -> String {
+    count == 1 ? "Sorted \(merchant) as \(category)" : "Sorted \(count) \(merchant) as \(category)"
   }
 
   public var detail: String? {

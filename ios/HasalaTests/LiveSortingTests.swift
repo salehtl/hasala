@@ -271,6 +271,7 @@ struct LiveSortingTests {
     let rule = try #require(try l.reader.rules().first)
     let reached = l.ids["inc"]! + l.ids["paypal"]!
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource == "rule" } }
+    try await Mapper.eventually { l.store.state.rules.contains { $0.id == rule.id } }
     let stop = try #require(try l.store.apply(.stopRule(rule.id)))
     try await Mapper.eventually { try l.reader.rules().isEmpty }
     #expect(try l.reader.rulesIncludingRemoved().first { $0.id == rule.id }?.removed == true)
@@ -309,6 +310,9 @@ struct LiveSortingTests {
     try l.store.apply(.categorize(l.ids["com"]![0], "subscriptions", learnRule: true, project: nil))
     let reached = Array(l.ids["com"]!.dropFirst()) + l.ids["inc"]! + l.ids["paypal"]!
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource == "rule" } }
+    try await Mapper.eventually {
+      SortedForYouEngine.snapshot(l.store.state, now: MayaLedger.now).items.first.map { Set($0.txnIDs) == Set(reached) } == true
+    }
     let snapshot = SortedForYouEngine.snapshot(l.store.state, now: MayaLedger.now)
     let item = try #require(snapshot.items.first)
     #expect(Set(item.txnIDs) == Set(reached) && item.canStopRule)
@@ -497,6 +501,7 @@ struct LiveSortingTests {
     let reached = Array(l.ids["com"]!.dropFirst()) + l.ids["inc"]! + l.ids["paypal"]!
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef == rule.id } }
     #expect(try reached.allSatisfy { try l.row($0)?.categorySource == "rule" && l.row($0)?.needsReview == false })
+    try await Mapper.eventually { l.store.state.rules.contains { $0.id == rule.id } }
     try l.store.apply(.setRuleEnabled(rule.id, false))
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource == "held" } }
     for id in reached {
@@ -539,6 +544,29 @@ struct LiveSortingTests {
     l.store.undo(token)
     try await Mapper.eventually { try l.row(id)?.category == "entertainment" }
     #expect(try l.row(id)?.categorySource == "model" && l.row(id)?.needsReview == true)
+  }
+
+  @Test func aNotThisKeepsTheRejectedCloudflareGuessSoNoSweepSendsTheNameAgain() async throws {
+    let l = try await Self.ledger(suite: "sorting.kept", rows: Self.tailscale, guesses: ["bright": "shopping"])
+    let bright = l.ids["bright"] ?? []
+    let cache = FMCache(l.a.context.store)
+    let subject = Canon.subject("BRIGHTWELL ACADEMY FZE")
+    #expect(try cache.keptAnswer(subject: subject, modelTag: "cf-clef/1") == nil)
+    _ = try #require(try l.store.apply(.notThis(Self.brightwellRef, "shopping")))
+    try await Mapper.eventually { try bright.allSatisfy { try l.row($0)?.category == nil } }
+    try await Mapper.eventually { try cache.keptAnswer(subject: subject, modelTag: "cf-clef/1") == "shopping" }
+    let cloud = ModelSuggestionStageTests.Counting("cf-clef/1", answer: .category("shopping"))
+    let device = ModelSuggestionStageTests.Counting("apple-fm/27.1", answer: .unknown)
+    let anchor = Mapper.anchor
+    let stage = ModelSuggestionStage(
+      observer: l.a.observer, outbox: l.a.outbox, cache: cache, dictionary: AccountRuntime.dictionary, onDevice: device, cloud: cloud,
+      onDeviceAlone: false, nowMs: { anchor + 400 * 86_400_000 })
+    _ = await stage.run(.foreground)
+    #expect(!cloud.calls.contains(subject))
+    #expect(device.calls.contains(subject))
+    _ = await stage.backlogPass(BacklogSort.Memo(), dayLeft: 100)
+    #expect(!cloud.calls.contains(subject))
+    #expect(try bright.allSatisfy { try l.row($0)?.category == nil })
   }
 
   @Test func theBacklogMocksSpellingsAreOffTheDictionaryAndKeyAsCoreKeysThem() {

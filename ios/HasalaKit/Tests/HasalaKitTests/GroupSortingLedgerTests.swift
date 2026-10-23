@@ -355,6 +355,18 @@ struct GroupSortingLedgerTests {
     #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
   }
 
+  @Test func aResultOfOnePaymentReadsWithoutACount() throws {
+    let l = ledger()
+    _ = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
+    var one = try #require(SortResultEngine.row(l.state))
+    one.count = 1
+    #expect(one.line == "Sorted Tailscale as Subscriptions")
+    #expect(one.spoken == "Sorted 1 Tailscale payment as Subscriptions.")
+    one.count = 2
+    #expect(one.line == "Sorted 2 Tailscale as Subscriptions")
+    #expect(SortResultRow.line(count: 1, merchant: "Tailscale", category: "Software") == "Sorted Tailscale as Software")
+  }
+
   @Test func undoingTheBatchThatReplacedARowBringsTheEarlierRowBack() throws {
     let l = ledger()
     let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))

@@ -2,8 +2,10 @@ import CoreCategorize
 import CoreDomain
 import CoreProjection
 import CoreReplay
+import CoreStore
 import CoreWire
 import Foundation
+import HasalaCloud
 import HasalaModels
 
 nonisolated extension LedgerEditAuthor {
@@ -288,12 +290,39 @@ nonisolated extension LedgerEditAuthor {
       return (out, out.last?.lastAuthoredMs)
     }
     try await enqueueAll(blobs, auto: true)
+    keepRejected(rows, group: ref.key, category: c, resets: resets)
     var counted: [String?: Int] = [:]
     for r in resets where !r.needsReview && trust.corrected(c, modelTag: r.sourceRef) { counted[r.sourceRef, default: 0] += 1 }
     var inverses: [Inverse] = fresh.isEmpty ? [] : [.rejection(keys: fresh, category: c, rejected: false)]
     inverses += resets.map(Self.refile)
     inverses += counted.sorted { ($0.key ?? "") < ($1.key ?? "") }.map { .trust(category: c, modelTag: $0.key, corrections: $0.value) }
     return inverses
+  }
+
+  func keepRejected(_ rows: [RuleReach.Row], group: String, category c: String, resets: [RuleReach.Row]) {
+    let cache = FMCache(observer.context.store)
+    var keep: [ModelTier.StagedSuggestion] = []
+    var seen: Set<[String]> = []
+    func add(_ raw: String, _ tag: String) {
+      let s = Canon.subject(raw)
+      guard !s.isEmpty, seen.insert([s, tag]).inserted else { return }
+      keep.append(ModelTier.StagedSuggestion(subject: s, category: c, modelTag: tag, autoFile: false))
+    }
+    for r in resets { if let tag = r.sourceRef, TrustCounts.cloud(tag) { add(r.merchantRaw, tag) } }
+    if let taxonomy = try? reader.taxonomy() {
+      let hash = ModelTier.taxonomyHash(ModelTier.allowed(taxonomy.ordered))
+      let tag = CloudCategoryModel.defaultTag
+      let now = nowMs
+      for r in rows where r.merchantGroup == group && r.category == nil {
+        guard
+          case .category(let answer, _)? = try? cache.answer(
+            subject: Canon.subject(r.merchantRaw), taxonomyHash: hash, modelTag: tag, now: now),
+          answer == c
+        else { continue }
+        add(r.merchantRaw, tag)
+      }
+    }
+    try? cache.keepAnswers(keep)
   }
 
   func returnToReview(_ ids: [TxnID]) async throws -> [Inverse] {

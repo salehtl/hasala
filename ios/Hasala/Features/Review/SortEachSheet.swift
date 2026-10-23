@@ -19,11 +19,20 @@ struct SortEachSheet: View {
   private var rows: [ReviewCardModel] { model.groupRows(group) }
 
   private var shown: [ReviewCardModel] {
-    let all = rows
-    let filed = picked.keys.compactMap { id in app.store.state.txn(id).map { ReviewEngine.card($0, app.store.state) } }
-      .sorted { $0.id < $1.id }
-    let list = filed + all.filter { picked[$0.id] == nil }
+    let s = app.store.state
+    var cards: [ReviewCardModel] = rows.filter { picked[$0.id] == nil }
+    for id in picked.keys {
+      if let t = s.txn(id) { cards.append(ReviewEngine.card(t, s)) }
+    }
+    var at: [TxnID: LocalDateTime] = [:]
+    for c in cards { at[c.id] = s.txn(c.id)?.postedAt }
+    let list = cards.sorted { a, b in Self.before(a.id, at[a.id], b.id, at[b.id]) }
     return expanded ? list : Array(list.prefix(Self.firstPage))
+  }
+
+  static func before(_ a: TxnID, _ x: LocalDateTime?, _ b: TxnID, _ y: LocalDateTime?) -> Bool {
+    guard let x, let y, x != y else { return a < b }
+    return x > y
   }
 
   private var hiddenCount: Int { max(0, rows.count + picked.count - Self.firstPage) }

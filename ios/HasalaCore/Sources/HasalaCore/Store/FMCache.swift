@@ -46,18 +46,33 @@ public final class FMCache: ModelAnswerCache {
     }
   }
 
-  public func keepAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String) throws {
+  public func keptAnswer(subject: String, modelTag: String) throws -> String? {
+    let key = ModelTier.keptKey(subject: subject, modelTag: modelTag)
+    return try db.read { db in try String.fetchOne(db, sql: "SELECT category FROM fm_kept WHERE key = ?", arguments: [key]) }
+  }
+
+  public func keepAnswers(_ entries: [ModelTier.StagedSuggestion]) throws {
     guard !entries.isEmpty else { return }
     try db.write { db in
       for e in entries {
         try db.execute(
-          sql: "INSERT OR REPLACE INTO fm_cache (key, expires_at_ms, category, auto_file) VALUES (?, ?, ?, ?)",
-          arguments: [
-            ModelTier.cacheKey(subject: e.subject, taxonomyHash: taxonomyHash, modelTag: e.modelTag), Int64.max, e.category,
-            e.autoFile,
-          ])
+          sql: "INSERT OR REPLACE INTO fm_kept (key, category) VALUES (?, ?)",
+          arguments: [ModelTier.keptKey(subject: e.subject, modelTag: e.modelTag), e.category])
       }
     }
+  }
+
+  public func dropKept(_ entries: [(subject: String, modelTag: String)]) throws {
+    guard !entries.isEmpty else { return }
+    try db.write { db in
+      for e in entries {
+        try db.execute(sql: "DELETE FROM fm_kept WHERE key = ?", arguments: [ModelTier.keptKey(subject: e.subject, modelTag: e.modelTag)])
+      }
+    }
+  }
+
+  public func keptCount() throws -> Int {
+    try db.read { db in try Int.fetchOne(db, sql: "SELECT count(*) FROM fm_kept") ?? 0 }
   }
 
   @discardableResult

@@ -102,8 +102,9 @@ struct RejectionSweepTests {
       rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)], context: .foreground,
       cache: cache, now: { later })
     #expect(again.isEmpty && cloud.calls.count == 1)
-    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == .category("shopping", autoFile: true))
-    #expect(try cache.answer(subject: "second shop dxb", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == .category("dining", autoFile: false))
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == nil)
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "shopping")
+    #expect(try cache.keptAnswer(subject: "second shop dxb", modelTag: "cf-clef/1") == "dining")
 
     let backlogCache = MemoryCache()
     try backlogCache.recordAnswers(
@@ -121,6 +122,98 @@ struct RejectionSweepTests {
       rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: .init(), cache: backlogCache, now: { later },
       autoFile: true)
     #expect(next.suggestions.isEmpty && next.calls == 0 && backlog.calls == ["second shop dxb"])
+  }
+
+  static let customWant = ModelTier.allowed(
+    TaxonomyV1.builtins + [
+      CategoryInfo(
+        id: "c_tea_rooms", name: "Tea rooms", kind: .spending, bucket: .want, icon: "cup", active: true, builtin: false, sortKey: 100,
+        parent: "dining")
+    ])
+
+  @Test("a kept rejection outlives a change of the category list, so no new taxonomy sends the name again")
+  func keptPastTaxonomy() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cache = MemoryCache()
+    try cache.recordAnswers(
+      [ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)],
+      taxonomyHash: ModelTier.taxonomyHash(T.allowed), now: now)
+    let rows = Self.rejecting(l.rows(), ["shopping"])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("shopping"))
+    let device = RecordingModel("apple-fm/26.1", reply: .unknown)
+    let first = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)], context: .foreground,
+      cache: cache, now: { now })
+    #expect(first.isEmpty && cloud.calls.isEmpty)
+    #expect(ModelTier.taxonomyHash(Self.customWant) != ModelTier.taxonomyHash(T.allowed))
+    let again = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: T.categorizer, allowed: Self.customWant, stages: [.cloud(cloud), .onDevice(device)],
+      context: .foreground, cache: cache, now: { now })
+    #expect(again.isEmpty && cloud.calls.isEmpty && device.calls.count == 2)
+    let backlog = BacklogCloud(fallback: (.category("shopping"), true))
+    let p = try await BacklogSort.pass(
+      rows: rows, categorizer: T.categorizer, allowed: Self.customWant, cloud: backlog, memo: .init(), cache: cache, now: { now },
+      autoFile: true)
+    #expect(p.suggestions.isEmpty && p.pending == 0 && backlog.calls.isEmpty)
+    let counts = try BacklogSort.counts(
+      rows: rows, categorizer: T.categorizer, allowed: Self.customWant, modelTag: "cf-clef/1", cache: cache, now: now)
+    #expect(counts.waitingNames == 0)
+  }
+
+  @Test("a rejection kept at Not this holds after the 30-day entry is purged before the next sweep")
+  func keptBeforeFirstSweep() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cache = MemoryCache()
+    let hash = ModelTier.taxonomyHash(T.allowed)
+    let answer = ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)
+    try cache.recordAnswers([answer], taxonomyHash: hash, now: now)
+    try cache.keepAnswers([answer])
+    let later = now + 31 * 86_400_000
+    cache.purgeExpired(now: later)
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: hash, modelTag: "cf-clef/1", now: later) == nil)
+    let rows = Self.rejecting(l.rows(), ["shopping"])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("shopping"))
+    let device = RecordingModel("apple-fm/26.1", reply: .category("dining"))
+    let s = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud), .onDevice(device)], context: .foreground,
+      cache: cache, now: { later })
+    #expect(cloud.calls.isEmpty && s.map(\.category) == ["dining"] && s.map(\.modelTag) == ["apple-fm/26.1"])
+    let backlog = BacklogCloud(fallback: (.category("shopping"), true))
+    let p = try await BacklogSort.pass(
+      rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: .init(), cache: cache, now: { later },
+      autoFile: true)
+    #expect(p.suggestions.isEmpty && backlog.calls.isEmpty)
+  }
+
+  @Test("a kept answer whose rejection was undone is dropped, so the name is asked again and refreshed")
+  func keptAfterUndo() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit"), ("SECOND SHOP DXB", "debit")])
+    let cache = MemoryCache()
+    try cache.keepAnswers([
+      ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1"),
+      ModelTier.StagedSuggestion(subject: "second shop dxb", category: "shopping", modelTag: "cf-clef/1"),
+    ])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let s = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground, cache: cache,
+      now: { now })
+    #expect(Set(cloud.calls.map(\.subject)) == ["cafe example jbr", "second shop dxb"] && s.allSatisfy { $0.category == "dining" })
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == nil)
+
+    let fresh = MemoryCache()
+    try fresh.keepAnswers([ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1")])
+    let backlog = BacklogCloud(fallback: (.category("dining"), false))
+    let counts = try BacklogSort.counts(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: fresh, now: now)
+    #expect(counts.waitingNames == 2)
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: .init(), cache: fresh, now: { now },
+      autoFile: false)
+    #expect(Set(backlog.calls) == ["cafe example jbr", "second shop dxb"] && p.suggestions.count == 2)
+    #expect(try fresh.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == nil)
   }
 
   @Test("the request and the cache key are the same with and without rejections")
