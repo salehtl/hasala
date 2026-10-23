@@ -140,17 +140,7 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].history.sort(by: >)
     }
 
-    switch edit {
-    case .addTransaction(let d):
-      if let refusal = d.refusal { throw refusal }
-      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
-      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      var t = d.txn(id: "manual-\(nextManual)")
-      t.merchantKey = t.merchant.lowercased()
-      s.txns.append(t)
-      nextManual += 1
-      title = nil
-    case .categorize(let id, let c, let learnRule, let project):
+    func sort(_ id: TxnID, into c: CategoryID, learnRule: Bool, project: ProjectID?) throws(ActionError) {
       guard s.category(c) != nil else { throw .notFound }
       let old = s.txn(id)
       try editTxn(id) { t in
@@ -161,7 +151,7 @@ public final class InMemoryLedger: LedgerStore {
       if learnRule, let t = old, t.canAlwaysUse, let ref = t.groupRef {
         let pool = s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != id }
         let patterns = GroupRule.patterns(filed: t, members: pool, filing: c)
-        guard !patterns.isEmpty else { break }
+        guard !patterns.isEmpty else { return }
         touchedRules = true
         let rule: Rule
         let overlapping = s.rules.firstIndex { r in
@@ -191,6 +181,20 @@ public final class InMemoryLedger: LedgerStore {
           title = SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: categoryName(c), all: !left)
         }
       }
+    }
+
+    switch edit {
+    case .addTransaction(let d):
+      if let refusal = d.refusal { throw refusal }
+      if let c = d.categoryID, s.category(c) == nil { throw .notFound }
+      if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
+      var t = d.txn(id: "manual-\(nextManual)")
+      t.merchantKey = t.merchant.lowercased()
+      s.txns.append(t)
+      nextManual += 1
+      title = nil
+    case .categorize(let id, let c, let learnRule, let project):
+      try sort(id, into: c, learnRule: learnRule, project: project)
     case .sortGroup(let ref, let c, let alwaysUse, let project):
       guard s.category(c) != nil else { throw .notFound }
       if let project, s.project(project) == nil { throw .notFound }
@@ -571,11 +575,23 @@ public final class InMemoryLedger: LedgerStore {
       guard ExchangeRates.isSettable(currency, nil) else { throw .invalidAmount }
       s.unsetRate(currency)
       title = nil
-    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
+    case .addCategory(var d):
       if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
-      CategoriesEngine.apply(edit, to: &s, newID: "c_mock\(nextCategory)", month: now.date.yearMonth)
-      if case .addCategory = edit { nextCategory += 1 }
+      if d.id == nil { d.id = newCategoryID() }
+      CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
       title = nil
+    case .editCategory, .archiveCategory, .restoreCategory:
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      CategoriesEngine.apply(edit, to: &s, month: now.date.yearMonth)
+      title = nil
+    case .addCategoryAndSort(var d, let id, let alwaysUse, let project):
+      if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
+      guard s.txn(id) != nil else { throw .notFound }
+      if let project, s.project(project) == nil { throw .notFound }
+      let c = d.id ?? newCategoryID()
+      d.id = c
+      CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
+      try sort(id, into: c, learnRule: alwaysUse, project: project)
     case .setNotifications(let level):
       s.prefs.notifications = level
       title = nil
@@ -611,6 +627,12 @@ public final class InMemoryLedger: LedgerStore {
     nextToken += 1
     undoRecords[token.id] = record
     return token
+  }
+
+  public func newCategoryID() -> CategoryID {
+    while state.category("c_mock\(nextCategory)") != nil { nextCategory += 1 }
+    defer { nextCategory += 1 }
+    return "c_mock\(nextCategory)"
   }
 
   public func undo(_ token: UndoToken) {

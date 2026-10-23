@@ -177,6 +177,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    let edit = withCategoryID(edit)
     if let why = try categoryRefusal(edit) { throw .refused(why) }
     let before = state
     var s = state
@@ -218,7 +219,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     switch edit {
     case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .trackCandidate, .dismissCandidate, .reapplyBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
       .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome, .categorize, .sortGroup, .notThis, .returnToReview,
-      .stopRule:
+      .stopRule, .addCategoryAndSort:
       true
     case .resolveCopy(_, let merge): merge
     default: false
@@ -289,6 +290,24 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   func newProjectID() -> ProjectID {
     (try? Ulid.mint(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom())) ?? UUID().uuidString
+  }
+
+  func newCategoryID() -> CategoryID {
+    (try? OpAuthor.newCategoryID(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom()))
+      ?? CategoryDraft.fallbackID()
+  }
+
+  func withCategoryID(_ edit: LedgerEdit) -> LedgerEdit {
+    switch edit {
+    case .addCategory(var d) where d.id == nil:
+      d.id = newCategoryID()
+      return .addCategory(d)
+    case .addCategoryAndSort(var d, let id, let alwaysUse, let project) where d.id == nil:
+      d.id = newCategoryID()
+      return .addCategoryAndSort(d, id, alwaysUse: alwaysUse, project: project)
+    default:
+      return edit
+    }
   }
 
   /// Applies `edit` to `s` as the projection will show it, or throws why it can't be
@@ -527,10 +546,18 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         project == nil ? "Taken out of the project" : ids.count == 1 ? "Added to \(name)" : "Added \(ids.count) to \(name)",
         inverses
       )
-    case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
-      CategoriesEngine.apply(
-        edit, to: &s, newID: "pending-category-\(UUID().uuidString.lowercased())", month: now.date.yearMonth)
+    case .addCategory(let d):
+      guard d.id != nil else { throw .notFound }
+      CategoriesEngine.apply(edit, to: &s, month: now.date.yearMonth)
       return (nil, [])
+    case .editCategory, .archiveCategory, .restoreCategory:
+      CategoriesEngine.apply(edit, to: &s, month: now.date.yearMonth)
+      return (nil, [])
+    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
+      guard let c = d.id, d.parent.flatMap({ s.category($0) }) != nil else { throw .notFound }
+      if let project, s.project(project) == nil { throw .notFound }
+      CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
+      return try patch(.categorize(id, c, learnRule: alwaysUse, project: project), &s, now: now, receiptID: receiptID)
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])

@@ -333,4 +333,45 @@ struct CategoryManagementTests {
     let back = try SnapshotCodec.decode(try SnapshotCodec.encode(StateSnapshot(state: s))).state
     #expect(back == s && back.categories[ExactKey("c_1x")]?.parent == "dining")
   }
+
+  @Test("a client-made id is kept, and the new category and the filed row share one blob")
+  func clientMadeID() throws {
+    var s = State()
+    var e = OpAuthor(ctx())
+    let txn = try e.manualEntry(amountMinor: 1_200, currency: "AED", direction: "debit", localWallMs: now, merchant: "CAFE", category: nil)
+    try Self.apply(e, &s, seq: 1)
+    let id = try OpAuthor.newCategoryID(ms: now, random: Counter())
+    #expect(id.hasPrefix("c_") && id.utf8.count == 28 && OpAuthor.isNewCategoryID(id))
+    #expect(!OpAuthor.isNewCategoryID("dining") && !OpAuthor.isNewCategoryID("c_X"))
+
+    var a = OpAuthor(ctx(own: now + 10))
+    let version = try #require(s.txns[txn]).version
+    try a.createCategoryAndFile(
+      id: id, name: " Coffee ", parent: "dining", icon: "cup", in: TaxonomyView(state: s), txnID: txn, parentVersion: version,
+      project: "01JC0000000000000000000005")
+    let blob = try a.build()
+    #expect(blob.ops.map(\.type) == [.categoryDefined, .txnCategorized, .txnAnnotated])
+    try Replay.foldOps(blob.ops, seq: 2, writerID: w, into: &s)
+    let c = try #require(TaxonomyView(state: s).info(id))
+    #expect(c.name == "Coffee" && c.parent == "dining" && c.active && !c.builtin)
+    let t = try #require(s.txns[txn])
+    #expect(t.category == id && !t.needsReview && t.categorySource?.kind == .user && t.annotation("project_id") == "01JC0000000000000000000005")
+  }
+
+  @Test("a refused or reused id drafts nothing")
+  func clientMadeIDRefusals() throws {
+    let t = Self.view([Self.custom(1, name: "Coffee")])
+    var a = OpAuthor(ctx())
+    func file(_ id: String, _ name: String, in view: TaxonomyView = t) -> String? {
+      Self.refusal { () throws(AuthorError) in
+        try a.createCategoryAndFile(id: id, name: name, parent: "dining", in: view, txnID: "t_1", parentVersion: 1)
+      }
+    }
+    #expect(file("c_01jc0000000000000000000009", "coffee") == CategoryRefusal.nameTaken("Coffee").message)
+    #expect(file("c_01jc0000000000000000000009", "Tea\u{202E}") == CategoryRefusal.nameInvalid.message)
+    #expect(file("c_01jc0000000000000000000009", "Tea", in: Self.view((1...20).map { Self.custom($0) })) == CategoryRefusal.atCap(max: 20).message)
+    #expect(file("c_1", "Tea") == "invalidOp(\"category_defined: id\")")
+    #expect(file("dining", "Tea") == "invalidOp(\"category_defined: id\")")
+    #expect(a.count == 0)
+  }
 }

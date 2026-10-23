@@ -105,6 +105,29 @@ struct CategoryEditorModelTests {
     #expect(!CategoryEditorModel(app: app, category: "emergency-fund").parentOptional)
   }
 
+  @Test func aNewCategoryGuessesItsIconUntilOneIsPicked() throws {
+    let app = app()
+    app.router.profile.append(.categoryEditor(nil))
+    let m = CategoryEditorModel(app: app, category: nil)
+    #expect(m.glyph == .tag && !m.glyphPicked)
+    m.name = "Coffee"
+    #expect(m.glyph == .dining)
+    m.name = "رحلة"
+    #expect(m.glyph == .travel)
+    m.name = "Kids"
+    #expect(m.glyph == .tag)
+    m.pick(.flag)
+    m.name = "Grocery runs"
+    #expect(m.glyph == .flag && m.glyphPicked)
+    m.parent = "groceries"
+    m.save()
+    #expect(m.refusal == nil)
+    #expect(app.store.state.categories.contains { $0.name == "Grocery runs" && $0.glyph == .flag })
+    let existing = CategoryEditorModel(app: app, category: "dining")
+    existing.name = "Flights"
+    #expect(existing.glyph == .dining)
+  }
+
   @Test func countsAsListsTheThreeBuckets() throws {
     let app = app()
     let m = CategoryEditorModel(app: app, category: nil)
