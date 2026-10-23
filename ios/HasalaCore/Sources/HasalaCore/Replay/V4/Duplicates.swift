@@ -20,11 +20,24 @@ public enum DuplicateRules {
 
   static func transferRole(_ t: Txn) -> TransferRole? {
     guard !t.unparsed, t.entryMethod == "mailbox", t.bank != nil, utf8Equal(t.direction, "debit"),
-      (t.postedPrecision ?? "time") == "time", let id = templateID(t.gates?.template)
+      (t.postedPrecision ?? "time") == "time"
     else { return nil }
-    if transferNoticeTemplates.contains(where: { utf8Equal($0, id) }) { return .notice }
-    if transferAlertTemplates.contains(where: { utf8Equal($0, id) }) { return .alert }
-    return nil
+    if let id = templateID(t.gates?.template) {
+      if transferNoticeTemplates.contains(where: { utf8Equal($0, id) }) { return .notice }
+      if transferAlertTemplates.contains(where: { utf8Equal($0, id) }) { return .alert }
+    }
+    switch t.gates?.kind {
+    case "transfer_notice": return .notice
+    case "account_debit_alert": return .alert
+    default: return nil
+    }
+  }
+
+  static func implicitTransferPair(_ a: Txn, _ b: Txn) -> Bool {
+    guard a.verifiedSender, b.verifiedSender, let ra = transferRole(a), let rb = transferRole(b), ra != rb,
+      let ka = transferKey(a), let kb = transferKey(b)
+    else { return false }
+    return utf8Equal(ka, kb)
   }
 
   static func transferKey(_ t: Txn) -> String? {
@@ -81,7 +94,7 @@ extension State {
       {
         copyCandidates[key, default: []].append(winner)
       }
-      detectTransferCopy(winner)
+      detectTransferCopy(winner, e)
       return
     }
     registerDedupeKeys(of: id, to: id)
@@ -95,10 +108,10 @@ extension State {
       }
       copyCandidates[key, default: []].append(id)
     }
-    detectTransferCopy(id)
+    detectTransferCopy(id, e)
   }
 
-  mutating func detectTransferCopy(_ id: String) {
+  mutating func detectTransferCopy(_ id: String, _ e: LogEntry) {
     guard let b = txns[id], let key = DuplicateRules.transferKey(b).map(ExactKey.init(_:)), let role = DuplicateRules.transferRole(b) else { return }
     let bucket = copyCandidates[key] ?? []
     if b.isLive, b.copyOf == nil, !transferPartnered(id, role: role, in: bucket), let mb = try? parseInstantMs(b.postedAt) {
@@ -111,9 +124,17 @@ extension State {
         guard gap <= DuplicateRules.transferCopyWindowMs, !transferPartnered(oid, role: r, in: bucket) else { continue }
         if best.map({ gap < $0.gap }) ?? true { best = (oid, gap) }
       }
-      if let best { txns[id]!.copyOf = best.id }
+      if let best {
+        txns[id]!.copyOf = best.id
+        if DuplicateRules.implicitTransferPair(txns[id]!, txns[best.id]!) { mergeTransfer(id, into: best.id, op: e.op.opID) }
+      }
     }
     if !bucket.contains(where: { utf8Equal($0, id) }) { copyCandidates[key, default: []].append(id) }
+  }
+
+  mutating func mergeTransfer(_ id: String, into other: String, op: String) {
+    mergeRow(id, into: other, kind: "transfer", op: op)
+    registerDedupeKeys(of: id, to: other)
   }
 
   func transferPartnered(_ id: String, role: DuplicateRules.TransferRole, in bucket: [String]) -> Bool {
@@ -269,6 +290,11 @@ extension State {
       if t.mergedInto != nil, !unmergeRow(id, seq: e.seq) { return }
       txns[id]!.copyDecision = "keep_both"
     default:
+      if let o = txns[other], DuplicateRules.implicitTransferPair(t, o) {
+        txns[id]!.copyDecision = nil
+        if t.mergedInto == nil, t.isLive, o.isLive { mergeTransfer(id, into: other, op: e.op.opID) }
+        return
+      }
       if t.mergedInto != nil, !unmergeRow(id, seq: e.seq) { return }
       txns[id]!.copyDecision = nil
     }

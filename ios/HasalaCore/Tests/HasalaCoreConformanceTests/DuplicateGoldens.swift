@@ -17,15 +17,18 @@ enum DuplicateGoldens {
   }
 
   static func dib(
-    _ n: Int, template: String, merchant: String, last4: String, at: String, amount: String = "314159", grant: String = R.a
+    _ n: Int, template: String, merchant: String, last4: String, at: String, amount: String = "314159", grant: String = R.a,
+    verified: Bool = true, kind: String? = nil
   ) -> String {
+    let trust = verified ? #""ar":"pass","sender":"trusted""# : #""ar":"fail","sender":"untrusted""#
+    let marker = kind.map { #","kind":"\#($0)""# } ?? ""
     let p =
-      #"{"amount_minor":"\#(amount)","currency":"AED","direction":"debit","posted_at":"2026-10-03T\#(at).000Z","posted_precision":"time","merchant_raw":"\#(merchant)","last4":"\#(last4)","needs_review":true,"tier":"template","category":null,"entry_method":"mailbox","bank":"dib","provenance":{"provider":"gmail","grant_id":"\#(grant)","message_id":"msg-\#(n)"},"gates":{"ar":"pass","sender":"trusted","template":"\#(template)","card":"unknown","forwarded":false}}"#
+      #"{"amount_minor":"\#(amount)","currency":"AED","direction":"debit","posted_at":"2026-10-03T\#(at).000Z","posted_precision":"time","merchant_raw":"\#(merchant)","last4":"\#(last4)","needs_review":true,"tier":"template","category":null,"entry_method":"mailbox","bank":"dib","provenance":{"provider":"gmail","grant_id":"\#(grant)","message_id":"msg-\#(n)"},"gates":{\#(trust),"template":"\#(template)","card":"unknown","forwarded":false\#(marker)}}"#
     return G.op("txn_ingested", p, id: "op-ingest-\(n)", entity: ("txn", G.ulid(n)), ingest: G.ingestID(n))
   }
 
-  static func notice(_ n: Int, at: String, amount: String = "314159") -> String {
-    dib(n, template: "dib.transfer.v1@1", merchant: "DIB TRANSFER", last4: "0909", at: at, amount: amount)
+  static func notice(_ n: Int, at: String, amount: String = "314159", verified: Bool = true) -> String {
+    dib(n, template: "dib.transfer.v1@1", merchant: "DIB TRANSFER", last4: "0909", at: at, amount: amount, verified: verified)
   }
 
   static func debitAlert(_ n: Int, at: String, merchant: String = "MB FUND TRANSFER DEBIT", amount: String = "314159") -> String {
@@ -48,7 +51,7 @@ enum DuplicateGoldens {
   static let set = FoldGoldenSet(
     file: "fold-v4-duplicates.json",
     note:
-      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
+      "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). When both rows of a transfer pair say ar pass and sender trusted, the later is merged into the earlier at once (merge_kind transfer, merge_op the ingest op, registered under its dedupe keys) and nobody is asked; txn_copy_resolved keep_both takes it out again, and a null decision merges it again. A pair with an unverified row is held as before. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
     cases: [
       FoldGoldenCase(
         name: "certain-merge",
@@ -177,7 +180,7 @@ enum DuplicateGoldens {
         ]),
       FoldGoldenCase(
         name: "transfer-notice-holds-its-alert",
-        note: "A DIB transfer notice, then the account debit alert for the same transfer three minutes later, with its own merchant and card: the alert is held as the notice's copy. A same-amount alert two hours later stays its own row.",
+        note: "A DIB transfer notice, then the account debit alert for the same transfer three minutes later, with its own merchant and card: the alert is merged into the notice. A same-amount alert two hours later stays its own row.",
         blobs: [
           (1, G.w1, [notice(1, at: "10:00:00")]),
           (2, G.w1, [debitAlert(2, at: "10:03:00")]),
@@ -192,18 +195,40 @@ enum DuplicateGoldens {
         ]),
       FoldGoldenCase(
         name: "transfer-alert-then-notice",
-        note: "The alert arrives first and the English notice twenty minutes later: the notice is the held copy.",
+        note: "The alert arrives first and the English notice twenty minutes later: the notice is the merged copy.",
         blobs: [
           (1, G.w1, [debitAlert(1, at: "10:00:00")]),
           (2, G.w1, [dib(2, template: "dib.money-transfer.v1@1", merchant: "SAMPLE BANK PJSC", last4: "0202", at: "10:20:00")]),
         ]),
       FoldGoldenCase(
         name: "transfer-one-to-one",
-        note: "Two same-amount transfers twenty minutes apart, each with its alert, and a third alert: each alert is held against the nearest notice that has none, the notices never pair with each other, and the third alert stays its own row.",
+        note: "Two same-amount transfers twenty minutes apart, each with its alert, and a third alert: each alert is merged into the nearest notice that has none, the notices never pair with each other, and the third alert stays its own row.",
         blobs: [
           (1, G.w1, [notice(1, at: "10:00:00"), notice(2, at: "10:20:00")]),
           (2, G.w1, [debitAlert(3, at: "10:01:00"), debitAlert(4, at: "10:21:00")]),
           (3, G.w1, [debitAlert(5, at: "10:22:00", merchant: "OWN ACCOUNT TRNSFER")]),
+        ]),
+      FoldGoldenCase(
+        name: "transfer-keep-both-then-undo",
+        note: "The person says the merged alert is its own movement (keep_both), then undoes that (null): the alert is merged into the notice again.",
+        blobs: [
+          (1, G.w1, [notice(1, at: "10:00:00"), debitAlert(2, at: "10:02:00")]),
+          (2, G.w1, [resolve(2, other: 1, "keep_both", parent: 1, id: "op-keep-2")]),
+          (3, G.w1, [resolve(2, other: 1, nil, parent: 2, id: "op-undo-2")]),
+        ]),
+      FoldGoldenCase(
+        name: "transfer-by-kind-marker",
+        note: "Two rows read without a template carry gates.kind transfer_notice and account_debit_alert: they pair as a template pair does. A third row's unknown kind is dropped and it stays its own row.",
+        blobs: [
+          (1, G.w1, [dib(1, template: "none", merchant: "SAMPLE PAYEE", last4: "0909", at: "10:00:00", kind: "transfer_notice")]),
+          (2, G.w1, [dib(2, template: "none", merchant: "ACCOUNT DEBIT", last4: "0606", at: "10:04:00", kind: "account_debit_alert")]),
+          (3, G.w1, [dib(3, template: "none", merchant: "OTHER PAYEE", last4: "0606", at: "10:06:00", kind: "card_purchase")]),
+        ]),
+      FoldGoldenCase(
+        name: "transfer-unverified-held",
+        note: "The notice's sender did not verify: its alert is held as its copy for the person, as before.",
+        blobs: [
+          (1, G.w1, [notice(1, at: "10:00:00", verified: false), debitAlert(2, at: "10:03:00")]),
         ]),
     ])
 
