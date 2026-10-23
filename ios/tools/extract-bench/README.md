@@ -1,6 +1,8 @@
 # Extraction bench
 
-Scores email readers on bank notification mail: today's templates (`templates`), general rules (`rules`), layouts learned by comparing mails (`learned`), each of those two with promo lines removed (`+promo`), and the combination (`chain`: templates first, then the two readers, confident only when they agree).
+Scores email readers on bank notification mail: today's templates (`templates`), and HasalaCore's `CoreExtract` readers, which always drop promo lines first: general rules (`rules`), layouts learned by comparing mails (`learned`), the two combined and gated on agreement (`combined`), and the app's order (`chain`: templates first, then the combined reader). The bench keeps no reader of its own; `Sources/ExtractBench/Readers.swift` only adapts `CoreExtract` to the bench.
+
+`chain` follows `Disposition` in `CoreMailbox`: a template hit with a pending status is disregarded; a template hit with a pending phrase, or whose AED amount the readers do not confirm, is held; with no template hit, the combined reading files only when it meets `ExtractReading.meetsAgreementBar`, and a pending reading is disregarded. The mail trust gates (authentication, trusted sender) are not simulated.
 
 It also simulates a bank changing its emails (`reword`, `reorder`, `balance-line`, `amount-format`, `one-line`, `english`, `arabic`, `boilerplate`, and the held-out `reword-unseen` and `boilerplate-unseen`). Each change is applied to the later half of each sender's mail, and only that half is scored. The held-out phrasings in `MutationHeldOut.swift` must stay out of the reader lexicons and the promo filter.
 

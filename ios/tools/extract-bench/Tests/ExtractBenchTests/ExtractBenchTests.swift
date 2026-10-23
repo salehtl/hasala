@@ -8,89 +8,73 @@ func reading(_ amount: Int64?, _ currency: String?, _ c: Double, direction: Stri
     isTransaction: true, amountMinor: amount, currency: currency, merchant: merchant, direction: direction, confidence: c)
 }
 
-@Suite struct GateTests {
-  @Test func oneStrongReaderDoesNotLiftAWeakOne() {
-    let out = Gate.combine(learned: reading(1000, "AED", 0.4), rules: reading(1000, "AED", 0.8))
-    #expect(out.confidence < Gate.fileWithoutReview)
-  }
-
-  @Test func bothStrongReadersFile() {
-    let out = Gate.combine(learned: reading(1000, "AED", 0.85), rules: reading(1000, "AED", 0.9))
-    #expect(out.confidence >= Gate.fileWithoutReview)
-    #expect(out.confidence == 0.85)
-  }
-
-  @Test func differentDirectionsAreHeld() {
-    let out = Gate.combine(learned: reading(1000, "AED", 0.9, direction: "debit"), rules: reading(1000, "AED", 0.9, direction: "credit"))
-    #expect(out.confidence < Gate.fileWithoutReview)
-  }
-
-  @Test func merchantComesFromTheLeadingReading() {
-    let l = reading(1000, "AED", 0.82, merchant: "CURRENT ACCOUNT")
-    let r = reading(1000, "AED", 0.9, merchant: "SAMPLE SHOP")
-    #expect(Gate.combine(learned: l, rules: r).merchant == "SAMPLE SHOP")
-    let r2 = reading(1000, "AED", 0.9, merchant: nil)
-    #expect(Gate.combine(learned: l, rules: r2).merchant == "CURRENT ACCOUNT")
-  }
-
-  @Test func templateWithANonISOCurrencyIsHeld() {
-    let t = reading(1000, "DHS", 1)
-    #expect(Gate.checkTemplate(t, learned: .none, rules: .none).confidence < Gate.fileWithoutReview)
-  }
-
-  @Test func templateContradictedByAReaderIsHeld() {
-    let t = reading(20000, "AED", 1)
-    let out = Gate.checkTemplate(t, learned: reading(20000, "AED", 0.9), rules: reading(10000, "AED", 0.6))
-    #expect(out.confidence < Gate.fileWithoutReview)
-  }
-
-  @Test func templateConfirmedOrUnreadStaysConfident() {
-    let t = reading(20000, "AED", 1)
-    #expect(Gate.checkTemplate(t, learned: reading(20000, "AED", 0.9), rules: .none).confidence == 1)
-    #expect(Gate.checkTemplate(t, learned: .none, rules: .none).confidence == 1)
-  }
+func mail(_ lines: [String], subject: String = "Card transaction alert", sender: String = "bank-b.example", at: Int64 = 1_800_000_000_000) -> Mail {
+  Mail(id: "m\(at)", origin: "synthetic", sender: sender, receivedAtMs: at, subject: subject, text: lines.joined(separator: "\n"), listUnsubscribe: false)
 }
 
-@Suite struct PromoFilterTests {
-  @Test(arguments: [
-    "Purchase of AED 250.00 at SAMPLE DUTY FREE SHOP",
-    "Purchase of AED 250.00 at SAMPLE LEARNING CENTRE",
-    "Purchase of AED 250.00 at DARWIN SAMPLE CAFE",
-    "AED 250.00 SAMPLE POINTSHOP",
-    "شراء بمبلغ 250.00 درهم لدى معرض العينة",
-    "Transaction of AED 99.00 debited at SAMPLE REWARDS CAFE",
-  ])
-  func keepsTransactionLines(_ line: String) {
-    #expect(!PromoFilter.isPromo(line))
-  }
-
-  @Test(arguments: [
-    "Earn AED 500 cashback when you shop with your card this month.",
-    "Get up to AED 200 on your next booking.",
-    "Win AED 1,000 in our monthly draw.",
-    "Enjoy 20% off at partner stores.",
-    "اربح استرداد نقدي بقيمة 500 درهم عند التسوق هذا الشهر.",
-    "احصل على 300 نقطة عند التسوق.",
-  ])
-  func dropsPromoLines(_ line: String) {
-    #expect(PromoFilter.isPromo(line))
-  }
+func purchase(_ amount: String, _ merchant: String, at: Int64) -> Mail {
+  mail(
+    [
+      "Dear Customer,", "Your credit card ending with 7310 was used for a purchase.", "Amount", "AED \(amount)", "Merchant", merchant,
+      "Available limit", "AED 12,000.00", "Regards,", "Bank B",
+    ], at: at)
 }
 
-@Suite struct HundredthsTests {
-  @Test func bothReadersAgreeOnIDR() {
-    #expect(ITokenizer.minor("150,000.00", currency: "IDR") == 15_000_000)
-    #expect(RuleMoneyParser.scan("IDR 150,000.00", line: 0, labelCurrency: nil).first?.minor == 15_000_000)
+func purchaseAR(_ amount: String, _ merchant: String, at: Int64) -> Mail {
+  mail(
+    [
+      "معاملة بطاقة ائتمان", "عزيزي المتعامل,", "إشعار مشتريات بتاريخ 01-02-2030 10:15 بالتفاصيل التالية.", "المبلغ", "AED \(amount)",
+      "رقم البطاقة", "XXXX4821", "الدفع الى", merchant, "إجمالي الرصيد المتوفر", "AED 9,876.00", "مع اطيب التحيات،", "بنك أ",
+    ], subject: "Bank A Notification", sender: "bank-a.example", at: at)
+}
+
+@Suite struct AdapterTests {
+  @Test func rulesReadThroughCoreExtract() {
+    let r = RulesReader().read(purchase("1,234.50", "SAMPLE SHOP", at: 1))
+    #expect(r.isTransaction)
+    #expect(r.amountMinor == 123_450)
+    #expect(r.currency == "AED")
+    #expect(r.direction == "debit")
+    #expect(r.merchant == "SAMPLE SHOP")
   }
 
-  @Test func bothReadersUseHundredthsForEveryCurrency() {
-    #expect(ITokenizer.minor("1,200", currency: "JPY") == 120_000)
-    #expect(RuleMoneyParser.scan("JPY 1,200", line: 0, labelCurrency: nil).first?.minor == 120_000)
+  @Test func chainHoldsAnUnlearnedLayoutAndFilesOnceLearned() {
+    let c = ChainReader()
+    let first = c.read(purchaseAR("10.00", "SAMPLE 0", at: 1))
+    #expect(first.isTransaction)
+    #expect(first.confidence < 0.8)
+    var last = first
+    for (i, amt) in ["20.00", "30.00", "40.00"].enumerated() { last = c.read(purchaseAR(amt, "SAMPLE \(i + 1)", at: Int64(i + 2))) }
+    #expect(last.amountMinor == 4_000)
+    #expect(last.confidence >= 0.8)
+    c.reset()
+    #expect(c.read(purchaseAR("50.00", "SAMPLE 5", at: 9)).confidence < 0.8)
   }
 
-  @Test func aCurrencyNotInHundredthsIsHeld() {
-    let out = Gate.combine(learned: reading(120_000, "JPY", 0.9), rules: reading(120_000, "JPY", 0.9))
-    #expect(out.confidence < Gate.fileWithoutReview)
+  @Test func chainDisregardsAPendingTransfer() {
+    let m = mail(
+      [
+        "Dear Customer,", "Your fund transfer of AED 500.00 to SAMPLE PERSON is in process.", "Status", "Pending", "Regards,",
+        "Bank B",
+      ], subject: "Fund transfer")
+    #expect(!ChainReader().read(m).isTransaction)
+  }
+
+  @Test func chainReadsTheAEDAmountOfATwoCurrencyMail() {
+    let m = mail(
+      [
+        "Dear Customer,", "Here is the status of your Telegraphic Transfer.", "Debit Amount:", "AED 3,673.00", "Transaction Amount:",
+        "USD 1,000.00", "Beneficiary Name:", "SAMPLE BROKER LLC", "Status:", "Success",
+      ], subject: "Telegraphic Transfer", sender: "bank-d.example")
+    let r = ChainReader().read(m)
+    #expect(r.amountMinor == 367_300)
+    #expect(r.currency == "AED")
+  }
+
+  @Test func aCurrencyNotInHundredthsHasNoAmount() {
+    let r = RulesReader().read(mail(["Dear Customer,", "Your card ending 7310 was used for a purchase of JPY 1,200 at SAMPLE SHOP."]))
+    #expect(r.currency == "JPY")
+    #expect(r.amountMinor == nil)
   }
 }
 

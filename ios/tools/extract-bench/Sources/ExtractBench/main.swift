@@ -15,7 +15,7 @@ func die(_ s: String) -> Never {
 
 func allReaders() -> [Reader] {
   [
-    TemplateReader(), RuleReader(), InductionReader(), Filtered(RuleReader()), Filtered(InductionReader()), ChainReader(),
+    TemplateReader(), RulesReader(), LearnedOnlyReader(), CombinedOnlyReader(), ChainReader(),
   ]
 }
 

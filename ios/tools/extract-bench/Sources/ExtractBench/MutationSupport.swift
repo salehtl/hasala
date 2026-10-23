@@ -76,7 +76,7 @@ enum MU {
 
   static func findAmount(_ text: String, minor: Int64, currency: String?) -> Found? {
     let norm = normDigits(text) as NSString
-    let exp = Hundredths.exponent
+    let exp = 2
     let target = Decimal(minor)
     for r in numRe.matches(in: norm as String, range: NSRange(location: 0, length: norm.length)) {
       let ip = norm.substring(with: r.range(at: 1)).replacingOccurrences(of: ",", with: "")
