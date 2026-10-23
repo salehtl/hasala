@@ -55,6 +55,7 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   /// One of the person's rules sorted it, so the provenance row opens the rules.
   public var sortedByRule: Bool = false
   public var home: HomeAmount? = nil
+  public var canAlwaysUse: Bool = false
 }
 
 extension TransactionDetail {
@@ -124,7 +125,7 @@ public enum TransactionEngine {
       needsReview: t.inReview, reviewReason: t.activeReviewReason, project: s.project(t.projectID)?.name, isSample: t.isSample,
       suggestion: t.inReview ? s.category(t.reviewSuggestion).map(CategoryOption.init) : nil,
       sortedByRule: { if case .rule = t.categorySource { true } else { false } }(),
-      home: t.homeAmount
+      home: t.homeAmount, canAlwaysUse: t.canAlwaysUse
     )
   }
 

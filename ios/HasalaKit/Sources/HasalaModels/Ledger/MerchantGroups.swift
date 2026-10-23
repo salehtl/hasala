@@ -71,6 +71,24 @@ extension Txn {
   }
 
   public func inGroup(_ key: String) -> Bool { (merchantGroup ?? merchantKey) == key }
+
+  public var canAlwaysUse: Bool { merchantGroup != nil && splits.isEmpty && GroupRule.pattern(spelling) != nil }
+
+  public func settled(in c: CategoryID) -> Bool { !needsReview && categoryID == c }
+
+  public var filing: PriorFiling {
+    PriorFiling(categoryID: categoryID, categorySource: categorySource, ruleID: ruleID, needsReview: needsReview)
+  }
+
+  public mutating func restore(_ p: PriorFiling, at: LocalDateTime) {
+    categoryID = p.categoryID
+    categorySource = p.categorySource
+    ruleID = p.ruleID
+    needsReview = p.needsReview
+    isTransfer = p.categoryID == "transfer"
+    categorizedAt = at
+    priorFiling = nil
+  }
 }
 
 extension LedgerState {

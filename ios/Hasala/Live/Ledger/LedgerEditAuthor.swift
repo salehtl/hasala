@@ -59,8 +59,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
   func map(_ reader: LedgerReader, context: LedgerStateMapper.Context) throws -> LedgerState {
     let projection = observer.projection
     let generation = projection.generation
-    var m = try LedgerStateMapper.mapped(reader, context: context)
-    m.state.sortReceipt = memory.value.kitReceipt(undo: nil)
+    let kept = memory.value
+    var c = context
+    c.priors = kept.priors
+    var m = try LedgerStateMapper.mapped(reader, context: c)
+    m.state.sortReceipt = kept.kitReceipt(undo: nil)
     if projection.generation == generation,
       let t = CivilDate(year: context.today.year, month: context.today.month, day: context.today.day)
     {
@@ -127,23 +130,12 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
       if learnRule, row.merchantGroup != nil, !row.split {
-        let inverses = try await categorizeReaching(
-          row, category: c, project: project, skipped: before.skippedReview, receiptID: receiptID)
+        let inverses = try await categorizeReaching(row, category: c, project: project, receiptID: receiptID)
         return inverses + noteCorrection(row, to: c)
       }
-      var snapshots: [OpAuthor.RuleSnapshot] = []
-      var filed: [(merchantRaw: String, category: String)] = []
-      if learnRule {
-        snapshots = try ruleSnapshots()
-        filed = try categorizedRows(except: id)
-      }
-      let guardRows = filed
       try await build { a throws(AuthorError) in
         a.categorize(txnID: id, parentVersion: row.version, category: c, needsReview: false)
         if let project { a.annotate(txnID: id, set: [("project_id", project)]) }
-        if learnRule {
-          try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
-        }
       }
       return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + noteCorrection(row, to: c)
     case .useSuggestions(let uses):
@@ -358,13 +350,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
       assigned = Int64(clamping: Int128(inherited) + Int128(cell?.movesAll ?? 0))
     }
     return .budget(category: c, month: shown, onward: cell?.onwardSet ?? inherited, assigned: max(0, assigned))
-  }
-
-  private func categorizedRows(except id: String) throws -> [(merchantRaw: String, category: String)] {
-    try reader.activity(limit: 1_000_000).compactMap { r in
-      guard r.id != id, !r.needsReview, let c = r.category else { return nil }
-      return (r.merchantRaw, c)
-    }
   }
 
   static func localWallMs(_ t: LocalDateTime) throws -> Int64 {

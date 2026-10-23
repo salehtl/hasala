@@ -42,30 +42,52 @@ Rules come only from the "Always use it" switch, which stays off by default (#17
 automatic rule after two matching filings was proposed and not built: it would have
 reversed the owner's #176 default on the same evening. See [Proposals](#proposals-for-the-owner).
 
-### D3 and D3b Waiting rows and reach-back
+### D3 and D3b Waiting rows and the reach of a rule
 
-One Core predicate decides which rows a group action may file:
-`RuleReach.waiting(row, samePurchase:)` (HasalaCore `Domain/Author/RuleReach.swift`). A
-row waits when its review lane is `needs_review` or `uncategorized` and it has no review
-reason (a sender that failed authentication included), is not a held copy, a copy or a
-possible duplicate, is not in a same-purchase pair, is not archived, a transfer or a
-split, and its source is not the person's (`user`) or held. A row a dictionary entry or a
-rule already filed does not wait. The live mapper sets `Txn.reachable` from this
-predicate, so every count on a card is the number of rows a tap files. A row that fails
-it stays its own card with its own strip ("Couldn't verify sender").
+`RuleReach.waiting(row, samePurchase:)` (HasalaCore `Domain/Author/RuleReach.swift`)
+decides which rows a group card counts and files. A row waits when its review lane is
+`needs_review` or `uncategorized` and it has no review reason (a sender that failed
+authentication included), is not a held copy, a copy or a possible duplicate, is not in a
+same-purchase pair, is not archived, a transfer or a split, and its source is not the
+person's (`user`) or held. A row a dictionary entry or a rule already filed does not wait.
+The live mapper sets `Txn.reachable` from this predicate, so every count on a card is the
+number of rows a tap files. A row that fails it stays its own card with its own strip
+("Couldn't verify sender").
 
-A rule made from a group reaches back to rows that the rule hits, that are in the same
-group and direction, and that wait (`RuleReach.plan`). It writes
-`txn_categorized {category, needs_review: false, source: rule}` for each. Rows a model
-filed automatically and rows the person filed are left alone. A group rule is exact
-patterns of the group's spellings, at most 8 (the limit of `rule_added`), the filed
-spelling first, then the most used. "Always use it" is hidden when no spelling fits a
-pattern. A learned pattern never starts with a payment facilitator, so
-`PAYPAL *TAILSCALE` gives the exact pattern, not `contains paypal`.
+A rule from "Always use it" reaches further (sorting rebuild, 2026-10-23). It files every
+payment of that merchant group and direction, in every month, past and future, except the
+payments the person sorted. `RuleReach.ruled(row, samePurchase:)` decides it. A row is in
+when its source is `none`, `dictionary`, `rule` or `model`, whatever its category or
+review lane. A row is out when the person sorted it (`user`), a paused rule holds it
+(`held`), it is an unreadable alert, its sender failed authentication, it is a held copy, a
+copy or a possible duplicate, it is in a same-purchase pair, or it is archived, a transfer
+or a split. A row already in the rule's category and out of Review is left as it is. The
+live mapper sets `Txn.ruled` from this predicate, so the screen files the same rows as the
+ops at once.
+
+The bank's spelling decides the merchant, through `MerchantGroup.key` and the dictionary. A
+rule never reaches another merchant group: the dictionary keeps `talabat` and
+`talabat mart` apart, so "Always use Dining for talabat" never files a talabat mart
+payment.
+
+The rule writes `txn_categorized {category, needs_review: false, source: rule}` for each
+row, in the same `Outbox.enqueue` as the person's own filing. Its patterns are exact
+patterns of the spellings of every row of the group that the rule may file, at most 8 (the
+limit of `rule_added`), the filed spelling first, then the most used. "Always use it" is
+hidden on a row with no merchant group, on a split, and when no spelling fits a pattern. A
+learned pattern never starts with a payment facilitator, so `PAYPAL *TAILSCALE` gives the
+exact pattern, not `contains paypal`. A payment skipped in Review today is filed too. The
+result reads "Software for all 14 Tailscale payments" and counts only the payments whose
+category changed. A rule's filings never count as corrections for Trust on this phone.
+
+Undo puts each row back exactly (`Inverse.refile`). Undo all in Sorted for you does the
+same: each row gets back the category, source and review state it had before the rule
+filed it (`SortMemory.Batch.prior`). A payment that the merchant list or Cloudflare filed
+goes back to that filing, not to Review. A row with no recorded state goes back to Review.
 
 After a pull, the iPhone that made the rule reaches back once more, for 24 hours, to rows
-that arrived since and that it has not considered yet. Rows the person sent back to
-Review with Undo all are never filed again by that pass.
+that arrived since and that it has not considered yet. Rows put back with Undo all are
+never filed again by that pass.
 
 ### D4 and D5 Sorting a group
 

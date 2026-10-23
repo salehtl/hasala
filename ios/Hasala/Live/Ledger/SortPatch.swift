@@ -10,6 +10,8 @@ nonisolated enum SortPatch {
     t.splits = []
     t.categorizedAt = at
     t.reachable = false
+    t.ruled = false
+    t.priorFiling = nil
   }
 
   static func name(_ s: LedgerState, _ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
@@ -18,16 +20,23 @@ nonisolated enum SortPatch {
     s.txns.indices.filter { s.txns[$0].reachable && s.txns[$0].groupRef == ref && !s.skippedReview.contains(s.txns[$0].id) }
   }
 
+  static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
+    s.txns.indices.filter { s.txns[$0].ruled && s.txns[$0].groupRef == ref }
+  }
+
   static func reach(
     _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime, receiptID: Int
   ) -> String? {
-    let pool = members(s, ref).filter { s.txns[$0].id != old.id }
+    let pool = ruled(s, ref).filter { s.txns[$0].id != old.id }
     let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] })
     guard !patterns.isEmpty else { return nil }
-    let others = pool.filter { i in GroupRule.pattern(s.txns[i].spelling).map(patterns.contains) == true }
+    let others = pool.filter { i in
+      !s.txns[i].settled(in: c) && GroupRule.pattern(s.txns[i].spelling).map(patterns.contains) == true
+    }
     guard !others.isEmpty else { return nil }
-    let filed = [old] + others.map { s.txns[$0] }
+    let named = [old] + others.map { s.txns[$0] }
     for i in others {
+      s.txns[i].priorFiling = s.txns[i].filing
       s.txns[i].categoryID = c
       s.txns[i].categorySource = .rule(pattern: s.txns[i].spelling.lowercased())
       s.txns[i].ruleID = nil
@@ -37,9 +46,10 @@ nonisolated enum SortPatch {
       s.txns[i].categorizedAt = at
       s.txns[i].reachable = false
     }
-    let merchant = ReviewEngine.displayName(filed)
-    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed.map(\.id))
-    return SortResultRow.line(count: filed.count, merchant: merchant, category: name(s, c))
+    let filed = (old.settled(in: c) ? [] : [old.id]) + others.map { s.txns[$0].id }
+    let merchant = ReviewEngine.displayName(named)
+    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed)
+    return SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: name(s, c))
   }
 
   static func sortGroup(
@@ -78,9 +88,16 @@ nonisolated enum SortPatch {
   static func returnToReview(_ s: inout LedgerState, _ ids: [TxnID], at: LocalDateTime) throws(ActionError) -> String {
     var seen: Set<TxnID> = []
     var returned = 0
+    var settled = 0
     for id in ids where seen.insert(id).inserted {
       guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].sortedForYou else { continue }
       let byRule = s.txns[i].filedByRule
+      returned += 1
+      if byRule, let prior = s.txns[i].priorFiling {
+        s.txns[i].restore(prior, at: at)
+        if !prior.needsReview { settled += 1 }
+        continue
+      }
       s.txns[i].needsReview = true
       s.txns[i].categorizedAt = at
       if byRule {
@@ -89,10 +106,9 @@ nonisolated enum SortPatch {
         s.txns[i].ruleID = nil
         s.txns[i].isTransfer = false
       }
-      returned += 1
     }
     guard returned > 0 else { throw .notFound }
-    return returned == 1 ? "1 payment back in Review" : "\(returned) payments back in Review"
+    return SortedForYouItem.undoneLine(count: returned, settled: settled)
   }
 
   static func stopRule(_ s: inout LedgerState, _ id: RuleID) throws(ActionError) -> String {

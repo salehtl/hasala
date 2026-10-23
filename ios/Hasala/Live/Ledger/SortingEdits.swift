@@ -8,6 +8,14 @@ import Foundation
 import HasalaCloud
 import HasalaModels
 
+nonisolated extension SortMemory {
+  var priors: [String: Prior] {
+    var out: [String: Prior] = [:]
+    for b in batches { out.merge(b.prior) { _, new in new } }
+    return out
+  }
+}
+
 nonisolated extension LedgerEditAuthor {
   static let rerunWindowMs: Int64 = 86_400_000
 
@@ -126,16 +134,13 @@ nonisolated extension LedgerEditAuthor {
     }
   }
 
-  func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, skipped: Set<TxnID>, receiptID: Int?) async throws
-    -> [Inverse]
-  {
-    guard let group = row.merchantGroup else { return [] }
+  func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, receiptID: Int?) async throws -> [Inverse] {
+    guard let group = row.merchantGroup, !row.split else { return [] }
     let (rows, home) = try reach()
-    let members = RuleReach.members(rows: rows, group: group, direction: row.direction, home: home)
-      .filter { $0.id != row.id && !skipped.contains($0.id) }
+    let pool = RuleReach.eligible(rows: rows, group: group, direction: row.direction, home: home).filter { $0.id != row.id }
     let existing = try ruleSnapshots()
     let plan = OpAuthor.groupRule(
-      patterns: RuleReach.patterns(filed: row.merchantRaw, members: members), category: c, existing: existing)
+      patterns: RuleReach.patterns(filed: row.merchantRaw, members: pool), category: c, existing: existing)
     let ctx = try await observer.authorContext()
     var ruleID: String?
     var targets: [RuleReach.Target] = []
@@ -151,8 +156,7 @@ nonisolated extension LedgerEditAuthor {
         let id = try Self.authorRules(plan, &a)
         ruleID = id
         targets = RuleReach.plan(
-          rows: rows, rule: ruleInput(id, plan.draft), group: group, direction: row.direction, home: home,
-          except: Set(skipped).union([row.id]))
+          rows: rows, rule: ruleInput(id, plan.draft), group: group, direction: row.direction, home: home, except: [row.id])
         let first = try a.build()
         cx.ownLastMs = first.lastAuthoredMs
         if !targets.isEmpty {
@@ -172,10 +176,12 @@ nonisolated extension LedgerEditAuthor {
     let filed = targets.compactMap { byID[$0.txnID] }
     var receipt: SortMemory.Receipt?
     if !filed.isEmpty {
-      let ids = [row.id] + filed.map(\.id)
+      let own = !row.needsReview && row.category.map { $0 == c } == true
+      let ids = (own ? [] : [row.id]) + filed.map(\.id)
       receipt = SortMemory.Receipt(
-        id: receiptID ?? Int(nowMs), group: group, direction: row.direction, merchant: try displayName(group: group, ids: Set(ids)),
-        category: c, txnIDs: ids, ruleID: ruleID, atMs: nowMs)
+        id: receiptID ?? Int(nowMs), group: group, direction: row.direction,
+        merchant: try displayName(group: group, ids: Set([row.id] + filed.map(\.id))), category: c, txnIDs: ids, ruleID: ruleID,
+        atMs: nowMs)
       inverses.append(.receipt(id: receipt!.id))
     }
     try remember(

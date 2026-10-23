@@ -23,6 +23,7 @@ public enum RuleReach {
     public var archived: Bool
     public var transfer: Bool
     public var split: Bool
+    public var unparsed: Bool
     public var postedMs: Int64
     public var categorizedMs: Int64?
     public var purchase: SamePurchase.Row
@@ -31,7 +32,8 @@ public enum RuleReach {
       id: String, version: Int64, merchantRaw: String, merchantGroup: String?, direction: String, category: String?,
       sourceKind: SweepRow.SourceKind, sourceRef: String?, needsReview: Bool, lane: ReviewLane?, unverified: Bool = false,
       heldCopy: Bool = false, copyOf: String? = nil, possibleDuplicateOf: String? = nil, archived: Bool = false,
-      transfer: Bool = false, split: Bool = false, postedMs: Int64 = 0, categorizedMs: Int64? = nil, purchase: SamePurchase.Row
+      transfer: Bool = false, split: Bool = false, unparsed: Bool = false, postedMs: Int64 = 0, categorizedMs: Int64? = nil,
+      purchase: SamePurchase.Row
     ) {
       self.id = id
       self.version = version
@@ -50,6 +52,7 @@ public enum RuleReach {
       self.archived = archived
       self.transfer = transfer
       self.split = split
+      self.unparsed = unparsed
       self.postedMs = postedMs
       self.categorizedMs = categorizedMs
       self.purchase = purchase
@@ -107,6 +110,31 @@ public enum RuleReach {
     return rows.filter { waiting($0, samePurchase: pairs) }
   }
 
+  public static func ruled(_ r: Row, samePurchase: Set<String>) -> Bool {
+    guard !r.unparsed, !r.unverified, !r.heldCopy, r.copyOf == nil, r.possibleDuplicateOf == nil else { return false }
+    guard !r.archived, !r.transfer, !r.split, !samePurchase.contains(r.id) else { return false }
+    switch r.sourceKind {
+    case .user, .held: return false
+    case .dictionary, .rule, .model, .none: return true
+    }
+  }
+
+  public static func ruled(_ r: Row, category: String, samePurchase: Set<String>) -> Bool {
+    ruled(r, samePurchase: samePurchase) && !settled(r, in: category)
+  }
+
+  public static func settled(_ r: Row, in category: String) -> Bool {
+    !r.needsReview && r.category.map { utf8Equal($0, category) } == true
+  }
+
+  public static func eligible(rows: [Row], group: String, direction: String, home: String) -> [Row] {
+    guard !group.isEmpty else { return [] }
+    let pairs = paired(rows, home: home)
+    return rows.filter { r in
+      r.merchantGroup == group && utf8Equal(r.direction, direction) && ruled(r, samePurchase: pairs)
+    }
+  }
+
   public static func hits(_ rule: RuleInput, _ merchantRaw: String) -> Bool {
     let prepared = Matcher.prepare(rules: [rule], entries: []).rules
     return prepared.contains { Matcher.hits($0, merchantRaw: merchantRaw) }
@@ -121,7 +149,8 @@ public enum RuleReach {
     let pairs = paired(rows, home: home)
     return rows.filter { r in
       r.merchantGroup == group && utf8Equal(r.direction, direction) && !except.contains(r.id)
-        && waiting(r, samePurchase: pairs) && prepared.contains { Matcher.hits($0, merchantRaw: r.merchantRaw) }
+        && ruled(r, category: rule.category, samePurchase: pairs)
+        && prepared.contains { Matcher.hits($0, merchantRaw: r.merchantRaw) }
     }.map(Target.init)
   }
 
