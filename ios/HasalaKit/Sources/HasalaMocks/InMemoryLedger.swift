@@ -554,8 +554,10 @@ public final class InMemoryLedger: LedgerStore {
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       if let why = CategoriesEngine.refusal(edit, in: s) { throw .refused(why) }
       CategoriesEngine.apply(edit, to: &s, newID: "c_mock\(nextCategory)", month: now.date.yearMonth)
-      if case .addCategory = edit { nextCategory += 1 }
+      if case .addCategory(let d) = edit, d.id == nil { nextCategory += 1 }
       title = nil
+    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
+      return try addCategoryAndSort(d, txn: id, alwaysUse: alwaysUse, project: project)
     case .setNotifications(let level):
       s.prefs.notifications = level
       title = nil
@@ -591,6 +593,31 @@ public final class InMemoryLedger: LedgerStore {
     nextToken += 1
     undoRecords[token.id] = record
     return token
+  }
+
+  public func newCategoryID() -> CategoryID {
+    defer { nextCategory += 1 }
+    return "c_mock\(nextCategory)"
+  }
+
+  private func addCategoryAndSort(_ d: CategoryDraft, txn id: TxnID, alwaysUse: Bool, project: ProjectID?) throws(ActionError)
+    -> UndoToken?
+  {
+    var draft = d
+    if draft.id == nil { draft.id = newCategoryID() }
+    guard let category = draft.id else { throw .notFound }
+    if let why = CategoriesEngine.refusal(.addCategory(draft), in: state) { throw .refused(why) }
+    guard state.txn(id) != nil else { throw .notFound }
+    if let project, state.project(project) == nil { throw .notFound }
+    let saved = state
+    try apply(.addCategory(draft))
+    do {
+      return try apply(.categorize(id, category, learnRule: alwaysUse, project: project))
+    } catch {
+      state = saved
+      revision += 1
+      throw error
+    }
   }
 
   public func undo(_ token: UndoToken) {

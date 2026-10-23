@@ -318,6 +318,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       try await authorCategory(edit, today: today)
+    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
+      return try await addCategoryAndSort(d, txn: id, project: project) { c in
+        guard alwaysUse else { return nil }
+        return try await authorNow(.categorize(id, c, learnRule: true, project: nil), before: before, today: today, receiptID: receiptID)
+      }
     case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break

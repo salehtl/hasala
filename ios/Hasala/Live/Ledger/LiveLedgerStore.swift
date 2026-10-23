@@ -177,6 +177,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
+    let edit = withCategoryID(edit)
     if let why = try categoryRefusal(edit) { throw .refused(why) }
     let before = state
     var s = state
@@ -218,7 +219,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     switch edit {
     case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .trackCandidate, .dismissCandidate, .reapplyBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
       .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome, .categorize, .sortGroup, .notThis, .returnToReview,
-      .stopRule:
+      .stopRule, .addCategoryAndSort:
       true
     case .resolveCopy(_, let merge): merge
     default: false
@@ -289,6 +290,17 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   func newProjectID() -> ProjectID {
     (try? Ulid.mint(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom())) ?? UUID().uuidString
+  }
+
+  func newCategoryID() -> CategoryID {
+    (try? OpAuthor.newCategoryID(ms: Int64(Date().timeIntervalSince1970 * 1000), random: SystemRandom()))
+      ?? "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30)
+  }
+
+  func withCategoryID(_ edit: LedgerEdit) -> LedgerEdit {
+    guard case .addCategoryAndSort(var d, let id, let alwaysUse, let project) = edit, d.id == nil else { return edit }
+    d.id = newCategoryID()
+    return .addCategoryAndSort(d, id, alwaysUse: alwaysUse, project: project)
   }
 
   /// Applies `edit` to `s` as the projection will show it, or throws why it can't be
@@ -531,6 +543,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       CategoriesEngine.apply(
         edit, to: &s, newID: "pending-category-\(UUID().uuidString.lowercased())", month: now.date.yearMonth)
       return (nil, [])
+    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
+      guard let c = d.id, d.parent.flatMap({ s.category($0) }) != nil else { throw .notFound }
+      CategoriesEngine.apply(.addCategory(d), to: &s, newID: c, month: now.date.yearMonth)
+      return try patch(.categorize(id, c, learnRule: alwaysUse, project: project), &s, now: now, receiptID: receiptID)
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])

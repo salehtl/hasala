@@ -208,4 +208,94 @@ struct CategoryManagementTests {
     #expect(CategoryLimits.atCap == "You have 20 categories. Archive one to add another.")
     #expect(CategoryLimits.nameTooLong == "Use 24 characters or fewer.")
   }
+
+  func waiting(_ ledger: InMemoryLedger) throws -> Txn {
+    try #require(ledger.state.txns.first { $0.groupRef == MayaBacklog.tailscale && $0.reachable })
+  }
+
+  @Test func aClientMadeIDIsKept() throws {
+    let ledger = InMemoryLedger()
+    let made = ledger.newCategoryID()
+    #expect(made == "c_mock1" && ledger.newCategoryID() == "c_mock2")
+    try ledger.apply(.addCategory(CategoryDraft(id: made, name: "Coffee", parent: "dining")))
+    #expect(ledger.state.category(made)?.name == "Coffee")
+    #expect(try add(ledger, "Tea") == "c_mock3")
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Coffee"))) {
+      try ledger.apply(.addCategory(CategoryDraft(id: made, name: "Juice", parent: "dining")))
+    }
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Dining"))) {
+      try ledger.apply(.addCategory(CategoryDraft(id: "dining", name: "Juice", parent: "dining")))
+    }
+    #expect(!ledger.state.categories.contains { $0.name == "Juice" })
+  }
+
+  @Test func addingAndSortingFilesThePaymentInOneEdit() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let row = try waiting(ledger)
+    let id = ledger.newCategoryID()
+    let draft = CategoryDraft(id: id, name: "VPN", glyph: .subscriptions, parent: "subscriptions")
+    let token = try #require(try ledger.apply(.addCategoryAndSort(draft, row.id, alwaysUse: false, project: nil)))
+    #expect(token.title == "Sorted into VPN")
+    let c = try #require(ledger.state.category(id))
+    #expect(c.name == "VPN" && c.parent == "subscriptions" && c.glyph == .subscriptions && !c.builtin)
+    let filed = try #require(ledger.state.txn(row.id))
+    #expect(filed.categoryID == id && filed.categorySource == .user && !filed.needsReview)
+    #expect(ledger.state.rules == Scenario.mayaBacklog.state.rules)
+    ledger.undo(token)
+    let back = try #require(ledger.state.txn(row.id))
+    #expect(back.categoryID == row.categoryID && back.needsReview == row.needsReview && back.categorySource == row.categorySource)
+    #expect(ledger.state.category(id) != nil)
+  }
+
+  @Test func addingAndSortingMakesItsOwnIDWhenTheDraftHasNone() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let row = try waiting(ledger)
+    try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), row.id, alwaysUse: false, project: nil))
+    let c = try #require(ledger.state.categories.first { $0.name == "VPN" })
+    #expect(c.id == "c_mock1" && ledger.state.txn(row.id)?.categoryID == c.id)
+  }
+
+  @Test func alwaysUseWritesWhatAddingThenSortingWould() throws {
+    let combined = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let steps = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let row = try waiting(combined)
+    let id = combined.newCategoryID()
+    let draft = CategoryDraft(id: id, name: "VPN", glyph: .subscriptions, parent: "subscriptions")
+    let token = try #require(try combined.apply(.addCategoryAndSort(draft, row.id, alwaysUse: true, project: nil)))
+    try steps.apply(.addCategory(draft))
+    let expected = try #require(try steps.apply(.categorize(row.id, id, learnRule: true, project: nil)))
+    #expect(combined.state == steps.state)
+    #expect(token == expected)
+    #expect(combined.state.rules.contains { $0.categoryID == id })
+    #expect(combined.state.txns.filter { $0.categoryID == id }.count > 1)
+    combined.undo(token)
+    #expect(!combined.state.rules.contains { $0.categoryID == id })
+    #expect(!combined.state.txns.contains { $0.categoryID == id })
+    #expect(combined.state.category(id) != nil)
+  }
+
+  @Test func aRefusedAddAndSortWritesNothing() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let before = ledger.state
+    let row = try waiting(ledger)
+    #expect(throws: ActionError.refused(CategoryLimits.nameTaken("Subscriptions"))) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: " subscriptions", parent: "subscriptions"), row.id, alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.refused(CategoryLimits.nameEmpty)) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: " ", parent: "subscriptions"), row.id, alwaysUse: false, project: nil))
+    }
+    #expect(throws: ActionError.notFound) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), "no-such-row", alwaysUse: false, project: nil))
+    }
+    #expect(throws: ActionError.notFound) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), row.id, alwaysUse: false, project: "no-such-project"))
+    }
+    #expect(ledger.state == before)
+    for i in 0..<(CategoryLimits.maxActiveCustom - CategoriesEngine.activeCustomCount(before)) { _ = try add(ledger, "Custom \(i)") }
+    let full = ledger.state
+    #expect(throws: ActionError.refused(CategoryLimits.atCap)) {
+      try ledger.apply(.addCategoryAndSort(CategoryDraft(name: "VPN", parent: "subscriptions"), row.id, alwaysUse: true, project: nil))
+    }
+    #expect(ledger.state == full)
+  }
 }

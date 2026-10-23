@@ -8,7 +8,7 @@ import HasalaModels
 extension LiveLedgerStore {
   func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String? {
     switch edit {
-    case .addCategory, .editCategory, .archiveCategory, .restoreCategory: break
+    case .addCategory, .addCategoryAndSort, .editCategory, .archiveCategory, .restoreCategory: break
     default: return nil
     }
     let view: TaxonomyView
@@ -28,7 +28,8 @@ extension LedgerEditAuthor {
   nonisolated static func categoryRefusal(_ edit: LedgerEdit, view: TaxonomyView, state: LedgerState) -> String? {
     let rules = CategoryRules(view)
     switch edit {
-    case .addCategory(let d):
+    case .addCategory(let d), .addCategoryAndSort(let d, _, _, _):
+      if let id = d.id, let taken = view.info(id) { return CategoryRefusal.nameTaken(taken.name).message }
       return rules.checkCreate(name: d.name, parent: d.parent ?? "", icon: icon(d.glyph))?.message
     case .editCategory(let id, let d):
       return rules.checkEdit(id: id, name: d.name, icon: icon(d.glyph), parent: changedParent(d, of: view.info(id)))?.message
@@ -49,7 +50,7 @@ extension LedgerEditAuthor {
     case .addCategory(let d):
       guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
       try await build { a throws(AuthorError) in
-        _ = try a.createCategory(name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view)
+        _ = try a.createCategory(id: d.id, name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view)
       }
     case .editCategory(let id, let d):
       let parent = Self.changedParent(d, of: view.info(id))
@@ -62,6 +63,32 @@ extension LedgerEditAuthor {
       try await archiveCategory(id, moveTo: moveTo, view: view, today: today)
     default:
       return
+    }
+  }
+
+  nonisolated func addCategoryAndSort(
+    _ d: CategoryDraft, txn id: String, project: String?, alwaysUse: (String) async throws -> [Inverse]?
+  ) async throws -> [Inverse] {
+    guard let category = d.id else { throw Failure.notFound }
+    guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
+    guard let row = try reader.txn(id) else { throw Failure.notFound }
+    let view = try reader.taxonomy()
+    try await build { a throws(AuthorError) in
+      try a.createCategoryAndFile(
+        id: category, name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view, txnID: id, parentVersion: row.version,
+        project: project)
+    }
+    let corrections = noteCorrection(row, to: category)
+    guard let reached = try await alwaysUse(category) else {
+      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + corrections
+    }
+    return corrections + Self.keepingPrior(row, reached)
+  }
+
+  nonisolated static func keepingPrior(_ row: TxnRow, _ inverses: [Inverse]) -> [Inverse] {
+    inverses.map { inverse in
+      guard case .refile(let t, let written, _, _, _) = inverse, t == row.id else { return inverse }
+      return refile(row, written: written)
     }
   }
 

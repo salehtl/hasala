@@ -196,7 +196,8 @@ public enum CategoriesEngine {
 
   public static func refusal(_ edit: LedgerEdit, in s: LedgerState) -> String? {
     switch edit {
-    case .addCategory(let d):
+    case .addCategory(let d), .addCategoryAndSort(let d, _, _, _):
+      if let id = d.id, let taken = s.category(id) { return CategoryLimits.nameTaken(taken.name) }
       if let r = nameRefusal(d.trimmedName, in: s, excluding: nil) { return r }
       guard let p = d.parent, isOfferedParent(p, in: s) else { return CategoryLimits.parentNotAllowed }
       return activeCustomCount(s) < CategoryLimits.maxActiveCustom ? nil : CategoryLimits.atCap
@@ -274,7 +275,8 @@ public enum CategoriesEngine {
       let (kind, bucket, role) = classOf(parent)
       place(
         Category(
-          id: newID, name: d.trimmedName, kind: kind, bucket: bucket, glyph: d.glyph, role: role, parent: p, builtin: false),
+          id: d.id ?? newID, name: d.trimmedName, kind: kind, bucket: bucket, glyph: d.glyph, role: role, parent: p,
+          builtin: false),
         in: &s)
     case .editCategory(let id, let d):
       guard var c = s.category(id) else { return }

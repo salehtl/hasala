@@ -78,6 +78,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case setRuleEnabled(RuleID, Bool)
 
   case addCategory(CategoryDraft)
+  case addCategoryAndSort(CategoryDraft, TxnID, alwaysUse: Bool, project: ProjectID?)
   case editCategory(CategoryID, CategoryDraft)
   case archiveCategory(CategoryID, moveTo: CategoryID?)
   case restoreCategory(CategoryID)
@@ -208,11 +209,13 @@ public enum ActionError: Error, Sendable, Hashable {
 }
 
 public struct CategoryDraft: Sendable, Hashable {
+  public var id: CategoryID?
   public var name: String
   public var glyph: Glyph
   public var parent: CategoryID?
 
-  public init(name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+  public init(id: CategoryID? = nil, name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+    self.id = id
     self.name = name
     self.glyph = glyph
     self.parent = parent
@@ -237,9 +240,11 @@ public protocol LedgerStore: AnyObject, Observable {
   /// Reverts the edit behind `token` (03c §3.8 "Undo (toast)": inverse ops).
   func undo(_ token: UndoToken)
   func newProjectID() -> ProjectID
+  func newCategoryID() -> CategoryID
 }
 
 public extension LedgerStore {
   var month: YearMonth { now.date.yearMonth }
   func newProjectID() -> ProjectID { "p-" + UUID().uuidString.lowercased() }
+  func newCategoryID() -> CategoryID { "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30) }
 }

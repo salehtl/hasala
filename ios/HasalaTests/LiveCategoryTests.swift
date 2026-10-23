@@ -123,4 +123,148 @@ struct LiveCategoryTests {
     #expect(CategoryLimits.systemCannotHide == CategoryRefusal.systemCannotHide.message)
     #expect(CategoryLimits.nameTaken("Coffee") == CategoryRefusal.nameTaken("Coffee").message)
   }
+
+  typealias Sorting = LiveSortingTests
+
+  static func vpn(_ id: String) -> CategoryDraft { CategoryDraft(id: id, name: "VPN", glyph: .subscriptions, parent: "subscriptions") }
+
+  static func newOps(_ a: Mapper.Account, after count: Int) throws -> [String] {
+    try a.context.store.pendingOps().dropFirst(count).map(\.opType)
+  }
+
+  @Test func theStoreMakesCategoryIDsInTheAuthorsFormat() async throws {
+    let store = try await LiveUndoTests.store(try Mapper.account(), suite: "categories.ids.tests")
+    let first = store.newCategoryID()
+    let second = store.newCategoryID()
+    #expect(OpAuthor.isNewCategoryID(first) && OpAuthor.isNewCategoryID(second) && first != second)
+    #expect(first.utf8.count == 28)
+  }
+
+  @Test func addingAndSortingWritesTheCategoryAndTheSortInOneBlob() async throws {
+    let l = try await Sorting.ledger(suite: "categories.sort.one", rows: Sorting.tailscale)
+    var failed = false
+    l.store.onWriteFailed = { failed = true }
+    let txn = try #require(l.ids["com"]?.first)
+    let before = try #require(try l.row(txn))
+    let pending = try l.a.context.store.pendingCount()
+    let id = l.store.newCategoryID()
+    let token = try #require(try l.store.apply(.addCategoryAndSort(Self.vpn(id), txn, alwaysUse: false, project: nil)))
+    #expect(token.title == "Sorted into VPN")
+    #expect(l.store.state.category(id)?.name == "VPN" && l.store.state.txn(txn)?.categoryID == id)
+    try await Mapper.eventually { try l.row(txn)?.category == id }
+    #expect(try Self.newOps(l.a, after: pending) == ["category_defined", "txn_categorized"])
+    let c = try #require(try l.reader.taxonomy().info(id))
+    #expect(c.name == "VPN" && c.parent == "subscriptions" && c.active && !c.builtin)
+    let row = try #require(try l.row(txn))
+    #expect(row.categorySource == "user" && !row.needsReview)
+    #expect(try l.reader.rules().isEmpty)
+    #expect(try (l.ids["inc"] ?? []).allSatisfy { try l.row($0)?.category == nil })
+    try await Mapper.eventually { l.store.state.category(id) != nil && l.store.state.txn(txn)?.categoryID == id }
+
+    l.store.undo(token)
+    try await Mapper.eventually { try l.row(txn)?.category == before.category }
+    let back = try #require(try l.row(txn))
+    #expect(back.category == before.category && back.needsReview == before.needsReview && back.categorySource == before.categorySource)
+    #expect(try l.reader.taxonomy().info(id)?.active == true)
+    #expect(!failed)
+  }
+
+  @Test func alwaysUseFilesWhatAddingThenSortingWould() async throws {
+    let combined = try await Sorting.ledger(suite: "categories.sort.always", rows: Sorting.tailscale)
+    let steps = try await Sorting.ledger(suite: "categories.sort.steps", rows: Sorting.tailscale)
+    var failed = false
+    combined.store.onWriteFailed = { failed = true }
+    steps.store.onWriteFailed = { failed = true }
+    let pending = try combined.a.context.store.pendingCount()
+    let id = combined.store.newCategoryID()
+    let txn = try #require(combined.ids["com"]?.first)
+    let token = try #require(try combined.store.apply(.addCategoryAndSort(Self.vpn(id), txn, alwaysUse: true, project: nil)))
+    let other = steps.store.newCategoryID()
+    let twinTxn = try #require(steps.ids["com"]?.first)
+    try steps.store.apply(.addCategory(Self.vpn(other)))
+    let expected = try #require(try steps.store.apply(.categorize(twinTxn, other, learnRule: true, project: nil)))
+    #expect(token.title == expected.title)
+
+    try await Mapper.eventually { try !combined.reader.rules().isEmpty }
+    try await Mapper.eventually { try !steps.reader.rules().isEmpty }
+    try await Mapper.eventually { !combined.a.observer.writes.isBusy && !steps.a.observer.writes.isBusy }
+    #expect(try Array(Self.newOps(combined.a, after: pending).prefix(2)) == ["category_defined", "txn_categorized"])
+    func filed(_ l: Sorting.Ledger, _ category: String) throws -> [String: [Bool]] {
+      try l.ids.mapValues { ids in try ids.map { try l.row($0)?.category == category } }
+    }
+    #expect(try filed(combined, id) == filed(steps, other))
+    let rule = try #require(try combined.reader.rules().first)
+    let twin = try #require(try steps.reader.rules().first)
+    #expect(rule.category == id && twin.category == other && rule.patterns == twin.patterns && rule.match == twin.match)
+    #expect(try filed(combined, id).values.flatMap { $0 }.filter { $0 }.count > 1)
+
+    combined.store.undo(token)
+    try await Mapper.eventually { try combined.reader.rules().isEmpty }
+    try await Mapper.eventually { try combined.ids.values.joined().allSatisfy { try combined.row($0)?.category != id } }
+    #expect(try combined.reader.rules().isEmpty)
+    #expect(try combined.ids.values.joined().allSatisfy { try combined.row($0)?.category != id })
+    #expect(try combined.reader.taxonomy().info(id)?.active == true)
+    #expect(!failed)
+  }
+
+  @Test func aRefusedAddAndSortWritesNothing() async throws {
+    let a = try Mapper.account()
+    let store = try await LiveUndoTests.store(a, suite: "categories.sort.refused")
+    let full = try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+      for i in 0..<CategoryLimits.maxActiveCustom {
+        o.defineCategory(
+          id: "c_cap\(i)", name: "Cap \(i)", kind: .spending, bucket: .want, icon: "tag", active: true, parent: "dining")
+      }
+    }
+    try await a.outbox.enqueue(try #require(full).ops)
+    try await a.observer.reproject()
+    await store.reload()
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let row = try #require(store.state.txns.first { !$0.archived && $0.splits.isEmpty && !$0.isHeldCopy })
+    let before = try #require(try a.projection.reader.txn(row.id))
+    let pending = try a.context.store.pendingCount()
+    let taxonomy = try a.projection.reader.taxonomy().ordered.map(\.id)
+    func add(_ name: String, txn: String = row.id) throws {
+      try store.apply(.addCategoryAndSort(CategoryDraft(name: name, parent: "dining"), txn, alwaysUse: true, project: nil))
+    }
+    #expect(throws: ActionError.refused(CategoryRefusal.nameTaken("Dining").message)) { try add(" dining") }
+    #expect(throws: ActionError.refused(CategoryRefusal.nameTaken("Cap 1").message)) { try add("cap 1") }
+    #expect(throws: ActionError.refused(CategoryRefusal.nameInvalid.message)) { try add("Tea\u{202E}") }
+    #expect(throws: ActionError.refused(CategoryRefusal.nameTooLong(max: 24).message)) { try add(String(repeating: "a", count: 25)) }
+    #expect(throws: ActionError.refused(CategoryRefusal.atCap(max: 20).message)) { try add("Tea") }
+    #expect(throws: ActionError.refused(CategoryRefusal.nameTaken("Cap 0").message)) {
+      try store.apply(.addCategoryAndSort(CategoryDraft(id: "c_cap0", name: "Tea", parent: "dining"), row.id, alwaysUse: false, project: nil))
+    }
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(try a.context.store.pendingCount() == pending)
+    #expect(try a.projection.reader.taxonomy().ordered.map(\.id) == taxonomy)
+    #expect(try a.projection.reader.txn(row.id) == before)
+    #expect(store.state.txn(row.id)?.categoryID == row.categoryID)
+    #expect(!failed)
+  }
+
+  @Test func aNameTakenThroughSyncBeforeTheWriteLandsWritesNothing() async throws {
+    let l = try await Sorting.ledger(suite: "categories.sort.late", rows: Sorting.tailscale)
+    let txn = try #require(l.ids["com"]?.first)
+    let before = try #require(try l.row(txn))
+    let id = l.store.newCategoryID()
+    #expect(try l.store.categoryRefusal(.addCategoryAndSort(Self.vpn(id), txn, alwaysUse: true, project: nil)) == nil)
+    let synced = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+      o.defineCategory(
+        id: "c_01jc0000000000000000000077", name: "vpn", kind: .spending, bucket: .want, icon: "tag", active: true,
+        parent: "subscriptions")
+    }
+    try await l.a.outbox.enqueue(try #require(synced).ops)
+    try await l.a.observer.reproject()
+    let pending = try l.a.context.store.pendingCount()
+    await #expect(throws: AuthorError.refused(CategoryRefusal.nameTaken("vpn").message)) {
+      try await l.author.author(
+        .addCategoryAndSort(Self.vpn(id), txn, alwaysUse: true, project: nil), before: l.store.state, today: MayaLedger.now.date)
+    }
+    #expect(try l.a.context.store.pendingCount() == pending)
+    #expect(try l.reader.taxonomy().info(id) == nil)
+    #expect(try l.row(txn) == before)
+    #expect(try l.reader.rules().isEmpty)
+  }
 }
