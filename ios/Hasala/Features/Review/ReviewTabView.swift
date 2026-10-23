@@ -155,7 +155,7 @@ struct ReviewTabView: View {
         Spacer(minLength: 0)
         CardStackArt()
       }
-      Button("Start") { ReviewEntry.open(app, at: nil, inPeriod: true) }
+      Button("Start") { ReviewEntry.open(app, at: nil) }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("review.tab.start")
     }
@@ -201,7 +201,7 @@ struct ReviewTabView: View {
             .accessibilityIdentifier("review.tab.month.\(month.month)")
         }
         ForEach(month.cards) { card in
-          Button { ReviewEntry.open(app, at: card.id, inPeriod: true) } label: { row(card) }
+          Button { ReviewEntry.open(app, at: card.id) } label: { row(card) }
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spoken(card))

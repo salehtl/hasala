@@ -78,6 +78,9 @@
       Screen("home.range", scenario: "maya", prepare: { graph in
         graph.app.period = Period(YearMonth(2026, 8), MayaLedger.october)
       }),
+      Screen("home.allTime", scenario: "mayaRange", prepare: { graph in
+        graph.app.choose(.allTime)
+      }),
       // Home · Over budget: Travel and Rent to 0 make the plan 9,000: over by 2,115.62, rose.
       Screen("home.overBudget", scenario: "maya", prepare: { graph in
         edit(graph, [budget("travel", 0), budget("rent", 0)])

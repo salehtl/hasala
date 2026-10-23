@@ -70,7 +70,7 @@ struct HomeModelTests {
 
   @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
     func item(_ id: String, _ title: String) -> NotificationItem {
-      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review)
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(.allTime))
     }
     let reads = NotificationReads()
     reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])
@@ -141,13 +141,20 @@ struct HomeModelTests {
 
     // To sort: the Review tab, and the deck once the sheet has gone.
     router.open(.notifications)
-    let after = home.openNotification(.review)
+    let after = home.openNotification(.review(.allTime))
     #expect(router.sheet == nil)
     #expect(router.tab == .review)
     #expect(app.cover == nil)
+    #expect(app.period.isAllTime && app.period.title == "All time")
     after?()
     #expect(app.cover == .review)
     app.cover = nil
+    app.period = .month(YearMonth(2026, 9))
+    router.open(.notifications)
+    home.openNotification(.review(nil))?()
+    #expect(app.cover == .review && app.period == .month(YearMonth(2026, 9)))
+    app.cover = nil
+    app.period = .month(MayaLedger.october)
 
     // A late bill: Home, pushed to the bill.
     router.tab = .plan

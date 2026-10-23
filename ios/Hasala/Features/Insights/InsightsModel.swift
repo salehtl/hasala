@@ -24,7 +24,7 @@ final class InsightsModel {
 
   private struct Key: Equatable {
     let revision: Int
-    let months: ClosedRange<YearMonth>
+    let period: Period
     let now: LocalDateTime
   }
 
@@ -42,8 +42,12 @@ final class InsightsModel {
   var earliest: YearMonth { app.earliestMonth.map { min($0, current) } ?? current }
 
   var snapshot: InsightsSnapshot {
-    let key = Key(revision: app.store.revision, months: months, now: now)
-    return memo.value(for: key) { InsightsEngine.snapshot(app.store.state, months: months, now: now) }
+    let period = period
+    return memo.value(for: Key(revision: app.store.revision, period: period, now: now)) {
+      var snap = InsightsEngine.snapshot(app.store.state, months: period.range, now: now)
+      snap.title = period.title
+      return snap
+    }
   }
 
   func drill(_ target: InsightsTarget) -> InsightsDrill {

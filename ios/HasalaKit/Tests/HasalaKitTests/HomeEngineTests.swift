@@ -210,7 +210,7 @@ struct NotificationsEngineTests {
     ])
     #expect(n.needsALook.map(\.when) == ["Today", "Thu", "Thu", "Mon"])
     #expect(n.needsALook.map(\.status) == [nil, .error, nil, nil])
-    #expect(n.needsALook.map(\.destination) == [.review, .bill("axa"), .bills, .bill("du")])
+    #expect(n.needsALook.map(\.destination) == [.review(.allTime), .bill("axa"), .bills, .bill("du")])
   }
 
   @Test func hiddenAmountsAreThreeDots() {
@@ -259,7 +259,10 @@ struct NotificationsEngineTests {
     let n = NotificationsEngine.snapshot(s, now: now, review: window)
     #expect(n.needsALook[0].title == "\(ReviewEngine.queue(s, in: window).count) transactions to sort")
     #expect(n.needsALook[0].title == "5 transactions to sort")
-    #expect(NotificationsEngine.snapshot(s, now: now).needsALook[0].title == "6 transactions to sort")
+    #expect(n.needsALook[0].destination == .review(nil))
+    let all = NotificationsEngine.snapshot(s, now: now).needsALook[0]
+    #expect(all.title == "6 transactions to sort")
+    #expect(all.destination == .review(.allTime))
   }
 
   @Test func whenReadsLikeTheSheet() {

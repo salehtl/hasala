@@ -88,7 +88,7 @@ final class HomePeriodTests: XCTestCase {
   }
 
   @MainActor
-  func testAPastMonthKeepsTheBellTheBadgeAndItsDeckOnTheWholeQueue() throws {
+  func testAPastMonthKeepsTheBellAndTheBadgeOnTheWholeQueueAndTheBellOpensTheDeckAtAllTime() throws {
     let app = launch(scenario: "mayaRange", motion: "off")
     tap(app, "home.period", opening: "period.sheet")
     tap(app, "period.preset.lastMonth")
@@ -120,9 +120,74 @@ final class HomePeriodTests: XCTestCase {
     tap(app, "bell.row.review")
     let position = el(app, "review.position")
     XCTAssertTrue(position.waitForLabel("1 of 9"), position.label)
-    XCTAssertEqual(app.buttons["review.period"].label, "Period, All months")
+    XCTAssertEqual(app.buttons["review.period"].label, "Period, All time")
+    attach(app, "Deck · All time from the bell")
+    try audit(app)
+    el(app, "review.close").tap()
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
+    XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, All time")
+    XCTAssertFalse(app.buttons["review.tab.elsewhere"].exists)
+    app.tabBars.firstMatch.buttons["Home"].tap()
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, All time"))
+  }
+
+  @MainActor
+  func testAllTimeShowsEveryMonthWithoutABudget() throws {
+    let app = launch(scenario: "mayaRange", motion: "off")
+    let hero = el(app, "home.hero.left")
+    XCTAssertTrue(hero.waitForExistence(timeout: uiWait))
+    XCTAssertTrue((hero.value as? String ?? "").contains("planned"), String(describing: hero.value))
+
+    tap(app, "home.period", opening: "period.sheet")
+    let chip = app.buttons["period.preset.allTime"]
+    XCTAssertTrue(chip.exists)
+    XCTAssertFalse(chip.isSelected)
+    chip.tap()
+    XCTAssertTrue(chip.isSelected)
+    XCTAssertFalse(app.buttons["period.preset.thisMonth"].isSelected)
+    let hint = el(app, "period.hint")
+    XCTAssertTrue(hint.label.hasPrefix("Since ") && hint.label.hasSuffix(". Tap a month to start again."), hint.label)
+    XCTAssertEqual(app.buttons["period.show"].label, "Show all time")
+    attach(app, "Home · Period picker · All time")
+    try audit(app, overSheet: true)
+    tap(app, "period.show")
+
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, All time"))
+    XCTAssertTrue(hero.waitForValue(containing: "spent, all time"), String(describing: hero.value))
+    XCTAssertFalse((hero.value as? String ?? "").contains("planned"))
+    XCTAssertFalse(el(app, "home.hero.months").exists)
+    XCTAssertFalse(el(app, "widget.budgetPace").exists)
+    XCTAssertTrue(el(app, "home.backToThisMonth").exists)
+    let since = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Since ")).firstMatch
+    XCTAssertTrue(since.exists, app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label).joined(separator: " | "))
+    attach(app, "Home · All time")
+    try audit(app)
+
+    let tabBar = app.tabBars.firstMatch
+    tabBar.buttons["Activity"].tap()
+    XCTAssertTrue(app.buttons["activity.period"].waitForLabel("Period, All time"))
+    XCTAssertTrue(el(app, "activity.count").label.hasSuffix(" · All time"), el(app, "activity.count").label)
+
+    tabBar.buttons["Review"].tap()
+    let count = el(app, "review.tab.count")
+    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
+    XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, All time")
+    XCTAssertFalse(app.buttons["review.tab.elsewhere"].exists)
+    tap(app, "review.tab.start")
+    XCTAssertTrue(app.buttons["review.period"].waitForLabel("Period, All time"))
+    XCTAssertTrue(el(app, "review.position").waitForLabel("1 of 9"))
     el(app, "review.close").tap()
     XCTAssertTrue(count.waitForExistence(timeout: uiWait))
+
+    tap(app, "review.tab.period", opening: "period.sheet")
+    XCTAssertTrue(app.buttons["period.preset.allTime"].isSelected)
+    el(app, "period.close").tap()
+    XCTAssertTrue(el(app, "period.sheet").waitForNonExistence(timeout: uiWait))
+
+    tabBar.buttons["Home"].tap()
+    tap(app, "home.backToThisMonth")
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, October 2026"))
+    XCTAssertTrue(hero.waitForValue(containing: "planned"), String(describing: hero.value))
   }
 
   @MainActor
@@ -255,5 +320,13 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue(app.buttons["review.period"].waitForLabel("Period, September 2026"))
     attach(app, "AX3 · Deck · September")
     try audit(app, atLargeText: true)
+  }
+}
+
+extension XCUIElement {
+  fileprivate func waitForValue(containing text: String, timeout: TimeInterval = uiWait) -> Bool {
+    let predicate = NSPredicate(format: "value CONTAINS %@", text)
+    return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: self)], timeout: timeout)
+      == .completed
   }
 }
