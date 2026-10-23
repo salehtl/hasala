@@ -643,6 +643,17 @@ the approval of the owner for that deployment.
   after the model's answer, so the Cloudflare request does not change. Trust on a phone
   may only raise the auto-file bar. Refer to `docs/decisions/sorting-rework.md`. The crowd
   merchant list is a proposal only (`docs/decisions/crowd-merchant-list.md`).
+- **Template-free reading (2026-10-23; decided, app work pending)**: templates will read
+  first. When no template reads a mail, general rules and the sender's layouts learned
+  on the phone will read it, with promo lines removed. Every mail of a sender, template
+  hits included, trains its layouts, and they persist on the phone. A row will file with
+  no review only with today's trust gates and a template hit or the two readers'
+  agreement on amount and currency (each reader's confidence 0.8 or more); otherwise
+  Review is prefilled. Pending transfer notices are to be disregarded. When a mail shows
+  AED and a foreign amount, the AED amount is to count. The app is to merge DIB's
+  transfer notice and debit alert for one movement without the person; today it still
+  flags the pair in Review. Learned layouts stay on the phone. `ios/tools/extract-bench`
+  measures the readers. Refer to `docs/decisions/template-free-reading.md`.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
   invite codes; a WebAuthn step-up for each operation that changes auth,
   keys or mailboxes.
