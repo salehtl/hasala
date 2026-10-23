@@ -11,7 +11,7 @@ import Testing
 @testable import Hasala
 
 @MainActor
-@Suite("Check suggestions")
+@Suite("Using suggestions")
 struct CheckSuggestionsTests {
   typealias Mapper = LiveLedgerMapperTests
 
@@ -151,37 +151,5 @@ struct CheckSuggestionsTests {
 
   @Test func undoWritesBackInBlobsOfAtMostTheSweepSize() {
     #expect(LedgerEditAuthor.undoChunk * 2 <= Sweep.maxOpsPerBlob)
-  }
-
-  @Test func theSheetUsesTheTickedOnesAndTheToastTakesThemBack() {
-    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaSuggestions.state))
-    #expect(app.suggestionCount == 7)
-    let model = CheckSuggestionsModel(app: app)
-    #expect(model.chosen == 7)
-    model.toggle("sug-tim-8")
-    #expect(!model.isOn("sug-tim-8") && model.chosen == 6)
-    #expect(model.use())
-    #expect(app.toast?.title == "Used 6 suggestions" && app.toast?.actionTitle == "Undo")
-    #expect(app.suggestionCount == 1)
-    #expect(model.snapshot.rows.map(\.id) == ["sug-tim-8"])
-    app.toastAction()
-    #expect(app.suggestionCount == 7)
-    #expect(model.chosen == 7)
-  }
-
-  @Test func theEntryOpensTheSheet() {
-    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaSuggestions.state))
-    app.openCheckSuggestions()
-    #expect(app.sheet == .checkSuggestions)
-  }
-
-  @Test func usingNoneDoesNothing() {
-    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaSuggestions.state))
-    let model = CheckSuggestionsModel(app: app)
-    for row in model.snapshot.rows { model.toggle(row.id) }
-    #expect(model.chosen == 0)
-    #expect(!model.use())
-    #expect(app.toast == nil)
-    #expect(app.suggestionCount == 7)
   }
 }

@@ -62,66 +62,22 @@ final class MerchantSuggestionsConsent {
   }
 }
 
-nonisolated enum CloudSortOffer {
-  static func shouldOffer(_ status: CloudSortStatus) -> Bool {
-    switch status.phase {
-    case .idle, .done:
-      return status.waitingNames >= CloudSortCardState.minimumNames && status.nextRunNames > 0
-    case .off, .running, .paused:
-      return false
-    }
+nonisolated enum CloudSendBack {
+  static func title(_ n: Int) -> String {
+    "Send \(n) \(n == 1 ? "payment" : "payments") back to Review?"
   }
 
-  static func title(_ status: CloudSortStatus) -> String {
-    "Sort the \(CloudSortCardState.plural(status.waitingPayments, "payment", "payments")) waiting in Review?"
-  }
+  static let message =
+    "They keep Cloudflare's suggestion, and you confirm each one. Payments you've changed since stay as they are."
 
-  static func message(_ status: CloudSortStatus) -> String {
-    "Hasala can ask about the \(CloudSortCardState.plural(status.waitingNames, "merchant name", "merchant names")) now, a few at a time, while the app is open."
+  static func done(_ n: Int) -> String {
+    n == 0 ? "Nothing to send back" : "Sent \(n) \(n == 1 ? "payment" : "payments") back to Review"
   }
-
-  static func lastSort(_ status: CloudSortStatus, nowMs: Int64, timeZone: TimeZone = .current) -> String? {
-    guard let ended = status.lastRunEndedMs else { return nil }
-    let p = CloudSortCardState.plural
-    var line = "Last sort, \(when(ended, nowMs: nowMs, timeZone: timeZone)): asked about \(p(status.askedNames, "merchant", "merchants")), sorted \(p(status.filed, "payment", "payments")), \(p(status.suggested, "suggestion", "suggestions"))."
-    let stays = status.staysOnDevice
-    if stays > 0 {
-      line += stays == 1
-        ? " 1 payment is a transfer or account alert, which stays on this iPhone."
-        : " \(stays) payments are transfers or account alerts, which stay on this iPhone."
-    }
-    return line
-  }
-
-  static func when(_ ms: Int64, nowMs: Int64, timeZone: TimeZone = .current) -> String {
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = timeZone
-    let then = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
-    let now = Date(timeIntervalSince1970: TimeInterval(nowMs) / 1000)
-    let clock = CloudSortCardState.clock(ms, timeZone: timeZone)
-    let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: then), to: calendar.startOfDay(for: now)).day ?? 0
-    switch days {
-    case 0: return "today \(clock)"
-    case 1: return "yesterday \(clock)"
-    default:
-      let f = DateFormatter()
-      f.locale = Locale(identifier: "en_GB_POSIX")
-      f.timeZone = timeZone
-      f.dateFormat = "EEE d MMM"
-      return "\(f.string(from: then)) \(clock)"
-    }
-  }
-
-  #if HASALA_MOCKS
-    @MainActor static var launchOffer = false
-  #endif
 }
 
 struct CloudSuggestionsSection: View {
   let app: AppModel
   @State private var consent = MerchantSuggestionsConsent()
-  @State private var offerAfterConsent = false
-  @State private var offering = false
   @State private var confirmSendBack = false
 
   private var status: CloudSortStatus? { app.cloudSort?.status }
@@ -153,58 +109,21 @@ struct CloudSuggestionsSection: View {
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
-      if let status, let line = CloudSortOffer.lastSort(status, nowMs: Int64(Date().timeIntervalSince1970 * 1000)) {
-        Text(line)
-          .hType(.footnote)
-          .foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 4)
-          .accessibilityIdentifier("profile.cloudLastSort")
-      }
     }
-    .task {
-      await app.cloudSort?.refresh()
-      #if HASALA_MOCKS
-        if CloudSortOffer.launchOffer {
-          CloudSortOffer.launchOffer = false
-          offering = true
-        }
-      #endif
-    }
-    .sheet(item: Bindable(consent).asking, onDismiss: consentClosed) { ask in
+    .task { await app.cloudSort?.refresh() }
+    .sheet(item: Bindable(consent).asking) { ask in
       switch ask {
       case .suggestions:
-        CloudConsentSheet(content: .suggestions, turnOn: {
-          offerAfterConsent = true
-          consent.turnOn(.suggestions)
-        }, notNow: { consent.notNow() })
+        CloudConsentSheet(content: .suggestions, turnOn: { consent.turnOn(.suggestions) }, notNow: { consent.notNow() })
       case .autoSort:
         CloudConsentSheet(content: .autoSort, turnOn: { consent.turnOn(.autoSort) }, notNow: { consent.notNow() })
       }
     }
-    .alert(status.map(CloudSortOffer.title) ?? "", isPresented: $offering) {
-      Button("Sort now") { app.cloudSort?.start() }
-        .accessibilityIdentifier("profile.cloudOffer.sortNow")
-      Button("Later", role: .cancel) {}
-        .accessibilityIdentifier("profile.cloudOffer.later")
-    } message: {
-      Text(status.map(CloudSortOffer.message) ?? "")
-    }
-    .alert(CloudSortCardState.sendBackTitle(status?.cloudSortedCount ?? 0), isPresented: $confirmSendBack) {
+    .alert(CloudSendBack.title(status?.cloudSortedCount ?? 0), isPresented: $confirmSendBack) {
       Button("Send back") { sendBack() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text(CloudSortCardState.sendBackMessage)
-    }
-  }
-
-  private func consentClosed() {
-    guard offerAfterConsent else { return }
-    offerAfterConsent = false
-    guard consent.isOn, let sort = app.cloudSort else { return }
-    Task {
-      await sort.refresh()
-      if CloudSortOffer.shouldOffer(sort.status) { offering = true }
+      Text(CloudSendBack.message)
     }
   }
 
@@ -213,7 +132,7 @@ struct CloudSuggestionsSection: View {
     let app = self.app
     Task {
       let n = await sort.sendAllBack()
-      app.say(CloudSortCardState.sentBack(n))
+      app.say(CloudSendBack.done(n))
     }
   }
 }

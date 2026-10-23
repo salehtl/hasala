@@ -7,7 +7,6 @@ public enum BacklogSort {
   public static let concurrency = 3
   public static let passNames = 12
   public static let passSpacingMs: Int64 = 30_000
-  public static let runNames = 250
   public static let dayNames = 400
   public static let dayWindowMs: Int64 = 86_400_000
   public static let maxTries = 3
@@ -30,11 +29,8 @@ public enum BacklogSort {
     public var asked: Set<String> = []
     public var answers: [String: Answer] = [:]
     public var tries: [String: Int] = [:]
-    public var requests: Int
 
-    public init(requests: Int = 0) {
-      self.requests = requests
-    }
+    public init() {}
   }
 
   public struct Interrupted: Error, Sendable {
@@ -48,7 +44,7 @@ public enum BacklogSort {
   }
 
   public enum Stop: String, Sendable, Equatable, Codable {
-    case off, refused, rateLimited, busy, runCap, dayCap
+    case off, refused, rateLimited, busy, dayCap
   }
 
   public struct Pass: Sendable {
@@ -118,21 +114,10 @@ public enum BacklogSort {
 
   public struct Counts: Sendable, Equatable {
     public var waitingNames: Int
-    public var waitingPayments: Int
-    public var staysOnDevice: Int
-    public var leftForYou: Int
     public var pendingTxnIDs: Set<String>
-    public var waitingGroups: Int
 
-    public init(
-      waitingNames: Int = 0, waitingPayments: Int = 0, staysOnDevice: Int = 0, leftForYou: Int = 0, pendingTxnIDs: Set<String> = [],
-      waitingGroups: Int = 0
-    ) {
-      self.waitingGroups = waitingGroups
+    public init(waitingNames: Int = 0, pendingTxnIDs: Set<String> = []) {
       self.waitingNames = waitingNames
-      self.waitingPayments = waitingPayments
-      self.staysOnDevice = staysOnDevice
-      self.leftForYou = leftForYou
       self.pendingTxnIDs = pendingTxnIDs
     }
   }
@@ -214,26 +199,18 @@ public enum BacklogSort {
     let p = try plan(rows: rows, categorizer: categorizer, memo: memo, kept: kept, cached: cached)
     let waiting = Set(p.pending)
     var c = Counts(waitingNames: p.pending.count)
-    var groups: Set<String> = []
-    for q in p.queued {
-      if p.blocked.contains(q.subject) {
-        c.staysOnDevice += 1
-      } else if waiting.contains(q.subject) {
-        c.waitingPayments += 1
-        c.pendingTxnIDs.insert(q.row.id)
-        groups.insert(q.row.merchantGroup.map { "g:" + $0 } ?? "s:" + q.subject)
-      }
-    }
-    c.waitingGroups = groups.count
-    c.leftForYou = p.queued.count - c.waitingPayments
+    for q in p.queued where !p.blocked.contains(q.subject) && waiting.contains(q.subject) { c.pendingTxnIDs.insert(q.row.id) }
     return c
   }
 
   public static func counts(
-    rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], modelTag: String, cache: any ModelAnswerCache, now: Int64
+    rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], modelTag: String, cache: any ModelAnswerCache, now: Int64,
+    memo: Memo = .init()
   ) throws -> Counts {
     let taxonomy = ModelTier.taxonomyHash(allowed)
-    return try counts(rows: rows, categorizer: categorizer, kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }) {
+    return try counts(
+      rows: rows, categorizer: categorizer, memo: memo, kept: { try cache.keptAnswer(subject: $0, modelTag: modelTag) }
+    ) {
       try cache.answer(subject: $0, taxonomyHash: taxonomy, modelTag: modelTag, now: now)
     }
   }
@@ -261,10 +238,9 @@ public enum BacklogSort {
       ModelTier.StagedSuggestion(subject: $0.key, category: $0.value.category, modelTag: tag, autoFile: $0.value.autoFile)
     }
     if !work.pending.isEmpty {
-      let runLeft = runNames - memo.requests
-      let left = min(runLeft, dayLeft)
+      let left = dayLeft
       if left <= 0 {
-        stop = runLeft <= 0 ? .runCap : .dayCap
+        stop = .dayCap
       } else {
         let order = random.map { shuffled(work.pending, random: $0) } ?? work.pending
         let batch = Array(order.prefix(min(passNames, left)))
@@ -272,7 +248,6 @@ public enum BacklogSort {
           subjects: batch, stages: [.cloud(cloud)], allowed: allowed, context: .backlog, now: now, callTimeout: callTimeout,
           maxCalls: left, concurrency: concurrency)
         calls = r.requests
-        memo.requests += calls
         let settled = Set(r.suggestions.map(\.subject) + r.unknown.map(\.subject))
         let halted = Set(r.failed.filter { ModelTier.stops($0.failure) }.map(\.subject))
         for a in Set(r.asked.map(\.subject)) {
@@ -309,13 +284,7 @@ public enum BacklogSort {
         txnID: q.row.id, version: v, category: a.category, modelTag: a.modelTag, autoFile: a.autoFile && autoFile && trusts(a.category))
     }
     let pending = work.pending.filter { !memo.asked.contains($0) && memo.answers[$0] == nil }.count
-    if stop == nil, pending > 0 {
-      if memo.requests >= runNames {
-        stop = .runCap
-      } else if dayLeft != .max, dayLeft - calls <= 0 {
-        stop = .dayCap
-      }
-    }
+    if stop == nil, pending > 0, dayLeft != .max, dayLeft - calls <= 0 { stop = .dayCap }
     return Pass(suggestions: suggestions, memo: memo, pending: pending, calls: calls, stop: stop, settled: settledCount)
   }
 
@@ -425,8 +394,6 @@ public enum BacklogSort {
       return (.pass(afterMs: backoffMs[backoffs]), backoffs + 1)
     case .busy?:
       return (.pause(.busy, untilMs: nowMs + busyPauseMs), 0)
-    case .runCap?:
-      return (.pause(.runCap, untilMs: nil), 0)
     case .dayCap?:
       return (.pause(.dayCap, untilMs: nil), 0)
     case let stop?:
@@ -442,27 +409,20 @@ public enum BacklogSort {
       && (r.sourceRef.map(ModelTier.mayAutoFile(modelTag:)) ?? false)
   }
 
-  public static func undoItems(manifest: [String: Int64]?, current: [SweepRow])
+  public static func sendBackItems(filed: [String: Int64], current: [SweepRow])
     -> [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)]
   {
     current.compactMap { r in
-      guard isCloudFiled(r), let v = r.version, let c = r.category, let tag = r.sourceRef else { return nil }
-      if let manifest { guard manifest[r.id] == v else { return nil } }
+      guard isCloudFiled(r), let v = r.version, filed[r.id] == v, let c = r.category, let tag = r.sourceRef else { return nil }
       return (r.id, v, c, true, CategorySource(kind: .model, model: tag))
     }
   }
 
-  public static func undo(manifest: [String: Int64]?, current: [SweepRow], context: AuthorContext) throws(AuthorError) -> [AuthoredBlob] {
-    let items = undoItems(manifest: manifest, current: current)
-    guard !items.isEmpty else { return [] }
-    return try OpAuthor.categorizations(items, context: context)
-  }
-
-  public static func undo(
-    manifest: [String: Int64]?, stamps: AuthorStamps, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext)
+  public static func sendBack(
+    filed: [String: Int64], stamps: AuthorStamps, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext)
   ) async throws -> (blobs: [AuthoredBlob], rows: Int) {
     let fresh = try await reread()
-    let items = undoItems(manifest: manifest, current: fresh.rows)
+    let items = sendBackItems(filed: filed, current: fresh.rows)
     guard !items.isEmpty else { return ([], 0) }
     let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
       let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))

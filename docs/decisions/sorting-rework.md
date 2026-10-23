@@ -104,15 +104,16 @@ rejected shows as a plain "You decide" card.
 
 ### D8, D9 and D10 One card on the Review tab
 
-The consent ask is shown once on each iPhone and never again after Not now. The run offer
-appears only when Merchant suggestions is already on, once the first load is done: a
-mailbox reached `active`, this iPhone's sync caught up and payments wait. A mailbox
-waiting for cards, and a mailbox held by another iPhone, count after the second Review
-open, because "another iPhone holds it" does not say that its import finished. The offer
-comes back when 20 or more new waiting merchant groups arrived since the last run, or a
-newly connected mailbox finishes its import. The memory is one integer snapshot and a few
-flags in UserDefaults, cleared by `LocalAccountData.forget()`. Check suggestions opens only
-from the result card of a bulk run (see [Feedback #12](#feedback-12-and-check-suggestions)).
+The consent ask is shown once on each iPhone and never again after Not now. Turn on sets
+both switches. The run offer, the run card, its paused and result states and Check
+suggestions were removed in the sorting rebuild (2026-10-23): with Merchant suggestions
+on, Hasala asks Cloudflare about the waiting merchant names by itself while the app is
+open, as a background stage (`BacklogSorter.ensure()`, see
+[cloud-suggestions.md](cloud-suggestions.md#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23)).
+The slot above the queue now holds only the ask or the importing card. The offer's memory
+in UserDefaults (`app.hasala.prefs.cloudSort.runOffer`) and the dismissed result
+(`app.hasala.prefs.cloudSort.dismissedRun`) are no longer written; `LocalAccountData.forget()`
+still removes them from older installs.
 
 ### D11 Trust on this phone
 
@@ -173,7 +174,7 @@ payments as Software. 39 left." after a group sort.
 
 - `LedgerEditAuthor` (`Live/Ledger/SortingEdits.swift`) authors every rework edit. A batch
   and its undo are each one `Outbox.enqueue`, so they are durable together or not at all.
-- Every edit, the model sweep's commit and the bulk sort's commit re-read the rows and
+- Every edit, the model sweep's commit and the background sort's commit re-read the rows and
   enqueue inside the page observer's `WriteSerial`, so a suggestion for a row that a rule
   or the person filed meanwhile is dropped, not authored.
 - Undo restores the exact earlier source of each row (`Inverse.refile`), only when the row
@@ -190,9 +191,8 @@ payments as Software. 39 left." after a group sort.
 
 ## Feedback #12 and Check suggestions
 
-Feedback #12 asked to remove the Check suggestions sheet. It is kept, but only on the
-result card of a bulk run: after a run that leaves 30 or more suggestions, ticking them in
-one list is faster than 30 deck taps. Everywhere else the deck's group cards replace it.
+Feedback #12 asked to remove the Check suggestions sheet. The rework kept it on the result
+card of a bulk run only; the sorting rebuild (2026-10-23) removed it with that card.
 
 ## Old builds
 
@@ -218,9 +218,7 @@ grouping, and splitting a group from its card.
 
 ## Open questions
 
-- Should the run offer count groups or names when it says "Sort 40 merchants"? The offer's
-  trigger counts groups; its card still counts the names it will ask about.
 - Should a group whose spellings carry many references (more than 8) get a shared-prefix
   rule limited to the group, instead of the 8 most used spellings?
-- Should Sorted for you list the bulk run's Cloudflare filings by run, as it lists rules
-  by batch? Today it groups them by merchant and category.
+- Should Sorted for you list the background stage's Cloudflare filings apart, as it lists
+  rules by batch? Today it groups them by merchant and category.

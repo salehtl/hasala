@@ -82,7 +82,7 @@ struct BacklogSortTests {
     let cache = MemoryCache()
     let p = try await Self.pass(l, cloud, cache: cache)
     #expect(cloud.calls.sorted() == ["mystery place 77", "sure shop", "unsure shop"])
-    #expect(p.calls == 3 && p.memo.requests == 3 && p.pending == 0 && p.stop == nil)
+    #expect(p.calls == 3 && p.pending == 0 && p.stop == nil)
     #expect(Set(p.suggestions.map(\.txnID)) == [ids[0], ids[1], ids[2], ids[5]])
     #expect(p.suggestions.filter { !$0.needsReview }.map(\.txnID).sorted() == [ids[0], ids[1]].sorted())
     #expect(try cache.isCached(subject: "mystery place 77", taxonomyHash: ModelTier.taxonomyHash(T.allowed), modelTag: "cf-clef/1", now: now))
@@ -119,7 +119,7 @@ struct BacklogSortTests {
     #expect(after.calls == 0 && after.pending == 0 && cloud.calls.count == BacklogSort.maxTries)
     let limited = BacklogCloud(failAt: (1, .rateLimited))
     let r = try await Self.pass(l, limited)
-    #expect(r.stop == .rateLimited && r.memo.requests == 1 && r.memo.tries.isEmpty && r.memo.asked.isEmpty && r.pending == 1)
+    #expect(r.stop == .rateLimited && r.calls == 1 && r.memo.tries.isEmpty && r.memo.asked.isEmpty && r.pending == 1)
   }
 
   @Test("a context-overflow retry is a request: it counts toward the pass and the device budget")
@@ -146,7 +146,7 @@ struct BacklogSortTests {
     let budget = ModelTier.Context.backlog.budget.calls
     #expect(budget == BacklogSort.passNames)
     #expect(cloud.calls.withLock { $0 } == budget)
-    #expect(p.calls == budget && p.memo.requests == budget && p.memo.asked.count == budget - 1 && p.pending == 14 - (budget - 1))
+    #expect(p.calls == budget && p.memo.asked.count == budget - 1 && p.pending == 14 - (budget - 1))
   }
 
   @Test("a failure after the requests keeps the memo, so they are counted and the names are not asked again")
@@ -166,21 +166,21 @@ struct BacklogSortTests {
     let rows = l.rows()
     do {
       _ = try await BacklogSort.run(
-        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(requests: 5), cache: MemoryCache(),
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: cloud, memo: .init(), cache: MemoryCache(),
         now: { now }, autoFile: true, stamps: AuthorStamps(), reread: { throw Boom() })
       Issue.record("the reread failed, so the run must throw")
     } catch let e as BacklogSort.Interrupted {
-      #expect(e.memo.requests == 7 && e.calls == 2 && e.memo.answers["sure shop"]?.category == "groceries")
+      #expect(e.calls == 2 && e.memo.answers["sure shop"]?.category == "groceries")
       #expect(e.memo.asked == ["sure shop", "mystery place 77"])
     }
     do {
       _ = try await Self.pass(l, cloud, cache: FailingCache())
       Issue.record("the cache failed, so the pass must throw")
     } catch let e as BacklogSort.Interrupted {
-      #expect(e.memo.requests == 2 && e.calls == 2 && e.memo.asked.count == 2)
+      #expect(e.calls == 2 && e.memo.asked.count == 2)
     }
-    #expect(BacklogSort.Pass.failed(.init(requests: 3)).failed)
-    let failed = BacklogSort.Pass.failed(.init(requests: 3), calls: 3)
+    #expect(BacklogSort.Pass.failed(.init()).failed)
+    let failed = BacklogSort.Pass.failed(.init(), calls: 3)
     #expect(failed.failed && failed.calls == 3)
   }
 
@@ -244,7 +244,7 @@ struct BacklogSortTests {
     for b in blobs { try l.fold(b) }
     #expect(l.state.txns[ids[1]]?.category == "shopping" && l.state.txns[ids[1]]?.categorySource?.kind == .user)
     #expect(try ModelSuggestionSweep.author(p.suggestions, current: l.rows(), context: l.context()).isEmpty)
-    let again = try await Self.pass(l, cloud, memo: BacklogSort.Memo(requests: p.memo.requests), cache: cache)
+    let again = try await Self.pass(l, cloud, memo: BacklogSort.Memo(), cache: cache)
     #expect(again.calls == 0 && again.suggestions.isEmpty && again.pending == 0)
     #expect(cloud.calls.count == 3)
   }
@@ -309,19 +309,21 @@ struct BacklogSortTests {
     #expect(BacklogSort.shuffled(items, random: SeededRandom(seed: "x")) == BacklogSort.shuffled(items, random: SeededRandom(seed: "x")))
   }
 
-  @Test("a run asks at most 250 names, then pauses for the next run")
-  func runCap() async throws {
+  @Test("there is no cap per run: a pass asks its twelve names whatever was asked before")
+  func noRunCap() async throws {
     var l = T.Ledger()
-    _ = try l.ingest([("PLACE ONE", "debit"), ("PLACE TWO", "debit"), ("PLACE THREE", "debit")])
+    _ = try l.ingest(Self.names(30))
     let cloud = BacklogCloud()
     let cache = MemoryCache()
-    let near = try await Self.pass(l, cloud, memo: BacklogSort.Memo(requests: BacklogSort.runNames - 2), cache: cache)
-    #expect(near.calls == 2 && near.pending == 1 && near.memo.requests == BacklogSort.runNames && near.stop == .runCap)
-    #expect(BacklogSort.next(after: near, importRunning: true, backoffs: 0, nowMs: now).next == .pause(.runCap, untilMs: nil))
-    let spent = try await Self.pass(l, cloud, memo: near.memo, cache: cache)
-    #expect(spent.calls == 0 && spent.stop == .runCap && cloud.calls.count == 2)
-    let fresh = try await Self.pass(l, cloud, memo: BacklogSort.Memo(), cache: cache)
-    #expect(fresh.calls == 1 && fresh.stop == nil && fresh.pending == 0)
+    var memo = BacklogSort.Memo()
+    var total = 0
+    for _ in 0..<3 {
+      let p = try await Self.pass(l, cloud, memo: memo, cache: cache)
+      memo = p.memo
+      total += p.calls
+      #expect(p.stop == nil)
+    }
+    #expect(total == 30 && cloud.calls.count == 30)
   }
 
   @Test("a device asks at most 400 names in a rolling day, across runs")
@@ -349,7 +351,7 @@ struct BacklogSortTests {
     _ = try l.ingest([("PLACE ONE", "debit"), ("PLACE TWO", "debit"), ("PLACE THREE", "debit"), ("PLACE FOUR", "debit")])
     let limited = BacklogCloud(failAt: (2, .rateLimited))
     let p = try await Self.pass(l, limited, concurrency: 1)
-    #expect(p.stop == .rateLimited && limited.calls.count == 2 && p.memo.requests == 2 && p.memo.tries.isEmpty)
+    #expect(p.stop == .rateLimited && limited.calls.count == 2 && p.calls == 2 && p.memo.tries.isEmpty)
     var backoffs = 0
     var waits: [Int64] = []
     for _ in 0..<4 {
@@ -490,7 +492,7 @@ struct BacklogSortTests {
     #expect(try cache.answer(subject: "mystery place 77", taxonomyHash: taxonomy, modelTag: "apple-fm/26.1", now: now) == .category("shopping", autoFile: false))
   }
 
-  @Test("the plan counts waiting names and payments, the rows that stay on the device, and the rest")
+  @Test("the plan counts the waiting names and the payments that wait for them")
   func counts() async throws {
     var l = T.Ledger()
     let waiting = try l.ingest([("SHOP ONE", "debit"), ("SHOP ONE", "debit"), ("SHOP TWO", "debit")])
@@ -503,9 +505,12 @@ struct BacklogSortTests {
     try cache.recordUnknown([(subject: "mystery place 77", modelTag: "cf-clef/1")], taxonomyHash: ModelTier.taxonomyHash(T.allowed), now: now)
     let c = try BacklogSort.counts(
       rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: cache, now: now)
-    #expect(c.waitingNames == 2 && c.waitingPayments == 3 && c.pendingTxnIDs == Set(waiting))
-    #expect(c.staysOnDevice == 3)
-    #expect(c.leftForYou == 3 + 1 + 1)
+    #expect(c.waitingNames == 2 && c.pendingTxnIDs == Set(waiting))
+    var memo = BacklogSort.Memo()
+    memo.asked = ["shop one"]
+    let asked = try BacklogSort.counts(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: cache, now: now, memo: memo)
+    #expect(asked.waitingNames == 1 && asked.pendingTxnIDs == [waiting[2]])
     #expect(!c.pendingTxnIDs.contains(held[0]) && !c.pendingTxnIDs.contains(shared[0]) && !c.pendingTxnIDs.contains(unknown[0]))
   }
 
@@ -518,49 +523,37 @@ struct BacklogSortTests {
     return ids
   }
 
-  @Test("undoing a run sends its unchanged rows back to Review as suggestions, and skips a row whose version moved")
-  func undoRun() async throws {
+  @Test("sending back takes the rows filed here that are unchanged, as suggestions, and nothing else")
+  func sendBack() async throws {
     var l = T.Ledger()
     let ids = try Self.filed(&l, ["SHOP ONE", "SHOP TWO", "SHOP THREE"])
     let outside = try Self.filed(&l, ["SHOP FOUR"])
-    var manifest: [String: Int64] = [:]
-    for id in ids { manifest[id] = l.state.txns[id]!.version }
+    let apple = try Self.filed(&l, ["SHOP FIVE"], tag: "apple-fm/26.1")
+    let suggested = try l.ingest([("SHOP SIX", "debit")])
+    for b in try ModelSuggestionSweep.author(
+      [.init(txnID: suggested[0], version: l.state.txns[suggested[0]]!.version, category: "dining", modelTag: "cf-clef/1")],
+      current: l.rows(), context: l.context())
+    { try l.fold(b) }
+    var filed: [String: Int64] = [:]
+    for id in ids + apple + suggested { filed[id] = l.state.txns[id]!.version }
     #expect(ids.allSatisfy { !l.state.txns[$0]!.needsReview && l.state.txns[$0]!.categorySource?.model == "cf-clef/1" })
     var u = OpAuthor(l.context())
     u.categorize(txnID: ids[1], parentVersion: l.state.txns[ids[1]]!.version, category: "shopping")
     try l.fold(try u.build())
-    let blobs = try BacklogSort.undo(manifest: manifest, current: l.rows(), context: l.context())
-    #expect(try Self.review(blobs) == [ids[0]: true, ids[2]: true])
-    for b in blobs { try l.fold(b) }
+    let snapshot = l
+    let stamps = AuthorStamps()
+    let r = try await BacklogSort.sendBack(filed: filed, stamps: stamps, reread: { (snapshot.rows(), snapshot.context()) })
+    #expect(r.rows == 2 && stamps.lastMs == r.blobs.last?.lastAuthoredMs)
+    #expect(try Self.review(r.blobs) == [ids[0]: true, ids[2]: true])
+    for b in r.blobs { try l.fold(b) }
     for id in [ids[0], ids[2]] {
       let t = l.state.txns[id]!
       #expect(t.needsReview && t.category == "dining" && t.categorySource?.kind == .model && t.categorySource?.model == "cf-clef/1")
     }
     #expect(l.state.txns[ids[1]]?.category == "shopping" && l.state.txns[ids[1]]?.categorySource?.kind == .user)
     #expect(!l.state.txns[outside[0]]!.needsReview)
-    #expect(try BacklogSort.undo(manifest: manifest, current: l.rows(), context: l.context()).isEmpty)
-    #expect(ModelSuggestionSweep.queue(rows: l.rows(), categorizer: T.categorizer).isEmpty)
-  }
-
-  @Test("sending everything back takes every live Cloudflare-filed row, with no manifest")
-  func sendAllBack() async throws {
-    var l = T.Ledger()
-    let ids = try Self.filed(&l, ["SHOP ONE", "SHOP TWO"])
-    let apple = try Self.filed(&l, ["SHOP THREE"], tag: "apple-fm/26.1")
-    let suggested = try l.ingest([("SHOP FOUR", "debit")])
-    for b in try ModelSuggestionSweep.author(
-      [.init(txnID: suggested[0], version: l.state.txns[suggested[0]]!.version, category: "dining", modelTag: "cf-clef/1")],
-      current: l.rows(), context: l.context())
-    { try l.fold(b) }
-    #expect(l.state.txns[apple[0]]!.needsReview && l.state.txns[suggested[0]]!.needsReview)
-    let snapshot = l
-    let stamps = AuthorStamps()
-    let r = try await BacklogSort.undo(manifest: nil, stamps: stamps, reread: { (snapshot.rows(), snapshot.context()) })
-    #expect(r.rows == 2 && stamps.lastMs == r.blobs.last?.lastAuthoredMs)
-    #expect(try Self.review(r.blobs) == [ids[0]: true, ids[1]: true])
-    for b in r.blobs { try l.fold(b) }
-    #expect(ids.allSatisfy { l.state.txns[$0]!.needsReview && l.state.txns[$0]!.category == "dining" })
-    let none = try await BacklogSort.undo(manifest: nil, stamps: stamps, reread: { [l] in (l.rows(), l.context()) })
+    let none = try await BacklogSort.sendBack(filed: filed, stamps: stamps, reread: { [l] in (l.rows(), l.context()) })
     #expect(none.rows == 0 && none.blobs.isEmpty)
+    #expect(ModelSuggestionSweep.queue(rows: l.rows(), categorizer: T.categorizer).isEmpty)
   }
 }
