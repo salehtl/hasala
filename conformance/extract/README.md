@@ -56,7 +56,7 @@ case, edit its input by hand, run update mode, and review the diff.
 
 `LearnedLayouts` is a Codable value that the caller loads and saves. Reading
 is a pure function of the memory and the mail. Its bounds are in its names:
-`senderLimit` (64 senders, the least recently read is dropped),
+`senderLimit` (32 senders, the least recently read is dropped),
 `layoutLimitPerSender` (40, the least recently used is dropped),
 `exampleLimitPerLayout` (16, the oldest is dropped) and `tokenLimitPerMail`
 (400 tokens of a mail are read). A layout keeps its anchors (the words and
@@ -70,7 +70,7 @@ only what fills the slots and the gaps, with references to the anchors.
   "note": "…",
   "schema_version": 1,
   "agreement_bar_percent": 80,
-  "limits": { "senders": 64, "layouts_per_sender": 40, "examples_per_layout": 16, "tokens_per_mail": 400 },
+  "limits": { "senders": 32, "layouts_per_sender": 40, "examples_per_layout": 16, "tokens_per_mail": 400 },
   "outcomes": ["transaction", "pending", "not_transaction", "unknown"],
   "kinds": ["card_purchase", "…"],
   "streams": [

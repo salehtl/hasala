@@ -3,7 +3,7 @@
   "schema_version": 1,
   "agreement_bar_percent": 80,
   "limits": {
-    "senders": 64,
+    "senders": 32,
     "layouts_per_sender": 40,
     "examples_per_layout": 16,
     "tokens_per_mail": 400
@@ -65,9 +65,9 @@
           "direction": "debit",
           "merchant": "SAMPLE BAKERY",
           "last4": "4821",
-          "confidence_percent": 95,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         },
         {
           "outcome": "transaction",
@@ -163,9 +163,9 @@
           "direction": "debit",
           "merchant": "SAMPLE GARAGE",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false
         },
         {
           "outcome": "transaction",
@@ -175,9 +175,9 @@
           "direction": "debit",
           "merchant": "SAMPLE FLORIST",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false
         },
         {
           "outcome": "transaction",
@@ -187,9 +187,9 @@
           "direction": "debit",
           "merchant": "SAMPLE PARKING",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false
         },
         {
           "outcome": "transaction",
@@ -199,9 +199,9 @@
           "direction": "debit",
           "merchant": "SAMPLE TAILOR",
           "last4": "7310",
-          "confidence_percent": 95,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         },
         {
           "outcome": "transaction",
@@ -250,9 +250,9 @@
           "direction": "debit",
           "merchant": "SAMPLE DELI",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -277,9 +277,9 @@
           "direction": "debit",
           "merchant": "SAMPLE ELECTRONICS",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -304,9 +304,9 @@
           "direction": "debit",
           "merchant": "SAMPLE ELECTRONICS",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -331,9 +331,9 @@
           "direction": "debit",
           "merchant": "SAMPLE JUICE",
           "last4": "7310",
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -365,8 +365,8 @@
           "direction": "debit",
           "merchant": "bank c",
           "last4": null,
-          "confidence_percent": 75,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         },
         {
@@ -404,8 +404,8 @@
           "direction": "debit",
           "merchant": "bank c",
           "last4": null,
-          "confidence_percent": 75,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         }
       ]
@@ -431,8 +431,8 @@
           "direction": "debit",
           "merchant": "Bank C",
           "last4": null,
-          "confidence_percent": 50,
-          "agreed": true,
+          "confidence_percent": 45,
+          "agreed": false,
           "meets_agreement_bar": false
         }
       ]
@@ -458,8 +458,8 @@
           "direction": "debit",
           "merchant": "Bank C",
           "last4": null,
-          "confidence_percent": 70,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         }
       ]
@@ -485,8 +485,8 @@
           "direction": "debit",
           "merchant": "SAMPLE TRADING",
           "last4": null,
-          "confidence_percent": 85,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         }
       ]
@@ -512,9 +512,9 @@
           "direction": "debit",
           "merchant": "SAMPLE BROKER LLC",
           "last4": null,
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -600,8 +600,8 @@
           "direction": "debit",
           "merchant": "bank c",
           "last4": null,
-          "confidence_percent": 75,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         },
         {
@@ -612,9 +612,9 @@
           "direction": "debit",
           "merchant": "FUND TRANSFER OUT",
           "last4": null,
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -639,9 +639,9 @@
           "direction": "credit",
           "merchant": "INWARD TRANSFER",
           "last4": null,
-          "confidence_percent": 90,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -666,9 +666,9 @@
           "direction": "credit",
           "merchant": "SAMPLE RIDES",
           "last4": "4321",
-          "confidence_percent": 95,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -693,9 +693,9 @@
           "direction": "credit",
           "merchant": null,
           "last4": "9012",
-          "confidence_percent": 95,
-          "agreed": true,
-          "meets_agreement_bar": true
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false
         }
       ]
     },
@@ -828,8 +828,8 @@
           "direction": "debit",
           "merchant": null,
           "last4": null,
-          "confidence_percent": 95,
-          "agreed": true,
+          "confidence_percent": 60,
+          "agreed": false,
           "meets_agreement_bar": false
         }
       ]
