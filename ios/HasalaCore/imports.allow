@@ -31,7 +31,7 @@ Crypto        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResource
 Auth          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Norm          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Template      CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources HasalaICU
-Extract       CoreMoney
+Extract
 Mail          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 
 # L2

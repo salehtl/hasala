@@ -106,7 +106,7 @@ let package = Package(
     core("CoreNorm", "Norm", l0),
     // §2.3: ICU's C API (uregex_*) through a module map over libicucore.
     core("CoreTemplate", "Template", l0 + ["HasalaICU"]),
-    core("CoreExtract", "Extract", ["CoreMoney"]),
+    core("CoreExtract", "Extract"),
     core("CoreMail", "Mail", l0),
 
     // L2

@@ -38,11 +38,14 @@ import Testing
     #expect(r.merchant == "SAMPLE SHOP")
   }
 
-  @Test func threeDecimalCurrency() {
-    let r = CombinedReader.readRules(
-      Mails.input(subject: "Debit alert", ["Your account has been debited with KWD 12.345 for a transfer."]))
-    #expect(r.amountMinor == 12_345)
+  @Test func threeDecimalCurrencyHasNoAmountInHundredths() {
+    let m = Mails.input(subject: "Debit alert", ["Your account has been debited with KWD 12.345 for a transfer."])
+    let r = CombinedReader.readRules(m)
+    #expect(r.outcome == .transaction)
+    #expect(r.amountMinor == nil)
     #expect(r.currency == "KWD")
+    #expect(!CombinedReader.read(m, LearnedLayouts()).0.meetsAgreementBar)
+    #expect(RuleReader.read(m).amountMinor == 12_345)
   }
 }
 

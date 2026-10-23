@@ -47,6 +47,10 @@ case, edit its input by hand, run update mode, and review the diff.
 5. Outcome. `transaction`; `pending`; `not_transaction` when a reader found a
    negative word near the amount (one-time password, declined, failed,
    activation, a future debit); `unknown` otherwise.
+6. Hundredths. `amount_minor` is in hundredths of the major unit (schema
+   v4). The readers parse a three- or zero-decimal currency with its own
+   decimals, but such a reading has `amount_minor` null, so it goes to
+   Review, as the templates refuse it.
 
 ## The learned memory
 

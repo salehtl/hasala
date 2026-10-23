@@ -68,8 +68,13 @@ public enum CombinedReader {
     guard r.isTransaction else {
       return ExtractReading(outcome: outcome, kind: kind, confidencePercent: 0, notes: notes)
     }
+    var amountMinor = r.amountMinor
+    if let c = r.currency, Exponent.of(c) != 2 {
+      amountMinor = nil
+      notes.append("\(c) is not a two-decimal currency: no amount in hundredths")
+    }
     return ExtractReading(
-      outcome: outcome, amountMinor: r.amountMinor, currency: r.currency, direction: direction, merchant: r.merchant,
+      outcome: outcome, amountMinor: amountMinor, currency: r.currency, direction: direction, merchant: r.merchant,
       last4: MailRules.last4(input), kind: kind, confidencePercent: r.confidence, agreed: agreed, notes: notes)
   }
 }

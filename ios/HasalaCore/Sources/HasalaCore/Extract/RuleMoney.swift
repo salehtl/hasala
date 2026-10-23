@@ -1,8 +1,16 @@
-import CoreMoney
 import Foundation
 
 enum Exponent {
-  static func of(_ c: String) -> Int { CurrencyCode(c).map(MinorExponent.v1) ?? 2 }
+  static let threeDecimals: Set<String> = ["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]
+  static let noDecimals: Set<String> = [
+    "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF",
+  ]
+
+  static func of(_ c: String) -> Int {
+    if threeDecimals.contains(c) { return 3 }
+    if noDecimals.contains(c) { return 0 }
+    return 2
+  }
 }
 
 struct RuleMoney {

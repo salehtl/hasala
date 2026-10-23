@@ -823,14 +823,14 @@
         {
           "outcome": "transaction",
           "kind": "account_debit_alert",
-          "amount_minor": 12345,
+          "amount_minor": null,
           "currency": "KWD",
           "direction": "debit",
           "merchant": null,
           "last4": null,
           "confidence_percent": 95,
           "agreed": true,
-          "meets_agreement_bar": true
+          "meets_agreement_bar": false
         }
       ]
     }
