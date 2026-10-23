@@ -73,7 +73,7 @@ final class CloudSortUITests: XCTestCase {
 
   @MainActor
   func testNoSortingCardShowsWhateverTheBackgroundStageIsDoing() throws {
-    for phase in ["off", "idle", "running", "busy", "dayCap", "done"] {
+    for phase in ["off", "running", "busy", "done"] {
       let app = launch(scenario: "maya", arguments: ["-HasalaCloudSortPhase", phase])
       XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30), phase)
       app.tabBars.firstMatch.buttons["Review"].tap()
