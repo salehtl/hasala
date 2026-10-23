@@ -316,7 +316,7 @@ struct LiveSortingTests {
     let snapshot = SortedForYouEngine.snapshot(l.store.state, now: MayaLedger.now)
     let item = try #require(snapshot.items.first)
     #expect(Set(item.txnIDs) == Set(reached) && item.canStopRule)
-    try #require(try l.store.apply(item.undoAll))
+    _ = try #require(try l.store.apply(item.undoAll))
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySource != "rule" } }
     #expect(try l.row(l.ids["paypal"]![0])?.categorySource == "model")
     #expect(try l.row(l.ids["paypal"]![0])?.category == "shopping")
