@@ -10,6 +10,10 @@ struct Tally {
   var amountWrong = 0
   var amountMissing = 0
   var currencyRight = 0
+  var directionTotal = 0
+  var directionRight = 0
+  var directionWrong = 0
+  var directionMissing = 0
   var merchantExact = 0
   var merchantClose = 0
   var merchantWrong = 0
@@ -20,6 +24,7 @@ struct Tally {
   var noneTotal = 0
   var confident = 0
   var confidentWrong = 0
+  var confidentWrongMerchant = 0
 }
 
 struct Miss: Encodable {
@@ -54,6 +59,7 @@ enum Score {
     let confident = r.isTransaction && r.confidence >= 0.8
     if confident { a.confident += 1 }
     var wrong = false
+    var wrongMerchant = false
     if t.isTransaction { a.txnTrue += 1 }
     switch (t.isTransaction, r.isTransaction) {
     case (true, true): a.txnTP += 1
@@ -83,6 +89,21 @@ enum Score {
         wrong = true
         miss("currency_wrong", r.currency ?? "nil", t.currency ?? "nil")
       }
+      if let want = t.direction {
+        a.directionTotal += 1
+        if let got = r.direction {
+          if got == want {
+            a.directionRight += 1
+          } else {
+            a.directionWrong += 1
+            wrong = true
+            miss("direction_wrong", got, want)
+          }
+        } else {
+          a.directionMissing += 1
+          miss("direction_missing", "nil", want)
+        }
+      }
       if let want = t.merchant {
         a.merchantTotal += 1
         if let got = r.merchant {
@@ -92,7 +113,7 @@ enum Score {
             a.merchantClose += 1
           } else {
             a.merchantWrong += 1
-            wrong = true
+            wrongMerchant = true
             miss("merchant_wrong", got, want)
           }
         } else {
@@ -103,6 +124,7 @@ enum Score {
         a.noneTotal += 1
         if let got = r.merchant {
           a.merchantNoneWrong += 1
+          wrongMerchant = true
           miss("merchant_invented", got, "none")
         } else {
           a.merchantNoneRight += 1
@@ -110,5 +132,6 @@ enum Score {
       }
     }
     if confident && wrong { a.confidentWrong += 1 }
+    if confident && !wrong && wrongMerchant { a.confidentWrongMerchant += 1 }
   }
 }

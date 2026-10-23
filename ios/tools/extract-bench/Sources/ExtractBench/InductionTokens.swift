@@ -38,8 +38,6 @@ enum ILex {
     "NPR", "MAD", "TND", "LBP", "IQD", "LYD", "CNH", "MXN", "BRL", "PLN", "CZK", "HUF", "ILS", "KES", "NGN", "VND", "TWD",
   ]
   static let aedAliases: Set<String> = ["dhs", "dh", "dhs.", "درهم", "د.إ", "د.ا", "دراهم", "aed."]
-  static let exp3: Set<String> = ["KWD", "BHD", "OMR", "JOD", "TND", "LYD", "IQD"]
-  static let exp0: Set<String> = ["JPY", "KRW", "VND", "IDR"]
 
   static func currency(_ raw: String) -> String? {
     let u = raw.uppercased()
@@ -279,7 +277,7 @@ enum ITokenizer {
     let clean = raw.replacingOccurrences(of: ",", with: "")
     let parts = clean.split(separator: ".", omittingEmptySubsequences: false)
     guard parts.count <= 2, let whole = Int64(parts[0].isEmpty ? "0" : String(parts[0])) else { return nil }
-    let exp = ILex.exp3.contains(currency) ? 3 : (ILex.exp0.contains(currency) ? 0 : 2)
+    let exp = Hundredths.exponent
     var frac = parts.count == 2 ? String(parts[1]) : ""
     guard frac.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
     if frac.count > exp {

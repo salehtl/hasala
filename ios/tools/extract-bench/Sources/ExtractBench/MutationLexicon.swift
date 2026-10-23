@@ -149,7 +149,6 @@ enum Lexicon {
     for (a, b) in rewordEn { s.insert(a.lowercased()); s.insert(b.lowercased()) }
     for (a, b) in rewordAr { s.insert(a); s.insert(b) }
     for x in ["amount:", "available balance", "الرصيد المتاح", "from account", "transaction date", "to account"] { s.insert(x) }
-    s.remove("from account:")
     return s
   }()
 

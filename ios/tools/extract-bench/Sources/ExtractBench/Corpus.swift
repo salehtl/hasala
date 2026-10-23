@@ -21,12 +21,20 @@ enum Corpus {
     return out.sorted { ($0.receivedAtMs, $0.id) < ($1.receivedAtMs, $1.id) }
   }
 
+  static let notTransactions = ["pending", "in-progress", "other-status", "balance-only"]
+
+  static func isNotTransaction(_ caseName: String) -> Bool {
+    let n = caseName.split(separator: "/").last.map(String.init) ?? caseName
+    return notTransactions.contains { n == $0 || n.hasSuffix("-" + $0) }
+  }
+
   static func loadSynthetic(_ dir: String) throws -> [(Mail, Truth)] {
     let names = try FileManager.default.contentsOfDirectory(atPath: dir).filter {
       $0.hasPrefix("synthetic-") && $0.hasSuffix(".json")
     }.sorted()
     var out: [(Mail, Truth)] = []
     var clock: Int64 = 1_780_000_000_000
+    var seen = Set<String>()
     for n in names {
       let d = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: dir).appendingPathComponent(n))) as! [String: Any]
       if (d["template"] as? String ?? "").hasPrefix("synth.") { continue }
@@ -34,18 +42,25 @@ enum Corpus {
       let match = def["match"] as? [String: Any] ?? [:]
       let sender = (match["sender_domain"] as? [String])?.first ?? "unknown"
       for c in d["cases"] as? [[String: Any]] ?? [] {
-        guard let e = c["expect"] as? [String: Any], e["matched"] as? Bool == true else { continue }
+        guard let e = c["expect"] as? [String: Any] else { continue }
+        let name = c["name"] as? String ?? ""
+        let matched = e["matched"] as? Bool == true
+        guard matched || isNotTransaction(name) else { continue }
         let subject = String(decoding: Data(base64Encoded: c["subject_base64"] as? String ?? "") ?? Data(), as: UTF8.self)
         let body = String(decoding: Data(base64Encoded: c["normalized_body_base64"] as? String ?? "") ?? Data(), as: UTF8.self)
+        guard matched || seen.insert(sender + "\u{0}" + subject + "\u{0}" + body).inserted else { continue }
         clock += 60_000
         let merchant = (e["merchant"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let t = Truth(
-          isTransaction: true, amountMinor: Int64(e["amount_minor"] as? String ?? ""), currency: e["currency"] as? String,
-          merchant: merchant, direction: e["direction"] as? String)
+        let t =
+          matched
+          ? Truth(
+            isTransaction: true, amountMinor: Int64(e["amount_minor"] as? String ?? ""), currency: e["currency"] as? String,
+            merchant: merchant, direction: e["direction"] as? String)
+          : Truth(isTransaction: false)
         out.append(
           (
             Mail(
-              id: "\(n.dropLast(5))#\(c["name"] as? String ?? "")", origin: "synthetic", sender: sender, receivedAtMs: clock,
+              id: "\(n.dropLast(5))#\(name)", origin: "synthetic", sender: sender, receivedAtMs: clock,
               subject: subject, text: body, listUnsubscribe: false), t
           ))
       }
@@ -53,9 +68,8 @@ enum Corpus {
     return out
   }
 
-  static func loadLabels(_ path: String) -> [String: Truth] {
-    guard let d = FileManager.default.contents(atPath: path) else { return [:] }
-    return (try? JSONDecoder().decode([String: Truth].self, from: d)) ?? [:]
+  static func loadLabels(_ path: String) throws -> [String: Truth] {
+    try JSONDecoder().decode([String: Truth].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
   }
 
   static func writeJSONL(_ mails: [Mail], to path: String) throws {

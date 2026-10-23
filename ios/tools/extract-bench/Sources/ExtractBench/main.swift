@@ -38,7 +38,7 @@ case "run":
   }
   if let mail = arg("mail") {
     guard let lp = arg("labels") else { die("--mail needs --labels") }
-    let labels = Corpus.loadLabels(lp)
+    let labels = try Corpus.loadLabels(lp)
     let mails = try Corpus.loadMaildir(mail)
     let labeled = mails.compactMap { m in labels[m.id].map { (m, $0) } }
     items += labeled

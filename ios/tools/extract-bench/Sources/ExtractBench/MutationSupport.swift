@@ -64,14 +64,6 @@ enum MU {
     return String(out)
   }
 
-  static func exponent(_ cur: String?) -> Int {
-    switch cur {
-    case "KWD", "BHD", "OMR", "JOD", "TND", "LYD", "IQD": return 3
-    case "JPY", "KRW", "VND", "CLP", "ISK", "UGX", "PYG", "XOF", "XAF": return 0
-    default: return 2
-    }
-  }
-
   struct Found {
     var range: NSRange
     var number: String
@@ -84,7 +76,7 @@ enum MU {
 
   static func findAmount(_ text: String, minor: Int64, currency: String?) -> Found? {
     let norm = normDigits(text) as NSString
-    let exp = exponent(currency)
+    let exp = Hundredths.exponent
     let target = Decimal(minor)
     for r in numRe.matches(in: norm as String, range: NSRange(location: 0, length: norm.length)) {
       let ip = norm.substring(with: r.range(at: 1)).replacingOccurrences(of: ",", with: "")

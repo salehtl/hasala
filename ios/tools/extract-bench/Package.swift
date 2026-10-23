@@ -11,9 +11,15 @@ let package = Package(
       dependencies: [
         .product(name: "CoreNorm", package: "HasalaCore"),
         .product(name: "CoreTemplate", package: "HasalaCore"),
+        .product(name: "CoreTime", package: "HasalaCore"),
       ],
       path: "Sources/ExtractBench"
-    )
+    ),
+    .testTarget(
+      name: "ExtractBenchTests",
+      dependencies: ["ExtractBench"],
+      path: "Tests/ExtractBenchTests"
+    ),
   ],
   swiftLanguageModes: [.v5]
 )

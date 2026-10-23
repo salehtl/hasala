@@ -1,7 +1,7 @@
 import Foundation
 
 enum Report {
-  static let header = ["reader", "change", "group", "mails", "txn found", "false txn", "amount", "currency", "merchant", "none ok", "conf. wrong"]
+  static let header = ["reader", "change", "group", "mails", "txn found", "false txn", "amount", "currency", "direction", "merchant", "none ok", "filed", "conf. wrong", "conf. wrong merchant"]
 
   static func pct(_ n: Int, _ d: Int) -> String { d == 0 ? "–" : String(format: "%.1f%%", 100 * Double(n) / Double(d)) }
 
@@ -13,9 +13,12 @@ enum Report {
       "\(a.txnFP)",
       pct(a.amountRight, a.txnTrue),
       pct(a.currencyRight, a.txnTrue),
+      a.directionTotal == 0 ? "–" : pct(a.directionRight, a.directionTotal),
       a.merchantTotal == 0 ? "–" : "\(pct(a.merchantExact + a.merchantClose, a.merchantTotal)) (\(a.merchantExact)+\(a.merchantClose)~/\(a.merchantTotal))",
       a.noneTotal == 0 ? "–" : "\(a.merchantNoneRight)/\(a.noneTotal)",
+      pct(a.confident, a.mails),
       "\(a.confidentWrong)",
+      "\(a.confidentWrongMerchant)",
     ]
   }
 
@@ -32,10 +35,11 @@ enum Report {
       let a = r.tally
       t.mails += a.mails; t.txnTrue += a.txnTrue; t.txnTP += a.txnTP; t.txnFP += a.txnFP; t.txnFN += a.txnFN
       t.amountRight += a.amountRight; t.amountWrong += a.amountWrong; t.amountMissing += a.amountMissing
-      t.currencyRight += a.currencyRight; t.merchantExact += a.merchantExact; t.merchantClose += a.merchantClose
+      t.currencyRight += a.currencyRight; t.directionTotal += a.directionTotal; t.directionRight += a.directionRight
+      t.directionWrong += a.directionWrong; t.directionMissing += a.directionMissing; t.merchantExact += a.merchantExact; t.merchantClose += a.merchantClose
       t.merchantWrong += a.merchantWrong; t.merchantMissing += a.merchantMissing; t.merchantNoneRight += a.merchantNoneRight
       t.merchantNoneWrong += a.merchantNoneWrong; t.merchantTotal += a.merchantTotal; t.noneTotal += a.noneTotal
-      t.confident += a.confident; t.confidentWrong += a.confidentWrong
+      t.confident += a.confident; t.confidentWrong += a.confidentWrong; t.confidentWrongMerchant += a.confidentWrongMerchant
       out[k]!.tally = t
     }
     return order.map { out[$0]! }

@@ -26,11 +26,19 @@ mail, kept outside this repository: **405 mails, 401 from DIB and 4 from Emirate
 This is the main limitation: one bank is nearly all of the corpus, and the Emirates NBD
 numbers rest on four mails.
 
-Eight simulated changes were applied to the later half of each sender's mail, and only
+Ten simulated changes were applied to the later half of each sender's mail, and only
 that half was scored: `reword` (new label words), `reorder` (lines in another order),
 `balance-line` (a new balance line next to the amount), `amount-format` (another way to
 write the amount), `one-line` (label and value on one line), `english` and `arabic` (a
-switch of language) and `boilerplate` (promotional lines that contain amounts).
+switch of language), `boilerplate` (promotional lines that contain amounts), and two
+held-out changes, `reword-unseen` and `boilerplate-unseen`.
+
+The first eight changes use words the readers were written to know: the reword labels
+are in the rules' lexicon and the promotional lines use the promo filter's words. Their
+results are therefore partly circular. The two held-out changes use labels, phrases and
+promotional lines that are in no reader lexicon and not in the promo filter
+(`MutationHeldOut.swift`). Keep them out of the lexicons, or they stop measuring
+anything.
 
 Readers compared:
 
@@ -40,29 +48,46 @@ Readers compared:
 | rules | General English and Arabic rules: amount and currency patterns, direction words, merchant labels. No per-sender knowledge. |
 | learned | Learns each sender's layouts by aligning that sender's earlier mails, then reads the fixed and variable parts of a new mail. Nothing is learned across people. |
 | +promo | The same reader after promotional lines (a promotion word and a number, but no posted-transaction word) are removed. |
-| chain | Templates first. Otherwise rules and learned, each with promo lines removed. Confident only when both agree on amount and currency. |
+| chain | Templates first; a template hit is held for review when its currency is not an ISO code or a reader reads another amount or currency. Otherwise rules and learned, each with promo lines removed. Confident only when both agree on amount, currency and direction, and the lower of the two confidences is 0.8 or more. |
 
-Results, as shares of the mails that are transactions (aggregate only):
+Results, as shares of the mails that are transactions (aggregate only). "Filed" is the
+share of mails that would file with no review. "Confidently wrong" counts filed readings
+that are not a transaction or have the wrong amount, currency or direction; a wrong or
+invented merchant is counted on its own.
 
 - On today's mail every reader found every transaction. Templates, rules and learned all
   read 99.7% of amounts and currencies correctly.
 - Under `reword`, `one-line`, `english`, `arabic` and `amount-format`, templates read 0%
-  to 3.2% of amounts. Rules and learned each read 99.0% to 100% of amounts under every
-  change.
+  to 3.2% of amounts. Rules and learned each read 99.0% to 100% of amounts under each of
+  the first eight changes.
+- Held out: under `reword-unseen`, rules read only 5.8% of amounts, learned 96.9%, and
+  the chain 100% (it falls back to the one reader that reads). Under
+  `boilerplate-unseen`, learned read 94.2% of amounts and took 3 promotional amounts for
+  transactions; rules read 100%. The rules' robustness to rewording comes mostly from its
+  lexicon.
 - Promotional lines with amounts (`boilerplate`) misled the readers without the promo
-  filter (rules 93.7% of amounts, learned 50.3%, with 9 and 4 confidently wrong
-  readings). With the filter both were back to 100%.
-- The chain read 100% of amounts and currencies under each of the eight changes, and
-  98.9% to 100% of merchants where the mail names one.
-- Confidently wrong readings (confidence 0.8 or more, so they would file with no review)
-  stayed near zero for the chain: 3 on today's mail, 2 under `reword`, 0 under the other
-  changes. On today's mail, one is an Emirates NBD mail that states both an AED amount and
-  a foreign amount (the template misreads it too); decision 4 settles it. The other two
-  are DIB notices of a pending transfer that both readers read as a transaction;
-  decision 3 settles them. The two under `reword` are Emirates NBD merchants, read wrong
-  with the right amount.
-- 3 DIB mails that are not transactions were read as transactions by every reader except
-  the templates. All three are pending-transfer notices.
+  filter (rules 93.7% of amounts, learned 50.3%). With the filter both were back to 100%,
+  but the filter knows the words that change inserts (see above).
+- The chain read 100% of amounts and currencies under each of the ten changes.
+- Filed with no review, by the chain: 93.8% of today's mail; 86.8% to 99.0% under
+  `reorder`, `balance-line`, `amount-format`, `one-line`, `english`, `boilerplate` and
+  `boilerplate-unseen`; 4.5% under `reword` and 1.0% under `reword-unseen`. After a
+  reword, rows are read but mostly go to Review prefilled, because the learned reader is
+  not yet confident on the new layout.
+- Confidently wrong readings for the chain: 1 on today's mail, 0 under each change. The
+  one is an Emirates NBD mail that states both an AED amount and a foreign amount, read
+  by the template; decision 4 settles it.
+- Confidently wrong merchants: 42 on today's mail, all template hits on DIB account,
+  transfer and refund notices, where the template fills the merchant with a transaction
+  description, a code or an account while the mail names no counterparty. These rows
+  file today. The merchant needs its own check (see Open work).
+- 3 DIB mails that are not transactions are read as transactions by every reader except
+  the templates. All three are pending-transfer notices. Under the gate above none of
+  them files with no review; decision 3 removes them.
+
+An earlier run of the bench, before its review, used a looser gate (the stronger
+reader's confidence plus 0.05, so one strong reader could lift a weak one over 0.8),
+did not cross-check templates and did not score direction. Its numbers are not used.
 
 Clairic (a cloud model, see `cloud-suggestions.md`) was tried on synthetic mail only and
 was not run on real mail. It read 93% of amounts and 55% of merchants, with 3
@@ -73,11 +98,17 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
 1. **Order.** Templates first, unchanged; they stay the fast path. When no template reads
    a mail, the combined reader runs: rules and learned layouts, promotional lines
    removed, gated on agreement. When it reads nothing, the row has today's empty Review
-   shape.
+   shape. The learned reader learns from **every** mail of a sender, template hits
+   included, and its layouts persist on the phone. Without that, after a bank rewords
+   its mail the learner has no layout for the sender and agreement cannot reach 0.8.
 2. **Filing without review.** A row may file without review only when all of today's
    trust gates pass (sender authentication and the other existing checks) **and** either
    a template read it, or both readers agree on amount and currency with confidence 0.8
-   or more. Otherwise the row goes to Review, prefilled with what was read.
+   or more. Otherwise the row goes to Review, prefilled with what was read. As measured
+   on the bench, "with confidence 0.8 or more" means each reader's confidence, not the
+   stronger one's. The bench also holds a row when the two readers read different
+   directions, and holds a template hit whose currency is not an ISO code or that a
+   reader contradicts on amount or currency; these only raise the bar.
 3. **Pending transfers are not transactions.** A notice that a transfer is pending or in
    process is disregarded. Only completed transfers and actual debit and credit notices
    count. A pending notice is followed by a completed one for the same transfer, so
@@ -110,5 +141,9 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
 - Drift tracking: a count, on the phone, of mails a template no longer reads, so that a
   stale template is noticed before the person sees it.
 - Merchants: the combined reader sometimes names a merchant on mail that names no
-  counterparty, or reads a wrong one after a reword. The agreement gate covers amount and
-  currency only, so the merchant needs its own check before a row files with no review.
+  counterparty, or reads a wrong one after a reword, and the DIB account, transfer and
+  refund templates fill the merchant with a description or a code. The agreement gate
+  covers amount, currency and direction only, so the merchant needs its own check
+  before a row files with no review.
+- Held-out changes: add more phrasings that no reader knows, so that a lexicon change is
+  not scored only against its own words.

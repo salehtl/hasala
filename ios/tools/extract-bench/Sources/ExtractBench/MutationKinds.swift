@@ -11,16 +11,26 @@ enum Kinds {
   }
 
   static func reword(_ m: Mail, _ t: Truth) -> String? {
-    let ar = MU.mainIsArabic(m.text)
-    return MU.protect(m.text, t) { s in
+    reword(m, t, en: Lexicon.rewordEn, ar: Lexicon.rewordAr, enPhrases: Lexicon.rewordEnPhrases, arPhrases: Lexicon.rewordArPhrases)
+  }
+
+  static func rewordUnseen(_ m: Mail, _ t: Truth) -> String? {
+    reword(
+      m, t, en: HeldOut.rewordEn, ar: HeldOut.rewordAr, enPhrases: HeldOut.rewordEnPhrases, arPhrases: HeldOut.rewordArPhrases)
+  }
+
+  static func reword(
+    _ m: Mail, _ t: Truth, en: [(String, String)], ar: [(String, String)], enPhrases: [(String, String)],
+    arPhrases: [(String, String)]
+  ) -> String? {
+    MU.protect(m.text, t) { s in
       let ls = MU.lines(s).map { l -> String in
-        if let r = labelSwap(l, Lexicon.rewordEn, caseInsensitive: true) { return r }
-        if let r = labelSwap(l, Lexicon.rewordAr, caseInsensitive: false) { return r }
-        var x = MU.replacePhrases(l, Lexicon.rewordEnPhrases)
-        x = MU.replacePhrases(x, Lexicon.rewordArPhrases)
+        if let r = labelSwap(l, en, caseInsensitive: true) { return r }
+        if let r = labelSwap(l, ar, caseInsensitive: false) { return r }
+        var x = MU.replacePhrases(l, enPhrases)
+        x = MU.replacePhrases(x, arPhrases)
         return x
       }
-      _ = ar
       return MU.join(ls)
     }
   }
@@ -65,13 +75,11 @@ enum Kinds {
     var ls = MU.lines(m.text)
     var pos = 0
     var acc = 0
-    let ns = m.text as NSString
     for (i, l) in ls.enumerated() {
       let end = acc + (l as NSString).length
       if f.range.location >= acc && f.range.location <= end { pos = i; break }
       acc = end + 1
     }
-    _ = ns
     if pos > 0, MU.isLabel(ls[pos - 1]) { pos -= 1 }
     let cur = t.currency ?? "AED"
     let num = fmtBalance(f, minor, h)
@@ -174,6 +182,19 @@ enum Kinds {
   }
 
   static func boilerplate(_ m: Mail, _ t: Truth) -> String? {
+    boilerplate(m, t) { promo, ar, _ in
+      ar ? "اربح استرداد نقدي بقيمة \(promo) درهم عند التسوق هذا الشهر." : "Earn AED \(promo) cashback when you shop with your card this month."
+    }
+  }
+
+  static func boilerplateUnseen(_ m: Mail, _ t: Truth) -> String? {
+    boilerplate(m, t) { promo, ar, h in
+      let list = ar ? HeldOut.promoAr : HeldOut.promoEn
+      return list[h % list.count].replacingOccurrences(of: "{n}", with: String(promo))
+    }
+  }
+
+  static func boilerplate(_ m: Mail, _ t: Truth, promoLine: (Int, Bool, Int) -> String) -> String? {
     let h = MU.hash(m.id)
     var promo = [500, 750, 1200, 300, 2000][h % 5]
     if let a = t.amountMinor, Int64(promo) * 100 == a { promo += 50 }
@@ -182,12 +203,12 @@ enum Kinds {
     let extra: [String] =
       ar
       ? [
-        "اربح استرداد نقدي بقيمة \(promo) درهم عند التسوق هذا الشهر.",
+        promoLine(promo, true, h / 20),
         "للاستفسار اتصل بنا على \(phone).",
         "هذه الرسالة سرية ومخصصة للمرسل اليه فقط. اذا استلمتها بالخطأ يرجى حذفها.",
       ]
       : [
-        "Earn AED \(promo) cashback when you shop with your card this month.",
+        promoLine(promo, false, h / 20),
         "Questions? Call us on \(phone).",
         "This message is confidential and intended for the addressee only. If you received it in error please delete it.",
       ]
@@ -207,6 +228,8 @@ func allMutations() -> [Mutation] {
     TextMutation(kind: "english", body: { Kinds.translate($0, $1, toArabic: false) }),
     TextMutation(kind: "arabic", body: { Kinds.translate($0, $1, toArabic: true) }),
     TextMutation(kind: "boilerplate", body: Kinds.boilerplate),
+    TextMutation(kind: "reword-unseen", body: Kinds.rewordUnseen),
+    TextMutation(kind: "boilerplate-unseen", body: Kinds.boilerplateUnseen),
   ]
   if let dir = ProcessInfo.processInfo.environment["EB_SELFCHECK"] { MutationSelfCheck.run(dir, all) }
   return all
