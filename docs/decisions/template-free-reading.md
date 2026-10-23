@@ -48,7 +48,7 @@ Readers compared:
 | rules | General English and Arabic rules: amount and currency patterns, direction words, merchant labels. No per-sender knowledge. |
 | learned | Learns each sender's layouts by aligning that sender's earlier mails, then reads the fixed and variable parts of a new mail. Nothing is learned across people. |
 | +promo | The same reader after promotional lines (a promotion word and a number, but no posted-transaction word) are removed. |
-| chain | Templates first; a template hit is held for review when its currency is not an ISO code, or when both readers, each at 0.8 or more, agree on another amount or currency. Otherwise rules and learned, each with promo lines removed. Confident only when both agree on amount, currency and stated direction, and each reader's own confidence is 0.8 or more. |
+| chain | Templates first; a template hit is held for review when its currency is not an ISO code, or when both readers, each at 0.8 or more, agree on another amount, currency or direction. Otherwise rules and learned, each with promo lines removed. Confident only when both agree on amount, currency and stated direction, and each reader's own confidence is 0.8 or more. |
 
 Results, as shares of the mails that are transactions (aggregate only). "Filed" is the
 share of mails that would file with no review. "Confidently wrong" counts filed readings
@@ -76,9 +76,9 @@ invented merchant is counted on its own.
   After a reword, rows are read but mostly go to Review prefilled, because the learned
   reader is not yet confident on the new layout.
 - Confidently wrong readings for the chain: 0 on today's mail and 0 under each change.
-  The chain read 100% of amounts under each change. An earlier run counted 1 on today's
-  mail, an Emirates NBD mail that states both an AED amount and a foreign amount; its
-  label was corrected on 2026-10-24 to the AED amount (decision 4).
+  An earlier run counted 1 on today's mail, an Emirates NBD mail that states both an AED
+  amount and a foreign amount. No code change removed it: its label was corrected on
+  2026-10-24 to the AED amount (decision 4).
 - Without templates, the combined reader alone files 80.7% of today's mail (90.1% under
   the earlier gate), with 0 confidently wrong readings.
 - On the synthetic set (`--synthetic`), the chain files 93.7% of today's mail and reads
@@ -134,14 +134,16 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    not count the money twice.
 6. **Privacy.** Learned layouts stay on the phone. Nothing new leaves the phone; there is
    no network call and no machine-learning model. The privacy policy does not change.
-7. **Template cross-check.** When a template hit's amount or currency differs from a
-   reading on which both readers agree, each at 0.8 or more, the row keeps the template's
+7. **Template cross-check.** When a template hit's amount, currency or direction differs
+   from a reading that the two readers agreed on (each at 0.8 or more, on the same amount,
+   currency and stated direction, with a stated currency), the row keeps the template's
    fields but goes to Review, and the `readerDisagreed` count counts it. When the two
    readers do not both reach 0.8, a template hit files as before. (2026-10-24.)
-8. **ISO currencies only.** A template's currency must be a known ISO 4217 code (the
-   list in `CoreExtract`'s money rules). The common AED aliases (DHS, DH, Dhs., درهم,
-   د.إ and the like) are read as AED. Any other code is not filed without review; the
-   row goes to Review with the template's fields. (2026-10-24.)
+8. **ISO currencies only.** A template's currency must be an active ISO 4217 code (the
+   list in `ExtractCurrency`, kept apart from the rule reader's lexicon). The template
+   executor accepts only three upper-case letters as a currency, so DHS is the one AED
+   alias that reaches this check, and it is read as AED. Any other code is not filed
+   without review; the row goes to Review with the template's fields. (2026-10-24.)
 
 ## Rollout
 

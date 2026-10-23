@@ -47,25 +47,23 @@ public enum CombinedReader {
     if signal == .status { return nil }
     let reading = read()
     var out = ExtractTemplateVerdict(amountMinor: amountMinor, currency: currency)
-    guard let iso = ExtractCurrency.iso(currency) else {
+    if let iso = ExtractCurrency.iso(currency) {
+      out.currency = iso
+      if let aed = aedAmount(input, foreign: amountMinor, currency: iso), aed <= ExtractReading.maxAmountMinor {
+        out.amountMinor = aed
+        out.currency = "AED"
+        out.aedOver = iso
+        let confirmed =
+          reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
+        if !confirmed { out.holds.append(.aedNotConfirmed) }
+      }
+      if let reading, reading.readersConfirm,
+        reading.amountMinor != out.amountMinor || reading.currency != out.currency || reading.direction != direction
+      {
+        out.holds.append(.readersDisagree)
+      }
+    } else {
       out.holds.append(.currencyNotISO)
-      if signal == .phrase { out.holds.append(.pendingPhrase) }
-      return out
-    }
-    out.currency = iso
-    let currency = iso
-    if let aed = aedAmount(input, foreign: amountMinor, currency: currency), aed <= ExtractReading.maxAmountMinor {
-      out.amountMinor = aed
-      out.currency = "AED"
-      out.aedOver = currency
-      let confirmed =
-        reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
-      if !confirmed { out.holds.append(.aedNotConfirmed) }
-    }
-    if let reading, reading.readersConfirm,
-      reading.amountMinor != out.amountMinor || reading.currency != out.currency
-    {
-      out.holds.append(.readersDisagree)
     }
     if signal == .phrase { out.holds.append(.pendingPhrase) }
     return out

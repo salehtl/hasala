@@ -99,7 +99,7 @@ public struct ExtractReading: Sendable, Equatable {
   }
 
   public var readersConfirm: Bool {
-    outcome == .transaction && readersAgree && amountMinor != nil && currency != nil && direction != nil
+    outcome == .transaction && agreed && readersAgree && amountMinor != nil && currency != nil && direction != nil
       && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
   }
 
