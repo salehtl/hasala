@@ -50,7 +50,8 @@ nonisolated extension LedgerEditAuthor {
   }
 
   static func prior(_ r: RuleReach.Row) -> SortMemory.Prior {
-    SortMemory.Prior(category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1)
+    SortMemory.Prior(
+      category: r.category, needsReview: r.needsReview, source: source(r), written: r.version + 1, categorizedMs: r.categorizedMs)
   }
 
   static func direction(_ ref: MerchantGroupRef) -> String { ref.direction == .in ? "credit" : "debit" }
@@ -135,12 +136,12 @@ nonisolated extension LedgerEditAuthor {
   }
 
   func categorizeReaching(_ row: TxnRow, category c: String, project: ProjectID?, receiptID: Int?) async throws -> [Inverse] {
-    guard let group = row.merchantGroup, !row.split else { return [] }
+    guard let group = row.merchantGroup else { return [] }
     let (rows, home) = try reach()
     let pool = RuleReach.eligible(rows: rows, group: group, direction: row.direction, home: home).filter { $0.id != row.id }
     let existing = try ruleSnapshots()
     let plan = OpAuthor.groupRule(
-      patterns: RuleReach.patterns(filed: row.merchantRaw, members: pool), category: c, existing: existing)
+      patterns: RuleReach.patterns(filed: row.merchantRaw, members: pool, filing: c), category: c, existing: existing)
     let ctx = try await observer.authorContext()
     var ruleID: String?
     var targets: [RuleReach.Target] = []
@@ -176,8 +177,7 @@ nonisolated extension LedgerEditAuthor {
     let filed = targets.compactMap { byID[$0.txnID] }
     var receipt: SortMemory.Receipt?
     if !filed.isEmpty {
-      let own = !row.needsReview && row.category.map { $0 == c } == true
-      let ids = (own ? [] : [row.id]) + filed.map(\.id)
+      let ids = (RuleReach.settled(row.reachRow, in: c) ? [] : [row.id]) + filed.map(\.id)
       receipt = SortMemory.Receipt(
         id: receiptID ?? Int(nowMs), group: group, direction: row.direction,
         merchant: try displayName(group: group, ids: Set([row.id] + filed.map(\.id))), category: c, txnIDs: ids, ruleID: ruleID,
@@ -236,7 +236,7 @@ nonisolated extension LedgerEditAuthor {
       if let plan, let id = ruleID {
         targets = RuleReach.plan(
           rows: rows, rule: ruleInput(id, plan.draft), group: ref.key, direction: direction, home: home,
-          except: memberIDs.union(skipped))
+          except: memberIDs.union(skipped), scope: .waiting)
         if !targets.isEmpty {
           let rest = try OpAuthor.categorizations(RuleReach.items(targets, ruleID: id, category: c), context: cx)
           reachOps = rest.flatMap(\.ops)

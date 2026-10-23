@@ -252,11 +252,41 @@ struct RuleReachTests {
     #expect(plan?.trims.isEmpty == true)
   }
 
-  @Test("a learned pattern never starts with a payment facilitator")
+  @Test("a rule pattern is the whole exact spelling, never a payment facilitator alone")
   func facilitator() {
-    #expect(LearnedPattern.propose(merchantRaw: "PAYPAL *TAILSCALE", category: "subscriptions")! == (.exact, "paypal *tailscale"))
-    #expect(LearnedPattern.propose(merchantRaw: "SQ *KITE STUDIO", category: "dining")! == (.exact, "sq *kite studio"))
-    #expect(LearnedPattern.propose(merchantRaw: "TAILSCALE.COM", category: "subscriptions")! == (.contains, "tailscale.com"))
+    #expect(RuleReach.patterns(filed: "PAYPAL *TAILSCALE", members: []) == ["paypal *tailscale"])
+    #expect(RuleReach.patterns(filed: "SQ *KITE STUDIO", members: []) == ["sq *kite studio"])
+    #expect(RuleReach.patterns(filed: "TAILSCALE.COM", members: []) == ["tailscale.com"])
     #expect(MerchantGroup.isFacilitatorToken("paypal") && !MerchantGroup.isFacilitatorToken("tailscale"))
+  }
+
+  @Test("the spellings a rule will file take the 8 slots before the ones already in its category")
+  func patternsRankOpenRowsFirst() {
+    let settled = (1...8).flatMap { n in
+      (0..<3).map { k in
+        Self.row("s\(n)-\(k)", "SOME SHOP REF \(n)", category: "shopping", source: .dictionary, needsReview: false, lane: nil)
+      }
+    }
+    let open = [Self.row("o1", "SOME SHOP REF 9"), Self.row("o2", "SOME SHOP REF 10", category: "dining", source: .model, needsReview: false, lane: nil)]
+    let members = settled + open
+    let mixed = RuleReach.patterns(filed: "SOME SHOP REF 1", members: members)
+    #expect(mixed.count == 8 && !mixed.contains("some shop ref 9") && !mixed.contains("some shop ref 10"))
+    let ranked = RuleReach.patterns(filed: "SOME SHOP REF 1", members: members, filing: "shopping")
+    #expect(ranked.count == 8)
+    #expect(Array(ranked.prefix(3)) == ["some shop ref 1", "some shop ref 9", "some shop ref 10"])
+    #expect(RuleReach.patterns(filed: nil, members: members, filing: "dining").first == "some shop ref 1")
+  }
+
+  @Test("a group card's rule reaches only waiting rows; Always use reaches every row it may file")
+  func scopes() {
+    let rows = [
+      Self.row("w", "TAILSCALE.COM"),
+      Self.row("d", "TAILSCALE.COM", category: "shopping", source: .dictionary, needsReview: false, lane: nil),
+      Self.row("m", "TAILSCALE.COM", category: "shopping", source: .model, needsReview: false, lane: nil),
+      Self.row("u", "TAILSCALE.COM", category: "dining", source: .user, needsReview: false, lane: nil),
+    ]
+    let rule = Self.rule(["tailscale.com"])
+    #expect(RuleReach.plan(rows: rows, rule: rule, group: "n:tailscale", direction: "debit", home: "AED", scope: .waiting).map(\.txnID) == ["w"])
+    #expect(RuleReach.plan(rows: rows, rule: rule, group: "n:tailscale", direction: "debit", home: "AED").map(\.txnID) == ["w", "d", "m"])
   }
 }

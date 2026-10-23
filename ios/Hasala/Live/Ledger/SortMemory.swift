@@ -22,6 +22,7 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
     var needsReview: Bool
     var source: CoreReplay.CategorySource
     var written: Int64
+    var categorizedMs: Int64?
   }
 
   struct Batch: Codable, Sendable, Equatable {

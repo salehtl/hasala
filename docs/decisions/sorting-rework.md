@@ -55,10 +55,10 @@ number of rows a tap files. A row that fails it stays its own card with its own 
 ("Couldn't verify sender").
 
 A rule from "Always use it" reaches further (sorting rebuild, 2026-10-23). It files every
-payment of that merchant group and direction, in every month, past and future, except the
-payments the person sorted. `RuleReach.ruled(row, samePurchase:)` decides it. A row is in
-when its source is `none`, `dictionary`, `rule` or `model`, whatever its category or
-review lane. A row is out when the person sorted it (`user`), a paused rule holds it
+payment of that merchant group and direction whose spelling the rule holds, in every month,
+past and future, except the payments the person sorted. `RuleReach.ruled(row, samePurchase:)`
+decides it. A row is in when its source is `none`, `dictionary`, `rule` or `model`,
+whatever its category or review lane. A row is out when the person sorted it (`user`), a paused rule holds it
 (`held`), it is an unreadable alert, its sender failed authentication, it is a held copy, a
 copy or a possible duplicate, it is in a same-purchase pair, or it is archived, a transfer
 or a split. A row already in the rule's category and out of Review is left as it is. The
@@ -73,17 +73,21 @@ payment.
 The rule writes `txn_categorized {category, needs_review: false, source: rule}` for each
 row, in the same `Outbox.enqueue` as the person's own filing. Its patterns are exact
 patterns of the spellings of every row of the group that the rule may file, at most 8 (the
-limit of `rule_added`), the filed spelling first, then the most used. "Always use it" is
-hidden on a row with no merchant group, on a split, and when no spelling fits a pattern. A
-learned pattern never starts with a payment facilitator, so `PAYPAL *TAILSCALE` gives the
-exact pattern, not `contains paypal`. A payment skipped in Review today is filed too. The
-result reads "Software for all 14 Tailscale payments" and counts only the payments whose
-category changed. A rule's filings never count as corrections for Trust on this phone.
+limit of `rule_added`): the filed spelling first, then the most used spellings of the rows
+it files, then those of the rows already in its category. "Always use it" is hidden on a
+row with no merchant group, on a split, and when no spelling fits a pattern. Every pattern
+is exact, so `PAYPAL *TAILSCALE` gives the exact pattern, not `contains paypal`. A payment
+skipped in Review today is filed too. The result reads "Software for all 14 Tailscale
+payments" and counts only the payments whose category changed; it drops "all" when a
+spelling of the group did not fit in the 8 patterns. A rule's filings never count as
+corrections for Trust on this phone.
 
 Undo puts each row back exactly (`Inverse.refile`). Undo all in Sorted for you does the
 same: each row gets back the category, source and review state it had before the rule
 filed it (`SortMemory.Batch.prior`). A payment that the merchant list or Cloudflare filed
 goes back to that filing, not to Review. A row with no recorded state goes back to Review.
+After either Undo, a row keeps the time of its earlier filing (`Prior.categorizedMs`), so
+an earlier rule or Cloudflare filing does not show again in Sorted for you as new.
 
 After a pull, the iPhone that made the rule reaches back once more, for 24 hours, to rows
 that arrived since and that it has not considered yet. Rows put back with Undo all are
@@ -92,10 +96,11 @@ never filed again by that pass.
 ### D4 and D5 Sorting a group
 
 "Sort all N as X" files the group's waiting rows in every month as the person's own
-choice (`source: user`). It makes a rule only when "Always use it" is on. "Sort each one"
-is always there on a group card. "Always use it" from one row, in Review, Activity or the
-transaction sheet, writes the same group rule and reaches back the same way, with the
-same result row and Undo.
+choice (`source: user`). It makes a rule only when "Always use it" is on, and that rule
+files only the waiting rows the card counts (`RuleReach.Scope.waiting`), so the button,
+the result and the ops agree. "Sort each one" is always there on a group card. "Always
+use it" from one row, in Review, Activity or the transaction sheet, writes the same kind
+of group rule and reaches every payment D3 names, with the same result row and Undo.
 
 ### D6, D6b and D7 Not this
 

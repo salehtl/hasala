@@ -97,19 +97,6 @@ struct CoreCategorizeTests {
     #expect(queue.map(\.id) == ["e"])
   }
 
-  @Test("learned patterns: the 03c §5.4 examples, the floors and the overreach guard")
-  func learned() {
-    #expect(LearnedPattern.propose(merchantRaw: "LULU HYPERMARKET DXB MARINA", category: "groceries")! == (.contains, "lulu"))
-    #expect(LearnedPattern.propose(merchantRaw: "CARREFOUR MALL OF EMIRATES", category: "groceries")! == (.contains, "carrefour"))
-    #expect(LearnedPattern.propose(merchantRaw: "DU TELECOM 0423", category: "utilities")! == (.startsWith, "du telecom"))
-    #expect(LearnedPattern.propose(merchantRaw: "7-11", category: "groceries")! == (.startsWith, "7-11"))
-    #expect(LearnedPattern.propose(merchantRaw: "X", category: "groceries") == nil)
-    #expect(LearnedPattern.propose(merchantRaw: "AB", category: "groceries")! == (.exact, "ab"))
-    let guarded = LearnedPattern.propose(
-      merchantRaw: "CARREFOUR MALL OF EMIRATES", category: "groceries", userRows: [("CARREFOUR ELECTRONICS", "shopping")])
-    #expect(guarded! == (.exact, "carrefour mall of emirates"))
-  }
-
   @Test("latin.json subset: the gate passes Latin merchants only")
   func latin() {
     for s in ["talabat", "café de flore", "carrefour 24", "noon.com", "starbucks difc", "zara"] { #expect(LatinGate.passes(s), "\(s)") }
@@ -145,15 +132,6 @@ struct CoreCategorizeTests {
     let none = await ModelTier.run(subjects: ["zuma"], model: fake, allowed: allowed, context: .refresh, now: { 0 })
     #expect(none.suggestions.isEmpty)
     #expect(ModelTier.cacheKey(subject: "zuma", taxonomyHash: ModelTier.taxonomyHash(allowed), modelTag: fake.modelTag).utf8.count == 64)
-  }
-
-  @Test("learned patterns over 128 scalars hide the toggle (03c §5.1)")
-  func learnedTooLong() {
-    #expect(LearnedPattern.propose(merchantRaw: String(repeating: "A", count: 129), category: "groceries") == nil)
-    #expect(LearnedPattern.propose(merchantRaw: String(repeating: "A", count: 128), category: "groceries")?.pattern.unicodeScalars.count == 128)
-    // The overreach guard's exact fallback is the whole subject: too long, nil.
-    let long = "LULU " + String(repeating: "X", count: 200)
-    #expect(LearnedPattern.propose(merchantRaw: long, category: "groceries", userRows: [("LULU EXCHANGE", "shopping")]) == nil)
   }
 
   @Test("model tier: a hung call times out and is skipped; a context overflow is retried once")

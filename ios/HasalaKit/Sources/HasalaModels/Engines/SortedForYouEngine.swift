@@ -25,8 +25,9 @@ public struct SortResultRow: Sendable, Hashable, Identifiable {
 
   public var canStopRule: Bool { ruleID != nil }
 
-  public static func reachTitle(count: Int, merchant: String, category: String) -> String {
-    count == 1 ? "\(category) for 1 \(merchant) payment" : "\(category) for all \(count) \(merchant) payments"
+  public static func reachTitle(count: Int, merchant: String, category: String, all: Bool = true) -> String {
+    if count == 1 { return "\(category) for 1 \(merchant) payment" }
+    return "\(category) for \(all ? "all " : "")\(count) \(merchant) payments"
   }
 }
 

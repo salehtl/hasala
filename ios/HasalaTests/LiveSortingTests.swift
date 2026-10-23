@@ -6,6 +6,7 @@ import CorePrimitives
 import CoreProjection
 import CoreReplay
 import CoreStore
+import CoreTime
 import CoreWire
 import Foundation
 import HasalaMocks
@@ -19,6 +20,15 @@ import Testing
 @Suite("Live sorting: groups, reach-back, Not this and undo")
 struct LiveSortingTests {
   typealias Mapper = LiveLedgerMapperTests
+
+  nonisolated final class MovableClock: CoreTime.Clock, Sendable {
+    private let ms: Mutex<Int64>
+    init(ms: Int64) { self.ms = Mutex(ms) }
+    func set(_ value: Int64) { ms.withLock { $0 = value } }
+    func nowMs() -> Int64 { ms.withLock { $0 } }
+  }
+
+  static let weeksAgo = Mapper.anchor - 20 * 86_400_000
 
   struct Row {
     var raw: String
@@ -59,8 +69,11 @@ struct LiveSortingTests {
     ])
   }
 
-  static func ledger(suite: String, rows: [(String, Row)], guesses: [String: String] = [:]) async throws -> Ledger {
-    let a = try Mapper.account()
+  static func ledger(
+    suite: String, rows: [(String, Row)], guesses: [String: String] = [:],
+    clock: any CoreTime.Clock = Mapper.FixedClock(ms: Mapper.anchor)
+  ) async throws -> Ledger {
+    let a = try Mapper.account(clock: clock)
     let ctx = try await a.observer.authorContext()
     var ids: [String: [String]] = [:]
     var n = 0
@@ -459,7 +472,7 @@ struct LiveSortingTests {
     let l = try await Self.ledger(suite: "sorting.nine.learn", rows: rows)
     let filed = try #require(l.ids["shop9"]?.first)
     let token = try #require(try l.store.apply(.categorize(filed, "shopping", learnRule: true, project: nil)))
-    #expect(token.title.hasPrefix("Shopping for all 43 "), "\(token.title)")
+    #expect(token.title.hasPrefix("Shopping for 43 ") && token.title.hasSuffix(" payments"), "\(token.title)")
     #expect(l.store.state.sortReceipt?.count == 43)
     let left = l.ids["shop8"] ?? []
     #expect(left.count == 2 && left.allSatisfy { l.store.state.txn($0)?.needsReview == true })
@@ -582,8 +595,8 @@ struct LiveSortingTests {
     ("refund", Row(raw: "TAILSCALE.COM", minor: 6_00, day: 7, direction: "credit")),
   ]
 
-  static func wideLedger(suite: String) async throws -> (Ledger, oldRule: String) {
-    let l = try await Self.ledger(suite: suite, rows: Self.wide)
+  static func wideLedger(suite: String, clock: MovableClock? = nil) async throws -> (Ledger, oldRule: String) {
+    let l = try await Self.ledger(suite: suite, rows: Self.wide, clock: clock ?? MovableClock(ms: Mapper.anchor))
     let reader = l.reader
     let ids = l.ids
     var old = ""
@@ -608,12 +621,17 @@ struct LiveSortingTests {
     }
     try await l.a.outbox.enqueue(try #require(filed).ops)
     try await l.a.observer.reproject()
+    clock?.set(Mapper.anchor)
     await l.store.reload()
     return (l, old)
   }
 
+  static func sortedForYou(_ l: Ledger, _ ids: [String]) -> [SortedForYouItem] {
+    SortedForYouEngine.snapshot(l.store.state, now: MayaLedger.now).items.filter { !Set($0.txnIDs).isDisjoint(with: ids) }
+  }
+
   @Test func alwaysUseReFilesEveryEligiblePaymentOfTheMerchantInOneBatchButNotThePersonsOwn() async throws {
-    let (l, old) = try await Self.wideLedger(suite: "sorting.wide")
+    let (l, old) = try await Self.wideLedger(suite: "sorting.wide", clock: MovableClock(ms: Self.weeksAgo))
     let id = { (name: String) in l.ids[name]![0] }
     let names = ["pick", "waiting", "dict", "ruled", "auto", "mine", "already", "split", "unverified", "refund"]
     let before = try Dictionary(uniqueKeysWithValues: names.map { (id($0), try #require(try l.row(id($0)))) })
@@ -655,13 +673,16 @@ struct LiveSortingTests {
       #expect(now.categorySourceRef == was.categorySourceRef && now.needsReview == was.needsReview, "\(name)")
     }
     try await Mapper.eventually { try l.reader.rules().allSatisfy { $0.id == old } }
+    await l.store.reload()
+    #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
   }
 
   @Test func undoAllPutsEachReachedPaymentBackExactlyAsItWas() async throws {
-    let (l, old) = try await Self.wideLedger(suite: "sorting.wide.undoall")
+    let (l, old) = try await Self.wideLedger(suite: "sorting.wide.undoall", clock: MovableClock(ms: Self.weeksAgo))
     let id = { (name: String) in l.ids[name]![0] }
     let reached = ["waiting", "dict", "ruled", "auto"].map(id)
     let before = try Dictionary(uniqueKeysWithValues: reached.map { ($0, try #require(try l.row($0))) })
+    #expect(Self.sortedForYou(l, reached).isEmpty)
     try l.store.apply(.categorize(id("pick"), "subscriptions", learnRule: true, project: nil))
     try await Mapper.eventually { try l.reader.rules().contains { $0.origin == "learned" } }
     let rule = try #require(try l.reader.rules().first { $0.origin == "learned" })
@@ -677,6 +698,8 @@ struct LiveSortingTests {
     #expect(shown.txn(id("dict"))?.inReview == false && shown.txn(id("auto"))?.inReview == false)
     #expect(shown.txn(id("ruled"))?.ruleID == old && shown.txn(id("ruled"))?.categoryID == "dining")
     #expect(shown.txn(id("waiting"))?.inReview == true && shown.txn(id("waiting"))?.categoryID == nil)
+    #expect(shown.txn(id("waiting"))?.reachable == true)
+    #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef != rule.id } }
     for r in reached {
       let now = try #require(try l.row(r))
@@ -684,10 +707,32 @@ struct LiveSortingTests {
       #expect(now.category == was.category && now.categorySource == was.categorySource, "\(r)")
       #expect(now.categorySourceRef == was.categorySourceRef && now.needsReview == was.needsReview, "\(r)")
     }
+    await l.store.reload()
+    #expect(Self.sortedForYou(l, reached).isEmpty, "\(Self.sortedForYou(l, reached).map(\.title))")
     _ = await l.author.followUp()
     #expect(try reached.allSatisfy { try l.row($0)?.categorySourceRef != rule.id })
     l.store.undo(token)
     try await Mapper.eventually { try reached.allSatisfy { try l.row($0)?.categorySourceRef == rule.id } }
+  }
+
+  @Test func aGroupCardsAlwaysUseFilesOnlyTheWaitingRowsItCounts() async throws {
+    let (l, _) = try await Self.wideLedger(suite: "sorting.wide.group")
+    let id = { (name: String) in l.ids[name]![0] }
+    let card = try #require(ReviewEngine.groupCard(Self.tailscaleRef, l.store.state))
+    #expect(card.total == 2)
+    let filed = ["dict", "ruled", "auto", "mine", "already", "split"]
+    let before = try Dictionary(uniqueKeysWithValues: filed.map { (id($0), try #require(try l.row(id($0)))) })
+    let token = try #require(try l.store.apply(.sortGroup(Self.tailscaleRef, "subscriptions", alwaysUse: true, project: nil)))
+    #expect(token.title.hasPrefix("Sorted 2 ") && token.title.hasSuffix(" as Subscriptions"), "\(token.title)")
+    try await Mapper.eventually { try ["pick", "waiting"].allSatisfy { try l.row(id($0))?.category == "subscriptions" } }
+    try await Mapper.eventually { try l.reader.rules().contains { $0.origin == "learned" } }
+    for name in filed {
+      let now = try #require(try l.row(id(name)))
+      let was = try #require(before[id(name)])
+      #expect(now.version == was.version && now.category == was.category && now.categorySource == was.categorySource, "\(name)")
+    }
+    try await Mapper.eventually { l.store.state.sortReceipt?.ruleID != nil }
+    #expect(l.store.state.sortReceipt?.count == 2)
   }
 
   @Test func aTalabatRuleNeverReachesTalabatMart() async throws {

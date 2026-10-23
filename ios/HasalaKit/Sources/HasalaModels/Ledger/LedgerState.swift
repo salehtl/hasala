@@ -227,12 +227,16 @@ public struct PriorFiling: Sendable, Hashable, Codable {
   public var categorySource: CategorySource?
   public var ruleID: RuleID?
   public var needsReview: Bool
+  public var categorizedAt: LocalDateTime?
 
-  public init(categoryID: CategoryID?, categorySource: CategorySource?, ruleID: RuleID?, needsReview: Bool) {
+  public init(
+    categoryID: CategoryID?, categorySource: CategorySource?, ruleID: RuleID?, needsReview: Bool, categorizedAt: LocalDateTime? = nil
+  ) {
     self.categoryID = categoryID
     self.categorySource = categorySource
     self.ruleID = ruleID
     self.needsReview = needsReview
+    self.categorizedAt = categorizedAt
   }
 }
 

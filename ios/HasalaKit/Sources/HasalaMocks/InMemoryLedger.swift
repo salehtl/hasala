@@ -79,11 +79,13 @@ public final class InMemoryLedger: LedgerStore {
       t.priorFiling = nil
     }
 
-    func reachBack(_ rule: Rule, group ref: MerchantGroupRef?, except: Set<TxnID>) throws(ActionError) -> [TxnID] {
+    func reachBack(_ rule: Rule, group ref: MerchantGroupRef?, except: Set<TxnID>, waitingOnly: Bool = false) throws(ActionError)
+      -> [TxnID]
+    {
       guard let ref else { return [] }
       let hits = s.txns.filter { t in
-        t.ruled && t.groupRef == ref && !except.contains(t.id) && !t.settled(in: rule.categoryID)
-          && rule.matches(GroupRule.pattern(t.spelling) ?? t.spelling)
+        let open = waitingOnly ? t.reachable : t.ruled && !t.settled(in: rule.categoryID)
+        return open && t.groupRef == ref && !except.contains(t.id) && rule.matches(GroupRule.pattern(t.spelling) ?? t.spelling)
       }.map(\.id)
       for id in hits {
         try editTxn(id) { t in
@@ -158,7 +160,7 @@ public final class InMemoryLedger: LedgerStore {
       title = "Sorted into \(categoryName(c))"
       if learnRule, let t = old, t.canAlwaysUse, let ref = t.groupRef {
         let pool = s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != id }
-        let patterns = GroupRule.patterns(filed: t, members: pool)
+        let patterns = GroupRule.patterns(filed: t, members: pool, filing: c)
         guard !patterns.isEmpty else { break }
         touchedRules = true
         let rule: Rule
@@ -182,9 +184,11 @@ public final class InMemoryLedger: LedgerStore {
         let reached = try reachBack(rule, group: ref, except: [id])
         if !reached.isEmpty {
           let filed = (t.settled(in: c) ? [] : [id]) + reached
+          let hit = Set(reached)
+          let left = pool.contains { !$0.settled(in: c) && !hit.contains($0.id) }
           let merchant = ReviewEngine.displayName(([id] + reached).compactMap { s.txn($0) })
           receipt = SortReceipt(id: nextToken, group: ref, merchant: merchant, categoryID: c, txnIDs: filed, ruleID: rule.id)
-          title = SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: categoryName(c))
+          title = SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: categoryName(c), all: !left)
         }
       }
     case .sortGroup(let ref, let c, let alwaysUse, let project):
@@ -206,7 +210,7 @@ public final class InMemoryLedger: LedgerStore {
         touchedRules = true
         s.rules.append(rule)
         ruleID = rule.id
-        filed += try reachBack(rule, group: ref, except: Set(filed).union(s.skippedReview))
+        filed += try reachBack(rule, group: ref, except: Set(filed).union(s.skippedReview), waitingOnly: true)
       }
       let merchant = ReviewEngine.displayName(members)
       receipt = SortReceipt(id: nextToken, group: ref, merchant: merchant, categoryID: c, txnIDs: filed, ruleID: ruleID)
@@ -240,7 +244,7 @@ public final class InMemoryLedger: LedgerStore {
         let byRule = t.filedByRule
         let prior = byRule ? t.priorFiling : nil
         try editTxn(id) { t in
-          if let prior { return t.restore(prior, at: at) }
+          if let prior { return t.restore(prior) }
           t.needsReview = true
           t.categorizedAt = at
           guard byRule else { return }

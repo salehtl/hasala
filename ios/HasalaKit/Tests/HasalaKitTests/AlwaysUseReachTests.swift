@@ -105,7 +105,10 @@ struct AlwaysUseReachTests {
       let was = try #require(before.txn(id))
       #expect(t.categoryID == was.categoryID && t.categorySource == was.categorySource, "\(id)")
       #expect(t.ruleID == was.ruleID && t.needsReview == false && !t.inReview && t.priorFiling == nil, "\(id)")
+      #expect(t.categorizedAt == Self.earlier, "\(id)")
     }
+    let shown = SortedForYouEngine.snapshot(l.state, now: l.now).items
+    #expect(shown.allSatisfy { Set($0.txnIDs).isDisjoint(with: Self.refiled) }, "\(shown.map(\.title))")
     for id in item.txnIDs where !Self.refiled.contains(id) {
       let t = try #require(l.state.txn(id))
       #expect(t.inReview && t.categoryID == nil && t.categorySource == nil && t.reachable, "\(id)")
@@ -115,9 +118,66 @@ struct AlwaysUseReachTests {
     #expect(item.txnIDs.allSatisfy { l.state.txn($0)?.categoryID == "subscriptions" && l.state.txn($0)?.filedByRule == true })
   }
 
+  @Test func aGroupCardsAlwaysUseFilesOnlyTheRowsTheCardCounts() throws {
+    let before = try Self.state()
+    let l = InMemoryLedger(state: before)
+    let card = try #require(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state))
+    let token = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil)))
+    #expect(token.title == "Sorted \(card.total) Tailscale as Subscriptions")
+    #expect(l.state.sortReceipt?.count == card.total && l.state.sortReceipt?.ruleID != nil)
+    for id in Self.refiled + Self.untouched {
+      #expect(l.state.txn(id)?.categoryID == before.txn(id)?.categoryID, "\(id)")
+      #expect(l.state.txn(id)?.categorySource == before.txn(id)?.categorySource, "\(id)")
+    }
+  }
+
+  static func spellings(_ s: inout LedgerState, _ names: [(String, Int, CategoryID)]) throws {
+    let base = try #require(s.txn("bl-ts-01"))
+    for (name, count, category) in names {
+      for k in 0..<count {
+        var t = base
+        t.id = "\(name.lowercased().replacingOccurrences(of: " ", with: "-"))-\(k)"
+        t.provenance?.rawMerchant = name
+        t.postedAt = LocalDateTime(2026, 7, 1 + k, 9, 0)
+        t.needsReview = false
+        t.categoryID = category
+        t.categorySource = .dictionary
+        t.categorizedAt = earlier
+        s.txns.append(t)
+      }
+    }
+    MockReach.refresh(&s)
+  }
+
+  @Test func theSpellingsTheRuleFilesComeBeforeTheOnesAlreadyThere() throws {
+    var s = Scenario.mayaBacklog.state
+    try Self.spellings(&s, (1...8).map { ("TAILSCALE REF \($0)", 3, "subscriptions") } + [("TAILSCALE REF 9", 1, "shopping")])
+    let l = InMemoryLedger(state: s)
+    let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
+    #expect(rule.patterns.count == 8 && rule.patterns.contains("tailscale ref 9"), "\(rule.patterns)")
+    #expect(Array(rule.patterns.prefix(4)) == ["tailscale.com", "tailscale inc", "paypal *tailscale", "tailscale ref 9"])
+    #expect(l.state.txn("tailscale-ref-9-0")?.categoryID == "subscriptions")
+    #expect(token.title == "Subscriptions for all 31 Tailscale payments", "\(token.title)")
+  }
+
+  @Test func aSpellingLeftOutOfTheRuleDropsAll() throws {
+    var s = Scenario.mayaBacklog.state
+    try Self.spellings(&s, (1...9).map { ("TAILSCALE REF \($0)", 1, "shopping") })
+    let l = InMemoryLedger(state: s)
+    let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
+    #expect(rule.patterns.count == 8)
+    let left = (1...9).map { "tailscale-ref-\($0)-0" }.filter { l.state.txn($0)?.categoryID == "shopping" }
+    #expect(left.count == 4)
+    #expect(token.title == "Subscriptions for 35 Tailscale payments", "\(token.title)")
+  }
+
   @Test func theWordsForAReachAndItsUndo() {
     #expect(SortResultRow.reachTitle(count: 14, merchant: "Tailscale", category: "Software") == "Software for all 14 Tailscale payments")
     #expect(SortResultRow.reachTitle(count: 1, merchant: "Tailscale", category: "Software") == "Software for 1 Tailscale payment")
+    #expect(
+      SortResultRow.reachTitle(count: 14, merchant: "Tailscale", category: "Software", all: false) == "Software for 14 Tailscale payments")
     #expect(SortedForYouItem.undoneLine(count: 5, settled: 0) == "5 payments back in Review")
     #expect(SortedForYouItem.undoneLine(count: 1, settled: 0) == "1 payment back in Review")
     #expect(SortedForYouItem.undoneLine(count: 5, settled: 2) == "5 payments put back as they were")

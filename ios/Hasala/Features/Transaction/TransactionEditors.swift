@@ -99,7 +99,7 @@ struct CategoryPickerView: View {
             Text("Always use \(selectedName ?? "this category") for \(merchant)")
               .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
               .fixedSize(horizontal: false, vertical: true)
-            Text("Next time, \(merchant) is sorted for you. Undo any time in Rules.")
+            Text("Also re-files \(merchant)\u{2019}s other payments, except ones you sorted. Undo puts them back.")
               .hType(.footnote).foregroundStyle(HColor.textSecondary)
               .fixedSize(horizontal: false, vertical: true)
           }

@@ -5,6 +5,11 @@ import HasalaText
 public enum RuleReach {
   public static let maxPatterns = 8
 
+  public enum Scope: Sendable, Equatable {
+    case waiting
+    case ruled
+  }
+
   public struct Row: Sendable, Equatable {
     public var id: String
     public var version: Int64
@@ -141,16 +146,21 @@ public enum RuleReach {
   }
 
   public static func plan(
-    rows: [Row], rule: RuleInput, group: String, direction: String, home: String, except: Set<String> = []
+    rows: [Row], rule: RuleInput, group: String, direction: String, home: String, except: Set<String> = [],
+    scope: Scope = .ruled
   ) -> [Target] {
     guard rule.enabled, !rule.removed, !group.isEmpty else { return [] }
     let prepared = Matcher.prepare(rules: [rule], entries: []).rules
     guard !prepared.isEmpty else { return [] }
     let pairs = paired(rows, home: home)
     return rows.filter { r in
-      r.merchantGroup == group && utf8Equal(r.direction, direction) && !except.contains(r.id)
-        && ruled(r, category: rule.category, samePurchase: pairs)
-        && prepared.contains { Matcher.hits($0, merchantRaw: r.merchantRaw) }
+      guard r.merchantGroup == group, utf8Equal(r.direction, direction), !except.contains(r.id) else { return false }
+      let open =
+        switch scope {
+        case .waiting: waiting(r, samePurchase: pairs)
+        case .ruled: ruled(r, category: rule.category, samePurchase: pairs)
+        }
+      return open && prepared.contains { Matcher.hits($0, merchantRaw: r.merchantRaw) }
     }.map(Target.init)
   }
 
@@ -162,26 +172,37 @@ public enum RuleReach {
     }
   }
 
-  public static func patterns(filed: String?, members: [Row]) -> [String] {
+  public static func pattern(_ merchantRaw: String) -> String? {
+    let s = Canon.subject(merchantRaw)
+    return Grammar.isRulePattern(s) && s.unicodeScalars.count >= MatchKind.exact.minRunes ? s : nil
+  }
+
+  static func ranked(_ rows: [Row]) -> [String] {
     var counts: [String: Int] = [:]
     var order: [String] = []
-    for r in members {
-      let s = Canon.subject(r.merchantRaw)
-      guard Grammar.isRulePattern(s), s.unicodeScalars.count >= MatchKind.exact.minRunes else { continue }
+    for r in rows {
+      guard let s = pattern(r.merchantRaw) else { continue }
       if counts[s] == nil { order.append(s) }
       counts[s, default: 0] += 1
     }
-    let ranked = order.enumerated().sorted { a, b in
+    return order.enumerated().sorted { a, b in
       let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
       return ca == cb ? a.offset < b.offset : ca > cb
     }.map(\.element)
+  }
+
+  public static func patterns(filed: String?, members: [Row], then rest: [Row] = []) -> [String] {
     var out: [String] = []
-    if let filed {
-      let s = Canon.subject(filed)
-      if Grammar.isRulePattern(s), s.unicodeScalars.count >= MatchKind.exact.minRunes { out.append(s) }
+    if let filed, let s = pattern(filed) { out.append(s) }
+    for s in ranked(members) + ranked(rest) where out.count < maxPatterns && !out.contains(where: { utf8Equal($0, s) }) {
+      out.append(s)
     }
-    for s in ranked where out.count < maxPatterns && !out.contains(where: { utf8Equal($0, s) }) { out.append(s) }
     return out
+  }
+
+  public static func patterns(filed: String?, members: [Row], filing category: String) -> [String] {
+    patterns(
+      filed: filed, members: members.filter { !settled($0, in: category) }, then: members.filter { settled($0, in: category) })
   }
 
   public static func items(_ targets: [Target], ruleID: String, category: String)

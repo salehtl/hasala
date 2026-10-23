@@ -86,10 +86,15 @@ nonisolated enum LedgerStateMapper {
       var t = try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id])
       t.reachable = RuleReach.waiting(reachRows[i], samePurchase: paired)
       t.ruled = RuleReach.ruled(reachRows[i], samePurchase: paired)
-      if let p = c.priors[row.id], p.written == row.version, row.categorySource == "rule" {
-        t.priorFiling = PriorFiling(
-          categoryID: p.category, categorySource: Self.source(kind: p.source.kind.rawValue, ref: p.source.ref, ruleByID: ruleByID),
-          ruleID: p.source.kind == .rule ? p.source.ruleID : nil, needsReview: p.needsReview)
+      if let p = c.priors[row.id] {
+        if p.written == row.version, row.categorySource == "rule" {
+          t.priorFiling = PriorFiling(
+            categoryID: p.category, categorySource: Self.source(kind: p.source.kind.rawValue, ref: p.source.ref, ruleByID: ruleByID),
+            ruleID: p.source.kind == .rule ? p.source.ruleID : nil, needsReview: p.needsReview,
+            categorizedAt: p.categorizedMs.map(localTime))
+        } else if Self.restored(row, to: p) {
+          t.categorizedAt = p.categorizedMs.map(localTime)
+        }
       }
       if let g = row.merchantGroup, let rejected = rejections[g] { t.rejectedCategories = rejected }
       txns.append(t)
@@ -269,6 +274,11 @@ nonisolated enum LedgerStateMapper {
       reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
+  }
+
+  static func restored(_ row: TxnRow, to p: SortMemory.Prior) -> Bool {
+    row.version == p.written + 1 && row.category == p.category && row.needsReview == p.needsReview
+      && row.categorySource == p.source.kind.rawValue && row.categorySourceRef == p.source.ref
   }
 
   static func source(kind: String, ref: String?, ruleByID: [String: RuleRow]) -> HasalaModels.CategorySource? {

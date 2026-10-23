@@ -77,16 +77,17 @@ extension Txn {
   public func settled(in c: CategoryID) -> Bool { !needsReview && categoryID == c }
 
   public var filing: PriorFiling {
-    PriorFiling(categoryID: categoryID, categorySource: categorySource, ruleID: ruleID, needsReview: needsReview)
+    PriorFiling(
+      categoryID: categoryID, categorySource: categorySource, ruleID: ruleID, needsReview: needsReview, categorizedAt: categorizedAt)
   }
 
-  public mutating func restore(_ p: PriorFiling, at: LocalDateTime) {
+  public mutating func restore(_ p: PriorFiling) {
     categoryID = p.categoryID
     categorySource = p.categorySource
     ruleID = p.ruleID
     needsReview = p.needsReview
     isTransfer = p.categoryID == "transfer"
-    categorizedAt = at
+    categorizedAt = p.categorizedAt
     priorFiling = nil
   }
 }
@@ -109,21 +110,32 @@ public enum GroupRule {
     return p
   }
 
-  public static func patterns(filed: Txn?, members: [Txn]) -> [String] {
+  static func ranked(_ rows: [Txn]) -> [String] {
     var counts: [String: Int] = [:]
     var order: [String] = []
-    for t in members {
+    for t in rows {
       guard let p = pattern(t.spelling) else { continue }
       if counts[p] == nil { order.append(p) }
       counts[p, default: 0] += 1
     }
-    let ranked = order.enumerated().sorted { a, b in
+    return order.enumerated().sorted { a, b in
       let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
       return ca == cb ? a.offset < b.offset : ca > cb
     }.map(\.element)
+  }
+
+  public static func patterns(filed: Txn?, members: [Txn], then rest: [Txn] = []) -> [String] {
     var out: [String] = []
     if let filed, let p = pattern(filed.spelling) { out.append(p) }
-    for p in ranked where out.count < maxPatterns && !out.contains(p) { out.append(p) }
+    for p in ranked(members) + ranked(rest) where out.count < maxPatterns && !out.contains(p) { out.append(p) }
     return out
+  }
+
+  public static func patterns(filed: Txn, members: [Txn], filing c: CategoryID) -> [String] {
+    patterns(filed: filed, members: members.filter { !$0.settled(in: c) }, then: members.filter { $0.settled(in: c) })
+  }
+
+  public static func reaches(_ t: Txn, _ patterns: [String]) -> Bool {
+    pattern(t.spelling).map(patterns.contains) == true
   }
 }

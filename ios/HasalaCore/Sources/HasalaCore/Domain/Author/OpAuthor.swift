@@ -382,24 +382,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// "Always use X for M" (03c §5.4): a learned rule, or an edit of an
-  /// existing one with the same match and pattern, or nothing when it already
-  /// files there. `userRows` feed the overreach guard.
-  public mutating func learnRule(
-    merchantRaw: String, category: String, existing: [RuleSnapshot], userRows: [(merchantRaw: String, category: String)]
-  ) throws(AuthorError) {
-    guard let (match, pattern) = LearnedPattern.propose(merchantRaw: merchantRaw, category: category, userRows: userRows) else { return }
-    if let same = existing.first(where: { !$0.draft.removed && $0.draft.match == match && $0.draft.patterns.contains(pattern) }) {
-      if same.draft.category == category && same.draft.enabled { return }
-      var d = same.draft
-      d.category = category
-      d.enabled = true
-      try rule(id: same.id, parentVersion: same.version, d)
-      return
-    }
-    try rule(RuleDraft(patterns: [pattern], match: match, category: category, priority: 100, origin: "learned"))
-  }
-
   /// Pause/resume or remove (03c §5.5): the rule edit, then, when pausing or
   /// removing, a `held` re-categorization of every row the rule files with
   /// needs_review = 0 (`heldRows`: id, version, category). Chunked at

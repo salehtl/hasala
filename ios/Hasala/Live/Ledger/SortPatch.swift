@@ -20,6 +20,14 @@ nonisolated enum SortPatch {
     s.txns.indices.filter { s.txns[$0].reachable && s.txns[$0].groupRef == ref && !s.skippedReview.contains(s.txns[$0].id) }
   }
 
+  static func waits(_ t: Txn) -> Bool {
+    guard t.ruled, t.needsReview || t.categoryID == nil else { return false }
+    switch t.categorySource {
+    case .dictionary?, .rule?: return t.categoryID == nil
+    default: return true
+    }
+  }
+
   static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
     s.txns.indices.filter { s.txns[$0].ruled && s.txns[$0].groupRef == ref }
   }
@@ -28,11 +36,10 @@ nonisolated enum SortPatch {
     _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime, receiptID: Int
   ) -> String? {
     let pool = ruled(s, ref).filter { s.txns[$0].id != old.id }
-    let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] })
+    let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] }, filing: c)
     guard !patterns.isEmpty else { return nil }
-    let others = pool.filter { i in
-      !s.txns[i].settled(in: c) && GroupRule.pattern(s.txns[i].spelling).map(patterns.contains) == true
-    }
+    let open = pool.filter { !s.txns[$0].settled(in: c) }
+    let others = open.filter { GroupRule.reaches(s.txns[$0], patterns) }
     guard !others.isEmpty else { return nil }
     let named = [old] + others.map { s.txns[$0] }
     for i in others {
@@ -49,7 +56,7 @@ nonisolated enum SortPatch {
     let filed = (old.settled(in: c) ? [] : [old.id]) + others.map { s.txns[$0].id }
     let merchant = ReviewEngine.displayName(named)
     s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed)
-    return SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: name(s, c))
+    return SortResultRow.reachTitle(count: filed.count, merchant: merchant, category: name(s, c), all: others.count == open.count)
   }
 
   static func sortGroup(
@@ -94,18 +101,19 @@ nonisolated enum SortPatch {
       let byRule = s.txns[i].filedByRule
       returned += 1
       if byRule, let prior = s.txns[i].priorFiling {
-        s.txns[i].restore(prior, at: at)
+        s.txns[i].restore(prior)
         if !prior.needsReview { settled += 1 }
-        continue
+      } else {
+        s.txns[i].needsReview = true
+        s.txns[i].categorizedAt = at
+        if byRule {
+          s.txns[i].categoryID = nil
+          s.txns[i].categorySource = nil
+          s.txns[i].ruleID = nil
+          s.txns[i].isTransfer = false
+        }
       }
-      s.txns[i].needsReview = true
-      s.txns[i].categorizedAt = at
-      if byRule {
-        s.txns[i].categoryID = nil
-        s.txns[i].categorySource = nil
-        s.txns[i].ruleID = nil
-        s.txns[i].isTransfer = false
-      }
+      s.txns[i].reachable = waits(s.txns[i])
     }
     guard returned > 0 else { throw .notFound }
     return SortedForYouItem.undoneLine(count: returned, settled: settled)
