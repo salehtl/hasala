@@ -137,6 +137,10 @@ public enum ModelTier {
     domainHash("hasala/v1/fm-cache", [Array(subject.utf8), Array(taxonomyHash.utf8), Array(modelTag.utf8)])
   }
 
+  public static func keptKey(subject: String, modelTag: String) -> String {
+    domainHash("hasala/v1/fm-kept", [Array(subject.utf8), Array(modelTag.utf8)])
+  }
+
   static func domainHash(_ domain: String, _ fields: [[UInt8]]) -> String {
     var bytes = Array(domain.utf8)
     for f in fields {

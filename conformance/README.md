@@ -44,9 +44,13 @@ the old values, so run the suite again without the variable. Then review the
 diff in `conformance/` line by line: it is the record of what changed.
 
 Update mode rewrites only the `expect` of each case. It does not touch the
-inputs, the notes or the manifests. One exception: `merchant-group` also
-rewrites its `dictionary` header, so a dictionary rebuild shows in the diff. To add a case, add its input (and, for
-`replay` and `fx`, its `manifest.json` entry) by hand, then run update mode.
+inputs, the notes or the manifests.
+
+One exception: `merchant-group` also rewrites its `dictionary` header, so a
+dictionary rebuild shows in the diff.
+
+To add a case, add its input (and, for `replay` and `fx`, its `manifest.json`
+entry) by hand, then run update mode.
 
 In `replay`, `expect.diagnostics` holds the TypeScript oracle's anomaly and
 unreadable text, for reference. Update mode keeps it when the state hash does

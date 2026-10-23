@@ -53,12 +53,14 @@
         return s
       case .idle:
         s.waitingNames = 147
+        s.waitingGroups = 147
         s.waitingPayments = 162
         s.leftForYou = 25
         s.staysOnDevice = 18
         s.offerDue = true
       case .running, .paused:
         s.waitingNames = 64
+        s.waitingGroups = 64
         s.waitingPayments = 71
         s.askedNames = 83
         s.totalNames = 147
@@ -80,6 +82,7 @@
       }
       if case .paused(.runCap) = phase {
         s.waitingNames = 147
+        s.waitingGroups = 147
         s.askedNames = 250
         s.totalNames = 250
       }

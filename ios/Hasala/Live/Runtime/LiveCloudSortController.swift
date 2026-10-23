@@ -237,7 +237,7 @@ final class LiveCloudSortController: CloudSortControlling {
     case .off, .idle, .done: active = false
     }
     return RunOffer.Facts(
-      enabled: status.phase != .off, load: load, waitingNames: status.waitingNames, runActive: active,
+      enabled: status.phase != .off, load: load, waitingNames: status.waitingGroups, runActive: active,
       runStartedMs: run?.startedMs)
   }
 
@@ -255,7 +255,7 @@ final class LiveCloudSortController: CloudSortControlling {
     case .off, .idle, .done: holding = false
     }
     return CloudSortStatus(
-      phase: shown, waitingNames: c.waitingNames, waitingPayments: c.waitingPayments,
+      phase: shown, waitingNames: c.waitingNames, waitingGroups: c.waitingGroups, waitingPayments: c.waitingPayments,
       askedNames: run?.asked ?? 0, totalNames: run?.totalNames ?? 0, filed: run?.filed ?? 0, suggested: run?.suggested ?? 0,
       leftForYou: c.leftForYou, staysOnDevice: c.staysOnDevice, pendingTxnIDs: holding ? c.pendingTxnIDs : [], lastRunEndedMs: run?.endedMs,
       canUndoLastRun: record.canUndo, cloudSortedCount: view?.cloudSorted ?? 0, remainingToday: today,

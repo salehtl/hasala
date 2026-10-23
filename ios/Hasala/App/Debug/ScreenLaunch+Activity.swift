@@ -1,5 +1,6 @@
 #if HASALA_MOCKS
   import Foundation
+  import HasalaMocks
   import HasalaModel
   import HasalaModels
 
@@ -139,6 +140,28 @@
       Screen("review.sort.deck", scenario: "maya", prepare: cloudSort(.running) { graph in
         startDeck(graph, at: "lulu") { _ in }
       }),
+      Screen("review.backlog", scenario: "mayaBacklog", prepare: shell(.review)),
+      Screen("review.group", scenario: "mayaBacklog", prepare: { graph in
+        startDeck(graph, at: "group." + tailscale) { _ in }
+      }),
+      Screen("review.group.pick", scenario: "mayaBacklog", prepare: { graph in
+        startDeck(graph, at: "group." + tailscale) { deck in
+          if let g = deck.group(tailscale) { deck.pickGroup(g, .want) }
+        }
+      }),
+      Screen("review.sortEach", scenario: "mayaBacklog", prepare: { graph in
+        startDeck(graph, at: "group." + tailscale) { deck in deck.sortingEach = deck.group(tailscale) }
+      }),
+      Screen("review.result", scenario: "mayaBacklog", prepare: { graph in
+        startDeck(graph, at: "group." + tailscale) { deck in
+          if let g = deck.group(tailscale) { deck.sortGroup(g, into: "subscriptions", alwaysUse: true, project: nil) }
+        }
+      }),
+      Screen("review.tab.result", scenario: "mayaBacklog", prepare: { graph in
+        _ = graph.app.perform(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil))
+        graph.app.dismissToast()
+        shell(.review)(graph)
+      }),
       // Search · Ready.
       Screen("search", scenario: "maya", prepare: shell(.home, sheet: .search)),
       // Search · Results as you type ("carre").
@@ -166,6 +189,8 @@
         shell(.home, sheet: .search)(graph)
       }),
     ]
+
+    private static let tailscale = MayaBacklog.tailscale.id
 
     private static func returning(_ graph: MockGraph) {
       guard let sort = graph.app.cloudSort as? MockCloudSortController else { return }

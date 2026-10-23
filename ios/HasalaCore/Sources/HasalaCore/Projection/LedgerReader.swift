@@ -320,14 +320,57 @@ public struct LedgerReader: Sendable {
 
   private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
-      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
+      let rejected = try Self.rejections(db)
+      return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
         let t = TxnRow(r)
         return SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
-          template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs)
+          template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
+          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [])
       }
+    }
+  }
+
+  public func rejections() throws -> [String: Set<String>] {
+    try db.read { db in try Self.rejections(db) }
+  }
+
+  static func rejections(_ db: Database) throws -> [String: Set<String>] {
+    var out: [String: Set<String>] = [:]
+    let rows = try Row.fetchAll(
+      db,
+      sql: """
+        SELECT merchant_group AS g, category FROM merchant_rejection WHERE rejected = 1 AND merchant_group IS NOT NULL
+        UNION
+        SELECT t.merchant_group AS g, r.category FROM merchant_rejection r JOIN txn t ON t.merchant_key = r.merchant_key
+         WHERE r.rejected = 1 AND t.merchant_group IS NOT NULL
+        """)
+    for r in rows { out[r["g"] as String, default: []].insert(r["category"]) }
+    return out
+  }
+
+  public func memberKeys(group: String) throws -> [String] {
+    guard !group.isEmpty else { return [] }
+    return try db.read { db in
+      try String.fetchAll(
+        db, sql: "SELECT DISTINCT merchant_key FROM txn WHERE merchant_group = ? AND merchant_key <> '' ORDER BY merchant_key",
+        arguments: [group])
+    }
+  }
+
+  public func rejectedKeys(group: String, category: String) throws -> [String] {
+    guard !group.isEmpty else { return [] }
+    return try db.read { db in
+      try String.fetchAll(
+        db,
+        sql: """
+          SELECT merchant_key FROM merchant_rejection WHERE category = ? AND rejected = 1
+             AND (merchant_group = ? OR merchant_key IN (SELECT merchant_key FROM txn WHERE merchant_group = ?))
+           ORDER BY merchant_key
+          """,
+        arguments: [category, group, group])
     }
   }
 
@@ -380,6 +423,21 @@ public struct LedgerReader: Sendable {
           id: id, patterns: patterns[id] ?? [], match: r["match"], category: r["category"], priority: r["priority"], enabled: r["enabled"],
           removed: r["removed"], origin: r["origin"], createdAt: r["created_at"], version: r["version"], defect: r["defect"],
           matchCount: r["match_count"])
+      }
+    }
+  }
+
+  public func rulesIncludingRemoved() throws -> [RuleRow] {
+    try db.read { db in
+      var patterns: [String: [String]] = [:]
+      for r in try Row.fetchAll(db, sql: "SELECT rule_id, pattern FROM rule_pattern ORDER BY rule_id, idx") {
+        patterns[r["rule_id"], default: []].append(r["pattern"])
+      }
+      return try Row.fetchAll(db, sql: "SELECT * FROM rule ORDER BY created_ms DESC, id").map { r in
+        let id: String = r["id"]
+        return RuleRow(
+          id: id, patterns: patterns[id] ?? [], match: r["match"], category: r["category"], priority: r["priority"], enabled: r["enabled"],
+          removed: r["removed"], origin: r["origin"], createdAt: r["created_at"], version: r["version"], defect: r["defect"], matchCount: 0)
       }
     }
   }
@@ -507,5 +565,32 @@ public struct LedgerReader: Sendable {
   /// A stream of `fetch`'s answer, re-run after every write to the tables it reads.
   public func observe<T: Sendable>(_ fetch: @escaping @Sendable (Database) throws -> T) -> AsyncValueObservation<T> {
     ValueObservation.tracking(fetch).values(in: db)
+  }
+}
+
+extension TxnRow {
+  public var samePurchaseRow: SamePurchase.Row {
+    SamePurchase.Row(
+      id: id, live: supersededBy == nil, unparsed: unparsed, archived: archived != nil, manual: entryMethod == "manual",
+      amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, direction: direction, bank: bank, last4: last4,
+      postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
+      duplicateDisposition: duplicateDisposition, heldCopy: heldCopy)
+  }
+
+  public var reachRow: RuleReach.Row {
+    RuleReach.Row(
+      id: id, version: version, merchantRaw: merchantRaw, merchantGroup: merchantGroup, direction: direction, category: category,
+      sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, sourceRef: categorySourceRef, needsReview: needsReview,
+      lane: reviewLane.flatMap(ReviewLane.init(rawValue:)), unverified: reviewReason != nil, heldCopy: heldCopy, copyOf: copyOf,
+      possibleDuplicateOf: possibleDuplicateOf, archived: archived != nil, transfer: category == "transfer" || transferState != nil,
+      split: split, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
+  }
+}
+
+extension LedgerReader {
+  public func reachRows() throws -> [RuleReach.Row] {
+    try db.read { db in
+      try Row.fetchAll(db, sql: Self.sweepSQL).map { TxnRow($0).reachRow }
+    }
   }
 }

@@ -39,6 +39,7 @@ public actor LedgerPageObserver: PageObserver {
   /// This writer's stamp memory, shared by every author of the account (the
   /// Gmail lane's `MailboxAuthoring` takes the same instance).
   public nonisolated let stamps: AuthorStamps
+  public nonisolated let writes = WriteSerial()
   let dictionary: MerchantDictionary
 
   /// The folded state as committed; nil until loaded.

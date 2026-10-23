@@ -81,6 +81,14 @@
       Screen("home.allTime", scenario: "mayaRange", prepare: { graph in
         graph.app.choose(.allTime)
       }),
+      Screen("home.sortedForYou", scenario: "mayaBacklog", prepare: { graph in
+        sortQasr(graph)
+        shell(.home)(graph)
+      }),
+      Screen("home.sortedForYou.list", scenario: "mayaBacklog", prepare: { graph in
+        sortQasr(graph)
+        shell(.home, home: [.sortedForYou])(graph)
+      }),
       // Home · Over budget: Travel and Rent to 0 make the plan 9,000: over by 2,115.62, rose.
       Screen("home.overBudget", scenario: "maya", prepare: { graph in
         edit(graph, [budget("travel", 0), budget("rent", 0)])
@@ -90,6 +98,10 @@
     /// Maya's budget for a category this month, in dirhams.
     private static func budget(_ category: CategoryID, _ dirhams: Int64) -> LedgerEdit {
       .setBudget(category, MayaLedger.october, .aed(dirhams * 100))
+    }
+
+    @MainActor private static func sortQasr(_ graph: MockGraph) {
+      edit(graph, [.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)])
     }
 
     /// Applies edits to the mock ledger before the window shows, without their toasts.

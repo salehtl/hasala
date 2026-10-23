@@ -297,6 +297,27 @@ struct CoreReplayV4Tests {
     }
   }
 
+  @Test("an old build that does not know merchant_category_rejected sets aside only the blob holding it")
+  func oldBuildSetsAsideOnlyTheRejection() throws {
+    let rejection = op(
+      "merchant_category_rejected", #"{"merchant_key":"tailscale.com","category":"shopping","rejected":true}"#, id: 2)
+    let note = op("txn_annotated", #"{"txn_id":"\#(Ids.t1)","set":{"note":"x"}}"#, id: 3)
+    var now = Log()
+    try now.blob(ingest(1, id: Ids.t1))
+    try now.blob(rejection)
+    try now.blob(note)
+    #expect(now.state.unreadable.isEmpty && now.state.merchantRejections.count == 1)
+    var old = Log()
+    try old.blob(ingest(1, id: Ids.t1))
+    let middle = try old.blob(rejection.replacingOccurrences(of: "merchant_category_rejected", with: "merchant_category_unknown"))
+    try old.blob(note)
+    #expect(old.state.unreadable.map(\.seq) == [middle])
+    #expect(old.state.txns[Ids.t1] != nil)
+    #expect(old.state.txns[Ids.t1]?.annotations["note"]?.opID == "op-3")
+    #expect(old.state.merchantRejections.isEmpty && old.kinds.isEmpty)
+    #expect(old.state.cursors.hot == 3)
+  }
+
   @Test("maxAuthored is per writer, over every op visited, and not witnessed")
   func maxAuthored() throws {
     var log = Log()
@@ -312,7 +333,7 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 48)
+    #expect(s.cursors.hot == 50)
     #expect(s.bills["bd_axa"]?.changes.map(\.amountMinor) == [60000] && s.bills["bd_axa"]?.version == 3)
     #expect(s.bills["bd_netflix"]?.status == "dismissed" && s.bills["bd_netflix"]?.firstSeq == 47)
     #expect(s.forks.filter { $0.entityKind == "bill" }.map(\.loserOp) == ["canary-v4-39"])
@@ -327,6 +348,9 @@ struct SnapshotTests {
     #expect(s.anomalies.map(\.kind) == ["duplicate_ingest"])
     #expect(s.unreadable.isEmpty)
     #expect(s.merchantNames["carrefour moe"]?.value == "Carrefour MoE")
+    #expect(s.merchantRejections.count == 1)
+    #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.rejected == false)
+    #expect(s.merchantRejections[State.rejectionKey("carrefour moe", "shopping")]?.opID == "canary-v4-43")
     #expect(s.plan.overwrites.count == 1)
     #expect(FoldCanary.foldPrint.utf8.count == 32)
   }

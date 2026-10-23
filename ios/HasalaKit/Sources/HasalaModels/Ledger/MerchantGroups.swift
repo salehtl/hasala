@@ -79,3 +79,33 @@ extension LedgerState {
     return rules.first { $0.id == id }
   }
 }
+
+public enum GroupRule {
+  public static let maxPatterns = 8
+  public static let maxScalars = 128
+
+  public static func pattern(_ spelling: String) -> String? {
+    let words = spelling.lowercased().split(whereSeparator: { $0.isWhitespace })
+    let p = words.joined(separator: " ")
+    guard (2...maxScalars).contains(p.unicodeScalars.count) else { return nil }
+    return p
+  }
+
+  public static func patterns(filed: Txn?, members: [Txn]) -> [String] {
+    var counts: [String: Int] = [:]
+    var order: [String] = []
+    for t in members {
+      guard let p = pattern(t.spelling) else { continue }
+      if counts[p] == nil { order.append(p) }
+      counts[p, default: 0] += 1
+    }
+    let ranked = order.enumerated().sorted { a, b in
+      let ca = counts[a.element] ?? 0, cb = counts[b.element] ?? 0
+      return ca == cb ? a.offset < b.offset : ca > cb
+    }.map(\.element)
+    var out: [String] = []
+    if let filed, let p = pattern(filed.spelling) { out.append(p) }
+    for p in ranked where out.count < maxPatterns && !out.contains(p) { out.append(p) }
+    return out
+  }
+}

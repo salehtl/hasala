@@ -1,0 +1,210 @@
+{
+  "name": "rename-and-rejection-two-writers",
+  "group": "config",
+  "note": "A rename on one device and a Not this on another, for the same merchant key, are two records: neither replaces the other, whichever lands first.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "txn_ingested",
+          "op_id": "rename-rejection-1",
+          "authored_at": "2026-10-21T08:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "01JC0000000000000000000203"
+          },
+          "parent_version": null,
+          "ingest_id": "0000000000000000000000000000000000000000000000000000000000000503",
+          "payload": {
+            "amount_minor": "600",
+            "currency": "USD",
+            "direction": "debit",
+            "posted_at": "2026-10-03T08:00:00.000Z",
+            "merchant_raw": "TAILSCALE.COM",
+            "last4": "4412",
+            "needs_review": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rename-rejection-2",
+          "authored_at": "2026-10-21T09:00:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "category": "shopping",
+            "rejected": true
+          }
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_named",
+          "op_id": "rename-rejection-3",
+          "authored_at": "2026-10-21T08:30:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "display_name": "Tailscale"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+      "ops": [
+        {
+          "v": 4,
+          "type": "merchant_category_rejected",
+          "op_id": "rename-rejection-4",
+          "authored_at": "2026-10-21T09:05:00.000Z",
+          "parent_version": null,
+          "payload": {
+            "merchant_key": "tailscale.com",
+            "category": "software",
+            "rejected": true
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "4412|600|debit|TAILSCALE.COM|2026-10-03",
+          [
+            "01JC0000000000000000000203"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "4"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u000001JC0000000000000000000203",
+          {
+            "authored_at_ms": 1792569600000,
+            "id": "01JC0000000000000000000203",
+            "kind": "txn",
+            "op_id": "rename-rejection-1",
+            "version": 1,
+            "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "0000000000000000000000000000000000000000000000000000000000000503",
+          "01JC0000000000000000000203"
+        ]
+      ],
+      "merchantNames": [
+        [
+          "tailscale.com",
+          {
+            "display_name": "Tailscale",
+            "op_id": "rename-rejection-3"
+          }
+        ]
+      ],
+      "merchantRejections": [
+        [
+          "tailscale.com\u0000shopping",
+          {
+            "category": "shopping",
+            "merchant_key": "tailscale.com",
+            "op_id": "rename-rejection-2",
+            "rejected": true
+          }
+        ],
+        [
+          "tailscale.com\u0000software",
+          {
+            "category": "software",
+            "merchant_key": "tailscale.com",
+            "op_id": "rename-rejection-4",
+            "rejected": true
+          }
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "USD",
+          [
+            "01JC0000000000000000000203"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "01JC0000000000000000000203",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "600",
+            "category": null,
+            "category_source": {
+              "kind": "none"
+            },
+            "currency": "USD",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "01JC0000000000000000000203",
+            "ingest_id": "0000000000000000000000000000000000000000000000000000000000000503",
+            "last4": "4412",
+            "mailbox_message_id": null,
+            "merchant_raw": "TAILSCALE.COM",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-10-03T08:00:00.000Z",
+            "provenance": "user",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": []
+    },
+    "state_sha256": "a006e113d8cb386584e7989e97253fee0f204778b862cf8cff4c76ca416bc1a1",
+    "order": {
+      "banks": [],
+      "categories": []
+    }
+  }
+}

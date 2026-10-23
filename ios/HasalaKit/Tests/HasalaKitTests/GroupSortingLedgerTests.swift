@@ -72,6 +72,45 @@ struct GroupSortingLedgerTests {
     #expect(unverified.needsReview && unverified.categoryID == nil)
   }
 
+  @Test func alwaysUseFromOneSpellingReachesAllThreeTailscaleSpellingsWithExactPatterns() throws {
+    let l = ledger()
+    let first = try #require(l.state.txn("bl-ts-01"))
+    #expect(first.spelling == "TAILSCALE.COM")
+    let token = try #require(try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil)))
+    #expect(token.title == "Sorted 30 Tailscale as Subscriptions")
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("learned-") })
+    #expect(rule.match == .exact && rule.patterns == ["tailscale.com", "tailscale inc", "paypal *tailscale"])
+    #expect(!rule.matches("paypal *netflix") && !rule.matches("tailscale"))
+    #expect(l.state.txn("bl-ts-unverified")?.categoryID == nil && l.state.txn("bl-ts-refund")?.categoryID == nil)
+    #expect(tailscaleRows(l).filter { $0.id != "bl-ts-unverified" }.allSatisfy { $0.categoryID == "subscriptions" })
+  }
+
+  @Test func aNineSpellingGroupGetsARuleOfTheEightMostUsed() throws {
+    var s = Scenario.mayaBacklog.state
+    let ref = MerchantGroupRef(key: "n:some shop", direction: .out)
+    var n = 0
+    for spelling in 1...9 {
+      for k in 0..<(10 - spelling) {
+        n += 1
+        var t = try #require(s.txn("bl-saffron"))
+        t.id = "shop-\(n)"
+        t.merchant = "Some Shop"
+        t.merchantKey = "some shop*ref \(spelling)"
+        t.merchantGroup = ref.key
+        t.provenance?.rawMerchant = "SOME SHOP*REF \(spelling)"
+        t.postedAt = LocalDateTime(2026, 10, 1 + k, 12, spelling)
+        s.txns.append(t)
+      }
+    }
+    let l = InMemoryLedger(state: s)
+    #expect(l.state.txns.filter { $0.groupRef == ref && $0.reachable }.count == 45)
+    try l.apply(.sortGroup(ref, "shopping", alwaysUse: true, project: nil))
+    let rule = try #require(l.state.rules.first { $0.id.hasPrefix("group-") })
+    #expect(rule.patterns == (1...8).map { "some shop*ref \($0)" })
+    #expect(GroupRule.patterns(filed: nil, members: []).isEmpty)
+    #expect(GroupRule.pattern(String(repeating: "x", count: 129)) == nil && GroupRule.pattern("A  B ") == "a b")
+  }
+
   @Test func alwaysUseFromOneCardReachesBackWithinItsGroup() throws {
     let l = ledger()
     let token = try #require(try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil)))
@@ -316,6 +355,18 @@ struct GroupSortingLedgerTests {
     #expect(ReviewEngine.groupCard(MayaBacklog.tailscale, l.state)?.repeatsMonthly == true)
   }
 
+  @Test func aResultOfOnePaymentReadsWithoutACount() throws {
+    let l = ledger()
+    _ = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
+    var one = try #require(SortResultEngine.row(l.state))
+    one.count = 1
+    #expect(one.line == "Sorted Tailscale as Subscriptions")
+    #expect(one.spoken == "Sorted 1 Tailscale payment as Subscriptions.")
+    one.count = 2
+    #expect(one.line == "Sorted 2 Tailscale as Subscriptions")
+    #expect(SortResultRow.line(count: 1, merchant: "Tailscale", category: "Software") == "Sorted Tailscale as Software")
+  }
+
   @Test func undoingTheBatchThatReplacedARowBringsTheEarlierRowBack() throws {
     let l = ledger()
     let first = try #require(try l.apply(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: false, project: nil)))
@@ -369,5 +420,43 @@ struct GroupSortingLedgerTests {
     #expect(!snap.items.flatMap(\.txnIDs).contains { $0.hasPrefix("bl-bright") })
     #expect(ActivityEngine.row(row, l.state).toReview)
     #expect(ActivityEngine.row(row, l.state).glyph == .review)
+  }
+}
+
+@MainActor
+@Suite("Sorted for you · source lines")
+struct SortedForYouLineTests {
+  @Test func automaticFilingsNameTheirSourceInActivityAndTheSheet() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    try l.apply(.categorize("bl-qasr-1", "groceries", learnRule: true, project: nil))
+    let ruled = try #require(l.state.txn("bl-qasr-2"))
+    #expect(ruled.autoSourceLabel == "Your rule" && ruled.autoSourceSpoken == "sorted by your rule")
+    #expect(ActivityEngine.row(ruled, l.state).detail.hasPrefix("Groceries · Your rule · "))
+    let spoken = try #require(ActivityEngine.row(ruled, l.state).spokenDetail)
+    #expect(spoken.hasPrefix("Groceries · ") && spoken.hasSuffix(", sorted by your rule") && !spoken.contains("Your rule"))
+    #expect(ActivityEngine.dated(ruled, l.state).spokenDetail == nil)
+    let person = try #require(l.state.txn("bl-qasr-1"))
+    #expect(person.autoSourceLabel == nil)
+    #expect(!ActivityEngine.row(person, l.state).detail.contains("Your rule"))
+    #expect(ActivityEngine.row(person, l.state).spokenDetail == nil)
+    let detail = try #require(TransactionEngine.detail("bl-qasr-2", l.state, now: l.now))
+    #expect(detail.sortedBy?.title == "Sorted by your rule")
+    #expect(detail.sortedBy?.detail == "Qasr Corner Store → Groceries")
+
+    var s = Scenario.mayaBacklog.state
+    for i in s.txns.indices where s.txns[i].merchantGroup == "n:brightwell academy" {
+      s.txns[i].needsReview = false
+      s.txns[i].categorizedAt = LocalDateTime(2026, 10, 8, 21, 10)
+    }
+    let cloud = try #require(s.txn("bl-bright-10"))
+    #expect(cloud.autoSourceLabel == "Cloudflare AI")
+    #expect(ActivityEngine.row(cloud, s).detail.hasPrefix("Shopping · Cloudflare AI · "))
+    #expect(ActivityEngine.row(cloud, s).spokenDetail?.hasSuffix(", sorted by Cloudflare AI") == true)
+    let snapshot = SortedForYouEngine.snapshot(s, now: MayaLedger.now)
+    let item = try #require(snapshot.items.first { $0.source == .cloudflare })
+    #expect(item.overline == "CLOUDFLARE AI · THU 8 OCT")
+    #expect(item.title == "Brightwell Academy → Shopping")
+    #expect(item.spokenHeader == "Cloudflare AI, Thursday 8 October. Brightwell Academy to Shopping, \(ReviewEngine.payments(item.count)).")
+    #expect(snapshot.homeSpoken == "\(snapshot.payments) payments sorted for you this week. Look.")
   }
 }

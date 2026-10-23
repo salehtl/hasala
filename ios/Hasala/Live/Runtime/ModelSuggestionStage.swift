@@ -21,6 +21,7 @@ struct ModelSuggestionStage: Sendable {
   var autoFileEnabled: @Sendable () -> Bool = { false }
   var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
   var cloudSpent: @Sendable (Int) async -> Void = { _ in }
+  var trusts: @Sendable (String) -> Bool = { _ in true }
   let gate = SweepGate()
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
@@ -58,12 +59,17 @@ struct ModelSuggestionStage: Sendable {
       if stages.isEmpty {
         done = false
       } else {
+        let outbox = self.outbox
         let blobs = try await ModelSuggestionSweep.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
-          spent: { tally.add($0) }, stamps: observer.stamps,
-          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-        done = try await commit(blobs)
+          spent: { tally.add($0) }, trusts: trusts, stamps: observer.stamps, serial: observer.writes,
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
+          commit: { blobs in
+            try await outbox.enqueue(blobs.flatMap(\.ops))
+            try await observer.reproject()
+          })
+        done = !blobs.isEmpty
       }
     } catch {
       done = false
@@ -81,18 +87,15 @@ struct ModelSuggestionStage: Sendable {
       do {
         let taxonomy = try reader.taxonomy()
         let left = min(dayLeft, await cloudBudget())
+        let outbox = self.outbox
         let r = try await BacklogSort.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
-          stamps: observer.stamps, reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-        let outbox = self.outbox
-        let c = await BacklogSort.commit(r.blobs, filing: r.filing) { try await outbox.enqueue($0.ops) }
-        var failed = c.failed
-        if !r.blobs.isEmpty {
-          do { try await observer.reproject() } catch { failed = true }
-        }
-        guard !failed else {
-          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: c.filing)
+          trusts: trusts, stamps: observer.stamps, serial: observer.writes,
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
+          enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
+        guard !r.failed else {
+          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: r.filing)
         }
         return .init(pass: r.pass, filing: r.filing)
       } catch let e as BacklogSort.Interrupted {
@@ -126,11 +129,13 @@ struct ModelSuggestionStage: Sendable {
     await gate.run { () async -> Int? in
       let observer = self.observer
       do {
-        let r = try await BacklogSort.undo(
-          manifest: manifest, stamps: observer.stamps,
-          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
-        _ = try await commit(r.blobs)
-        return r.rows
+        return try await observer.writes.run {
+          let r = try await BacklogSort.undo(
+            manifest: manifest, stamps: observer.stamps,
+            reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
+          _ = try await commit(r.blobs)
+          return r.rows
+        }
       } catch {
         return nil
       }
@@ -148,7 +153,7 @@ struct ModelSuggestionStage: Sendable {
 
   private func commit(_ blobs: [AuthoredBlob]) async throws -> Bool {
     guard !blobs.isEmpty else { return false }
-    for b in blobs { try await outbox.enqueue(b.ops) }
+    try await outbox.enqueue(blobs.flatMap(\.ops))
     try await observer.reproject()
     return true
   }

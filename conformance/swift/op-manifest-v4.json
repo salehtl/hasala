@@ -32,7 +32,8 @@
     "project_defined",
     "goal_defined",
     "mailbox_retired",
-    "txn_copy_resolved"
+    "txn_copy_resolved",
+    "merchant_category_rejected"
   ],
   "parent_free": [
     "rate_set",
@@ -53,7 +54,8 @@
     "txn_annotated",
     "merchant_named",
     "sender_trust_set",
-    "mailbox_retired"
+    "mailbox_retired",
+    "merchant_category_rejected"
   ],
   "min_versions": {
     "txn_ingested": 1,
@@ -85,7 +87,8 @@
     "project_defined": 4,
     "goal_defined": 4,
     "mailbox_retired": 4,
-    "txn_copy_resolved": 4
+    "txn_copy_resolved": 4,
+    "merchant_category_rejected": 4
   },
   "entity_kinds": {
     "txn_ingested": "txn",

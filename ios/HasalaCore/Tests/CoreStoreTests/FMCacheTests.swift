@@ -19,7 +19,7 @@ struct FMCacheTests {
     #expect(
       migrations == [
         "v1", "fm_cache", "mailbox_sender_address", "mailbox_parsing", "mailbox_pending_import", "mailbox_unparsed_sender",
-        "fm_cache_answers", "backlog_run",
+        "fm_cache_answers", "backlog_run", "sort_memory", "fm_kept",
       ])
     let cache = FMCache(s)
     try cache.recordUnknown([(subject: "cafe example jbr", modelTag: "apple-fm/26.1")], taxonomyHash: Self.taxonomy, now: 0)
@@ -47,6 +47,28 @@ struct FMCacheTests {
     #expect(try cache.purgeExpired(now: 40 * day) == 1)
     #expect(try cache.count() == 0)
     try cache.recordUnknown([], taxonomyHash: Self.taxonomy, now: 0)
+  }
+
+  @Test("a kept answer is keyed by subject and model tag only, survives the purge, and is dropped on request")
+  func kept() throws {
+    let s = try LedgerStore.inMemory()
+    let cache = FMCache(s)
+    let day: Int64 = 86_400_000
+    let answer = ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1", autoFile: true)
+    try cache.recordAnswers([answer], taxonomyHash: Self.taxonomy, now: 1_000)
+    try cache.keepAnswers([answer])
+    #expect(try cache.purgeExpired(now: 400 * day) == 1)
+    #expect(try cache.answer(subject: "cafe example jbr", taxonomyHash: Self.taxonomy, modelTag: "cf-clef/1", now: 400 * day) == nil)
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "shopping")
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "apple-fm/26.1") == nil)
+    let keys = try s.db.read { db in try String.fetchAll(db, sql: "SELECT key FROM fm_kept") }
+    #expect(keys.count == 1 && keys[0].utf8.count == 64 && !keys[0].contains("cafe"))
+    try cache.keepAnswers([.init(subject: "cafe example jbr", category: "dining", modelTag: "cf-clef/1")])
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "dining" && cache.keptCount() == 1)
+    try cache.keepAnswers([])
+    try cache.dropKept([])
+    try cache.dropKept([(subject: "cafe example jbr", modelTag: "cf-clef/1")])
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == nil && cache.keptCount() == 0)
   }
 
   @Test("category answers are kept for 30 days with their grade, keyed by subject, taxonomy and model tag")
@@ -88,6 +110,17 @@ struct FMCacheTests {
     try store.save(Data("{\"a\":1}".utf8))
     try store.save(Data("{\"a\":2}".utf8))
     #expect(try store.load() == Data("{\"a\":2}".utf8))
+    try store.clear()
+    #expect(try store.load() == nil)
+  }
+
+  @Test("the sort memory is one row, replaced on save, and erased with the store")
+  func sortMemory() throws {
+    let store = SortMemoryStore(try LedgerStore.inMemory())
+    #expect(try store.load() == nil)
+    try store.save(Data("{\"r\":1}".utf8))
+    try store.save(Data("{\"r\":2}".utf8))
+    #expect(try store.load() == Data("{\"r\":2}".utf8))
     try store.clear()
     #expect(try store.load() == nil)
   }

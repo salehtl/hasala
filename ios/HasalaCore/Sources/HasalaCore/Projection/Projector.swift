@@ -90,6 +90,7 @@ public enum Projector {
       try writeCategories(db, taxonomy)
       try writeRules(db, state, taxonomy: taxonomy)
       try writeConfig(db, state)
+      try writeRejections(db, state, groups: groups)
       try writePlan(db, state.plan)
       try write03b(db, state)
       try writeNotices(db, state)
@@ -230,6 +231,17 @@ public enum Projector {
   }
 
   // MARK: Configuration and 03c keyed records
+
+  private static func writeRejections(_ db: Database, _ s: State, groups: MerchantGroup) throws {
+    guard !s.merchantRejections.isEmpty else { return }
+    let st = try db.makeStatement(
+      sql: "INSERT OR REPLACE INTO merchant_rejection (merchant_key, category, rejected, merchant_group, op_id) VALUES (?,?,?,?,?)")
+    for r in s.merchantRejections.values {
+      let group = groups.key(raw: r.merchantKey)
+      let args: [(any DatabaseValueConvertible)?] = [r.merchantKey, r.category, r.rejected, group.isEmpty ? nil : group, r.opID]
+      try st.execute(arguments: StatementArguments(args))
+    }
+  }
 
   private static func writeConfig(_ db: Database, _ s: State) throws {
     for (k, v) in s.merchantNames {

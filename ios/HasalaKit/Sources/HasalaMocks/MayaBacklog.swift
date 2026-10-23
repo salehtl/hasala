@@ -34,9 +34,16 @@ public enum MayaBacklog {
   public static let alNoorPharmacy = Spelling(
     raw: "AL NOOR PHARMACY", merchantKey: "al noor pharmacy", group: "n:al noor pharmacy", name: "Al Noor Pharmacy")
 
+  public static let mirdif = Spelling(
+    raw: "MIRDIF BOOKS", merchantKey: "mirdif books", group: "n:mirdif books", name: "Mirdif Books")
+  public static let mirdifLLC = Spelling(
+    raw: "MIRDIF BOOKS LLC", merchantKey: "mirdif books llc", group: "n:mirdif books", name: "Mirdif Books")
+  public static let mirdifNumbered = Spelling(
+    raw: "MIRDIF BOOKS 0412", merchantKey: "mirdif books 0412", group: "n:mirdif books", name: "Mirdif Books")
+
   public static let spellings: [Spelling] = [
     tailscaleCom, tailscaleInc, tailscalePaypal, qasrNumbered, qasr, brightwell, saffron, nimbusCom, nimbusPaypal,
-    alNoorTrading, alNoorPharmacy,
+    alNoorTrading, alNoorPharmacy, mirdif, mirdifLLC, mirdifNumbered,
   ]
 
   public static let usdRateMicro: Int64 = 3_672_500
@@ -50,6 +57,7 @@ public enum MayaBacklog {
   public static let nimbusGroup = MerchantGroupRef(key: nimbusCom.group, direction: .out)
   public static let alNoorTradingGroup = MerchantGroupRef(key: alNoorTrading.group, direction: .out)
   public static let alNoorPharmacyGroup = MerchantGroupRef(key: alNoorPharmacy.group, direction: .out)
+  public static let mirdifGroup = MerchantGroupRef(key: mirdif.group, direction: .out)
 
   public static let wrongGuess: CategoryID = "shopping"
 
@@ -66,7 +74,7 @@ public enum MayaBacklog {
     MockReach.refresh(&s)
   }
 
-  public static var txns: [Txn] { tailscaleRows + qasrRows + brightwellRows + otherRows }
+  public static var txns: [Txn] { tailscaleRows + qasrRows + brightwellRows + otherRows + mirdifRows }
 
   static func row(
     _ id: String, _ spelling: Spelling, _ amount: Money, _ at: LocalDateTime, account: AccountID = "dib",
@@ -135,6 +143,17 @@ public enum MayaBacklog {
       row("bl-bright-\(m)", brightwell, .aed(450_00), LocalDateTime(2026, m, 3, 9, 0), category: wrongGuess,
           source: .model(tag: "cf-clef/1"))
     }
+  }
+
+  static var mirdifRows: [Txn] {
+    let guess = CategorySource.model(tag: "cf-clef/1")
+    return [
+      row("bl-mirdif-1", mirdifNumbered, usd(80_00), LocalDateTime(2026, 10, 2, 16, 20), category: wrongGuess, source: guess),
+      row("bl-mirdif-2", mirdif, usd(40_00), LocalDateTime(2026, 10, 4, 16, 20), category: wrongGuess, source: guess),
+      row("bl-mirdif-3", mirdifLLC, .aed(312_50), LocalDateTime(2026, 10, 8, 16, 20), category: wrongGuess, source: guess),
+      row("bl-mirdif-4", mirdif, .aed(349_21), LocalDateTime(2026, 10, 9, 16, 20), category: wrongGuess, source: guess),
+      row("bl-mirdif-unverified", mirdifLLC, .aed(95_00), LocalDateTime(2026, 10, 6, 16, 20), reason: .senderUnverified),
+    ]
   }
 
   static var otherRows: [Txn] {

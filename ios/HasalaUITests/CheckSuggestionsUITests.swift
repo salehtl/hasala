@@ -37,7 +37,7 @@ final class CheckSuggestionsUITests: XCTestCase {
     undo.tap()
     XCTAssertTrue(use.waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(check.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(el(app, "review.tab.count").label, "10 to sort · about 2 minutes")
+    XCTAssertTrue(el(app, "review.tab.count").waitForLabel(containing: "10 payments to sort, from "), el(app, "review.tab.count").label)
     tap(app, "review.sort.check", opening: "suggestions.use")
     XCTAssertEqual(el(app, "suggestions.use").label, "Use 7 suggestions")
   }

@@ -299,7 +299,14 @@ ends once the mailbox is connected, and its ask moved to Review.)
     active.
 - **Review, with Merchant suggestions on:** the **Sort with Cloudflare AI** card at the
   top of Review (below). It starts a run with the switches as they are, and never turns
-  them on. The ask and this card never show together.
+  them on. The ask and this card never show together. Since the sorting rework
+  (2026-10-23, [sorting-rework.md](sorting-rework.md) D8-D10), Review holds at most one
+  sorting card, and the run offer appears once the first load is done (a mailbox reached
+  `active`, this iPhone's sync caught up, payments wait; a mailbox waiting for cards, or
+  one held by another iPhone, after the second Review open), then again when 20 or more
+  new waiting merchant groups arrived since the last run or a newly connected mailbox
+  finishes its import. After **Not now** the ask never comes back; nothing else offers a
+  run while Merchant suggestions is off.
 - **Profile:** when Merchant suggestions is turned on and payments are waiting, an offer
   ("Sort the 208 payments waiting in Review?"), with **Sort now** and **Later**.
 
@@ -379,8 +386,8 @@ when its mail gates passed; everything else at or above 0.6 / 0.2 is a suggestio
   **Check suggestions** (when there are suggestions) and **Undo** (while the manifest
   exists). Undo asks first ("Send 104 payments back to Review?"). The Done card has a close
   button; the device remembers it per run (by the run's end time), so a dismissed run's
-  card doesn't come back. While the Done card offers Check suggestions, the separate
-  Check suggestions row in Review is hidden, so there is one way in at a time.
+  card doesn't come back. The Done card is the only way into Check suggestions: the
+  separate Check suggestions row in Review was removed in the sorting rework.
 - Review asks the engine for fresh counts when it appears and when the app comes back to
   the foreground.
 
@@ -422,8 +429,15 @@ a category.
   recorded version. Rows another device's runs filed, and rows the foreground sweep filed
   with Sort automatically on, are not sent back; they stay filed. Undo of the last run takes its rows out of the cumulative manifest too.
 
-**No new op kind, no fold change.** The run, Check suggestions and both undos author only
-`txn_categorized`. There is no conformance change and no Worker or fence change.
+**The run adds no op kind.** The run, Check suggestions and both undos author only
+`txn_categorized`, and there is no Worker or fence change. The sorting rework's **Not this**
+([sorting-rework.md](sorting-rework.md) D6-D7) added one op kind,
+`merchant_category_rejected`, with its own fold map and replay goldens. Rejections are
+applied on the phone after the answer: a rejected answer reads as unknown for that stage,
+so Apple's model is asked next, and a cached Cloudflare answer that was rejected is never
+sent again (the phone keeps that answer in its own record, keyed by the name and the model
+tag only, past the usual 30 days and across changes to the category list, until the
+rejection is undone). The request, the `allowed` list and the cache key are unchanged.
 
 **What leaves the phone is unchanged:** one canonical merchant string and the built-in
 categories per request, from card-payment alerts only. A bulk run changes how many

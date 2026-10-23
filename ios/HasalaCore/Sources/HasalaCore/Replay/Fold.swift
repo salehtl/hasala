@@ -171,6 +171,7 @@ extension State {
     // v4 parent-free families (Replay/V4/)
     case .txnAnnotated: try applyTxnAnnotated(e)
     case .merchantNamed: try applyMerchantNamed(e)
+    case .merchantCategoryRejected: try applyMerchantCategoryRejected(e)
     case .senderTrustSet: try applySenderTrustSet(e)
     case .budgetSet: try applyBudgetSet(e)
     case .budgetMoved: try applyBudgetMoved(e)
