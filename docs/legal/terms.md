@@ -41,7 +41,7 @@ Hasala is experimental and unfinished. During the beta:
 - the service may be slow or unavailable at times, including for maintenance;
 - emails and alerts from Hasala, including security emails, can be late or fail to arrive;
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
-- we may change, pause or end the beta at any time. When we do, accounts and their data may be reset or deleted, for example before a change to how data is stored. Where we can, we'll tell you in the app first, so that you can export your data.
+- we may change, pause or end the beta at any time. When we do, accounts and their data may be reset or deleted, for example before a change to how data is stored. Where we can, we'll tell you in the app or by email first, so that you can export your data.
 
 If you want a copy of your own, export your data from time to time, from Profile › Settings › Export your data.
 
@@ -130,7 +130,7 @@ Deleting the app from your iPhone does not delete your account.
 
 ### We can change or end the beta, or your access
 
-We may end your access if you seriously or repeatedly break these terms. We may also change, pause or end the beta, or close Hasala, at any time. When we do, accounts and their data may be reset or deleted. Where we can, we'll tell you in the app first, or by email, so that you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
+We may end your access if you seriously or repeatedly break these terms. We may also change, pause or end the beta, or close Hasala, at any time. When we do, accounts and their data may be reset or deleted. Where we can, we'll tell you in the app or by email first, so that you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
 
 ## Source-available code
 

@@ -644,13 +644,14 @@ for reference. What the rewrite records for Merchant suggestions:
   payments out of the account and from bank alerts (never from a payment added by hand),
   that each request carries the app's version (`Hasala-Client`), that the phone keeps
   each answer for up to 30 days (`fm_cache`), and that an answer set aside after Not this
-  stays for as long as the rejection stands (`fm_kept`, no expiry). It says the sweep runs
-  "mostly while the app is open", because of the launch-run gap in
-  [What we can't hide](#what-we-cant-hide).
+  stays on that phone until the account's data leaves it (`fm_kept`, no expiry). Only a
+  sweep that queues the merchant again drops it, so a rejection the person lifts with their
+  own pick keeps it. It says the sweep runs "mostly while the app is open", because of the
+  launch-run gap in [What we can't hide](#what-we-cant-hide).
 - "What stays on your iPhone" gains Search, which can use Apple's on-device model.
 - Terms: provided as is, without warranty; the beta can change, pause or end at any time,
-  and accounts and data may be reset or deleted then, with notice in the app where possible.
-  The 7-day and 30-day notice promises are gone.
+  and accounts and data may be reset or deleted then, with notice in the app or by email
+  where possible. The 7-day and 30-day notice promises are gone.
 
 While Clairic is deferred, drop every Alert reading help part from the text below (the
 second bullet of the new section, the alert words in the short version, Limited Use and

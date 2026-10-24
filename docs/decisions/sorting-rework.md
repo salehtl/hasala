@@ -460,6 +460,12 @@ this record does.
   rule, and never for a group already filed into two categories by any source, the
   dictionary included. Not built: it reverses the #176 default.
 - **The crowd merchant list.** See [crowd-merchant-list.md](crowd-merchant-list.md).
+- **Telling earlier testers about the new pages.** The rewrite drops the old 30 days' notice
+  at once, and the background stage reaches people who turned Merchant suggestions on under
+  the old policy. The cheapest step is to tell testers about the new pages in the app or by
+  email when the build ships, not only in the TestFlight notes. Another is to show the
+  one-time ask once more to those people before the background stage runs for them. Not
+  built.
 
 ## Out of scope
 

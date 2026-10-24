@@ -28,7 +28,7 @@ struct CloudSortAskCard: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private static let lines: [(icon: HIcon, text: String)] = [
-    (.tag, "Sent: only the merchant name, like \u{201C}CAFE EXAMPLE JBR\u{201D}."),
+    (.tag, "Sent: the merchant name, like \u{201C}CAFE EXAMPLE JBR\u{201D}, with Hasala's built-in categories and the app's version."),
     (.eyeSlash, "Not sent: the amount, date, card, bank, your name or your account."),
     (.done, "Filed only when it's very sure. Off any time in Profile \u{203A} Cloud suggestions."),
   ]

@@ -24,7 +24,7 @@ Hasala sorts transactions on your iPhone. By default it works in this order:
 2. a built-in list of UAE merchants; and
 3. if it's still unsure, your review. If you sorted another payment from that merchant yourself, the category you picked most recently is suggested there. Refunds have their own pick, and a payment you split isn't a pick.
 
-A rule you make with **Always use it** also re-files that merchant's other payments, except the ones you sorted yourself. That happens on your iPhone too, and the changes are sealed before they sync.
+A rule you make with **Always use it** also re-files that merchant's other payments, except the ones you sorted yourself and a few it leaves alone, such as split payments and transfers. That happens on your iPhone too, and the changes are sealed before they sync.
 
 When Cloud suggestions are off, Apple's on-device model doesn't sort your payments, and nothing is sent to an AI service. Cloud suggestions are optional and off by default. If Apple Intelligence is on, Search can use Apple's on-device model to understand a question; that runs on your iPhone and sends nothing.
 

@@ -85,7 +85,7 @@ To turn it off, switch off **Merchant suggestions** in **Profile › Cloud sugge
 
 ### Something changed, or my data looks different. Why?
 
-Hasala is an experimental beta, so a new build can change how payments are sorted or shown. Now and then we may also need to reset the beta, and then data can be lost. Where we can, we tell you in the app first. To keep a copy of your own, export your data from time to time, from **Profile › Settings › Export your data (CSV)**. If something looks wrong, tell us (see [Contact us](#contact-us)).
+Hasala is an experimental beta, so a new build can change how payments are sorted or shown. Now and then we may also need to reset the beta, and then data can be lost. Where we can, we tell you in the app or by email first. To keep a copy of your own, export your data from time to time, from **Profile › Settings › Export your data (CSV)**. If something looks wrong, tell us (see [Contact us](#contact-us)).
 
 ### Which email accounts work?
 

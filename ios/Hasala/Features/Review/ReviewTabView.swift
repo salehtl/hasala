@@ -72,7 +72,7 @@ struct ReviewTabView: View {
   private func turnOnCloudSort() {
     session?.services.cloudSort?.turnOn()
     cloudSortAnswered = true
-    app.say("Cloudflare AI is on. It sorts a few names at a time while Hasala is open.", icon: .cloud)
+    app.say("Cloudflare AI is on. It sorts a few names at a time, mostly while Hasala is open.", icon: .cloud)
   }
 
   private func cloudSortNotNow() {
