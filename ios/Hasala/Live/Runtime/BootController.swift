@@ -417,11 +417,7 @@ final class BootController {
       try? env.account.secrets.deleteSession()
       LocalAccountData.forget()
       account.forgetAll()
-      if let grant {
-        // Through the queue a later connect waits for (`MailGrantEnds`).
-        let build = env.build
-        MailGrantEnds.shared.enqueue { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
-      }
+      MailboxLane.endGrantLater(grant, build: env.build)
       session.signedOut()
     case .needsSignIn, .needsRebind:
       // The session is gone (expired, signed out everywhere): sign in again. The data and

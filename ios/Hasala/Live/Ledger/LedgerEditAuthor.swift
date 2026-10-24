@@ -281,7 +281,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
         return (b, b.last?.lastAuthoredMs)
       }
       try await enqueueAll(blobs)
-      if !enabled { memory.update { m in for i in m.batches.indices where m.batches[i].ruleID == id { m.batches[i].rerun = false } } }
+      if !enabled { memory.update { $0.stopReruns(ruleID: id) } }
     case .saveProject(let id, let draft):
       let existing = try reader.projects().first { $0.id == id }?.project
       var d = try Self.projectDraft(draft)
@@ -397,12 +397,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
         if let b = try await undoBlob(Array(inverses[i..<min(i + size, inverses.count)])) { blobs.append(b) }
         i += size
       }
-      let ops = blobs.flatMap(\.ops)
-      if !ops.isEmpty {
-        try await outbox.enqueue(ops)
-        memory.update { $0.noteAuto(ops) }
-        try await observer.reproject()
-      }
+      try await enqueueAll(blobs, auto: true)
       for inv in inverses {
         if case .trust(let c, let tag, let n) = inv { trust.uncorrected(c, modelTag: tag, by: n) }
       }
@@ -771,9 +766,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     if let cached = candidates.get(generation: generation, today: t) {
       found = cached
     } else {
-      var rows = try reader.activity(limit: 1_000_000)
-      rows += try reader.archived(limit: 1_000_000)
-      found = LedgerStateMapper.detect(records, rows: rows, today: t)
+      found = LedgerStateMapper.detect(records, rows: try LedgerStateMapper.allRows(reader), today: t)
     }
     guard let c = found.first(where: { $0.id == id }) else { throw Failure.notFound }
     var d = Self.candidateDraft(c)

@@ -179,7 +179,6 @@ nonisolated final class MailboxLane: Sendable {
 
   /// Bank alerts (spec 04 §7.10).
   func status() async -> MailboxStatus { await engine.status() }
-  func disconnect() async -> Bool { await engine.disconnect() }
   func retirePlan() async -> MailboxRetirePlan? { await engine.retirePlan() }
   func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     await engine.disconnect(removing: plan)
@@ -190,7 +189,6 @@ nonisolated final class MailboxLane: Sendable {
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     await engine.importSender(typed)
   }
-  func viewEmail(messageID: String) async -> EmailView { await engine.viewEmail(messageID: messageID) }
   func probeSenders(_ domains: [String]) async -> SenderProbeResult { await engine.probeSenders(domains) }
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
@@ -373,6 +371,11 @@ extension MailboxLane {
   /// - Outlook: Microsoft has no revoke endpoint; this iPhone's Graph subscription is deleted
   ///   when the account is going, and the tokens are simply forgotten (consent is ended at
   ///   account.live.com/consent/Manage).
+  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
+    guard let held else { return }
+    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
+  }
+
   nonisolated static func endGrant(_ held: HeldMailGrants, build: BuildInfo, stopWatch: Bool) async {
     let http = MailGrantEnds.http()
     for g in held.grants {

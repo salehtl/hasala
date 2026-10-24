@@ -67,8 +67,12 @@ nonisolated enum BillEdits {
     return nearestDue(v, to: day)
   }
 
+  static func covers(_ p: OpAuthor.BillPauseDraft, _ day: CivilDate) -> Bool {
+    p.from <= day && (p.until.map { day < $0 } ?? true)
+  }
+
   static func isPaused(_ d: Draft, on day: CivilDate) -> Bool {
-    d.pauses.contains { $0.from <= day && ($0.until.map { day < $0 } ?? true) }
+    d.pauses.contains { covers($0, day) }
   }
 
   static func terms(_ d: Draft, at due: CivilDate) -> OpAuthor.BillTermsDraft {
@@ -126,7 +130,7 @@ nonisolated enum BillEdits {
 
   static func resume(_ d: inout Draft, today: CivilDate) throws {
     guard d.status == .active else { throw Failure.refused("not paused") }
-    if let i = d.pauses.lastIndex(where: { $0.from <= today && ($0.until.map { today < $0 } ?? true) }) {
+    if let i = d.pauses.lastIndex(where: { covers($0, today) }) {
       if d.pauses[i].from < today {
         d.pauses[i].until = today
       } else {
