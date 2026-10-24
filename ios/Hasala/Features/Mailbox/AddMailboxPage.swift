@@ -10,10 +10,6 @@ import SwiftUI
 struct AddMailboxPage: View {
   @Bindable var app: AppModel
 
-  init(app: AppModel) {
-    self.app = app
-  }
-
   var body: some View {
     if let mailbox = app.mailbox {
       if mailbox.connectable.count == 1, let only = mailbox.connectable.first {

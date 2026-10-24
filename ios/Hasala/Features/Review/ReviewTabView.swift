@@ -333,7 +333,7 @@ struct ReviewTabView: View {
       Button {
         app.router.open(.addTransaction)
       } label: {
-        unreadableRow(n, detail: Self.unreadableDetail, chevron: true)
+        unreadableRow(n, detail: Self.unreadableDetail)
       }
       .buttonStyle(HRowPressStyle())
       .accessibilityHint("Opens Add a transaction")
@@ -342,7 +342,7 @@ struct ReviewTabView: View {
       Button {
         app.router.review.append(.unreadMail)
       } label: {
-        unreadableRow(n, detail: "Add each one by hand or dismiss it", chevron: true)
+        unreadableRow(n, detail: "Add each one by hand or dismiss it")
       }
       .buttonStyle(HRowPressStyle())
       .accessibilityIdentifier("review.tab.unreadable")
@@ -353,7 +353,7 @@ struct ReviewTabView: View {
 
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
-  private func unreadableRow(_ n: Int, detail: String, chevron: Bool) -> some View {
+  private func unreadableRow(_ n: Int, detail: String) -> some View {
     let disc = Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
       .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
     let text = VStack(alignment: .leading, spacing: 0) {
@@ -376,9 +376,7 @@ struct ReviewTabView: View {
         HStack(spacing: 12) {
           disc
           text
-          if chevron {
-            HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
-          }
+          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
         }
       }
     }
