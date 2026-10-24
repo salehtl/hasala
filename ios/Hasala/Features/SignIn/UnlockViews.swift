@@ -98,9 +98,7 @@ final class UnlockModel {
       busy = true
       failure = nil
       // The progress replaces the entry where it stands, without a pop that looks like Back.
-      var quiet = Transaction()
-      quiet.disablesAnimations = true
-      withTransaction(quiet) {
+      instantly {
         path = []
         stage = .unlocking(.words)
       }
@@ -177,12 +175,7 @@ struct UnlockView: View {
       model: UnlockModel(
         account: session.account, passkeyCanUnlock: passkeyCanUnlock && session.capabilities.contains(.signInPasskey),
         onUnlocked: { [weak session] in session?.unlocked() }),
-      onSignOut: {
-        Task {
-          await session.account.signOut()
-          session.signedOut()
-        }
-      })
+      onSignOut: { Task { await session.signOut() } })
   }
 
   private var afterReset: Bool { store?.signIn.resetApproved ?? false }

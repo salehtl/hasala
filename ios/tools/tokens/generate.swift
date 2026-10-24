@@ -109,8 +109,7 @@ func fmt(_ v: Double) -> String {
 
 func fmtAlpha(_ a: Double) -> String {
   // Paper writes percentages with at most one decimal (92.2%), so four places are exact.
-  let s = String(format: "%.4f", a)
-  var t = s
+  var t = String(format: "%.4f", a)
   while t.hasSuffix("0") { t.removeLast() }
   if t.hasSuffix(".") { t.removeLast() }
   return t

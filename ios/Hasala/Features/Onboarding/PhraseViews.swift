@@ -84,7 +84,7 @@ struct PhraseShowView: View {
   enum Mode { case create, view }
 
   @Environment(\.scenePhase) private var scenePhase
-  @State private var captured = PhraseShowView.screenCaptured()
+  @State private var captured = screenIsCaptured()
   @State private var screenshotWarning = false
 
   /// The words are drawn (revealed and not masked by a capture).
@@ -140,14 +140,9 @@ struct PhraseShowView: View {
 
   /// Captured, the words hide and stay hidden until capture stops.
   private func noteCapture() {
-    captured = Self.screenCaptured()
+    captured = screenIsCaptured()
     if captured { revealed = false }
     onCapture(captured)
-  }
-
-  /// Whether any screen showing Hasala is being recorded or mirrored.
-  static func screenCaptured() -> Bool {
-    screenIsCaptured()
   }
 }
 
@@ -209,9 +204,9 @@ struct AccountReadyView: View {
     Button("Continue", action: onContinue)
       .buttonStyle(.pill(.primary, fill: true))
       .accessibilityIdentifier("ready.continue")
-    DockTextButton(title: "What Hasala reads, and what it doesn't", identifier: "ready.whoSees") {
-      whoSeesOpen = true
-    }
+    Button("What Hasala reads, and what it doesn't") { whoSeesOpen = true }
+      .buttonStyle(.pill(.tertiary, fill: true))
+      .accessibilityIdentifier("ready.whoSees")
   }
 
   /// Paper "ListCard · Account summary": a green dot, what, and where it is.

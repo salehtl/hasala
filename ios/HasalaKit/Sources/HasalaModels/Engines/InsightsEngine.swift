@@ -10,9 +10,8 @@ public enum InsightsEngine {
   public static func title(of months: ClosedRange<YearMonth>) -> String { Period(months).title }
 
   public static func window(_ month: YearMonth, now: LocalDateTime) -> InsightsWindow {
-    let first = LocalDate(month.year, month.month, 1)
-    if month == now.date.yearMonth { return InsightsWindow(from: first, through: now.date) }
-    return InsightsWindow(from: first, through: LocalDate(month.year, month.month, month.days))
+    guard month == now.date.yearMonth else { return wholeMonth(month) }
+    return InsightsWindow(from: LocalDate(month.year, month.month, 1), through: now.date)
   }
 
   public static func wholeMonth(_ month: YearMonth) -> InsightsWindow {
@@ -182,7 +181,7 @@ public enum InsightsEngine {
     let compared = ctx.comparison != nil
     func delta(_ a: Int64, _ b: Int64) -> InsightsDelta? { compared ? InsightsDelta.between(a, b) : nil }
 
-    let order = Dictionary(s.categories.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let order = categoryOrder(s)
     let spent = cur.spent
     let focus = ctx.focus
 
@@ -259,7 +258,7 @@ public enum InsightsEngine {
     } else {
       changes = []
       let first = ctx.all.map(\.postedAt.date).min()
-      let start = first.map { "Your first scan went back to \($0.day) \(CivilCalendar.monthNames[$0.month - 1]). " } ?? ""
+      let start = first.map { "Your first scan went back to \($0.day) \($0.yearMonth.name). " } ?? ""
       notice = InsightsNotice(title: "Nothing to compare yet",
                               message: start + "Changes show here once a month has a month before it.")
     }
@@ -282,6 +281,10 @@ public enum InsightsEngine {
       summary: summary, buckets: scaled(bucketRows), categories: scaled(categoryRows), merchants: scaled(merchantRows),
       lensFooter: footer, lensEmpty: empty, changes: changes, changesNotice: notice, flow: flow, flowEmpty: flowEmpty,
       reports: reports(s, ctx, cur: cur, now: now), share: share(focus: focus, isCurrent: ctx.isCurrent, totals: cur))
+  }
+
+  static func categoryOrder(_ s: LedgerState) -> [CategoryID: Int] {
+    Dictionary(s.categories.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
   }
 
   static func unsortedRow(title: String, cur: Totals, prev: Totals, spent: Int64, ctx: Context,
@@ -390,8 +393,7 @@ public enum InsightsEngine {
     let complete = months.filter { !$0.inProgress }
     guard !complete.isEmpty else {
       let next = first.next
-      return (InsightsFlow(span: ctx.focus.name, months: [], averageOut: nil, note: ""),
-              "Your first full month shows here on 1 \(next.name). Each month after that adds a bar, up to six.")
+      return (none, "Your first full month shows here on 1 \(next.name). Each month after that adds a bar, up to six.")
     }
     let avg = average(complete.map(\.out.minor))
     let sortedOnly = ctx.all.allSatisfy { l in
@@ -419,8 +421,9 @@ public enum InsightsEngine {
       let change = s.netWorth.monthChange.minor
       if ctx.isCurrent {
         let caption: String
-        switch InsightsDelta.between(total, total.minus(change))?.kind {
-        case .up, .down: caption = InsightsDelta.between(total, total.minus(change))!.text + " this month"
+        let delta = InsightsDelta.between(total, total.minus(change))
+        switch delta?.kind {
+        case .up, .down: caption = delta!.text + " this month"
         default: caption = "No change this month"
         }
         netWorth = InsightsReport(kind: .netWorth, title: "Net worth", value: .money(.aed(total)), caption: caption + left,
@@ -514,7 +517,7 @@ public enum InsightsEngine {
       }
     }
 
-    let order = Dictionary(s.categories.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+    let order = categoryOrder(s)
     var categories: [InsightsDrillCategory] = []
     if case .bucket = target {
       var acc: [CategoryID: (count: Int, amount: Int64)] = [:]

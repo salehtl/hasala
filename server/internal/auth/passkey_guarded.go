@@ -46,7 +46,7 @@ func (p *Passkeys) AddBegin(ctx context.Context, session SessionInfo, su *StepUp
 	if su == nil {
 		return "", nil, ErrStepUpRequired
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionPasskeyAdd)
+	g, err := guardFor(session, keyproto.ActionPasskeyAdd, su)
 	if err != nil {
 		return "", nil, err
 	}
@@ -54,8 +54,6 @@ func (p *Passkeys) AddBegin(ctx context.Context, session SessionInfo, su *StepUp
 		id   string
 		opts *protocol.CredentialCreation
 	)
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionPasskeyAdd, ParamsHash: ph, StepUp: su}
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, proven Proven) error {
 		live, err := liveWriterWithDAK(ctx, tx, session.UserID, session.WriterID)
 		if err != nil {
@@ -141,11 +139,7 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 	if err != nil {
 		return nil, fmt.Errorf("auth: passkey add: read writer: %w", err)
 	}
-	var wrap []byte
-	if hasWrap {
-		wrap = a.PRFWrap
-	}
-	msg, err := keyproto.PasskeyAddMessage(c.AddNonce, made.ClientDataJSON, made.AttestationObject, wrap)
+	msg, err := keyproto.PasskeyAddMessage(c.AddNonce, made.ClientDataJSON, made.AttestationObject, a.PRFWrap)
 	if err != nil || !keyproto.VerifyEd25519(dwk, msg, a.DWKSig) {
 		return nil, fmt.Errorf("%w: dwk_sig over PasskeyAddMessage", ErrBadSignature)
 	}
@@ -161,7 +155,7 @@ func (p *Passkeys) AddFinish(ctx context.Context, session SessionInfo, a Passkey
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at)
 			 VALUES ($1, $2, $3, 1, $4)`,
-			session.UserID, credID, wrap, p.now()); err != nil {
+			session.UserID, credID, a.PRFWrap, p.now()); err != nil {
 			return nil, fmt.Errorf("auth: passkey add: store wrap: %w", err)
 		}
 	}
@@ -190,7 +184,7 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 	if su == nil {
 		return 0, ErrStepUpRequired
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionPasskeyDelete, credentialID)
+	g, err := guardFor(session, keyproto.ActionPasskeyDelete, su, credentialID)
 	if err != nil {
 		return 0, err
 	}
@@ -198,14 +192,9 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 		revoked   int64
 		removedAt time.Time
 	)
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionPasskeyDelete, ParamsHash: ph, StepUp: su}
 	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		var err error
 		removedAt = p.now()
-		if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, session.UserID); err != nil {
-			return err
-		}
 		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
 			return err
 		}

@@ -21,7 +21,7 @@ struct SyncHaltWall: View {
     }
     .accessibilityIdentifier("wall.syncHalted")
     .accessibilityAddTraits(.isModal)
-    .onAppear { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+    .onAppear { UIApplication.shared.dismissKeyboard() }
   }
 
   static let title = "Hasala stopped syncing"

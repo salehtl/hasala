@@ -82,9 +82,7 @@ extension SortedForYouItem {
   public var title: String { "\(merchant) → \(category.name)" }
 
   public var spokenHeader: String {
-    let d = latest.date
-    let day = "\(ReviewEngine.weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
-    return "\(sourceName), \(day). \(merchant) to \(category.name), \(ReviewEngine.payments(count))."
+    "\(sourceName), \(ReviewEngine.spokenDay(latest.date)). \(merchant) to \(category.name), \(ReviewEngine.payments(count))."
   }
 }
 

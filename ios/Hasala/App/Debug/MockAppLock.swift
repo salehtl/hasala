@@ -17,9 +17,8 @@
     init() {}
 
     init(_ arguments: [String]) {
-      if let i = arguments.firstIndex(of: Self.argument), i + 1 < arguments.count {
+      if let value = arguments.launchValue(after: Self.argument) {
         armed = true
-        let value = arguments[i + 1]
         if value == "none" {
           available = false
         } else if value == "system" {
@@ -28,17 +27,15 @@
           checks = value.split(separator: ",").compactMap { Self.check(String($0)) }
         }
       }
-      if let i = arguments.firstIndex(of: Self.issueArgument), i + 1 < arguments.count {
-        switch arguments[i + 1] {
+      if let value = arguments.launchValue(after: Self.issueArgument) {
+        switch value {
         case "notEnrolled": issue = .notEnrolled
         case "denied": issue = .denied
         case "lockedOut": issue = .lockedOut
         default: break
         }
       }
-      if let i = arguments.firstIndex(of: Self.graceArgument), i + 1 < arguments.count,
-        let seconds = Int(arguments[i + 1])
-      {
+      if let seconds = arguments.launchValue(after: Self.graceArgument).flatMap({ Int($0) }) {
         grace = .seconds(seconds)
       }
     }

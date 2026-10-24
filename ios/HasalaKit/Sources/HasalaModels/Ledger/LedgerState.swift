@@ -369,7 +369,6 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var isHeldCopy: Bool { heldCopy != nil }
 
-
   /// A row of the App Review sample (its message id is `sample-<n>`; Gmail ids are hex).
   public var isSample: Bool { mailboxMessageID?.hasPrefix("sample-") == true }
 

@@ -256,16 +256,12 @@ final class SetupModel {
 
   /// The provider's sign-in, then the first scan; once connected, on to the scan without
   /// a second sign-in. (The connect screen's button runs the same coordinator.)
-  func connectMail(_ provider: MailProviderKind) async {
-    await connectMail(provider, again: false)
+  func connectMail(_ provider: MailProviderKind, replacing: Bool = false, removingOld: Bool = false) async {
+    await runConnect(provider, again: false, replacing: replacing, removingOld: removingOld)
   }
 
-  func connectMail(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool) async {
-    await connectMail(provider, again: false, replacing: replacing, removingOld: removingOld)
-  }
-
-  private func connectMail(_ provider: MailProviderKind, again: Bool, replacing: Bool = false,
-                           removingOld: Bool = false) async {
+  private func runConnect(_ provider: MailProviderKind, again: Bool, replacing: Bool = false,
+                          removingOld: Bool = false) async {
     guard !connecting else { return }
     connecting = true
     defer { connecting = false }
@@ -289,7 +285,7 @@ final class SetupModel {
   /// "Continue with Google" on the error screen: on success the error screen gives way to
   /// the first scan.
   func retryConnect(_ provider: MailProviderKind) async {
-    await connectMail(provider, again: true)
+    await runConnect(provider, again: true)
   }
 
   func continueConnected() {

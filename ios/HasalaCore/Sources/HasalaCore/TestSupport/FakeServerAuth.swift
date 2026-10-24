@@ -9,6 +9,8 @@ import CryptoKit
 import Foundation
 
 extension FakeServer {
+  static let stepUpActions = Set(StepUpParams.actions)
+
   // MARK: Signup (#43, #44)
 
   func signupBegin(_ r: APIRequest) -> APIResponse {
@@ -74,9 +76,10 @@ extension FakeServer {
     guard let b = Self.decode(r, RegisterBeginRequest.self), let aak = try? Base64.decode(b.authority_pubkey),
       aak.count == 32
     else { return Self.error(400, "bad_request") }
-    guard case .success(let c) = claimable(b.signup_id) else {
-      if case .failure(let e) = claimable(b.signup_id) { return e }
-      return Self.error(403, "code_rejected")
+    let c: SignupCeremony
+    switch claimable(b.signup_id) {
+    case .success(let x): c = x
+    case .failure(let e): return e
     }
     let n = nonce()
     let challenge = (try? SigningMessage.registerChallenge(nonce: n, authorityPublicKey: aak)) ?? Data()
@@ -104,7 +107,6 @@ extension FakeServer {
       s.credentials[cred.id] = Credential(
         id: cred.id, userID: c.userID, publicKey: cred.key, attestationHash: cred.attHash, signCount: 0,
         backupEligible: backup?.eligible == true, backedUp: backup?.backedUp == true)
-      s.invites = s.invites.filter { _ in true }
     }
     return grant(mintSession(c.userID, writer: nil), user: user, writer: nil, status: 201)
   }
@@ -126,10 +128,10 @@ extension FakeServer {
     guard (try? Base64.decode(boot.nonce)) == c.nonce else { return Self.error(400, "bad_signature") }
     var user = User(id: c.userID, emailNorm: c.emailNorm, displayName: c.displayName)
     user.passwordHash = sha256(s)
-    let applied = applyBootstrap(boot, to: &user, nonce: c.nonce, authKind: .password)
-    guard case .success(let writer) = applied else {
-      if case .failure(let e) = applied { return e }
-      return Self.error(400, "bad_request")
+    let writer: WriterID
+    switch applyBootstrap(boot, to: &user, nonce: c.nonce, authKind: .password) {
+    case .success(let w): writer = w
+    case .failure(let e): return e
     }
     state.withLock { st in
       st.signups[c.id]?.claimed = true
@@ -208,7 +210,7 @@ extension FakeServer {
 
   func stepUpBegin(_ r: APIRequest, token: String, sess: Session) -> APIResponse {
     guard let b = Self.decode(r, StepUpBeginRequest.self), let ph = try? Hex.decode(b.params_hash), ph.count == 32,
-      SigningMessage_actions.contains(b.action)
+      Self.stepUpActions.contains(b.action)
     else { return Self.error(400, "bad_request") }
     if b.proof_kind != "passkey" {
       guard let w = sess.writerID, let user = state.withLock({ $0.users[sess.userID] }),
@@ -414,11 +416,15 @@ extension FakeServer {
     return .success(w)
   }
 
-  func addWriter(_ user: inout User, id: WriterID, dwk: Data, dak: Data, nonce: Data, sig: Data) {
-    let hid = state.withLock { s -> Int64 in
+  func nextHistoryID() -> Int64 {
+    state.withLock { s in
       s.historyID += 1
       return s.historyID
     }
+  }
+
+  func addWriter(_ user: inout User, id: WriterID, dwk: Data, dak: Data, nonce: Data, sig: Data) {
+    let hid = nextHistoryID()
     user.writers[id.string] = Writer(id: id, dwk: dwk, dak: dak, revoked: nil, registeredAt: "2026-10-11T00:00:00Z")
     user.history.append(
       KeyHistoryRow(
@@ -477,10 +483,7 @@ extension FakeServer {
       Ed25519.verify(publicKey: signer.dwk, signature: sig, message: msg)
     else { return Self.error(400, "bad_signature") }
     user.writers[target.string]?.revoked = (counter, head)
-    let hid = state.withLock { s -> Int64 in
-      s.historyID += 1
-      return s.historyID
-    }
+    let hid = nextHistoryID()
     user.history.append(
       KeyHistoryRow(
         id: hid, writerID: target.string, pubkey: t.dwk, dak: nil, event: "revoked", authorizedBy: "device",
@@ -565,8 +568,6 @@ extension FakeServer {
     return cred
   }
 }
-
-let SigningMessage_actions = Set(StepUpParams.actions)
 
 /// A refusal carried through `Result` inside the fake.
 extension APIResponse: Error {}

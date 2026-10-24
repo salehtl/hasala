@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"regexp"
+	"slices"
 )
 
 // Step-up bytes, spec 01 §10.2 (adopted from spec 02 §8.3):
@@ -105,14 +106,7 @@ func AllowedProofs(a Action) []ProofKind {
 }
 
 // ProofAllowed reports whether kind is one of action's proof kinds.
-func ProofAllowed(a Action, kind ProofKind) bool {
-	for _, k := range AllowedProofs(a) {
-		if k == kind {
-			return true
-		}
-	}
-	return false
-}
+func ProofAllowed(a Action, kind ProofKind) bool { return slices.Contains(AllowedProofs(a), kind) }
 
 var actionGrammar = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
 

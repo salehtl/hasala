@@ -14,34 +14,11 @@ enum Bytes {
 
   /// The first index `>= from` where `needle` starts in `hay`, or nil.
   static func index(of needle: [UInt8], in hay: [UInt8], from: Int = 0) -> Int? {
-    if needle.isEmpty { return from <= hay.count ? from : nil }
-    guard hay.count >= needle.count, from <= hay.count - needle.count else { return nil }
-    let first = needle[0]
-    var i = max(0, from)
-    let last = hay.count - needle.count
-    outer: while i <= last {
-      if hay[i] != first {
-        i += 1
-        continue
-      }
-      for j in 1..<needle.count where hay[i + j] != needle[j] {
-        i += 1
-        continue outer
-      }
-      return i
-    }
-    return nil
+    index(of: needle, in: hay[...], from: from)
   }
 
   /// The first index `>= from` of the byte `b`, or nil.
-  static func index(of b: UInt8, in hay: [UInt8], from: Int = 0) -> Int? {
-    var i = max(0, from)
-    while i < hay.count {
-      if hay[i] == b { return i }
-      i += 1
-    }
-    return nil
-  }
+  static func index(of b: UInt8, in hay: [UInt8], from: Int = 0) -> Int? { index(of: b, in: hay[...], from: from) }
 
   static func index(of needle: [UInt8], in hay: ArraySlice<UInt8>, from: Int) -> Int? {
     let lo = max(hay.startIndex, from)
@@ -79,13 +56,15 @@ enum Bytes {
     return true
   }
 
-  static func hasPrefix(_ hay: [UInt8], _ needle: [UInt8], at: Int = 0) -> Bool {
-    guard at >= 0, at + needle.count <= hay.count else { return false }
-    for j in 0..<needle.count where hay[at + j] != needle[j] { return false }
-    return true
-  }
+  static func hasPrefix(_ hay: [UInt8], _ needle: [UInt8], at: Int = 0) -> Bool { hasPrefix(hay[...], needle, at: at) }
 
-  static func contains(_ hay: [UInt8], _ needle: [UInt8]) -> Bool { index(of: needle, in: hay) != nil }
+  static func trim(_ s: ArraySlice<UInt8>, where isTrimmed: (UInt8) -> Bool) -> ArraySlice<UInt8> {
+    var lo = s.startIndex
+    var hi = s.endIndex
+    while lo < hi, isTrimmed(s[lo]) { lo += 1 }
+    while hi > lo, isTrimmed(s[hi - 1]) { hi -= 1 }
+    return s[lo..<hi]
+  }
 
   /// JavaScript `toLowerCase()` on a binary string: every character is one byte's code
   /// point (U+0000-U+00FF), so the full mapping reduces to ASCII A-Z plus Latin-1
@@ -133,9 +112,6 @@ enum NormText {
 
   /// unwrap.ts `trimExplicit`: U+0009-U+000D, U+0020, U+00A0, U+FEFF.
   static func trimExplicit(_ s: String) -> String { s.trimming(.unwrapTrim) }
-
-  /// JavaScript `String.prototype.trim()`.
-  static func jsTrim(_ s: String) -> String { s.trimming(.jsTrim) }
 
   /// Scalars of `s` as an array, for index arithmetic.
   @inline(__always) static func scalars(_ s: String) -> [Unicode.Scalar] { Array(s.unicodeScalars) }

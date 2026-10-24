@@ -15,6 +15,7 @@
 // The sender-domain gate is NOT applied here: it belongs to the trusted lane (CoreMail's
 // verified domain), and giving this function a domain would invite a caller to hand it the
 // body's own From line, which anyone can author.
+import HasalaText
 
 /// Why an execution produced no transaction.
 public enum ExecError: String, Sendable, Equatable {
@@ -482,23 +483,12 @@ public struct CompiledTemplate: Sendable {
   }
 
   /// The executor's own cutset, " \t\n\v\f\r" (Go's strings.Trim with it).
-  static func trimCapture(_ s: String) -> String {
-    let u = Array(s.unicodeScalars)
-    func cut(_ c: Unicode.Scalar) -> Bool { c == " " || (c.value >= 0x09 && c.value <= 0x0d) }
-    var lo = 0
-    var hi = u.count
-    while lo < hi, cut(u[lo]) { lo += 1 }
-    while hi > lo, cut(u[hi - 1]) { hi -= 1 }
-    return String(String.UnicodeScalarView(u[lo..<hi]))
-  }
+  static func trimCapture(_ s: String) -> String { s.trimming(.asciiSpace) }
 
-  /// Upper-cases ASCII a-z and nothing else (U+00DF stays U+00DF).
-  static func asciiUpper(_ s: String) -> String {
-    var out = String.UnicodeScalarView()
-    for c in s.unicodeScalars {
-      out.append(c.value >= 0x61 && c.value <= 0x7a ? Unicode.Scalar(UInt8(c.value - 0x20)) : c)
-    }
-    return String(out)
+  static func resolveCurrency(_ ccy: String?, _ defaultCurrency: String) -> String? {
+    let c = ASCII.uppercased(trimCapture(ccy ?? ""))
+    if c.isEmpty { return defaultCurrency }
+    return isCurrency(c) ? c : nil
   }
 
   static let nonTwoDecimalCurrencies: Set<String> = [
@@ -527,25 +517,16 @@ public struct CompiledTemplate: Sendable {
       if o1 || o2 { return nil }
       minor = s
     }
-    guard minor <= UInt64(Int64.max) else { return nil }
-    var currency = defaultCurrency
-    let c = asciiUpper(trimCapture(ccy ?? ""))
-    if !c.isEmpty {
-      guard isCurrency(c) else { return nil }
-      currency = c
+    guard minor <= UInt64(Int64.max), let currency = resolveCurrency(ccy, defaultCurrency),
+      !nonTwoDecimalCurrencies.contains(currency)
+    else {
+      return nil
     }
-    if nonTwoDecimalCurrencies.contains(currency) { return nil }
     return (Int64(minor), currency)
   }
 
   static func currencyRefused(_ ccy: String?, _ defaultCurrency: String) -> Bool {
-    var currency = defaultCurrency
-    let c = asciiUpper(trimCapture(ccy ?? ""))
-    if !c.isEmpty {
-      guard isCurrency(c) else { return false }
-      currency = c
-    }
-    return nonTwoDecimalCurrencies.contains(currency)
+    resolveCurrency(ccy, defaultCurrency).map(nonTwoDecimalCurrencies.contains) ?? false
   }
 
   /// Rule 6: each declared layout in order, on the whole trimmed capture and then on the text

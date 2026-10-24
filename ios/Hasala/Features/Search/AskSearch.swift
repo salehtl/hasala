@@ -136,6 +136,4 @@ final class AskSearchModel {
     guard case .answered(let q, _) = phase else { return }
     phase = .keywords(q, .nothingUnderstood)
   }
-
-  func clear() { phase = .idle }
 }

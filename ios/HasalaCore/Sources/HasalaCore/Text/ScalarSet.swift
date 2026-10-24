@@ -74,21 +74,27 @@ public struct ScalarSet: Sendable, Hashable {
       + Array(0x202a...0x202e) + Array(0x2066...0x2069) + [0xfeff, 0xfffe, 0xffff])
 }
 
+extension BidirectionalCollection where Element == Unicode.Scalar {
+  /// `self` with every leading and trailing scalar in `set` removed. Interior
+  /// scalars are untouched.
+  @inlinable
+  public func trimming(_ set: ScalarSet) -> SubSequence {
+    var lo = startIndex
+    var hi = endIndex
+    while lo < hi, set.contains(self[lo]) { lo = index(after: lo) }
+    while hi > lo {
+      let prev = index(before: hi)
+      guard set.contains(self[prev]) else { break }
+      hi = prev
+    }
+    return self[lo..<hi]
+  }
+}
+
 extension String {
   /// `self` with every leading and trailing scalar in `set` removed. Interior
   /// scalars are untouched.
-  public func trimming(_ set: ScalarSet) -> String {
-    let scalars = unicodeScalars
-    var lo = scalars.startIndex
-    var hi = scalars.endIndex
-    while lo < hi, set.contains(scalars[lo]) { lo = scalars.index(after: lo) }
-    while hi > lo {
-      let prev = scalars.index(before: hi)
-      guard set.contains(scalars[prev]) else { break }
-      hi = prev
-    }
-    return String(scalars[lo..<hi])
-  }
+  public func trimming(_ set: ScalarSet) -> String { String(unicodeScalars.trimming(set)) }
 
   /// Go's `strings.TrimSpace`.
   public var trimmingGoSpace: String { trimming(.goSpace) }

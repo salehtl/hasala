@@ -93,6 +93,7 @@ const COPY = {
     const status = root.querySelector<HTMLElement>('.wlink__status')!;
     const panel = root.querySelector<HTMLElement>('.wlink__panel')!;
 
+    const incomplete = 'This link isn’t complete. Open it again from our email, or copy the whole link into your browser.';
     const say = (text: string) => {
       status.dataset.tone = 'error';
       status.textContent = text;
@@ -108,7 +109,7 @@ const COPY = {
     // The token leaves the address bar; the router's history state stays.
     history.replaceState(history.state, '', location.pathname);
     if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
-      say('This link isn’t complete. Open it again from our email, or copy the whole link into your browser.');
+      say(incomplete);
       return;
     }
     button.hidden = false;
@@ -132,7 +133,7 @@ const COPY = {
         } else if (kind === 'confirm' && (a.status === 410 || a.status === 400)) {
           show('expired');
         } else if (a.status === 400) {
-          say('This link isn’t complete. Open it again from our email, or copy the whole link into your browser.');
+          say(incomplete);
         } else if (a.status === 0) {
           say('We couldn’t reach Hasala. Check your connection and try again.');
         } else if (a.status === 429) {

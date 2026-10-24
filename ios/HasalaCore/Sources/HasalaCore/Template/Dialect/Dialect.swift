@@ -243,23 +243,19 @@ private struct Scanner {
   var stack: [Frame] = []
   var captures = 0
   var names: [String] = []
-  var reported: [String] = []
+  var reported: Set<String> = []
 
   init(_ p: String) { src = Array(p.unicodeScalars) }
 
   /// Reports `code` at most once per offset.
   mutating func add(_ offset: Int, _ code: Dialect.Reason) {
-    let key = "\(code.rawValue)@\(offset)"
-    if reported.contains(key) { return }
-    reported.append(key)
+    guard reported.insert("\(code.rawValue)@\(offset)").inserted else { return }
     codes.append(code)
   }
 
   /// Reports a whole-pattern bound at most once.
   mutating func addOnce(_ code: Dialect.Reason) {
-    let key = "once:\(code.rawValue)"
-    if reported.contains(key) { return }
-    reported.append(key)
+    guard reported.insert("once:\(code.rawValue)").inserted else { return }
     codes.append(code)
   }
 

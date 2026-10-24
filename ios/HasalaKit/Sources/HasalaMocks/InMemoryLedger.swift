@@ -348,19 +348,18 @@ public final class InMemoryLedger: LedgerStore {
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touchedBills = true
       let due = s.bills[i].nextDue
-      let next = due.yearMonth.next
       s.bills[i].history.insert(due, at: 0)
       s.bills[i].payments.removeAll { $0.due == due }
       s.bills[i].payments.insert(BillPayment(due: due, amount: s.bills[i].amount, link: .marked), at: 0)
-      s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
+      s.bills[i].nextDue = due.yearMonth.next.date(clampedDay: s.bills[i].usualDay)
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),
-            s.bills[i].notices.contains(where: { if case .priceChange = $0.kind { true } else { false } })
+            s.bills[i].notices.contains(where: \.isPriceChange)
       else { throw .notFound }
       touchedBills = true
       s.bills[i].priceChangeFrom = nil
-      s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
+      s.bills[i].notices.removeAll(where: \.isPriceChange)
       title = "New amount accepted"
     case .stopTrackingBill(let id):
       let i = try billIndex(id)
@@ -398,7 +397,7 @@ public final class InMemoryLedger: LedgerStore {
         s.bills[i].nextAmount = nil
         s.bills[i].nextAmountFrom = nil
         s.bills[i].priceChangeFrom = nil
-        s.bills[i].notices.removeAll { if case .priceChange = $0.kind { true } else { false } }
+        s.bills[i].notices.removeAll(where: \.isPriceChange)
       } else {
         s.bills[i].nextAmount = amount
         s.bills[i].nextAmountFrom = from
@@ -465,9 +464,8 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].state = active ? .tracked : .ended
       s.bills[i].endedOn = active ? nil : today
       let ym = today.yearMonth
-      let thisMonth = LocalDate(ym.year, ym.month, min(payday, ym.days))
-      let next = ym.next
-      s.bills[i].nextDue = thisMonth >= today ? thisMonth : LocalDate(next.year, next.month, min(payday, next.days))
+      let thisMonth = ym.date(clampedDay: payday)
+      s.bills[i].nextDue = thisMonth >= today ? thisMonth : ym.next.date(clampedDay: payday)
       s.plan.income = active ? amount : Money(minor: 0, currency: amount.currency)
       s.plan.payday = payday
       for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
@@ -476,17 +474,13 @@ public final class InMemoryLedger: LedgerStore {
     case .saveProject(let id, let draft):
       guard draft.refusal == nil else { throw .invalidProject }
       let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-      if let i = s.projects.firstIndex(where: { $0.id == id }) {
-        let old = s.projects[i]
-        s.projects[i] = Project(
-          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
-          countInPlan: draft.countInPlan, complete: old.complete, completedOn: old.completedOn,
-          startVerb: draft.glyph == .travel ? "flies" : "starts")
-      } else {
-        s.projects.append(Project(
-          id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
-          countInPlan: draft.countInPlan, startVerb: draft.glyph == .travel ? "flies" : "starts"))
-      }
+      let i = s.projects.firstIndex { $0.id == id }
+      let old = i.map { s.projects[$0] }
+      let project = Project(
+        id: id, name: name, glyph: draft.glyph, budget: draft.budget, starts: draft.starts, ends: draft.ends,
+        countInPlan: draft.countInPlan, complete: old?.complete ?? false, completedOn: old?.completedOn,
+        startVerb: draft.glyph == .travel ? "flies" : "starts")
+      if let i { s.projects[i] = project } else { s.projects.append(project) }
       title = nil
     case .setProjectCountInPlan(let id, let on):
       guard let i = s.projects.firstIndex(where: { $0.id == id }) else { throw .notFound }

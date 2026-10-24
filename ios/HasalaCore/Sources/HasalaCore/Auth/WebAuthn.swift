@@ -49,6 +49,15 @@ public struct AssertionOptions: Sendable, Hashable {
 struct WireCredentialDescriptor: Codable, Hashable {
   let type: String?
   let id: String
+
+  static func ids(_ descriptors: [WireCredentialDescriptor]?, field: String) throws(WebAuthnError) -> [Data] {
+    var out: [Data] = []
+    for d in descriptors ?? [] {
+      guard let id = try? Base64.decodeURL(d.id) else { throw .badOptions(field) }
+      out.append(id)
+    }
+    return out
+  }
 }
 
 public struct WireCreationOptions: Codable, Sendable, Hashable {
@@ -72,11 +81,7 @@ public struct WireCreationOptions: Codable, Sendable, Hashable {
   public func decoded() throws(WebAuthnError) -> CreationOptions {
     guard let challenge = try? Base64.decodeURL(publicKey.challenge) else { throw .badOptions("challenge") }
     guard let user = try? Base64.decodeURL(publicKey.user.id) else { throw .badOptions("user.id") }
-    var exclude: [Data] = []
-    for d in publicKey.excludeCredentials ?? [] {
-      guard let id = try? Base64.decodeURL(d.id) else { throw .badOptions("excludeCredentials") }
-      exclude.append(id)
-    }
+    let exclude = try WireCredentialDescriptor.ids(publicKey.excludeCredentials, field: "excludeCredentials")
     return CreationOptions(
       challenge: challenge, rpID: publicKey.rp.id ?? "", userID: user, userName: publicKey.user.name ?? "",
       excludeCredentialIDs: exclude)
@@ -100,11 +105,7 @@ public struct WireAssertionOptions: Codable, Sendable, Hashable {
 
   public func decoded() throws(WebAuthnError) -> AssertionOptions {
     guard let challenge = try? Base64.decodeURL(publicKey.challenge) else { throw .badOptions("challenge") }
-    var allow: [Data] = []
-    for d in publicKey.allowCredentials ?? [] {
-      guard let id = try? Base64.decodeURL(d.id) else { throw .badOptions("allowCredentials") }
-      allow.append(id)
-    }
+    let allow = try WireCredentialDescriptor.ids(publicKey.allowCredentials, field: "allowCredentials")
     return AssertionOptions(challenge: challenge, rpID: publicKey.rpId, allowCredentialIDs: allow)
   }
 

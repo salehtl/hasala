@@ -20,8 +20,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -265,13 +263,13 @@ func (p *Passkeys) BeginRegistration(ctx context.Context, signupID string, autho
 	if err := addressFree(ctx, p.Pool, s); err != nil {
 		return "", nil, nil, err
 	}
-	handle := make([]byte, userHandleBytes)
-	if _, err := rand.Read(handle); err != nil {
-		return "", nil, nil, fmt.Errorf("auth: passkey: mint user handle: %w", err)
+	handle, err := randBytes(userHandleBytes)
+	if err != nil {
+		return "", nil, nil, err
 	}
-	nonce := make([]byte, keyproto.NonceSize)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", nil, nil, fmt.Errorf("auth: passkey: mint register nonce: %w", err)
+	nonce, err := randBytes(keyproto.NonceSize)
+	if err != nil {
+		return "", nil, nil, err
 	}
 	creg, err := keyproto.RegisterChallenge(nonce, authorityPub)
 	if err != nil {
@@ -284,7 +282,7 @@ func (p *Passkeys) BeginRegistration(ctx context.Context, signupID string, autho
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("auth: passkey: begin registration: %w", err)
 	}
-	id, err := newCeremonyID()
+	id, err := newCeremonyIDN(ceremonyIDBytes)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -375,7 +373,7 @@ func (p *Passkeys) BeginLogin(ctx context.Context) (string, *protocol.Credential
 	if err != nil {
 		return "", nil, fmt.Errorf("auth: passkey: begin login: %w", err)
 	}
-	id, err := newCeremonyID()
+	id, err := newCeremonyIDN(ceremonyIDBytes)
 	if err != nil {
 		return "", nil, err
 	}
@@ -497,7 +495,7 @@ func (p *Passkeys) beginAdd(ctx context.Context, q dbtx, userID uuid.UUID, addNo
 	if err != nil {
 		return "", nil, fmt.Errorf("auth: passkey: begin add: %w", err)
 	}
-	id, err := newCeremonyID()
+	id, err := newCeremonyIDN(ceremonyIDBytes)
 	if err != nil {
 		return "", nil, err
 	}
@@ -572,15 +570,6 @@ func (p *Passkeys) createCredential(user passkeyUser, c ceremony, response []byt
 		return created{}, fmt.Errorf("%w: user verification flag is clear", ErrPasskeyRejected)
 	}
 	att := []byte(parsed.Raw.AttestationResponse.AttestationObject)
-	h := sha256.Sum256(att)
 	return created{Credential: cred, ClientDataJSON: []byte(parsed.Raw.AttestationResponse.ClientDataJSON),
-		AttestationObject: att, AttestationSHA256: h[:]}, nil
-}
-
-func newCeremonyID() (string, error) {
-	raw := make([]byte, ceremonyIDBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("auth: passkey: mint ceremony id: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(raw), nil
+		AttestationObject: att, AttestationSHA256: AttestationHash(att)}, nil
 }

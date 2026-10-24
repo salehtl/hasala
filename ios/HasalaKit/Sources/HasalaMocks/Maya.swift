@@ -98,8 +98,6 @@ public enum Scenario: String, Sendable, CaseIterable {
 }
 
 public enum Maya {
-  /// The fixed scenario clock: 2026-10-10 13:40 Asia/Dubai = 09:40 UTC.
-  public static let nowUTC = "2026-10-10T09:40:00Z"
   public static let displayName = "Maya Rahman"
 
   public static let home = HomeSnapshot(

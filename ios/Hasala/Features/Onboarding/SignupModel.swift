@@ -246,7 +246,6 @@ final class SignupModel {
     emailError = AccountFields.email(email) == nil ? AuthFailure.badEmail.message : nil
     guard nameError == nil, emailError == nil, let invite = inviteCode else { return }
     if let t = reusableTicket(now: .now) {
-      failure = nil
       go(t.emailProven || emailVerified ? .method : .verifyEmail)
       return
     }
@@ -261,7 +260,6 @@ final class SignupModel {
       emailVerified = false
       codeUsedUp = false
       email = t.email
-      failure = nil
       if t.emailProven {
         go(.method)
       } else {
@@ -322,7 +320,6 @@ final class SignupModel {
     defer { busy = false }
     do {
       try await account.verifySignupEmail(ticket, code: code)
-      failure = nil
       emailVerified = true
       go(.method)
     } catch {
@@ -358,16 +355,7 @@ final class SignupModel {
         await finishWithoutWords()
         return
       }
-      if phrase == nil {
-        do {
-          try startPhrase()
-        } catch {
-          failure = error
-          return
-        }
-      }
-      failure = nil
-      go(.phraseIntro)
+      showPhraseIntro()
       return
     }
     busy = true
@@ -407,13 +395,7 @@ final class SignupModel {
       startAgain()
       return
     }
-    do {
-      if phrase == nil { try startPhrase() }
-      failure = nil
-      go(.phraseIntro)
-    } catch {
-      failure = error
-    }
+    showPhraseIntro()
   }
 
   // MARK: Phrase
@@ -428,6 +410,16 @@ final class SignupModel {
     } catch {
       failure = error
     }
+  }
+
+  private func showPhraseIntro(newPhrase: Bool = false) {
+    do {
+      if newPhrase || phrase == nil { try startPhrase() }
+    } catch {
+      failure = error
+      return
+    }
+    go(.phraseIntro)
   }
 
   private func startPhrase() throws(AuthFailure) {
@@ -462,7 +454,6 @@ final class SignupModel {
       newPassword = ""
       confirmPassword = ""
       passwordShown = false
-      failure = nil
       go(.accountReady)
     } catch .codeExpired where !replacing {
       startAgain()
@@ -494,14 +485,7 @@ final class SignupModel {
       startAgain()
     } catch .wordsInSignup {
       wordsInSignup = true
-      do {
-        try startPhrase()
-      } catch {
-        failure = error
-        return
-      }
-      failure = nil
-      go(.phraseIntro)
+      showPhraseIntro(newPhrase: true)
     } catch {
       failure = error
     }

@@ -52,11 +52,6 @@ final class AppModel {
     get { router.cover }
     set { router.cover = newValue }
   }
-  /// Needs-you cards put off with "Later".
-  // TODO(spec 04 §16.1 "Home · Default", 03a §6.15): device-local until the next local midnight,
-  // kept in DevicePrefs so it survives a relaunch.
-  private(set) var snoozed: Set<String> = []
-
   /// Pull to refresh on Home and Activity: a sync and a Gmail check now, set by the live
   /// graph once the account is open. Nil (the Maya mock) ends the pull at once.
   var refreshWork: (@MainActor () async -> Void)? {
@@ -329,8 +324,6 @@ final class AppModel {
   }
 
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
-
-  func snooze(_ card: String) { snoozed.insert(card) }
 
   func startReview() { cover = .review }
 

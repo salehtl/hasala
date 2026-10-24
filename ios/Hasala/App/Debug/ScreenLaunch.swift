@@ -88,9 +88,9 @@
 
     /// `-HasalaScreen <id>`, when the id is registered.
     static func from(_ arguments: [String]) -> ScreenLaunch? {
-      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count else { return nil }
-      let id = arguments[i + 1]
-      guard let screen = Area.of(id)?.screens.first(where: { $0.id == id }) else { return nil }
+      guard let id = arguments.launchValue(after: argument),
+        let screen = Area.of(id)?.screens.first(where: { $0.id == id })
+      else { return nil }
       return ScreenLaunch(screen: screen)
     }
 
@@ -167,8 +167,7 @@
     static let argument = "-HasalaMotion"
 
     static func from(_ arguments: [String]) -> MotionLaunch? {
-      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count else { return nil }
-      return MotionLaunch(rawValue: arguments[i + 1])
+      arguments.launchValue(after: argument).flatMap(MotionLaunch.init(rawValue:))
     }
 
     /// This process's choice.
@@ -188,5 +187,12 @@
     }
 
     static let current = from(ProcessInfo.processInfo.arguments)
+  }
+
+  extension [String] {
+    nonisolated func launchValue(after flag: String) -> String? {
+      guard let i = firstIndex(of: flag), i + 1 < count else { return nil }
+      return self[i + 1]
+    }
   }
 #endif
