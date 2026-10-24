@@ -31,16 +31,7 @@ enum Report {
         out[k] = Row(reader: r.reader, kind: r.kind, group: "all", tally: Tally())
         order.append(k)
       }
-      var t = out[k]!.tally
-      let a = r.tally
-      t.mails += a.mails; t.txnTrue += a.txnTrue; t.txnTP += a.txnTP; t.txnFP += a.txnFP; t.txnFN += a.txnFN
-      t.amountRight += a.amountRight; t.amountWrong += a.amountWrong; t.amountMissing += a.amountMissing
-      t.currencyRight += a.currencyRight; t.directionTotal += a.directionTotal; t.directionRight += a.directionRight
-      t.directionWrong += a.directionWrong; t.directionMissing += a.directionMissing; t.merchantExact += a.merchantExact; t.merchantClose += a.merchantClose
-      t.merchantWrong += a.merchantWrong; t.merchantMissing += a.merchantMissing; t.merchantNoneRight += a.merchantNoneRight
-      t.merchantNoneWrong += a.merchantNoneWrong; t.merchantTotal += a.merchantTotal; t.noneTotal += a.noneTotal
-      t.confident += a.confident; t.confidentWrong += a.confidentWrong; t.confidentWrongMerchant += a.confidentWrongMerchant
-      out[k]!.tally = t
+      out[k]!.tally.add(r.tally)
     }
     return order.map { out[$0]! }
   }

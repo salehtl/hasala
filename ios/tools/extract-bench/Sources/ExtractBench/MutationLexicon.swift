@@ -152,10 +152,6 @@ enum Lexicon {
     return s
   }()
 
-  static var enToAr: [String: String] {
-    Dictionary(labels.map { ($0.en.lowercased(), $0.ar) }, uniquingKeysWith: { a, _ in a })
-  }
-  static var arToEn: [String: String] {
-    Dictionary(labels.map { ($0.ar, $0.en) }, uniquingKeysWith: { a, _ in a })
-  }
+  static let enToAr = Dictionary(labels.map { ($0.en.lowercased(), $0.ar) }, uniquingKeysWith: { a, _ in a })
+  static let arToEn = Dictionary(labels.map { ($0.ar, $0.en) }, uniquingKeysWith: { a, _ in a })
 }

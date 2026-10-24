@@ -115,12 +115,16 @@ enum Corpus {
     return s[s.index(after: at)...].trimmingCharacters(in: .whitespaces).lowercased()
   }
 
-  static func parseDate(_ s: String) -> Int64? {
+  static let dateFormatters: [DateFormatter] = ["EEE, d MMM yyyy HH:mm:ss Z", "d MMM yyyy HH:mm:ss Z", "EEE, d MMM yyyy HH:mm Z"].map {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = $0
+    return f
+  }
+
+  static func parseDate(_ s: String) -> Int64? {
     let cleaned = s.replacingOccurrences(of: #"\s*\([^)]*\)\s*$"#, with: "", options: .regularExpression)
-    for fmt in ["EEE, d MMM yyyy HH:mm:ss Z", "d MMM yyyy HH:mm:ss Z", "EEE, d MMM yyyy HH:mm Z"] {
-      f.dateFormat = fmt
+    for f in dateFormatters {
       if let d = f.date(from: cleaned) { return Int64(d.timeIntervalSince1970 * 1000) }
     }
     return nil
