@@ -10,11 +10,11 @@ struct HelpPage: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         HListCard {
-          help(.phone, "Send feedback from TestFlight",
-               "Take a screenshot in Hasala, then tap Share Beta Feedback. Or open TestFlight, choose Hasala and tap Send Beta Feedback.")
+          ProfileInfoRow(icon: .phone, title: "Send feedback from TestFlight",
+                         text: "Take a screenshot in Hasala, then tap Share Beta Feedback. Or open TestFlight, choose Hasala and tap Send Beta Feedback.")
           HDivider(inset: .icon52)
-          help(.chat, "Talk to a person",
-               "Write to us about anything that isn't working or that you'd like changed. A person reads every email.")
+          ProfileInfoRow(icon: .chat, title: "Talk to a person",
+                         text: "Write to us about anything that isn't working or that you'd like changed. A person reads every email.")
         }
         SupportLink(lead: "Questions, or something not working?", identifier: "help.email", web: false)
         WebLink(title: "Help and support", url: "https://hasala.app/support", identifier: "help.support")
@@ -27,21 +27,6 @@ struct HelpPage: View {
     .background(HColor.sheetSurfaceLarge)
     .navigationTitle("Get help")
     .navigationBarTitleDisplayMode(.inline)
-  }
-
-  private func help(_ icon: HIcon, _ title: String, _ text: String) -> some View {
-    HStack(alignment: .top, spacing: 14) {
-      HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-        Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .padding(.vertical, 14)
-    .accessibilityElement(children: .combine)
   }
 }
 

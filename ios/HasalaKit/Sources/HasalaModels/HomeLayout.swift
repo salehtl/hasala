@@ -229,7 +229,7 @@ public struct HomeLayout: Sendable, Hashable, Codable {
 
   @discardableResult
   public mutating func move(_ id: String, by offset: Int) -> Bool {
-    guard let i = index(of: id), canMove(id, by: offset) else { return false }
+    guard let i = index(of: id), entries.indices.contains(i + offset) else { return false }
     return move(id, to: i + offset)
   }
 

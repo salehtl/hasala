@@ -289,14 +289,7 @@ struct PlanFactsLine: View {
     return out.font(HType.footnote.font)
   }
 
-  private var spoken: String {
-    parts.map { part in
-      switch part {
-      case .text(let p): p.spoken(hidden: hidden)
-      case .status(let words, _): words
-      }
-    }.joined(separator: ", ")
-  }
+  private var spoken: String { BillDetailParts.spoken(parts, hidden: hidden) }
 
   static func dot(_ tone: StatusTone) -> Color {
     switch tone {

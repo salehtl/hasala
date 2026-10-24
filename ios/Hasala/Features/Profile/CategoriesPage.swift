@@ -15,12 +15,16 @@ final class CategoriesViewModel {
   func open(_ id: CategoryID?) { app.router.profile.append(.categoryEditor(id)) }
 
   func restore(_ id: CategoryID) {
-    let before = app.store.state
-    if let why = app.refusal(applying: .restoreCategory(id)) {
-      app.say(why, icon: .info)
-    } else if let line = CategoriesEngine.toast(.restoreCategory(id), before: before) {
-      app.say(line)
-    }
+    if let why = app.applyCategoryEdit(.restoreCategory(id)) { app.say(why, icon: .info) }
+  }
+}
+
+private extension AppModel {
+  func applyCategoryEdit(_ edit: LedgerEdit) -> String? {
+    let before = store.state
+    if let why = refusal(applying: edit) { return why }
+    if let line = CategoriesEngine.toast(edit, before: before) { say(line) }
+    return nil
   }
 }
 
@@ -182,13 +186,11 @@ final class CategoryEditorModel {
       return
     }
     let edit: LedgerEdit = id.map { .editCategory($0, draft) } ?? .addCategory(draft)
-    let before = app.store.state
-    if let why = app.refusal(applying: edit) {
+    if let why = app.applyCategoryEdit(edit) {
       refusal = why
       return
     }
     refusal = nil
-    if let line = CategoriesEngine.toast(edit, before: before) { app.say(line) }
     close()
   }
 
@@ -208,13 +210,10 @@ final class CategoryEditorModel {
 
   func archive(moveTo: CategoryID? = nil) {
     guard let id else { return }
-    let edit = LedgerEdit.archiveCategory(id, moveTo: moveTo)
-    let before = app.store.state
-    if let why = app.refusal(applying: edit) {
+    if let why = app.applyCategoryEdit(.archiveCategory(id, moveTo: moveTo)) {
       refusal = why
       return
     }
-    if let line = CategoriesEngine.toast(edit, before: before) { app.say(line) }
     if moveTo != nil || !isBuiltin {
       app.router.profile.removeAll { $0 == .categoryMove(id) || $0 == .categoryEditor(id) }
     }
@@ -226,12 +225,7 @@ final class CategoryEditorModel {
       requestArchive()
       return
     }
-    let before = app.store.state
-    if let why = app.refusal(applying: .restoreCategory(id)) {
-      refusal = why
-    } else if let line = CategoriesEngine.toast(.restoreCategory(id), before: before) {
-      app.say(line)
-    }
+    if let why = app.applyCategoryEdit(.restoreCategory(id)) { refusal = why }
   }
 
   func chooseMoveTarget() {

@@ -25,10 +25,7 @@ struct BootCheckView: View {
             .accessibilityIdentifier("boot.retry")
           LinkButton(title: "Sign out", identifier: "boot.signOut") {
             signingOut = true
-            Task {
-              await session.account.signOut()
-              session.signedOut()
-            }
+            Task { await session.signOut() }
           }
         }
       }
@@ -74,10 +71,7 @@ struct InterruptedSetupFlowView: View {
           .disabled(model.phrase == nil)
           .accessibilityIdentifier("resume.start")
         LinkButton(title: "Sign out", identifier: "resume.signOut") {
-          Task {
-            await session.account.signOut()
-            session.signedOut()
-          }
+          Task { await session.signOut() }
         }
       }
       .navigationDestination(for: WelcomeRoute.self) { route in
@@ -85,11 +79,8 @@ struct InterruptedSetupFlowView: View {
         case .phraseShow:
           PhraseShowView(signup: model)
         case .accountReady:
-          AccountReadyView(profile: model.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
-                           capabilities: model.capabilities) {
-            session.accountCreated()
-          }
-          .navigationBarBackButtonHidden()
+          AccountReadyView(store: store, signup: model)
+            .navigationBarBackButtonHidden()
         default:
           EmptyView()
         }

@@ -29,20 +29,17 @@ nonisolated enum BuildSurface {
 
   #if DEBUG
     static let planTabArgument = "-HasalaPlanTab"
-  #endif
-
-  #if DEBUG
     /// The launch argument that gives a Debug build the Release surface.
     static let releaseArgument = "-HasalaReleaseSurface"
   #endif
 
-  /// Where testers and reviewers write to (support@ is routed to the owner).
   static let showsCloudSuggestions: Bool = BuildInfo.assistBaseURL() != nil
 
   static let showsGoogleBriefing = true
 
+  /// Where testers and reviewers write to (support@ is routed to the owner).
   static let supportEmail = "support@hasala.app"
-  static let supportMail = URL(string: "mailto:support@hasala.app")!
+  static let supportMail = URL(string: "mailto:\(supportEmail)")!
   /// The support page: how to reach us, for an iPhone where a mail link does nothing.
   static let supportPage = URL(string: "https://hasala.app/support")!
 }

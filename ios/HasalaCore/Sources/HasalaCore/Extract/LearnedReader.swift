@@ -81,9 +81,7 @@ enum LearnedReader {
       LearnedLayout(
         anchors: LayoutCodec.slots(t), examples: [LayoutCodec.encode(toks, template: t, applied: IAlign.apply(t, toks))], seen: 1,
         lastUsed: clock))
-    if sender.layouts.count > LearnedLayouts.layoutLimitPerSender,
-      let idx = sender.layouts.indices.min(by: { sender.layouts[$0].lastUsed < sender.layouts[$1].lastUsed })
-    {
+    if sender.layouts.count > LearnedLayouts.layoutLimitPerSender, let idx = sender.leastRecentlyUsedLayout {
       sender.layouts.remove(at: idx)
     }
   }
@@ -94,7 +92,7 @@ enum LearnedReader {
 
   static func trim(_ sender: inout SenderLayouts) {
     while sender.layouts.count > 1, tokenCount(sender) > LearnedLayouts.tokenBudgetPerSender,
-      let idx = sender.layouts.indices.min(by: { sender.layouts[$0].lastUsed < sender.layouts[$1].lastUsed })
+      let idx = sender.leastRecentlyUsedLayout
     {
       sender.layouts.remove(at: idx)
     }
@@ -337,7 +335,6 @@ enum LearnedReader {
     var merchant: (Int, Int)?
     var merchantLong = false
     var merchantVaries = false
-    let amtPos = bestAmt?.0 ?? -1
     for (g, el) in t.enumerated() where el.kind == .gap {
       var values: [String] = []
       var alpha = 0
@@ -374,7 +371,6 @@ enum LearnedReader {
       if longest > 10 { s -= 2 }
       let distinct = Set(values).count
       if k >= 3 && distinct * 2 > values.count { s += 1 }
-      if g < amtPos && !ctx.wholeLine { s -= 0 }
       if s >= 2, s > (merchant?.1 ?? Int.min) {
         merchant = (g, s)
         merchantLong = longest > 8

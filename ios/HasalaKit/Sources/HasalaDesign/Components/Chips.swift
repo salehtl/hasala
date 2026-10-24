@@ -46,8 +46,7 @@ public struct FilterChip: View {
       .foregroundStyle(selected ? HColor.chipTextSelected : HColor.chipText)
       .padding(.horizontal, HSpacing.chipInset)
       .frame(minHeight: HSpacing.chipHeight)
-      .background(selected ? HColor.chipSurfaceSelected : (onCard ? HColor.chipSurfaceOnCard : HColor.chipSurface),
-                  in: Capsule())
+      .background(ChipPressStyle.surface(selected: selected, onCard: onCard), in: Capsule())
     }
     .buttonStyle(ChipPressStyle())
     // "To review, 6, selected": the count is read once, with the label (page 12 §10).
@@ -89,8 +88,7 @@ public struct ChoiceChip: View {
       .padding(.leading, dot == nil ? HSpacing.chipInset : (onCard ? 14 : 12))
       .padding(.trailing, dot == nil ? HSpacing.chipInset : (onCard ? 16 : 13))
       .frame(minHeight: HSpacing.chipHeight)
-      .background(selected ? HColor.chipSurfaceSelected : (onCard ? HColor.chipSurfaceOnCard : HColor.chipSurface),
-                  in: Capsule())
+      .background(ChipPressStyle.surface(selected: selected, onCard: onCard), in: Capsule())
     }
     .buttonStyle(ChipPressStyle())
     .accessibilityAddTraits(selected ? .isSelected : [])
@@ -105,6 +103,10 @@ struct ChipPressStyle: ButtonStyle {
       // Drawn 40 tall; the hit area reaches 44 without changing the drawing.
       .contentShape(Capsule().inset(by: -2))
       .animation(.easeOut(duration: HMotion.highlight), value: configuration.isPressed)
+  }
+
+  static func surface(selected: Bool, onCard: Bool) -> Color {
+    selected ? HColor.chipSurfaceSelected : (onCard ? HColor.chipSurfaceOnCard : HColor.chipSurface)
   }
 }
 
@@ -272,8 +274,7 @@ public struct StatusPillView: View {
   private var trailing: CGFloat {
     switch size {
     case .s36: 16
-    case .s32: 12
-    case .s28: 12
+    case .s32, .s28: 12
     case .s26: 10
     case .s22: 8
     }

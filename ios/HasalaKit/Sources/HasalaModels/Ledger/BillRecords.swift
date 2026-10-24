@@ -41,4 +41,9 @@ public struct BillNotice: Sendable, Hashable, Codable, Identifiable {
     self.kind = kind
     self.txnID = txnID
   }
+
+  public var isPriceChange: Bool {
+    if case .priceChange = kind { return true }
+    return false
+  }
 }

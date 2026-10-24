@@ -114,11 +114,7 @@ public enum ExchangeRates {
 
 public extension LedgerState {
   mutating func setRate(_ currency: String, micro: Int64) {
-    if let i = rates.firstIndex(where: { $0.currency == currency }) {
-      rates[i].rateMicro = micro
-    } else {
-      rates.append(CurrencyRate(currency: currency, rateMicro: micro))
-    }
+    storeRate(currency, micro)
     for i in txns.indices where txns[i].amount.currency == currency && txns[i].homeMinor == nil {
       guard let home = ExchangeRates.convert(txns[i].amount.minor, micro) else { continue }
       txns[i].homeMinor = home
@@ -130,11 +126,13 @@ public extension LedgerState {
     }
   }
 
-  mutating func unsetRate(_ currency: String) {
+  mutating func unsetRate(_ currency: String) { storeRate(currency, nil) }
+
+  private mutating func storeRate(_ currency: String, _ micro: Int64?) {
     if let i = rates.firstIndex(where: { $0.currency == currency }) {
-      rates[i].rateMicro = nil
+      rates[i].rateMicro = micro
     } else {
-      rates.append(CurrencyRate(currency: currency, rateMicro: nil))
+      rates.append(CurrencyRate(currency: currency, rateMicro: micro))
     }
   }
 }

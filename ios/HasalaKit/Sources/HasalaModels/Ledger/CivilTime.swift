@@ -67,10 +67,10 @@ public struct LocalDate: Sendable, Hashable, Comparable, Codable {
   public var weekdayShort: String { CivilCalendar.weekdayShortNames[weekday] }
 
   /// "Fri 9 Oct".
-  public var short: String { "\(weekdayShort) \(day) \(CivilCalendar.monthShortNames[month - 1])" }
+  public var short: String { "\(weekdayShort) \(dayMonth)" }
 
   /// "9 Oct".
-  public var dayMonth: String { "\(day) \(CivilCalendar.monthShortNames[month - 1])" }
+  public var dayMonth: String { "\(day) \(yearMonth.shortName)" }
 
   public static func < (a: LocalDate, b: LocalDate) -> Bool { a.ordinal < b.ordinal }
 }

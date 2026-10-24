@@ -127,12 +127,7 @@ struct MoveMoneySheet: View {
   private func toSpoken(option: CategoryOption?, row: PlanRowModel?) -> String {
     guard let option else { return "To, choose a category" }
     guard let row else { return "To, \(option.name)" }
-    let facts = toFacts(row, spoken: true).map { part in
-      switch part {
-      case .text(let p): p.spoken(hidden: model.hidden)
-      case .status(let words, _): words
-      }
-    }.joined(separator: ", ")
+    let facts = BillDetailParts.spoken(toFacts(row, spoken: true), hidden: model.hidden)
     return "To, \(option.name), \(facts)"
   }
 

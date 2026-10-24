@@ -289,8 +289,10 @@ final class SignInModel {
       verifiedRecoveryKind = .passkey
       return true
     } catch {
-      if case .codeWrong = error { recoverCode = "" }
-      if error == .codeExpired { recoverCode = "" }
+      switch error {
+      case .codeWrong, .codeExpired: recoverCode = ""
+      default: break
+      }
       fail(error, on: .recoverCode)
       return false
     }

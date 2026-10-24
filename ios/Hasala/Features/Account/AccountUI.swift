@@ -883,18 +883,7 @@ struct BusyButton: View {
   }
 }
 
-/// A full-width text link under the primary button (44 pt). `SecondaryLink` is the same
-/// part in Paper's type; this one keeps the button type its screens were drawn with.
-struct LinkButton: View {
-  var title: String
-  var identifier: String
-  var role: ButtonRole?
-  var action: () -> Void
-
-  var body: some View {
-    SecondaryLink(title: title, identifier: identifier, role: role, action: action)
-  }
-}
+typealias LinkButton = SecondaryLink
 
 /// The error banner a screen shows for a failure (one line of copy).
 struct FailureBanner: View {

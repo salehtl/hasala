@@ -342,9 +342,9 @@ final class SecurityModel {
     PasswordRules.assess(newPassword, personal: [state?.email ?? "", session.account.profile?.displayName ?? ""])
   }
 
-  var newPasswordReady: Bool {
-    newPasswordAssessment.acceptable && !confirmNewPassword.isEmpty && newPassword == confirmNewPassword
-  }
+  var newPasswordsMatch: Bool { !confirmNewPassword.isEmpty && newPassword == confirmNewPassword }
+
+  var newPasswordReady: Bool { newPasswordAssessment.acceptable && newPasswordsMatch }
 
   /// "Save password" on the password page: its confirmation opens over the page, which
   /// closes once the change is through.
@@ -379,8 +379,7 @@ final class SecurityModel {
   // MARK: Sign out
 
   func signOut() async {
-    await account.signOut()
-    session.signedOut()
+    await session.signOut()
   }
 
   /// IYT "Enter my 12 words": this iPhone opens its data with the words, which gives it

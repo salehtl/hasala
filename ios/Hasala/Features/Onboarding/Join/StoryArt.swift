@@ -252,7 +252,7 @@ private struct StageClock {
 
 /// Runs `body` with no animation, whatever the views around ask for.
 @MainActor
-private func instantly(_ body: () -> Void) {
+func instantly(_ body: () -> Void) {
   var t = Transaction()
   t.disablesAnimations = true
   withTransaction(t, body)
@@ -710,8 +710,7 @@ private struct KeyStage: View {
   private var keyChip: some View {
     HStack(spacing: 7) {
       Circle()
-        .fill(LinearGradient(colors: [Color(HRGBA(0xF9, 0xDC, 0x94, 1)), Color(HRGBA(0xEB, 0xB0, 0x4A, 1))],
-                             startPoint: .top, endPoint: .bottom))
+        .fill(LinearGradient(colors: [SlotMark.coinLight, SlotMark.coinDeep], startPoint: .top, endPoint: .bottom))
         .frame(width: 24, height: 24)
         .overlay { HIconView(.key, size: 14, color: HColor.amber800, strokeWidth: 2.4) }
       VStack(alignment: .leading, spacing: 0) {

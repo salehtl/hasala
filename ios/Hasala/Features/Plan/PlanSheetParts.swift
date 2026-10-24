@@ -23,7 +23,7 @@ extension View {
       // content directly. Stage I kept both (requests/p7.md): the controller also takes the
       // bottom safe area off the detent, which SwiftUI's `.height` alone would not.
       .background {
-        if !large { FittedSheetDetent(height: height, large: large).frame(width: 0, height: 0) }
+        if !large { FittedSheetDetent(height: height).frame(width: 0, height: 0) }
       }
   }
 
@@ -38,21 +38,20 @@ extension View {
 }
 
 /// Fits the presenting sheet to `height` through its `UISheetPresentationController`: one
-/// custom detent, never more than the screen allows; `large` puts the large detent back. It
-/// is applied when the sheet appears and whenever the height changes.
+/// custom detent, never more than the screen allows. It is applied when the sheet appears and
+/// whenever the height changes.
 struct FittedSheetDetent: UIViewControllerRepresentable {
   let height: CGFloat
-  let large: Bool
 
   func makeUIViewController(context: Context) -> Controller { Controller() }
 
   func updateUIViewController(_ controller: Controller, context: Context) {
-    controller.height = large ? -1 : height
+    controller.height = height
     controller.apply()
   }
 
   final class Controller: UIViewController {
-    /// The content's height; -1 for the large detent, 0 before the content is measured.
+    /// The content's height; 0 before the content is measured.
     var height: CGFloat = 0
     private var applied: CGFloat = 0
     private static let fitted = UISheetPresentationController.Detent.Identifier("hasala.plan.fitted")
@@ -70,18 +69,8 @@ struct FittedSheetDetent: UIViewControllerRepresentable {
     }
 
     func apply() {
-      guard height != 0, height != applied, let sheet = presentingSheet else { return }
+      guard height > 0, height != applied, let sheet = presentingSheet else { return }
       applied = height
-      guard height > 0 else {
-        // The accessibility sizes: the large detent, as the shell set it.
-        if sheet.detents.contains(where: { $0.identifier == Self.fitted }) {
-          sheet.animateChanges {
-            sheet.detents = [.large()]
-            sheet.selectedDetentIdentifier = .large
-          }
-        }
-        return
-      }
       // The detent is the height above the sheet's bottom safe area; the content runs into
       // that area itself (it ignores it), so the sheet ends 28 under the button, as drawn.
       let h = max(1, height - (sheet.presentedViewController.view.safeAreaInsets.bottom))

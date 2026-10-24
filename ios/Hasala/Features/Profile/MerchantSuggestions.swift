@@ -9,6 +9,13 @@ final class MerchantSuggestionsConsent {
   enum Ask: String, Identifiable {
     case suggestions, autoSort
     var id: String { rawValue }
+
+    var content: CloudConsentContent {
+      switch self {
+      case .suggestions: .suggestions
+      case .autoSort: .autoSort
+      }
+    }
   }
 
   private(set) var isOn: Bool
@@ -112,12 +119,7 @@ struct CloudSuggestionsSection: View {
     }
     .task { await app.cloudSort?.refresh() }
     .sheet(item: Bindable(consent).asking) { ask in
-      switch ask {
-      case .suggestions:
-        CloudConsentSheet(content: .suggestions, turnOn: { consent.turnOn(.suggestions) }, notNow: { consent.notNow() })
-      case .autoSort:
-        CloudConsentSheet(content: .autoSort, turnOn: { consent.turnOn(.autoSort) }, notNow: { consent.notNow() })
-      }
+      CloudConsentSheet(content: ask.content, turnOn: { consent.turnOn(ask) }, notNow: { consent.notNow() })
     }
     .alert(CloudSendBack.title(status?.cloudSortedCount ?? 0), isPresented: $confirmSendBack) {
       Button("Send back") { sendBack() }
@@ -194,7 +196,7 @@ struct CloudConsentSheet: View {
         HListCard {
           ForEach(Array(content.points.enumerated()), id: \.offset) { i, p in
             if i > 0 { HDivider(inset: .icon52) }
-            point(p.icon, p.title, p.text)
+            ProfileInfoRow(icon: p.icon, title: p.title, text: p.text)
           }
         }
       }
@@ -224,20 +226,5 @@ struct CloudConsentSheet: View {
     .presentationBackground(HColor.sheetSurfaceLarge)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("\(content.id).sheet")
-  }
-
-  private func point(_ icon: HIcon, _ title: String, _ text: String) -> some View {
-    HStack(alignment: .top, spacing: 14) {
-      HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-        Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .padding(.vertical, 14)
-    .accessibilityElement(children: .combine)
   }
 }

@@ -103,10 +103,7 @@ struct ProfileSheet: View {
   /// then shows the welcome screens in place of the app, this sheet with it.
   private func signOut() {
     guard let session else { return }
-    Task {
-      await session.account.signOut()
-      session.signedOut()
-    }
+    Task { await session.signOut() }
   }
 
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
@@ -173,7 +170,7 @@ struct ProfileSheet: View {
         if session != nil || unfinished {
           row(.security, id: "profile.security") {
             SettingRow(icon: .shieldCheck, title: "Sign-in & security",
-                       trailing: security.map { .status(Self.securityStatus($0).text, Self.securityStatus($0).tone) }
+                       trailing: security.map { let status = Self.securityStatus($0); return .status(status.text, status.tone) }
                          ?? .none)
           }
         }
@@ -230,12 +227,12 @@ struct ProfileSheet: View {
     return (live.map(\.provider.appName).formatted(.list(type: .and)), nil)
   }
 
-  /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.
   static func currencyTrailing(_ s: LedgerState) -> SettingRow.Trailing {
     let missing = ExchangeRates.page(s).missing.reduce(0) { $0 + $1.notCounted }
     return missing > 0 ? .status(ExchangeRatesPage.notCountedLine(missing), .warning) : .value(Money.home)
   }
 
+  /// Sign-in & security's own status (its hero): frozen, a passkey, or a password only.
   static func securityStatus(_ s: SecurityState) -> (text: String, tone: StatusTone) {
     if s.frozen != nil { return ("Frozen", .accent) }
     return s.hasPasskey ? ("Protected", .success) : ("Password only", .warning)
@@ -335,10 +332,7 @@ private struct ProfilePage: View {
       if let session { SecurityView(session: session, app: app) }
     case .editName:
       if let session { NameEditPage(app: app, session: session) }
-    case .privacy:
-      // The row is a link to hasala.app/privacy; nothing pushes this page any more.
-      HelpPage()
-    case .help:
+    case .privacy, .help:
       HelpPage()
     case .deleteAccount:
       if let session { DeleteAccountView(session: session) }
