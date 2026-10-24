@@ -18,10 +18,10 @@ struct HomeSourceDisplayTests {
   }
 
   @Test func theRateReadsWithItsSignificantDecimals() {
-    #expect(RateFormat.string(3_672_500) == "3.6725")
-    #expect(RateFormat.string(1_000_000) == "1.00")
-    #expect(RateFormat.string(24_500) == "0.0245")
-    #expect(RateFormat.string(5_100_000) == "5.10")
+    #expect(ExchangeRates.format(3_672_500) == "3.6725")
+    #expect(ExchangeRates.format(1_000_000) == "1.00")
+    #expect(ExchangeRates.format(24_500) == "0.0245")
+    #expect(ExchangeRates.format(5_100_000) == "5.10")
   }
 
   @Test func anEstimateShowsAEDWithAnEstimateLine() {
