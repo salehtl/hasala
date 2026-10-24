@@ -842,7 +842,7 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 		&pgconn.PgError{Code: uniqueViolation, ConstraintName: positionConstraint})
 
 	// Byte-identical rows: "already applied", answered with the stored seqs.
-	got, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, nil, dup)
+	got, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, dup)
 	if err != nil {
 		t.Fatalf("a duplicate position holding identical bytes must resolve: %v", err)
 	}
@@ -854,7 +854,7 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 	// break; a client must not be hard-stopped by a server-side bug.
 	forked := append([]Row(nil), rows...)
 	forked[1], _ = sealBody(t, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, 2, blob.ZeroHash, `{"forked":true}`)
-	_, err = a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, forked, nil, dup)
+	_, err = a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, forked, dup)
 	if !errors.Is(err, ErrPositionTaken) {
 		t.Fatalf("want ErrPositionTaken, got %T: %v", err, err)
 	}
@@ -862,13 +862,9 @@ func TestPositionTakenIsResolvedAgainstTheStoredRows(t *testing.T) {
 		t.Fatalf("a server-side invariant violation must not be reported as a chain break: %v", err)
 	}
 
-	// Anything else passes through untouched, and a nil error returns the seqs
-	// it was handed.
+	// Anything else passes through untouched.
 	boom := errors.New("boom")
-	if _, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, nil, boom); !errors.Is(err, boom) {
+	if _, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, boom); !errors.Is(err, boom) {
 		t.Fatalf("an unrelated error must pass through, got %v", err)
-	}
-	if got, err := a.resolveAppendErr(bg, u, "ios-00000000-0000-4000-8000-00000000000a", blob.StreamHot, rows, seqs, nil); err != nil || !reflect.DeepEqual(got, seqs) {
-		t.Fatalf("a successful append must return its seqs: %v, %v", got, err)
 	}
 }
