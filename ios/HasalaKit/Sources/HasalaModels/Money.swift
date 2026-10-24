@@ -171,7 +171,7 @@ public extension MoneyFormat {
   /// The editable form of an amount: "297.00" (no grouping), for a field's first value.
   static func draft(_ minor: Int64) -> String {
     let m = minor.magnitude
-    return "\(m / 100)." + (m % 100 < 10 ? "0" : "") + "\(m % 100)"
+    return "\(m / 100)." + twoDigits(m % 100)
   }
 
   static func typedDigit(_ ch: Character) -> Int? {

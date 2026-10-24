@@ -131,15 +131,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
           authorization: request.header("Authorization")))
     }
     if path.hasPrefix("/gmail/"), let status = lock.withLock({ limiter })?(path) {
-      return json(
-        status,
-        [
-          "error": .object(
-            JSONObject([
-              ("code", .number(JSONNumber(Int64(status)))),
-              ("errors", .array([.object(JSONObject([("domain", .string("usageLimits")), ("reason", .string("rateLimitExceeded"))]))])),
-            ]))
-        ])
+      return googleError(status, reason: "rateLimitExceeded")
     }
     let keyed = path + (query.first { $0.0 == "format" }.map { "?format=\($0.1)" } ?? "")
     if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
@@ -149,11 +141,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
       }
       return nil
     }) {
-      var error: [(String, JSONValue)] = [("code", .number(JSONNumber(Int64(failure.status))))]
-      if let r = failure.reason {
-        error.append(("errors", .array([.object(JSONObject([("domain", .string("usageLimits")), ("reason", .string(r))]))])))
-      }
-      return json(failure.status, ["error": .object(JSONObject(error))])
+      return googleError(failure.status, reason: failure.reason)
     }
     let full = request.url.absoluteString
     if full.hasPrefix(Self.tokenURL) { return token(form) }
@@ -315,6 +303,14 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   static func headerBlockOf(_ text: String) -> String {
     if let r = text.range(of: "\r\n\r\n") { return String(text[..<r.lowerBound]) }
     return text
+  }
+
+  func googleError(_ status: Int, reason: String?) -> HTTPResponse {
+    var error: [(String, JSONValue)] = [("code", .number(JSONNumber(Int64(status))))]
+    if let reason {
+      error.append(("errors", .array([.object(JSONObject([("domain", .string("usageLimits")), ("reason", .string(reason))]))])))
+    }
+    return json(status, ["error": .object(JSONObject(error))])
   }
 
   func json(_ status: Int, _ o: [String: JSONValue]) -> HTTPResponse {

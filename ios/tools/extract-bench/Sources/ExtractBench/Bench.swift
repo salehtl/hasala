@@ -10,11 +10,10 @@ struct Row {
 enum Bench {
   static func streams(_ items: [(Mail, Truth)], mutations: [Mutation]) -> [(String, [(Mail, Truth, Bool)])] {
     var out: [(String, [(Mail, Truth, Bool)])] = [("original", items.map { ($0.0, $0.1, true) })]
+    let senders = Dictionary(grouping: items) { $0.0.sender + "|" + $0.0.origin }.sorted { $0.key < $1.key }
     for mu in mutations {
       var s: [(Mail, Truth, Bool)] = []
-      var bySender: [String: [(Mail, Truth)]] = [:]
-      for it in items { bySender[it.0.sender + "|" + it.0.origin, default: []].append(it) }
-      for (_, list) in bySender.sorted(by: { $0.key < $1.key }) {
+      for (_, list) in senders {
         let cut = list.count / 2
         for (i, it) in list.enumerated() {
           if i < cut {
@@ -40,10 +39,7 @@ enum Bench {
         for (m, t, scored) in stream {
           let got = r.read(m)
           guard scored else { continue }
-          let g = m.origin + " " + m.sender
-          var a = byGroup[g, default: Tally()]
-          Score.add(got, t, into: &a, misses: &misses, reader: r.name, kind: kind, id: m.id)
-          byGroup[g] = a
+          Score.add(got, t, into: &byGroup[m.origin + " " + m.sender, default: Tally()], misses: &misses, reader: r.name, kind: kind, id: m.id)
         }
         for (g, a) in byGroup.sorted(by: { $0.key < $1.key }) { rows.append(Row(reader: r.name, kind: kind, group: g, tally: a)) }
       }

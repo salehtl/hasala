@@ -272,9 +272,13 @@ public enum OpCodec {
   static func rawFields(_ op: Op) -> RawFields {
     RawFields(
       v: Int64(op.v), type: .string(op.type.rawValue), opID: .string(op.opID), authoredAt: .string(op.authoredAt),
-      entity: op.entity.map { .object(JSONObject([("kind", .string($0.kind)), ("id", .string($0.id))])) },
+      entity: op.entity.map(entityJSON),
       parentVersion: op.parentVersion.map { .number(JSONNumber($0)) } ?? .null,
       ingestID: op.ingestID.flatMap { $0.isEmpty ? nil : .string($0) }, payload: op.payload)
+  }
+
+  static func entityJSON(_ e: EntityRef) -> JSONValue {
+    .object(JSONObject([("kind", .string(e.kind)), ("id", .string(e.id))]))
   }
 
   // MARK: Encode
@@ -302,7 +306,7 @@ public enum OpCodec {
       o["type"] = .string(checked.type.rawValue)
       o["op_id"] = .string(checked.opID)
       o["authored_at"] = .string(checked.authoredAt)
-      if let e = checked.entity { o["entity"] = .object(JSONObject([("kind", .string(e.kind)), ("id", .string(e.id))])) }
+      if let e = checked.entity { o["entity"] = entityJSON(e) }
       // Present (null) on every op: a create and a parent-free op differ by
       // TYPE, never by this field's absence.
       o["parent_version"] = checked.parentVersion.map { .number(JSONNumber($0)) } ?? .null

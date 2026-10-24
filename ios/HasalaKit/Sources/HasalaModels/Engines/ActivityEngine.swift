@@ -234,9 +234,9 @@ public enum ActivityEngine {
       detail = t.joined("To review", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
-    } else if let source = t.autoSourceLabel, c != nil {
-      detail = t.joined(t.joined(c?.name ?? "", source), t.detailOverride ?? t.postedTime)
-      spokenDetail = t.autoSourceSpoken.map { t.joined(c?.name ?? "", t.detailOverride ?? t.postedTime) + ", " + $0 }
+    } else if let source = t.autoSourceLabel, let c {
+      detail = t.joined(t.joined(c.name, source), t.detailOverride ?? t.postedTime)
+      spokenDetail = t.autoSourceSpoken.map { t.joined(c.name, t.detailOverride ?? t.postedTime) + ", " + $0 }
     } else {
       detail = t.joined(c?.name ?? "Uncategorized", t.detailOverride ?? t.postedTime)
     }
@@ -285,7 +285,7 @@ public enum ActivityEngine {
         amount: b.amount, approximate: b.approximate, isIncome: false,
         // Paper's words for a bill that hasn't come yet: past its usual day, never "late"
         // (spec 01 §07: Hasala can't know for sure).
-        trailingNote: .status("\(n) day\(n == 1 ? "" : "s") past usual", .error)
+        trailingNote: .status(BillsEngine.pastUsual(n), .error)
       )
     }
   }

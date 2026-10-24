@@ -31,6 +31,21 @@ enum ILex {
   static let nlKey = "\u{23CE}"
   static let subjKey = "\u{00A7}s"
 
+  static func typedCode(_ cls: IClass) -> Int32 {
+    switch cls {
+    case .money: moneyCode
+    case .num: numCode
+    default: curCode
+    }
+  }
+
+  static func code(_ cls: IClass, _ key: String, _ interner: inout IInterner) -> Int32 {
+    switch cls {
+    case .money, .num, .cur: typedCode(cls)
+    default: interner.code(key)
+    }
+  }
+
   static let iso: Set<String> = [
     "AED", "USD", "EUR", "GBP", "SAR", "QAR", "KWD", "BHD", "OMR", "JOD", "JPY", "INR", "PKR", "EGP", "CHF", "CAD", "AUD",
     "CNY", "SGD", "HKD", "TRY", "LKR", "PHP", "THB", "MYR", "IDR", "KRW", "NZD", "ZAR", "SEK", "NOK", "DKK", "RUB", "BDT",
@@ -251,14 +266,7 @@ enum ITokenizer {
       if out.count >= cap { break }
     }
     if out.count > cap { out = Array(out[0..<cap]) }
-    for i in out.indices {
-      switch out[i].cls {
-      case .money: out[i].code = ILex.moneyCode
-      case .num: out[i].code = ILex.numCode
-      case .cur: out[i].code = ILex.curCode
-      default: out[i].code = interner.code(out[i].key)
-      }
-    }
+    for i in out.indices { out[i].code = ILex.code(out[i].cls, out[i].key, &interner) }
     return out
   }
 

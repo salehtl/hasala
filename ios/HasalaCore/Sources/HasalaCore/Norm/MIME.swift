@@ -59,13 +59,7 @@ enum MIME {
   }
 
   /// go-message's `trim`: spaces and tabs only.
-  static func trimSpaceTab(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
-    var lo = s.startIndex
-    var hi = s.endIndex
-    while lo < hi, isSpaceByte(s[lo]) { lo += 1 }
-    while hi > lo, isSpaceByte(s[hi - 1]) { hi -= 1 }
-    return s[lo..<hi]
-  }
+  static func trimSpaceTab(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> { Bytes.trim(s, where: isSpaceByte) }
 
   /// go-message's trimAroundNewlines: unfold, joining the non-empty segments with one space.
   static func trimAroundNewlines(_ v: ArraySlice<UInt8>) -> [UInt8] {
@@ -150,18 +144,9 @@ enum MIME {
     }
   }
 
-  static func trimLeftUnicodeSpace(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
-    var lo = s.startIndex
-    while lo < s.endIndex, isUnicodeSpaceByte(s[lo]) { lo += 1 }
-    return s[lo...]
-  }
+  static func trimLeftUnicodeSpace(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> { s.drop(while: isUnicodeSpaceByte) }
 
-  static func trimUnicodeSpace(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
-    let l = trimLeftUnicodeSpace(s)
-    var hi = l.endIndex
-    while hi > l.startIndex, isUnicodeSpaceByte(l[hi - 1]) { hi -= 1 }
-    return l[l.startIndex..<hi]
-  }
+  static func trimUnicodeSpace(_ s: ArraySlice<UInt8>) -> ArraySlice<UInt8> { Bytes.trim(s, where: isUnicodeSpaceByte) }
 
   static func consumeToken(_ s: ArraySlice<UInt8>) -> (ArraySlice<UInt8>, ArraySlice<UInt8>) {
     var i = s.startIndex
@@ -730,22 +715,14 @@ enum MIME {
     return out
   }
 
-  static func jsTrim(_ s: ArraySlice<Unicode.Scalar>) -> ArraySlice<Unicode.Scalar> {
-    var lo = s.startIndex
-    var hi = s.endIndex
-    while lo < hi, ScalarSet.jsTrim.contains(s[lo]) { lo += 1 }
-    while hi > lo, ScalarSet.jsTrim.contains(s[hi - 1]) { hi -= 1 }
-    return s[lo..<hi]
-  }
-
   /// The addr-spec of a single mailbox, or nil.
   static func parseMailbox(_ s: ArraySlice<Unicode.Scalar>) -> ArraySlice<Unicode.Scalar>? {
-    let t = jsTrim(s)
+    let t = s.trimming(.jsTrim)
     if t.isEmpty { return nil }
     if let lt = t.lastIndex(of: "<") {
       guard let gt = t[lt...].firstIndex(of: ">") else { return nil }
-      if !jsTrim(t[(gt + 1)...]).isEmpty { return nil }  // trailing junk: Go rejects it
-      let addr = jsTrim(t[(lt + 1)..<gt])
+      if !t[(gt + 1)...].trimming(.jsTrim).isEmpty { return nil }  // trailing junk: Go rejects it
+      let addr = t[(lt + 1)..<gt].trimming(.jsTrim)
       return isAddrSpec(addr) ? addr : nil
     }
     return isAddrSpec(t) ? t : nil
@@ -859,21 +836,15 @@ enum MIME {
       nlDashBoundary = [Bytes.cr, Bytes.lf] + dashBoundary
     }
 
-    static func skipLWSP(_ b: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
-      var i = b.startIndex
-      while i < b.endIndex, MIME.isSpaceByte(b[i]) { i += 1 }
-      return b[i...]
-    }
-
     func isFinalBoundary(_ line: ArraySlice<UInt8>) -> Bool {
       guard line.starts(with: dashBoundaryDash) else { return false }
-      let rest = Self.skipLWSP(line.dropFirst(dashBoundaryDash.count))
+      let rest = line.dropFirst(dashBoundaryDash.count).drop(while: MIME.isSpaceByte)
       return rest.isEmpty || rest.elementsEqual(nl)
     }
 
     mutating func isBoundaryDelimiter(_ line: ArraySlice<UInt8>) -> Bool {
       guard line.starts(with: dashBoundary) else { return false }
-      let rest = Self.skipLWSP(line.dropFirst(dashBoundary.count))
+      let rest = line.dropFirst(dashBoundary.count).drop(while: MIME.isSpaceByte)
       // First part only: switch to bare-LF mode when the mail uses LF endings.
       if partsRead == 0 && rest.count == 1 && rest.first == Bytes.lf {
         nl = [Bytes.lf]

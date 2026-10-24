@@ -35,7 +35,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
@@ -69,6 +68,9 @@ func checkSyncedPasskey(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 }
 
 func refuseIfLastUnseenWrapTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, credentialID []byte) error {
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, userID); err != nil {
+		return err
+	}
 	var last bool
 	if err := tx.QueryRow(ctx,
 		`SELECT EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = $1 AND k.phrase_seen_at IS NULL)
@@ -275,12 +277,10 @@ func (k *AccountKeys) Bootstrap(ctx context.Context, session SessionInfo, b Boot
 		if k.StepUp == nil {
 			return Bootstrapped{}, errors.New("auth: AccountKeys.StepUp is nil")
 		}
-		ph, err := keyproto.ParamsHash(keyproto.ActionKeysBootstrap, b.AuthorityPubkey)
+		g, err := guardFor(session, keyproto.ActionKeysBootstrap, b.StepUp, b.AuthorityPubkey)
 		if err != nil {
 			return Bootstrapped{}, err
 		}
-		g := Guarded{UserID: userID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-			Action: keyproto.ActionKeysBootstrap, ParamsHash: ph, StepUp: b.StepUp}
 		if err := k.StepUp.Run(ctx, g, write); err != nil {
 			return Bootstrapped{}, err
 		}
@@ -305,8 +305,7 @@ func (k *AccountKeys) bootstrapTx(ctx context.Context, tx pgx.Tx, session Sessio
 		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at, phrase_seen_at)
 		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7, CASE WHEN $8::boolean THEN NULL ELSE $7::timestamptz END)`,
 		userID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now, b.PhraseUnseen); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" {
+		if pg := uniqueViolation(err); pg != nil {
 			if pg.ConstraintName == "account_keys_pkey" {
 				return ErrKeysExist
 			}
@@ -434,12 +433,10 @@ func (k *AccountKeys) PutWrap(ctx context.Context, session SessionInfo, p WrapPu
 	if p.StepUp == nil {
 		return ErrStepUpRequired
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionKeysWrapPut, p.CredentialID)
+	g, err := guardFor(session, keyproto.ActionKeysWrapPut, p.StepUp, p.CredentialID)
 	if err != nil {
 		return err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionKeysWrapPut, ParamsHash: ph, StepUp: p.StepUp}
 	return k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, proven Proven) error {
 		if !bytes.Equal(proven.CredentialID, p.CredentialID) {
 			return fmt.Errorf("%w: the asserting credential is not the wrap's", ErrStepUpFailed)
@@ -487,16 +484,11 @@ func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, crede
 	if su == nil {
 		return ErrStepUpRequired
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionKeysWrapDelete, credentialID)
+	g, err := guardFor(session, keyproto.ActionKeysWrapDelete, su, credentialID)
 	if err != nil {
 		return err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionKeysWrapDelete, ParamsHash: ph, StepUp: su}
 	return k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
-		if _, err := tx.Exec(ctx, `SELECT 1 FROM account_keys WHERE user_id = $1 FOR UPDATE`, session.UserID); err != nil {
-			return err
-		}
 		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
 			return err
 		}

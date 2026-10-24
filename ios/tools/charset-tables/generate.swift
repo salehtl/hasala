@@ -119,10 +119,7 @@ let unresolved = labelList("UNRESOLVED")
 let wordUnsupported = labelList("WORD_UNSUPPORTED")
 let wordPassthrough = labelList("WORD_PASSTHROUGH")
 
-func hex(_ v: UInt32) -> String {
-  let s = String(v, radix: 16, uppercase: true)
-  return "0x" + String(repeating: "0", count: max(0, 4 - s.count)) + s
-}
+func hex(_ v: UInt32) -> String { String(format: "0x%04X", v) }
 func quoted(_ s: String) -> String { "\"\(s)\"" }
 
 var out = """

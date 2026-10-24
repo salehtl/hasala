@@ -243,8 +243,7 @@ extension State {
     let saving = try percent(p["saving"], "saving")
     let sum = need + want + saving
     if sum != 100 { throw PayloadError("need + want + saving must be 100, got \(sum) (\(need)/\(want)/\(saving))") }
-    let raw = p["monthly_total_minor"]
-    let total: Int64? = (raw == nil || raw!.isNull) ? nil : try P.money(raw, "monthly_total_minor")
+    let total = P.present(p["monthly_total_minor"]) == nil ? nil : try P.money(p["monthly_total_minor"], "monthly_total_minor")
     budgetSplit = BudgetSplit(need: need, want: want, saving: saving)
     budgetMonthlyTotal = total
   }
@@ -268,8 +267,7 @@ extension State {
     }
     let name = try P.nonEmptyString(p["name"], "name")
     let bucket = try State.bucketFor(kind, p["bucket"])
-    let colorRaw = p["color"]
-    let color: String? = (colorRaw == nil || colorRaw!.isNull) ? nil : try P.nonEmptyString(colorRaw, "color")
+    let color = P.present(p["color"]) == nil ? nil : try P.nonEmptyString(p["color"], "color")
     let active = try P.boolField(p["active"], "active")
     categories[ExactKey(id)] = CategoryDef(shape: 3, id: id, name: name, kind: kind, bucket: bucket, color: color, icon: nil, active: active)
   }

@@ -50,11 +50,8 @@ public enum HomeEngine {
     let month = now.date.yearMonth
     let day = now.date.day
     let days = month.days
-    func section(_ b: Bucket) -> PlanSection? { plan.sections.first { $0.bucket == b } }
-    let needs = section(.needs)
-    let wants = section(.wants)
     let total = Spending.total(s, in: month)
-    let budget = (needs?.budget.minor ?? 0).plus(wants?.budget.minor ?? 0)
+    let budget = spendingBudget(plan)
     let overline = "Day \(day) of \(days)"
     let tiles = heroTiles(s, month: month)
 
@@ -121,16 +118,18 @@ public enum HomeEngine {
       ]))
   }
 
+  static func spendingBudget(_ plan: PlanSnapshot) -> Int64 {
+    func budget(_ b: Bucket) -> Int64 { plan.sections.first { $0.bucket == b }?.budget.minor ?? 0 }
+    return budget(.needs).plus(budget(.wants))
+  }
+
   static func planned(_ budget: Int64) -> MoneyPhrase {
     MoneyPhrase([.text("spent of "), .amount(.aed(budget), .rounded, hidden: 3), .text(" planned")])
   }
 
   public static func endedHero(_ s: LedgerState, month: YearMonth, plan: PlanSnapshot) -> SpendHero {
-    func section(_ b: Bucket) -> PlanSection? { plan.sections.first { $0.bucket == b } }
-    let needs = section(.needs)
-    let wants = section(.wants)
     let total = Spending.total(s, in: month)
-    let budget = (needs?.budget.minor ?? 0).plus(wants?.budget.minor ?? 0)
+    let budget = spendingBudget(plan)
     let tiles = heroTiles(s, month: month)
     let note = topWant(s, month: month)
     let notCounted = notCounted(s, in: .month(month))
@@ -176,10 +175,7 @@ public enum HomeEngine {
       word: n > 0 ? MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]) : "",
       fact: n > 0 ? "full months only" : nil,
       caption: budget > 0 ? planned(budget) : "spent",
-      tiles: [
-        HeroTile("Needs", .aed(needs), style: .rounded), HeroTile("Wants", .aed(wants), style: .rounded),
-        HeroTile("Savings", .aed(saved), style: .rounded),
-      ],
+      tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
       wash: .sky, bars: bars, notCounted: notCounted(s, in: period))
   }
 
@@ -205,10 +201,7 @@ public enum HomeEngine {
       word: full.isEmpty ? "" : MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]),
       fact: full.isEmpty ? nil : "full months only",
       caption: "spent, all time",
-      tiles: [
-        HeroTile("Needs", .aed(needs), style: .rounded), HeroTile("Wants", .aed(wants), style: .rounded),
-        HeroTile("Savings", .aed(saved), style: .rounded),
-      ],
+      tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
       wash: .sky, bars: [], notCounted: notCounted(s, in: period))
   }
 
@@ -230,8 +223,7 @@ public enum HomeEngine {
   static func aboutNow(_ s: LedgerState, now: LocalDateTime) -> [AboutNowRow] {
     var rows: [AboutNowRow] = []
     if let next = nextBill(s, now: now) {
-      let n = now.date.days(until: next.nextDue)
-      let when = n == 0 ? "today" : (n == 1 ? "tomorrow" : "in \(n) days")
+      let when = ActivityEngine.inDays(now.date.days(until: next.nextDue))
       rows.append(AboutNowRow(
         id: "nextBill", title: "Next bill · \(next.name)",
         detail: MoneyPhrase([.text(next.approximate ? "~" : ""), .amount(next.amount, hidden: 3), .text(" · \(when)")]),
@@ -282,8 +274,11 @@ public enum HomeEngine {
     return (paid, toCome.minor)
   }
 
-  static func heroTiles(needs: Int64, wants: Int64, saved: Int64) -> [HeroTile] {
-    [HeroTile("Needs", .aed(needs)), HeroTile("Wants", .aed(wants)), HeroTile("Savings", .aed(saved))]
+  static func heroTiles(needs: Int64, wants: Int64, saved: Int64, style: MoneyStyle = .exact) -> [HeroTile] {
+    [
+      HeroTile("Needs", .aed(needs), style: style), HeroTile("Wants", .aed(wants), style: style),
+      HeroTile("Savings", .aed(saved), style: style),
+    ]
   }
 
   // MARK: - Widgets (whole dirhams: the views round every figure, page 06 rule 5)
@@ -353,7 +348,7 @@ public enum HomeEngine {
   {
     let all = options(kind, s, now: now, plan: plan)
     if kind == .category {
-      let ahead = GlanceEngine.categories(s, now: now).first { $0.verdict == .overPace || $0.verdict == .overBudget }
+      let ahead = GlanceEngine.categories(s, now: now, plan: plan).first { $0.verdict == .overPace || $0.verdict == .overBudget }
       if let ahead, all.contains(where: { $0.config == .category(ahead.id) }) { return .category(ahead.id) }
     }
     return all.first?.config
@@ -368,7 +363,7 @@ public enum HomeEngine {
   {
     switch kind {
     case .category:
-      let watched = GlanceEngine.categories(s, now: now)
+      let watched = GlanceEngine.categories(s, now: now, plan: plan)
       return [Bucket.needs, .wants].flatMap { bucket in
         watched.filter { s.category($0.id)?.bucket == bucket }.map { c in
           HomeWidgetOption(
@@ -406,8 +401,9 @@ public enum HomeEngine {
   static func nextBillWidget(_ s: LedgerState, now: LocalDateTime) -> NextBillWidget? {
     guard let next = nextBill(s, now: now) else { return nil }
     let n = now.date.days(until: next.nextDue)
+    let c = s.category(next.categoryID)
     return NextBillWidget(
-      glyph: s.category(next.categoryID)?.glyph ?? .utilities, hue: s.category(next.categoryID)?.hue ?? .sand,
+      glyph: c?.glyph ?? .utilities, hue: c?.hue ?? .sand,
       due: StatusPill(n == 0 ? "Today" : (n == 1 ? "Tomorrow" : "In \(n) days"), tone: .warning, showsDot: false),
       amount: next.amount,
       caption: "\(next.name) · expected \(next.nextDue.weekdayShort)"
@@ -508,7 +504,7 @@ struct CanvasSources {
       return GlanceEngine.spentSoFar(s, now: now, hero: hero).map(HomeWidget.spentSoFar)
     case .categoryWatch:
       guard case .category(let id)? = entry.config else { return nil }
-      return GlanceEngine.categories(s, now: now).first { $0.id == id }.map(HomeWidget.categoryWatch)
+      return GlanceEngine.categories(s, now: now, plan: plan).first { $0.id == id }.map(HomeWidget.categoryWatch)
     case .comingUp: return GlanceEngine.comingUp(s, now: now).map(HomeWidget.comingUp)
     case .toReview: return .toReview(GlanceEngine.toReview(s, now: now))
     }
