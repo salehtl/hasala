@@ -178,9 +178,8 @@ struct PillButtonBody: View {
     case .primary: return pressed ? HColor.actionAccentPressed : HColor.actionAccent
     case .secondary: return pressed ? HColor.actionAccentSubtlePressed : HColor.actionAccentSubtle
     case .onGrouped, .destructiveQuiet: return pressed ? HColor.listRowSurfacePressed : HColor.surfacePrimary
-    case .tertiary: return pressed ? HColor.stateLayerPressed : .clear
+    case .tertiary, .destructiveText: return pressed ? HColor.stateLayerPressed : .clear
     case .destructive: return pressed ? HColor.actionDestructivePressed : HColor.actionDestructive
-    case .destructiveText: return pressed ? HColor.stateLayerPressed : .clear
     }
   }
 }
