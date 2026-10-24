@@ -9,6 +9,13 @@ final class MerchantSuggestionsConsent {
   enum Ask: String, Identifiable {
     case suggestions, autoSort
     var id: String { rawValue }
+
+    var content: CloudConsentContent {
+      switch self {
+      case .suggestions: .suggestions
+      case .autoSort: .autoSort
+      }
+    }
   }
 
   private(set) var isOn: Bool
@@ -112,8 +119,7 @@ struct CloudSuggestionsSection: View {
     }
     .task { await app.cloudSort?.refresh() }
     .sheet(item: Bindable(consent).asking) { ask in
-      CloudConsentSheet(content: ask == .suggestions ? .suggestions : .autoSort, turnOn: { consent.turnOn(ask) },
-                        notNow: { consent.notNow() })
+      CloudConsentSheet(content: ask.content, turnOn: { consent.turnOn(ask) }, notNow: { consent.notNow() })
     }
     .alert(CloudSendBack.title(status?.cloudSortedCount ?? 0), isPresented: $confirmSendBack) {
       Button("Send back") { sendBack() }
