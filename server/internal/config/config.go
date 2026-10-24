@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,7 +72,6 @@ type Config struct {
 	// answerable from the command that ran and from nowhere else.
 	Purge   PurgeArgs   `toml:"-"`
 	Verify  VerifyArgs  `toml:"-"`
-	Invite  InviteArgs  `toml:"-"`
 	Migrate MigrateArgs `toml:"-"`
 }
 
@@ -323,12 +323,6 @@ type VerifyArgs struct {
 	JSON   bool
 }
 
-// InviteArgs is `hasalad invite mint [--note …] | list`.
-type InviteArgs struct {
-	Action string // "mint" or "list"
-	Note   string
-}
-
 // MigrateArgs is `hasalad migrate [--status | --pending] [--to VERSION]`.
 type MigrateArgs struct {
 	Status  bool
@@ -344,9 +338,7 @@ var modeOrder = []string{"serve", "migrate", "verify", "purge-user", "invite", "
 
 // Modes returns every mode cmd/hasalad dispatches.
 func Modes() []string {
-	out := make([]string, len(modeOrder))
-	copy(out, modeOrder)
-	return out
+	return slices.Clone(modeOrder)
 }
 
 func defaults() Config {
@@ -392,15 +384,10 @@ func defaults() Config {
 	}
 }
 
-// Load reads path (or HASALA_CONFIG when path is empty), applies the
+// LoadEnv reads path (or HASALA_CONFIG when path is empty), applies the
 // environment and validates what every mode shares. Mode-specific
-// requirements are ValidateFor's.
-func Load(path string) (Config, error) {
-	return LoadEnv(path, os.LookupEnv, os.Environ())
-}
-
-// LoadEnv is Load against an explicit environment: lookup answers one
-// variable, environ lists them all (the raw-secret rail scans every name).
+// requirements are ValidateFor's. lookup answers one variable, environ lists
+// them all (the raw-secret rail scans every name).
 func LoadEnv(path string, lookup func(string) (string, bool), environ []string) (Config, error) {
 	cfg := defaults()
 	if path == "" {
@@ -726,7 +713,8 @@ func (c Config) validateGmail() error {
 				out = append(out, name)
 			}
 		}
-		return strings.Join(sortedCopy(out), ", ")
+		sort.Strings(out)
+		return strings.Join(out, ", ")
 	}
 	// The route key is shared with [outlook]: with neither link it would key
 	// nothing, which is a half-configured link.
@@ -1107,17 +1095,25 @@ func (c Config) validateConsole() error {
 // CheckSecretFile refuses a secret file that is missing, not a regular file, or
 // readable by group or other (spec 02 §18.1).
 func CheckSecretFile(path string) error {
-	fi, err := os.Stat(path)
+	perm, err := regularFilePerm(path)
 	if err != nil {
-		return fmt.Errorf("secret file: %w", err)
+		return err
 	}
-	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("secret file %s is not a regular file", path)
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("secret file %s has mode %v: it must grant no group or other permission", path, fi.Mode().Perm())
+	if perm&0o077 != 0 {
+		return fmt.Errorf("secret file %s has mode %v: it must grant no group or other permission", path, perm)
 	}
 	return nil
+}
+
+func regularFilePerm(path string) (fs.FileMode, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, fmt.Errorf("secret file: %w", err)
+	}
+	if !fi.Mode().IsRegular() {
+		return 0, fmt.Errorf("secret file %s is not a regular file", path)
+	}
+	return fi.Mode().Perm(), nil
 }
 
 // InCredentialsDirectory reports whether path names a file directly inside
@@ -1137,15 +1133,12 @@ func InCredentialsDirectory(path, credDir string) bool {
 // can read it; the directory itself is reachable by the unit alone. Any
 // permission for other is still refused.
 func CheckCredentialFile(path string) error {
-	fi, err := os.Stat(path)
+	perm, err := regularFilePerm(path)
 	if err != nil {
-		return fmt.Errorf("secret file: %w", err)
+		return err
 	}
-	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("secret file %s is not a regular file", path)
-	}
-	if fi.Mode().Perm()&0o027 != 0 {
-		return fmt.Errorf("credential file %s has mode %v: it must grant no write or other permission", path, fi.Mode().Perm())
+	if perm&0o027 != 0 {
+		return fmt.Errorf("credential file %s has mode %v: it must grant no write or other permission", path, perm)
 	}
 	return nil
 }
@@ -1188,11 +1181,5 @@ func splitCSV(v string) []string {
 			out = append(out, f)
 		}
 	}
-	return out
-}
-
-func sortedCopy(s []string) []string {
-	out := append([]string(nil), s...)
-	sort.Strings(out)
 	return out
 }

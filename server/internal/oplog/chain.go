@@ -380,7 +380,7 @@ func (a *Appender) AppendClientStored(ctx context.Context, userID uuid.UUID, wri
 	if err == nil {
 		return seqs, true, nil
 	}
-	seqs, err = a.resolveAppendErr(ctx, userID, writerID, stream, batch, seqs, err)
+	seqs, err = a.resolveAppendErr(ctx, userID, writerID, stream, batch, err)
 	return seqs, false, err
 }
 
@@ -412,7 +412,7 @@ func (e *StaleEpochError) Error() string {
 // Is makes errors.Is(err, ErrStaleEpoch) hold.
 func (e *StaleEpochError) Is(target error) bool { return target == ErrStaleEpoch }
 
-// resolveAppendErr turns the outcome of appendRows into AppendClient's answer.
+// resolveAppendErr turns a failed appendRows into AppendClient's answer.
 //
 // It is a separate function so its SQLSTATE 23505 arm can be tested. That arm
 // is unreachable in a correct build — the head is read under the counter lock,
@@ -424,22 +424,18 @@ func (e *StaleEpochError) Is(target error) bool { return target == ErrStaleEpoch
 // because an edit that reverses the ordering rule must fail loudly rather than
 // corrupt anything. Splitting it out beat the alternative of a test-only hook
 // in the production path.
-func (a *Appender) resolveAppendErr(ctx context.Context, userID uuid.UUID, writerID, stream string, batch []Row, seqs []int64, err error) ([]int64, error) {
-	switch {
-	case err == nil:
-		return seqs, nil
-	case isPositionTaken(err):
-		applied, resolveErr := appliedSeqs(ctx, a.Pool, userID, writerID, stream, batch)
-		if resolveErr != nil {
-			// Deliberately NOT wrapped with %w: resolveErr may be
-			// ErrChainBreak, and a client must not be hard-stopped by a
-			// server-side invariant violation. See ErrPositionTaken.
-			return nil, fmt.Errorf("%w: (%s, %s): %v", ErrPositionTaken, writerID, stream, resolveErr)
-		}
-		return applied, nil
-	default:
+func (a *Appender) resolveAppendErr(ctx context.Context, userID uuid.UUID, writerID, stream string, batch []Row, err error) ([]int64, error) {
+	if !isPositionTaken(err) {
 		return nil, err
 	}
+	applied, resolveErr := appliedSeqs(ctx, a.Pool, userID, writerID, stream, batch)
+	if resolveErr != nil {
+		// Deliberately NOT wrapped with %w: resolveErr may be
+		// ErrChainBreak, and a client must not be hard-stopped by a
+		// server-side invariant violation. See ErrPositionTaken.
+		return nil, fmt.Errorf("%w: (%s, %s): %v", ErrPositionTaken, writerID, stream, resolveErr)
+	}
+	return applied, nil
 }
 
 // appliedSeqs resolves a batch that appears to have been stored already: it

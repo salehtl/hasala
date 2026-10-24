@@ -69,8 +69,12 @@ func windowFor(r Reason) time.Duration {
 	return 0
 }
 
+func tokenKey(t Target) string { return t.Environment + ":" + t.TokenHex }
+
+func exempt(r Reason) bool { return r == ReasonSecurity || r == ReasonAccountGone }
+
 func (th *throttle) state(t Target) *tokenState {
-	key := t.Environment + ":" + t.TokenHex
+	key := tokenKey(t)
 	if s, ok := th.states[key]; ok {
 		th.lru.MoveToFront(s.elem)
 		return s
@@ -100,22 +104,20 @@ func prune(ts []time.Time, now time.Time) []time.Time {
 func (s *tokenState) capped(r Reason, now time.Time) bool {
 	s.mailSends = prune(s.mailSends, now)
 	s.allSends = prune(s.allSends, now)
-	switch r {
-	case ReasonSecurity, ReasonAccountGone:
+	if exempt(r) {
 		return false
-	case ReasonMail:
-		if len(s.mailSends) >= mailCap {
-			return true
-		}
+	}
+	if r == ReasonMail && len(s.mailSends) >= mailCap {
+		return true
 	}
 	return len(s.allSends) >= totalCap
 }
 
 func (s *tokenState) count(r Reason, now time.Time) {
-	switch r {
-	case ReasonSecurity, ReasonAccountGone:
+	if exempt(r) {
 		return
-	case ReasonMail:
+	}
+	if r == ReasonMail {
 		s.mailSends = append(s.mailSends, now)
 	}
 	s.allSends = append(s.allSends, now)
@@ -125,8 +127,7 @@ func (s *tokenState) count(r Reason, now time.Time) {
 // pre-collected tokens). A sendNow has already been counted.
 func (th *throttle) admit(t Target, r Reason, now time.Time, owner uuid.UUID) decision {
 	s := th.state(t)
-	exempt := r == ReasonSecurity || r == ReasonAccountGone
-	if !exempt && now.Before(s.coolUntil) {
+	if !exempt(r) && now.Before(s.coolUntil) {
 		return dropCool
 	}
 	if w := windowFor(r); w > 0 {
@@ -193,7 +194,7 @@ func (th *throttle) cool(t Target, now time.Time) {
 
 // forget drops a token's state (its row was deleted).
 func (th *throttle) forget(t Target) {
-	key := t.Environment + ":" + t.TokenHex
+	key := tokenKey(t)
 	if s, ok := th.states[key]; ok {
 		th.lru.Remove(s.elem)
 		delete(th.states, key)
