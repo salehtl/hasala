@@ -385,7 +385,7 @@ nonisolated extension LedgerStateMapper {
     switch b.status {
     case "active":
       let upcomingPause = v.pauses.last.flatMap { p in p.from > t && (next.map { $0 >= p.from } ?? true) ? p : nil }
-      if let p = v.pauses.last(where: { $0.from <= t && ($0.until.map { t < $0 } ?? true) }) ?? upcomingPause {
+      if let p = v.pauses.last(where: { BillEdits.covers($0.from, $0.until, t) }) ?? upcomingPause {
         state = .paused
         pausedSince = local(p.from)
         pausedUntil = p.until.map(local)

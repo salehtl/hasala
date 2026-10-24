@@ -362,6 +362,11 @@ extension MailboxLane {
     return grants.isEmpty ? nil : HeldMailGrants(grants: grants)
   }
 
+  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
+    guard let held else { return }
+    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
+  }
+
   /// Ends this iPhone's grants as the account leaves it (spec 04 §4.7 rows 2–4), best effort,
   /// and nothing for a provider the build has no client for. It needs only what `heldGrant`
   /// read, so it runs after the local wipe as well.
@@ -371,11 +376,6 @@ extension MailboxLane {
   /// - Outlook: Microsoft has no revoke endpoint; this iPhone's Graph subscription is deleted
   ///   when the account is going, and the tokens are simply forgotten (consent is ended at
   ///   account.live.com/consent/Manage).
-  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
-    guard let held else { return }
-    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
-  }
-
   nonisolated static func endGrant(_ held: HeldMailGrants, build: BuildInfo, stopWatch: Bool) async {
     let http = MailGrantEnds.http()
     for g in held.grants {

@@ -308,7 +308,7 @@ nonisolated enum LedgerStateMapper {
     at(LocalClock.localDate(ms).map(local) ?? LocalDate(1970, 1, 1), ms: ms)
   }
 
-  static func at(_ date: LocalDate, ms: Int64) -> LocalDateTime {
+  private static func at(_ date: LocalDate, ms: Int64) -> LocalDateTime {
     let minutes = Int(((ms + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
     return LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
   }
