@@ -178,13 +178,6 @@ public enum ModelTier {
     )
   }
 
-  /// One model call, cancelled after `limit` (or when the sweep's task is
-  /// cancelled). Returns `.failed(.timeout)` without waiting for a call that
-  /// ignores cancellation.
-  static func suggest(_ model: any CategoryModel, subject: String, allowed: [AllowedCategory], within limit: Duration) async -> ModelAnswer {
-    await graded(model, subject: subject, allowed: allowed, within: limit).answer
-  }
-
   struct Graded: Sendable {
     let answer: ModelAnswer
     let autoFile: Bool

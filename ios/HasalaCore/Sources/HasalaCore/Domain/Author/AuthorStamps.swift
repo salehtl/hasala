@@ -45,6 +45,13 @@ public final class AuthorStamps: Sendable {
       return (blob, blob.lastAuthoredMs)
     }
   }
+
+  public func categorizations(_ items: [OpAuthor.Categorization], context: AuthorContext) throws(AuthorError) -> [AuthoredBlob] {
+    try authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
+      let blobs = try OpAuthor.categorizations(items, context: context.raised(to: floor))
+      return (blobs, blobs.last?.lastAuthoredMs)
+    }
+  }
 }
 
 extension AuthorContext {

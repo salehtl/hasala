@@ -91,8 +91,4 @@ public struct CategoryRules: Sendable {
   public func isOfferedParent(_ parent: String) -> Bool {
     TaxonomyV1.isParentCandidate(parent) && (view.info(parent)?.active ?? true)
   }
-
-  public func parentClass(_ parent: String) -> (kind: CategoryKind, bucket: Bucket?)? {
-    TaxonomyV1.parentClass(parent)
-  }
 }
