@@ -103,14 +103,9 @@
   --wash-navy: linear-gradient(in oklab 180deg, oklab(28.7% -0.007 -0.095) 0%, oklab(25.1% -0.005 -0.081) 60%, oklab(23% -0.004 -0.069) 100%);
   --wash-pace: linear-gradient(in oklab 160deg, oklab(62.2% -0.006 -0.203) 0%, oklab(55.6% -0.01 -0.217) 45%, oklab(48% -0.01 -0.211) 100%);
   --wash-hero-m: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 45%, oklab(97.3% 0.0002 -0.008) 80%, oklab(100% 0 0) 100%);
-  --wash-invite: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 40%, oklab(97.3% 0.0002 -0.008) 75%, oklab(100% 0 0) 100%);
   --wash-soft: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%); /* 404 */
-  --wash-legal: linear-gradient(in oklab 180deg, oklab(96% 0.002 -0.019) 0%, oklab(98% 0.0008 -0.007) 60%, oklab(100% 0 0) 100%);
-  --wash-callout: linear-gradient(in oklab 180deg, oklab(96.2% 0.008 0.03) 0%, oklab(93.5% 0.012 0.04) 100%); /* "In plain words" */
-  --glow-gold: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(90.3% 0.003 0.096 / 35%) 0%, oklab(90.3% 0.003 0.096 / 0%) 65%);
   --glow-blue: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);
   --coin: linear-gradient(in oklab 180deg, oklab(90.3% 0.003 0.096) 0%, oklab(79.4% 0.028 0.132) 100%);
-  --glow-dirham: oklab(90.3% 0.003 0.096);
 
   /* Screen edges (iOS Safari). Safari can't show a gradient or an image
      behind the status bar or its toolbar, only a solid colour: for the
@@ -125,9 +120,9 @@
      image) so Safari reads html's. Without JavaScript
      they stay at the page's top colour (html[data-edge], from Base's edge
      prop) and white. The washes' end stops as solid colours: */
-  --edge-sky: #d3e6ff; /* --wash-hero, --wash-sky, --wash-invite */
+  --edge-sky: #d3e6ff; /* --wash-hero, --wash-sky */
   --edge-soft: #e6eeff; /* --wash-soft, licences */
-  --edge-legal: #eef1ff; /* --wash-legal */
+  --edge-legal: #eef1ff;
   --edge-navy-top: #142659; /* --wash-navy */
   --edge-navy-bottom: #0e1a3d;
   --edge-t: #ffffff;
@@ -153,10 +148,7 @@
   --t-display-beta: clamp(44px, 33.6px + 2.667vw, 72px); /* 44/46 -> 72/74 (+2) */
   --t-display-invite: clamp(44px, 32.11px + 3.048vw, 76px); /* 44/46 -> 76/80 */
   --t-display-404: clamp(44px, 36.57px + 1.905vw, 64px); /* 44/48 -> 64/68 */
-  --t-legal-title: clamp(38px, 29.83px + 2.095vw, 60px); /* 38/42 -> 60/64 */
-  --t-legal-h2: clamp(24px, 22.51px + 0.381vw, 28px); /* 24/30 -> 28/34, -0.025em */
   --t-copy: clamp(16px, 15.26px + 0.19vw, 18px); /* section copy 16/24 -> 18/28 */
-  --t-prose: clamp(17px, 16.63px + 0.095vw, 18px); /* legal body 17/28 -> 18/30, max 680 */
 
   /* Space and shape */
   --gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
@@ -173,20 +165,15 @@
   --pad-panel-x: 20px;
   --pad-panel-y: 40px;
   --head-gap: 32px; /* section head -> content: 32 on phones, 56 from 1024 */
-  --measure-prose: 680px;
   --measure-lead: 560px;
-  --form-w: 520px;
 
-  /* Surfaces on dark / blue (white at 74% and 88%) */
+  /* Surfaces on dark / blue */
   --on-navy: rgb(255 255 255 / 74%);
-  --on-pace: rgb(255 255 255 / 88%);
   --navy-card: rgb(255 255 255 / 6%);
   --navy-card-edge: rgb(255 255 255 / 10%);
   --slate-accent: #5b6b9a; /* hero "Automatically." */
 
   /* Depth */
-  --shadow-card: rgb(20 38 89 / 10%) 0 24px 48px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
-  --shadow-card-sm: rgb(20 38 89 / 10%) 0 16px 32px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
   --shadow-form: rgb(11 26 74 / 35%) 0 30px 60px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
   --shadow-float: rgb(255 255 255 / 90%) 1px 1px 0 inset, rgb(20 38 89 / 16%) 0 18px 40px, rgb(0 0 0 / 6%) 0 0 0 0.5px;
   --shadow-chip: rgb(0 0 0 / 6%) 0 0 0 0.5px, rgb(20 38 89 / 6%) 0 4px 12px;
@@ -893,9 +880,6 @@ html.vt-swap {
   background: linear-gradient(in oklab 180deg, var(--hue-mint-start), var(--hue-mint-end));
   color: var(--hue-mint-ink);
 }
-.disc--white {
-  background: rgb(255 255 255 / 75%);
-}
 
 /* ------------------------------------------------------------------------
  * Web layer from Paper "P3 Web" (landing, legal, invite, 404).
@@ -963,27 +947,10 @@ html.vt-swap {
   letter-spacing: -0.045em;
   line-height: calc(1em + 4px);
 }
-.display-legal {
-  font-size: var(--t-legal-title);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: calc(1em + 4px);
-}
-.title-legal {
-  font-size: var(--t-legal-h2);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: calc(1em + 6px);
-}
 .copy {
   color: var(--text-body);
   font-size: var(--t-copy);
   line-height: clamp(24px, 22.51px + 0.381vw, 28px);
-}
-.prose-text {
-  color: var(--text-body);
-  font-size: var(--t-prose);
-  line-height: 1.667;
 }
 .section-lead {
   color: var(--text-secondary);
@@ -993,10 +960,7 @@ html.vt-swap {
 }
 
 /* Eyebrow colours: default is --accent (blue-600). Paper tints it to the
-   section: blue-700 on the sky panel, hue ink on sand / peach, blue-300 on navy. */
-.overline--strong {
-  color: var(--blue-700);
-}
+   section: hue ink on sand / peach, blue-300 on navy. */
 .overline--sand {
   color: var(--hue-sand-ink);
 }
@@ -1014,9 +978,6 @@ html.vt-swap {
 .on-navy-body {
   color: var(--on-navy);
 }
-.on-pace-body {
-  color: var(--on-pace);
-}
 
 /* Cards */
 .card {
@@ -1026,14 +987,6 @@ html.vt-swap {
   padding: var(--pad-card);
   border-radius: var(--r-card-lg);
   background: var(--neutral-100);
-}
-.card--glass {
-  background: rgb(255 255 255 / 86%);
-  box-shadow: var(--shadow-card);
-}
-.card--white {
-  background: var(--white);
-  box-shadow: var(--shadow-card);
 }
 .card--navy {
   padding: 20px;
@@ -1049,19 +1002,6 @@ html.vt-swap {
   .card--navy {
     padding: 28px;
     border-radius: 24px;
-  }
-}
-/* The request form card on the blue panel (520 wide, 342 on phones) */
-.form-card {
-  padding: 22px;
-  border-radius: 26px;
-  background: var(--white);
-  box-shadow: var(--shadow-form);
-}
-@media (min-width: 1024px) {
-  .form-card {
-    padding: 32px;
-    border-radius: 32px;
   }
 }
 /* Glass float: bank alert, sealed sync, "place is saved". Rotation is set
@@ -1092,12 +1032,6 @@ html.vt-swap {
   overflow: clip;
   padding: var(--pad-panel-y) var(--pad-panel-x);
   border-radius: var(--r-panel);
-}
-.panel--sky {
-  background: var(--wash-sky);
-}
-.panel--peach {
-  background: var(--wash-peach);
 }
 .panel--pace {
   background: var(--wash-pace);
@@ -1134,45 +1068,4 @@ html.vt-swap {
 .btn--lg.btn--lead {
   padding-inline: 22px 26px;
   gap: 10px;
-}
-.btn--block {
-  display: flex;
-  width: 100%;
-}
-
-/* Plan buckets and hue surfaces: gradient 165deg, text in the hue's ink */
-.bucket-needs {
-  background: linear-gradient(in oklab 165deg, var(--hue-sand-start), var(--hue-sand-end));
-  color: var(--hue-sand-ink);
-}
-.bucket-wants {
-  background: linear-gradient(in oklab 165deg, var(--hue-lilac-start), var(--hue-lilac-end));
-  color: var(--hue-lilac-ink);
-}
-.bucket-savings {
-  background: linear-gradient(in oklab 165deg, var(--hue-mint-start), var(--hue-mint-end));
-  color: var(--hue-mint-ink);
-}
-
-/* Callouts in legal pages: "In plain words" (sand) and "Note" (blue-50) */
-.callout {
-  display: flex;
-  gap: 14px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: var(--accent-subtle);
-  color: var(--blue-800);
-}
-.callout--plain {
-  background: var(--wash-callout);
-  color: var(--hue-sand-ink);
-}
-@media (min-width: 1024px) {
-  .callout {
-    padding: 18px 20px;
-  }
-  .callout--plain {
-    padding: 20px 22px;
-    border-radius: 20px;
-  }
 }
