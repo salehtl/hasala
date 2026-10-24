@@ -308,7 +308,7 @@ public struct OpAuthor: Sendable {
   /// The payload fields `category` and `category_source` for a pipeline decision (03c §8.3).
   public static func decisionFields(_ d: Decision) -> [(String, JSONValue)] {
     guard let c = d.category else { return [("category", .null), ("category_source", sourceJSON(.none))] }
-    return [("category", .string(c)), ("category_source", sourceJSON(source(d.source)))]
+    return [("category", .string(c)), ("category_source", sourceJSON(categorySource(d.source)))]
   }
 
   /// The writer checkpoint (spec 01 §3.3(c); the sync engine's push step 3):
@@ -432,7 +432,7 @@ public struct OpAuthor: Sendable {
   ) throws(AuthorError) -> String {
     let rules = CategoryRules(view)
     if let r = rules.checkCreate(name: name, parent: parent, icon: icon) { throw .refused(r.message) }
-    guard let cls = rules.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
+    guard let cls = TaxonomyV1.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
     let id: String
     if let given {
       guard Self.isNewCategoryID(given), view.info(given) == nil else { throw .invalidOp("category_defined: id") }
@@ -460,7 +460,7 @@ public struct OpAuthor: Sendable {
     var kind = c.kind
     var bucket = c.bucket
     if let parent {
-      guard let cls = rules.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
+      guard let cls = TaxonomyV1.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
       kind = cls.kind
       bucket = cls.bucket
     }
@@ -512,9 +512,9 @@ public struct OpAuthor: Sendable {
   /// The sweep's re-filings and the model's suggestions as blobs of at most 500
   /// `txn_categorized` ops (03c §8.4, §8.6.6). `version` is the row's projected
   /// version (with the outbox's pending parents folded in by the caller).
-  public static func categorizations(
-    _ items: [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)], context: AuthorContext
-  ) throws(AuthorError) -> [AuthoredBlob] {
+  public typealias Categorization = (txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)
+
+  public static func categorizations(_ items: [Categorization], context: AuthorContext) throws(AuthorError) -> [AuthoredBlob] {
     var out: [AuthoredBlob] = []
     var ctx = context
     var i = 0
@@ -737,14 +737,6 @@ public struct OpAuthor: Sendable {
 
   // MARK: Helpers
 
-  static func source(_ d: DecisionSource) -> CategorySource {
-    switch d {
-    case .none: .none
-    case .rule(let id): CategorySource(kind: .rule, ruleID: id)
-    case .dictionary(let b, let e): CategorySource(kind: .dictionary, bundle: b, entry: e)
-    }
-  }
-
   public static func sourceJSON(_ s: CategorySource) -> JSONValue {
     var o: [(String, JSONValue)] = [("kind", .string(s.kind.rawValue))]
     if let v = s.ruleID { o.append(("rule_id", .string(v))) }
@@ -755,7 +747,13 @@ public struct OpAuthor: Sendable {
   }
 
   /// The `CategorySource` of a sweep decision.
-  public static func categorySource(_ d: DecisionSource) -> CategorySource { source(d) }
+  public static func categorySource(_ d: DecisionSource) -> CategorySource {
+    switch d {
+    case .none: .none
+    case .rule(let id): CategorySource(kind: .rule, ruleID: id)
+    case .dictionary(let b, let e): CategorySource(kind: .dictionary, bundle: b, entry: e)
+    }
+  }
 }
 
 /// The author's text rule (03c §1.6): NFC, then the edges trimmed of

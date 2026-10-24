@@ -215,13 +215,7 @@ public enum Matcher {
       if pattern.isEmpty { return bad("empty_pattern") }
       let n = pattern.unicodeScalars.count
       if n > maxRulePatternRunes { return bad("pattern_too_long") }
-      if n < match.minRunes {
-        switch match {
-        case .contains: return bad("contains_too_short")
-        case .exact: return bad("exact_too_short")
-        default: return bad("starts_with_too_short")
-        }
-      }
+      if n < match.minRunes { return bad(match.rawValue + "_too_short") }
       out.append(PreparedPattern(id: r.id, pattern: pattern, match: match, category: category, priority: r.priority))
     }
     return out
@@ -251,13 +245,7 @@ public enum Matcher {
     if !isDictCategory(category) { return bad("category_not_a_label") }
     let n = pattern.unicodeScalars.count
     if n > maxDictPatternRunes { return bad("pattern_too_long") }
-    if n < kind.minRunes {
-      switch kind {
-      case .contains: return bad("contains_too_short")
-      case .exact: return bad("exact_too_short")
-      default: return bad("starts_with_too_short")
-      }
-    }
+    if n < kind.minRunes { return bad(kind.rawValue + "_too_short") }
     return .entry(DictEntry(pattern: pattern, match: e.match, category: category, display: e.display))
   }
 
