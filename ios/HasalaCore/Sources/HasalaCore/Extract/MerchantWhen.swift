@@ -13,7 +13,7 @@ enum MerchantWhen {
       separator: "|") + ")"
 
   static let stopEN =
-    "\\s+on\\s+(?:" + weekdaysLong + "(?![a-z])|" + weekdays + "(?=,|\\s+[0-9])|" + month
+    "\\s+on\\s+(?:" + weekdaysLong + "(?![a-z])|" + weekdays + "(?=,|\\s+[0-9]|\\.?\\s*$|\\.\\s|\\s*;)|" + month
     + "\\.?\\s+[0-9]{1,2}(?:st|nd|rd|th)?(?![a-z0-9])(?=,?\\s+[0-9]{4}(?![0-9])|\\s*[,.;]|\\s*$|\\s+(?:at\\s+)?[0-9]{1,2}:[0-9]{2}))"
   static let stopDate =
     "\\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?[-/ ]" + month + "\\.?,?[-/ ](?:[0-9]{4}|[0-9]{2})(?![0-9])|" + month
@@ -41,6 +41,7 @@ enum MerchantWhen {
   static let leadsEN: Set<String> = ["on", "dated", "date", "at"]
   static let leadsAR: Set<String> = Set(["يوم", "تاريخ", "التاريخ", "بتاريخ", "في", "الساعة"].map(RuleText.fold))
   static let connectors: Set<String> = Set(["at", "الساعة"].map(RuleText.fold))
+  static let arabicMeridiems: Set<String> = ["ص", "م"]
   static let meridiems: Set<String> = ["am", "pm", "a.m.", "p.m.", "a.m", "p.m", "ص", "م"]
 
   struct Word {
@@ -48,28 +49,44 @@ enum MerchantWhen {
     var comma: Bool
   }
 
-  static func words(_ s: String) -> [Word] {
-    RuleText.asciiDigits(s).split(whereSeparator: \.isWhitespace).map { raw in
-      var k = RuleText.fold(String(raw))
-      var comma = false
-      while let l = k.last, l == "," || l == "،" || l == ";" || l == ":" || (l == "." && !k.hasSuffix(".m.")) {
-        if l == "," || l == "،" { comma = true }
-        k.removeLast()
-      }
-      return Word(key: k, comma: comma)
+  static func clean(_ s: String) -> String {
+    var out = String.UnicodeScalarView()
+    for u in RuleText.asciiDigits(s).unicodeScalars {
+      if u.properties.generalCategory == .format || u.value == 0x061C { continue }
+      out.append(u)
     }
+    return String(out)
+  }
+
+  static func tokens(_ s: String) -> [(part: String, word: Word)] {
+    clean(s).split(whereSeparator: \.isWhitespace).map { raw in (String(raw), word(String(raw))) }
+  }
+
+  static func word(_ raw: String) -> Word {
+    var k = RuleText.fold(raw)
+    var comma = false
+    while let l = k.last, l == "," || l == "،" || l == ";" || l == ":" || (l == "." && !k.hasSuffix(".m.")) {
+      if l == "," || l == "،" { comma = true }
+      k.removeLast()
+    }
+    return Word(key: k, comma: comma)
+  }
+
+  static func words(_ s: String) -> [Word] {
+    tokens(s).map(\.word)
   }
 
   static func trim(_ s: String) -> String {
-    let parts = s.split(whereSeparator: \.isWhitespace)
-    guard parts.count > 1 else { return s.trimmingCharacters(in: .whitespaces) }
-    let ws = words(s)
+    let original = s.trimmingCharacters(in: .whitespaces)
+    let toks = tokens(s)
+    guard toks.count > 1 else { return original }
+    let ws = toks.map(\.word)
     let lo = max(1, ws.count - maxRun)
     for start in lo..<ws.count where parse(ws[start...], introduced: ws[start - 1].comma, atStart: false) == ws.count - start {
-      let out = tidy(parts[..<start].joined(separator: " "))
-      return out.isEmpty ? s.trimmingCharacters(in: .whitespaces) : out
+      let out = tidy(toks[..<start].map(\.part).joined(separator: " "))
+      return out.isEmpty ? original : out
     }
-    return s.trimmingCharacters(in: .whitespaces)
+    return original
   }
 
   static func trimmed(_ s: String?) -> String? {
@@ -109,10 +126,11 @@ enum MerchantWhen {
     var date = false
     var year = false
     if let (n, y) = dateAt(w, i) {
-      if monthWord(w[i].key) != nil, !(open || weekday || atStart || (n == 3 && y)) { return nil }
       date = true
       year = y
+      let monthFirst = monthWord(w[i].key) != nil
       i += n
+      if monthFirst, !(open || weekday || atStart || (n == 3 && y) || timeFollows(w, i)) { return nil }
     }
     var time = false
     if i < w.count {
@@ -126,6 +144,12 @@ enum MerchantWhen {
     guard date || time || (weekday && lead && strongWeekday) else { return nil }
     guard lead || year || time || (weekday && strongWeekday) else { return nil }
     return i
+  }
+
+  static func timeFollows(_ w: [Word], _ i: Int) -> Bool {
+    guard i < w.count else { return false }
+    let j = connectors.contains(w[i].key) ? i + 1 : i
+    return timeAt(w, j) != nil
   }
 
   static func day(_ k: String) -> Int? {
@@ -204,8 +228,10 @@ enum MerchantWhen {
     else { return nil }
     if p.count == 3 { guard let sec = Int(p[2]), sec <= 59, p[2].count == 2 else { return nil } }
     var n = 1
+    var arabic = false
     if !mer, i + 1 < w.count, meridiems.contains(w[i + 1].key) {
-      mer = true
+      arabic = arabicMeridiems.contains(w[i + 1].key)
+      mer = !arabic
       n = 2
     }
     guard mer ? (1...12).contains(h) : (0...23).contains(h) else { return nil }
@@ -214,10 +240,10 @@ enum MerchantWhen {
 
   static func reconcile(learned l: String?, rules r: String?, text: String = "") -> String? {
     guard let lm = l else { return r }
-    let parts = lm.split(whereSeparator: \.isWhitespace).map(String.init)
+    let parts = tokens(lm).map(\.part)
     var keep = parts.count
     while keep > 0, keep > parts.count - 3 {
-      let k = words(parts[keep - 1]).first?.key ?? ""
+      let k = word(parts[keep - 1]).key
       guard monthWord(k) != nil || weekdaysEN.contains(k) || weekdaysAR.contains(k) || leadsEN.contains(k) || leadsAR.contains(k)
       else { break }
       keep -= 1
@@ -225,7 +251,7 @@ enum MerchantWhen {
     guard keep < parts.count else { return lm }
     let tail = parts[keep...].joined(separator: " ")
     let tailCount = parts.count - keep
-    let prevComma = keep > 0 && (words(parts[keep - 1]).first?.comma ?? false)
+    let prevComma = keep > 0 && word(parts[keep - 1]).comma
     guard let after = following(lm, in: text) else { return lm }
     let run = words(tail + " " + after)
     guard let n = parse(run[...], introduced: prevComma, atStart: keep == 0), n > tailCount else { return lm }

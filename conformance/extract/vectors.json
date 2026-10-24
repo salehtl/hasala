@@ -1650,6 +1650,129 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "merchant-date-time-no-year",
+      "note": "A date with no year but with a time, a time with an Arabic or English marker, a short weekday that ends the sentence, and bidi marks inside the name.",
+      "mails": [
+        {
+          "sender": "bank-v.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 21.00\nMerchant: SAMPLE GRILL Mar 3 14:05\nThank you.",
+          "received_at_ms": 1900003360000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-w.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 22.00\nMerchant: SAMPLE GRILL 14:05 \u0645\nThank you.",
+          "received_at_ms": 1900003420000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-x.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 23.00 at SAMPLE GRILL on Sat.\nThank you.",
+          "received_at_ms": 1900003480000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-y.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 24.00\nMerchant: SAMPLE \u202cGRILL 3 Mar 2030\nThank you.",
+          "received_at_ms": 1900003540000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-z.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 25.00\nMerchant: CAFE ON SUN\nThank you.",
+          "received_at_ms": 1900003600000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2100,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2200,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2300,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2400,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2500,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "CAFE ON SUN",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }

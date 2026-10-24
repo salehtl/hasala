@@ -59,6 +59,7 @@ import Testing
     ("SUN AND SAND SPORTS.", "SUN AND SAND SPORTS"),
     ("CAFE ON MAIN.", "CAFE ON MAIN"),
     ("MAY FLOWERS on May 5.", "MAY FLOWERS"),
+    ("DUBAI MARINA MALL on Sat.", "DUBAI MARINA MALL"),
     ("DUBAI MARINA MALL on Saturday.", "DUBAI MARINA MALL"),
     ("DUBAI MARINA MALL on Sat, 3 Mar.", "DUBAI MARINA MALL"),
     ("CAFE 24 MARCH.", "CAFE 24 MARCH"),
@@ -211,11 +212,61 @@ import Testing
     ("CAFE DEL MAR 14:05.", "CAFE DEL MAR"),
     ("RISING SUN on 3 Mar 2030.", "RISING SUN"),
     ("CAFE on MAY 5TH STREET.", "CAFE on MAY 5TH STREET"),
-    ("CAFE ON SUN.", "CAFE ON SUN"),
     ("CAFE on Sun, 3 Mar.", "CAFE"),
+    ("TALABAT on Sat.", "TALABAT"),
+    ("TALABAT on Sat", "TALABAT"),
+    ("TALABAT on Sat; thank you", "TALABAT"),
+    ("SUNSET CAFE on Sunrise Road.", "SUNSET CAFE on Sunrise Road"),
   ])
   func inlineIntroducers(_ tail: String, _ want: String) {
     #expect(CombinedReader.readRules(Self.en(tail)).merchant == want)
+  }
+
+  @Test(arguments: [
+    ("CAFE ON SUN", "CAFE ON SUN"),
+    ("CARREFOUR Mar 3 14:05", "CARREFOUR"),
+    ("CARREFOUR 3 Mar 14:05", "CARREFOUR"),
+    ("CARREFOUR Mar 3", "CARREFOUR Mar 3"),
+    ("TALABAT 14:05 م", "TALABAT"),
+    ("TALABAT 2:05 م", "TALABAT"),
+    ("TALABAT 9:30 ص", "TALABAT"),
+    ("TALABAT 2:05 PM", "TALABAT"),
+    ("TALABAT 3 فبراير 10:15 م", "TALABAT"),
+    ("CAFE \u{202C} DEL 3 Mar 2030", "CAFE DEL"),
+    ("\u{202B}TALABAT\u{202C} 3 Mar 2030", "TALABAT"),
+    ("TALABAT \u{061C}3 Mar 2030", "TALABAT"),
+  ])
+  func labelPathMore(_ value: String, _ want: String) {
+    #expect(CombinedReader.readRules(Self.label(value)).merchant == want)
+  }
+
+  @Test func bidiOnlyNeverTraps() {
+    #expect(MerchantWhen.trim("\u{202B} \u{202C}") == "\u{202B} \u{202C}")
+    #expect(MerchantWhen.trim("CAFE \u{202C} DEL 3 Mar 2030") == "CAFE DEL")
+    #expect(MerchantWhen.trim("\u{200F}\u{200E} 14:05 \u{2066}") == "\u{200F}\u{200E} 14:05 \u{2066}")
+  }
+
+  @Test func fuzzNeverTrapsOrEmpties() {
+    let pieces = [
+      "CAFE", "DEL", "SUN", "3", "31", "45/13/2030", "2030", "Mar", "March", "14:05", "2:05", "pm", "p.m.", "on", "dated", "Sun,",
+      "يوم", "تاريخ", "الاثنين", "فبراير", "م", "ص", "٣", "٢٠٣٠", "\u{202B}", "\u{202C}", "\u{200E}", "\u{200F}", "\u{061C}",
+      "\u{2066}", "\u{2069}", "\u{200D}", ",", ".", "،", "03-MAR-30", "2030-02-02",
+    ]
+    let seps = [" ", "  ", "\t", "", "\u{00A0}", "\u{202F}"]
+    var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+    func next(_ n: Int) -> Int {
+      state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return Int((state >> 33) % UInt64(n))
+    }
+    for _ in 0..<3000 {
+      var v = ""
+      for _ in 0..<(1 + next(9)) { v += pieces[next(pieces.count)] + seps[next(seps.count)] }
+      let t = MerchantWhen.trim(v)
+      if !v.trimmingCharacters(in: .whitespaces).isEmpty { #expect(!t.isEmpty, "\(v.unicodeScalars.map { String($0.value, radix: 16) })") }
+      _ = MerchantWhen.isDateOnly(v)
+      _ = MerchantWhen.reconcile(learned: v, rules: "CAFE", text: "at " + v + " 3 Mar 2030")
+      _ = RuleReader.validMerchant(v, banks: [])
+    }
   }
 
   @Test func labelRisingSun() {
