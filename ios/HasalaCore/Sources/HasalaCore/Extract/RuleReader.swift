@@ -17,7 +17,7 @@ enum RuleReader {
   static let justNumber = try! NSRegularExpression(pattern: "^[\\s(]*[A-Za-z]{0,3}\\.?\\s*[\\d.,]+\\s*[A-Za-z]{0,3}[\\s)]*$")
   static let vatPhrase = RuleText.re("القيمه المضافه|value added tax")
   static let stops =
-    "(?=\\s+on\\s+(?:your|the|card|\\d)|" + MerchantWhen.stopEN + "|" + MerchantWhen.stopDate + "|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
+    "(?=\\s+on\\s+(?:your|the|card|\\d)|" + MerchantWhen.stopEN + "|" + MerchantWhen.stopDate + "|" + MerchantWhen.stopWeekdayDate + "|" + MerchantWhen.stopDayMonthEnd + "|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
   static let inlineAt = RuleText.re("(?<![a-z])(?:at|@)\\s+(.+?)" + stops)
   static let inlineAtAr = RuleText.re("(?:لدى|لدي|عند|من متجر|في متجر)\\s+(.+?)(?=\\s+(?:بتاريخ|في|على|علي|باستخدام|بمبلغ|بقيمة|بقيمه)|" + MerchantWhen.stopAR + "|[.،,؛]|$)")
   static let inlineTo = RuleText.re(

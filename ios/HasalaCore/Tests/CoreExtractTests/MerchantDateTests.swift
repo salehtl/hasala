@@ -214,6 +214,17 @@ import Testing
     ("CAFE on MAY 5TH STREET.", "CAFE on MAY 5TH STREET"),
     ("CAFE on Sun, 3 Mar.", "CAFE"),
     ("TALABAT on Sat.", "TALABAT"),
+    ("TALABAT Mon, 3 Mar 2030.", "TALABAT"),
+    ("TALABAT Mon., 3 Mar 2030.", "TALABAT"),
+    ("TALABAT Monday 3 Mar 2030.", "TALABAT"),
+    ("TALABAT Monday, Mar 3, 2030.", "TALABAT"),
+    ("TALABAT 3 Mar.", "TALABAT"),
+    ("TALABAT 3 Mar", "TALABAT"),
+    ("RISING SUN 3 Mar 2030.", "RISING SUN"),
+    ("CAFE 3.14.15.", "CAFE 3.14.15"),
+    ("GATE 3 MAR 25 LOUNGE.", "GATE 3 MAR 25 LOUNGE"),
+    ("CAFE 24 MARCH.", "CAFE 24 MARCH"),
+    ("TALABAT 03-MAR-30.", "TALABAT"),
     ("TALABAT on Sat", "TALABAT"),
     ("TALABAT on Sat; thank you", "TALABAT"),
     ("SUNSET CAFE on Sunrise Road.", "SUNSET CAFE on Sunrise Road"),
@@ -238,6 +249,28 @@ import Testing
   ])
   func labelPathMore(_ value: String, _ want: String) {
     #expect(CombinedReader.readRules(Self.label(value)).merchant == want)
+  }
+
+  @Test func twoDigitYearsOnlyInDayMonthYear() {
+    #expect(MerchantWhen.trim("CAFE 3.14.15") == "CAFE 3.14.15")
+    #expect(MerchantWhen.trim("CAFE 03/03/30") == "CAFE 03/03/30")
+    #expect(MerchantWhen.trim("CAFE 3 Mar 30") == "CAFE 3 Mar 30")
+    #expect(MerchantWhen.trim("CAFE 03-MAR-30") == "CAFE")
+    #expect(MerchantWhen.trim("CAFE 03/03/2030") == "CAFE")
+  }
+
+  @Test func learnedSenderWithWeekdayDates() {
+    var mem = LearnedLayouts()
+    let dates = ["Mon, 3 Mar 2030", "Tue, 11 Mar 2030", "Fri, 14 Mar 2030", "Sun, 23 Mar 2030", "Wed, 2 Apr 2030"]
+    for i in dates.indices {
+      let m = Mails.input(
+        "bank-s2.example", subject: "Card alert",
+        ["Dear Customer,", "Your card ending 4821 was used for AED \(20 + i).00 at TALABAT \(dates[i]).", "Thank you."],
+        at: 1_900_000_000_000 + Int64(i) * 86_400_000)
+      let (r, next) = CombinedReader.read(m, mem)
+      mem = next
+      #expect(r.merchant == "TALABAT", "mail \(i)")
+    }
   }
 
   @Test func bidiOnlyNeverTraps() {

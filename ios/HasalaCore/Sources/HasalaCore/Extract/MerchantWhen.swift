@@ -15,9 +15,15 @@ enum MerchantWhen {
   static let stopEN =
     "\\s+on\\s+(?:" + weekdaysLong + "(?![a-z])|" + weekdays + "(?=,|\\s+[0-9]|\\.?\\s*$|\\.\\s|\\s*;)|" + month
     + "\\.?\\s+[0-9]{1,2}(?:st|nd|rd|th)?(?![a-z0-9])(?=,?\\s+[0-9]{4}(?![0-9])|\\s*[,.;]|\\s*$|\\s+(?:at\\s+)?[0-9]{1,2}:[0-9]{2}))"
+  static let dayRe = "[0-9]{1,2}(?:st|nd|rd|th)?"
+  static let monthShort = "(?:" + RuleDate.monthNames.map(\.0).filter { $0.count <= 4 }.joined(separator: "|") + ")"
   static let stopDate =
-    "\\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?[-/ ]" + month + "\\.?,?[-/ ](?:[0-9]{4}|[0-9]{2})(?![0-9])|" + month
-    + "\\.?[- ][0-9]{1,2}(?:st|nd|rd|th)?,?[-/ ][0-9]{4}(?![0-9]))"
+    "\\s+(?:" + dayRe + "[-/ ]" + month + "\\.?,?[-/ ][0-9]{4}(?![0-9])|[0-9]{1,2}-" + month + "-[0-9]{2}(?![0-9])|" + month
+    + "\\.?[- ]" + dayRe + ",?[-/ ][0-9]{4}(?![0-9]))"
+  static let stopWeekdayDate =
+    "\\s+(?:" + weekdays + "(?![a-z])\\.?,|" + weekdaysLong + "(?![a-z]))\\s+(?=" + dayRe + "[-/ ]" + month + "(?![a-z])|" + month
+    + "\\.?[- ][0-9]{1,2}(?![0-9])|[0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{4}(?![0-9]))"
+  static let stopDayMonthEnd = "\\s+" + dayRe + "[-/ ]" + monthShort + "\\.?(?=\\s*[.;]?\\s*$|\\.\\s)"
   static let stopAR =
     "\\s+" + arDateWords + "(?=\\s*[0-9]{1,2}\\s+" + arMonthsRe + "|\\s*[0-9]{1,2}[-/.][0-9]{1,2}[-/.](?:[0-9]{4}|[0-9]{2})(?![0-9])|\\s+"
     + arWeekdays + ")"
@@ -184,7 +190,7 @@ enum MerchantWhen {
       if j + 1 < w.count, arabicMonthPairs[w[j].key + " " + w[j + 1].key] != nil { return 2 }
       return monthWord(w[j].key) != nil ? 1 : nil
     }
-    func yearAt(_ j: Int) -> Bool { j < w.count && anyYear(w[j].key) }
+    func yearAt(_ j: Int) -> Bool { j < w.count && fullYear(w[j].key) }
     if day(w[i].key) != nil, let n = arMonth(i + 1) {
       let after = i + 1 + n
       if yearAt(after) { return (n + 2, true) }
@@ -207,8 +213,9 @@ enum MerchantWhen {
       return Int(x)
     }
     if fullYear(p[0]), let mo = small(p[1]), (1...12).contains(mo), let d = small(p[2]), (1...31).contains(d) { return true }
-    guard anyYear(p[2]), let a = small(p[0]), (1...31).contains(a) else { return false }
-    if monthWord(p[1]) != nil { return true }
+    guard let a = small(p[0]), (1...31).contains(a) else { return false }
+    if monthWord(p[1]) != nil { return anyYear(p[2]) }
+    guard fullYear(p[2]) else { return false }
     guard let b = small(p[1]) else { return false }
     return (1...12).contains(b) || ((1...12).contains(a) && (1...31).contains(b))
   }
