@@ -211,8 +211,8 @@ public enum AccountCreation {
 
   // MARK: Shared
 
-  /// The BootstrapPayload (01 §10.3.1) and `02` §10.1's body, signed by the AAK
-  /// (BootstrapMessage and RegistrationMessage over `nonce`).
+  /// `02` §10.1's body, signed by the AAK (BootstrapMessage over the
+  /// BootstrapPayload of 01 §10.3.1, and RegistrationMessage, over `nonce`).
   static func buildBootstrap(
     _ env: AccountEnvironment, userID: UserID, emailNorm: String, keys: NewAccountKeys, device: NewDevice,
     authKind: AuthKind, authHash: Data, prfWrap: (Data, Data)?, nonce: Data
