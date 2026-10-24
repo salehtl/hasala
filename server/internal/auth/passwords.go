@@ -133,6 +133,13 @@ func refundWriterPasswordAttempt(ctx context.Context, q queryExecer, userID uuid
 	return nil
 }
 
+func clearPasswordTx(ctx context.Context, q queryExecer, userID uuid.UUID) error {
+	_, err := q.Exec(ctx,
+		`UPDATE users SET password_hash = NULL, password_salt = NULL, password_version = NULL, password_set_at = NULL,
+		        password_failures = 0, password_paused_until = NULL WHERE id = $1`, userID)
+	return err
+}
+
 // setPasswordTx writes a fresh verifier, resetting the failure counter and
 // the pause.
 func setPasswordTx(ctx context.Context, q queryExecer, userID uuid.UUID, hash, salt []byte, generation int, now time.Time) error {

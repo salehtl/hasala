@@ -65,8 +65,12 @@ extension PhraseShowView {
 
 extension AccountReadyView {
   init(store: OnboardingStore) {
-    self.init(profile: store.signup.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
-              capabilities: store.signup.capabilities) {
+    self.init(store: store, signup: store.signup)
+  }
+
+  init(store: OnboardingStore, signup m: SignupModel) {
+    self.init(profile: m.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
+              capabilities: m.capabilities) {
       store.session().accountCreated()
     }
   }

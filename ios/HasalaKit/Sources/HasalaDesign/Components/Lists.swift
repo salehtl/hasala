@@ -253,7 +253,7 @@ public struct HListRow: View {
   private var spokenValue: String {
     switch trailing {
     case .amount(let m, let isIn, let approx):
-      hidden ? "Amount hidden" : (approx ? "about " : "") + (isIn ? "plus " : "") + "\(m.currency) \(MoneyFormat.string(m.minor))"
+      MoneyText.spoken(m, sign: isIn ? .income : .none, approx: approx, hidden: hidden)
     case .value(let v), .valueChevron(let v): v
     case .badge(let n): n > 0 ? "\(n) new" : ""
     case .status(let pill): pill.text
@@ -656,10 +656,8 @@ public struct BillRowView: View {
   }
 
   private var spoken: String {
-    let amount = hidden
-      ? "Amount hidden"
-      : (row.approximate ? "about " : "") + (row.isIncome ? "plus " : "")
-        + "\(row.amount.currency) \(MoneyFormat.string(row.amount.minor))"
+    let amount = MoneyText.spoken(row.amount, sign: row.isIncome ? .income : .none, approx: row.approximate,
+                                  hidden: hidden)
     return ([row.name, DetailParts.spoken(row.detail, hidden: hidden), amount]
       + (row.trailingNote.map { [DetailParts.spoken([$0], hidden: hidden)] } ?? []))
       .filter { !$0.isEmpty }

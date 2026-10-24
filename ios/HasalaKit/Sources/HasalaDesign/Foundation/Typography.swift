@@ -163,6 +163,11 @@ public struct HFigure: Sendable, Hashable {
     return f
   }
 
+  func font(size: CGFloat) -> Font {
+    let font = Font.system(size: size, weight: weight.systemWeight, design: .rounded)
+    return tabular ? font.monospacedDigit() : font
+  }
+
   /// Home hero, recap: 56/58 bold, −1.2. Capped at AX3; scales down to 34.
   public static let display = HFigure(size: HFontSize.numericDisplay, leading: HLeading.numericDisplay,
                                       weight: .bold, tracking: HTracking.numericDisplay, textStyle: .largeTitle,
@@ -225,7 +230,7 @@ struct HTypeModifier: ViewModifier {
     // Bundled faces ignore Bold Text on their own, so the style steps up a weight itself.
     let weight = legibilityWeight == .bold ? type.weight.bolder : type.weight
     content
-      .font(.custom(weight.interFace, size: type.size, relativeTo: type.textStyle))
+      .font(type.weight(weight).font)
       // Size, leading and tracking scale together (spec 01 §2.4).
       .tracking(type.resolvedTracking * scale)
       .textCase(type.uppercase ? .uppercase : nil)
@@ -246,9 +251,8 @@ struct HFigureModifier: ViewModifier {
   func body(content: Content) -> some View {
     let scale = size / figure.size
     let extra = max(0, (figure.leading - figure.size * roundedLineRatio) * scale)
-    let font = Font.system(size: size, weight: figure.weight.systemWeight, design: .rounded)
     content
-      .font(figure.tabular ? font.monospacedDigit() : font)
+      .font(figure.font(size: size))
       .tracking(figure.tracking * scale)
       .padding(.vertical, extra / 2)
   }
@@ -262,8 +266,7 @@ public extension View {
   func hFigure(_ figure: HFigure) -> some View {
     // Outside the modifier, so its @ScaledMetric reads the capped size.
     modifier(HFigureModifier(figure: figure))
-      .dynamicTypeSize(...figure.maxDynamicTypeSize)
-      .modifier(CappedFigureMarker(capped: figure.maxDynamicTypeSize < .accessibility5))
+      .cappedDynamicType(figure)
   }
 
   /// One line, as Paper draws it, at the default text size and smaller; above it the
@@ -272,6 +275,13 @@ public extension View {
 
   /// At most `lines` lines at the default text size and smaller; unlimited above it.
   func lineLimitAtDefaultTextSize(_ lines: Int) -> some View { modifier(LineLimitAtDefaultTextSize(lines: lines)) }
+}
+
+extension View {
+  func cappedDynamicType(_ figure: HFigure) -> some View {
+    dynamicTypeSize(...figure.maxDynamicTypeSize)
+      .modifier(CappedFigureMarker(capped: figure.maxDynamicTypeSize < .accessibility5))
+  }
 }
 
 struct LineLimitAtDefaultTextSize: ViewModifier {

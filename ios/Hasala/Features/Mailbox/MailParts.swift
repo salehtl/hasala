@@ -205,6 +205,22 @@ enum MailboxMoment: Equatable {
   }
 }
 
+extension AppRouter {
+  func backToBankAlerts() {
+    if let i = profile.lastIndex(of: .bankAlerts) {
+      profile.removeSubrange((i + 1)...)
+    } else {
+      profile = [.bankAlerts]
+    }
+  }
+}
+
+extension MailboxSnapshot {
+  func reads(_ bank: SupportedBank) -> Bool {
+    banks.contains { $0 == bank.name || $0 == bank.shortName }
+  }
+}
+
 extension MotionPolicy {
   /// How long `kind` takes to come to rest under this policy (none when it shows at once),
   /// so the success haptic plays as the motion settles, never as it starts (motion policy).
@@ -261,12 +277,12 @@ struct PaperGlyph: View {
   }
 
   var body: some View {
+    let parsed = parts.compactMap { part in (try? SVGPath(parsing: part.d)).map { (svg: $0, fill: part.fill) } }
     Canvas { context, canvas in
       let box = CGRect(origin: .zero, size: canvas)
       let unit = min(canvas.width, canvas.height) / 24
-      for part in parts {
-        guard let svg = try? SVGPath(parsing: part.d) else { continue }
-        let path = svg.path(in: box)
+      for part in parsed {
+        let path = part.svg.path(in: box)
         if part.fill {
           context.fill(path, with: .color(color))
         } else {

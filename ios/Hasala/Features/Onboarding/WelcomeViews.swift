@@ -346,9 +346,7 @@ struct StoriesView: View {
         placed = true
         guard page != 0 else { return }
         Task { @MainActor in
-          var t = Transaction()
-          t.disablesAnimations = true
-          withTransaction(t) { position.scrollTo(id: page) }
+          instantly { position.scrollTo(id: page) }
         }
       }
       .scrollIndicators(.hidden)

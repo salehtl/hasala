@@ -338,7 +338,7 @@
     /// import) reads its alerts.
     func lastEmail(_ bank: SupportedBank) -> String? {
       let read = mailboxes.contains { m in
-        (m.state == .connected || m.state == .needsSignIn) && m.banks.contains { $0 == bank.name || $0 == bank.shortName }
+        (m.state == .connected || m.state == .needsSignIn) && m.reads(bank)
       }
       return read ? Self.lastEmails[bank] : nil
     }

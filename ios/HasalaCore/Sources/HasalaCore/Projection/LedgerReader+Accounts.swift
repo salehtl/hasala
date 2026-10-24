@@ -34,21 +34,25 @@ extension LedgerReader {
 
   /// Balance check-ins, newest first per account; voided ones included (`void`).
   public func checkins(account: String? = nil) throws -> [Checkin] {
-    var sql = "SELECT * FROM checkin"
+    try fetch("checkin", where: "account", is: account, orderBy: "account, as_of_ms DESC, at_seq DESC") { r in
+      Checkin(
+        id: r["id"], account: r["account"], asOf: r["as_of"], balanceMinor: r["balance_minor"], source: r["source"],
+        resolution: r["resolution"], adjustmentMinor: r["adjustment_minor"], void: r["void"], atSeq: r["at_seq"])
+    }
+  }
+
+  private func fetch<T>(
+    _ table: String, where column: String, is value: String?, orderBy order: String, _ make: (Row) -> T
+  ) throws -> [T] {
+    var sql = "SELECT * FROM \(table)"
     var args: [(any DatabaseValueConvertible)?] = []
-    if let account {
-      sql += " WHERE account = ?"
-      args.append(account)
+    if let value {
+      sql += " WHERE \(column) = ?"
+      args.append(value)
     }
-    sql += " ORDER BY account, as_of_ms DESC, at_seq DESC"
+    sql += " ORDER BY \(order)"
     let a = args
-    return try db.read { db in
-      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
-        Checkin(
-          id: r["id"], account: r["account"], asOf: r["as_of"], balanceMinor: r["balance_minor"], source: r["source"],
-          resolution: r["resolution"], adjustmentMinor: r["adjustment_minor"], void: r["void"], atSeq: r["at_seq"])
-      }
-    }
+    return try db.read { db in try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map(make) }
   }
 
   // MARK: Bills (03b §3)
@@ -94,34 +98,14 @@ extension LedgerReader {
 
   /// The resolved occurrences (`paid`, `skipped`, `snoozed`), per bill by due date.
   public func billResolutions(bill: String? = nil) throws -> [BillResolution] {
-    var sql = "SELECT * FROM bill_resolution"
-    var args: [(any DatabaseValueConvertible)?] = []
-    if let bill {
-      sql += " WHERE bill = ?"
-      args.append(bill)
-    }
-    sql += " ORDER BY bill, due"
-    let a = args
-    return try db.read { db in
-      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
-        BillResolution(bill: r["bill"], due: r["due"], resolution: r["resolution"], txn: r["txn"], until: r["until"], atSeq: r["at_seq"])
-      }
+    try fetch("bill_resolution", where: "bill", is: bill, orderBy: "bill, due") { r in
+      BillResolution(bill: r["bill"], due: r["due"], resolution: r["resolution"], txn: r["txn"], until: r["until"], atSeq: r["at_seq"])
     }
   }
 
   public func forkNotices(kind: String? = nil) throws -> [ForkNotice] {
-    var sql = "SELECT * FROM fork_notice"
-    var args: [(any DatabaseValueConvertible)?] = []
-    if let kind {
-      sql += " WHERE entity_kind = ?"
-      args.append(kind)
-    }
-    sql += " ORDER BY ord"
-    let a = args
-    return try db.read { db in
-      try Row.fetchAll(db, sql: sql, arguments: StatementArguments(a)).map { r in
-        ForkNotice(entityKind: r["entity_kind"], entityID: r["entity_id"], winnerOp: r["winner_op"], loserOp: r["loser_op"], atSeq: r["at_seq"])
-      }
+    try fetch("fork_notice", where: "entity_kind", is: kind, orderBy: "ord") { r in
+      ForkNotice(entityKind: r["entity_kind"], entityID: r["entity_id"], winnerOp: r["winner_op"], loserOp: r["loser_op"], atSeq: r["at_seq"])
     }
   }
 
@@ -146,7 +130,7 @@ extension LedgerReader {
 
   /// The plan's income sources (03a §3.4), active or not. `write` is not projected.
   public func incomeSources() throws -> [IncomeSource] {
-    try planState().incomeSources.values.map { $0 }
+    Array(try planState().incomeSources.values)
   }
 
   /// The `sender_trust_set` fold: domain → trusted (forwarder and shared-suffix

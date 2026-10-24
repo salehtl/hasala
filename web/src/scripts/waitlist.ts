@@ -95,6 +95,7 @@ function setup(signal: AbortSignal): void {
 
   // Errors
   type Field = 'email' | 'bank' | 'other';
+  const fields: Field[] = ['email', 'bank', 'other'];
   const controls: Record<Field, HTMLInputElement | HTMLSelectElement> = { email, bank, other };
   const setError = (name: Field, message: string | null) => {
     const field = form.querySelector<HTMLElement>(`[data-field="${name}"]`)!;
@@ -126,12 +127,12 @@ function setup(signal: AbortSignal): void {
     return !e && !b && !o;
   };
   const focusFirstError = () => {
-    const first = (['email', 'bank', 'other'] as Field[]).find((f) => controls[f].getAttribute('aria-invalid'));
+    const first = fields.find((f) => controls[f].getAttribute('aria-invalid'));
     if (first) controls[first].focus();
   };
   // Once every field is fixed, the coin stops sulking.
   const settle = () => {
-    const anyInvalid = (['email', 'bank', 'other'] as Field[]).some((f) => controls[f].getAttribute('aria-invalid'));
+    const anyInvalid = fields.some((f) => controls[f].getAttribute('aria-invalid'));
     if (!anyInvalid && root.dataset.state === 'error') setState(form.contains(document.activeElement) ? 'focus' : 'default');
   };
   email.addEventListener('input', () => touched && (setError('email', emailProblem(email.value)), settle()), { signal });
@@ -158,8 +159,7 @@ function setup(signal: AbortSignal): void {
 
   const lock = (on: boolean) => {
     sending = on;
-    if (on) submit.style.width = `${submit.offsetWidth}px`;
-    else submit.style.width = '';
+    submit.style.width = on ? `${submit.offsetWidth}px` : '';
     submit.disabled = on;
     spinner.hidden = !on;
     label.textContent = on ? 'Sending…' : 'Request an invite';
@@ -210,8 +210,8 @@ function setup(signal: AbortSignal): void {
         showDone();
         return;
       }
+      const typed = bank.value === 'other' ? bankText(other.value) : '';
       if (mail) {
-        const typed = bank.value === 'other' ? bankText(other.value) : '';
         const bankLine = typed ? `Another bank: ${typed}` : (BANK_NAMES[bank.value] ?? '');
         showDone(bankLine);
         openMail(
@@ -228,8 +228,7 @@ function setup(signal: AbortSignal): void {
         return;
       }
       const body: Record<string, string> = { email: email.value.trim(), bank: bank.value, source: 'web', website: '' };
-      const name = bank.value === 'other' ? bankText(other.value) : '';
-      if (name) body.otherBank = name;
+      if (typed) body.otherBank = typed;
       const token = (form.elements.namedItem('cf-turnstile-response') as HTMLInputElement | null)?.value;
       if (token) body.turnstileToken = token;
 
@@ -246,7 +245,7 @@ function setup(signal: AbortSignal): void {
       }
       if (answer.error === 'bad_email' || answer.error === 'bad_bank') {
         if (answer.error === 'bad_email') setError('email', MSG.emailBad);
-        else if (bank.value === 'other' && name) setError('other', MSG.otherBad);
+        else if (bank.value === 'other' && typed) setError('other', MSG.otherBad);
         else setError('bank', MSG.bankBad);
         setState('error');
         focusFirstError();

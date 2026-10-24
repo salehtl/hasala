@@ -476,10 +476,14 @@ struct BankAlertsPage: View {
     }
   }
 
+  private var warningDisc: some View {
+    Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
+      .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+  }
+
   private func unlistedRow(_ domain: String) -> some View {
     HStack(spacing: HSpacing.listRowGap) {
-      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
-        .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+      warningDisc
       VStack(alignment: .leading, spacing: 2) {
         Text(domain).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         Text(Self.unlistedDetail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
@@ -535,8 +539,7 @@ struct BankAlertsPage: View {
 
   private func unreadableRow(_ count: Int, detail: String, chevron: Bool) -> some View {
     HStack(spacing: HSpacing.listRowGap) {
-      Circle().fill(HColor.statusWarningSurface).frame(width: 40, height: 40)
-        .overlay { HIconView(.envelope, size: 20, color: HColor.statusWarningForeground, strokeWidth: 1.9) }
+      warningDisc
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 7) {
           Circle().fill(HColor.paceFillOverPace).frame(width: 8, height: 8)

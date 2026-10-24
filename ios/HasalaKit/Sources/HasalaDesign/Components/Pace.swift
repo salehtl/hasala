@@ -56,8 +56,7 @@ public struct MonthPaceBar: View {
     MonthBarCanvas(
       drawn: plan.minor > 0 ? (phase?.fill ?? fraction) : 0, tick: tickFraction,
       tickVisible: phase?.tickVisible ?? true, live: live, overflowRoom: overflow,
-      track: onWash ? HColor.progressTrackOnHue : HColor.paceTrack,
-      halo: onWash ? HColor.white.opacity(0.85) : HColor.surfacePrimary)
+      track: PaceBarTick.track(onWash: onWash), halo: PaceBarTick.halo(onWash: onWash))
       .frame(height: HSpacing.paceMarkerHeight)
       .accessibilityHidden(true)
   }
@@ -100,10 +99,7 @@ struct MonthBarCanvas: View, Animatable {
           }
         }
         if let tick, live {
-          TodayTick(height: HSpacing.paceMarkerHeight, halo: halo)
-            .offset(x: w * tick - 1)
-            .offset(y: tickVisible ? 0 : -HMotion.markerDrop)
-            .opacity(tickVisible ? 1 : 0)
+          PaceBarTick(x: w * tick, visible: tickVisible, halo: halo)
         }
       }
       .frame(height: HSpacing.paceMarkerHeight)
@@ -154,6 +150,22 @@ struct TodayTick: View {
   }
 }
 
+struct PaceBarTick: View {
+  let x: CGFloat
+  let visible: Bool
+  let halo: Color
+
+  var body: some View {
+    TodayTick(height: HSpacing.paceMarkerHeight, halo: halo)
+      .offset(x: x - 1)
+      .offset(y: visible ? 0 : -HMotion.markerDrop)
+      .opacity(visible ? 1 : 0)
+  }
+
+  static func track(onWash: Bool) -> Color { onWash ? HColor.progressTrackOnHue : HColor.paceTrack }
+  static func halo(onWash: Bool) -> Color { onWash ? HColor.white.opacity(0.85) : HColor.surfacePrimary }
+}
+
 // MARK: - Card, slim and widget bars
 
 /// A pace bar on a card or detail screen (page 16 §02, "Pace bar on cards"): an 8 bar on a 16
@@ -181,8 +193,7 @@ public struct CategoryPaceBar: View {
     CategoryBarCanvas(
       drawn: min(1, phase?.fill ?? spent.fraction), tick: tick.map { min(1, $0.fraction) },
       tickVisible: phase?.tickVisible ?? true, fill: verdict.fill,
-      track: onWash ? HColor.progressTrackOnHue : HColor.paceTrack,
-      halo: onWash ? HColor.white.opacity(0.85) : HColor.surfacePrimary)
+      track: PaceBarTick.track(onWash: onWash), halo: PaceBarTick.halo(onWash: onWash))
       .frame(height: HSpacing.paceMarkerHeight)
       .accessibilityHidden(true)
   }
@@ -212,10 +223,7 @@ struct CategoryBarCanvas: View, Animatable {
           shape.fill(fill).frame(width: max(bar, w * drawn), height: bar)
         }
         if let tick {
-          TodayTick(height: HSpacing.paceMarkerHeight, halo: halo)
-            .offset(x: w * tick - 1)
-            .offset(y: tickVisible ? 0 : -HMotion.markerDrop)
-            .opacity(tickVisible ? 1 : 0)
+          PaceBarTick(x: w * tick, visible: tickVisible, halo: halo)
         }
       }
       .frame(height: HSpacing.paceMarkerHeight)

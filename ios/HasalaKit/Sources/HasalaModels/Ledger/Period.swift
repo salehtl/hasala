@@ -12,6 +12,8 @@ extension YearMonth {
   public var firstDay: LocalDate { LocalDate(year, month, 1) }
 
   public var lastDay: LocalDate { LocalDate(year, month, days) }
+
+  public func date(clampedDay day: Int) -> LocalDate { LocalDate(year, month, min(day, days)) }
 }
 
 public struct Period: Sendable, Hashable, Codable, CustomStringConvertible {

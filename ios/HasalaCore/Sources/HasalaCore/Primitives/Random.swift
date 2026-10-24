@@ -29,10 +29,7 @@ extension RandomSource {
     var b = [UInt8](try bytes(16))
     b[6] = (b[6] & 0x0f) | 0x40  // version 4
     b[8] = (b[8] & 0x3f) | 0x80  // RFC 4122 variant
-    let hex = Hex.encode(b)
-    let s = Array(hex.utf8)
-    func part(_ r: Range<Int>) -> String { String(decoding: s[r], as: UTF8.self) }
-    return "\(part(0..<8))-\(part(8..<12))-\(part(12..<16))-\(part(16..<20))-\(part(20..<32))"
+    return UserID.canonicalString(b)
   }
 }
 

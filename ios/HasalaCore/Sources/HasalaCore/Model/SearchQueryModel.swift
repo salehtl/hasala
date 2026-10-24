@@ -352,13 +352,7 @@ public struct UnavailableSearchQueryModel: SearchQueryModel {
   public struct FoundationModelsSearchQueryModel: SearchQueryModel {
     public init() {}
 
-    static var options: GenerationOptions {
-      #if compiler(>=6.4)
-        GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 160)
-      #else
-        GenerationOptions(sampling: .greedy, maximumResponseTokens: 160)
-      #endif
-    }
+    static var options: GenerationOptions { .greedy(maximumResponseTokens: 160) }
 
     public func availability() -> ModelAvailability {
       FoundationModelsCategoryModel().availability()
@@ -372,17 +366,7 @@ public struct UnavailableSearchQueryModel: SearchQueryModel {
           to: query, generating: GeneratedSearch.self, includeSchemaInPrompt: true, options: Self.options)
         return .reply(reply.content.reply)
       } catch let error as LanguageModelSession.GenerationError {
-        switch error {
-        case .exceededContextWindowSize: return .failed(.contextOverflow)
-        case .rateLimited: return .failed(.rateLimited)
-        case .concurrentRequests: return .failed(.busy)
-        case .guardrailViolation: return .failed(.guardrail)
-        case .refusal: return .failed(.refusal)
-        case .unsupportedLanguageOrLocale: return .failed(.unsupportedLanguage)
-        case .assetsUnavailable: return .failed(.assetsUnavailable)
-        case .decodingFailure: return .failed(.decoding)
-        default: return .failed(.other)
-        }
+        return .failed(ModelFailure(error))
       } catch is CancellationError {
         return .failed(.timeout)
       } catch {
