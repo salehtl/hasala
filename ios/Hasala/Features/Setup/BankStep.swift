@@ -181,18 +181,16 @@ private struct GoogleBriefingCard: View {
         .hType(.overline)
         .foregroundStyle(HColor.statusWarningForeground)
         .accessibilityAddTraits(.isHeader)
-      item(1, "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.")
-      item(2, "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.")
+      NumberedLine(number: 1, text: "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.",
+                   numberColor: HColor.statusWarningForeground)
+      NumberedLine(number: 2, text: "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.",
+                   numberColor: HColor.statusWarningForeground)
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(HColor.statusWarningSurface, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("mail.googleBriefing")
-  }
-
-  private func item(_ n: Int, _ text: String) -> some View {
-    NumberedLine(number: n, text: text, numberColor: HColor.statusWarningForeground)
   }
 }
 
