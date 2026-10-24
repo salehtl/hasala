@@ -21,11 +21,13 @@ public struct LearnedLayouts: Codable, Sendable, Equatable {
     senders[Self.senderKey(sender)] ?? SenderLayouts()
   }
 
+  var leastRecentSender: String? {
+    senders.min(by: { ($0.value.lastRead, $0.key) < ($1.value.lastRead, $1.key) })?.key
+  }
+
   @discardableResult
   public mutating func dropLeastRecentSender() -> Bool {
-    guard let oldest = senders.min(by: { ($0.value.lastRead, $0.key) < ($1.value.lastRead, $1.key) })?.key else {
-      return false
-    }
+    guard let oldest = leastRecentSender else { return false }
     senders.removeValue(forKey: oldest)
     return true
   }
@@ -35,9 +37,7 @@ public struct LearnedLayouts: Codable, Sendable, Equatable {
     var s = s
     s.lastRead = clock
     senders[Self.senderKey(sender)] = s
-    while senders.count > Self.senderLimit,
-      let oldest = senders.min(by: { ($0.value.lastRead, $0.key) < ($1.value.lastRead, $1.key) })?.key
-    {
+    while senders.count > Self.senderLimit, let oldest = leastRecentSender {
       senders.removeValue(forKey: oldest)
     }
   }
@@ -52,6 +52,10 @@ public struct SenderLayouts: Codable, Sendable, Equatable {
     layouts = []
     clock = 0
     lastRead = 0
+  }
+
+  var leastRecentlyUsedLayout: Int? {
+    layouts.indices.min(by: { layouts[$0].lastUsed < layouts[$1].lastUsed })
   }
 }
 
@@ -138,19 +142,11 @@ struct RuntimeLayout {
 }
 
 enum LayoutCodec {
-  static func typedCode(_ cls: IClass) -> Int32 {
-    switch cls {
-    case .money: ILex.moneyCode
-    case .num: ILex.numCode
-    default: ILex.curCode
-    }
-  }
-
   static func elems(_ slots: [LayoutSlot], _ interner: inout IInterner) -> [IElem] {
     slots.map { s in
       switch s.kind {
       case .gap: IElem.gap
-      case .typed: IElem(kind: .typed, code: typedCode(s.cls), key: "", cls: s.cls)
+      case .typed: IElem(kind: .typed, code: ILex.typedCode(s.cls), key: "", cls: s.cls)
       case .const: IElem(kind: .const, code: interner.code(s.key), key: s.key, cls: s.cls)
       }
     }
@@ -179,12 +175,7 @@ enum LayoutCodec {
         tok = IToken(raw: raw ?? defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
       case .free(let raw, let cls, let space):
         let key = cls == .nl ? ILex.nlKey : raw.lowercased()
-        let code: Int32
-        switch cls {
-        case .money, .num, .cur: code = typedCode(cls)
-        default: code = interner.code(key)
-        }
-        tok = IToken(raw: raw, key: key, cls: cls, line: line, spaceBefore: space, code: code)
+        tok = IToken(raw: raw, key: key, cls: cls, line: line, spaceBefore: space, code: ILex.code(cls, key, &interner))
       }
       out.append(tok)
       if tok.cls == .nl { line += 1 }

@@ -85,8 +85,6 @@ func validateV1(e Envelope) error {
 	return nil
 }
 
-func isBucket(n int) bool { return blob.IsBucket(n) }
-
 // BucketFor is the server package's.
 func BucketFor(n int) (int, error) { return blob.BucketFor(n) }
 
@@ -200,7 +198,7 @@ func (PlaintextSealer) Open(e Envelope, s Sealed) ([]byte, error) {
 	if s.SizeBucket != 0 && s.SizeBucket != len(b) {
 		return nil, fmt.Errorf("%w: %d bytes declared as bucket %d", ErrMalformed, len(b), s.SizeBucket)
 	}
-	if !isBucket(len(b)) {
+	if !blob.IsBucket(len(b)) {
 		return nil, fmt.Errorf("%w: %d bytes is not a size bucket", ErrMalformed, len(b))
 	}
 	if b[0] != Version {

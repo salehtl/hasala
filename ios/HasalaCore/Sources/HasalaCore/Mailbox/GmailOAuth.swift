@@ -63,9 +63,7 @@ public enum PKCE {
   }
 }
 
-public typealias GmailAuthorization = MailAuthorization
 public typealias GmailOAuthError = MailOAuthError
-public typealias GmailTokenGrant = MailTokenGrant
 
 /// The claims of a Google id_token the app reads. The app does NOT verify the signature: the
 /// server does (spec 02 §13.2, googlejwt); the app only reads the address it shows on Bank
@@ -77,10 +75,7 @@ public struct GoogleIDTokenClaims: Sendable, Equatable {
   public let sub: String?
 
   public init?(idToken: String) {
-    let parts = idToken.split(separator: ".", omittingEmptySubsequences: false)
-    guard parts.count == 3, let payload = try? Base64.decodeURL(String(parts[1])),
-      let v = try? JSONParser.parse([UInt8](payload)), let o = v.objectValue
-    else { return nil }
+    guard let o = OAuthWire.claims(idToken) else { return nil }
     email = o["email"]?.stringValue
     emailVerified = o["email_verified"]?.boolValue ?? (o["email_verified"]?.stringValue == "true")
     nonce = o["nonce"]?.stringValue
@@ -98,7 +93,7 @@ public struct GoogleOAuthClient: Sendable {
   }
 
   /// The authorize URL (spec 04 §7.2, parameters in that order), with fresh PKCE and state.
-  public func begin(nonce: String, random: any RandomSource) throws(GmailOAuthError) -> GmailAuthorization {
+  public func begin(nonce: String, random: any RandomSource) throws(GmailOAuthError) -> MailAuthorization {
     guard config.isConfigured else { throw .notConfigured }
     let verifier: String
     let state: String
@@ -116,19 +111,19 @@ public struct GoogleOAuthClient: Sendable {
         ("code_challenge_method", "S256"), ("state", state), ("nonce", nonce), ("prompt", "select_account consent"),
         ("access_type", "offline"),
       ])
-    return GmailAuthorization(url: url, state: state, codeVerifier: verifier, nonce: nonce)
+    return MailAuthorization(url: url, state: state, codeVerifier: verifier, nonce: nonce)
   }
 
   /// Checks the redirect and returns the authorization code. `state` is compared in constant
   /// time before anything else is read. An `error=` redirect is `denied`, except
   /// `access_denied` (the user pressed Cancel on Google's page), which is `cancelled`.
-  public func code(fromCallback callback: URL, for auth: GmailAuthorization) throws(GmailOAuthError) -> String {
+  public func code(fromCallback callback: URL, for auth: MailAuthorization) throws(GmailOAuthError) -> String {
     try OAuthWire.code(fromCallback: callback, scheme: config.redirectScheme, state: auth.state)
   }
 
   /// `grant_type=authorization_code` (no secret). The response must carry a refresh token, an
   /// id_token and the gmail.readonly scope, else the tokens are discarded (`missingGrant`).
-  public func exchange(code: String, auth: GmailAuthorization) async throws(GmailOAuthError) -> GmailTokenGrant {
+  public func exchange(code: String, auth: MailAuthorization) async throws(GmailOAuthError) -> MailTokenGrant {
     let grant = try await token([
       ("grant_type", "authorization_code"), ("code", code), ("client_id", config.clientID),
       ("code_verifier", auth.codeVerifier), ("redirect_uri", config.redirectURI),
@@ -142,7 +137,7 @@ public struct GoogleOAuthClient: Sendable {
 
   /// `grant_type=refresh_token`. `invalid_grant` is `invalidGrant` (the caller deletes the
   /// Keychain item and reports `reconnect_required`).
-  public func refresh(refreshToken: String) async throws(GmailOAuthError) -> GmailTokenGrant {
+  public func refresh(refreshToken: String) async throws(GmailOAuthError) -> MailTokenGrant {
     try await token([
       ("grant_type", "refresh_token"), ("refresh_token", refreshToken), ("client_id", config.clientID),
     ])
@@ -161,7 +156,7 @@ public struct GoogleOAuthClient: Sendable {
     throw .http(res.status)
   }
 
-  func token(_ form: [(String, String)]) async throws(GmailOAuthError) -> GmailTokenGrant {
+  func token(_ form: [(String, String)]) async throws(GmailOAuthError) -> MailTokenGrant {
     try await OAuthWire.token(http: http, endpoint: config.tokenEndpoint, form: form)
   }
 }

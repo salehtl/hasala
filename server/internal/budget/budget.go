@@ -176,13 +176,6 @@ type Gate struct {
 // New returns a Gate over pool.
 func New(pool *pgxpool.Pool) *Gate { return &Gate{Pool: pool} }
 
-func (g *Gate) clock() time.Time {
-	if g.now != nil {
-		return g.now()
-	}
-	return time.Now()
-}
-
 // Admit accounts delta against userID's budget for resource, INSIDE tx, and
 // fails closed if the resulting family total would exceed the account's
 // ceiling.
@@ -390,7 +383,7 @@ func (g *Gate) overrideDay() *string {
 	if g.now == nil {
 		return nil
 	}
-	day := g.clock().UTC().Format("2006-01-02")
+	day := g.now().UTC().Format("2006-01-02")
 	return &day
 }
 

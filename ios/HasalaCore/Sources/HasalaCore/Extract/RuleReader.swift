@@ -125,15 +125,6 @@ enum RuleReader {
     return ""
   }
 
-  static func nextLine(_ lines: [String], _ i: Int) -> String {
-    var j = i + 1
-    while j < lines.count {
-      if !lines[j].isEmpty { return lines[j] }
-      j += 1
-    }
-    return ""
-  }
-
   static func nextLines(_ lines: [String], _ i: Int, _ n: Int) -> String {
     var out: [String] = []
     var j = i + 1
@@ -173,15 +164,13 @@ enum RuleReader {
         let fPreTail = String(fPre.suffix(32))
         let fLabel = useLabel && label.count <= 60 ? RuleText.fold(label) : ""
         let fNext = useNext ? String(RuleText.fold(nextLines(lines, i, 3)).prefix(70)) : ""
-        let labelNoVat = Self.vatPhrase.stringByReplacingMatches(
-          in: fLabel, range: NSRange(location: 0, length: (fLabel as NSString).length), withTemplate: " ")
-        let preNoVat = Self.vatPhrase.stringByReplacingMatches(
-          in: fPreTail, range: NSRange(location: 0, length: (fPreTail as NSString).length), withTemplate: " ")
+        let labelNoVat = RuleText.replace(Self.vatPhrase, fLabel)
+        let preNoVat = RuleText.replace(Self.vatPhrase, fPreTail)
 
         var s = 0.0
         var balanceLike = false
         var conversion = false
-        if mo.explicit { s += 2 } else if mo.decimals == RuleMoneyParser.exponent(mo.currency) && mo.decimals > 0 { s += 1 } else if mo.grouped || mo.decimals > 0 { s += 0.5 } else if !isJust { continue }
+        if mo.explicit { s += 2 } else if mo.decimals == Exponent.of(mo.currency) && mo.decimals > 0 { s += 1 } else if mo.grouped || mo.decimals > 0 { s += 0.5 } else if !isJust { continue }
         let labelled = RuleText.has(RuleLexicon.amountLabel, preNoVat) || RuleText.has(RuleLexicon.amountLabel, labelNoVat)
         if labelled { s += 3 }
         let verb = RuleText.has(RuleLexicon.txnVerb, fPre) || RuleText.has(RuleLexicon.txnVerb, fSuf)
@@ -225,15 +214,11 @@ enum RuleReader {
     "(?<![a-z])(?:aed|usd|eur|gbp|sar|qar|kwd|bhd|omr|inr|dhs?)\\.?(?![a-z])|د\\.إ\\.?|دراهم|درهم|[$€£₹()\\[\\]:*.,\\-]")
 
   static func stripMoneyWords(_ s: String) -> String {
-    moneyWords.stringByReplacingMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length), withTemplate: " ")
-      .trimmingCharacters(in: .whitespaces)
+    RuleText.replace(moneyWords, s).trimmingCharacters(in: .whitespaces)
   }
 
   static func direction(clause: String, subject: String, body: String) -> (String, Bool, Double) {
-    func scrub(_ s: String) -> String {
-      RuleLexicon.directionNoise.stringByReplacingMatches(
-        in: s, range: NSRange(location: 0, length: (s as NSString).length), withTemplate: " ")
-    }
+    func scrub(_ s: String) -> String { RuleText.replace(RuleLexicon.directionNoise, s) }
     let parts: [(String, Double)] = [(scrub(clause), 3), (scrub(subject), 2), (scrub(body), 1)]
     var d = 0.0, c = 0.0
     var cd = 0, cc = 0
@@ -253,7 +238,7 @@ enum RuleReader {
     var out: Set<String> = []
     for (i, f) in folded.enumerated() {
       if RuleText.has(RuleLexicon.closing, f) {
-        let n = nextLine(lines, i)
+        let n = nextLines(lines, i, 1)
         if !n.isEmpty { out.insert(RuleText.norm(n)) }
       }
       let ns = f as NSString
@@ -329,22 +314,22 @@ enum RuleReader {
     }
     if let s = strong { return (s, "label") }
     for r in [Self.inlineAt, Self.inlineAtAr] {
-      for line in lines where !line.isEmpty {
-        let ns = line as NSString
-        for m in r.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
-          if let v = validMerchant(ns.substring(with: m.range(at: 1)), banks: banks) { return (v, "inline-at") }
-        }
-      }
+      if let v = inlineMerchant(r, lines, banks: banks) { return (v, "inline-at") }
     }
     if let w = weak { return (w, "weak-label") }
     for (r, tag) in [(Self.inlineTo, "inline-to"), (Self.inlineFrom, "inline-from")] {
-      for line in lines where !line.isEmpty {
-        let ns = line as NSString
-        for m in r.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
-          if let v = validMerchant(ns.substring(with: m.range(at: 1)), banks: banks) { return (v, tag) }
-        }
-      }
+      if let v = inlineMerchant(r, lines, banks: banks) { return (v, tag) }
     }
     return (nil, nil)
+  }
+
+  static func inlineMerchant(_ r: NSRegularExpression, _ lines: [String], banks: Set<String>) -> String? {
+    for line in lines where !line.isEmpty {
+      let ns = line as NSString
+      for m in r.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
+        if let v = validMerchant(ns.substring(with: m.range(at: 1)), banks: banks) { return v }
+      }
+    }
+    return nil
   }
 }

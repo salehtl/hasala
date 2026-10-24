@@ -191,7 +191,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
     if request.url.absoluteString.hasPrefix(Self.tokenURL) { return token(form) }
     guard path.hasPrefix(Self.graphPrefix) else { return error(404, "NotFound") }
     let sub = String(path.dropFirst(Self.graphPrefix.count))
-    func q(_ n: String) -> String? { query.first { $0.0 == n }?.1 }
     if sub.hasPrefix("/me/"), lock.withLock({ noMailbox }) {
       return error(404, GraphClient.noMailboxCode)
     }
@@ -241,7 +240,6 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
       lock.withLock { inFlight -= 1 }
       return HTTPResponse(status: 200, body: Data(m.raw), headers: [("Content-Type", "message/rfc822")])
     }
-    _ = q("$select")
     return json(200, Self.listed(m))
   }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
@@ -67,6 +68,14 @@ func gateErr(err error) error {
 	return err
 }
 
+func uniqueViolation(err error) *pgconn.PgError {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && pg.Code == "23505" {
+		return pg
+	}
+	return nil
+}
+
 // newCeremonyIDN is b64url of n random bytes.
 func newCeremonyIDN(n int) (string, error) {
 	raw := make([]byte, n)
@@ -105,6 +114,9 @@ type accountState struct {
 func (s accountState) frozen() bool      { return s.FrozenAt != nil }
 func (s accountState) active() bool      { return s.Status == "active" }
 func (s accountState) hasPassword() bool { return len(s.PasswordHash) > 0 }
+func (s accountState) operatorFrozen() bool {
+	return s.FrozenBy != nil && *s.FrozenBy == FrozenByOperator
+}
 
 const accountColumns = `u.id, u.email_norm, u.display_name, u.status, u.password_hash, u.password_salt,
 	u.password_version, u.password_set_at, u.password_failures, u.password_paused_until, u.frozen_at,
