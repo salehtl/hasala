@@ -118,6 +118,41 @@ struct LastPickTests {
     #expect(l.state.txn("bl-alnoor-t-2")?.inReview == true)
   }
 
+  @Test func undoAlsoTakesBackTheOrderOfThatSort() throws {
+    let l = Self.ledger()
+    try l.apply(.categorize("bl-alnoor-t-2", "groceries", learnRule: false, project: nil))
+    try l.apply(.categorize("bl-alnoor-t-3", "shopping", learnRule: false, project: nil))
+    #expect(l.state.txn("bl-alnoor-t-1")?.lastPick == "shopping")
+    let token = try #require(try l.apply(.categorize("bl-alnoor-t-2", "dining", learnRule: false, project: nil)))
+    #expect(l.state.txn("bl-alnoor-t-1")?.lastPick == "dining")
+    l.undo(token)
+    #expect(l.state.txn("bl-alnoor-t-2")?.categoryID == "groceries")
+    #expect(l.state.txn("bl-alnoor-t-1")?.lastPick == "shopping")
+  }
+
+  @Test func aHeldRowThatWaitsInReviewIsNoPick() throws {
+    var s = Scenario.mayaBacklog.state
+    for i in s.txns.indices where s.txns[i].id == "bl-alnoor-t-2" {
+      s.txns[i].categoryID = "groceries"
+      s.txns[i].categorySource = .user
+      s.txns[i].needsReview = true
+      s.txns[i].categorizedAt = LocalDateTime(2026, 10, 2, 9, 0)
+    }
+    let l = InMemoryLedger(state: s)
+    #expect(l.state.txn("bl-alnoor-t-3")?.lastPick == nil)
+    #expect(try Self.card(l, "bl-alnoor-t-3").suggestion == nil)
+  }
+
+  @Test func aMerchantThePersonSortedIsNoLongerNewOnItsCards() throws {
+    var s = Scenario.mayaBacklog.state
+    for i in s.txns.indices where s.txns[i].id == "bl-alnoor-t-1" { s.txns[i].isNewMerchant = true }
+    let l = InMemoryLedger(state: s)
+    #expect(try Self.card(l, "bl-alnoor-t-1").isNewMerchant)
+    try l.apply(.categorize("bl-alnoor-t-2", "groceries", learnRule: false, project: nil))
+    let card = try Self.card(l, "bl-alnoor-t-1")
+    #expect(!card.isNewMerchant && card.suggestedBy == "Your last pick")
+  }
+
   @Test func theTransactionSheetMarksThePickAndKeepsTheAIsLine() throws {
     let l = Self.ledger()
     try l.apply(.categorize("bl-bright-10", "healthcare", learnRule: false, project: nil))

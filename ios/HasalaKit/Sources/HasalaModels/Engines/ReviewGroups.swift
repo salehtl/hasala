@@ -32,7 +32,7 @@ extension ReviewEngine {
   }
 
   public static func fillLastPicks(_ s: inout LedgerState, sortOrder: [TxnID: Int] = [:]) {
-    let index = GroupIndex(s, sortOrder: sortOrder)
+    let index = GroupIndex(s, picking: true, sortOrder: sortOrder)
     for i in s.txns.indices {
       let t = s.txns[i]
       let pick = t.inReview ? t.groupRef.flatMap(index.lastPick) : nil
@@ -49,7 +49,7 @@ extension ReviewEngine {
 }
 
 extension Txn {
-  public var countsAsPick: Bool { categorySource == .user && categoryID != nil && splits.isEmpty }
+  public var countsAsPick: Bool { categorySource == .user && !needsReview && categoryID != nil && splits.isEmpty }
 }
 
 struct GroupIndex {
@@ -59,12 +59,12 @@ struct GroupIndex {
   var picks: [MerchantGroupRef: Txn] = [:]
   var sortOrder: [TxnID: Int] = [:]
 
-  init(_ s: LedgerState, only: MerchantGroupRef? = nil, sortOrder: [TxnID: Int] = [:]) {
+  init(_ s: LedgerState, only: MerchantGroupRef? = nil, picking: Bool = false, sortOrder: [TxnID: Int] = [:]) {
     self.sortOrder = sortOrder
     for t in s.txns {
       guard let ref = t.groupRef, only == nil || only == ref else { continue }
       if let k = t.merchantKey { keys[ref, default: []].insert(k) }
-      if t.countsAsPick, picks[ref].map({ newer(t, than: $0) }) ?? true { picks[ref] = t }
+      if picking, t.countsAsPick, picks[ref].map({ newer(t, than: $0) }) ?? true { picks[ref] = t }
       guard !t.archived, !t.inReview, t.splits.isEmpty, t.filedByPerson, let c = t.categoryID else { continue }
       filed[ref, default: [:]][c, default: 0] += 1
     }

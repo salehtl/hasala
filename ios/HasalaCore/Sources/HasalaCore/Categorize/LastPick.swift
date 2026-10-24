@@ -18,12 +18,13 @@ public enum LastPick {
     public let category: String?
     public let sourceKind: SweepRow.SourceKind
     public let split: Bool
+    public let needsReview: Bool
     public let categorizedMs: Int64?
     public let postedMs: Int64
 
     public init(
       id: String, group: String?, direction: String, category: String?, sourceKind: SweepRow.SourceKind, split: Bool = false,
-      categorizedMs: Int64?, postedMs: Int64
+      needsReview: Bool = false, categorizedMs: Int64?, postedMs: Int64
     ) {
       self.id = id
       self.group = group
@@ -31,6 +32,7 @@ public enum LastPick {
       self.category = category
       self.sourceKind = sourceKind
       self.split = split
+      self.needsReview = needsReview
       self.categorizedMs = categorizedMs
       self.postedMs = postedMs
     }
@@ -44,7 +46,7 @@ public enum LastPick {
   }
 
   public static func counts(_ r: Row) -> Bool {
-    r.key != nil && r.category != nil && !r.split && r.sourceKind == .user
+    r.key != nil && r.category != nil && !r.split && !r.needsReview && r.sourceKind == .user
   }
 
   public static func newer(_ a: Row, than b: Row) -> Bool {

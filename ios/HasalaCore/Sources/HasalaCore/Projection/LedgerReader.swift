@@ -335,17 +335,7 @@ public struct LedgerReader: Sendable {
   }
 
   public func lastPicks() throws -> [LastPick.Key: String] {
-    try db.read { db in LastPick.picks(try Row.fetchAll(db, sql: Self.pickSQL).map(Self.pickRow)) }
-  }
-
-  static let pickSQL =
-    "SELECT id, merchant_group, direction, category, category_source, split, categorized_ms, posted_ms FROM txn WHERE superseded_by IS NULL"
-
-  static func pickRow(_ r: Row) -> LastPick.Row {
-    LastPick.Row(
-      id: r["id"], group: r["merchant_group"], direction: r["direction"], category: r["category"],
-      sourceKind: SweepRow.SourceKind(rawValue: r["category_source"]) ?? .none, split: r["split"], categorizedMs: r["categorized_ms"],
-      postedMs: r["posted_ms"])
+    try db.read { db in LastPick.picks(try Row.fetchAll(db, sql: Self.sweepSQL).map { TxnRow($0).pickRow }) }
   }
 
   public func rejections() throws -> [String: Set<String>] {
@@ -572,7 +562,8 @@ extension TxnRow {
   public var pickRow: LastPick.Row {
     LastPick.Row(
       id: id, group: merchantGroup, direction: direction, category: category,
-      sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, split: split, categorizedMs: categorizedMs, postedMs: postedMs)
+      sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, split: split, needsReview: needsReview, categorizedMs: categorizedMs,
+      postedMs: postedMs)
   }
 
   public var reachRow: RuleReach.Row {

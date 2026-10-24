@@ -127,15 +127,18 @@ category of the newest row of the group and direction whose current source is `u
 newest by `txn.categorized_ms`, or by its posted time when that is empty
 (`LastPick`, HasalaCore `Categorize/LastPick.swift`). Rows held by a paused rule (`held`)
 and rows a rule, the merchant list or a model filed do not count, and neither does a split
-payment. `LedgerReader.lastPicks()` reads it, and the live mapper sets `Txn.lastPick` on the
+payment or a row that waits in Review (an Undo can leave one with source `user`).
+`LedgerReader.lastPicks()` reads it, and the live mapper sets `Txn.lastPick` on the
 rows that wait in Review. `GroupIndex` sets it for the mock with the same rule; in the
 mock, whose clock does not move, two sorts with the same time are ordered by when the
-person made them.
+person made them, and Undo takes that order back.
 
 That field is the card's suggestion. The strip shows it with "Your last pick" and Use, the
 pick sheet of its bucket lists it first and marks it "Suggested", and Use files exactly
-that category. Only a merchant with no pick shows an AI answer stored on the row, with the
-labels that name Cloudflare or this iPhone. A rejection from #182 still hides an AI answer
+that category: if the suggestion changed after the card showed it, Use files nothing and
+the card shows the new one. A card with a pick does not say "New merchant". Only a
+merchant with no pick shows an AI answer stored on the row, with the labels that name
+Cloudflare or this iPhone. A rejection from #182 still hides an AI answer
 but never the person's own pick. A pick is only a suggestion: the payment waits in Review
 until the person taps Use or picks a category. A pick whose category is hidden or archived
 since shows no suggestion, and no AI answer either.
@@ -146,7 +149,9 @@ false for a picked row, also when the pick's category is hidden since. So neithe
 Cloudflare nor Apple's model is asked about it, in the foreground sweep or in the
 background stage, the background counts leave it out, and an answer that comes back after
 the person sorted the merchant is not written, because the sweeps re-read the rows before
-they author.
+they author. A pick belongs to one direction and a split payment is no pick, so a merchant
+the person sorted only as a refund, or only in a split, is still asked about for its
+payments.
 
 After the person sorts a card, the next card is another waiting payment of the same
 merchant group and direction from the deck's own cards, in date order, if there is one;

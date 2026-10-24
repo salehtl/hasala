@@ -8,10 +8,11 @@ struct LastPickTests {
 
   static func row(
     _ id: String, _ category: String?, _ kind: SweepRow.SourceKind = .user, at: Int64? = nil, posted: Int64 = 1_000,
-    group: String? = "n:qasr corner store", direction: String = "debit", split: Bool = false
+    group: String? = "n:qasr corner store", direction: String = "debit", split: Bool = false, review: Bool = false
   ) -> LastPick.Row {
     LastPick.Row(
-      id: id, group: group, direction: direction, category: category, sourceKind: kind, split: split, categorizedMs: at, postedMs: posted)
+      id: id, group: group, direction: direction, category: category, sourceKind: kind, split: split, needsReview: review, categorizedMs: at,
+      postedMs: posted)
   }
 
   @Test func theNewestPickWinsByTheTimeItWasSorted() {
@@ -45,6 +46,14 @@ struct LastPickTests {
     #expect(LastPick.picks([Self.row("u", nil, at: 9_000)]).isEmpty)
     #expect(LastPick.picks([Self.row("g", "shopping", at: 9_000, group: nil)]).isEmpty)
     #expect(LastPick.picks([Self.row("e", "shopping", at: 9_000, group: "")]).isEmpty)
+  }
+
+  @Test func aRowThatStillWaitsInReviewIsNoPick() {
+    let older = Self.row("own", "groceries", at: 1_000)
+    let waiting = Self.row("undone", "shopping", at: 9_000, review: true)
+    #expect(!LastPick.counts(waiting))
+    #expect(LastPick.picks([older, waiting]) == [Self.key: "groceries"])
+    #expect(LastPick.picks([waiting]).isEmpty)
   }
 
   @Test func eachDirectionHasItsOwnPick() {

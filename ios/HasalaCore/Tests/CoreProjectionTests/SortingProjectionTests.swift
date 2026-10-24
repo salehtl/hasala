@@ -116,6 +116,21 @@ import Testing
     #expect(waiting.picked == "shopping" && !ModelSuggestionSweep.eligible(waiting))
   }
 
+  @Test func aSplitPaymentFiledIntoOneCategoryStaysSplitAndIsNoPick() throws {
+    var s = State()
+    try M.blob(
+      1, [M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"), M.txn(2, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z")],
+      into: &s)
+    try M.blob(2, [M.split(1, op: "s1", parent: 1, at: "2026-10-04T09:00:00.000Z")], into: &s)
+    try M.blob(3, [M.categorize(1, op: "p1", parent: 2, at: "2026-10-05T09:00:00.000Z", category: "shopping")], into: &s)
+    #expect(s.anomalies.isEmpty, "\(s.anomalies)")
+    let (_, r) = try M.project(s)
+    let filed = try #require(try r.txn(M.id(1)))
+    #expect(filed.split && filed.category == "shopping" && filed.categorySource == "user")
+    #expect(try r.lastPicks().isEmpty)
+    #expect(try r.sweepRows().first { $0.id == M.id(2) }?.picked == nil)
+  }
+
   @Test func aRenameAndARejectionFromTwoDevicesBothSurvive() throws {
     for order in [false, true] {
       var s = State()

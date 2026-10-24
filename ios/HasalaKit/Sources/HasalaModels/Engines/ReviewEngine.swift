@@ -405,7 +405,7 @@ public enum ReviewEngine {
     let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
     var card = ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
-      isNewMerchant: t.isNewMerchant, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
+      isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: suggestion(t, s).map(CategoryOption.init)
     )

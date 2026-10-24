@@ -43,6 +43,20 @@ struct LastPickDeckTests {
     #expect(next.suggestion?.id == MayaBacklog.wrongGuess && next.suggestedBy == "Your last pick")
   }
 
+  @Test func useFilesNothingWhenThePickChangedAfterTheCardShowedIt() throws {
+    let (app, deck) = Self.deck(at: "bl-alnoor-t-2")
+    #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: false, project: nil))
+    let shown = try #require(deck.cards.first)
+    #expect(shown.id == "bl-alnoor-t-3" && shown.suggestion?.id == "groceries")
+    _ = try app.store.apply(.categorize("bl-alnoor-t-2", "shopping", learnRule: false, project: nil))
+    #expect(!deck.useSuggestion(shown.id, shown: "groceries"))
+    #expect(app.store.state.txn("bl-alnoor-t-3")?.inReview == true)
+    let now = try #require(deck.cards.first)
+    #expect(now.id == "bl-alnoor-t-3" && now.suggestion?.id == "shopping")
+    #expect(deck.useSuggestion(now.id, shown: "shopping"))
+    #expect(app.store.state.txn("bl-alnoor-t-3")?.categoryID == "shopping")
+  }
+
   @Test func aRejectionNeverHidesThePersonsPick() throws {
     var s = Scenario.mayaBacklog.state
     for i in s.txns.indices where s.txns[i].merchantGroup == "n:al noor trading" {

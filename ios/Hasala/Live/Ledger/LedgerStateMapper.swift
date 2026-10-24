@@ -80,7 +80,7 @@ nonisolated enum LedgerStateMapper {
     let reachRows = rows.map(\.reachRow)
     let paired = RuleReach.paired(reachRows, home: home)
     let rejections = try r.rejections()
-    let picks = try r.lastPicks()
+    let picks = LastPick.picks(rows.map(\.pickRow))
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for (i, row) in rows.enumerated() {

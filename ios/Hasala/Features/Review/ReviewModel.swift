@@ -38,7 +38,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
-  @discardableResult func useSuggestion(_ card: TxnID) -> Bool
+  @discardableResult func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
   @discardableResult func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool
@@ -179,9 +179,9 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   @discardableResult
-  func useSuggestion(_ card: TxnID) -> Bool {
+  func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool {
     let s = app.store.state
-    guard let t = s.txn(card), let c = ReviewEngine.suggestion(t, s)?.id else { return false }
+    guard let t = s.txn(card), let c = ReviewEngine.suggestion(t, s)?.id, shown == nil || shown == c else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
     follow(card)
     passed(card)
@@ -242,6 +242,8 @@ final class ReviewViewModel: ReviewDeckModel {
 }
 
 extension ReviewDeckModel {
+  @discardableResult func useSuggestion(_ card: TxnID) -> Bool { useSuggestion(card, shown: nil) }
+
   /// What VoiceOver hears once a card is filed (Paper 16 · 06): "Filed as Need. 3 of 6.",
   /// or "Filed as Need. All caught up." for the last one.
   func filedAnnouncement(_ filedAs: String) -> String {
