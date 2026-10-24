@@ -7,6 +7,7 @@ import CoreSync
 import Foundation
 import HasalaCloud
 import Synchronization
+import UIKit
 
 struct ModelSuggestionStage: Sendable {
   let observer: LedgerPageObserver
@@ -22,7 +23,12 @@ struct ModelSuggestionStage: Sendable {
   var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
   var cloudSpent: @Sendable (Int) async -> Void = { _ in }
   var trusts: @Sendable (String) -> Bool = { _ in true }
+  var appActive: @Sendable () async -> Bool = ModelSuggestionStage.onScreen
   let gate = SweepGate()
+
+  nonisolated static func onScreen() async -> Bool {
+    await MainActor.run { UIApplication.shared.applicationState == .active }
+  }
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
     trigger == .launch || trigger == .foreground || trigger == .refresh
@@ -42,7 +48,10 @@ struct ModelSuggestionStage: Sendable {
 
   func run(_ trigger: WorkCoordinator.Trigger) async -> Bool {
     guard Self.runs(trigger), !backlogActive() else { return false }
-    return await gate.run { await sweep() }
+    return await gate.run {
+      guard await appActive() else { return false }
+      return await sweep()
+    }
   }
 
   private func sweep() async -> Bool {

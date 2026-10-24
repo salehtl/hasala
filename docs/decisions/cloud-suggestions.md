@@ -165,15 +165,17 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 - **Network address.** Cloudflare's edge sees the phone's IP address on every request, as
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
-- **Timing.** Merchant suggestions are meant to run only while the app is open: in the
-  foreground sweep and in the background stage, never in a background refresh or a push
-  wake (the tier already forbids `refresh` and push wakes, and the background stage starts
-  nothing while the app is in the background). One gap remains (found 2026-10-24): when iOS
-  starts the process in the background, for a silent push or a background task, the account
-  opens and its launch run runs the foreground sweep (`ModelSuggestionStage.runs(.launch)`).
-  Nothing checks `applicationState`, so up to 40 names can go out then, within the day cap.
-  Until a code change gates `.launch` on the app state, the privacy policy, Security and
-  Support say "mostly while the app is open" and name this case. Requests from one sweep
+- **Timing.** Hasala asks only while the app is open on screen, never when iOS wakes it in
+  the background: in the foreground sweep and in the background stage, never in a
+  background refresh or a push wake. The tier forbids `refresh` and push wakes, the
+  background stage starts nothing while the app is in the background, and the foreground
+  sweep asks no model unless `UIApplication.shared.applicationState` is `.active` when it
+  starts (`ModelSuggestionStage.appActive`, read on the main actor, for every trigger). When
+  iOS starts the process in the background, for a silent push or a background task, the
+  account still opens and its launch run still runs, but the sweep does nothing: it asks no
+  model, spends nothing from the day cap and sets no foreground spacing, so the next
+  `.foreground` run sweeps. This closes the launch-run gap found on 2026-10-24, when the
+  launch run swept in the background and up to 40 names could go out. Requests from one sweep
   go out with a small random delay between them, so a sweep is not one burst. They are still close in time, and the
   policy does not claim otherwise. The background stage can send many requests from one
   connection in a few minutes, and requests that close in time can be seen together at the edge, by
@@ -649,8 +651,9 @@ for reference. What the rewrite records for Merchant suggestions:
   each answer for up to 30 days (`fm_cache`), and that an answer set aside after Not this
   stays on that phone until the account's data leaves it (`fm_kept`, no expiry). Only a
   sweep that queues the merchant again drops it, so a rejection the person lifts with their
-  own pick keeps it. It says the sweep runs "mostly while the app is open", because of the
-  launch-run gap in [What we can't hide](#what-we-cant-hide).
+  own pick keeps it. It says that Hasala asks only while the app is open on screen, never
+  when iOS wakes it in the background (the launch-run gap in
+  [What we can't hide](#what-we-cant-hide) is closed).
 - "What stays on your iPhone" gains Search, which can use Apple's on-device model.
 - Terms: provided as is, without warranty; the beta can change, pause or end at any time,
   and accounts and data may be reset or deleted then, with notice in the app or by email

@@ -79,7 +79,7 @@ Yes. In the list for Need, Want or Save, tap **New category** at the end, type a
 
 ### Does Hasala sort in the background with Cloudflare AI?
 
-Only if you turn on **Merchant suggestions**, in **Profile › Cloud suggestions**, or with **Turn on** when Review asks you. Then Hasala asks Cloudflare's AI about the merchants waiting in Review by itself, one name per request, within a daily limit on each iPhone. It does this mostly while the app is open, and it can also do it for a short time when iOS starts Hasala in the background, for example to sync. It shows no card or count while it works. With **Sort automatically** on too, it files a payment only when the answer is very sure, and those payments are marked "Sorted by Cloudflare AI".
+Only if you turn on **Merchant suggestions**, in **Profile › Cloud suggestions**, or with **Turn on** when Review asks you. Then Hasala asks Cloudflare's AI about the merchants waiting in Review by itself, one name per request, within a daily limit on each iPhone. It asks only while the app is open on screen, never when iOS wakes Hasala in the background, for example to sync. It shows no card or count while it works. With **Sort automatically** on too, it files a payment only when the answer is very sure, and those payments are marked "Sorted by Cloudflare AI".
 
 To turn it off, switch off **Merchant suggestions** in **Profile › Cloud suggestions**. It stops at once. **Send Cloudflare's sorting back to Review**, in the same place, puts the payments it filed on that iPhone back in Review. The switches are set on each iPhone.
 

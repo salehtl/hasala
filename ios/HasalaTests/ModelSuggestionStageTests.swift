@@ -98,7 +98,7 @@ struct ModelSuggestionStageTests {
     let stage = ModelSuggestionStage(
       observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
       onDevice: device, cloud: cloud, onDeviceAlone: false, nowMs: { anchor },
-      cloudBudget: { budget.withLock { $0 } }, cloudSpent: { n in spent.withLock { $0.append(n) } })
+      cloudBudget: { budget.withLock { $0 } }, cloudSpent: { n in spent.withLock { $0.append(n) } }, appActive: { true })
     _ = await stage.run(.foreground)
     #expect(cloud.calls.isEmpty)
     #expect(device.calls.count >= 3)
@@ -126,6 +126,51 @@ struct ModelSuggestionStageTests {
     #expect(r?.pass.calls == 3 && cloud.calls.count == 3)
     #expect(await !stage(cloud).backlogWaiting(BacklogSort.Memo()))
     #expect(cloud.calls.count == 3)
+  }
+
+  @MainActor
+  @Test func noModelIsAskedAndNothingIsSpentWhileTheAppIsNotActive() async throws {
+    let a = try LiveLedgerMapperTests.account()
+    _ = try await Self.waiting(a, suite: "stage.inactive.tests")
+    let anchor = LiveLedgerMapperTests.anchor
+    let active = Mutex(false)
+    let spent = Mutex<[Int]>([])
+    let device = Counting("apple-fm/27.1", answer: .unknown)
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    let stage = ModelSuggestionStage(
+      observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
+      onDevice: device, cloud: cloud, onDeviceAlone: false, nowMs: { anchor }, cloudBudget: { 40 },
+      cloudSpent: { n in spent.withLock { $0.append(n) } }, appActive: { active.withLock { $0 } })
+    #expect(await !stage.run(.launch))
+    #expect(await !stage.run(.refresh))
+    #expect(cloud.calls.isEmpty && device.calls.isEmpty && spent.withLock { $0 }.isEmpty)
+    active.withLock { $0 = true }
+    _ = await stage.run(.launch)
+    #expect(cloud.calls.count == 3 && spent.withLock { $0 } == [3])
+  }
+
+  @MainActor
+  @Test func aSweepSkippedInTheBackgroundDoesNotHoldBackTheNextForegroundSweep() async throws {
+    let a = try LiveLedgerMapperTests.account()
+    _ = try await Self.waiting(a, suite: "stage.wake.tests")
+    let anchor = LiveLedgerMapperTests.anchor
+    let active = Mutex(false)
+    let spent = Mutex<[Int]>([])
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    let stage = ModelSuggestionStage(
+      observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
+      onDevice: Counting("apple-fm/27.1", answer: .unknown), cloud: cloud, onDeviceAlone: false, nowMs: { anchor },
+      cloudBudget: { 40 }, cloudSpent: { n in spent.withLock { $0.append(n) } }, appActive: { active.withLock { $0 } })
+    let coordinator = WorkCoordinator(
+      stages: WorkCoordinator.Stages(
+        sync: { _, _ in (newData: false, stop: nil) }, mailbox: nil, categorize: { await stage.run($0) }, committed: {},
+        stopped: { _ in }))
+    await coordinator.run(.launch)
+    await coordinator.run(.refresh)
+    #expect(cloud.calls.isEmpty && spent.withLock { $0 }.isEmpty)
+    active.withLock { $0 = true }
+    await coordinator.run(.foreground)
+    #expect(cloud.calls.count == 3 && spent.withLock { $0 } == [3])
   }
 
   @Test func onlyForegroundTriggersRunTheSweep() {
