@@ -161,6 +161,12 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func theUndoLineStaysLongerThanAToast() {
+    #expect(AppModel.dwell(lasting: false, voiceOver: false) == HMotion.toastDwell)
+    #expect(AppModel.dwell(lasting: true, voiceOver: false) == HMotion.undoLineDwell)
+    #expect(AppModel.dwell(lasting: true, voiceOver: true) == HMotion.toastDwellVoiceOver)
+  }
+
   @Test func aRefusalSaysWhy() {
     let app = AppModel(store: InMemoryLedger())
     #expect(!app.perform(.moveMoney(from: nil, to: "dining", YearMonth(2026, 10), .aed(9_999_00))))

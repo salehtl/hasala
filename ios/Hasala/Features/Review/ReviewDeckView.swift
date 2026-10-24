@@ -23,6 +23,7 @@ struct ReviewDeckView: View {
 
   /// Where the finger has the top card.
   @State private var drag: CGSize = .zero
+  @GestureState private var touched: TxnID?
   /// The edge the card is dragged past the commit point toward.
   @State private var crossed: SwipeEdge?
   /// The edge the card is held toward while its pick sheet is up.
@@ -114,6 +115,9 @@ struct ReviewDeckView: View {
       if let p = model.picking { holdToward(edge(for: p.choice), animated: false) }
     }
     .onDisappear { SortSound.shared.rest() }
+    .onChange(of: touched) { _, now in
+      if now == nil { released() }
+    }
   }
 
   private var pickBinding: Binding<ReviewPick?> {
@@ -446,6 +450,7 @@ struct ReviewDeckView: View {
 
   private func dragGesture(_ card: ReviewCardModel) -> some Gesture {
     DragGesture(minimumDistance: 6)
+      .updating($touched) { _, state, _ in state = card.id }
       .onChanged { value in
         if model.holding != card.id { model.holding = card.id }
         drag = value.translation
@@ -475,6 +480,16 @@ struct ReviewDeckView: View {
         holdToward(edge, animated: true)
         model.pick(card.id, choice(for: edge))
       }
+  }
+
+  private func released() {
+    guard model.picking == nil, held == nil else { return }
+    model.holding = nil
+    guard drag != .zero || crossed != nil else { return }
+    withAnimation(motion.animation(.cardReturn)) {
+      drag = .zero
+      crossed = nil
+    }
   }
 
   // MARK: Filing

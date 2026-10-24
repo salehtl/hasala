@@ -29,7 +29,6 @@ final class AppModel {
     /// The edit the toast's "Undo" takes back.
     var undo: UndoToken?
     var earlier: [UndoToken] = []
-    var lasting = false
   }
 
   let store: any LedgerStore
@@ -280,7 +279,7 @@ final class AppModel {
         show(Toast(disc: .done, title: last.title))
       } else {
         let earlier = tokens.reversed().filter { check?.canUndo($0) != false }
-        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier, lasting: last.batch))
+        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
       }
     }
     return true
@@ -349,7 +348,8 @@ final class AppModel {
   }
 
   /// One toast at a time: a new one replaces the old (plan decision 4). It stays about 4 s,
-  /// 8 s while VoiceOver runs, longer while touched; that is also the window for its Undo.
+  /// 6 s for a batch's undo line, at least 8 s while VoiceOver runs, longer while touched;
+  /// that is also the window for its Undo.
   /// VoiceOver hears it without losing its place ("Sorted into Groceries. Undo available.").
   /// The motion is `ToastHost`'s.
   // TODO(spec 04 §14.6): pause the window while the app is in the background (pwa `pausableTimeout`).
@@ -361,7 +361,7 @@ final class AppModel {
 
   private func scheduleToastEnd() {
     toastTask?.cancel()
-    let dwell = Self.dwell(lasting: toast?.lasting == true, voiceOver: UIAccessibility.isVoiceOverRunning)
+    let dwell = Self.dwell(lasting: toast?.undo?.batch == true, voiceOver: UIAccessibility.isVoiceOverRunning)
     toastTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(dwell))
       guard !Task.isCancelled else { return }

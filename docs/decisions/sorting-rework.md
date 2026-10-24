@@ -111,10 +111,11 @@ sheet, writes a group rule and reaches every payment D3 names. The app no longer
 
 The deck keeps the cards it opened with. Its position ("2 of 6") counts that set, and a
 card that was sorted meanwhile elsewhere (the background stage, another iPhone, a rule's
-reach) is skipped when its turn comes. The top card does not change while the finger is on
-it or while its pick sheet is up. A payment that arrives while the deck is open waits for
-the next session. The "Waiting for Cloudflare AI" hold is gone: no card is moved to the end
-of the deck while Cloudflare sorts.
+reach) is skipped when its turn comes. The top card stays until the person sorts it, skips
+it or closes the deck, also when it is sorted elsewhere meanwhile. Undo brings a card back
+to its old place. A payment that arrives while the deck is open waits for the next session.
+The "Waiting for Cloudflare AI" hold is gone: no card is moved to the end of the deck while
+Cloudflare sorts.
 
 ### D6, D6b and D7 Not this
 
@@ -137,7 +138,8 @@ Rejections already in the log are applied on the phone after the answer: a rejec
 reads as unknown for that stage, so Apple's model is asked next, and a cached Cloudflare
 answer that was rejected is never sent to Cloudflare again. The phone keeps such an answer
 in its own record (`fm_kept`, keyed by a hash of the name and the model tag only), apart
-from the 30-day cache; builds with Not this wrote it. When a rejection is undone on another
+from the 30-day cache. The sweeps keep it whenever a rejected Cloudflare answer comes back;
+builds with Not this also wrote it at once. When a rejection is undone on another
 phone, the next sweep drops the record and the name is asked again. The `allowed` list, the
 request bytes and the cache key never change (`RejectionSweepTests`). A model-sourced row
 whose guess is rejected shows as a plain "You decide" card.
@@ -190,10 +192,11 @@ The result row was removed in the sorting rebuild (2026-10-23). When "Always use
 other payments too, the deck and the Review tab show one line at the bottom, the app's
 toast: "Software for all 14 Tailscale payments" with Undo. It stays about 6 seconds
 (`HMotion.undoLineDwell`; 8 while VoiceOver runs, longer while touched) and comes and goes
-as every toast does, with only a fade under Reduce Motion. A sort that files only its own
-card keeps the 4-second toast "Sorted into Groceries". Undo puts every payment back as it
-was and removes the rule, in one batch. After the line goes, Sorted for you on Home lists
-the batch, with Undo all.
+as every toast does, with only a fade under Reduce Motion. It is one toast like any other,
+so the next toast replaces it, for example the next sort's "Sorted into Groceries". A sort
+that files only its own card keeps the 4-second toast "Sorted into Groceries". Undo puts
+every payment back as it was and removes the rule, in one batch. After the line goes,
+Sorted for you on Home lists the batch, with Undo all.
 
 Nothing is kept for display: `LedgerState.sortReceipt`, the receipt in `sort_memory` and the
 dismiss edit are gone, and a receipt an earlier build wrote is ignored. `sort_memory` keeps

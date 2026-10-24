@@ -27,6 +27,16 @@ struct CloudSortDeckTests {
     #expect(deck.filedAnnouncement("Want") == "Filed as Want. 5 of 6.")
   }
 
+  @Test func theTopCardStaysUntilThePersonMovesOn() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let deck = ReviewViewModel(app: app)
+    #expect(deck.cards.first?.id == "atm")
+    try Self.file(app, "atm", "transfer")
+    #expect(deck.cards.first?.id == "atm" && deck.position == 1 && deck.cards.count == 6)
+    deck.skip("atm")
+    #expect(deck.cards.first?.id == "transfer-in" && deck.position == 2 && deck.cards.count == 5)
+  }
+
   @Test func theTopCardStaysWhileItIsTouchedOrItsPickSheetIsUp() throws {
     let app = AppModel(store: InMemoryLedger())
     let deck = ReviewViewModel(app: app)
@@ -34,6 +44,8 @@ struct CloudSortDeckTests {
     try Self.file(app, "atm", "transfer")
     #expect(deck.cards.first?.id == "atm" && deck.position == 1)
     deck.holding = nil
+    #expect(deck.cards.first?.id == "atm" && deck.position == 1)
+    #expect(deck.sort("atm", into: "transfer", alwaysUse: false, project: nil))
     #expect(deck.cards.first?.id == "transfer-in" && deck.position == 2)
 
     deck.pick("transfer-in", .transfer)
@@ -55,13 +67,17 @@ struct CloudSortDeckTests {
     #expect(ReviewViewModel(app: app).cards.contains { $0.merchant == "Corner Shop" })
   }
 
-  @Test func undoBringsTheCardBackToItsPlace() {
+  @Test func undoBringsTheCardBackToItsPlace() throws {
     let app = AppModel(store: InMemoryLedger())
     let deck = ReviewViewModel(app: app)
     deck.sort("atm", into: "transfer", alwaysUse: false, project: nil)
     #expect(deck.cards.first?.id == "transfer-in" && deck.position == 2)
     app.toastAction()
     #expect(deck.cards.first?.id == "atm" && deck.position == 1)
+    try Self.file(app, "atm", "transfer")
+    #expect(deck.cards.first?.id == "atm" && deck.position == 1)
+    try Self.file(app, "transfer-in", "salary")
+    #expect(deck.cards.map(\.id) == ["atm", "apple", "lulu", "dubai-taxi", "steam"])
   }
 
   @Test func aRunningCloudSortHoldsNothingBack() {

@@ -10,18 +10,6 @@ public struct FiledCount: Sendable, Hashable, Identifiable {
   public var id: CategoryID { category.id }
 }
 
-public struct ReviewLeftOut: Sendable, Hashable, Identifiable {
-  public var txnID: TxnID
-  public var reason: TxnReviewReason?
-
-  public init(txnID: TxnID, reason: TxnReviewReason?) {
-    self.txnID = txnID
-    self.reason = reason
-  }
-
-  public var id: TxnID { txnID }
-}
-
 extension ReviewEngine {
   public static func displayName(_ rows: [Txn]) -> String {
     var counts: [String: Int] = [:]
@@ -36,11 +24,11 @@ extension ReviewEngine {
   }
 
   public static func filedAs(_ ref: MerchantGroupRef, _ s: LedgerState) -> [FiledCount] {
-    GroupIndex(s, windowQueue: [], only: ref).filedAs(ref, s)
+    GroupIndex(s, only: ref).filedAs(ref, s)
   }
 
   public static func repeatsMonthly(_ ref: MerchantGroupRef, _ s: LedgerState) -> Bool {
-    GroupIndex(s, windowQueue: [], only: ref).repeatsMonthly(ref)
+    GroupIndex(s, only: ref).repeatsMonthly(ref)
   }
 
   public static func payments(_ n: Int) -> String { "\(n) payment\(n == 1 ? "" : "s")" }
@@ -52,18 +40,11 @@ extension ReviewEngine {
 }
 
 struct GroupIndex {
-  var leftOut: [MerchantGroupRef: [ReviewLeftOut]] = [:]
   var filed: [MerchantGroupRef: [CategoryID: Int]] = [:]
   var keys: [MerchantGroupRef: Set<String>] = [:]
   var monthly: [Direction: Set<String>] = [:]
 
-  init(_ s: LedgerState, windowQueue: [Txn], only: MerchantGroupRef? = nil) {
-    let pairs = Set(s.txns.compactMap { $0.samePurchase?.of })
-    for t in windowQueue where !t.reachable {
-      guard let ref = t.groupRef, only == nil || only == ref else { continue }
-      let reason = t.activeReviewReason ?? (pairs.contains(t.id) ? .samePurchase : nil)
-      leftOut[ref, default: []].append(ReviewLeftOut(txnID: t.id, reason: reason))
-    }
+  init(_ s: LedgerState, only: MerchantGroupRef? = nil) {
     for t in s.txns {
       guard let ref = t.groupRef, only == nil || only == ref else { continue }
       if let k = t.merchantKey { keys[ref, default: []].insert(k) }

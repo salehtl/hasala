@@ -79,7 +79,7 @@ struct ScreenLaunchTests {
     let detail = try await opened("mail.detail")
     #expect(detail.app.router.pendingLaunch?.profile == [.bankAlerts, .mailbox("outlook-1")])
     let undoLine = try await opened("review.undoLine")
-    #expect(undoLine.app.toast?.title == "Groceries for all 6 Qasr Corner Store payments" && undoLine.app.toast?.lasting == true)
+    #expect(undoLine.app.toast?.title == "Groceries for all 6 Qasr Corner Store payments" && undoLine.app.toast?.undo?.batch == true)
     #expect(undoLine.app.router.tab == .review && undoLine.app.reviewCards.allSatisfy { !$0.id.hasPrefix("bl-qasr") })
     let sorted = try await opened("home.sortedForYou.list")
     #expect(sorted.app.sortedForYou.homeLine != nil && sorted.app.router.home == [.sortedForYou])

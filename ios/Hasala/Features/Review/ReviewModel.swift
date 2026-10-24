@@ -59,12 +59,14 @@ final class ReviewViewModel: ReviewDeckModel {
   var picking: ReviewPick?
   var holding: TxnID?
   var celebrated = false
+  @ObservationIgnored private var shown: TxnID?
   @ObservationIgnored private var memo = Memo<CardsKey, [ReviewCardModel]>()
 
   private struct CardsKey: Equatable {
     let revision: Int
     let window: ReviewWindow
     let held: TxnID?
+    let shown: TxnID?
   }
 
   init(app: AppModel) {
@@ -82,15 +84,20 @@ final class ReviewViewModel: ReviewDeckModel {
 
   var cards: [ReviewCardModel] {
     let held = picking?.card.id ?? holding
-    return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
+    let pinned = shown
+    let out = memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held, shown: pinned)) {
       let s = app.store.state
-      return Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, s)
+      return Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: pinned, s)
     }
+    if let top = out.first?.id, top != shown { shown = top }
+    return out
   }
 
-  nonisolated static func steady(_ order: [TxnID], waiting: [Txn], held: TxnID?, _ s: LedgerState) -> [ReviewCardModel] {
+  nonisolated static func steady(
+    _ order: [TxnID], waiting: [Txn], held: TxnID?, shown: TxnID?, _ s: LedgerState
+  ) -> [ReviewCardModel] {
     let open = Dictionary(waiting.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var out = order.compactMap { id in open[id].map { ReviewEngine.card($0, s) } }
+    var out = order.compactMap { id in (open[id] ?? (id == shown ? s.txn(id) : nil)).map { ReviewEngine.card($0, s) } }
     guard let held, order.contains(held), let t = s.txn(held) else { return out }
     out.removeAll { $0.id == held }
     out.insert(ReviewEngine.card(t, s), at: 0)
@@ -122,6 +129,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: top)
+    shown = nil
     memo = Memo()
   }
 
@@ -166,6 +174,7 @@ final class ReviewViewModel: ReviewDeckModel {
     if app.store.state.txn(card)?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
     edits.append(.categorize(card, category, learnRule: alwaysUse, project: project))
     guard app.perform(edits) else { return false }
+    passed(card)
     record(card, learnedRule: alwaysUse)
     return true
   }
@@ -174,24 +183,33 @@ final class ReviewViewModel: ReviewDeckModel {
   func useSuggestion(_ card: TxnID) -> Bool {
     guard let c = app.store.state.txn(card)?.reviewSuggestion else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
+    passed(card)
     record(card, learnedRule: false)
     return true
   }
 
-  func skip(_ card: TxnID) { app.perform(.skipReview(card)) }
+  func skip(_ card: TxnID) { passed(card, app.perform(.skipReview(card))) }
 
   @discardableResult
-  func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { app.perform(.resolveCopy(card, merge: merge)) }
+  func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { passed(card, app.perform(.resolveCopy(card, merge: merge))) }
 
   @discardableResult
-  func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool { app.perform(.resolveSamePurchase(card, same: same)) }
+  func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool {
+    passed(card, app.perform(.resolveSamePurchase(card, same: same)))
+  }
 
   @discardableResult
-  func archive(_ card: TxnID) -> Bool { app.perform(.archive(card, true)) }
+  func archive(_ card: TxnID) -> Bool { passed(card, app.perform(.archive(card, true))) }
 
   func close(goToActivity: Bool) {
     app.cover = nil
     if goToActivity { app.tab = .activity }
+  }
+
+  @discardableResult
+  private func passed(_ card: TxnID, _ done: Bool = true) -> Bool {
+    if done, shown == card { shown = nil }
+    return done
   }
 
   private func record(_ id: TxnID, learnedRule: Bool) {

@@ -415,7 +415,8 @@ or above 0.6 / 0.2 is a suggestion.
 (`CloudSortStatus`) has only the phase and the number of rows Profile can send back. The
 deck holds no row back while a run is active (one card per payment, 2026-10-23): it keeps
 the cards it opened with, and a card the run files meanwhile is skipped when its turn
-comes, so nothing moves under the finger ([sorting-rework.md](sorting-rework.md) D4-D5).
+comes. The top card stays until the person moves on, so nothing moves under the finger
+([sorting-rework.md](sorting-rework.md) D4-D5).
 
 **Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
 Review** while a row that a run on this device filed is still as the run left it, and asks
