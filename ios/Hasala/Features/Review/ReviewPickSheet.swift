@@ -12,40 +12,70 @@ struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
   let sort: (CategoryID, Bool, ProjectID?) -> Void
+  let create: (String, Glyph, Bool, ProjectID?) -> String?
 
   @State private var project: ProjectID?
   @State private var alwaysUse = false
   /// The content's measured height, which the one detent fits; an estimate until then.
   @State private var contentHeight: CGFloat?
+  @State private var formOffer: CountsAsOption?
+  @State private var saved = false
+  @State private var name = ""
+  @State private var glyph = CategoryIconGuess.fallback
+  @State private var glyphPicked = false
+  @State private var refusal: String?
+  @FocusState private var nameFocused: Bool
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var options: [CategoryOption] { model.options(for: pick.choice, card: pick.card.id) }
   private var projectChoices: [ProjectChoice] { model.projects(for: pick.card.id) }
   private var showsProjects: Bool { !projectChoices.isEmpty && pick.choice != .transfer }
+  private var newCategory: CountsAsOption? { model.newCategory(for: pick.choice, card: pick.card.id) }
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
-        header
-        list
-        if showsProjects { projects }
-        if canAlwaysUse { ruleRow }
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          if let formOffer {
+            form(formOffer)
+          } else {
+            header
+            list
+            if showsProjects { projects }
+            if canAlwaysUse { ruleRow }
+            if let newCategory { newCategoryRow(newCategory) }
+          }
+        }
+        .padding(.top, 8)
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.bottom, 28)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        .hAnimation(.sheetContent, value: creating)
+        .id(Self.top)
       }
-      .padding(.top, 8)
-      .padding(.horizontal, HSpacing.insetPage)
-      .padding(.bottom, 28)
-      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+      .onChange(of: creating) { proxy.scrollTo(Self.top, anchor: .top) }
     }
     .scrollBounceBehavior(.basedOnSize)
     // Paper: "Sort into" sits 28 above the sheet's own bottom edge, which floats over the
     // home indicator; the detent is exactly the content.
-    .ignoresSafeArea(.container, edges: .bottom)
+    .ignoresSafeArea(.container, edges: typeSize.isAccessibilitySize ? [] : .bottom)
     .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? estimatedHeight)])
     .presentationDragIndicator(.visible)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
+    .onChange(of: name) { _, new in
+      if !glyphPicked { glyph = CategoryIconGuess.glyph(for: new) }
+      refusal = nil
+    }
+    .task(id: creating) {
+      if creating { nameFocused = true }
+    }
   }
+
+  private static let top = "pick.top"
+
+  private var creating: Bool { formOffer != nil }
 
   private var suggested: CategoryID? { pick.card.suggestion?.id }
 
@@ -58,7 +88,8 @@ struct ReviewPickSheet: View {
     let n = CGFloat(options.count)
     let projects: CGFloat = showsProjects ? 66 + 20 : 0
     let rule: CGFloat = canAlwaysUse ? 20 + 44 : 0
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + 28
+    let add: CGFloat = newCategory != nil ? 20 + 56 : 0
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + add + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
@@ -161,6 +192,113 @@ struct ReviewPickSheet: View {
         .toggleStyle(CheckboxToggleStyle())
         .accessibilityIdentifier("pick.alwaysUse")
     }
+  }
+
+  private func newCategoryRow(_ offer: CountsAsOption) -> some View {
+    Button { openForm(offer) } label: {
+      let icon = HIconView(.add, size: 22, color: HColor.listRowAction).accessibilityHidden(true)
+      let title = Text("New category").hType(.rowTitle).foregroundStyle(HColor.listRowAction)
+        .fixedSize(horizontal: false, vertical: true)
+      Group {
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: .leading, spacing: 8) {
+            icon
+            title
+          }
+          .padding(.vertical, 14)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+          HStack(spacing: 12) {
+            icon.frame(width: HSpacing.listRowLeadingDisc, height: HSpacing.listRowLeadingDisc)
+            title
+            Spacer(minLength: 8)
+          }
+          .frame(minHeight: 56)
+        }
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityHint("Adds a category and sorts it there")
+    .accessibilityIdentifier("pick.newCategory")
+  }
+
+  @ViewBuilder private func form(_ offer: CountsAsOption) -> some View {
+    formHeader
+    CategoryNameIconForm(
+      name: $name, glyph: Binding(get: { glyph }, set: { pickGlyph($0) }), hue: offer.bucket.hue,
+      ids: CategoryFormIDs(name: "pick.newCategory.name", icon: "pick.newCategory.icon"), fieldSurface: HColor.fieldSurface,
+      nameFocus: $nameFocused
+    ) {
+      if let refusal {
+        Text(refusal).hType(.footnote).foregroundStyle(HColor.statusErrorForeground)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+          .accessibilityIdentifier("pick.newCategory.refusal")
+      }
+    }
+  }
+
+  @ViewBuilder private var formHeader: some View {
+    let back = GlassIconButton(.back, label: "Back", action: closeForm)
+      .accessibilityIdentifier("pick.newCategory.back")
+    let save = GlassIconButton(.done, label: "Save", prominent: true, action: save)
+      .accessibilityIdentifier("pick.newCategory.save")
+    let title = Text("\(pick.choice.label) · new category")
+      .hType(.headline.weight(.semibold))
+      .foregroundStyle(HColor.textPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityAddTraits(.isHeader)
+      .accessibilityIdentifier("pick.newCategory.title")
+    if typeSize.isAccessibilitySize {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack {
+          back
+          Spacer(minLength: 8)
+          save
+        }
+        title
+      }
+      .padding(.top, 12)
+    } else {
+      HStack {
+        back
+        Spacer(minLength: 8)
+        title.multilineTextAlignment(.center)
+        Spacer(minLength: 8)
+        save
+      }
+      .padding(.top, 12)
+    }
+  }
+
+  private func pickGlyph(_ g: Glyph) {
+    glyph = g
+    glyphPicked = true
+  }
+
+  private func openForm(_ offer: CountsAsOption) {
+    name = ""
+    glyph = CategoryIconGuess.fallback
+    glyphPicked = false
+    refusal = nil
+    formOffer = offer
+  }
+
+  private func closeForm() {
+    nameFocused = false
+    refusal = nil
+    formOffer = nil
+  }
+
+  private func save() {
+    guard !saved else { return }
+    guard let why = create(name, glyph, alwaysUse, project) else {
+      saved = true
+      return
+    }
+    refusal = why
+    AccessibilityNotification.Announcement(why).post()
   }
 }
 

@@ -227,6 +227,7 @@ public protocol LedgerStore: AnyObject, Observable {
   /// Applies one edit; returns an undo token when the edit can be undone from a toast.
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken?
+  func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String?
   /// Reverts the edit behind `token` (03c §3.8 "Undo (toast)": inverse ops).
   func undo(_ token: UndoToken)
   func newProjectID() -> ProjectID
@@ -235,6 +236,7 @@ public protocol LedgerStore: AnyObject, Observable {
 
 public extension LedgerStore {
   var month: YearMonth { now.date.yearMonth }
+  func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String? { CategoriesEngine.refusal(edit, in: state) }
   func newProjectID() -> ProjectID { "p-" + UUID().uuidString.lowercased() }
   func newCategoryID() -> CategoryID { CategoryDraft.fallbackID() }
 }

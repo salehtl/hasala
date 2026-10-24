@@ -14,19 +14,22 @@ struct CategoryNameIconForm<Between: View>: View {
   @Binding private var glyph: Glyph
   private let hue: Hue
   private let ids: CategoryFormIDs
+  private let fieldSurface: Color
   private let nameFocus: FocusState<Bool>.Binding
   private let between: Between
   @ScaledMetric(relativeTo: .body) private var iconCell: CGFloat = 52
   @Environment(\.dynamicTypeSize) private var typeSize
 
   init(
-    name: Binding<String>, glyph: Binding<Glyph>, hue: Hue, ids: CategoryFormIDs = .editor, nameFocus: FocusState<Bool>.Binding,
+    name: Binding<String>, glyph: Binding<Glyph>, hue: Hue, ids: CategoryFormIDs = .editor,
+    fieldSurface: Color = HColor.fieldSurfaceOnGrouped, nameFocus: FocusState<Bool>.Binding,
     @ViewBuilder between: () -> Between
   ) {
     _name = name
     _glyph = glyph
     self.hue = hue
     self.ids = ids
+    self.fieldSurface = fieldSurface
     self.nameFocus = nameFocus
     self.between = between()
   }
@@ -40,7 +43,7 @@ struct CategoryNameIconForm<Between: View>: View {
         .focused(nameFocus)
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+        .background(fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
         .accessibilityLabel("Name")
         .accessibilityIdentifier(ids.name)
     }
@@ -66,8 +69,11 @@ struct CategoryNameIconForm<Between: View>: View {
 }
 
 extension CategoryNameIconForm where Between == EmptyView {
-  init(name: Binding<String>, glyph: Binding<Glyph>, hue: Hue, ids: CategoryFormIDs = .editor, nameFocus: FocusState<Bool>.Binding) {
-    self.init(name: name, glyph: glyph, hue: hue, ids: ids, nameFocus: nameFocus) { EmptyView() }
+  init(
+    name: Binding<String>, glyph: Binding<Glyph>, hue: Hue, ids: CategoryFormIDs = .editor,
+    fieldSurface: Color = HColor.fieldSurfaceOnGrouped, nameFocus: FocusState<Bool>.Binding
+  ) {
+    self.init(name: name, glyph: glyph, hue: hue, ids: ids, fieldSurface: fieldSurface, nameFocus: nameFocus) { EmptyView() }
   }
 }
 

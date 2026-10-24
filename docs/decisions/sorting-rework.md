@@ -165,6 +165,33 @@ merchant group and direction from the deck's own cards, in date order, if there 
 then date order resumes. A payment of that merchant sorted meanwhile elsewhere is skipped,
 as D4 and D5 say.
 
+### New category while sorting
+
+The sorting rebuild (2026-10-23) ends the pick sheet for Need, Want and Save with a New
+category row, so a person who needs a new category does not leave Review for Profile. The
+row is not shown for Transfer or for money in, and it is hidden when the person has 20
+custom categories. A tap turns the sheet into a short form: Back, a title that names the
+bucket the swipe chose ("Need · new category"; the bucket cannot be changed there) and Save
+at the top, then the name and the icons. The name field has the keyboard at once, and the
+icon follows `CategoryIconGuess` until the person picks one, so a new category takes three
+taps in the sheet: New category, the name, Save. The parent is that bucket's entry in
+`CategoriesEngine.countsAsOptions`, the same one Profile's editor offers. Back returns to
+the list and writes nothing.
+
+Save first asks `ReviewDeckModel.newCategoryRefusal`, which runs the store's own check
+(`LedgerStore.categoryRefusal`: `CategoriesEngine.refusal`, and in the live store also the
+projection's taxonomy, for example a name with bidi characters). It runs before any edit,
+also before the edit that settles a held copy, and shows a refusal under the name with
+nothing written and no toast. Otherwise the sheet closes, and then `createAndSort` sends
+the one atomic `.addCategoryAndSort` edit (#186), with Always use when the sheet's switch
+is on and the project when one is chosen. The card then leaves as after any sort, with
+"Sorted into Coffee" or the undo line when Always use files other payments too; the toast
+comes up after the sheet has closed, never on top of it. If the name is refused at that
+point after all (a sync added the same name meanwhile), the refusal is a toast and the card
+springs back. Undo takes back the sort, the rule and its reach, and keeps the category. The
+name is a custom category name, so it is never sent to Cloudflare
+([cloud-suggestions.md](cloud-suggestions.md)).
+
 ### D6, D6b and D7 Not this
 
 The sorting rebuild (2026-10-23) removed Not this from the app: there is no button, note or

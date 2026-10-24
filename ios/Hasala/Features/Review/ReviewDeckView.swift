@@ -42,8 +42,13 @@ struct ReviewDeckView: View {
   @State private var choosingRange = false
 
   private struct PendingSort {
+    enum Into {
+      case category(CategoryID)
+      case newCategory(name: String, glyph: Glyph)
+    }
+
     let pick: ReviewPick
-    let category: CategoryID
+    let into: Into
     let alwaysUse: Bool
     let project: ProjectID?
   }
@@ -105,9 +110,14 @@ struct ReviewDeckView: View {
     }
     .hHaptic(.impactLight, trigger: tap)
     .sheet(item: pickBinding, onDismiss: pickClosed) { pick in
-      ReviewPickSheet(model: model, pick: pick) { category, alwaysUse, project in
-        sortPicked(pick, into: category, alwaysUse: alwaysUse, project: project)
-      }
+      ReviewPickSheet(
+        model: model, pick: pick,
+        sort: { category, alwaysUse, project in
+          sortPicked(pick, into: category, alwaysUse: alwaysUse, project: project)
+        },
+        create: { name, glyph, alwaysUse, project in
+          createPicked(pick, name: name, glyph: glyph, alwaysUse: alwaysUse, project: project)
+        })
     }
     .onAppear {
       SortSound.shared.prepare()
@@ -525,8 +535,18 @@ struct ReviewDeckView: View {
   /// deck"; "a toast may appear after a sheet closes, never on top of one"). Filing once the
   /// sheet is down also keeps the fly-out from sharing frames with the sheet's own motion.
   private func sortPicked(_ pick: ReviewPick, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
-    pendingSort = PendingSort(pick: pick, category: category, alwaysUse: alwaysUse, project: project)
+    pendingSort = PendingSort(pick: pick, into: .category(category), alwaysUse: alwaysUse, project: project)
     model.picking = nil
+  }
+
+  private func createPicked(
+    _ pick: ReviewPick, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> String? {
+    if let why = model.newCategoryRefusal(pick.card.id, pick.choice, name: name, glyph: glyph) { return why }
+    pendingSort = PendingSort(
+      pick: pick, into: .newCategory(name: name, glyph: glyph), alwaysUse: alwaysUse, project: project)
+    model.picking = nil
+    return nil
   }
 
   /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,
@@ -536,7 +556,13 @@ struct ReviewDeckView: View {
       pendingSort = nil
       let edge = held ?? edge(for: p.pick.choice)
       file(p.pick.card, toward: edge, as: p.pick.choice.label, chime: true) {
-        model.sort(p.pick.card.id, into: p.category, alwaysUse: p.alwaysUse, project: p.project)
+        switch p.into {
+        case .category(let category):
+          model.sort(p.pick.card.id, into: category, alwaysUse: p.alwaysUse, project: p.project)
+        case .newCategory(let name, let glyph):
+          model.createAndSort(
+            p.pick.card.id, p.pick.choice, name: name, glyph: glyph, alwaysUse: p.alwaysUse, project: p.project)
+        }
       }
       return
     }
