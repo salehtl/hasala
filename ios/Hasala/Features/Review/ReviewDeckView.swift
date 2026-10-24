@@ -105,9 +105,14 @@ struct ReviewDeckView: View {
     }
     .hHaptic(.impactLight, trigger: tap)
     .sheet(item: pickBinding, onDismiss: pickClosed) { pick in
-      ReviewPickSheet(model: model, pick: pick) { category, alwaysUse, project in
-        sortPicked(pick, into: category, alwaysUse: alwaysUse, project: project)
-      }
+      ReviewPickSheet(
+        model: model, pick: pick,
+        sort: { category, alwaysUse, project in
+          sortPicked(pick, into: category, alwaysUse: alwaysUse, project: project)
+        },
+        create: { name, glyph, alwaysUse, project in
+          createPicked(pick, name: name, glyph: glyph, alwaysUse: alwaysUse, project: project)
+        })
     }
     .onAppear {
       SortSound.shared.prepare()
@@ -527,6 +532,22 @@ struct ReviewDeckView: View {
   private func sortPicked(_ pick: ReviewPick, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) {
     pendingSort = PendingSort(pick: pick, category: category, alwaysUse: alwaysUse, project: project)
     model.picking = nil
+  }
+
+  private func createPicked(
+    _ pick: ReviewPick, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> String? {
+    if let why = model.createAndSort(
+      pick.card.id, pick.choice, name: name, glyph: glyph, alwaysUse: alwaysUse, project: project)
+    {
+      return why
+    }
+    let edge = held ?? edge(for: pick.choice)
+    file(pick.card, toward: edge, as: pick.choice.label, chime: true) {
+      model.picking = nil
+      return true
+    }
+    return nil
   }
 
   /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,

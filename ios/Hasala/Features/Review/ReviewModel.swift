@@ -38,6 +38,10 @@ protocol ReviewDeckModel: AnyObject, Observable {
   /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
+  func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption?
+  @discardableResult func createAndSort(
+    _ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> String?
   @discardableResult func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
@@ -60,6 +64,7 @@ final class ReviewViewModel: ReviewDeckModel {
   var holding: TxnID?
   var celebrated = false
   @ObservationIgnored private var shown: TxnID?
+  @ObservationIgnored private var leaving: TxnID?
   @ObservationIgnored private var memo = Memo<CardsKey, [ReviewCardModel]>()
 
   private struct CardsKey: Equatable {
@@ -86,7 +91,10 @@ final class ReviewViewModel: ReviewDeckModel {
     return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
       let s = app.store.state
       let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s)
-      if let top = out.first?.id { shown = top }
+      if let top = out.first?.id, top != leaving {
+        shown = top
+        leaving = nil
+      }
       return out
     }
   }
@@ -167,15 +175,51 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
+    guard app.perform(settling(card) + [.categorize(card, category, learnRule: alwaysUse, project: project)]) else {
+      return false
+    }
+    filed(card, learnedRule: alwaysUse)
+    return true
+  }
+
+  func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption? {
+    let s = app.store.state
+    guard let bucket = choice.bucket, let t = s.txn(card), t.direction == .out,
+      CategoriesEngine.activeCustomCount(s) < CategoryLimits.maxActiveCustom
+    else { return nil }
+    return CategoriesEngine.countsAsOptions(s, keeping: []).first { $0.bucket == bucket }
+  }
+
+  @discardableResult
+  func createAndSort(
+    _ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> String? {
+    let s = app.store.state
+    guard s.txn(card) != nil else { return AppModel.message(for: .notFound) }
+    guard let parent = newCategory(for: choice, card: card)?.parent else {
+      return CategoriesEngine.activeCustomCount(s) < CategoryLimits.maxActiveCustom
+        ? CategoryLimits.cannotAdd : CategoryLimits.atCap
+    }
+    let edit = LedgerEdit.addCategoryAndSort(
+      CategoryDraft(name: name, glyph: glyph, parent: parent), card, alwaysUse: alwaysUse, project: project)
+    if let why = CategoriesEngine.refusal(edit, in: s) { return why }
+    if let why = app.refusal(performing: settling(card) + [edit]) { return why }
+    filed(card, learnedRule: alwaysUse)
+    return nil
+  }
+
+  private func settling(_ card: TxnID) -> [LedgerEdit] {
+    let t = app.store.state.txn(card)
     var edits: [LedgerEdit] = []
-    if app.store.state.txn(card)?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
-    if app.store.state.txn(card)?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
-    edits.append(.categorize(card, category, learnRule: alwaysUse, project: project))
-    guard app.perform(edits) else { return false }
+    if t?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
+    if t?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
+    return edits
+  }
+
+  private func filed(_ card: TxnID, learnedRule: Bool) {
     follow(card)
     passed(card)
-    record(card, learnedRule: alwaysUse)
-    return true
+    record(card, learnedRule: learnedRule)
   }
 
   @discardableResult
@@ -183,9 +227,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let s = app.store.state
     guard let t = s.txn(card), let c = ReviewEngine.suggestion(t, s)?.id, shown == nil || shown == c else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
-    follow(card)
-    passed(card)
-    record(card, learnedRule: false)
+    filed(card, learnedRule: false)
     return true
   }
 
@@ -231,6 +273,7 @@ final class ReviewViewModel: ReviewDeckModel {
       shown = nil
       memo = Memo()
     }
+    if done, app.store.state.txn(card)?.inReview != true { leaving = card }
     return done
   }
 
