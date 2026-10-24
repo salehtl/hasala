@@ -353,7 +353,7 @@ struct SecurityView: View {
       return AccountCopy.signOutMessage
     case .signOutEverywhere:
       // Every session ends; each device keeps its copy and its keys (`02` §9.3).
-      return "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
+      return LockdownView.signOutEverywhereMessage
     case .freeze:
       return "Everyone will be signed out. No one can use your account with a password, reset the password or use the recovery phrase until you confirm it's you with a passkey, or with your password on one of your iPhones."
     }
@@ -580,7 +580,7 @@ struct PasswordEditPage: View {
     ) {
       NewPasswordBlock(password: $model.newPassword, confirm: $model.confirmNewPassword,
                        assessment: model.newPasswordAssessment,
-                       matches: !model.confirmNewPassword.isEmpty && model.newPassword == model.confirmNewPassword)
+                       matches: model.newPasswordsMatch)
     } footer: {
       BusyButton(title: "Save password", busy: model.busy, enabled: model.newPasswordReady,
                  identifier: "passwordEdit.save") {

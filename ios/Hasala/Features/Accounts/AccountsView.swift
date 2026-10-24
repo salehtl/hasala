@@ -40,7 +40,7 @@ struct AccountsView: View {
       }
       if unfinished {
         // TODO(spec 13 B3): "Add an account" (not drawn past the button).
-        Button("Add an account") { app.say("Adding an account comes in a later build", icon: .add) }
+        Button("Add an account", action: sayAddLater)
           .buttonStyle(.pill(.onGrouped, fill: true, leadingIcon: .add))
           .pillHeight()
           .accessibilityIdentifier("accounts.add")
@@ -50,7 +50,7 @@ struct AccountsView: View {
     .toolbar {
       if unfinished {
         ToolbarItem(placement: .topBarTrailing) {
-          Button { app.say("Adding an account comes in a later build", icon: .add) } label: {
+          Button(action: sayAddLater) {
             // Paper's glass Add: the plus at 22, stroke 2.3, in the glass ink.
             HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
           }
@@ -59,6 +59,8 @@ struct AccountsView: View {
       }
     }
   }
+
+  private func sayAddLater() { app.say("Adding an account comes in a later build", icon: .add) }
 
   /// "NET WORTH / AED 227,568.00 / ↑ +2,140.00 this month".
   private var hero: some View {

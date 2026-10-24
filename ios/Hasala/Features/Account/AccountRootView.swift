@@ -98,7 +98,7 @@ struct AccountRootView<Main: View>: View {
 
   @ViewBuilder private var content: some View {
     let _ = passcodeChecked
-    if session.phase != .ready, !session.services.hasPasscode() {
+    if gate == .passcode {
       PasscodeWall()
         .onChange(of: scenePhase) { _, p in if p == .active { passcodeChecked += 1 } }
     } else {

@@ -204,23 +204,11 @@ struct FrozenBanner: View {
       HIconView(.lockKeyhole, size: 18, color: Hue.rose.ink)
       Text("Account frozen").hType(.rowTitle).foregroundStyle(Hue.rose.ink)
       Spacer()
-      Button("Sign out") { confirmSignOut = true }
-        .hType(.rowTitle)
-        .foregroundStyle(HColor.textLink)
-        .frame(minHeight: 44)
-        .accessibilityIdentifier("frozenBanner.signOut")
+      link("Sign out", id: "frozenBanner.signOut") { confirmSignOut = true }
       if by == .holder {
-        Button("Unfreeze", action: onShowWall)
-          .hType(.rowTitle)
-          .foregroundStyle(HColor.textLink)
-          .frame(minHeight: 44)
-          .accessibilityIdentifier("frozenBanner.unfreeze")
+        link("Unfreeze", id: "frozenBanner.unfreeze", action: onShowWall)
       } else {
-        Button("Details", action: onShowWall)
-          .hType(.rowTitle)
-          .foregroundStyle(HColor.textLink)
-          .frame(minHeight: 44)
-          .accessibilityIdentifier("frozenBanner.details")
+        link("Details", id: "frozenBanner.details", action: onShowWall)
       }
     }
     .padding(.horizontal, 16)
@@ -232,5 +220,13 @@ struct FrozenBanner: View {
     } message: {
       Text(AccountCopy.signOutMessage)
     }
+  }
+
+  private func link(_ title: LocalizedStringKey, id: String, action: @escaping () -> Void) -> some View {
+    Button(title, action: action)
+      .hType(.rowTitle)
+      .foregroundStyle(HColor.textLink)
+      .frame(minHeight: 44)
+      .accessibilityIdentifier(id)
   }
 }

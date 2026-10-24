@@ -313,3 +313,24 @@ struct SettingSwitchRow: View {
     .frame(minHeight: HSpacing.listRowMinHeight)
   }
 }
+
+struct ProfileInfoRow: View {
+  let icon: HIcon
+  let title: String
+  let text: String
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 14) {
+      HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+        Text(text).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, 14)
+    .accessibilityElement(children: .combine)
+  }
+}
