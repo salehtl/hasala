@@ -7,11 +7,20 @@ enum MerchantWhen {
     "(?:" + Set(RuleDate.arabicWeekdayNames.flatMap { [$0.0, RuleText.fold($0.0)] }).sorted().joined(separator: "|") + ")"
   static let arDateWords = "(?:بتاريخ|التاريخ|تاريخ|يوم)"
 
-  static let stopEN = "\\s+on\\s+(?:" + weekdays + "(?![a-z])|" + month + "\\.?\\s*\\d)"
+  static let weekdaysLong = "(?:" + RuleDate.weekdayNames.map(\.0).filter { $0.count > 5 }.joined(separator: "|") + ")"
+  static let arMonthsRe =
+    "(?:" + Set(RuleDate.arabicMonthNames.flatMap { [$0.0, RuleText.fold($0.0)] }).sorted { $0.count > $1.count }.joined(
+      separator: "|") + ")"
+
+  static let stopEN =
+    "\\s+on\\s+(?:" + weekdaysLong + "(?![a-z])|" + weekdays + "(?=,|\\s+[0-9])|" + month
+    + "\\.?\\s+[0-9]{1,2}(?:st|nd|rd|th)?(?![a-z0-9])(?=,?\\s+[0-9]{4}(?![0-9])|\\s*[,.;]|\\s*$|\\s+(?:at\\s+)?[0-9]{1,2}:[0-9]{2}))"
   static let stopDate =
     "\\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?[-/ ]" + month + "\\.?,?[-/ ](?:[0-9]{4}|[0-9]{2})(?![0-9])|" + month
     + "\\.?[- ][0-9]{1,2}(?:st|nd|rd|th)?,?[-/ ][0-9]{4}(?![0-9]))"
-  static let stopAR = "\\s+" + arDateWords + "(?=\\s*[0-9]|\\s+" + arWeekdays + ")"
+  static let stopAR =
+    "\\s+" + arDateWords + "(?=\\s*[0-9]{1,2}\\s+" + arMonthsRe + "|\\s*[0-9]{1,2}[-/.][0-9]{1,2}[-/.](?:[0-9]{4}|[0-9]{2})(?![0-9])|\\s+"
+    + arWeekdays + ")"
 
   static let maxRun = 10
 
@@ -56,7 +65,7 @@ enum MerchantWhen {
     guard parts.count > 1 else { return s.trimmingCharacters(in: .whitespaces) }
     let ws = words(s)
     let lo = max(1, ws.count - maxRun)
-    for start in lo..<ws.count where isWhen(ws[start...]) {
+    for start in lo..<ws.count where parse(ws[start...], introduced: ws[start - 1].comma, atStart: false) == ws.count - start {
       let out = tidy(parts[..<start].joined(separator: " "))
       return out.isEmpty ? s.trimmingCharacters(in: .whitespaces) : out
     }
@@ -71,7 +80,7 @@ enum MerchantWhen {
 
   static func isDateOnly(_ s: String) -> Bool {
     let ws = words(s)
-    return !ws.isEmpty && ws.count <= maxRun && isWhen(ws[...])
+    return !ws.isEmpty && ws.count <= maxRun && parse(ws[...], introduced: false, atStart: true) == ws.count
   }
 
   static func tidy(_ s: String) -> String {
@@ -80,7 +89,7 @@ enum MerchantWhen {
     return next.trimmingCharacters(in: .whitespaces)
   }
 
-  static func isWhen(_ run: ArraySlice<Word>) -> Bool {
+  static func parse(_ run: ArraySlice<Word>, introduced: Bool, atStart: Bool) -> Int? {
     let w = Array(run)
     var i = 0
     var lead = false
@@ -88,17 +97,19 @@ enum MerchantWhen {
       lead = true
       i += 1
     }
+    let open = lead || introduced
     var weekday = false
     var strongWeekday = false
     if i < w.count, weekdaysEN.contains(w[i].key) || weekdaysAR.contains(w[i].key) {
-      weekday = true
       strongWeekday = w[i].comma || weekdayFull.contains(w[i].key) || weekdaysAR.contains(w[i].key)
-      if !strongWeekday && !lead { return false }
+      guard open || (atStart && strongWeekday) else { return nil }
+      weekday = true
       i += 1
     }
     var date = false
     var year = false
     if let (n, y) = dateAt(w, i) {
+      if monthWord(w[i].key) != nil, !(open || weekday || atStart || (n == 3 && y)) { return nil }
       date = true
       year = y
       i += n
@@ -112,8 +123,9 @@ enum MerchantWhen {
         i = j + n
       }
     }
-    guard i == w.count, date || time || (weekday && lead && strongWeekday) else { return false }
-    return lead || year || time || (weekday && strongWeekday)
+    guard date || time || (weekday && lead && strongWeekday) else { return nil }
+    guard lead || year || time || (weekday && strongWeekday) else { return nil }
+    return i
   }
 
   static func day(_ k: String) -> Int? {
@@ -201,36 +213,34 @@ enum MerchantWhen {
   }
 
   static func reconcile(learned l: String?, rules r: String?, text: String = "") -> String? {
-    guard let lm = trimmed(l) else { return r }
+    guard let lm = l else { return r }
     let parts = lm.split(whereSeparator: \.isWhitespace).map(String.init)
     var keep = parts.count
-    while keep > 0 {
+    while keep > 0, keep > parts.count - 3 {
       let k = words(parts[keep - 1]).first?.key ?? ""
-      guard monthWord(k) != nil || weekdaysEN.contains(k) || weekdaysAR.contains(k) || leadsEN.contains(k) else { break }
+      guard monthWord(k) != nil || weekdaysEN.contains(k) || weekdaysAR.contains(k) || leadsEN.contains(k) || leadsAR.contains(k)
+      else { break }
       keep -= 1
     }
-    guard keep < parts.count, followedByDay(lm, in: text) else { return lm }
+    guard keep < parts.count else { return lm }
+    let tail = parts[keep...].joined(separator: " ")
+    let tailCount = parts.count - keep
+    let prevComma = keep > 0 && (words(parts[keep - 1]).first?.comma ?? false)
+    guard let after = following(lm, in: text) else { return lm }
+    let run = words(tail + " " + after)
+    guard let n = parse(run[...], introduced: prevComma, atStart: keep == 0), n > tailCount else { return lm }
     if keep == 0 { return r ?? lm }
     let out = tidy(parts[..<keep].joined(separator: " "))
     return out.isEmpty ? (r ?? lm) : out
   }
 
-  static func followedByDay(_ s: String, in text: String) -> Bool {
+  static func following(_ s: String, in text: String) -> String? {
     let t = RuleText.asciiDigits(text)
     let needle = RuleText.asciiDigits(s)
-    guard !needle.isEmpty else { return false }
-    var from = t.startIndex
-    while let r = t.range(of: needle, options: [.caseInsensitive], range: from..<t.endIndex) {
-      var i = r.upperBound
-      if i < t.endIndex, t[i] == "." || t[i] == "," || t[i] == "،" { i = t.index(after: i) }
-      var spaced = false
-      while i < t.endIndex, t[i] == " " {
-        spaced = true
-        i = t.index(after: i)
-      }
-      if spaced, i < t.endIndex, t[i].isASCII, t[i].isNumber { return true }
-      from = r.upperBound
-    }
-    return false
+    guard !needle.isEmpty, let r = t.range(of: needle, options: [.caseInsensitive]) else { return nil }
+    let rest = t[r.upperBound...].prefix { $0 != "\n" }
+    guard let first = rest.first, first.isWhitespace || first == "," || first == "." || first == "،" else { return nil }
+    let next = rest.split(whereSeparator: \.isWhitespace).prefix(5).joined(separator: " ")
+    return next.isEmpty ? nil : next
   }
 }

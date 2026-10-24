@@ -153,6 +153,7 @@ struct Reading: Equatable {
   var confidence = 0
   var note = ""
   var negative = false
+  var merchantTrimmed = false
 
   static let none = Reading()
 }

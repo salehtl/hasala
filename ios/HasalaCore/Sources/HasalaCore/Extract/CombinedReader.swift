@@ -98,7 +98,11 @@ public enum CombinedReader {
 
   static func dateless(_ r: Reading, _ text: String) -> Reading {
     var out = r
-    out.merchant = MerchantWhen.reconcile(learned: r.merchant, rules: nil, text: text)
+    let raw = r.merchant?.trimmingCharacters(in: .whitespaces)
+    var t = MerchantWhen.trimmed(r.merchant)
+    if t == raw { t = MerchantWhen.reconcile(learned: t, rules: nil, text: text) }
+    out.merchantTrimmed = t != raw
+    out.merchant = t
     return out
   }
 
@@ -116,7 +120,8 @@ public enum CombinedReader {
         return (out, false)
       }
       var out = l.confidence >= r.confidence ? l : r
-      out.merchant = MerchantWhen.reconcile(learned: l.merchant, rules: r.merchant, text: text)
+      out.merchant = l.merchantTrimmed
+        ? (l.merchant ?? r.merchant) : MerchantWhen.reconcile(learned: l.merchant, rules: r.merchant, text: text)
       if l.directionGuessed && !r.directionGuessed { out.direction = r.direction }
       if r.directionGuessed && !l.directionGuessed { out.direction = l.direction }
       out.currencyExplicit = true

@@ -1473,6 +1473,183 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "merchant-date-weekday-name-learned",
+      "note": "A name that ends in a weekday word, from one sender over four mails; a weekday is part of a date only after on, dated, a comma or \u064a\u0648\u0645.",
+      "mails": [
+        {
+          "sender": "bank-s.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 11.00\nMerchant: RISING SUN 3 Mar 2030\nThank you.",
+          "received_at_ms": 1900003060000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-s.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 12.50\nMerchant: RISING SUN 9 Mar 2030\nThank you.",
+          "received_at_ms": 1900003120000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-s.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 9.75\nMerchant: RISING SUN 14 Apr 2030\nThank you.",
+          "received_at_ms": 1900003180000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-s.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 20.00\nMerchant: RISING SUN 1 May 2030\nThank you.",
+          "received_at_ms": 1900003240000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1100,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1250,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 975,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 75,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 85,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        }
+      ]
+    },
+    {
+      "name": "merchant-date-no-date-after",
+      "note": "A number after a date word that is not a date.",
+      "mails": [
+        {
+          "sender": "bank-t.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 15.00 at RISING SUN 14:05.\nThank you.",
+          "received_at_ms": 1900003300000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-u.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 16.00 at CAFE on MAY 5TH STREET.\nThank you.",
+          "received_at_ms": 1900003360000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-h.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u062e\u0635\u0645 \u0645\u0628\u0644\u063a 18.00 \u062f\u0631\u0647\u0645 \u0645\u0646 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 4821 \u0644\u062f\u0649 \u0645\u062e\u0628\u0632 \u0643\u0644 \u064a\u0648\u0645 24 \u0633\u0627\u0639\u0629.\n\u0634\u0643\u0631\u0627 \u0644\u0643\u0645",
+          "received_at_ms": 1900003420000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1500,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1600,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "CAFE on MAY 5TH STREET",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1800,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "\u0645\u062e\u0628\u0632 \u0643\u0644 \u064a\u0648\u0645 24 \u0633\u0627\u0639\u0629",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }

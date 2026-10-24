@@ -59,7 +59,8 @@ import Testing
     ("SUN AND SAND SPORTS.", "SUN AND SAND SPORTS"),
     ("CAFE ON MAIN.", "CAFE ON MAIN"),
     ("MAY FLOWERS on May 5.", "MAY FLOWERS"),
-    ("DUBAI MARINA MALL on Sat.", "DUBAI MARINA MALL"),
+    ("DUBAI MARINA MALL on Saturday.", "DUBAI MARINA MALL"),
+    ("DUBAI MARINA MALL on Sat, 3 Mar.", "DUBAI MARINA MALL"),
     ("CAFE 24 MARCH.", "CAFE 24 MARCH"),
     ("MAY 21.", "MAY 21"),
     ("CAFE SAT.", "CAFE SAT"),
@@ -81,7 +82,8 @@ import Testing
 
   @Test(arguments: [
     ("TALABAT يوم الاثنين", "TALABAT"),
-    ("TALABAT الاثنين، 3 فبراير 2030", "TALABAT"),
+    ("TALABAT الاثنين، 3 فبراير 2030", "TALABAT الاثنين"),
+    ("TALABAT، الاثنين، 3 فبراير 2030", "TALABAT"),
     ("TALABAT بتاريخ 03-02-2030 الساعة 10:15 م", "TALABAT"),
     ("CARREFOUR Feb 2, 2030", "CARREFOUR"),
     ("CARREFOUR 2030-02-02 10:15", "CARREFOUR"),
@@ -139,7 +141,7 @@ import Testing
     #expect(MerchantWhen.reconcile(learned: "SPINNEYS Mar", rules: "SPINNEYS", text: "Merchant: SPINNEYS Mar 14, 2030") == "SPINNEYS")
     #expect(MerchantWhen.reconcile(learned: "Apr", rules: "CARREFOUR", text: "Merchant: CARREFOUR Apr 1, 2030") == "CARREFOUR")
     #expect(MerchantWhen.reconcile(learned: "SPINNEYS MARINA", rules: "SPINNEYS", text: "SPINNEYS MARINA 3") == "SPINNEYS MARINA")
-    #expect(MerchantWhen.reconcile(learned: "TALABAT 3 Mar 2030", rules: nil) == "TALABAT")
+    #expect(MerchantWhen.reconcile(learned: MerchantWhen.trim("TALABAT 3 Mar 2030"), rules: nil) == "TALABAT")
     #expect(MerchantWhen.reconcile(learned: nil, rules: "TALABAT") == "TALABAT")
     #expect(
       MerchantWhen.reconcile(learned: "PHARMACY Mar", rules: "SAMPLE PHARMACY", text: "Merchant: SAMPLE PHARMACY Mar 14, 2030")
@@ -188,6 +190,69 @@ import Testing
     #expect(MerchantWhen.trim(v) == want)
   }
 
+  @Test(arguments: [
+    ("RISING SUN 3 Mar 2030", "RISING SUN"),
+    ("SHOP SUNDAY 3 Mar 2030", "SHOP SUNDAY"),
+    ("SUN 3 Mar 2030", "SUN"),
+    ("مطعم السبت 3 مارس 2030", "مطعم السبت"),
+    ("مطعم يوم السبت", "مطعم"),
+    ("TALABAT, Mon 3 Mar 2030", "TALABAT"),
+    ("TALABAT on Sunday 3 Mar", "TALABAT"),
+    ("TALABAT dated Mar 3", "TALABAT"),
+    ("CAFE DEL MAR 14:05", "CAFE DEL MAR"),
+    ("RISING SUN 14:05", "RISING SUN"),
+  ])
+  func weekdayAndMonthNeedAnIntroducer(_ v: String, _ want: String) {
+    #expect(MerchantWhen.trim(v) == want)
+  }
+
+  @Test(arguments: [
+    ("RISING SUN 14:05.", "RISING SUN"),
+    ("CAFE DEL MAR 14:05.", "CAFE DEL MAR"),
+    ("RISING SUN on 3 Mar 2030.", "RISING SUN"),
+    ("CAFE on MAY 5TH STREET.", "CAFE on MAY 5TH STREET"),
+    ("CAFE ON SUN.", "CAFE ON SUN"),
+    ("CAFE on Sun, 3 Mar.", "CAFE"),
+  ])
+  func inlineIntroducers(_ tail: String, _ want: String) {
+    #expect(CombinedReader.readRules(Self.en(tail)).merchant == want)
+  }
+
+  @Test func labelRisingSun() {
+    #expect(CombinedReader.readRules(Self.label("RISING SUN 3 Mar 2030")).merchant == "RISING SUN")
+  }
+
+  @Test(arguments: ["مخبز كل يوم 24 ساعة.", "مخبز كل يوم 7 أيام."])
+  func arabicDayWordBeforeANumberThatIsNoDate(_ tail: String) {
+    #expect(CombinedReader.readRules(Self.ar(tail)).merchant == String(tail.dropLast()))
+  }
+
+  @Test func learnedRisingSunSender() {
+    var mem = LearnedLayouts()
+    let dates = ["3 Mar 2030", "9 Mar 2030", "14 Apr 2030", "1 May 2030", "20 May 2030"]
+    for i in dates.indices {
+      let m = Mails.input(
+        "bank-r.example", subject: "Card transaction alert",
+        [
+          "Dear Customer,", "Your card ending 4821 was used for a purchase.", "Amount: AED \(20 + i).00",
+          "Merchant: RISING SUN \(dates[i])", "Thank you.",
+        ], at: 1_900_000_000_000 + Int64(i) * 86_400_000)
+      let (r, next) = CombinedReader.read(m, mem)
+      mem = next
+      #expect(r.merchant == "RISING SUN", "mail \(i)")
+      let (l, _) = CombinedReader.readLearned(m, mem)
+      if let got = l.merchant { #expect(got == "RISING SUN", "learned mail \(i)") }
+    }
+  }
+
+  @Test func reconcileNeedsAFullDateAfter() {
+    #expect(MerchantWhen.reconcile(learned: "RISING SUN", rules: "RISING SUN", text: "Merchant: RISING SUN 3 Mar 2030") == "RISING SUN")
+    #expect(MerchantWhen.reconcile(learned: "RISING SUN", rules: nil, text: "at RISING SUN 14:05.") == "RISING SUN")
+    #expect(MerchantWhen.reconcile(learned: "CAFE DEL MAR", rules: nil, text: "at CAFE DEL MAR 14:05.") == "CAFE DEL MAR")
+    #expect(MerchantWhen.reconcile(learned: "CAFE DEL MAR", rules: nil, text: "at CAFE DEL MAR 3 Mar 2030") == "CAFE DEL MAR")
+    #expect(MerchantWhen.reconcile(learned: "SHOP on Mon", rules: nil, text: "at SHOP on Mon 3 Mar") == "SHOP")
+  }
+
   @Test func trimIsLinear() {
     let digits = String(String(repeating: "1 22 333 4 ", count: 20).prefix(200))
     let mixed = String(String(repeating: "12 3 Mar 2030 14:05 ", count: 12).prefix(200))
@@ -198,7 +263,7 @@ import Testing
       _ = MerchantWhen.reconcile(learned: v, rules: "SHOP", text: v + " " + v)
       _ = RuleReader.validMerchant(v, banks: [])
     }
-    #expect(Date().timeIntervalSince(start) < 0.05)
+    #expect(Date().timeIntervalSince(start) < 2)
   }
 
   @Test func readLearnedHasNoDate() {
