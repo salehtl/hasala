@@ -78,12 +78,7 @@ public extension HIcon {
   }
 
   /// The main stroke width as drawn (the width a size rule replaces).
-  var drawnStroke: CGFloat {
-    for e in elements {
-      if case .stroke(let w, _, _) = e.paint { return w }
-    }
-    return 0
-  }
+  var drawnStroke: CGFloat { HIcon.drawings[self]?.drawnStroke ?? 0 }
 
   /// The stroke for this icon at `size` points, in viewBox units.
   func stroke(at size: CGFloat) -> CGFloat {
@@ -95,17 +90,37 @@ public extension HIcon {
     }
   }
 
+  /// The elements as Paper draws them.
+  var elements: [IconElement] { HIcon.drawings[self]?.elements ?? [] }
+
   /// The parsed paths, one per element (parsed once per process).
-  var paths: [SVGPath] { HIcon.parsed[self] ?? [] }
+  var paths: [SVGPath] { HIcon.drawings[self]?.paths ?? [] }
 
   /// Every element parses (IconTests checks this on the real data).
-  private static let parsed: [HIcon: [SVGPath]] = {
-    var out: [HIcon: [SVGPath]] = [:]
+  private static let drawings: [HIcon: IconDrawing] = {
+    var out: [HIcon: IconDrawing] = [:]
     for icon in HIcon.allCases {
-      out[icon] = icon.elements.map { (try? SVGPath(parsing: $0.d)) ?? SVGPath(elements: []) }
+      let elements = icon.drawnElements
+      var stroke: CGFloat = 0
+      for e in elements {
+        if case .stroke(let w, _, _) = e.paint {
+          stroke = w
+          break
+        }
+      }
+      out[icon] = IconDrawing(
+        elements: elements,
+        paths: elements.map { (try? SVGPath(parsing: $0.d)) ?? SVGPath(elements: []) },
+        drawnStroke: stroke)
     }
     return out
   }()
+}
+
+private struct IconDrawing: Sendable {
+  let elements: [IconElement]
+  let paths: [SVGPath]
+  let drawnStroke: CGFloat
 }
 
 // MARK: - The drawings
@@ -135,9 +150,8 @@ func circlePath(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat) -> String {
 
 private let white = HRGBA(255, 255, 255, 1)
 
-public extension HIcon {
-  /// The elements as Paper draws them.
-  var elements: [IconElement] {
+private extension HIcon {
+  var drawnElements: [IconElement] {
     switch self {
     // Source: appendix B (page 05 category set).
     case .rent:

@@ -91,11 +91,11 @@ struct SplitEditorView: View {
 
   /// "● Adds up exactly" (green), "12.00 left to place" (amber), "12.00 too much" (red).
   private var status: some View {
-    let (words, spoken, tone): (String, String, StatusTone) = switch verdict {
-    case .addsUp: ("Adds up exactly", "Adds up exactly", .success)
-    case .leftToPlace(let m): ("\(MoneyFormat.string(m.minor)) left to place", "\(Self.dirhams(m)) left to place", .warning)
-    case .over(let m): ("\(MoneyFormat.string(m.minor)) too much", "\(Self.dirhams(m)) too much", .error)
-    case .emptyLine: ("Every line needs an amount", "Every line needs an amount", .warning)
+    let (words, tone): (String, StatusTone) = switch verdict {
+    case .addsUp: ("Adds up exactly", .success)
+    case .leftToPlace(let m): ("\(MoneyFormat.string(m.minor)) left to place", .warning)
+    case .over(let m): ("\(MoneyFormat.string(m.minor)) too much", .error)
+    case .emptyLine: ("Every line needs an amount", .warning)
     }
     return HStack(spacing: 6) {
       Circle().fill(tone == .warning ? HColor.paceFillOverPace : tone.foreground).frame(width: 7, height: 7)
@@ -103,7 +103,7 @@ struct SplitEditorView: View {
     }
     // Words, not a control: without the trait the audit takes the element for a small target.
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(spoken)
+    .accessibilityLabel(spokenVerdict)
     .accessibilityAddTraits(.isStaticText)
     .accessibilityIdentifier("split.verdict")
   }
@@ -313,13 +313,16 @@ struct SplitEditorView: View {
 
   /// After an edit, VoiceOver hears where the split stands ("Adds up exactly").
   private func announceStatus() {
-    let line: String = switch verdict {
+    AccessibilityNotification.Announcement(spokenVerdict).post()
+  }
+
+  private var spokenVerdict: String {
+    switch verdict {
     case .addsUp: "Adds up exactly"
     case .leftToPlace(let m): "\(Self.dirhams(m)) left to place"
     case .over(let m): "\(Self.dirhams(m)) too much"
     case .emptyLine: "Every line needs an amount"
     }
-    AccessibilityNotification.Announcement(line).post()
   }
 }
 

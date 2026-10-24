@@ -444,7 +444,7 @@ struct InsightsFlowCard: View {
       parts.append("Out averaged \(InsightsSpeech.amount(avg, hidden: hidden)) a month")
     }
     for m in flow.months {
-      parts.append("\(m.month.name)\(m.inProgress ? " so far" : ""): in \(InsightsSpeech.amount(m.income, hidden: hidden)), out \(InsightsSpeech.amount(m.out, hidden: hidden))")
+      parts.append("\(Self.monthName(m)): in \(InsightsSpeech.amount(m.income, hidden: hidden)), out \(InsightsSpeech.amount(m.out, hidden: hidden))")
     }
     return parts.joined(separator: ". ")
   }
@@ -455,7 +455,7 @@ struct InsightsFlowCard: View {
       ForEach(flow.months) { m in
         InsightsSeparator(inset: 0)
         HStack {
-          Text(m.month.name + (m.inProgress ? " so far" : ""))
+          Text(Self.monthName(m))
             .hType(m.isFocus ? .subheadline.weight(.semibold) : .subheadline)
             .foregroundStyle(HColor.textPrimary)
           Spacer(minLength: 8)
@@ -467,11 +467,15 @@ struct InsightsFlowCard: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(m.month.name)\(m.inProgress ? " so far" : ""), in \(InsightsSpeech.amount(m.income, hidden: hidden)), out \(InsightsSpeech.amount(m.out, hidden: hidden))")
+        .accessibilityLabel("\(Self.monthName(m)), in \(InsightsSpeech.amount(m.income, hidden: hidden)), out \(InsightsSpeech.amount(m.out, hidden: hidden))")
       }
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("insights.flow.table")
+  }
+
+  private static func monthName(_ m: InsightsFlowMonth) -> String {
+    m.month.name + (m.inProgress ? " so far" : "")
   }
 
   private func tableRow(_ a: Text, _ b: Text, _ c: Text, header: Bool) -> some View {

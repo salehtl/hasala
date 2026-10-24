@@ -272,9 +272,7 @@ public struct NetWorthWidgetView: View {
   public var body: some View {
     VStack(alignment: .leading) {
       HStack(spacing: 8) {
-        Circle().fill(Color(HRGBA(255, 255, 255, 0.12))).frame(width: 34, height: 34)
-          .overlay { HIconView(.trendUp, size: 18, color: HColor.widgetOnInverse, strokeWidth: 2) }
-          .accessibilityHidden(true)
+        InkDisc(icon: .trendUp)
         Text("Net worth").hType(.footnote.weight(.semibold)).foregroundStyle(HColor.widgetOnInverseSecondary)
       }
       .frame(minHeight: 34)
@@ -490,8 +488,8 @@ struct TodayRow: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(row.merchant), \(row.detail)")
-    .accessibilityValue(hidden ? "Amount hidden"
-      : (row.isIncome ? "plus " : "") + "\(row.amount.currency) \(MoneyFormat.string(row.amount.minor, style: .rounded))")
+    .accessibilityValue(MoneyText.spoken(row.amount, style: .rounded, sign: row.isIncome ? .income : .none,
+                                         hidden: hidden))
   }
 
   @ViewBuilder private var disc: some View {

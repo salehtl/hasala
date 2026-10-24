@@ -342,12 +342,7 @@ struct BudgetRowView: View {
     case .done: figure = "Done"
     case .percent(let p): figure = "\(p) percent"
     }
-    let facts = row.detail.map { part in
-      switch part {
-      case .text(let p): p.spoken(hidden: hidden)
-      case .status(let words, _): words
-      }
-    }.joined(separator: ", ")
+    let facts = BillDetailParts.spoken(row.detail, hidden: hidden)
     return "\(row.name), \(figure). \(facts)."
   }
 }

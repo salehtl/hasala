@@ -61,7 +61,11 @@ public struct MoneyLine: Sendable, Equatable {
 
 /// 03b §3.12 `BillExpectation`, as the plan reads it.
 public struct BillExpectation: Sendable, Equatable {
-  public enum Status: String, Sendable { case upcoming, due, late, paid, skipped, cancelled }
+  public enum Status: String, Sendable {
+    case upcoming, due, late, paid, skipped, cancelled
+
+    var isUnpaid: Bool { self == .upcoming || self == .due || self == .late }
+  }
   public var billID: String
   public var categoryID: String
   public var payee: String
@@ -181,6 +185,7 @@ public struct PlanEngine: Sendable {
   /// 03a §6.20 default roles.
   public static let defaultBills: [String] = ["rent", "utilities", "insurance", "subscriptions"]
   public static let paydayWindow = 4
+  static let defaultSplit = BudgetSplit(need: 50, want: 30, saving: 20)
 
   public init(
     plan: PlanState, taxonomy: TaxonomyView, lines: [MoneyLine], bills: [BillExpectation] = [], template: BudgetSplit? = nil,
@@ -405,24 +410,25 @@ public struct PlanEngine: Sendable {
 
   // MARK: The everyday hero (03a §6.6)
 
-  public func everydayCategories() -> [CategoryInfo] {
-    taxonomy.ordered.filter { $0.kind == .spending && ($0.bucket == .need || $0.bucket == .want) && role($0.id) == "everyday" }
+  private func categories(role r: String) -> [CategoryInfo] {
+    taxonomy.ordered.filter { $0.kind == .spending && ($0.bucket == .need || $0.bucket == .want) && role($0.id) == r }
   }
 
-  public func billsCategories() -> [CategoryInfo] {
-    taxonomy.ordered.filter { $0.kind == .spending && ($0.bucket == .need || $0.bucket == .want) && role($0.id) == "bills" }
-  }
+  public func everydayCategories() -> [CategoryInfo] { categories(role: "everyday") }
+
+  public func billsCategories() -> [CategoryInfo] { categories(role: "bills") }
 
   public func hero(_ m: CivilMonth) -> EverydayHero {
     let act = activity(m)
-    let e = planSum(everydayCategories().map { assigned(m, $0.id) })
-    let se = planSum(everydayCategories().map { act[$0.id] ?? 0 })
+    let everyday = everydayCategories()
+    let e = planSum(everyday.map { assigned(m, $0.id) })
+    let se = planSum(everyday.map { act[$0.id] ?? 0 })
     let billsPaid = planSum(billsCategories().map { act[$0.id] ?? 0 })
     let monthBills = bills.filter { $0.expectedDay.yearMonth == m }
     let toCome =
       monthBills.isEmpty
       ? nil
-      : planSum(monthBills.filter { [.upcoming, .due, .late].contains($0.status) && role($0.categoryID) == "bills" }.map(\.amount))
+      : planSum(monthBills.filter { $0.status.isUnpaid && role($0.categoryID) == "bills" }.map(\.amount))
     let ph = phase(m)
     return EverydayHero(
       month: m, phase: ph, budget: e, spent: se, left: planSub(e, se), pace: pace(budget: e, spent: se, phase: ph, kind: .everyday),
@@ -514,9 +520,8 @@ public struct PlanEngine: Sendable {
     let act = activity(m)
     // 1. Bill shortfalls, by earliest unpaid expected day, then sortKey.
     let monthBills = bills.filter { $0.expectedDay.yearMonth == m }
-    let unpaid: (BillExpectation) -> Bool = { [.upcoming, .due, .late].contains($0.status) }
     let billCats = billsCategories().map { info -> (CategoryInfo, CivilDate?) in
-      (info, monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.map(\.expectedDay).min())
+      (info, monthBills.filter { utf8Equal($0.categoryID, info.id) && $0.status.isUnpaid }.map(\.expectedDay).min())
     }.sorted { x, y in
       switch (x.1, y.1) {
       case (let p?, let q?) where p != q: return p < q
@@ -526,7 +531,7 @@ public struct PlanEngine: Sendable {
       }
     }
     for (info, _) in billCats where r > 0 {
-      let claim = planSum(monthBills.filter { utf8Equal($0.categoryID, info.id) && unpaid($0) }.map(\.amount))
+      let claim = planSum(monthBills.filter { utf8Equal($0.categoryID, info.id) && $0.status.isUnpaid }.map(\.amount))
       let short = max(0, Int64(clamping: Int128(act[info.id] ?? 0) + Int128(claim) - Int128(assigned(m, info.id))))
       let g = min(r, short)
       give(info.id, g)
@@ -550,7 +555,7 @@ public struct PlanEngine: Sendable {
       r = planSub(r, g)
     }
     // 3. Template deficits; 4. the remainder by the template.
-    let t = template ?? BudgetSplit(need: 50, want: 30, saving: 20)
+    let t = template ?? Self.defaultSplit
     let pct: [Bucket: Int64] = [.need: t.need, .want: t.want, .saving: t.saving]
     let inc = income(m).total
     var giveB: [Bucket: Int64] = [:]
@@ -606,7 +611,7 @@ public struct PlanEngine: Sendable {
   /// Bucket amounts by largest remainder over the template, then category seeds
   /// by cumulative floor over the weights. Zero-weight categories are omitted.
   public static func seed(income: Int64, split: BudgetSplit?) -> (buckets: [Bucket: Int64], categories: [(String, Int64)]) {
-    let s = split ?? BudgetSplit(need: 50, want: 30, saving: 20)
+    let s = split ?? defaultSplit
     let parts = largestRemainder(
       total: income, weights: [s.need, s.want, s.saving].map { Int128(income) * Int128($0) }, divisor: 100)
     var buckets: [Bucket: Int64] = [:]

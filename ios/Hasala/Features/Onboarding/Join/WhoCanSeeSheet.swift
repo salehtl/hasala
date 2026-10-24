@@ -145,10 +145,9 @@ struct WhoCanSeeSheet: View {
   private var keyNotice: some View {
     HStack(alignment: .top, spacing: 12) {
       Circle()
-        .fill(LinearGradient(colors: [Color(HRGBA(0xF9, 0xDC, 0x94, 1)), Color(HRGBA(0xEB, 0xB0, 0x4A, 1))],
-                             startPoint: .top, endPoint: .bottom))
+        .fill(LinearGradient(colors: [SlotMark.coinLight, SlotMark.coinDeep], startPoint: .top, endPoint: .bottom))
         .frame(width: 36, height: 36)
-        .background(Circle().fill(Color(HRGBA(0xC9, 0x8A, 0x1E, 1))).offset(y: 2))
+        .background(Circle().fill(SlotMark.coinRim).offset(y: 2))
         .overlay { HIconView(.key, size: 18, color: HColor.amber800, strokeWidth: 2.4) }
         .padding(.bottom, 2)
         .accessibilityHidden(true)

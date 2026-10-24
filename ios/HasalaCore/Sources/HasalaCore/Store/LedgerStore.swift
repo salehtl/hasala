@@ -171,12 +171,8 @@ public final class LedgerStore: Sendable {
       let store = try LedgerStore(db: pool)
       try FileHygiene.excludeDatabaseFiles(at: url)
       return store
-    } catch let e as StoreError {
-      throw e
-    } catch let e as DatabaseError {
-      throw .database(code: e.resultCode.rawValue)
     } catch {
-      throw .corrupt("ledger.sqlite could not be opened")
+      throw storeError(error, otherwise: "ledger.sqlite could not be opened")
     }
   }
 
@@ -184,12 +180,8 @@ public final class LedgerStore: Sendable {
   public static func inMemory() throws(StoreError) -> LedgerStore {
     do {
       return try LedgerStore(db: try DatabaseQueue(configuration: configuration()))
-    } catch let e as StoreError {
-      throw e
-    } catch let e as DatabaseError {
-      throw .database(code: e.resultCode.rawValue)
     } catch {
-      throw .corrupt("in-memory store")
+      throw storeError(error, otherwise: "in-memory store")
     }
   }
 
@@ -212,12 +204,16 @@ public final class LedgerStore: Sendable {
   func run<T>(_ body: @Sendable (DatabaseWriter) throws -> T) throws(StoreError) -> T {
     do {
       return try body(db)
-    } catch let e as StoreError {
-      throw e
-    } catch let e as DatabaseError {
-      throw .database(code: e.resultCode.rawValue)
     } catch {
-      throw .corrupt("\(type(of: error))")
+      throw Self.storeError(error, otherwise: "\(type(of: error))")
+    }
+  }
+
+  private static func storeError(_ error: any Error, otherwise detail: String) -> StoreError {
+    switch error {
+    case let e as StoreError: e
+    case let e as DatabaseError: .database(code: e.resultCode.rawValue)
+    default: .corrupt(detail)
     }
   }
 

@@ -44,7 +44,7 @@ struct BootWallView: View {
     }
     .accessibilityIdentifier("wall.\(identifier)")
     // A field of the screen underneath may still hold the keyboard.
-    .onAppear { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+    .onAppear { UIApplication.shared.dismissKeyboard() }
   }
 
   private var identifier: String {

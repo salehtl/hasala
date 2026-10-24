@@ -76,10 +76,14 @@ public enum ProfileEngine {
     MoneyPhrase(stringLiteral: active > 0 ? "\(active) active" : "None active")
   }
 
+  static func matchCount(_ r: Rule, _ s: LedgerState) -> Int {
+    s.txns.filter { r.matches($0.merchant) || r.matches($0.provenance?.rawMerchant ?? "") }.count
+  }
+
   /// Rules, most used first, with match counts over every transaction.
   public static func rules(_ s: LedgerState) -> [RuleRowModel] {
     s.rules.map { r in
-      let n = s.txns.filter { r.matches($0.merchant) || r.matches($0.provenance?.rawMerchant ?? "") }.count
+      let n = matchCount(r, s)
       let c = s.category(r.categoryID)
       let match = "\(r.match.label) · \(c?.name ?? "Uncategorized")"
       let matches = "\(n) match\(n == 1 ? "" : "es")"

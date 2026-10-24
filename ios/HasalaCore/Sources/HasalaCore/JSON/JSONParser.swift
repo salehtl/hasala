@@ -17,7 +17,6 @@
 // Errors carry a coarse reason and a byte offset only, never parser prose or
 // input content: callers report `"<what>: body is not valid JSON (<n> bytes)"`
 // and nothing more, because the text can reach materialized state.
-import HasalaText
 
 public enum JSONParseError: Error, Equatable, Sendable {
   case syntax(offset: Int)
@@ -173,28 +172,7 @@ private struct Parser {
 
   mutating func number() throws(JSONParseError) -> JSONNumber {
     let start = i
-    if u[i] == 0x2d { i += 1 }
-    guard i < u.count else { throw fail() }
-    if u[i] == 0x30 {
-      i += 1
-    } else if ASCII.isDigit(u[i]) {
-      while i < u.count, ASCII.isDigit(u[i]) { i += 1 }
-    } else {
-      throw fail()
-    }
-    if i < u.count, u[i] == 0x2e {
-      i += 1
-      let d = i
-      while i < u.count, ASCII.isDigit(u[i]) { i += 1 }
-      guard i > d else { throw fail() }
-    }
-    if i < u.count, u[i] == 0x65 || u[i] == 0x45 {
-      i += 1
-      if i < u.count, u[i] == 0x2b || u[i] == 0x2d { i += 1 }
-      let d = i
-      while i < u.count, ASCII.isDigit(u[i]) { i += 1 }
-      guard i > d else { throw fail() }
-    }
+    guard JSONNumber.scanNumber(u, &i) else { throw fail() }
     return JSONNumber(validated: String(decoding: u[start..<i], as: UTF8.self))
   }
 

@@ -29,7 +29,6 @@ public struct BriefCard: View {
     case tall120
   }
 
-  let id: String?
   let hue: Hue
   let icon: HIcon
   let label: String
@@ -58,7 +57,6 @@ public struct BriefCard: View {
     secondaryWidth: CGFloat = 128, poster: Poster = .short104, width: CGFloat? = nil, hidden: Bool,
     onPrimary: @escaping () -> Void, onSecondary: @escaping () -> Void
   ) {
-    self.id = nil
     self.hue = hue
     self.icon = icon
     self.label = label
@@ -103,7 +101,6 @@ public struct BriefCard: View {
     .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
     .hElevation(.nearFar)
     .accessibilityElement(children: .contain)
-    .modifier(OptionalIdentifier(id: id))
   }
 
   @ViewBuilder private var buttons: some View {
@@ -166,14 +163,6 @@ public struct BriefCard: View {
     case .word(let w):
       Text(w).hFigure(.large).foregroundStyle(HColor.textPrimary)
     }
-  }
-}
-
-struct OptionalIdentifier: ViewModifier {
-  let id: String?
-
-  func body(content: Content) -> some View {
-    if let id { content.accessibilityIdentifier(id) } else { content }
   }
 }
 

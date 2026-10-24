@@ -99,7 +99,7 @@ struct BudgetEditSheet: View {
   /// sizes the three go one under the other, each figure on its label's line, so none has to
   /// shrink into a third of the width.
   private func mathRow(_ row: PlanRowModel) -> some View {
-    let left = row.budget.minor.minus(row.spent.minor)
+    let left = row.leftMinor
     let cells: [(String, Money, MoneyStyle)] = [
       ("Budget", row.budget, .compact), ("Spent", row.spent, .exact),
       (left < 0 ? "Over" : "Left", .aed(abs(left)), .exact),

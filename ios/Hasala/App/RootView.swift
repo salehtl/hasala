@@ -213,9 +213,7 @@ struct LaunchView: View {
     static let pullHoldArgument = "-HasalaPullHold"
 
     static func milliseconds(after argument: String, in arguments: [String]) -> Duration? {
-      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count,
-        let ms = Int(arguments[i + 1]), ms > 0
-      else { return nil }
+      guard let ms = arguments.launchValue(after: argument).flatMap({ Int($0) }), ms > 0 else { return nil }
       return .milliseconds(ms)
     }
 

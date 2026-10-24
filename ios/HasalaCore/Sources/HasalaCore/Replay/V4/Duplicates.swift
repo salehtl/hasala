@@ -218,8 +218,11 @@ extension State {
       txns[winner]!.copyOf = nil
       txns[winner]!.copyDecision = nil
     }
-    let held = txns.filter { $0.value.isLive && $0.value.copyOf.map { utf8Equal($0, loser) } == true }.map(\.key)
-    for h in held { txns[h]!.copyOf = winner }
+    for h in liveCopies(of: loser) { txns[h]!.copyOf = winner }
+  }
+
+  func liveCopies(of id: String) -> [String] {
+    txns.filter { $0.value.isLive && $0.value.copyOf.map { utf8Equal($0, id) } == true }.map(\.key)
   }
 
   mutating func carryUserEdits(from source: String, to target: String) {
@@ -365,8 +368,7 @@ extension State {
       for (key, canonical) in byDedupeKey where utf8Equal(canonical, id) {
         byDedupeKey[key] = promoted
       }
-      let held = txns.filter { $0.value.isLive && $0.value.copyOf.map { utf8Equal($0, id) } == true }.map(\.key)
-      for h in held where txns[h]!.copyDecision == nil { txns[h]!.copyOf = nil }
+      for h in liveCopies(of: id) where txns[h]!.copyDecision == nil { txns[h]!.copyOf = nil }
     }
   }
 }

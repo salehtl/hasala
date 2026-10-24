@@ -15,17 +15,7 @@ public struct HomeAmount: Sendable, Hashable, Codable {
 
   public var estimateLine: String? {
     guard estimate, let rateMicro, let original else { return nil }
-    return "Estimate at \(RateFormat.string(rateMicro)) \(Money.home) per \(original.currency). Your bank's charge can be a little higher."
-  }
-}
-
-public enum RateFormat {
-  public static func string(_ micro: Int64) -> String {
-    let whole = micro / 1_000_000
-    var fraction = String(micro % 1_000_000)
-    fraction = String(repeating: "0", count: 6 - fraction.count) + fraction
-    while fraction.count > 2, fraction.hasSuffix("0") { fraction.removeLast() }
-    return "\(whole).\(fraction)"
+    return "Estimate at \(ExchangeRates.format(rateMicro)) \(Money.home) per \(original.currency). Your bank's charge can be a little higher."
   }
 }
 

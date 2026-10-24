@@ -139,20 +139,6 @@ struct ReasonsCard: View {
   }
 }
 
-/// A full-width text button in the dock (Paper "TextButton": 54 tall, no fill, 17/24
-/// semibold in the link colour), for a second action that is not a link away.
-struct DockTextButton: View {
-  var title: String
-  var identifier: String
-  var action: () -> Void
-
-  var body: some View {
-    Button(title, action: action)
-      .buttonStyle(.pill(.tertiary, fill: true))
-      .accessibilityIdentifier(identifier)
-  }
-}
-
 /// A text field that is one line as Paper draws it, and wraps at the accessibility sizes,
 /// where a name or an address no longer fits the box (a one-line field would cut it off). It
 /// stays one value: a return typed into the wrapping field is dropped.
