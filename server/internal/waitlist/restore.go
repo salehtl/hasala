@@ -41,7 +41,7 @@ func reapplyDeletions(ctx context.Context, pool *pgxpool.Pool, entries []purgele
 	return n, nil
 }
 
-func reapplyDeletion(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID, detachInviteMail bool) (bool, error) {
+func reapplyDeletion(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID, bounced bool) (bool, error) {
 	tx, err := pgtx.BeginReadCommitted(ctx, pool)
 	if err != nil {
 		return false, err
@@ -55,14 +55,11 @@ func reapplyDeletion(ctx context.Context, pool *pgxpool.Pool, entry uuid.UUID, d
 	if err != nil {
 		return false, err
 	}
-	if detachInviteMail {
-		if _, err := tx.Exec(ctx,
-			`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
-			  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, entry); err != nil {
-			return false, err
-		}
+	del := DeleteEntryTx
+	if bounced {
+		del = DeleteBouncedEntryTx
 	}
-	if err := DeleteEntryTx(ctx, tx, entry); err != nil {
+	if err := del(ctx, tx, entry); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)

@@ -25,22 +25,11 @@ func loadAuthKeys(cfg config.Config) (*authkeys.Keys, error) {
 	if cfg.Auth.AuthKeyFile == "" || cfg.Auth.SaltKeyFile == "" {
 		return nil, nil
 	}
-	read := func(name, path string) ([]byte, error) {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		k, err := authkeys.ParseKeyHex(string(raw))
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		return k, nil
-	}
-	salt, err := read("HASALA_SALT_KEY_FILE", cfg.Auth.SaltKeyFile)
+	salt, err := readKeyFile("HASALA_SALT_KEY_FILE", cfg.Auth.SaltKeyFile)
 	if err != nil {
 		return nil, err
 	}
-	ak, err := read("HASALA_AUTH_KEY_FILE", cfg.Auth.AuthKeyFile)
+	ak, err := readKeyFile("HASALA_AUTH_KEY_FILE", cfg.Auth.AuthKeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +37,18 @@ func loadAuthKeys(cfg config.Config) (*authkeys.Keys, error) {
 		return nil, errors.New("salt_key and auth_key are the same key; behind Cloudflare they must differ (spec 02 O9)")
 	}
 	return authkeys.New(salt, map[int][]byte{1: ak}, 1)
+}
+
+func readKeyFile(name, path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	k, err := authkeys.ParseKeyHex(string(raw))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return k, nil
 }
 
 // checkKeyIDs is O9's fingerprint check: the first start records each key's

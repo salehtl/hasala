@@ -144,6 +144,12 @@ func (l *Limiter) RefundN(key string, n float64) {
 	}
 }
 
+func (s *Server) ensureLimiter(l **Limiter, rate, burst float64, keys int) {
+	if *l == nil {
+		*l = NewLimiter(rate, burst, keys, s.now)
+	}
+}
+
 func take(b *bucket, rate, burst float64, now time.Time, n float64) bool {
 	if b.last.IsZero() {
 		b.tokens, b.last = burst, now
