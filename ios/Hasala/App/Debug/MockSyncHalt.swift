@@ -12,9 +12,7 @@
     private(set) var retrying = false
 
     init(_ arguments: [String]) {
-      if let i = arguments.firstIndex(of: Self.argument), i + 1 < arguments.count {
-        halt = Self.halt(arguments[i + 1])
-      }
+      halt = arguments.launchValue(after: Self.argument).flatMap(Self.halt)
     }
 
     func tryAgain() {
