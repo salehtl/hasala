@@ -274,6 +274,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var rejectedCategories: Set<CategoryID>
   public var categorizedAt: LocalDateTime?
   public var ruleID: RuleID?
+  public var combinedCopy: TxnID?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -297,7 +298,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     reachable: Bool = false,
     rejectedCategories: Set<CategoryID> = [],
     categorizedAt: LocalDateTime? = nil,
-    ruleID: RuleID? = nil
+    ruleID: RuleID? = nil,
+    combinedCopy: TxnID? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -334,6 +336,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.rejectedCategories = rejectedCategories
     self.categorizedAt = categorizedAt
     self.ruleID = ruleID
+    self.combinedCopy = combinedCopy
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }

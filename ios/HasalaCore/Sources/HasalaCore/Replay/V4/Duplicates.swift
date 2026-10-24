@@ -152,6 +152,17 @@ extension State {
     if !bucket.contains(where: { utf8Equal($0, id) }) { copyCandidates[key, default: []].append(id) }
   }
 
+  public func transferDisplaySource(_ id: String) -> String? {
+    guard let t = txns[id], t.isLive, DuplicateRules.transferRole(t) == .alert else { return nil }
+    for a in t.aliases where utf8Equal(a.kind, "transfer") {
+      guard let n = txns[a.txnID], n.mergedInto.map({ utf8Equal($0, id) }) == true, n.mergeKind.map({ utf8Equal($0, "transfer") }) == true,
+        DuplicateRules.transferRole(n) == .notice
+      else { continue }
+      return a.txnID
+    }
+    return nil
+  }
+
   mutating func mergeTransfer(_ id: String, into other: String, op: String) {
     mergeRow(id, into: other, kind: "transfer", op: op)
     registerDedupeKeys(of: id, to: other)

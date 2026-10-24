@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 10
+  public static let version = 11
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "merchant_rejection", "sender_trust", "project", "goal",
@@ -127,6 +127,8 @@ public enum ProjectionSchema {
       source_provider    TEXT,
       mailbox_message_id TEXT,
       kind               TEXT NOT NULL CHECK (kind IN ('certain','user','transfer')),
+      alias_version      INTEGER,
+      alias_copy_of      TEXT,
       PRIMARY KEY (txn_id, idx)
     );
     CREATE INDEX txn_alias_ingest  ON txn_alias(ingest_id);

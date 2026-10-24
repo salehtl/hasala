@@ -114,11 +114,15 @@ public enum Projector {
     var firstByKey: [String: (Int64, Int)] = [:]
     var keys: [String: String] = [:]
     var groupOf: [ExactKey: String] = [:]
+    var shown: [String: Txn] = [:]
     for (i, (id, t)) in s.txns.enumerated() {
-      let key = Canon.merchantKey(t.merchantRaw)
+      let d = s.transferDisplaySource(id).flatMap { s.txns[$0] }
+      if let d { shown[id] = d }
+      let merchantRaw = d?.merchantRaw ?? t.merchantRaw
+      let key = Canon.merchantKey(merchantRaw)
       keys[id] = key
-      let raw = ExactKey(t.merchantRaw)
-      if groupOf[raw] == nil { groupOf[raw] = groups.key(raw: t.merchantRaw) }
+      let raw = ExactKey(merchantRaw)
+      if groupOf[raw] == nil { groupOf[raw] = groups.key(raw: merchantRaw) }
       guard t.isLive, !t.unparsed else { continue }
       let ms = (try? parseInstantMs(t.postedAt)) ?? 0
       if let f = firstByKey[key], f <= (ms, i) { continue }
@@ -139,14 +143,18 @@ public enum Projector {
       sql: "INSERT INTO txn_part (txn_id, idx, category, amount_minor, amount_home_minor, note) VALUES (?,?,?,?,?,?)")
     let retiredIngests = Set(s.txns.values.filter { $0.retiredBy != nil }.map(\.ingestID))
     let alias = try db.makeStatement(
-      sql: "INSERT INTO txn_alias (txn_id, idx, alias_txn_id, ingest_id, source_mailbox, source_provider, mailbox_message_id, kind) VALUES (?,?,?,?,?,?,?,?)")
+      sql:
+        "INSERT INTO txn_alias (txn_id, idx, alias_txn_id, ingest_id, source_mailbox, source_provider, mailbox_message_id, kind, alias_version, alias_copy_of) VALUES (?,?,?,?,?,?,?,?,?,?)"
+    )
     for (i, (id, t)) in s.txns.enumerated()
     where t.mergedInto == nil && (t.isLive || !retiredIngests.contains(t.ingestID)) {
       let ms = (try? parseInstantMs(t.postedAt)) ?? 0
       let local = LocalClock.localDate(ms)
       let key = keys[id] ?? ""
+      let merchantRaw = shown[id]?.merchantRaw ?? t.merchantRaw
+      let location = shown[id].map { $0.location ?? t.location } ?? t.location
       let display = MerchantDisplay.name(
-        raw: t.merchantRaw, renamed: s.merchantNames[ExactKey(key)]?.value ?? nil, dictionary: categorizer.dictionaryDisplay(merchantRaw: t.merchantRaw))
+        raw: merchantRaw, renamed: s.merchantNames[ExactKey(key)]?.value ?? nil, dictionary: categorizer.dictionaryDisplay(merchantRaw: merchantRaw))
       let source = t.categorySource ?? (t.category == nil ? .none : .user)
       let refundOf = t.annotation("refund_of")
       let refundTarget = refundOf.flatMap { Attribution.resolve($0, in: txnView) }
@@ -156,7 +164,7 @@ public enum Projector {
       let isNew = firstByKey[key].map { $0 == (ms, i) } ?? false
       let args: [(any DatabaseValueConvertible)?] = [
         i + 1, id, t.ingestID, t.amountMinor, t.currency, t.direction, t.postedAt, ms, local?.wire ?? "", local?.yearMonth.wire ?? "",
-        t.postedPrecision ?? "time", t.merchantRaw, key, display, t.location, t.last4, t.bank, t.gates.map(gatesJSON),
+        t.postedPrecision ?? "time", merchantRaw, key, display, location, t.last4, t.bank, t.gates.map(gatesJSON),
         t.category, source.kind.rawValue, source.ref, t.needsReview, t.unparsed, t.tier, t.provenance, t.entryMethod,
         t.amountHomeMinor, t.amountHomeMinor == nil ? nil : t.homeSource?.rawValue,
         t.amountHomeMinor == nil ? nil : t.homeRateMicro, !t.splits.isEmpty, t.supersededBy, t.successorID, t.possibleDuplicateOf, t.duplicateDisposition,
@@ -165,11 +173,14 @@ public enum Projector {
         refundTarget, refundOf == nil ? nil : Attribution.refundState(t, target: refundTarget.flatMap { s.txns[$0] }), peer, peerTarget,
         peer == nil ? nil : Attribution.transferState(t, target: peerTarget.flatMap { s.txns[$0] }, targetPeer: peerBack),
         isNew, t.version, pending.contains(id), ReviewQueue.lane(t)?.rawValue, t.sourceMailbox, t.sourceProvider,
-        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(t.merchantRaw)].flatMap { $0.isEmpty ? nil : $0 }, categorizedMs(s, id, t),
+        userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(merchantRaw)].flatMap { $0.isEmpty ? nil : $0 }, categorizedMs(s, id, t),
       ]
       try insert.execute(arguments: StatementArguments(args))
       for (k, a) in t.aliases.enumerated() {
-        let aa: [(any DatabaseValueConvertible)?] = [id, k, a.txnID, a.ingestID, a.sourceMailbox, a.sourceProvider, a.mailboxMessageID, a.kind]
+        let copy = s.txns[a.txnID]
+        let aa: [(any DatabaseValueConvertible)?] = [
+          id, k, a.txnID, a.ingestID, a.sourceMailbox, a.sourceProvider, a.mailboxMessageID, a.kind, copy?.version, copy?.copyOf,
+        ]
         try alias.execute(arguments: StatementArguments(aa))
       }
       if !t.splits.isEmpty {
