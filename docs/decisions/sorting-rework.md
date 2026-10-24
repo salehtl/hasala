@@ -178,16 +178,19 @@ taps in the sheet: New category, the name, Save. The parent is that bucket's ent
 `CategoriesEngine.countsAsOptions`, the same one Profile's editor offers. Back returns to
 the list and writes nothing.
 
-Save calls `ReviewDeckModel.createAndSort`. It checks the name first, with
-`CategoriesEngine.refusal` and then the store's own check (the live store also checks the
-projection's taxonomy), and shows a refusal under the name with nothing written and no
-toast. Otherwise it sends the one atomic `.addCategoryAndSort` edit (#186), with Always use
-when the sheet's switch is on and the project when one is chosen. The card then leaves as
-after any sort, with "Sorted into Coffee" or the undo line when Always use files other
-payments too. Because the edit is written while the sheet is still up (so that a refusal
-can show in it), the card flies as the sheet goes down, not after. Undo takes back the
-sort, the rule and its reach, and keeps the category. The name is a custom category name,
-so it is never sent to Cloudflare ([cloud-suggestions.md](cloud-suggestions.md)).
+Save first asks `ReviewDeckModel.newCategoryRefusal`, which runs the store's own check
+(`LedgerStore.categoryRefusal`: `CategoriesEngine.refusal`, and in the live store also the
+projection's taxonomy, for example a name with bidi characters). It runs before any edit,
+also before the edit that settles a held copy, and shows a refusal under the name with
+nothing written and no toast. Otherwise the sheet closes, and then `createAndSort` sends
+the one atomic `.addCategoryAndSort` edit (#186), with Always use when the sheet's switch
+is on and the project when one is chosen. The card then leaves as after any sort, with
+"Sorted into Coffee" or the undo line when Always use files other payments too; the toast
+comes up after the sheet has closed, never on top of it. If the name is refused at that
+point after all (a sync added the same name meanwhile), the refusal is a toast and the card
+springs back. Undo takes back the sort, the rule and its reach, and keeps the category. The
+name is a custom category name, so it is never sent to Cloudflare
+([cloud-suggestions.md](cloud-suggestions.md)).
 
 ### D6, D6b and D7 Not this
 

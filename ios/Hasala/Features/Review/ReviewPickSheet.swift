@@ -18,7 +18,8 @@ struct ReviewPickSheet: View {
   @State private var alwaysUse = false
   /// The content's measured height, which the one detent fits; an estimate until then.
   @State private var contentHeight: CGFloat?
-  @State private var creating = false
+  @State private var formOffer: CountsAsOption?
+  @State private var saved = false
   @State private var name = ""
   @State private var glyph = CategoryIconGuess.fallback
   @State private var glyphPicked = false
@@ -36,14 +37,14 @@ struct ReviewPickSheet: View {
     ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          if creating, let offer = newCategory {
-            form(offer)
+          if let formOffer {
+            form(formOffer)
           } else {
             header
             list
             if showsProjects { projects }
             if canAlwaysUse { ruleRow }
-            if newCategory != nil { newCategoryRow }
+            if let newCategory { newCategoryRow(newCategory) }
           }
         }
         .padding(.top, 8)
@@ -73,6 +74,8 @@ struct ReviewPickSheet: View {
   }
 
   private static let top = "pick.top"
+
+  private var creating: Bool { formOffer != nil }
 
   private var suggested: CategoryID? { pick.card.suggestion?.id }
 
@@ -191,8 +194,8 @@ struct ReviewPickSheet: View {
     }
   }
 
-  private var newCategoryRow: some View {
-    Button(action: openForm) {
+  private func newCategoryRow(_ offer: CountsAsOption) -> some View {
+    Button { openForm(offer) } label: {
       let icon = HIconView(.add, size: 22, color: HColor.listRowAction).accessibilityHidden(true)
       let title = Text("New category").hType(.rowTitle).foregroundStyle(HColor.listRowAction)
         .fixedSize(horizontal: false, vertical: true)
@@ -274,22 +277,26 @@ struct ReviewPickSheet: View {
     glyphPicked = true
   }
 
-  private func openForm() {
+  private func openForm(_ offer: CountsAsOption) {
     name = ""
     glyph = CategoryIconGuess.fallback
     glyphPicked = false
     refusal = nil
-    creating = true
+    formOffer = offer
   }
 
   private func closeForm() {
     nameFocused = false
     refusal = nil
-    creating = false
+    formOffer = nil
   }
 
   private func save() {
-    guard let why = create(name, glyph, alwaysUse, project) else { return }
+    guard !saved else { return }
+    guard let why = create(name, glyph, alwaysUse, project) else {
+      saved = true
+      return
+    }
     refusal = why
     AccessibilityNotification.Announcement(why).post()
   }

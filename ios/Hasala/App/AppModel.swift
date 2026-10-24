@@ -263,19 +263,14 @@ final class AppModel {
 
   @discardableResult
   func perform(_ edits: [LedgerEdit]) -> Bool {
-    guard let why = refusal(performing: edits) else { return true }
-    show(Toast(disc: .note(.info), title: why))
-    return false
-  }
-
-  func refusal(performing edits: [LedgerEdit]) -> String? {
     var tokens: [UndoToken] = []
     for edit in edits {
       do {
         if let token = try store.apply(edit) { tokens.append(token) }
       } catch {
         for token in tokens.reversed() { store.undo(token) }
-        return Self.message(for: error)
+        show(Toast(disc: .note(.info), title: Self.message(for: error)))
+        return false
       }
     }
     if let last = tokens.popLast() {
@@ -287,7 +282,7 @@ final class AppModel {
         show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
       }
     }
-    return nil
+    return true
   }
 
   func refusal(applying edit: LedgerEdit) -> String? {

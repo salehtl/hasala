@@ -192,4 +192,33 @@ final class PickSheetNewCategoryUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Sorted into Coffee beans"].waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "review.position").waitForLabel("2 of 30"))
   }
+
+  @MainActor
+  func testTheRefusalReadsAtTheLargestTextSizes() throws {
+    let app = launch(scenario: "mayaBacklog", arguments: Self.largeText)
+    openDeck(app, at: "bl-alnoor-t-2")
+    tap(app, "review.pill.need", opening: "pick.close")
+    let row = el(app, "pick.newCategory")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    toTheEnd(app)
+    row.tap()
+    XCTAssertTrue(el(app, "pick.newCategory.name").waitForExistence(timeout: uiWait))
+    type(app, "pick.newCategory.name", "Groceries\n")
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait))
+    tap(app, "pick.newCategory.save")
+    let refusal = el(app, "pick.newCategory.refusal")
+    XCTAssertTrue(refusal.waitForLabel("You already have a category named Groceries."), refusal.label)
+    XCTAssertFalse(el(app, "toast").exists)
+    let name = el(app, "pick.newCategory.name")
+    let firstIcon = el(app, "pick.newCategory.icon.tag")
+    XCTAssertGreaterThanOrEqual(refusal.frame.minY, name.frame.maxY)
+    XCTAssertLessThanOrEqual(refusal.frame.maxY, firstIcon.frame.minY)
+    XCTAssertGreaterThan(refusal.frame.height, name.frame.height)
+    XCTAssertTrue(app.windows.firstMatch.frame.contains(refusal.frame))
+    attach(app, "Review · New category · name taken · accessibility3")
+    try audit(app, overSheet: true)
+    try app.performAccessibilityAudit(for: .textClipped) { issue in
+      issue.element?.identifier == "pick.newCategory.refusal"
+    }
+  }
 }
