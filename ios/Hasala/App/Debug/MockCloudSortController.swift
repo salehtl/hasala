@@ -8,18 +8,14 @@
     static let argument = "-HasalaCloudSortPhase"
 
     var status: CloudSortStatus
-    private(set) var refreshes = 0
     private(set) var sentBack = 0
-    private(set) var recounts = 0
 
     init(_ status: CloudSortStatus = MockCloudSortController.sample(.idle)) {
       self.status = status
     }
 
     static func fromLaunchArguments(_ arguments: [String]) -> MockCloudSortController? {
-      guard let i = arguments.firstIndex(of: argument), i + 1 < arguments.count, let phase = phase(arguments[i + 1]) else {
-        return nil
-      }
+      guard let code = arguments.launchValue(after: argument), let phase = phase(code) else { return nil }
       return MockCloudSortController(sample(phase))
     }
 
@@ -40,20 +36,12 @@
     }
 
     static func sample(_ phase: CloudSortStatus.Phase) -> CloudSortStatus {
-      var s = CloudSortStatus.off
-      s.phase = phase
-      switch phase {
-      case .off, .idle, .running, .paused:
-        break
-      case .done:
-        s.cloudSortedCount = 104
-      }
-      return s
+      CloudSortStatus(phase: phase, cloudSortedCount: phase == .done ? 104 : 0)
     }
 
-    func refresh() async { refreshes += 1 }
+    func refresh() async {}
 
-    func countsChanged() { recounts += 1 }
+    func countsChanged() {}
 
     func sendAllBack() async -> Int {
       sentBack += 1

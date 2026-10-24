@@ -23,63 +23,6 @@ struct PhraseText: View {
   }
 }
 
-/// A row's second line built from parts joined with " · "; a status part draws a
-/// coloured dot and its words in the tone ("● Over pace").
-struct DetailLine: View {
-  let parts: [PlanDetailPart]
-  let hidden: Bool
-
-  var body: some View {
-    text
-      .hType(.footnote)
-      .accessibilityLabel(spoken)
-  }
-
-  private var text: Text {
-    var out = Text(verbatim: "")
-    for (i, part) in parts.enumerated() {
-      if i > 0 { out = Text("\(out)\(Text(verbatim: " · ").foregroundStyle(HColor.listRowSupporting))") }
-      switch part {
-      case .text(let p):
-        out = Text("\(out)\(Text(verbatim: p.rendered(hidden: hidden)).foregroundStyle(HColor.listRowSupporting))")
-      case .status(let words, let tone):
-        let status = Text(verbatim: "● \(words)").foregroundStyle(tone.foreground)
-        out = Text("\(out)\(status)")
-      }
-    }
-    return out
-  }
-
-  private var spoken: String {
-    parts.map { part in
-      switch part {
-      case .text(let p): p.spoken(hidden: hidden)
-      case .status(let words, _): words
-      }
-    }.joined(separator: ", ")
-  }
-}
-
-/// A white list card (r24) whose rows are separated by hairlines inset 68 pt.
-struct ListCard<Content: View>: View {
-  @ViewBuilder let content: Content
-
-  var body: some View {
-    VStack(spacing: 0) {
-      Group(subviews: content) { rows in
-        ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
-          if i > 0 {
-            Rectangle().fill(HColor.listRowSeparator).frame(height: 0.5)
-              .padding(.leading, HSpacing.listRowInsetInline + HSpacing.listRowLeadingDisc + HSpacing.listRowGap)
-          }
-          row
-        }
-      }
-    }
-    .listCard()
-  }
-}
-
 /// "Coming up ……… next 7 days": a section title with a quiet trailing note or a link.
 struct SectionTitle: View {
   let title: String
@@ -104,59 +47,6 @@ struct SectionTitle: View {
         Text(note).hType(.subheadline).foregroundStyle(HColor.textSecondary)
       }
     }
-  }
-}
-
-/// A two-line navigation row: disc, title over detail, trailing value and chevron. A row
-/// that opens nothing (yet) leaves the chevron out, so it doesn't look tappable.
-struct NavRow<Leading: View, Trailing: View>: View {
-  let title: String
-  var detail: String?
-  var chevron = true
-  @ViewBuilder var leading: Leading
-  @ViewBuilder var trailing: Trailing
-
-  var body: some View {
-    HStack(spacing: HSpacing.listRowGap) {
-      leading
-      VStack(alignment: .leading, spacing: 0) {
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-        if let detail { Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting) }
-      }
-      Spacer(minLength: 8)
-      trailing
-      if chevron {
-        Image(systemName: "chevron.right")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(HColor.listRowChevron)
-          .accessibilityHidden(true)
-      }
-    }
-    .padding(.horizontal, HSpacing.listRowInsetInline)
-    .frame(minHeight: detail == nil ? HSpacing.listRowMinHeight : HSpacing.listRowMinHeightTwoLine)
-    .contentShape(Rectangle())
-  }
-}
-
-extension NavRow where Trailing == EmptyView {
-  init(title: String, detail: String? = nil, chevron: Bool = true, @ViewBuilder leading: () -> Leading) {
-    self.title = title
-    self.detail = detail
-    self.chevron = chevron
-    self.leading = leading()
-    self.trailing = EmptyView()
-  }
-}
-
-/// A settings row icon: a line glyph in a fixed 24 pt lane.
-struct RowIcon: View {
-  let systemName: String
-  var body: some View {
-    Image(systemName: systemName)
-      .font(.system(size: 17, weight: .regular))
-      .foregroundStyle(HColor.listRowIcon)
-      .frame(width: HSpacing.listRowLeadingIcon)
-      .accessibilityHidden(true)
   }
 }
 
