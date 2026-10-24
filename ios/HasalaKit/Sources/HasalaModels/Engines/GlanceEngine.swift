@@ -72,9 +72,9 @@ public enum GlanceEngine {
 
   static func categories(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) -> [CategoryWatchWidget] {
     let day = now.date.day
-    let days = now.date.yearMonth.days
-    let gone = Pace.monthGone(day: day, days: days)
     let month = now.date.yearMonth
+    let days = month.days
+    let gone = Pace.monthGone(day: day, days: days)
     return plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows).filter { $0.budget.minor > 0 }.map { row in
       let spent = Spending.spent(s, category: row.id, in: month)
       let left = row.budget.minor.minus(spent)
