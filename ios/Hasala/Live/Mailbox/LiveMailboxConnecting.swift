@@ -372,12 +372,6 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
     async throws(MailConnectFailure) -> MailLinked
   {
-    try await link(provider, replacing: replacing, removingOld: removingOld, ask: ask)
-  }
-
-  private func link(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
-    async throws(MailConnectFailure) -> MailLinked
-  {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
@@ -453,7 +447,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
     let fallback = try lane().provider
     let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
-    let linked = try await link(provider, replacing: false, removingOld: false, ask: ask)
+    let linked = try await connect(provider, replacing: false, removingOld: false, ask: ask)
     guard await linkState() == .scanning else { return linked }
     Task { for await _ in firstScan() {} }
     return linked

@@ -53,8 +53,7 @@ nonisolated enum LedgerStateMapper {
   static func mapped(_ r: LedgerReader, context c: Context) throws -> Mapped {
     guard let today = CivilDate(year: c.today.year, month: c.today.month, day: c.today.day) else { throw MapError.date }
     let month = today.yearMonth
-    var rows = try r.activity(limit: 1_000_000)
-    rows += try r.archived(limit: 1_000_000)
+    let rows = try allRows(r)
     let feed = try billFeed(r, rows: rows, today: today)
     let engine = try r.planEngine(month: month, today: today, bills: feed.expectations)
     let taxonomy = feed.taxonomy
@@ -165,6 +164,10 @@ nonisolated enum LedgerStateMapper {
     return Mapped(state: state, candidates: feed.derived.candidates)
   }
 
+  static func allRows(_ r: LedgerReader) throws -> [TxnRow] {
+    try r.activity(limit: 1_000_000) + r.archived(limit: 1_000_000)
+  }
+
   static func unreadMail(_ row: TxnRow, senders: [String: String] = [:], accounts: [CoreReplay.Account] = []) -> UnreadMail {
     let bank = row.mailboxMessageID.flatMap { senders[$0] }.flatMap { Self.bank(domain: $0) }
     let ofBank = accounts.filter { a in bank.map { a.institution == $0 } ?? false }
@@ -248,9 +251,7 @@ nonisolated enum LedgerStateMapper {
   static func txn(_ row: TxnRow, r: LedgerReader, ruleByID: [String: RuleRow], billID: String?) throws
     -> HasalaModels.Txn
   {
-    let date = CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1)
-    let minutes = Int(((row.postedMs + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
-    let at = LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
+    let at = Self.at(CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1), ms: row.postedMs)
     let timeKnown = row.postedPrecision != "day"
     var splits: [SplitLine] = []
     if row.split {
@@ -304,15 +305,16 @@ nonisolated enum LedgerStateMapper {
   }
 
   static func localTime(_ ms: Int64) -> LocalDateTime {
-    let date = LocalClock.localDate(ms).map(local) ?? LocalDate(1970, 1, 1)
+    at(LocalClock.localDate(ms).map(local) ?? LocalDate(1970, 1, 1), ms: ms)
+  }
+
+  private static func at(_ date: LocalDate, ms: Int64) -> LocalDateTime {
     let minutes = Int(((ms + LocalClock.offsetMs) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000)
     return LocalDateTime(date: date, hour: minutes / 60, minute: minutes % 60)
   }
 
-  static func samePurchaseRow(_ row: TxnRow) -> SamePurchase.Row { row.samePurchaseRow }
-
   static func markSamePurchases(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], home: String) {
-    let pairs = SamePurchase.pairs(rows.map(samePurchaseRow), home: home)
+    let pairs = SamePurchase.pairs(rows.map(\.samePurchaseRow), home: home)
     guard !pairs.isEmpty else { return }
     let index = Dictionary(txns.indices.map { (txns[$0].id, $0) }, uniquingKeysWith: { a, _ in a })
     for p in pairs {

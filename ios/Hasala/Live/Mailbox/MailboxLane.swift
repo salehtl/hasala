@@ -179,7 +179,6 @@ nonisolated final class MailboxLane: Sendable {
 
   /// Bank alerts (spec 04 §7.10).
   func status() async -> MailboxStatus { await engine.status() }
-  func disconnect() async -> Bool { await engine.disconnect() }
   func retirePlan() async -> MailboxRetirePlan? { await engine.retirePlan() }
   func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     await engine.disconnect(removing: plan)
@@ -190,7 +189,6 @@ nonisolated final class MailboxLane: Sendable {
   func addSender(_ typed: String) async -> Result<CycleReport, BankDomains.TypedDomainError> {
     await engine.importSender(typed)
   }
-  func viewEmail(messageID: String) async -> EmailView { await engine.viewEmail(messageID: messageID) }
   func probeSenders(_ domains: [String]) async -> SenderProbeResult { await engine.probeSenders(domains) }
 
   func cycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
@@ -362,6 +360,11 @@ extension MailboxLane {
       grants.append(.init(provider: p, refreshToken: token, subscriptionID: sub))
     }
     return grants.isEmpty ? nil : HeldMailGrants(grants: grants)
+  }
+
+  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
+    guard let held else { return }
+    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
   }
 
   /// Ends this iPhone's grants as the account leaves it (spec 04 §4.7 rows 2–4), best effort,

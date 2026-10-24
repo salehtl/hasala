@@ -28,6 +28,19 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     return rt
   }
 
+  private static func token(_ rt: AccountRuntime) throws(SetupFailure) -> String {
+    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    return token
+  }
+
+  private static func domains(_ banks: [SupportedBank]) -> [String] {
+    var out: [String] = []
+    for bank in banks {
+      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !out.contains(d) { out.append(d) }
+    }
+    return out
+  }
+
   /// The salary and the split the projection holds (plan B3.3), for setup to show again
   /// after a relaunch. Reads only; nothing is authored.
   func readBack() -> SetupReadBack {
@@ -52,10 +65,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   func chooseBanks(_ banks: [SupportedBank]) async throws(SetupFailure) {
     let rt = try open()
     var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
-    var domains: [String] = []
-    for bank in banks {
-      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !domains.contains(d) { domains.append(d) }
-    }
+    let domains = Self.domains(banks)
     try await author(rt) { a throws(AuthorError) in
       for bank in banks { a.declareBank(bank.rawValue, active: true) }
       for d in domains where !trusted.contains(d) {
@@ -69,10 +79,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
     let rt = try open()
     var trusted = BankDomains.effectiveTrusted((try? rt.projection.reader.senderTrust()) ?? [:])
     let before = trusted
-    var kept: [String] = []
-    for bank in banks {
-      for d in MailboxLane.senderDomains(bank: bank.rawValue) where !kept.contains(d) { kept.append(d) }
-    }
+    let kept = Self.domains(banks)
     var dropped: [String] = []
     for bank in SupportedBank.allCases where !banks.contains(bank) {
       for d in MailboxLane.senderDomains(bank: bank.rawValue) where !kept.contains(d) && !dropped.contains(d) {
@@ -100,7 +107,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
 
   func requestBank(_ name: String) async throws(SetupFailure) {
     let rt = try open()
-    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    let token = try Self.token(rt)
     do {
       try await rt.env.client.bankRequest(bank: "other", otherBank: name, bearer: token)
     } catch {
@@ -111,7 +118,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
 
   func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure) {
     let rt = try open()
-    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    let token = try Self.token(rt)
     do {
       try await rt.env.client.bankRequest(bank: slug, senderDomain: senderDomain, bearer: token)
     } catch {
@@ -122,7 +129,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
 
   func bankRequests() async throws(SetupFailure) -> BankRequestsSnapshot {
     let rt = try open()
-    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    let token = try Self.token(rt)
     let list: BankRequestsList
     do {
       list = try await rt.env.client.bankRequests(bearer: token)

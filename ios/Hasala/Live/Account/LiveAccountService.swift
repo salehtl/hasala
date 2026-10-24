@@ -367,7 +367,7 @@ final class LiveAccountService: AccountService {
     guard let s = try? env.secrets.session(), !s.pending_logout else { throw .refused }
     let a: LiveAccountFields
     do {
-      a = try await env.client.api.call(.get, "/api/v1/account", bearer: s.token, as: LiveAccountFields.self)
+      a = try await accountFields(s.token)
     } catch {
       throw Self.map(CeremonyError.api(error))
     }
@@ -535,7 +535,7 @@ final class LiveAccountService: AccountService {
     var fetched: LiveAccountFields?
     if let token = try? env.secrets.session()?.token {
       do {
-        fetched = try await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
+        fetched = try await accountFields(token)
       } catch {
         if !methodConfirmed { throw Self.map(CeremonyError.api(error)) }
       }
@@ -559,7 +559,7 @@ final class LiveAccountService: AccountService {
   /// Who froze the account and when, from `GET /account` (allowed on a restricted
   /// session); the holder's, with no time, when the server can't be asked.
   private func freezeInfo(token: String) async -> FreezeInfo {
-    let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
+    let a = try? await accountFields(token)
     return a.flatMap(Self.freeze) ?? FreezeInfo(by: .holder, when: nil)
   }
 
@@ -567,7 +567,7 @@ final class LiveAccountService: AccountService {
   /// still read; spec 04 §6.11). nil when it isn't frozen, or the server can't be asked.
   func freezeInfo() async -> FreezeInfo? {
     guard let token = try? env.secrets.session()?.token,
-      let a = try? await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
+      let a = try? await accountFields(token)
     else { return nil }
     return Self.freeze(a)
   }
@@ -743,6 +743,10 @@ final class LiveAccountService: AccountService {
   static func instant(_ s: String?) -> Date? {
     guard let s, let ms = try? parseInstantMs(s) else { return nil }
     return Date(timeIntervalSince1970: Double(ms) / 1000)
+  }
+
+  private func accountFields(_ token: String) async throws(APIError) -> LiveAccountFields {
+    try await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
   }
 
   private func bearer() throws(CeremonyError) -> String {

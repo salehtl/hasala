@@ -63,13 +63,6 @@ nonisolated final class TrustCounts: Sendable {
     }
   }
 
-  func reset() {
-    cache.withLock { c in
-      c = Counts()
-      defaults().removeObject(forKey: Self.key)
-    }
-  }
-
   private static func read(_ d: UserDefaults) -> Counts? {
     guard let data = d.data(forKey: key) else { return nil }
     return try? JSONDecoder().decode(Counts.self, from: data)
