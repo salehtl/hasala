@@ -214,6 +214,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       .stopRule, .addCategoryAndSort:
       true
     case .resolveCopy(_, let merge): merge
+    case .keepCombinedApart: true
     default: false
     }
   }
@@ -407,6 +408,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       }
       s.txns[i].heldCopy = nil
       return ("Kept both", [.copyReopened(txn: id)])
+    case .keepCombinedApart(let id):
+      let i = try index(id)
+      guard s.txns[i].combinedCopy != nil else { throw .notFound }
+      s.txns[i].combinedCopy = nil
+      return ("Kept both", [])
     case .resolveSamePurchase(let id, let same):
       let i = try index(id)
       guard let match = s.txns[i].samePurchase, let j = s.txns.firstIndex(where: { $0.id == match.of }) else {

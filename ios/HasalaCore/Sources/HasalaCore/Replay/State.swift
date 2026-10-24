@@ -86,15 +86,20 @@ public struct TxnGates: Sendable, Equatable, Codable {
   public var template: String?
   public var card: String?
   public var forwarded: Bool?
+  public var kind: String?
+
+  public static let kinds = ["transfer_notice", "account_debit_alert"]
 
   public init(
-    ar: String? = nil, sender: String? = nil, template: String? = nil, card: String? = nil, forwarded: Bool? = nil
+    ar: String? = nil, sender: String? = nil, template: String? = nil, card: String? = nil, forwarded: Bool? = nil,
+    kind: String? = nil
   ) {
     self.ar = ar
     self.sender = sender
     self.template = template
     self.card = card
     self.forwarded = forwarded
+    self.kind = kind
   }
 
   public enum ReviewReason: String, Sendable { case senderUnverified = "sender_unverified" }

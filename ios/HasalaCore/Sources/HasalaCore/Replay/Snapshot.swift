@@ -14,7 +14,7 @@
 // retirement that takes a new-format row and a legacy row's successor, a
 // certain copy whose verified sender wins and takes the earlier copy's sort, a
 // probable copy kept as its own row, a bank's transfer notice whose debit
-// alert is held as its copy, a transfer notice whose same-amount alert
+// alert is merged into it, a transfer notice whose same-amount alert
 // comes forty minutes later and stays its own row, a bill edit with no lists
 // that keeps the head's price change, and a second create of a detected bill
 // that is absorbed when it is the same and forks when it is not.

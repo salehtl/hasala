@@ -1,0 +1,970 @@
+{
+  "note": "Golden file: the Swift tests own `expect` and rewrite it with HASALA_UPDATE_GOLDEN=1 (conformance/README.md); add or change an input by hand. Each stream is read in order by CoreExtract's CombinedReader with one LearnedLayouts that starts empty; `expect` has one reading per mail. All inputs are synthetic. See README.md.",
+  "schema_version": 1,
+  "agreement_bar_percent": 80,
+  "limits": {
+    "senders": 32,
+    "layouts_per_sender": 40,
+    "examples_per_layout": 16,
+    "tokens_per_mail": 400
+  },
+  "outcomes": [
+    "transaction",
+    "pending",
+    "not_transaction",
+    "unknown"
+  ],
+  "kinds": [
+    "card_purchase",
+    "card_refund",
+    "transfer_notice",
+    "account_debit_alert",
+    "account_credit_alert",
+    "other"
+  ],
+  "streams": [
+    {
+      "name": "card-ar-learned",
+      "note": "An Arabic card purchase layout read three times by one memory: the first two are read by the rules alone, the third by the learned layout as well.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0645\u0639\u0627\u0645\u0644\u0629 \u0628\u0637\u0627\u0642\u0629 \u0627\u0626\u062a\u0645\u0627\u0646\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u0645\u0634\u062a\u0631\u064a\u0627\u062a \u0628\u062a\u0627\u0631\u064a\u062e 01-02-2030 10:15 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 12.50\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX4821\n\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nSAMPLE BAKERY\n\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u062a\u0648\u0641\u0631\nAED 9,876.00\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000060000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0645\u0639\u0627\u0645\u0644\u0629 \u0628\u0637\u0627\u0642\u0629 \u0627\u0626\u062a\u0645\u0627\u0646\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u0645\u0634\u062a\u0631\u064a\u0627\u062a \u0628\u062a\u0627\u0631\u064a\u062e 01-02-2030 10:15 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 230.00\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX4821\n\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nSAMPLE PHARMACY\n\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u062a\u0648\u0641\u0631\nAED 9,876.00\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000120000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0645\u0639\u0627\u0645\u0644\u0629 \u0628\u0637\u0627\u0642\u0629 \u0627\u0626\u062a\u0645\u0627\u0646\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u0645\u0634\u062a\u0631\u064a\u0627\u062a \u0628\u062a\u0627\u0631\u064a\u062e 01-02-2030 10:15 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 8.75\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX4821\n\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nSAMPLE KIOSK\n\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u062a\u0648\u0641\u0631\nAED 9,876.00\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000180000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0645\u0639\u0627\u0645\u0644\u0629 \u0628\u0637\u0627\u0642\u0629 \u0627\u0626\u062a\u0645\u0627\u0646\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u0645\u0634\u062a\u0631\u064a\u0627\u062a \u0628\u062a\u0627\u0631\u064a\u062e 01-02-2030 10:15 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 1,045.00\n\u0631\u0642\u0645 \u0627\u0644\u0628\u0637\u0627\u0642\u0629\nXXXX4821\n\u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0649\nSAMPLE FURNITURE\n\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0645\u062a\u0648\u0641\u0631\nAED 9,876.00\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000240000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1250,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE BAKERY",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 23000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PHARMACY",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 67,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 875,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE KIOSK",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 75,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 104500,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE FURNITURE",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        }
+      ]
+    },
+    {
+      "name": "card-en-drift",
+      "note": "An English card layout learned from three mails, then reworded mid-stream; the reworded layout is relearned from its own mails.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount\nAED 40.00\nMerchant\nSAMPLE GARAGE\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000300000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount\nAED 19.99\nMerchant\nSAMPLE FLORIST\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000360000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount\nAED 5.25\nMerchant\nSAMPLE PARKING\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000420000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Hello,\nWe noticed a purchase on your credit card ending with 7310.\nTransaction value\nAED 61.00\nPaid to\nSAMPLE TAILOR\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000480000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Hello,\nWe noticed a purchase on your credit card ending with 7310.\nTransaction value\nAED 7.50\nPaid to\nSAMPLE LAUNDRY\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000540000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Hello,\nWe noticed a purchase on your credit card ending with 7310.\nTransaction value\nAED 88.80\nPaid to\nSAMPLE OPTICS\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000600000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 4000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GARAGE",
+          "last4": "7310",
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1999,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE FLORIST",
+          "last4": "7310",
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 67,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 525,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PARKING",
+          "last4": "7310",
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 75,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 6100,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE TAILOR",
+          "last4": "7310",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 750,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE LAUNDRY",
+          "last4": "7310",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 8880,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE OPTICS",
+          "last4": "7310",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        }
+      ]
+    },
+    {
+      "name": "drift-one-line",
+      "note": "Label and value on one line.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount: AED 33.10\nMerchant: SAMPLE DELI\nAvailable limit: AED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000660000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 3310,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE DELI",
+          "last4": "7310",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "drift-amount-format",
+      "note": "Amount written with the currency after it and no grouping.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount\n1234.50 AED\nMerchant\nSAMPLE ELECTRONICS\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000720000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 123450,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE ELECTRONICS",
+          "last4": "7310",
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "drift-glued-currency",
+      "note": "Currency glued to the amount.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour credit card ending with 7310 was used for a purchase.\nAmount\nAED1,234.50\nMerchant\nSAMPLE ELECTRONICS\nAvailable limit\nAED 12,000.00\nRegards,\nBank B",
+          "received_at_ms": 1900000780000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 123450,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE ELECTRONICS",
+          "last4": "7310",
+          "confidence_percent": 50,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "drift-language",
+      "note": "The English card layout switched to Arabic.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "\u062a\u0646\u0628\u064a\u0647 \u0645\u0639\u0627\u0645\u0644\u0629 \u0628\u0637\u0627\u0642\u0629",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0627\u0626\u062a\u0645\u0627\u0646\u064a\u0629 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 7310 \u0644\u0639\u0645\u0644\u064a\u0629 \u0634\u0631\u0627\u0621.\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 27.00\n\u0627\u0644\u062a\u0627\u062c\u0631\nSAMPLE JUICE\n\u0627\u0644\u062d\u062f \u0627\u0644\u0645\u062a\u0627\u062d\nAED 12,000.00\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\n\u0628\u0646\u0643 \u0628",
+          "received_at_ms": 1900000840000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2700,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE JUICE",
+          "last4": "7310",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-ar-pending-then-done",
+      "note": "An Arabic transfer notice with status in progress, then the same transfer with status done: pending, then a transaction.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0649 \u0628\u0646\u0643 \u0622\u062e\u0631 \u062f\u0627\u062e\u0644 \u0627\u0644\u062f\u0648\u0644\u0629 \u0628\u062a\u0627\u0631\u064a\u062e 03-02-2030 09:00 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\n(\u064a\u0634\u0645\u0644 5% \u0636\u0631\u064a\u0628\u0629 \u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u0645\u0636\u0627\u0641\u0629)\nAED 2,000.00\n\u0645\u0646 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0649\nAE000000000000000000001\n\u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u0645\u0633\u062a\u0641\u064a\u062f\nbank c\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u0642\u064a\u062f \u0627\u0644\u062a\u0646\u0641\u064a\u0630\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000900000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0649 \u0628\u0646\u0643 \u0622\u062e\u0631 \u062f\u0627\u062e\u0644 \u0627\u0644\u062f\u0648\u0644\u0629 \u0628\u062a\u0627\u0631\u064a\u062e 03-02-2030 09:00 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\n(\u064a\u0634\u0645\u0644 5% \u0636\u0631\u064a\u0628\u0629 \u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u0645\u0636\u0627\u0641\u0629)\nAED 2,000.00\n\u0645\u0646 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0649\nAE000000000000000000001\n\u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u0645\u0633\u062a\u0641\u064a\u062f\nbank c\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u062a\u0645\u062a \u0628\u0646\u062c\u0627\u062d\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900000960000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "pending",
+          "kind": "transfer_notice",
+          "amount_minor": 200000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "bank c",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 200000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "bank c",
+          "last4": null,
+          "confidence_percent": 75,
+          "agreed": true,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 67,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-ar-in-processing",
+      "note": "Status under processing.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0649 \u0628\u0646\u0643 \u0622\u062e\u0631 \u062f\u0627\u062e\u0644 \u0627\u0644\u062f\u0648\u0644\u0629 \u0628\u062a\u0627\u0631\u064a\u062e 03-02-2030 09:00 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\n(\u064a\u0634\u0645\u0644 5% \u0636\u0631\u064a\u0628\u0629 \u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u0645\u0636\u0627\u0641\u0629)\nAED 700.00\n\u0645\u0646 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0649\nAE000000000000000000001\n\u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u0645\u0633\u062a\u0641\u064a\u062f\nbank c\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u0642\u064a\u062f \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900001020000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "pending",
+          "kind": "transfer_notice",
+          "amount_minor": 70000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "bank c",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-en-initiated-credited",
+      "note": "The sentence says initiated, the status says credited to beneficiary: the status wins.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Money Transfer",
+          "text": "Money Transfer\nDear Customer,\nYour Domestic Fund Transfer has been initiated with the details below.\nAmount\n800.00\nTo\nAE000000000000000000002\nBeneficiary Bank\nBank C\nStatus\nCredited to beneficiary\nRegards,\nBank A",
+          "received_at_ms": 1900001080000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 80000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "Bank C",
+          "last4": null,
+          "confidence_percent": 45,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 45,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-en-in-process",
+      "note": "Status in process.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Money Transfer",
+          "text": "Money Transfer\nDear Customer,\nYour Domestic Fund Transfer request has been received with the details below.\nAmount\nAED 800.00\nTo\nAE000000000000000000002\nBeneficiary Bank\nBank C\nStatus\nIn process\nRegards,\nBank A",
+          "received_at_ms": 1900001140000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "pending",
+          "kind": "transfer_notice",
+          "amount_minor": 80000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "Bank C",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 65,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-en-initiated-no-status",
+      "note": "Initiated, and no status line and no completed word.",
+      "mails": [
+        {
+          "sender": "bank-e.example",
+          "subject": "Transfer request",
+          "text": "Dear Customer,\nYour transfer of AED 300.00 to SAMPLE TRADING has been initiated and will be processed shortly.",
+          "received_at_ms": 1900001200000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "pending",
+          "kind": "transfer_notice",
+          "amount_minor": 30000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE TRADING",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "two-currencies-transfer",
+      "note": "An AED debit amount and a USD transaction amount: the AED one.",
+      "mails": [
+        {
+          "sender": "bank-d.example",
+          "subject": "Telegraphic Transfer",
+          "text": "Dear Customer,\nHere is the status of your Telegraphic Transfer.\nTransaction Date:\n05/Feb/2030 10:00 AM\nFrom Account:\n012***34***56\nDebit Amount:\nAED 3,673.00\nTransaction Amount:\nUSD 1,000.00\nExchange Rate:\nN/A\nBeneficiary Name:\nSAMPLE BROKER LLC\nStatus:\nSuccess",
+          "received_at_ms": 1900001260000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 367300,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE BROKER LLC",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "two-currencies-conversion",
+      "note": "A foreign amount followed by its AED amount.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Your card ending 5555 was used for USD 10.00 (AED 36.73) at SAMPLE ONLINE.",
+          "received_at_ms": 1900001320000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 3673,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE ONLINE",
+          "last4": "5555",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 82,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "foreign-only",
+      "note": "A foreign amount and an AED balance: the foreign amount.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Card transaction alert",
+          "text": "Your card ending 5555 was used for USD 10.00 at SAMPLE ONLINE. Available balance AED 900.00",
+          "received_at_ms": 1900001380000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1000,
+          "currency": "USD",
+          "direction": "debit",
+          "merchant": "SAMPLE ONLINE",
+          "last4": "5555",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "transfer-and-account-debit",
+      "note": "One movement, two mails: a transfer notice and an account debit alert.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0649 \u0628\u0646\u0643 \u0622\u062e\u0631 \u062f\u0627\u062e\u0644 \u0627\u0644\u062f\u0648\u0644\u0629 \u0628\u062a\u0627\u0631\u064a\u062e 03-02-2030 09:00 \u0628\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u0627\u0644\u064a\u0629.\n\u0627\u0644\u0645\u0628\u0644\u063a\n(\u064a\u0634\u0645\u0644 5% \u0636\u0631\u064a\u0628\u0629 \u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u0645\u0636\u0627\u0641\u0629)\nAED 450.00\n\u0645\u0646 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0649\nAE000000000000000000001\n\u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u0645\u0633\u062a\u0641\u064a\u062f\nbank c\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u062a\u0645\u062a \u0628\u0646\u062c\u0627\u062d\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900001440000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0625\u0634\u0639\u0627\u0631 \u062e\u0635\u0645\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u062e\u0635\u0645 \u0645\u0646 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u062a\u0627\u0631\u064a\u062e 03-02-2030 09:01\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 450.00\n\u0645\u0646 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0645\u0639\u0627\u0645\u0644\u0629\nFUND TRANSFER OUT\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u062a\u0645\u062a \u0628\u0646\u062c\u0627\u062d\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900001500000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 45000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "bank c",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 70,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "account_debit_alert",
+          "amount_minor": 45000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "FUND TRANSFER OUT",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "account-credit-ar",
+      "note": "An Arabic account credit alert.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Bank A Notification",
+          "text": "\u0625\u0634\u0639\u0627\u0631 \u0625\u064a\u062f\u0627\u0639\n\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644,\n\u0625\u0634\u0639\u0627\u0631 \u0625\u064a\u062f\u0627\u0639 \u0641\u0649 \u0627\u0644\u062d\u0633\u0627\u0628 \u0628\u062a\u0627\u0631\u064a\u062e 04-02-2030 12:00\n\u0627\u0644\u0645\u0628\u0644\u063a\nAED 5,500.00\n\u0627\u0644\u0649 \u062d\u0633\u0627\u0628\n001-222-333XXXX44\n\u0627\u0644\u0645\u0639\u0627\u0645\u0644\u0629\nINWARD TRANSFER\n\u0627\u0644\u062d\u0627\u0644\u0629\n\u062a\u0645\u062a \u0628\u0646\u062c\u0627\u062d\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a\u060c\n\u0628\u0646\u0643 \u0623",
+          "received_at_ms": 1900001560000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "account_credit_alert",
+          "amount_minor": 550000,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": "INWARD TRANSFER",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "card-reversal-en",
+      "note": "An English reversal sentence.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Transaction reversed",
+          "text": "A transaction to the value of AED 15.00 made at SAMPLE RIDES on your card ending with XX4321 has been reversed.",
+          "received_at_ms": 1900001620000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_refund",
+          "amount_minor": 1500,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": "SAMPLE RIDES",
+          "last4": "4321",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "card-refund-ar",
+      "note": "An Arabic refund sentence.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u0625\u0631\u062c\u0627\u0639 \u0645\u0628\u0644\u063a 45.00 \u062f\u0631\u0647\u0645 \u0639\u0644\u0649 \u0628\u0637\u0627\u0642\u0629 \u0627\u0644\u0627\u0626\u062a\u0645\u0627\u0646 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 9012.\n\u0645\u0639 \u0627\u0637\u064a\u0628 \u0627\u0644\u062a\u062d\u064a\u0627\u062a",
+          "received_at_ms": 1900001680000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_refund",
+          "amount_minor": 4500,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": null,
+          "last4": "9012",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "otp",
+      "note": "A one-time password mail with an amount.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Your OTP",
+          "text": "Your one time password for the purchase of AED 300.00 at SAMPLE STORE is 482913.",
+          "received_at_ms": 1900001740000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "not_transaction",
+          "kind": "other",
+          "amount_minor": null,
+          "currency": null,
+          "direction": null,
+          "merchant": null,
+          "last4": null,
+          "confidence_percent": 0,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "declined",
+      "note": "A declined card transaction.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Transaction declined",
+          "text": "Your card ending 7310 transaction of AED 99.00 at SAMPLE STORE was declined due to insufficient funds.",
+          "received_at_ms": 1900001800000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "not_transaction",
+          "kind": "card_purchase",
+          "amount_minor": null,
+          "currency": null,
+          "direction": null,
+          "merchant": null,
+          "last4": null,
+          "confidence_percent": 0,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "promo",
+      "note": "Marketing mail with amounts and List-Unsubscribe.",
+      "mails": [
+        {
+          "sender": "bank-b.example",
+          "subject": "Exclusive offer",
+          "text": "Earn 10% cashback up to AED 500 on every purchase!\nApply now and win AED 10,000.",
+          "received_at_ms": 1900001860000,
+          "list_unsubscribe": true
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "unknown",
+          "kind": "other",
+          "amount_minor": null,
+          "currency": null,
+          "direction": null,
+          "merchant": null,
+          "last4": null,
+          "confidence_percent": 0,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "no-money",
+      "note": "A notice with no amount.",
+      "mails": [
+        {
+          "sender": "bank-a.example",
+          "subject": "Card activated",
+          "text": "Dear Customer,\nYour card ending 7310 has been activated.",
+          "received_at_ms": 1900001920000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "unknown",
+          "kind": "other",
+          "amount_minor": null,
+          "currency": null,
+          "direction": null,
+          "merchant": null,
+          "last4": null,
+          "confidence_percent": 0,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 0,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "three-decimals",
+      "note": "A three-decimal currency.",
+      "mails": [
+        {
+          "sender": "bank-f.example",
+          "subject": "Debit alert",
+          "text": "Your account has been debited with KWD 12.345 for a transfer.",
+          "received_at_ms": 1900001980000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "account_debit_alert",
+          "amount_minor": null,
+          "currency": "KWD",
+          "direction": "debit",
+          "merchant": null,
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    }
+  ]
+}

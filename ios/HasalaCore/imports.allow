@@ -31,6 +31,7 @@ Crypto        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResource
 Auth          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Norm          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 Template      CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources HasalaICU
+Extract
 Mail          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources
 
 # L2
@@ -40,13 +41,13 @@ Categorize    CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResource
 Domain        CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreReplay CoreCategorize OrderedCollections
 
 # L3: the only GRDB importers (R6).
-Store         CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain GRDB OrderedCollections
+Store         CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain GRDB OrderedCollections
 Projection    CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreReplay CoreDomain CoreCategorize GRDB OrderedCollections
 
 # L4
-Sync          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection
+Sync          CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection
 Outbox        CoreSync
-Mailbox       CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreOutbox CoreSync
+Mailbox       CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreOutbox CoreSync
 Signals       CoreDomain CoreProjection OrderedCollections
 
 # A: the only FoundationModels importer.
@@ -56,5 +57,5 @@ Keychain      CorePrimitives CoreStore Security
 Cloud         CoreCategorize
 
 # T: test support, never linked by the app.
-TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals CryptoKit
+TestSupport   CorePrimitives HasalaText CoreJSON CoreTime CoreMoney CoreResources CoreWire CoreCrypto CoreAuth CoreNorm CoreTemplate CoreExtract CoreMail CoreReplay CoreInvariants CoreCategorize CoreDomain CoreStore CoreProjection CoreSync CoreOutbox CoreMailbox CoreSignals CryptoKit
 SoftAuth      CorePrimitives CoreAuth CryptoKit

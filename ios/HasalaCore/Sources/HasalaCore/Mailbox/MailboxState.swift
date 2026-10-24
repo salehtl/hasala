@@ -138,6 +138,7 @@ public struct MailboxCommit: Sendable {
   /// Ends the pending imports of these domains.
   public var doneImports: [String] = []
   public var unparsedSenders: [UnparsedSenderRecord] = []
+  public var reader: MailReaderState?
   /// Replaces the state row when set.
   public var state: MailboxState?
   /// Clears every mailbox table (Disconnect).
@@ -147,7 +148,7 @@ public struct MailboxCommit: Sendable {
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
       && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
-      && unparsedSenders.isEmpty && state == nil && !clearAll
+      && unparsedSenders.isEmpty && reader == nil && state == nil && !clearAll
   }
 }
 
@@ -175,6 +176,7 @@ public protocol MailboxPersistence: Sendable {
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport]
   func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String]
+  func loadReader() async throws(MailboxPersistenceError) -> MailReaderState?
 }
 
 /// The reference `MailboxPersistence`: the semantics a GRDB implementation must keep, in memory.
@@ -199,8 +201,11 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var imports: [String: Int64] = [:]
   public private(set) var senders: [String: UnparsedSenderRecord] = [:]
   public static let unparsedSenderRing = 1_000
+  public private(set) var reader: MailReaderState?
 
   public init(state: MailboxState = MailboxState()) { self.state = state }
+
+  public func loadReader() async throws(MailboxPersistenceError) -> MailReaderState? { reader }
 
   public func senderAddresses() async throws(MailboxPersistenceError) -> [String] { addresses }
 
@@ -246,6 +251,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       health = [:]
       parsing = []
       imports = [:]
+      reader = nil
     }
     enqueued.append(contentsOf: c.drafts)
     for a in c.accounted { accountedRows[a.messageID] = a }
@@ -279,6 +285,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       let keep = senders.values.sorted { ($0.atMs, $0.messageID) > ($1.atMs, $1.messageID) }.prefix(Self.unparsedSenderRing)
       senders = Dictionary(uniqueKeysWithValues: keep.map { ($0.messageID, $0) })
     }
+    if let r = c.reader { reader = r }
     if let s = c.state { state = s }
   }
 

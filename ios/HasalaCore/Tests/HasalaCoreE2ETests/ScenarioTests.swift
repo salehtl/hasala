@@ -46,7 +46,7 @@ struct ScenarioTests {
     try await Scenarios.gmailToReplay(a, b, clock: w.clock)
   }
 
-  @Test("a DIB transfer notice and its debit alert count once; a pending notice stays unread")
+  @Test("a DIB transfer notice and its debit alert count once; a pending notice is set aside")
   func dibTransferNotices() async throws {
     let (w, a, b) = try await twoRuntimes()
     try await Scenarios.dibTransferNotices(a, b, clock: w.clock)

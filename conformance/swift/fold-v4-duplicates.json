@@ -1,5 +1,5 @@
 {
-  "note": "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
+  "note": "Copies of one bank alert across mailboxes (and within one, after a reconnect). A v4 txn_ingested may carry dedupe {message_id, bank_ref}: 32 lower-case hex digits each (message_id is the first 16 bytes of SHA-256 over the RFC 5322 Message-ID, angle brackets dropped, ASCII lower-cased). A certain copy (a dedupe key already in byDedupeKey on a live row) merges at once: the copy whose gates say ar pass and sender trusted wins, else the earlier one; the other gets merged_into, merge_kind certain and merge_op, leaves the live indexes, and becomes an alias on the canonical row. Re-ingesting a merged copy's ingest id is a duplicate_ingest. A probable copy (no shared key; both mailbox rows at time precision with the same bank, amount_minor, currency, direction, last4 and merchant after ASCII lower-casing and white-space folding, at most 600000 ms apart) gets copy_of the earliest live match and stays out of money until txn_copy_resolved {other_txn_id, decision: merge | keep_both | null}. A transfer notice (gates.template dib.transfer.v1 or dib.money-transfer.v1) and an account alert (dib.account.v1) of one bank, both mailbox debits at time precision with the same amount_minor and currency at most 1800000 ms apart, are one transfer whatever their merchant and last4: the later gets copy_of the nearest earlier row of the other kind that is live, not held, and has no held or merged copy of the other kind against it. A row without one of these templates takes its role from gates.kind (transfer_notice or account_debit_alert; another value, or a value that is not a string, is dropped). A row with a known template other than these has no transfer role, whatever its gates.kind. When both rows of a transfer pair say ar pass and sender trusted and the alert's merchant names a transfer (after ASCII lower-casing and white-space folding, a word trans, transfer, transfers, trnsfer, trf, tfr, xfer or uaefts, or the Arabic word for transfer anywhere), the alert is merged into the notice at once (merge_kind transfer, merge_op the ingest op, the alert's dedupe keys registered to the notice) and nobody is asked: the notice stays the row whatever came first, and when the alert came first and was not decided it takes copy_of the notice and the notice takes the sort and annotations it lacks. txn_copy_resolved keep_both takes the alert out again and gives its dedupe keys back to it; a null decision merges it again and carries its sort. A candidate whose copy_of names the row with a decision is never paired with it again. A pair with an unverified row, or with an alert whose merchant does not name a transfer, is held as before. Written by the Swift executor; the ledgerd TypeScript fold (schema 3, removed) and Go (no fold) do not model v4.",
   "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
   "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
   "cases": [
@@ -4762,7 +4762,7 @@
     {
       "name": "transfer-notice-holds-its-alert",
       "group": "fold_v4",
-      "note": "A DIB transfer notice, then the account debit alert for the same transfer three minutes later, with its own merchant and card: the alert is held as the notice's copy. A same-amount alert two hours later stays its own row.",
+      "note": "A DIB transfer notice, then the account debit alert for the same transfer three minutes later, with its own merchant and card: the alert is merged into the notice. A same-amount alert two hours later stays its own row.",
       "schema_version": 4,
       "log": [
         {
@@ -4907,12 +4907,6 @@
           "budgetSplit": null,
           "byFingerprint": [
             [
-              "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
-              [
-                "01JC0000000000000000000002"
-              ]
-            ],
-            [
               "0606|314159|debit|OWN ACCOUNT TRNSFER|2026-10-03",
               [
                 "01JC0000000000000000000003"
@@ -4974,10 +4968,6 @@
               "01JC0000000000000000000001"
             ],
             [
-              "0000000000000000000000000000000000000000000000000000000000000002",
-              "01JC0000000000000000000002"
-            ],
-            [
               "0000000000000000000000000000000000000000000000000000000000000003",
               "01JC0000000000000000000003"
             ]
@@ -4987,7 +4977,6 @@
               "AED",
               [
                 "01JC0000000000000000000001",
-                "01JC0000000000000000000002",
                 "01JC0000000000000000000003"
               ]
             ]
@@ -4999,6 +4988,16 @@
             [
               "01JC0000000000000000000001",
               {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
                 "amount_home_minor": null,
                 "amount_minor": "314159",
                 "bank": "dib",
@@ -5065,6 +5064,9 @@
                 "last4": "0606",
                 "mailbox_message_id": "msg-2",
                 "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000001",
                 "needs_review": true,
                 "parse_error": null,
                 "possible_duplicate_of": null,
@@ -5126,7 +5128,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "027c8b42c040589aa3b5dd9621622c6306bf4a0094bc5629e41a06a6ce6f6bbe",
+        "state_sha256": "ee28bfb59d8ae37eb67661de9b8e092789e72993bb6c4d309e208bb5d4a0b00b",
         "anomaly_kinds": []
       }
     },
@@ -5310,12 +5312,6 @@
           "budgetSplit": null,
           "byFingerprint": [
             [
-              "0606|271828|debit|MB FUND TRANSFER DEBIT|2026-10-03",
-              [
-                "01JC0000000000000000000004"
-              ]
-            ],
-            [
               "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
               [
                 "01JC0000000000000000000002"
@@ -5400,10 +5396,6 @@
             [
               "0000000000000000000000000000000000000000000000000000000000000003",
               "01JC0000000000000000000003"
-            ],
-            [
-              "0000000000000000000000000000000000000000000000000000000000000004",
-              "01JC0000000000000000000004"
             ]
           ],
           "pendingByCurrency": [
@@ -5412,8 +5404,7 @@
               [
                 "01JC0000000000000000000001",
                 "01JC0000000000000000000002",
-                "01JC0000000000000000000003",
-                "01JC0000000000000000000004"
+                "01JC0000000000000000000003"
               ]
             ]
           ],
@@ -5508,6 +5499,16 @@
             [
               "01JC0000000000000000000003",
               {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-4",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000004"
+                  }
+                ],
                 "amount_home_minor": null,
                 "amount_minor": "271828",
                 "bank": "dib",
@@ -5574,6 +5575,9 @@
                 "last4": "0606",
                 "mailbox_message_id": "msg-4",
                 "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-4",
+                "merged_into": "01JC0000000000000000000003",
                 "needs_review": true,
                 "parse_error": null,
                 "possible_duplicate_of": null,
@@ -5593,14 +5597,14 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "226ff18e42c438824ab36ba65326e07a5548044e885c46198441575e3f7cfafc",
+        "state_sha256": "bc94886baa0d65ba3cfefc906b77ff30d0efd9645031d7f5f0df32eef1cddfb4",
         "anomaly_kinds": []
       }
     },
     {
       "name": "transfer-alert-then-notice",
       "group": "fold_v4",
-      "note": "The alert arrives first and the English notice twenty minutes later: the notice is the held copy.",
+      "note": "The alert arrives first and the English notice twenty minutes later: the alert is merged into the notice, which stays the row.",
       "schema_version": 4,
       "log": [
         {
@@ -5705,12 +5709,6 @@
               [
                 "01JC0000000000000000000002"
               ]
-            ],
-            [
-              "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
-              [
-                "01JC0000000000000000000001"
-              ]
             ]
           ],
           "categories": [],
@@ -5747,10 +5745,6 @@
           "homeCurrency": null,
           "liveByIngestID": [
             [
-              "0000000000000000000000000000000000000000000000000000000000000001",
-              "01JC0000000000000000000001"
-            ],
-            [
               "0000000000000000000000000000000000000000000000000000000000000002",
               "01JC0000000000000000000002"
             ]
@@ -5759,7 +5753,6 @@
             [
               "AED",
               [
-                "01JC0000000000000000000001",
                 "01JC0000000000000000000002"
               ]
             ]
@@ -5778,6 +5771,7 @@
                 "category_source": {
                   "kind": "none"
                 },
+                "copy_of": "01JC0000000000000000000002",
                 "currency": "AED",
                 "direction": "debit",
                 "duplicate_disposition": null,
@@ -5794,6 +5788,9 @@
                 "last4": "0606",
                 "mailbox_message_id": "msg-1",
                 "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000002",
                 "needs_review": true,
                 "parse_error": null,
                 "possible_duplicate_of": null,
@@ -5813,6 +5810,16 @@
             [
               "01JC0000000000000000000002",
               {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-1",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000001"
+                  }
+                ],
                 "amount_home_minor": null,
                 "amount_minor": "314159",
                 "bank": "dib",
@@ -5820,7 +5827,6 @@
                 "category_source": {
                   "kind": "none"
                 },
-                "copy_of": "01JC0000000000000000000001",
                 "currency": "AED",
                 "direction": "debit",
                 "duplicate_disposition": null,
@@ -5856,14 +5862,14 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "8cdd6a0a8efb967e1e7f8ac0e8b84e68154d2e0a89afcee05be54030956ebad0",
+        "state_sha256": "80c1b08c30031b61e5beea9e8ff2bdf93ccc54fa656162d9b96a1950f806926c",
         "anomaly_kinds": []
       }
     },
     {
       "name": "transfer-one-to-one",
       "group": "fold_v4",
-      "note": "Two same-amount transfers twenty minutes apart, each with its alert, and a third alert: each alert is held against the nearest notice that has none, the notices never pair with each other, and the third alert stays its own row.",
+      "note": "Two same-amount transfers twenty minutes apart, each with its alert, and a third alert: each alert is merged into the nearest notice that has none, the notices never pair with each other, and the third alert stays its own row.",
       "schema_version": 4,
       "log": [
         {
@@ -6090,13 +6096,6 @@
           "budgetSplit": null,
           "byFingerprint": [
             [
-              "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
-              [
-                "01JC0000000000000000000003",
-                "01JC0000000000000000000004"
-              ]
-            ],
-            [
               "0606|314159|debit|OWN ACCOUNT TRNSFER|2026-10-03",
               [
                 "01JC0000000000000000000005"
@@ -6185,14 +6184,6 @@
               "01JC0000000000000000000002"
             ],
             [
-              "0000000000000000000000000000000000000000000000000000000000000003",
-              "01JC0000000000000000000003"
-            ],
-            [
-              "0000000000000000000000000000000000000000000000000000000000000004",
-              "01JC0000000000000000000004"
-            ],
-            [
               "0000000000000000000000000000000000000000000000000000000000000005",
               "01JC0000000000000000000005"
             ]
@@ -6203,8 +6194,6 @@
               [
                 "01JC0000000000000000000001",
                 "01JC0000000000000000000002",
-                "01JC0000000000000000000003",
-                "01JC0000000000000000000004",
                 "01JC0000000000000000000005"
               ]
             ]
@@ -6216,6 +6205,16 @@
             [
               "01JC0000000000000000000001",
               {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-3",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000003"
+                  }
+                ],
                 "amount_home_minor": null,
                 "amount_minor": "314159",
                 "bank": "dib",
@@ -6258,6 +6257,16 @@
             [
               "01JC0000000000000000000002",
               {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-4",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000004"
+                  }
+                ],
                 "amount_home_minor": null,
                 "amount_minor": "314159",
                 "bank": "dib",
@@ -6324,6 +6333,9 @@
                 "last4": "0606",
                 "mailbox_message_id": "msg-3",
                 "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-3",
+                "merged_into": "01JC0000000000000000000001",
                 "needs_review": true,
                 "parse_error": null,
                 "possible_duplicate_of": null,
@@ -6367,6 +6379,9 @@
                 "last4": "0606",
                 "mailbox_message_id": "msg-4",
                 "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-4",
+                "merged_into": "01JC0000000000000000000002",
                 "needs_review": true,
                 "parse_error": null,
                 "possible_duplicate_of": null,
@@ -6428,10 +6443,1736 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "f37e9598f33478eb19a54524790a0878a6a4c36dce860534bafd5007654a2377",
+        "state_sha256": "6198db75109b4e56aa4245e5b7f36698a973b74dd3162d96b7cc90dda833f29e",
         "anomaly_kinds": [
           "possible_duplicate"
         ]
+      }
+    },
+    {
+      "name": "transfer-keep-both-then-undo",
+      "group": "fold_v4",
+      "note": "The person says the merged alert is its own movement (keep_both), then undoes that (null): the alert is merged into the notice again.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB TRANSFER",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-undo-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 2,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": null
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "0909|314159|debit|DIB TRANSFER|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-undo-2",
+                "version": 3,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "0909",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "DIB TRANSFER",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "0606",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-undo-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 3
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "241e0328ed4cb11997b864e56d25ae4f3f3a0596e2a7f17de0bf84b3833571c1",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "transfer-by-kind-marker",
+      "group": "fold_v4",
+      "note": "Two rows read without a template carry gates.kind transfer_notice and account_debit_alert: they pair as a template pair does. A third row's unknown kind is dropped and it stays its own row.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE PAYEE",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "kind": "transfer_notice"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:04:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "FUNDS TRANSFER DEBIT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "kind": "account_debit_alert"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:06:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "OTHER PAYEE",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-3"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "kind": "card_purchase"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "0606|314159|debit|OTHER PAYEE|2026-10-03",
+              [
+                "01JC0000000000000000000003"
+              ]
+            ],
+            [
+              "0909|314159|debit|SAMPLE PAYEE|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "3"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000003",
+              "01JC0000000000000000000003"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000003"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                    "kind": "transfer",
+                    "mailbox_message_id": "msg-2",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000002"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "kind": "transfer_notice",
+                  "sender": "trusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "0909",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "SAMPLE PAYEE",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "kind": "account_debit_alert",
+                  "sender": "trusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "0606",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "FUNDS TRANSFER DEBIT",
+                "merge_kind": "transfer",
+                "merge_op": "op-ingest-2",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:04:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "0606",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "OTHER PAYEE",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:06:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "56a53722afe8796745a8ceb74c5c3ad1f59712e988be1010a21b37bf84baedd0",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "transfer-alert-not-a-transfer-held",
+      "group": "fold_v4",
+      "note": "An account alert of the same amount within the window whose merchant names no transfer is held as the notice's copy for the person, not merged.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB TRANSFER",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:03:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "CREDIT CARD PAYMENT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "0606|314159|debit|CREDIT CARD PAYMENT|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "0909|314159|debit|DIB TRANSFER|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "1"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "0909",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "DIB TRANSFER",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "0606",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "CREDIT CARD PAYMENT",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:03:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "9e2c26d8535eec038cbf3aaf3d1551752a265c7c89b5ccc68bae48efa30f7ee8",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "transfer-keep-both-then-copies",
+      "group": "fold_v4",
+      "note": "After keep_both on the merged alert, the same notice and the same alert arrive from a second mailbox: each is a certain copy of its own row, the alert's dedupe key points at the alert, and the decision stays.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB TRANSFER",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "7d793037a0760186574b0282f2f435e7"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_copy_resolved",
+              "op_id": "op-keep-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": 1,
+              "payload": {
+                "other_txn_id": "01JC0000000000000000000001",
+                "decision": "keep_both"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "3",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-3",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000003"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB TRANSFER",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-3"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "seq": "4",
+          "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-4",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000004"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                  "message_id": "msg-4"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "dedupe": {
+                  "message_id": "7d793037a0760186574b0282f2f435e7"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byDedupeKey": [
+            [
+              "mid:5d41402abc4b2a76b9719d911017c592",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "mid:7d793037a0760186574b0282f2f435e7",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "byFingerprint": [
+            [
+              "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "0909|314159|debit|DIB TRANSFER|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "4"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-keep-2",
+                "version": 2,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000003",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000003",
+                "kind": "txn",
+                "op_id": "op-ingest-3",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000004",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000004",
+                "kind": "txn",
+                "op_id": "op-ingest-4",
+                "version": 1,
+                "writer_id": "ios-1b2c3d4e-5f60-4b7c-8d9e-0f1a2b3c4d5e"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-3",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000003"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "0909",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "DIB TRANSFER",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "aliases": [
+                  {
+                    "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                    "kind": "certain",
+                    "mailbox_message_id": "msg-4",
+                    "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                    "source_provider": "gmail",
+                    "txn_id": "01JC0000000000000000000004"
+                  }
+                ],
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_decision": "keep_both",
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "7d793037a0760186574b0282f2f435e7"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "0606",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 2
+              }
+            ],
+            [
+              "01JC0000000000000000000003",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "5d41402abc4b2a76b9719d911017c592"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000003",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                "last4": "0909",
+                "mailbox_message_id": "msg-3",
+                "merchant_raw": "DIB TRANSFER",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-3",
+                "merged_into": "01JC0000000000000000000001",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000004",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "dedupe": {
+                  "message_id": "7d793037a0760186574b0282f2f435e7"
+                },
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3"
+                },
+                "id": "01JC0000000000000000000004",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000004",
+                "last4": "0606",
+                "mailbox_message_id": "msg-4",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "merge_kind": "certain",
+                "merge_op": "op-ingest-4",
+                "merged_into": "01JC0000000000000000000002",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:02:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000b",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "40485d30e08dfd201d9c924e26946a260b47781c2212cf15fcb13261e820104d",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "transfer-unverified-held",
+      "group": "fold_v4",
+      "note": "The notice's sender did not verify: its alert is held as its copy for the person, as before.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-1",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB TRANSFER",
+                "last4": "0909",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-1"
+                },
+                "gates": {
+                  "ar": "fail",
+                  "sender": "untrusted",
+                  "template": "dib.transfer.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-ingest-2",
+              "authored_at": "2026-10-01T08:00:00.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "314159",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-10-03T10:03:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "last4": "0606",
+                "needs_review": true,
+                "tier": "template",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "provenance": {
+                  "provider": "gmail",
+                  "grant_id": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                  "message_id": "msg-2"
+                },
+                "gates": {
+                  "ar": "pass",
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3",
+                  "card": "unknown",
+                  "forwarded": false
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "0606|314159|debit|MB FUND TRANSFER DEBIT|2026-10-03",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "0909|314159|debit|DIB TRANSFER|2026-10-03",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "1"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-ingest-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1790841600000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-ingest-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "fail",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "dib.transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "0909",
+                "mailbox_message_id": "msg-1",
+                "merchant_raw": "DIB TRANSFER",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "314159",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "ar": "pass",
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.account.v1@3"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "0606",
+                "mailbox_message_id": "msg-2",
+                "merchant_raw": "MB FUND TRANSFER DEBIT",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-10-03T10:03:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "source_mailbox": "01JCUSER0000000000000000AA/mbx-0000000000000000000000000000000a",
+                "source_provider": "gmail",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "b5862288c57b6795d7ba3ec0d97d71e61849df082493dba5e4c3e8a69b71abbe",
+        "anomaly_kinds": []
       }
     }
   ]

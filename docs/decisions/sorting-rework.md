@@ -264,10 +264,11 @@ The Swift-owned golden set `conformance/merchant-group` holds the dictionary dig
 header and the near-misses (Al Noor Trading against Al Noor Pharmacy, two PayPal merchants,
 three spellings of one merchant).
 
-The projection is at version 9. #182 took it from version 7 to 9: it added
+#182 took the projection from version 7 to 9: it added
 `txn.merchant_group` (the group key), `txn.categorized_ms` (see
 [Filed at, and Sorted for you](#filed-at-and-sorted-for-you)) and the `merchant_rejection`
-table. The rebuild changes no table, no op kind and no wire format, and no golden set.
+table. The projection is now at version 11, from the DIB transfer pairs (#185, #195).
+The rebuild changes no table, no op kind and no wire format, and no golden set.
 
 ### Exact group rules
 

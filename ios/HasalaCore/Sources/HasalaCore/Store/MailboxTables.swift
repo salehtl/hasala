@@ -142,6 +142,7 @@ public struct MailboxWrite: Sendable {
   public var addImports: [(domain: String, sinceMs: Int64)] = []
   public var doneImports: [String] = []
   public var unparsedSenders: [MailboxUnparsedSenderRow] = []
+  public var reader: Data?
   public var state: MailboxStateRow?
   public var clearAll = false
   public init() {}
@@ -230,7 +231,12 @@ public final class MailboxTableStore: Sendable {
     "CREATE TABLE mailbox_parsing (message_id TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID",
     "CREATE TABLE mailbox_pending_import (domain TEXT PRIMARY KEY, since_ms INTEGER NOT NULL) WITHOUT ROWID",
     "CREATE TABLE mailbox_unparsed_sender (message_id TEXT PRIMARY KEY, domain TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID",
+    "CREATE TABLE mailbox_reader (id INTEGER PRIMARY KEY CHECK (id = 1), json BLOB NOT NULL)",
   ]
+
+  public func loadReader() throws -> Data? {
+    try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
+  }
 
   public func pendingImports() throws -> [(domain: String, sinceMs: Int64)] {
     try db.read { db in
@@ -376,7 +382,7 @@ public final class MailboxTableStore: Sendable {
       if w.clearAll {
         for t in [
           "mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health", "mailbox_parsing",
-          "mailbox_pending_import",
+          "mailbox_pending_import", "mailbox_reader",
         ] {
           try db.execute(sql: "DELETE FROM \(t)")
         }
@@ -439,6 +445,9 @@ public final class MailboxTableStore: Sendable {
       }
       for id in w.unstage {
         try db.execute(sql: "DELETE FROM mailbox_staging WHERE message_id = ?", arguments: [id])
+      }
+      if let r = w.reader {
+        try db.execute(sql: "INSERT OR REPLACE INTO mailbox_reader (id, json) VALUES (1, ?)", arguments: [r])
       }
       if let below = w.pruneAccountedBelow {
         try db.execute(sql: "DELETE FROM mailbox_accounted WHERE internal_date < ?", arguments: [below])

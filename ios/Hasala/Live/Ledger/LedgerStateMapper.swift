@@ -82,6 +82,7 @@ nonisolated enum LedgerStateMapper {
     let paired = RuleReach.paired(reachRows, home: home)
     let rejections = try r.rejections()
     var pickRows = rows.map(\.pickRow)
+    let combined = try r.transferCopies()
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for (i, row) in rows.enumerated() {
@@ -98,6 +99,7 @@ nonisolated enum LedgerStateMapper {
         pickRows[i].categorizedMs = p.categorizedMs
       }
       if let g = row.merchantGroup, let rejected = rejections[g] { t.rejectedCategories = rejected }
+      t.combinedCopy = combined[row.id]?.copyID
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)

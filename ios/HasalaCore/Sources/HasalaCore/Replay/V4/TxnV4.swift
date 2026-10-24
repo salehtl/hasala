@@ -42,6 +42,7 @@ extension State {
     }
     if let v = P.present(o["card"]) { g.card = try P.oneOf(v, "gates.card", ["known", "unknown", "not_mine", "none"]) }
     if let v = P.present(o["forwarded"]) { g.forwarded = try P.boolField(v, "gates.forwarded") }
+    if let s = o["kind"]?.stringValue, TxnGates.kinds.contains(where: { utf8Equal($0, s) }) { g.kind = s }
     return g
   }
 

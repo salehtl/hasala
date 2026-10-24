@@ -1,10 +1,13 @@
 # Cloud suggestions: opt-in Clef and Clairic (design)
 
 **Status: Merchant suggestions (Clef) DECIDED and in progress (2026-10-20). Alert reading
-help (Clairic) DEFERRED.** The spike is done ([results](#spike-results-2026-10-20)). The
+help (Clairic) DROPPED.** The spike is done ([results](#spike-results-2026-10-20)). The
 owner approved Merchant suggestions with the recommended answers to D1-D3 and D6 (see
-[Decisions for the owner](#decisions-for-the-owner)). The Clairic sections stay in this
-file for later reference; nothing for Clairic is built.
+[Decisions for the owner](#decisions-for-the-owner)). Clairic was then tried for mail
+reading on synthetic mail on the extraction bench and dropped; mail that no template
+reads is now read on the phone, with no model and no network call
+(`template-free-reading.md`). The Clairic sections stay in this file for reference;
+nothing for Clairic is built.
 
 The owner decided (2026-10-20): the Workers AI data usage page is enough for check 2, and
 no written confirmation from Cloudflare is needed. The policy states the claim as
@@ -37,7 +40,7 @@ Two optional features, both **off by default**, each with its own switch:
 | Feature | Model | What leaves the phone | Where it plugs in | What it may do |
 |---|---|---|---|---|
 | **Merchant suggestions** | Clef (`@cf/cloudflare/clef`) | One canonical merchant string per request, plus the built-in category list | A second `CategoryModel` behind the existing model tier (`Categorize/ModelTier.swift`) | Suggest a category. Files a row only with the second opt-in, [Sort automatically](#sort-automatically-owner-decision-2026-10-20), above its stricter gate; Apple's model never files one (`ModelTier.autoConfirm = false` stays). |
-| **Alert reading help** (deferred) | Clairic (`@cf/cloudflare/clairic`) | The body text of **one** bank alert, redacted on the phone, shown to the person first | The review sheet for an alert no template could read (the empty review shape, `ParsedMail.fields == nil`) | Pre-fill the sheet's fields. The person saves them; the op is an ordinary user edit. |
+| **Alert reading help** (dropped, see `template-free-reading.md`) | Clairic (`@cf/cloudflare/clairic`) | The body text of **one** bank alert, redacted on the phone, shown to the person first | The review sheet for an alert no template could read (the empty review shape, `ParsedMail.fields == nil`) | Pre-fill the sheet's fields. The person saves them; the op is an ordinary user edit. |
 
 The requests go from the phone to a new Worker, `assist.hasala.app`, which holds the
 Workers AI binding. The Worker has no account identity, stores nothing, and logs nothing.
@@ -474,8 +477,8 @@ how many requests are sent and when, not what each one carries (see
 - Profile › **Cloud suggestions**, with two switches: **Merchant suggestions** and, under
   it, **Sort automatically**, which can be on only while Merchant suggestions is on. Both
   off by default, on every device separately (they're device settings, like Hide amounts,
-  and never sync). The privacy policy's "two switches" are these. Alert reading help is
-  deferred and has no switch. Review's ask is the one other place that turns Merchant
+  and never sync). The privacy policy's "two switches" are these. Alert reading help was
+  dropped and has no switch. Review's ask is the one other place that turns Merchant
   suggestions and Sort automatically on (see
   [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23)).
 - Turning one on shows one screen first: what is sent, an example of a request, that
@@ -619,8 +622,8 @@ layouts), the amount was right in 68 and the merchant in 55.
 | D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer, except merchants the person already sorted themselves (their last pick is the suggestion; [sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)). |
 | D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
 | D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
-| D4 | Allow "Don't ask again" for Alert reading help? | Deferred with Clairic. No in v1. Each alert is shown and confirmed. |
-| D5 | Ship a preview model (Clairic) in the QA beta? | **Decided:** no. Clairic is deferred; it may first be used as a build-time tool that drafts bank templates from synthetic alerts. |
+| D4 | Allow "Don't ask again" for Alert reading help? | Dropped with Clairic. |
+| D5 | Ship a preview model (Clairic) in the QA beta? | **Decided:** no. Clairic was tried for mail reading on synthetic mail and dropped (`template-free-reading.md`). |
 | D6 | Amend the 2026-10-11 decisions in CLAUDE.md? | **Decided, done for Merchant suggestions only:** "The server is blind" stays for hasalad; add that opt-in cloud suggestions may send a merchant string, or a redacted alert the person approved, to Cloudflare Workers AI through an identity-free Worker that keeps nothing. "Categorization occurs on the device" gains the cloud step after Apple's model. |
 
 ## Privacy policy changes
@@ -653,7 +656,7 @@ for reference. What the rewrite records for Merchant suggestions:
   and accounts and data may be reset or deleted then, with notice in the app or by email
   where possible. The 7-day and 30-day notice promises are gone.
 
-While Clairic is deferred, drop every Alert reading help part from the text below (the
+Clairic was dropped, so drop every Alert reading help part from the text below (the
 second bullet of the new section, the alert words in the short version, Limited Use and
 the provider row).
 
