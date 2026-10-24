@@ -509,11 +509,11 @@ public struct OpAuthor: Sendable {
     }
   }
 
+  public typealias Categorization = (txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)
+
   /// The sweep's re-filings and the model's suggestions as blobs of at most 500
   /// `txn_categorized` ops (03c §8.4, §8.6.6). `version` is the row's projected
   /// version (with the outbox's pending parents folded in by the caller).
-  public typealias Categorization = (txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)
-
   public static func categorizations(_ items: [Categorization], context: AuthorContext) throws(AuthorError) -> [AuthoredBlob] {
     var out: [AuthoredBlob] = []
     var ctx = context

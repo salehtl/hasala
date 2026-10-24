@@ -129,9 +129,7 @@ public enum ModelSuggestionSweep {
   public static func author(_ suggestions: [Suggestion], current: [SweepRow], context: AuthorContext) throws(AuthorError)
     -> [AuthoredBlob]
   {
-    let items = items(suggestions, current: current)
-    guard !items.isEmpty else { return [] }
-    return try OpAuthor.categorizations(items, context: context)
+    try OpAuthor.categorizations(items(suggestions, current: current), context: context)
   }
 
   public static func run(
