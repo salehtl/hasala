@@ -842,9 +842,8 @@ public actor MailboxEngine {
     // No trusted sender yet (the Setup bank step's sender_trust_set ops have not folded): list
     // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
     if trusted.isEmpty { return await finish(&state, report) }
-    let started = state.scanStartedMs ?? clock.nowMs()
     if state.scanStartedMs == nil {
-      state.scanStartedMs = started
+      state.scanStartedMs = clock.nowMs()
       scanTotal = 0
     }
     if state.profileHistoryID == nil {
