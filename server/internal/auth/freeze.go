@@ -390,7 +390,7 @@ func OperatorUnfreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, scope Un
 		return false, err
 	}
 	if scope == ScopeOperatorOnly {
-		if *st.FrozenBy != FrozenByOperator {
+		if !st.operatorFrozen() {
 			return false, ErrHolderFreeze
 		}
 		if holderToo {
