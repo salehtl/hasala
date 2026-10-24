@@ -56,18 +56,13 @@ struct PaydayStrip: View {
   @State private var dragCentre: Double?
   /// The tiles moved since the drag began, for the tick per day passed.
   @State private var dragStart: Double = 0
-  @Environment(\.hMotion) private var policy
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @StageMotion private var motion: MotionPolicy
   /// The tiles grow with the text in them; at the default size they are Paper's.
   @ScaledMetric(relativeTo: .title3) private var scale: CGFloat = 1
 
   /// The tile pitch (48 and the 8 gap), and how much the chosen one grows.
   private var pitch: CGFloat { 56 * scale }
   private var grow: CGFloat { 8 * scale }
-
-  private var motion: MotionPolicy {
-    MotionPolicy(reduceMotion: policy.reduceMotion || reduceMotion, settled: policy.settled)
-  }
 
   private var centre: Double { dragCentre ?? Double(choice.index) }
 

@@ -65,8 +65,11 @@ struct SplitHandles: View {
 
   /// Where handle `i`'s slot centre sits.
   private func x(of handle: Int, _ track: CGFloat) -> CGFloat {
-    let boundary = handle == 0 ? plan.needsPercent : plan.needsPercent + plan.wantsPercent
-    return track * CGFloat(boundary) / 100 + Self.slot * (CGFloat(handle) + 0.5)
+    track * CGFloat(boundary(handle)) / 100 + Self.slot * (CGFloat(handle) + 0.5)
+  }
+
+  private func boundary(_ handle: Int) -> Int {
+    handle == 0 ? plan.needsPercent : plan.needsPercent + plan.wantsPercent
   }
 
   /// The handle as VoiceOver and the tests reach it: a 44 box over the knob, adjustable.
@@ -82,8 +85,7 @@ struct SplitHandles: View {
       .accessibilityValue("\(percent)%")
       .accessibilityHint("Swipe up or down to move 5%.")
       .accessibilityAdjustableAction { direction in
-        let boundary = i == 0 ? plan.needsPercent : plan.needsPercent + plan.wantsPercent
-        move(i, to: boundary + (direction == .increment ? 5 : -5))
+        move(i, to: boundary(i) + (direction == .increment ? 5 : -5))
       }
       .accessibilityIdentifier("plan.split.handle.\(i)")
   }

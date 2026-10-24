@@ -102,7 +102,7 @@ struct VerifyEmailView: View {
             Text("Checking the code").hType(.subheadline).foregroundStyle(HColor.textSecondary)
           }
         } else if left > 0 {
-          Text(resendCountdown(left))
+          Text("Resend code in \(ResendRow.clock(TimeInterval(left)))")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .monospacedDigit()
