@@ -220,7 +220,8 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
   Latin subjects that Clef couldn't answer. With it off, a Release build runs no model,
   as before this feature (the beta doesn't use Apple's model on its own). A Debug build runs Apple's model alone, for development.
   Neither model is asked about a merchant whose payments the person sorted themselves (a
-  refund or a split payment is no pick): the person's last pick is the suggestion
+  pick on a refund or other money in, or a split payment, doesn't count): the person's
+  last pick is the suggestion
   ([sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)).
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
@@ -456,14 +457,13 @@ how many requests are sent and when, not what each one carries (see
 
 ## The switches
 
-- Profile › **Cloud suggestions**, with two switches: **Merchant suggestions**
-  and **Alert reading help**. Both off by default, on every device separately (they're
-  device settings, like Hide amounts, and never sync). Review's ask is the one other
-  place that turns Merchant suggestions and Sort automatically on (see
+- Profile › **Cloud suggestions**, with two switches: **Merchant suggestions** and, under
+  it, **Sort automatically**, which can be on only while Merchant suggestions is on. Both
+  off by default, on every device separately (they're device settings, like Hide amounts,
+  and never sync). The privacy policy's "two switches" are these. Alert reading help is
+  deferred and has no switch. Review's ask is the one other place that turns Merchant
+  suggestions and Sort automatically on (see
   [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23)).
-- As built, Alert reading help is deferred and has no switch. The section's two switches
-  are **Merchant suggestions** and, under it, **Sort automatically**, which can be on only
-  while Merchant suggestions is on. The privacy policy's "two switches" are these.
 - Turning one on shows one screen first: what is sent, an example of a request, that
   Cloudflare answers and keeps nothing, that the IP address is visible to Cloudflare, and
   that turning it off stops it at once. The switch turns on only from that screen's
@@ -602,7 +602,7 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer. |
+| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer, except merchants the person already sorted themselves (their last pick is the suggestion; [sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)). |
 | D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
 | D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
 | D4 | Allow "Don't ask again" for Alert reading help? | Deferred with Clairic. No in v1. Each alert is shown and confirmed. |

@@ -247,6 +247,9 @@ says.
 
 ## What #182 built and the rebuild keeps
 
+The labels D1 to D17 in this record name the decisions of #182's record
+(`docs/decisions/sorting-rework.md` at commit `3a81270c`).
+
 ### The merchant group key
 
 `MerchantGroup.key(raw:)` (HasalaCore `Categorize/MerchantGroup.swift`, #182 D1) depends on
@@ -383,6 +386,10 @@ proposal that needs the owner's decision.
   (`OpAuthor.learnRule`, `LearnedPattern`, #189).
 - The Debug screens for the group card, Sort each, the result row, the run card and Check
   suggestions.
+
+Two parts stay in the code with no reader: `Txn.reachable` (set by `RuleReach.waiting` in
+`LedgerStateMapper`, by `SortPatch` and by `MockReach`) and
+`BacklogSort.Counts.pendingTxnIDs`. A later code PR removes them.
 
 ## How the live app writes it
 

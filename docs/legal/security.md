@@ -20,11 +20,11 @@ Hasala sorts transactions on your iPhone. By default it works in this order:
 
 1. your own rules;
 2. a built-in list of UAE merchants; and
-3. if it's still unsure, your review. If you sorted another payment from that merchant yourself, the category you picked most recently is suggested there.
+3. if it's still unsure, your review. If you sorted another payment from that merchant yourself, the category you picked most recently is suggested there. Refunds have their own pick, and a payment you split isn't a pick.
 
 In the beta, Apple's on-device model does not run when Cloud suggestions are off. Nothing is sent to an AI service unless you turn on Cloud suggestions, which is optional and off by default.
 
-If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, your last pick for that merchant (a suggestion), then, for a merchant you haven't sorted yourself, a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
+If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, your last pick for that merchant (a suggestion), then, for a merchant you haven't sorted yourself (a refund or a split payment doesn't count), a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
 
 ### Your data is sealed before it syncs
 
