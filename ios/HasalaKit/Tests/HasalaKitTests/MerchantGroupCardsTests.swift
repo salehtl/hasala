@@ -15,7 +15,7 @@ struct MerchantGroupCardsTests {
     }
     let thisMonth = ReviewEngine.cards(s, in: october)
     #expect(thisMonth.count == 30)
-    #expect(thisMonth.filter { $0.group == MayaBacklog.tailscale }.count == 9)
+    #expect(thisMonth.filter { s.txn($0.id)?.groupRef == MayaBacklog.tailscale }.count == 9)
     #expect(thisMonth.contains { $0.id == "bl-ts-01" } && thisMonth.contains { $0.id == "bl-ts-02" })
   }
 
@@ -23,9 +23,9 @@ struct MerchantGroupCardsTests {
     let cards = ReviewEngine.cards(s)
     let unverified = try #require(cards.first { $0.id == "bl-ts-unverified" })
     #expect(unverified.reviewReason == .senderUnverified)
-    #expect(unverified.group == MayaBacklog.tailscale)
-    #expect(cards.first { $0.id == "bl-ts-refund" }?.group == MayaBacklog.tailscaleRefunds)
-    #expect(cards.first { $0.id == "bl-saffron" }?.group == MayaBacklog.saffronGroup)
+    #expect(s.txn(unverified.id)?.groupRef == MayaBacklog.tailscale)
+    #expect(cards.contains { $0.id == "bl-ts-refund" } && s.txn("bl-ts-refund")?.groupRef == MayaBacklog.tailscaleRefunds)
+    #expect(cards.contains { $0.id == "bl-saffron" } && s.txn("bl-saffron")?.groupRef == MayaBacklog.saffronGroup)
   }
 
   @Test func aCardCarriesItsModelGuess() throws {

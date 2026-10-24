@@ -13,10 +13,6 @@ public struct MerchantGroupRef: Sendable, Hashable, Codable, Identifiable {
 extension Txn {
   public var groupRef: MerchantGroupRef? { merchantGroup.map { MerchantGroupRef(key: $0, direction: direction) } }
 
-  public var rejectionRef: MerchantGroupRef? {
-    (merchantGroup ?? merchantKey).map { MerchantGroupRef(key: $0, direction: direction) }
-  }
-
   public var spelling: String { provenance?.rawMerchant ?? merchant }
 
   public var isModelSourced: Bool {

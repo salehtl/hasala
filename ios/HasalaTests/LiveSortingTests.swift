@@ -150,7 +150,7 @@ struct LiveSortingTests {
     #expect(s.txn(l.ids["alnoorP"]![0])?.merchantGroup == "n:al noor pharmacy")
     let cards = ReviewEngine.cards(s)
     #expect(Set(cards.map(\.id)).isSuperset(of: ts) && cards.count == Set(cards.map(\.id)).count)
-    #expect(cards.filter { ts.contains($0.id) }.allSatisfy { $0.group == Self.tailscaleRef && $0.canAlwaysUse })
+    #expect(cards.filter { ts.contains($0.id) }.allSatisfy { s.txn($0.id)?.groupRef == Self.tailscaleRef && $0.canAlwaysUse })
   }
 
   @Test func alwaysUseItFromOneRowReachesTheGroupWithExactPatternsAndUndoesExactly() async throws {

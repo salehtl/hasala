@@ -66,7 +66,6 @@ final class ReviewViewModel: ReviewDeckModel {
     let revision: Int
     let window: ReviewWindow
     let held: TxnID?
-    let shown: TxnID?
   }
 
   init(app: AppModel) {
@@ -84,13 +83,12 @@ final class ReviewViewModel: ReviewDeckModel {
 
   var cards: [ReviewCardModel] {
     let held = picking?.card.id ?? holding
-    let pinned = shown
-    let out = memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held, shown: pinned)) {
+    return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
       let s = app.store.state
-      return Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: pinned, s)
+      let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s)
+      if let top = out.first?.id { shown = top }
+      return out
     }
-    if let top = out.first?.id, top != shown { shown = top }
-    return out
   }
 
   nonisolated static func steady(
@@ -208,7 +206,10 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   private func passed(_ card: TxnID, _ done: Bool = true) -> Bool {
-    if done, shown == card { shown = nil }
+    if done, shown == card {
+      shown = nil
+      memo = Memo()
+    }
     return done
   }
 
