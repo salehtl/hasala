@@ -123,9 +123,9 @@ struct ActivityReviewModelTests {
     #expect(app.reviewCount == 7)
     app.period = .month(YearMonth(2026, 8))
     #expect(app.reviewCards.isEmpty)
-    #expect(ReviewTabView.countLine([], elsewhere: app.reviewElsewhere, period: app.period.title)
+    #expect(ReviewTabView.countLine(0, elsewhere: app.reviewElsewhere, period: app.period.title)
       == "Nothing to sort in August 2026")
-    #expect(ReviewTabView.countLine([]) == "All caught up")
+    #expect(ReviewTabView.countLine(0) == "All caught up")
     app.period = app.reviewElsewhere!.widened
     #expect(app.period == Period(YearMonth(2026, 8), MayaLedger.october))
     #expect(app.reviewCards.count == 7 && app.reviewElsewhere == nil)
@@ -202,7 +202,7 @@ struct ActivityReviewModelTests {
     let bell = try #require(app.needsALook.first { $0.id == "review" })
     #expect(bell.title == "11 transactions to sort")
     #expect(app.reviewCount == 11)
-    #expect(ReviewTabView.countLine(ReviewEngine.items(app.store.state)).hasSuffix(" and 10 more · 11 payments"))
+    #expect(ReviewTabView.countLine(ReviewEngine.cards(app.store.state).count) == "11 to sort · about 2 minutes")
     let home = HomeViewModel(app: app)
     #expect(bell.destination == .review(.allTime))
     let after = home.openNotification(bell.destination)
@@ -247,15 +247,10 @@ struct ActivityReviewModelTests {
     #expect(activity.snapshot.isThisMonth && app.snapshot.isThisMonth && app.reviewCount == 9)
   }
 
-  @Test func theReviewTabNamesTheFirstMerchantAndCountsPayments() {
-    let backlog = ReviewEngine.items(Scenario.mayaBacklog.state)
-    let line = ReviewTabView.countLine(backlog)
-    #expect(line.hasSuffix(" and \(backlog.count - 1) more · \(ReviewEngine.payments(backlog)) payments"))
-    #expect(ReviewEngine.payments(backlog) > backlog.count)
-    #expect(ReviewEngine.toSortSpoken(backlog)?.contains("payments to sort, from") == true)
-    #expect(ReviewTabView.countLine(Array(backlog.prefix(1))) == "\(backlog[0].merchant) · \(ReviewEngine.payments(backlog[0].payments))")
-    #expect(ReviewTabView.countLine([]) == "All caught up")
-    #expect(ReviewTabView.orderLine(months: 1, grouped: true) == "Most payments first")
+  @Test func theReviewTabSaysHowLongItTakes() {
+    #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
+    #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
+    #expect(ReviewTabView.countLine(0) == "All caught up")
     #expect(ActivityContent.minutes(6) == "about 1 minute")
     #expect(ActivityContent.minutes(7) == "about 2 minutes")
   }

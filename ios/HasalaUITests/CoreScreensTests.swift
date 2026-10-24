@@ -149,7 +149,7 @@ final class CoreScreensTests: XCTestCase {
     app.tabBars.firstMatch.buttons["Review"].tap()
     let start = element(app, "review.tab.start")
     XCTAssertTrue(start.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(element(app, "review.tab.count").waitForLabel(containing: "6 payments to sort, from "), element(app, "review.tab.count").label)
+    XCTAssertEqual(element(app, "review.tab.count").label, "6 to sort · about a minute")
     attach(app, "Review · Tab")
     try audit(app)
     start.tap()
@@ -244,7 +244,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(merchant.waitForLabel(containing: "Dubai Taxi"), merchant.debugDescription)
     XCTAssertEqual(element(app, "review.position").label, "2 of 6")
     element(app, "review.close").tap()
-    XCTAssertTrue(element(app, "review.tab.count").waitForLabel(containing: "5 payments to sort, from "))
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("5 to sort · about a minute"))
   }
 
   /// Let go before the commit point and the card springs back: no pick sheet, nothing
@@ -458,7 +458,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(merchant.waitForLabel(containing: "ADCB ATM withdrawal"), merchant.debugDescription)
     element(app, "toast").buttons["Undo"].tap()
     element(app, "review.close").tap()
-    XCTAssertTrue(element(app, "review.tab.count").waitForLabel(containing: "6 payments to sort, from "))
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("6 to sort · about a minute"))
 
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))

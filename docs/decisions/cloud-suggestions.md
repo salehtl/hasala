@@ -412,11 +412,11 @@ answer at or above 0.8 / 0.4 files the row when its mail gates passed; everythin
 or above 0.6 / 0.2 is a suggestion.
 
 **What the screens show.** Review shows no sorting card. The status the app reads
-(`CloudSortStatus`) has only the phase, the rows still waiting for Clef, and the number of
-rows Profile can send back. While a run is active (running or paused), rows still waiting
-for Clef go to the end of the deck, and the deck's header says "Waiting for Cloudflare AI
-(64)" under "2 of 6". Rows Clef won't be asked about (transfers, account alerts, names
-already `unknown`) come first, so sorting by hand doesn't race the run.
+(`CloudSortStatus`) has only the phase and the number of rows Profile can send back. The
+deck holds no row back while a run is active (one card per payment, 2026-10-23): it keeps
+the cards it opened with, and a card the run files meanwhile is skipped when its turn
+comes. The top card stays until the person moves on, so nothing moves under the finger
+([sorting-rework.md](sorting-rework.md) D4-D5).
 
 **Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
 Review** while a row that a run on this device filed is still as the run left it, and asks

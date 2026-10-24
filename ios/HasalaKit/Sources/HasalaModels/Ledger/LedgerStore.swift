@@ -15,7 +15,6 @@ public enum LedgerEdit: Sendable, Hashable {
   case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
-  case useSuggestions([SuggestionUse])
   /// `txn_categorized{transfer}`.
   case markTransfer(TxnID)
   /// `txn_categorized{refunds}` + `txn_annotated{refund_of}`.
@@ -32,11 +31,8 @@ public enum LedgerEdit: Sendable, Hashable {
   case resolveSamePurchase(TxnID, same: Bool)
   /// Review "Skip for now": device-local until the next local midnight (no op).
   case skipReview(TxnID)
-  case sortGroup(MerchantGroupRef, CategoryID, alwaysUse: Bool, project: ProjectID?)
-  case notThis(MerchantGroupRef, CategoryID)
   case returnToReview([TxnID])
   case stopRule(RuleID)
-  case dismissSortReceipt
 
   case saveProject(ProjectID, ProjectDraft)
   case setProjectCountInPlan(ProjectID, Bool)
@@ -91,16 +87,6 @@ public enum LedgerEdit: Sendable, Hashable {
   case setFaceIDLock(Bool)
 
   case setDisplayName(String)
-}
-
-public struct SuggestionUse: Sendable, Hashable {
-  public var txn: TxnID
-  public var category: CategoryID
-
-  public init(txn: TxnID, category: CategoryID) {
-    self.txn = txn
-    self.category = category
-  }
 }
 
 public struct ManualEntryDraft: Sendable, Hashable {
@@ -187,10 +173,12 @@ public struct UndoToken: Sendable, Hashable, Identifiable, Codable {
   public var id: Int
   /// The toast's line: "Sorted into Groceries".
   public var title: String
+  public var batch: Bool
 
-  public init(id: Int, title: String) {
+  public init(id: Int, title: String, batch: Bool = false) {
     self.id = id
     self.title = title
+    self.batch = batch
   }
 }
 

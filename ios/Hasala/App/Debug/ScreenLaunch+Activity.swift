@@ -111,25 +111,8 @@
         startDeck(graph, at: "lulu") { _ in }
       }),
       Screen("review.backlog", scenario: "mayaBacklog", prepare: shell(.review)),
-      Screen("review.group", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { _ in }
-      }),
-      Screen("review.group.pick", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in
-          if let g = deck.group(tailscale) { deck.pickGroup(g, .want) }
-        }
-      }),
-      Screen("review.sortEach", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in deck.sortingEach = deck.group(tailscale) }
-      }),
-      Screen("review.result", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in
-          if let g = deck.group(tailscale) { deck.sortGroup(g, into: "subscriptions", alwaysUse: true, project: nil) }
-        }
-      }),
-      Screen("review.tab.result", scenario: "mayaBacklog", prepare: { graph in
-        _ = graph.app.perform(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil))
-        graph.app.dismissToast()
+      Screen("review.undoLine", scenario: "mayaBacklog", prepare: { graph in
+        _ = graph.app.perform(.categorize("bl-qasr-4", "groceries", learnRule: true, project: nil))
         shell(.review)(graph)
       }),
       // Search · Ready.
@@ -159,8 +142,6 @@
         shell(.home, sheet: .search)(graph)
       }),
     ]
-
-    private static let tailscale = MayaBacklog.tailscale.id
 
     /// The Review tab, then the deck opened at `card`, then `steps` on the deck's session.
     /// The boards draw no toast over the deck, so the last step's toast goes unless asked to

@@ -2,21 +2,9 @@ import CoreReplay
 import CoreStore
 import CoreWire
 import Foundation
-import HasalaModels
 import Synchronization
 
 nonisolated struct SortMemory: Codable, Sendable, Equatable {
-  struct Receipt: Codable, Sendable, Equatable {
-    var id: Int
-    var group: String?
-    var direction: String?
-    var merchant: String
-    var category: String
-    var txnIDs: [String]
-    var ruleID: String?
-    var atMs: Int64
-  }
-
   struct Prior: Codable, Sendable, Equatable {
     var category: String?
     var needsReview: Bool
@@ -47,7 +35,6 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
   static let keptMs: Int64 = 30 * 86_400_000
   static let keptOps = 20_000
 
-  var receipt: Receipt?
   var batches: [Batch] = []
   var repaired: Set<String> = []
   var autoOps: [String] = []
@@ -80,13 +67,6 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
   }
 
   var ownOps: Set<String> { Set(autoOps) }
-
-  func kitReceipt(undo: UndoToken?) -> SortReceipt? {
-    guard let r = receipt else { return nil }
-    let ref = r.group.map { MerchantGroupRef(key: $0, direction: r.direction == "credit" ? .in : .out) }
-    return SortReceipt(
-      id: r.id, group: ref, merchant: r.merchant, categoryID: r.category, txnIDs: r.txnIDs, ruleID: r.ruleID, undo: undo)
-  }
 }
 
 nonisolated final class SortKeeper: Sendable {

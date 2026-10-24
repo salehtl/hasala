@@ -43,10 +43,8 @@
       var s = CloudSortStatus.off
       s.phase = phase
       switch phase {
-      case .off, .idle:
+      case .off, .idle, .running, .paused:
         break
-      case .running, .paused:
-        s.pendingTxnIDs = ["apple", "steam"]
       case .done:
         s.cloudSortedCount = 104
       }

@@ -88,13 +88,29 @@ final class CloudSortUITests: XCTestCase {
   }
 
   @MainActor
-  func testTheDeckSaysWhatWaitsForCloudflare() throws {
-    let app = launch(scenario: nil, screen: "review.sort.deck")
-    let waiting = el(app, "review.waitingForCloud")
-    XCTAssertTrue(waiting.waitForExistence(timeout: 30))
-    XCTAssertEqual(waiting.label, "Waiting for Cloudflare AI (2)")
-    attach(app, "Review deck · waiting for Cloudflare AI")
-    try audit(app)
+  func testTheDeckHoldsNoCardBackWhileCloudflareSorts() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaCloudSortPhase", "running"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 30))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.start").waitForExistence(timeout: uiWait))
+    let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'review.tab.row.'"))
+    let merchants = rows.allElementsBoundByIndex.map { $0.label.components(separatedBy: ", ")[0] }
+    XCTAssertEqual(merchants.count, 6, "\(merchants)")
+
+    tap(app, "review.tab.start")
+    let position = el(app, "review.position")
+    let card = el(app, "review.merchant")
+    for (i, merchant) in merchants.enumerated() {
+      XCTAssertTrue(position.waitForLabel("\(i + 1) of 6"), position.label)
+      XCTAssertTrue(card.label.hasPrefix(merchant + ","), "card \(i + 1): \(card.label), the tab has \(merchant)")
+      if i == 0 {
+        XCTAssertFalse(el(app, "review.waitingForCloud").exists)
+        attach(app, "Review deck · while Cloudflare AI sorts")
+        try audit(app)
+      }
+      tap(app, "review.skip")
+    }
+    XCTAssertTrue(el(app, "review.done").waitForExistence(timeout: uiWait))
   }
 
   @MainActor

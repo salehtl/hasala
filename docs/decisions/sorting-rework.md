@@ -45,15 +45,14 @@ reversed the owner's #176 default on the same evening. See [Proposals](#proposal
 ### D3 and D3b Waiting rows and the reach of a rule
 
 `RuleReach.waiting(row, samePurchase:)` (HasalaCore `Domain/Author/RuleReach.swift`)
-decides which rows a group card counts and files. A row waits when its review lane is
+decides which rows of a merchant group wait in Review. A row waits when its review lane is
 `needs_review` or `uncategorized` and it has no review reason (a sender that failed
 authentication included), is not a held copy, a copy or a possible duplicate, is not in a
 same-purchase pair, is not archived, a transfer or a split, and its source is not the
 person's (`user`) or held. A row a dictionary entry or a rule already filed does not wait.
-The live mapper sets `Txn.reachable` from this predicate, so every count on a card is the
-number of rows a tap files. `Txn.waits` (HasalaModels) is the same test on a `Txn`: the
-mock sets `reachable` from it, and so does the screen after Undo all. A row that fails it
-stays its own card with its own strip ("Couldn't verify sender").
+The live mapper sets `Txn.reachable` from this predicate. `Txn.waits` (HasalaModels) is the
+same test on a `Txn`: the mock sets `reachable` from it, and so does the screen after Undo
+all.
 
 A rule from "Always use it" reaches further (sorting rebuild, 2026-10-23). It files every
 payment of that merchant group and direction whose spelling the rule holds, in every month,
@@ -98,41 +97,52 @@ After a pull, the iPhone that made the rule reaches back once more, for 24 hours
 that arrived since and that it has not considered yet. Rows put back with Undo all are
 never filed again by that pass.
 
-### D4 and D5 Sorting a group
+### D4 and D5 One card per payment
 
-"Sort all N as X" files the group's waiting rows in every month as the person's own
-choice (`source: user`). It makes a rule only when "Always use it" is on, and that rule
-files only the waiting rows the card counts (`RuleReach.Scope.waiting`), so the button,
-the result and the ops agree. "Sort each one" is always there on a group card. "Always
-use it" from one row, in Review, Activity or the transaction sheet, writes the same kind
-of group rule and reaches every payment D3 names, with the same result row and Undo.
+The sorting rebuild (2026-10-23) removed the group card, "Use for all N", "Sort all N as X",
+Sort each one and the pick sheet's group mode (its commit button and history line). Review
+shows one card per payment again. A swipe, a direction pill or a VoiceOver action picks the
+bucket, and a tap on a category in the pick sheet sorts the card at once. A card with a
+suggestion sorts in one tap with Use. The merchant group stays behind the scenes: it
+scopes "Always use it" (D3), and `GroupIndex` keeps each group's filings by the person and
+its monthly bills. "Always use it" from one card, in Review, Activity or the transaction
+sheet, writes a group rule and reaches every payment D3 names. The app no longer uses
+`RuleReach.Scope.waiting` or `RuleReach.members`.
+
+The deck keeps the cards it opened with. Its position ("2 of 6") counts that set, and a
+card that was sorted meanwhile elsewhere (the background stage, another iPhone, a rule's
+reach) is skipped when its turn comes. The top card stays until the person sorts it, skips
+it or closes the deck, also when it is sorted elsewhere meanwhile. Undo brings a card back
+to its old place. A payment that arrives while the deck is open waits for the next session.
+The "Waiting for Cloudflare AI" hold is gone: no card is moved to the end of the deck while
+Cloudflare sorts.
 
 ### D6, D6b and D7 Not this
 
-A new op kind, `merchant_category_rejected {merchant_key, category, rejected}`, at schema
+The sorting rebuild (2026-10-23) removed Not this from the app: there is no button, note or
+edit, and the app writes no new rejections. What #182 wrote stays
+readable.
+
+The op kind is `merchant_category_rejected {merchant_key, category, rejected}`, at schema
 v4 with no version bump. It is keyed per (merchant key, category), the last write by
 position wins, and the fold keeps it in its own map, witnessed only when not empty, so no
-existing golden moved. Not this writes one op for each spelling key of the group, and a
-pair is rejected for a row when any key of the row's group has it, so a spelling that
-arrives later is covered. The same edit returns the rows whose category is the rejected
-model guess to `category: null, needs_review: true, source: none`. Undo writes
-`rejected: false` for the pairs it wrote and restores the rows.
+existing golden moved. A pair is rejected for a row when any key of the row's group has
+it, so a spelling that arrives later is covered.
 
 The pusher closes the wire blob before and after every op of this kind
-(`OpType.travelsAlone`), so the op always travels alone. A build from before this rework
-does not know the kind: it sets that one blob aside and lists it as unreadable, and keeps
+(`OpType.travelsAlone`), so the op always travels alone. A build from before #182 does not
+know the kind: it sets that one blob aside and lists it as unreadable, and keeps
 everything else. When it updates, the cold fold reads the blob again.
 
-Rejections are applied on the phone after the answer: a rejected answer reads as unknown
-for that stage, so Apple's model is asked next, and a cached Cloudflare answer that was
-rejected is never sent to Cloudflare again. The phone keeps that answer in its own record
-(`fm_kept`, keyed by a hash of the name and the model tag only), apart from the 30-day cache.
-Not this writes it at once, so it does not depend on the cache entry still being there, and
-a change to the category list does not undo it. When the rejection is undone, on this phone
-or another, the next sweep drops the record and the name is asked again. The `allowed` list,
-the request bytes and the
-cache key never change (`RejectionSweepTests`). A model-sourced row whose guess is
-rejected shows as a plain "You decide" card.
+Rejections already in the log are applied on the phone after the answer: a rejected answer
+reads as unknown for that stage, so Apple's model is asked next, and a cached Cloudflare
+answer that was rejected is never sent to Cloudflare again. The phone keeps such an answer
+in its own record (`fm_kept`, keyed by a hash of the name and the model tag only), apart
+from the 30-day cache. The sweeps keep it whenever a rejected Cloudflare answer comes back;
+builds with Not this also wrote it at once. When a rejection is undone on another
+phone, the next sweep drops the record and the name is asked again. The `allowed` list, the
+request bytes and the cache key never change (`RejectionSweepTests`). A model-sourced row
+whose guess is rejected shows as a plain "You decide" card.
 
 ### D8, D9 and D10 One card on the Review tab
 
@@ -154,7 +164,7 @@ with a margin of 0.4. Apple's model never files. Trust on this phone can only ra
 bar: after the person corrects two Cloudflare filings of one built-in category, that
 category is suggested, not filed, on this iPhone (`Live/Runtime/TrustCounts.swift`). A
 correction is a person's re-file of a row whose source was a model with
-`needs_review: false`; Not this on such a row counts too. The counts hold built-in
+`needs_review: false`. The counts hold built-in
 category ids and integers only, live in UserDefaults and are cleared by
 `LocalAccountData.forget()`. They are applied only when ops are authored, through the
 `trusts` closure of `ModelSuggestionSweep.suggest` and `BacklogSort.pass`, and
@@ -176,31 +186,29 @@ a rule, "Stop this rule", and each row has a one-tap fix that opens the category
 Activity rows and the transaction sheet name the source of an automatic filing
 ("Utilities · Your rule · 18:30").
 
-### D15 The result row
+### D15 The undo line
 
-The result of a group sort or a reach-back is a row in the deck footer and on the Review
-tab, not a toast: "Sorted 30 Tailscale as Software", with "Including 12 from other months"
-when rows outside the period were filed, Undo while it can be undone, and Stop this rule
-when a rule was made. It stays until it is dismissed or the next batch replaces it. On the
-live app it is kept in the account's own store (`sort_memory`), not in UserDefaults,
-because it names transactions; it survives a relaunch without Undo, because undo tokens
-do not survive one. It goes with the account's files when the account leaves the iPhone.
+The result row was removed in the sorting rebuild (2026-10-23). When "Always use it" files
+other payments too, the deck and the Review tab show one line at the bottom, the app's
+toast: "Software for all 14 Tailscale payments" with Undo. It stays about 6 seconds
+(`HMotion.undoLineDwell`; 8 while VoiceOver runs, longer while touched) and comes and goes
+as every toast does, with only a fade under Reduce Motion. It is one toast like any other,
+so the next toast replaces it, for example the next sort's "Sorted into Groceries". A sort
+that files only its own card keeps the 4-second toast "Sorted into Groceries". Undo puts
+every payment back as it was and removes the rule, in one batch. After the line goes,
+Sorted for you on Home lists the batch, with Undo all.
+
+Nothing is kept for display: `LedgerState.sortReceipt`, the receipt in `sort_memory` and the
+dismiss edit are gone, and a receipt an earlier build wrote is ignored. `sort_memory` keeps
+the batches (`seen`, `prior`, `cursor`) that the after-pull pass and Undo all read.
 
 ### D16 and D17 Card content and units
 
-A group card shows the merchant, the spellings it covers, the total per currency (never
-summed across currencies; with two or more, an estimate in AED from the home amounts,
-labelled as an estimate), the date range, "repeats monthly" when a bill covers the
-merchant, the rows left out and why, and, when the person filed the merchant two or more
-ways before, a footnote such as "You sorted Qasr Corner Store as Groceries (4) and
-Shopping (3) before" (also on the pick sheet and read by VoiceOver). When this does not fit
-in the card at the default sizes, the top of the card scrolls and the suggestion strip stays
-in view. Its buttons say what a tap files: "Use for all
-30", "Sort all 30 as Software" count the group's waiting rows in every month, and the meta
-line names the ones from other months. A swipe or a flick opens the pick sheet; it never
-files 30 rows. The tab badge counts payments, the count line reads "Tailscale and 39 more ·
-120 payments", the deck position counts cards, and VoiceOver says "Filed 30 Tailscale
-payments as Software. 39 left." after a group sort.
+A card shows one payment: the merchant, the bank's own words, the amount, and the
+suggestion strip with Use, as before #182. The group card's spellings, totals per currency,
+AED estimate, date range, "repeats monthly", left-out rows and history footnote went with
+it. The tab badge, the count line ("6 to sort · about a minute") and the deck position all
+count payments, and VoiceOver says "Filed as Need. 3 of 6." after a sort.
 
 ## How the live app writes it
 
@@ -228,11 +236,11 @@ card of a bulk run only; the sorting rebuild (2026-10-23) removed it with that c
 
 ## Old builds
 
-- A build from before this rework sets aside each Not this blob and lists it as unreadable.
-  It loses nothing else, because the op travels alone.
+- A build from before this rework sets aside each Not this blob that a #182 build wrote and
+  lists it as unreadable. It loses nothing else, because the op travels alone.
 - Such a build does not know the rejections, so its own model sweep can suggest a rejected
   guess again until it updates.
-- Group cards, reach-back and the result row are new behaviour only; the ops they write
+- Reach-back and the undo line are new behaviour only; the ops they write
   (`txn_categorized`, `rule_added`) are ones every build reads.
 
 ## Proposals for the owner

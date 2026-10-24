@@ -77,7 +77,7 @@ extension LedgerEditAuthor {
   }
 
   nonisolated func addCategoryAndSort(
-    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?, receiptID: Int?
+    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?
   ) async throws -> [Inverse] {
     guard let category = d.id else { throw Failure.notFound }
     guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
@@ -86,7 +86,7 @@ extension LedgerEditAuthor {
     let icon = Self.icon(d.glyph)
     let inverses: [Inverse]
     if alwaysUse, Self.reaches(row) {
-      inverses = try await categorizeReaching(row, category: category, project: project, receiptID: receiptID) {
+      inverses = try await categorizeReaching(row, category: category, project: project) {
         a throws(AuthorError) in
         _ = try a.createCategory(id: category, name: d.name, parent: parent, icon: icon, in: view)
       }

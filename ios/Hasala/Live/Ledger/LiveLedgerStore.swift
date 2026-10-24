@@ -46,7 +46,6 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
-  @ObservationIgnored private var receiptUndos: [Int: UndoToken] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
   @ObservationIgnored private var nextToken = 1
   @ObservationIgnored private var writes: Task<Void, Never>?
@@ -149,8 +148,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       if let author { return try? author.map(reader, context: context) }
       return try? LedgerStateMapper.map(reader, context: context)
     }.value
-    guard seq == reloadSeq, writesInFlight == 0, var mapped else { return }
-    if let r = mapped.sortReceipt, let token = receiptUndos[r.id], undoable.contains(token.id) { mapped.sortReceipt?.undo = token }
+    guard seq == reloadSeq, writesInFlight == 0, let mapped else { return }
     state = mapped
     now = today
     loaded = true
@@ -181,8 +179,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     if let why = try categoryRefusal(edit) { throw .refused(why) }
     let before = state
     var s = state
-    let (title, inverses) = try Self.patch(edit, &s, now: now, receiptID: Self.receiptID())
-    let newReceipt = s.sortReceipt.flatMap { $0.id == before.sortReceipt?.id ? nil : $0.id }
+    var batch = false
+    let (title, inverses) = try Self.patch(edit, &s, now: now, batch: &batch)
     // A reload already in flight read the projection before this edit: drop it, so it
     // can't bring the old state back. The write's own reload follows.
     reloadSeq += 1
@@ -194,31 +192,25 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .dismissBillNotice(_, let noticeID): prefs.dismissNotice(noticeID)
     default: break
     }
-    let token = title.map { UndoToken(id: nextToken, title: $0) }
+    let token = title.map { UndoToken(id: nextToken, title: $0, batch: batch) }
     if token != nil { nextToken += 1 }
     if let token {
       if !inverses.isEmpty { undos[token.id] = inverses }
       if !inverses.isEmpty || (author != nil && Self.authorsInverse(edit)) { undoable.insert(token.id) }
-      if let newReceipt, undoable.contains(token.id) {
-        receiptUndos[newReceipt] = token
-        s.sortReceipt?.undo = token
-      }
     }
     state = s
     revision += 1
     if let author {
       let today = now.date
-      enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today, receiptID: newReceipt) }
+      enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today) }
     }
     return token
   }
 
-  static func receiptID() -> Int { Int(Date().timeIntervalSince1970 * 1000) }
-
   static func authorsInverse(_ edit: LedgerEdit) -> Bool {
     switch edit {
     case .setBudget, .moveMoney, .acceptBillAmount, .stopTrackingBill, .trackCandidate, .dismissCandidate, .reapplyBill, .addBill, .editBillAmount, .pauseBill, .resumeBill,
-      .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome, .categorize, .sortGroup, .notThis, .returnToReview,
+      .endBill, .reactivateBill, .deleteBill, .linkBillPayments, .editIncome, .categorize, .returnToReview,
       .stopRule, .addCategoryAndSort:
       true
     case .resolveCopy(_, let merge): merge
@@ -312,7 +304,14 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   /// Applies `edit` to `s` as the projection will show it, or throws why it can't be
   /// applied. Returns the toast's title and the undo's inverse writes.
-  static func patch(_ edit: LedgerEdit, _ s: inout LedgerState, now: LocalDateTime, receiptID: Int = 0) throws(ActionError)
+  static func patch(_ edit: LedgerEdit, _ s: inout LedgerState, now: LocalDateTime) throws(ActionError)
+    -> (String?, [LedgerEditAuthor.Inverse])
+  {
+    var batch = false
+    return try patch(edit, &s, now: now, batch: &batch)
+  }
+
+  static func patch(_ edit: LedgerEdit, _ s: inout LedgerState, now: LocalDateTime, batch: inout Bool) throws(ActionError)
     -> (String?, [LedgerEditAuthor.Inverse])
   {
     func index(_ id: TxnID) throws(ActionError) -> Int {
@@ -337,29 +336,12 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       var inverses: [LedgerEditAuthor.Inverse] = old.splits.isEmpty ? [] : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
       if learnRule, old.splits.isEmpty, let ref = old.groupRef,
-        let line = SortPatch.reach(&s, from: old, ref: ref, category: c, at: now, receiptID: receiptID)
+        let line = SortPatch.reach(&s, from: old, ref: ref, category: c, at: now)
       {
+        batch = true
         return (line, inverses)
       }
       return ("Sorted into \(name(c))", inverses)
-    case .useSuggestions(let uses):
-      var inverses: [LedgerEditAuthor.Inverse] = []
-      var seen: Set<TxnID> = []
-      for u in uses where seen.insert(u.txn).inserted {
-        guard let i = s.txns.firstIndex(where: { $0.id == u.txn }), SuggestionsEngine.applies(u, to: s.txns[i]),
-          case .model(let tag) = s.txns[i].categorySource
-        else { continue }
-        let old = s.txns[i]
-        s.txns[i].categoryID = u.category
-        s.txns[i].categorySource = .user
-        s.txns[i].needsReview = false
-        s.txns[i].isTransfer = u.category == "transfer"
-        s.txns[i].splits = []
-        inverses.append(
-          .suggestion(txn: u.txn, category: old.categoryID, needsReview: old.needsReview, modelTag: tag, used: u.category))
-      }
-      guard !inverses.isEmpty else { throw .notFound }
-      return (SuggestionsEngine.usedLine(inverses.count), inverses)
     case .markTransfer(let id):
       let i = try index(id)
       let old = s.txns[i]
@@ -435,25 +417,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .skipReview(let id):
       s.skippedReview.insert(id)
       return (nil, [])
-    case .sortGroup(let ref, let c, _, let project):
-      guard s.category(c) != nil else { throw .notFound }
-      if let project, s.project(project) == nil { throw .notFound }
-      let inverses: [LedgerEditAuthor.Inverse] = project.map { p in
-        SortPatch.members(s, ref).compactMap { i in
-          s.txns[i].projectID == p ? nil : .project(txn: s.txns[i].id, project: s.txns[i].projectID)
-        }
-      } ?? []
-      return (try SortPatch.sortGroup(&s, ref, c, project: project, at: now, receiptID: receiptID), inverses)
-    case .notThis(let ref, let c):
-      guard s.category(c) != nil else { throw .notFound }
-      return (try SortPatch.notThis(&s, ref, c), [])
     case .returnToReview(let ids):
       return (try SortPatch.returnToReview(&s, ids, at: now), [])
     case .stopRule(let id):
       return (try SortPatch.stopRule(&s, id), [])
-    case .dismissSortReceipt:
-      s.sortReceipt = nil
-      return (nil, [])
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
       s.plan.budgets[PlanState.key(c, month)] = amount
@@ -557,7 +524,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       guard let c = d.id, d.parent.flatMap({ s.category($0) }) != nil else { throw .notFound }
       if let project, s.project(project) == nil { throw .notFound }
       CategoriesEngine.apply(.addCategory(d), to: &s, month: now.date.yearMonth)
-      return try patch(.categorize(id, c, learnRule: alwaysUse, project: project), &s, now: now, receiptID: receiptID)
+      return try patch(.categorize(id, c, learnRule: alwaysUse, project: project), &s, now: now, batch: &batch)
     case .setNotifications(let level):
       s.prefs.notifications = level
       return (nil, [])
