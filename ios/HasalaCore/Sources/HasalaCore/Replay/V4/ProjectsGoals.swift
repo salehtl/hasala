@@ -45,7 +45,7 @@ extension State {
       completedOn: completed, icon: icon, createdAt: "", version: 0)
   }
 
-  private static func optionalIcon(_ v: JSONValue?) throws(PayloadError) -> String? {
+  static func optionalIcon(_ v: JSONValue?) throws(PayloadError) -> String? {
     guard let v = P.present(v) else { return nil }
     guard let s = v.stringValue, Grammar.isIconID(s) else { throw PayloadError("icon must be an IconId, got \(showValue(v))") }
     return s

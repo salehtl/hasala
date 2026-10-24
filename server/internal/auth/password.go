@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/keyproto"
@@ -406,8 +405,7 @@ func (a *Accounts) PasswordSignup(ctx context.Context, signupID string, verifier
 		   recovery_wrap, phrase_box, current_epoch, created_at, updated_at, phrase_seen_at)
 		 VALUES ($1, 1, $2, $3, $4, $5, $6, 1, $7, $7, $7)`,
 		s.UserID, b.AMKCommitment, b.AuthorityPubkey, b.RecoveryPubkey, b.RecoveryWrap, b.PhraseBox, now); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" {
+		if uniqueViolation(err) != nil {
 			return PasswordSignedUp{}, fmt.Errorf("%w: the authority or recovery key is already in use", ErrKeysMalformed)
 		}
 		return PasswordSignedUp{}, fmt.Errorf("auth: password signup: keys: %w", err)
@@ -490,12 +488,10 @@ func (a *Accounts) PasswordSalt(email string) ([]byte, error) {
 // account's other devices and the signed-out sessions' tokens (spec 02 §12.5).
 func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, action keyproto.Action, fields [][]byte,
 	su *StepUpObject, do func(ctx context.Context, tx pgx.Tx, st accountState, p Proven, now time.Time) (string, error)) (Wake, error) {
-	ph, err := keyproto.ParamsHash(action, fields...)
+	g, err := guardFor(session, action, su, fields...)
 	if err != nil {
 		return Wake{}, err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: action, ParamsHash: ph, StepUp: su}
 	var (
 		revoked []pushv2.Target
 		changed string
@@ -599,9 +595,7 @@ func (a *Accounts) RemovePassword(ctx context.Context, session SessionInfo, su *
 			if passkeys == 0 {
 				return "", ErrLastAuthenticator
 			}
-			if _, err := tx.Exec(ctx,
-				`UPDATE users SET password_hash = NULL, password_salt = NULL, password_version = NULL, password_set_at = NULL,
-				        password_failures = 0, password_paused_until = NULL WHERE id = $1`, st.ID); err != nil {
+			if err := clearPasswordTx(ctx, tx, st.ID); err != nil {
 				return "", err
 			}
 			return EventPasswordRemoved, nil

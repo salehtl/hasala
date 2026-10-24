@@ -43,12 +43,11 @@ extension AccountCreation {
     }
     let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
     let nonce = try b64(challenge.nonce, "writer nonce")
-    var (body, _) = try buildBootstrap(
+    var body = try buildBootstrap(
       env, userID: user, emailNorm: email, keys: keys, device: device, authKind: .none, authHash: Data(count: 32),
       prfWrap: prfWrap, nonce: nonce)
     body.step_up = proof.stepUp
-    let sent = body
-    let r = try await apiStep { () async throws(APIError) in try await env.client.bootstrap(sent, bearer: bearer) }
+    let r = try await apiStep { () async throws(APIError) in try await env.client.bootstrap(body, bearer: bearer) }
     guard r.writer_id == device.writerID.string else { throw .badResponse("bootstrap writer_id") }
     let grant = SessionGrant(
       session_token: bearer, user_id: user.string, expires_at: nil, writer_id: r.writer_id, has_keys: true,

@@ -79,7 +79,7 @@ var notUserLinked = []string{
 	// after ForgetSubmitter.
 	//
 	// The column is NOT called user_id on purpose. A user_id column here would
-	// be discovered as user-scoped, and checkCascades would then correctly
+	// be discovered as user-scoped, and CheckCascades would then correctly
 	// refuse the whole purge because SET NULL is exactly the silent survival it
 	// guards against — while CASCADE, the action it would demand instead, would
 	// DELETE the row and put a spent code back into circulation. Neither
@@ -358,10 +358,14 @@ func Classify(ctx context.Context, pool *pgxpool.Pool) (Classification, error) {
 		return Classification{}, err
 	}
 	c := Classification{UserScoped: scoped}
+	isScoped := make(map[string]bool, len(scoped))
+	for _, r := range scoped {
+		isScoped[r.String()] = true
+	}
 	for _, r := range all {
 		name := r.String()
 		switch {
-		case slices.ContainsFunc(scoped, func(s Relation) bool { return s.String() == name }):
+		case isScoped[name]:
 		case slices.Contains(handledWithoutUserID, name):
 			c.HandledWithoutUserID = append(c.HandledWithoutUserID, name)
 		case slices.Contains(notUserLinked, name):
@@ -428,7 +432,7 @@ var deleteActionNames = map[byte]string{
 	'a': "NO ACTION", 'r': "RESTRICT", 'c': "CASCADE", 'n': "SET NULL", 'd': "SET DEFAULT",
 }
 
-// checkCascades refuses a purge whose schema cannot deliver one.
+// CheckCascades refuses a purge whose schema cannot deliver one.
 //
 // Three shapes a later task can produce, and they fail differently:
 //
@@ -441,7 +445,7 @@ var deleteActionNames = map[byte]string{
 //     exists at all. The rows SURVIVE with their user_id blanked, so every
 //     count in this file goes to zero and the purge would report complete
 //     success over a table that still holds the deleted user's data.
-func checkCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) error {
+func CheckCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) error {
 	actions, err := cascadeActions(ctx, pool)
 	if err != nil {
 		return err
@@ -465,10 +469,6 @@ func checkCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) err
 		}
 	}
 	return nil
-}
-
-func CheckCascades(ctx context.Context, pool *pgxpool.Pool, rels []Relation) error {
-	return checkCascades(ctx, pool, rels)
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +541,7 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 	// is not the same as a column that goes away with its user, and the three
 	// non-cascade shapes fail in three different ways — one of which is silent.
 	// See cascadeActions.
-	if err := checkCascades(ctx, pool, c.UserScoped); err != nil {
+	if err := CheckCascades(ctx, pool, c.UserScoped); err != nil {
 		return rep, err
 	}
 
@@ -581,7 +581,11 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 	// exists is not an error — a client retrying after a lost response must not
 	// be told something went wrong — and reporting it as a deletion would make
 	// the retry indistinguishable from a second disaster.
-	deleted, err := scanUUIDRows(ctx, tx, `DELETE FROM users WHERE id = ANY($1) RETURNING id`, users)
+	rows, err := tx.Query(ctx, `DELETE FROM users WHERE id = ANY($1) RETURNING id`, users)
+	if err != nil {
+		return rep, fmt.Errorf("purge: delete users: %w", err)
+	}
+	deleted, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 	if err != nil {
 		return rep, fmt.Errorf("purge: delete users: %w", err)
 	}
@@ -685,25 +689,6 @@ func Replay(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID) (Report, e
 		return newReport(), fmt.Errorf("purge: replay: %w", err)
 	}
 	return purgeUsers(ctx, pool, live, Options{})
-}
-
-// scanUUIDRows runs a statement inside the purge transaction and collects the
-// uuids it returns.
-func scanUUIDRows(ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]uuid.UUID, error) {
-	rows, err := tx.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []uuid.UUID
-	for rows.Next() {
-		var u uuid.UUID
-		if err := rows.Scan(&u); err != nil {
-			return nil, err
-		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
 }
 
 func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (int, error) {

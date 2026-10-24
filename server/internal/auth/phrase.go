@@ -16,7 +16,7 @@ import (
 // open the box), and the box returned in the transaction that records
 // phrase_viewed and enqueues its alert. GET /keys never returns it.
 func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *StepUpObject) ([]byte, error) {
-	ph, err := keyproto.ParamsHash(keyproto.ActionPhraseView)
+	g, err := guardFor(session, keyproto.ActionPhraseView, su)
 	if err != nil {
 		return nil, err
 	}
@@ -24,8 +24,6 @@ func (a *Accounts) ViewPhrase(ctx context.Context, session SessionInfo, su *Step
 		box       []byte
 		firstSeen time.Time
 	)
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionPhraseView, ParamsHash: ph, StepUp: su}
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		var wrapped bool
 		if err := tx.QueryRow(ctx,
@@ -86,12 +84,10 @@ func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name st
 // account (this one included) revoked and every APNs token deleted, with
 // sessions_revoked recorded. Writers are not revoked.
 func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) error {
-	ph, err := keyproto.ParamsHash(keyproto.ActionSessionLogoutAll)
+	g, err := guardFor(session, keyproto.ActionSessionLogoutAll, su)
 	if err != nil {
 		return err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionSessionLogoutAll, ParamsHash: ph, StepUp: su}
 	return a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
 		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, nil, now); err != nil {
