@@ -435,6 +435,24 @@ code PR removes them.
   and `OpAuthor.groupRule` edits only exact rules. The person can remove such a rule in
   Profile › Rules.
 
+## The legal pages (owner, 2026-10-24)
+
+The owner asked for the legal pages to be rewritten for an experimental beta whose state is
+highly volatile (Sorting rebuild 9). The privacy policy and the terms open with a short
+notice: an experimental, invite-only beta on TestFlight; features change often, sometimes
+without notice; things can break and data can be lost or reset; Hasala is not the only
+record of a person's money. The privacy policy's 30 days' notice is gone. Its "Changes in
+the beta" says that a change takes effect when it is posted, and that the app or the
+TestFlight notes say what changed when it affects how data is used. A new optional cloud
+feature stays off until the person turns it on.
+
+This answers the question this record held open: the background stage needs no 30-day
+notice for people who turned Merchant suggestions on in an earlier build. The policy's
+"Working through what's waiting" describes the stage from the day it ships, and the
+TestFlight notes of that build say what changed. The pages also describe the rebuilt
+sorting (one card per payment, the last pick, Always use and its reach, New category) as
+this record does.
+
 ## Proposals for the owner
 
 - **A rule after two filings.** Two filings of one group into one category by the person
@@ -442,6 +460,12 @@ code PR removes them.
   rule, and never for a group already filed into two categories by any source, the
   dictionary included. Not built: it reverses the #176 default.
 - **The crowd merchant list.** See [crowd-merchant-list.md](crowd-merchant-list.md).
+- **Telling earlier testers about the new pages.** The rewrite drops the old 30 days' notice
+  at once, and the background stage reaches people who turned Merchant suggestions on under
+  the old policy. The cheapest step is to tell testers about the new pages in the app or by
+  email when the build ships, not only in the TestFlight notes. Another is to show the
+  one-time ask once more to those people before the background stage runs for them. Not
+  built.
 
 ## Out of scope
 
@@ -452,16 +476,6 @@ grouping, and splitting or merging merchant groups by hand.
 
 Each question has a default that the build uses until the owner answers.
 
-- **The 30-day notice for the background stage.** Before the rebuild, with Merchant
-  suggestions on, the foreground sweep asked Cloudflare about up to 40 names on each
-  foreground, and a bulk sort ran only when the person started it. Now the background stage
-  asks about every waiting name by itself, up to 400 names a day on each iPhone. What a
-  request carries does not change: one merchant name and the built-in categories.
-  privacy.md's "Changes to this policy" promises
-  30 days' notice for a change that "materially affects how we use your data without you
-  doing anything"; a new optional feature is exempt. Does the background stage need that
-  notice for people who turned Merchant suggestions on in an earlier build? Default: no
-  notice; the policy's "Sorting what's waiting" describes the stage from the day it ships.
 - **A merchant with more than 8 spellings.** One exact rule cannot hold them all. Should
   such a group get a shared-prefix rule limited to the group? Default: the 8 spellings that
   [Exact group rules](#exact-group-rules) names. Payments with the other spellings stay for

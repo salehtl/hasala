@@ -152,12 +152,12 @@ struct CloudConsentContent {
     lead: "When Hasala can't sort a payment with your rules or its merchant list, and you haven't picked a category for that merchant's payments yourself, it asks Cloudflare's AI service to suggest one. Apple's on-device model is used when Cloudflare can't help.",
     points: [
       (.tag, "What's sent",
-       "The merchant name as it appears in the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D}, and Hasala's built-in category names."),
+       "The merchant name from the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), Hasala's built-in categories and the app's version."),
       (.eyeSlash, "What's not sent",
        "The amount, date, card or bank, your own category names, or anything about your account."),
       (.cloud, "What Cloudflare sees", cloudflareSees),
       (.check, "You stay in charge",
-       "Suggestions are marked and don't count in your totals until you confirm them. You can turn this off at any time."),
+       "Suggestions are marked, and each payment waits in Review until you confirm or change it. You can turn this off at any time."),
     ])
 
   static let autoSort = CloudConsentContent(

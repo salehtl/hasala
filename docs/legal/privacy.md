@@ -3,8 +3,18 @@ title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, and your rights under UAE law."
 lastUpdated: 2026-10-24
 status: "final"
-plainWords: "Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
+plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
+
+## An experimental beta
+
+Hasala is an experimental beta. It is available by invite only, through Apple's TestFlight. It is not a finished product.
+
+- Features change often, sometimes without notice.
+- Things can break, and your data can be lost or reset.
+- Don't rely on Hasala as your only record of your money. Your bank's statements are the record.
+
+This policy describes the beta as it works today, and it changes when the app does (see [Changes in the beta](#changes-in-the-beta)). Our [Terms](/terms) say more about what the beta means for you.
 
 ## Who we are
 
@@ -14,14 +24,14 @@ Hasala is run by **Saleh Lootah**, an individual based in the United Arab Emirat
 
 We can be reached by email only; the addresses are under [Contact](#contact).
 
-This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), the website at hasala.app, and the emails we send from no-reply@hasala.app (replies to them go to support@hasala.app). It describes the beta as it works today. Where it names a screen, a button or a setting in the app, that is to help you find it; names and places in the app may change.
+This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), the website at hasala.app, and the emails we send from no-reply@hasala.app (replies to them go to support@hasala.app). Where it names a screen, a button or a setting in the app, that is to help you find it; names and places in the app may change.
 
 ## The short version
 
 - **Your bank emails are read on your iPhone.** Hasala connects to your Gmail or Outlook mailbox with read-only access. Your iPhone fetches only messages from your banks' alert addresses. The emails themselves are never sent to our server.
 - **Your money data is sealed on your iPhone before it syncs.** Your transactions, amounts, merchants, categories, budgets, bills and rules are encrypted on your iPhone before they leave it. Our server can't read them.
 - **Our server still sees some things.** It sees your email address and name, that your account exists, details about your sign-in methods and devices, when you sync and how much sealed data you store, and a keyed hash of your Gmail or Outlook address with the timing of changes in your mailbox. From that timing it can tell roughly when, and how often, you get bank alerts, though not what they say. We list all of it below.
-- **No ads, no data sales. AI services only if you ask.** Hasala sorts transactions on your iPhone. If you turn on Cloud suggestions (off by default), Hasala can send a merchant name to Cloudflare's AI service for a suggested category. It isn't sent with your name, your account or anything that links it to you, and it isn't kept. Data from your Gmail or Outlook is never used to train AI models (see [Cloud suggestions](#cloud-suggestions), [Limited Use](#limited-use) and [Outlook and Microsoft account data](#outlook-and-microsoft-account-data), below).
+- **No ads, no data sales. AI services only if you ask.** Hasala sorts transactions on your iPhone. If you turn on Cloud suggestions (off by default), Hasala sends merchant names to Cloudflare's AI service for suggested categories, one name per request, mostly while the app is open. A name isn't sent with your name, your account or anything that links it to you, and it isn't kept. Data from your Gmail or Outlook is never used to train AI models (see [Cloud suggestions](#cloud-suggestions), [Limited Use](#limited-use) and [Outlook and Microsoft account data](#outlook-and-microsoft-account-data), below).
 
 ## What stays on your iPhone
 
@@ -32,6 +42,7 @@ Some things never leave your iPhone. Others leave only in sealed form.
 - **Your bank alert emails.** Your iPhone downloads them from Gmail or Outlook, reads them and keeps the details it needs: amount, merchant, date, card, and the Gmail or Outlook message ID so it can find the email again. The email itself isn't stored in your Hasala data and isn't sent to us.
 - **Your Gmail or Outlook access tokens.** The tokens that let Hasala read your mailbox are kept in your iPhone's Keychain, on this iPhone only. Our server never receives them.
 - **Your settings for this iPhone.** Examples are App lock, Show amounts and merchants, Cloud suggestions and Profile picture from Gravatar.
+- **What you ask Search.** If Apple Intelligence is on, Search can use Apple's on-device model to understand a question, such as "coffee last month". The model runs on your iPhone, and the question isn't sent anywhere. Your recent searches are kept only while the app is running.
 
 ### Leaves your iPhone only in sealed form
 
@@ -224,7 +235,7 @@ In practice, for data Hasala receives from your Gmail:
 3. **No ads.** We never use or transfer it to serve ads, including personalised, retargeted or interest-based ads.
 4. **No sales, no credit decisions.** We never sell it, and we never use it to decide whether you get credit or a loan.
 5. **No one reads your email.** We don't read it, and the design keeps it out of our reach. The only exception would be if you explicitly agreed to let us look at a specific email, for example to add support for your bank. Even then, you would choose the email and send it to us yourself.
-6. **No AI training.** We don't use it to develop, improve or train AI or machine learning models, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say its AI service doesn't either. Hasala's categorisation runs on your iPhone, with your rules and its merchant list. Only if you turn on [Cloud suggestions](#cloud-suggestions) does Hasala send a merchant name to Cloudflare's AI service, for one answer, and use Apple's on-device model when Cloudflare can't help.
+6. **No AI training.** We don't use it to develop, improve or train AI or machine learning models, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say its AI service doesn't either. Hasala's categorisation runs on your iPhone, with your rules, its merchant list and your own earlier picks. Only if you turn on [Cloud suggestions](#cloud-suggestions) does Hasala send a merchant name to Cloudflare's AI service, for one answer, and use Apple's on-device model when Cloudflare can't help.
 
 ### Keeping and deleting it
 
@@ -304,19 +315,36 @@ Hasala shows your picture from Gravatar, a service run by Automattic, if you hav
 
 ## Cloud suggestions
 
-Cloud suggestions are off unless you turn them on, on each iPhone, under Profile › Cloud suggestions, or when Review asks you about them. There are two switches, and you can turn each on or off at any time.
+Cloud suggestions are off unless you turn them on. You set them on each iPhone, under Profile › Cloud suggestions, or when Review asks you about them. There are two switches, **Merchant suggestions** and **Sort automatically**, and you can turn each on or off at any time.
 
-**How Hasala sorts a payment.** Hasala first tries your rules, then its merchant list. A payment they can't place waits for you in Review. If you picked a category for another payment from that merchant yourself, Hasala suggests the category you picked most recently, on your iPhone, and doesn't send that merchant to Cloudflare. Money that came in from a merchant, such as a refund, has its own pick, and a payment you split isn't a pick: neither stops Hasala from asking about that merchant's other payments. With Cloud suggestions off, no AI model runs. With Merchant suggestions on, Hasala asks Cloudflare's AI service about the remaining merchants, and if Cloudflare can't help, Apple's on-device model, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself. Review shows one card for each payment. When you make a rule with **Always use it**, it also re-files that merchant's other payments, in every month, except the ones you sorted yourself, on your iPhone. An earlier version of Hasala had a **Not this** button. If you used it to tell Hasala a suggestion was wrong, Hasala still remembers that for the merchant and doesn't suggest it again, unless you later sort one of that merchant's payments into it yourself; that choice is sealed and syncs to your other iPhones like your other edits. Nothing about it is sent to Cloudflare: Hasala asks the same question as before and sets the answer you rejected aside on your iPhone. None of this sends anything new off your iPhone.
+**How Hasala sorts a payment.** All of this happens on your iPhone, and none of it sends anything new off it. Your choices are sealed and sync to your other iPhones like your other edits (see [Leaves your iPhone only in sealed form](#leaves-your-iphone-only-in-sealed-form)):
 
-**Merchant suggestions.** When Hasala can't sort a payment with your rules or its merchant list, and you haven't picked a category for another payment from that merchant yourself (a refund or a split payment doesn't count), it asks Cloudflare's AI service to suggest a category. It sends the merchant name as it appears in the alert (shortened if it's very long), for example "CAFE EXAMPLE JBR", and Hasala's built-in categories: their names, their IDs and the short built-in descriptions that explain each one. It doesn't send the amount, the date, your card, your bank, your own category names or anything about your account. Each merchant is sent on its own. The suggestion is labelled as coming from Cloudflare's AI, and the payment stays in Review until you confirm or change it.
+- Hasala first tries your rules, then its merchant list. A payment they can't place waits for you in Review.
+- Review shows one card for each payment. A swipe picks the kind of payment, such as Need or Want, and a tap picks the category. If the card has a suggestion, one tap on **Use** takes it.
+- If you sorted another payment from the same merchant yourself, Hasala suggests the category you picked most recently. Money that came in from a merchant, such as a refund, has its own pick, and a payment you split isn't a pick.
+- When you sort a payment with **Always use it** turned on, Hasala makes a rule for that merchant. The rule also re-files the merchant's other payments, in every month, past and future, except the ones you sorted yourself and a few it leaves alone, such as split payments and transfers.
+- You can add a category while you sort, with **New category** at the end of the list. It's one of your own categories, so its name is never sent to Cloudflare.
+- An earlier version of Hasala had a **Not this** button. If you used it to tell Hasala a suggestion was wrong, Hasala still remembers that for the merchant and doesn't suggest it again, unless you later sort one of that merchant's payments into it yourself. That choice is sealed and syncs to your other iPhones like your other edits. Nothing about it is sent to Cloudflare: Hasala asks the same question as before and sets the answer you rejected aside on your iPhone. That iPhone keeps the answer you turned down until your account's data leaves it, so that it doesn't ask Cloudflare about that name again.
+
+With Cloud suggestions off, no AI model sorts your payments.
+
+**Merchant suggestions.** When your rules and the merchant list can't place a payment, and you haven't picked a category for that merchant yourself, Hasala asks Cloudflare's AI service to suggest one. If Cloudflare can't help, Hasala asks Apple's on-device model instead, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself. Each request to Cloudflare carries:
+
+- the merchant name from the alert, for example "CAFE EXAMPLE JBR" (Hasala sends it in lower case, and shortens a very long one);
+- the built-in Need and Want categories you have on: their names, their IDs and the short built-in descriptions that explain each one; and
+- the app's name and version, so that the service can turn away a faulty build.
+
+It doesn't send the amount, the date, your card, your bank, the names of categories you added or renamed, or anything about your account. Hasala sends names only from payments that left your account, and only from bank alerts it read, never from a payment you added yourself. Each merchant is sent on its own. The suggestion is labelled as coming from Cloudflare's AI, and the payment stays in Review until you confirm or change it.
+
+**Working through what's waiting.** With Merchant suggestions on, Hasala works through the merchants waiting in Review by itself. It does this mostly while the app is open, a few names at a time, within a daily limit on each iPhone. When iOS starts Hasala in the background, for example to sync, Hasala can also ask about some waiting names for a short time, within the same limit. It shows no card or count while it works. It asks about each merchant name once, and keeps the answer on that iPhone for up to 30 days so that it doesn't ask again. An answer you turned down with Not this is kept on that iPhone until your account's data leaves it, so that Hasala doesn't ask Cloudflare about that name again. Turning off Merchant suggestions stops it at once. In Profile › Cloud suggestions, you can send the payments it sorted on that iPhone back to Review.
+
+**The one-time ask.** When payments wait in Review and Merchant suggestions is off, Review asks you once on each iPhone whether to turn it on. You can answer at any time. **Turn on** turns on both switches. **Not now** leaves both off, and Review doesn't ask again.
 
 **Sort automatically.** If you also turn this on, Hasala files a payment in the suggested category by itself when Cloudflare's AI service is very sure. Those payments don't wait in Review, and they're labelled as sorted by Cloudflare's AI. Home lists what Hasala sorted on its own in the last week, and you can change any of them. If you change two payments it filed in the same category, that iPhone stops filing that category by itself and only suggests it; it keeps this count on that iPhone only, and deletes it when your account's data leaves the iPhone. It sends nothing more than Merchant suggestions does.
 
-**Sorting what's waiting.** With Merchant suggestions on, Hasala asks about the merchants waiting in Review by itself. It does this only while the app is open, a few merchants at a time, within a daily limit on each iPhone. It asks about each merchant name it can't place once, and each request still carries one merchant name. When payments wait in Review, Review asks you once on each iPhone whether to turn this on. You can answer at any time, not only after the first import. If you accept, both switches turn on. If you decline, both stay off, and Review doesn't ask again. Turning off Merchant suggestions stops it at once. You can send the payments it sorted on that iPhone back to Review in Profile › Cloud suggestions, and change either switch there at any time.
-
 **What Cloudflare sees and keeps.** These requests go to a Hasala service on Cloudflare, not to our server. The service passes each one to Cloudflare's AI service through Cloudflare AI Gateway, which lets us cap what we spend. They carry no account, sign-in or device identifier. Like any request over the internet, Cloudflare sees your IP address. The service uses it only to limit how many requests one connection can send: Cloudflare's rate limiter counts requests from each IP address (for IPv6, from its network block) over a short window, about a minute. The service doesn't log or return the address. The service doesn't store or log what you send, and [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say Cloudflare's AI service doesn't keep it or use it to train its models. We turn AI Gateway's logs and cache off, so it keeps only totals for each model, such as the number of requests, the amount of text processed, the cost and any errors, never the merchant name, the categories or the answer. As for any website it runs, Cloudflare keeps basic records of each request for its own analytics, security and billing, such as the time, the address path, the response code, the country and the model used. These records describe the request, not what it carries, so the merchant name and the category names aren't in them. We never see these requests.
 
-**What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. When Hasala asks about many waiting merchants, Cloudflare could see that the requests came from the same connection around the same time. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
+**What we can't hide.** A merchant name can't be linked back to you from our request, but it still says where someone paid. When Hasala works through many waiting merchants, Cloudflare could see that the requests came from the same connection around the same time. If you'd rather nothing about your payments leaves your iPhone, leave Cloud suggestions off; everything else in Hasala works the same.
 
 ## Who else handles your data
 
@@ -327,7 +355,7 @@ We use a small number of service providers. None of them can open your sealed da
 | **Cloudflare** | Network provider in front of our server, and host of the hasala.app website, where it also counts visits for us with Cloudflare Web Analytics. Encryption in transit ends at Cloudflare, which forwards requests to our server. | The requests between the app and our server, including your IP address, your email address and name when they are sent, and the sealed data. If you use a password, it also sees the scrambled form your iPhone sends when you sign in (see our [Security](/security#what-the-design-doesnt-protect-against) page). It also sees what you send through the website's forms, such as your email address and bank, and, when you visit the website, the pages you open, your IP address and your browser and device type. Web Analytics gives us only totals from these, never linked to you. Cloudflare cannot open the sealed data. |
 | **Cloudflare Email Service** | Delivers the emails we send from no-reply@hasala.app. | Your email address and the content of those emails, such as a verification code. |
 | **Cloudflare R2** | Stores the off-site copy of our encrypted server backups. | Encrypted backup files only. Cloudflare doesn't hold the key to open them. |
-| **Cloudflare Workers AI and AI Gateway** | If you turn on Cloud suggestions: runs the AI model that suggests a category. AI Gateway sits in front of it and caps what we spend. | The merchant name, Hasala's built-in categories, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say the AI service answers and keeps nothing. AI Gateway keeps only totals, such as requests, text processed and cost, with its logs off. |
+| **Cloudflare Workers AI and AI Gateway** | If you turn on Cloud suggestions: runs the AI model that suggests a category. AI Gateway sits in front of it and caps what we spend. | The merchant name, Hasala's built-in categories, the app's version, and your IP address. No account or device identifier. [Cloudflare's terms](https://developers.cloudflare.com/workers-ai/platform/data-usage/) say the AI service answers and keeps nothing. AI Gateway keeps only totals, such as requests, text processed and cost, with its logs off. |
 | **Google** | If you connect Gmail: hosts your Gmail and tells our server when your mailbox changes. | Your mail, as it already does, and that you've given Hasala read-only access. Google also sees your iPhone's IP address when it connects to Gmail. |
 | **Microsoft** | If you connect Outlook: hosts your Outlook mailbox and tells our server when a new message arrives in your Inbox. | Your mail, as it already does, and that you've given Hasala read-only access. Microsoft also sees your iPhone's IP address when it connects to Outlook, and our server's notification address. |
 | **Gravatar (Automattic)** | Shows your profile picture, if you have one on Gravatar. Your iPhone asks for it directly. Our server is not involved. You can turn this off in Profile, and then nothing is sent. | A code made from your email address (a SHA-256 hash), the size of the picture, your iPhone's IP address, and standard web request headers that don't name Hasala. See [Your profile picture](#your-profile-picture). |
@@ -370,8 +398,9 @@ Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft
 | Email records | 30 days. We never keep what an email said. |
 | Upload refusals (the reason and the day) | 90 days. |
 | Sign-up, email-code and other sign-in steps | Minutes (see [How you sign in](#how-you-sign-in)). |
-| Cloud suggestions requests | Not kept. Our service answers each request and forgets it. Cloudflare's rate limit counts by IP address last about a minute, and AI Gateway keeps only totals. |
+| Cloud suggestions requests | Not kept. Our service answers each request and forgets it. Cloudflare's rate limit counts by IP address last about a minute, and AI Gateway keeps only totals. On your iPhone, Hasala keeps each answer for up to 30 days, so that it doesn't ask about the same name twice. An answer you turned down with Not this is kept on that iPhone until your account's data leaves it, so that Hasala doesn't ask Cloudflare about that name again. |
 | Data on your iPhone | Until you delete your account. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
+| If we reset or end the beta | Accounts and their data are deleted from our server, as when you delete your account. Encrypted backups expire within 30 days. Where we can, we tell you in the app or by email first, so that you can export your data. |
 
 ## Deleting your account
 
@@ -436,9 +465,13 @@ If you're not satisfied with our answer, you can complain to the UAE Data Office
 
 Hasala is for adults. You must be at least 18 to use it. We don't knowingly collect data from children. If you think a child has created an account, contact us, and if they're under 18 we'll delete it.
 
-## Changes to this policy
+## Changes in the beta
 
-We'll update this policy when Hasala changes. The date at the top shows when it last changed. If a change materially affects how we use your data without you doing anything, we'll tell you in the app or by email at least 30 days before it takes effect. A new optional feature is different: it is off until you turn it on, it is explained before you do, and this policy describes it from the day it ships. It affects you only once you turn it on.
+Hasala is an experimental beta. Its features, and this policy, can change at short notice. The date at the top shows when the policy last changed. A change takes effect when we post it here.
+
+When a change affects how your data is used, we say what changed in the app or in the TestFlight notes for the new build. If a change needs your consent, we ask for it in the app first. A new optional cloud feature is off until you turn it on: it is explained before you do, this policy describes it from the day it ships, and it affects you only once you turn it on.
+
+If you don't agree with a change, you can stop using Hasala and delete your account at any time (see [Deleting your account](#deleting-your-account)).
 
 ## Contact
 
