@@ -102,14 +102,11 @@ type refusal struct{ error }
 func (r refusal) Unwrap() error { return r.error }
 
 func exitCode(err error) int {
-	if err == nil {
-		return 0
-	}
 	var r refusal
-	if errors.As(err, &r) || pg.IsRefusal(err) || errors.Is(err, flag.ErrHelp) {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0
-		}
+	switch {
+	case err == nil, errors.Is(err, flag.ErrHelp):
+		return 0
+	case errors.As(err, &r), pg.IsRefusal(err):
 		return 2
 	}
 	return 1

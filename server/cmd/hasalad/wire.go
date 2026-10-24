@@ -226,13 +226,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		}
 		tagger = keys
 	case cfg.Auth.AuthKeyFile != "":
-		raw, err := readSecret("HASALA_AUTH_KEY_FILE", cfg.Auth.AuthKeyFile)
+		k, err := readKeyFile("HASALA_AUTH_KEY_FILE", cfg.Auth.AuthKeyFile)
 		if err != nil {
-			return nil, err
-		}
-		k, err := authkeys.ParseKeyHex(raw)
-		if err != nil {
-			return nil, refusal{fmt.Errorf("HASALA_AUTH_KEY_FILE: %w", err)}
+			return nil, refusal{err}
 		}
 		t, err := authkeys.NewEmailTagger(k)
 		if err != nil {
@@ -263,13 +259,10 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	wl.ConfirmedRetention = cfg.Web.WaitlistRetention
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
 		wl.Record = record
-		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention", func(context.Context) (string, error) {
-			n, err := purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
-			if err != nil || n == 0 {
-				return "", err
-			}
-			return fmt.Sprintf("removed %d restore ledger entries past retention", n), nil
-		}))
+		ex.done = append(ex.done, startSweep(ctx, "restore ledger retention",
+			countSweep("removed %d restore ledger entries past retention", func(context.Context) (int, error) {
+				return purgeledger.Prune(p, time.Now().Add(-purgeledger.Retention))
+			})))
 	}
 	if cfg.Ops.Enabled() {
 		n := opsnotify.New(cfg.Ops.NtfyURL, cfg.Ops.NtfyClick)
@@ -290,20 +283,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		srv.EnableAccounts(keys, gate, mailer)
 		a := srv.Accounts
 		ex.done = append(ex.done,
-			startSweepEvery(ctx, "account ceremony sweep", ceremonySweepInterval, func(ctx context.Context) (string, error) {
-				n, err := a.SweepCeremonies(ctx)
-				if err != nil || n == 0 {
-					return "", err
-				}
-				return fmt.Sprintf("swept %d expired ceremony(s)", n), nil
-			}),
-			startSweep(ctx, "account sweep", func(ctx context.Context) (string, error) {
-				n, err := a.SweepHourly(ctx)
-				if err != nil || n == 0 {
-					return "", err
-				}
-				return fmt.Sprintf("swept %d row(s)", n), nil
-			}),
+			startSweepEvery(ctx, "account ceremony sweep", ceremonySweepInterval,
+				countSweep("swept %d expired ceremony(s)", a.SweepCeremonies)),
+			startSweep(ctx, "account sweep", countSweep("swept %d row(s)", a.SweepHourly)),
 		)
 	} else {
 		slog.Warn("hasalad serve: HASALA_AUTH_KEY_FILE and HASALA_SALT_KEY_FILE are not both set: " +

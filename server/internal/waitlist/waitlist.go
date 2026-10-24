@@ -257,6 +257,15 @@ func DeleteEntryTx(ctx context.Context, tx pgx.Tx, entry uuid.UUID) error {
 	return nil
 }
 
+func DeleteBouncedEntryTx(ctx context.Context, tx pgx.Tx, entry uuid.UUID) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
+		  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, entry); err != nil {
+		return fmt.Errorf("waitlist: detach the entry's invite mail: %w", err)
+	}
+	return DeleteEntryTx(ctx, tx, entry)
+}
+
 // OnInviteRedeemedTx is the join hook (spec 07 §3.1), run by the account
 // transaction after the invite's UPDATE: the invite's entry joins and loses its
 // address, its bank requests move to the account, and so does every other
@@ -396,10 +405,11 @@ func dateOf(t *time.Time) string {
 	return mailq.Date(*t)
 }
 
+const why = "You're getting this because someone asked for a Hasala invite for this address at hasala.app."
+
 // Register installs the waitlist's renderers on q.
 func (s *Service) Register(q *mailq.Queue) {
 	q.Register("bank_supported", mailq.RenderFunc(s.renderBankSupported))
-	why := "You're getting this because someone asked for a Hasala invite for this address at hasala.app."
 	q.Register("waitlist", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 		if row.EntryID == nil {
 			return mail.Message{}, ErrStale
@@ -449,7 +459,7 @@ func (s *Service) Register(q *mailq.Queue) {
 			row.Recipient).Scan(&name)
 		greeting := "Hi,"
 		if err == nil && name != nil {
-			greeting = mailq.Greeting(*name)
+			greeting = mail.Greeting(*name)
 		}
 		r, err := mailq.RenderTemplate("waitlist_has_account", mailq.Content{Greeting: greeting, Email: row.Recipient,
 			Why: why})
@@ -472,7 +482,7 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 			*row.UserID, row.Recipient).Scan(&name); err != nil {
 			return mail.Message{}, ErrStale
 		}
-		r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Greeting: mailq.Greeting(name),
+		r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Greeting: mail.Greeting(name),
 			Email: row.Recipient, BankName: bank, AccountAudience: true,
 			Why: "You're getting this because you asked for " + bank + " in Hasala."})
 		return toMessage(row, r), err
@@ -489,7 +499,6 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 		return mail.Message{}, err
 	}
 	r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Email: row.Recipient, BankName: bank,
-		LeaveURL: leave,
-		Why:      "You're getting this because someone asked for a Hasala invite for this address at hasala.app."})
+		LeaveURL: leave, Why: why})
 	return toMessage(row, r), err
 }
