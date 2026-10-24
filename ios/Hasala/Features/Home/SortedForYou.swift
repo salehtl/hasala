@@ -41,12 +41,7 @@ struct SortedForYouRow: View {
       .padding(.leading, 14)
       .padding(.trailing, 12)
       .frame(minHeight: 56)
-      .background {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .fill(HColor.widgetSurface)
-          .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
-          .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
-      }
+      .background { SortedForYouSurface(radius: 20) }
       .contentShape(Rectangle())
     }
     .buttonStyle(HRowPressStyle())
@@ -79,7 +74,7 @@ struct SortedForYouView: View {
           .foregroundStyle(HColor.textSecondary)
           .frame(maxWidth: .infinity, alignment: .center)
           .padding(24)
-          .background(surface(26))
+          .background(SortedForYouSurface(radius: 26))
           .padding(.horizontal, HSpacing.insetPage)
           .accessibilityIdentifier("sortedForYou.empty")
       } else {
@@ -132,7 +127,7 @@ struct SortedForYouView: View {
     .padding(.top, 16)
     .padding(.horizontal, 16)
     .padding(.bottom, 8)
-    .background(surface(26))
+    .background(SortedForYouSurface(radius: 26))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("sortedForYou.batch.\(item.id)")
   }
@@ -195,8 +190,12 @@ struct SortedForYouView: View {
     .buttonStyle(.plain)
     .accessibilityIdentifier(id)
   }
+}
 
-  private func surface(_ radius: CGFloat) -> some View {
+private struct SortedForYouSurface: View {
+  let radius: CGFloat
+
+  var body: some View {
     RoundedRectangle(cornerRadius: radius, style: .continuous)
       .fill(HColor.widgetSurface)
       .shadow(color: .black.opacity(0.06), radius: 1, y: 1)

@@ -313,11 +313,10 @@ struct FinishSetupSection: View {
 
 extension FinishSetupSection {
   static func stopped(_ m: MailboxSnapshot?) -> (title: String, detail: String) {
-    guard let m else { return ("Reading your alerts stopped", "Open Bank alerts to try again.") }
-    if m.state == .needsSignIn {
+    if let m, m.state == .needsSignIn {
       return ("Sign in to your email again", "Hasala can't read \(m.address) right now. Open Bank alerts to sign in.")
     }
-    if m.readElsewhere {
+    if m?.readElsewhere == true {
       return ("Read on your other iPhone", "Its transactions show here once that iPhone syncs them.")
     }
     return ("Reading your alerts stopped", "Open Bank alerts to try again.")

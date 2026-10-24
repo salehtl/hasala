@@ -260,6 +260,13 @@ enum RecurringCopy {
   static func link(_ n: Int) -> String {
     n == 1 ? "1 payment" : "\(n) payments"
   }
+
+  static func positiveMinor(_ text: String, decimalSeparator: String = Locale.current.decimalSeparator ?? ".") -> Int64? {
+    guard let m = MoneyFormat.parseMinor(text.trimmingCharacters(in: .whitespaces), decimalSeparator: decimalSeparator),
+      m > 0
+    else { return nil }
+    return m
+  }
 }
 
 @MainActor
@@ -296,11 +303,7 @@ final class AddRecurringModel {
   var seedPayment: Txn? { seed.flatMap { state.txn($0) } }
   var recent: [RecentPayment] { BillsEngine.recentPayments(state, now: app.store.now) }
 
-  var minor: Int64? {
-    let trimmed = amountText.trimmingCharacters(in: .whitespaces)
-    guard let m = MoneyFormat.parseMinor(trimmed, decimalSeparator: decimalSeparator), m > 0 else { return nil }
-    return m
-  }
+  var minor: Int64? { RecurringCopy.positiveMinor(amountText, decimalSeparator: decimalSeparator) }
 
   var draft: BillDraft? {
     guard let minor, let categoryID else { return nil }
@@ -657,12 +660,7 @@ struct EditAmountSheet: View {
   }
 
   private var b: Bill? { app.store.state.bill(bill) }
-  private var minor: Int64? {
-    guard let m = MoneyFormat.parseMinor(amountText.trimmingCharacters(in: .whitespaces),
-                                         decimalSeparator: Locale.current.decimalSeparator ?? "."), m > 0
-    else { return nil }
-    return m
-  }
+  private var minor: Int64? { RecurringCopy.positiveMinor(amountText) }
 
   var body: some View {
     let today = app.store.now.date
@@ -823,8 +821,7 @@ struct LinkPaymentsSheet: View {
       }
     } dock: {
       Button(ticked.isEmpty ? "Link payments" : "Link \(RecurringCopy.link(ticked.count))") {
-        let valid = Set(payments.map(\.id))
-        let ids = payments.map(\.id).filter { ticked.contains($0) && valid.contains($0) }
+        let ids = payments.map(\.id).filter(ticked.contains)
         if app.perform(.linkBillPayments(bill, ids)) { dismiss() }
       }
       .buttonStyle(.pill(.primary, fill: true))
