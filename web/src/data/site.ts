@@ -74,10 +74,7 @@ export const FOOTER = [
   {
     title: 'Hasala',
     links: [
-      { href: '/how-it-works', label: 'How it works' },
-      { href: '/budgeting', label: 'Budgeting' },
-      { href: '/how-privacy-works', label: 'How privacy works' },
-      { href: '/faq', label: 'FAQ' },
+      ...NAV,
       { href: '/#invite', label: 'Request an invite' },
       { href: '/i', label: 'Have an invite code?' },
     ],
@@ -87,7 +84,7 @@ export const FOOTER = [
     links: [
       { href: '/support', label: 'Support' },
       { href: '/security', label: 'Security' },
-      { href: 'mailto:support@hasala.app', label: 'Contact' },
+      { href: `mailto:${SITE.supportEmail}`, label: 'Contact' },
     ],
   },
   {
@@ -207,6 +204,8 @@ export const FAQ: readonly FaqItem[] = [
     more: { href: '/#invite', label: 'Request an invite' },
   },
 ];
+
+export const curly = (s: string) => s.replace(/'/g, '’');
 
 /** One FAQ answer as plain text: the one-line reply, then the detail. */
 export const faqText = (f: FaqItem): string =>

@@ -27,6 +27,7 @@ const title = data?.title ?? page.fallbackTitle;
 const description = data?.description ?? page.fallbackDescription;
 const isDraft = !entry || (data?.status ?? 'draft') === 'draft';
 const updated = data?.lastUpdated ?? data?.updated;
+const updatedIso = updated?.toISOString().slice(0, 10);
 const updatedText = updated?.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const version = data?.version ? `Version ${data.version} · Beta` : 'Beta';
 const plainWords = typeof data?.plainWords === 'string' ? data.plainWords : null;
@@ -41,7 +42,7 @@ const jsonLd = {
   description,
   url: `${SITE.url}/${slug}`,
   inLanguage: 'en',
-  ...(updated ? { dateModified: updated.toISOString().slice(0, 10) } : {}),
+  ...(updatedIso ? { dateModified: updatedIso } : {}),
   isPartOf: { '@id': `${SITE.url}/#website` },
   breadcrumb: {
     '@type': 'BreadcrumbList',
@@ -70,7 +71,7 @@ const jsonLd = {
           updatedText && (
             <span class="doc-updated">
               <Icon name="clock" size={14} stroke={1.5} />
-              <span>Last updated <time datetime={updated!.toISOString().slice(0, 10)}>{updatedText}</time></span>
+              <span>Last updated <time datetime={updatedIso}>{updatedText}</time></span>
             </span>
           )
         }
@@ -331,7 +332,7 @@ const jsonLd = {
   .doc-updated {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 5px 10px 5px 8px;
     border-radius: var(--r-pill);
     background: var(--white);
@@ -343,9 +344,6 @@ const jsonLd = {
     width: 13px;
     height: 13px;
     color: var(--neutral-600);
-  }
-  .doc-updated {
-    gap: 6px;
   }
   .doc-version,
   .doc-sep,
@@ -552,9 +550,6 @@ const jsonLd = {
       letter-spacing: 0.08em;
       line-height: 16px;
       text-transform: uppercase;
-    }
-    .toc-list--rail a {
-      margin-left: 0;
     }
     .rail__card {
       display: flex;

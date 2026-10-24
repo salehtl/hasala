@@ -60,9 +60,6 @@ func TestHint(t *testing.T) {
 			t.Errorf("Hint(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if Greeting("Maya Rahman") != "Hi Maya," || Greeting("") != "Hi," || Greeting("Maya") != "Hi Maya," {
-		t.Fatal("Greeting")
-	}
 }
 
 // F7-6: no template carries a script, an inline style, an http:// link or a

@@ -95,7 +95,7 @@ public struct MailboxEngineConfig: Sendable {
     guard let first = bytes.firstIndex(where: { !blank.contains($0) }),
       let last = bytes.lastIndex(where: { !blank.contains($0) })
     else { return "" }
-    let folded = bytes[first...last].map { (0x41...0x5a).contains($0) ? $0 + 0x20 : $0 }
+    let folded = bytes[first...last].map(asciiLower)
     return String(decoding: folded, as: UTF8.self)
   }
 }
@@ -462,9 +462,7 @@ public actor MailboxEngine {
       var cleared = commitState(MailboxState())
       cleared.clearAll = true
       do { try await store.commit(cleared) } catch { return .failed(.keychain) }
-      if let token = try? await tokens.accessToken(forceRefresh: false) {
-        try? await source(token).stop()
-      }
+      await stopPush()
       _ = await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
       notBeforeMs = 0
@@ -534,9 +532,7 @@ public actor MailboxEngine {
   /// link's items. The mailbox tables are the new provider's and are not touched.
   public func endGrant() async {
     await exclusive {
-      if let token = try? await tokens.accessToken(forceRefresh: false) {
-        try? await source(token).stop()
-      }
+      await stopPush()
       await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
     }
@@ -590,9 +586,7 @@ public actor MailboxEngine {
       }
       let proof: JSONValue
       do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return .failed }
-      if let token = try? await tokens.accessToken(forceRefresh: false) {
-        try? await source(token).stop()
-      }
+      await stopPush()
       guard await tokens.revokeAndForget() else { return .failed }
       provider.forgetLink()
       do throws(MailboxServerError) {
@@ -813,14 +807,7 @@ public actor MailboxEngine {
     }
 
     // 8. Flush.
-    switch await ledger.flush() {
-    case .accountFull:
-      return await halt(&state, .accountFull, report)
-    case .failed:
-      report.haltedOn = .offline
-      return await finish(&state, report)
-    case .flushed: break
-    }
+    if let stopped = await flushOrStop(&state, report) { return stopped }
 
     // 9. Advance only when complete.
     var c = MailboxCommit()
@@ -855,9 +842,8 @@ public actor MailboxEngine {
     // No trusted sender yet (the Setup bank step's sender_trust_set ops have not folded): list
     // nothing and stay scanning, rather than finish an empty scan (03c §7.2: T empty lists nothing).
     if trusted.isEmpty { return await finish(&state, report) }
-    let started = state.scanStartedMs ?? clock.nowMs()
     if state.scanStartedMs == nil {
-      state.scanStartedMs = started
+      state.scanStartedMs = clock.nowMs()
       scanTotal = 0
     }
     if state.profileHistoryID == nil {
@@ -865,8 +851,7 @@ public actor MailboxEngine {
         return await mailFailure(e, &state, report)
       }
     }
-    let days = Int64(state.backfillDays ?? 90)
-    let since = max(0, (started - days * 86_400_000) / 1000)
+    let since = windowSinceSec(state)
     var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address)
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
@@ -925,20 +910,13 @@ public actor MailboxEngine {
       authored += n
       emit(.authoring, authored, total)
     }
-    switch await ledger.flush() {
-    case .accountFull: return await halt(&state, .accountFull, report)
-    case .failed:
-      report.haltedOn = .offline
-      return await finish(&state, report)
-    case .flushed: break
-    }
+    if let stopped = await flushOrStop(&state, report) { return stopped }
     var remainderDone = false
     if ((try? await store.stagedCount()) ?? 1) == 0 {
       // §7.7 step 7: when the scan stopped at the staging cap, the rest of its window is listed
       // again and authored directly. Run unconditionally (no state
       // column records the cap): ids only, and the accounted set skips everything already done.
-      let days = Int64(state.backfillDays ?? 90)
-      let since = max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
+      let since = windowSinceSec(state)
       var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address)
       do {
         let cut = try await listAndProcess(
@@ -951,13 +929,7 @@ public actor MailboxEngine {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
-      switch await ledger.flush() {
-      case .accountFull: return await halt(&state, .accountFull, report)
-      case .failed:
-        report.haltedOn = .offline
-        return await finish(&state, report)
-      case .flushed: break
-      }
+      if let stopped = await flushOrStop(&state, report) { return stopped }
     }
     let stagingEmpty = ((try? await store.stagedCount()) ?? 1) == 0
     if remainderDone && stagingEmpty {
@@ -970,6 +942,11 @@ public actor MailboxEngine {
       emit(.done, all, all)
     }
     return await finish(&state, report)
+  }
+
+  func windowSinceSec(_ state: MailboxState) -> Int64 {
+    let days = Int64(state.backfillDays ?? 90)
+    return max(0, ((state.scanStartedMs ?? clock.nowMs()) - days * 86_400_000) / 1000)
   }
 
   func grant(_ state: MailboxState) -> String { config.grantID(provider: provider.id, address: state.address) }
@@ -1336,10 +1313,14 @@ public actor MailboxEngine {
   /// iPhone's own push where that cannot touch the new holder's (best effort), and forget what
   /// the link kept. The new holder's subscription replaces a leftover one in any case.
   func endLocalPush() async {
-    if provider.stopIsDeviceScoped, let token = try? await tokens.accessToken(forceRefresh: false) {
+    if provider.stopIsDeviceScoped { await stopPush() }
+    provider.forgetLink()
+  }
+
+  func stopPush() async {
+    if let token = try? await tokens.accessToken(forceRefresh: false) {
       try? await source(token).stop()
     }
-    provider.forgetLink()
   }
 
   struct Run {
@@ -1657,7 +1638,7 @@ public actor MailboxEngine {
       }
       let parsed: MessageDisposer.Parse
       if try await store.isParsing(id) {
-        Self.log.notice("mailbox.parse_interrupted", .state("provider", provider.id == .outlook ? "outlook" : "gmail"))
+        Self.log.notice("mailbox.parse_interrupted", .state("provider", logProvider))
         parsed = .mail(MessageDisposer.unparsed(raw: [UInt8](bytes), messageID: id, internalDateMs: date, spam: raw.spam))
         interrupted = id
       } else {
@@ -1767,6 +1748,8 @@ public actor MailboxEngine {
 
   static let log = CoreLog(category: "CoreMailbox")
 
+  var logProvider: StaticString { provider.id == .outlook ? "outlook" : "gmail" }
+
   static func kind(_ e: MailAPIError) -> StaticString {
     switch e {
     case .status: "status"
@@ -1781,7 +1764,7 @@ public actor MailboxEngine {
   func mailFailure(_ e: MailAPIError, _ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
     Self.log.notice(
-      "mailbox.api_failure", .state("provider", provider.id == .outlook ? "outlook" : "gmail"),
+      "mailbox.api_failure", .state("provider", logProvider),
       .state("kind", Self.kind(e)), .count("status", e.status ?? 0))
     switch e {
     case .throttled(let sec, _):
@@ -1819,6 +1802,17 @@ public actor MailboxEngine {
     return await finish(&state, report)
   }
 
+  func flushOrStop(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport? {
+    switch await ledger.flush() {
+    case .accountFull: return await halt(&state, .accountFull, report)
+    case .failed:
+      var report = report
+      report.haltedOn = .offline
+      return await finish(&state, report)
+    case .flushed: return nil
+    }
+  }
+
   func setPhase(_ state: inout MailboxState, _ phase: MailboxPhase, halt code: MailboxHaltCode, _ report: CycleReport)
     async -> CycleReport
   {
@@ -1837,12 +1831,7 @@ public actor MailboxEngine {
   }
 
   func halt(_ state: inout MailboxState, _ code: MailboxHaltCode, _ report: CycleReport) async -> CycleReport {
-    var report = report
-    markResume(&state)
-    state.phase = .halted
-    state.haltedOn = code
-    report.haltedOn = code
-    return await finish(&state, report)
+    await setPhase(&state, .halted, halt: code, report)
   }
 
   func finish(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {

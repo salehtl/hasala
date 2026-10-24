@@ -10,11 +10,6 @@ const { tone = 'white' } = Astro.props;
 
 const onHome = Astro.url.pathname === '/';
 const href = (h: string) => (onHome && h.startsWith('/#') ? h.slice(1) : h);
-
-// The columns of src/data/site.ts. The site column links the detail pages,
-// the invite form and /i for people who already have a code (Banks stays a
-// homepage section, not a link).
-const cols = FOOTER.map((c) => ({ title: c.title, links: c.links, site: c.title === 'Hasala' }));
 ---
 
 <footer class:list={['site-footer', tone === 'navy' && 'site-footer--navy']} id="site-footer">
@@ -29,8 +24,8 @@ const cols = FOOTER.map((c) => ({ title: c.title, links: c.links, site: c.title 
       </div>
       <nav class="footer__cols" aria-label="Footer">
         {
-          cols.map((col) => (
-            <div class:list={['footer__col', col.site && 'footer__col--site']}>
+          FOOTER.map((col) => (
+            <div class:list={['footer__col', col.title === 'Hasala' && 'footer__col--site']}>
               <p class="footer__title">{col.title}</p>
               <ul role="list">
                 {col.links.map((l) => (

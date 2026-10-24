@@ -94,6 +94,16 @@ public enum BacklogSort {
       self.suggested = suggested
     }
 
+    init(_ items: [OpAuthor.Categorization]) {
+      for it in items {
+        if it.needsReview {
+          suggested.insert(it.txnID)
+        } else {
+          filed[it.txnID] = it.version + 1
+        }
+      }
+    }
+
     public func only(_ blobs: [AuthoredBlob]) -> Filing {
       var ids: Set<String> = []
       for b in blobs { for op in b.ops { if let id = op.entity?.id { ids.insert(id) } } }
@@ -142,8 +152,12 @@ public enum BacklogSort {
     }
   }
 
+  static func inDay(_ ledger: [Int64], nowMs: Int64) -> [Int64] {
+    ledger.filter { $0 > nowMs - dayWindowMs && $0 <= nowMs }
+  }
+
   public static func dayUsed(_ ledger: [Int64], nowMs: Int64) -> Int {
-    ledger.filter { $0 > nowMs - dayWindowMs && $0 <= nowMs }.count
+    inDay(ledger, nowMs: nowMs).count
   }
 
   public static func dayLeft(_ ledger: [Int64], nowMs: Int64) -> Int {
@@ -151,7 +165,7 @@ public enum BacklogSort {
   }
 
   public static func dayReopensMs(_ ledger: [Int64], nowMs: Int64) -> Int64? {
-    let live = ledger.filter { $0 > nowMs - dayWindowMs && $0 <= nowMs }.sorted()
+    let live = inDay(ledger, nowMs: nowMs).sorted()
     guard live.count >= dayNames else { return nil }
     return live[live.count - dayNames] + dayWindowMs
   }
@@ -314,19 +328,8 @@ public enum BacklogSort {
       let fresh = try await reread()
       let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
       guard !items.isEmpty else { return ([], p, Filing()) }
-      let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-        let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))
-        return (blobs, blobs.last?.lastAuthoredMs)
-      }
-      var filing = Filing()
-      for it in items {
-        if it.needsReview {
-          filing.suggested.insert(it.txnID)
-        } else {
-          filing.filed[it.txnID] = it.version + 1
-        }
-      }
-      return (blobs, p, filing)
+      let blobs = try stamps.categorizations(items, context: fresh.context)
+      return (blobs, p, Filing(items))
     } catch {
       throw Interrupted(memo: p.memo, calls: p.calls)
     }
@@ -357,19 +360,8 @@ public enum BacklogSort {
         let fresh = try await reread()
         let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
         guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
-        let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-          let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))
-          return (blobs, blobs.last?.lastAuthoredMs)
-        }
-        var filing = Filing()
-        for it in items {
-          if it.needsReview {
-            filing.suggested.insert(it.txnID)
-          } else {
-            filing.filed[it.txnID] = it.version + 1
-          }
-        }
-        let c = await commit(blobs, filing: filing, enqueue: enqueue)
+        let blobs = try stamps.categorizations(items, context: fresh.context)
+        let c = await commit(blobs, filing: Filing(items), enqueue: enqueue)
         var failed = c.failed
         if !blobs.isEmpty {
           do { try await reproject() } catch { failed = true }
@@ -420,9 +412,7 @@ public enum BacklogSort {
       && (r.sourceRef.map(ModelTier.mayAutoFile(modelTag:)) ?? false)
   }
 
-  public static func sendBackItems(filed: [String: Int64], current: [SweepRow])
-    -> [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)]
-  {
+  public static func sendBackItems(filed: [String: Int64], current: [SweepRow]) -> [OpAuthor.Categorization] {
     current.compactMap { r in
       guard isCloudFiled(r), let v = r.version, filed[r.id] == v, let c = r.category, let tag = r.sourceRef else { return nil }
       return (r.id, v, c, true, CategorySource(kind: .model, model: tag))
@@ -435,10 +425,6 @@ public enum BacklogSort {
     let fresh = try await reread()
     let items = sendBackItems(filed: filed, current: fresh.rows)
     guard !items.isEmpty else { return ([], 0) }
-    let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-      let blobs = try OpAuthor.categorizations(items, context: fresh.context.raised(to: floor))
-      return (blobs, blobs.last?.lastAuthoredMs)
-    }
-    return (blobs, items.count)
+    return (try stamps.categorizations(items, context: fresh.context), items.count)
   }
 }

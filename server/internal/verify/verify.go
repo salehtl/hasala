@@ -125,15 +125,14 @@ func StructuralFor(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) (
 		}
 		out = append(out, f...)
 		if len(out) >= maxFindings {
-			out = out[:maxFindings]
-			out = append(out, Finding{
-				ID:     "truncated",
-				Detail: fmt.Sprintf("stopped after %d findings; fix these and re-run", maxFindings),
-			})
-			return out, nil
+			return append(out[:maxFindings], truncated()), nil
 		}
 	}
 	return out, nil
+}
+
+func truncated() Finding {
+	return Finding{ID: "truncated", Detail: fmt.Sprintf("stopped after %d findings; fix these and re-run", maxFindings)}
 }
 
 func userList(ctx context.Context, pool *pgxpool.Pool, want []uuid.UUID) ([]uuid.UUID, error) {
@@ -146,16 +145,8 @@ func userList(ctx context.Context, pool *pgxpool.Pool, want []uuid.UUID) ([]uuid
 	if err != nil {
 		return nil, fmt.Errorf("verify: list users: %w", err)
 	}
-	defer rows.Close()
-	var out []uuid.UUID
-	for rows.Next() {
-		var u uuid.UUID
-		if err := rows.Scan(&u); err != nil {
-			return nil, fmt.Errorf("verify: list users: %w", err)
-		}
-		out = append(out, u)
-	}
-	if err := rows.Err(); err != nil {
+	out, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
 		return nil, fmt.Errorf("verify: list users: %w", err)
 	}
 	return out, nil

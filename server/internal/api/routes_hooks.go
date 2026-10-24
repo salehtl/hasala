@@ -73,17 +73,11 @@ func (s *Server) mountHooks(mux *http.ServeMux) {
 	if o != nil {
 		perIP = cmp.Or(perIP, o.HookPerIP)
 	}
-	if perIP == nil {
-		perIP = NewLimiter(hookIPRate, hookIPBurst, hookIPMaxKeys, s.now)
-	}
+	s.ensureLimiter(&perIP, hookIPRate, hookIPBurst, hookIPMaxKeys)
 	if g != nil {
 		g.HookPerIP = perIP
-		if g.HookGlobal == nil {
-			g.HookGlobal = NewLimiter(hookGlobalRate, hookGlobalBurst, 1, s.now)
-		}
-		if g.HookLink == nil {
-			g.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, hookLinkMaxKeys, s.now)
-		}
+		s.ensureLimiter(&g.HookGlobal, hookGlobalRate, hookGlobalBurst, 1)
+		s.ensureLimiter(&g.HookLink, hookLinkRate, hookLinkBurst, hookLinkMaxKeys)
 		mux.HandleFunc("POST /hooks/gmail/pubsub", s.handleGmailHook)
 	}
 	if o != nil {
@@ -91,9 +85,7 @@ func (s *Server) mountHooks(mux *http.ServeMux) {
 		if o.HookGlobal == nil || (g != nil && o.HookGlobal == g.HookGlobal) {
 			o.HookGlobal = NewLimiter(hookGlobalRate, hookGlobalBurst, 1, s.now)
 		}
-		if o.HookLink == nil {
-			o.HookLink = NewLimiter(hookLinkRate, hookLinkBurst, hookLinkMaxKeys, s.now)
-		}
+		s.ensureLimiter(&o.HookLink, hookLinkRate, hookLinkBurst, hookLinkMaxKeys)
 		mux.HandleFunc("POST "+outlookHookPath, func(w http.ResponseWriter, r *http.Request) {
 			s.handleOutlookHook(w, r, false)
 		})
@@ -204,17 +196,12 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	// 10: wake each holder; record the hour (at most one write per link per
 	// hour, skipped while the disk fuse is tripped).
 	hour := s.now().UTC().Truncate(time.Hour)
-	tripped := s.Headroom != nil && s.Headroom.Tripped()
+	tripped := s.fuseTripped()
 	for _, h := range holders {
 		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, pushv2.ReasonMail)
 		g.Counters.Woken.Add(1)
 		if !tripped {
-			if _, err := s.Pool.Exec(ctx,
-				`UPDATE mailbox_links SET last_wake_hour = $3
-				  WHERE user_id = $1 AND holder_writer_id = $2 AND provider = 'gmail'
-				    AND last_wake_hour IS DISTINCT FROM $3`, h.UserID, h.WriterID, hour); err != nil {
-				s.logf("api: gmail hook: wake hour: %v", err)
-			}
+			s.markWakeHour(ctx, gmailpush.ProviderGmail, h, hour)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -343,20 +330,24 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		reason = pushv2.ReasonNudge
 	}
 	hour := s.now().UTC().Truncate(time.Hour)
-	tripped := s.Headroom != nil && s.Headroom.Tripped()
+	tripped := s.fuseTripped()
 	for _, h := range holders {
 		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, reason)
 		o.Counters.Woken.Add(1)
 		// Like Gmail's: the hour of the last mail wake, at most one write per
 		// link per hour, none while the disk fuse is tripped.
 		if !lifecycle && !tripped {
-			if _, err := s.Pool.Exec(ctx,
-				`UPDATE mailbox_links SET last_wake_hour = $3
-				  WHERE user_id = $1 AND holder_writer_id = $2 AND provider = 'outlook'
-				    AND last_wake_hour IS DISTINCT FROM $3`, h.UserID, h.WriterID, hour); err != nil {
-				s.logf("api: outlook hook: wake hour: %v", err)
-			}
+			s.markWakeHour(ctx, gmailpush.ProviderOutlook, h, hour)
 		}
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) markWakeHour(ctx context.Context, provider string, h gmailpush.Holder, hour time.Time) {
+	if _, err := s.Pool.Exec(ctx,
+		`UPDATE mailbox_links SET last_wake_hour = $3
+		  WHERE user_id = $1 AND holder_writer_id = $2 AND provider = $4
+		    AND last_wake_hour IS DISTINCT FROM $3`, h.UserID, h.WriterID, hour, provider); err != nil {
+		s.logf("api: %s hook: wake hour: %v", provider, err)
+	}
 }

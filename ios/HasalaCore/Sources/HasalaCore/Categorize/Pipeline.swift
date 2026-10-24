@@ -147,17 +147,11 @@ public enum Sweep {
         if r.category == nil && direction == .debit { queue.append(r) }
         continue
       }
-      let ref: String? =
+      let (kind, ref): (SweepRow.SourceKind, String?) =
         switch d.source {
-        case .rule(let id): id
-        case .dictionary(let b, let e): b + "|" + e
-        case .none: nil
-        }
-      let kind: SweepRow.SourceKind =
-        switch d.source {
-        case .rule: .rule
-        case .dictionary: .dictionary
-        case .none: .none
+        case .rule(let id): (.rule, id)
+        case .dictionary(let b, let e): (.dictionary, b + "|" + e)
+        case .none: (.none, nil)
         }
       if r.category == category && r.sourceKind == kind && r.sourceRef == ref { continue }
       actions.append(SweepAction(txnID: r.id, category: category, source: d.source, needsReview: r.needsReview))
