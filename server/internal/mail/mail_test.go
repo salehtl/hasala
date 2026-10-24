@@ -154,7 +154,7 @@ func TestTheTemplatesAreContentFree(t *testing.T) {
 	if _, err := Alert("m@example.com", "new_sign_in_password", at, "", ""); err == nil {
 		t.Fatal("a freeze-link alert without its link was rendered")
 	}
-	if Greeting("") != "Hi," || Greeting("Maya") != "Hi Maya," {
+	if Greeting("") != "Hi," || Greeting("Maya") != "Hi Maya," || Greeting("Maya Rahman") != "Hi Maya," {
 		t.Fatal("greeting")
 	}
 }

@@ -124,13 +124,11 @@ public enum AuthResults {
   /// Gmail's rule.
   public static func analyze(_ rawHeaders: String) -> Analysis {
     if rawHeaders.isEmpty { return untrusted(.noAR) }
-    if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
-    guard let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return untrusted(.parseError) }
+    guard let fields = readFields(rawHeaders) else { return untrusted(.parseError) }
 
     // Every A-R in the block, in order. The name is matched exactly (after trim, case-
     // insensitively): ARC-Authentication-Results is a different field.
-    let want = Array("authentication-results".unicodeScalars)
-    let arValues = fields.filter { jsLower(jsTrim($0.name)) == want }.map(\.value)
+    let arValues = named(fields, "authentication-results").map(\.value)
     if arValues.isEmpty { return untrusted(.noAR) }
 
     let parsed = arValues.map(parseARValue)
@@ -141,7 +139,7 @@ public enum AuthResults {
     guard gmail[0] == 0 else { return untrusted(.notTopmost) }
 
     let ar = parsed[0]
-    let from = fields.filter { jsLower(jsTrim($0.name)) == Array("from".unicodeScalars) }
+    let from = named(fields, "from")
     let fromDom = from.count == 1 ? string(fromDomain(from[0].value)) : ""
     guard
       let dkimPass = ar.methods.first(where: {
@@ -193,11 +191,9 @@ public enum AuthResults {
   public static func analyzeOutlook(_ rawHeaders: String) -> Analysis {
     // 1. Bounds.
     if rawHeaders.isEmpty { return untrusted(.noAR) }
-    if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
-    guard let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return untrusted(.parseError) }
+    guard let fields = readFields(rawHeaders) else { return untrusted(.parseError) }
 
-    func named(_ want: Scalars) -> [Field] { fields.filter { jsLower(jsTrim($0.name)) == want } }
-    let parsed = named(Array("authentication-results".unicodeScalars)).map { parseARValue($0.value) }
+    let parsed = named(fields, "authentication-results").map { parseARValue($0.value) }
     if parsed.contains(where: { !$0.readable }) { return untrusted(.parseError) }
 
     // 2–4. Exactly one Microsoft-form A-R, and it is the topmost A-R.
@@ -208,8 +204,8 @@ public enum AuthResults {
     let ar = parsed[0]
 
     // 5. EOP proof.
-    let authAs = named(outlookAuthAs).map { jsLower(jsTrim($0.value)) }
-    let authSource = named(outlookAuthSource).map { jsLower(jsTrim($0.value)) }
+    let authAs = named(fields, outlookAuthAs).map { jsLower(jsTrim($0.value)) }
+    let authSource = named(fields, outlookAuthSource).map { jsLower(jsTrim($0.value)) }
     guard authAs.count == 1, outlookAuthAsValues.contains(authAs[0]),
       authSource.count == 1, authSource[0].count >= outlookAuthSourceSuffix.count,
       Array(authSource[0].suffix(outlookAuthSourceSuffix.count)) == outlookAuthSourceSuffix,
@@ -226,7 +222,7 @@ public enum AuthResults {
     if domain.isEmpty { return untrusted(.fail) }
 
     // 7. From binding: the domain compauth evaluated is the From the lane will read.
-    let from = named(Array("from".unicodeScalars))
+    let from = named(fields, "from")
     guard from.count == 1, same(string(fromDomain(from[0].value)), domain) else { return untrusted(.fail) }
 
     // 8.
@@ -236,20 +232,15 @@ public enum AuthResults {
   public static func analyzeOutlookSender(
     _ rawHeaders: String, inInbox: Bool, knownSenders: [String], rejectDomains: [String]
   ) -> Analysis {
-    if rawHeaders.utf16.count > maxRawUnits { return untrusted(.parseError) }
-    guard let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return untrusted(.parseError) }
+    guard let fields = readFields(rawHeaders) else { return untrusted(.parseError) }
     guard inInbox else { return untrusted(.notInbox) }
-    let from = fields.filter { jsLower(jsTrim($0.name)) == Array("from".unicodeScalars) }
+    let from = named(fields, "from")
     guard from.count == 1, let address = fromAddress(from[0].value),
-      knownSenders.contains(where: { same(asciiLower($0), address) })
+      knownSenders.contains(where: { same(ASCII.lowercased($0), address) })
     else { return untrusted(.unknownSender) }
     let domain = String(address[address.index(after: address.lastIndex(of: "@")!)...])
-    guard rejectDomains.contains(where: { same(asciiLower($0), domain) }) else { return untrusted(.noDMARCReject) }
+    guard rejectDomains.contains(where: { same(ASCII.lowercased($0), domain) }) else { return untrusted(.noDMARCReject) }
     return Analysis(verdict: Verdict(trusted: true, reason: .pass), domain: domain)
-  }
-
-  static func asciiLower(_ s: String) -> String {
-    String(decoding: s.utf8.map { $0 >= 0x41 && $0 <= 0x5a ? $0 + 0x20 : $0 }, as: UTF8.self)
   }
 
   static func fromAddress(_ value: Scalars) -> String? {
@@ -268,7 +259,7 @@ public enum AuthResults {
     guard addr.allSatisfy({ $0.value >= 0x21 && $0.value <= 0x7e }),
       let at = addr.firstIndex(of: "@"), at > 0, addr.filter({ $0 == "@" }).count == 1
     else { return nil }
-    let lower = Array(asciiLower(string(addr)).unicodeScalars)
+    let lower = Array(ASCII.lowercased(string(addr)).unicodeScalars)
     guard isLDHDomain(Array(lower[(at + 1)...])) else { return nil }
     return string(lower)
   }
@@ -400,6 +391,17 @@ public enum AuthResults {
     let microsoftForm: Bool
     let readable: Bool
   }
+
+  static func readFields(_ rawHeaders: String) -> [Field]? {
+    guard rawHeaders.utf16.count <= maxRawUnits else { return nil }
+    return unfold(Array(rawHeaders.unicodeScalars))
+  }
+
+  static func named(_ fields: [Field], _ name: Scalars) -> [Field] {
+    fields.filter { jsLower(jsTrim($0.name)) == name }
+  }
+
+  static func named(_ fields: [Field], _ name: String) -> [Field] { named(fields, Array(name.unicodeScalars)) }
 
   /// Splits a header block into fields (`split(/\r\n|\r|\n/)`), joining folded continuation
   /// lines with one space; stops at the first blank line. Nil when a field folds deeper than

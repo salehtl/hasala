@@ -6,6 +6,7 @@ package pg
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -47,15 +48,7 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 
 // Migrate applies every embedded migration. Idempotent.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-	goose.SetBaseFS(migrations)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
-	return goose.UpContext(ctx, db, "migrations")
+	return withGoose(pool, func(db *sql.DB) error { return goose.UpContext(ctx, db, "migrations") })
 }
 
 // MigrateTo applies migrations up to and including version, leaving anything
@@ -68,35 +61,23 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 // short, seed, and then step forward — which is the only way the backfill in
 // 00031_account_budgets.sql is exercised by anything other than production.
 func MigrateTo(ctx context.Context, pool *pgxpool.Pool, version int64) error {
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-	goose.SetBaseFS(migrations)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
-	return goose.UpToContext(ctx, db, "migrations", version)
+	return withGoose(pool, func(db *sql.DB) error { return goose.UpToContext(ctx, db, "migrations", version) })
 }
 
 // MigrateDown reverses every migration. Used only by tests; a Down block that
 // nobody runs is a rollback that does not work.
 func MigrateDown(ctx context.Context, pool *pgxpool.Pool) error {
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-	goose.SetBaseFS(migrations)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
-	return goose.DownToContext(ctx, db, "migrations", 0)
+	return withGoose(pool, func(db *sql.DB) error { return goose.DownToContext(ctx, db, "migrations", 0) })
 }
 
 // MigrateDownTo reverses every migration after version. Used only by tests,
 // which compare what a Down leaves with what the migrations up to version
 // build.
 func MigrateDownTo(ctx context.Context, pool *pgxpool.Pool, version int64) error {
+	return withGoose(pool, func(db *sql.DB) error { return goose.DownToContext(ctx, db, "migrations", version) })
+}
+
+func withGoose(pool *pgxpool.Pool, run func(*sql.DB) error) error {
 	gooseMu.Lock()
 	defer gooseMu.Unlock()
 	goose.SetBaseFS(migrations)
@@ -105,7 +86,7 @@ func MigrateDownTo(ctx context.Context, pool *pgxpool.Pool, version int64) error
 	}
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
-	return goose.DownToContext(ctx, db, "migrations", version)
+	return run(db)
 }
 
 // EmbeddedVersions returns the version of every embedded migration, ascending.
@@ -140,48 +121,40 @@ func LatestEmbedded() (int64, error) {
 // does not exist yet (a fresh database). It needs only SELECT on
 // goose_db_version, so the runtime and backup roles can call it.
 func AppliedVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	v, _, err := appliedVersion(ctx, pool)
+	return v, err
+}
+
+func appliedVersion(ctx context.Context, pool *pgxpool.Pool) (version int64, ledger bool, err error) {
 	// Through the catalog rather than to_regclass: a role without USAGE on
 	// the schema (the runtime role before the baseline grants it) gets
 	// "permission denied" from to_regclass, where the answer is "not yet".
-	var exists bool
 	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
 		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-		WHERE n.nspname = 'public' AND c.relname = 'goose_db_version')`).Scan(&exists); err != nil {
-		return 0, fmt.Errorf("pg: look for goose_db_version: %w", err)
+		WHERE n.nspname = 'public' AND c.relname = 'goose_db_version')`).Scan(&ledger); err != nil {
+		return 0, false, fmt.Errorf("pg: look for goose_db_version: %w", err)
 	}
-	if !exists {
-		return 0, nil
+	if !ledger {
+		return 0, false, nil
 	}
 	var v *int64
 	if err := pool.QueryRow(ctx,
 		`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&v); err != nil {
-		return 0, fmt.Errorf("pg: read goose_db_version: %w", err)
+		return 0, true, fmt.Errorf("pg: read goose_db_version: %w", err)
 	}
 	if v == nil {
-		return 0, nil
+		return 0, true, nil
 	}
-	return *v, nil
+	return *v, true, nil
 }
 
 // Pending counts the embedded migrations not yet applied (spec 02 §5.5
 // --pending): 0 for a fresh database's absent ledger means "nothing to back
 // up", not "nothing to apply", so it counts against AppliedVersion = 0.
 func Pending(ctx context.Context, pool *pgxpool.Pool) (int, error) {
-	applied, err := AppliedVersion(ctx, pool)
-	if err != nil {
+	applied, ledger, err := appliedVersion(ctx, pool)
+	if err != nil || !ledger {
 		return 0, err
-	}
-	// Through the catalog rather than to_regclass: a role without USAGE on
-	// the schema (the runtime role before the baseline grants it) gets
-	// "permission denied" from to_regclass, where the answer is "not yet".
-	var exists bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
-		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-		WHERE n.nspname = 'public' AND c.relname = 'goose_db_version')`).Scan(&exists); err != nil {
-		return 0, err
-	}
-	if !exists {
-		return 0, nil
 	}
 	vs, err := EmbeddedVersions()
 	if err != nil {

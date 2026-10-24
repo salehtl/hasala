@@ -4,9 +4,7 @@
  * llms-full.txt); the homepage only swaps in Paper's own wording for the first
  * answer, which is the one drawn open.
  */
-import { FAQ, type FaqItem } from './site';
-
-const curly = (s: string) => s.replace(/'/g, '’');
+import { FAQ, curly, type FaqItem } from './site';
 
 const OPEN_FIRST: Record<string, string> = {
   'bank-login':

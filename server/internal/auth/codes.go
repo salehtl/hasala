@@ -271,18 +271,3 @@ func bumpCounter(ctx context.Context, q queryExecer, scope string, key []byte, w
 	}
 	return n, nil
 }
-
-// readCounter answers a window's count without changing it.
-func readCounter(ctx context.Context, q queryExecer, scope string, key []byte, window time.Duration, now time.Time) (int, error) {
-	start := now.UTC().Truncate(window)
-	var n int
-	err := q.QueryRow(ctx, `SELECT count FROM rate_counters WHERE scope = $1 AND key = $2 AND window_start = $3`,
-		scope, key, start).Scan(&n)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("auth: rate counter %s: %w", scope, err)
-	}
-	return n, nil
-}

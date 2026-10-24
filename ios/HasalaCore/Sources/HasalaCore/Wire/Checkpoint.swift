@@ -33,14 +33,7 @@ public enum Checkpoint {
     for i in sorted.indices.dropFirst() where compare(sorted[i - 1], sorted[i]) == 0 {
       throw .invalid("duplicate checkpoint head for (\(sorted[i].writerID), \(sorted[i].stream))")
     }
-    let list: [JSONValue] = sorted.map { h in
-      .object(
-        JSONObject([
-          ("writer_id", .string(h.writerID)), ("stream", .string(h.stream)), ("counter", .string(h.counter)),
-          ("hash", .string(h.hash)),
-        ]))
-    }
-    return .object(JSONObject([("heads", .array(list))]))
+    return .object(JSONObject([("heads", .array(sorted.map { .object(object($0)) }))]))
   }
 
   /// Reads a payload, refusing one that is not canonically ordered.
@@ -69,13 +62,14 @@ public enum Checkpoint {
     return c != 0 ? c : compareUTF8(a.stream, b.stream)
   }
 
-  static func problem(_ h: CheckpointHead) -> String? {
-    rawProblem(
-      JSONObject([
-        ("writer_id", .string(h.writerID)), ("stream", .string(h.stream)), ("counter", .string(h.counter)),
-        ("hash", .string(h.hash)),
-      ]))
+  static func object(_ h: CheckpointHead) -> JSONObject {
+    JSONObject([
+      ("writer_id", .string(h.writerID)), ("stream", .string(h.stream)), ("counter", .string(h.counter)),
+      ("hash", .string(h.hash)),
+    ])
   }
+
+  static func problem(_ h: CheckpointHead) -> String? { rawProblem(object(h)) }
 
   /// wire/op.ts `validateHead`, its messages included.
   static func rawProblem(_ r: JSONObject) -> String? {
@@ -89,7 +83,6 @@ public enum Checkpoint {
     guard ASCII.isLowerHex(r["hash"]?.stringValue ?? "", count: 64) else {
       return "checkpoint head for \(showValue(.string(w))) has hash \(showValue(r["hash"])), want 64 hex chars"
     }
-    _ = stream
     return nil
   }
 }

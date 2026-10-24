@@ -105,7 +105,7 @@ type Dispatcher struct {
 	Stats  Stats
 
 	queue    chan job
-	mu       sync.Mutex // guards th and pausedUntil
+	mu       sync.Mutex // guards th, pause and envPause
 	th       *throttle
 	pause    time.Time
 	envPause map[string]time.Time
@@ -206,29 +206,14 @@ func (d *Dispatcher) Notify(ctx context.Context, userID uuid.UUID) error {
 
 // targets resolves a job's tokens from apns_tokens.
 func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
-	if !j.resolve {
-		return j.tokens, nil
-	}
-	var (
-		rows pgx.Rows
-		err  error
-	)
 	switch {
+	case !j.resolve:
+		return j.tokens, nil
 	case j.others:
-		rows, err = d.Pool.Query(ctx,
-			`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id <> $2`, j.user, j.writer)
+		return CollectTokens(ctx, d.Pool, j.user, j.writer)
 	default:
-		rows, err = d.Pool.Query(ctx,
-			`SELECT token_hex, environment FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, j.user, j.writer)
+		return WriterTokens(ctx, d.Pool, j.user, j.writer)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Target, error) {
-		var t Target
-		err := r.Scan(&t.TokenHex, &t.Environment)
-		return t, err
-	})
 }
 
 func (d *Dispatcher) run(ctx context.Context, j job) {

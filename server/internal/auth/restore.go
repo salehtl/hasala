@@ -268,9 +268,7 @@ func reapplyUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 		}
 		return reappliedDone, nil
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
-		  WHERE id = $1`, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
 		return reappliedNothing, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, e.ID, nil, now); err != nil {
@@ -291,9 +289,7 @@ func liftLockoutTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time
 	if err != nil {
 		return reappliedNothing, err
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
-		  WHERE id = $1`, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
 		return reappliedNothing, err
 	}
 	if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, now); err != nil {
@@ -362,9 +358,7 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 	if !has || (setAt != nil && !setAt.Truncate(time.Second).Before(e.At)) {
 		return reappliedNothing, nil
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE users SET password_hash = NULL, password_salt = NULL, password_version = NULL, password_set_at = NULL,
-		        password_failures = 0, password_paused_until = NULL WHERE id = $1`, e.ID); err != nil {
+	if err := clearPasswordTx(ctx, tx, e.ID); err != nil {
 		return reappliedNothing, err
 	}
 	if _, err := tx.Exec(ctx,
