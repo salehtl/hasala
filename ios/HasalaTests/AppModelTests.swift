@@ -161,6 +161,12 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func theUndoLineStaysLongerThanAToast() {
+    #expect(AppModel.dwell(lasting: false, voiceOver: false) == HMotion.toastDwell)
+    #expect(AppModel.dwell(lasting: true, voiceOver: false) == HMotion.undoLineDwell)
+    #expect(AppModel.dwell(lasting: true, voiceOver: true) == HMotion.toastDwellVoiceOver)
+  }
+
   @Test func aRefusalSaysWhy() {
     let app = AppModel(store: InMemoryLedger())
     #expect(!app.perform(.moveMoney(from: nil, to: "dining", YearMonth(2026, 10), .aed(9_999_00))))
@@ -217,8 +223,9 @@ struct AppModelTests {
     #expect(app.reviewCount == 6)
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
     #expect(app.reviewCount == 5)
-    #expect(ReviewTabView.countLine(app.reviewItems).hasSuffix(" and 4 more · 5 payments"))
-    #expect(ReviewTabView.countLine([]) == "All caught up")
+    #expect(ReviewTabView.countLine(app.reviewCards.count) == "5 to sort · about a minute")
+    #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
+    #expect(ReviewTabView.countLine(0) == "All caught up")
   }
 
   @Test func editsMadeAsOneGestureAreAllTakenBack() {

@@ -55,8 +55,6 @@ enum LocalAccountData {
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
     TrustCounts.forget(defaults)
-    RunOffer.Store.forget(defaults)
-    CloudSortDismissal.forget(defaults)
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)

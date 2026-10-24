@@ -59,8 +59,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
   func map(_ reader: LedgerReader, context: LedgerStateMapper.Context) throws -> LedgerState {
     let projection = observer.projection
     let generation = projection.generation
-    var m = try LedgerStateMapper.mapped(reader, context: context)
-    m.state.sortReceipt = memory.value.kitReceipt(undo: nil)
+    let kept = memory.value
+    var c = context
+    c.priors = kept.priors
+    c.undone = kept.undone ?? [:]
+    let m = try LedgerStateMapper.mapped(reader, context: c)
     if projection.generation == generation,
       let t = CivilDate(year: context.today.year, month: context.today.month, day: context.today.day)
     {
@@ -77,7 +80,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
   /// "Undo (toast)": inverse ops that touch only those fields).
   enum Inverse: Sendable, Equatable {
     case category(txn: String, category: String?, needsReview: Bool)
-    case suggestion(txn: String, category: String?, needsReview: Bool, modelTag: String?, used: String)
     case note(txn: String, note: String)
     /// The merchant's name as it was shown before a rename: a user rename is put back,
     /// a name that was the dictionary's or the prettified one clears the rename.
@@ -96,10 +98,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case bill(id: String, draft: OpAuthor.BillDraft)
     case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
     case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
-    case refile(txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource)
+    case refile(
+      txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource, categorizedMs: Int64?)
+    case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
-    case rejection(keys: [String], category: String, rejected: Bool)
-    case receipt(id: Int)
     case trust(category: String, modelTag: String?, corrections: Int)
   }
 
@@ -111,11 +113,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
   /// Authors `edit`. `before` is the screens' state the gesture was made on (a bill's due
   /// date, the current amount).
   @discardableResult
-  func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int? = nil) async throws -> [Inverse] {
-    try await observer.writes.run { try await authorNow(edit, before: before, today: today, receiptID: receiptID) }
+  func author(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws -> [Inverse] {
+    try await observer.writes.run { try await authorNow(edit, before: before, today: today) }
   }
 
-  private func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate, receiptID: Int?) async throws -> [Inverse] {
+  private func authorNow(_ edit: LedgerEdit, before: LedgerState, today: LocalDate) async throws -> [Inverse] {
     switch edit {
     case .addTransaction(let d):
       let wall = try Self.localWallMs(d.postedAt)
@@ -126,28 +128,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
-      if learnRule, row.merchantGroup != nil, !row.split {
-        let inverses = try await categorizeReaching(
-          row, category: c, project: project, skipped: before.skippedReview, receiptID: receiptID)
+      if learnRule, Self.reaches(row) {
+        let inverses = try await categorizeReaching(row, category: c, project: project)
         return inverses + noteCorrection(row, to: c)
       }
-      var snapshots: [OpAuthor.RuleSnapshot] = []
-      var filed: [(merchantRaw: String, category: String)] = []
-      if learnRule {
-        snapshots = try ruleSnapshots()
-        filed = try categorizedRows(except: id)
-      }
-      let guardRows = filed
       try await build { a throws(AuthorError) in
         a.categorize(txnID: id, parentVersion: row.version, category: c, needsReview: false)
         if let project { a.annotate(txnID: id, set: [("project_id", project)]) }
-        if learnRule {
-          try a.learnRule(merchantRaw: row.merchantRaw, category: c, existing: snapshots, userRows: guardRows)
-        }
       }
-      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + noteCorrection(row, to: c)
-    case .useSuggestions(let uses):
-      try await useSuggestions(uses)
+      return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c)
     case .markTransfer(let id):
       let row = try txn(id)
       try await build { a throws(AuthorError) in
@@ -324,19 +313,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .addCategory, .editCategory, .archiveCategory, .restoreCategory:
       try await authorCategory(edit, today: today)
+    case .addCategoryAndSort(let d, let id, let alwaysUse, let project):
+      return try await addCategoryAndSort(d, txn: id, alwaysUse: alwaysUse, project: project)
     case .skipReview, .setNotifications, .setFaceIDLock,
       .setDisplayName, .dismissBillNotice:
       break
-    case .sortGroup(let ref, let c, let alwaysUse, let project):
-      return try await sortGroup(ref, category: c, alwaysUse: alwaysUse, project: project, skipped: before.skippedReview, receiptID: receiptID)
-    case .notThis(let ref, let c):
-      return try await notThis(ref, category: c)
     case .returnToReview(let ids):
       return try await returnToReview(ids)
     case .stopRule(let id):
       return try await stopRule(id)
-    case .dismissSortReceipt:
-      memory.update { $0.receipt = nil }
     }
     return []
   }
@@ -364,13 +349,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
       assigned = Int64(clamping: Int128(inherited) + Int128(cell?.movesAll ?? 0))
     }
     return .budget(category: c, month: shown, onward: cell?.onwardSet ?? inherited, assigned: max(0, assigned))
-  }
-
-  private func categorizedRows(except id: String) throws -> [(merchantRaw: String, category: String)] {
-    try reader.activity(limit: 1_000_000).compactMap { r in
-      guard r.id != id, !r.needsReview, let c = r.category else { return nil }
-      return (r.merchantRaw, c)
-    }
   }
 
   static func localWallMs(_ t: LocalDateTime) throws -> Int64 {
@@ -407,25 +385,6 @@ nonisolated struct LedgerEditAuthor: Sendable {
     try await build { a throws(AuthorError) in try a.defineProject(id: id, parentVersion: p.version, draft) }
   }
 
-  private func useSuggestions(_ uses: [SuggestionUse]) async throws {
-    var items: [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CoreReplay.CategorySource)] = []
-    var seen: Set<String> = []
-    for u in uses where seen.insert(u.txn).inserted {
-      guard let row = try reader.txn(u.txn), row.needsReview, row.categorySource == "model", row.category == u.category
-      else { continue }
-      items.append((u.txn, row.version, u.category, false, .user))
-      trust.accepted(u.category, modelTag: row.categorySourceRef)
-    }
-    guard !items.isEmpty else { return }
-    let ctx = try await observer.authorContext()
-    let blobs = try observer.stamps.authoring {
-      (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-      let b = try OpAuthor.categorizations(items, context: ctx.raised(to: floor))
-      return (b, b.last?.lastAuthoredMs)
-    }
-    try await enqueueAll(blobs)
-  }
-
   static let undoChunk = Sweep.maxOpsPerBlob / 2
 
   /// Writes an undo back.
@@ -447,8 +406,40 @@ nonisolated struct LedgerEditAuthor: Sendable {
       for inv in inverses {
         if case .trust(let c, let tag, let n) = inv { trust.uncorrected(c, modelTag: tag, by: n) }
       }
-      let receipts = inverses.compactMap { if case .receipt(let id) = $0 { id } else { nil } }
-      if !receipts.isEmpty { memory.update { m in if let r = m.receipt, receipts.contains(r.id) { m.receipt = nil } } }
+      try keepPriors(inverses)
+    }
+  }
+
+  private func keepPriors(_ inverses: [Inverse]) throws {
+    var refiles: [String: SortMemory.Prior] = [:]
+    var priors: [(txn: String, prior: SortMemory.Prior)] = []
+    for inv in inverses {
+      switch inv {
+      case .refile(let t, let w, let c, let review, let source, let ms):
+        refiles[t] = SortMemory.Prior(category: c, needsReview: review, source: source, written: w, categorizedMs: ms)
+      case .prior(let t, let p): priors.append((t, p))
+      default: continue
+      }
+    }
+    var back: [(txn: String, prior: SortMemory.Prior, written: Int64)] = []
+    for (t, p) in priors {
+      guard let refile = refiles[t], let row = try reader.txn(t), LedgerStateMapper.restored(row, to: refile) else { continue }
+      back.append((t, p, row.version))
+    }
+    var undone: [String: SortMemory.Prior] = [:]
+    for (t, p) in refiles where p.source.kind == .user {
+      guard let row = try reader.txn(t), LedgerStateMapper.restored(row, to: p) else { continue }
+      undone[t] = p
+    }
+    var gone: Set<String> = []
+    for (t, p) in memory.value.undone ?? [:] where undone[t] == nil {
+      if let row = try reader.txn(t), LedgerStateMapper.restored(row, to: p) { continue }
+      gone.insert(t)
+    }
+    guard !back.isEmpty || !undone.isEmpty || !gone.isEmpty else { return }
+    memory.update { m in
+      for b in back { m.refiled(b.txn, from: b.prior, written: b.written) }
+      m.undid(undone, dropping: gone)
     }
   }
 
@@ -461,9 +452,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
-      case .suggestion(let t, _, _, _, _), .note(let t, _), .project(let t, _), .archived(let t, _): rows[t] = try reader.txn(t)
+      case .note(let t, _), .project(let t, _), .archived(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
-      case .refile(let t, _, _, _, _): rows[t] = try reader.txn(t)
+      case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
       default: break
       }
     }
@@ -483,24 +474,17 @@ nonisolated struct LedgerEditAuthor: Sendable {
     return try observer.stamps.build(ctx) { a throws(AuthorError) in
       for inv in inverses {
         switch inv {
-        case .refile(let t, let written, let c, let review, let source):
+        case .refile(let t, let written, let c, let review, let source, _):
           guard let row = rows[t], row.version == written else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review, source: source)
         case .rule(let id, let restore):
           guard let version = ruleVersions[id] else { continue }
           try a.rule(id: id, parentVersion: version, restore)
-        case .rejection(let keys, let c, let rejected):
-          a.reject(keys: keys, category: c, rejected: rejected)
-        case .receipt, .trust:
+        case .trust, .prior:
           continue
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
-        case .suggestion(let t, let c, let review, let tag, let used):
-          guard let row = rows[t], row.category == used, row.categorySource == "user", !row.needsReview else { continue }
-          a.categorize(
-            txnID: t, parentVersion: row.version, category: c, needsReview: review,
-            source: CoreReplay.CategorySource(kind: .model, model: tag))
         case .note(let t, let n):
           if let row = rows[t], (row.note ?? "") == n { continue }
           a.annotate(txnID: t, set: [("note", n.isEmpty ? nil : n)])

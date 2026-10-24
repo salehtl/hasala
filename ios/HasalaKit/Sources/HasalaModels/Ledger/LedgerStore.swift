@@ -15,7 +15,6 @@ public enum LedgerEdit: Sendable, Hashable {
   case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
-  case useSuggestions([SuggestionUse])
   /// `txn_categorized{transfer}`.
   case markTransfer(TxnID)
   /// `txn_categorized{refunds}` + `txn_annotated{refund_of}`.
@@ -33,11 +32,8 @@ public enum LedgerEdit: Sendable, Hashable {
   case resolveSamePurchase(TxnID, same: Bool)
   /// Review "Skip for now": device-local until the next local midnight (no op).
   case skipReview(TxnID)
-  case sortGroup(MerchantGroupRef, CategoryID, alwaysUse: Bool, project: ProjectID?)
-  case notThis(MerchantGroupRef, CategoryID)
   case returnToReview([TxnID])
   case stopRule(RuleID)
-  case dismissSortReceipt
 
   case saveProject(ProjectID, ProjectDraft)
   case setProjectCountInPlan(ProjectID, Bool)
@@ -79,6 +75,7 @@ public enum LedgerEdit: Sendable, Hashable {
   case setRuleEnabled(RuleID, Bool)
 
   case addCategory(CategoryDraft)
+  case addCategoryAndSort(CategoryDraft, TxnID, alwaysUse: Bool, project: ProjectID?)
   case editCategory(CategoryID, CategoryDraft)
   case archiveCategory(CategoryID, moveTo: CategoryID?)
   case restoreCategory(CategoryID)
@@ -91,16 +88,6 @@ public enum LedgerEdit: Sendable, Hashable {
   case setFaceIDLock(Bool)
 
   case setDisplayName(String)
-}
-
-public struct SuggestionUse: Sendable, Hashable {
-  public var txn: TxnID
-  public var category: CategoryID
-
-  public init(txn: TxnID, category: CategoryID) {
-    self.txn = txn
-    self.category = category
-  }
 }
 
 public struct ManualEntryDraft: Sendable, Hashable {
@@ -187,10 +174,12 @@ public struct UndoToken: Sendable, Hashable, Identifiable, Codable {
   public var id: Int
   /// The toast's line: "Sorted into Groceries".
   public var title: String
+  public var batch: Bool
 
-  public init(id: Int, title: String) {
+  public init(id: Int, title: String, batch: Bool = false) {
     self.id = id
     self.title = title
+    self.batch = batch
   }
 }
 
@@ -209,17 +198,21 @@ public enum ActionError: Error, Sendable, Hashable {
 }
 
 public struct CategoryDraft: Sendable, Hashable {
+  public var id: CategoryID?
   public var name: String
   public var glyph: Glyph
   public var parent: CategoryID?
 
-  public init(name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+  public init(id: CategoryID? = nil, name: String, glyph: Glyph = .tag, parent: CategoryID? = nil) {
+    self.id = id
     self.name = name
     self.glyph = glyph
     self.parent = parent
   }
 
   public var trimmedName: String { name.trimmedSpaces }
+
+  public static func fallbackID() -> CategoryID { "c_" + UUID().uuidString.lowercased().filter { $0 != "-" }.prefix(30) }
 }
 
 /// The ledger the screens read and write. `state` changes on every projection commit
@@ -235,12 +228,16 @@ public protocol LedgerStore: AnyObject, Observable {
   /// Applies one edit; returns an undo token when the edit can be undone from a toast.
   @discardableResult
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken?
+  func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String?
   /// Reverts the edit behind `token` (03c §3.8 "Undo (toast)": inverse ops).
   func undo(_ token: UndoToken)
   func newProjectID() -> ProjectID
+  func newCategoryID() -> CategoryID
 }
 
 public extension LedgerStore {
   var month: YearMonth { now.date.yearMonth }
+  func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String? { CategoriesEngine.refusal(edit, in: state) }
   func newProjectID() -> ProjectID { "p-" + UUID().uuidString.lowercased() }
+  func newCategoryID() -> CategoryID { CategoryDraft.fallbackID() }
 }

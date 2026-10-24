@@ -111,8 +111,11 @@ struct CategoriesList: View {
 final class CategoryEditorModel {
   private let app: AppModel
   let id: CategoryID?
-  var name: String
+  var name: String {
+    didSet { if isNew, !glyphPicked { glyph = CategoryIconGuess.glyph(for: name) } }
+  }
   var glyph: Glyph
+  private(set) var glyphPicked = false
   var parent: CategoryID?
   var refusal: String?
   var confirmArchive = false
@@ -167,6 +170,11 @@ final class CategoryEditorModel {
   var impactMessage: String { impact?.lines(hidden: hidden).joined(separator: "\n") ?? "" }
 
   var draft: CategoryDraft { CategoryDraft(name: name, glyph: glyph, parent: isBuiltin ? nil : parent) }
+
+  func pick(_ g: Glyph) {
+    glyph = g
+    glyphPicked = true
+  }
 
   func save() {
     if isNew, parent == nil {
@@ -240,8 +248,6 @@ struct CategoryEditorPage: View {
   @Bindable var app: AppModel
   @State private var model: CategoryEditorModel
   @FocusState private var nameFocused: Bool
-  @ScaledMetric(relativeTo: .body) private var iconCell: CGFloat = 52
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   init(app: AppModel, category: CategoryID?) {
     self.app = app
@@ -284,35 +290,11 @@ struct CategoryEditorPage: View {
 
   private var form: some View {
     VStack(alignment: .leading, spacing: 20) {
-      field("Name") {
-        TextField("Coffee", text: $model.name)
-          .hType(.body)
-          .foregroundStyle(HColor.fieldText)
-          .textInputAutocapitalization(.words)
-          .focused($nameFocused)
-          .padding(.horizontal, 16)
-          .frame(minHeight: 52)
-          .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-          .accessibilityLabel("Name")
-          .accessibilityIdentifier("categoryEditor.name")
-      }
-      if !model.isBuiltin { parentField }
-      field("Icon") {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: iconCell), spacing: 8)], spacing: 8) {
-          ForEach(CategoryLimits.glyphs, id: \.self) { g in
-            Button { model.glyph = g } label: {
-              CategoryDisc(hue: model.hue, icon: g.icon, size: typeSize.isAccessibilitySize ? .s56 : .s40)
-                .padding(3)
-                .overlay { Circle().strokeBorder(model.glyph == g ? model.hue.ink : .clear, lineWidth: 2) }
-                .frame(maxWidth: .infinity, minHeight: max(44, iconCell))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(CategoryLimits.glyphName(g))
-            .accessibilityAddTraits(model.glyph == g ? [.isSelected] : [])
-            .accessibilityIdentifier("categoryEditor.icon.\(g.rawValue)")
-          }
-        }
+      CategoryNameIconForm(
+        name: $model.name, glyph: Binding(get: { model.glyph }, set: { model.pick($0) }), hue: model.hue,
+        nameFocus: $nameFocused
+      ) {
+        if !model.isBuiltin { parentField }
       }
       if model.canHide {
         Toggle(isOn: Binding(get: { model.isHidden }, set: { model.setHidden($0) })) {
@@ -348,7 +330,7 @@ struct CategoryEditorPage: View {
   }
 
   private var parentField: some View {
-    field("Counts as") {
+    CategoryFormField("Counts as") {
       VStack(alignment: .leading, spacing: 6) {
         Menu {
           if model.parentOptional {
@@ -380,17 +362,6 @@ struct CategoryEditorPage: View {
             .accessibilityIdentifier("categoryEditor.parentNote")
         }
       }
-    }
-  }
-
-  private func field(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text(title).hType(.overline).foregroundStyle(HColor.textGroupedHeader)
-        .lineLimit(nil)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.leading, 4)
-        .accessibilityAddTraits(.isHeader)
-      content()
     }
   }
 }

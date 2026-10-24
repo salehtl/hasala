@@ -7,31 +7,64 @@ import UIKit
 
 nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
   enum Phase: String, Codable, Sendable { case running, paused, done }
-  enum Reason: String, Codable, Sendable { case off, refused, rateLimited, busy, runCap, dayCap, stopped, failed }
+  enum Reason: String, Codable, Sendable { case off, refused, rateLimited, busy, dayCap, failed }
 
   struct Run: Codable, Equatable, Sendable {
-    var id: String
-    var startedMs: Int64
-    var requests = 0
-    var asked = 0
-    var totalNames = 0
-    var filed = 0
-    var suggested = 0
-    var phase: Phase = .running
+    var phase: Phase
     var reason: Reason?
     var untilMs: Int64?
-    var endedMs: Int64?
-    var manifest: [String: Int64] = [:]
+
+    private enum CodingKeys: String, CodingKey {
+      case phase, reason, untilMs, id, startedMs, requests, asked, totalNames, filed, suggested, manifest
+    }
+
+    init(phase: Phase = .running, reason: Reason? = nil, untilMs: Int64? = nil) {
+      self.phase = phase
+      self.reason = reason
+      self.untilMs = untilMs
+    }
+
+    init(from decoder: any Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      phase = try c.decodeIfPresent(Phase.self, forKey: .phase) ?? .done
+      untilMs = try c.decodeIfPresent(Int64.self, forKey: .untilMs)
+      let raw = try c.decodeIfPresent(String.self, forKey: .reason)
+      reason = raw.flatMap(Reason.init(rawValue:))
+      if raw != nil, reason == nil {
+        phase = .done
+        untilMs = nil
+      }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+      var c = encoder.container(keyedBy: CodingKeys.self)
+      try c.encode(phase, forKey: .phase)
+      try c.encodeIfPresent(reason, forKey: .reason)
+      try c.encodeIfPresent(untilMs, forKey: .untilMs)
+      try c.encode("", forKey: .id)
+      for k in [CodingKeys.startedMs, .requests, .asked, .totalNames, .filed, .suggested] { try c.encode(0, forKey: k) }
+      try c.encode([String: Int64](), forKey: .manifest)
+    }
+
+    var retriesOnlyAtOpen: Bool {
+      guard phase == .done else { return false }
+      switch reason {
+      case .failed?, .refused?, .off?: return true
+      default: return false
+      }
+    }
   }
 
   var run: Run?
   var day: [Int64] = []
   var filedHere: [String: Int64] = [:]
+  var lastPassMs: Int64?
 
-  init(run: Run? = nil, day: [Int64] = [], filedHere: [String: Int64] = [:]) {
+  init(run: Run? = nil, day: [Int64] = [], filedHere: [String: Int64] = [:], lastPassMs: Int64? = nil) {
     self.run = run
     self.day = day
     self.filedHere = filedHere
+    self.lastPassMs = lastPassMs
   }
 
   init(from decoder: any Decoder) throws {
@@ -39,6 +72,7 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     run = try c.decodeIfPresent(Run.self, forKey: .run)
     day = try c.decodeIfPresent([Int64].self, forKey: .day) ?? []
     filedHere = try c.decodeIfPresent([String: Int64].self, forKey: .filedHere) ?? [:]
+    lastPassMs = try c.decodeIfPresent(Int64.self, forKey: .lastPassMs)
   }
 
   var isActive: Bool {
@@ -50,14 +84,9 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     }
   }
 
-  var canUndo: Bool {
-    guard let run else { return false }
-    return run.phase != .running && !run.manifest.isEmpty
-  }
-
   var capped: Bool {
     guard let run, run.phase == .paused else { return false }
-    return run.reason == .dayCap || run.reason == .runCap
+    return run.reason == .dayCap
   }
 
   mutating func spend(_ calls: Int, nowMs: Int64) {
@@ -70,7 +99,6 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     case .refused: .refused
     case .rateLimited: .rateLimited
     case .busy: .busy
-    case .runCap: .runCap
     case .dayCap: .dayCap
     }
   }
@@ -169,11 +197,13 @@ actor BacklogSorter {
   }
 
   typealias PassRunner = @Sendable (_ memo: BacklogSort.Memo, _ dayLeft: Int) async -> PassResult?
+  typealias Waiting = @Sendable (_ memo: BacklogSort.Memo) async -> Bool
 
   static let idleWait: Duration = .seconds(30)
   static let maxFailures = 3
 
   private let pass: PassRunner
+  private let waiting: Waiting
   private let store: Store
   private let nowMs: @Sendable () -> Int64
   private let appActive: @Sendable () async -> Bool
@@ -181,10 +211,15 @@ actor BacklogSorter {
   private let enabled: @Sendable () -> Bool
   private let network: any NetworkWatching
   private let sleep: @Sendable (Duration) async -> Void
-  private let newID: @Sendable () -> String
   nonisolated let activity: BacklogActivity
   private let wake = WakeSignal()
   private var record: BacklogRunRecord
+  private var memo = BacklogSort.Memo()
+  private var retryArmed = false
+  private var checking = false
+  private var checkAgain = false
+  private var closed = false
+  private var mayRun: Bool
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
@@ -193,14 +228,14 @@ actor BacklogSorter {
   private(set) var passes = 0
 
   init(
-    pass: @escaping PassRunner, store: Store, nowMs: @escaping @Sendable () -> Int64,
+    pass: @escaping PassRunner, waiting: @escaping Waiting = { _ in true }, store: Store, nowMs: @escaping @Sendable () -> Int64,
     appActive: @escaping @Sendable () async -> Bool = BacklogSorter.foreground,
     importRunning: @escaping @Sendable () async -> Bool, enabled: @escaping @Sendable () -> Bool,
-    network: any NetworkWatching = PathWatcher(), activity: BacklogActivity = BacklogActivity(),
-    sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-    newID: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() }
+    network: any NetworkWatching = PathWatcher(), activity: BacklogActivity = BacklogActivity(), mayRun: Bool = true,
+    sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   ) {
     self.pass = pass
+    self.waiting = waiting
     self.store = store
     self.nowMs = nowMs
     self.appActive = appActive
@@ -208,8 +243,8 @@ actor BacklogSorter {
     self.enabled = enabled
     self.network = network
     self.activity = activity
+    self.mayRun = mayRun
     self.sleep = sleep
-    self.newID = newID
     record = store.load()
     activity.set(record.isActive)
   }
@@ -233,27 +268,43 @@ actor BacklogSorter {
     network.start { [weak self] in Task { await self?.resume() } }
   }
 
-  func start() {
-    guard enabled() else { return }
-    let now = nowMs()
-    if var run = record.run, run.phase != .done, run.reason != .runCap {
-      run.phase = .running
-      run.reason = nil
-      run.untilMs = nil
-      record.run = run
-    } else {
-      record.run = BacklogRunRecord.Run(id: newID(), startedMs: now)
+  func ensure(retry: Bool = false) async {
+    guard !closed else { return }
+    if retry { retryArmed = true }
+    guard mayRun else { return }
+    guard enabled() else { return resume() }
+    if let run = record.run, run.phase != .done { return resume() }
+    if checking {
+      checkAgain = true
+      return
     }
-    save()
-    launch()
+    checking = true
+    defer { checking = false }
+    repeat {
+      checkAgain = false
+      if enabled(), mayStart, await appActive(), mayStart, await waiting(memo) {
+        guard enabled(), mayStart else { return resume() }
+        retryArmed = false
+        record.run = BacklogRunRecord.Run()
+        save()
+        return launch()
+      }
+    } while checkAgain
+  }
+
+  private var mayStart: Bool {
+    guard !closed, mayRun, task == nil else { return false }
+    guard let run = record.run else { return true }
+    return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
 
   func resume() {
-    guard var run = record.run else { return }
+    guard !closed, var run = record.run else { return }
     guard enabled() else {
       if run.phase != .done { end(.off) }
       return
     }
+    guard mayRun else { return }
     switch run.phase {
     case .running:
       if task == nil { launch() } else { wake.fire() }
@@ -278,17 +329,20 @@ actor BacklogSorter {
     }
   }
 
-  func stop() {
-    halt()
-    if let run = record.run, run.phase != .done { end(.stopped) }
+  func allowRuns(_ ok: Bool) {
+    guard ok != mayRun else { return }
+    mayRun = ok
+    if ok { resume() } else { halt() }
   }
 
   func switchedOff() {
+    guard !enabled() else { return }
     halt()
     if let run = record.run, run.phase != .done { end(.off) }
   }
 
   func suspend() {
+    closed = true
     halt()
     if watching {
       network.cancel()
@@ -300,26 +354,11 @@ actor BacklogSorter {
     await task?.value
   }
 
-  func undoLastRun(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
-    stop()
-    guard let run = record.run, !run.manifest.isEmpty else { return 0 }
-    guard let n = await author(run.manifest) else { return 0 }
-    if record.run?.id == run.id { record.run?.manifest = [:] }
-    for (id, v) in run.manifest where record.filedHere[id] == v { record.filedHere[id] = nil }
-    save()
-    return n
-  }
-
   func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
-    stop()
     let sent = record.filedHere
     guard !sent.isEmpty else { return 0 }
     guard let n = await author(sent) else { return 0 }
     for (id, v) in sent where record.filedHere[id] == v { record.filedHere[id] = nil }
-    if var run = record.run {
-      for (id, v) in sent where run.manifest[id] == v { run.manifest[id] = nil }
-      record.run = run
-    }
     save()
     return n
   }
@@ -371,8 +410,8 @@ actor BacklogSorter {
     run.phase = .done
     run.reason = reason
     run.untilMs = nil
-    run.endedMs = nowMs()
     record.run = run
+    retryArmed = false
     hold = nil
     save()
   }
@@ -387,18 +426,20 @@ actor BacklogSorter {
     save()
   }
 
-  private func apply(_ r: PassResult, to runID: String) {
+  private func apply(_ r: PassResult) {
     record.spend(r.pass.calls, nowMs: nowMs())
     record.filedHere.merge(r.filing.filed) { _, new in new }
-    guard var run = record.run, run.id == runID else { return save() }
-    run.requests = r.pass.memo.requests
-    run.asked += r.pass.settled
-    run.filed += r.filing.filed.count
-    run.suggested += r.filing.suggested.count
-    run.manifest.merge(r.filing.filed) { _, new in new }
-    run.totalNames = run.asked + min(r.pass.pending, max(0, BacklogSort.runNames - run.requests))
-    record.run = run
     save()
+  }
+
+  nonisolated static func left(_ ms: Int64, since: Int64, nowMs: Int64) -> Duration {
+    .milliseconds(min(ms, max(0, since + ms - nowMs)))
+  }
+
+  private func spacingLeft() -> Duration? {
+    guard let last = record.lastPassMs else { return nil }
+    let left = Self.left(BacklogSort.passSpacingMs, since: last, nowMs: nowMs())
+    return left > .zero ? left : nil
   }
 
   private func loop(_ id: Int) async {
@@ -409,40 +450,45 @@ actor BacklogSorter {
         publish()
       }
     }
-    var memo = BacklogSort.Memo(requests: record.run?.requests ?? 0)
     var backoffs = 0
     var failures = 0
-    var last: ContinuousClock.Instant?
+    var rested = false
     while !Task.isCancelled {
       guard let run = record.run, run.phase == .running else { return }
       guard enabled() else { return end(.off) }
       guard await appActive() else {
         setHold(.background)
-        await idle(since: last)
+        await wake.wait(Self.idleWait, sleep: sleep)
         continue
       }
       guard network.isOnline else {
         setHold(.offline)
-        await idle(since: last)
+        await wake.wait(Self.idleWait, sleep: sleep)
         continue
       }
-      if Task.isCancelled { return }
+      if Task.isCancelled || generation != id { return }
       setHold(nil)
+      if !rested, let left = spacingLeft() {
+        rested = true
+        await sleep(left)
+        continue
+      }
+      rested = false
       let now = nowMs()
       let dayLeft = BacklogSort.dayLeft(record.day, nowMs: now)
       guard dayLeft > 0 else { return pause(.dayCap, untilMs: BacklogSort.dayReopensMs(record.day, nowMs: now)) }
-      let started = ContinuousClock.now
-      last = started
+      record.lastPassMs = now
+      store.save(record)
       let result = await pass(memo, dayLeft)
       if let result {
         memo = result.pass.memo
-        apply(result, to: run.id)
+        apply(result)
       }
       if Task.isCancelled || generation != id { return }
       guard let r = result, !r.pass.failed else {
         failures += 1
         if failures >= Self.maxFailures { return end(.failed) }
-        await idle(since: started)
+        await wake.wait(Self.idleWait, sleep: sleep)
         continue
       }
       passes += 1
@@ -452,11 +498,12 @@ actor BacklogSorter {
       backoffs = decided.backoffs
       switch decided.next {
       case .pass(let afterMs):
-        let left = Duration.milliseconds(afterMs) - (ContinuousClock.now - started)
         if afterMs > BacklogSort.passSpacingMs { setHold(.waiting(untilMs: nowMs() + afterMs)) }
+        let left = Self.left(afterMs, since: now, nowMs: nowMs())
         if left > .zero { await sleep(left) }
+        rested = true
       case .waitForRows:
-        await idle(since: started)
+        await wake.wait(Self.idleWait, sleep: sleep)
       case .pause(let stop, let untilMs):
         let until = stop == .dayCap ? BacklogSort.dayReopensMs(record.day, nowMs: nowMs()) : untilMs
         return pause(BacklogRunRecord.reason(stop), untilMs: until)
@@ -464,13 +511,6 @@ actor BacklogSorter {
         return end(stop.map(BacklogRunRecord.reason))
       }
     }
-  }
-
-  private func idle(since last: ContinuousClock.Instant?) async {
-    await wake.wait(Self.idleWait, sleep: sleep)
-    guard let last, !Task.isCancelled else { return }
-    let left = Duration.milliseconds(BacklogSort.passSpacingMs) - (ContinuousClock.now - last)
-    if left > .zero { await sleep(left) }
   }
 }
 
@@ -515,11 +555,9 @@ nonisolated final class WakeSignal: Sendable {
 
 @MainActor
 final class LiveCloudSort: CloudSortOffering {
-  private let runtime: @MainActor () -> AccountRuntime?
   private let defaults: UserDefaults
 
-  init(runtime: @escaping @MainActor () -> AccountRuntime?, defaults: UserDefaults = .standard) {
-    self.runtime = runtime
+  init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
   }
 
@@ -534,10 +572,6 @@ final class LiveCloudSort: CloudSortOffering {
   }
 
   func turnOn() {
-    MerchantSuggestionsSetting.answerReviewAsk(defaults)
-    MerchantSuggestionsSetting.turnOnForFirstImport(defaults)
-    guard let sorter = runtime()?.backlog else { return }
-    MerchantSuggestionsSetting.takeRunRequest(defaults)
-    Task { await sorter.start() }
+    MerchantSuggestionsSetting.turnOnBoth(defaults)
   }
 }

@@ -10,24 +10,41 @@ nonisolated enum SortPatch {
     t.splits = []
     t.categorizedAt = at
     t.reachable = false
+    t.ruled = false
+    t.priorFiling = nil
+  }
+
+  static func picked(_ s: inout LedgerState, _ ref: MerchantGroupRef?, _ c: CategoryID?) {
+    guard let ref else { return }
+    for i in s.txns.indices where s.txns[i].groupRef == ref {
+      s.txns[i].lastPick = s.txns[i].inReview ? c : nil
+    }
+  }
+
+  static func carried(_ s: inout LedgerState, _ refs: some Sequence<MerchantGroupRef?>) {
+    for ref in Set(refs.compactMap { $0 }) {
+      picked(&s, ref, s.txns.first { $0.groupRef == ref && $0.lastPick != nil }?.lastPick)
+    }
   }
 
   static func name(_ s: LedgerState, _ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
 
-  static func members(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
-    s.txns.indices.filter { s.txns[$0].reachable && s.txns[$0].groupRef == ref && !s.skippedReview.contains(s.txns[$0].id) }
+  static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
+    s.txns.indices.filter { s.txns[$0].ruled && s.txns[$0].groupRef == ref }
   }
 
   static func reach(
-    _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime, receiptID: Int
+    _ s: inout LedgerState, from old: Txn, ref: MerchantGroupRef, category c: CategoryID, at: LocalDateTime
   ) -> String? {
-    let pool = members(s, ref).filter { s.txns[$0].id != old.id }
-    let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] })
+    let pool = ruled(s, ref).filter { s.txns[$0].id != old.id }
+    let patterns = GroupRule.patterns(filed: old, members: pool.map { s.txns[$0] }, filing: c)
     guard !patterns.isEmpty else { return nil }
-    let others = pool.filter { i in GroupRule.pattern(s.txns[i].spelling).map(patterns.contains) == true }
+    let open = pool.filter { !s.txns[$0].settled(in: c) }
+    let others = open.filter { GroupRule.reaches(s.txns[$0], patterns) }
     guard !others.isEmpty else { return nil }
-    let filed = [old] + others.map { s.txns[$0] }
+    let named = [old] + others.map { s.txns[$0] }
     for i in others {
+      s.txns[i].priorFiling = s.txns[i].filing
       s.txns[i].categoryID = c
       s.txns[i].categorySource = .rule(pattern: s.txns[i].spelling.lowercased())
       s.txns[i].ruleID = nil
@@ -37,62 +54,39 @@ nonisolated enum SortPatch {
       s.txns[i].categorizedAt = at
       s.txns[i].reachable = false
     }
-    let merchant = ReviewEngine.displayName(filed)
-    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: filed.map(\.id))
-    return SortResultRow.line(count: filed.count, merchant: merchant, category: name(s, c))
-  }
-
-  static func sortGroup(
-    _ s: inout LedgerState, _ ref: MerchantGroupRef, _ c: CategoryID, project: ProjectID?, at: LocalDateTime, receiptID: Int
-  ) throws(ActionError) -> String {
-    let idx = members(s, ref)
-    guard !idx.isEmpty else { throw .notFound }
-    let merchant = ReviewEngine.displayName(idx.map { s.txns[$0] })
-    for i in idx {
-      file(&s.txns[i], c, at: at)
-      if let project { s.txns[i].projectID = project }
-    }
-    s.sortReceipt = SortReceipt(id: receiptID, group: ref, merchant: merchant, categoryID: c, txnIDs: idx.map { s.txns[$0].id })
-    return SortResultRow.line(count: idx.count, merchant: merchant, category: name(s, c))
-  }
-
-  static func notThis(_ s: inout LedgerState, _ ref: MerchantGroupRef, _ c: CategoryID) throws(ActionError) -> String {
-    let idx = s.txns.indices.filter { s.txns[$0].inGroup(ref.key) }
-    guard !idx.isEmpty else { throw .notFound }
-    let shown = idx.filter { s.txns[$0].direction == ref.direction }
-    let merchant = ReviewEngine.displayName((shown.isEmpty ? idx : shown).map { s.txns[$0] })
-    for i in idx {
-      s.txns[i].rejectedCategories.insert(c)
-      let t = s.txns[i]
-      guard t.isModelSourced, t.categoryID == c || (t.categoryID == nil && t.suggestion == c) else { continue }
-      s.txns[i].categoryID = nil
-      s.txns[i].categorySource = nil
-      s.txns[i].suggestion = nil
-      s.txns[i].ruleID = nil
-      s.txns[i].needsReview = true
-      s.txns[i].isTransfer = false
-    }
-    return "Hasala won't suggest \(name(s, c)) for \(merchant) again"
+    let filed = (old.settled(in: c) ? [] : [old.id]) + others.map { s.txns[$0].id }
+    let merchant = ReviewEngine.displayName(named)
+    return ReviewEngine.reachTitle(count: filed.count, merchant: merchant, category: name(s, c), all: others.count == open.count)
   }
 
   static func returnToReview(_ s: inout LedgerState, _ ids: [TxnID], at: LocalDateTime) throws(ActionError) -> String {
     var seen: Set<TxnID> = []
     var returned = 0
+    var settled = 0
+    var refs: [MerchantGroupRef?] = []
     for id in ids where seen.insert(id).inserted {
       guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].sortedForYou else { continue }
       let byRule = s.txns[i].filedByRule
-      s.txns[i].needsReview = true
-      s.txns[i].categorizedAt = at
-      if byRule {
-        s.txns[i].categoryID = nil
-        s.txns[i].categorySource = nil
-        s.txns[i].ruleID = nil
-        s.txns[i].isTransfer = false
-      }
       returned += 1
+      refs.append(s.txns[i].groupRef)
+      if byRule, let prior = s.txns[i].priorFiling {
+        s.txns[i].restore(prior)
+        if !prior.needsReview { settled += 1 }
+      } else {
+        s.txns[i].needsReview = true
+        s.txns[i].categorizedAt = at
+        if byRule {
+          s.txns[i].categoryID = nil
+          s.txns[i].categorySource = nil
+          s.txns[i].ruleID = nil
+          s.txns[i].isTransfer = false
+        }
+      }
+      s.txns[i].reachable = s.txns[i].waits
     }
+    carried(&s, refs)
     guard returned > 0 else { throw .notFound }
-    return returned == 1 ? "1 payment back in Review" : "\(returned) payments back in Review"
+    return SortedForYouItem.undoneLine(count: returned, settled: settled)
   }
 
   static func stopRule(_ s: inout LedgerState, _ id: RuleID) throws(ActionError) -> String {

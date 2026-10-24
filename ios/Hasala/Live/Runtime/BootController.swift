@@ -96,7 +96,7 @@ final class BootController {
       account: account, mailbox: LiveMailboxConnecting(
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
-      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(runtime: { holder.boot?.runtime }),
+      hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(),
       unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
@@ -230,7 +230,7 @@ final class BootController {
     guard let rt = runtime else { return }
     if syncHalt != nil { return retrySync() }
     Task { await rt.coordinator.run(.foreground) }
-    Task { await rt.backlog.resume() }
+    Task { await rt.backlog.ensure() }
   }
 
   private func openRuntimeIfNeeded() {

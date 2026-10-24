@@ -73,7 +73,7 @@ struct MayaBacklogScenarioTests {
     let waiting = Set(s.txns.filter(\.inReview).map(\.id))
     #expect(waiting.subtracting(reachable) == ["bl-ts-unverified", "bl-mirdif-unverified", "steam"])
     #expect(reachable.isSubset(of: waiting))
-    #expect(base.txns.allSatisfy { $0.merchantGroup == nil && !$0.reachable })
+    #expect(base.txns.allSatisfy { $0.merchantGroup == "n:" + $0.merchant.lowercased() && !$0.reachable })
   }
 
   static func waiting(_ id: TxnID, in s: LedgerState, _ change: (inout Txn) -> Void = { _ in }) -> Bool? {

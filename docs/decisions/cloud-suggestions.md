@@ -16,12 +16,20 @@ the policy describes it from the day it ships, with no 30-day wait; testers are 
 TestFlight's What to Test. A security review of the Worker and the client runs before
 the Worker is deployed (see [Privacy policy changes](#privacy-policy-changes)).
 
-The owner decided (2026-10-21): a person can start a sort of the payments waiting in
-Review from Review, from the offer when Merchant suggestions is turned on in Profile, or
-in setup. This reverses the 2026-10-20 rule that the bulk sort is offered only in setup.
-Since the streamlined onboarding (2026-10-21), setup ends after the mailbox connect, and
-its ask is a card in Review, asked once on each iPhone.
-See [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-and-2026-10-21).
+The owner decided (2026-10-21) that a person could start a sort of the payments waiting
+in Review, and then (2026-10-23) that no one has to: with Merchant suggestions on, Hasala
+works through the waiting merchant names by itself while the app is open, within the
+per-device day cap. Since the streamlined onboarding (2026-10-21), setup ends after the
+mailbox connect, and its ask is a card in Review, asked once on each iPhone.
+See [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23).
+
+The owner decided (2026-10-24) that the legal pages suit an experimental beta, and they were
+rewritten (Sorting rebuild 9). The privacy policy no longer promises 30 days' notice:
+"Changes in the beta" says that features and the pages can change at short notice, that a
+change takes effect when it is posted, and that testers are told what changed in the app or
+in the TestFlight notes when it affects how their data is used. A new optional cloud feature
+is still off until the person turns it on. This settles the notice question for the
+background stage (see [Privacy policy changes](#privacy-policy-changes)).
 
 Every example in this file is synthetic. No real mail, merchant, amount or name was used.
 
@@ -104,7 +112,7 @@ of one person's merchants is a profile of where they shop; single requests are
 unlinkable except by network address and timing (below). The phone keeps its own cache of
 answers per subject, so a subject is asked about once per device.
 
-A bulk run ([Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-and-2026-10-21))
+The background stage ([Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23))
 doesn't batch either. Each request still carries one name. A batched endpoint would save
 round trips only, not model cost, and the Worker's fence test forbids it.
 
@@ -129,7 +137,7 @@ round trips only, not model cost, and the Worker's fence test forbids it.
   variable). The gateway counts the dollar cost of all calls, across all locations, and
   refuses each call when the limit is reached, until its window resets. The Worker then
   answers 503 `model_unavailable`, and the phone treats it as busy: the foreground sweep
-  stops its cloud stage, and a bulk run pauses. This fails closed. An empty `AI_GATEWAY` also gives 503, without a model call.
+  stops its cloud stage, and the background run pauses. This fails closed. An empty `AI_GATEWAY` also gives 503, without a model call.
   The cost is an estimate, and a burst can go a little over the limit. A Workers AI
   billing alert stays as a second, late warning. The gateway sees no more than the
   Worker already sends to the model, and it gets no account identity.
@@ -157,11 +165,18 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 - **Network address.** Cloudflare's edge sees the phone's IP address on every request, as
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
-- **Timing.** Merchant suggestions run in the foreground sweep only (the tier already
-  forbids `refresh` and push wakes). Requests from one sweep go out with a small random
-  delay between them, so a sweep is not one burst. They are still close in time, and the
-  policy does not claim otherwise. A bulk run sends many requests from one connection in a
-  few minutes, and requests that close in time can be seen together at the edge, by
+- **Timing.** Merchant suggestions are meant to run only while the app is open: in the
+  foreground sweep and in the background stage, never in a background refresh or a push
+  wake (the tier already forbids `refresh` and push wakes, and the background stage starts
+  nothing while the app is in the background). One gap remains (found 2026-10-24): when iOS
+  starts the process in the background, for a silent push or a background task, the account
+  opens and its launch run runs the foreground sweep (`ModelSuggestionStage.runs(.launch)`).
+  Nothing checks `applicationState`, so up to 40 names can go out then, within the day cap.
+  Until a code change gates `.launch` on the app state, the privacy policy, Security and
+  Support say "mostly while the app is open" and name this case. Requests from one sweep
+  go out with a small random delay between them, so a sweep is not one burst. They are still close in time, and the
+  policy does not claim otherwise. The background stage can send many requests from one
+  connection in a few minutes, and requests that close in time can be seen together at the edge, by
   address and time. The shuffled order blunts what their sequence says about someone's
   spending. The policy says this in "What we can't hide".
 - **The alert's content.** A redacted alert still holds an amount, a merchant and a day.
@@ -220,6 +235,10 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 - Order (decision D1): with Merchant suggestions on, Clef first, then Apple's model for
   Latin subjects that Clef couldn't answer. With it off, a Release build runs no model,
   as before this feature (the beta doesn't use Apple's model on its own). A Debug build runs Apple's model alone, for development.
+  Neither model is asked about a merchant whose payments the person sorted themselves (a
+  pick on a refund or other money in, or a split payment, doesn't count): the person's
+  last pick is the suggestion
+  ([sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)).
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
 
@@ -273,62 +292,104 @@ stricter gate **files** the row instead of only suggesting it.
   label and the per-device switch are the mitigations. Watch for wrong auto-sorts in the
   beta, and raise the gate if testers report them.
 
-### Sorting what's waiting (owner decisions, 2026-10-20 and 2026-10-21)
+### Sorting what's waiting (owner decisions, 2026-10-20, 2026-10-21 and 2026-10-23)
 
 On 2026-10-20 the owner decided that a bulk sort was offered only in setup, "never as a
-bulk button later", to keep the cost bounded. On 2026-10-21 the owner reversed that
-(option B of the backlog-sort exploration). A person can now start a sort from two
-places. (Setup offered it too until the streamlined onboarding of 2026-10-21: setup now
-ends once the mailbox is connected, and its ask moved to Review.)
+bulk button later", to keep the cost bounded. On 2026-10-21 the owner reversed that: a
+person could start a sort from Review, from Profile, or in setup. On 2026-10-23 the owner
+rejected the run card and its offers, and decided the rule that holds now: **with Merchant
+suggestions on, Hasala works through every waiting merchant name by itself while the app
+is open**, a silent background stage, the way recurring payments are found. Each request
+still carries one name, and the per-device day cap holds. There is no run card, no "Sort N
+merchants" offer, no paused or result card, no Check suggestions sheet, and no **Sort now**
+or **Later** in Profile. People who turned Merchant suggestions on in an earlier build get no
+30-day notice for this change: the owner settled that on 2026-10-24 with the beta clause (see
+[Privacy policy changes](#privacy-policy-changes)). The TestFlight notes of the build that
+ships the stage say what changed.
 
-- **Review, with Merchant suggestions off:** a card at the top of Review asks **Sort the
-  rest with Cloudflare AI?** (`Features/Review/CloudSortAsk.swift`). It shows only when
-  items wait to be sorted, the build has the Worker's URL (`BuildSurface`), this iPhone
-  hasn't answered it (`MerchantSuggestionsSetting.reviewAskAnswered`: Turn on, Not now,
-  or Merchant suggestions turned on or off in Profile) and the account isn't the review
-  account. It is asked once on each iPhone. An iPhone that finished setup before the ask
-  moved to Review counts as answered (`MerchantSuggestionsSetting.migrateReviewAsk`, once
-  per install): the setup screen asked it already.
-  - The card says what is sent (the merchant name, with an example), what is not sent,
-    that only very sure answers are filed, and where to turn it off. **What Cloudflare
-    sees** opens the full sheet: the built-in category names, each name once, what
-    Cloudflare sees (the same text as the Profile sheet), what gets filed, and that both
-    switches can be changed in Profile. **Turn on** and **Not now** are two pill buttons
-    of the same size, on the card and on the sheet.
-  - **Turn on** sets both switches (`MerchantSuggestionsSetting.turnOnForFirstImport`)
-    and starts a run. **Not now** leaves both off.
-  - The ask can be answered at any time, not only after the first scan. Turn on starts a
-    run then, over what waits in Review; rows the import adds wake the run while it is
-    active.
-- **Review, with Merchant suggestions on:** the **Sort with Cloudflare AI** card at the
-  top of Review (below). It starts a run with the switches as they are, and never turns
-  them on. The ask and this card never show together. Since the sorting rework
-  (2026-10-23, [sorting-rework.md](sorting-rework.md) D8-D10), Review holds at most one
-  sorting card, and the run offer appears once the first load is done (a mailbox reached
-  `active`, this iPhone's sync caught up, payments wait; a mailbox waiting for cards, or
-  one held by another iPhone, after the second Review open), then again when 20 or more
-  new waiting merchant groups arrived since the last run or a newly connected mailbox
-  finishes its import. After **Not now** the ask never comes back; nothing else offers a
-  run while Merchant suggestions is off.
-- **Profile:** when Merchant suggestions is turned on and payments are waiting, an offer
-  ("Sort the 208 payments waiting in Review?"), with **Sort now** and **Later**.
+**The one-time ask.** With Merchant suggestions off, a card at the top of Review asks
+**Sort the rest with Cloudflare AI?** (`Features/Review/CloudSortAsk.swift`). It shows
+only when items wait to be sorted, the build has the Worker's URL (`BuildSurface`), this
+iPhone hasn't answered it (`MerchantSuggestionsSetting.reviewAskAnswered`: Turn on, Not
+now, or Merchant suggestions turned on or off in Profile) and the account isn't the review
+account. It is asked once on each iPhone. An iPhone that finished setup before the ask
+moved to Review counts as answered (`MerchantSuggestionsSetting.migrateReviewAsk`, once per
+install): the setup screen asked it already.
 
-Every run is started by the person. There is no automatic run. The per-run and per-day
-caps below and the AI Gateway spend limit now keep the cost bounded.
+- The card says what is sent (the merchant name, with an example), what is not sent, that
+  only very sure answers are filed, and where to turn it off. **What Cloudflare sees**
+  opens the full sheet: the built-in category names, each name once, what Cloudflare sees
+  (the same text as the Profile sheet), what gets filed, and that both switches can be
+  changed in Profile. **Turn on** and **Not now** are two pill buttons of the same size, on
+  the card and on the sheet.
+- **Turn on** sets both switches (`MerchantSuggestionsSetting.turnOnBoth`, the owner's
+  default), and the background stage takes over. **Not now** leaves both off, and the ask
+  never comes back. Nothing else asks or offers while Merchant suggestions is off.
+- The ask and the importing card share the slot above the queue; the ask comes first.
 
-**One engine.** Every entry point starts the same run (`BacklogSort`, which replaces
-`FirstImportSort`). Its state is a device-local record in the device's own database, next
-to `fm_cache`: the run id, start time, request count, counts, the undo manifest, the day
-ledger and the cumulative manifest of every run's filed rows. It
-never syncs.
+**When it runs.** `BacklogSorter.ensure()` starts a run when Merchant suggestions is on, no
+run is running or paused, the app is in the foreground, and at least one waiting name may
+be asked (`ModelSuggestionStage.backlogWaiting`: Clef is available, and a name that rules
+and the dictionary don't place is not cached, not on a row that may not leave the phone and
+not settled earlier in this session). It is called:
+
+- when the account opens (`AccountRuntime.open`);
+- when the app comes back to the foreground (`BootController.foreground`);
+- when an import commits rows or ends (`ImportFollower`);
+- after each run of the coordinator commits (its `committed` stage, so a sync that brings
+  new rows starts one);
+- when Merchant suggestions is turned on, in Profile or from the ask
+  (`MerchantSuggestionsSetting.turnedOn`, next to `turnedOff`).
+
+The open and the coordinator's run don't wait for the check: each calls `ensure()` in a
+task of its own. One check runs at a time; calls that arrive while it runs share one more
+check after it.
+
+The stage is held while the account is stopped (`BacklogSorter.allowRuns`). It starts held
+when the account opens. `AccountRuntime` releases it when the launch check (`LaunchProbe`)
+passes, or stops on anything but a freeze, a halt, **Update Hasala** or a stop that closes
+the account (offline, for example), and after each sync that ends without a stop. It holds
+it again when the launch check finds the account frozen or this build too old, and when a
+run of the coordinator stops on a freeze, a halt, **Update Hasala** or a stop that closes
+the account. While it is held, `ensure()` and the resume start nothing (a call to
+`ensure(retry: true)` still arms the open's retry), and a run that is going stops where it
+is and keeps its phase. The release resumes a run that is running or paused under the
+pause's own rules, and the next `ensure()` starts a new one.
+
+For a run that is running or paused, `ensure()` only resumes it under the pause's own
+rules (below); it never restarts a paused run. A run that ended after three failed passes,
+after a refusal, or because Clef was not available is tried again at the next open, or when
+the person turns the switch on again, never in a loop. This holds also for a run that the
+open resumed: when it ends this way, the open's retry is used up. Turning Merchant
+suggestions off stops a run at once (`turnedOff`, `BacklogSorter.switchedOff`, which does
+nothing when the switch reads on again by then). It never runs in a
+background refresh or a push wake: `ensure()` starts nothing while the app is in the
+background, and a run that is already going holds until the next foreground.
+
+**One engine.** `BacklogSort` (HasalaCore) plans and runs each pass; `BacklogSorter` (the
+app) holds the run. Its state is a device-local record in the device's own database, next
+to `fm_cache` (`backlog_run`): the run's phase, its pause reason and until-time, the day
+ledger, the time of the last pass, and the rows a run on this device filed. It never syncs.
+The names a session has settled are kept in memory and forgotten at the next open. Each
+pass first drops an answer kept in memory whose category is no longer on the list Clef is
+offered (for example a category deleted or turned off since). The name is then planned
+again under the current list (the cache, else Clef), so a run never files a row into a
+category that is gone. The record still writes the fields the run card build needs to
+read a run (an empty id, zeros and an empty manifest), so after a downgrade that build
+keeps the day ledger and the rows filed here.
 
 **What it asks.**
 
 - Rules and the dictionary still go first. It reads the same model queue as the
   foreground sweep (`Sweep.plan`), with the same eligibility (a debit with no category,
-  source not user or held) and the same card-template allowlist (`cloudTemplates`). A
+  source not user or held, and no pick of the person's for its merchant group and
+  direction, `SweepRow.picked`) and the same card-template allowlist (`cloudTemplates`). A
   name is not sent when it shares a subject with a row that may not leave the phone.
-- Clef only. It never runs Apple's model, so the D1 order holds: after a run, the
+- Clef only. It never runs Apple's model. While a run is running, or paused for a 429 or
+  a 503, the foreground sweep waits (`backlogActive`). While the run is paused on the day
+  cap, the sweep runs Apple's model only, so it can answer names Clef was not asked about
+  that day. When the day has fewer requests left than the sweep has names, Clef is asked
+  about as many as are left and Apple's model about the rest. Once the run ends, the
   foreground sweep runs Clef and then Apple's model, as before.
 - One request per distinct canonical subject, asked in a random (shuffled) order, not by
   date. Answers are reused for rows that load later with the same subject.
@@ -341,125 +402,92 @@ never syncs.
 | --- | --- |
 | Calls at once | 3 |
 | Names per pass | 12 |
-| Pass spacing | 30 s, kept when new rows wake the run (at most 24 a minute, under `PER_IP` 30 per 60 s) |
-| Names per run | 250, then the run pauses ("Sort the next 147") |
+| Pass spacing | 30 s from the start of the last pass, kept when new rows wake the run and across a relaunch (the record keeps the last pass time); at most 24 a minute, under `PER_IP` 30 per 60 s |
+| Names per run | No cap. A run goes on until nothing waits, a pause, or the day cap |
 | Names per device per day | 400, over a rolling 24 h, shared with the foreground sweep |
-| Tries per name | 3; a 429 or 503 doesn't use up a try |
-| 429 | waits of 1, 3 and 10 minutes, then the run pauses; the person can resume it |
-| 503 (spend limit, or the model gone) | the run pauses for 15 minutes, or until the person taps **Try now** |
+| Tries per name | 3 in a session; a 429 or 503 doesn't use up a try |
+| 429 | waits of 1, 3 and 10 minutes, then the run pauses for 10 minutes and resumes on a foreground after that |
+| 503 (spend limit, or the model gone) | the run pauses for 15 minutes, and resumes on a foreground after that |
 | Offline | the run pauses, and resumes on its own when the phone is back online |
 | In the background | the run pauses, and resumes on the next foreground |
-| 3 failed passes in a row (the database or the outbox failed) | the run ends; the person can start a new one |
-| Card shows when | Merchant suggestions is on, the build has the Worker URL, and at least 5 names may be asked |
+| Day cap reached | the run pauses, and resumes on a foreground once the rolling window has room |
+| 3 failed passes in a row (the database or the outbox failed) | the run ends; it is tried again at the next open |
 
-A 503 or 429 used to end the first-import sort silently. Now it pauses the run, and the
-run can resume. The run is foreground only (no `BGContinuedProcessingTask`), so "never in
-a background refresh or a push wake" still holds. A run survives the app being killed: the
-next launch continues from the saved record. Filed rows are no longer eligible, and cached
-names are not asked again. Turning Merchant suggestions off stops a run at once.
-Turning Sort automatically off lets the run go on, but nothing more is filed without
-review.
+A 503 or 429 pauses the run, and the run resumes by itself. The run is foreground only (no
+`BGContinuedProcessingTask`), so "never in a background refresh or a push wake" still
+holds. A run survives the app being killed: the next launch continues from the saved
+record, and waits out the rest of the 30 s spacing first. Filed rows are no longer
+eligible, and cached names are not asked again. Turning Sort automatically off lets the
+run go on, but nothing more is filed without review.
 
 **One day ledger.** Every Clef request counts toward the 400 a day: the run's, and the
 foreground sweep's (up to 40 per foreground). A request counts when it is sent, also when
 the pass fails afterwards (a cache write, the re-read, the outbox or the re-projection),
-and a pass that enqueued some of its blobs before a failure keeps those rows in its counts
-and its undo manifest. The foreground sweep asks Clef for at most what is left of the day.
-While a run is paused on the per-run or the per-day cap, the foreground sweep doesn't ask
-Clef at all; Apple's on-device model still runs. An upgrade never starts a run: a
-first-import sort that an older build had started is forgotten on the next open.
+and a pass that enqueued some of its blobs before a failure keeps those rows among the rows
+filed here. The foreground sweep asks Clef for at most what is left of the day. While a run
+is paused on the day cap, the foreground sweep doesn't ask Clef at all; Apple's on-device
+model still runs. A record from a build with the run card keeps its day ledger and the rows
+filed here; a run it had paused at the old per-run cap, or that the person stopped, reads as
+ended, and the next `ensure()` starts a new one.
 
 **Authoring.** As before: `txn_categorized {source: model "cf-clef/1"}`. The run re-reads
 the rows before it authors and authors only rows still eligible at the same version. A row
 the person edited meanwhile is left alone. The foreground sweep and the run share one
-gate, and the sweep pauses while a run is active. What files and what only suggests
-doesn't change: with Sort automatically on, an answer at or above 0.8 / 0.4 files the row
-when its mail gates passed; everything else at or above 0.6 / 0.2 is a suggestion.
+gate. What files and what only suggests doesn't change: with Sort automatically on, an
+answer at or above 0.8 / 0.4 files the row when its mail gates passed; everything else at
+or above 0.6 / 0.2 is a suggestion.
 
-**The Review card.**
+**What the screens show.** Review shows no sorting card. The status the app reads
+(`CloudSortStatus`) has only the phase and the number of rows Profile can send back. The
+deck holds no row back while a run is active (one card per payment, 2026-10-23): it keeps
+the cards it opened with, and a card the run files meanwhile is skipped when its turn
+comes. The top card stays until the person moves on, so nothing moves under the finger
+([sorting-rework.md](sorting-rework.md#one-payment-per-card)).
 
-- Ready: the number of merchants Hasala can ask about, and **Sort 147 merchants**.
-- Running: names asked out of the total, payments sorted so far, the time left ("Keep
-  Hasala open.", the names left at 24 a minute, rounded up), and **Stop**.
-- Paused: no connection; Hasala in the background; Cloudflare busy, with the retry time
-  and **Try now**; the per-run cap, with **Sort the next N**; the per-day cap. A paused
-  run also has **Stop**. With names waiting but nothing left of the day's 400, the card
-  shows the per-day line in place of Ready.
-- Done: payments sorted, suggestions to check and payments left for the person, with
-  **Check suggestions** (when there are suggestions) and **Undo** (while the manifest
-  exists). Undo asks first ("Send 104 payments back to Review?"). The Done card has a close
-  button; the device remembers it per run (by the run's end time), so a dismissed run's
-  card doesn't come back. The Done card is the only way into Check suggestions: the
-  separate Check suggestions row in Review was removed in the sorting rework.
-- Review asks the engine for fresh counts when it appears and when the app comes back to
-  the foreground.
+**Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
+Review** while a row that a run on this device filed is still as the run left it, and asks
+first ("Send 104 payments back to Review?"). The device keeps the rows it filed, with the
+version it left each at, next to the run record. Sending back re-reads each row and authors
+`txn_categorized {category: <same>, needs_review: true, source: model "cf-clef/1"}` only
+for rows still at that version (`BacklogSort.sendBack`), so they go back to Review with
+Clef's category as a suggestion. An edit on another device moves the version, and the row
+is skipped. Rows another device's runs filed, and rows the foreground sweep filed with Sort
+automatically on, are not sent back; they stay filed. Sending back doesn't stop the
+background stage, and the rows it sent back are not asked about again, because each still
+has a category.
 
-Profile › Cloud suggestions shows a "Last sort" readout on the device once a run has
-ended: when it ended, names asked, payments sorted, suggestions, and the payments that
-stay on the phone (transfers and account alerts) when there are any. Under the switches,
-**Send Cloudflare's sorting back to Review** shows while a row that a run on this device
-filed is still as the run left it, and asks first. When Merchant suggestions is turned on there, after its consent sheet, and at
-least 5 names wait, Profile offers the run ("Sort the 208 payments waiting in Review?",
-**Sort now** or **Later**).
-
-**The deck while a run is active (running or paused).** Rows still waiting for Clef go to
-the end of the deck. The deck shows one card at a time, so it has no divider: the header
-says "Waiting for Cloudflare AI (64)" under "2 of 6". Rows Clef won't be asked about
-(transfers, account alerts, names already `unknown`) come first, so sorting by hand doesn't
-race the run.
-
-**Check suggestions.** A sheet that lists Clef's suggestions, grouped by suggested
-category, each row checked by default. **Use N suggestions** confirms the checked rows
-with the same op as **Use suggestion** in Review (one `txn_categorized` per row), but only
-rows still in Review with the same suggestion; the toast counts the rows written. One toast
-**Undo** takes them all back. The undo writes in blobs of at most half the sweep size and
-skips rows already back in Review, so when a blob fails, the undo stays available and a
-second tap finishes the rest without writing a row twice. Using suggestions in bulk is the person's decision, so these
-rows are the person's, not Clef's.
-
-**Undoing a run.** Undo authors `txn_categorized {category: <same>, needs_review: true,
-source: model "cf-clef/1"}`, so the rows go back to Review with Clef's category as a
-suggestion. Nothing is lost, and a later run doesn't ask again, because the row still has
-a category.
-
-- **Undo** (on the Done card, while the manifest exists) uses the run's
-  manifest on this device: the txn ids the run filed and the version it left each at. It
-  re-reads each row and authors only rows unchanged since the run (the `parentVersion`
-  check). An edit on another device moves the version, and the undo skips that row.
-- **Send Cloudflare's sorting back to Review** (Profile) covers every row that a run on
-  this device filed: the device keeps a cumulative manifest next to the run record (the
-  union of every run's filed rows and versions), and sends back only rows still at the
-  recorded version. Rows another device's runs filed, and rows the foreground sweep filed
-  with Sort automatically on, are not sent back; they stay filed. Undo of the last run takes its rows out of the cumulative manifest too.
-
-**The run adds no op kind.** The run, Check suggestions and both undos author only
-`txn_categorized`, and there is no Worker or fence change. The sorting rework's **Not this**
-([sorting-rework.md](sorting-rework.md) D6-D7) added one op kind,
-`merchant_category_rejected`, with its own fold map and replay goldens. Rejections are
-applied on the phone after the answer: a rejected answer reads as unknown for that stage,
-so Apple's model is asked next, and a cached Cloudflare answer that was rejected is never
-sent again (the phone keeps that answer in its own record, keyed by the name and the model
-tag only, past the usual 30 days and across changes to the category list, until the
+**The run adds no op kind.** The run and sending back author only `txn_categorized`, and
+there is no Worker or fence change. The sorting rework's **Not this** (#182, removed from
+the app in the sorting rebuild; [sorting-rework.md](sorting-rework.md#old-rejections))
+added one op kind, `merchant_category_rejected`, with its own fold map and replay goldens.
+The app writes no new rejections, and the ones already in the log still apply. Rejections
+are applied on the phone after the answer: a rejected answer reads as unknown for that
+stage, so Apple's model is asked next, and a cached Cloudflare answer that was rejected is
+never sent again (the phone keeps that answer in its own record, keyed by the name and the
+model tag only, past the usual 30 days and across changes to the category list, until the
 rejection is undone). The request, the `allowed` list and the cache key are unchanged.
 
 **What leaves the phone is unchanged:** one canonical merchant string and the built-in
-categories per request, from card-payment alerts only. A bulk run changes how many
-requests are sent and when, not what each one carries (see
+categories per request, from card-payment alerts only. Working through a backlog changes
+how many requests are sent and when, not what each one carries (see
 [One subject per request](#one-subject-per-request)).
 
 ## The switches
 
-- Profile › **Cloud suggestions**, with two switches: **Merchant suggestions**
-  and **Alert reading help**. Both off by default, on every device separately (they're
-  device settings, like Hide amounts, and never sync). Review's ask is the one other
-  place that turns Merchant suggestions and Sort automatically on (see
-  [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-and-2026-10-21)).
+- Profile › **Cloud suggestions**, with two switches: **Merchant suggestions** and, under
+  it, **Sort automatically**, which can be on only while Merchant suggestions is on. Both
+  off by default, on every device separately (they're device settings, like Hide amounts,
+  and never sync). The privacy policy's "two switches" are these. Alert reading help was
+  dropped and has no switch. Review's ask is the one other place that turns Merchant
+  suggestions and Sort automatically on (see
+  [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23)).
 - Turning one on shows one screen first: what is sent, an example of a request, that
   Cloudflare answers and keeps nothing, that the IP address is visible to Cloudflare, and
   that turning it off stops it at once. The switch turns on only from that screen's
   button.
 - Suggestions from Clef show "Suggested by Cloudflare AI" in the review sheet; Apple's say
-  "Suggested on this iPhone". A person can always tell which is which.
+  "Suggested on this iPhone". A person can always tell which is which. The person's own
+  last pick says "Your last pick", and it comes before either model's answer.
 - Release builds show the section only when the Worker's URL is in the build
   (`BuildSurface`), so a build without it shows nothing.
 
@@ -473,7 +501,7 @@ At the beta's scale this costs almost nothing, and the AI Gateway spend limit bo
   $2 a month.
 - Clairic: 1,036 input tokens per alert (median; 791 of them are the field schema) ×
   $0.10 per million = $0.0001 per alert, and only for alerts a person chooses to send.
-- A bulk run: about $0.05 to $0.10 per 1,000 names, so a backlog of about 150 names
+- Working through a backlog: about $0.05 to $0.10 per 1,000 names, so a backlog of about 150 names
   costs about 1 to 1.5 US cents. The per-device cap of 400 names a day is at most about
   4 US cents.
 - The AI Gateway spend limit of $1 a day covers about 10,000 to 20,000 names a day across
@@ -591,7 +619,7 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer. |
+| D1 | Clef for every subject, or only where Apple's model can't answer? | **Decided (changed 2026-10-20):** with the switch on, Clef first for every subject that rules and the dictionary don't place; Apple's model is the fallback (Clef unavailable, rate limited, failed, or `unknown`). With the switch off, no model in Release (unchanged beta behaviour) and Apple's model alone in Debug. Reason: Apple's model gives no probabilities, so a row it answered first could never be sorted automatically, and Clef reads Arabic. Cost: every unplaced merchant name goes to Cloudflare, not only the ones Apple's model can't answer, except merchants the person already sorted themselves (their last pick is the suggestion; [sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)). |
 | D2 | Offer custom category names to Clef? | **Decided:** not in v1. Revisit with a per-category "may be sent" mark. |
 | D3 | Abuse control: per-IP rate limit only, or Privacy Pass tokens issued by hasalad? | **Decided:** rate limit for the beta. Privacy Pass is unlinkable and stronger, but it needs blind RSA (RFC 9474), which CryptoKit doesn't offer, and a third-party crypto library would trip the export-compliance guard (`inspect-ipa.sh` I9, `docs/decisions/export-compliance.md`). |
 | D4 | Allow "Don't ask again" for Alert reading help? | Dropped with Clairic. |
@@ -600,13 +628,42 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 ## Privacy policy changes
 
+**2026-10-24: the legal pages were rewritten for an experimental beta (Sorting rebuild 9).**
+`docs/legal/privacy.md` is now the record, and the text below is the 2026-10-20 plan, kept
+for reference. What the rewrite records for Merchant suggestions:
+
+- "Changes to this policy", with its 30 days' notice for a material change, became "Changes
+  in the beta": features and the policy can change at short notice; a change takes effect
+  when it is posted; when a change affects how data is used, the app or the TestFlight notes
+  say what changed; a change that needs consent is asked for in the app first; and a new
+  optional cloud feature is off until the person turns it on. The background stage needs no
+  30-day notice for people who had Merchant suggestions on before it shipped; the TestFlight
+  notes say what changed (the owner, 2026-10-24).
+- The Cloud suggestions section describes the rebuilt sorting: one card per payment, the
+  person's last pick (not sent to Cloudflare), Always use and its reach, New category (a
+  custom name, never sent), the background stage within the per-device day cap, and the
+  one-time ask. It now also says that the subject is sent in lower case, that only the
+  built-in Need and Want categories that are on are offered, that names come only from
+  payments out of the account and from bank alerts (never from a payment added by hand),
+  that each request carries the app's version (`Hasala-Client`), that the phone keeps
+  each answer for up to 30 days (`fm_cache`), and that an answer set aside after Not this
+  stays on that phone until the account's data leaves it (`fm_kept`, no expiry). Only a
+  sweep that queues the merchant again drops it, so a rejection the person lifts with their
+  own pick keeps it. It says the sweep runs "mostly while the app is open", because of the
+  launch-run gap in [What we can't hide](#what-we-cant-hide).
+- "What stays on your iPhone" gains Search, which can use Apple's on-device model.
+- Terms: provided as is, without warranty; the beta can change, pause or end at any time,
+  and accounts and data may be reset or deleted then, with notice in the app or by email
+  where possible. The 7-day and 30-day notice promises are gone.
+
 Clairic was dropped, so drop every Alert reading help part from the text below (the
 second bullet of the new section, the alert words in the short version, Limited Use and
 the provider row).
 
 Do these when the feature ships to testers. The feature is opt-in and off by default, so
-"Changes to this policy" lets the text take effect on the day it ships; tell testers in
-TestFlight's What to Test. Set `lastUpdated` to the ship date.
+"Changes to this policy" (since 2026-10-24, "Changes in the beta") lets the text take effect
+on the day it ships; tell testers in TestFlight's What to Test. Set `lastUpdated` to the ship
+date.
 
 **Front matter `plainWords`.** Replace the last sentence
 "We don't sell data, show ads or send anything to an AI service." with:

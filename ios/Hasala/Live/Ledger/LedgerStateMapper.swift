@@ -32,6 +32,8 @@ nonisolated enum LedgerStateMapper {
     var unreadSenders: [String: String] = [:]
     var dismissedNotices: Set<String> = []
     var forkOps: [String: Op] = [:]
+    var priors: [String: SortMemory.Prior] = [:]
+    var undone: [String: SortMemory.Prior] = [:]
   }
 
   enum MapError: Error { case date }
@@ -79,17 +81,32 @@ nonisolated enum LedgerStateMapper {
     let reachRows = rows.map(\.reachRow)
     let paired = RuleReach.paired(reachRows, home: home)
     let rejections = try r.rejections()
+    var pickRows = rows.map(\.pickRow)
     let combined = try r.transferCopies()
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for (i, row) in rows.enumerated() {
       var t = try txn(row, r: r, ruleByID: ruleByID, billID: billOfTxn[row.id])
       t.reachable = RuleReach.waiting(reachRows[i], samePurchase: paired)
+      t.ruled = RuleReach.ruled(reachRows[i], samePurchase: paired)
+      if let p = c.priors[row.id], p.written == row.version, row.categorySource == "rule" {
+        t.priorFiling = PriorFiling(
+          categoryID: p.category, categorySource: Self.source(kind: p.source.kind.rawValue, ref: p.source.ref, ruleByID: ruleByID),
+          ruleID: p.source.kind == .rule ? p.source.ruleID : nil, needsReview: p.needsReview,
+          categorizedAt: p.categorizedMs.map(localTime))
+      } else if let p = Self.kept(row, among: [c.priors[row.id], c.undone[row.id]]) {
+        t.categorizedAt = p.categorizedMs.map(localTime)
+        pickRows[i].categorizedMs = p.categorizedMs
+      }
       if let g = row.merchantGroup, let rejected = rejections[g] { t.rejectedCategories = rejected }
       t.combinedCopy = combined[row.id]?.copyID
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)
+    let picks = LastPick.picks(pickRows)
+    for i in txns.indices where txns[i].inReview {
+      txns[i].lastPick = pickRows[i].key.flatMap { picks[$0] }
+    }
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
       Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
@@ -242,14 +259,7 @@ nonisolated enum LedgerStateMapper {
                   homeMinor: .some($0.amountHomeMinor), note: $0.note ?? "")
       }
     }
-    let source: HasalaModels.CategorySource? =
-      switch row.categorySource {
-      case "rule": .rule(pattern: row.categorySourceRef.flatMap { ruleByID[$0]?.patterns.first } ?? "")
-      case "dictionary": .dictionary
-      case "model": .model(tag: row.categorySourceRef)
-      case "user", "held": .user
-      default: nil
-      }
+    let source = Self.source(kind: row.categorySource, ref: row.categorySourceRef, ruleByID: ruleByID)
     let provenance = row.entryMethod == "mailbox"
       ? Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
@@ -271,6 +281,26 @@ nonisolated enum LedgerStateMapper {
       reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
+  }
+
+  static func restored(_ row: TxnRow, to p: SortMemory.Prior) -> Bool {
+    p.restored(
+      version: row.version, category: row.category, needsReview: row.needsReview, kind: row.categorySource,
+      ref: row.categorySourceRef)
+  }
+
+  static func kept(_ row: TxnRow, among priors: [SortMemory.Prior?]) -> SortMemory.Prior? {
+    priors.lazy.compactMap { $0 }.first { restored(row, to: $0) }
+  }
+
+  static func source(kind: String, ref: String?, ruleByID: [String: RuleRow]) -> HasalaModels.CategorySource? {
+    switch kind {
+    case "rule": .rule(pattern: ref.flatMap { ruleByID[$0]?.patterns.first } ?? "")
+    case "dictionary": .dictionary
+    case "model": .model(tag: ref)
+    case "user", "held": .user
+    default: nil
+    }
   }
 
   static func localTime(_ ms: Int64) -> LocalDateTime {

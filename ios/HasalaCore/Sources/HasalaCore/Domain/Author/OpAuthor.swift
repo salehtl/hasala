@@ -382,24 +382,6 @@ public struct OpAuthor: Sendable {
     }
   }
 
-  /// "Always use X for M" (03c §5.4): a learned rule, or an edit of an
-  /// existing one with the same match and pattern, or nothing when it already
-  /// files there. `userRows` feed the overreach guard.
-  public mutating func learnRule(
-    merchantRaw: String, category: String, existing: [RuleSnapshot], userRows: [(merchantRaw: String, category: String)]
-  ) throws(AuthorError) {
-    guard let (match, pattern) = LearnedPattern.propose(merchantRaw: merchantRaw, category: category, userRows: userRows) else { return }
-    if let same = existing.first(where: { !$0.draft.removed && $0.draft.match == match && $0.draft.patterns.contains(pattern) }) {
-      if same.draft.category == category && same.draft.enabled { return }
-      var d = same.draft
-      d.category = category
-      d.enabled = true
-      try rule(id: same.id, parentVersion: same.version, d)
-      return
-    }
-    try rule(RuleDraft(patterns: [pattern], match: match, category: category, priority: 100, origin: "learned"))
-  }
-
   /// Pause/resume or remove (03c §5.5): the rule edit, then, when pausing or
   /// removing, a `held` re-categorization of every row the rule files with
   /// needs_review = 0 (`heldRows`: id, version, category). Chunked at
@@ -445,13 +427,30 @@ public struct OpAuthor: Sendable {
     add(.categoryDefined, payload)
   }
 
-  public mutating func createCategory(name: String, parent: String, icon: String? = nil, in view: TaxonomyView) throws(AuthorError) -> String {
+  public mutating func createCategory(
+    id given: String? = nil, name: String, parent: String, icon: String? = nil, in view: TaxonomyView
+  ) throws(AuthorError) -> String {
     let rules = CategoryRules(view)
     if let r = rules.checkCreate(name: name, parent: parent, icon: icon) { throw .refused(r.message) }
     guard let cls = rules.parentClass(parent) else { throw .refused(CategoryRefusal.parentNotAllowed.message) }
-    let id = try newCategoryID()
+    let id: String
+    if let given {
+      guard Self.isNewCategoryID(given), view.info(given) == nil else { throw .invalidOp("category_defined: id") }
+      id = given
+    } else {
+      id = try newCategoryID()
+    }
     defineCategory(id: id, name: name, kind: cls.kind, bucket: cls.bucket, icon: icon, active: true, parent: parent)
     return id
+  }
+
+  public mutating func createCategoryAndFile(
+    id: String, name: String, parent: String, icon: String? = nil, in view: TaxonomyView, txnID: String, parentVersion: Int64,
+    project: String? = nil
+  ) throws(AuthorError) {
+    _ = try createCategory(id: id, name: name, parent: parent, icon: icon, in: view)
+    categorize(txnID: txnID, parentVersion: parentVersion, category: id, needsReview: false)
+    if let project { annotate(txnID: txnID, set: [("project_id", project)]) }
   }
 
   public mutating func editCategory(id: String, name: String? = nil, icon: String? = nil, parent: String? = nil, in view: TaxonomyView) throws(AuthorError) {
@@ -476,7 +475,13 @@ public struct OpAuthor: Sendable {
   }
 
   /// A new user category id: `c_` + lower-case ULID.
-  public func newCategoryID() throws(AuthorError) -> String { "c_" + ASCII.lowercased(try newEntityID()) }
+  public func newCategoryID() throws(AuthorError) -> String { try Self.newCategoryID(ms: context.nowMs, random: context.random) }
+
+  public static func newCategoryID(ms: Int64, random: any RandomSource) throws(AuthorError) -> String {
+    "c_" + ASCII.lowercased(try Ulid.mint(ms: ms, random: random))
+  }
+
+  public static func isNewCategoryID(_ id: String) -> Bool { id.utf8.starts(with: "c_".utf8) && Grammar.isCategoryID(id) }
 
   // MARK: Plan (03a §3, §9)
 

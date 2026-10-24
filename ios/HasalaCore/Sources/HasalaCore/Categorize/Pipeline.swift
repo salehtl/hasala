@@ -92,11 +92,12 @@ public struct SweepRow: Sendable, Equatable {
   public let merchantGroup: String?
   public let categorizedMs: Int64?
   public let rejected: Set<String>
+  public let picked: String?
 
   public init(
     id: String, merchantRaw: String, direction: Direction?, category: String?, sourceKind: SourceKind, sourceRef: String?,
     needsReview: Bool, candidate: Bool, version: Int64? = nil, template: String? = nil, merchantGroup: String? = nil, categorizedMs: Int64? = nil,
-    rejected: Set<String> = []
+    rejected: Set<String> = [], picked: String? = nil
   ) {
     self.id = id
     self.merchantRaw = merchantRaw
@@ -111,6 +112,7 @@ public struct SweepRow: Sendable, Equatable {
     self.merchantGroup = merchantGroup
     self.categorizedMs = categorizedMs
     self.rejected = rejected
+    self.picked = picked
   }
 
   public func rejects(_ category: String) -> Bool { rejected.contains(category) }
@@ -161,50 +163,5 @@ public enum Sweep {
       actions.append(SweepAction(txnID: r.id, category: category, source: d.source, needsReview: r.needsReview))
     }
     return (actions, queue)
-  }
-}
-
-// MARK: - Learned rules (03c §5.4)
-
-public enum LearnedPattern {
-  /// `learnedPattern(merchant_raw)`: `(contains, first token)` for a token of ≥ 4
-  /// scalars with ≥ 3 letters, else `(starts_with, first two tokens)` of ≥ 3
-  /// scalars, else `(exact, subject)` of ≥ 2, else nil. `userRows` are the
-  /// live rows a person categorized: if the pattern would hit one whose
-  /// category differs from `category`, fall back to exact (the overreach guard).
-  /// A pattern over `maxScalars` (03c §5.1's rule-pattern limit) is nil: the
-  /// "Always use" toggle is hidden rather than authoring a refused op.
-  public static let maxScalars = 128
-
-  public static func propose(merchantRaw: String, category: String, userRows: [(merchantRaw: String, category: String)] = [])
-    -> (match: MatchKind, pattern: String)?
-  {
-    let s = Canon.subject(merchantRaw)
-    let tokens = s.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-    guard let t1 = tokens.first else { return nil }
-    var candidate: (MatchKind, String)?
-    let letters = t1.unicodeScalars.filter { $0.properties.isAlphabetic }.count
-    if t1.unicodeScalars.count >= 4 && letters >= 3 {
-      candidate = (.contains, t1)
-    } else {
-      let t12 = tokens.count > 1 ? t1 + " " + tokens[1] : t1
-      if t12.unicodeScalars.count >= 3 {
-        candidate = (.startsWith, t12)
-      } else if s.unicodeScalars.count >= 2 {
-        candidate = (.exact, s)
-      }
-    }
-    guard let (match, pattern) = candidate else { return nil }
-    let fits = { (p: String) in p.unicodeScalars.count <= maxScalars }
-    if match != .exact, MerchantGroup.isFacilitatorToken(t1) {
-      return s.unicodeScalars.count >= 2 && fits(s) ? (.exact, s) : nil
-    }
-    if match != .exact {
-      let p = PreparedPattern(id: "", pattern: pattern, match: match, category: category, priority: 100)
-      if userRows.contains(where: { $0.category != category && Matcher.hits(p, merchantRaw: $0.merchantRaw) }) {
-        return s.unicodeScalars.count >= 2 && fits(s) ? (.exact, s) : nil
-      }
-    }
-    return fits(pattern) ? (match, pattern) : nil
   }
 }

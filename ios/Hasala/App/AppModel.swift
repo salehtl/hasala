@@ -70,9 +70,7 @@ final class AppModel {
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
-  @ObservationIgnored private var suggestionMemo = Memo<Int, Int>()
   @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
-  @ObservationIgnored private var reviewItemsMemo = Memo<HomeMemoKey, [ReviewItem]>()
   @ObservationIgnored private var sortedForYouMemo = Memo<Int, SortedForYouSnapshot>()
   @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
@@ -188,12 +186,6 @@ final class AppModel {
     }
   }
 
-  var reviewItems: [ReviewItem] {
-    reviewItemsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
-      ReviewEngine.items(store.state, in: reviewWindow)
-    }
-  }
-
   var sortedForYou: SortedForYouSnapshot {
     sortedForYouMemo.value(for: store.revision) { SortedForYouEngine.snapshot(store.state, now: store.now) }
   }
@@ -201,35 +193,6 @@ final class AppModel {
   func fixCategory(_ txn: TxnID) {
     router.open(.transaction(txn))
     router.transaction = [.category]
-  }
-
-  var sortResult: SortResultRow? {
-    guard var row = SortResultEngine.row(store.state, in: reviewWindow) else { return nil }
-    if let undo = row.undo, (store as? UndoAvailability)?.canUndo(undo) == false { row.undo = nil }
-    return row
-  }
-
-  func undoSortResult() {
-    guard let undo = sortResult?.undo else { return }
-    store.undo(undo)
-    dismissToast()
-  }
-
-  func stopSortResultRule() {
-    guard let rule = sortResult?.ruleID else { return }
-    perform(.stopRule(rule))
-  }
-
-  func dismissSortResult() { perform(.dismissSortReceipt) }
-
-  @discardableResult
-  func performQuietly(_ edit: LedgerEdit) -> UndoToken?? {
-    do {
-      return .some(try store.apply(edit))
-    } catch {
-      show(Toast(disc: .note(.info), title: Self.message(for: error)))
-      return nil
-    }
   }
 
   var reviewElsewhere: ReviewElsewhere? {
@@ -265,12 +228,6 @@ final class AppModel {
   var reviewCount: Int {
     reviewMemo.value(for: store.revision) { ReviewEngine.queue(store.state).count }
   }
-
-  var suggestionCount: Int {
-    suggestionMemo.value(for: store.revision) { SuggestionsEngine.count(store.state) }
-  }
-
-  func openCheckSuggestions() { router.open(.checkSuggestions) }
 
   var showingProfile: Bool {
     get { sheet == .profile }
@@ -391,7 +348,8 @@ final class AppModel {
   }
 
   /// One toast at a time: a new one replaces the old (plan decision 4). It stays about 4 s,
-  /// 8 s while VoiceOver runs, longer while touched; that is also the window for its Undo.
+  /// 6 s for a batch's undo line, at least 8 s while VoiceOver runs, longer while touched;
+  /// that is also the window for its Undo.
   /// VoiceOver hears it without losing its place ("Sorted into Groceries. Undo available.").
   /// The motion is `ToastHost`'s.
   // TODO(spec 04 §14.6): pause the window while the app is in the background (pwa `pausableTimeout`).
@@ -403,12 +361,17 @@ final class AppModel {
 
   private func scheduleToastEnd() {
     toastTask?.cancel()
-    let dwell = UIAccessibility.isVoiceOverRunning ? HMotion.toastDwellVoiceOver : HMotion.toastDwell
+    let dwell = Self.dwell(lasting: toast?.undo?.batch == true, voiceOver: UIAccessibility.isVoiceOverRunning)
     toastTask = Task { [weak self] in
       try? await Task.sleep(for: .seconds(dwell))
       guard !Task.isCancelled else { return }
       self?.toast = nil
     }
+  }
+
+  static func dwell(lasting: Bool, voiceOver: Bool) -> Double {
+    let base = lasting ? HMotion.undoLineDwell : HMotion.toastDwell
+    return voiceOver ? max(base, HMotion.toastDwellVoiceOver) : base
   }
 
   /// What VoiceOver says when a toast appears: the message, then the action it offers.

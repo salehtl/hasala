@@ -616,33 +616,45 @@ the approval of the owner for that deployment.
   message id and the parsed fields. Email forwarding and SMTP ingest are not
   used in this version.
 - **Categorization occurs on the device**, in this sequence: user rules, then
-  the UAE merchant dictionary in the app, then Apple Foundation Models (only
+  the UAE merchant dictionary in the app, then the person's last pick for
+  that merchant group and direction (`LastPick`: the newest filed row they
+  sorted themselves into one category, source `user`, not split; a
+  suggestion only, it never files a row, and a debit pick keeps the models
+  from being asked about that group), then Apple Foundation Models (only
   for merchants in Latin script; it cannot read Arabic), then the review
   queue.
 - **Merchant suggestions (2026-10-20) are the one exception.** They are opt-in
   and off by default, and each device has its own switch. With the switch on,
-  when rules and the dictionary give no category, the phone sends one
-  merchant string and the built-in category names to Clef (Workers AI)
-  first. Apple's model is the fallback. The phone calls the
+  when rules and the dictionary give no category and the person has no
+  last pick for that merchant group's debits (a pick on a credit, or a split
+  row, does not count), the phone sends one merchant string and the built-in category names
+  to Clef (Workers AI) first. Apple's model is the fallback. The phone calls the
   `infra/assist/` Worker directly. That Worker has no account identity and
   stores and logs nothing. hasalad never sees these requests. A suggestion
   does not file a row (`needs_review` stays true). There is one exception:
   "Sort automatically", a second opt-in. With it, a Clef answer at or above
   the auto-file threshold (0.8, margin 0.4) files the row with
   `needs_review: false`. Apple's model never files a row
-  (`ModelTier.autoConfirm = false`). A bulk sort of what waits in Review
-  (2026-10-21) runs only when the person starts it, still one name per
-  request. Do not send other data
+  (`ModelTier.autoConfirm = false`). With the switch on, Hasala works
+  through what waits in Review by itself while the app is open
+  (2026-10-23, `BacklogSorter.ensure()`), still one name per request,
+  within the per-device day cap. Do not send other data
   through this path: no amount, date, card, bank, custom category name or
   email. Refer to `docs/decisions/cloud-suggestions.md`.
-- **Sorting rework (2026-10-23)**: Review shows one card per merchant group
-  (`MerchantGroup.key`, from the raw merchant and the dictionary only). A rule comes only
-  from "Always use it" (off by default) and also files the group's waiting rows
-  (`RuleReach`); no rule is made after repeated filings. **Not this** is the op
-  `merchant_category_rejected`, which travels alone in its wire blob; rejections apply
-  after the model's answer, so the Cloudflare request does not change. Trust on a phone
-  may only raise the auto-file bar. Refer to `docs/decisions/sorting-rework.md`. The crowd
-  merchant list is a proposal only (`docs/decisions/crowd-merchant-list.md`).
+- **Sorting rework and rebuild (2026-10-23)**: Review shows one card per payment. The merchant group
+  (`MerchantGroup.key`, from the raw merchant and the dictionary only) stays behind the
+  scenes. A rule comes only
+  from "Always use it" (off by default). It also files every payment of that merchant
+  group and direction whose spelling the rule holds (at most 8 exact patterns), in every
+  month, except the ones the person sorted (`RuleReach.ruled`); no rule is made after
+  repeated filings. The pick sheet always starts from a bucket, and its New category row
+  adds a category and sorts the card in one atomic edit (`.addCategoryAndSort`). The app
+  has no **Not this** and writes no new rejections. The op
+  `merchant_category_rejected` (from #182) stays readable and travels alone in its wire
+  blob; rejections already in the log apply after the model's answer, so the Cloudflare
+  request does not change. Trust on a phone may only raise the auto-file bar. Refer to
+  `docs/decisions/sorting-rework.md`. The crowd merchant list is a proposal only
+  (`docs/decisions/crowd-merchant-list.md`).
 - **Template-free reading (2026-10-23; decided, app work pending)**: templates will read
   first. When no template reads a mail, general rules and the sender's layouts learned
   on the phone will read it, with promo lines removed. Every mail of a sender, template

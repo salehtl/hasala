@@ -80,13 +80,6 @@
       }),
       // Nothing to sort: the Review tab on the caught-up ledger.
       Screen("review.empty", scenario: "mayaCaughtUp", prepare: shell(.review)),
-      Screen("review.suggestions", scenario: "mayaSuggestions", prepare: shell(.review, sheet: .checkSuggestions)),
-      Screen("review.sort.ready", scenario: "maya", prepare: cloudSort(.idle, then: shell(.review))),
-      Screen("review.sort.running", scenario: "maya", prepare: cloudSort(.running, then: shell(.review))),
-      Screen("review.sort.paused", scenario: "maya",
-             prepare: cloudSort(.paused(.busy(untilMs: Int64(Date().timeIntervalSince1970 * 1000) + 15 * 60_000)),
-                                then: shell(.review))),
-      Screen("review.sort.done", scenario: "mayaSuggestions", prepare: cloudSort(.done, then: shell(.review))),
       Screen("review.importing", scenario: "maya", prepare: { graph in
         mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
         shell(.review)(graph)
@@ -94,29 +87,6 @@
       Screen("review.cloudSort.importing", scenario: "maya", prepare: { graph in
         (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
         mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
-        shell(.review)(graph)
-      }),
-      Screen("review.sort.importing", scenario: "maya", prepare: cloudSort(.running) { graph in
-        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
-        shell(.review)(graph)
-      }),
-      Screen("review.sort.done.importing", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
-        mock(graph)?.importing = MailImport(state: .reading, read: 312, total: 900)
-        shell(.review)(graph)
-      }),
-      Screen("review.sort.done.returning", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
-        returning(graph)
-        let suggested = graph.app.store.state.txns.filter(SuggestionsEngine.isModelSuggestion).map(\.id)
-        _ = graph.app.perform(suggested.map { .categorize($0, "shopping", learnRule: false, project: nil) })
-        graph.app.dismissToast()
-        shell(.review)(graph)
-      }),
-      Screen("review.sort.done.returning.suggestions", scenario: "mayaSuggestions", prepare: cloudSort(.done) { graph in
-        returning(graph)
-        shell(.review)(graph)
-      }),
-      Screen("review.sort.ready.awaitingCards", scenario: "maya", prepare: cloudSort(.idle) { graph in
-        mock(graph)?.importing = MailImport(state: .reading, read: 0, total: 0)
         shell(.review)(graph)
       }),
       Screen("review.empty.importing", scenario: "mayaCaughtUp", prepare: { graph in
@@ -141,25 +111,8 @@
         startDeck(graph, at: "lulu") { _ in }
       }),
       Screen("review.backlog", scenario: "mayaBacklog", prepare: shell(.review)),
-      Screen("review.group", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { _ in }
-      }),
-      Screen("review.group.pick", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in
-          if let g = deck.group(tailscale) { deck.pickGroup(g, .want) }
-        }
-      }),
-      Screen("review.sortEach", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in deck.sortingEach = deck.group(tailscale) }
-      }),
-      Screen("review.result", scenario: "mayaBacklog", prepare: { graph in
-        startDeck(graph, at: "group." + tailscale) { deck in
-          if let g = deck.group(tailscale) { deck.sortGroup(g, into: "subscriptions", alwaysUse: true, project: nil) }
-        }
-      }),
-      Screen("review.tab.result", scenario: "mayaBacklog", prepare: { graph in
-        _ = graph.app.perform(.sortGroup(MayaBacklog.tailscale, "subscriptions", alwaysUse: true, project: nil))
-        graph.app.dismissToast()
+      Screen("review.undoLine", scenario: "mayaBacklog", prepare: { graph in
+        _ = graph.app.perform(.categorize("bl-qasr-4", "groceries", learnRule: true, project: nil))
         shell(.review)(graph)
       }),
       // Search · Ready.
@@ -189,16 +142,6 @@
         shell(.home, sheet: .search)(graph)
       }),
     ]
-
-    private static let tailscale = MayaBacklog.tailscale.id
-
-    private static func returning(_ graph: MockGraph) {
-      guard let sort = graph.app.cloudSort as? MockCloudSortController else { return }
-      sort.status.waitingNames = 30
-      sort.status.waitingPayments = 34
-      sort.status.nextRunNames = 30
-      sort.status.offerDue = true
-    }
 
     /// The Review tab, then the deck opened at `card`, then `steps` on the deck's session.
     /// The boards draw no toast over the deck, so the last step's toast goes unless asked to

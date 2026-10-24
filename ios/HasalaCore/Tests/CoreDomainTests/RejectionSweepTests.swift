@@ -292,7 +292,7 @@ struct RejectionSweepTests {
     #expect(s.allSatisfy { !$0.autoFile } && s.count == 2)
   }
 
-  @Test("the backlog counts each waiting merchant group once")
+  @Test("the backlog counts each waiting name and payment, whatever its merchant group")
   func groups() throws {
     var l = T.Ledger()
     _ = try l.ingest([("TAILSCALE.COM", "debit"), ("TAILSCALE INC", "debit"), ("PAYPAL *TAILSCALE", "debit"), ("KITE STUDIO JLT", "debit")])
@@ -303,7 +303,7 @@ struct RejectionSweepTests {
         merchantGroup: RuleReachTests.groups.key(raw: r.merchantRaw))
     }
     let c = try BacklogSort.counts(rows: rows, categorizer: T.categorizer, allowed: T.allowed, modelTag: "cf-clef/1", cache: MemoryCache(), now: now)
-    #expect(c.waitingNames == 4 && c.waitingGroups == 2 && c.waitingPayments == 4)
+    #expect(c.waitingNames == 4 && c.pendingTxnIDs.count == 4)
   }
 
   @Test("the sweep commits under the write serial, after a write already in it")

@@ -108,6 +108,26 @@ struct ModelSuggestionStageTests {
     #expect(cloud.calls.count == 2 && spent.withLock { $0 } == [2])
   }
 
+  @MainActor
+  @Test func theBackgroundStageWaitsOnlyForNamesCloudflareMayStillBeAsked() async throws {
+    let a = try LiveLedgerMapperTests.account()
+    _ = try await Self.waiting(a, suite: "stage.waiting.tests")
+    let anchor = LiveLedgerMapperTests.anchor
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    func stage(_ cloud: (any CategoryModel)?) -> ModelSuggestionStage {
+      ModelSuggestionStage(
+        observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
+        onDevice: Counting("apple-fm/27.1", answer: .unknown), cloud: cloud, onDeviceAlone: false, nowMs: { anchor })
+    }
+    #expect(await stage(cloud).backlogWaiting(BacklogSort.Memo()))
+    #expect(await !stage(nil).backlogWaiting(BacklogSort.Memo()))
+    #expect(await !stage(Fake(modelTag: "cf-clef/1", state: .notEnabled)).backlogWaiting(BacklogSort.Memo()))
+    let r = await stage(cloud).backlogPass(BacklogSort.Memo(), dayLeft: 100)
+    #expect(r?.pass.calls == 3 && cloud.calls.count == 3)
+    #expect(await !stage(cloud).backlogWaiting(BacklogSort.Memo()))
+    #expect(cloud.calls.count == 3)
+  }
+
   @Test func onlyForegroundTriggersRunTheSweep() {
     let runs = WorkCoordinator.Trigger.allCases.filter(ModelSuggestionStage.runs)
     #expect(Set(runs) == [.launch, .foreground, .refresh])

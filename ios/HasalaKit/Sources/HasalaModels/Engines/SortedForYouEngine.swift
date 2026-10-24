@@ -1,45 +1,3 @@
-public struct SortResultRow: Sendable, Hashable, Identifiable {
-  public var id: Int
-  public var merchant: String
-  public var count: Int
-  public var category: CategoryOption?
-  public var otherMonths: Int
-  public var undo: UndoToken?
-  public var ruleID: RuleID?
-
-  public var line: String { Self.line(count: count, merchant: merchant, category: category?.name ?? "Uncategorized") }
-
-  public static func line(count: Int, merchant: String, category: String) -> String {
-    count == 1 ? "Sorted \(merchant) as \(category)" : "Sorted \(count) \(merchant) as \(category)"
-  }
-
-  public var detail: String? {
-    guard otherMonths > 0 else { return nil }
-    return "Including \(otherMonths) from \(otherMonths == 1 ? "another month" : "other months")"
-  }
-
-  public var spoken: String {
-    let said = "Sorted \(count) \(merchant) payment\(count == 1 ? "" : "s") as \(category?.name ?? "Uncategorized")"
-    return [said, detail?.lowercased()].compactMap { $0 }.joined(separator: ", ") + "."
-  }
-
-  public var canStopRule: Bool { ruleID != nil }
-}
-
-public enum SortResultEngine {
-  public static func row(_ s: LedgerState, in window: ReviewWindow = .all) -> SortResultRow? {
-    guard let r = s.sortReceipt else { return nil }
-    let outside = r.txnIDs.reduce(0) { n, id in
-      guard let t = s.txn(id) else { return n }
-      return window.contains(t.postedAt.date) ? n : n + 1
-    }
-    let rule = s.rule(r.ruleID)?.id
-    return SortResultRow(
-      id: r.id, merchant: r.merchant, count: r.count, category: s.category(r.categoryID).map(CategoryOption.init),
-      otherMonths: outside, undo: r.undo, ruleID: rule)
-  }
-}
-
 public struct SortedForYouItem: Sendable, Hashable, Identifiable {
   public enum Source: Sendable, Hashable {
     case rule(RuleID?)
@@ -70,6 +28,11 @@ public struct SortedForYouItem: Sendable, Hashable, Identifiable {
   public var undoAllLabel: String { count == 1 ? "Undo" : "Undo all \(count)" }
 
   public var undoAll: LedgerEdit { .returnToReview(txnIDs) }
+
+  public static func undoneLine(count: Int, settled: Int) -> String {
+    let payments = count == 1 ? "1 payment" : "\(count) payments"
+    return settled == 0 ? "\(payments) back in Review" : "\(payments) put back as \(count == 1 ? "it was" : "they were")"
+  }
 }
 
 public struct SortedForYouSnapshot: Sendable, Hashable {

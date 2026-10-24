@@ -50,9 +50,6 @@ import Testing
     #expect(s.merchantRejections[State.rejectionKey("tailscale inc", "dining")]?.rejected == false)
     let (db, r) = try M.project(s)
     #expect(try r.rejections() == ["n:tailscale": ["shopping"]])
-    #expect(try r.memberKeys(group: "n:tailscale") == ["tailscale inc", "tailscale.com"])
-    #expect(try r.rejectedKeys(group: "n:tailscale", category: "shopping") == ["tailscale inc", "tailscale.com"])
-    #expect(try r.rejectedKeys(group: "n:tailscale", category: "dining").isEmpty)
     let sweep = try r.sweepRows()
     #expect(sweep.first { $0.id == M.id(1) }?.rejected == ["shopping"])
     #expect(sweep.first { $0.id == M.id(3) }?.rejected == [])
@@ -62,6 +59,80 @@ import Testing
     try M.blob(6, [M.txn(4, "PAYPAL *TAILSCALE", posted: "2026-10-04T08:00:00.000Z")], into: &s)
     let (_, later) = try M.project(s)
     #expect(try later.sweepRows().first { $0.id == M.id(4) }?.rejected == ["shopping"])
+  }
+
+  static func picks(_ r: LedgerReader) throws -> [LastPick.Key: String] {
+    LastPick.picks(try (r.activity(limit: 1_000_000) + r.archived(limit: 1_000_000)).map(\.pickRow))
+  }
+
+  static func filed(_ n: Int, op: String, at: String, category: String, source: String, review: Bool = false) -> String {
+    #"{"v":4,"type":"txn_categorized","op_id":"\#(op)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(M.id(n))"},"parent_version":1,"payload":{"category":"\#(category)","needs_review":\#(review),"source":\#(source)}}"#
+  }
+
+  @Test func theReaderFillsThePersonsLastPickPerGroupAndDirection() throws {
+    var s = State()
+    try M.blob(
+      1,
+      [
+        M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"),
+        M.txn(2, "TAILSCALE INC", posted: "2026-07-15T08:00:00.000Z"),
+        M.txn(3, "TAILSCALE.COM", posted: "2026-09-01T08:00:00.000Z"),
+        M.txn(4, "TAILSCALE.COM", posted: "2026-09-02T08:00:00.000Z"),
+        M.txn(5, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z"),
+        M.txn(6, "TAILSCALE INC", posted: "2026-10-02T08:00:00.000Z", direction: "credit"),
+        M.txn(7, "AL NOOR PHARMACY", posted: "2026-10-03T08:00:00.000Z"),
+      ], into: &s)
+    try M.blob(
+      2,
+      [
+        Self.filed(1, op: "p1", at: "2026-10-05T09:00:00.000Z", category: "subscriptions", source: #"{"kind":"user"}"#),
+        Self.filed(2, op: "p2", at: "2026-10-07T09:00:00.000Z", category: "shopping", source: #"{"kind":"user"}"#),
+        Self.filed(3, op: "p3", at: "2026-10-09T09:00:00.000Z", category: "dining", source: #"{"kind":"held"}"#, review: true),
+        Self.filed(
+          4, op: "p4", at: "2026-10-09T10:00:00.000Z", category: "entertainment", source: #"{"kind":"model","model":"cf-clef/1"}"#,
+          review: true),
+        Self.rejection("tailscale.com", "shopping", true, op: "r1"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty, "\(s.anomalies)")
+    let (_, r) = try M.project(s)
+    #expect(try r.txn(M.id(2))?.categorizedMs == M.ms("2026-10-07T09:00:00.000Z"))
+    #expect(try Self.picks(r) == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    let sweep = try r.sweepRows()
+    let waiting = try #require(sweep.first { $0.id == M.id(5) })
+    #expect(waiting.picked == "shopping" && waiting.rejected == ["shopping"])
+    #expect(!ModelSuggestionSweep.eligible(waiting))
+    #expect(sweep.first { $0.id == M.id(6) }?.picked == nil)
+    let other = try #require(sweep.first { $0.id == M.id(7) })
+    #expect(other.picked == nil && ModelSuggestionSweep.eligible(other))
+    #expect(try r.sweepRows(group: "n:tailscale").first { $0.id == M.id(5) }?.picked == "shopping")
+  }
+
+  @Test func aPickInACategoryNoLongerActiveStillKeepsTheMerchantFromTheModels() throws {
+    var s = State()
+    try M.blob(
+      1, [M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"), M.txn(2, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z")],
+      into: &s)
+    try M.blob(2, [Self.filed(1, op: "p1", at: "2026-10-05T09:00:00.000Z", category: "shopping", source: #"{"kind":"user"}"#)], into: &s)
+    let (db, r) = try M.project(s)
+    try db.write { db in try db.execute(sql: "UPDATE category SET active = 0 WHERE id = 'shopping'") }
+    #expect(try Self.picks(r) == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    let waiting = try #require(try r.sweepRows().first { $0.id == M.id(2) })
+    #expect(waiting.picked == "shopping" && !ModelSuggestionSweep.eligible(waiting))
+  }
+
+  @Test func aSplitPaymentFiledIntoOneCategoryStaysSplitAndIsNoPick() throws {
+    var s = State()
+    try M.blob(
+      1, [M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"), M.txn(2, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z")],
+      into: &s)
+    try M.blob(2, [M.split(1, op: "s1", parent: 1, at: "2026-10-04T09:00:00.000Z")], into: &s)
+    try M.blob(3, [M.categorize(1, op: "p1", parent: 2, at: "2026-10-05T09:00:00.000Z", category: "shopping")], into: &s)
+    #expect(s.anomalies.isEmpty, "\(s.anomalies)")
+    let (_, r) = try M.project(s)
+    let filed = try #require(try r.txn(M.id(1)))
+    #expect(filed.split && filed.category == "shopping" && filed.categorySource == "user")
+    #expect(try Self.picks(r).isEmpty)
+    #expect(try r.sweepRows().first { $0.id == M.id(2) }?.picked == nil)
   }
 
   @Test func aRenameAndARejectionFromTwoDevicesBothSurvive() throws {
@@ -113,7 +184,7 @@ import Testing
     #expect(old.txns[M.id(1)]?.category == "subscriptions" && current.txns[M.id(1)]?.category == "subscriptions")
   }
 
-  @Test func reachBackFilesTheGroupsWaitingRowsAndPausingHoldsThem() throws {
+  @Test func reachBackFilesTheGroupsRowsButNotTheUnreadableAndPausingHoldsThem() throws {
     let random = SeededRandom(seed: "reach-projection")
     var s = State()
     let unverified = #","needs_review":true,"gates":{"ar":"fail","sender":"untrusted","template":"dib.card.v1@1","card":"known","forwarded":false}"#
@@ -128,18 +199,23 @@ import Testing
         M.txn(5, "TAILSCALE.COM", posted: "2026-10-03T08:00:00.000Z", extra: dictionary),
         M.txn(6, "AL NOOR PHARMACY", posted: "2026-10-04T08:00:00.000Z"),
         M.txn(7, "TAILSCALE INC", posted: "2026-10-05T08:00:00.000Z", direction: "credit"),
+        #"{"v":4,"type":"txn_ingested","op_id":"t8","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.id(8))"},"parent_version":null,"ingest_id":"\#(String(repeating: "0", count: 63))8","payload":{"posted_at":"2026-10-06T08:00:00.000Z","merchant_raw":"TAILSCALE.COM","unparsed":true,"tier":"none","needs_review":true}}"#,
       ], into: &s)
     #expect(s.anomalies.isEmpty, "\(s.anomalies)")
     let (_, r) = try M.project(s)
     let rows = try r.reachRows()
+    #expect(rows.first { $0.id == M.id(8) }?.unparsed == true)
+    #expect(rows.filter(\.unparsed).map(\.id) == [M.id(8)])
     let members = RuleReach.members(rows: rows, group: "n:tailscale", direction: "debit", home: "AED")
     #expect(Set(members.map(\.id)) == Set([1, 2, 3].map(M.id)))
-    let patterns = RuleReach.patterns(filed: "TAILSCALE.COM", members: members)
+    let eligible = RuleReach.eligible(rows: rows, group: "n:tailscale", direction: "debit", home: "AED")
+    #expect(Set(eligible.map(\.id)) == Set([1, 2, 3, 5].map(M.id)))
+    let patterns = RuleReach.patterns(filed: "TAILSCALE.COM", members: eligible)
     var a = OpAuthor(Self.context(s, random: random))
     let ruleID = try a.rule(OpAuthor.RuleDraft(patterns: patterns, match: .exact, category: "subscriptions", priority: 100, origin: "learned"))
     let input = RuleInput(id: ruleID, patterns: patterns, match: "exact", category: "subscriptions", priority: 100)
     let targets = RuleReach.plan(rows: rows, rule: input, group: "n:tailscale", direction: "debit", home: "AED")
-    #expect(Set(targets.map(\.txnID)) == Set([1, 2, 3].map(M.id)))
+    #expect(Set(targets.map(\.txnID)) == Set([1, 2, 3, 5].map(M.id)))
     for t in targets {
       a.categorize(txnID: t.txnID, parentVersion: t.version, category: "subscriptions", source: CategorySource(kind: .rule, ruleID: ruleID))
     }
@@ -147,20 +223,20 @@ import Testing
     try Self.fold([try a.build()], seq: &seq, into: &s)
     #expect(s.anomalies.isEmpty)
     let (_, filed) = try M.project(s)
-    for n in [1, 2, 3] {
+    for n in [1, 2, 3, 5] {
       let t = try #require(try filed.txn(M.id(n)))
       #expect(t.category == "subscriptions" && t.categorySource == "rule" && t.categorySourceRef == ruleID && !t.needsReview)
       #expect(t.reviewLane == nil && t.categorizedMs != nil)
     }
     #expect(try filed.txn(M.id(4))?.needsReview == true && filed.txn(M.id(4))?.category == nil)
-    #expect(try filed.txn(M.id(5))?.categorySource == "dictionary")
     #expect(try filed.txn(M.id(6))?.category == nil && filed.txn(M.id(7))?.category == nil)
+    #expect(try filed.txn(M.id(8))?.category == nil && filed.txn(M.id(8))?.unparsed == true)
 
     let rule = try #require(try filed.rules().first { $0.id == ruleID })
     let held = try filed.activity(limit: 1_000).filter {
       $0.categorySource == "rule" && $0.categorySourceRef == ruleID && !$0.needsReview && $0.category != nil
     }.map { (id: $0.id, version: $0.version, category: $0.category ?? "") }
-    #expect(held.count == 3)
+    #expect(held.count == 4)
     let snapshot = OpAuthor.RuleSnapshot(
       id: ruleID, version: rule.version,
       draft: OpAuthor.RuleDraft(patterns: rule.patterns, match: .exact, category: rule.category, priority: rule.priority, origin: rule.origin))
@@ -168,7 +244,7 @@ import Testing
     ctx.ownLastMs = 1_791_000_100_000
     try Self.fold(try OpAuthor.setRule(snapshot, enabled: false, heldRows: held, context: ctx), seq: &seq, into: &s)
     let (_, paused) = try M.project(s)
-    for n in [1, 2, 3] {
+    for n in [1, 2, 3, 5] {
       let t = try #require(try paused.txn(M.id(n)))
       #expect(t.categorySource == "held" && t.needsReview && t.reviewLane == "needs_review")
     }

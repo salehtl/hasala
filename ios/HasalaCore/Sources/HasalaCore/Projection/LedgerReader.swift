@@ -352,14 +352,15 @@ public struct LedgerReader: Sendable {
   private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
       let rejected = try Self.rejections(db)
-      return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
-        let t = TxnRow(r)
-        return SweepRow(
+      let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { (row: $0, txn: TxnRow($0)) }
+      let picks = LastPick.picks(fetched.map(\.txn.pickRow))
+      return fetched.map { r, t in
+        SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
           template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
-          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [])
+          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] })
       }
     }
   }
@@ -380,29 +381,6 @@ public struct LedgerReader: Sendable {
         """)
     for r in rows { out[r["g"] as String, default: []].insert(r["category"]) }
     return out
-  }
-
-  public func memberKeys(group: String) throws -> [String] {
-    guard !group.isEmpty else { return [] }
-    return try db.read { db in
-      try String.fetchAll(
-        db, sql: "SELECT DISTINCT merchant_key FROM txn WHERE merchant_group = ? AND merchant_key <> '' ORDER BY merchant_key",
-        arguments: [group])
-    }
-  }
-
-  public func rejectedKeys(group: String, category: String) throws -> [String] {
-    guard !group.isEmpty else { return [] }
-    return try db.read { db in
-      try String.fetchAll(
-        db,
-        sql: """
-          SELECT merchant_key FROM merchant_rejection WHERE category = ? AND rejected = 1
-             AND (merchant_group = ? OR merchant_key IN (SELECT merchant_key FROM txn WHERE merchant_group = ?))
-           ORDER BY merchant_key
-          """,
-        arguments: [category, group, group])
-    }
   }
 
   public struct CategoryMemberRow: Sendable, Equatable {
@@ -608,13 +586,20 @@ extension TxnRow {
       duplicateDisposition: duplicateDisposition, heldCopy: heldCopy)
   }
 
+  public var pickRow: LastPick.Row {
+    LastPick.Row(
+      id: id, group: merchantGroup, direction: direction, category: category,
+      sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, split: split, needsReview: needsReview, categorizedMs: categorizedMs,
+      postedMs: postedMs)
+  }
+
   public var reachRow: RuleReach.Row {
     RuleReach.Row(
       id: id, version: version, merchantRaw: merchantRaw, merchantGroup: merchantGroup, direction: direction, category: category,
       sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, sourceRef: categorySourceRef, needsReview: needsReview,
       lane: reviewLane.flatMap(ReviewLane.init(rawValue:)), unverified: reviewReason != nil, heldCopy: heldCopy, copyOf: copyOf,
       possibleDuplicateOf: possibleDuplicateOf, archived: archived != nil, transfer: category == "transfer" || transferState != nil,
-      split: split, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
+      split: split, unparsed: unparsed, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
   }
 }
 

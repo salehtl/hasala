@@ -2,26 +2,20 @@ import CoreReplay
 import CoreStore
 import CoreWire
 import Foundation
-import HasalaModels
 import Synchronization
 
 nonisolated struct SortMemory: Codable, Sendable, Equatable {
-  struct Receipt: Codable, Sendable, Equatable {
-    var id: Int
-    var group: String?
-    var direction: String?
-    var merchant: String
-    var category: String
-    var txnIDs: [String]
-    var ruleID: String?
-    var atMs: Int64
-  }
-
   struct Prior: Codable, Sendable, Equatable {
     var category: String?
     var needsReview: Bool
     var source: CoreReplay.CategorySource
     var written: Int64
+    var categorizedMs: Int64?
+
+    func restored(version: Int64, category: String?, needsReview: Bool, kind: String, ref: String?) -> Bool {
+      version == written + 1 && self.category == category && self.needsReview == needsReview
+        && source.kind.rawValue == kind && source.ref == ref
+    }
   }
 
   struct Batch: Codable, Sendable, Equatable {
@@ -41,10 +35,10 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
   static let keptMs: Int64 = 30 * 86_400_000
   static let keptOps = 20_000
 
-  var receipt: Receipt?
   var batches: [Batch] = []
   var repaired: Set<String> = []
   var autoOps: [String] = []
+  var undone: [String: Prior]?
 
   mutating func noteAuto(_ ops: [Op]) {
     let ids = ops.filter { $0.type == .txnCategorized }.map(\.opID)
@@ -69,14 +63,18 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
     batches.reversed().lazy.compactMap { $0.prior[txn] }.first
   }
 
-  var ownOps: Set<String> { Set(autoOps) }
-
-  func kitReceipt(undo: UndoToken?) -> SortReceipt? {
-    guard let r = receipt else { return nil }
-    let ref = r.group.map { MerchantGroupRef(key: $0, direction: r.direction == "credit" ? .in : .out) }
-    return SortReceipt(
-      id: r.id, group: ref, merchant: r.merchant, categoryID: r.category, txnIDs: r.txnIDs, ruleID: r.ruleID, undo: undo)
+  mutating func refiled(_ txn: String, from p: Prior, written: Int64) {
+    for i in batches.indices where batches[i].prior[txn] == p { batches[i].prior[txn]?.written = written }
   }
+
+  mutating func undid(_ kept: [String: Prior], dropping gone: Set<String>) {
+    var u = undone ?? [:]
+    for id in gone { u[id] = nil }
+    u.merge(kept) { _, new in new }
+    undone = u.isEmpty ? nil : u
+  }
+
+  var ownOps: Set<String> { Set(autoOps) }
 }
 
 nonisolated final class SortKeeper: Sendable {

@@ -55,6 +55,7 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   /// One of the person's rules sorted it, so the provenance row opens the rules.
   public var sortedByRule: Bool = false
   public var home: HomeAmount? = nil
+  public var canAlwaysUse: Bool = false
   public var combined: Bool = false
 }
 
@@ -103,7 +104,7 @@ public enum TransactionEngine {
     case .dictionary: sortedBy = SortedBy(title: "Sorted by Hasala's merchant list", detail: "\(t.merchant) → \(c?.name ?? "")")
     case .model where rejected: sortedBy = nil
     case .model(let tag):
-      let suggested = c ?? s.category(t.reviewSuggestion)
+      let suggested = c ?? s.category(t.modelSuggestion)
       sortedBy = SortedBy(title: CategorySource.suggestionLabel(modelTag: tag, needsReview: t.needsReview), detail: "\(t.merchant) → \(suggested?.name ?? "")")
     case .user: sortedBy = SortedBy(title: "Sorted by you", detail: c?.name ?? "")
     case .manual: sortedBy = SortedBy(title: "Added by you", detail: c?.name ?? "")
@@ -123,9 +124,9 @@ public enum TransactionEngine {
       pace: pace, account: s.account(t.accountID)?.label, note: t.note, provenance: t.provenance,
       sortedBy: sortedBy, splits: splits, isRefund: t.isRefund, isTransfer: t.isTransfer, archived: t.archived,
       needsReview: t.inReview, reviewReason: t.activeReviewReason, project: s.project(t.projectID)?.name, isSample: t.isSample,
-      suggestion: t.inReview ? s.category(t.reviewSuggestion).map(CategoryOption.init) : nil,
+      suggestion: t.inReview ? ReviewEngine.suggestion(t, s).map(CategoryOption.init) : nil,
       sortedByRule: { if case .rule = t.categorySource { true } else { false } }(),
-      home: t.homeAmount, combined: t.combinedCopy != nil
+      home: t.homeAmount, canAlwaysUse: t.canAlwaysUse, combined: t.combinedCopy != nil
     )
   }
 

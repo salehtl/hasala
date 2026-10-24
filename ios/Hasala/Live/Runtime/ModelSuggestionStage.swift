@@ -107,31 +107,41 @@ struct ModelSuggestionStage: Sendable {
   }
 
   struct BacklogView: Sendable, Equatable {
-    var counts: BacklogSort.Counts
     var cloudSorted: Int
   }
 
-  nonisolated func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
+  nonisolated func backlogWaiting(_ memo: BacklogSort.Memo) async -> Bool {
+    guard let cloud, cloud.availability() == .available else { return false }
     let reader = observer.reader
     do {
       let taxonomy = try reader.taxonomy()
-      let rows = try reader.sweepRows()
+      let allowed = ModelTier.allowed(taxonomy.ordered)
+      guard !allowed.isEmpty else { return false }
       let counts = try BacklogSort.counts(
-        rows: rows, categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
-        modelTag: cloud?.modelTag ?? CloudCategoryModel.defaultTag, cache: cache, now: nowMs())
-      return BacklogView(counts: counts, cloudSorted: BacklogSort.undoItems(manifest: filedHere, current: rows).count)
+        rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: allowed, modelTag: cloud.modelTag, cache: cache,
+        now: nowMs(), memo: memo)
+      return counts.waitingNames > 0
+    } catch {
+      return false
+    }
+  }
+
+  nonisolated func backlogView(filedHere: [String: Int64]) async -> BacklogView? {
+    do {
+      let rows = try observer.reader.sweepRows()
+      return BacklogView(cloudSorted: BacklogSort.sendBackItems(filed: filedHere, current: rows).count)
     } catch {
       return nil
     }
   }
 
-  func undo(manifest: [String: Int64]) async -> Int? {
+  func sendBack(filed: [String: Int64]) async -> Int? {
     await gate.run { () async -> Int? in
       let observer = self.observer
       do {
         return try await observer.writes.run {
-          let r = try await BacklogSort.undo(
-            manifest: manifest, stamps: observer.stamps,
+          let r = try await BacklogSort.sendBack(
+            filed: filed, stamps: observer.stamps,
             reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) })
           _ = try await commit(r.blobs)
           return r.rows

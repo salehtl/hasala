@@ -1,3 +1,4 @@
+import HasalaDesign
 import HasalaModels
 import Observation
 import SwiftUI
@@ -6,13 +7,7 @@ import SwiftUI
 struct ReviewPick: Identifiable, Hashable {
   let card: ReviewCardModel
   let choice: ReviewChoice
-  var group: ReviewGroupCardModel? = nil
-  var id: String { (group.map { "group." + $0.id } ?? card.id) + "." + choice.rawValue }
-}
-
-struct RejectedNote: Hashable {
-  let line: String
-  let undo: UndoToken?
+  var id: String { card.id + "." + choice.rawValue }
 }
 
 /// Review · Deck, Pick a need, All caught up (Paper 26H-0, 3SH-0, 4MY-0). One session runs
@@ -22,31 +17,16 @@ struct RejectedNote: Hashable {
 protocol ReviewDeckModel: AnyObject, Observable {
   /// The cards still to sort, in this session's order, the top card first.
   var cards: [ReviewCardModel] { get }
-  var items: [ReviewItem] { get }
-  var result: SortResultRow? { get }
-  var sortingEach: ReviewGroupCardModel? { get set }
-  var notes: [String: RejectedNote] { get }
-  func pickGroup(_ group: ReviewGroupCardModel, _ choice: ReviewChoice)
-  @discardableResult func sortGroup(_ group: ReviewGroupCardModel, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
-  @discardableResult func useGroup(_ group: ReviewGroupCardModel) -> Bool
-  @discardableResult func notThis(_ item: ReviewItem) -> Bool
-  func undoNotThis(_ itemID: String)
-  func skipItem(_ item: ReviewItem)
-  func groupRows(_ group: ReviewGroupCardModel) -> [ReviewCardModel]
-  func group(_ id: String) -> ReviewGroupCardModel?
-  func undoResult()
-  func stopResultRule()
-  func dismissResult()
   /// 1-based position of the top card in this session, and the session's size.
   var position: Int { get }
   var total: Int { get }
-  var waitingForCloud: Int { get }
   /// What this session sorted, for All caught up.
   var sorted: [SortedLine] { get }
   var hidden: Bool { get }
   var needOnRight: Bool { get }
   /// The pick sheet that is up, if any. Setting nil closes it without sorting.
   var picking: ReviewPick? { get set }
+  var holding: TxnID? { get set }
   /// All caught up celebrates once a session (motion policy: a rare moment may delight).
   var celebrated: Bool { get set }
   var periodTitle: String { get }
@@ -59,7 +39,12 @@ protocol ReviewDeckModel: AnyObject, Observable {
   /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
-  @discardableResult func useSuggestion(_ card: TxnID) -> Bool
+  func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption?
+  func newCategoryRefusal(_ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph) -> String?
+  @discardableResult func createAndSort(
+    _ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> Bool
+  @discardableResult func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
   @discardableResult func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool
@@ -78,14 +63,15 @@ final class ReviewViewModel: ReviewDeckModel {
   private(set) var total: Int
   private var window: ReviewWindow
   var picking: ReviewPick?
-  var sortingEach: ReviewGroupCardModel?
-  private(set) var notes: [String: RejectedNote] = [:]
+  var holding: TxnID?
   var celebrated = false
-  @ObservationIgnored private var memo = Memo<CardsKey, [ReviewItem]>()
+  @ObservationIgnored private var shown: TxnID?
+  @ObservationIgnored private var memo = Memo<CardsKey, [ReviewCardModel]>()
 
   private struct CardsKey: Equatable {
     let revision: Int
     let window: ReviewWindow
+    let held: TxnID?
   }
 
   init(app: AppModel) {
@@ -93,58 +79,40 @@ final class ReviewViewModel: ReviewDeckModel {
     let start = ReviewEntry.take(for: app)
     let window = app.reviewWindow
     self.window = window
-    let items = ReviewEngine.items(app.store.state, in: window)
-    total = items.count
-    order = ReviewEngine.itemOrder(items.map(\.id), startingAt: start, in: items)
+    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    total = queue.count
+    order = ReviewEngine.order(queue, startingAt: start)
     #if HASALA_MOCKS
       ReviewEntry.takeScript(for: app)?(self)
     #endif
   }
 
-  /// The queue as it stands, in the session's order. A card that arrives mid-session goes
-  /// last; a card that Undo puts back takes its old place.
-  var items: [ReviewItem] {
-    let ordered = memo.value(for: CardsKey(revision: app.store.revision, window: window)) {
-      let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
-      return ReviewEngine.items(app.store.state, in: window).enumerated()
-        .sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
-        .map(\.element)
-    }
-    return Self.holdingBack(ordered, waiting: cloudPending)
-  }
-
   var cards: [ReviewCardModel] {
-    items.compactMap { if case .single(let c) = $0 { c } else { nil } }
-  }
-
-  var result: SortResultRow? { app.sortResult }
-
-  var waitingForCloud: Int {
-    let pending = cloudPending
-    guard !pending.isEmpty else { return 0 }
-    return items.lazy.filter { $0.txnIDs.allSatisfy(pending.contains) }.count
-  }
-
-  private var cloudPending: Set<TxnID> {
-    guard let status = app.cloudSort?.status else { return [] }
-    switch status.phase {
-    case .running, .paused: return status.pendingTxnIDs
-    case .off, .idle, .done: return []
+    let held = picking?.card.id ?? holding
+    return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
+      let s = app.store.state
+      let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s)
+      if let top = out.first?.id { shown = top }
+      return out
     }
   }
 
-  nonisolated static func holdingBack(_ cards: [ReviewCardModel], waiting: Set<TxnID>) -> [ReviewCardModel] {
-    guard !waiting.isEmpty else { return cards }
-    return cards.filter { !waiting.contains($0.id) } + cards.filter { waiting.contains($0.id) }
+  nonisolated static func steady(
+    _ order: [TxnID], waiting: [Txn], held: TxnID?, shown: TxnID?, _ s: LedgerState
+  ) -> [ReviewCardModel] {
+    let open = Dictionary(waiting.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var out = order.compactMap { id in (open[id] ?? (id == shown ? s.txn(id) : nil)).map { ReviewEngine.card($0, s) } }
+    guard let held, order.contains(held), let t = s.txn(held) else { return out }
+    out.removeAll { $0.id == held }
+    out.insert(ReviewEngine.card(t, s), at: 0)
+    return out
   }
 
-  nonisolated static func holdingBack(_ items: [ReviewItem], waiting: Set<TxnID>) -> [ReviewItem] {
-    guard !waiting.isEmpty else { return items }
-    let held = { (i: ReviewItem) in i.txnIDs.allSatisfy(waiting.contains) }
-    return items.filter { !held($0) } + items.filter(held)
+  var position: Int {
+    guard let top = cards.first, let i = order.firstIndex(of: top.id) else { return total }
+    return i + 1
   }
 
-  var position: Int { min(total, max(1, total - items.count + 1)) }
   var periodTitle: String { app.period.title }
   var isThisMonth: Bool { app.period == .month(app.store.now.date.yearMonth) }
   var elsewhere: ReviewElsewhere? { app.reviewElsewhere }
@@ -160,11 +128,12 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   private func restart() {
-    let top = items.first?.id
+    let top = cards.first?.id
     window = app.reviewWindow
-    let fresh = ReviewEngine.items(app.store.state, in: window)
-    total = fresh.count
-    order = ReviewEngine.itemOrder(fresh.map(\.id), startingAt: top, in: fresh)
+    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    total = queue.count
+    order = ReviewEngine.order(queue, startingAt: top)
+    shown = nil
     memo = Memo()
   }
 
@@ -188,9 +157,9 @@ final class ReviewViewModel: ReviewDeckModel {
 
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption] {
     let s = app.store.state
-    var options = ReviewEngine.options(for: choice, s, txn: s.txn(card))
-    // The suggestion leads its bucket's list (Paper "Pick a need": "Suggested").
-    if let sug = s.txn(card)?.reviewSuggestion, let i = options.firstIndex(where: { $0.id == sug }) {
+    let t = s.txn(card)
+    var options = ReviewEngine.options(for: choice, s, txn: t)
+    if let sug = t.flatMap({ ReviewEngine.suggestion($0, s) })?.id, let i = options.firstIndex(where: { $0.id == sug }) {
       options.insert(options.remove(at: i), at: 0)
     }
     return options
@@ -202,104 +171,131 @@ final class ReviewViewModel: ReviewDeckModel {
     picking = ReviewPick(card: c, choice: choice)
   }
 
-  func pickGroup(_ group: ReviewGroupCardModel, _ choice: ReviewChoice) {
-    let s = app.store.state
-    guard let first = group.txnIDs.first ?? groupRows(group).first?.id, let t = s.txn(first) else { return }
-    picking = ReviewPick(card: ReviewEngine.card(t, s), choice: choice, group: group)
-  }
-
-  func group(_ id: String) -> ReviewGroupCardModel? {
-    for item in items { if case .group(let g) = item, g.id == id { return g } }
-    return nil
-  }
-
-  func groupRows(_ group: ReviewGroupCardModel) -> [ReviewCardModel] {
-    let s = app.store.state
-    return ReviewEngine.groupRows(group.group, s).filter { !s.skippedReview.contains($0.id) }
-  }
-
-  @discardableResult
-  func sortGroup(_ group: ReviewGroupCardModel, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
-    guard case .some = app.performQuietly(.sortGroup(group.group, category, alwaysUse: alwaysUse, project: project)) else {
-      return false
-    }
-    for (i, id) in group.txnIDs.enumerated() { record(id, learnedRule: alwaysUse && i == 0) }
-    return true
-  }
-
-  @discardableResult
-  func useGroup(_ group: ReviewGroupCardModel) -> Bool {
-    guard let c = group.suggestion?.id else { return false }
-    return sortGroup(group, into: c, alwaysUse: false, project: nil)
-  }
-
-  @discardableResult
-  func notThis(_ item: ReviewItem) -> Bool {
-    let s = app.store.state
-    let suggestion: CategoryID?
-    let ref: MerchantGroupRef?
-    switch item {
-    case .single(let c):
-      suggestion = c.suggestion?.id
-      ref = s.txn(c.id)?.rejectionRef
-    case .group(let g):
-      suggestion = g.suggestion?.id
-      ref = g.group
-    }
-    guard let suggestion, let ref, let name = s.category(suggestion)?.name else { return false }
-    guard case .some(let token) = app.performQuietly(.notThis(ref, suggestion)) else { return false }
-    notes[item.id] = RejectedNote(line: ReviewEngine.notThisLine(merchant: item.merchant, category: name), undo: token)
-    return true
-  }
-
-  func undoNotThis(_ itemID: String) {
-    guard let note = notes.removeValue(forKey: itemID), let undo = note.undo else { return }
-    app.store.undo(undo)
-  }
-
-  func skipItem(_ item: ReviewItem) {
-    for id in item.txnIDs { app.perform(.skipReview(id)) }
-  }
-
-  func undoResult() { app.undoSortResult() }
-
-  func stopResultRule() { app.stopSortResultRule() }
-
-  func dismissResult() { app.dismissSortResult() }
-
   @discardableResult
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
+    guard app.perform(settling(card) + [.categorize(card, category, learnRule: alwaysUse, project: project)]) else {
+      return false
+    }
+    filed(card, learnedRule: alwaysUse)
+    return true
+  }
+
+  func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption? {
+    let s = app.store.state
+    guard CategoriesEngine.activeCustomCount(s) < CategoryLimits.maxActiveCustom else { return nil }
+    return Self.parentOffer(for: choice, card: card, s)
+  }
+
+  private static func parentOffer(for choice: ReviewChoice, card: TxnID, _ s: LedgerState) -> CountsAsOption? {
+    guard let bucket = choice.bucket, s.txn(card)?.direction == .out else { return nil }
+    return CategoriesEngine.countsAsOptions(s, keeping: []).first { $0.bucket == bucket }
+  }
+
+  func newCategoryRefusal(_ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph) -> String? {
+    guard case .failure(let error) = newCategoryEdit(card, choice, name: name, glyph: glyph, alwaysUse: false, project: nil)
+    else { return nil }
+    return AppModel.message(for: error)
+  }
+
+  @discardableResult
+  func createAndSort(
+    _ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> Bool {
+    switch newCategoryEdit(card, choice, name: name, glyph: glyph, alwaysUse: alwaysUse, project: project) {
+    case .failure(let error):
+      app.say(AppModel.message(for: error), icon: .info)
+      return false
+    case .success(let edit):
+      guard app.perform(settling(card) + [edit]) else { return false }
+      filed(card, learnedRule: alwaysUse)
+      return true
+    }
+  }
+
+  private func newCategoryEdit(
+    _ card: TxnID, _ choice: ReviewChoice, name: String, glyph: Glyph, alwaysUse: Bool, project: ProjectID?
+  ) -> Result<LedgerEdit, ActionError> {
+    let s = app.store.state
+    guard s.txn(card) != nil else { return .failure(.notFound) }
+    guard let parent = Self.parentOffer(for: choice, card: card, s)?.parent else {
+      return .failure(.refused(CategoryLimits.cannotAdd))
+    }
+    let edit = LedgerEdit.addCategoryAndSort(
+      CategoryDraft(name: name, glyph: glyph, parent: parent), card, alwaysUse: alwaysUse, project: project)
+    do {
+      if let why = try app.store.categoryRefusal(edit) { return .failure(.refused(why)) }
+    } catch {
+      return .failure(error)
+    }
+    return .success(edit)
+  }
+
+  private func settling(_ card: TxnID) -> [LedgerEdit] {
+    let t = app.store.state.txn(card)
     var edits: [LedgerEdit] = []
-    if app.store.state.txn(card)?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
-    if app.store.state.txn(card)?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
-    edits.append(.categorize(card, category, learnRule: alwaysUse, project: project))
-    guard app.perform(edits) else { return false }
-    record(card, learnedRule: alwaysUse)
-    return true
+    if t?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
+    if t?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
+    return edits
+  }
+
+  private func filed(_ card: TxnID, learnedRule: Bool) {
+    follow(card)
+    passed(card)
+    record(card, learnedRule: learnedRule)
   }
 
   @discardableResult
-  func useSuggestion(_ card: TxnID) -> Bool {
-    guard let c = app.store.state.txn(card)?.reviewSuggestion else { return false }
+  func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool {
+    let s = app.store.state
+    guard let t = s.txn(card), let c = ReviewEngine.suggestion(t, s)?.id, shown == nil || shown == c else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
-    record(card, learnedRule: false)
+    filed(card, learnedRule: false)
     return true
   }
 
-  func skip(_ card: TxnID) { app.perform(.skipReview(card)) }
+  private func follow(_ card: TxnID) {
+    let s = app.store.state
+    guard let ref = s.txn(card)?.groupRef else { return }
+    let next = Self.following(order, after: card, ref: ref, waiting: ReviewEngine.queue(s, in: window))
+    guard next != order else { return }
+    order = next
+    memo = Memo()
+  }
+
+  nonisolated static func following(_ order: [TxnID], after card: TxnID, ref: MerchantGroupRef, waiting: [Txn]) -> [TxnID] {
+    guard let i = order.firstIndex(of: card) else { return order }
+    let same = Set(waiting.filter { $0.groupRef == ref && $0.id != card }.map(\.id))
+    let rest = order[(i + 1)...]
+    let next = rest.filter { same.contains($0) }
+    guard !next.isEmpty else { return order }
+    return Array(order[...i]) + next + rest.filter { !same.contains($0) }
+  }
+
+  func skip(_ card: TxnID) { passed(card, app.perform(.skipReview(card))) }
 
   @discardableResult
-  func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { app.perform(.resolveCopy(card, merge: merge)) }
+  func resolveCopy(_ card: TxnID, merge: Bool) -> Bool { passed(card, app.perform(.resolveCopy(card, merge: merge))) }
 
   @discardableResult
-  func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool { app.perform(.resolveSamePurchase(card, same: same)) }
+  func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool {
+    passed(card, app.perform(.resolveSamePurchase(card, same: same)))
+  }
 
   @discardableResult
-  func archive(_ card: TxnID) -> Bool { app.perform(.archive(card, true)) }
+  func archive(_ card: TxnID) -> Bool { passed(card, app.perform(.archive(card, true))) }
 
   func close(goToActivity: Bool) {
     app.cover = nil
     if goToActivity { app.tab = .activity }
+  }
+
+  @discardableResult
+  private func passed(_ card: TxnID, _ done: Bool = true) -> Bool {
+    if done, shown == card {
+      shown = nil
+      memo = Memo()
+    }
+    return done
   }
 
   private func record(_ id: TxnID, learnedRule: Bool) {
@@ -310,15 +306,13 @@ final class ReviewViewModel: ReviewDeckModel {
 }
 
 extension ReviewDeckModel {
+  @discardableResult func useSuggestion(_ card: TxnID) -> Bool { useSuggestion(card, shown: nil) }
+
   /// What VoiceOver hears once a card is filed (Paper 16 · 06): "Filed as Need. 3 of 6.",
   /// or "Filed as Need. All caught up." for the last one.
   func filedAnnouncement(_ filedAs: String) -> String {
-    let next = items.isEmpty ? "All caught up." : "\(position) of \(total)."
+    let next = cards.isEmpty ? "All caught up." : "\(position) of \(total)."
     return "Filed as \(filedAs). \(next)"
-  }
-
-  func groupFiledAnnouncement(_ group: ReviewGroupCardModel, as category: String) -> String {
-    ReviewEngine.groupFiledAnnouncement(count: group.total, merchant: group.merchant, category: category, left: items.count)
   }
 }
 

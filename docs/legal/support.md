@@ -1,12 +1,12 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-24
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
 
-This page is help for the beta, not a promise about how Hasala works. The app changes often, so a screen, a button or a step may not look exactly as described here.
+Hasala is an experimental beta: features change often, things can break, and data can be lost or reset (see [An experimental beta](/terms#an-experimental-beta)). This page is help for the beta, not a promise about how Hasala works. A screen, a button or a step may not look exactly as described here.
 
 ## Common questions
 
@@ -38,7 +38,54 @@ No. Your transactions, amounts, merchants, categories, budgets, bills and rules 
 
 ### How does Hasala sort my spending?
 
-On your iPhone, in this order: your own rules, then a built-in list of UAE merchants, then, only if you turn on Cloud suggestions, one merchant name sent to our suggestion service (see [Cloud suggestions](/privacy#cloud-suggestions)), and after that Apple's on-device model for merchant names written in Latin letters. With Cloud suggestions off, which is the default, the beta doesn't run Apple's model: anything your rules and the built-in list don't cover waits for your review. Suggestions, and Hasala's own sorting, can be wrong. Unless you also turn on Sort automatically, a suggestion doesn't file a transaction by itself. When you sort a transaction yourself, you can tell Hasala to always do the same for that merchant.
+On your iPhone, in this order:
+
+1. your own rules;
+2. a built-in list of UAE merchants;
+3. the category you last picked yourself for that merchant's payments, as a suggestion (refunds have their own pick, and a payment you split isn't a pick);
+4. only if you turn on Cloud suggestions, and only for a merchant you haven't sorted yourself: one merchant name sent to our suggestion service (see [Cloud suggestions](/privacy#cloud-suggestions)), and, when Cloudflare can't help, Apple's on-device model for merchant names written in Latin letters.
+
+With Cloud suggestions off, which is the default, the beta doesn't run Apple's model to sort: anything your rules and the built-in list don't cover waits for you in **Review**. Suggestions, and Hasala's own sorting, can be wrong. Unless you also turn on **Sort automatically**, a suggestion doesn't file a payment by itself.
+
+### How do I sort a payment in Review?
+
+Open **Review** and tap **Start**. Each card is one payment.
+
+- If the card has a suggestion, tap **Use** to take it.
+- Otherwise, swipe the card, or tap one of the pills under it, to choose Need, Want, Save or Transfer. Then tap a category in the list. That sorts the card.
+- Tap **Skip for now** to leave a payment for later.
+
+After you sort a card, the next card is often another payment from the same merchant, so you can sort them one after another.
+
+### Why does a card say "Your last pick"?
+
+You sorted another payment from that merchant yourself, so Hasala suggests the category you picked most recently. Tap **Use** to take it, or pick another. It's only a suggestion: the payment waits in Review until you choose. Hasala doesn't send a merchant you've sorted yourself to Cloudflare.
+
+### What does "Always use it" do?
+
+It makes Hasala sort a merchant for you. Turn on **Always use it for** the merchant in the category list, then tap the category. Hasala then:
+
+- sorts this payment;
+- makes a rule for that merchant, so its new payments are sorted when they arrive; and
+- re-files the merchant's other payments, in every month, except the ones you sorted yourself. It leaves a few alone, such as split payments and transfers.
+
+A line at the bottom of the screen says how many payments it changed, with **Undo**. Undo puts every payment back and removes the rule. For a week, **Sorted for you** on Home lists what the rule filed, with **Undo all** and **Stop this rule**. You can also pause a rule in **Profile › Categories and rules**, which sends its payments back to Review. You'll find the same switch in Activity and on a transaction's own page. It's off unless you turn it on.
+
+An earlier build had a **Not this** button. If you used it, Hasala still remembers what you told it.
+
+### Can I add a category while I sort?
+
+Yes. In the list for Need, Want or Save, tap **New category** at the end, type a name and tap **Save**. Hasala makes the category and sorts the card into it. The new category counts as the kind you swiped. You can have up to 20 categories of your own. Their names are sealed like the rest of your data, and they're never sent to Cloudflare.
+
+### Does Hasala sort in the background with Cloudflare AI?
+
+Only if you turn on **Merchant suggestions**, in **Profile › Cloud suggestions**, or with **Turn on** when Review asks you. Then Hasala asks Cloudflare's AI about the merchants waiting in Review by itself, one name per request, within a daily limit on each iPhone. It does this mostly while the app is open, and it can also do it for a short time when iOS starts Hasala in the background, for example to sync. It shows no card or count while it works. With **Sort automatically** on too, it files a payment only when the answer is very sure, and those payments are marked "Sorted by Cloudflare AI".
+
+To turn it off, switch off **Merchant suggestions** in **Profile › Cloud suggestions**. It stops at once. **Send Cloudflare's sorting back to Review**, in the same place, puts the payments it filed on that iPhone back in Review. The switches are set on each iPhone.
+
+### Something changed, or my data looks different. Why?
+
+Hasala is an experimental beta, so a new build can change how payments are sorted or shown. Now and then we may also need to reset the beta, and then data can be lost. Where we can, we tell you in the app or by email first. To keep a copy of your own, export your data from time to time, from **Profile › Settings › Export your data (CSV)**. If something looks wrong, tell us (see [Contact us](#contact-us)).
 
 ### Which email accounts work?
 

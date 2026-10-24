@@ -8,12 +8,22 @@ import HasalaModels
 extension LiveLedgerStore {
   func categoryRefusal(_ edit: LedgerEdit) throws(ActionError) -> String? {
     switch edit {
-    case .addCategory, .editCategory, .archiveCategory, .restoreCategory: break
+    case .addCategory, .addCategoryAndSort, .editCategory, .archiveCategory, .restoreCategory: break
     default: return nil
     }
     let view: TaxonomyView
     do { view = try reader.taxonomy() } catch { throw .notFound }
-    return LedgerEditAuthor.categoryRefusal(edit, view: view, state: state)
+    return LedgerEditAuthor.categoryRefusal(edit, view: view, state: state) ?? Self.shownRefusal(edit, in: state)
+  }
+
+  static func shownRefusal(_ edit: LedgerEdit, in s: LedgerState) -> String? {
+    switch edit {
+    case .addCategory(var d), .addCategoryAndSort(var d, _, _, _):
+      d.name = UserText.normalize(d.name)
+      return CategoriesEngine.refusal(.addCategory(d), in: s)
+    default:
+      return nil
+    }
   }
 }
 
@@ -28,7 +38,8 @@ extension LedgerEditAuthor {
   nonisolated static func categoryRefusal(_ edit: LedgerEdit, view: TaxonomyView, state: LedgerState) -> String? {
     let rules = CategoryRules(view)
     switch edit {
-    case .addCategory(let d):
+    case .addCategory(let d), .addCategoryAndSort(let d, _, _, _):
+      if let id = d.id, !OpAuthor.isNewCategoryID(id) || view.info(id) != nil { return CategoryLimits.cannotAdd }
       return rules.checkCreate(name: d.name, parent: d.parent ?? "", icon: icon(d.glyph))?.message
     case .editCategory(let id, let d):
       return rules.checkEdit(id: id, name: d.name, icon: icon(d.glyph), parent: changedParent(d, of: view.info(id)))?.message
@@ -49,7 +60,7 @@ extension LedgerEditAuthor {
     case .addCategory(let d):
       guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
       try await build { a throws(AuthorError) in
-        _ = try a.createCategory(name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view)
+        _ = try a.createCategory(id: d.id, name: d.name, parent: parent, icon: Self.icon(d.glyph), in: view)
       }
     case .editCategory(let id, let d):
       let parent = Self.changedParent(d, of: view.info(id))
@@ -63,6 +74,30 @@ extension LedgerEditAuthor {
     default:
       return
     }
+  }
+
+  nonisolated func addCategoryAndSort(
+    _ d: CategoryDraft, txn id: String, alwaysUse: Bool, project: String?
+  ) async throws -> [Inverse] {
+    guard let category = d.id else { throw Failure.notFound }
+    guard let parent = d.parent else { throw Failure.refused(CategoryRefusal.parentNotAllowed.message) }
+    guard let row = try reader.txn(id) else { throw Failure.notFound }
+    let view = try reader.taxonomy()
+    let icon = Self.icon(d.glyph)
+    let inverses: [Inverse]
+    if alwaysUse, Self.reaches(row) {
+      inverses = try await categorizeReaching(row, category: category, project: project) {
+        a throws(AuthorError) in
+        _ = try a.createCategory(id: category, name: d.name, parent: parent, icon: icon, in: view)
+      }
+    } else {
+      try await build { a throws(AuthorError) in
+        try a.createCategoryAndFile(
+          id: category, name: d.name, parent: parent, icon: icon, in: view, txnID: id, parentVersion: row.version, project: project)
+      }
+      inverses = row.split ? [] : [refile(row)]
+    }
+    return inverses + noteCorrection(row, to: category)
   }
 
   nonisolated private func archiveCategory(_ id: String, moveTo: String?, view: TaxonomyView, today: LocalDate) async throws {

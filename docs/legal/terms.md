@@ -1,10 +1,20 @@
 ---
 title: "Beta Terms of Use"
 description: "The terms for using the invite-only Hasala beta: what to expect, what we ask of you, and the limits of what we can promise."
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-24
 status: "final"
-plainWords: "Hasala is an early, invite-only beta. It's free while the beta runs, it may have bugs or change, and it isn't financial advice. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
+plainWords: "Hasala is an experimental, invite-only beta. It's free while the beta runs. It changes often and can break, your data can be lost or reset, and we can change, pause or end the beta at any time, so don't rely on it as your only record of your money. It isn't financial advice, and we provide it as is. Keep your recovery phrase safe, use Hasala only for your own money, and don't try to break or misuse it. You can leave and delete your account at any time."
 ---
+
+## An experimental beta
+
+Hasala is an experimental beta. It is available by invite only, through Apple's TestFlight. It is not a finished product.
+
+- Features change often, sometimes without notice.
+- Things can break, and your data can be lost or reset.
+- Don't rely on Hasala as your only record of your money. Your bank's statements are the record.
+
+Please use Hasala with that in mind. [The beta](#the-beta), below, says more.
 
 ## About these terms
 
@@ -22,16 +32,18 @@ Hasala is in a private beta. You need access to the beta on Apple's TestFlight a
 
 ### What a beta means
 
-Hasala is unfinished. During the beta:
+Hasala is experimental and unfinished. During the beta:
 
-- features may change, appear or disappear without notice;
+- features may change, appear or disappear at any time, sometimes without notice;
 - we may change how the service works, including how Hasala checks bank emails, which ones it sends to Review, and how it sorts transactions;
-- Hasala's automatic checks, sorting and suggestions can be wrong;
-- Hasala may have bugs, including bugs that show wrong amounts, miss transactions or put transactions in the wrong category;
+- Hasala's automatic checks, sorting, rules and suggestions can be wrong;
+- Hasala may have bugs, including bugs that show wrong amounts, miss transactions, put transactions in the wrong category or lose data;
 - the service may be slow or unavailable at times, including for maintenance;
 - emails and alerts from Hasala, including security emails, can be late or fail to arrive;
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
-- we may need to wipe the beta service's data and start again, for example before a change to how data is stored. If we do, we'll aim to tell you in the app or by email at least 7 days before, so that you can export your data first, unless an urgent reason, such as a security risk or a legal requirement, means we can't.
+- we may change, pause or end the beta at any time. When we do, accounts and their data may be reset or deleted, for example before a change to how data is stored. Where we can, we'll tell you in the app or by email first, so that you can export your data.
+
+If you want a copy of your own, export your data from time to time, from Profile › Settings › Export your data.
 
 Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At the time of writing, it supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
 
@@ -52,9 +64,9 @@ We'd love your feedback. If you send us ideas or suggestions, you allow us to us
 Hasala helps you see and plan your own spending. It is not a bank, a payment service or a financial adviser.
 
 - Nothing in Hasala is financial, investment, tax or legal advice.
-- Budgets, pace estimates and bill reminders are calculated automatically from your own data. Categories come from your rules, a built-in merchant list and, if you turn them on, Cloud suggestions (with Apple's on-device model when Cloudflare can't help). All of these, including any transaction that Sort automatically files for you, can be wrong or incomplete.
+- Budgets, pace estimates and bill reminders are calculated automatically from your own data. Categories come from your rules, a built-in merchant list, your own earlier picks and, if you turn them on, Cloud suggestions (with Apple's on-device model when Cloudflare can't help). All of these, including any transaction that an Always use rule or Sort automatically files for you, can be wrong or incomplete.
 - Hasala does not move money, make payments, or connect to your bank account. It reads the alert emails your bank sends you.
-- Your bank's own statements are the record of your money. Check important figures against them before you rely on them.
+- Your bank's own statements are the record of your money. Don't rely on Hasala as your only record, and check important figures against your statements before you rely on them.
 
 ## Your account
 
@@ -116,9 +128,9 @@ You can stop using Hasala and delete your account in the app under Profile › D
 
 Deleting the app from your iPhone does not delete your account.
 
-### We can end the beta or your access
+### We can change or end the beta, or your access
 
-We may end your access if you seriously or repeatedly break these terms. We may also end the beta or close Hasala. Unless there's an urgent reason, such as a security risk, a legal requirement or something outside our reasonable control, we'll give you at least 30 days' notice, in the app or by email, so you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
+We may end your access if you seriously or repeatedly break these terms. We may also change, pause or end the beta, or close Hasala, at any time. When we do, accounts and their data may be reset or deleted. Where we can, we'll tell you in the app or by email first, so that you can export your data. When an account is closed, its data is deleted from our server as described in the [Privacy Policy](/privacy).
 
 ## Source-available code
 
@@ -132,14 +144,15 @@ The name Hasala (حصّالة) and the Slot mark, Hasala's logo, are trademarks 
 
 ### As-is
 
-We work hard to make Hasala accurate, secure and reliable. But it's a free beta, so we provide it "as is" and "as available". To the extent the law allows, we make no promises that it will be error-free, uninterrupted, or fit for a particular purpose.
+We try to make Hasala accurate, secure and reliable. But it's a free, experimental beta, so we provide it "as is" and "as available", without any warranty. To the extent the law allows, we make no promises that it will be accurate, error-free, uninterrupted or fit for a particular purpose, that it will keep your data, or that any feature will stay.
 
 ### Limits on liability
 
 To the extent the law allows:
 
-- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions, checks or reminders (including transactions that Sort automatically filed in the wrong category, and emails that Hasala wrongly took as coming from your bank, or wrongly sent to Review), such as missed bill payments or bank charges;
+- we aren't responsible for losses caused by relying on Hasala's figures, categories, suggestions, rules, checks or reminders (including transactions that an Always use rule or Sort automatically filed in the wrong category, and emails that Hasala wrongly took as coming from your bank, or wrongly sent to Review), such as missed bill payments or bank charges;
 - we aren't responsible for losses caused by an email or alert from Hasala that was late or didn't arrive;
+- we aren't responsible for data that is lost, reset or deleted, including when we change, pause or end the beta;
 - we aren't responsible for losing access to your data if you lose your recovery phrase and every passkey and signed-in device;
 - we aren't responsible for problems caused by Google, Microsoft, Apple, Cloudflare, your bank, or your device; and
 - our total liability to you for any claim about the beta is limited to AED 100.
@@ -156,7 +169,7 @@ These terms are governed by the laws of the United Arab Emirates as applied in t
 
 ## Changes to these terms
 
-We'll update these terms as Hasala changes. The date at the top shows when they last changed. If a change is material, we'll tell you in the app or by email at least 30 days before it takes effect, unless we must make it sooner for legal or security reasons. If you keep using Hasala after that, the new terms apply. If you don't agree, you can delete your account.
+Hasala is an experimental beta, and these terms can change at short notice. The date at the top shows when they last changed. A change takes effect when we post it here. When a change matters, we say what changed in the app or in the TestFlight notes for the new build. If you keep using Hasala after a change, the new terms apply. If you don't agree, you can stop using Hasala and delete your account.
 
 ## General
 
