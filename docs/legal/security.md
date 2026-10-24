@@ -8,6 +8,8 @@ plainWords: "Hasala reads your bank alerts and seals your money data on your iPh
 
 ## How Hasala keeps your data safe
 
+Hasala is an experimental beta: features change often, things can break, and data can be lost or reset (see [An experimental beta](/terms#an-experimental-beta)).
+
 This is a plain summary of Hasala's security design during the beta. It describes what the design protects, and also what it doesn't. The details may change as Hasala develops.
 
 ### Bank emails are read on your iPhone
@@ -22,9 +24,11 @@ Hasala sorts transactions on your iPhone. By default it works in this order:
 2. a built-in list of UAE merchants; and
 3. if it's still unsure, your review. If you sorted another payment from that merchant yourself, the category you picked most recently is suggested there. Refunds have their own pick, and a payment you split isn't a pick.
 
-In the beta, Apple's on-device model does not run when Cloud suggestions are off. Nothing is sent to an AI service unless you turn on Cloud suggestions, which is optional and off by default.
+A rule you make with **Always use it** also re-files that merchant's other payments, except the ones you sorted yourself. That happens on your iPhone too, and the changes are sealed before they sync.
 
-If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, your last pick for that merchant (a suggestion), then, for a merchant you haven't sorted yourself (a refund or a split payment doesn't count), a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
+When Cloud suggestions are off, Apple's on-device model doesn't sort your payments, and nothing is sent to an AI service. Cloud suggestions are optional and off by default. If Apple Intelligence is on, Search can use Apple's on-device model to understand a question; that runs on your iPhone and sends nothing.
+
+If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, your last pick for that merchant (a suggestion), then, for a merchant you haven't sorted yourself (a refund or a split payment doesn't count), a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. Hasala asks about the merchants waiting in your review by itself, one name per request, while the app is open. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
 
 ### Your data is sealed before it syncs
 
@@ -80,7 +84,7 @@ No design is perfect. These are the limits we know about and accept during the b
 - **An unlocked iPhone.** Anyone who can unlock your iPhone can open Hasala. App lock hides Hasala until you unlock it with Face ID, Touch ID or your passcode. It doesn't change how your data is encrypted.
 - **A compromised server.** A server we no longer control can't read your sealed data. But it could stop or delay sync, or send fake notification text. That is why Hasala will never ask for your recovery phrase, your password or a code in a notification, an email, a phone call or on a website.
 - **Your password.** If you use one, your iPhone sends our server a scrambled form of it, never the password itself. Our server and Cloudflare see that scrambled form when you sign in. Someone holding it could sign in as you, though never unlock your data, or try to guess your password from it, which is slow by design. A passkey avoids this, which is why we recommend one.
-- **Cloud suggestions.** If you turn them on, the merchant names Hasala sends go to Cloudflare's AI service through a Hasala service on Cloudflare, so Cloudflare sees them, with your IP address. They carry no account or device identifier, the service stores nothing, and AI Gateway keeps only totals, but a merchant name still says where someone paid. They're off by default (see our [Privacy Policy](/privacy#cloud-suggestions)).
+- **Cloud suggestions.** If you turn them on, the merchant names Hasala sends go to Cloudflare's AI service through a Hasala service on Cloudflare, so Cloudflare sees them, with your IP address. They carry no account or device identifier, the service stores nothing, and AI Gateway keeps only totals, but a merchant name still says where someone paid. Because Hasala asks about many waiting merchants by itself, Cloudflare could see a run of requests from one connection. They're off by default (see our [Privacy Policy](/privacy#cloud-suggestions)).
 - **The beta server itself.** The beta runs on hardware operated by the developer. A small number of trusted people have administrative access to it; because your financial data is end-to-end encrypted on your iPhone, they can't read it. What's stored there is sealed data plus the account details in our [Privacy Policy](/privacy#what-we-collect-and-why), which they can see. The server's disks aren't encrypted at rest yet. We plan to add this before a public launch.
 
 ## Reporting a vulnerability
@@ -102,7 +106,7 @@ Please don't put details of an unfixed vulnerability in TestFlight feedback, pub
 
 ### What to expect
 
-Hasala is a small project, so timings vary. We aim to:
+Hasala is a small project and an experimental beta, so timings vary, and we can't promise a reply time. We aim to:
 
 - confirm we received your report;
 - keep you updated while we investigate and fix it;

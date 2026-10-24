@@ -157,7 +157,7 @@ struct CloudConsentContent {
        "The amount, date, card or bank, your own category names, or anything about your account."),
       (.cloud, "What Cloudflare sees", cloudflareSees),
       (.check, "You stay in charge",
-       "Suggestions are marked and don't count in your totals until you confirm them. You can turn this off at any time."),
+       "Suggestions are marked, and each payment waits in Review until you confirm or change it. You can turn this off at any time."),
     ])
 
   static let autoSort = CloudConsentContent(

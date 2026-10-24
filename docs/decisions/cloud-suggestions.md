@@ -20,6 +20,14 @@ per-device day cap. Since the streamlined onboarding (2026-10-21), setup ends af
 mailbox connect, and its ask is a card in Review, asked once on each iPhone.
 See [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23).
 
+The owner decided (2026-10-24) that the legal pages suit an experimental beta, and they were
+rewritten (Sorting rebuild 9). The privacy policy no longer promises 30 days' notice:
+"Changes in the beta" says that features and the pages can change at short notice, that a
+change takes effect when it is posted, and that testers are told what changed in the app or
+in the TestFlight notes when it affects how their data is used. A new optional cloud feature
+is still off until the person turns it on. This settles the notice question for the
+background stage (see [Privacy policy changes](#privacy-policy-changes)).
+
 Every example in this file is synthetic. No real mail, merchant, amount or name was used.
 
 ## Summary
@@ -286,9 +294,10 @@ suggestions on, Hasala works through every waiting merchant name by itself while
 is open**, a silent background stage, the way recurring payments are found. Each request
 still carries one name, and the per-device day cap holds. There is no run card, no "Sort N
 merchants" offer, no paused or result card, no Check suggestions sheet, and no **Sort now**
-or **Later** in Profile. Whether this change needs the privacy policy's 30-day notice for
-people who turned Merchant suggestions on in an earlier build is an open question for the
-owner ([sorting-rework.md](sorting-rework.md#open-questions-for-the-owner)).
+or **Later** in Profile. People who turned Merchant suggestions on in an earlier build get no
+30-day notice for this change: the owner settled that on 2026-10-24 with the beta clause (see
+[Privacy policy changes](#privacy-policy-changes)). The TestFlight notes of the build that
+ships the stage say what changed.
 
 **The one-time ask.** With Merchant suggestions off, a card at the top of Review asks
 **Sort the rest with Cloudflare AI?** (`Features/Review/CloudSortAsk.swift`). It shows
@@ -611,13 +620,38 @@ layouts), the amount was right in 68 and the merchant in 55.
 
 ## Privacy policy changes
 
+**2026-10-24: the legal pages were rewritten for an experimental beta (Sorting rebuild 9).**
+`docs/legal/privacy.md` is now the record, and the text below is the 2026-10-20 plan, kept
+for reference. What the rewrite records for Merchant suggestions:
+
+- "Changes to this policy", with its 30 days' notice for a material change, became "Changes
+  in the beta": features and the policy can change at short notice; a change takes effect
+  when it is posted; when a change affects how data is used, the app or the TestFlight notes
+  say what changed; a change that needs consent is asked for in the app first; and a new
+  optional cloud feature is off until the person turns it on. The background stage needs no
+  30-day notice for people who had Merchant suggestions on before it shipped; the TestFlight
+  notes say what changed (the owner, 2026-10-24).
+- The Cloud suggestions section describes the rebuilt sorting: one card per payment, the
+  person's last pick (not sent to Cloudflare), Always use and its reach, New category (a
+  custom name, never sent), the background stage within the per-device day cap, and the
+  one-time ask. It now also says that the subject is sent in lower case, that only the
+  built-in Need and Want categories that are on are offered, that names come only from
+  payments out of the account and from bank alerts (never from a payment added by hand),
+  that each request carries the app's version (`Hasala-Client`), and that the phone keeps
+  each answer for up to 30 days (`fm_cache`).
+- "What stays on your iPhone" gains Search, which can use Apple's on-device model.
+- Terms: provided as is, without warranty; the beta can change, pause or end at any time,
+  and accounts and data may be reset or deleted then, with notice in the app where possible.
+  The 7-day and 30-day notice promises are gone.
+
 While Clairic is deferred, drop every Alert reading help part from the text below (the
 second bullet of the new section, the alert words in the short version, Limited Use and
 the provider row).
 
 Do these when the feature ships to testers. The feature is opt-in and off by default, so
-"Changes to this policy" lets the text take effect on the day it ships; tell testers in
-TestFlight's What to Test. Set `lastUpdated` to the ship date.
+"Changes to this policy" (since 2026-10-24, "Changes in the beta") lets the text take effect
+on the day it ships; tell testers in TestFlight's What to Test. Set `lastUpdated` to the ship
+date.
 
 **Front matter `plainWords`.** Replace the last sentence
 "We don't sell data, show ads or send anything to an AI service." with:

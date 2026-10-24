@@ -50,7 +50,7 @@ struct RulesPage: View {
 
   private var rules: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Hasala writes a rule when you sort a new merchant. Pause one to send its transactions back to review.")
+      Text("Hasala writes a rule when you sort with Always use it on. Pause one to send its transactions back to review.")
         .hType(.subheadline)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

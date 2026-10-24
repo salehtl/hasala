@@ -110,7 +110,7 @@ export const VISIBILITY = [
   },
   {
     who: 'Cloudflare, our network provider',
-    sees: 'Your requests on their way to our server: your IP address, times, sizes and the still‑encrypted data. It also sends our emails to you, and counts visits to this website for us, in totals only',
+    sees: 'Your requests on their way to our server: your IP address, times, sizes and the still‑encrypted data. It also sends our emails to you, and counts visits to this website for us, in totals only. If you turn on Cloud suggestions, its AI service sees the merchant names Hasala asks about, without your name or account',
     never: 'What’s inside the encrypted data',
   },
   {
