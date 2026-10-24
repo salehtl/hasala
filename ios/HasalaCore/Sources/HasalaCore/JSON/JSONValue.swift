@@ -96,6 +96,10 @@ public struct JSONNumber: Sendable, Hashable, CustomStringConvertible {
 
   static func isNumberLiteral(_ u: [UInt8]) -> Bool {
     var i = 0
+    return scanNumber(u, &i) && i == u.count
+  }
+
+  static func scanNumber(_ u: [UInt8], _ i: inout Int) -> Bool {
     let n = u.count
     func digits() -> Int {
       let start = i
@@ -118,7 +122,7 @@ public struct JSONNumber: Sendable, Hashable, CustomStringConvertible {
       if i < n, u[i] == 0x2b || u[i] == 0x2d { i += 1 }
       guard digits() > 0 else { return false }
     }
-    return i == n
+    return true
   }
 }
 

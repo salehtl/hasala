@@ -51,7 +51,7 @@ public enum Hex {
     return out
   }
 
-  private static func nibble(_ c: UInt8) -> UInt8? {
+  static func nibble(_ c: UInt8) -> UInt8? {
     switch c {
     case 0x30...0x39: c - 0x30
     case 0x61...0x66: c - 0x61 + 10
