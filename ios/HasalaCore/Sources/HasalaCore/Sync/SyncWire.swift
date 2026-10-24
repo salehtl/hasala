@@ -124,7 +124,7 @@ public struct UploadRequest: Codable, Sendable, Hashable {
 
   public init(writerID: WriterID, blobs: [InflightBlobWire], headSig: Data) {
     writer_id = writerID.string
-    stream = "hot"
+    stream = Envelope.stream
     self.blobs = blobs.map(UploadBlobJSON.init)
     head_sig = Base64.encode(headSig)
   }

@@ -323,8 +323,7 @@ public actor LedgerPageObserver: PageObserver {
 
   /// The outbox, one op per overlay blob, in order.
   private func pendingOverlay(over s: State) throws(SyncStop) -> [[Op]] {
-    let rows: [PendingOp]
-    do { rows = try context.store.pendingOps() } catch { throw .store(error) }
+    let rows = try context.storeCall { () throws(StoreError) in try context.store.pendingOps() }
     let folded = s.maxAuthored[context.writerID.string] ?? Int64.min
     unconfirmed.removeAll { $0.authoredMs <= folded }
     let pendingIDs = Set(rows.map(\.opID))
