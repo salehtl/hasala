@@ -363,11 +363,10 @@ public struct GraphClient: Sendable {
   public func messageRaw(id: String) async throws(MailAPIError) -> MailRawMessage {
     let received = try await messageMetadata(id: id).internalDate
     let inbox = try await inboxFolderID()
-    let res = try await call(.get, url(path(id) + "/$value"), json: false, op: "raw")
-    guard !res.body.isEmpty else { throw .status(res.status, op: "raw") }
+    let body = try await messageValue(id: id)
     let entry = cache.get(id)
     return MailRawMessage(
-      id: id, rawBase64URL: Base64.encodeURL(res.body), internalDate: received, spam: entry?.junk ?? false,
+      id: id, rawBase64URL: Base64.encodeURL(body), internalDate: received, spam: entry?.junk ?? false,
       inInbox: entry?.folder == inbox)
   }
 

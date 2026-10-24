@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -177,7 +178,7 @@ func inviteSecrets(key []byte, inviteID uuid.UUID, mailID int64) (code, link []b
 // CodeMAC is HMAC(K_code, utf8(purpose) ‖ 00 ‖ uuid_raw(code_id) ‖ email_tag
 // ‖ utf8(code)).
 func (k *Keys) CodeMAC(purpose string, codeID uuid.UUID, emailTag []byte, code string) ([]byte, error) {
-	if !validPurpose(purpose) {
+	if !slices.Contains(codePurposes, purpose) {
 		return nil, fmt.Errorf("authkeys: %q is not a code purpose", purpose)
 	}
 	if len(emailTag) != 32 {
@@ -202,15 +203,6 @@ func (k *Keys) CodeMatches(stored []byte, purpose string, codeID uuid.UUID, emai
 		return false
 	}
 	return subtle.ConstantTimeCompare(m, stored) == 1
-}
-
-func validPurpose(p string) bool {
-	for _, q := range codePurposes {
-		if p == q {
-			return true
-		}
-	}
-	return false
 }
 
 // Pepper is HMAC(K_pepper_g, S), the PBKDF2 password input under generation g.

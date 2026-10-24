@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -48,65 +49,19 @@ func (s *Server) handleFreezeLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFreezeNow(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
-	var req StepUpOnlyRequest
-	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
-		return
-	}
-	su, ok := decodeStepUp(w, req.StepUp)
-	if !ok {
-		return
-	}
-	info, ok := s.sessionInfo(w, r)
-	if !ok {
-		return
-	}
-	wake, err := s.Accounts.FreezeNow(r.Context(), info, su)
-	if err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
-	s.securityWake(r.Context(), wake)
-	w.WriteHeader(http.StatusNoContent)
+	s.stepUpRoute(w, r, s.Accounts.FreezeNow)
 }
 
 func (s *Server) handleUnfreeze(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
-	var req StepUpOnlyRequest
-	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
-		return
-	}
-	su, ok := decodeStepUp(w, req.StepUp)
-	if !ok {
-		return
-	}
-	info, ok := s.sessionInfo(w, r)
-	if !ok {
-		return
-	}
-	wake, err := s.Accounts.Unfreeze(r.Context(), info, su)
-	if err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
-	s.securityWake(r.Context(), wake)
-	w.WriteHeader(http.StatusNoContent)
+	s.stepUpRoute(w, r, s.Accounts.Unfreeze)
 }
 
 // devFreezeLimited runs devfreeze-ip, then (for a well-formed writer id only)
 // devfreeze-global. It reports whether it answered.
 func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writerID string) bool {
-	refuse := func() bool {
-		w.Header().Set("Retry-After", "60")
-		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+	if !s.DevFreezeIP.Allow(clientKey(r)) || (keyproto.ValidWriterID(writerID) && !s.DevFreezeGlobal.Allow("")) {
+		writeTooManyAttempts(w)
 		return true
-	}
-	if !s.DevFreezeIP.Allow(clientKey(r)) {
-		return refuse()
-	}
-	if !keyproto.ValidWriterID(writerID) {
-		return false
-	}
-	if !s.DevFreezeGlobal.Allow("") {
-		return refuse()
 	}
 	return false
 }
@@ -154,8 +109,8 @@ func (s *Server) handleDeviceFreeze(w http.ResponseWriter, r *http.Request) {
 	if s.devFreezeLimited(w, r, req.WriterID) {
 		return
 	}
-	nonce, _ := b64std(req.Nonce)
-	sig, _ := b64std(req.Sig)
+	nonce, _ := base64.StdEncoding.DecodeString(req.Nonce)
+	sig, _ := base64.StdEncoding.DecodeString(req.Sig)
 	wake, err := s.Accounts.DeviceFreeze(r.Context(), req.WriterID, nonce, sig, func(user uuid.UUID) bool {
 		return s.DevFreezeWriter.Allow(user.String() + "/" + req.WriterID)
 	})

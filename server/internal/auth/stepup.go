@@ -30,7 +30,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -153,9 +152,9 @@ func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte
 			return Begun{}, ErrWriterUnbound
 		}
 	}
-	nonce := make([]byte, keyproto.NonceSize)
-	if _, err := rand.Read(nonce); err != nil {
-		return Begun{}, fmt.Errorf("auth: step-up nonce: %w", err)
+	nonce, err := randBytes(keyproto.NonceSize)
+	if err != nil {
+		return Begun{}, err
 	}
 	c, err := keyproto.StepUpChallenge(nonce, action, [32]byte(paramsHash))
 	if err != nil {
@@ -262,6 +261,15 @@ type Guarded struct {
 	Action      keyproto.Action
 	ParamsHash  [32]byte
 	StepUp      *StepUpObject // nil: none was sent
+}
+
+func guardFor(session SessionInfo, action keyproto.Action, su *StepUpObject, fields ...[]byte) (Guarded, error) {
+	ph, err := keyproto.ParamsHash(action, fields...)
+	if err != nil {
+		return Guarded{}, err
+	}
+	return Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
+		Action: action, ParamsHash: ph, StepUp: su}, nil
 }
 
 // failure is what a failed proof leaves behind, committed alone after the
