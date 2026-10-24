@@ -34,6 +34,8 @@ public final class InMemoryLedger: LedgerStore {
   private var nextManual = 1
   private var nextBill = 1
   private var nextCategory = 1
+  private var sortOrder: [TxnID: Int] = [:]
+  private var nextSort = 0
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     var state = state
@@ -68,6 +70,8 @@ public final class InMemoryLedger: LedgerStore {
     let at = now
 
     func fileByPerson(_ t: inout Txn, _ c: CategoryID) {
+      sortOrder[t.id] = nextSort
+      nextSort += 1
       t.categoryID = c
       t.categorySource = .user
       t.ruleID = nil
@@ -543,7 +547,7 @@ public final class InMemoryLedger: LedgerStore {
       title = nil
     }
 
-    MockReach.refresh(&s)
+    MockReach.refresh(&s, sortOrder: sortOrder)
     state = s
     revision += 1
     guard let title else { return nil }
@@ -593,7 +597,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
-    MockReach.refresh(&s)
+    MockReach.refresh(&s, sortOrder: sortOrder)
     state = s
     revision += 1
   }

@@ -61,6 +61,61 @@ import Testing
     #expect(try later.sweepRows().first { $0.id == M.id(4) }?.rejected == ["shopping"])
   }
 
+  static func filed(_ n: Int, op: String, at: String, category: String, source: String, review: Bool = false) -> String {
+    #"{"v":4,"type":"txn_categorized","op_id":"\#(op)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(M.id(n))"},"parent_version":1,"payload":{"category":"\#(category)","needs_review":\#(review),"source":\#(source)}}"#
+  }
+
+  @Test func theReaderFillsThePersonsLastPickPerGroupAndDirection() throws {
+    var s = State()
+    try M.blob(
+      1,
+      [
+        M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"),
+        M.txn(2, "TAILSCALE INC", posted: "2026-07-15T08:00:00.000Z"),
+        M.txn(3, "TAILSCALE.COM", posted: "2026-09-01T08:00:00.000Z"),
+        M.txn(4, "TAILSCALE.COM", posted: "2026-09-02T08:00:00.000Z"),
+        M.txn(5, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z"),
+        M.txn(6, "TAILSCALE INC", posted: "2026-10-02T08:00:00.000Z", direction: "credit"),
+        M.txn(7, "AL NOOR PHARMACY", posted: "2026-10-03T08:00:00.000Z"),
+      ], into: &s)
+    try M.blob(
+      2,
+      [
+        Self.filed(1, op: "p1", at: "2026-10-05T09:00:00.000Z", category: "subscriptions", source: #"{"kind":"user"}"#),
+        Self.filed(2, op: "p2", at: "2026-10-07T09:00:00.000Z", category: "shopping", source: #"{"kind":"user"}"#),
+        Self.filed(3, op: "p3", at: "2026-10-09T09:00:00.000Z", category: "dining", source: #"{"kind":"held"}"#, review: true),
+        Self.filed(
+          4, op: "p4", at: "2026-10-09T10:00:00.000Z", category: "entertainment", source: #"{"kind":"model","model":"cf-clef/1"}"#,
+          review: true),
+        Self.rejection("tailscale.com", "shopping", true, op: "r1"),
+      ], into: &s)
+    #expect(s.anomalies.isEmpty, "\(s.anomalies)")
+    let (_, r) = try M.project(s)
+    #expect(try r.txn(M.id(2))?.categorizedMs == M.ms("2026-10-07T09:00:00.000Z"))
+    #expect(try r.lastPicks() == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    let sweep = try r.sweepRows()
+    let waiting = try #require(sweep.first { $0.id == M.id(5) })
+    #expect(waiting.picked == "shopping" && waiting.rejected == ["shopping"])
+    #expect(!ModelSuggestionSweep.eligible(waiting))
+    #expect(sweep.first { $0.id == M.id(6) }?.picked == nil)
+    let other = try #require(sweep.first { $0.id == M.id(7) })
+    #expect(other.picked == nil && ModelSuggestionSweep.eligible(other))
+    #expect(try r.sweepRows(group: "n:tailscale").first { $0.id == M.id(5) }?.picked == "shopping")
+  }
+
+  @Test func aPickInACategoryNoLongerActiveStillKeepsTheMerchantFromTheModels() throws {
+    var s = State()
+    try M.blob(
+      1, [M.txn(1, "TAILSCALE.COM", posted: "2026-08-01T08:00:00.000Z"), M.txn(2, "TAILSCALE.COM", posted: "2026-10-01T08:00:00.000Z")],
+      into: &s)
+    try M.blob(2, [Self.filed(1, op: "p1", at: "2026-10-05T09:00:00.000Z", category: "shopping", source: #"{"kind":"user"}"#)], into: &s)
+    let (db, r) = try M.project(s)
+    try db.write { db in try db.execute(sql: "UPDATE category SET active = 0 WHERE id = 'shopping'") }
+    #expect(try r.lastPicks() == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    let waiting = try #require(try r.sweepRows().first { $0.id == M.id(2) })
+    #expect(waiting.picked == "shopping" && !ModelSuggestionSweep.eligible(waiting))
+  }
+
   @Test func aRenameAndARejectionFromTwoDevicesBothSurvive() throws {
     for order in [false, true] {
       var s = State()

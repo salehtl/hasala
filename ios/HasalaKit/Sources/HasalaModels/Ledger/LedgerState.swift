@@ -118,6 +118,7 @@ public enum CategorySource: Sendable, Hashable, Codable {
 
   public static let cloudflareModelPrefix = "cf-clef/"
   public static let appleModelPrefix = "apple-fm/"
+  public static let lastPickLabel = "Your last pick"
 
   public static func suggestionLabel(modelTag tag: String?, needsReview: Bool = true) -> String {
     guard let tag else { return "Suggested on this iPhone" }
@@ -294,6 +295,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var rejectedCategories: Set<CategoryID>
   public var categorizedAt: LocalDateTime?
   public var ruleID: RuleID?
+  public var lastPick: CategoryID?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -319,7 +321,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     priorFiling: PriorFiling? = nil,
     rejectedCategories: Set<CategoryID> = [],
     categorizedAt: LocalDateTime? = nil,
-    ruleID: RuleID? = nil
+    ruleID: RuleID? = nil,
+    lastPick: CategoryID? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -358,6 +361,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.rejectedCategories = rejectedCategories
     self.categorizedAt = categorizedAt
     self.ruleID = ruleID
+    self.lastPick = lastPick
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }

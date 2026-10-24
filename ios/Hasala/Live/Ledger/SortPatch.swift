@@ -14,6 +14,13 @@ nonisolated enum SortPatch {
     t.priorFiling = nil
   }
 
+  static func picked(_ s: inout LedgerState, _ ref: MerchantGroupRef?, _ c: CategoryID) {
+    guard let ref else { return }
+    for i in s.txns.indices where s.txns[i].groupRef == ref {
+      s.txns[i].lastPick = s.txns[i].inReview ? c : nil
+    }
+  }
+
   static func name(_ s: LedgerState, _ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
 
   static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {

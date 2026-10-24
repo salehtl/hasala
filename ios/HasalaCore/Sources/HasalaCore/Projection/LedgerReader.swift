@@ -321,16 +321,31 @@ public struct LedgerReader: Sendable {
   private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
       let rejected = try Self.rejections(db)
-      return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
-        let t = TxnRow(r)
-        return SweepRow(
+      let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { (row: $0, txn: TxnRow($0)) }
+      let picks = LastPick.picks(fetched.map(\.txn.pickRow))
+      return fetched.map { r, t in
+        SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
           template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
-          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [])
+          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] })
       }
     }
+  }
+
+  public func lastPicks() throws -> [LastPick.Key: String] {
+    try db.read { db in LastPick.picks(try Row.fetchAll(db, sql: Self.pickSQL).map(Self.pickRow)) }
+  }
+
+  static let pickSQL =
+    "SELECT id, merchant_group, direction, category, category_source, split, categorized_ms, posted_ms FROM txn WHERE superseded_by IS NULL"
+
+  static func pickRow(_ r: Row) -> LastPick.Row {
+    LastPick.Row(
+      id: r["id"], group: r["merchant_group"], direction: r["direction"], category: r["category"],
+      sourceKind: SweepRow.SourceKind(rawValue: r["category_source"]) ?? .none, split: r["split"], categorizedMs: r["categorized_ms"],
+      postedMs: r["posted_ms"])
   }
 
   public func rejections() throws -> [String: Set<String>] {
@@ -552,6 +567,12 @@ extension TxnRow {
       amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, direction: direction, bank: bank, last4: last4,
       postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
       duplicateDisposition: duplicateDisposition, heldCopy: heldCopy)
+  }
+
+  public var pickRow: LastPick.Row {
+    LastPick.Row(
+      id: id, group: merchantGroup, direction: direction, category: category,
+      sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, split: split, categorizedMs: categorizedMs, postedMs: postedMs)
   }
 
   public var reachRow: RuleReach.Row {

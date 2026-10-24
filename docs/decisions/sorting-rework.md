@@ -104,8 +104,9 @@ Sort each one and the pick sheet's group mode (its commit button and history lin
 shows one card per payment again. A swipe, a direction pill or a VoiceOver action picks the
 bucket, and a tap on a category in the pick sheet sorts the card at once. A card with a
 suggestion sorts in one tap with Use. The merchant group stays behind the scenes: it
-scopes "Always use it" (D3), and `GroupIndex` keeps each group's filings by the person and
-its monthly bills. "Always use it" from one card, in Review, Activity or the transaction
+scopes "Always use it" (D3), it gives the person's last pick
+([Your last pick](#your-last-pick)) and the order of the next card, and `GroupIndex` keeps
+each group's filings by the person and its monthly bills. "Always use it" from one card, in Review, Activity or the transaction
 sheet, writes a group rule and reaches every payment D3 names. The app no longer uses
 `RuleReach.Scope.waiting` or `RuleReach.members`.
 
@@ -116,6 +117,41 @@ it or closes the deck, also when it is sorted elsewhere meanwhile. Undo brings a
 to its old place. A payment that arrives while the deck is open waits for the next session.
 The "Waiting for Cloudflare AI" hold is gone: no card is moved to the end of the deck while
 Cloudflare sorts.
+
+### Your last pick
+
+The sorting rebuild (2026-10-23) puts the person's own pick before the AI. When the person
+has sorted a payment of a merchant group and direction themselves, every payment of that
+group and direction that waits in Review suggests their latest pick. The pick is the
+category of the newest row of the group and direction whose current source is `user`,
+newest by `txn.categorized_ms`, or by its posted time when that is empty
+(`LastPick`, HasalaCore `Categorize/LastPick.swift`). Rows held by a paused rule (`held`)
+and rows a rule, the merchant list or a model filed do not count, and neither does a split
+payment. `LedgerReader.lastPicks()` reads it, and the live mapper sets `Txn.lastPick` on the
+rows that wait in Review. `GroupIndex` sets it for the mock with the same rule; in the
+mock, whose clock does not move, two sorts with the same time are ordered by when the
+person made them.
+
+That field is the card's suggestion. The strip shows it with "Your last pick" and Use, the
+pick sheet of its bucket lists it first and marks it "Suggested", and Use files exactly
+that category. Only a merchant with no pick shows an AI answer stored on the row, with the
+labels that name Cloudflare or this iPhone. A rejection from #182 still hides an AI answer
+but never the person's own pick. A pick is only a suggestion: the payment waits in Review
+until the person taps Use or picks a category. A pick whose category is hidden or archived
+since shows no suggestion, and no AI answer either.
+
+The AI is not asked about a merchant the person sorted. `LedgerReader.sweepRows` sets
+`SweepRow.picked` the way it sets the rejections, and `ModelSuggestionSweep.eligible` is
+false for a picked row, also when the pick's category is hidden since. So neither
+Cloudflare nor Apple's model is asked about it, in the foreground sweep or in the
+background stage, the background counts leave it out, and an answer that comes back after
+the person sorted the merchant is not written, because the sweeps re-read the rows before
+they author.
+
+After the person sorts a card, the next card is another waiting payment of the same
+merchant group and direction from the deck's own cards, in date order, if there is one;
+then date order resumes. A payment of that merchant sorted meanwhile elsewhere is skipped,
+as D4 and D5 say.
 
 ### D6, D6b and D7 Not this
 

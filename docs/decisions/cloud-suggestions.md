@@ -357,7 +357,8 @@ keeps the day ledger and the rows filed here.
 
 - Rules and the dictionary still go first. It reads the same model queue as the
   foreground sweep (`Sweep.plan`), with the same eligibility (a debit with no category,
-  source not user or held) and the same card-template allowlist (`cloudTemplates`). A
+  source not user or held, and no pick of the person's for its merchant group and
+  direction, `SweepRow.picked`) and the same card-template allowlist (`cloudTemplates`). A
   name is not sent when it shares a subject with a row that may not leave the phone.
 - Clef only. It never runs Apple's model. While a run is running, or paused for a 429 or
   a 503, the foreground sweep waits (`backlogActive`). While the run is paused on the day

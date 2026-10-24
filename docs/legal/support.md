@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-24
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -38,7 +38,7 @@ No. Your transactions, amounts, merchants, categories, budgets, bills and rules 
 
 ### How does Hasala sort my spending?
 
-On your iPhone, in this order: your own rules, then a built-in list of UAE merchants, then, only if you turn on Cloud suggestions, one merchant name sent to our suggestion service (see [Cloud suggestions](/privacy#cloud-suggestions)), and after that Apple's on-device model for merchant names written in Latin letters. With Cloud suggestions off, which is the default, the beta doesn't run Apple's model: anything your rules and the built-in list don't cover waits for your review. Suggestions, and Hasala's own sorting, can be wrong. Unless you also turn on Sort automatically, a suggestion doesn't file a transaction by itself. When you sort a transaction yourself, you can tell Hasala to always do the same for that merchant. Hasala then also re-files that merchant's earlier payments, except the ones you sorted yourself.
+On your iPhone, in this order: your own rules, then a built-in list of UAE merchants, then the category you last picked for that merchant yourself (a suggestion), then, only if you turn on Cloud suggestions and you haven't sorted that merchant yourself, one merchant name sent to our suggestion service (see [Cloud suggestions](/privacy#cloud-suggestions)), and after that Apple's on-device model for merchant names written in Latin letters. With Cloud suggestions off, which is the default, the beta doesn't run Apple's model: anything your rules and the built-in list don't cover waits for your review. Suggestions, and Hasala's own sorting, can be wrong. Unless you also turn on Sort automatically, a suggestion doesn't file a transaction by itself. When you sort a transaction yourself, you can tell Hasala to always do the same for that merchant. Hasala then also re-files that merchant's earlier payments, except the ones you sorted yourself.
 
 ### Which email accounts work?
 

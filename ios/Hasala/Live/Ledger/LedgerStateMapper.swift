@@ -80,6 +80,7 @@ nonisolated enum LedgerStateMapper {
     let reachRows = rows.map(\.reachRow)
     let paired = RuleReach.paired(reachRows, home: home)
     let rejections = try r.rejections()
+    let picks = try r.lastPicks()
     var txns: [HasalaModels.Txn] = []
     txns.reserveCapacity(rows.count)
     for (i, row) in rows.enumerated() {
@@ -100,6 +101,9 @@ nonisolated enum LedgerStateMapper {
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)
+    for i in txns.indices where txns[i].inReview {
+      txns[i].lastPick = rows[i].pickRow.key.flatMap { picks[$0] }
+    }
     let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
       Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }

@@ -31,6 +31,15 @@ extension ReviewEngine {
     GroupIndex(s, only: ref).repeatsMonthly(ref)
   }
 
+  public static func fillLastPicks(_ s: inout LedgerState, sortOrder: [TxnID: Int] = [:]) {
+    let index = GroupIndex(s, sortOrder: sortOrder)
+    for i in s.txns.indices {
+      let t = s.txns[i]
+      let pick = t.inReview ? t.groupRef.flatMap(index.lastPick) : nil
+      if t.lastPick != pick { s.txns[i].lastPick = pick }
+    }
+  }
+
   public static func payments(_ n: Int) -> String { "\(n) payment\(n == 1 ? "" : "s")" }
 
   public static func reachTitle(count: Int, merchant: String, category: String, all: Bool = true) -> String {
@@ -39,15 +48,23 @@ extension ReviewEngine {
   }
 }
 
+extension Txn {
+  public var countsAsPick: Bool { categorySource == .user && categoryID != nil && splits.isEmpty }
+}
+
 struct GroupIndex {
   var filed: [MerchantGroupRef: [CategoryID: Int]] = [:]
   var keys: [MerchantGroupRef: Set<String>] = [:]
   var monthly: [Direction: Set<String>] = [:]
+  var picks: [MerchantGroupRef: Txn] = [:]
+  var sortOrder: [TxnID: Int] = [:]
 
-  init(_ s: LedgerState, only: MerchantGroupRef? = nil) {
+  init(_ s: LedgerState, only: MerchantGroupRef? = nil, sortOrder: [TxnID: Int] = [:]) {
+    self.sortOrder = sortOrder
     for t in s.txns {
       guard let ref = t.groupRef, only == nil || only == ref else { continue }
       if let k = t.merchantKey { keys[ref, default: []].insert(k) }
+      if t.countsAsPick, picks[ref].map({ newer(t, than: $0) }) ?? true { picks[ref] = t }
       guard !t.archived, !t.inReview, t.splits.isEmpty, t.filedByPerson, let c = t.categoryID else { continue }
       filed[ref, default: [:]][c, default: 0] += 1
     }
@@ -63,6 +80,17 @@ struct GroupIndex {
     (filed[ref] ?? [:]).compactMap { id, n in s.category(id).map { FiledCount(category: CategoryOption($0), count: n) } }
       .sorted { $0.count == $1.count ? $0.category.name < $1.category.name : $0.count > $1.count }
   }
+
+  func newer(_ a: Txn, than b: Txn) -> Bool {
+    let at = a.categorizedAt ?? a.postedAt, bt = b.categorizedAt ?? b.postedAt
+    if at != bt { return at > bt }
+    let ao = sortOrder[a.id] ?? -1, bo = sortOrder[b.id] ?? -1
+    if ao != bo { return ao > bo }
+    if a.postedAt != b.postedAt { return a.postedAt > b.postedAt }
+    return a.id > b.id
+  }
+
+  func lastPick(_ ref: MerchantGroupRef) -> CategoryID? { picks[ref]?.categoryID }
 
   func repeatsMonthly(_ ref: MerchantGroupRef) -> Bool {
     guard let covered = monthly[ref.direction] else { return false }

@@ -288,7 +288,9 @@ extension Txn {
     return categoryID == nil && splits.isEmpty
   }
 
-  public var reviewSuggestion: CategoryID? {
+  public var reviewSuggestion: CategoryID? { lastPick ?? modelSuggestion }
+
+  public var modelSuggestion: CategoryID? {
     let guess: CategoryID?
     if let suggestion {
       guess = suggestion
@@ -299,6 +301,12 @@ extension Txn {
     }
     guard let guess, !rejectedCategories.contains(guess) else { return nil }
     return guess
+  }
+
+  public var reviewSuggestionLabel: String? {
+    guard reviewSuggestion != nil else { return nil }
+    if lastPick != nil { return CategorySource.lastPickLabel }
+    return categorySource?.suggestionLabel(needsReview: needsReview)
   }
 }
 
@@ -399,14 +407,18 @@ public enum ReviewEngine {
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
       isNewMerchant: t.isNewMerchant, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
-      suggestion: s.category(t.reviewSuggestion).map(CategoryOption.init)
+      suggestion: suggestion(t, s).map(CategoryOption.init)
     )
     card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s)
-    if card.suggestion != nil { card.suggestedBy = t.categorySource?.suggestionLabel(needsReview: t.needsReview) }
+    if card.suggestion != nil { card.suggestedBy = t.reviewSuggestionLabel }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
     card.canAlwaysUse = t.canAlwaysUse
     return card
+  }
+
+  public static func suggestion(_ t: Txn, _ s: LedgerState) -> Category? {
+    s.category(t.reviewSuggestion).flatMap { $0.archived ? nil : $0 }
   }
 
   public static func copyLine(_ t: Txn, _ s: LedgerState) -> String? {
