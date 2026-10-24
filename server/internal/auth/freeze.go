@@ -123,12 +123,10 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 // including this one. The caller's own session is revoked like the others
 // ('others'), but its device is not woken: it asked.
 func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepUpObject) (Wake, error) {
-	ph, err := keyproto.ParamsHash(keyproto.ActionAccountFreeze)
+	g, err := guardFor(session, keyproto.ActionAccountFreeze, su)
 	if err != nil {
 		return Wake{}, err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionAccountFreeze, ParamsHash: ph, StepUp: su}
 	var (
 		revoked []pushv2.Target
 		frozeAt time.Time
@@ -174,18 +172,16 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 	if !st.frozen() {
 		return Wake{}, fmt.Errorf("%w: the account is not frozen", ErrBadRequest)
 	}
-	if st.FrozenBy != nil && *st.FrozenBy == FrozenByOperator {
+	if st.operatorFrozen() {
 		return Wake{}, fmt.Errorf("%w: only the operator lifts an operator freeze", ErrAccountFrozen)
 	}
 	if su == nil {
 		return Wake{}, ErrStepUpRequired
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionAccountUnfreeze)
+	g, err := guardFor(session, keyproto.ActionAccountUnfreeze, su)
 	if err != nil {
 		return Wake{}, err
 	}
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionAccountUnfreeze, ParamsHash: ph, StepUp: su}
 	var (
 		revoked    []pushv2.Target
 		unfrozenAt time.Time
@@ -198,7 +194,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		if !st.frozen() {
 			return fmt.Errorf("%w: the account is not frozen", ErrBadRequest)
 		}
-		if st.FrozenBy != nil && *st.FrozenBy == FrozenByOperator {
+		if st.operatorFrozen() {
 			return fmt.Errorf("%w: only the operator lifts an operator freeze", ErrAccountFrozen)
 		}
 		trigger := *st.FreezeTriggerAt
@@ -221,9 +217,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		}
 		now := a.now()
 		unfrozenAt = now
-		if _, err := tx.Exec(ctx,
-			`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false
-			  WHERE id = $1`, session.UserID); err != nil {
+		if err := clearFreezeTx(ctx, tx, session.UserID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE sessions SET restricted = false WHERE token_hash = $1`, session.Hash); err != nil {
@@ -357,6 +351,13 @@ func OperatorFreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.T
 	return err
 }
 
+func clearFreezeTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false WHERE id = $1`,
+		userID)
+	return err
+}
+
 // UnfreezeScope is who an operator unfreeze may lift.
 type UnfreezeScope int
 
@@ -397,9 +398,7 @@ func OperatorUnfreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, scope Un
 			return false, err
 		}
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false WHERE id = $1`,
-		userID); err != nil {
+	if err := clearFreezeTx(ctx, tx, userID); err != nil {
 		return false, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now); err != nil {

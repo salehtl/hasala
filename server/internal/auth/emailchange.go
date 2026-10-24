@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
@@ -54,7 +53,7 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 			return EmailChangeBegun{}, err
 		}
 	}
-	ph, err := keyproto.ParamsHash(keyproto.ActionEmailChange, addrHash[:], second)
+	g, err := guardFor(session, keyproto.ActionEmailChange, su, addrHash[:], second)
 	if err != nil {
 		return EmailChangeBegun{}, err
 	}
@@ -75,8 +74,6 @@ func (a *Accounts) EmailChangeBegin(ctx context.Context, session SessionInfo, ne
 		return EmailChangeBegun{}, err
 	}
 	var codes []IssuedCode
-	g := Guarded{UserID: session.UserID, SessionHash: session.Hash, BoundWriter: session.WriterID,
-		Action: keyproto.ActionEmailChange, ParamsHash: ph, StepUp: su}
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		now := a.now()
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -207,8 +204,7 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		`UPDATE users SET email_norm = $2, email_verified_at = $3, email_undeliverable_at = NULL,
 		        password_hash = coalesce($4, password_hash), password_salt = coalesce($5, password_salt)
 		  WHERE id = $1`, st.ID, newAddr, now, hash, salt); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" {
+		if uniqueViolation(err) != nil {
 			return fmt.Errorf("%w: the address was taken meanwhile", ErrCodeRejected)
 		}
 		return err
