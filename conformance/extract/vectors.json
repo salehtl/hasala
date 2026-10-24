@@ -1373,6 +1373,106 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "merchant-date-token-trim",
+      "note": "The token trim: a weekday-like last word of a name stays, a lone month stays, an invalid date stays while a valid time after it goes, and Levantine Arabic month names are dates.",
+      "mails": [
+        {
+          "sender": "bank-n.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 31.00\nMerchant: RISING SUN Mar 3, 2030\nThank you.",
+          "received_at_ms": 1900002760000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-o.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 17.00\nMerchant: CAFE DEL MAR\nThank you.",
+          "received_at_ms": 1900002820000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-p.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 8.00\nMerchant: SAMPLE SHOP 45/13/2030 14:05\nThank you.",
+          "received_at_ms": 1900002880000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-q.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 12.00\nMerchant: SAMPLE SHOP 3 \u0627\u064a\u0627\u0631 2030\nThank you.",
+          "received_at_ms": 1900002940000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 3100,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "RISING SUN",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1700,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "CAFE DEL MAR",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 800,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE SHOP 45/13/2030",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1200,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE SHOP",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }

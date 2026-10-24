@@ -3,9 +3,9 @@ public enum CombinedReader {
     let stripped = strip(input)
     let (l, next) = LearnedReader.read(stripped, memory)
     let r = RuleReader.read(stripped)
-    let lo = aedOverride(l, stripped)
-    let ro = aedOverride(r, stripped)
-    let (out, agreed) = combine(learned: lo, rules: ro)
+    let lo = aedOverride(dateless(l, stripped.text), stripped)
+    let ro = aedOverride(dateless(r, stripped.text), stripped)
+    let (out, agreed) = combine(learned: lo, rules: ro, text: stripped.text)
     var result = reading(out, input, agreed: agreed, negative: l.negative || r.negative)
     if out.isTransaction {
       result.rulesConfidencePercent = ro.isTransaction ? ro.confidence : 0
@@ -17,14 +17,14 @@ public enum CombinedReader {
 
   public static func readRules(_ input: ExtractInput) -> ExtractReading {
     let stripped = strip(input)
-    let r = aedOverride(RuleReader.read(stripped), stripped)
+    let r = aedOverride(dateless(RuleReader.read(stripped), stripped.text), stripped)
     return reading(r, input, agreed: false, negative: r.negative)
   }
 
   public static func readLearned(_ input: ExtractInput, _ memory: LearnedLayouts) -> (ExtractReading, LearnedLayouts) {
     let stripped = strip(input)
     let (l, next) = LearnedReader.read(stripped, memory)
-    let result = reading(aedOverride(l, stripped), input, agreed: false, negative: l.negative)
+    let result = reading(aedOverride(dateless(l, stripped.text), stripped), input, agreed: false, negative: l.negative)
     return (result, result.outcome == .notTransaction ? memory : next)
   }
 
@@ -96,9 +96,13 @@ public enum CombinedReader {
     return out
   }
 
-  static func combine(learned l: Reading, rules r: Reading) -> (Reading, Bool) {
-    var l = l
-    l.merchant = MerchantWhen.trimmed(l.merchant)
+  static func dateless(_ r: Reading, _ text: String) -> Reading {
+    var out = r
+    out.merchant = MerchantWhen.reconcile(learned: r.merchant, rules: nil, text: text)
+    return out
+  }
+
+  static func combine(learned l: Reading, rules r: Reading, text: String = "") -> (Reading, Bool) {
     switch (l.isTransaction, r.isTransaction) {
     case (true, true) where l.amountMinor == r.amountMinor && l.currency == r.currency:
       let directionsAgree = l.direction == r.direction || l.directionGuessed || r.directionGuessed
@@ -112,7 +116,7 @@ public enum CombinedReader {
         return (out, false)
       }
       var out = l.confidence >= r.confidence ? l : r
-      out.merchant = MerchantWhen.reconcile(learned: l.merchant, rules: r.merchant)
+      out.merchant = MerchantWhen.reconcile(learned: l.merchant, rules: r.merchant, text: text)
       if l.directionGuessed && !r.directionGuessed { out.direction = r.direction }
       if r.directionGuessed && !l.directionGuessed { out.direction = l.direction }
       out.currencyExplicit = true

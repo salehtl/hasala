@@ -271,6 +271,7 @@ enum RuleReader {
   }
 
   static func validMerchant(_ raw: String, banks: Set<String>) -> String? {
+    if MerchantWhen.isDateOnly(MerchantWhen.tidy(raw)) { return nil }
     var v = MerchantWhen.trim(raw)
     while let l = v.last, l == "." || l == "," || l == ":" || l == ";" { v.removeLast() }
     v = v.trimmingCharacters(in: .whitespaces)
@@ -278,7 +279,7 @@ enum RuleReader {
     if !v.contains(where: { $0.isLetter }) { return nil }
     let f = RuleText.fold(v)
     if RuleText.has(Self.ownWords, f) { return nil }
-    if RuleText.has(Self.dateLike, f) { return nil }
+    if RuleText.has(Self.dateLike, f) || MerchantWhen.isDateOnly(v) { return nil }
     if RuleText.has(Self.iban, f) { return nil }
     let nonSpace = v.filter { !$0.isWhitespace }
     let maskish = nonSpace.filter { $0.isNumber || $0 == "X" || $0 == "x" || $0 == "*" || $0 == "-" }
