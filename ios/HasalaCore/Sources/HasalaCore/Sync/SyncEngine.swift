@@ -111,9 +111,7 @@ public actor SyncEngine {
       out.newData = out.newData || again.newData
       out.pulled.rowsStored += again.pulled.rowsStored
       out.pulled.opsOpened += again.pulled.opsOpened
-      out.pushed.batches += again.pushed.batches
-      out.pushed.blobs += again.pushed.blobs
-      out.pushed.opsAcknowledged += again.pushed.opsAcknowledged
+      out.pushed.add(again.pushed)
       out.stop = again.stop
     }
     inFlight = nil
@@ -135,32 +133,29 @@ public actor SyncEngine {
       set(.pulling)
       if trigger.refreshesRoster { try await refreshRoster() }
       out.pulled = try await Puller.pull(context, observer: observer)
-      if out.pulled.alarms > 0 { status.integrityAlarms += out.pulled.alarms }
+      status.integrityAlarms += out.pulled.alarms
       set(.pushing)
       await observer?.willPush()
       let pushed = try await latchAware { () async throws(SyncStop) in
         try await Pusher.flush(context, deadline: deadline) { [observer] in await observer?.willPush() }
       }
-      out.pushed.batches += pushed.batches
-      out.pushed.blobs += pushed.blobs
-      out.pushed.opsAcknowledged += pushed.opsAcknowledged
+      out.pushed.add(pushed)
       if pushed.batches > 0 || hasInflight {
         set(.selfPull)
         let again = try await Puller.pull(context, observer: observer)
         out.pulled.rowsStored += again.rowsStored
         out.pulled.opsOpened += again.opsOpened
-        if again.alarms > 0 { status.integrityAlarms += again.alarms }
+        status.integrityAlarms += again.alarms
       }
-      out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
       offlineAttempts = 0
       status.lastSuccessAt = context.clock.nowMs()
       status.retryAfterSeconds = nil
       status.suspended = false
       status.phase = .idle
     } catch {
-      out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
       out.stop = await apply(error)
     }
+    out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
     status.latch = (try? context.store.syncState().latch) ?? status.latch
     publish()

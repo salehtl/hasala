@@ -72,9 +72,7 @@ func BucketFor(n int) (int, error) {
 }
 
 // IsBucket reports whether n is exactly a rung of the ladder.
-func IsBucket(n int) bool { return isBucket(n) }
-
-func isBucket(n int) bool {
+func IsBucket(n int) bool {
 	for _, b := range Buckets {
 		if n == b {
 			return true

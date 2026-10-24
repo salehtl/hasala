@@ -158,18 +158,8 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 		return
 	}
 	defer s.pulls.release(userID)
-	stream, ok := requireStream(w, r)
+	stream, after, limit, ok := pageParams(w, r, defaultPullLimit, maxPullLimit)
 	if !ok {
-		return
-	}
-	after, err := parseCursor(r)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
-		return
-	}
-	limit, err := parseLimit(r, defaultPullLimit, maxPullLimit)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
 
@@ -209,17 +199,9 @@ func (s *Server) handlePull(w http.ResponseWriter, r *http.Request, userID uuid.
 	// Asked AFTER the page, never before: rows committed in between make this
 	// report "not complete", which costs one empty round trip. The other order
 	// can report complete while rows exist, which costs the client its data.
-	maxSeq, err := oplog.StreamMaxSeq(r.Context(), s.Pool, userID, stream)
-	if err != nil {
-		s.logf("api: pull %s max seq for %s: %v", stream, userID, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
+	if out.Complete, ok = s.pageComplete(w, r, userID, "pull", stream, after, next); !ok {
 		return
 	}
-	if after > maxSeq {
-		writeErr(w, http.StatusConflict, "cursor_ahead", "after is past the end of the stream")
-		return
-	}
-	out.Complete = next >= maxSeq
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -228,18 +210,8 @@ func (s *Server) handleHashes(w http.ResponseWriter, r *http.Request, userID uui
 		return
 	}
 	defer s.pulls.release(userID)
-	stream, ok := requireStream(w, r)
+	stream, after, limit, ok := pageParams(w, r, defaultHashLimit, maxHashLimit)
 	if !ok {
-		return
-	}
-	after, err := parseCursor(r)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
-		return
-	}
-	limit, err := parseLimit(r, defaultHashLimit, maxHashLimit)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
 
@@ -262,24 +234,45 @@ func (s *Server) handleHashes(w http.ResponseWriter, r *http.Request, userID uui
 		})
 	}
 	out.Next = strconv.FormatInt(next, 10)
-	maxSeq, err := oplog.StreamMaxSeq(r.Context(), s.Pool, userID, stream)
-	if err != nil {
-		s.logf("api: hashes %s max seq for %s: %v", stream, userID, err)
-		writeErr(w, http.StatusInternalServerError, "internal", "")
+	if out.Complete, ok = s.pageComplete(w, r, userID, "hashes", stream, after, next); !ok {
 		return
 	}
-	if after > maxSeq {
-		writeErr(w, http.StatusConflict, "cursor_ahead", "after is past the end of the stream")
-		return
-	}
-	out.Complete = next >= maxSeq
 	writeJSON(w, http.StatusOK, out)
 }
 
-// requireStream reads the `stream` query parameter. There is one stream:
-// absent means hot, and anything else is 400 bad_stream (spec 02 §11.3).
-func requireStream(w http.ResponseWriter, r *http.Request) (string, bool) {
-	stream := r.URL.Query().Get("stream")
+func pageParams(w http.ResponseWriter, r *http.Request, def, max int) (stream string, after int64, limit int, ok bool) {
+	if stream, ok = checkStream(w, r.URL.Query().Get("stream")); !ok {
+		return "", 0, 0, false
+	}
+	after, err := parseCursor(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
+		return "", 0, 0, false
+	}
+	if limit, err = parseLimit(r, def, max); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
+		return "", 0, 0, false
+	}
+	return stream, after, limit, true
+}
+
+func (s *Server) pageComplete(w http.ResponseWriter, r *http.Request, userID uuid.UUID, what, stream string, after, next int64) (complete, ok bool) {
+	maxSeq, err := oplog.StreamMaxSeq(r.Context(), s.Pool, userID, stream)
+	if err != nil {
+		s.logf("api: %s %s max seq for %s: %v", what, stream, userID, err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return false, false
+	}
+	if after > maxSeq {
+		writeErr(w, http.StatusConflict, "cursor_ahead", "after is past the end of the stream")
+		return false, false
+	}
+	return next >= maxSeq, true
+}
+
+// checkStream validates a requested stream. There is one stream: absent means
+// hot, and anything else is 400 bad_stream (spec 02 §11.3).
+func checkStream(w http.ResponseWriter, stream string) (string, bool) {
 	if stream == "" {
 		return blob.StreamHot, true
 	}
@@ -331,11 +324,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, userID uui
 	if !decodeBody(w, r, maxUploadBytes, &req) {
 		return
 	}
-	if req.Stream == "" {
-		req.Stream = blob.StreamHot
-	}
-	if req.Stream != blob.StreamHot {
-		writeErr(w, http.StatusBadRequest, "bad_stream", "stream must be "+strconv.Quote(blob.StreamHot))
+	var ok bool
+	if req.Stream, ok = checkStream(w, req.Stream); !ok {
 		return
 	}
 	if len(req.Blobs) == 0 {

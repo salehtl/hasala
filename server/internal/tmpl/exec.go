@@ -44,6 +44,7 @@ package tmpl
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -178,8 +179,9 @@ type Compiled struct {
 }
 
 type compiledEntry struct {
-	x   Extract
-	res []*regexp.Regexp
+	x       Extract
+	res     []*regexp.Regexp
+	onMatch []string
 }
 
 // Definition returns the definition this was compiled from.
@@ -248,7 +250,7 @@ func compileEntry(i int, x Extract) (compiledEntry, error) {
 	if !ok {
 		return fail("type %q is not a type", x.Type)
 	}
-	if !containsString(types, x.Type) {
+	if !slices.Contains(types, x.Type) {
 		return fail("field %q cannot be extracted as type %q", x.Field, x.Type)
 	}
 	if x.Source != SourceBody && x.Source != SourceSubject {
@@ -279,7 +281,7 @@ func compileEntry(i int, x Extract) (compiledEntry, error) {
 		}
 	}
 
-	ce := compiledEntry{x: x, res: make([]*regexp.Regexp, 0, len(x.Patterns))}
+	ce := compiledEntry{x: x, res: make([]*regexp.Regexp, 0, len(x.Patterns)), onMatch: slices.Sorted(maps.Keys(x.OnMatch))}
 	for j, p := range x.Patterns {
 		re, err := CompileGo(p, x.Flags)
 		if err != nil {
@@ -287,7 +289,7 @@ func compileEntry(i int, x Extract) (compiledEntry, error) {
 		}
 		names := re.SubexpNames()
 		for _, want := range spec.required {
-			if !containsString(names, want) {
+			if !slices.Contains(names, want) {
 				return fail("patterns[%d] does not capture (?P<%s>...), so a %s entry could never read a value from it",
 					j, want, x.Type)
 			}
@@ -401,7 +403,7 @@ func (c *Compiled) Execute(subject, normalizedBody string) (Extraction, error) {
 		// Rule 4: on_match sets additional fields only if not already set.
 		// Sorted, so two executors apply them in the same order even though
 		// on_match is a map.
-		for _, f := range sortedKeys(ce.x.OnMatch) {
+		for _, f := range ce.onMatch {
 			if st.set[f] {
 				continue
 			}
@@ -592,11 +594,7 @@ func (st *execState) finish() Extraction {
 		// executor happened to evaluate its entries in is not a fact worth
 		// carrying, and carrying it would make two identical failures look
 		// different.
-		labels := make([]string, 0, len(st.empty))
-		for l := range st.empty {
-			labels = append(labels, l)
-		}
-		slices.Sort(labels)
+		labels := slices.Sorted(maps.Keys(st.empty))
 		if len(labels) > MaxEmptyGroups {
 			labels = labels[:MaxEmptyGroups]
 		}
@@ -666,12 +664,9 @@ func convertAmount(amt, ccy, defaultCurrency string) (int64, string, bool) {
 	if err != nil {
 		return 0, "", false // overflow: an amount int64 cannot hold is not an amount
 	}
-	currency := defaultCurrency
-	if c := asciiUpper(trimCapture(ccy)); c != "" {
-		if !currencyRe.MatchString(c) {
-			return 0, "", false
-		}
-		currency = c
+	currency, ok := resolveCurrency(ccy, defaultCurrency)
+	if !ok {
+		return 0, "", false
 	}
 	if _, ok := nonTwoDecimalCurrencies[currency]; ok {
 		return 0, "", false
@@ -679,15 +674,20 @@ func convertAmount(amt, ccy, defaultCurrency string) (int64, string, bool) {
 	return minor, currency, true
 }
 
-func currencyRefused(ccy, defaultCurrency string) bool {
-	currency := defaultCurrency
-	if c := asciiUpper(trimCapture(ccy)); c != "" {
-		if !currencyRe.MatchString(c) {
-			return false
-		}
-		currency = c
+func resolveCurrency(ccy, defaultCurrency string) (string, bool) {
+	c := asciiUpper(trimCapture(ccy))
+	if c == "" {
+		return defaultCurrency, true
 	}
-	_, ok := nonTwoDecimalCurrencies[currency]
+	return c, currencyRe.MatchString(c)
+}
+
+func currencyRefused(ccy, defaultCurrency string) bool {
+	currency, ok := resolveCurrency(ccy, defaultCurrency)
+	if !ok {
+		return false
+	}
+	_, ok = nonTwoDecimalCurrencies[currency]
 	return ok
 }
 

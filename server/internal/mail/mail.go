@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 )
 
@@ -79,7 +80,7 @@ func (f *Fake) Send(_ context.Context, m Message) (string, error) {
 	if f.Max > 0 && len(f.sent) > f.Max {
 		f.sent = append([]Message(nil), f.sent[len(f.sent)-f.Max:]...)
 	}
-	return "fake-" + itoa(n), nil
+	return "fake-" + strconv.Itoa(n), nil
 }
 
 // Sent returns a copy of every recorded message.
@@ -105,18 +106,4 @@ func (f *Fake) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = nil
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }

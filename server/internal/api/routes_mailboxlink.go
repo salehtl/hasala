@@ -169,9 +169,7 @@ func (s *Server) mountMailboxLink(mux *http.ServeMux) {
 	if lim == nil && s.Outlook != nil {
 		lim = s.Outlook.MailboxPerUser
 	}
-	if lim == nil {
-		lim = NewLimiter(mailboxRate, mailboxBurst, mailboxMaxKeys, s.now)
-	}
+	s.ensureLimiter(&lim, mailboxRate, mailboxBurst, mailboxMaxKeys)
 	if s.Gmail != nil {
 		s.Gmail.MailboxPerUser = lim
 	}
