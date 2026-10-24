@@ -5,10 +5,6 @@
 //
 // Row-level and content-agnostic: CoreMailbox (L4) maps its values onto these rows (it may not
 // import GRDB, R6), and the op JSON arrives already authored (CoreDomain's OpAuthor, R5).
-//
-// The real migration is CoreStore's `"v1"` (LedgerSchema, WS-11). `MailboxTableStore.schema`
-// repeats the §4.2 DDL of the tables used here so this store can be tested alone; it must stay
-// identical to the migration's text.
 import Foundation
 import GRDB
 
@@ -165,74 +161,11 @@ public final class MailboxTableStore: Sendable {
   }
 
   /// §4.2's DDL for the tables this store touches (identical to LedgerSchema's migration "v1").
-  public static let schema: [String] = [
-    """
-    CREATE TABLE pending_ops (
-      local_seq    INTEGER PRIMARY KEY AUTOINCREMENT,
-      op_id        TEXT    NOT NULL UNIQUE,
-      op_json      BLOB    NOT NULL,
-      op_type      TEXT    NOT NULL,
-      entity_kind  TEXT, entity_id TEXT,
-      enqueued_at  INTEGER NOT NULL
-    )
-    """,
-    """
-    CREATE TABLE mailbox_state (
-      id                    INTEGER PRIMARY KEY CHECK (id = 1),
-      phase                 TEXT NOT NULL CHECK (phase IN
-                              ('unlinked','scanning','awaiting_cards','authoring_backfill','active',
-                               'other_device','reconnect_required','halted')),
-      address               TEXT,
-      watermark_ms          INTEGER,
-      profile_history_id    TEXT,
-      backfill_days         INTEGER CHECK (backfill_days IN (30, 90, 365)),
-      scan_started_ms       INTEGER,
-      list_page_token       TEXT,
-      watch_expires_at      INTEGER,
-      halted_on             TEXT, halted_detail TEXT,
-      last_cycle_at         INTEGER, last_success_at INTEGER, last_holder_check_at INTEGER
-    )
-    """,
-    """
-    CREATE TABLE mailbox_accounted (
-      message_id    TEXT PRIMARY KEY,
-      outcome       TEXT NOT NULL CHECK (outcome IN ('op','set_aside','unreadable','dup','gone')),
-      internal_date INTEGER NOT NULL,
-      at            INTEGER NOT NULL
-    ) WITHOUT ROWID
-    """,
-    """
-    CREATE TABLE mailbox_set_aside (
-      message_id  TEXT PRIMARY KEY, domain TEXT NOT NULL, internal_date INTEGER NOT NULL, at INTEGER NOT NULL
-    ) WITHOUT ROWID
-    """,
-    """
-    CREATE TABLE mailbox_unreadable (
-      message_id  TEXT PRIMARY KEY, reason TEXT NOT NULL, domain TEXT, internal_date INTEGER, at INTEGER NOT NULL
-    ) WITHOUT ROWID
-    """,
-    """
-    CREATE TABLE mailbox_staging (
-      message_id    TEXT PRIMARY KEY,
-      ingest_id     TEXT NOT NULL CHECK (length(ingest_id) = 64),
-      bank          TEXT NOT NULL,
-      last4         TEXT NOT NULL,
-      gates_json    BLOB NOT NULL,
-      draft_json    BLOB NOT NULL,
-      internal_date INTEGER NOT NULL
-    ) WITHOUT ROWID
-    """,
-    """
-    CREATE TABLE bank_health (
-      domain TEXT PRIMARY KEY, last_email_at INTEGER, month TEXT NOT NULL, read_this_month INTEGER NOT NULL
-    ) WITHOUT ROWID
-    """,
-    "CREATE TABLE mailbox_sender_address (address TEXT PRIMARY KEY COLLATE NOCASE, at INTEGER NOT NULL) WITHOUT ROWID",
-    "CREATE TABLE mailbox_parsing (message_id TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID",
-    "CREATE TABLE mailbox_pending_import (domain TEXT PRIMARY KEY, since_ms INTEGER NOT NULL) WITHOUT ROWID",
-    "CREATE TABLE mailbox_unparsed_sender (message_id TEXT PRIMARY KEY, domain TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID",
-    "CREATE TABLE mailbox_reader (id INTEGER PRIMARY KEY CHECK (id = 1), json BLOB NOT NULL)",
-  ]
+  public static let schema: [String] =
+    LedgerSchema.v1.filter { sql in
+      ["pending_ops", "mailbox_", "bank_health"].contains { sql.hasPrefix("CREATE TABLE \($0)") }
+    } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
+    + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }

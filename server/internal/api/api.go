@@ -364,39 +364,17 @@ func (s *Server) logf(format string, args ...any) {
 // Handler returns the router. It fills in any limiter the caller left nil, so a
 // Server built field-by-field is still rate limited.
 func (s *Server) Handler() http.Handler {
-	if s.ChallengePerUser == nil {
-		s.ChallengePerUser = NewLimiter(challengeRate, challengeBurst, challengeMaxKeys, s.now)
-	}
-	if s.RegisterPerUser == nil {
-		s.RegisterPerUser = NewLimiter(registerRate, registerBurst, registerMaxKeys, s.now)
-	}
-	if s.AccountPerUser == nil {
-		s.AccountPerUser = NewLimiter(accountRate, accountBurst, accountMaxKeys, s.now)
-	}
-	if s.SessionPerUser == nil {
-		s.SessionPerUser = NewLimiter(sessionRate, sessionBurst, sessionMaxKeys, s.now)
-	}
-	if s.SyncPerUser == nil {
-		s.SyncPerUser = NewLimiter(syncRate, syncBurst, syncMaxKeys, s.now)
-	}
-	if s.SyncUploadBytes == nil {
-		s.SyncUploadBytes = NewLimiter(syncByteRate, syncByteBurst, syncByteMaxKeys, s.now)
-	}
-	if s.PasskeyPerIP == nil {
-		s.PasskeyPerIP = NewLimiter(passkeyPerIPRate, passkeyPerIPBurst, passkeyMaxKeys, s.now)
-	}
-	if s.PasskeyGlobal == nil {
-		s.PasskeyGlobal = NewLimiter(passkeyGlobalRate, passkeyGlobalBurst, 1, s.now)
-	}
-	if s.MetaPerIP == nil {
-		s.MetaPerIP = NewLimiter(metaRate, metaBurst, metaMaxKeys, s.now)
-	}
-	if s.StepUpPerUser == nil {
-		s.StepUpPerUser = NewLimiter(stepUpRate, stepUpBurst, stepUpMaxKeys, s.now)
-	}
-	if s.PullPerUser == nil {
-		s.PullPerUser = NewLimiter(pullRate, pullBurst, pullMaxKeys, s.now)
-	}
+	s.ensureLimiter(&s.ChallengePerUser, challengeRate, challengeBurst, challengeMaxKeys)
+	s.ensureLimiter(&s.RegisterPerUser, registerRate, registerBurst, registerMaxKeys)
+	s.ensureLimiter(&s.AccountPerUser, accountRate, accountBurst, accountMaxKeys)
+	s.ensureLimiter(&s.SessionPerUser, sessionRate, sessionBurst, sessionMaxKeys)
+	s.ensureLimiter(&s.SyncPerUser, syncRate, syncBurst, syncMaxKeys)
+	s.ensureLimiter(&s.SyncUploadBytes, syncByteRate, syncByteBurst, syncByteMaxKeys)
+	s.ensureLimiter(&s.PasskeyPerIP, passkeyPerIPRate, passkeyPerIPBurst, passkeyMaxKeys)
+	s.ensureLimiter(&s.PasskeyGlobal, passkeyGlobalRate, passkeyGlobalBurst, 1)
+	s.ensureLimiter(&s.MetaPerIP, metaRate, metaBurst, metaMaxKeys)
+	s.ensureLimiter(&s.StepUpPerUser, stepUpRate, stepUpBurst, stepUpMaxKeys)
+	s.ensureLimiter(&s.PullPerUser, pullRate, pullBurst, pullMaxKeys)
 	if s.StepUp == nil {
 		s.StepUp = &auth.StepUp{Pool: s.Pool, Passkeys: s.Passkeys}
 	}

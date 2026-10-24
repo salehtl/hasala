@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -71,15 +72,6 @@ var paramsAllowed = map[string][]string{
 	"alert":                {"event_at"},
 	"deleted":              {"deleted_at"},
 	"test":                 nil,
-}
-
-// Kinds returns every kind mail_log admits.
-func Kinds() []string {
-	out := make([]string, 0, len(paramsAllowed))
-	for k := range paramsAllowed {
-		out = append(out, k)
-	}
-	return out
 }
 
 // retryWindow is how long a transient failure may keep retrying (spec 07
@@ -238,24 +230,30 @@ func checkParams(kind string, p map[string]any) error {
 		return fmt.Errorf("mailq: unknown kind %q", kind)
 	}
 	for k := range p {
-		found := false
-		for _, a := range allowed {
-			if a == k {
-				found = true
-			}
-		}
-		if !found {
+		if !slices.Contains(allowed, k) {
 			return fmt.Errorf("mailq: param %q is not allowed for kind %q", k, kind)
 		}
 	}
 	return nil
 }
 
-func encodeParams(p map[string]any) ([]byte, error) {
+func (q *Queue) prepare(e *Enqueue) (tag, params []byte, err error) {
+	if err := checkParams(e.Kind, e.Params); err != nil {
+		return nil, nil, err
+	}
+	if e.Lane == "" {
+		e.Lane = LaneTransactional
+	}
+	tag = e.Tag
+	if tag == nil && q.Tagger != nil {
+		tag = q.Tagger.EmailTag(e.To)
+	}
+	p := e.Params
 	if p == nil {
 		p = map[string]any{}
 	}
-	return json.Marshal(p)
+	params, err = json.Marshal(p)
+	return tag, params, err
 }
 
 func nilIfEmpty(s string) any {
@@ -268,17 +266,7 @@ func nilIfEmpty(s string) any {
 // EnqueueTx writes a queued row inside the caller's transaction and notifies
 // the worker at commit.
 func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, e Enqueue) (int64, error) {
-	if err := checkParams(e.Kind, e.Params); err != nil {
-		return 0, err
-	}
-	if e.Lane == "" {
-		e.Lane = LaneTransactional
-	}
-	tag := e.Tag
-	if tag == nil && q.Tagger != nil {
-		tag = q.Tagger.EmailTag(e.To)
-	}
-	params, err := encodeParams(e.Params)
+	tag, params, err := q.prepare(&e)
 	if err != nil {
 		return 0, err
 	}
@@ -302,22 +290,12 @@ func (q *Queue) EnqueueTx(ctx context.Context, tx pgx.Tx, e Enqueue) (int64, err
 // touch the database (spec 02's codes): the row is written as sending, render
 // is called, the message is sent and the row finalized. One attempt.
 func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Message, error)) error {
-	if err := checkParams(e.Kind, e.Params); err != nil {
+	tag, params, err := q.prepare(&e)
+	if err != nil {
 		return err
-	}
-	if e.Lane == "" {
-		e.Lane = LaneTransactional
-	}
-	tag := e.Tag
-	if tag == nil && q.Tagger != nil {
-		tag = q.Tagger.EmailTag(e.To)
 	}
 	if len(tag) != 32 {
 		return errors.New("mailq: SendNow needs the recipient's email_tag")
-	}
-	params, err := encodeParams(e.Params)
-	if err != nil {
-		return err
 	}
 	var (
 		id    int64
@@ -336,12 +314,12 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	row := &Row{ID: id, Kind: e.Kind, Subkind: e.Subkind, Lane: e.Lane, Recipient: e.To, RecipientTag: tag,
 		UserID: e.UserID, EntryID: e.EntryID, InviteID: e.InviteID, BankSlug: e.BankSlug, Params: e.Params, Attempts: 1}
 	if q.Stopped() || q.Sender == nil {
-		q.finalize(ctx, id, lease, e.Kind, row, "", errors.New("mailq: sending is stopped"), true)
+		q.finalize(ctx, row, lease, "", errors.New("mailq: sending is stopped"), true)
 		return errors.New("mailq: sending is stopped")
 	}
 	msg, err := render()
 	if err != nil {
-		q.finalize(ctx, id, lease, e.Kind, row, "", fmt.Errorf("%w: render", mail.ErrPermanent), true)
+		q.finalize(ctx, row, lease, "", fmt.Errorf("%w: render", mail.ErrPermanent), true)
 		return err
 	}
 	msg.To = e.To
@@ -349,7 +327,7 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	pid, sendErr := q.Sender.Send(sctx, msg)
 	cancel()
 	msg = mail.Message{} // the rendered secret is never kept
-	q.finalize(ctx, id, lease, e.Kind, row, pid, sendErr, true)
+	q.finalize(ctx, row, lease, pid, sendErr, true)
 	return sendErr
 }
 
@@ -499,7 +477,7 @@ func (q *Queue) fillTags(ctx context.Context) error {
 
 // lanesAtRate lists the lanes that have used their hourly rate.
 func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
-	var out []string
+	out := []string{}
 	for lane, rate := range q.Rates {
 		if rate <= 0 {
 			continue
@@ -537,9 +515,6 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	full, err := q.lanesAtRate(ctx)
 	if err != nil {
 		return false, fmt.Errorf("mailq: lane rates: %w", err)
-	}
-	if full == nil {
-		full = []string{}
 	}
 	var (
 		row    Row
@@ -579,19 +554,19 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 		if transientRender(err) {
 			failure = errRenderRetry
 		}
-		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", failure, false)
+		q.finalize(ctx, &row, lease, "", failure, false)
 		return true, nil
 	}
 	msg.To = row.Recipient
 	if q.Sender == nil {
-		q.finalize(ctx, row.ID, lease, row.Kind, &row, "", errors.New("mailq: no sender"), false)
+		q.finalize(ctx, &row, lease, "", errors.New("mailq: no sender"), false)
 		return true, nil
 	}
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	pid, sendErr := q.Sender.Send(sctx, msg)
 	cancel()
 	msg = mail.Message{} // the rendered message is never kept
-	q.finalize(ctx, row.ID, lease, row.Kind, &row, pid, sendErr, false)
+	q.finalize(ctx, &row, lease, pid, sendErr, false)
 	return true, nil
 }
 
@@ -628,12 +603,12 @@ func clip(s string) string {
 // own lease, so a row a purge suppressed meanwhile stays suppressed. A row
 // that has become final loses its address at once when it is a `deleted`
 // email (O-17).
-func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind string, row *Row, pid string,
-	sendErr error, oneShot bool) {
+func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid string, sendErr error, oneShot bool) {
 	ctx = context.WithoutCancel(ctx)
+	kind := row.Kind
 	var (
 		sql  string
-		args = []any{id, lease}
+		args = []any{row.ID, lease}
 	)
 	unsent := false
 	redact := "recipient"
@@ -659,7 +634,7 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 		args = append(args, clip("auth: "+sendErr.Error()))
 	default:
 		retry := !oneShot && !errors.Is(sendErr, mail.ErrPermanent) && !errors.Is(sendErr, mail.ErrAuth) &&
-			row != nil && row.Attempts < maxAttempts
+			row.Attempts < maxAttempts
 		if retry {
 			wait := backoff[min(row.Attempts, len(backoff))-1]
 			if time.Since(row.CreatedAt)+wait > retryWindow(kind) {
@@ -680,14 +655,14 @@ func (q *Queue) finalize(ctx context.Context, id int64, lease time.Time, kind st
 			q.stopped.Store(true)
 		}
 	}
-	bounced := errors.Is(sendErr, mail.ErrBounced) && row != nil && row.UserID != nil && q.Bounced != nil
+	bounced := errors.Is(sendErr, mail.ErrBounced) && row.UserID != nil && q.Bounced != nil
 	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) (func(), error) {
 		if bounced {
 			if err := q.Bounced(ctx, tx, *row); err != nil {
 				return nil, err
 			}
 		}
-		if unsent && row != nil && q.Unsent != nil {
+		if unsent && q.Unsent != nil {
 			return q.Unsent(ctx, tx, *row)
 		}
 		return nil, nil

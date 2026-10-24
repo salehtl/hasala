@@ -31,7 +31,7 @@ public enum MailRecipients {
   }
 
   public static func canonical(_ address: String, provider: MailProviderID) -> String? {
-    var u = Array(address.utf8).map { (0x41...0x5a).contains($0) ? $0 + 0x20 : $0 }
+    var u = Array(address.utf8).map(asciiLower)
     while let f = u.first, f == 0x20 || f == 0x09 { u.removeFirst() }
     while let l = u.last, l == 0x20 || l == 0x09 || l == 0x2e { u.removeLast() }
     guard let at = u.lastIndex(of: 0x40), at > 0, at < u.count - 1 else { return nil }

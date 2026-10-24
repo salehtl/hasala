@@ -88,14 +88,13 @@ public final class KeychainSecretStore: SecretStore {
   }
 
   public func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) {
+    let accessible = Self.accessible(item.accessibility)
     var add = query(item)
     add[kSecValueData as String] = value
-    add[kSecAttrAccessible as String] = Self.accessible(item.accessibility)
+    add[kSecAttrAccessible as String] = accessible
     var s = api.add(add)
     if s == errSecDuplicateItem {
-      s = api.update(
-        query(item),
-        [kSecValueData as String: value, kSecAttrAccessible as String: Self.accessible(item.accessibility)])
+      s = api.update(query(item), [kSecValueData as String: value, kSecAttrAccessible as String: accessible])
     }
     guard s == errSecSuccess else { throw Self.failure(s) }
     guard let back = try read(item), back == value else { throw .readBackMismatch }
