@@ -1173,6 +1173,206 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "merchant-date-label-learned",
+      "note": "A labelled merchant followed by a date, from one sender over five mails; once the layout is learned, the agreed reading still has no date in the merchant.",
+      "mails": [
+        {
+          "sender": "bank-k.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 20.00\nMerchant: NORTHWIND MART Feb 2, 2030\nThank you.",
+          "received_at_ms": 1900002460000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-k.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 21.00\nMerchant: BLUE GROCER Feb 9, 2030\nThank you.",
+          "received_at_ms": 1900002520000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-k.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 22.00\nMerchant: CEDAR PHARMACY Mar 14, 2030\nThank you.",
+          "received_at_ms": 1900002580000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-k.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 23.00\nMerchant: OAK BOOKS Apr 1, 2030 10:15\nThank you.",
+          "received_at_ms": 1900002640000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-k.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 24.00\nMerchant: NORTHWIND MART May 3, 2030\nThank you.",
+          "received_at_ms": 1900002700000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "NORTHWIND MART",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2100,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "BLUE GROCER",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 62,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2200,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "CEDAR PHARMACY",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 75,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2300,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "OAK BOOKS",
+          "last4": "4821",
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2400,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "NORTHWIND MART",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 90,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        }
+      ]
+    },
+    {
+      "name": "merchant-date-words-not-dates",
+      "note": "Words that look like dates but are not: a lone \u064a\u0648\u0645 in a name, a day and month with no on and no year, and a number that is not a valid date.",
+      "mails": [
+        {
+          "sender": "bank-h.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u062e\u0635\u0645 \u0645\u0628\u0644\u063a 14.00 \u062f\u0631\u0647\u0645 \u0645\u0646 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 4821 \u0644\u062f\u0649 \u0645\u062e\u0628\u0632 \u0643\u0644 \u064a\u0648\u0645.\n\u0634\u0643\u0631\u0627 \u0644\u0643\u0645",
+          "received_at_ms": 1900002760000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-l.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 22.00 at CAFE 24 MARCH.\nThank you.",
+          "received_at_ms": 1900002820000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-m.example",
+          "subject": "Card transaction alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for a purchase.\nAmount: AED 90.00\nMerchant: SAMPLE STATION 1023/12/345\nThank you.",
+          "received_at_ms": 1900002880000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1400,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "\u0645\u062e\u0628\u0632 \u0643\u0644 \u064a\u0648\u0645",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2200,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "CAFE 24 MARCH",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 9000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE STATION 1023/12/345",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 85,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }

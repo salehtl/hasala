@@ -97,6 +97,8 @@ public enum CombinedReader {
   }
 
   static func combine(learned l: Reading, rules r: Reading) -> (Reading, Bool) {
+    var l = l
+    l.merchant = MerchantWhen.trimmed(l.merchant)
     switch (l.isTransaction, r.isTransaction) {
     case (true, true) where l.amountMinor == r.amountMinor && l.currency == r.currency:
       let directionsAgree = l.direction == r.direction || l.directionGuessed || r.directionGuessed
@@ -110,7 +112,7 @@ public enum CombinedReader {
         return (out, false)
       }
       var out = l.confidence >= r.confidence ? l : r
-      out.merchant = l.merchant ?? r.merchant
+      out.merchant = MerchantWhen.reconcile(learned: l.merchant, rules: r.merchant)
       if l.directionGuessed && !r.directionGuessed { out.direction = r.direction }
       if r.directionGuessed && !l.directionGuessed { out.direction = l.direction }
       out.currencyExplicit = true

@@ -16,32 +16,16 @@ enum RuleReader {
   static let sentenceBreak = try! NSRegularExpression(pattern: "[.!?;؛](?=\\s|$)|\\s[-|•]\\s")
   static let justNumber = try! NSRegularExpression(pattern: "^[\\s(]*[A-Za-z]{0,3}\\.?\\s*[\\d.,]+\\s*[A-Za-z]{0,3}[\\s)]*$")
   static let vatPhrase = RuleText.re("القيمه المضافه|value added tax")
-  static let weekdays =
-    "(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun)"
-  static let monthWord = "(?:" + RuleDate.monthPattern + ")\\.?"
-  static let arMonths =
-    "(?:يناير|فبراير|مارس|أبريل|ابريل|إبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|كانون الثاني|شباط|آذار|نيسان|أيار|حزيران|تموز|آب|أيلول|تشرين الأول|تشرين الثاني|كانون الأول)"
   static let stops =
-    "(?=\\s+on\\s+(?:your|the|card|\\d|" + weekdays + "(?![a-z])|" + monthWord + "\\s*\\d)|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
+    "(?=\\s+on\\s+(?:your|the|card|\\d)|" + MerchantWhen.stopEN + "|" + MerchantWhen.stopDate + "|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
   static let inlineAt = RuleText.re("(?<![a-z])(?:at|@)\\s+(.+?)" + stops)
-  static let inlineAtAr = RuleText.re("(?:لدى|لدي|عند|من متجر|في متجر)\\s+(.+?)(?=\\s+(?:بتاريخ|في|على|علي|باستخدام|بمبلغ|بقيمة|بقيمه)|\\s+(?:التاريخ|تاريخ|يوم)(?=\\s|$|[0-9٠-٩])|[.،,؛]|$)")
+  static let inlineAtAr = RuleText.re("(?:لدى|لدي|عند|من متجر|في متجر)\\s+(.+?)(?=\\s+(?:بتاريخ|في|على|علي|باستخدام|بمبلغ|بقيمة|بقيمه)|" + MerchantWhen.stopAR + "|[.،,؛]|$)")
   static let inlineTo = RuleText.re(
     "(?<![a-z])(?:(?:transferred|sent|paid|payment|transfer|remitted|remittance)\\b(?:(?![.!?](?:\\s|$)).)*?\\bto|towards)\\s+(.+?)" + stops)
   static let inlineFrom = RuleText.re(
     "(?<![a-z])(?:received|credited|transfer|deposit|deposited|remittance|refund|refunded|reversal|reversed)\\b(?:(?![.!?](?:\\s|$)).)*?\\bfrom\\s+(.+?)" + stops)
   static let dateLike = RuleText.re(
     "^\\s*(?:\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{2,4}|\\d{1,2}[-/ ](?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-/ ]\\d{2,4}|\\d{1,2}:\\d{2})")
-  static let dayNum = "\\d{1,2}(?:st|nd|rd|th)?"
-  static let dateCore =
-    "(?:(?:" + dayNum + "[-/ ]" + monthWord + "|" + monthWord + "[- ]" + dayNum + ")(?:,?[-/ ]\\d{4})?|\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{2,4})"
-  static let timeCore = "\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:am|pm)?"
-  static let trailingWhen = RuleText.re(
-    "(?:\\s+|^)(?:(?:on|dated|date)\\s+)?(?:" + weekdays + "(?![a-z])\\.?,?\\s*)?(?:" + dateCore + "(?:,?\\s*(?:at\\s+)?" + timeCore
-      + ")?|" + timeCore + ")$")
-  static let trailingWeekday = RuleText.re("(?:\\s+|^)on\\s+" + weekdays + "\\.?\\s*$")
-  static let trailingWhenAr = RuleText.re(
-    "(?:\\s+|^)(?:(?:بتاريخ|التاريخ|تاريخ|يوم|في)\\s+)?(?:[0-9٠-٩]{1,2}\\s+" + arMonths + "(?:\\s+[0-9٠-٩]{4})?|[0-9٠-٩]{1,4}[-/.][0-9٠-٩]{1,2}[-/.][0-9٠-٩]{2,4})\\s*$"
-  )
   static let iban = RuleText.re("^[a-z]{2}\\d{2}[a-z0-9x* ]{10,}$")
   static let ownWords = RuleText.re("(?<![a-z])(?:your|you|yours)(?![a-z])|حسابك|بطاقتك|لكم")
   static let bankingWith = RuleText.re("banking with\\s+(.+?)(?:[.!]|$)")
@@ -286,30 +270,10 @@ enum RuleReader {
     return s
   }
 
-  static func trimTrailingWhen(_ s: String) -> String {
-    var v = s
-    while true {
-      var next = v
-      for r in [Self.trailingWhen, Self.trailingWeekday, Self.trailingWhenAr] {
-        let ns = next as NSString
-        if let m = r.firstMatch(in: next, range: NSRange(location: 0, length: ns.length)), m.range.length > 0,
-          ns.substring(with: m.range).contains(where: { !$0.isWhitespace })
-        {
-          next = ns.substring(to: m.range.location)
-        }
-      }
-      next = next.trimmingCharacters(in: .whitespaces)
-      while let l = next.last, l == "." || l == "," || l == ":" || l == ";" || l == "-" { next.removeLast() }
-      next = next.trimmingCharacters(in: .whitespaces)
-      if next == v { return v }
-      v = next
-    }
-  }
-
   static func validMerchant(_ raw: String, banks: Set<String>) -> String? {
-    var v = raw.trimmingCharacters(in: .whitespaces)
+    var v = MerchantWhen.trim(raw)
     while let l = v.last, l == "." || l == "," || l == ":" || l == ";" { v.removeLast() }
-    v = trimTrailingWhen(v.trimmingCharacters(in: .whitespaces))
+    v = v.trimmingCharacters(in: .whitespaces)
     if v.isEmpty || v.count > 70 { return nil }
     if !v.contains(where: { $0.isLetter }) { return nil }
     let f = RuleText.fold(v)
