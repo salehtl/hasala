@@ -356,7 +356,7 @@ proposal that needs the owner's decision.
 
 - The group card (`ReviewGroupCardView`), "Use for all N", "Sort all N as X", the flying
   group card, and the group rows on the Review tab (#193). The `.sortGroup` edit went with
-  them. The app no longer uses `RuleReach.Scope.waiting` or `RuleReach.members`.
+  them. Some of its parts stay in the code with no reader (see below).
 - Sort each (`SortEachSheet`, the deck's More menu and footer) and its Needs-only list
   (#193).
 - The pick sheet's group mode: its commit button and its history line (#193).
@@ -387,9 +387,11 @@ proposal that needs the owner's decision.
 - The Debug screens for the group card, Sort each, the result row, the run card and Check
   suggestions.
 
-Two parts stay in the code with no reader: `Txn.reachable` (set by `RuleReach.waiting` in
-`LedgerStateMapper`, by `SortPatch` and by `MockReach`) and
-`BacklogSort.Counts.pendingTxnIDs`. A later code PR removes them.
+Parts stay in the code with no reader: `Txn.reachable` (set by `RuleReach.waiting` in
+`LedgerStateMapper`, and by `SortPatch` and `MockReach` from `Txn.waits`, which has no other
+use), `RuleReach.Scope.waiting` with the `scope` parameter of `RuleReach.plan`,
+`RuleReach.members`, and `BacklogSort.Counts.pendingTxnIDs`. Only tests read them. A later
+code PR removes them.
 
 ## How the live app writes it
 
