@@ -459,8 +459,8 @@ func TestTheCascadeCheckCoversTheLogAndItsKeys(t *testing.T) {
 			}
 		}
 	}
-	if err := checkCascades(bg, pool, []Relation{rel("op_log"), rel("key_history"), rel("writers"), rel("apns_tokens")}); err != nil {
-		t.Fatalf("checkCascades: %v", err)
+	if err := CheckCascades(bg, pool, []Relation{rel("op_log"), rel("key_history"), rel("writers"), rel("apns_tokens")}); err != nil {
+		t.Fatalf("CheckCascades: %v", err)
 	}
 }
 

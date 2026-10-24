@@ -56,6 +56,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -146,10 +147,7 @@ func UsageLedgerFor(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) 
 	out := make([]Finding, 0, len(drifts))
 	for _, d := range drifts {
 		if len(out) >= maxFindings {
-			out = append(out, Finding{
-				ID:     "truncated",
-				Detail: fmt.Sprintf("stopped after %d findings; fix these and re-run", maxFindings),
-			})
+			out = append(out, truncated())
 			break
 		}
 		out = append(out, Finding{ID: U1UsageDrift, UserID: d.UserID, Detail: d.detail()})
@@ -168,16 +166,8 @@ func usageDrift(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID) ([]d
 	if err != nil {
 		return nil, fmt.Errorf("verify: usage ledger: %w", err)
 	}
-	defer rows.Close()
-	var out []drift
-	for rows.Next() {
-		var d drift
-		if err := rows.Scan(&d.UserID, &d.Resource, &d.Ledger, &d.Actual); err != nil {
-			return nil, fmt.Errorf("verify: usage ledger: %w", err)
-		}
-		out = append(out, d)
-	}
-	if err := rows.Err(); err != nil {
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[drift])
+	if err != nil {
 		return nil, fmt.Errorf("verify: usage ledger: %w", err)
 	}
 	return out, nil
@@ -244,7 +234,7 @@ func RepairUsageLedger(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUI
 	}
 	var out []Correction
 	for _, d := range drifts {
-		if !contains(repairable, d.Resource) {
+		if !slices.Contains(repairable, d.Resource) {
 			continue
 		}
 		c, ok, err := repairOne(ctx, pool, d)
@@ -256,15 +246,6 @@ func RepairUsageLedger(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUI
 		}
 	}
 	return out, nil
-}
-
-func contains(list []string, want string) bool {
-	for _, v := range list {
-		if v == want {
-			return true
-		}
-	}
-	return false
 }
 
 func repairOne(ctx context.Context, pool *pgxpool.Pool, d drift) (Correction, bool, error) {
