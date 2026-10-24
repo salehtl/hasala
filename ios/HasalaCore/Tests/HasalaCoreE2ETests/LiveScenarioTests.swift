@@ -40,7 +40,7 @@ extension Live {
     let bearer = try #require(try a.env.secrets.session()).token
     let device = try await NewDevice.mint(a.env, userID: user)
     let challenge = try await a.env.client.writerChallenge(bearer: bearer)
-    let (body, _) = try AccountCreation.buildBootstrap(
+    let body = try AccountCreation.buildBootstrap(
       a.env, userID: user, emailNorm: email, keys: keys, device: device, authKind: .passkey, authHash: sha256(attestation),
       prfWrap: nil, nonce: try Base64.decode(challenge.nonce))
     _ = try await a.env.client.bootstrap(body, bearer: bearer)
