@@ -34,7 +34,7 @@ final class LastPickUITests: XCTestCase {
     XCTAssertTrue(merchant.label.contains("Looks like Groceries. Your last pick."), merchant.label)
     let by = el(app, "review.suggestedBy")
     XCTAssertTrue(by.waitForExistence(timeout: uiWait))
-    XCTAssertEqual(by.label, "Your last pick")
+    XCTAssertEqual(by.label, "Looks like Groceries, Your last pick")
     let use = el(app, "review.use")
     XCTAssertEqual(use.label, "Use Groceries")
     attach(app, "Review · Deck · your last pick")
