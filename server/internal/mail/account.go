@@ -79,10 +79,7 @@ func compose(to, subject, name string, p page, lines ...string) Message {
 	if p.Lead == nil && p.Paras == nil {
 		p.Lead = lines
 	}
-	html, err := p.render()
-	if err != nil {
-		html = ""
-	}
+	html, _ := p.render()
 	return Message{To: to, Subject: subject, Text: body(name, lines...), HTML: html}
 }
 

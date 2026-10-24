@@ -77,7 +77,7 @@ func (s *Server) headroomGate(next http.Handler) http.Handler {
 		// The mail hooks are exempt (spec 02 §13.4): each writes at most one
 		// row per link per hour, skips even that while the fuse is tripped,
 		// and a 503 would only make Pub/Sub or Graph retry.
-		if s.Headroom != nil && !isRead(r.Method) && !fuseExempt(r.URL.Path) && s.Headroom.Tripped() {
+		if !isRead(r.Method) && !fuseExempt(r.URL.Path) && s.fuseTripped() {
 			s.logf("api: %s: refused, the headroom fuse is tripped", route(r))
 			// A minute: long enough that a fleet of retrying clients does not
 			// become its own load, short enough that writes resume promptly
@@ -92,6 +92,10 @@ func (s *Server) headroomGate(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) fuseTripped() bool {
+	return s.Headroom != nil && s.Headroom.Tripped()
+}
+
 // fuseExempt reports whether path is one of the mail hooks the headroom fuse
 // lets through.
 func fuseExempt(path string) bool {
@@ -102,7 +106,7 @@ func fuseExempt(path string) bool {
 	return false
 }
 
-// accountSuspended reads users.status.
+// accountStatus reads users.status.
 //
 // It is a separate round trip rather than a join onto session resolution because
 // session resolution lives in internal/auth, which this task may not change,
@@ -127,12 +131,6 @@ func (s *Server) accountStatus(ctx context.Context, userID uuid.UUID) (auth.Acco
 		return auth.AccountStatus{}, err
 	}
 	return auth.AccountStatus{Suspended: status == statusSuspended, Frozen: frozen}, nil
-}
-
-// accountSuspended is kept for the deletion lane.
-func (s *Server) accountSuspended(ctx context.Context, userID uuid.UUID) (bool, error) {
-	st, err := s.accountStatus(ctx, userID)
-	return st.Suspended, err
 }
 
 // writeAccountSuspended is the ONE 403 account_suspended this package emits.

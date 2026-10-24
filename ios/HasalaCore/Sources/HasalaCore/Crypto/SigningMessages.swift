@@ -154,7 +154,7 @@ public enum SigningMessage {
   /// D40 EmailChangeMessage (87 B), RK: `D40 ‖ 00 ‖ nonce32 ‖ SHA256(utf8(new_email_norm))`.
   /// `newEmailNorm` must already be `EmailNorm`-normalized.
   public static func emailChange(nonce: Data, newEmailNorm: String) throws(SigningMessageError) -> Data {
-    Domain.emailChange.prefix + (try check(nonce, 32, "nonce")) + sha256(Data(newEmailNorm.utf8))
+    Domain.emailChange.prefix + (try check(nonce, 32, "nonce")) + EmailNorm.hash(newEmailNorm)
   }
 
   /// D42 DeviceFreezeMessage (113 B), a live writer's DAK with no session:

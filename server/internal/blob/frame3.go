@@ -84,7 +84,7 @@ var (
 // re-seals once on a hit).
 func LooksSealed(b []byte) error {
 	n := len(b)
-	if !isBucket(n) {
+	if !IsBucket(n) {
 		return &RefusalError{Check: CheckBucket}
 	}
 	if b[0] != Version3 {

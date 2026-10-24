@@ -22,13 +22,10 @@ import (
 // and its preflight exist only with the website routes (s.Web); without
 // them an unauthenticated request is the API's 404.
 func (s *Server) mountBankRequests(mux *http.ServeMux) {
-	if s.BankUser == nil {
-		if s.Web != nil && s.Web.BankUser != nil {
-			s.BankUser = s.Web.BankUser
-		} else {
-			s.BankUser = NewLimiter(bankUserRate, bankUserBurst, publicMaxKeys, s.now)
-		}
+	if s.BankUser == nil && s.Web != nil {
+		s.BankUser = s.Web.BankUser
 	}
+	s.ensureLimiter(&s.BankUser, bankUserRate, bankUserBurst, publicMaxKeys)
 	web := s.publicRoute(s.handleBankRequest)
 	mux.HandleFunc("/api/v1/bank-requests", func(w http.ResponseWriter, r *http.Request) {
 		if _, signedIn := bearerToken(r); signedIn && r.Method == http.MethodGet {
@@ -173,22 +170,24 @@ type BankRequestsResponse struct {
 
 func (s *Server) handleBankRequestList(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	reqs, err := banks.ForUser(r.Context(), s.Pool, userID)
-	if err == nil {
-		var list []banks.Entry
-		list, err = banks.List(r.Context(), s.Pool)
-		if err == nil {
-			out := BankRequestsResponse{Requests: []BankRequestWire{}, Catalog: []BankCatalogWire{}}
-			for _, q := range reqs {
-				out.Requests = append(out.Requests, BankRequestWire{Bank: q.Bank, Name: q.Name, State: q.State,
-					RequestedAt: q.RequestedAt.UTC().Format(time.RFC3339)})
-			}
-			for _, e := range list {
-				out.Catalog = append(out.Catalog, BankCatalogWire{Bank: e.Slug, Name: e.Name, State: e.State})
-			}
-			writeJSON(w, http.StatusOK, out)
-			return
-		}
+	if err != nil {
+		s.logf("api: bank requests: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
 	}
-	s.logf("api: bank requests: %v", err)
-	writeErr(w, http.StatusInternalServerError, "internal", "")
+	list, err := banks.List(r.Context(), s.Pool)
+	if err != nil {
+		s.logf("api: bank requests: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	out := BankRequestsResponse{Requests: []BankRequestWire{}, Catalog: []BankCatalogWire{}}
+	for _, q := range reqs {
+		out.Requests = append(out.Requests, BankRequestWire{Bank: q.Bank, Name: q.Name, State: q.State,
+			RequestedAt: q.RequestedAt.UTC().Format(time.RFC3339)})
+	}
+	for _, e := range list {
+		out.Catalog = append(out.Catalog, BankCatalogWire{Bank: e.Slug, Name: e.Name, State: e.State})
+	}
+	writeJSON(w, http.StatusOK, out)
 }

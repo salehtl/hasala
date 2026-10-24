@@ -26,6 +26,12 @@ public struct PushSummary: Sendable, Hashable {
   public var batches = 0
   public var blobs = 0
   public var opsAcknowledged = 0
+
+  mutating func add(_ other: PushSummary) {
+    batches += other.batches
+    blobs += other.blobs
+    opsAcknowledged += other.opsAcknowledged
+  }
 }
 
 enum Pusher {
@@ -56,7 +62,6 @@ enum Pusher {
     _ ctx: SyncContext, deadline: ContinuousClock.Instant?, beforeBatch: @Sendable () async -> Void = {}
   ) async throws(SyncStop) -> PushSummary {
     var summary = try await reconcile(ctx)
-    var inflight: [InflightBlob]
     // 4-7
     while true {
       if let deadline, ContinuousClock.now >= deadline { return summary }
@@ -64,7 +69,7 @@ enum Pusher {
       let pending = try ctx.storeCall { () throws(StoreError) in try ctx.store.pendingOps() }
       guard !pending.isEmpty else { return summary }
       await beforeBatch()
-      inflight = try buildBatch(pending, ctx: ctx)
+      let inflight = try buildBatch(pending, ctx: ctx)
       try ctx.storeCall { () throws(StoreError) in try ctx.store.persistBatch(inflight) }
       summary.opsAcknowledged += try await send(inflight, ctx: ctx)
       summary.batches += 1
@@ -118,16 +123,15 @@ enum Pusher {
     var size = wrapper
     for p in pending {
       let op = try decodeStored(p)
-      let add = p.opJSON.count + (current.isEmpty ? 0 : 1)
       let alone = op.type.travelsAlone || currentOps.contains { $0.type.travelsAlone }
-      if !current.isEmpty, alone || size + add > maxBlobPlaintext {
+      if !current.isEmpty, alone || size + p.opJSON.count + 1 > maxBlobPlaintext {
         try close()
         size = wrapper
         if groups.count == maxUploadBlobs { break }
       }
+      size += p.opJSON.count + (current.isEmpty ? 0 : 1)
       current.append(p)
       currentOps.append(op)
-      size += p.opJSON.count + (current.count == 1 ? 0 : 1)
     }
     if groups.count < maxUploadBlobs { try close() }
 
@@ -150,8 +154,7 @@ enum Pusher {
         switch error {
         case .sealerFault:
           // Persisted, so later runs do not seal (and fault) again (§5.5).
-          try? ctx.store.setLatch(.sealerFault)
-          throw .latched(.sealerFault, alarm: true)
+          throw latch(ctx, .sealerFault, alarm: true)
         default: throw .latched(.hardStop)
         }
       }
@@ -201,13 +204,7 @@ enum Pusher {
         guard let ok = try? JSONDecoder().decode(UploadResponse.self, from: response.body),
           ok.seqs.count == remaining.count
         else { throw .protocolError("upload answer") }
-        let last = remaining[remaining.count - 1]
-        try ctx.storeCall { () throws(StoreError) in
-          try ctx.store.acknowledge(
-            counters: remaining.map(\.counter), head: Chain.Head(counter: last.counter, hash: last.blobHash),
-            at: ctx.clock.nowMs())
-        }
-        return acked + remaining.reduce(0) { $0 + $1.opIDs.count }
+        return try acked + acknowledge(remaining, ctx: ctx)
       }
       let f = APIFailure.from(response)
       switch (f.status, f.code) {
@@ -217,19 +214,9 @@ enum Pusher {
         for s in stored {
           guard let h = head.hashes[s.counter], h == s.blobHash else { throw .halted(.tamperedResend) }
         }
-        if let top = stored.last {
-          try ctx.storeCall { () throws(StoreError) in
-            try ctx.store.acknowledge(
-              counters: stored.map(\.counter), head: Chain.Head(counter: top.counter, hash: top.blobHash),
-              at: ctx.clock.nowMs())
-          }
-          acked += stored.reduce(0) { $0 + $1.opIDs.count }
-        }
+        acked += try acknowledge(stored, ctx: ctx)
         remaining = remaining.filter { $0.counter > head.counter }
-        if remaining.isEmpty {
-          try? ctx.store.setLatch(.chainBreak)
-          throw .latched(.chainBreak)
-        }
+        if remaining.isEmpty { throw latch(ctx, .chainBreak) }
         continue
       case (409, "chain_break"):
         try? ctx.store.setLatch(.chainBreak)
@@ -241,22 +228,35 @@ enum Pusher {
         let e = UInt32(f.detail.split(separator: " ").last.flatMap { UInt32($0) } ?? 0)
         throw .needsUnlock(epoch: e)
       case (400, "bad_signature"):
-        try? ctx.store.setLatch(.hardStop)
-        throw .latched(.hardStop, alarm: true)
+        throw latch(ctx, .hardStop, alarm: true)
       case (400, "plaintext_refused"):
-        try? ctx.store.setLatch(.sealerFault)
-        throw .latched(.sealerFault, alarm: true)
+        throw latch(ctx, .sealerFault, alarm: true)
       case (400, _), (413, "too_large"):
-        try? ctx.store.setLatch(.hardStop)
-        throw .latched(.hardStop)
+        throw latch(ctx, .hardStop)
       case (413, "account_full"):
-        try? ctx.store.setLatch(.accountFull)
-        throw .latched(.accountFull)
+        throw latch(ctx, .accountFull)
       default:
         throw SyncStop.common(.refused(f)) ?? .protocolError("upload refused \(f.status)")
       }
     }
     throw .protocolError("upload: too many partial resends")
+  }
+
+  /// Acknowledges `blobs` (oldest first) and returns how many ops they carried.
+  static func acknowledge(_ blobs: [InflightBlob], ctx: SyncContext) throws(SyncStop) -> Int {
+    guard let last = blobs.last else { return 0 }
+    try ctx.storeCall { () throws(StoreError) in
+      try ctx.store.acknowledge(
+        counters: blobs.map(\.counter), head: Chain.Head(counter: last.counter, hash: last.blobHash),
+        at: ctx.clock.nowMs())
+    }
+    return blobs.reduce(0) { $0 + $1.opIDs.count }
+  }
+
+  /// Persists `latch` (best effort) and returns the stop that reports it.
+  static func latch(_ ctx: SyncContext, _ latch: OutboxLatch, alarm: Bool = false) -> SyncStop {
+    try? ctx.store.setLatch(latch)
+    return .latched(latch, alarm: alarm)
   }
 
   /// The own writer's stored head, by scanning `GET /sync/hashes` (spec 04
