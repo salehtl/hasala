@@ -1,7 +1,7 @@
 ---
 title: "Security"
 description: "How Hasala protects your data, what its design can and can't defend against, and how to report a security problem to security@hasala.app."
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-24
 status: "final"
 plainWords: "Hasala reads your bank alerts and seals your money data on your iPhone, so our server stores only data it can't open. Your recovery phrase and passkey are what unlock it. If you find a security problem, email security@hasala.app. We won't take legal action against good-faith research that follows this policy."
 ---
@@ -20,11 +20,11 @@ Hasala sorts transactions on your iPhone. By default it works in this order:
 
 1. your own rules;
 2. a built-in list of UAE merchants; and
-3. if it's still unsure, your review.
+3. if it's still unsure, your review. If you sorted another payment from that merchant yourself, the category you picked most recently is suggested there.
 
 In the beta, Apple's on-device model does not run when Cloud suggestions are off. Nothing is sent to an AI service unless you turn on Cloud suggestions, which is optional and off by default.
 
-If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
+If you turn on Cloud suggestions, the order becomes: your rules, the built-in list, your last pick for that merchant (a suggestion), then, for a merchant you haven't sorted yourself, a suggestion from the Hasala service on Cloudflare, then Apple's on-device model for merchant names written in Latin letters, and then your review. A suggestion leaves the transaction in your review unless you also turn on Sort automatically and the answer is confident enough. Apple's model doesn't file a transaction by itself. See our [Privacy Policy](/privacy#cloud-suggestions) for what is sent.
 
 ### Your data is sealed before it syncs
 

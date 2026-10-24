@@ -154,8 +154,10 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 - **Network address.** Cloudflare's edge sees the phone's IP address on every request, as
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
-- **Timing.** Merchant suggestions run in the foreground sweep only (the tier already
-  forbids `refresh` and push wakes). Requests from one sweep go out with a small random
+- **Timing.** Merchant suggestions run only while the app is open: in the foreground sweep
+  and in the background stage, never in a background refresh or a push wake (the tier
+  already forbids `refresh` and push wakes, and the background stage starts nothing while
+  the app is in the background). Requests from one sweep go out with a small random
   delay between them, so a sweep is not one burst. They are still close in time, and the
   policy does not claim otherwise. The background stage can send many requests from one
   connection in a few minutes, and requests that close in time can be seen together at the edge, by
@@ -217,6 +219,9 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 - Order (decision D1): with Merchant suggestions on, Clef first, then Apple's model for
   Latin subjects that Clef couldn't answer. With it off, a Release build runs no model,
   as before this feature (the beta doesn't use Apple's model on its own). A Debug build runs Apple's model alone, for development.
+  Neither model is asked about a merchant whose payments the person sorted themselves (a
+  refund or a split payment is no pick): the person's last pick is the suggestion
+  ([sorting-rework.md](sorting-rework.md#your-last-pick-beats-the-ai)).
 - Failures map onto `ModelFailure` (`timeout`, `rateLimited`, `busy`, `other`). A failure
   leaves the row in review, as today.
 
@@ -280,7 +285,9 @@ suggestions on, Hasala works through every waiting merchant name by itself while
 is open**, a silent background stage, the way recurring payments are found. Each request
 still carries one name, and the per-device day cap holds. There is no run card, no "Sort N
 merchants" offer, no paused or result card, no Check suggestions sheet, and no **Sort now**
-or **Later** in Profile.
+or **Later** in Profile. Whether this change needs the privacy policy's 30-day notice for
+people who turned Merchant suggestions on in an earlier build is an open question for the
+owner ([sorting-rework.md](sorting-rework.md#open-questions-for-the-owner)).
 
 **The one-time ask.** With Merchant suggestions off, a card at the top of Review asks
 **Sort the rest with Cloudflare AI?** (`Features/Review/CloudSortAsk.swift`). It shows
@@ -417,7 +424,7 @@ or above 0.6 / 0.2 is a suggestion.
 deck holds no row back while a run is active (one card per payment, 2026-10-23): it keeps
 the cards it opened with, and a card the run files meanwhile is skipped when its turn
 comes. The top card stays until the person moves on, so nothing moves under the finger
-([sorting-rework.md](sorting-rework.md) D4-D5).
+([sorting-rework.md](sorting-rework.md#one-payment-per-card)).
 
 **Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
 Review** while a row that a run on this device filed is still as the run left it, and asks
@@ -432,13 +439,14 @@ background stage, and the rows it sent back are not asked about again, because e
 has a category.
 
 **The run adds no op kind.** The run and sending back author only `txn_categorized`, and
-there is no Worker or fence change. The sorting rework's **Not this**
-([sorting-rework.md](sorting-rework.md) D6-D7) added one op kind,
-`merchant_category_rejected`, with its own fold map and replay goldens. Rejections are
-applied on the phone after the answer: a rejected answer reads as unknown for that stage,
-so Apple's model is asked next, and a cached Cloudflare answer that was rejected is never
-sent again (the phone keeps that answer in its own record, keyed by the name and the model
-tag only, past the usual 30 days and across changes to the category list, until the
+there is no Worker or fence change. The sorting rework's **Not this** (#182, removed from
+the app in the sorting rebuild; [sorting-rework.md](sorting-rework.md#old-rejections))
+added one op kind, `merchant_category_rejected`, with its own fold map and replay goldens.
+The app writes no new rejections, and the ones already in the log still apply. Rejections
+are applied on the phone after the answer: a rejected answer reads as unknown for that
+stage, so Apple's model is asked next, and a cached Cloudflare answer that was rejected is
+never sent again (the phone keeps that answer in its own record, keyed by the name and the
+model tag only, past the usual 30 days and across changes to the category list, until the
 rejection is undone). The request, the `allowed` list and the cache key are unchanged.
 
 **What leaves the phone is unchanged:** one canonical merchant string and the built-in
@@ -453,12 +461,16 @@ how many requests are sent and when, not what each one carries (see
   device settings, like Hide amounts, and never sync). Review's ask is the one other
   place that turns Merchant suggestions and Sort automatically on (see
   [Sorting what's waiting](#sorting-whats-waiting-owner-decisions-2026-10-20-2026-10-21-and-2026-10-23)).
+- As built, Alert reading help is deferred and has no switch. The section's two switches
+  are **Merchant suggestions** and, under it, **Sort automatically**, which can be on only
+  while Merchant suggestions is on. The privacy policy's "two switches" are these.
 - Turning one on shows one screen first: what is sent, an example of a request, that
   Cloudflare answers and keeps nothing, that the IP address is visible to Cloudflare, and
   that turning it off stops it at once. The switch turns on only from that screen's
   button.
 - Suggestions from Clef show "Suggested by Cloudflare AI" in the review sheet; Apple's say
-  "Suggested on this iPhone". A person can always tell which is which.
+  "Suggested on this iPhone". A person can always tell which is which. The person's own
+  last pick says "Your last pick", and it comes before either model's answer.
 - Release builds show the section only when the Worker's URL is in the build
   (`BuildSurface`), so a build without it shows nothing.
 
