@@ -88,10 +88,9 @@ public final class SoftPasskey: PasskeyProvider {
     let att = CBOR.map([
       (.text("fmt"), .text("none")), (.text("attStmt"), .map([])), (.text("authData"), .bytes(authData)),
     ]).encoded()
-    let p = (prfSalt != nil && prfSupported.withLock { $0 }) ? Self.prf(secret: secret, salt: prfSalt!) : nil
     return RawRegistration(
       credentialID: id, rawClientDataJSON: clientData, rawAttestationObject: att,
-      prfFirst: p.map { SecureBytes(copying: $0) })
+      prfFirst: prfFirst(secret: secret, salt: prfSalt))
   }
 
   public func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError)
@@ -113,14 +112,18 @@ public final class SoftPasskey: PasskeyProvider {
     authData.append(contentsOf: [UInt8(c >> 24), UInt8(c >> 16 & 0xff), UInt8(c >> 8 & 0xff), UInt8(c & 0xff)])
     let signed = authData + Data(SHA256.hash(data: clientData))
     guard let sig = try? cred.signer.signature(for: signed) else { throw .failed("sign") }
-    let p = (prfSalt != nil && prfSupported.withLock { $0 }) ? Self.prf(secret: cred.prfSecret, salt: prfSalt!) : nil
     return RawAssertion(
       credentialID: cred.id, rawClientDataJSON: clientData, authenticatorData: authData, signature: sig.derRepresentation,
-      userHandle: cred.userHandle, prfFirst: p.map { SecureBytes(copying: $0) })
+      userHandle: cred.userHandle, prfFirst: prfFirst(secret: cred.prfSecret, salt: prfSalt))
   }
 
   /// Forgets every credential (a new iPhone without iCloud Keychain).
   public func removeAll() { state.withLock { $0.removeAll() } }
+
+  func prfFirst(secret: Data, salt: Data?) -> SecureBytes? {
+    guard let salt, prfSupported.withLock({ $0 }) else { return nil }
+    return SecureBytes(copying: Self.prf(secret: secret, salt: salt))
+  }
 
   func rpIDHash() -> Data { Data(SHA256.hash(data: Data(rpID.utf8))) }
 
