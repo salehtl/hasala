@@ -43,7 +43,7 @@ public enum ModelSuggestionSweep {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
     maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }, trusts: @Sendable (String) -> Bool = { _ in true },
-    mayAsk: @Sendable () -> Bool = { true }
+    mayAsk: @Sendable () -> Bool = { true }, cutShort: @Sendable () -> Void = {}
   ) async throws -> [Suggestion] {
     guard context.budget.calls > 0, !allowed.isEmpty, !stages.isEmpty else { return [] }
     let queued = queue(rows: rows, categorizer: categorizer).map { (row: $0, subject: Canon.subject($0.merchantRaw)) }
@@ -97,6 +97,7 @@ public enum ModelSuggestionSweep {
       callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) },
       maxCloudCalls: maxCloudCalls, rejects: rejects, mayAsk: mayAsk)
     if r.cloudRequests > 0 { spent(r.cloudRequests) }
+    if r.cutShort { cutShort() }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
     try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
     let cloudTags = Set(stages.filter(\.leavesDevice).map(\.model.modelTag))
@@ -139,13 +140,15 @@ public enum ModelSuggestionSweep {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], stages: [ModelStage], context: ModelTier.Context,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, callTimeout: Duration? = nil, autoFile: Bool = true,
     maxCloudCalls: Int? = nil, spent: @Sendable (Int) -> Void = { _ in }, trusts: @Sendable (String) -> Bool = { _ in true },
-    mayAsk: @Sendable () -> Bool = { true }, stamps: AuthorStamps, serial: WriteSerial = WriteSerial(),
+    mayAsk: @Sendable () -> Bool = { true }, cutShort: @Sendable () -> Void = {}, stamps: AuthorStamps,
+    serial: WriteSerial = WriteSerial(),
     reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
     commit: @Sendable ([AuthoredBlob]) async throws -> Void = { _ in }
   ) async throws -> [AuthoredBlob] {
     let suggestions = try await suggest(
       rows: rows, categorizer: categorizer, allowed: allowed, stages: stages, context: context, cache: cache, now: now,
-      callTimeout: callTimeout, autoFile: autoFile, maxCloudCalls: maxCloudCalls, spent: spent, trusts: trusts, mayAsk: mayAsk)
+      callTimeout: callTimeout, autoFile: autoFile, maxCloudCalls: maxCloudCalls, spent: spent, trusts: trusts, mayAsk: mayAsk,
+      cutShort: cutShort)
     guard !suggestions.isEmpty else { return [] }
     try Task.checkCancellation()
     return try await serial.run {

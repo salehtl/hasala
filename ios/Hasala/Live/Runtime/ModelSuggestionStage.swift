@@ -47,16 +47,16 @@ struct ModelSuggestionStage: Sendable {
     guard Self.runs(trigger), !backlogActive() else { return (false, false) }
     return await gate.run {
       guard appActive() else { return (false, true) }
-      let done = await sweep()
-      return (done, !appActive())
+      return await sweep()
     }
   }
 
-  private func sweep() async -> Bool {
+  private func sweep() async -> (newData: Bool, offScreen: Bool) {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
     let tally = CallTally()
+    let cut = CallTally()
     let done: Bool
     do {
       let taxonomy = try reader.taxonomy()
@@ -70,7 +70,8 @@ struct ModelSuggestionStage: Sendable {
         let blobs = try await ModelSuggestionSweep.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
-          spent: { tally.add($0) }, trusts: trusts, mayAsk: appActive, stamps: observer.stamps, serial: observer.writes,
+          spent: { tally.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
+          serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           commit: { blobs in
             try await outbox.enqueue(blobs.flatMap(\.ops))
@@ -83,7 +84,7 @@ struct ModelSuggestionStage: Sendable {
     }
     let calls = tally.value
     if calls > 0 { await cloudSpent(calls) }
-    return done
+    return (done, cut.value > 0)
   }
 
   func backlogPass(_ memo: BacklogSort.Memo, dayLeft: Int) async -> BacklogSorter.PassResult? {
@@ -188,9 +189,8 @@ nonisolated final class OnScreen: Sendable {
 
   func update(_ state: UIApplication.State) { set(state != .background) }
 
-  @MainActor func follow(_ app: UIApplication) {
-    update(app.applicationState)
-    let center = NotificationCenter.default
+  @MainActor func follow(_ state: UIApplication.State, center: NotificationCenter = .default) {
+    update(state)
     let changes = [
       (UIApplication.didEnterBackgroundNotification, false), (UIApplication.willEnterForegroundNotification, true),
       (UIApplication.didBecomeActiveNotification, true),

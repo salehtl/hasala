@@ -166,7 +166,7 @@ round trips only, not model cost, and the Worker's fence test forbids it.
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
 - **Timing.** Hasala asks only while it is open on screen. When the person leaves the app,
-  no new request starts, though one already sent can finish. One flag, `OnScreen.shared`,
+  no new request starts, though requests already sent can finish. One flag, `OnScreen.shared`,
   says whether the app is on screen. It is on when the app state is not `.background`, so
   the App Lock prompt, Notification Center and a call banner count as on screen. It is set
   in `didFinishLaunching`, on `didEnterBackground`, `willEnterForeground` and
@@ -181,11 +181,14 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 
   So no request starts in a background refresh, a push wake or a background task, also
   when iOS starts the process in the background: the account still opens and its launch
-  run still runs, but the sweep asks no model and spends nothing. A sweep skipped or cut
-  short off screen clears the 60 s foreground spacing (`WorkCoordinator.lastForeground`), and a
-  `.foreground` replaces a queued `.silentPush`, `.bgRefresh` or `.bgProcessing` rerun, so
-  the next `.foreground` run sweeps. Behind a queued `.retryMail` rerun, which sweeps
-  nothing, the `.foreground` does not run and sets no spacing, so the one after it sweeps.
+  run still runs, but the sweep asks no model and spends nothing. The 60 s foreground
+  spacing (`WorkCoordinator.lastForeground`) is set when a `.foreground` run starts, not
+  when it is asked for. A `.foreground` run whose sweep was skipped, or cut short before a
+  call because the app left the screen (`cutShort` from `ModelTier.run`), clears its own
+  spacing, and no other run clears it. A `.foreground` replaces a queued `.silentPush`,
+  `.bgRefresh` or `.bgProcessing` rerun. So the next `.foreground` run sweeps. A
+  `.foreground` that never starts, because a `.retryMail` rerun replaced it or was queued
+  ahead of it, sets no spacing, so the one after it sweeps.
   This closes the launch-run gap found on 2026-10-24, when the launch run swept in the
   background and up to 40 names could go out. Requests from one sweep
   go out with a small random delay between them, so a sweep is not one burst. They are still close in time, and the
@@ -664,7 +667,7 @@ for reference. What the rewrite records for Merchant suggestions:
   stays on that phone until the account's data leaves it (`fm_kept`, no expiry). Only a
   sweep that queues the merchant again drops it, so a rejection the person lifts with their
   own pick keeps it. It says that Hasala asks only while it is open on screen, and that
-  when the person leaves the app no new request starts, though one already sent can
+  when the person leaves the app no new request starts, though requests already sent can
   finish (see [What we can't hide](#what-we-cant-hide)).
 - "What stays on your iPhone" gains Search, which can use Apple's on-device model.
 - Terms: provided as is, without warranty; the beta can change, pause or end at any time,

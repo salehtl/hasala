@@ -178,21 +178,16 @@ actor WorkCoordinator {
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
     guard !closed, !paused else { return Outcome() }
-    let now = ContinuousClock.now
-    if trigger == .foreground, let last = lastForeground, now - last < Self.foregroundSpacing { return Outcome() }
+    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return Outcome() }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
       if !Self.joins(trigger, running: current, queued: rerun) {
-        if Self.queues(trigger, over: rerun) {
-          rerun = trigger
-          if trigger == .foreground { lastForeground = now }
-        }
+        if Self.queues(trigger, over: rerun) { rerun = trigger }
         rerunLimit = rerunLimit.widened(by: deadline)
       }
       task = t
     } else {
-      if trigger == .foreground { lastForeground = now }
       task = Task { await self.loop(trigger, deadline: deadline) }
       inFlight = task
     }
@@ -247,6 +242,8 @@ actor WorkCoordinator {
   private func once(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     runs += 1
     current = trigger
+    let stamp: ContinuousClock.Instant? = trigger == .foreground ? .now : nil
+    if let stamp { lastForeground = stamp }
     var out = Outcome()
     // The sync engine runs in a task of its own, so a cancellation can't reach it; the
     // run stops waiting for it instead (it finishes, or stops at its deadline).
@@ -275,7 +272,7 @@ actor WorkCoordinator {
     if !closed, let categorize = stages.categorize, synced.stop.map(Self.tolerable) ?? true {
       let c = await categorize(trigger)
       if c.newData { out.newData = true }
-      if c.offScreen { lastForeground = nil }
+      if c.offScreen, let stamp, lastForeground == stamp { lastForeground = nil }
     }
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()

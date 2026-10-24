@@ -45,7 +45,7 @@ extension ModelTier {
   public typealias StagedRun = (
     suggestions: [StagedSuggestion], unknown: [(subject: String, modelTag: String)], stoppedBy: [String: ModelFailure],
     asked: [(subject: String, modelTag: String)], requests: Int, failed: [(subject: String, modelTag: String, failure: ModelFailure)],
-    cloudRequests: Int
+    cloudRequests: Int, cutShort: Bool
   )
 
   public static func stops(_ f: ModelFailure) -> Bool {
@@ -66,7 +66,7 @@ extension ModelTier {
     let cloudCap = max(0, maxCloudCalls ?? Int.max)
     let limit = callTimeout ?? .milliseconds(budget.callMs)
     var live = stages.map { $0.model.availability() == .available && (!$0.leavesDevice || cloudCap > 0) }
-    guard callCap > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0, [], 0) }
+    guard callCap > 0, live.contains(true), !allowed.isEmpty else { return ([], [], [:], [], 0, [], 0, false) }
     if concurrency > 1, stages.count == 1 {
       return await concurrent(
         subjects: subjects, stage: stages[0], allowed: allowed, callCap: stages[0].leavesDevice ? min(callCap, cloudCap) : callCap,
@@ -82,27 +82,37 @@ extension ModelTier {
     var failed: [(subject: String, modelTag: String, failure: ModelFailure)] = []
     var calls = 0
     var cloudCalls = 0
+    var cut = false
     subjects: for subject in subjects where seen.insert(subject).inserted {
       for (i, stage) in stages.enumerated() where live[i] {
         let tag = stage.model.modelTag
         guard stage.accepts(subject), !stage.leavesDevice || mayLeaveDevice(subject), !isCached(subject, tag) else { continue }
         if stage.leavesDevice, cloudCalls >= cloudCap { continue }
-        if calls >= callCap || now() - start >= budget.phaseMs || Task.isCancelled || !mayAsk() { break subjects }
+        if calls >= callCap || now() - start >= budget.phaseMs || Task.isCancelled { break subjects }
+        guard mayAsk() else {
+          cut = true
+          break subjects
+        }
         calls += 1
         if stage.leavesDevice { cloudCalls += 1 }
         asked.append((subject, tag))
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
         var retried = false
-        if reply.answer == .failed(.contextOverflow), calls < callCap, !stage.leavesDevice || cloudCalls < cloudCap, mayAsk() {
-          calls += 1
-          if stage.leavesDevice { cloudCalls += 1 }
-          retried = true
-          reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
+        if reply.answer == .failed(.contextOverflow), calls < callCap, !stage.leavesDevice || cloudCalls < cloudCap {
+          if mayAsk() {
+            calls += 1
+            if stage.leavesDevice { cloudCalls += 1 }
+            retried = true
+            reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
+          } else {
+            cut = true
+          }
         }
         if reply.answer == .failed(.offScreen) {
           calls -= 1
           if stage.leavesDevice { cloudCalls -= 1 }
           if !retried { asked.removeLast() }
+          cut = true
           break subjects
         }
         switch reply.answer {
@@ -126,7 +136,7 @@ extension ModelTier {
         }
       }
     }
-    return (out, unknown, stopped, asked, calls, failed, cloudCalls)
+    return (out, unknown, stopped, asked, calls, failed, cloudCalls, cut)
   }
 
   static func concurrent(
@@ -152,8 +162,13 @@ extension ModelTier {
     await withTaskGroup(of: (subject: String, reply: Graded, retry: Bool).self) { group in
       var inFlight = 0
       func launch() -> Bool {
-        guard stopped.isEmpty, !halted, next < queue.count, calls < callCap, now() - start < phaseMs, !Task.isCancelled, mayAsk()
-        else { return false }
+        guard stopped.isEmpty, !halted, next < queue.count, calls < callCap, now() - start < phaseMs, !Task.isCancelled else {
+          return false
+        }
+        guard mayAsk() else {
+          halted = true
+          return false
+        }
         let subject = queue[next]
         next += 1
         calls += 1
@@ -171,12 +186,15 @@ extension ModelTier {
           if !r.retry, let i = asked.lastIndex(where: { $0.subject == r.subject }) { asked.remove(at: i) }
           continue
         }
-        if r.reply.answer == .failed(.contextOverflow), !r.retry, calls < callCap, !Task.isCancelled, !halted, mayAsk() {
-          calls += 1
-          let subject = r.subject
-          group.addTask { (subject, await graded(model, subject: subject, allowed: allowed, within: limit), true) }
-          inFlight += 1
-          continue
+        if r.reply.answer == .failed(.contextOverflow), !r.retry, calls < callCap, !Task.isCancelled, !halted {
+          if mayAsk() {
+            calls += 1
+            let subject = r.subject
+            group.addTask { (subject, await graded(model, subject: subject, allowed: allowed, within: limit), true) }
+            inFlight += 1
+            continue
+          }
+          halted = true
         }
         switch r.reply.answer {
         case .category(let id) where allowed.contains(where: { $0.id == id }):
@@ -195,7 +213,7 @@ extension ModelTier {
         while inFlight < width, launch() {}
       }
     }
-    return (out, unknown, stopped, asked, calls, failed, stage.leavesDevice ? calls : 0)
+    return (out, unknown, stopped, asked, calls, failed, stage.leavesDevice ? calls : 0, halted)
   }
 }
 

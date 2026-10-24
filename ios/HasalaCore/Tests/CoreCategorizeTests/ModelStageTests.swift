@@ -199,7 +199,7 @@ struct ModelStageTests {
     #expect(cloud.calls == ["a shop", "b shop"])
     #expect(r.suggestions.map(\.subject) == ["a shop"])
     #expect(r.asked.map(\.subject) == ["a shop"])
-    #expect(r.requests == 1 && r.cloudRequests == 1)
+    #expect(r.requests == 1 && r.cloudRequests == 1 && r.cutShort)
     #expect(r.failed.isEmpty && r.unknown.isEmpty && r.stoppedBy.isEmpty)
   }
 
@@ -210,7 +210,7 @@ struct ModelStageTests {
       subjects: ["a shop", "b shop", "c shop", "d shop", "e shop"], stages: [.cloud(cloud)], allowed: Self.allowed, context: .backlog,
       now: { 0 }, concurrency: 3)
     #expect(cloud.calls.count <= 3)
-    #expect(r.asked.isEmpty && r.requests == 0 && r.cloudRequests == 0)
+    #expect(r.asked.isEmpty && r.requests == 0 && r.cloudRequests == 0 && r.cutShort)
     #expect(r.failed.isEmpty && r.unknown.isEmpty && r.stoppedBy.isEmpty)
   }
 
@@ -221,10 +221,14 @@ struct ModelStageTests {
       subjects: ["a shop", "b shop", "c shop"], stages: [.onDevice(device)], allowed: Self.allowed, context: .foreground, now: { 0 },
       mayAsk: { device.calls.isEmpty })
     #expect(device.calls == ["a shop"])
-    #expect(r.requests == 1 && r.asked.map(\.subject) == ["a shop"])
+    #expect(r.requests == 1 && r.asked.map(\.subject) == ["a shop"] && r.cutShort)
     let none = await ModelTier.run(
       subjects: ["a shop"], stages: [.onDevice(device)], allowed: Self.allowed, context: .foreground, now: { 0 }, concurrency: 3,
       mayAsk: { false })
-    #expect(device.calls == ["a shop"] && none.requests == 0)
+    #expect(device.calls == ["a shop"] && none.requests == 0 && none.cutShort)
+    let done = await ModelTier.run(
+      subjects: ["z shop"], stages: [.onDevice(device)], allowed: Self.allowed, context: .foreground, now: { 0 },
+      mayAsk: { !device.calls.contains("z shop") })
+    #expect(done.requests == 1 && !done.cutShort)
   }
 }

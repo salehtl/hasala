@@ -187,17 +187,24 @@ struct ModelSuggestionStageTests {
     return (stage, ledger)
   }
 
-  static func coordinator(_ stage: ModelSuggestionStage, committed: @escaping WorkCoordinator.CommittedStage = {}) -> WorkCoordinator {
+  static func coordinator(
+    _ stage: ModelSuggestionStage, sync: @escaping @Sendable () async -> Void = {},
+    committed: @escaping WorkCoordinator.CommittedStage = {}
+  ) -> WorkCoordinator {
     WorkCoordinator(
       stages: WorkCoordinator.Stages(
-        sync: { _, _ in (newData: false, stop: nil) }, mailbox: nil, categorize: { await stage.run($0) }, committed: committed,
-        stopped: { _ in }))
+        sync: { _, _ in
+          await sync()
+          return (newData: false, stop: nil)
+        }, mailbox: nil, categorize: { await stage.run($0) }, committed: committed, stopped: { _ in }))
   }
 
   @MainActor
   @Test func noModelIsAskedAndNothingIsSpentWhileTheAppIsInTheBackground() async throws {
     let on = OnScreen()
+    on.set(true)
     on.update(UIApplication.State.background)
+    #expect(!on.isOn)
     let cloud = Counting("cf-clef/1", answer: .unknown)
     let r = try await Self.rig(suite: "stage.background.tests", on: on, cloud: cloud)
     for trigger in [WorkCoordinator.Trigger.launch, .refresh, .foreground] {
@@ -209,6 +216,25 @@ struct ModelSuggestionStageTests {
     let out = await r.stage.run(.launch)
     #expect(!out.offScreen)
     #expect(cloud.calls.count == 3 && r.ledger.spent == [3])
+  }
+
+  @MainActor
+  @Test func theFlagFollowsTheAppLeavingAndComingBack() {
+    let center = NotificationCenter()
+    let on = OnScreen()
+    on.follow(.background, center: center)
+    #expect(!on.isOn)
+    center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+    #expect(on.isOn)
+    center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+    #expect(!on.isOn)
+    center.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+    #expect(on.isOn)
+    center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+    #expect(!on.isOn)
+    let started = OnScreen()
+    started.follow(.inactive, center: NotificationCenter())
+    #expect(started.isOn)
   }
 
   @MainActor
@@ -262,6 +288,64 @@ struct ModelSuggestionStageTests {
     #expect(cloud.calls.count == 3 && r.ledger.spent == [3])
     #expect(WorkCoordinator.queues(.foreground, over: .bgRefresh) && WorkCoordinator.queues(.foreground, over: .bgProcessing))
     #expect(!WorkCoordinator.queues(.foreground, over: .retryMail) && !WorkCoordinator.queues(.silentPush, over: .foreground))
+  }
+
+  @MainActor
+  @Test func aForegroundReplacedByATryAgainSetsNoSpacing() async throws {
+    let on = OnScreen()
+    on.set(true)
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    let r = try await Self.rig(suite: "stage.retry.tests", on: on, cloud: cloud)
+    let door = Door()
+    let coordinator = Self.coordinator(r.stage, sync: { await door.pass() })
+    let launch = Task { await coordinator.run(.launch) }
+    try await Self.until { door.waiting }
+    let foreground = Task { await coordinator.run(.foreground) }
+    try await Self.until { await coordinator.queued == .foreground }
+    let retry = Task { await coordinator.run(.retryMail) }
+    try await Self.until { await coordinator.queued == .retryMail }
+    door.open()
+    _ = await (launch.value, foreground.value, retry.value)
+    #expect(await coordinator.runs == 2)
+    _ = await coordinator.run(.foreground)
+    #expect(await coordinator.runs == 3)
+  }
+
+  @MainActor
+  @Test func aSkippedBackgroundLaunchKeepsTheSpacingOfTheForegroundBehindIt() async throws {
+    let on = OnScreen()
+    let cloud = Counting("cf-clef/1", answer: .unknown)
+    let r = try await Self.rig(suite: "stage.behind.tests", on: on, cloud: cloud)
+    let door = Door()
+    let coordinator = Self.coordinator(r.stage, sync: { await door.pass() }, committed: { on.set(true) })
+    let launch = Task { await coordinator.run(.launch) }
+    try await Self.until { door.waiting }
+    let foreground = Task { await coordinator.run(.foreground) }
+    try await Self.until { await coordinator.queued == .foreground }
+    door.open()
+    _ = await (launch.value, foreground.value)
+    #expect(cloud.calls.count == 3 && r.ledger.spent == [3])
+    #expect(await coordinator.runs == 2)
+    _ = await coordinator.run(.foreground)
+    #expect(await coordinator.runs == 2)
+  }
+
+  @MainActor
+  @Test func aSweepThatFinishedOnScreenKeepsTheSpacingWhenTheAppLeavesAfterIt() async throws {
+    let on = OnScreen()
+    on.set(true)
+    let asked = Ledger()
+    let cloud = Counting("cf-clef/1", answer: .category("dining")) {
+      asked.add(1)
+      if asked.spent.count == 3 { on.set(false) }
+    }
+    let r = try await Self.rig(suite: "stage.finished.tests", on: on, cloud: cloud)
+    let coordinator = Self.coordinator(r.stage)
+    _ = await coordinator.run(.foreground)
+    #expect(cloud.calls.count == 3 && r.ledger.spent == [3] && !on.isOn)
+    on.set(true)
+    _ = await coordinator.run(.foreground)
+    #expect(await coordinator.runs == 1)
   }
 
   @MainActor
