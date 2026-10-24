@@ -86,18 +86,13 @@ func (s *Server) mountWaitlist(mux *http.ServeMux) {
 		return
 	}
 	o := s.Web
-	lim := func(l **Limiter, rate, burst float64, keys int) {
-		if *l == nil {
-			*l = NewLimiter(rate, burst, keys, s.now)
-		}
-	}
-	lim(&o.WaitlistIP, waitlistIPRate, waitlistIPBurst, publicMaxKeys)
-	lim(&o.WaitlistGlobal, waitlistGlobalRate, waitlistGlobalBurst, 1)
-	lim(&o.LinkIP, linkIPRate, linkIPBurst, publicMaxKeys)
-	lim(&o.BankIP, bankIPRate, bankIPBurst, publicMaxKeys)
-	lim(&o.BankGlobal, bankGlobalRate, bankGlobalBurst, 1)
-	lim(&o.BankUser, bankUserRate, bankUserBurst, publicMaxKeys)
-	lim(&o.PreflightIP, preflightRate, preflightBurst, publicMaxKeys)
+	s.ensureLimiter(&o.WaitlistIP, waitlistIPRate, waitlistIPBurst, publicMaxKeys)
+	s.ensureLimiter(&o.WaitlistGlobal, waitlistGlobalRate, waitlistGlobalBurst, 1)
+	s.ensureLimiter(&o.LinkIP, linkIPRate, linkIPBurst, publicMaxKeys)
+	s.ensureLimiter(&o.BankIP, bankIPRate, bankIPBurst, publicMaxKeys)
+	s.ensureLimiter(&o.BankGlobal, bankGlobalRate, bankGlobalBurst, 1)
+	s.ensureLimiter(&o.BankUser, bankUserRate, bankUserBurst, publicMaxKeys)
+	s.ensureLimiter(&o.PreflightIP, preflightRate, preflightBurst, publicMaxKeys)
 	mux.HandleFunc("/api/v1/waitlist", s.publicRoute(s.handleWaitlistSubmit))
 	mux.HandleFunc("/api/v1/waitlist/confirm", s.publicRoute(s.handleWaitlistConfirm))
 	mux.HandleFunc("/api/v1/waitlist/leave", s.publicRoute(s.handleWaitlistLeave))

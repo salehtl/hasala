@@ -170,7 +170,7 @@ func (s *Server) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Reque
 			writeErr(w, http.StatusBadRequest, "bad_request", "authority_pubkey is not a usable Ed25519 public key")
 			return
 		}
-		s.writePasskeyError(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	raw, err := json.Marshal(opts)
@@ -189,7 +189,7 @@ func (s *Server) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Requ
 	}
 	out, err := s.Passkeys.FinishRegistrationSession(r.Context(), req.CeremonyID, req.Credential, s.Sessions)
 	if err != nil {
-		s.writePasskeyError(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, SessionMintResponse{SessionToken: out.Session.Token, UserID: out.UserID.String(),
@@ -202,7 +202,7 @@ func (s *Server) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request)
 	// `{}` and a client that posts nothing are both correct here.
 	id, opts, err := s.Passkeys.BeginLogin(r.Context())
 	if err != nil {
-		s.writePasskeyError(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	s.writeBegin(w, r, id, opts)
@@ -219,7 +219,7 @@ func (s *Server) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request
 	}
 	out, err := s.accounts().PasskeyLoginFinish(r.Context(), req.CeremonyID, req.Credential, device)
 	if err != nil {
-		s.writePasskeyError(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, signInResponse(out))
@@ -280,7 +280,7 @@ func (s *Server) handlePasskeyAddBegin(w http.ResponseWriter, r *http.Request, u
 	}
 	id, opts, err := s.Passkeys.AddBegin(r.Context(), info, su)
 	if err != nil {
-		s.writePasskeyAddErr(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	s.writeBegin(w, r, id, opts)
@@ -318,22 +318,11 @@ func (s *Server) handlePasskeyAddFinish(w http.ResponseWriter, r *http.Request, 
 	}
 	credID, err := s.Passkeys.AddFinish(r.Context(), info, add)
 	if err != nil {
-		s.writePasskeyAddErr(w, r, err)
+		s.writeKeyErr(w, r, err)
 		return
 	}
 	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
 	writeJSON(w, http.StatusCreated, PasskeyAddResponse{CredentialID: b64url(credID)})
-}
-
-// writePasskeyAddErr answers the add routes: a ceremony rejection is the
-// package's one 401 (writePasskeyError), and everything else (step-up, writer
-// binding, a bad signature, a malformed wrap) is spec 02 §6.3's code.
-func (s *Server) writePasskeyAddErr(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, auth.ErrPasskeyRejected) {
-		s.writePasskeyError(w, r, err)
-		return
-	}
-	s.writeKeyErr(w, r, err)
 }
 
 // writeBegin marshals go-webauthn's options into the envelope. The options are
@@ -347,18 +336,4 @@ func (s *Server) writeBegin(w http.ResponseWriter, r *http.Request, ceremonyID s
 		return
 	}
 	writeJSON(w, http.StatusOK, PasskeyBeginResponse{CeremonyID: ceremonyID, Options: raw})
-}
-
-// writePasskeyError is the single translation point, so no handler can invent a
-// status of its own.
-//
-// Two answers only. `not_invited` is the deployment-policy fact, and everything
-// else — expired ceremony, replayed ceremony, unknown credential, a signature
-// that did not verify, a cloned authenticator — is the one 401. A failure that is
-// not a rejection (the database is unreachable) is a 500, on the same reasoning
-// requireSession applies: reporting infrastructure trouble as "your credential is
-// invalid" sends a user off to re-authenticate for no reason.
-func (s *Server) writePasskeyError(w http.ResponseWriter, r *http.Request, err error) {
-	s.writeKeyErr(w, r, err) // which logs the route and the reason, once
-
 }
