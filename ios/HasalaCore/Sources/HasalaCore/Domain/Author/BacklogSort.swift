@@ -230,7 +230,7 @@ public enum BacklogSort {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
     concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
-    trusts: @Sendable (String) -> Bool = { _ in true }
+    trusts: @Sendable (String) -> Bool = { _ in true }, mayAsk: @Sendable () -> Bool = { true }
   ) async throws -> Pass {
     var memo = memo.keeping(allowed)
     guard cloud.availability() == .available else { return Pass(suggestions: [], memo: memo, pending: 0, calls: 0, stop: .off) }
@@ -257,7 +257,7 @@ public enum BacklogSort {
         let batch = Array(order.prefix(min(passNames, left)))
         let r = await ModelTier.run(
           subjects: batch, stages: [.cloud(cloud)], allowed: allowed, context: .backlog, now: now, callTimeout: callTimeout,
-          maxCalls: left, concurrency: concurrency)
+          maxCalls: left, concurrency: concurrency, mayAsk: mayAsk)
         calls = r.requests
         let settled = Set(r.suggestions.map(\.subject) + r.unknown.map(\.subject))
         let halted = Set(r.failed.filter { ModelTier.stops($0.failure) }.map(\.subject))
@@ -343,13 +343,13 @@ public enum BacklogSort {
     rows: [SweepRow], categorizer: Categorizer, allowed: [AllowedCategory], cloud: any CategoryModel, memo: Memo,
     cache: any ModelAnswerCache, now: @Sendable () -> Int64, autoFile: Bool, dayLeft: Int = .max,
     concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
-    trusts: @Sendable (String) -> Bool = { _ in true }, stamps: AuthorStamps,
+    trusts: @Sendable (String) -> Bool = { _ in true }, mayAsk: @Sendable () -> Bool = { true }, stamps: AuthorStamps,
     serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
     enqueue: @Sendable (AuthoredBlob) async throws -> Void, reproject: @Sendable () async throws -> Void = {}
   ) async throws -> Committed {
     let p = try await pass(
       rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
-      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout, trusts: trusts)
+      dayLeft: dayLeft, concurrency: concurrency, random: random, callTimeout: callTimeout, trusts: trusts, mayAsk: mayAsk)
     guard !p.suggestions.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
     do {
       try Task.checkCancellation()

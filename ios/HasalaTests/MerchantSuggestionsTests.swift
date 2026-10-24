@@ -121,7 +121,7 @@ struct MerchantSuggestionsTests {
     MerchantSuggestionsSetting.recordRefusal(version: version, d)
     let made = HasalaCloudFactory.makeCategoryModel(
       baseURL: URL(string: "https://assist.example.test"), clientVersion: "1.4", isEnabled: { true },
-      isAutoFileEnabled: { false }, refusal: MerchantSuggestionsSetting.refusal(version: version, suiteName: name))
+      isAutoFileEnabled: { false }, refusal: MerchantSuggestionsSetting.refusal(version: version, suiteName: name), onScreen: { true })
     let model = try #require(made)
     #expect(model.availability() == .notEligible)
     let stages = ModelSuggestionStage.stages(onDevice: model, cloud: model, onDeviceAlone: false)

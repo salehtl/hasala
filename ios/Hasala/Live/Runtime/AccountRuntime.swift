@@ -243,7 +243,8 @@ final class AccountRuntime {
         isEnabled: MerchantSuggestionsSetting.isEnabledReader,
         isAutoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
         refusal: MerchantSuggestionsSetting.refusal(
-          version: MerchantSuggestionsSetting.appVersion(marketing: build.marketingVersion, build: build.buildNumber))),
+          version: MerchantSuggestionsSetting.appVersion(marketing: build.marketingVersion, build: build.buildNumber)),
+        onScreen: { OnScreen.shared.isOn }),
       onDeviceAlone: BuildSurface.showsUnfinished,
       nowMs: { context.clock.nowMs() },
       backlogActive: { activity.isActive },
@@ -275,7 +276,7 @@ final class AccountRuntime {
         categorize: { trigger in
           let followed = await editor.followUp()
           let suggested = await suggestions.run(trigger)
-          return followed || suggested
+          return (followed || suggested.newData, suggested.offScreen)
         },
         committed: {
           if let lane = active.lane {
