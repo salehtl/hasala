@@ -70,7 +70,7 @@ extension State {
     forwardAnnotations(id, fields: applied, seq: e.seq)
   }
 
-  private static func merchantKey(_ p: JSONObject) throws(PayloadError) -> String {
+  private static func merchantKeyField(_ p: JSONObject) throws(PayloadError) -> String {
     guard let key = p["merchant_key"]?.stringValue, Grammar.isMerchantKey(key) else {
       throw PayloadError("merchant_key must be 1-256 scalars with no forbidden scalar, got \(showValue(p["merchant_key"]))")
     }
@@ -79,7 +79,7 @@ extension State {
 
   mutating func applyMerchantNamed(_ e: LogEntry) throws(PayloadError) {
     let p = try P.object(e.op)
-    let key = try Self.merchantKey(p)
+    let key = try Self.merchantKeyField(p)
     var name: String?
     if let v = P.present(p["display_name"]) { name = try P.label(v, "display_name") }
     merchantNames[ExactKey(key)] = Keyed(name, opID: e.op.opID)
@@ -87,7 +87,7 @@ extension State {
 
   mutating func applyMerchantCategoryRejected(_ e: LogEntry) throws(PayloadError) {
     let p = try P.object(e.op)
-    let key = try Self.merchantKey(p)
+    let key = try Self.merchantKeyField(p)
     let category = try P.categoryID(p["category"], "category")
     let rejected = try P.boolField(p["rejected"], "rejected")
     merchantRejections[State.rejectionKey(key, category)] = MerchantRejection(
