@@ -192,18 +192,7 @@ private struct GoogleBriefingCard: View {
   }
 
   private func item(_ n: Int, _ text: String) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Text(verbatim: "\(n)")
-        .hType(HType.subheadline.weight(.bold))
-        .foregroundStyle(HColor.statusWarningForeground)
-        .frame(minWidth: 20, alignment: .leading)
-      Text(text)
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textPrimary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .accessibilityElement(children: .combine)
+    NumberedLine(number: n, text: text, numberColor: HColor.statusWarningForeground)
   }
 }
 
@@ -268,18 +257,7 @@ private struct BankAlertsSteps: View {
           .accessibilityAddTraits(.isHeader)
       }
       ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          Text(verbatim: "\(i + 1)")
-            .hType(HType.subheadline.weight(.bold))
-            .foregroundStyle(HColor.textSecondary)
-            .frame(minWidth: 20, alignment: .leading)
-          Text(step)
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .accessibilityElement(children: .combine)
+        NumberedLine(number: i + 1, text: step, numberColor: HColor.textSecondary)
       }
     }
     .padding(16)
@@ -287,6 +265,27 @@ private struct BankAlertsSteps: View {
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alertsHelp.\(bank.rawValue)")
+  }
+}
+
+private struct NumberedLine: View {
+  let number: Int
+  let text: String
+  let numberColor: Color
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      Text(verbatim: "\(number)")
+        .hType(HType.subheadline.weight(.bold))
+        .foregroundStyle(numberColor)
+        .frame(minWidth: 20, alignment: .leading)
+      Text(text)
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .accessibilityElement(children: .combine)
   }
 }
 
