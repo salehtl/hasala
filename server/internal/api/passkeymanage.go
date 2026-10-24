@@ -155,7 +155,6 @@ func (s *Server) handleListPasskeys(w http.ResponseWriter, r *http.Request, user
 			Current: len(mine) > 0 && bytes.Equal(mine, c.ID),
 		})
 	}
-	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
 }
 

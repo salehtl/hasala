@@ -234,7 +234,7 @@ func (c *Client) Send(ctx context.Context, t Target) Result {
 
 func (c *Client) send(ctx context.Context, t Target, forceJWT bool) (Result, string) {
 	base, ok := c.hosts[t.Environment]
-	if !ok || !validTokenHex(t.TokenHex) {
+	if !ok || !ValidTokenHex(t.TokenHex) {
 		return ResultGone, "BadDeviceToken"
 	}
 	jwt, err := c.providerToken(forceJWT)
@@ -290,8 +290,9 @@ func classify(status int, reason string) Result {
 	return ResultTransient
 }
 
-// validTokenHex is apns_tokens_token_is_hex: 32 to 100 lowercase hex bytes.
-func validTokenHex(s string) bool {
+// ValidTokenHex reports whether s is a token the API accepts: the
+// apns_tokens_token_is_hex CHECK, 32 to 100 lowercase hex bytes.
+func ValidTokenHex(s string) bool {
 	if len(s) < 64 || len(s) > 200 || len(s)%2 != 0 {
 		return false
 	}
@@ -303,6 +304,3 @@ func validTokenHex(s string) bool {
 	}
 	return true
 }
-
-// ValidTokenHex reports whether s is a token the API accepts.
-func ValidTokenHex(s string) bool { return validTokenHex(s) }

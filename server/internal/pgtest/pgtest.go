@@ -325,13 +325,7 @@ func openPool(t *testing.T, dsn string) *pgxpool.Pool {
 // must already exist and be allowed to log in.
 func OpenAs(t *testing.T, p *pgxpool.Pool, role string) *pgxpool.Pool {
 	t.Helper()
-	db := p.Config().ConnConfig.Database
-	pool, err := pg.Open(context.Background(), dsnFor(adminDSN, role, db))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return openPool(t, dsnFor(adminDSN, role, p.Config().ConnConfig.Database))
 }
 
 // Superuser returns a pool connected as the cluster's bootstrap superuser to
@@ -340,13 +334,7 @@ func OpenAs(t *testing.T, p *pgxpool.Pool, role string) *pgxpool.Pool {
 // that must set up a hostile schema; nothing else should use it.
 func Superuser(t *testing.T, p *pgxpool.Pool) *pgxpool.Pool {
 	t.Helper()
-	db := p.Config().ConnConfig.Database
-	su, err := pg.Open(context.Background(), dsnFor(adminDSN, "", db))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(su.Close)
-	return su
+	return OpenAs(t, p, "")
 }
 
 // dsnFor swaps the user (when non-empty) and the database name in a DSN of
@@ -494,14 +482,7 @@ func bootCluster(detach bool) (dir string, srv *exec.Cmd, dsn string, err error)
 	cmd := func(name string, args ...string) *exec.Cmd {
 		c := exec.Command(filepath.Join(binDir, name), args...)
 		if cred != nil || detach {
-			attr := &syscall.SysProcAttr{}
-			if cred != nil {
-				attr.Credential = cred
-			}
-			if detach {
-				attr.Setsid = true
-			}
-			c.SysProcAttr = attr
+			c.SysProcAttr = &syscall.SysProcAttr{Credential: cred, Setsid: detach}
 		}
 		return c
 	}
