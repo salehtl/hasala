@@ -23,6 +23,8 @@ enum MerchantWhen {
   static let stopWeekdayDate =
     "\\s+(?:" + weekdays + "(?![a-z])\\.?,|" + weekdaysLong + "(?![a-z]))\\s+(?=" + dayRe + "[-/ ]" + month + "(?![a-z])|" + month
     + "\\.?[- ][0-9]{1,2}(?![0-9])|[0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{4}(?![0-9]))"
+  static let stopDateTime =
+    "\\s+(?:" + dayRe + "[-/ ]" + month + "\\.?|" + month + "\\.?[- ]" + dayRe + "),?\\s+(?:at\\s+)?[0-9]{1,2}:[0-9]{2}(?![0-9])"
   static let stopDayMonthEnd = "\\s+" + dayRe + "[-/ ]" + monthShort + "\\.?(?=\\s*[.;]?\\s*$|\\.\\s)"
   static let stopAR =
     "\\s+" + arDateWords + "(?=\\s*[0-9]{1,2}\\s+" + arMonthsRe + "|\\s*[0-9]{1,2}[-/.][0-9]{1,2}[-/.](?:[0-9]{4}|[0-9]{2})(?![0-9])|\\s+"

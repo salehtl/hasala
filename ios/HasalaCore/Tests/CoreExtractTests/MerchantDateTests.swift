@@ -45,6 +45,8 @@ import Testing
     "TALABAT 3 فبراير 2030",
     "مطعم الشرق يوم 3 مارس",
     "TALABAT يوم الاثنين 3 فبراير 2030.",
+    "TALABAT 3 فبراير 10:15.",
+    "TALABAT 3 فبراير 10:15 م.",
     "TALABAT تاريخ 3 فبراير 2030 الساعة 10:15 م",
   ])
   func arabicDateEndsTheMerchant(_ tail: String) {
@@ -219,6 +221,10 @@ import Testing
     ("TALABAT Monday 3 Mar 2030.", "TALABAT"),
     ("TALABAT Monday, Mar 3, 2030.", "TALABAT"),
     ("TALABAT 3 Mar.", "TALABAT"),
+    ("TALABAT Mar 3 14:05.", "TALABAT"),
+    ("TALABAT 3 Mar 14:05.", "TALABAT"),
+    ("TALABAT Mar 3, at 2:05 pm.", "TALABAT"),
+    ("TALABAT 3rd March 14:05", "TALABAT"),
     ("TALABAT 3 Mar", "TALABAT"),
     ("RISING SUN 3 Mar 2030.", "RISING SUN"),
     ("CAFE 3.14.15.", "CAFE 3.14.15"),
