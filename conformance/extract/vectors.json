@@ -965,6 +965,214 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "merchant-date-en",
+      "note": "A card alert whose inline merchant is followed by a date with a month name or a weekday; the merchant ends before the date, so each mail has one spelling.",
+      "mails": [
+        {
+          "sender": "bank-g.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 25.00 at SAMPLE GRILL on Mar 3, 2030.\nThank you.",
+          "received_at_ms": 1900002160000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-g.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 31.50 at SAMPLE GRILL on Apr 14, 2030 at 09:12.\nThank you.",
+          "received_at_ms": 1900002220000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-g.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 18.75 at SAMPLE GRILL on Monday, 5 May 2030.\nThank you.",
+          "received_at_ms": 1900002280000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2500,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 3150,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1875,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "merchant-date-ar",
+      "note": "An Arabic card alert whose merchant is followed by \u064a\u0648\u0645 and a date or a weekday.",
+      "mails": [
+        {
+          "sender": "bank-h.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u062e\u0635\u0645 \u0645\u0628\u0644\u063a 25.00 \u062f\u0631\u0647\u0645 \u0645\u0646 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 4821 \u0644\u062f\u0649 SAMPLE GRILL \u064a\u0648\u0645 3 \u0641\u0628\u0631\u0627\u064a\u0631 2030.\n\u0634\u0643\u0631\u0627 \u0644\u0643\u0645",
+          "received_at_ms": 1900002340000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-h.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u062e\u0635\u0645 \u0645\u0628\u0644\u063a 31.50 \u062f\u0631\u0647\u0645 \u0645\u0646 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 4821 \u0644\u062f\u0649 SAMPLE GRILL \u064a\u0648\u0645 14 \u0645\u0627\u0631\u0633 2030.\n\u0634\u0643\u0631\u0627 \u0644\u0643\u0645",
+          "received_at_ms": 1900002400000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-h.example",
+          "subject": "\u0625\u0634\u0639\u0627\u0631",
+          "text": "\u0639\u0632\u064a\u0632\u064a \u0627\u0644\u0645\u062a\u0639\u0627\u0645\u0644\u060c\n\u062a\u0645 \u062e\u0635\u0645 \u0645\u0628\u0644\u063a 18.75 \u062f\u0631\u0647\u0645 \u0645\u0646 \u0628\u0637\u0627\u0642\u062a\u0643 \u0627\u0644\u0645\u0646\u062a\u0647\u064a\u0629 \u0628 4821 \u0644\u062f\u0649 SAMPLE GRILL \u064a\u0648\u0645 \u0627\u0644\u0627\u062b\u0646\u064a\u0646.\n\u0634\u0643\u0631\u0627 \u0644\u0643\u0645",
+          "received_at_ms": 1900002460000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 2500,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 3150,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1875,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE GRILL",
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 95,
+          "learned_confidence_percent": 75,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
+    },
+    {
+      "name": "merchant-date-words-kept",
+      "note": "Merchant names that contain a weekday or a month word keep it; only the date after on goes.",
+      "mails": [
+        {
+          "sender": "bank-i.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 12.00 at MONDAY CAFE on Mar 3, 2030.\nThank you.",
+          "received_at_ms": 1900002520000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "bank-j.example",
+          "subject": "Card alert",
+          "text": "Dear Customer,\nYour card ending 4821 was used for AED 64.00 at MAR MIKHAEL BISTRO on 3 Mar 2030.\nThank you.",
+          "received_at_ms": 1900002580000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 1200,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "MONDAY CAFE",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "card_purchase",
+          "amount_minor": 6400,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "MAR MIKHAEL BISTRO",
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 0,
+          "readers_agree": false,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }
