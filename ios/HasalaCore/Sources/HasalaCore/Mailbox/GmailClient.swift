@@ -18,10 +18,6 @@ import CoreJSON
 import Foundation
 
 public typealias GmailAPIError = MailAPIError
-public typealias GmailMessagesPage = MailListPage
-/// `messages.get?format=metadata` with `From` and `Authentication-Results` only.
-public typealias GmailMessageMetadata = MailMessageMetadata
-public typealias GmailRawMessage = MailRawMessage
 
 public struct GmailWatchResponse: Sendable, Equatable {
   public let historyID: String
@@ -82,7 +78,7 @@ public struct GmailClient: Sendable {
   /// One page of ids matching a sender query. `includeSpamTrash=true` (bank mail forwarded or
   /// mis-filed lands in Spam); Trash is excluded by `-in:trash` in the query itself.
   public func messagesList(query: String, pageToken: String?, maxResults: Int = 100)
-    async throws(GmailAPIError) -> GmailMessagesPage
+    async throws(GmailAPIError) -> MailListPage
   {
     guard query.contains("from:") else { throw .unfilteredListing }
     var q: [(String, String)] = [
@@ -96,11 +92,11 @@ public struct GmailClient: Sendable {
       if let id = m["id"]?.stringValue, !id.isEmpty { ids.append(id) }
     }
     let next = o["nextPageToken"]?.stringValue
-    return GmailMessagesPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
+    return MailListPage(ids: ids, nextPageToken: (next?.isEmpty ?? true) ? nil : next)
   }
 
   /// From, Authentication-Results, internalDate and sizeEstimate; nothing else of the message.
-  public func messageMetadata(id: String) async throws(GmailAPIError) -> GmailMessageMetadata {
+  public func messageMetadata(id: String) async throws(GmailAPIError) -> MailMessageMetadata {
     let o = try await get(
       "/messages/\(FormEncoding.escape(id))",
       [
@@ -111,18 +107,18 @@ public struct GmailClient: Sendable {
     for h in o["payload"]?["headers"]?.arrayValue ?? [] {
       if let n = h["name"]?.stringValue, let v = h["value"]?.stringValue { headers.append((n, v)) }
     }
-    return GmailMessageMetadata(
+    return MailMessageMetadata(
       id: id, internalDate: Self.decimal(o["internalDate"]),
       sizeEstimate: o["sizeEstimate"]?.numberValue?.int64Value, headers: headers)
   }
 
   /// The RFC 822 message. A 2xx without `raw` is reported as that status (the engine treats it
   /// as `gone`).
-  public func messageRaw(id: String) async throws(GmailAPIError) -> GmailRawMessage {
+  public func messageRaw(id: String) async throws(GmailAPIError) -> MailRawMessage {
     let o = try await get("/messages/\(FormEncoding.escape(id))", [("format", "raw")], op: "raw")
     guard let raw = o["raw"]?.stringValue, !raw.isEmpty else { throw .status(200, op: "raw") }
     let spam = (o["labelIds"]?.arrayValue ?? []).contains { $0.stringValue == "SPAM" }
-    return GmailRawMessage(id: id, rawBase64URL: raw, internalDate: Self.decimal(o["internalDate"]), spam: spam)
+    return MailRawMessage(id: id, rawBase64URL: raw, internalDate: Self.decimal(o["internalDate"]), spam: spam)
   }
 
   /// `users.watch` on INBOX only (spec 04 §7.5 step 5).
