@@ -10,16 +10,18 @@ struct InsightsDrillSheet: View {
 
   var body: some View {
     NavigationStack(path: $path) {
-      InsightsDrillPage(drill: model.drill(target), hidden: model.hidden) { path.append($0) }
+      page(target)
         .toolbar { SheetCloseButton(identifier: "drill.close") { dismiss() } }
-        .navigationDestination(for: InsightsTarget.self) { t in
-          InsightsDrillPage(drill: model.drill(t), hidden: model.hidden) { path.append($0) }
-        }
+        .navigationDestination(for: InsightsTarget.self) { page($0) }
     }
     .presentationDetents([.large])
     .presentationDragIndicator(.visible)
     .presentationCornerRadius(HRadius.sheetLarge)
     .presentationBackground(HColor.sheetSurfaceLarge)
+  }
+
+  private func page(_ target: InsightsTarget) -> InsightsDrillPage {
+    InsightsDrillPage(drill: model.drill(target), hidden: model.hidden) { path.append($0) }
   }
 }
 

@@ -82,18 +82,7 @@ final class ProjectEditorModel {
     app.projectRemovedFromEditor(project)
   }
 
-  func cancel() {
-    if app.projectsInProfile, let last = app.router.profile.last, last == .editProject(project) || isStarter(last) {
-      app.router.profile.removeLast()
-    } else {
-      app.router.sheet = nil
-    }
-  }
-
-  private func isStarter(_ route: ProfileRoute) -> Bool {
-    if project == nil, case .newProject = route { return true }
-    return false
-  }
+  func cancel() { app.closeProjectEditor(project) }
 }
 
 enum ProjectDates {

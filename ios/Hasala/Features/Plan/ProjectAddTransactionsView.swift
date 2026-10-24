@@ -8,8 +8,8 @@ final class ProjectAddModel {
   private let app: AppModel
   let project: ProjectID
   var filter = ProjectCandidateFilter()
-  var from = Date()
-  var to = Date()
+  var from: Date
+  var to: Date
   var selected: Set<TxnID> = []
 
   init(app: AppModel, project: ProjectID) {
@@ -28,10 +28,7 @@ final class ProjectAddModel {
   var narrowed: Bool { filter.narrowed }
   var shown: [MiniTxnRow] { narrowed ? candidates : [] }
 
-  var categories: [CategoryOption] {
-    let s = app.store.state
-    return [Bucket.needs, .wants, .savings].flatMap { s.categories(in: $0) }.map(CategoryOption.init)
-  }
+  var categories: [CategoryOption] { app.store.state.budgetCategoryOptions }
 
   func categoryName(_ id: CategoryID?) -> String {
     id.flatMap { app.store.state.category($0)?.name } ?? "Any category"
@@ -47,11 +44,7 @@ final class ProjectAddModel {
     let ids = rows.map(\.id).filter(selected.contains)
     guard !ids.isEmpty, app.perform(.assignProject(ids, project)) else { return }
     selected = []
-    if app.projectsInProfile {
-      if app.router.profile.last == .addToProject(project) { app.router.profile.removeLast() }
-    } else if app.router.projectsPath.last == .addToProject(project) {
-      app.router.projectsPath.removeLast()
-    }
+    app.leaveAddToProject(project)
   }
 }
 

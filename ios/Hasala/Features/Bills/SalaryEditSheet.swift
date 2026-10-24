@@ -21,12 +21,7 @@ struct SalaryEditSheet: View {
 
   private var terms: SalaryTerms? { BillsEngine.salary(app.store.state, bill: bill) }
 
-  private var minor: Int64? {
-    guard let m = MoneyFormat.parseMinor(amountText.trimmingCharacters(in: .whitespaces),
-                                         decimalSeparator: Locale.current.decimalSeparator ?? "."), m > 0
-    else { return nil }
-    return m
-  }
+  private var minor: Int64? { RecurringCopy.positiveMinor(amountText) }
 
   var body: some View {
     RecurringForm(title: terms?.name ?? "Salary", closeID: "bills.salary.close") {
