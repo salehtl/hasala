@@ -74,7 +74,7 @@ enum MU {
 
   static let numRe = try! NSRegularExpression(pattern: "(?<![0-9.,])([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.([0-9]+))?(?![0-9])")
 
-  static func findAmount(_ text: String, minor: Int64, currency: String?) -> Found? {
+  static func findAmount(_ text: String, minor: Int64) -> Found? {
     let norm = normDigits(text) as NSString
     let target = Decimal(minor)
     for r in numRe.matches(in: norm as String, range: NSRange(location: 0, length: norm.length)) {
@@ -101,10 +101,6 @@ enum MU {
     return String(out.reversed())
   }
 
-  static func amountPresent(_ text: String, minor: Int64, currency: String?) -> Bool {
-    findAmount(text, minor: minor, currency: currency) != nil
-  }
-
   static func protect(_ text: String, _ t: Truth, _ f: (String) -> String) -> String {
     guard let mer = t.merchant, !mer.isEmpty, text.contains(mer) else { return f(text) }
     let tok = "\u{1}M\u{1}"
@@ -115,23 +111,21 @@ enum MU {
     var cur = s
     for (a, b) in pairs.sorted(by: { $0.0.count > $1.0.count }) {
       guard !a.isEmpty else { continue }
+      let ascii = a.unicodeScalars.allSatisfy { $0.value < 128 }
       var r = cur.range(of: a, options: .caseInsensitive)
       var out = ""
-      var rest = Substring(cur)
       var base = cur.startIndex
       while let rr = r {
         let before = rr.lowerBound > cur.startIndex ? cur[cur.index(before: rr.lowerBound)] : " "
         let after = rr.upperBound < cur.endIndex ? cur[rr.upperBound] : " "
-        let ascii = a.unicodeScalars.allSatisfy { $0.value < 128 }
         let ok = !ascii || (!(before.isLetter || before.isNumber) && !(after.isLetter || after.isNumber))
         out += cur[base..<rr.lowerBound]
         out += ok ? b : String(cur[rr])
         base = rr.upperBound
-        rest = cur[base...]
         r = cur.range(of: a, options: .caseInsensitive, range: base..<cur.endIndex)
       }
-      out += rest
-      cur = out.isEmpty && base == cur.startIndex ? cur : out
+      out += cur[base...]
+      cur = out
     }
     return cur
   }
