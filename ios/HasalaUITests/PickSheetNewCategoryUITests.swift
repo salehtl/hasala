@@ -94,6 +94,43 @@ final class PickSheetNewCategoryUITests: XCTestCase {
   }
 
   @MainActor
+  func deckFrames(_ app: XCUIApplication) -> [String: CGRect] {
+    var frames: [String: CGRect] = [:]
+    for id in ["review.close", "review.position", "review.more", "review.period"] {
+      let e = el(app, id)
+      XCTAssertTrue(e.waitForExistence(timeout: uiWait), "\(id) is missing")
+      frames[id] = e.frame
+    }
+    return frames
+  }
+
+  @MainActor
+  func testTheDeckStaysPutWhenTheNameFieldHasTheKeyboard() throws {
+    let app = launch(scenario: "mayaBacklog")
+    openDeck(app, at: "bl-alnoor-t-2")
+    waitForStill(app)
+    let atRest = deckFrames(app)
+    swipeToNeed(app)
+    tap(app, "pick.newCategory", opening: "pick.newCategory.name")
+    let name = el(app, "pick.newCategory.name")
+    XCTAssertTrue(name.waitForKeyboardFocus())
+    name.typeText("Coffee\n")
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait))
+    waitForStill(app)
+    XCTAssertEqual(deckFrames(app), atRest, "the deck moved under the sheet")
+
+    name.tap()
+    XCTAssertTrue(name.waitForKeyboardFocus())
+    let keyboard = app.keyboards.firstMatch
+    XCTAssertTrue(keyboard.waitForExistence(timeout: uiWait))
+    waitForStill(app)
+    attach(app, "Review · New category · keyboard over the deck")
+    XCTAssertEqual(deckFrames(app), atRest, "the deck moved with the keyboard")
+    XCTAssertTrue(name.isHittable)
+    XCTAssertLessThanOrEqual(name.frame.maxY, keyboard.frame.minY, "the name field is under the keyboard")
+  }
+
+  @MainActor
   func testAClashingNameShowsWhyAndWritesNothing() throws {
     let app = launch(scenario: "mayaBacklog")
     openDeck(app, at: "bl-alnoor-t-2")

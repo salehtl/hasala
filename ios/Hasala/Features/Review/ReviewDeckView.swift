@@ -101,6 +101,8 @@ struct ReviewDeckView: View {
         }
       }
     }
+    .frame(minHeight: 0, maxHeight: .infinity)
+    .ignoresSafeArea(.keyboard)
     .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
     .background(HColor.surfaceSecondary)
     // On the bottom safe area for All caught up and the scrolling deck at the largest
