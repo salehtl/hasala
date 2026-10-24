@@ -6,7 +6,9 @@ import CoreStore
 import CoreSync
 import Foundation
 import HasalaCloud
+import SwiftUI
 import Synchronization
+import UIKit
 
 struct ModelSuggestionStage: Sendable {
   let observer: LedgerPageObserver
@@ -22,6 +24,7 @@ struct ModelSuggestionStage: Sendable {
   var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
   var cloudSpent: @Sendable (Int) async -> Void = { _ in }
   var trusts: @Sendable (String) -> Bool = { _ in true }
+  var appActive: @Sendable () -> Bool = { OnScreen.shared.isOn }
   let gate = SweepGate()
 
   static func runs(_ trigger: WorkCoordinator.Trigger) -> Bool {
@@ -40,16 +43,20 @@ struct ModelSuggestionStage: Sendable {
     }
   }
 
-  func run(_ trigger: WorkCoordinator.Trigger) async -> Bool {
-    guard Self.runs(trigger), !backlogActive() else { return false }
-    return await gate.run { await sweep() }
+  func run(_ trigger: WorkCoordinator.Trigger) async -> (newData: Bool, offScreen: Bool) {
+    guard Self.runs(trigger), !backlogActive() else { return (false, false) }
+    return await gate.run {
+      guard appActive() else { return (false, true) }
+      return await sweep()
+    }
   }
 
-  private func sweep() async -> Bool {
+  private func sweep() async -> (newData: Bool, offScreen: Bool) {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
     let tally = CallTally()
+    let cut = CallTally()
     let done: Bool
     do {
       let taxonomy = try reader.taxonomy()
@@ -63,7 +70,8 @@ struct ModelSuggestionStage: Sendable {
         let blobs = try await ModelSuggestionSweep.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
-          spent: { tally.add($0) }, trusts: trusts, stamps: observer.stamps, serial: observer.writes,
+          spent: { tally.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
+          serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           commit: { blobs in
             try await outbox.enqueue(blobs.flatMap(\.ops))
@@ -76,7 +84,7 @@ struct ModelSuggestionStage: Sendable {
     }
     let calls = tally.value
     if calls > 0 { await cloudSpent(calls) }
-    return done
+    return (done, cut.value > 0)
   }
 
   func backlogPass(_ memo: BacklogSort.Memo, dayLeft: Int) async -> BacklogSorter.PassResult? {
@@ -91,7 +99,7 @@ struct ModelSuggestionStage: Sendable {
         let r = try await BacklogSort.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
-          trusts: trusts, stamps: observer.stamps, serial: observer.writes,
+          trusts: trusts, mayAsk: appActive, stamps: observer.stamps, serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
         guard !r.failed else {
@@ -166,6 +174,30 @@ struct ModelSuggestionStage: Sendable {
     try await outbox.enqueue(blobs.flatMap(\.ops))
     try await observer.reproject()
     return true
+  }
+}
+
+nonisolated final class OnScreen: Sendable {
+  static let shared = OnScreen()
+  private let on = Mutex(false)
+
+  var isOn: Bool { on.withLock { $0 } }
+
+  func set(_ value: Bool) { on.withLock { $0 = value } }
+
+  func update(_ phase: ScenePhase) { set(phase != .background) }
+
+  func update(_ state: UIApplication.State) { set(state != .background) }
+
+  @MainActor func follow(_ state: UIApplication.State, center: NotificationCenter = .default) {
+    update(state)
+    let changes = [
+      (UIApplication.didEnterBackgroundNotification, false), (UIApplication.willEnterForegroundNotification, true),
+      (UIApplication.didBecomeActiveNotification, true),
+    ]
+    for (name, value) in changes {
+      _ = center.addObserver(forName: name, object: nil, queue: nil) { [self] _ in set(value) }
+    }
   }
 }
 

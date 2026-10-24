@@ -165,15 +165,32 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 - **Network address.** Cloudflare's edge sees the phone's IP address on every request, as
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
-- **Timing.** Merchant suggestions are meant to run only while the app is open: in the
-  foreground sweep and in the background stage, never in a background refresh or a push
-  wake (the tier already forbids `refresh` and push wakes, and the background stage starts
-  nothing while the app is in the background). One gap remains (found 2026-10-24): when iOS
-  starts the process in the background, for a silent push or a background task, the account
-  opens and its launch run runs the foreground sweep (`ModelSuggestionStage.runs(.launch)`).
-  Nothing checks `applicationState`, so up to 40 names can go out then, within the day cap.
-  Until a code change gates `.launch` on the app state, the privacy policy, Security and
-  Support say "mostly while the app is open" and name this case. Requests from one sweep
+- **Timing.** Hasala asks only while it is open on screen. When the person leaves the app,
+  no new request starts, though requests already sent can finish. One flag, `OnScreen.shared`,
+  says whether the app is on screen. It is on when the app state is not `.background`, so
+  the App Lock prompt, Notification Center and a call banner count as on screen. It is set
+  in `didFinishLaunching`, on `didEnterBackground`, `willEnterForeground` and
+  `didBecomeActive`, and from the scene phase, and it is read without awaiting:
+  - `CloudCategoryModel` reads it immediately before every request, after the jitter
+    sleep. A request that finds the app off screen is not sent (`ModelFailure.offScreen`),
+    is not counted against the day cap, and its name stays eligible.
+  - `ModelTier.run` reads it (`mayAsk`) before every model call, Apple's included, and
+    stops the run at the first call that was not sent.
+  - The foreground sweep (`ModelSuggestionStage`) and the background stage
+    (`BacklogSorter`) read it before they start.
+
+  So no request starts in a background refresh, a push wake or a background task, also
+  when iOS starts the process in the background: the account still opens and its launch
+  run still runs, but the sweep asks no model and spends nothing. The 60 s foreground
+  spacing (`WorkCoordinator.lastForeground`) is set when a `.foreground` run starts, not
+  when it is asked for. A `.foreground` run whose sweep was skipped, or cut short before a
+  call because the app left the screen (`cutShort` from `ModelTier.run`), clears its own
+  spacing, and no other run clears it. A `.foreground` replaces a queued `.silentPush`,
+  `.bgRefresh` or `.bgProcessing` rerun. So the next `.foreground` run sweeps. A
+  `.foreground` that never starts, because a `.retryMail` rerun replaced it or was queued
+  ahead of it, sets no spacing, so the one after it sweeps.
+  This closes the launch-run gap found on 2026-10-24, when the launch run swept in the
+  background and up to 40 names could go out. Requests from one sweep
   go out with a small random delay between them, so a sweep is not one burst. They are still close in time, and the
   policy does not claim otherwise. The background stage can send many requests from one
   connection in a few minutes, and requests that close in time can be seen together at the edge, by
@@ -649,8 +666,9 @@ for reference. What the rewrite records for Merchant suggestions:
   each answer for up to 30 days (`fm_cache`), and that an answer set aside after Not this
   stays on that phone until the account's data leaves it (`fm_kept`, no expiry). Only a
   sweep that queues the merchant again drops it, so a rejection the person lifts with their
-  own pick keeps it. It says the sweep runs "mostly while the app is open", because of the
-  launch-run gap in [What we can't hide](#what-we-cant-hide).
+  own pick keeps it. It says that Hasala asks only while it is open on screen, and that
+  when the person leaves the app no new request starts, though requests already sent can
+  finish (see [What we can't hide](#what-we-cant-hide)).
 - "What stays on your iPhone" gains Search, which can use Apple's on-device model.
 - Terms: provided as is, without warranty; the beta can change, pause or end at any time,
   and accounts and data may be reset or deleted then, with notice in the app or by email

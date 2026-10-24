@@ -15,12 +15,14 @@ public struct CloudCategoryModel: GradedCategoryModel {
   let isAutoFileEnabled: @Sendable () -> Bool
   let exchange: any CloudHTTPExchange
   let pause: @Sendable () async -> Void
+  let onScreen: @Sendable () -> Bool
   let latch: Latch
 
   public init(
     baseURL: URL, clientVersion: String, isEnabled: @escaping @Sendable () -> Bool,
     isAutoFileEnabled: @escaping @Sendable () -> Bool, exchange: any CloudHTTPExchange,
-    refusal: CloudRefusalRecord = .none, pause: @escaping @Sendable () async -> Void = CloudCategoryModel.jitter
+    refusal: CloudRefusalRecord = .none, pause: @escaping @Sendable () async -> Void = CloudCategoryModel.jitter,
+    onScreen: @escaping @Sendable () -> Bool
   ) {
     self.modelTag = Self.defaultTag
     self.endpoint = baseURL.appending(path: "v1/category")
@@ -29,6 +31,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
     self.isAutoFileEnabled = isAutoFileEnabled
     self.exchange = exchange
     self.pause = pause
+    self.onScreen = onScreen
     self.latch = Latch(refusal)
   }
 
@@ -74,6 +77,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
       url: endpoint, method: "POST",
       headers: ["Content-Type": "application/json", "Hasala-Client": "ios/\(clientVersion)"], body: body)
     let response: CloudResponse
+    guard onScreen() else { return (.failed(.offScreen), false) }
     do {
       response = try await exchange.send(request)
     } catch {
@@ -192,11 +196,11 @@ final class Latch: Sendable {
 public enum HasalaCloudFactory {
   public static func makeCategoryModel(
     baseURL: URL?, clientVersion: String, isEnabled: @escaping @Sendable () -> Bool,
-    isAutoFileEnabled: @escaping @Sendable () -> Bool, refusal: CloudRefusalRecord = .none
+    isAutoFileEnabled: @escaping @Sendable () -> Bool, refusal: CloudRefusalRecord = .none, onScreen: @escaping @Sendable () -> Bool
   ) -> (any CategoryModel)? {
     guard let baseURL else { return nil }
     return CloudCategoryModel(
       baseURL: baseURL, clientVersion: clientVersion, isEnabled: isEnabled, isAutoFileEnabled: isAutoFileEnabled,
-      exchange: URLSessionCloudExchange(), refusal: refusal)
+      exchange: URLSessionCloudExchange(), refusal: refusal, onScreen: onScreen)
   }
 }

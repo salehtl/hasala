@@ -66,6 +66,8 @@ actor WorkCoordinator {
       default: 1
       }
     }
+
+    var wakes: Bool { self == .silentPush || self == .bgRefresh || self == .bgProcessing }
   }
 
   nonisolated struct Outcome: Sendable, Equatable {
@@ -81,7 +83,7 @@ actor WorkCoordinator {
 
   typealias SyncStage = @Sendable (SyncTrigger, ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
   typealias MailboxStage = @Sendable (MailboxTrigger, Int64?) async -> CycleReport
-  typealias CategorizeStage = @Sendable (Trigger) async -> Bool
+  typealias CategorizeStage = @Sendable (Trigger) async -> (newData: Bool, offScreen: Bool)
   typealias CommittedStage = @Sendable () async -> Void
   typealias StoppedStage = @Sendable (SyncStop) async -> Void
 
@@ -176,16 +178,12 @@ actor WorkCoordinator {
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
     guard !closed, !paused else { return Outcome() }
-    if trigger == .foreground {
-      let now = ContinuousClock.now
-      if let last = lastForeground, now - last < Self.foregroundSpacing { return Outcome() }
-      lastForeground = now
-    }
+    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return Outcome() }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
       if !Self.joins(trigger, running: current, queued: rerun) {
-        if rerun == nil || trigger.strength > (rerun?.strength ?? 0) { rerun = trigger }
+        if Self.queues(trigger, over: rerun) { rerun = trigger }
         rerunLimit = rerunLimit.widened(by: deadline)
       }
       task = t
@@ -207,6 +205,13 @@ actor WorkCoordinator {
   static func joins(_ trigger: Trigger, running: Trigger?, queued: Trigger?) -> Bool {
     trigger == .refresh && [running, queued].contains { $0?.mailbox != nil }
   }
+
+  static func queues(_ trigger: Trigger, over queued: Trigger?) -> Bool {
+    guard let queued else { return true }
+    return trigger.strength > queued.strength || trigger == .foreground && queued.wakes
+  }
+
+  var queued: Trigger? { rerun }
 
   /// A caller was cancelled: when nobody else waits on its run, the run is cancelled.
   private func cancelIfUnwatched(_ task: Task<Outcome, Never>) {
@@ -237,6 +242,8 @@ actor WorkCoordinator {
   private func once(_ trigger: Trigger, deadline: ContinuousClock.Instant?) async -> Outcome {
     runs += 1
     current = trigger
+    let stamp: ContinuousClock.Instant? = trigger == .foreground ? .now : nil
+    if let stamp { lastForeground = stamp }
     var out = Outcome()
     // The sync engine runs in a task of its own, so a cancellation can't reach it; the
     // run stops waiting for it instead (it finishes, or stops at its deadline).
@@ -263,7 +270,9 @@ actor WorkCoordinator {
     }
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     if !closed, let categorize = stages.categorize, synced.stop.map(Self.tolerable) ?? true {
-      if await categorize(trigger) { out.newData = true }
+      let c = await categorize(trigger)
+      if c.newData { out.newData = true }
+      if c.offScreen, let stamp, lastForeground == stamp { lastForeground = nil }
     }
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()

@@ -249,9 +249,7 @@ actor BacklogSorter {
     activity.set(record.isActive)
   }
 
-  @Sendable static func foreground() async -> Bool {
-    await MainActor.run { UIApplication.shared.applicationState != .background }
-  }
+  @Sendable static func foreground() async -> Bool { OnScreen.shared.isOn }
 
   var isRunning: Bool { task != nil }
 

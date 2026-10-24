@@ -21,7 +21,7 @@ public enum ModelAvailability: String, Sendable, Equatable {
 
 public enum ModelFailure: String, Sendable, Equatable {
   case timeout, guardrail, refusal, rateLimited, busy, contextOverflow, assetsUnavailable, decoding, unsupportedLanguage, notEnabled,
-    refused, other
+    refused, offScreen, other
 }
 
 public enum ModelAnswer: Sendable, Equatable {

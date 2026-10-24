@@ -45,7 +45,8 @@ let customCategory = AllowedCategory(id: "u_pets", name: "Pets", hint: nil)
 
 func model(_ exchange: StubExchange, enabled: Bool = true, autoFile: Bool = false) -> CloudCategoryModel {
   CloudCategoryModel(
-    baseURL: base, clientVersion: "1.2.3", isEnabled: { enabled }, isAutoFileEnabled: { autoFile }, exchange: exchange, pause: {})
+    baseURL: base, clientVersion: "1.2.3", isEnabled: { enabled }, isAutoFileEnabled: { autoFile }, exchange: exchange, pause: {},
+    onScreen: { true })
 }
 
 func reply(choice: String, _ probabilities: [String: Double], tag: String = "cf-clef/1") -> String {
@@ -155,7 +156,7 @@ struct CloudAnswerTests {
     #expect(model(ex, enabled: true).availability() == .available)
     #expect(model(ex, enabled: false).availability() == .notEnabled)
     let flag = Atomic<Bool>(false)
-    let m = CloudCategoryModel(baseURL: base, clientVersion: "1", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false }, exchange: ex)
+    let m = CloudCategoryModel(baseURL: base, clientVersion: "1", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false }, exchange: ex, onScreen: { true })
     #expect(m.availability() == .notEnabled)
     flag.store(true, ordering: .relaxed)
     #expect(m.availability() == .available)
@@ -246,8 +247,8 @@ struct CloudAnswerTests {
 
   @Test("the factory needs a base URL")
   func factory() {
-    #expect(HasalaCloudFactory.makeCategoryModel(baseURL: nil, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { true }) == nil)
-    let m = HasalaCloudFactory.makeCategoryModel(baseURL: base, clientVersion: "1", isEnabled: { false }, isAutoFileEnabled: { false })
+    #expect(HasalaCloudFactory.makeCategoryModel(baseURL: nil, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { true }, onScreen: { true }) == nil)
+    let m = HasalaCloudFactory.makeCategoryModel(baseURL: base, clientVersion: "1", isEnabled: { false }, isAutoFileEnabled: { false }, onScreen: { true })
     #expect(m?.modelTag == "cf-clef/1")
     #expect(m?.availability() == .notEnabled)
   }
@@ -261,18 +262,44 @@ struct CloudGuardTests {
     let flag = Atomic<Bool>(true)
     let m = CloudCategoryModel(
       baseURL: base, clientVersion: "1", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false }, exchange: ex,
-      pause: { flag.store(false, ordering: .relaxed) })
+      pause: { flag.store(false, ordering: .relaxed) }, onScreen: { true })
     #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.notEnabled))
     #expect(ex.requests.isEmpty)
     #expect(await model(ex, enabled: false).suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.notEnabled))
     #expect(ex.requests.isEmpty)
   }
 
+  @Test("the app leaving the screen during the pause sends nothing")
+  func offScreen() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let on = Atomic<Bool>(true)
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex,
+      pause: { on.store(false, ordering: .relaxed) }, onScreen: { on.load(ordering: .relaxed) })
+    #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.offScreen))
+    #expect(ex.requests.isEmpty)
+  }
+
+  @Test("leaving the screen mid-run sends no later request and counts only the one sent")
+  func offScreenMidRun() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
+    let m = CloudCategoryModel(
+      baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex, pause: {},
+      onScreen: { ex.requests.isEmpty })
+    let r = await ModelTier.run(
+      subjects: ["CAFE EXAMPLE JBR", "BOOKS EXAMPLE MALL", "TAXI EXAMPLE DXB"], stages: [.cloud(m)], allowed: builtinAllowed,
+      context: .foreground, now: { 0 })
+    #expect(ex.requests.count == 1)
+    #expect(r.requests == 1 && r.cloudRequests == 1 && r.asked.map(\.subject) == ["CAFE EXAMPLE JBR"])
+    #expect(r.failed.isEmpty && r.unknown.isEmpty && r.stoppedBy.isEmpty)
+  }
+
   @Test("the switch going off mid-run stops the stage after one request")
   func switchedOffMidRun() async {
     let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
     let m = CloudCategoryModel(
-      baseURL: base, clientVersion: "1", isEnabled: { ex.requests.isEmpty }, isAutoFileEnabled: { false }, exchange: ex, pause: {})
+      baseURL: base, clientVersion: "1", isEnabled: { ex.requests.isEmpty }, isAutoFileEnabled: { false }, exchange: ex, pause: {},
+      onScreen: { true })
     let r = await ModelTier.run(
       subjects: ["CAFE EXAMPLE JBR", "BOOKS EXAMPLE MALL", "TAXI EXAMPLE DXB"], model: m, allowed: builtinAllowed, context: .foreground,
       now: { 0 })
@@ -314,7 +341,7 @@ struct CloudGuardTests {
     let flag = Atomic<Bool>(false)
     let m = CloudCategoryModel(
       baseURL: base, clientVersion: "1.2.3", isEnabled: { flag.load(ordering: .relaxed) }, isAutoFileEnabled: { false },
-      exchange: ex, refusal: refused, pause: {})
+      exchange: ex, refusal: refused, pause: {}, onScreen: { true })
     #expect(m.availability() == .notEnabled)
     flag.store(true, ordering: .relaxed)
     #expect(m.availability() == .notEligible)
@@ -333,14 +360,14 @@ struct CloudGuardTests {
     let ex = StubExchange(status: 403, json: "{\"error\":\"client_refused\"}")
     let first = CloudCategoryModel(
       baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex, refusal: record,
-      pause: {})
+      pause: {}, onScreen: { true })
     #expect(first.availability() == .available)
     #expect(await first.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
     #expect(await first.suggest(subject: "BOOKS EXAMPLE MALL", allowed: builtinAllowed) == .failed(.refused))
     #expect(writes.withLock { $0 } == 1)
     let next = CloudCategoryModel(
       baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex, refusal: record,
-      pause: {})
+      pause: {}, onScreen: { true })
     #expect(next.availability() == .notEligible)
     #expect(await next.suggest(subject: "TAXI EXAMPLE DXB", allowed: builtinAllowed) == .failed(.refused))
     #expect(ex.requests.count == 1)
@@ -352,7 +379,7 @@ struct CloudGuardTests {
     let record = CloudRefusalRecord(isRecorded: { false }, record: { writes.withLock { $0 += 1 } })
     let m = CloudCategoryModel(
       baseURL: base, clientVersion: "1.2.3", isEnabled: { true }, isAutoFileEnabled: { false },
-      exchange: StubExchange(status: code, json: "{}"), refusal: record, pause: {})
+      exchange: StubExchange(status: code, json: "{}"), refusal: record, pause: {}, onScreen: { true })
     #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .failed(.refused))
     #expect(writes.withLock { $0 } == 0)
   }
@@ -373,7 +400,7 @@ struct CloudGuardTests {
     let seen = Mutex<[Int]>([])
     let m = CloudCategoryModel(
       baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex,
-      pause: { seen.withLock { $0.append(ex.requests.count) } })
+      pause: { seen.withLock { $0.append(ex.requests.count) } }, onScreen: { true })
     #expect(await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) == .category("dining"))
     #expect(seen.withLock { $0 } == [0])
     #expect(ex.requests.count == 1)
@@ -385,7 +412,7 @@ struct CloudGuardTests {
     let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.97]))
     let m = CloudCategoryModel(
       baseURL: base, clientVersion: "1", isEnabled: { true }, isAutoFileEnabled: { false }, exchange: ex,
-      pause: { withUnsafeCurrentTask { $0?.cancel() } })
+      pause: { withUnsafeCurrentTask { $0?.cancel() } }, onScreen: { true })
     let task = Task { await m.suggest(subject: "CAFE EXAMPLE JBR", allowed: builtinAllowed) }
     #expect(await task.value == .failed(.timeout))
     #expect(ex.requests.isEmpty)
@@ -459,7 +486,7 @@ struct CloudAutoFileTests {
 @Test func cloudModelIsGraded() {
   let model: any CategoryModel = CloudCategoryModel(
     baseURL: URL(string: "https://assist.hasala.app")!, clientVersion: "1.0.0", isEnabled: { true }, isAutoFileEnabled: { true },
-    exchange: URLSessionCloudExchange())
+    exchange: URLSessionCloudExchange(), onScreen: { true })
   #expect(model is any GradedCategoryModel)
   #expect(ModelTier.mayAutoFile(modelTag: model.modelTag))
 }

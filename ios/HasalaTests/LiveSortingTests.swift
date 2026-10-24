@@ -392,7 +392,7 @@ struct LiveSortingTests {
     let stage = ModelSuggestionStage(
       observer: l.a.observer, outbox: l.a.outbox, cache: FMCache(l.a.context.store), dictionary: AccountRuntime.dictionary,
       onDevice: ModelSuggestionStageTests.Counting("apple-fm/27.1", answer: .unknown), cloud: cloud, onDeviceAlone: false,
-      nowMs: { anchor })
+      nowMs: { anchor }, appActive: { true })
     let hold = Hold()
     let serial = l.a.observer.writes
     let held = Task { try await hold.keep(serial) }
