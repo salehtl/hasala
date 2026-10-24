@@ -72,7 +72,7 @@ public enum Civil {
 
   static func pad2(_ n: Int) -> String { pad(n, 2) }
 
-  static func pad(_ n: Int, _ width: Int) -> String {
+  public static func pad(_ n: Int, _ width: Int) -> String {
     let s = String(n)
     return s.utf8.count >= width ? s : String(repeating: "0", count: width - s.utf8.count) + s
   }
