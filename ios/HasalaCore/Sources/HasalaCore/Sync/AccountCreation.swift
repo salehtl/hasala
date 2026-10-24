@@ -128,7 +128,7 @@ public enum AccountCreation {
     defer { s.wipe() }
     let device = try await NewDevice.mint(env, userID: signup.userID)
     let authHash = StepUpParams.verifierHash(s)
-    let (body, payload) = try buildBootstrap(
+    let body = try buildBootstrap(
       env, userID: signup.userID, emailNorm: signup.emailNorm, keys: keys, device: device, authKind: .password,
       authHash: authHash, prfWrap: nil, nonce: signup.nonce)
     let grant = try await apiStep { () async throws(APIError) in
@@ -136,7 +136,6 @@ public enum AccountCreation {
         PasswordRegisterRequest(signupID: signup.id, verifierB64: s.withUnsafeBytes { Base64.encode($0) }, bootstrap: body))
     }
     guard grant.user_id == signup.userID.string else { throw .badResponse("register user_id") }
-    _ = payload
     return try await persistAndCompare(
       env, grant: grant, userID: signup.userID, device: device, keys: keys, emailNorm: signup.emailNorm,
       serverSalt: signup.serverSalt, displayName: signup.displayName, recoveryWrap: body.recovery_wrap,
@@ -192,7 +191,7 @@ public enum AccountCreation {
     }
     let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
     let nonce = try b64(challenge.nonce, "writer nonce")
-    var (body, _) = try buildBootstrap(
+    var body = try buildBootstrap(
       env, userID: user, emailNorm: registered.signup.emailNorm, keys: keys, device: device, authKind: .passkey,
       authHash: registered.attestationHash, prfWrap: prfWrap, nonce: nonce)
     if phraseUnseen { body.phrase_unseen = true }
@@ -212,12 +211,12 @@ public enum AccountCreation {
 
   // MARK: Shared
 
-  /// The BootstrapPayload (01 §10.3.1) and `02` §10.1's body, signed by the AAK
-  /// (BootstrapMessage and RegistrationMessage over `nonce`).
+  /// `02` §10.1's body, signed by the AAK (BootstrapMessage over the
+  /// BootstrapPayload of 01 §10.3.1, and RegistrationMessage, over `nonce`).
   static func buildBootstrap(
     _ env: AccountEnvironment, userID: UserID, emailNorm: String, keys: NewAccountKeys, device: NewDevice,
     authKind: AuthKind, authHash: Data, prfWrap: (Data, Data)?, nonce: Data
-  ) throws(CeremonyError) -> (BootstrapBody, Data) {
+  ) throws(CeremonyError) -> BootstrapBody {
     try cryptoStep("bootstrap") {
       let body = keys.body
       let aak = try body.authorityPublicKey()
@@ -236,7 +235,7 @@ public enum AccountCreation {
       let registrationSig = try body.signWithAuthority(
         try SigningMessage.registration(
           nonce: nonce, writerID: device.writerID, dwkPublicKey: device.dwkPublic, dakPublicKey: device.dakPublic))
-      let json = BootstrapBody(
+      return BootstrapBody(
         amkCommitment: Base64.encode(commit), authorityPubkey: Base64.encode(aak), recoveryPubkey: Base64.encode(rkPub),
         recoveryWrap: Base64.encode(recoveryWrap), phraseBox: Base64.encode(box),
         emailHash: Base64.encode(EmailNorm.hash(emailNorm)), authKind: Int(authKind.rawValue),
@@ -247,7 +246,6 @@ public enum AccountCreation {
           dakPubkeyB64: Base64.encode(device.dakPublic)),
         nonce: Base64.encode(nonce), authoritySig: Base64.encode(authoritySig),
         registrationSig: Base64.encode(registrationSig))
-      return (json, payload)
     }
   }
 

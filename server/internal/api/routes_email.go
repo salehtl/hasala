@@ -24,8 +24,7 @@ func (s *Server) mountEmail(mux *http.ServeMux) {
 func (s *Server) codeLimited(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 		if !s.CodePerIP.Allow(clientKey(r)) {
-			w.Header().Set("Retry-After", "60")
-			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+			writeTooManyAttempts(w)
 			return
 		}
 		h(w, r, userID)

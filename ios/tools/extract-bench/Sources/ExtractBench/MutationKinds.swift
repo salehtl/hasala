@@ -61,7 +61,7 @@ enum Kinds {
     return changed ? MU.join(ls) : nil
   }
 
-  static func fmtBalance(_ f: MU.Found, _ minor: Int64, _ h: Int) -> String {
+  static func fmtBalance(_ f: MU.Found, _ h: Int) -> String {
     let base = Int(f.intPart) ?? 100
     let nv = base * 3 + 1500 + h % 900
     let ip = f.hasComma || nv >= 1000 ? MU.group(String(nv)) : String(nv)
@@ -70,7 +70,7 @@ enum Kinds {
   }
 
   static func balanceLine(_ m: Mail, _ t: Truth) -> String? {
-    guard let minor = t.amountMinor, let f = MU.findAmount(m.text, minor: minor, currency: t.currency) else { return nil }
+    guard let minor = t.amountMinor, let f = MU.findAmount(m.text, minor: minor) else { return nil }
     let h = MU.hash(m.id)
     var ls = MU.lines(m.text)
     var pos = 0
@@ -82,7 +82,7 @@ enum Kinds {
     }
     if pos > 0, MU.isLabel(ls[pos - 1]) { pos -= 1 }
     let cur = t.currency ?? "AED"
-    let num = fmtBalance(f, minor, h)
+    let num = fmtBalance(f, h)
     let ar = MU.mainIsArabic(m.text)
     let label = ar ? "الرصيد المتاح" : "Available balance"
     ls.insert(contentsOf: [label, cur + " " + num], at: pos)
@@ -90,7 +90,7 @@ enum Kinds {
   }
 
   static func amountFormat(_ m: Mail, _ t: Truth) -> String? {
-    guard let minor = t.amountMinor, let f = MU.findAmount(m.text, minor: minor, currency: t.currency) else { return nil }
+    guard let minor = t.amountMinor, let f = MU.findAmount(m.text, minor: minor) else { return nil }
     let h = MU.hash(m.id)
     let ns = m.text as NSString
     var lo = f.range.location
@@ -123,7 +123,6 @@ enum Kinds {
         numChanged = true
       }
     }
-    if !f.hasComma && !numChanged { num = f.number }
     if ns2 == 2 || !numChanged && h % 2 == 0 {
       num = MU.toArabicIndic(num)
     }
@@ -169,9 +168,8 @@ enum Kinds {
       let table = toArabic ? Lexicon.enToAr : Lexicon.arToEn
       let phr: [(String, String)] = toArabic ? Lexicon.phrases.map { ($0.en, $0.ar) } : Lexicon.arOnlyToEn + Lexicon.phrases.map { ($0.ar, $0.en) }
       let ls = MU.lines(s).map { l -> String in
-        let k = MU.key(l)
-        let lk = toArabic ? k : l.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ":", with: "")
-        if let r = table[toArabic ? k : lk] {
+        let k = toArabic ? MU.key(l) : l.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ":", with: "")
+        if let r = table[k] {
           let colon = l.trimmingCharacters(in: .whitespaces).hasSuffix(":") ? ":" : ""
           return r + colon
         }

@@ -93,15 +93,22 @@ extension LedgerStore {
 
   /// `bound_tip` over the stored row at `seq`; nil when there is none.
   public func boundTip(at seq: Int64) throws(StoreError) -> Data? {
-    let row = try read { db in
-      try Row.fetchOne(
-        db, sql: "SELECT writer_id, writer_counter, blob_hash, prev_hash FROM wire_rows WHERE seq = ?", arguments: [seq])
-    }
+    let row = try read { db in try Self.tipRow(seq, db) }
     guard let row else { return nil }
+    guard let tip = Self.boundTip(seq: seq, row: row) else { throw .corrupt("wire_rows") }
+    return tip
+  }
+
+  private static func tipRow(_ seq: Int64, _ db: Database) throws -> Row? {
+    try Row.fetchOne(
+      db, sql: "SELECT writer_id, writer_counter, blob_hash, prev_hash FROM wire_rows WHERE seq = ?", arguments: [seq])
+  }
+
+  private static func boundTip(seq: Int64, row: Row) -> Data? {
     guard let w = WriterID(row["writer_id"] as String), let bh = Hash32(row["blob_hash"] as Data),
       let ph = Hash32(row["prev_hash"] as Data)
-    else { throw .corrupt("wire_rows") }
-    return Self.boundTip(seq: seq, writerID: w, counter: row["writer_counter"], blobHash: bh, prevHash: ph)
+    else { return nil }
+    return boundTip(seq: seq, writerID: w, counter: row["writer_counter"], blobHash: bh, prevHash: ph)
   }
 
   /// The stored snapshot row, unchecked.
@@ -195,20 +202,10 @@ extension LedgerStore {
         try pruneFoldEvents(db)
         return false
       }
-      let c: Int64
-      if let cursor {
-        c = cursor
-      } else {
-        c = try Int64.fetchOne(db, sql: "SELECT cursor_hot FROM sync_state WHERE id = 1") ?? 0
-      }
+      let c = try cursor ?? Int64.fetchOne(db, sql: "SELECT cursor_hot FROM sync_state WHERE id = 1") ?? 0
       var boundTip = tip
-      if boundTip == nil, c > 0,
-        let row = try Row.fetchOne(
-          db, sql: "SELECT writer_id, writer_counter, blob_hash, prev_hash FROM wire_rows WHERE seq = ?", arguments: [c]),
-        let w = WriterID(row["writer_id"] as String), let bh = Hash32(row["blob_hash"] as Data),
-        let ph = Hash32(row["prev_hash"] as Data)
-      {
-        boundTip = Self.boundTip(seq: c, writerID: w, counter: row["writer_counter"], blobHash: bh, prevHash: ph)
+      if boundTip == nil, c > 0, let row = try tipRow(c, db) {
+        boundTip = Self.boundTip(seq: c, row: row)
       }
       guard let boundTip else {
         try db.execute(sql: "DELETE FROM fold_snapshot")

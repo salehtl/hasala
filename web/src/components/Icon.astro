@@ -3,6 +3,15 @@
  * The small line icons from the Paper boards, drawn with currentColor so
  * the surrounding text colour styles them. Decorative unless `label` is set.
  */
+type IconDef = {
+  vb: number;
+  d: readonly string[];
+  rect?: readonly number[];
+  circles?: readonly (readonly number[])[];
+  dots?: readonly (readonly number[])[];
+  cap?: boolean;
+};
+
 interface Props {
   name: keyof typeof ICONS;
   size?: number;
@@ -34,11 +43,8 @@ const ICONS = {
   check: { vb: 16, d: ['m3.5 8.3 2.8 2.8 6.2-6.3'], cap: true },
   chevron: { vb: 12, d: ['m2.5 4.5 3.5 3.5 3.5-3.5'], cap: true },
   'chevron-right': { vb: 12, d: ['m4.5 2.5 3.5 3.5-3.5 3.5'], cap: true },
-  plus: { vb: 14, d: ['M2.5 7h9M7 2.5v9'], cap: true },
-  minus: { vb: 14, d: ['M2.5 7h9'], cap: true },
   link: { vb: 16, d: ['M6.5 9.5 9.5 6.5M7 4.5l1.2-1.2a2.8 2.8 0 0 1 4 4L11 8.5M9 11.5l-1.2 1.2a2.8 2.8 0 0 1-4-4L5 7.5'], cap: true },
   clock: { vb: 16, d: ['M8 4.8V8l2.2 1.4'], circles: [[8, 8, 6.2]], cap: true },
-  info: { vb: 20, d: ['M10 9v5'], circles: [[10, 10, 8]], dots: [[10, 6.2, 1.1]], cap: true },
   alert: { vb: 16, d: ['M8 4.6v4.2'], circles: [[8, 8, 6.6]], dots: [[8, 11.2, 0.95]], cap: true },
   key: { vb: 22, d: ['M11.5 11H19M16.5 11v3M19 11v2.5'], circles: [[7.5, 11, 4]], cap: true },
   phone: { vb: 22, d: ['M9.5 16.5h3'], rect: [6, 2.5, 10, 17, 2.5], cap: true },
@@ -56,30 +62,10 @@ const ICONS = {
   basket24: { vb: 24, d: ['M3.5 9.5h17l-1.7 9.2a2 2 0 0 1-2 1.6H7.2a2 2 0 0 1-2-1.6z', 'M8.5 9.5 11 4.5M15.5 9.5 13 4.5M9.5 13.5V17M14.5 13.5V17'], cap: true },
   'lock-big': { vb: 24, d: ['M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5', 'M12 14.2v2.6'], rect: [5, 10.5, 14, 10, 2.6], cap: true },
   tag: { vb: 18, d: ['M2.5 9.6V3.8a1.3 1.3 0 0 1 1.3-1.3h5.8l6 6a1.3 1.3 0 0 1 0 1.8l-4.9 4.9a1.3 1.3 0 0 1-1.8 0l-6.4-5.6Z'], dots: [[6.2, 6.2, 1.2]], cap: true },
-  pie: { vb: 18, d: ['M9 2.5V9l4.6 4.6', 'M9 9h6.5'], circles: [[9, 9, 6.5]], cap: true },
-  bank: { vb: 18, d: ['M2.5 6.8 9 3l6.5 3.8', 'M4.3 8.5v5M7.4 8.5v5M10.6 8.5v5M13.7 8.5v5', 'M2.5 15.5h13'], cap: true },
-  'eye-off': { vb: 18, d: ['M2 9s2.6-4.8 7-4.8S16 9 16 9s-2.6 4.8-7 4.8S2 9 2 9Z', 'M3 3l12 12'], circles: [[9, 9, 2.3]], cap: true },
-} as const satisfies Record<
-  string,
-  {
-    vb: number;
-    d: readonly string[];
-    rect?: readonly number[];
-    circles?: readonly (readonly number[])[];
-    dots?: readonly (readonly number[])[];
-    cap?: boolean;
-  }
->;
+} as const satisfies Record<string, IconDef>;
 
 const { name, size = 16, label, class: className, stroke } = Astro.props;
-const icon = ICONS[name] as {
-  vb: number;
-  d: readonly string[];
-  rect?: readonly number[];
-  circles?: readonly (readonly number[])[];
-  dots?: readonly (readonly number[])[];
-  cap?: boolean;
-};
+const icon: IconDef = ICONS[name];
 const sw = stroke ?? (icon.vb >= 22 ? 1.9 : icon.vb >= 18 ? 1.6 : 1.8);
 const cap = icon.cap ? 'round' : undefined;
 ---

@@ -27,10 +27,7 @@ public struct HTTPRequest: Sendable, Equatable {
     self.body = body
   }
 
-  public func header(_ name: String) -> String? {
-    let want = Array(name.utf8).map(asciiLower)
-    return headers.first { Array($0.0.utf8).map(asciiLower) == want }?.1
-  }
+  public func header(_ name: String) -> String? { headerValue(headers, name) }
 
   public static func == (a: HTTPRequest, b: HTTPRequest) -> Bool {
     a.method == b.method && a.url == b.url && a.body == b.body
@@ -50,10 +47,7 @@ public struct HTTPResponse: Sendable, Equatable {
   }
   public var ok: Bool { (200..<300).contains(status) }
 
-  public func header(_ name: String) -> String? {
-    let want = Array(name.utf8).map(asciiLower)
-    return headers.first { Array($0.0.utf8).map(asciiLower) == want }?.1
-  }
+  public func header(_ name: String) -> String? { headerValue(headers, name) }
 
   public static func == (a: HTTPResponse, b: HTTPResponse) -> Bool {
     a.status == b.status && a.body == b.body && a.headers.elementsEqual(b.headers) { $0.0 == $1.0 && $0.1 == $1.1 }
@@ -119,6 +113,13 @@ public final class URLSessionHTTPExchange: HTTPExchange {
 // MARK: - Encoding helpers
 
 @inline(__always) func asciiLower(_ b: UInt8) -> UInt8 { (b >= 0x41 && b <= 0x5a) ? b + 0x20 : b }
+
+func asciiLowered(_ s: String) -> String { String(decoding: s.utf8.map(asciiLower), as: UTF8.self) }
+
+private func headerValue(_ headers: [(String, String)], _ name: String) -> String? {
+  let want = Array(name.utf8).map(asciiLower)
+  return headers.first { Array($0.0.utf8).map(asciiLower) == want }?.1
+}
 
 /// `application/x-www-form-urlencoded` and query-string encoding: every byte outside the RFC 3986
 /// unreserved set is percent-encoded (space as `%20`, never `+`), so a Gmail query such as

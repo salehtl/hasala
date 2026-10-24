@@ -6,10 +6,7 @@
  */
 import Detail from '../layouts/Detail.astro';
 import Icon from '../components/Icon.astro';
-import { FAQ, SITE, faqText } from '../data/site';
-
-/** The data keeps plain apostrophes (JSON-LD, llms.txt); the page sets them properly. */
-const curly = (s: string) => s.replace(/'/g, '’');
+import { FAQ, SITE, curly, faqText } from '../data/site';
 
 const faqLd = {
   '@type': 'FAQPage',

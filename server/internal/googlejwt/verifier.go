@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -227,7 +228,7 @@ func checkHeader(hdr map[string]json.RawMessage) error {
 }
 
 func (v *Verifier) checkClaims(c idClaims) error {
-	if !v.issuerAccepted(c.Issuer) {
+	if !slices.Contains(v.issuers, c.Issuer) {
 		return fmt.Errorf("%w: token issued by %q, want one of %q", ErrIssuer, c.Issuer, v.issuers)
 	}
 	now := v.now()
@@ -250,15 +251,6 @@ func (v *Verifier) checkClaims(c idClaims) error {
 		return ErrNoSubject
 	}
 	return nil
-}
-
-func (v *Verifier) issuerAccepted(iss string) bool {
-	for _, want := range v.issuers {
-		if iss == want {
-			return true
-		}
-	}
-	return false
 }
 
 // audienceAllowed is the only audience check there is (go-oidc's is skipped).

@@ -26,9 +26,8 @@ public enum SenderTrust {
   public static func isSharedSuffix(_ d: String) -> Bool { sharedSuffixesV1.contains { utf8Equal(d, $0) } }
 
   static func isUnder(_ d: String, _ parent: String) -> Bool {
-    let a = Array(d.utf8)
-    let p = Array(("." + parent).utf8)
-    return a.count > p.count && Array(a.suffix(p.count)) == p
+    let p = ("." + parent).utf8
+    return d.utf8.count > p.count && d.utf8.suffix(p.count).elementsEqual(p)
   }
 
   /// Why a trusted domain is ignored (03c §7.3 `ignored`), or nil when effective.

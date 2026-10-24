@@ -262,15 +262,13 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		if err != nil {
 			return RecoverFinished{}, refuse("credential: %v", err)
 		}
-		var wrap []byte
 		if hasWrap {
 			if keyproto.CheckPRFWrap(r.PRFWrap) != nil || keyproto.CheckCredentialID(r.PRFCredentialID) != nil || r.PRFWrapVersion != 1 {
 				return RecoverFinished{}, refuse("prf_wrap shape")
 			}
-			wrap = r.PRFWrap
 		}
 		if rkMsg, err = keyproto.RecoverySigninPasskey(nonce, []byte(parsed.Raw.AttestationResponse.ClientDataJSON),
-			[]byte(parsed.Raw.AttestationResponse.AttestationObject), wrap); err != nil {
+			[]byte(parsed.Raw.AttestationResponse.AttestationObject), r.PRFWrap); err != nil {
 			return RecoverFinished{}, refuse("%v", err)
 		}
 		if !keyproto.VerifyEd25519(recoveryPub, rkMsg, r.RKSig) {

@@ -25,6 +25,16 @@ struct Tally {
   var confident = 0
   var confidentWrong = 0
   var confidentWrongMerchant = 0
+
+  mutating func add(_ a: Tally) {
+    mails += a.mails; txnTrue += a.txnTrue; txnTP += a.txnTP; txnFP += a.txnFP; txnFN += a.txnFN
+    amountRight += a.amountRight; amountWrong += a.amountWrong; amountMissing += a.amountMissing
+    currencyRight += a.currencyRight; directionTotal += a.directionTotal; directionRight += a.directionRight
+    directionWrong += a.directionWrong; directionMissing += a.directionMissing; merchantExact += a.merchantExact; merchantClose += a.merchantClose
+    merchantWrong += a.merchantWrong; merchantMissing += a.merchantMissing; merchantNoneRight += a.merchantNoneRight
+    merchantNoneWrong += a.merchantNoneWrong; merchantTotal += a.merchantTotal; noneTotal += a.noneTotal
+    confident += a.confident; confidentWrong += a.confidentWrong; confidentWrongMerchant += a.confidentWrongMerchant
+  }
 }
 
 struct Miss: Encodable {
