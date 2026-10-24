@@ -77,12 +77,10 @@ extension AuthResults {
 
   public static func outlookTrustProbe(_ rawHeaders: String) -> OutlookTrustProbe {
     let analysis = analyzeOutlook(rawHeaders)
-    let fields: [Field] =
-      rawHeaders.utf16.count > maxRawUnits ? [] : (unfold(Array(rawHeaders.unicodeScalars)) ?? [])
+    let fields = readFields(rawHeaders) ?? []
     func name(_ f: Field) -> Scalars { jsLower(jsTrim(f.name)) }
     func value(_ f: Field) -> Scalars { jsLower(jsTrim(f.value)) }
     let arName = Array("authentication-results".unicodeScalars)
-    let fromName = Array("from".unicodeScalars)
     let receivedName = Array("received".unicodeScalars)
     let sclName = Array("x-ms-exchange-organization-scl".unicodeScalars)
 
@@ -122,7 +120,7 @@ extension AuthResults {
     let authSource = authSourceFields.map { probeAuthSource(value($0.element)) }
     let receivedIndex = tagIndex.first(where: { $0.tag == Probe.Tag.received })?.index
 
-    let froms = fields.filter { name($0) == fromName }
+    let froms = named(fields, "from")
     let fromDom = froms.first.map { probeDomain(fromDomain($0.value)) } ?? "-"
 
     var dmarc = "-"
@@ -240,9 +238,7 @@ extension AuthResults {
   }
 
   static func topReceived(_ rawHeaders: String) -> Scalars? {
-    guard rawHeaders.utf16.count <= maxRawUnits, let fields = unfold(Array(rawHeaders.unicodeScalars)) else { return nil }
-    let want = Array("received".unicodeScalars)
-    guard let f = fields.first(where: { jsLower(jsTrim($0.name)) == want }) else { return nil }
+    guard let fields = readFields(rawHeaders), let f = named(fields, "received").first else { return nil }
     var out: Scalars = []
     for c in jsTrim(f.value) {
       let space = c == " " || c == "\t" || c == "\r" || c == "\n"

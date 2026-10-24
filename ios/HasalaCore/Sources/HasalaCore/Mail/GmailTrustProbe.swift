@@ -48,20 +48,15 @@ extension AuthResults {
 
   public static func gmailTrustProbe(_ rawHeaders: String) -> GmailTrustProbe {
     let analysis = analyze(rawHeaders)
-    let fields: [Field] =
-      rawHeaders.utf16.count > maxRawUnits ? [] : (unfold(Array(rawHeaders.unicodeScalars)) ?? [])
-    func name(_ f: Field) -> Scalars { jsLower(jsTrim(f.name)) }
-    let arName = Array("authentication-results".unicodeScalars)
-    let fromName = Array("from".unicodeScalars)
-
-    let parsed = fields.filter { name($0) == arName }.map { parseARValue($0.value) }
+    let fields = readFields(rawHeaders) ?? []
+    let parsed = named(fields, "authentication-results").map { parseARValue($0.value) }
     let forms: [GmailTrustProbe.Form] = parsed.map {
       if $0.authservID.utf8.elementsEqual(gmailAuthservID.utf8) { return .gmail }
       return $0.microsoftForm ? .microsoft : .other
     }
     let gmail = forms.indices.filter { forms[$0] == .gmail }
 
-    let froms = fields.filter { name($0) == fromName }
+    let froms = named(fields, "from")
     let from = froms.count == 1 ? string(fromDomain(froms[0].value)) : ""
     let shownFrom = froms.first.map { probeDomain(fromDomain($0.value)) } ?? "none"
 
