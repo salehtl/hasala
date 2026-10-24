@@ -43,14 +43,12 @@ package auth
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
@@ -137,9 +135,9 @@ func (w *Writers) Challenge(ctx context.Context, userID uuid.UUID) ([]byte, time
 	if userID == uuid.Nil {
 		return nil, time.Time{}, errors.New("auth: writer challenge: user id is zero")
 	}
-	nonce := make([]byte, ChallengeNonceBytes)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, time.Time{}, fmt.Errorf("auth: writer challenge: read random: %w", err)
+	nonce, err := randBytes(ChallengeNonceBytes)
+	if err != nil {
+		return nil, time.Time{}, err
 	}
 	now := w.now()
 	exp := now.Add(ChallengeTTL)
@@ -294,8 +292,7 @@ func insertWriterTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, r Registra
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at) VALUES ($1,$2,$3,$4,$5,$6)`,
 		userID, r.WriterID, r.Alg, r.PubKey, r.DAKPubkey, now); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" {
+		if uniqueViolation(err) != nil {
 			return fmt.Errorf("%w: the writer id, key or DAK is already enrolled", ErrWriterMalformed)
 		}
 		return fmt.Errorf("auth: insert writer %s: %w", r.WriterID, err)

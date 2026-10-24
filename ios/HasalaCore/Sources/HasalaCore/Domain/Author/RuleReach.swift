@@ -133,11 +133,15 @@ public enum RuleReach {
   }
 
   public static func eligible(rows: [Row], group: String, direction: String, home: String) -> [Row] {
+    inGroup(rows, group: group, direction: direction, home: home, where: ruled(_:samePurchase:))
+  }
+
+  static func inGroup(
+    _ rows: [Row], group: String, direction: String, home: String, where keep: (Row, Set<String>) -> Bool
+  ) -> [Row] {
     guard !group.isEmpty else { return [] }
     let pairs = paired(rows, home: home)
-    return rows.filter { r in
-      r.merchantGroup == group && utf8Equal(r.direction, direction) && ruled(r, samePurchase: pairs)
-    }
+    return rows.filter { r in r.merchantGroup == group && utf8Equal(r.direction, direction) && keep(r, pairs) }
   }
 
   public static func hits(_ rule: RuleInput, _ merchantRaw: String) -> Bool {
@@ -165,11 +169,7 @@ public enum RuleReach {
   }
 
   public static func members(rows: [Row], group: String, direction: String, home: String) -> [Row] {
-    guard !group.isEmpty else { return [] }
-    let pairs = paired(rows, home: home)
-    return rows.filter { r in
-      r.merchantGroup == group && utf8Equal(r.direction, direction) && waiting(r, samePurchase: pairs)
-    }
+    inGroup(rows, group: group, direction: direction, home: home, where: waiting(_:samePurchase:))
   }
 
   public static func pattern(_ merchantRaw: String) -> String? {
@@ -205,9 +205,7 @@ public enum RuleReach {
       filed: filed, members: members.filter { !settled($0, in: category) }, then: members.filter { settled($0, in: category) })
   }
 
-  public static func items(_ targets: [Target], ruleID: String, category: String)
-    -> [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)]
-  {
+  public static func items(_ targets: [Target], ruleID: String, category: String) -> [OpAuthor.Categorization] {
     targets.map { ($0.txnID, $0.version, category, false, CategorySource(kind: .rule, ruleID: ruleID)) }
   }
 }

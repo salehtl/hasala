@@ -25,6 +25,7 @@ const OUT: Record<Dir, [number, number, number]> = {
   transfer: [0, -1.2, -4],
 };
 const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function initReview(): void {
   onPage(setup);
@@ -182,7 +183,7 @@ function setup(signal: AbortSignal): void {
       fill: 'forwards',
     });
     await fly.finished;
-    await new Promise((r) => setTimeout(r, 240));
+    await wait(240);
     pill?.removeAttribute('data-active');
     legend?.removeAttribute('data-active');
     card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
@@ -218,7 +219,6 @@ function setup(signal: AbortSignal): void {
 
   // Autoplay, once: the first three cards, each to its own direction.
   const PLAN = cards.slice(0, 3).map((c) => c.dataset.to as Dir);
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   let running = false;
   async function play() {
     if (played || running) return;

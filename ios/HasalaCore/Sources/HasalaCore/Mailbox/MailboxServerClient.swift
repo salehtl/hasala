@@ -46,11 +46,7 @@ public struct HTTPMailboxServer: MailboxServer {
   }
 
   public func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
-    do {
-      return Self.status(try await call(.get, "/api/v1/mailbox/link", body: nil))
-    } catch .noLink {
-      return .noLink
-    }
+    try await linkStatusAndProvider().0
   }
 
   /// Route 37 with the link's provider (`provider`; absent from a server before the Outlook

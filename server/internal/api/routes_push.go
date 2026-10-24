@@ -98,9 +98,7 @@ func (s *Server) securityWake(ctx context.Context, w auth.Wake) {
 }
 
 func (s *Server) mountPush(mux *http.ServeMux) {
-	if s.Push.PerUser == nil {
-		s.Push.PerUser = NewLimiter(pushRate, pushBurst, pushMaxKeys, s.now)
-	}
+	s.ensureLimiter(&s.Push.PerUser, pushRate, pushBurst, pushMaxKeys)
 	mux.HandleFunc("PUT /api/v1/push/apns", s.requireSession(s.handlePutAPNs))
 	mux.HandleFunc("GET /api/v1/push/apns", s.requireSession(s.handleGetAPNs))
 	mux.HandleFunc("DELETE /api/v1/push/apns", s.requireSession(s.handleDeleteAPNs))

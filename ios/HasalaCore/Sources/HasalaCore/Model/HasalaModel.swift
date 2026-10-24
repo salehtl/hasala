@@ -26,16 +26,8 @@ import Foundation
       self.modelTag = modelTag
     }
 
-    /// Greedy, at most 24 tokens (03c §8.6.4). The iOS 27 SDK renamed the
-    /// label to `samplingMode:` and deprecated `sampling:`; the iOS 26 SDK
-    /// (Xcode 26, Swift 6.3, which CI builds with) has only `sampling:`.
-    static var options: GenerationOptions {
-      #if compiler(>=6.4)
-        GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 24)
-      #else
-        GenerationOptions(sampling: .greedy, maximumResponseTokens: 24)
-      #endif
-    }
+    /// Greedy, at most 24 tokens (03c §8.6.4).
+    static var options: GenerationOptions { .greedy(maximumResponseTokens: 24) }
 
     public func availability() -> ModelAvailability {
       let model = SystemLanguageModel(useCase: .general)
@@ -67,21 +59,40 @@ import Foundation
         let id: String = try reply.content.value(String.self, forProperty: "category")
         return allowed.contains { $0.id == id } ? .category(id) : .unknown
       } catch let error as LanguageModelSession.GenerationError {
-        switch error {
-        case .exceededContextWindowSize: return .failed(.contextOverflow)
-        case .rateLimited: return .failed(.rateLimited)
-        case .concurrentRequests: return .failed(.busy)
-        case .guardrailViolation: return .failed(.guardrail)
-        case .refusal: return .failed(.refusal)
-        case .unsupportedLanguageOrLocale: return .failed(.unsupportedLanguage)
-        case .assetsUnavailable: return .failed(.assetsUnavailable)
-        case .decodingFailure: return .failed(.decoding)
-        default: return .failed(.other)
-        }
+        return .failed(ModelFailure(error))
       } catch is CancellationError {
         return .failed(.timeout)
       } catch {
         return .failed(.other)
+      }
+    }
+  }
+
+  extension GenerationOptions {
+    /// The iOS 27 SDK renamed the label to `samplingMode:` and deprecated
+    /// `sampling:`; the iOS 26 SDK (Xcode 26, Swift 6.3, which CI builds with)
+    /// has only `sampling:`.
+    static func greedy(maximumResponseTokens: Int) -> GenerationOptions {
+      #if compiler(>=6.4)
+        GenerationOptions(samplingMode: .greedy, maximumResponseTokens: maximumResponseTokens)
+      #else
+        GenerationOptions(sampling: .greedy, maximumResponseTokens: maximumResponseTokens)
+      #endif
+    }
+  }
+
+  extension ModelFailure {
+    init(_ error: LanguageModelSession.GenerationError) {
+      switch error {
+      case .exceededContextWindowSize: self = .contextOverflow
+      case .rateLimited: self = .rateLimited
+      case .concurrentRequests: self = .busy
+      case .guardrailViolation: self = .guardrail
+      case .refusal: self = .refusal
+      case .unsupportedLanguageOrLocale: self = .unsupportedLanguage
+      case .assetsUnavailable: self = .assetsUnavailable
+      case .decodingFailure: self = .decoding
+      default: self = .other
       }
     }
   }

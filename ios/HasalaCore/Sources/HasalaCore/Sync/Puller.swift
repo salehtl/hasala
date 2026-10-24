@@ -11,6 +11,7 @@ import CorePrimitives
 import CoreStore
 import CoreWire
 import Foundation
+import HasalaText
 
 /// One decided row of a page, handed to the fold hook before persistence.
 public struct PulledRow: Sendable, Hashable {
@@ -103,7 +104,7 @@ enum Puller {
     var seqs: [Int64] = []
     var last = state.cursorHot
     for r in page.rows {
-      guard let s = Int64(r.seq), ASCIIDigits.only(r.seq), s > last else {
+      guard let s = Int64(r.seq), ASCII.isDecimal(r.seq), s > last else {
         throw .halted(.tampered(.rowShape))
       }
       seqs.append(s)
@@ -220,10 +221,6 @@ enum Puller {
       return
     }
   }
-}
-
-enum ASCIIDigits {
-  static func only(_ s: String) -> Bool { !s.isEmpty && s.utf8.allSatisfy { (0x30...0x39).contains($0) } }
 }
 
 extension Task where Success == Never, Failure == Never {

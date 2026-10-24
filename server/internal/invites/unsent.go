@@ -92,12 +92,7 @@ func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string
 		}
 		return true, uuid.Nil, nil
 	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE mail_log SET waitlist_entry_id = NULL, recipient = NULL
-		  WHERE waitlist_entry_id = $1 AND kind = 'invite' AND final_at IS NOT NULL`, *entry); err != nil {
-		return false, uuid.Nil, fmt.Errorf("invites: detach the entry's invite mail: %w", err)
-	}
-	if err := waitlist.DeleteEntryTx(ctx, tx, *entry); err != nil {
+	if err := waitlist.DeleteBouncedEntryTx(ctx, tx, *entry); err != nil {
 		return false, uuid.Nil, err
 	}
 	return true, *entry, nil

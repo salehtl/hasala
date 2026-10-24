@@ -6,7 +6,7 @@ public enum WidgetClock {
 
   public static func today(at date: Date = .now) -> LocalDate {
     let days = Int(((date.timeIntervalSince1970 + offsetSeconds) / 86_400).rounded(.down))
-    return LocalDate(1970, 1, 1).adding(days: days)
+    return LocalDate(ordinal: days)
   }
 
   public static func nextMidnight(after date: Date) -> Date {

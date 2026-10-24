@@ -112,13 +112,11 @@ public enum ModelSuggestionSweep {
     }
   }
 
-  public static func items(_ suggestions: [Suggestion], current: [SweepRow])
-    -> [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)]
-  {
+  public static func items(_ suggestions: [Suggestion], current: [SweepRow]) -> [OpAuthor.Categorization] {
     var now: [String: SweepRow] = [:]
     for r in current { now[r.id] = r }
     var done: Set<String> = []
-    var items: [(txnID: String, version: Int64, category: String, needsReview: Bool, source: CategorySource)] = []
+    var items: [OpAuthor.Categorization] = []
     for s in suggestions {
       guard let r = now[s.txnID], eligible(r), r.version == s.version, !r.rejects(s.category), done.insert(s.txnID).inserted
       else { continue }
@@ -131,9 +129,7 @@ public enum ModelSuggestionSweep {
   public static func author(_ suggestions: [Suggestion], current: [SweepRow], context: AuthorContext) throws(AuthorError)
     -> [AuthoredBlob]
   {
-    let items = items(suggestions, current: current)
-    guard !items.isEmpty else { return [] }
-    return try OpAuthor.categorizations(items, context: context)
+    try OpAuthor.categorizations(items(suggestions, current: current), context: context)
   }
 
   public static func run(
@@ -153,10 +149,7 @@ public enum ModelSuggestionSweep {
     try Task.checkCancellation()
     return try await serial.run {
       let fresh = try await reread()
-      let blobs = try stamps.authoring { (floor: Int64?) throws(AuthorError) -> (value: [AuthoredBlob], lastMs: Int64?) in
-        let blobs = try author(suggestions, current: fresh.rows, context: fresh.context.raised(to: floor))
-        return (blobs, blobs.last?.lastAuthoredMs)
-      }
+      let blobs = try stamps.categorizations(items(suggestions, current: fresh.rows), context: fresh.context)
       if !blobs.isEmpty { try await commit(blobs) }
       return blobs
     }

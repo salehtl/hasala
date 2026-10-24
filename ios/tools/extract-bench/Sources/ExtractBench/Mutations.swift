@@ -14,7 +14,7 @@ enum MutationSelfCheck {
       for (m, t) in items {
         guard let v = mu.apply(m, t) else { nils += 1; continue }
         var fail: [String] = []
-        if let a = t.amountMinor, !MU.amountPresent(v.mail.text, minor: a, currency: t.currency) { fail.append("amount") }
+        if let a = t.amountMinor, MU.findAmount(v.mail.text, minor: a) == nil { fail.append("amount") }
         if let mer = t.merchant, !mer.isEmpty, m.text.contains(mer), !v.mail.text.contains(mer) { fail.append("merchant") }
         if v.truth != t { fail.append("truth") }
         if !v.mail.id.hasSuffix("~" + mu.kind) { fail.append("id") }

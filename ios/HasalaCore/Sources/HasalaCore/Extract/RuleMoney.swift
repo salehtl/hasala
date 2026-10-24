@@ -50,8 +50,6 @@ enum RuleMoneyParser {
 
   static let code3 = try! NSRegularExpression(pattern: "(?<![A-Za-z])([A-Za-z]{3})(?![A-Za-z])")
 
-  static func exponent(_ c: String) -> Int { Exponent.of(c) }
-
   static func currencyBefore(_ s: String) -> String? {
     let t = s.extractTrimmingTrailing()
     if s.count - t.count > 2 { return nil }
@@ -106,7 +104,7 @@ enum RuleMoneyParser {
       if intPart.count > 13 { continue }
       let explicit = cur != nil
       let c = cur ?? labelCurrency ?? "AED"
-      let e = exponent(c)
+      let e = Exponent.of(c)
       var f = frac
       var bad = false
       if f.count > e {

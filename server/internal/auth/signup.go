@@ -19,12 +19,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/oplog"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 // SignupTTL is how long a signup ceremony (and the plaintext address it holds)
@@ -270,8 +270,7 @@ func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte,
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO users (id, user_handle, created_at, email_norm, email_verified_at, display_name)
 		 VALUES ($1, $2, $3, $4, $5, $6)`, s.UserID, handle, now, s.EmailNorm, verified, s.DisplayName); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "users_email_uniq" {
+		if pg := uniqueViolation(err); pg != nil && pg.ConstraintName == "users_email_uniq" {
 			if s.Proven {
 				return ErrEmailInUse
 			}
@@ -279,7 +278,7 @@ func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte,
 		}
 		return fmt.Errorf("auth: create account: %w", err)
 	}
-	inv, err := redeemInviteTx(ctx, tx, s.InviteHash, s.Tag, s.UserID, now)
+	inv, err := invites.RedeemTx(ctx, tx, s.InviteHash, s.Tag, s.UserID, now)
 	if err != nil {
 		return err
 	}
@@ -296,7 +295,7 @@ func createAccountTx(ctx context.Context, tx pgx.Tx, s signupRow, handle []byte,
 		s.UserID); err != nil {
 		return fmt.Errorf("auth: create account: account_usage: %w", err)
 	}
-	return onInviteRedeemedTx(ctx, tx, inv.InviteID, s.UserID, s.Tag)
+	return waitlist.OnInviteRedeemedTx(ctx, tx, inv.InviteID, s.UserID, s.Tag)
 }
 
 // signupEmailHash is the email_hash a C1-P bootstrap must carry.

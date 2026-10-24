@@ -66,7 +66,9 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var merchantGroup: String?
   public var categorizedMs: Int64?
 
-  init(_ r: Row) {
+  init(_ r: Row) { self.init(r, gates: Self.gates(r["gates_json"])) }
+
+  init(_ r: Row, gates: JSONValue?) {
     id = r["id"]
     ord = r["ord"]
     amountMinor = r["amount_minor"]
@@ -116,7 +118,6 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     heldCopy = r["held_copy"]
     merchantGroup = r["merchant_group"]
     categorizedMs = r["categorized_ms"]
-    let gates = Self.gates(r["gates_json"])
     reviewReason = Self.reviewReason(gates)
     senderCheck = Self.senderCheck(gates)
   }
@@ -139,10 +140,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     reviewReason(gates) == .senderUnverified ? gates?["ar"]?.stringValue : nil
   }
 
-  static func template(gatesJSON: String?) -> String? {
-    guard let gatesJSON, let gates = try? JSONParser.parse(text: gatesJSON) else { return nil }
-    return gates["template"]?.stringValue
-  }
+  static func template(gatesJSON: String?) -> String? { gates(gatesJSON)?["template"]?.stringValue }
 }
 
 public struct PartRow: Sendable, Equatable {
@@ -352,14 +350,17 @@ public struct LedgerReader: Sendable {
   private func sweepRows(sql: String, _ arguments: [String]) throws -> [SweepRow] {
     try db.read { db in
       let rejected = try Self.rejections(db)
-      let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { (row: $0, txn: TxnRow($0)) }
+      let fetched = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments)).map { r in
+        let gates = TxnRow.gates(r["gates_json"])
+        return (gates: gates, txn: TxnRow(r, gates: gates))
+      }
       let picks = LastPick.picks(fetched.map(\.txn.pickRow))
-      return fetched.map { r, t in
+      return fetched.map { gates, t in
         SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
-          template: TxnRow.template(gatesJSON: r["gates_json"]), merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
+          template: gates?["template"]?.stringValue, merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
           rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] })
       }
     }
@@ -415,38 +416,29 @@ public struct LedgerReader: Sendable {
   }
 
   public func rules() throws -> [RuleRow] {
+    try ruleRows(
+      sql: """
+        SELECT r.*, COALESCE(s.match_count, 0) AS match_count FROM rule r LEFT JOIN rule_stats s ON s.rule_id = r.id
+        WHERE r.removed = 0 ORDER BY match_count DESC, r.created_ms DESC, r.id
+        """, counted: true)
+  }
+
+  public func rulesIncludingRemoved() throws -> [RuleRow] {
+    try ruleRows(sql: "SELECT * FROM rule ORDER BY created_ms DESC, id", counted: false)
+  }
+
+  private func ruleRows(sql: String, counted: Bool) throws -> [RuleRow] {
     try db.read { db in
       var patterns: [String: [String]] = [:]
       for r in try Row.fetchAll(db, sql: "SELECT rule_id, pattern FROM rule_pattern ORDER BY rule_id, idx") {
         patterns[r["rule_id"], default: []].append(r["pattern"])
       }
-      return try Row.fetchAll(
-        db,
-        sql: """
-          SELECT r.*, COALESCE(s.match_count, 0) AS match_count FROM rule r LEFT JOIN rule_stats s ON s.rule_id = r.id
-          WHERE r.removed = 0 ORDER BY match_count DESC, r.created_ms DESC, r.id
-          """
-      ).map { r in
+      return try Row.fetchAll(db, sql: sql).map { r in
         let id: String = r["id"]
         return RuleRow(
           id: id, patterns: patterns[id] ?? [], match: r["match"], category: r["category"], priority: r["priority"], enabled: r["enabled"],
           removed: r["removed"], origin: r["origin"], createdAt: r["created_at"], version: r["version"], defect: r["defect"],
-          matchCount: r["match_count"])
-      }
-    }
-  }
-
-  public func rulesIncludingRemoved() throws -> [RuleRow] {
-    try db.read { db in
-      var patterns: [String: [String]] = [:]
-      for r in try Row.fetchAll(db, sql: "SELECT rule_id, pattern FROM rule_pattern ORDER BY rule_id, idx") {
-        patterns[r["rule_id"], default: []].append(r["pattern"])
-      }
-      return try Row.fetchAll(db, sql: "SELECT * FROM rule ORDER BY created_ms DESC, id").map { r in
-        let id: String = r["id"]
-        return RuleRow(
-          id: id, patterns: patterns[id] ?? [], match: r["match"], category: r["category"], priority: r["priority"], enabled: r["enabled"],
-          removed: r["removed"], origin: r["origin"], createdAt: r["created_at"], version: r["version"], defect: r["defect"], matchCount: 0)
+          matchCount: counted ? r["match_count"] : 0)
       }
     }
   }

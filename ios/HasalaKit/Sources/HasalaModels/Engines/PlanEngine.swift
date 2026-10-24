@@ -170,7 +170,7 @@ public enum PlanEngine {
       if let late {
         // "AXA · 3 days past usual · usually the 7th" (Paper Plan · October, Insurance).
         let n = late.nextDue.days(until: now.date)
-        detail = [.status("\(shortName(late.name)) · \(n) day\(n == 1 ? "" : "s") past usual", .error),
+        detail = [.status("\(shortName(late.name)) · \(BillsEngine.pastUsual(n))", .error),
                   .text(MoneyPhrase(stringLiteral: "usually the \(ordinal(late.usualDay))"))]
       } else if budget > 0, spent >= budget, let paid = paymentDate(c.id, s, month: month) {
         detail = [.status("Paid \(paid.dayMonth)", .success), .text("bill")]
@@ -247,7 +247,7 @@ public enum PlanEngine {
     switch (p.starts, p.ends) {
     case let (s?, e?) where s == e: s.dayMonth
     case let (s?, e?) where s.year == e.year && s.month == e.month:
-      "\(s.day)–\(e.day) \(CivilCalendar.monthShortNames[e.month - 1])"
+      "\(s.day)–\(e.day) \(e.yearMonth.shortName)"
     case let (s?, e?): "\(s.dayMonth)–\(e.dayMonth)"
     case let (s?, nil): "From \(s.dayMonth)"
     case let (nil, e?): "Until \(e.dayMonth)"
@@ -257,22 +257,24 @@ public enum PlanEngine {
 
   static func projectWhen(_ p: Project, today: LocalDate) -> String? {
     if p.complete { return p.completedOn.map { "finished \($0.dayMonth)" } ?? "finished" }
-    if let s = p.starts, today.days(until: s) > 0 {
-      let n = today.days(until: s)
+    if let n = p.starts.map(today.days(until:)), n > 0 {
       return n == 1 ? "1 day to go" : "\(n) days to go"
     }
     if let e = p.ends, today > e { return "ended" }
     return p.starts == nil && p.ends == nil ? nil : "under way"
   }
 
-  static func paymentDate(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> LocalDate? {
+  static func monthPayments(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> [Txn] {
     s.txns.filter { $0.countsInPlan && $0.categoryID == c && $0.postedAt.date.yearMonth == month }
-      .map(\.postedAt.date).max()
+  }
+
+  static func paymentDate(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> LocalDate? {
+    monthPayments(c, s, month: month).map(\.postedAt.date).max()
   }
 
   /// "Standing order 2 Oct".
   static func paymentMerchant(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> String? {
-    s.txns.filter { $0.countsInPlan && $0.categoryID == c && $0.postedAt.date.yearMonth == month }
+    monthPayments(c, s, month: month)
       .max { $0.postedAt < $1.postedAt }
       .map { "\($0.merchant) \($0.postedAt.date.dayMonth)" }
   }
@@ -520,7 +522,7 @@ public extension PlanEngine {
           + "\(c.name.lowercased())."
       }
     }
-    let short = CivilCalendar.monthShortNames[month.month - 1]
+    let short = month.shortName
     return DayByDay(
       days: days, today: today, dailyBudget: .aed(paced ? max(0, budget) / Int64(month.days) : 0),
       range: today == 1 ? "1 \(short)" : "1–\(today) \(short)", peak: peak, caption: caption)
@@ -545,10 +547,9 @@ public extension PlanEngine {
   /// (the same set `LedgerState.spent(_:in:)` sums).
   static func lines(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> [(txn: Txn, minor: Int64)] {
     var out: [(txn: Txn, minor: Int64)] = []
-    for t in s.txns where t.countsInPlan && t.postedAt.date.yearMonth == month {
-      if let p = s.project(t.projectID), !p.countInPlan { continue }
-      let minor = Fils.sum(t.lines.filter { $0.category == c }.map(\.minor))
-      if t.lines.contains(where: { $0.category == c }) { out.append((t, minor)) }
+    for t in s.txns where t.postedAt.date.yearMonth == month && Spending.includes(t, in: s) {
+      let mine = t.lines.filter { $0.category == c }
+      if !mine.isEmpty { out.append((t, Fils.sum(mine.map(\.minor)))) }
     }
     return out
   }
@@ -557,7 +558,7 @@ public extension PlanEngine {
   static func rules(_ c: Category, _ s: LedgerState) -> [CategoryRule] {
     s.rules.filter { $0.categoryID == c.id }
       .map { r -> (CategoryRule, Int) in
-        let n = s.txns.filter { r.matches($0.merchant) || r.matches($0.provenance?.rawMerchant ?? "") }.count
+        let n = ProfileEngine.matchCount(r, s)
         let how = switch r.match {
         case .contains: "Merchant contains"
         case .startsWith: "Merchant starts with"

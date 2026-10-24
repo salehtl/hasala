@@ -136,68 +136,67 @@ func b64urlField(w http.ResponseWriter, value, field string) ([]byte, bool) {
 	return b, true
 }
 
-// b64std decodes standard base64; an error yields nil, which every caller
-// treats as a failed proof.
-func b64std(v string) ([]byte, error) { return base64.StdEncoding.DecodeString(v) }
-
 var (
 	b64    = base64.StdEncoding.EncodeToString
 	b64url = base64.RawURLEncoding.EncodeToString
 )
 
+type keyErrCode struct {
+	target error
+	status int
+	code   string
+}
+
+var keyErrCodes = []keyErrCode{
+	{auth.ErrStepUpRequired, http.StatusForbidden, "step_up_required"},
+	{auth.ErrStepUpFailed, http.StatusForbidden, "step_up_failed"},
+	{auth.ErrStepUpBadRequest, http.StatusBadRequest, "bad_request"},
+	{auth.ErrWriterUnbound, http.StatusForbidden, "writer_unbound"},
+	{auth.ErrKeysRequired, http.StatusForbidden, "keys_required"},
+	{oplog.ErrKeysRequired, http.StatusForbidden, "keys_required"},
+	{auth.ErrBadWriterID, http.StatusBadRequest, "bad_writer_id"},
+	{auth.ErrWriterMalformed, http.StatusBadRequest, "bad_request"},
+	{auth.ErrKeysMalformed, http.StatusBadRequest, "bad_request"},
+	{auth.ErrBadSignature, http.StatusBadRequest, "bad_signature"},
+	{oplog.ErrHeadSignature, http.StatusBadRequest, "bad_signature"},
+	{auth.ErrTooManyDevices, http.StatusConflict, "too_many_devices"},
+	{auth.ErrHeadMoved, http.StatusConflict, "head_moved"},
+	{auth.ErrNoSuchWriter, http.StatusNotFound, "not_found"},
+	{auth.ErrNotYours, http.StatusNotFound, "not_found"},
+	{auth.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
+	{auth.ErrDeviceOtherAccount, http.StatusConflict, "other_account_device"},
+	{oplog.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
+	{oplog.ErrUnknownWriter, http.StatusForbidden, "writer_unbound"},
+	{auth.ErrSessionBound, http.StatusConflict, "session_bound"},
+	{auth.ErrKeysExist, http.StatusConflict, "keys_exist"},
+	{auth.ErrNoKeys, http.StatusNotFound, "no_keys"},
+	{auth.ErrPhraseUnseen, http.StatusConflict, "phrase_unseen"},
+	{auth.ErrBadAuthorityKey, http.StatusBadRequest, "bad_request"},
+	// The account ceremonies (spec 02 §6.3).
+	{auth.ErrCodeRejected, http.StatusForbidden, "code_rejected"},
+	{auth.ErrRateLimited, http.StatusTooManyRequests, "rate_limited"},
+	{auth.ErrEmailInUse, http.StatusConflict, "email_in_use"},
+	{auth.ErrNotInvited, http.StatusForbidden, "not_invited"},
+	{auth.ErrPasswordRejected, http.StatusForbidden, "password_rejected"},
+	{auth.ErrRecoveryRefused, http.StatusForbidden, "recovery_refused"},
+	{auth.ErrResetRefused, http.StatusForbidden, "reset_refused"},
+	{auth.ErrNotApproved, http.StatusConflict, "not_approved"},
+	{auth.ErrFreezeRefused, http.StatusForbidden, "freeze_refused"},
+	{auth.ErrAccountFrozen, http.StatusForbidden, "account_frozen"},
+	{auth.ErrConflict, http.StatusConflict, "conflict"},
+	{auth.ErrLastAuthenticator, http.StatusConflict, "last_authenticator"},
+	{auth.ErrLastPasskey, http.StatusConflict, "last_authenticator"},
+	{auth.ErrBadEmail, http.StatusBadRequest, "bad_email"},
+	{auth.ErrBadRequest, http.StatusBadRequest, "bad_request"},
+	{auth.ErrNoSuchAccount, http.StatusNotFound, "not_found"},
+	{auth.ErrPasskeyRejected, http.StatusForbidden, "passkey_rejected"},
+}
+
 // writeKeyErr maps auth's key, writer and step-up errors (and oplog's upload
 // ones) to spec 02 §6.3. The reason goes to the operator log.
 func (s *Server) writeKeyErr(w http.ResponseWriter, r *http.Request, err error) {
 	s.logf("api: %s: %v", route(r), err)
-	type m struct {
-		target error
-		status int
-		code   string
-	}
-	for _, x := range []m{
-		{auth.ErrStepUpRequired, http.StatusForbidden, "step_up_required"},
-		{auth.ErrStepUpFailed, http.StatusForbidden, "step_up_failed"},
-		{auth.ErrStepUpBadRequest, http.StatusBadRequest, "bad_request"},
-		{auth.ErrWriterUnbound, http.StatusForbidden, "writer_unbound"},
-		{auth.ErrKeysRequired, http.StatusForbidden, "keys_required"},
-		{oplog.ErrKeysRequired, http.StatusForbidden, "keys_required"},
-		{auth.ErrBadWriterID, http.StatusBadRequest, "bad_writer_id"},
-		{auth.ErrWriterMalformed, http.StatusBadRequest, "bad_request"},
-		{auth.ErrKeysMalformed, http.StatusBadRequest, "bad_request"},
-		{auth.ErrBadSignature, http.StatusBadRequest, "bad_signature"},
-		{oplog.ErrHeadSignature, http.StatusBadRequest, "bad_signature"},
-		{auth.ErrTooManyDevices, http.StatusConflict, "too_many_devices"},
-		{auth.ErrHeadMoved, http.StatusConflict, "head_moved"},
-		{auth.ErrNoSuchWriter, http.StatusNotFound, "not_found"},
-		{auth.ErrNotYours, http.StatusNotFound, "not_found"},
-		{auth.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
-		{auth.ErrDeviceOtherAccount, http.StatusConflict, "other_account_device"},
-		{oplog.ErrWriterRevoked, http.StatusForbidden, "writer_revoked"},
-		{oplog.ErrUnknownWriter, http.StatusForbidden, "writer_unbound"},
-		{auth.ErrSessionBound, http.StatusConflict, "session_bound"},
-		{auth.ErrKeysExist, http.StatusConflict, "keys_exist"},
-		{auth.ErrNoKeys, http.StatusNotFound, "no_keys"},
-		{auth.ErrPhraseUnseen, http.StatusConflict, "phrase_unseen"},
-		{auth.ErrBadAuthorityKey, http.StatusBadRequest, "bad_request"},
-		// The account ceremonies (spec 02 §6.3).
-		{auth.ErrCodeRejected, http.StatusForbidden, "code_rejected"},
-		{auth.ErrRateLimited, http.StatusTooManyRequests, "rate_limited"},
-		{auth.ErrEmailInUse, http.StatusConflict, "email_in_use"},
-		{auth.ErrNotInvited, http.StatusForbidden, "not_invited"},
-		{auth.ErrPasswordRejected, http.StatusForbidden, "password_rejected"},
-		{auth.ErrRecoveryRefused, http.StatusForbidden, "recovery_refused"},
-		{auth.ErrResetRefused, http.StatusForbidden, "reset_refused"},
-		{auth.ErrNotApproved, http.StatusConflict, "not_approved"},
-		{auth.ErrFreezeRefused, http.StatusForbidden, "freeze_refused"},
-		{auth.ErrAccountFrozen, http.StatusForbidden, "account_frozen"},
-		{auth.ErrConflict, http.StatusConflict, "conflict"},
-		{auth.ErrLastAuthenticator, http.StatusConflict, "last_authenticator"},
-		{auth.ErrLastPasskey, http.StatusConflict, "last_authenticator"},
-		{auth.ErrBadEmail, http.StatusBadRequest, "bad_email"},
-		{auth.ErrBadRequest, http.StatusBadRequest, "bad_request"},
-		{auth.ErrNoSuchAccount, http.StatusNotFound, "not_found"},
-		{auth.ErrPasskeyRejected, http.StatusForbidden, "passkey_rejected"},
-	} {
+	for _, x := range keyErrCodes {
 		if errors.Is(err, x.target) {
 			if x.status == http.StatusTooManyRequests {
 				w.Header().Set("Retry-After", "60")
