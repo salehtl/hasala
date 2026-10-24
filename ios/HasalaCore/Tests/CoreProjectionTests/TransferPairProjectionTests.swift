@@ -16,16 +16,17 @@ struct TransferPairProjectionTests {
   static let payee = "SAMPLE PAYEE"
   static let code = "MB FUND TRANSFER DEBIT"
 
-  static func dib(_ n: Int, template: String, merchant: String, last4: String, at: String) -> String {
-    #"{"v":4,"type":"txn_ingested","op_id":"op-\#(n)","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(n))"},"parent_version":null,"ingest_id":"\#(M.ingestID(n))","payload":{"amount_minor":"314159","currency":"AED","direction":"debit","posted_at":"2026-10-03T\#(at).000Z","posted_precision":"time","merchant_raw":"\#(merchant)","last4":"\#(last4)","needs_review":true,"category":null,"tier":"template","entry_method":"mailbox","bank":"dib","provenance":{"provider":"gmail","grant_id":"\#(M.a)","message_id":"m\#(n)"},"gates":{"ar":"pass","sender":"trusted","template":"\#(template)","card":"unknown","forwarded":false}}}"#
+  static func dib(_ n: Int, template: String, merchant: String, last4: String, at: String, grant: String = M.a, mid: String? = nil) -> String {
+    let dedupe = mid.map { #","dedupe":{"message_id":"\#($0)"}"# } ?? ""
+    return #"{"v":4,"type":"txn_ingested","op_id":"op-\#(n)","authored_at":"2026-10-01T08:00:00.000Z","entity":{"kind":"txn","id":"\#(M.ulid(n))"},"parent_version":null,"ingest_id":"\#(M.ingestID(n))","payload":{"amount_minor":"314159","currency":"AED","direction":"debit","posted_at":"2026-10-03T\#(at).000Z","posted_precision":"time","merchant_raw":"\#(merchant)","last4":"\#(last4)","needs_review":true,"category":null,"tier":"template","entry_method":"mailbox","bank":"dib","provenance":{"provider":"gmail","grant_id":"\#(grant)","message_id":"m\#(n)"},"gates":{"ar":"pass","sender":"trusted","template":"\#(template)","card":"unknown","forwarded":false}\#(dedupe)}}"#
   }
 
-  static func notice(_ n: Int, at: String) -> String {
-    dib(n, template: "dib.transfer.v1@1", merchant: payee, last4: "0909", at: at)
+  static func notice(_ n: Int, at: String, grant: String = M.a, mid: String? = nil) -> String {
+    dib(n, template: "dib.transfer.v1@1", merchant: payee, last4: "0909", at: at, grant: grant, mid: mid)
   }
 
-  static func alert(_ n: Int, at: String) -> String {
-    dib(n, template: "dib.account.v1@3", merchant: code, last4: "0606", at: at)
+  static func alert(_ n: Int, at: String, grant: String = M.a) -> String {
+    dib(n, template: "dib.account.v1@3", merchant: code, last4: "0606", at: at, grant: grant)
   }
 
   static func resolve(_ copy: Int, other: Int, _ decision: String?, parent: Int, op: String) -> String {
@@ -117,5 +118,18 @@ struct TransferPairProjectionTests {
     #expect(try Self.live(apart) == [M.ulid(1), M.ulid(2), M.ulid(3)])
     #expect(try apart.txn(M.ulid(2))?.merchantRaw == Self.code && apart.txn(M.ulid(3))?.merchantRaw == Self.payee)
     #expect(try Self.out(apart) == 942_477)
+  }
+
+  @Test("after the combined row leaves with its mailbox, the promoted row offers no keep apart for a copy of the retired row")
+  func promotedRowOffersNoStaleCopy() throws {
+    let retire = #"{"v":4,"type":"mailbox_retired","op_id":"op-retire","authored_at":"2026-10-05T08:00:00.000Z","parent_version":null,"payload":{"grant_id":"\#(M.a)","provider":"gmail","legacy":false}}"#
+    let s = try M.fold([
+      D.home, Self.notice(1, at: "10:00:00", mid: D.mid), Self.notice(2, at: "10:00:00", grant: M.b, mid: D.mid),
+      Self.alert(3, at: "10:03:00", grant: M.b), retire,
+    ])
+    #expect(s.txns[M.ulid(3)]?.mergedInto == M.ulid(2) && s.txns[M.ulid(3)]?.copyOf == M.ulid(1))
+    let r = try M.reader(s)
+    #expect(try Self.live(r) == [M.ulid(2)])
+    #expect(try r.transferCopy(of: M.ulid(2)) == nil && r.transferCopies().isEmpty)
   }
 }

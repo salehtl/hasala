@@ -73,6 +73,30 @@ struct CombinedTransferFlowTests {
     #expect(try a.projection.reader.transferCopy(of: notice)?.copyID == alert)
   }
 
+  @Test func undoAfterTheRevivedRowWasSortedStillCombinesAndKeepsTheSort() async throws {
+    let a = try Mapper.account()
+    var alert = ""
+    var notice = ""
+    let store = try await Self.store(a, alert: &alert, notice: &notice)
+    let app = AppModel(store: store)
+    TransactionViewModel(app: app, id: notice).keepApart()
+    try await Mapper.eventually { try a.projection.reader.txn(alert) != nil }
+    let revived = try #require(try a.projection.reader.txn(alert))
+    if let b = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+      o.categorize(txnID: alert, parentVersion: revived.version, category: "groceries", needsReview: false)
+    }) {
+      try await a.outbox.enqueue(b.ops)
+    }
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.txn(alert)?.version == revived.version + 1)
+
+    app.toastAction()
+    try await Mapper.eventually { try a.projection.reader.txn(alert) == nil }
+    #expect(try a.projection.reader.transferCopy(of: notice)?.copyID == alert)
+    #expect(try a.projection.reader.txn(notice)?.category == "groceries")
+    #expect(try a.projection.reader.forkNotices(kind: "txn").filter { $0.entityID == alert }.isEmpty)
+  }
+
   @Test func theSheetOffersNothingForARowThatWasNotCombined() {
     let app = AppModel(store: InMemoryLedger())
     let txn = TransactionViewModel(app: app, id: "carrefour")

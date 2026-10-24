@@ -181,12 +181,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
       if merge { return [.copyUnmerged(txn: id, other: other, version: row.version + 1)] }
     case .keepCombinedApart(let id):
-      _ = try txn(id)
       guard let copy = try reader.transferCopy(of: id) else { throw Failure.notFound }
       try await build { a throws(AuthorError) in
         a.resolveCopy(txnID: copy.copyID, parentVersion: copy.version, otherTxnID: copy.copyOf, decision: .keepBoth)
       }
-      return [.copyUnmerged(txn: copy.copyID, other: copy.copyOf, version: copy.version + 1)]
+      return [.copyReopened(txn: copy.copyID)]
     case .resolveSamePurchase(let id, let same):
       let row = try txn(id)
       guard let f = before.txn(id)?.samePurchase?.of else { throw Failure.notFound }

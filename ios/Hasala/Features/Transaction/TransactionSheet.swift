@@ -416,7 +416,7 @@ struct TransactionSheet: View {
       .accessibilityElement(children: .combine)
       .accessibilityIdentifier("txn.combined")
       HDivider(inset: .icon52)
-      ActionRow(icon: .split, title: "Keep as two transactions") { confirmApart = true }
+      ActionRow(icon: .linkOff, title: "Keep as two transactions") { confirmApart = true }
         .accessibilityIdentifier("txn.keepApart")
     }
     .background(HColor.surfacePrimary)

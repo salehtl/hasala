@@ -223,7 +223,7 @@ public struct LedgerReader: Sendable {
   }
 
   static let transferCopySQL =
-    "SELECT txn_id, alias_txn_id, alias_copy_of, alias_version FROM txn_alias WHERE kind = 'transfer' AND alias_copy_of IS NOT NULL AND alias_version IS NOT NULL"
+    "SELECT txn_id, alias_txn_id, alias_copy_of, alias_version FROM txn_alias WHERE kind = 'transfer' AND alias_copy_of = txn_id AND alias_version IS NOT NULL"
 
   static func transferCopy(_ r: Row) -> TransferCopy {
     TransferCopy(txnID: r["txn_id"], copyID: r["alias_txn_id"], copyOf: r["alias_copy_of"], version: r["alias_version"])
