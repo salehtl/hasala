@@ -126,10 +126,6 @@ var uae = time.FixedZone("UAE", 4*60*60)
 // Date writes "Sunday 25 October" in UTC+4.
 func Date(t time.Time) string { return t.In(uae).Format("Monday 2 January") }
 
-// Greeting is "Hi {first}," for a display name, else "Hi,". The first name is
-// the stored name up to its first space.
-func Greeting(displayName string) string { return mail.Greeting(displayName) }
-
 // EnqueueTest queues the operator's test email (`hasalad email test`).
 func EnqueueTest(ctx context.Context, tx pgx.Tx, q *Queue, address string) (int64, error) {
 	to, err := keyproto.EmailNorm(address)
