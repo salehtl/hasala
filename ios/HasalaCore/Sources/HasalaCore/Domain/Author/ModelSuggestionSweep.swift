@@ -21,7 +21,7 @@ public enum ModelSuggestionSweep {
   }
 
   public static func eligible(_ r: SweepRow) -> Bool {
-    guard r.candidate, r.direction == .debit, r.category == nil, r.version != nil else { return false }
+    guard r.candidate, r.direction == .debit, r.category == nil, r.version != nil, r.picked == nil else { return false }
     switch r.sourceKind {
     case .user, .held: return false
     default: return true

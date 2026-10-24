@@ -38,7 +38,7 @@ protocol ReviewDeckModel: AnyObject, Observable {
   /// A swipe or a pill sent the card one way: ask which category.
   func pick(_ card: TxnID, _ choice: ReviewChoice)
   @discardableResult func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool
-  @discardableResult func useSuggestion(_ card: TxnID) -> Bool
+  @discardableResult func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool
   func skip(_ card: TxnID)
   @discardableResult func resolveCopy(_ card: TxnID, merge: Bool) -> Bool
   @discardableResult func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool
@@ -151,9 +151,9 @@ final class ReviewViewModel: ReviewDeckModel {
 
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption] {
     let s = app.store.state
-    var options = ReviewEngine.options(for: choice, s, txn: s.txn(card))
-    // The suggestion leads its bucket's list (Paper "Pick a need": "Suggested").
-    if let sug = s.txn(card)?.reviewSuggestion, let i = options.firstIndex(where: { $0.id == sug }) {
+    let t = s.txn(card)
+    var options = ReviewEngine.options(for: choice, s, txn: t)
+    if let sug = t.flatMap({ ReviewEngine.suggestion($0, s) })?.id, let i = options.firstIndex(where: { $0.id == sug }) {
       options.insert(options.remove(at: i), at: 0)
     }
     return options
@@ -172,18 +172,39 @@ final class ReviewViewModel: ReviewDeckModel {
     if app.store.state.txn(card)?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
     edits.append(.categorize(card, category, learnRule: alwaysUse, project: project))
     guard app.perform(edits) else { return false }
+    follow(card)
     passed(card)
     record(card, learnedRule: alwaysUse)
     return true
   }
 
   @discardableResult
-  func useSuggestion(_ card: TxnID) -> Bool {
-    guard let c = app.store.state.txn(card)?.reviewSuggestion else { return false }
+  func useSuggestion(_ card: TxnID, shown: CategoryID?) -> Bool {
+    let s = app.store.state
+    guard let t = s.txn(card), let c = ReviewEngine.suggestion(t, s)?.id, shown == nil || shown == c else { return false }
     guard app.perform(.categorize(card, c, learnRule: false, project: nil)) else { return false }
+    follow(card)
     passed(card)
     record(card, learnedRule: false)
     return true
+  }
+
+  private func follow(_ card: TxnID) {
+    let s = app.store.state
+    guard let ref = s.txn(card)?.groupRef else { return }
+    let next = Self.following(order, after: card, ref: ref, waiting: ReviewEngine.queue(s, in: window))
+    guard next != order else { return }
+    order = next
+    memo = Memo()
+  }
+
+  nonisolated static func following(_ order: [TxnID], after card: TxnID, ref: MerchantGroupRef, waiting: [Txn]) -> [TxnID] {
+    guard let i = order.firstIndex(of: card) else { return order }
+    let same = Set(waiting.filter { $0.groupRef == ref && $0.id != card }.map(\.id))
+    let rest = order[(i + 1)...]
+    let next = rest.filter { same.contains($0) }
+    guard !next.isEmpty else { return order }
+    return Array(order[...i]) + next + rest.filter { !same.contains($0) }
   }
 
   func skip(_ card: TxnID) { passed(card, app.perform(.skipReview(card))) }
@@ -221,6 +242,8 @@ final class ReviewViewModel: ReviewDeckModel {
 }
 
 extension ReviewDeckModel {
+  @discardableResult func useSuggestion(_ card: TxnID) -> Bool { useSuggestion(card, shown: nil) }
+
   /// What VoiceOver hears once a card is filed (Paper 16 · 06): "Filed as Need. 3 of 6.",
   /// or "Filed as Need. All caught up." for the last one.
   func filedAnnouncement(_ filedAs: String) -> String {

@@ -104,7 +104,7 @@ struct CloudSuggestionsSection: View {
           .accessibilityIdentifier("profile.cloudSendBack")
         }
       }
-      Text("When your rules and Hasala's merchant list can't sort a payment, Cloudflare's AI can suggest a category. Off unless you turn it on.")
+      Text("When your rules and Hasala's merchant list can't sort a payment, and you haven't picked a category for that merchant's payments yourself, Cloudflare's AI can suggest one. Off unless you turn it on.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -149,7 +149,7 @@ struct CloudConsentContent {
   static let suggestions = CloudConsentContent(
     id: "merchantSuggestions",
     title: "Merchant suggestions",
-    lead: "When Hasala can't sort a payment with your rules or its merchant list, it asks Cloudflare's AI service to suggest a category. Apple's on-device model is used when Cloudflare can't help.",
+    lead: "When Hasala can't sort a payment with your rules or its merchant list, and you haven't picked a category for that merchant's payments yourself, it asks Cloudflare's AI service to suggest one. Apple's on-device model is used when Cloudflare can't help.",
     points: [
       (.tag, "What's sent",
        "The merchant name as it appears in the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D}, and Hasala's built-in category names."),

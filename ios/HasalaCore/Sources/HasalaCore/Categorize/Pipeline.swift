@@ -92,11 +92,12 @@ public struct SweepRow: Sendable, Equatable {
   public let merchantGroup: String?
   public let categorizedMs: Int64?
   public let rejected: Set<String>
+  public let picked: String?
 
   public init(
     id: String, merchantRaw: String, direction: Direction?, category: String?, sourceKind: SourceKind, sourceRef: String?,
     needsReview: Bool, candidate: Bool, version: Int64? = nil, template: String? = nil, merchantGroup: String? = nil, categorizedMs: Int64? = nil,
-    rejected: Set<String> = []
+    rejected: Set<String> = [], picked: String? = nil
   ) {
     self.id = id
     self.merchantRaw = merchantRaw
@@ -111,6 +112,7 @@ public struct SweepRow: Sendable, Equatable {
     self.merchantGroup = merchantGroup
     self.categorizedMs = categorizedMs
     self.rejected = rejected
+    self.picked = picked
   }
 
   public func rejects(_ category: String) -> Bool { rejected.contains(category) }

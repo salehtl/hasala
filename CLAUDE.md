@@ -616,14 +616,19 @@ the approval of the owner for that deployment.
   message id and the parsed fields. Email forwarding and SMTP ingest are not
   used in this version.
 - **Categorization occurs on the device**, in this sequence: user rules, then
-  the UAE merchant dictionary in the app, then Apple Foundation Models (only
+  the UAE merchant dictionary in the app, then the person's last pick for
+  that merchant group and direction (`LastPick`: the newest filed row they
+  sorted themselves into one category, source `user`, not split; a
+  suggestion only, it never files a row, and a debit pick keeps the models
+  from being asked about that group), then Apple Foundation Models (only
   for merchants in Latin script; it cannot read Arabic), then the review
   queue.
 - **Merchant suggestions (2026-10-20) are the one exception.** They are opt-in
   and off by default, and each device has its own switch. With the switch on,
-  when rules and the dictionary give no category, the phone sends one
-  merchant string and the built-in category names to Clef (Workers AI)
-  first. Apple's model is the fallback. The phone calls the
+  when rules and the dictionary give no category and the person has no
+  last pick for that merchant group's debits (a pick on a credit, or a split
+  row, does not count), the phone sends one merchant string and the built-in category names
+  to Clef (Workers AI) first. Apple's model is the fallback. The phone calls the
   `infra/assist/` Worker directly. That Worker has no account identity and
   stores and logs nothing. hasalad never sees these requests. A suggestion
   does not file a row (`needs_review` stays true). There is one exception:

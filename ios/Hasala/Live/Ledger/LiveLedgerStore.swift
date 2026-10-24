@@ -335,9 +335,12 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       if let project { s.txns[i].projectID = project }
       var inverses: [LedgerEditAuthor.Inverse] = old.splits.isEmpty ? [] : [.split(txn: id, lines: old.splits)]
       if let project, project != old.projectID { inverses.append(.project(txn: id, project: old.projectID)) }
-      if learnRule, old.splits.isEmpty, let ref = old.groupRef,
-        let line = SortPatch.reach(&s, from: old, ref: ref, category: c, at: now)
-      {
+      var line: String?
+      if learnRule, old.splits.isEmpty, let ref = old.groupRef {
+        line = SortPatch.reach(&s, from: old, ref: ref, category: c, at: now)
+      }
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, c) }
+      if let line {
         batch = true
         return (line, inverses)
       }
@@ -349,6 +352,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categorySource = .user
       s.txns[i].isTransfer = true
       s.txns[i].needsReview = false
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, "transfer") }
       return ("Marked as a transfer", [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)])
     case .markRefund(let id):
       let i = try index(id)
@@ -357,6 +361,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].categoryID = refund ? "refunds" : nil
       s.txns[i].isRefund = refund
       s.txns[i].needsReview = !refund
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, refund ? "refunds" : nil) }
       return (
         refund ? "Marked as a refund" : "No longer a refund",
         [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
@@ -379,6 +384,11 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].splits = t.apportioned(lines)
       if let first = lines.first { s.txns[i].categoryID = first.categoryID }
       s.txns[i].needsReview = false
+      if t.countsAsPick || s.txns[i].countsAsPick {
+        SortPatch.picked(&s, t.groupRef, nil)
+      } else {
+        SortPatch.carried(&s, [t.groupRef])
+      }
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])
     case .archive(let id, let archived):
       if archived, s.unreadMail.contains(where: { $0.id == id }) {

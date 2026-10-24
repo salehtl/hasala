@@ -553,7 +553,7 @@ struct ReviewDeckView: View {
     guard card.reviewReason == nil, let s = card.suggestion else { return }
     tap += 1
     file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name, chime: true) {
-      model.useSuggestion(card.id)
+      model.useSuggestion(card.id, shown: s.id)
     }
   }
 

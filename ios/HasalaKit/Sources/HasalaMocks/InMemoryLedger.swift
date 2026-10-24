@@ -27,6 +27,7 @@ public final class InMemoryLedger: LedgerStore {
     var rules: (before: [Rule], after: [Rule])?
     var projects: (before: [Project], after: [Project])?
     var unread: (before: [UnreadMail], after: [UnreadMail])?
+    var sortOrder: [TxnID: (before: Int?, after: Int?)] = [:]
   }
 
   private var undoRecords: [Int: UndoRecord] = [:]
@@ -34,6 +35,8 @@ public final class InMemoryLedger: LedgerStore {
   private var nextManual = 1
   private var nextBill = 1
   private var nextCategory = 1
+  private var sortOrder: [TxnID: Int] = [:]
+  private var nextSort = 0
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     var state = state
@@ -55,6 +58,7 @@ public final class InMemoryLedger: LedgerStore {
     var touchedUnread = false
     var title: String?
     var batch = false
+    var order = sortOrder
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
@@ -68,6 +72,8 @@ public final class InMemoryLedger: LedgerStore {
     let at = now
 
     func fileByPerson(_ t: inout Txn, _ c: CategoryID) {
+      order[t.id] = nextSort
+      nextSort += 1
       t.categoryID = c
       t.categorySource = .user
       t.ruleID = nil
@@ -543,7 +549,9 @@ public final class InMemoryLedger: LedgerStore {
       title = nil
     }
 
-    MockReach.refresh(&s)
+    MockReach.refresh(&s, sortOrder: order)
+    let orderBefore = sortOrder
+    sortOrder = order
     state = s
     revision += 1
     guard let title else { return nil }
@@ -551,6 +559,7 @@ public final class InMemoryLedger: LedgerStore {
     for id in touched {
       record.txnsBefore[id] = before.txn(id)
       record.txnsAfter[id] = s.txn(id)
+      if orderBefore[id] != order[id] { record.sortOrder[id] = (orderBefore[id], order[id]) }
     }
     if touchedPlan { record.plan = (before.plan, s.plan) }
     if touchedBills { record.bills = (before.bills, s.bills) }
@@ -593,7 +602,8 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
-    MockReach.refresh(&s)
+    for (id, o) in r.sortOrder where sortOrder[id] == o.after { sortOrder[id] = o.before }
+    MockReach.refresh(&s, sortOrder: sortOrder)
     state = s
     revision += 1
   }

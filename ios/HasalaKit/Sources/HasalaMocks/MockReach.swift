@@ -10,7 +10,7 @@ public enum MockReach {
     }
   }
 
-  public static func refresh(_ s: inout LedgerState) {
+  public static func refresh(_ s: inout LedgerState, sortOrder: [TxnID: Int] = [:]) {
     let pairs = Set(s.txns.compactMap { $0.samePurchase?.of })
     for i in s.txns.indices {
       let ruled = ruled(s.txns[i], pairs: pairs)
@@ -18,6 +18,7 @@ public enum MockReach {
       let reach = s.txns[i].waits
       if s.txns[i].reachable != reach { s.txns[i].reachable = reach }
     }
+    ReviewEngine.fillLastPicks(&s, sortOrder: sortOrder)
   }
 
   public static func refreshed(_ s: LedgerState) -> LedgerState {

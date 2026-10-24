@@ -38,6 +38,7 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
   var batches: [Batch] = []
   var repaired: Set<String> = []
   var autoOps: [String] = []
+  var undone: [String: Prior]?
 
   mutating func noteAuto(_ ops: [Op]) {
     let ids = ops.filter { $0.type == .txnCategorized }.map(\.opID)
@@ -64,6 +65,13 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
 
   mutating func refiled(_ txn: String, from p: Prior, written: Int64) {
     for i in batches.indices where batches[i].prior[txn] == p { batches[i].prior[txn]?.written = written }
+  }
+
+  mutating func undid(_ kept: [String: Prior], dropping gone: Set<String>) {
+    var u = undone ?? [:]
+    for id in gone { u[id] = nil }
+    u.merge(kept) { _, new in new }
+    undone = u.isEmpty ? nil : u
   }
 
   var ownOps: Set<String> { Set(autoOps) }

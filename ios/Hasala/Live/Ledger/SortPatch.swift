@@ -14,6 +14,19 @@ nonisolated enum SortPatch {
     t.priorFiling = nil
   }
 
+  static func picked(_ s: inout LedgerState, _ ref: MerchantGroupRef?, _ c: CategoryID?) {
+    guard let ref else { return }
+    for i in s.txns.indices where s.txns[i].groupRef == ref {
+      s.txns[i].lastPick = s.txns[i].inReview ? c : nil
+    }
+  }
+
+  static func carried(_ s: inout LedgerState, _ refs: some Sequence<MerchantGroupRef?>) {
+    for ref in Set(refs.compactMap { $0 }) {
+      picked(&s, ref, s.txns.first { $0.groupRef == ref && $0.lastPick != nil }?.lastPick)
+    }
+  }
+
   static func name(_ s: LedgerState, _ c: CategoryID) -> String { s.category(c)?.name ?? "Uncategorized" }
 
   static func ruled(_ s: LedgerState, _ ref: MerchantGroupRef) -> [Int] {
@@ -50,10 +63,12 @@ nonisolated enum SortPatch {
     var seen: Set<TxnID> = []
     var returned = 0
     var settled = 0
+    var refs: [MerchantGroupRef?] = []
     for id in ids where seen.insert(id).inserted {
       guard let i = s.txns.firstIndex(where: { $0.id == id }), s.txns[i].sortedForYou else { continue }
       let byRule = s.txns[i].filedByRule
       returned += 1
+      refs.append(s.txns[i].groupRef)
       if byRule, let prior = s.txns[i].priorFiling {
         s.txns[i].restore(prior)
         if !prior.needsReview { settled += 1 }
@@ -69,6 +84,7 @@ nonisolated enum SortPatch {
       }
       s.txns[i].reachable = s.txns[i].waits
     }
+    carried(&s, refs)
     guard returned > 0 else { throw .notFound }
     return SortedForYouItem.undoneLine(count: returned, settled: settled)
   }
