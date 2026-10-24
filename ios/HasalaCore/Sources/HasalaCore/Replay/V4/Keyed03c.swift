@@ -70,11 +70,16 @@ extension State {
     forwardAnnotations(id, fields: applied, seq: e.seq)
   }
 
-  mutating func applyMerchantNamed(_ e: LogEntry) throws(PayloadError) {
-    let p = try P.object(e.op)
+  private static func merchantKey(_ p: JSONObject) throws(PayloadError) -> String {
     guard let key = p["merchant_key"]?.stringValue, Grammar.isMerchantKey(key) else {
       throw PayloadError("merchant_key must be 1-256 scalars with no forbidden scalar, got \(showValue(p["merchant_key"]))")
     }
+    return key
+  }
+
+  mutating func applyMerchantNamed(_ e: LogEntry) throws(PayloadError) {
+    let p = try P.object(e.op)
+    let key = try Self.merchantKey(p)
     var name: String?
     if let v = P.present(p["display_name"]) { name = try P.label(v, "display_name") }
     merchantNames[ExactKey(key)] = Keyed(name, opID: e.op.opID)
@@ -82,9 +87,7 @@ extension State {
 
   mutating func applyMerchantCategoryRejected(_ e: LogEntry) throws(PayloadError) {
     let p = try P.object(e.op)
-    guard let key = p["merchant_key"]?.stringValue, Grammar.isMerchantKey(key) else {
-      throw PayloadError("merchant_key must be 1-256 scalars with no forbidden scalar, got \(showValue(p["merchant_key"]))")
-    }
+    let key = try Self.merchantKey(p)
     let category = try P.categoryID(p["category"], "category")
     let rejected = try P.boolField(p["rejected"], "rejected")
     merchantRejections[State.rejectionKey(key, category)] = MerchantRejection(
@@ -108,11 +111,7 @@ extension State {
     let name = try P.label(p["name"], "name")
     let kind = try P.oneOf(p["kind"], "kind", ["spending", "income", "excluded"])
     let bucket = try State.bucketFor(kind, p["bucket"])
-    var icon: String?
-    if let v = P.present(p["icon"]) {
-      guard let s = v.stringValue, Grammar.isIconID(s) else { throw PayloadError("icon must be an IconId, got \(showValue(v))") }
-      icon = s
-    }
+    let icon = try State.optionalIcon(p["icon"])
     var parent: String?
     if let s = P.present(p["parent"])?.stringValue, let cls = Grammar.categoryParentClass(s), utf8Equal(cls.kind, kind),
       cls.bucket.map({ b in bucket.map { utf8Equal($0, b) } ?? false }) ?? (bucket == nil)
