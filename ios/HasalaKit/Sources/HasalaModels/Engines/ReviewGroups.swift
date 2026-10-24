@@ -49,7 +49,9 @@ extension ReviewEngine {
 }
 
 extension Txn {
-  public var countsAsPick: Bool { categorySource == .user && !needsReview && categoryID != nil && splits.isEmpty }
+  public var countsAsPick: Bool {
+    (categorySource == .user || categorySource == .manual) && !needsReview && categoryID != nil && splits.isEmpty
+  }
 }
 
 struct GroupIndex {

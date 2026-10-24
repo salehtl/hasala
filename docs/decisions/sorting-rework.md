@@ -128,10 +128,17 @@ newest by `txn.categorized_ms`, or by its posted time when that is empty
 (`LastPick`, HasalaCore `Categorize/LastPick.swift`). Rows held by a paused rule (`held`)
 and rows a rule, the merchant list or a model filed do not count, and neither does a split
 payment or a row that waits in Review (an Undo can leave one with source `user`).
-`LedgerReader.lastPicks()` reads it, and the live mapper sets `Txn.lastPick` on the
-rows that wait in Review. `GroupIndex` sets it for the mock with the same rule; in the
-mock, whose clock does not move, two sorts with the same time are ordered by when the
-person made them, and Undo takes that order back.
+The live mapper (`LedgerStateMapper`) runs `LastPick.picks` over the rows it already reads
+and sets `Txn.lastPick` on the rows that wait in Review; `LedgerReader.sweepRows` runs it
+for the sweeps (below). An Undo of a sort writes the earlier filing again, and the
+projection stamps that write's time. So that the Undo also takes back the order of that
+sort, this iPhone keeps the earlier `categorized_ms` in `SortMemory` (`undone`, kept like the
+rule priors), and the mapper uses it while the payment stays as the Undo left it. Another
+iPhone sees only the op, so there the payment counts as the newest sort. `GroupIndex` sets
+the pick for the mock with the same rule. In the mock, whose clock does not move, two sorts
+with the same time are ordered by when the person made them, and Undo takes that order
+back. Sorting a split payment into one category removes the split in the mock, so that
+payment counts there, while the projection keeps it split and it does not count.
 
 That field is the card's suggestion. The strip shows it with "Your last pick" and Use, the
 pick sheet of its bucket lists it first and marks it "Suggested", and Use files exactly

@@ -61,6 +61,10 @@ import Testing
     #expect(try later.sweepRows().first { $0.id == M.id(4) }?.rejected == ["shopping"])
   }
 
+  static func picks(_ r: LedgerReader) throws -> [LastPick.Key: String] {
+    LastPick.picks(try (r.activity(limit: 1_000_000) + r.archived(limit: 1_000_000)).map(\.pickRow))
+  }
+
   static func filed(_ n: Int, op: String, at: String, category: String, source: String, review: Bool = false) -> String {
     #"{"v":4,"type":"txn_categorized","op_id":"\#(op)","authored_at":"\#(at)","entity":{"kind":"txn","id":"\#(M.id(n))"},"parent_version":1,"payload":{"category":"\#(category)","needs_review":\#(review),"source":\#(source)}}"#
   }
@@ -92,7 +96,7 @@ import Testing
     #expect(s.anomalies.isEmpty, "\(s.anomalies)")
     let (_, r) = try M.project(s)
     #expect(try r.txn(M.id(2))?.categorizedMs == M.ms("2026-10-07T09:00:00.000Z"))
-    #expect(try r.lastPicks() == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    #expect(try Self.picks(r) == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
     let sweep = try r.sweepRows()
     let waiting = try #require(sweep.first { $0.id == M.id(5) })
     #expect(waiting.picked == "shopping" && waiting.rejected == ["shopping"])
@@ -111,7 +115,7 @@ import Testing
     try M.blob(2, [Self.filed(1, op: "p1", at: "2026-10-05T09:00:00.000Z", category: "shopping", source: #"{"kind":"user"}"#)], into: &s)
     let (db, r) = try M.project(s)
     try db.write { db in try db.execute(sql: "UPDATE category SET active = 0 WHERE id = 'shopping'") }
-    #expect(try r.lastPicks() == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
+    #expect(try Self.picks(r) == [LastPick.Key(group: "n:tailscale", direction: "debit"): "shopping"])
     let waiting = try #require(try r.sweepRows().first { $0.id == M.id(2) })
     #expect(waiting.picked == "shopping" && !ModelSuggestionSweep.eligible(waiting))
   }
@@ -127,7 +131,7 @@ import Testing
     let (_, r) = try M.project(s)
     let filed = try #require(try r.txn(M.id(1)))
     #expect(filed.split && filed.category == "shopping" && filed.categorySource == "user")
-    #expect(try r.lastPicks().isEmpty)
+    #expect(try Self.picks(r).isEmpty)
     #expect(try r.sweepRows().first { $0.id == M.id(2) }?.picked == nil)
   }
 

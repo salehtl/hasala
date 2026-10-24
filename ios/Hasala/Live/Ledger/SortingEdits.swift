@@ -37,14 +37,22 @@ nonisolated extension LedgerEditAuthor {
 
   static func source(_ r: RuleReach.Row) -> CoreReplay.CategorySource { source(kind: r.sourceKind.rawValue, ref: r.sourceRef) }
 
-  static func refile(_ row: TxnRow, written: Int64) -> Inverse {
+  func refile(_ row: TxnRow) -> Inverse {
     .refile(
-      txn: row.id, writtenVersion: written, category: row.category, needsReview: row.needsReview,
-      source: source(kind: row.categorySource, ref: row.categorySourceRef))
+      txn: row.id, writtenVersion: row.version + 1, category: row.category, needsReview: row.needsReview,
+      source: Self.source(kind: row.categorySource, ref: row.categorySourceRef), categorizedMs: filedMs(row))
+  }
+
+  func filedMs(_ row: TxnRow) -> Int64? {
+    let m = memory.value
+    if let p = LedgerStateMapper.kept(row, among: [m.prior(of: row.id), m.undone?[row.id]]) { return p.categorizedMs }
+    return row.categorizedMs
   }
 
   static func refile(_ r: RuleReach.Row) -> Inverse {
-    .refile(txn: r.id, writtenVersion: r.version + 1, category: r.category, needsReview: r.needsReview, source: source(r))
+    .refile(
+      txn: r.id, writtenVersion: r.version + 1, category: r.category, needsReview: r.needsReview, source: source(r),
+      categorizedMs: r.categorizedMs)
   }
 
   static func restored(_ r: RuleReach.Row, to p: SortMemory.Prior) -> Bool {
@@ -162,7 +170,7 @@ nonisolated extension LedgerEditAuthor {
       return ([first], first.lastAuthoredMs)
     }
     try await enqueueAll(blobs)
-    var inverses: [Inverse] = [Self.refile(row, written: row.version + 1)]
+    var inverses: [Inverse] = [refile(row)]
     guard let ruleID, let plan else { return inverses }
     let byID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     let filed = targets.compactMap { byID[$0.txnID] }
@@ -190,7 +198,7 @@ nonisolated extension LedgerEditAuthor {
       } else {
         items.append((id, row.version, category, true, Self.source(kind: row.categorySource, ref: row.categorySourceRef)))
       }
-      inverses.append(Self.refile(row, written: row.version + 1))
+      inverses.append(refile(row))
     }
     guard !items.isEmpty else { throw Failure.notFound }
     let ctx = try await observer.authorContext()

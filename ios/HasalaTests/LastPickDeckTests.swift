@@ -96,4 +96,18 @@ struct LastPickDeckTests {
     #expect(ReviewViewModel.following(order, after: "a3", ref: ref, waiting: waiting) == order)
     #expect(ReviewViewModel.following(order, after: "gone", ref: ref, waiting: waiting) == order)
   }
+
+  @Test func theCategoryPageStartsOnTheSuggestionOfAPaymentThatWaits() throws {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaBacklog.state))
+    let guessed = try #require(TransactionEngine.detail("bl-bright-9", app.store.state, now: app.store.now))
+    #expect(CategoryPickerView.initial(guessed) == MayaBacklog.wrongGuess)
+    _ = try app.store.apply(.categorize("bl-bright-10", "healthcare", learnRule: false, project: nil))
+    let waiting = try #require(TransactionEngine.detail("bl-bright-9", app.store.state, now: app.store.now))
+    #expect(waiting.category?.id == MayaBacklog.wrongGuess && waiting.suggestion?.id == "healthcare")
+    #expect(CategoryPickerView.initial(waiting) == "healthcare")
+    let sorted = try #require(TransactionEngine.detail("bl-bright-10", app.store.state, now: app.store.now))
+    #expect(sorted.suggestion == nil && CategoryPickerView.initial(sorted) == "healthcare")
+    let open = try #require(TransactionEngine.detail("bl-alnoor-t-2", app.store.state, now: app.store.now))
+    #expect(open.category == nil && open.suggestion == nil && CategoryPickerView.initial(open) == nil)
+  }
 }

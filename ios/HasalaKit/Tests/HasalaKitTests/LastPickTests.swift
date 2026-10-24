@@ -160,4 +160,18 @@ struct LastPickTests {
     #expect(detail.suggestion?.id == "healthcare")
     #expect(detail.sortedBy?.title == "Suggested by Cloudflare AI")
   }
+
+  @Test func aPaymentAddedByHandCountsAsAPick() throws {
+    var s = Scenario.mayaBacklog.state
+    var manual = try #require(s.txn("bl-alnoor-t-3"))
+    manual.id = "bl-alnoor-manual"
+    manual.categoryID = "groceries"
+    manual.categorySource = .manual
+    manual.needsReview = false
+    manual.categorizedAt = LocalDateTime(2026, 10, 9, 12, 0)
+    s.txns.append(manual)
+    let l = InMemoryLedger(state: s)
+    #expect(l.state.txn("bl-alnoor-t-1")?.lastPick == "groceries")
+    #expect(try Self.card(l, "bl-alnoor-t-1").suggestedBy == "Your last pick")
+  }
 }

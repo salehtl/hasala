@@ -60,7 +60,7 @@ struct CategoryPickerView: View {
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       guard selected == nil else { return }
-      selected = model.detail?.category?.id ?? model.detail?.suggestion?.id
+      selected = Self.initial(model.detail)
     }
   }
 
@@ -136,6 +136,12 @@ struct CategoryPickerView: View {
   private func matches(_ o: CategoryOption) -> Bool {
     let q = query.trimmedSpaces.lowercased()
     return q.isEmpty || o.name.lowercased().contains(q)
+  }
+
+  static func initial(_ detail: TransactionDetail?) -> CategoryID? {
+    guard let detail else { return nil }
+    if detail.needsReview, let s = detail.suggestion { return s.id }
+    return detail.category?.id ?? detail.suggestion?.id
   }
 
   static func changes(_ detail: TransactionDetail?, to selected: CategoryID, alwaysUse: Bool) -> Bool {

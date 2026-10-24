@@ -334,10 +334,6 @@ public struct LedgerReader: Sendable {
     }
   }
 
-  public func lastPicks() throws -> [LastPick.Key: String] {
-    try db.read { db in LastPick.picks(try Row.fetchAll(db, sql: Self.sweepSQL).map { TxnRow($0).pickRow }) }
-  }
-
   public func rejections() throws -> [String: Set<String>] {
     try db.read { db in try Self.rejections(db) }
   }

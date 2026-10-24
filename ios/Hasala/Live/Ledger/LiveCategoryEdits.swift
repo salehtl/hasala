@@ -95,7 +95,7 @@ extension LedgerEditAuthor {
         try a.createCategoryAndFile(
           id: category, name: d.name, parent: parent, icon: icon, in: view, txnID: id, parentVersion: row.version, project: project)
       }
-      inverses = row.split ? [] : [Self.refile(row, written: row.version + 1)]
+      inverses = row.split ? [] : [refile(row)]
     }
     return inverses + noteCorrection(row, to: category)
   }

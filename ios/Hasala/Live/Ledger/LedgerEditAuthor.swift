@@ -62,6 +62,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     let kept = memory.value
     var c = context
     c.priors = kept.priors
+    c.undone = kept.undone ?? [:]
     let m = try LedgerStateMapper.mapped(reader, context: c)
     if projection.generation == generation,
       let t = CivilDate(year: context.today.year, month: context.today.month, day: context.today.day)
@@ -97,7 +98,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case bill(id: String, draft: OpAuthor.BillDraft)
     case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
     case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
-    case refile(txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource)
+    case refile(
+      txn: String, writtenVersion: Int64, category: String?, needsReview: Bool, source: CoreReplay.CategorySource, categorizedMs: Int64?)
     case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case trust(category: String, modelTag: String?, corrections: Int)
@@ -134,7 +136,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
         a.categorize(txnID: id, parentVersion: row.version, category: c, needsReview: false)
         if let project { a.annotate(txnID: id, set: [("project_id", project)]) }
       }
-      return (row.split ? [] : [Self.refile(row, written: row.version + 1)]) + noteCorrection(row, to: c)
+      return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c)
     case .markTransfer(let id):
       let row = try txn(id)
       try await build { a throws(AuthorError) in
@@ -407,8 +409,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
     var priors: [(txn: String, prior: SortMemory.Prior)] = []
     for inv in inverses {
       switch inv {
-      case .refile(let t, let w, let c, let review, let source):
-        refiles[t] = SortMemory.Prior(category: c, needsReview: review, source: source, written: w)
+      case .refile(let t, let w, let c, let review, let source, let ms):
+        refiles[t] = SortMemory.Prior(category: c, needsReview: review, source: source, written: w, categorizedMs: ms)
       case .prior(let t, let p): priors.append((t, p))
       default: continue
       }
@@ -418,8 +420,21 @@ nonisolated struct LedgerEditAuthor: Sendable {
       guard let refile = refiles[t], let row = try reader.txn(t), LedgerStateMapper.restored(row, to: refile) else { continue }
       back.append((t, p, row.version))
     }
-    guard !back.isEmpty else { return }
-    memory.update { m in for b in back { m.refiled(b.txn, from: b.prior, written: b.written) } }
+    var undone: [String: SortMemory.Prior] = [:]
+    for (t, p) in refiles where p.source.kind == .user {
+      guard let row = try reader.txn(t), LedgerStateMapper.restored(row, to: p) else { continue }
+      undone[t] = p
+    }
+    var gone: Set<String> = []
+    for (t, p) in memory.value.undone ?? [:] where undone[t] == nil {
+      if let row = try reader.txn(t), LedgerStateMapper.restored(row, to: p) { continue }
+      gone.insert(t)
+    }
+    guard !back.isEmpty || !undone.isEmpty || !gone.isEmpty else { return }
+    memory.update { m in
+      for b in back { m.refiled(b.txn, from: b.prior, written: b.written) }
+      m.undid(undone, dropping: gone)
+    }
   }
 
   private func undoBlob(_ inverses: [Inverse]) async throws -> AuthoredBlob? {
@@ -433,7 +448,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
       case .note(let t, _), .project(let t, _), .archived(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
-      case .refile(let t, _, _, _, _): rows[t] = try reader.txn(t)
+      case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
       default: break
       }
     }
@@ -453,7 +468,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     return try observer.stamps.build(ctx) { a throws(AuthorError) in
       for inv in inverses {
         switch inv {
-        case .refile(let t, let written, let c, let review, let source):
+        case .refile(let t, let written, let c, let review, let source, _):
           guard let row = rows[t], row.version == written else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review, source: source)
         case .rule(let id, let restore):

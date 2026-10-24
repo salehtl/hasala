@@ -19,7 +19,7 @@ public enum LastPick {
     public let sourceKind: SweepRow.SourceKind
     public let split: Bool
     public let needsReview: Bool
-    public let categorizedMs: Int64?
+    public var categorizedMs: Int64?
     public let postedMs: Int64
 
     public init(
