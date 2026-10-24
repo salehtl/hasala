@@ -144,13 +144,11 @@ func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 	if err != nil {
 		return err
 	}
+	aliases := []string{}
 	if key != "" {
 		if k, err := Key(key); err != nil || k != key {
 			return ErrBadBank
 		}
-	}
-	aliases := []string{}
-	if key != "" {
 		aliases = append(aliases, key)
 	}
 	if k, err := Key(name); err == nil && k != key {

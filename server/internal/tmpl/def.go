@@ -17,8 +17,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -238,7 +239,7 @@ func (d Definition) checkUTF8() error {
 	}
 	for i, e := range d.Extract {
 		onMatch := make([]string, 0, 2*len(e.OnMatch))
-		for _, k := range sortedKeys(e.OnMatch) {
+		for _, k := range slices.Sorted(maps.Keys(e.OnMatch)) {
 			onMatch = append(onMatch, k, e.OnMatch[k])
 		}
 		groups = append(groups,
@@ -265,7 +266,7 @@ type canonicalField struct {
 }
 
 func canonicalObject(fs []canonicalField) []byte {
-	sort.Slice(fs, func(i, j int) bool { return fs[i].key < fs[j].key })
+	slices.SortFunc(fs, func(a, b canonicalField) int { return strings.Compare(a.key, b.key) })
 	var b bytes.Buffer
 	b.WriteByte('{')
 	for i, f := range fs {
@@ -418,7 +419,7 @@ func ValidateDefinition(d Definition) []error {
 	}
 
 	for _, f := range []string{FieldAmount, FieldDirection} {
-		if !containsString(d.Required, f) {
+		if !slices.Contains(d.Required, f) {
 			add("required must include %q: a transaction without it is not a transaction", f)
 		}
 	}
@@ -442,13 +443,13 @@ func validateExtract(i int, e Extract) []error {
 
 	types, knownField := fieldTypes[e.Field]
 	if !knownField {
-		add("field %q is not one of %s", e.Field, strings.Join(sortedKeys(fieldTypes), ", "))
+		add("field %q is not one of %s", e.Field, strings.Join(slices.Sorted(maps.Keys(fieldTypes)), ", "))
 	}
 	spec, knownType := groupNamesByType[e.Type]
 	if !knownType {
-		add("type %q is not one of %s", e.Type, strings.Join(sortedKeys(groupNamesByType), ", "))
+		add("type %q is not one of %s", e.Type, strings.Join(slices.Sorted(maps.Keys(groupNamesByType)), ", "))
 	}
-	if knownField && knownType && !containsString(types, e.Type) {
+	if knownField && knownType && !slices.Contains(types, e.Type) {
 		add("field %q cannot be extracted as type %q; legal types are %s",
 			e.Field, e.Type, strings.Join(types, ", "))
 	}
@@ -534,7 +535,7 @@ func validateGroupNames(i, j int, typ, p string, required, optional []string) []
 		}
 	}
 	for _, n := range names {
-		if !containsString(required, n) && !containsString(optional, n) {
+		if !slices.Contains(required, n) && !slices.Contains(optional, n) {
 			errs = append(errs, fmt.Errorf(
 				"extract[%d].patterns[%d]: a %s pattern has no use for the group %q; the executor reads only %v",
 				i, j, typ, n, append(append([]string{}, required...), optional...)))
@@ -546,22 +547,4 @@ func validateGroupNames(i, j int, typ, p string, required, optional []string) []
 func regexpCompiles(p string) bool {
 	_, err := regexp.Compile(p)
 	return err == nil
-}
-
-func containsString(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
-	}
-	return false
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

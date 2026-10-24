@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/api"
-	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/headroom"
 	"github.com/salehtl/hasala/server/internal/pg"
@@ -60,14 +59,11 @@ func runServe(env *runEnv, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := pg.Open(ctx, cfg.PGDSN)
+	pool, err := openRuntime(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("open postgres: %w", err)
-	}
-	defer pool.Close()
-	if err := pg.CheckServing(ctx, pool, func(msg string) { slog.Warn(msg) }); err != nil {
 		return err
 	}
+	defer pool.Close()
 
 	srvAPI, err := api.NewServer(cfg, pool)
 	if err != nil {
@@ -82,10 +78,12 @@ func runServe(env *runEnv, args []string) error {
 	}
 
 	sweeps := []<-chan struct{}{
-		startSweep(ctx, "deleted-account tombstone sweep", tombstoneSweep(srvAPI.Sessions)),
+		startSweep(ctx, "deleted-account tombstone sweep",
+			countSweep("reaped %d expired deleted-account tombstone(s)", srvAPI.Sessions.ReapDeletedAccountTombstones)),
 	}
 	if srvAPI.Passkeys != nil {
-		sweeps = append(sweeps, startSweep(ctx, "passkey ceremony sweep", ceremonySweep(srvAPI.Passkeys)))
+		sweeps = append(sweeps, startSweep(ctx, "passkey ceremony sweep",
+			countSweep("reaped %d expired passkey ceremony(s)", srvAPI.Passkeys.ReapExpiredCeremonies)))
 	}
 
 	// Re-checked immediately before the listener, for a Config assembled in
@@ -189,23 +187,13 @@ func startHeadroom(cfg config.Config, s *api.Server) *headroom.Fuse {
 	return fuse
 }
 
-func tombstoneSweep(s *auth.Sessions) func(context.Context) (string, error) {
+func countSweep[N int | int64](format string, run func(context.Context) (N, error)) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
-		n, err := s.ReapDeletedAccountTombstones(ctx)
+		n, err := run(ctx)
 		if err != nil || n == 0 {
 			return "", err
 		}
-		return fmt.Sprintf("reaped %d expired deleted-account tombstone(s)", n), nil
-	}
-}
-
-func ceremonySweep(p *auth.Passkeys) func(context.Context) (string, error) {
-	return func(ctx context.Context) (string, error) {
-		n, err := p.ReapExpiredCeremonies(ctx)
-		if err != nil || n == 0 {
-			return "", err
-		}
-		return fmt.Sprintf("reaped %d expired passkey ceremony(s)", n), nil
+		return fmt.Sprintf(format, n), nil
 	}
 }
 

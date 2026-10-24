@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -117,6 +118,29 @@ func (s *Server) verifierRoute(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) stepUpRoute(w http.ResponseWriter, r *http.Request,
+	do func(ctx context.Context, info auth.SessionInfo, su *auth.StepUpObject) (auth.Wake, error)) {
+	var req StepUpOnlyRequest
+	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
+		return
+	}
+	su, ok := decodeStepUp(w, req.StepUp)
+	if !ok {
+		return
+	}
+	info, ok := s.sessionInfo(w, r)
+	if !ok {
+		return
+	}
+	wake, err := do(r.Context(), info, su)
+	if err != nil {
+		s.writeKeyErr(w, r, err)
+		return
+	}
+	s.securityWake(r.Context(), wake)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handlePasswordResetC8(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
 	info, ok := s.sessionInfo(w, r)
 	if !ok || !s.requireBound(w, r, info) {
@@ -140,25 +164,7 @@ func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request, _ 
 }
 
 func (s *Server) handlePasswordRemove(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
-	var req StepUpOnlyRequest
-	if !decodeBody(w, r, maxSmallBodyBytes, &req) {
-		return
-	}
-	su, ok := decodeStepUp(w, req.StepUp)
-	if !ok {
-		return
-	}
-	info, ok := s.sessionInfo(w, r)
-	if !ok {
-		return
-	}
-	wake, err := s.Accounts.RemovePassword(r.Context(), info, su)
-	if err != nil {
-		s.writeKeyErr(w, r, err)
-		return
-	}
-	s.securityWake(r.Context(), wake)
-	w.WriteHeader(http.StatusNoContent)
+	s.stepUpRoute(w, r, s.Accounts.RemovePassword)
 }
 
 // SaltResponse carries s_srv.

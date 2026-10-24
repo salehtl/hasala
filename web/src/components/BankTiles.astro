@@ -4,18 +4,17 @@ import { BANKS } from '../data/site';
 import Icon from './Icon.astro';
 
 interface Props {
-  banks?: typeof BANKS;
   /** Show which alerts Hasala reads from each bank. */
   detail?: boolean;
   /** Home page version: logo and "Supported" chip, then the name and what is read. Extra content (slot) becomes the last tile. */
   home?: boolean;
 }
-const { banks = BANKS, detail = false, home = false } = Astro.props;
+const { detail = false, home = false } = Astro.props;
 ---
 
 <ul class:list={['tiles', detail && 'tiles--detail', home && 'tiles--home']} role="list">
   {
-    banks.map((b) => (
+    BANKS.map((b) => (
       <li class="tile" data-reveal>
         <span class:list={['tile__logo', `tile__logo--${b.value}`]} aria-hidden="true">
           {b.short}
