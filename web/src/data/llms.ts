@@ -53,7 +53,7 @@ export function llmsFullTxt(legal: { title: string; url: string; body: string }[
 ## How it works
 
 1. Connect your email. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access. It can't send, change or delete any mail.
-2. Check the categories. Each alert becomes a transaction. Hasala sorts most of them into categories: your rules first, then a UAE merchant list, then, if you turn on Cloud suggestions, a suggested category. You confirm the rest: transactions Hasala can't sort on its own wait in a short deck, where you tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the category. Hasala remembers the merchant.
+2. Check the categories. Each alert becomes a transaction. Hasala sorts most of them into categories: your rules first, then a UAE merchant list, then, if you turn on Cloud suggestions, a suggested category. You confirm the rest: transactions Hasala can't sort on its own wait in a short deck, where you tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the category. Hasala remembers your pick for the merchant and suggests it next time.
 3. See where it went. Hasala shows what you spent, on what, and what's left this month. It also starts you on a simple plan.
 
 Budgeting: the main figure is what you've spent on needs and wants this month, out of what your plan allows for them (for example AED 10,288.34 spent of 19,000), with a bar for how fast you're spending it and how much is left (AED 8,711.66). Bills this month are listed with each bill's amount and whether it is paid. The starting plan is 50/30/20 (Needs, Wants, Savings), and you can change it. The beta shows no transaction notifications yet. Emails come from ${SITE.mailFrom}.

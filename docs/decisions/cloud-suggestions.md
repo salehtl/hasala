@@ -162,11 +162,16 @@ round trips only, not model cost, and the Worker's fence test forbids it.
 - **Network address.** Cloudflare's edge sees the phone's IP address on every request, as
   it already does for hasalad and the website. The Worker uses it only for the rate limit,
   in memory. The policy says so plainly.
-- **Timing.** Merchant suggestions run only while the app is open: in the foreground sweep
-  and in the background stage, never in a background refresh or a push wake (the tier
-  already forbids `refresh` and push wakes, and the background stage starts nothing while
-  the app is in the background). Requests from one sweep go out with a small random
-  delay between them, so a sweep is not one burst. They are still close in time, and the
+- **Timing.** Merchant suggestions are meant to run only while the app is open: in the
+  foreground sweep and in the background stage, never in a background refresh or a push
+  wake (the tier already forbids `refresh` and push wakes, and the background stage starts
+  nothing while the app is in the background). One gap remains (found 2026-10-24): when iOS
+  starts the process in the background, for a silent push or a background task, the account
+  opens and its launch run runs the foreground sweep (`ModelSuggestionStage.runs(.launch)`).
+  Nothing checks `applicationState`, so up to 40 names can go out then, within the day cap.
+  Until a code change gates `.launch` on the app state, the privacy policy, Security and
+  Support say "mostly while the app is open" and name this case. Requests from one sweep
+  go out with a small random delay between them, so a sweep is not one burst. They are still close in time, and the
   policy does not claim otherwise. The background stage can send many requests from one
   connection in a few minutes, and requests that close in time can be seen together at the edge, by
   address and time. The shuffled order blunts what their sequence says about someone's
@@ -637,8 +642,11 @@ for reference. What the rewrite records for Merchant suggestions:
   one-time ask. It now also says that the subject is sent in lower case, that only the
   built-in Need and Want categories that are on are offered, that names come only from
   payments out of the account and from bank alerts (never from a payment added by hand),
-  that each request carries the app's version (`Hasala-Client`), and that the phone keeps
-  each answer for up to 30 days (`fm_cache`).
+  that each request carries the app's version (`Hasala-Client`), that the phone keeps
+  each answer for up to 30 days (`fm_cache`), and that an answer set aside after Not this
+  stays for as long as the rejection stands (`fm_kept`, no expiry). It says the sweep runs
+  "mostly while the app is open", because of the launch-run gap in
+  [What we can't hide](#what-we-cant-hide).
 - "What stays on your iPhone" gains Search, which can use Apple's on-device model.
 - Terms: provided as is, without warranty; the beta can change, pause or end at any time,
   and accounts and data may be reset or deleted then, with notice in the app where possible.

@@ -6,10 +6,10 @@ extension CloudConsentContent {
   static let sortTheRest = CloudConsentContent(
     id: "sort",
     title: "Sort the rest with Cloudflare AI?",
-    lead: "Hasala's merchant list sorts the payments it knows, and a merchant you sorted yourself gets your last pick. For the rest, Hasala can ask Cloudflare's AI service, one merchant name at a time. It stays off unless you turn it on.",
+    lead: "Hasala's merchant list sorts the payments it knows, and a merchant you sorted yourself gets your last pick. For the rest, Hasala can ask Cloudflare's AI service, one merchant name per request. It stays off unless you turn it on.",
     points: [
       (.tag, "Only the merchant name",
-       "As it appears in the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D}, with Hasala's built-in category names. Each name is asked about once, not once per payment."),
+       "From the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), with Hasala's built-in categories and the app's version. Each name is asked about once, not once per payment."),
       (.eyeSlash, "What's not sent",
        "The amount, date, card or bank, your own category names, your name, or anything about your account."),
       (.cloud, "What Cloudflare sees", CloudConsentContent.cloudflareSees),
@@ -41,7 +41,7 @@ struct CloudSortAskCard: View {
           .foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityAddTraits(.isHeader)
-        Text("Hasala can ask Cloudflare's AI about the merchants it doesn't know and you haven't sorted, one name at a time. Off unless you turn it on.")
+        Text("Hasala can ask Cloudflare's AI about the merchants it doesn't know and you haven't sorted, one name per request. Off unless you turn it on.")
           .hType(.footnote)
           .foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
