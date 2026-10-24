@@ -22,6 +22,7 @@ final class ProfileViewModel: ProfileModel {
   @ObservationIgnored private var memo = Memo<Int, ProfileSnapshot>()
   @ObservationIgnored private var rulesMemo = Memo<Int, [RuleRowModel]>()
   @ObservationIgnored private var planMemo = Memo<[AnyHashable], PlanSnapshot>()
+  @ObservationIgnored private var exportMemo = Memo<Int, [ExportRow]>()
 
   init(app: AppModel) { self.app = app }
 
@@ -46,8 +47,10 @@ final class ProfileViewModel: ProfileModel {
 
   /// Everything, archived rows included (Settings › Export your data, spec 04 §16.2 X6).
   var exportRows: [ExportRow] {
-    let s = app.store.state
-    return s.txns.sorted { $0.postedAt > $1.postedAt }.map { ExportRow($0, s) }
+    exportMemo.value(for: app.store.revision) {
+      let s = app.store.state
+      return s.txns.sorted { $0.postedAt > $1.postedAt }.map { ExportRow($0, s) }
+    }
   }
 
   // TODO(spec 04 §9.3): asking for notification permission and the planner (§9.2).
