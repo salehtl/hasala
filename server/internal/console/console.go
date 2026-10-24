@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -173,13 +174,7 @@ func (c *Console) identify(next http.Handler) http.Handler {
 			refuse(w, "tailnet")
 			return
 		}
-		allowed := false
-		for _, l := range c.Logins {
-			if strings.EqualFold(l, login) {
-				allowed = true
-			}
-		}
-		if !allowed {
+		if !slices.ContainsFunc(c.Logins, func(l string) bool { return strings.EqualFold(l, login) }) {
 			refuse(w, "not_allowed")
 			return
 		}
@@ -257,7 +252,7 @@ func (c *Console) page(f func(ctx context.Context, tx pgx.Tx, login string, v *v
 			return
 		}
 		defer pgtx.Rollback(r.Context(), tx)
-		v := &view{Login: loginOf(r), Flash: r.URL.Query().Get("done"), Code: ""}
+		v := &view{Login: loginOf(r), Flash: r.URL.Query().Get("done")}
 		name, err := f(r.Context(), tx, v.Login, v)
 		if err != nil {
 			slog.Error("console: page", "err", err.Error())
