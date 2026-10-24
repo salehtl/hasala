@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
 )
@@ -158,10 +159,8 @@ func Read(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream stri
 		total int
 	)
 	for q.Next() {
-		var r Row
-		r.UserID = userID
-		if err := q.Scan(&r.Seq, &r.Stream, &r.WriterID, &r.WriterCounter, &r.TypeFlag,
-			&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.HeadSig, &r.CreatedAt); err != nil {
+		r, err := scanRow(q, userID)
+		if err != nil {
 			return nil, fmt.Errorf("oplog: read %s log for user %s: %w", stream, userID, err)
 		}
 		if len(out) > 0 && total+len(r.Blob) > maxBytes {
@@ -193,10 +192,8 @@ func Read(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream stri
 		}
 		defer tail.Close()
 		for tail.Next() {
-			var r Row
-			r.UserID = userID
-			if err := tail.Scan(&r.Seq, &r.Stream, &r.WriterID, &r.WriterCounter, &r.TypeFlag,
-				&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.HeadSig, &r.CreatedAt); err != nil {
+			r, err := scanRow(tail, userID)
+			if err != nil {
 				return nil, fmt.Errorf("oplog: read %s batch tail for user %s: %w", stream, userID, err)
 			}
 			out = append(out, r)
@@ -209,6 +206,13 @@ func Read(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, stream stri
 		}
 	}
 	return out, nil
+}
+
+func scanRow(q pgx.Rows, userID uuid.UUID) (Row, error) {
+	r := Row{UserID: userID}
+	err := q.Scan(&r.Seq, &r.Stream, &r.WriterID, &r.WriterCounter, &r.TypeFlag,
+		&r.Blob, &r.SizeBucket, &r.BlobHash, &r.PrevHash, &r.HeadSig, &r.CreatedAt)
+	return r, err
 }
 
 // maxBatchTail is how far a page may run past its limit to reach the end of a
