@@ -34,6 +34,7 @@ protocol TransactionModel: AnyObject, Observable {
   func markTransfer()
   func setArchived(_ archived: Bool)
   func resolve(_ reason: TxnReviewReason, merge: Bool)
+  func keepApart()
 }
 
 @MainActor
@@ -85,4 +86,6 @@ final class TransactionViewModel: TransactionModel {
     guard app.perform(edit) else { return }
     if merge { app.sheet = nil } else { app.router.transaction.removeAll() }
   }
+
+  func keepApart() { app.perform(.keepCombinedApart(id)) }
 }

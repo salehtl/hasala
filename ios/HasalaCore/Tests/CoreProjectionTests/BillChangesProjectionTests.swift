@@ -12,7 +12,7 @@ import Testing
   }
 
   @Test func billsCarryChangesPausesAndCreatedAt() throws {
-    #expect(ProjectionSchema.version == 10)
+    #expect(ProjectionSchema.version == 11)
     var s = State()
     let ops = [
       Self.bill("bm_plain", "", at: "2026-10-01T08:00:00.000Z"),

@@ -215,6 +215,37 @@ public struct LedgerReader: Sendable {
     try db.read { db in try Row.fetchOne(db, sql: "SELECT * FROM txn WHERE id = ?", arguments: [id]).map(TxnRow.init) }
   }
 
+  public struct TransferCopy: Sendable, Equatable {
+    public var txnID: String
+    public var copyID: String
+    public var copyOf: String
+    public var version: Int64
+  }
+
+  static let transferCopySQL =
+    "SELECT txn_id, alias_txn_id, alias_copy_of, alias_version FROM txn_alias WHERE kind = 'transfer' AND alias_copy_of IS NOT NULL AND alias_version IS NOT NULL"
+
+  static func transferCopy(_ r: Row) -> TransferCopy {
+    TransferCopy(txnID: r["txn_id"], copyID: r["alias_txn_id"], copyOf: r["alias_copy_of"], version: r["alias_version"])
+  }
+
+  public func transferCopy(of id: String) throws -> TransferCopy? {
+    try db.read { db in
+      try Row.fetchOne(db, sql: Self.transferCopySQL + " AND txn_id = ? ORDER BY idx LIMIT 1", arguments: [id]).map(Self.transferCopy)
+    }
+  }
+
+  public func transferCopies() throws -> [String: TransferCopy] {
+    try db.read { db in
+      var out: [String: TransferCopy] = [:]
+      for r in try Row.fetchAll(db, sql: Self.transferCopySQL + " ORDER BY txn_id, idx") {
+        let c = Self.transferCopy(r)
+        if out[c.txnID] == nil { out[c.txnID] = c }
+      }
+      return out
+    }
+  }
+
   public func parts(_ txnID: String) throws -> [PartRow] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM txn_part WHERE txn_id = ? ORDER BY idx", arguments: [txnID]).map {

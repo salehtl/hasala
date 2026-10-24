@@ -313,6 +313,10 @@ public final class InMemoryLedger: LedgerStore {
         s.txns[i].heldCopy = nil
         title = "Kept both"
       }
+    case .keepCombinedApart(let id):
+      guard s.txn(id)?.combinedCopy != nil else { throw .notFound }
+      try editTxn(id) { $0.combinedCopy = nil }
+      title = "Kept both"
     case .resolveSamePurchase(let id, let same):
       guard let a = s.txn(id), let match = a.samePurchase, let f = s.txn(match.of) else { throw .notFound }
       try editTxn(id) { t in
@@ -655,6 +659,7 @@ public final class InMemoryLedger: LedgerStore {
     field(\.homeMinor)
     field(\.samePurchase)
     field(\.heldCopy)
+    field(\.combinedCopy)
     field(\.billID)
   }
 

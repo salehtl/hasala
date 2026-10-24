@@ -15,6 +15,7 @@ struct TransactionSheet: View {
   @Bindable var app: AppModel
   let model: any TransactionModel
   @State private var confirmArchive = false
+  @State private var confirmApart = false
   @ScaledMetric(relativeTo: .subheadline) private var senderLane: CGFloat = 20
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -83,6 +84,11 @@ struct TransactionSheet: View {
       } message: {
         Text("It leaves your plan and your totals. You can restore it from Activity › Archived.")
       }
+      .confirmationDialog("Keep as two transactions?", isPresented: $confirmApart, titleVisibility: .visible) {
+        Button("Keep both") { model.keepApart() }
+      } message: {
+        Text("Both emails will count in your totals. Do this only if you made two payments.")
+      }
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
     .presentationBackground(HColor.sheetSurfaceLarge)
@@ -103,6 +109,7 @@ struct TransactionSheet: View {
         } else if let p = d.provenance {
           provenance(p, d)
         }
+        if d.combined { combined }
         actions(d)
         archive(d)
       }
@@ -391,6 +398,29 @@ struct TransactionSheet: View {
     }
     .padding(16)
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+  }
+
+  private var combined: some View {
+    VStack(spacing: 0) {
+      HStack(alignment: .top, spacing: 14) {
+        HIconView(.envelope, size: 22, color: HColor.iconPrimary)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Combined with a second bank email").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          Text("Your bank sent a transfer notice and an account alert for this payment. It counts once.")
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(16)
+      .accessibilityElement(children: .combine)
+      .accessibilityIdentifier("txn.combined")
+      HDivider(inset: .icon52)
+      ActionRow(icon: .split, title: "Keep as two transactions") { confirmApart = true }
+        .accessibilityIdentifier("txn.keepApart")
+    }
+    .background(HColor.surfacePrimary)
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
   // MARK: Actions
