@@ -7,6 +7,7 @@
 // two non-ASCII scalars whose simple-fold orbit reaches an ASCII letter, U+017F (long s) onto
 // `s` and U+212A (Kelvin sign) onto `k`. The twin gets the same folds from its `/iu` regexes.
 import CoreTime
+import HasalaText
 
 struct Forward {
   var from: String
@@ -108,21 +109,6 @@ enum Unwrap {
     return nil
   }
 
-  static func trimExplicit(_ s: Line) -> Line {
-    var lo = s.startIndex
-    var hi = s.endIndex
-    while lo < hi, isTrim(s[lo]) { lo += 1 }
-    while hi > lo, isTrim(s[hi - 1]) { hi -= 1 }
-    return s[lo..<hi]
-  }
-
-  static func isTrim(_ c: Unicode.Scalar) -> Bool {
-    switch c.value {
-    case 0x09...0x0d, 0x20, 0xa0, 0xfeff: true
-    default: false
-    }
-  }
-
   /// Runs stage 10 over the joined, normalized text.
   static func unwrapForward(from: String, subject: String, body: String) -> Forward {
     let scalars = NormText.scalars(body)
@@ -146,13 +132,13 @@ enum Unwrap {
         continue
       }
       sawHeader = true
-      var value = trimExplicit(m.value)
+      var value = m.value.trimming(.unwrapTrim)
       if value.isEmpty {
         // Apple Mail puts the value on the next non-empty line.
         var j = i + 1
-        while j < lines.count && trimExplicit(lines[j]).isEmpty { j += 1 }
+        while j < lines.count && lines[j].trimming(.unwrapTrim).isEmpty { j += 1 }
         if j < lines.count {
-          value = trimExplicit(lines[j])
+          value = lines[j].trimming(.unwrapTrim)
           i = j
         }
       }
@@ -175,7 +161,7 @@ enum Unwrap {
         if k > 0 { joined.append("\n") }
         joined.append(contentsOf: l)
       }
-      out.body = NormText.string(trimExplicit(joined[...]))
+      out.body = NormText.string(joined.trimming(.unwrapTrim))
     }
     return out
   }
@@ -318,7 +304,7 @@ enum Unwrap {
     }
     var candidates = [normalized]
     if let lastSpace = normalized.lastIndex(of: " "), lastSpace > 0 {
-      candidates.append(Array(trimExplicit(normalized[0..<lastSpace])))
+      candidates.append(Array(normalized[0..<lastSpace].trimming(.unwrapTrim)))
     }
     for c in candidates {
       for i in 0..<4 {

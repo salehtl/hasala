@@ -161,8 +161,6 @@ func (r *cachingKeySet) VerifySignature(ctx context.Context, jwt string) ([]byte
 
 // currentKeys returns the key set, refreshing it at most once per r.refresh.
 // It serves a stale set through a provider outage, but only up to r.staleMax.
-// currentKeys returns the key set, refreshing it at most once per r.refresh.
-// It serves a stale set through a provider outage, but only up to r.staleMax.
 //
 // # The fetch is detached from the caller, deliberately
 //

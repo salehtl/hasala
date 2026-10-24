@@ -51,6 +51,10 @@ enum RuleText {
     r.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) != nil
   }
 
+  static func replace(_ r: NSRegularExpression, _ s: String) -> String {
+    r.stringByReplacingMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length), withTemplate: " ")
+  }
+
   static func count(_ r: NSRegularExpression, _ s: String) -> Int {
     r.numberOfMatches(in: s, range: NSRange(location: 0, length: (s as NSString).length))
   }

@@ -3,6 +3,7 @@
 // signed in, `source: "app"`) and the display name (#76). Bodies are exactly
 // the server's (unknown members are refused there), and every method throws
 // `APIError` so the caller keeps its own table.
+import CorePrimitives
 import Foundation
 
 /// The APNs environment a device token belongs to (`02` #31). The app's
@@ -104,7 +105,7 @@ public struct DisplayNameRequest: Codable, Sendable, Hashable {
 extension AuthClient {
   /// The lower-case hex of an APNs device token (what #31 stores).
   public static func tokenHex(_ deviceToken: Data) -> String {
-    deviceToken.map { String(format: "%02x", $0) }.joined()
+    Hex.encode(deviceToken)
   }
 
   /// `PUT /push/apns {token_hex, environment}` (#31): registers or moves this

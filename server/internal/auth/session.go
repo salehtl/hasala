@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -145,9 +144,9 @@ func (s *Sessions) IssueTx(ctx context.Context, q queryExecer, m Mint) (Minted, 
 	default:
 		return Minted{}, fmt.Errorf("auth: issue session: minted_by %q", m.MintedBy)
 	}
-	raw := make([]byte, sessionTokenBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return Minted{}, fmt.Errorf("auth: issue session: read random: %w", err)
+	raw, err := randBytes(sessionTokenBytes)
+	if err != nil {
+		return Minted{}, err
 	}
 	// RawURLEncoding: it travels only in an Authorization header, never a URL.
 	// It is hashed in its encoded form, the form that arrives on the wire.

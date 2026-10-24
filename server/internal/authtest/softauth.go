@@ -102,11 +102,7 @@ func New(t *testing.T) *Authenticator {
 // RandBytes is crypto/rand with the error handling a test wants.
 func RandBytes(t *testing.T, n int) []byte {
 	t.Helper()
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	return b
+	return RandBytesTB(t, n)
 }
 
 // coseKey is the credential public key as the authenticator publishes it.

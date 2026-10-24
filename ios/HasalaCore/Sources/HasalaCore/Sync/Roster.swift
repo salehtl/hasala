@@ -97,21 +97,15 @@ public enum RosterService {
   /// failure of that entry (`keyHistoryInvalid`).
   static func entries(_ r: KeyHistoryResponse) throws(KeyHistoryVerifier.Alarm) -> [KeyHistoryVerifier.Entry] {
     try r.entries.map { e throws(KeyHistoryVerifier.Alarm) in
-      guard let pub = try? Base64.decode(e.pubkey), let nonce = try? Base64.decode(e.nonce),
-        let sig = try? Base64.decode(e.signature)
-      else { throw .keyHistoryInvalid(entryID: e.id.value) }
-      let dak = try e.dak_pubkey.map { s throws(KeyHistoryVerifier.Alarm) in
-        guard let d = try? Base64.decode(s) else { throw .keyHistoryInvalid(entryID: e.id.value) }
-        return d
-      }
-      let head = try e.final_head.map { s throws(KeyHistoryVerifier.Alarm) in
+      func bytes(_ s: String) throws(KeyHistoryVerifier.Alarm) -> Data {
         guard let d = try? Base64.decode(s) else { throw .keyHistoryInvalid(entryID: e.id.value) }
         return d
       }
       return KeyHistoryVerifier.Entry(
-        id: e.id.value, writerID: e.writer_id, alg: e.alg, publicKey: pub, dakPublicKey: dak, event: e.event,
-        authorizedBy: e.authorized_by, authorizerWriterID: e.authorizer_writer_id, finalCounter: e.final_counter?.value,
-        finalHead: head, nonce: nonce, signature: sig)
+        id: e.id.value, writerID: e.writer_id, alg: e.alg, publicKey: try bytes(e.pubkey),
+        dakPublicKey: try e.dak_pubkey.map(bytes), event: e.event, authorizedBy: e.authorized_by,
+        authorizerWriterID: e.authorizer_writer_id, finalCounter: e.final_counter?.value,
+        finalHead: try e.final_head.map(bytes), nonce: try bytes(e.nonce), signature: try bytes(e.signature))
     }
   }
 

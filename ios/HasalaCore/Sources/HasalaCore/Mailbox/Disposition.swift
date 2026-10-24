@@ -275,14 +275,14 @@ public enum MessageDisposer {
   static func templatesMatching(_ templates: [CompiledTemplate], domains: [String]) -> [CompiledTemplate] {
     templates.filter { t in
       t.definition.match.senderDomain.contains { want in
-        domains.contains { BankDomains.isMember($0, of: [asciiLowerString(want)]) }
+        domains.contains { BankDomains.isMember($0, of: [asciiLowered(want)]) }
       }
     }
   }
 
   static func hasListUnsubscribe(_ headers: String) -> Bool {
     headers.split(whereSeparator: { $0 == "\n" || $0 == "\r\n" }).contains {
-      $0.utf8.count >= 17 && asciiLowerString(String($0.prefix(17))) == "list-unsubscribe:"
+      $0.utf8.count >= 17 && asciiLowered(String($0.prefix(17))) == "list-unsubscribe:"
     }
   }
 
@@ -497,6 +497,4 @@ public enum MessageDisposer {
       amountMinor: x.amountMinor, currency: x.currency, direction: x.direction, merchant: x.merchant, last4: x.last4,
       postedAt: posted.0, precision: posted.1, isTransfer: x.isTransfer)
   }
-
-  static func asciiLowerString(_ s: String) -> String { String(decoding: s.utf8.map(asciiLower), as: UTF8.self) }
 }

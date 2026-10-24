@@ -91,8 +91,15 @@ public struct MoneyText: View {
     )
     .privacySensitive()
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(
-      hidden ? "Amount hidden" : "\(approx ? "about " : "")\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))")
+    .accessibilityLabel(Self.spoken(money, style: style, sign: sign, approx: approx, hidden: hidden))
+  }
+
+  static func spoken(_ money: Money, style: MoneyStyle = .exact, sign: Sign = .none, approx: Bool = false,
+                     hidden: Bool) -> String
+  {
+    hidden
+      ? "Amount hidden"
+      : "\(approx ? "about " : "")\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))"
   }
 }
 
@@ -130,8 +137,7 @@ struct FigureLine: View {
   var body: some View {
     FigureLineBody(line: self)
       // Outside the body, so its @ScaledMetric reads the capped size.
-      .dynamicTypeSize(...figure.maxDynamicTypeSize)
-      .modifier(CappedFigureMarker(capped: figure.maxDynamicTypeSize < .accessibility5))
+      .cappedDynamicType(figure)
   }
 }
 
@@ -165,7 +171,7 @@ private struct FigureLineBody: View {
     var out = AttributedString()
     if let unit = line.unit {
       var u = AttributedString(unit.text)
-      u.font = Self.font(unit.figure, size: unitSize)
+      u.font = unit.figure.font(size: unitSize)
       u.foregroundColor = unit.color
       u.tracking = unit.figure.tracking * scale
       // The gap between "AED" and the figure rides on the unit's last letter, so it scales
@@ -176,16 +182,11 @@ private struct FigureLineBody: View {
       out += u
     }
     var d = AttributedString(line.digits)
-    d.font = Self.font(line.figure, size: figureSize)
+    d.font = line.figure.font(size: figureSize)
     d.foregroundColor = line.color
     d.tracking = line.hiddenTracking ?? line.figure.tracking * scale
     out += d
     return out
-  }
-
-  private static func font(_ figure: HFigure, size: CGFloat) -> Font {
-    let font = Font.system(size: size, weight: figure.weight.systemWeight, design: .rounded)
-    return figure.tabular ? font.monospacedDigit() : font
   }
 }
 

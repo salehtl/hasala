@@ -52,8 +52,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
 
   public func suggestGraded(subject: String, allowed: [AllowedCategory]) async -> (answer: ModelAnswer, autoFile: Bool) {
     let answer = await ask(subject: subject, allowed: allowed)
-    guard case .category = answer.answer, answer.autoFile, isAutoFileEnabled() else { return (answer.answer, false) }
-    return (answer.answer, true)
+    return (answer.answer, answer.autoFile && isAutoFileEnabled())
   }
 
   func ask(subject: String, allowed: [AllowedCategory]) async -> (answer: ModelAnswer, autoFile: Bool) {
@@ -104,10 +103,6 @@ public struct CloudCategoryModel: GradedCategoryModel {
     guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return (.failed(.decoding), false) }
     guard reply.tag == modelTag else { return (.failed(.other), false) }
     return Self.grade(choice: reply.choice, probabilities: reply.probabilities, sent: sent.map(\.id))
-  }
-
-  public static func gate(choice: String, probabilities: [String: Double], sent: [String]) -> ModelAnswer {
-    grade(choice: choice, probabilities: probabilities, sent: sent).answer
   }
 
   public static func grade(choice: String, probabilities: [String: Double], sent: [String]) -> (answer: ModelAnswer, autoFile: Bool) {

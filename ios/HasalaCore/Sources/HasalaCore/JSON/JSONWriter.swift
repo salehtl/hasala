@@ -47,12 +47,12 @@ public struct JSONWriter: Sendable {
 
   private func write(_ v: JSONValue, into out: inout [UInt8]) {
     switch v {
-    case .null: out += Array("null".utf8)
-    case .bool(let b): out += Array((b ? "true" : "false").utf8)
+    case .null: out.append(contentsOf: "null".utf8)
+    case .bool(let b): out.append(contentsOf: (b ? "true" : "false").utf8)
     case .number(let n):
       switch numbers {
-      case .literal: out += Array(n.literal.utf8)
-      case .javascript: out += Array(JSNumber.stringify(literal: n.literal).utf8)
+      case .literal: out.append(contentsOf: n.literal.utf8)
+      case .javascript: out.append(contentsOf: JSNumber.stringify(literal: n.literal).utf8)
       }
     case .string(let s): JSONWriter.quote(s, into: &out)
     case .array(let a):
@@ -99,6 +99,8 @@ public struct JSONWriter: Sendable {
     return v <= 4_294_967_294 ? UInt32(v) : nil
   }
 
+  private static let hexDigits = Array("0123456789abcdef".utf8)
+
   /// JSON.stringify's QuoteJSONString over a well-formed string.
   public static func quote(_ s: String, into out: inout [UInt8]) {
     out.append(0x22)
@@ -111,17 +113,10 @@ public struct JSONWriter: Sendable {
       case 0x0a: out += [0x5c, 0x6e]
       case 0x0d: out += [0x5c, 0x72]
       case 0x09: out += [0x5c, 0x74]
-      case 0x00...0x1f:
-        let hex = Array("0123456789abcdef".utf8)
-        out += [0x5c, 0x75, 0x30, 0x30, hex[Int(b >> 4)], hex[Int(b & 0x0f)]]
+      case 0x00...0x1f: out += [0x5c, 0x75, 0x30, 0x30, hexDigits[Int(b >> 4)], hexDigits[Int(b & 0x0f)]]
       default: out.append(b)
       }
     }
     out.append(0x22)
   }
-}
-
-extension JSONValue {
-  /// `JSON.stringify(self)` as UTF-8 bytes (JavaScript key order and numbers).
-  public var jsonBytes: [UInt8] { JSONWriter().bytes(self) }
 }

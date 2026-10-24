@@ -146,7 +146,7 @@ public enum BillDetector {
     var chains: [Series] = []
     chains.reserveCapacity(rows.count)
     for i in rows.indices {
-      let dev = distance(rows[i].amountMinor, reference)
+      let dev = BillMatcher.gap(rows[i].amountMinor, reference)
       var bestPrev: Series?
       for j in stride(from: i - 1, through: 0, by: -1) {
         let gap = rows[i].day.daysSinceEpoch - rows[j].day.daysSinceEpoch
@@ -176,12 +176,6 @@ public enum BillDetector {
     return a.deviation < b.deviation
   }
 
-  static func distance(_ a: Int64, _ b: Int64) -> Int64 {
-    let (d, o) = a.subtractingReportingOverflow(b)
-    if o || d == .min { return .max }
-    return abs(d)
-  }
-
   static func sum(_ a: Int64, _ b: Int64) -> Int64 {
     let (s, o) = a.addingReportingOverflow(b)
     return o ? .max : s
@@ -197,7 +191,7 @@ public enum BillDetector {
   }
 
   static func withinBand(_ amount: Int64, _ med: Int64) -> Bool {
-    let d = distance(amount, med)
+    let d = BillMatcher.gap(amount, med)
     let (lhs, o1) = d.multipliedReportingOverflow(by: 10_000)
     let (rhs, o2) = med.multipliedReportingOverflow(by: bandBp)
     if o1 || o2 { return d <= med / 10_000 * bandBp }

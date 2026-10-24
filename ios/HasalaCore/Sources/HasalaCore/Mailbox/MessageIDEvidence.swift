@@ -24,7 +24,7 @@ public enum MessageIDEvidence {
     if v.hasPrefix("<"), let close = v.firstIndex(of: ">") {
       v = String(v[v.index(after: v.startIndex)..<close])
     }
-    let folded = v.utf8.filter { $0 != 0x20 && $0 != 0x09 }.map { (0x41...0x5a).contains($0) ? $0 + 0x20 : $0 }
+    let folded = v.utf8.filter { $0 != 0x20 && $0 != 0x09 }.map(asciiLower)
     guard !folded.isEmpty else { return nil }
     return String(decoding: folded, as: UTF8.self)
   }

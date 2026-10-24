@@ -18,11 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-
 	"github.com/salehtl/hasala/server/internal/invites"
-	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 // ErrNotInvited is the one distinguishable signup answer (403 not_invited):
@@ -83,19 +79,4 @@ func MintInvite(ctx context.Context, q queryExecer, o MintOptions) (string, erro
 		return "", fmt.Errorf("auth: MintInvite: %w", err)
 	}
 	return code, nil
-}
-
-// redeemInviteTx spends the invite inside the account-creation transaction
-// (spec 02 §14.1): exactly one active, unexpired row, still bound to this
-// address when it is addressed, or ErrNotInvited and the transaction fails.
-func redeemInviteTx(ctx context.Context, tx pgx.Tx, codeHash, emailTag []byte, userID uuid.UUID, now time.Time) (invites.Redeemed, error) {
-	return invites.RedeemTx(ctx, tx, codeHash, emailTag, userID, now)
-}
-
-// onInviteRedeemedTx is spec 07 §3.1's join hook, in the account-creation
-// transaction: the entry linked to the invite, and every other entry with the
-// account's address tag, joins and loses its plaintext address, and their
-// bank requests move to the account.
-func onInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UUID, emailTag []byte) error {
-	return waitlist.OnInviteRedeemedTx(ctx, tx, inviteID, userID, emailTag)
 }
