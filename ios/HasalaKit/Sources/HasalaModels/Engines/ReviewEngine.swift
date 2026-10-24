@@ -402,7 +402,7 @@ public enum ReviewEngine {
     var meta = "\(verb) · " + t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
     let d = t.postedAt.date
-    let when = "\(verb.lowercased()) \(weekdayNames[d.weekday]) \(d.day) \(CivilCalendar.monthNames[d.month - 1])"
+    let when = "\(verb.lowercased()) \(spokenDay(d))"
     var card = ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
       isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
@@ -441,6 +441,8 @@ public enum ReviewEngine {
 
   /// Monday first, as `LocalDate.weekday` counts.
   public static let weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+  static func spokenDay(_ d: LocalDate) -> String { "\(weekdayNames[d.weekday]) \(d.day) \(d.yearMonth.name)" }
 
   /// The categories a pick sheet offers for a direction. Transfer offers the
   /// not-spending categories, and income ones for money in (PWA `panelGroups`).

@@ -130,9 +130,7 @@ public struct BillDetail: Sendable, Hashable, Identifiable {
     return false
   }
 
-  public var hasPriceNotice: Bool {
-    notices.contains { if case .acceptPrice = $0.primary.action { true } else { false } }
-  }
+  public var hasPriceNotice: Bool { notices.contains(where: \.isPriceNotice) }
 
   public var isLate: Bool {
     if case .late = state { return true }
@@ -211,6 +209,11 @@ public struct BillNoticeCard: Sendable, Hashable, Identifiable {
     self.primary = primary
     self.secondary = secondary
   }
+
+  var isPriceNotice: Bool {
+    if case .acceptPrice = primary.action { return true }
+    return false
+  }
 }
 
 public enum BillsEngine {
@@ -275,9 +278,10 @@ public enum BillsEngine {
       if b?.priceChangeFrom != nil { tags[t.id] = StatusPill("Price change", tone: .warning, showsDot: false) }
       let detail: [PlanDetailPart] = [.text(MoneyPhrase(stringLiteral:
         "\(t.postedAt.date.short)" + (s.account(t.accountID).map { " · \($0.shortName)" } ?? "")))]
+      let c = s.category(t.categoryID)
       return BillRowModel(
-        id: t.id, name: b?.name ?? t.merchant, glyph: s.category(t.categoryID)?.glyph ?? .utilities,
-        hue: s.category(t.categoryID)?.hue ?? .sand, detail: detail, amount: t.amount, approximate: false,
+        id: t.id, name: b?.name ?? t.merchant, glyph: c?.glyph ?? .utilities,
+        hue: c?.hue ?? .sand, detail: detail, amount: t.amount, approximate: false,
         isIncome: false, trailingNote: nil
       )
     }
@@ -290,26 +294,24 @@ public enum BillsEngine {
     )
   }
 
+  static let farFuture = LocalDate(9999, 12, 31)
+
   static func pausedRows(_ s: LedgerState) -> [BillRowModel] {
     s.bills.filter { $0.state == .paused }
-      .sorted { ($0.pausedUntil ?? LocalDate(9999, 12, 31), $0.name) < ($1.pausedUntil ?? LocalDate(9999, 12, 31), $1.name) }
-      .map { b in
-        let line = b.pausedUntil.map { "Paused until \($0.dayMonth)" } ?? "Paused"
-        return BillRowModel(id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
-                            detail: [.text(MoneyPhrase(stringLiteral: line))], amount: b.amount,
-                            approximate: b.approximate, isIncome: b.isIncome)
-      }
+      .sorted { ($0.pausedUntil ?? farFuture, $0.name) < ($1.pausedUntil ?? farFuture, $1.name) }
+      .map { stateRow($0, s, line: $0.pausedUntil.map { "Paused until \($0.dayMonth)" } ?? "Paused") }
   }
 
   static func endedRows(_ s: LedgerState) -> [BillRowModel] {
     s.bills.filter { $0.state == .ended }
-      .sorted { ($0.endedOn ?? LocalDate(9999, 12, 31), $0.name) > ($1.endedOn ?? LocalDate(9999, 12, 31), $1.name) }
-      .map { b in
-        let line = b.endedOn.map { "Ended \($0.dayMonth)" } ?? "Ended"
-        return BillRowModel(id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
-                            detail: [.text(MoneyPhrase(stringLiteral: line))], amount: b.amount,
-                            approximate: b.approximate, isIncome: b.isIncome)
-      }
+      .sorted { ($0.endedOn ?? farFuture, $0.name) > ($1.endedOn ?? farFuture, $1.name) }
+      .map { stateRow($0, s, line: $0.endedOn.map { "Ended \($0.dayMonth)" } ?? "Ended") }
+  }
+
+  static func stateRow(_ b: Bill, _ s: LedgerState, line: String) -> BillRowModel {
+    BillRowModel(id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), hue: ActivityEngine.hue(b, s),
+                 detail: [.text(MoneyPhrase(stringLiteral: line))], amount: b.amount,
+                 approximate: b.approximate, isIncome: b.isIncome)
   }
 
   static func upcomingRow(_ b: Bill, _ s: LedgerState, today: LocalDate) -> BillRowModel {
@@ -334,11 +336,14 @@ public enum BillsEngine {
 
   /// "Charged 38.90 more than usual (389.00) on Mon 5 Oct."
   static func priceChange(_ b: Bill, usual: Money) -> MoneyPhrase {
-    let last = b.history.first.map { " on \($0.short)" } ?? ""
-    let difference = b.amount.minor.minus(usual.minor)
+    charged(b.amount, usual: usual, currency: Money.home, after: b.history.first.map { " on \($0.short)" } ?? "")
+  }
+
+  static func charged(_ charged: Money, usual: Money, currency: String, after: String) -> MoneyPhrase {
+    let difference = charged.minor.minus(usual.minor)
     return MoneyPhrase([
-      .text("Charged "), .amount(.aed(Int64(clamping: difference.magnitude))), .text(" \(difference < 0 ? "less" : "more") than usual ("),
-      .amount(usual), .text(")\(last)."),
+      .text("Charged "), .amount(Money(minor: Int64(clamping: difference.magnitude), currency: currency)),
+      .text(" \(difference < 0 ? "less" : "more") than usual ("), .amount(usual), .text(")\(after)."),
     ])
   }
 
@@ -382,7 +387,7 @@ public enum BillsEngine {
     if let account = s.account(b.accountID) { cadence.append(account.shortName) }
 
     let notices = noticeCards(b)
-    let priceNotice = notices.contains { if case .acceptPrice = $0.primary.action { true } else { false } }
+    let priceNotice = notices.contains(where: \.isPriceNotice)
     let noticed: MoneyPhrase?
     switch state {
     case .late:
@@ -457,13 +462,9 @@ public enum BillsEngine {
     b.notices.map { n in
       switch n.kind {
       case .priceChange(let usual, let charged, let from):
-        let difference = charged.minor.minus(usual.minor)
         return BillNoticeCard(
           id: n.id, title: "Price change", tone: .warning,
-          body: MoneyPhrase([
-            .text("Charged "), .amount(Money(minor: Int64(clamping: difference.magnitude), currency: charged.currency)),
-            .text(" \(difference < 0 ? "less" : "more") than usual ("), .amount(usual), .text(") on \(from.short)."),
-          ]),
+          body: Self.charged(charged, usual: usual, currency: charged.currency, after: " on \(from.short)"),
           primary: .init(title: "Accept from \(from.dayMonth)", action: .acceptPrice(charged, from: from)),
           secondary: .init(title: "Not now", action: .dismiss))
       case .chargedWhilePaused(let charged, let on):
