@@ -641,13 +641,15 @@ the approval of the owner for that deployment.
   within the per-device day cap. Do not send other data
   through this path: no amount, date, card, bank, custom category name or
   email. Refer to `docs/decisions/cloud-suggestions.md`.
-- **Sorting rework (2026-10-23)**: Review shows one card per payment. The merchant group
+- **Sorting rework and rebuild (2026-10-23)**: Review shows one card per payment. The merchant group
   (`MerchantGroup.key`, from the raw merchant and the dictionary only) stays behind the
   scenes. A rule comes only
   from "Always use it" (off by default). It also files every payment of that merchant
   group and direction whose spelling the rule holds (at most 8 exact patterns), in every
   month, except the ones the person sorted (`RuleReach.ruled`); no rule is made after
-  repeated filings. The app has no **Not this** and writes no new rejections. The op
+  repeated filings. The pick sheet always starts from a bucket, and its New category row
+  adds a category and sorts the card in one atomic edit (`.addCategoryAndSort`). The app
+  has no **Not this** and writes no new rejections. The op
   `merchant_category_rejected` (from #182) stays readable and travels alone in its wire
   blob; rejections already in the log apply after the model's answer, so the Cloudflare
   request does not change. Trust on a phone may only raise the auto-file bar. Refer to
