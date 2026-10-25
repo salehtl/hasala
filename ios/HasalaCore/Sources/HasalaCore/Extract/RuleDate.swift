@@ -13,6 +13,26 @@ enum RuleDate {
 
   static let monthPattern = monthNames.map(\.0).joined(separator: "|")
 
+  static let weekdayNames: [(String, Int)] = [
+    ("monday", 1), ("tuesday", 2), ("wednesday", 3), ("thursday", 4), ("friday", 5), ("saturday", 6), ("sunday", 7),
+    ("mon", 1), ("tues", 2), ("tue", 2), ("weds", 3), ("wed", 3), ("thurs", 4), ("thur", 4), ("thu", 4), ("fri", 5),
+    ("sat", 6), ("sun", 7),
+  ]
+
+  static let weekdayPattern = weekdayNames.map(\.0).joined(separator: "|")
+
+  static let arabicMonthNames: [(String, Int)] = [
+    ("يناير", 1), ("فبراير", 2), ("مارس", 3), ("أبريل", 4), ("إبريل", 4), ("مايو", 5), ("يونيو", 6), ("يونيه", 6),
+    ("يوليو", 7), ("يوليه", 7), ("أغسطس", 8), ("سبتمبر", 9), ("أكتوبر", 10), ("نوفمبر", 11), ("ديسمبر", 12),
+    ("كانون الثاني", 1), ("شباط", 2), ("آذار", 3), ("نيسان", 4), ("أيار", 5), ("حزيران", 6), ("تموز", 7), ("آب", 8),
+    ("أيلول", 9), ("تشرين الأول", 10), ("تشرين الثاني", 11), ("كانون الأول", 12),
+  ]
+
+  static let arabicWeekdayNames: [(String, Int)] = [
+    ("الإثنين", 1), ("الاثنين", 1), ("الثلاثاء", 2), ("الأربعاء", 3), ("الخميس", 4), ("الجمعة", 5), ("السبت", 6),
+    ("الأحد", 7),
+  ]
+
   static let numeric = RuleText.re("(?<![0-9])([0-9]{1,2})[-/.]([0-9]{1,2})[-/.]([0-9]{4})(?![0-9])")
   static let iso = RuleText.re("(?<![0-9])([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2})(?![0-9])")
   static let named = RuleText.re(

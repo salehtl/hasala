@@ -17,9 +17,9 @@ enum RuleReader {
   static let justNumber = try! NSRegularExpression(pattern: "^[\\s(]*[A-Za-z]{0,3}\\.?\\s*[\\d.,]+\\s*[A-Za-z]{0,3}[\\s)]*$")
   static let vatPhrase = RuleText.re("القيمه المضافه|value added tax")
   static let stops =
-    "(?=\\s+on\\s+(?:your|the|card|\\d)|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
+    "(?=\\s+on\\s+(?:your|the|card|\\d)|" + MerchantWhen.stopEN + "|" + MerchantWhen.stopDate + "|" + MerchantWhen.stopWeekdayDate + "|" + MerchantWhen.stopDayMonthEnd + "|" + MerchantWhen.stopDateTime + "|\\s+(?:with|using|via|by)\\s+(?:your|card|the|a\\s)|\\s+(?:from|in|into|to)\\s+(?:your|the\\s+account|a/c|account|card)|\\s+(?:dated|date|ref|reference|avl|avail|available|balance|for|using|via|card|in\\s+(?:aed|usd)|has|is|was|were)\\b|\\s+\\d{1,2}[-/]\\d|\\s+\\d{1,2}:\\d\\d|\\.\\s|\\.$|,\\s|;|\\s+-\\s|$)"
   static let inlineAt = RuleText.re("(?<![a-z])(?:at|@)\\s+(.+?)" + stops)
-  static let inlineAtAr = RuleText.re("(?:لدى|لدي|عند|من متجر|في متجر)\\s+(.+?)(?=\\s+(?:بتاريخ|في|على|علي|باستخدام|بمبلغ|بقيمة|بقيمه)|[.،,؛]|$)")
+  static let inlineAtAr = RuleText.re("(?:لدى|لدي|عند|من متجر|في متجر)\\s+(.+?)(?=\\s+(?:بتاريخ|في|على|علي|باستخدام|بمبلغ|بقيمة|بقيمه)|" + MerchantWhen.stopAR + "|[.،,؛]|$)")
   static let inlineTo = RuleText.re(
     "(?<![a-z])(?:(?:transferred|sent|paid|payment|transfer|remitted|remittance)\\b(?:(?![.!?](?:\\s|$)).)*?\\bto|towards)\\s+(.+?)" + stops)
   static let inlineFrom = RuleText.re(
@@ -256,14 +256,15 @@ enum RuleReader {
   }
 
   static func validMerchant(_ raw: String, banks: Set<String>) -> String? {
-    var v = raw.trimmingCharacters(in: .whitespaces)
+    if MerchantWhen.isDateOnly(MerchantWhen.tidy(raw)) { return nil }
+    var v = MerchantWhen.trim(raw)
     while let l = v.last, l == "." || l == "," || l == ":" || l == ";" { v.removeLast() }
     v = v.trimmingCharacters(in: .whitespaces)
     if v.isEmpty || v.count > 70 { return nil }
     if !v.contains(where: { $0.isLetter }) { return nil }
     let f = RuleText.fold(v)
     if RuleText.has(Self.ownWords, f) { return nil }
-    if RuleText.has(Self.dateLike, f) { return nil }
+    if RuleText.has(Self.dateLike, f) || MerchantWhen.isDateOnly(v) { return nil }
     if RuleText.has(Self.iban, f) { return nil }
     let nonSpace = v.filter { !$0.isWhitespace }
     let maskish = nonSpace.filter { $0.isNumber || $0 == "X" || $0 == "x" || $0 == "*" || $0 == "-" }
