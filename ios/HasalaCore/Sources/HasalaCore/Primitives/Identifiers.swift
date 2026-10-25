@@ -31,7 +31,7 @@ public struct UserID: Sendable, Hashable, CustomStringConvertible {
         i += 1
         continue
       }
-      guard let hi = UserID.nibble(u[i]), i + 1 < 36, let lo = UserID.nibble(u[i + 1]) else { return nil }
+      guard let hi = Hex.nibble(u[i]), i + 1 < 36, let lo = Hex.nibble(u[i + 1]) else { return nil }
       bytes.append(hi << 4 | lo)
       i += 2
     }
@@ -43,20 +43,15 @@ public struct UserID: Sendable, Hashable, CustomStringConvertible {
   /// From the 16 raw bytes; `nil` for any other length or the nil UUID.
   public init?(raw bytes: some DataProtocol) {
     guard bytes.count == 16 else { return nil }
-    let h = Hex.encode(bytes)
-    let c = Array(h.utf8)
-    func part(_ r: Range<Int>) -> String { String(decoding: c[r], as: UTF8.self) }
-    self.init("\(part(0..<8))-\(part(8..<12))-\(part(12..<16))-\(part(16..<20))-\(part(20..<32))")
+    self.init(UserID.canonicalString(bytes))
   }
 
   public var description: String { string }
 
-  private static func nibble(_ c: UInt8) -> UInt8? {
-    switch c {
-    case 0x30...0x39: c - 0x30
-    case 0x61...0x66: c - 0x61 + 10
-    default: nil
-    }
+  static func canonicalString(_ bytes: some Sequence<UInt8>) -> String {
+    let c = Array(Hex.encode(bytes).utf8)
+    func part(_ r: Range<Int>) -> String { String(decoding: c[r], as: UTF8.self) }
+    return "\(part(0..<8))-\(part(8..<12))-\(part(12..<16))-\(part(16..<20))-\(part(20..<32))"
   }
 }
 

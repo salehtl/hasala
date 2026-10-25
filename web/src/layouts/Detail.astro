@@ -7,7 +7,8 @@
  */
 import Base from './Base.astro';
 import Icon from '../components/Icon.astro';
-import { NAV, SITE } from '../data/site';
+import { NAV } from '../data/site';
+import { webPageLd } from '../lib/json-ld';
 
 interface Props {
   /** The page part of <title>: "Hasala · {title}". */
@@ -23,32 +24,11 @@ interface Props {
 }
 
 const { title, heading, lead, description = lead, path, jsonLd = [] } = Astro.props;
-const url = `${SITE.url}${path}`;
 const next = NAV.filter((n) => n.href !== path);
-const labels: Record<string, string> = { '/how-privacy-works': 'How privacy works' };
 
 const ld = {
   '@context': 'https://schema.org',
-  '@graph': [
-    {
-      '@type': 'WebPage',
-      '@id': `${url}#page`,
-      name: heading,
-      description,
-      url,
-      inLanguage: 'en',
-      isPartOf: { '@id': `${SITE.url}/#website` },
-      about: { '@id': `${SITE.url}/#app` },
-      breadcrumb: {
-        '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Hasala', item: SITE.url },
-          { '@type': 'ListItem', position: 2, name: heading, item: url },
-        ],
-      },
-    },
-    ...jsonLd,
-  ],
+  '@graph': [webPageLd(heading, description, path), ...jsonLd],
 };
 ---
 
@@ -72,7 +52,7 @@ const ld = {
             next.map((n) => (
               <li>
                 <a href={n.href}>
-                  {labels[n.href] ?? n.label}
+                  {n.label}
                   <Icon name="arrow-right" size={16} stroke={1.9} />
                 </a>
               </li>

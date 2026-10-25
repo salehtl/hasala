@@ -34,8 +34,7 @@ public enum CombinedReader {
   }
 
   public static func pending(_ input: ExtractInput, direction: ExtractDirection?) -> ExtractPending {
-    let kind = MailRules.kind(input, direction: direction?.rawValue)
-    if kind == .cardPurchase || kind == .cardRefund { return .none }
+    if MailRules.kind(input, direction: direction?.rawValue).isCard { return .none }
     return MailRules.pendingSignal(input)
   }
 
@@ -153,7 +152,7 @@ public enum CombinedReader {
     let kind = MailRules.kind(input, direction: r.isTransaction ? r.direction : nil)
     var notes = [r.note]
     let outcome: ExtractOutcome
-    let card = kind == .cardPurchase || kind == .cardRefund
+    let card = kind.isCard
     if r.isTransaction {
       if !card && MailRules.isPending(input) {
         outcome = .pending

@@ -258,8 +258,7 @@ final class AccountRuntime {
       nowMs: { Int64(Date().timeIntervalSince1970 * 1000) },
       importRunning: {
         guard let lane = active.lane else { return false }
-        let phase = await lane.status().phase
-        return phase == .scanning || phase == .authoringBackfill
+        return await importing(lane)
       }, enabled: MerchantSuggestionsSetting.isEnabledReader, activity: activity, mayRun: false)
     link.set(backlog)
     let coordinator = WorkCoordinator(
@@ -374,9 +373,13 @@ final class AccountRuntime {
     case .processing:
       _ = await coordinator.run(.bgProcessing)
       guard let lane, !Task.isCancelled else { return false }
-      let phase = await lane.status().phase
-      return phase == .scanning || phase == .authoringBackfill
+      return await Self.importing(lane)
     }
+  }
+
+  nonisolated static func importing(_ lane: MailboxLane) async -> Bool {
+    let phase = await lane.status().phase
+    return phase == .scanning || phase == .authoringBackfill
   }
 
   /// Home currency AED and the USD peg (04 §6.2), once per account: authored only when

@@ -22,7 +22,7 @@ final class ShieldWindow {
   func update(_ lock: AppLockController) {
     guard let window else { return }
     if lock.isLocked {
-      UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+      UIApplication.shared.dismissKeyboard()
     }
     window.isHidden = !lock.showsShield
     window.accessibilityViewIsModal = lock.isLocked

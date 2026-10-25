@@ -158,59 +158,6 @@ struct AboutYouView: View {
   private static let fieldsID = "about.fields"
 }
 
-/// Six-box email code entry, shared by signup, forgot password and recovery.
-struct CodeEntryView: View {
-  var title = "Check your email"
-  var email: String
-  var steps: (current: Int, of: Int)?
-  @Binding var code: String
-  var busy: Bool
-  var failure: AuthFailure?
-  var sentAt: Date?
-  var onBack: () -> Void
-  var onSubmit: () -> Void
-  var onResend: () -> Void
-  var onChangeEmail: (() -> Void)?
-
-  var body: some View {
-    AccountScreen(
-      title: title,
-      subtitle: "We sent a 6-digit code to \(email). It works for 10 minutes.",
-      steps: steps,
-      back: .system
-    ) {
-      VStack(alignment: .leading, spacing: 16) {
-        CodeBoxes(code: $code, error: failure != nil)
-          .onChange(of: code) { _, new in if new.count == 6 { onSubmit() } }
-        if let failure {
-          FailureBanner(failure: failure)
-        }
-        HStack {
-          TimelineView(.periodic(from: .now, by: 1)) { context in
-            let left = max(0, 60 - Int(context.date.timeIntervalSince(sentAt ?? .distantPast)))
-            if left > 0 {
-              Text(resendCountdown(left))
-                .hType(.subheadline)
-                .foregroundStyle(HColor.textSecondary)
-                .monospacedDigit()
-            } else {
-              InlineTextButton(title: "Resend code", identifier: "code.resend", action: onResend)
-            }
-          }
-          Spacer()
-          if let onChangeEmail {
-            InlineTextButton(title: "Change email", identifier: "code.changeEmail", action: onChangeEmail)
-          }
-        }
-        if busy { ProgressView().frame(maxWidth: .infinity) }
-        HintCard(icon: .envelope, text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.")
-        LockNote(text: "Hasala will never ask for your recovery phrase, your password or a code in an email, a notification, a phone call or on a website. Only type them into the Hasala app.",
-                 systemImage: "exclamationmark.shield")
-      }
-    }
-  }
-}
-
 struct SignInMethodView: View {
   @Bindable var model: SignupModel
 
@@ -312,11 +259,4 @@ struct CreatePasswordView: View {
   private var mismatch: Bool {
     !model.confirmPassword.isEmpty && !model.passwordsMatch && model.confirmPassword.count >= model.newPassword.count
   }
-}
-
-/// "Resend code in 0:42": the seconds left before another code can be sent, as minutes and
-/// seconds (a full minute reads "1:00", never "0:60").
-func resendCountdown(_ secondsLeft: Int) -> String {
-  let left = max(0, secondsLeft)
-  return "Resend code in \(left / 60):\(String(format: "%02d", left % 60))"
 }

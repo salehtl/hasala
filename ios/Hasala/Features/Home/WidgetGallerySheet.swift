@@ -34,8 +34,8 @@ struct WidgetGallerySheet: View {
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
           ForEach(HomeWidgetKind.Group.allCases, id: \.self) { group in
-            let shown = group.kinds.filter(kinds.contains).filter { $0.size == .small }
-              + group.kinds.filter(kinds.contains).filter { $0.size == .medium }
+            let available = group.kinds.filter(kinds.contains)
+            let shown = available.filter { $0.size == .small } + available.filter { $0.size == .medium }
             if !shown.isEmpty { section(group, shown) }
           }
         }

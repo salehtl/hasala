@@ -12,7 +12,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -66,7 +65,6 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 		if !c.Send && !c.Notice {
 			continue
 		}
-		c := c
 		run := func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
@@ -158,8 +156,8 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 		if row.Subkind == "phrase_viewed" {
 			trigger = "phrase_viewed"
 		}
-		raw := make([]byte, 32)
-		if _, err := rand.Read(raw); err != nil {
+		raw, err := randBytes(32)
+		if err != nil {
 			return mail.Message{}, err
 		}
 		h := sha256.Sum256(raw)

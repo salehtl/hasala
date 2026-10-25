@@ -6,7 +6,7 @@ extension HFigure {
   static let widgetRowUnit = HFigure(size: 13, leading: 18, weight: .semibold, textStyle: .footnote)
 }
 
-private struct InkDisc: View {
+struct InkDisc: View {
   let icon: HIcon
   var body: some View {
     Circle().fill(Color(HRGBA(255, 255, 255, 0.12))).frame(width: 34, height: 34)

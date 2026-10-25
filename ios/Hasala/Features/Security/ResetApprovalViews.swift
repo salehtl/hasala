@@ -22,7 +22,7 @@ final class ResetApprovalModel {
 
   /// 16 characters of `A-Z2-7` once spaces and hyphens are dropped.
   var codeReady: Bool {
-    let n = code.uppercased().filter { $0 != " " && $0 != "-" }
+    let n = InviteCode.normalize(code)
     return n.count == 16 && InviteCode.isAlphabet(n)
   }
 

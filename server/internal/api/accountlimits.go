@@ -33,19 +33,14 @@ const (
 )
 
 func (s *Server) defaultAccountLimiters() {
-	set := func(l **Limiter, rate, burst float64, keys int) {
-		if *l == nil {
-			*l = NewLimiter(rate, burst, keys, s.now)
-		}
-	}
-	set(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
-	set(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
-	set(&s.ResetPerIP, resetIPRate, resetIPBurst, accountLimiterKeys)
-	set(&s.FreezePerIP, freezeIPRate, freezeIPBurst, accountLimiterKeys)
-	set(&s.FreezeGlobal, freezeGlobal, freezeGlobalB, 1)
-	set(&s.DevFreezeIP, devFreezeIP, devFreezeIPB, accountLimiterKeys)
-	set(&s.DevFreezeWriter, devFreezeWr, devFreezeWrB, accountLimiterKeys)
-	set(&s.DevFreezeGlobal, devFreezeGl, devFreezeGlB, 1)
+	s.ensureLimiter(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
+	s.ensureLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
+	s.ensureLimiter(&s.ResetPerIP, resetIPRate, resetIPBurst, accountLimiterKeys)
+	s.ensureLimiter(&s.FreezePerIP, freezeIPRate, freezeIPBurst, accountLimiterKeys)
+	s.ensureLimiter(&s.FreezeGlobal, freezeGlobal, freezeGlobalB, 1)
+	s.ensureLimiter(&s.DevFreezeIP, devFreezeIP, devFreezeIPB, accountLimiterKeys)
+	s.ensureLimiter(&s.DevFreezeWriter, devFreezeWr, devFreezeWrB, accountLimiterKeys)
+	s.ensureLimiter(&s.DevFreezeGlobal, devFreezeGl, devFreezeGlB, 1)
 }
 
 // EnableAccounts wires the server's key set, the PBKDF2 gate and the mailer
@@ -89,8 +84,7 @@ func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 				k = ""
 			}
 			if !l.Allow(k) {
-				w.Header().Set("Retry-After", "60")
-				writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+				writeTooManyAttempts(w)
 				return
 			}
 		}
@@ -102,10 +96,14 @@ func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 func (s *Server) userLimited(h authedHandler) authedHandler {
 	return func(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 		if !s.AccountPerUser.Allow(userID.String()) {
-			w.Header().Set("Retry-After", "60")
-			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
+			writeTooManyAttempts(w)
 			return
 		}
 		h(w, r, userID)
 	}
+}
+
+func writeTooManyAttempts(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "60")
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again shortly")
 }

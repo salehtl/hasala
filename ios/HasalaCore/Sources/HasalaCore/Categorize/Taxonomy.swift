@@ -112,17 +112,6 @@ public enum TaxonomyV1 {
   /// The default icon of a user category (03c §4.2).
   public static let userIcon = "tag"
 
-  /// 03c §4.1 section labels.
-  public static func sectionLabel(kind: CategoryKind, bucket: Bucket?) -> String {
-    switch (kind, bucket) {
-    case (.spending, .need?): "Needs"
-    case (.spending, .want?): "Wants"
-    case (.spending, .saving?): "Savings"
-    case (.income, _): "Income"
-    default: "Not spending"
-    }
-  }
-
   /// The model-tier hints of 03c §8.6.4.
   public static let modelHints: [(id: String, hint: String)] = [
     ("rent", "rent and housing payments"), ("utilities", "electricity, water, gas, telecom, internet"),

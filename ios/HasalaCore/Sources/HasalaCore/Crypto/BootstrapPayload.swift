@@ -71,7 +71,7 @@ public struct BootstrapPayload: Sendable, Hashable {
     out += try SigningMessage.check(recoveryWrap, Wrap.byteCount, "recovery_wrap")
     out += [0x00, 45]
     out += try SigningMessage.check(phraseBox, PhraseBox.byteCount, "phrase_box")
-    out += sha256(Data(emailNorm.utf8))
+    out += EmailNorm.hash(emailNorm)
     out += [authKind.rawValue]
     out += try SigningMessage.check(authHash, 32, "auth_hash")
     out += [0x01]

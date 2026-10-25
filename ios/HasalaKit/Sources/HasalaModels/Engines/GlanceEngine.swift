@@ -28,7 +28,7 @@ public enum GlanceEngine {
       lockScreenDetails: s.prefs.notificationDetail,
       spentSoFar: waiting ? nil : spentSoFar(s, now: now, hero: home.hero),
       budgetPace: waiting ? nil : budgetPace,
-      categories: waiting ? [] : categories(s, now: now),
+      categories: waiting ? [] : categories(s, now: now, plan: PlanEngine.snapshot(s, now: now)),
       nextBill: nextBill,
       netWorth: netWorth,
       comingUp: comingUp(s, now: now),
@@ -70,12 +70,11 @@ public enum GlanceEngine {
     )
   }
 
-  static func categories(_ s: LedgerState, now: LocalDateTime) -> [CategoryWatchWidget] {
-    let plan = PlanEngine.snapshot(s, now: now)
+  static func categories(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot) -> [CategoryWatchWidget] {
     let day = now.date.day
-    let days = now.date.yearMonth.days
-    let gone = Pace.monthGone(day: day, days: days)
     let month = now.date.yearMonth
+    let days = month.days
+    let gone = Pace.monthGone(day: day, days: days)
     return plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows).filter { $0.budget.minor > 0 }.map { row in
       let spent = Spending.spent(s, category: row.id, in: month)
       let left = row.budget.minor.minus(spent)
@@ -103,8 +102,7 @@ public enum GlanceEngine {
       let isLate = !b.isIncome && b.nextDue < today
       let note: String
       if isLate {
-        let n = b.nextDue.days(until: today)
-        note = "\(n) day\(n == 1 ? "" : "s") past usual"
+        note = BillsEngine.pastUsual(b.nextDue.days(until: today))
       } else if b.isIncome {
         note = b.nextDue.short
       } else {

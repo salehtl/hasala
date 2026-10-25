@@ -27,9 +27,11 @@ struct MailboxDetailPage: View {
   init(app: AppModel, mailboxID: String) {
     self.app = app
     self.mailboxID = mailboxID
-    _signIn = State(initialValue: app.mailbox.map {
-      MailConnectCoordinator(mailbox: $0, context: .signInAgain(mailboxID: mailboxID))
-    })
+    _signIn = State(initialValue: Self.signInAttempt(app, mailboxID))
+  }
+
+  private static func signInAttempt(_ app: AppModel, _ mailboxID: String) -> MailConnectCoordinator? {
+    app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: .signInAgain(mailboxID: mailboxID)) }
   }
 
   private var mailbox: MailboxSnapshot? { app.mailbox?.mailboxes.first { $0.id == mailboxID } }
@@ -110,7 +112,7 @@ struct MailboxDetailPage: View {
       }
       .padding(.horizontal, 16)
     }
-    banksCard(m, title: "Banks in this mailbox")
+    banksCard(m)
     #if DEBUG
       if m.provider == .outlook, BuildSurface.showsUnfinished, let live = app.mailbox as? LiveMailboxConnecting {
         NavigationLink {
@@ -226,11 +228,11 @@ struct MailboxDetailPage: View {
     return rows
   }
 
-  @ViewBuilder private func banksCard(_ m: MailboxSnapshot, title: String) -> some View {
-    let banks = SupportedBank.allCases.filter { bank in m.banks.contains { $0 == bank.name || $0 == bank.shortName } }
+  @ViewBuilder private func banksCard(_ m: MailboxSnapshot) -> some View {
+    let banks = SupportedBank.allCases.filter(m.reads)
     if !banks.isEmpty {
       VStack(alignment: .leading, spacing: 12) {
-        HSectionHeader(title)
+        HSectionHeader("Banks in this mailbox")
         HListCard {
           ForEach(Array(banks.enumerated()), id: \.element) { i, bank in
             if i > 0 { HDivider(inset: .disc68) }
@@ -288,7 +290,7 @@ struct MailboxDetailPage: View {
       await signIn.connect(provider)
       if signIn.failedWithNoMailbox {
         MailConnectCoordinator.hand(signIn, to: app.router)
-        self.signIn = app.mailbox.map { MailConnectCoordinator(mailbox: $0, context: .signInAgain(mailboxID: mailboxID)) }
+        self.signIn = Self.signInAttempt(app, mailboxID)
       } else if let line = signIn.signedInAgainLine {
         app.say(line)
         signIn.reset()
@@ -318,11 +320,7 @@ struct MailboxDetailPage: View {
       try await lane.disconnect(mailboxID, removeTransactions: removing)
       failure = nil
       app.say(MailCopy.disconnected(m.provider, removed: removed))
-      if let i = app.router.profile.lastIndex(of: .bankAlerts) {
-        app.router.profile.removeSubrange((i + 1)...)
-      } else {
-        app.router.profile = [.bankAlerts]
-      }
+      app.router.backToBankAlerts()
     } catch {
       failure = error
     }

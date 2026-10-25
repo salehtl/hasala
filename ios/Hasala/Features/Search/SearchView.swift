@@ -32,13 +32,14 @@ struct SearchView: View {
   }
 
   var body: some View {
+    let typed = query.trimmedSpaces
     NavigationStack {
       ScrollView {
         Group {
-          if query.trimmedSpaces.isEmpty {
+          if typed.isEmpty {
             ready
           } else {
-            results(query.trimmedSpaces)
+            results(typed)
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
@@ -52,9 +53,9 @@ struct SearchView: View {
       // results take the room from the first letter (S3, no large title). The results also
       // drop the title's words: on a CI simulator the hidden bar left its large title drawn
       // over the top result, where an empty title leaves nothing to see.
-      .navigationTitle(query.trimmedSpaces.isEmpty ? "Search" : "")
+      .navigationTitle(typed.isEmpty ? "Search" : "")
       .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
-      .searchPresentationToolbarBehavior(query.trimmedSpaces.isEmpty ? .avoidHidingContent : .automatic)
+      .searchPresentationToolbarBehavior(typed.isEmpty ? .avoidHidingContent : .automatic)
       // Merchant names and words as typed ("carre", "talabat"): no capital, no correction,
       // so no QuickType bar over the keys either (Paper's keyboard has none).
       .textInputAutocapitalization(.never)
@@ -62,8 +63,8 @@ struct SearchView: View {
       .onSubmit(of: .search) { SearchHistory.shared.add(query) }
       .toolbar { SheetCloseButton(identifier: "search.close") { dismiss() } }
       .overlay(alignment: .bottom) { ToastHost(app: app) }
-      .task(id: query.trimmedSpaces) {
-        await ask.run(query.trimmedSpaces, app.store.state, now: app.store.now)
+      .task(id: typed) {
+        await ask.run(typed, app.store.state, now: app.store.now)
       }
     }
     .sheet(item: $opened, onDismiss: { app.router.transaction = [] }) { txn in
@@ -517,7 +518,7 @@ struct SearchResults {
       guard let p = r.patterns.first(where: { $0.localizedCaseInsensitiveContains(q) }),
             let c = s.category(r.categoryID) else { return nil }
       return RuleMatch(id: r.id, pattern: p.lowercased(), category: c.name,
-                       matches: s.txns.filter { r.matches($0.merchant) }.count)
+                       matches: s.txns.count { r.matches($0.merchant) })
     }
   }
 

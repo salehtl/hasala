@@ -90,7 +90,7 @@ public enum BankDomains {
   public static func templateDomains(bank: String, templates: [TemplateDefinition]) -> [String] {
     var out = Set<String>()
     for t in templates where t.bank == bank {
-      for d in t.match.senderDomain { out.insert(String(decoding: d.utf8.map(asciiLower), as: UTF8.self)) }
+      for d in t.match.senderDomain { out.insert(asciiLowered(d)) }
     }
     return out.sorted { Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8)) }
   }
@@ -106,7 +106,7 @@ public enum BankDomains {
     var s = typed.trimmingCharacters(in: .whitespacesAndNewlines)
     if s.unicodeScalars.contains(where: { !$0.isASCII }) { throw .nonASCII }
     if let at = s.lastIndex(of: "@") { s = String(s[s.index(after: at)...]) }
-    s = String(decoding: s.utf8.map(asciiLower), as: UTF8.self)
+    s = asciiLowered(s)
     if s.hasSuffix(".") { s.removeLast() }
     if s.isEmpty { throw .empty }
     guard isQuerySafe(s) else { throw .notQuerySafe }

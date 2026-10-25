@@ -53,9 +53,12 @@ struct LockdownView: View {
       Button("Cancel", role: .cancel) {}
       Button("Sign out all", role: .destructive) { Task { await model.request(.signOutEverywhere, host: .lockdown) } }
     } message: {
-      Text("Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in.")
+      Text(Self.signOutEverywhereMessage)
     }
   }
+
+  static let signOutEverywhereMessage =
+    "Every device signs out, this one too. Your data stays on each, and your sealed backup stays, ready for your next sign-in."
 
   /// Paper "NumberedChecklist": the first step is the one to do now.
   private var checklist: some View {

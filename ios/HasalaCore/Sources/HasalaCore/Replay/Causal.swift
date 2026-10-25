@@ -293,8 +293,7 @@ extension State {
     // annotations forward (only note and archived onto an unparsed successor).
     if superseding, op.v >= 4, let previous, txns[previous] != nil {
       txns[previous]!.successorID = id
-      let held = txns.filter { $0.value.isLive && $0.value.copyOf.map { utf8Equal($0, previous) } == true }.map(\.key)
-      for h in held { txns[h]!.copyOf = id }
+      for h in liveCopies(of: previous) { txns[h]!.copyOf = id }
       if t.sourceMailbox == nil {
         t.sourceMailbox = txns[previous]!.sourceMailbox
         t.sourceProvider = txns[previous]!.sourceProvider

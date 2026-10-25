@@ -44,10 +44,6 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
   }
 
   func noteSeen() {
-    clear()
-  }
-
-  private func clear() {
     let had = unseen || defaults.object(forKey: Self.remindedKey) != nil
     defaults.removeObject(forKey: Self.sinceKey)
     defaults.removeObject(forKey: Self.remindedKey)
@@ -59,7 +55,7 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
     if let serverUnseenSince {
       if !unseen { noteUnseen(at: serverUnseenSince) }
     } else if unseen {
-      clear()
+      noteSeen()
     }
   }
 
@@ -77,8 +73,7 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
   static func forget(_ defaults: UserDefaults = .standard) {
     defaults.removeObject(forKey: sinceKey)
     defaults.removeObject(forKey: remindedKey)
-    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [reminderID])
-    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [reminderID])
+    Scheduler.system.cancel(reminderID)
   }
 }
 

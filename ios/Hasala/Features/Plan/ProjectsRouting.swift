@@ -1,26 +1,32 @@
 import HasalaModels
 
 extension AppModel {
-  var projectsInProfile: Bool { router.sheet == .profile }
-
   func openProject(_ id: ProjectID) {
-    if projectsInProfile { router.profile.append(.project(id)) } else { router.projectsPath.append(.project(id)) }
+    if showingProfile { router.profile.append(.project(id)) } else { router.projectsPath.append(.project(id)) }
   }
 
   func editProject(_ id: ProjectID?) {
-    if projectsInProfile { router.profile.append(.editProject(id)) } else { router.open(.project(id)) }
+    if showingProfile { router.profile.append(.editProject(id)) } else { router.open(.project(id)) }
   }
 
   func newProject(_ starter: ProjectStarter) {
-    if projectsInProfile { router.profile.append(.newProject(starter)) } else { router.open(.newProject(starter)) }
+    if showingProfile { router.profile.append(.newProject(starter)) } else { router.open(.newProject(starter)) }
   }
 
   func addToProject(_ id: ProjectID) {
-    if projectsInProfile { router.profile.append(.addToProject(id)) } else { router.projectsPath.append(.addToProject(id)) }
+    if showingProfile { router.profile.append(.addToProject(id)) } else { router.projectsPath.append(.addToProject(id)) }
+  }
+
+  func leaveAddToProject(_ id: ProjectID) {
+    if showingProfile {
+      if router.profile.last == .addToProject(id) { router.profile.removeLast() }
+    } else if router.projectsPath.last == .addToProject(id) {
+      router.projectsPath.removeLast()
+    }
   }
 
   func leaveProject(_ id: ProjectID) {
-    if projectsInProfile {
+    if showingProfile {
       while let last = router.profile.last, last == .project(id) || last == .addToProject(id) || last == .editProject(id) {
         router.profile.removeLast()
       }
@@ -32,15 +38,17 @@ extension AppModel {
   }
 
   func projectRemovedFromEditor(_ id: ProjectID) {
-    if !projectsInProfile { router.sheet = nil }
+    if !showingProfile { router.sheet = nil }
     leaveProject(id)
   }
 
+  func closeProjectEditor(_ project: ProjectID?) {
+    if showingProfile, editorOnTop(project) { router.profile.removeLast() } else { router.sheet = nil }
+  }
+
   func projectSaved(_ id: ProjectID, created: Bool) {
-    if projectsInProfile {
-      if let last = router.profile.last, last == .editProject(created ? nil : id) || (created && Self.isStarter(last)) {
-        router.profile.removeLast()
-      }
+    if showingProfile {
+      if editorOnTop(created ? nil : id) { router.profile.removeLast() }
       if created { router.profile.append(.project(id)) }
     } else {
       router.sheet = nil
@@ -48,8 +56,10 @@ extension AppModel {
     }
   }
 
-  private static func isStarter(_ route: ProfileRoute) -> Bool {
-    if case .newProject = route { return true }
+  private func editorOnTop(_ project: ProjectID?) -> Bool {
+    guard let last = router.profile.last else { return false }
+    if last == .editProject(project) { return true }
+    if project == nil, case .newProject = last { return true }
     return false
   }
 
@@ -72,22 +82,20 @@ extension AppModel {
     }
   }
 
-  var planInProfile: Bool { projectsInProfile }
-
   func pushPlanCategory(_ id: CategoryID) {
-    if planInProfile { router.profile.append(.category(id)) } else { router.plan.append(.category(id)) }
+    if showingProfile { router.profile.append(.category(id)) } else { router.plan.append(.category(id)) }
   }
 
   func pushPlanProject(_ id: ProjectID) {
-    if planInProfile { router.profile.append(.project(id)) } else { router.plan.append(.project(id)) }
+    if showingProfile { router.profile.append(.project(id)) } else { router.plan.append(.project(id)) }
   }
 
   func pushPlanProjects() {
-    if planInProfile { router.profile.append(.projects) } else { router.plan.append(.projects) }
+    if showingProfile { router.profile.append(.projects) } else { router.plan.append(.projects) }
   }
 
   func openPlanSheet(_ route: SheetRoute) {
-    if planInProfile { router.overProfile = route } else { router.open(route) }
+    if showingProfile { router.overProfile = route } else { router.open(route) }
   }
 
   func closePlanSheet() {

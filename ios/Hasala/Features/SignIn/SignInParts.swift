@@ -384,11 +384,10 @@ struct CodeStepScreen: View {
 /// The service doesn't report how far it has got, so the arc turns (an indeterminate ring)
 /// rather than pretend a percentage; under Reduce Motion it holds still.
 struct UnlockingBadge: View {
-  @Environment(\.hMotion) private var policy
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @StageMotion private var motion: MotionPolicy
 
   var body: some View {
-    let still = policy.settled || policy.reduceMotion || reduceMotion
+    let still = motion.isStill
     ZStack {
       RadialGradient(colors: [HColor.white.opacity(0.9), HColor.white.opacity(0)], center: .center,
                      startRadius: 0, endRadius: 42)

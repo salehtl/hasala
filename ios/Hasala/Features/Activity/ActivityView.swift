@@ -407,13 +407,12 @@ struct FilterSummaryCard: View {
 struct StatusDotLine: View {
   let words: String
   let verdict: Verdict
-  var large = false
 
   var body: some View {
     HStack(spacing: 6) {
       Circle().fill(verdict == .overPace ? HColor.paceFillOverPace : verdict.foreground).frame(width: 7, height: 7)
       Text(words)
-        .hType(large ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
+        .hType(.footnote.weight(.semibold))
         .foregroundStyle(verdict.foreground)
     }
     .accessibilityElement(children: .combine)

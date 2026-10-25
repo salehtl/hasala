@@ -230,13 +230,14 @@ const uid = `hp-${play}`;
   // ease-in-out, from 300 ms), on the bar's clock, only while the CSS
   // entrance has yet to reach it; and
   // every [data-alive] stage pauses its idle float while off screen.
+  const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   onPage((signal) => {
     const io = observe(signal, (es) => es.forEach((e) => e.target.classList.toggle('is-off', !e.isIntersecting)));
     document.querySelectorAll('[data-alive]').forEach((el) => io?.observe(el));
     document.querySelectorAll<HTMLElement>('[data-hp-count]').forEach((el) => {
       if (!getComputedStyle(el).getPropertyValue('--hp-rise').trim()) return;
       const to = Number(el.dataset.hpCount);
-      const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       // Keep to the bar's own clock: a late script must not reset a figure
       // the visitor has already seen, so past the 300 ms delay it stays put.
       const wipe = el.closest('.hp')?.querySelector('.hp__fill')?.getAnimations()[0];

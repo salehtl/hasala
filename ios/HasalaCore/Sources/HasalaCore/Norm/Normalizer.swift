@@ -16,6 +16,7 @@
 // `subject` and `from` are CONTENT, not identity: for an inline forward they come out of the
 // body. Trust is CoreMail's Authentication-Results verdict and nothing from this module.
 import CoreTime
+import HasalaText
 
 /// Which part the text came from.
 public enum PartUsed: String, Sendable, Equatable {
@@ -399,7 +400,7 @@ public enum Normalizer {
     out.reserveCapacity(decoded.count)
     var line: Scalars = []
     func flush() {
-      let t = Unwrap.trimExplicit(line[...])
+      let t = line.trimming(.unwrapTrim)
       if !t.isEmpty {
         if !out.isEmpty { out.append("\n") }
         out.append(contentsOf: t)
@@ -429,7 +430,8 @@ public enum Normalizer {
 
   /// RFC 3339 UTC with no fractional seconds (Go's time.RFC3339 for a UTC time).
   static func format(_ d: Unwrap.NaiveDateTime) -> String {
-    "\(pad(d.year, 4))-\(pad(d.month, 2))-\(pad(d.day, 2))T\(pad(d.hour, 2)):\(pad(d.minute, 2)):\(pad(d.second, 2))Z"
+    let date = "\(Civil.pad(d.year, 4))-\(Civil.pad(d.month, 2))-\(Civil.pad(d.day, 2))"
+    return "\(date)T\(Civil.pad(d.hour, 2)):\(Civil.pad(d.minute, 2)):\(Civil.pad(d.second, 2))Z"
   }
 
   static func format(epochMs: Int64) -> String {
@@ -440,10 +442,5 @@ public enum Normalizer {
       Unwrap.NaiveDateTime(
         year: Int(y), month: m, day: d, hour: Int(rem / 3_600_000), minute: Int(rem / 60_000 % 60),
         second: Int(rem / 1000 % 60)))
-  }
-
-  static func pad(_ n: Int, _ width: Int) -> String {
-    let s = String(n)
-    return s.count >= width ? s : String(repeating: "0", count: width - s.count) + s
   }
 }

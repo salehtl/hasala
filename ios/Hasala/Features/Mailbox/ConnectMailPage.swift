@@ -74,12 +74,16 @@ struct ConnectMailPage: View {
     coordinator.reset()
     Task {
       await coordinator.retry(provider)
-      if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
+      finish(coordinator, mailbox)
     }
   }
 
   private func run(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) async {
     await coordinator.connect(provider)
+    finish(coordinator, mailbox)
+  }
+
+  private func finish(_ coordinator: MailConnectCoordinator, _ mailbox: MailboxConnecting) {
     if case .connected(let id)? = coordinator.outcome { connected(id, mailbox, coordinator.context) }
   }
 
@@ -115,11 +119,7 @@ struct ConnectMailPage: View {
       app.say(coordinator?.signedInAgainLine ?? MailCopy.signedInAgain(provider))
       MailboxMoment.hand(.signedInAgain(mailboxID: id))
     }
-    if let i = app.router.profile.lastIndex(of: .bankAlerts) {
-      app.router.profile.removeSubrange((i + 1)...)
-    } else {
-      app.router.profile = [.bankAlerts]
-    }
+    app.router.backToBankAlerts()
   }
 }
 

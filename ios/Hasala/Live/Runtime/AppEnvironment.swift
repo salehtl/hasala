@@ -50,9 +50,6 @@ final class AppEnvironment {
     self.hasPasscode = hasPasscode
   }
 
-  /// `Hasala-Client: ios/<version>/<build>` (`02` §6.1).
-  var clientHeader: String { "ios/\(build.marketingVersion)/\(build.buildNumber)" }
-
   /// `CFBundleVersion` as the launch probe compares it with `meta.min_ios_build`.
   var buildNumber: Int { Int(build.buildNumber.split(separator: ".").joined()) ?? 0 }
 
@@ -103,11 +100,7 @@ final class AppEnvironment {
     _ = keychain.purgeAll(groups: [Self.keychainGroup, Self.sharedKeychainGroup])
     LocalAccountData.forget()
     if let pending { try? secrets.writeSession(pending) }
-    if let grant {
-      // Through the queue a later connect waits for (`MailGrantEnds`).
-      let build = self.build
-      MailGrantEnds.shared.enqueue { await MailboxLane.endGrant(grant, build: build, stopWatch: false) }
-    }
+    MailboxLane.endGrantLater(grant, build: build)
   }
 
   /// `<Application Support>/Hasala/accounts`; each account's store is `<user_id>/` below it.

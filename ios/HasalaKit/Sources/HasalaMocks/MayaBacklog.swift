@@ -55,9 +55,6 @@ public enum MayaBacklog {
   public static let brightwellGroup = MerchantGroupRef(key: brightwell.group, direction: .out)
   public static let saffronGroup = MerchantGroupRef(key: saffron.group, direction: .out)
   public static let nimbusGroup = MerchantGroupRef(key: nimbusCom.group, direction: .out)
-  public static let alNoorTradingGroup = MerchantGroupRef(key: alNoorTrading.group, direction: .out)
-  public static let alNoorPharmacyGroup = MerchantGroupRef(key: alNoorPharmacy.group, direction: .out)
-  public static let mirdifGroup = MerchantGroupRef(key: mirdif.group, direction: .out)
 
   public static let wrongGuess: CategoryID = "shopping"
 

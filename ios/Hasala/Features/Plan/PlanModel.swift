@@ -87,7 +87,7 @@ final class CategoryDetailViewModel: CategoryDetailModel {
   func moveMoneyIn() { app.openPlanSheet(.moveMoney(to: category)) }
   func open(_ txn: TxnID) { app.open(txn) }
   func openRules() {
-    if app.planInProfile { app.router.profile.append(.rules) } else { app.router.open(.profile, profile: [.rules]) }
+    if app.showingProfile { app.router.profile.append(.rules) } else { app.router.open(.profile, profile: [.rules]) }
   }
 
   // TODO(spec 12 §7): "Add a rule" needs a rule-making screen (Categories and rules).
@@ -232,18 +232,17 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       out.append(MoveSource(id: nil, name: "Ready to assign", glyph: .wallet, hue: .mint, available: p.readyToAssign,
                             detail: MoneyPhrase([.amount(p.readyToAssign, hidden: 3), .text(" not in a budget yet")])))
     }
-    func left(_ r: PlanRowModel) -> Int64 { r.budget.minor.minus(r.spent.minor) }
     func rows(_ bucket: Bucket) -> [PlanRowModel] {
-      p.sections.first { $0.bucket == bucket }?.rows.filter { $0.id != destination && left($0) > 0 } ?? []
+      p.sections.first { $0.bucket == bucket }?.rows.filter { $0.id != destination && $0.leftMinor > 0 } ?? []
     }
     let everyday = [Bucket.wants, .needs].flatMap { bucket in
       rows(bucket).enumerated()
         .filter { $0.element.paced && $0.element.verdict == .onTrack }
-        .sorted { (left($0.element), -$0.offset) > (left($1.element), -$1.offset) }
+        .sorted { ($0.element.leftMinor, -$0.offset) > ($1.element.leftMinor, -$1.offset) }
         .map(\.element)
     }
     for r in everyday + rows(.savings) {
-      let l = Money.aed(left(r))
+      let l = Money.aed(r.leftMinor)
       out.append(MoveSource(
         id: r.id, name: r.name, glyph: r.glyph, hue: r.hue, available: l,
         detail: MoneyPhrase([.amount(l, hidden: 3), .text(r.spent.isZero ? " left · nothing spent yet" : " left")])
@@ -252,10 +251,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
     return out
   }
 
-  var destinations: [CategoryOption] {
-    let s = app.store.state
-    return [Bucket.needs, .wants, .savings].flatMap { s.categories(in: $0) }.map(CategoryOption.init)
-  }
+  var destinations: [CategoryOption] { app.store.state.budgetCategoryOptions }
 
   func setBudget(_ amount: Money) -> Bool { setBudget(amount, takingFrom: nil) }
 
@@ -278,7 +274,7 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       return amount.minor > plan.readyToAssign.minor ? "Ready to assign doesn't have that much" : nil
     }
     guard let r = plan.row(source) else { return nil }
-    return amount.minor > r.budget.minor.minus(r.spent.minor) ? "\(r.name) doesn't have that much left" : nil
+    return amount.minor > r.leftMinor ? "\(r.name) doesn't have that much left" : nil
   }
 
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool {
@@ -289,4 +285,14 @@ final class BudgetSheetViewModel: BudgetSheetModel {
   }
 
   func close() { app.closePlanSheet() }
+}
+
+extension PlanRowModel {
+  var leftMinor: Int64 { budget.minor.minus(spent.minor) }
+}
+
+extension LedgerState {
+  var budgetCategoryOptions: [CategoryOption] {
+    [Bucket.needs, .wants, .savings].flatMap { categories(in: $0) }.map(CategoryOption.init)
+  }
 }

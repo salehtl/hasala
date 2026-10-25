@@ -53,6 +53,8 @@ public enum ExtractMailKind: String, Sendable, Codable, CaseIterable {
   case accountDebitAlert = "account_debit_alert"
   case accountCreditAlert = "account_credit_alert"
   case other
+
+  var isCard: Bool { self == .cardPurchase || self == .cardRefund }
 }
 
 public struct ExtractReading: Sendable, Equatable {

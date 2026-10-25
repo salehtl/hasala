@@ -63,6 +63,10 @@ nonisolated struct SortMemory: Codable, Sendable, Equatable {
     batches.reversed().lazy.compactMap { $0.prior[txn] }.first
   }
 
+  mutating func stopReruns(ruleID: String) {
+    for i in batches.indices where batches[i].ruleID == ruleID { batches[i].rerun = false }
+  }
+
   mutating func refiled(_ txn: String, from p: Prior, written: Int64) {
     for i in batches.indices where batches[i].prior[txn] == p { batches[i].prior[txn]?.written = written }
   }

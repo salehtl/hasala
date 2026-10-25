@@ -39,8 +39,6 @@ public protocol MailTokenProvider: Sendable {
   func accessToken(forceRefresh: Bool) async throws(MailAuthError) -> AccessToken
 }
 
-public typealias GmailTokenProvider = MailTokenProvider
-
 public struct SecretUnavailable: Error, Sendable, Equatable {
   public init() {}
 }
@@ -54,8 +52,6 @@ public protocol MailRefreshTokenStore: Sendable {
   func write(_ token: String) throws(SecretUnavailable)
   func delete() throws(SecretUnavailable)
 }
-
-public typealias GmailRefreshTokenStore = MailRefreshTokenStore
 
 /// An in-memory `MailRefreshTokenStore` (tests, previews). `locked` simulates before-first-unlock.
 public final class MemoryMailRefreshTokenStore: MailRefreshTokenStore, @unchecked Sendable {
@@ -124,8 +120,6 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
       cached = nil
       try? store.delete()
       throw .reconnectRequired
-    } catch .offline {
-      throw .offline
     } catch {
       // A 5xx or an unreadable body: not the user's fault, retried on the next trigger.
       throw .offline

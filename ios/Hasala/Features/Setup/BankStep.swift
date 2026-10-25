@@ -181,29 +181,16 @@ private struct GoogleBriefingCard: View {
         .hType(.overline)
         .foregroundStyle(HColor.statusWarningForeground)
         .accessibilityAddTraits(.isHeader)
-      item(1, "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.")
-      item(2, "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.")
+      NumberedLine(number: 1, text: "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.",
+                   numberColor: HColor.statusWarningForeground)
+      NumberedLine(number: 2, text: "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.",
+                   numberColor: HColor.statusWarningForeground)
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(HColor.statusWarningSurface, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("mail.googleBriefing")
-  }
-
-  private func item(_ n: Int, _ text: String) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Text(verbatim: "\(n)")
-        .hType(HType.subheadline.weight(.bold))
-        .foregroundStyle(HColor.statusWarningForeground)
-        .frame(minWidth: 20, alignment: .leading)
-      Text(text)
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textPrimary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .accessibilityElement(children: .combine)
   }
 }
 
@@ -268,18 +255,7 @@ private struct BankAlertsSteps: View {
           .accessibilityAddTraits(.isHeader)
       }
       ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          Text(verbatim: "\(i + 1)")
-            .hType(HType.subheadline.weight(.bold))
-            .foregroundStyle(HColor.textSecondary)
-            .frame(minWidth: 20, alignment: .leading)
-          Text(step)
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textPrimary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .accessibilityElement(children: .combine)
+        NumberedLine(number: i + 1, text: step, numberColor: HColor.textSecondary)
       }
     }
     .padding(16)
@@ -287,6 +263,27 @@ private struct BankAlertsSteps: View {
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("alertsHelp.\(bank.rawValue)")
+  }
+}
+
+private struct NumberedLine: View {
+  let number: Int
+  let text: String
+  let numberColor: Color
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      Text(verbatim: "\(number)")
+        .hType(HType.subheadline.weight(.bold))
+        .foregroundStyle(numberColor)
+        .frame(minWidth: 20, alignment: .leading)
+      Text(text)
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .accessibilityElement(children: .combine)
   }
 }
 
