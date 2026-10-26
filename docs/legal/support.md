@@ -1,9 +1,9 @@
 ---
 title: "Help and Support"
-description: "Answers for Hasala beta testers: connecting Gmail or Outlook, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-24
+description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
+lastUpdated: 2026-10-26
 status: "final"
-plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
+plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
 
 Hasala is an experimental beta: features change often, things can break, and data can be lost or reset (see [An experimental beta](/terms#an-experimental-beta)). This page is help for the beta, not a promise about how Hasala works. A screen, a button or a step may not look exactly as described here.
@@ -12,7 +12,7 @@ Hasala is an experimental beta: features change often, things can break, and dat
 
 ### What is Hasala?
 
-Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the UAE. It reads your bank alert emails from your Gmail or Outlook on your iPhone and turns them into transactions. It then helps you plan your month, track bills and see where your money goes. Its App Store name is "Hasala Budgeting", but it isn't on the App Store yet: the beta runs on TestFlight. On your home screen it's just "Hasala".
+Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the UAE. It reads your bank alert emails from your Gmail or Outlook, or your bank's texts, on your iPhone and turns them into transactions. It then helps you plan your month, track bills and see where your money goes. Its App Store name is "Hasala Budgeting", but it isn't on the App Store yet: the beta runs on TestFlight. On your home screen it's just "Hasala".
 
 ### How do I join the beta?
 
@@ -22,11 +22,11 @@ To leave the waitlist, open the **Leave the list** link in any email we sent you
 
 ### Which banks work?
 
-At the time of writing, Hasala reads alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB). If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
+At the time of writing, Hasala reads alert emails from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB), and bank texts from DIB. Payment texts from other banks wait for you in **Review**, where you can check the details. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
 
 ### Does Hasala need my bank password?
 
-No. Hasala never connects to your bank and never asks for your bank details. It reads the alert emails your bank already sends to your Gmail or Outlook, with read-only access.
+No. Hasala never connects to your bank and never asks for your bank details. It reads the alert emails your bank already sends to your Gmail or Outlook, with read-only access, or the texts your bank already sends to your iPhone.
 
 ### Can Hasala read my other emails?
 
@@ -105,7 +105,7 @@ During the beta, Google shows a warning when you connect Gmail, because its revi
 
 ### Does Hasala work with SMS alerts or email forwarding?
 
-No. Hasala reads alerts from Gmail or Outlook only, and email forwarding isn't offered. If your bank sends only SMS alerts, check its app or online banking for an option to also send alerts by email.
+SMS alerts, yes: see [Bank texts](#bank-texts). Email forwarding isn't offered.
 
 ### Is Hasala available in Arabic, or on Android?
 
@@ -123,9 +123,53 @@ Not in the beta yet. Hasala doesn't put notifications on your Lock Screen, and t
 
 At [github.com/salehtl/hasala](https://github.com/salehtl/hasala). It's source-available under the Functional Source License (FSL-1.1-ALv2): you can read, run and change it, but not use it in a commercial product or service that competes with Hasala. Each version becomes available under the Apache License 2.0 two years after it's released. The name Hasala and the Slot mark are trademarks and aren't covered by the licence. See [LICENSE.md](https://github.com/salehtl/hasala/blob/main/LICENSE.md) for the exact terms.
 
+## Bank texts
+
+Instead of connecting an email account, Hasala can read the texts (SMS) your bank sends to your iPhone. Each iPhone uses one or the other: bank email or bank texts. Texts are read on your iPhone and never sent to our server or anyone else (see [Bank texts](/privacy#bank-texts) in our Privacy Policy).
+
+### How do I set up bank texts?
+
+During setup, at **How do your banks reach you?**, choose texts. If you've already finished setup, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
+
+1. Tap **Automation**, then make a new automation and choose **Message**.
+2. Leave the sender and **Message contains** empty, so it runs for any message. Choose **Run Immediately**, then tap **Next**.
+3. Tap **New Blank Automation**, then **Add Action**.
+4. Find **Hasala** and choose **Add bank text**. Check that its input is the message, then tap **Done**.
+
+Back in Hasala, tap **Test** and send yourself a text that says "Hasala test". Hasala tells you when it arrives. You can also skip the test, and Hasala confirms the automation with your next bank text. **Show me how** in Hasala shows the same steps with pictures.
+
+The automation only sees texts that arrive after you make it. To bring in an older bank text, paste it (see below).
+
+### Why does the automation run for every text?
+
+Bank texts often don't share a word that Shortcuts could filter on, and a filter would miss payments without any sign. So the automation hands every text to Hasala, and Hasala looks at each one on your iPhone. It keeps only your banks' payment texts. Every other text, such as a message from a person, a one-time code or a promotion, is dropped at once and never stored.
+
+### How do I paste a bank text?
+
+In Messages, touch and hold the bank's text and tap **Copy**. In Hasala, tap **Paste a bank text** in **Review** or in **Profile › Bank alerts**. A pasted text always waits in Review for you to check.
+
+### How do I stop bank texts?
+
+Open the **Shortcuts** app, tap **Automation**, then swipe left on the Hasala automation and tap **Delete**. Hasala then gets no more texts. Transactions it has already brought in stay.
+
+### How do I switch between bank texts and email?
+
+Go to **Profile › Bank alerts** and switch the source. Hasala asks you to confirm first. Transactions it has already brought in stay.
+
+- **From texts to email:** Hasala brings in only emails newer than your last payment from a text, so nothing is counted twice. From then on, Hasala ignores texts the automation hands it, so delete the automation in Shortcuts (see above).
+- **From email to texts:** Hasala disconnects your mailbox and reads texts from then on. Make the automation as above.
+
+### Bank texts not showing up?
+
+1. In **Profile › Bank alerts**, check when the automation last ran.
+2. In Shortcuts, check that the automation is still there, that it runs for any message, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
+3. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. The text stays in Messages, so paste it.
+4. Only DIB texts are read fully at the time of writing. Payment texts from other banks wait in **Review**.
+5. If you're still stuck, email us (see [Contact us](#contact-us)). Tell us which bank it is and what **Profile › Bank alerts** says. Please don't send the text itself or a screenshot of it.
+
 ## Missing transactions or alerts
 
-If transactions aren't showing up, work through these checks in order.
+If transactions from bank email aren't showing up, work through these checks in order. For bank texts, see [Bank texts not showing up?](#bank-texts-not-showing-up).
 
 ### 1. Check that your email is still connected
 
@@ -176,7 +220,7 @@ Your sealed data is kept on our server, so you can move to a new iPhone without 
 1. Sign in to the same Apple Account on your new iPhone, with iCloud Keychain (Passwords) turned on.
 2. Install Hasala from TestFlight and open it.
 3. Sign in with Face ID. Your passkey unlocks your data.
-4. Connect your email again on this iPhone. During setup, at **Choose your email**, or later in **Profile › Bank alerts** with **Add a mailbox**, choose Gmail or Outlook and sign in. If your old iPhone is still reading your mailbox, Hasala asks **Read your email on this iPhone?** Tap **Read it here**. The old iPhone then stops reading, and your past transactions stay.
+4. Connect your email again on this iPhone, or, if you use bank texts, make the automation again in Shortcuts on this iPhone (see [Bank texts](#bank-texts)). For email: during setup, at **Choose your email**, or later in **Profile › Bank alerts** with **Add a mailbox**, choose Gmail or Outlook and sign in. If your old iPhone is still reading your mailbox, Hasala asks **Read your email on this iPhone?** Tap **Read it here**. The old iPhone then stops reading, and your past transactions stay.
 5. Your old iPhone stays on your list of devices. The beta app can't remove devices yet. If you lose or sell it, email us.
 
 Some passkey managers other than iCloud Keychain can't unlock Hasala on a new device. If yours can't, Hasala asks for your 12-word recovery phrase instead.
@@ -224,6 +268,7 @@ Afterwards:
 - Your passkey stays in your passkey manager. To remove it, open the **Passwords** app, find Hasala and delete it.
 - You can check that Hasala no longer has Gmail access in your Google Account's security settings (at the time of writing, under **Security › Your connections to third-party apps and services**).
 - If you connected Outlook, remove Hasala's permission at [account.live.com/consent/Manage](https://account.live.com/consent/Manage). At the time of writing, Microsoft doesn't let an app remove its own permission, so Hasala can't do this for you.
+- If you used bank texts, delete the automation in the **Shortcuts** app.
 - Delete the Hasala app.
 
 If you can't open the app any more and want your account deleted, email privacy@hasala.app from your account's email address. We'll reply to that address and ask you to confirm before we delete anything.

@@ -1,9 +1,9 @@
 ---
 title: "Privacy Policy"
-description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, and your rights under UAE law."
-lastUpdated: 2026-10-24
+description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, how bank texts are read, and your rights under UAE law."
+lastUpdated: 2026-10-26
 status: "final"
-plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts from your Gmail or Outlook on your iPhone and encrypts your transactions there before they sync. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
+plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts on your iPhone, from your Gmail or Outlook or from your bank's texts, and encrypts your transactions there before they sync. Bank texts never leave your iPhone, and texts that aren't your bank's payments are dropped without being stored. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
 
 ## An experimental beta
@@ -29,6 +29,7 @@ This policy covers the Hasala iPhone app (App Store name "Hasala Budgeting"), th
 ## The short version
 
 - **Your bank emails are read on your iPhone.** Hasala connects to your Gmail or Outlook mailbox with read-only access. Your iPhone fetches only messages from your banks' alert addresses. The emails themselves are never sent to our server.
+- **Or your bank texts are read on your iPhone.** If you choose bank texts instead of email, an automation you make in Apple's Shortcuts app hands each text you receive to Hasala on your iPhone. Hasala keeps only your banks' payment texts and drops every other text at once, without storing it. No text is sent to our server or anyone else.
 - **Your money data is sealed on your iPhone before it syncs.** Your transactions, amounts, merchants, categories, budgets, bills and rules are encrypted on your iPhone before they leave it. Our server can't read them.
 - **Our server still sees some things.** It sees your email address and name, that your account exists, details about your sign-in methods and devices, when you sync and how much sealed data you store, and a keyed hash of your Gmail or Outlook address with the timing of changes in your mailbox. From that timing it can tell roughly when, and how often, you get bank alerts, though not what they say. We list all of it below.
 - **No ads, no data sales. AI services only if you ask.** Hasala sorts transactions on your iPhone. If you turn on Cloud suggestions (off by default), Hasala sends merchant names to Cloudflare's AI service for suggested categories, one name per request, and only while Hasala is open on screen. When you leave the app, no new request starts, though requests already sent can finish. A name isn't sent with your name, your account or anything that links it to you, and it isn't kept. Data from your Gmail or Outlook is never used to train AI models (see [Cloud suggestions](#cloud-suggestions), [Limited Use](#limited-use) and [Outlook and Microsoft account data](#outlook-and-microsoft-account-data), below).
@@ -40,8 +41,9 @@ Some things never leave your iPhone. Others leave only in sealed form.
 ### Never leaves your iPhone
 
 - **Your bank alert emails.** Your iPhone downloads them from Gmail or Outlook, reads them and keeps the details it needs: amount, merchant, date, card, and the Gmail or Outlook message ID so it can find the email again. The email itself isn't stored in your Hasala data and isn't sent to us.
+- **Your bank texts.** If you use bank texts, Hasala reads each text on your iPhone and keeps only the details it needs from your banks' payment texts: amount, merchant, date, card and bank. The text itself isn't stored in your Hasala data and isn't sent to us. Every other text is dropped at once (see [Bank texts](#bank-texts)).
 - **Your Gmail or Outlook access tokens.** The tokens that let Hasala read your mailbox are kept in your iPhone's Keychain, on this iPhone only. Our server never receives them.
-- **Your settings for this iPhone.** Examples are App lock, Show amounts and merchants, Cloud suggestions and Profile picture from Gravatar.
+- **Your settings for this iPhone.** Examples are App lock, Show amounts and merchants, Cloud suggestions, Profile picture from Gravatar, and whether this iPhone gets your payments from bank email or bank texts.
 - **What you ask Search.** If Apple Intelligence is on, Search can use Apple's on-device model to understand a question, such as "coffee last month". The model runs on your iPhone, and the question isn't sent anywhere. Your recent searches are kept only while the app is running.
 
 ### Leaves your iPhone only in sealed form
@@ -110,7 +112,7 @@ Some records last only minutes:
 | When each device syncs, a rough size for each upload, and how much sealed data you store | To keep sync in order, apply storage limits and stop abuse. |
 | Upload refusals: on a day our server refuses uploads from your account, the reason (such as a storage limit) and how many | To spot accounts that hit a limit, so nothing is lost without anyone knowing. Kept for 90 days. |
 
-Your iPhone uploads new transactions soon after a bank alert arrives. So our server, and Cloudflare in front of it, can tell roughly when, and how often, you get bank alerts. They can't tell what the alerts say.
+Your iPhone uploads new transactions soon after a bank alert or a bank text arrives. So our server, and Cloudflare in front of it, can tell roughly when, and how often, you get bank alerts or bank texts. They can't tell what they say.
 
 ### Gmail connection
 
@@ -182,6 +184,7 @@ On our website, you tell us your bank when you ask for an invite (see [The websi
 ### What we don't collect
 
 - Your bank emails, or any other email in your Gmail or Outlook.
+- Your bank texts, or any other text message.
 - Your amounts, merchants, categories, budget or plan in readable form.
 - Your recovery phrase or encryption keys in readable form, or your Gmail or Outlook access tokens.
 - Your contacts, location, photos or browsing activity on other sites.
@@ -205,7 +208,7 @@ We don't sell your data. We don't use it for advertising. We don't use it to dec
 Under the UAE Personal Data Protection Law, we rely on these grounds:
 
 - **Providing the service you asked for.** This covers running your account, sync and push.
-- **Your consent.** This covers connecting Gmail or Outlook. You give it in Hasala's email step and on Google's or Microsoft's permission screen, and you can withdraw it at any time. It also covers Cloud suggestions, which you turn on yourself and can turn off at any time.
+- **Your consent.** This covers connecting Gmail or Outlook. You give it in Hasala's email step and on Google's or Microsoft's permission screen, and you can withdraw it at any time. It also covers bank texts, which you turn on yourself by making the automation in Shortcuts, and can stop at any time by deleting it. It also covers Cloud suggestions, which you turn on yourself and can turn off at any time.
 - **Keeping the service secure.** We have a legitimate interest in stopping abuse and protecting your account and other users' accounts.
 - **Understanding how the website is used.** We have a legitimate interest in counting visits to hasala.app, in totals that are never linked to you, to see which pages help people.
 - **Complying with the law.**
@@ -288,6 +291,27 @@ You can disconnect Outlook in Hasala under Profile › Bank alerts. Hasala then 
 
 If your iPhone can't reach Microsoft when you disconnect, the notification setup Microsoft still holds is set to expire within 7 days. Until then, our server ignores its notices and stores nothing from them.
 
+## Bank texts
+
+Instead of connecting an email account, you can have Hasala read your bank's text messages (SMS). You choose one or the other on each iPhone: bank email or bank texts.
+
+### How it works
+
+- **You make an automation in Apple's Shortcuts app.** Hasala can't make it for you, and it can't read your Messages by itself. The automation runs when you get a message, from any sender, and hands that text to Hasala on this iPhone with Hasala's **Add bank text** action. Shortcuts may also give Hasala the sender's name or number, which Hasala uses only to check that the text came from your bank. Depending on your iOS version, iOS may show a short banner when the automation runs; that banner comes from iOS, not from Hasala. Hasala's set-up screen and our [Support](/support#bank-texts) page show the steps.
+- **Every text you receive is handed to Hasala.** Bank texts often don't share a word Shortcuts could filter on, so the automation doesn't filter. Hasala looks at each text on your iPhone and decides at once whether it is a payment text from a bank.
+- **Hasala keeps only your banks' payment texts.** Any other text, such as a message from a person, a one-time code, a declined payment, a card or service notice or a promotion, is dropped at once. Hasala doesn't store it, show it or send it anywhere. At most, it counts how many texts it dropped, on your iPhone.
+- **From a payment text, Hasala keeps only the details it needs**: amount, merchant, date, card and bank, plus a code made from the text so the same text isn't added twice. The code can't be turned back into the text. These details become transactions, which are encrypted on your iPhone before they sync, like transactions from email. The text itself isn't stored in your Hasala data.
+- **It is read on your iPhone.** Hasala reads the text with its own rules for your bank's texts. If it can't read a text that way, it tries its general readers, and it may also use Apple's on-device model if Apple Intelligence is on. That model runs on your iPhone. What these read waits for you in Review; Apple's model never files a payment by itself. At the time of writing, Hasala has rules for texts from Dubai Islamic Bank (DIB). Payment texts from other banks wait for you in Review.
+- **Nothing is sent to our server or anyone else.** No text, sender or detail from a text leaves your iPhone, except as sealed data our server can't open. The only exception is a merchant name, and only if you turn on [Cloud suggestions](#cloud-suggestions).
+- **Before you first unlock your iPhone after a restart**, Hasala can't open its data, so it stores nothing from a text that arrives then. The text stays in Messages, and you can paste it into Hasala later.
+- **You can also paste a bank text** into Hasala yourself. A pasted text always waits for you in Review.
+
+Our server isn't involved in any of this, so it doesn't learn that you use bank texts, except that your iPhone uploads sealed transactions soon after a bank text arrives (see [Sync](#sync)).
+
+### Stopping bank texts
+
+Delete the automation in the Shortcuts app (Automation, then swipe left on it). Hasala then gets no more texts. If you switch this iPhone to bank email in Hasala, under Profile › Bank alerts, Hasala also ignores any text the automation still hands it, and tells you to delete the automation. Transactions it has already brought in stay in Hasala until you delete them.
+
 ## Encryption in plain words
 
 Your transactions, amounts, merchants, categories, budgets, bills and rules are encrypted on your iPhone before they leave it. Our server can't read them. This is what we mean by end-to-end encrypted: the data is sealed on your iPhone and opened only on your devices, and our server stores and passes along only the sealed copies.
@@ -330,11 +354,11 @@ With Cloud suggestions off, no AI model sorts your payments.
 
 **Merchant suggestions.** When your rules and the merchant list can't place a payment, and you haven't picked a category for that merchant yourself, Hasala asks Cloudflare's AI service to suggest one. If Cloudflare can't help, Hasala asks Apple's on-device model instead, which reads only names written in Latin letters. Apple's model doesn't file a payment by itself. Each request to Cloudflare carries:
 
-- the merchant name from the alert, for example "CAFE EXAMPLE JBR" (Hasala sends it in lower case, and shortens a very long one);
+- the merchant name from the alert or text, for example "CAFE EXAMPLE JBR" (Hasala sends it in lower case, and shortens a very long one);
 - the built-in Need and Want categories you have on: their names, their IDs and the short built-in descriptions that explain each one; and
 - the app's name and version, so that the service can turn away a faulty build.
 
-It doesn't send the amount, the date, your card, your bank, the names of categories you added or renamed, or anything about your account. Hasala sends names only from payments that left your account, and only from bank alerts it read, never from a payment you added yourself. Each merchant is sent on its own. The suggestion is labelled as coming from Cloudflare's AI, and the payment stays in Review until you confirm or change it.
+It doesn't send the amount, the date, your card, your bank, the names of categories you added or renamed, or anything about your account. Hasala sends names only from payments that left your account, and only from bank alerts or bank texts it read, never from a payment you added yourself. From a bank text, it sends only the merchant name, never the text or its sender. Each merchant is sent on its own. The suggestion is labelled as coming from Cloudflare's AI, and the payment stays in Review until you confirm or change it.
 
 **Working through what's waiting.** With Merchant suggestions on, Hasala works through the merchants waiting in Review by itself. It does this a few names at a time, within a daily limit on each iPhone, and only while Hasala is open on screen. When you leave the app, no new request starts, though requests already sent can finish. No request starts when iOS wakes Hasala in the background, for example to sync. It shows no card or count while it works. It asks about each merchant name once, and keeps the answer on that iPhone for up to 30 days so that it doesn't ask again. An answer you turned down with Not this is kept on that iPhone until your account's data leaves it, so that Hasala doesn't ask Cloudflare about that name again. Turning off Merchant suggestions stops it at once. In Profile › Cloud suggestions, you can send the payments it sorted on that iPhone back to Review.
 
@@ -399,6 +423,7 @@ Our server is located in the United Arab Emirates. Cloudflare, Google, Microsoft
 | Upload refusals (the reason and the day) | 90 days. |
 | Sign-up, email-code and other sign-in steps | Minutes (see [How you sign in](#how-you-sign-in)). |
 | Cloud suggestions requests | Not kept. Our service answers each request and forgets it. Cloudflare's rate limit counts by IP address last about a minute, and AI Gateway keeps only totals. On your iPhone, Hasala keeps each answer for up to 30 days, so that it doesn't ask about the same name twice. An answer you turned down with Not this is kept on that iPhone until your account's data leaves it, so that Hasala doesn't ask Cloudflare about that name again. |
+| Bank texts | Not stored. Texts that aren't your banks' payment texts are dropped at once. From a payment text, Hasala keeps only the details listed in [Bank texts](#bank-texts), as sealed transactions, until you delete them or your account. |
 | Data on your iPhone | Until you delete your account. Signing out keeps your data on the iPhone. Deleting the app removes it from the iPhone. |
 | If we reset or end the beta | Accounts and their data are deleted from our server, as when you delete your account. Encrypted backups expire within 30 days. Where we can, we tell you in the app or by email first, so that you can export your data. |
 
@@ -419,8 +444,9 @@ Some things remain for a while afterwards:
 - the restore record of the deletion, which holds only your random account ID, for 60 days;
 - admin records that refer to you by an internal ID only, for up to 400 days;
 - Apple's TestFlight record of you, until we remove you from the beta (after that, Apple's own retention applies);
-- Cloudflare's own records of delivering our emails, under Cloudflare's retention; and
-- if you connected Outlook, Hasala's permission in your Microsoft account until you remove it at [account.live.com/consent/Manage](https://account.live.com/consent/Manage).
+- Cloudflare's own records of delivering our emails, under Cloudflare's retention;
+- if you connected Outlook, Hasala's permission in your Microsoft account until you remove it at [account.live.com/consent/Manage](https://account.live.com/consent/Manage); and
+- if you used bank texts, the automation you made in the Shortcuts app, until you delete it there.
 
 Your passkey stays in your passkey manager until you delete it there, for example in the Passwords app. Step-by-step instructions are on our [Support](/support) page.
 

@@ -1,15 +1,16 @@
 # Bank texts through Shortcuts (decision record)
 
-**Status: PROPOSED (2026-10-26). Nothing is built.** This record collects the options for
-a second way in for transactions: the bank's SMS alerts, handed to Hasala on the phone by
-an iOS Shortcuts automation. The questions for the owner are in
-[Decisions for the owner](#decisions-for-the-owner); each one marked **Open (owner)** waits
-for an answer. Every example in this file is synthetic.
+**Status: DECIDED (owner, 2026-10-26). Build in progress.** Bank texts are a second way in
+for transactions: the bank's SMS alerts, handed to Hasala on the phone by an automation
+that the person makes in Apple's Shortcuts app. A person uses bank email **or** bank texts,
+not both. The decisions are in [Decisions](#decisions). The questions that only the beta can
+answer are in [Open checks](#open-checks-for-the-beta). Every example in this file is
+synthetic.
 
 ## The problem
 
-Today a transaction comes only from bank mail that the phone reads from Gmail or Outlook.
-This leaves out three groups of people:
+Before this, a transaction came only from bank mail that the phone reads from Gmail or
+Outlook. This left out three groups of people:
 
 - People whose bank texts a card payment but sends no mail for it, or sends mail only when
   they turn it on.
@@ -17,8 +18,8 @@ This leaves out three groups of people:
 - People past the Google limit. The Google OAuth consent is not verified, and it allows 100
   users or fewer.
 
-Almost every UAE bank texts each card payment. A path for bank texts would let a person use
-Hasala with no mailbox at all.
+Almost every UAE bank texts each card payment. With bank texts, a person can use Hasala with
+no mailbox at all.
 
 ## Rules that do not change
 
@@ -26,179 +27,148 @@ Hasala with no mailbox at all.
   nothing sends it to any other service.
 - **No raw message in the op log.** As with mail, only the parsed fields go into an op,
   with a key that cannot be reversed to the text.
-- **Nothing is dropped silently.** A text that the phone cannot read becomes an empty row
-  in Review, or is set aside and shown, as mail is in
-  `ios/HasalaCore/Sources/HasalaCore/Mailbox/Disposition.swift`.
+- **Nothing is dropped silently.** A bank payment text that the phone cannot read becomes a
+  row in Review, prefilled when a reader reads it, as mail does in
+  `ios/HasalaCore/Sources/HasalaCore/Mailbox/Disposition.swift`. Only texts that are not
+  bank payments are dropped (D11).
 
-## Options
+## What was decided
 
-### 1. A Messages automation that calls a Hasala action (recommended)
+### One catch-all automation
 
 The app adds an App Intent, "Add bank text", with a `text` parameter and an optional
-`sender` parameter. An `AppShortcutsProvider` registers it, so the action shows in Shortcuts
-with nothing to install and no shared iCloud shortcut. The only App Intents today are the
-widget ones (`ios/HasalaWidgets/Intents.swift`).
+`sender` parameter. An `AppShortcutsProvider` in the main app target registers it, so the
+action shows in Shortcuts with nothing to install and no shared iCloud shortcut. It runs
+without opening the app (`openAppWhenRun = false`).
 
-The person makes the automation once, in Shortcuts:
+The person makes **one** automation, once, in Shortcuts:
 
 1. Automation → New → Message.
-2. Filter by sender, or by "Message contains" with a word the bank's texts always use.
+2. Any sender, with no "Message contains" filter.
 3. Run Immediately.
-4. Action: Hasala → Add bank text, with the message as its input.
+4. New Blank Automation → Add Action.
+5. Hasala → Add bank text, with the message as its input.
 
-What iOS allows:
+There are no filter words for each bank and no automation for each bank. Why: in the
+owner's DIB texts, only about 5% of the payment texts contain "AED". Most Arabic purchase
+texts carry no currency word at all, so a "contains AED" filter would miss most payments,
+with no sign that they are missing. A filter by sender does not work either, because bank
+sender IDs are not contacts. (These are aggregate counts only. No text from that export is
+in this repository.)
 
-- Since iOS 17, a Message automation can run immediately, with no tap to confirm.
-- iOS always shows a banner when one of these automations runs. The app cannot hide it.
+Thus the action runs on every incoming text. Hasala looks at each text on the phone, keeps
+only bank payment texts, and drops every other text at once without storing it (D11). The
+privacy policy and the set-up screen say this plainly.
+
+What iOS allows, as the owner tested on a real iPhone:
+
+- The Message trigger fires on incoming texts and passes the message content.
+- A text sent to your own number fires it. This is the set-up test.
 - An app cannot make the automation for the person. Hasala can only guide them.
-- An automation sees only texts that arrive after it is made. It cannot read older texts.
+- An automation sees only texts that arrive after it is made. Older texts can be pasted.
 
-**To check on a real iPhone before any build:**
+The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
+ago", the last text for each bank).
 
-- The exact fields of the Message trigger, and whether the action gets the sender or only
-  the text. Bank sender IDs are usually not contacts, so "Message contains" may be the only
-  filter that works. In that case the action treats each text as from an unknown sender,
-  and the app words its filtering by content, not by sender.
-- Whether a text sent to your own number fires the automation (the set-up test).
-- Whether the action can run and write while the iPhone is locked.
-- Whether the "Running your automation" banner can be turned off for this trigger. Sources
-  disagree for iOS 18.
-- Whether the action can take the message as its input by default, so the person does not
-  set it by hand.
-- Whether iOS lists the action before Hasala has been opened once.
+### One source for each person
 
-Until each is checked, the app's copy says "to verify" or avoids the claim. The app cannot
-see the automation, so its status shows only what it observed ("Last ran 4 min ago").
+A person sets up bank email or bank texts, never both, on each device. Thus the same
+payment cannot arrive through two channels, and no merge is needed.
 
-The app needs a setup screen ("Bank texts") with the steps for each bank and a test step.
-In the test step, the person sends themselves a fixed phrase. The action recognises it and
-confirms that the automation works. This screen goes on the Release surface (`BuildSurface`)
-only when the path operates.
+- Onboarding asks "How do your banks reach you?" (email or texts, neither preselected).
+- With texts set up, the mailbox connect is not offered, and the reverse.
+- To change, the person switches in Profile › Bank alerts. The switch stops the old
+  channel: it disconnects the mailbox, or Hasala ignores texts from then on and tells the
+  person to delete the automation in Shortcuts. Rows already added stay.
+- Switching from texts to email sets a cutoff (D10).
 
-### 2. Paste or share one message
+### Reading happens inside Hasala, on the phone
 
-A "Paste bank message" control in Review, and the same App Intent from the share sheet. This
-is the only way to bring in texts from before the automation. One variant is "add from
-screenshot": the phone reads a screenshot of the bank's thread with Vision text recognition,
-on the device.
+In this order:
 
-### 3. Wallet transaction automation (beside option 1)
+1. A sender and kind gate: texts that are not bank payments are dropped (D11).
+2. The SMS templates. Templates gain a text channel: `channel: "sms"` (absent means mail),
+   `match.sms_sender` in place of `match.sender_domain`, and `date_from: "received"` for
+   texts that carry no date. Go (`server/internal/tmpl`) and Swift
+   (`HasalaCore/Template/Exec`) agree byte for byte, with the conformance sets.
+3. The template-free readers (`template-free-reading.md`), which fill Review.
+4. Apple's on-device model, as a fallback that only fills Review. It never files a row.
 
-The Wallet "Transaction" trigger gives the amount, the merchant and the card name when the
-person pays with Apple Pay. These are fields, not text, so nothing has to be parsed. It
-covers Apple Pay only. It is an early signal that the bank's text or mail later confirms,
-thus it needs the merge in [Duplicates](#duplicates-across-channels).
+Nothing is sent off the phone to read a text. A merchant name read from a text can go to
+Clef only under the Cloud suggestions opt-in, like a name read from mail
+(`cloud-suggestions.md`). The text itself, its sender and its other fields never do.
 
-### Ruled out
+**Templates tonight: DIB only.** DIB has SMS templates for its payment families (Arabic and
+English purchases, debits, credits and salary, reversals, refunds, own transfers and card
+payments). Texts from other banks go to Review, prefilled when a reader reads them. Real
+texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only.
+
+### The key for each text
+
+A text has no message ID. The key is a SHA-256 over the channel, the sender, the normalized
+text and the minute it arrived. An automation that runs two times for one text then makes
+one row. Identical texts at different times (for example two equal reversals) stay two
+rows, which the owner's DIB texts showed is needed.
+
+### The op log
+
+A row from a text uses only additive optional keys, with no new values in closed enums, so
+older clients still fold it. It carries an optional `channel: "sms"` for the source line.
+This is op-authoring code, which has the highest risk in the repository, thus it has its own
+review before it merges.
+
+### Cut from v1
+
+- The Live Activity guide for the set-up.
+- The "gone quiet" alert for a bank that sends no texts for some days.
+- The locked-phone inbox (see D6).
+- The Wallet transaction trigger (D7).
+
+## Ruled out
 
 - **A shortcut that sends the text to hasalad, or forwarding to a Hasala address.** The
   server would see plaintext. Shortcuts cannot do Hasala's encryption on the device.
 - **An SMS filter extension (`ILMessageFilterExtension`).** It is sandboxed and cannot share
   data with the app. Its only way out is a network request to our server, which is plaintext
   again.
+- **Filter words for each bank.** See [One catch-all automation](#one-catch-all-automation).
 
-## Design
+## Decisions
 
-### Trust
-
-Mail has trust gates: the provider's verdict, the verified bank domain, the template hit or
-the two readers' agreement, the card, the folder and the recipient check
-(`Disposition.swift`). A text has none of this. Sender IDs can be faked, and the action
-accepts any text that a shortcut gives it.
-
-Proposal: a text files with no review only when a template reads it and its sender matches
-the template's sender ID. Each other text goes to Review, prefilled when a reader reads it.
-A text from option 2 always goes to Review, because the person chose the text, not the bank.
-See D1.
-
-### Templates
-
-Texts need a new channel in the template definition: `match.sms_sender` in place of
-`match.sender_domain`, and the date from the time the text arrived. Today a template with no
-`sender_domain` fails to load (`server/internal/tmpl/def_test.go`), so the rule becomes "one
-of the two". This changes `server/internal/tmpl/def.go` and the Swift port, which must agree
-byte for byte. It needs:
-
-- A new conformance set for text templates, and its entry in the `CONFORMANCE` table in
-  `scripts/check.sh`.
-- Synthetic texts in `conformance/`, and real texts in `salehtl/hasala-fixtures` only.
-- The seed templates in `server/internal/tmpl/seed`, synced to the app with
-  `swift ios/tools/templates/sync.swift`.
-
-The template-free readers (`template-free-reading.md`) should read texts well, because texts
-are short and keep a fixed form. The extraction bench (`ios/tools/extract-bench`) can measure
-this on the owner's texts before any template is written.
-
-### Duplicates across channels
-
-**Decided by the owner (2026-10-26): a person sets up one or the other, a mailbox or bank
-texts, never both.** Thus the same payment cannot arrive through two channels, and no merge
-is needed.
-
-- Setup asks once how Hasala gets payments: bank email or bank texts.
-- With texts set up, the mailbox connect is not offered, and the reverse.
-- To change, the person switches in Settings. The switch stops the old channel: it
-  disconnects the mailbox, or Hasala ignores texts from then on and tells the person to
-  remove the automation in Shortcuts. Rows already added stay.
-
-A merge (amount, currency, card and a time window, like the DIB notice merge) is not
-planned. See D3.
-
-### The key for each text
-
-A text has no message ID. The key is a hash of the sender, the body and the minute it
-arrived. A shortcut that runs two times for one text then makes one row. Two equal payments
-in the same minute would make one key, but most texts include a balance or a time, thus
-their bodies differ. The hash is salted for each account, so it cannot be compared across
-people.
-
-### A locked phone
-
-The automation can run while the phone is locked, when the keys may not be available. The
-action writes the text to a small inbox file that the phone can write before it is unlocked,
-then returns. After unlock, the app reads the inbox, parses each text, writes the ops and
-deletes the text. The inbox never leaves the device and is not in a backup. See D6.
-
-### The op log
-
-A row from a text needs a new source kind in the `txn_ingested` payload. Older clients must
-still read the log. This is op-authoring code, which has the highest risk in the repository,
-thus it needs its own review before it merges.
-
-### Health
-
-The setup screen shows the last text read for each bank. When a bank that is set up sends no
-text for some days, the app tells the person. Without this, an automation that stopped
-working fails with no sign.
-
-### Legal pages
-
-`docs/legal/privacy.md` must say that bank texts are read on the phone, that they never leave
-it, and what the inbox keeps until the next unlock. `docs/legal/support.md` needs the setup
-steps.
-
-## Decisions for the owner
-
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
-| D1 | Can a text file with no review? | **Open (owner).** Recommendation: only on a template hit whose sender ID matches. Each other text, and each pasted text, goes to Review. |
-| D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided by D3:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
-| D3 | One channel for each bank, or merge mail and texts? | **Decided (owner, 2026-10-26):** a person sets up one or the other, never both. No merge. See [Duplicates](#duplicates-across-channels). |
-| D4 | Which banks first? | **Open (owner).** It depends on whose real texts can go into `hasala-fixtures`. Recommendation: the banks that already have mail templates (DIB, ADIB, Emirates NBD), so the two channels can be compared. |
-| D5 | Before or after the template-free readers ship in the app? | **Open (owner).** Recommendation: after. Texts can then use templates and the readers from the start. |
-| D6 | Can the locked-phone inbox keep raw text until the next unlock? | **Open (owner).** Recommendation: yes, on the device only, deleted after it is read, and stated in the privacy policy. The other choice is to drop texts that arrive while the phone is locked, which breaks "nothing is dropped silently". |
-| D7 | Build option 3 (Apple Pay through the Wallet trigger) too? | **Open (owner).** Recommendation: not in v1. It needs the merge from D3. |
-| D9 | Which filter words catch every bank text? | **Open (owner).** Recommendation: check each bank's real texts. One automation for each word, likely "AED" and "درهم". The app flags a bank it has never had a text from. A text without the word never reaches Hasala, and nothing else shows that it is missing. |
-| D10 | When a person switches from texts to email, what does email import? | **Open (owner).** Recommendation: only mail newer than the last row from a text, so the overlap is not counted twice. The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
-| D11 | What about texts with the word that are not payments? | **Open (owner).** Recommendation: one-time codes, declined payments, pre-authorisations and promotions are ignored and never kept. A declined payment is never added. The fixtures must include each kind. |
-| D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Open (owner).** Recommendation: when D1 to D3 are decided, add that transactions also come from bank texts, which the phone reads; that Shortcuts gives them to the app; and that nothing sends them off the phone. |
+| D1 | Can a text file with no review? | **Decided:** only on a template hit whose `sms_sender` matches the sender that iOS gave the action. Without a sender, every text goes to Review, prefilled when a reader reads it. A pasted text always goes to Review, because the person chose the text, not the bank. The readers and the on-device model only fill Review. |
+| D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
+| D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, on each device. No merge. |
+| D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' texts go to Review. More banks follow as real texts reach `hasala-fixtures`. |
+| D5 | Before or after the template-free readers ship in the app? | **Decided:** with them. Texts use templates first and the readers for Review. |
+| D6 | What happens to a text before the first unlock after a restart? | **Decided:** nothing is stored. There is no locked-phone inbox. The text stays in Messages, and the person can paste it into Hasala. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
+| D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |
+| D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Decided:** yes. The "Transactions come from Gmail" line gains bank texts through the Shortcuts automation, read on the phone. |
+| D9 | Which filter words catch every bank text? | **Decided:** none. One catch-all automation, because only about 5% of DIB payment texts contain "AED". |
+| D10 | When a person switches from texts to email, what does email import? | **Decided:** only mail newer than the last row from a text, so the overlap is not counted twice. The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
+| D11 | What about texts that are not bank payments? | **Decided:** texts from senders that are not banks, and bank texts that are not payments (one-time codes, declined payments, card blocked or activated, registrations, promotions, service tickets), are dropped on the phone at once and never stored. At most a count is kept. A declined payment is never added. The fixtures include each kind. |
 
-## Build plan (when decided)
+## Open checks for the beta
 
-1. Check the Message trigger on a real iPhone (fields, sender, a locked phone).
-2. Bench: read the owner's texts with the template-free readers in `ios/tools/extract-bench`.
-3. The text channel in the template definition, in Go and Swift, with its conformance set.
-4. The text ingest in HasalaCore: the key, trust, disposition and the new source kind.
-5. The App Intent and the locked-phone inbox.
-6. The setup screen, the test step and health.
-7. The legal pages and the TestFlight What to Test.
+Only real phones and real testers can answer these. Until each is checked, the app's copy
+avoids the claim.
+
+- Whether iOS gives the action the sender, or only the text. Without a sender, D1 sends
+  every text to Review.
+- Whether the automation runs, and the action can write, while the iPhone is locked (after
+  the first unlock).
+- Whether iOS shows a banner for each run. With a catch-all automation, a banner would show
+  on every text. The owner's test showed none.
+- Whether the action takes the message as its input by default, so the person does not set
+  it by hand.
+- Whether iOS lists the action before Hasala has been opened once.
+- How often other banks' texts read well enough in Review to justify their templates.
+
+## Legal pages
+
+`docs/legal/privacy.md` says that the automation hands each incoming text to Hasala on the
+iPhone, that Hasala keeps only bank payment texts and drops every other text at once
+without storing it, that nothing is sent to our server or anyone else, and how to stop it.
+`docs/legal/support.md` has the set-up and removal steps and how to switch between texts and
+email. `docs/legal/security.md` covers texts beside bank emails.
