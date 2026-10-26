@@ -20,6 +20,7 @@ struct SetupDraft: Equatable, Sendable {
   /// The provider the person connected or picked in "Choose your email"; it skips the
   /// chooser next time (plan B3.2 rule 5).
   var provider: MailProviderKind?
+  var source: PaymentSource?
   var authored = AuthoredSetup()
 }
 
@@ -116,6 +117,7 @@ final class SetupModel {
     facts.keysReady = facts.keysReady || new.keysReady
     facts.banksChosen = facts.banksChosen || new.banksChosen || draft.authored.banks != nil
     facts.sampleLoaded = facts.sampleLoaded || new.sampleLoaded
+    facts.textsChosen = facts.textsChosen || new.textsChosen
     facts.mailbox = new.mailbox
     if draft.chosenBanks == nil, !banks.isEmpty { draft.chosenBanks = Set(banks) }
     if draft.authored.banks == nil, new.banksChosen, !banks.isEmpty { draft.authored.banks = banks }
@@ -194,6 +196,83 @@ final class SetupModel {
   var bankRequests: SetupAuthoring { services.setup }
 
   func noteBankRequestSent() { draft.bankRequestSent = true }
+
+  var bankTexts: (any BankTextsConnecting)? { services.bankTexts }
+
+  var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected && bankTexts?.readsEmail != true }
+
+  var readsBankEmailNote: String? {
+    guard bankTexts?.readsEmail == true, source != .email else { return nil }
+    return SourceSwitch.textsBlocker(services.mailbox, texts: bankTexts) == nil
+      ? BankTexts.setupReadsEmail : BankTexts.setupReadsEmailElsewhere
+  }
+
+  var bankStepSubtitle: String {
+    let reads = "Hasala reads your banks' alert emails on this iPhone."
+    return bankTexts == nil ? "\(reads) Alerts must come by email, not only SMS." : reads
+  }
+
+  var connectBusy: Bool { connecting || coordinators.values.contains(where: \.busy) }
+
+  var asksSource: Bool { offersBankTexts && draft.source != .email }
+
+  var source: PaymentSource? { draft.source }
+
+  private(set) var lastPickedSource: PaymentSource?
+
+  func chooseSource(_ source: PaymentSource) {
+    guard !busy, !connectBusy, bankTexts != nil else { return }
+    didResume = true
+    failure = nil
+    lastPickedSource = source
+    draft.source = source
+    switch source {
+    case .email:
+      path = []
+    case .texts:
+      path = []
+      go(.textsBanks)
+    }
+  }
+
+  func backToSourceChoice() {
+    guard !busy, !connectBusy else { return }
+    failure = nil
+    draft.source = nil
+  }
+
+  func skipSource() {
+    guard !busy else { return }
+    draft.source = nil
+    skipBanks()
+  }
+
+  func continueWithTextBanks() async {
+    guard path.last == .textsBanks, await saveBanks() else { return }
+    go(.textsSetUp)
+  }
+
+  func sendTestText() {
+    guard path.last != .textsTest else { return }
+    bankTexts?.startTest()
+    go(.textsTest)
+  }
+
+  func finishTexts() async {
+    guard !busy, let lane = bankTexts else { return }
+    didResume = true
+    failure = nil
+    busy = true
+    defer { busy = false }
+    do {
+      try await lane.finishSetUp()
+    } catch {
+      failure = .failed(error.message)
+      return
+    }
+    facts.textsChosen = true
+    finish()
+  }
 
   // MARK: Your email (step 2)
 

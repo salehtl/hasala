@@ -15,12 +15,21 @@ struct SetupFlowView: View {
 
   var body: some View {
     NavigationStack(path: $model.navigationPath) {
-      BankStep(model: model)
-        .navigationDestination(for: SetupRoute.self) { route in
-          switch route {
-          case .connectError(let provider): EmailErrorStep(model: model, provider: provider)
-          }
+      Group {
+        if model.asksSource {
+          SourceStep(model: model)
+        } else {
+          BankStep(model: model)
         }
+      }
+      .navigationDestination(for: SetupRoute.self) { route in
+        switch route {
+        case .connectError(let provider): EmailErrorStep(model: model, provider: provider)
+        case .textsBanks: TextsBanksStep(model: model)
+        case .textsSetUp: TextsSetUpStep(model: model)
+        case .textsTest: TextsTestStep(model: model)
+        }
+      }
     }
     .sheet(isPresented: $model.choosingEmail, onDismiss: model.choosingEnded) {
       ChooseEmailSheet(mailbox: model.mailbox, title: .setup) { model.choose($0) }

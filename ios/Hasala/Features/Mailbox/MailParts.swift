@@ -580,17 +580,37 @@ struct MailActionRow: View {
   let identifier: String
   /// Add a mailbox's plus, or the envelope for "Use another email".
   var glyph = PaperGlyph.plus
+  var icon: HIcon?
+  var detail: String?
+  var busy = false
   let action: () -> Void
+  @Environment(\.isEnabled) private var isEnabled
 
   var body: some View {
+    let ink = isEnabled || busy ? HColor.textLink : HColor.textDisabled
     Button(action: action) {
       HStack(spacing: HSpacing.listRowGap) {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .fill(HColor.actionAccentSubtle)
           .frame(width: 40, height: 40)
-          .overlay { PaperGlyph(glyph, size: 18, color: HColor.textLink, lineWidth: 2.4) }
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.textLink)
-          .frame(maxWidth: .infinity, alignment: .leading)
+          .overlay {
+            if busy {
+              Spinner(size: 20)
+            } else if let icon {
+              HIconView(icon, size: 18, color: ink, strokeWidth: 2)
+            } else {
+              PaperGlyph(glyph, size: 18, color: ink, lineWidth: 2.4)
+            }
+          }
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).hType(.rowTitle).foregroundStyle(ink)
+          if let detail {
+            Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+          }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(.horizontal, HSpacing.listRowInsetInline)
       .padding(.vertical, 8)
@@ -598,6 +618,7 @@ struct MailActionRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(HRowPressStyle())
+    .accessibilityValue(busy ? "In progress" : "")
     .accessibilityIdentifier(identifier)
   }
 }

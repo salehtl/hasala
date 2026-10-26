@@ -72,13 +72,13 @@ struct MailboxDetailPage: View {
         .accessibilityIdentifier("mailbox.disconnect.remove")
       Button("Cancel", role: .cancel) {}
     } message: { impact in
-      if let m = mailbox { Text(MailCopy.disconnectChoiceMessage(m.provider, impact)) }
+      if let m = mailbox { Text(withTextsNote(MailCopy.disconnectChoiceMessage(m.provider, impact))) }
     }
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirmingPlain) {
       Button("Cancel", role: .cancel) {}
       Button("Disconnect", role: .destructive) { Task { await disconnect(removing: false) } }
     } message: {
-      if let m = mailbox { Text(MailCopy.disconnectMessage(m.provider)) }
+      if let m = mailbox { Text(withTextsNote(MailCopy.disconnectMessage(m.provider))) }
     }
     .mailSwitchQuestion(signIn)
     // Signed in again: the motion policy's success, once.
@@ -299,6 +299,13 @@ struct MailboxDetailPage: View {
         signedIn += 1
       }
     }
+  }
+
+  private func withTextsNote(_ message: String) -> String {
+    guard let note = BankTexts.disconnectNote(app.bankTexts, mailbox: app.mailbox, disconnecting: mailboxID) else {
+      return message
+    }
+    return "\(message) \(note)"
   }
 
   private func askToDisconnect() async {

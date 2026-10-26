@@ -9,15 +9,17 @@ import SwiftUI
 /// A white list card, radius 24, no shadow, no padding of its own: rows fill it edge to edge
 /// and its corners clip the first and last row.
 public struct HListCard<Content: View>: View {
+  let alignment: HorizontalAlignment
   let content: Content
 
-  public init(@ViewBuilder content: () -> Content) {
+  public init(alignment: HorizontalAlignment = .center, @ViewBuilder content: () -> Content) {
+    self.alignment = alignment
     self.content = content()
   }
 
   public var body: some View {
-    VStack(spacing: 0) { content }
-      .frame(maxWidth: .infinity)
+    VStack(alignment: alignment, spacing: 0) { content }
+      .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))
       .background(HColor.listRowSurface)
       .clipShape(RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
   }

@@ -27,15 +27,16 @@ enum OnboardingStep: Int, Comparable, CaseIterable, Sendable {
     /// "Skip" on your email's step.
     var mailSkipped = false
     var sampleLoaded = false
+    var textsChosen = false
   }
 
   static func derive(_ f: Facts) -> OnboardingStep {
     guard f.hasPasscode else { return .passcode }
     guard f.hasSession else { return .account }
     guard f.keysReady else { return .keys }
-    guard f.banksChosen || f.bankSkipped || f.sampleLoaded else { return .bank }
+    guard f.banksChosen || f.bankSkipped || f.sampleLoaded || f.textsChosen else { return .bank }
     let manual = f.bankSkipped && !f.banksChosen
-    let mailDone = manual || f.mailbox != .unlinked || f.mailSkipped || f.sampleLoaded
+    let mailDone = manual || f.mailbox != .unlinked || f.mailSkipped || f.sampleLoaded || f.textsChosen
     guard mailDone else { return .mail }
     return .finished
   }

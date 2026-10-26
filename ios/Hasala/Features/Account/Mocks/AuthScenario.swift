@@ -66,6 +66,10 @@
     case noBanks
     case finishSetup
     case noAlerts
+    case setupTexts
+    case textsWorking
+    case textsWaiting
+    case gmailTexts
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -94,8 +98,9 @@
     }
 
     /// Where setup resumes: the email-step scenarios have chosen their banks.
-    static func setupFacts(for scenario: AuthScenario?) -> OnboardingStep.Facts {
+    static func setupFacts(for scenario: AuthScenario?, texts: (any BankTextsConnecting)? = nil) -> OnboardingStep.Facts {
       var facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
+      facts.textsChosen = BankTexts.setUpHere(texts)
       switch scenario {
       case .setupEmail, .outlookAdmin, .outlookCancelled: facts.banksChosen = true
       default: break
@@ -113,9 +118,9 @@
       case .gmailReconnect: [MockMailbox.needingSignIn(MockMailbox.gmail)]
       case .mailboxes2: [MockMailbox.gmail, MockMailbox.outlook]
       case .outlookSignIn: [MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)]
-      case .finishSetup, .noAlerts: [MockMailbox.gmail]
+      case .finishSetup, .noAlerts, .gmailTexts: [MockMailbox.gmail]
       case .gmailSkipped, .noMailbox, .noBanks, .newUser, .noPasscode, .signInPassword, .setupBank, .reviewAccount,
-        .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted:
+        .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted, .setupTexts, .textsWorking, .textsWaiting:
         []
       }
     }
@@ -123,10 +128,20 @@
     static func startsWithoutPlan(_ scenario: AuthScenario?) -> Bool {
       switch scenario {
       case .newUser, .noPasscode, .setupBank, .reviewAccount, .setupEmail, .outlookAdmin, .outlookCancelled,
-        .relaunchInterrupted, .finishSetup, .noAlerts:
+        .relaunchInterrupted, .finishSetup, .noAlerts, .setupTexts:
         true
       default:
         false
+      }
+    }
+
+    @MainActor
+    static func bankTexts(for scenario: AuthScenario?, mailbox: MockMailbox? = nil) -> MockBankTexts? {
+      switch scenario {
+      case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
+      case .textsWorking: MockBankTexts.working(mailbox: mailbox)
+      case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
+      default: nil
       }
     }
 
@@ -148,17 +163,18 @@
       let unseenPhrase = InMemoryUnseenPhrase()
       if arguments.contains("-HasalaPhraseUnseen") { unseenPhrase.noteUnseen(at: .now) }
       let manualEntry = ManualEntryChoice()
+      let bankTexts = bankTexts(for: scenario, mailbox: mailbox)
       func services(_ account: MockAccountService) -> AccountServices {
         account.passkeyPRF = !arguments.contains("-HasalaPasskeyNoPRF")
         account.passkeySynced = !arguments.contains("-HasalaPasskeyNotSynced")
         return AccountServices(
           account: account, mailbox: mailbox, setup: setup,
           notifications: MockNotificationPermission(answered: !fresh), hasPasscode: { scenario != .noPasscode },
-          cloudSort: cloudSort, unseenPhrase: unseenPhrase, manualEntry: manualEntry)
+          cloudSort: cloudSort, unseenPhrase: unseenPhrase, manualEntry: manualEntry, bankTexts: bankTexts)
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,
-        .outlookReconnect, .gmailLinked, .finishSetup, .noAlerts:
+        .outlookReconnect, .gmailLinked, .finishSetup, .noAlerts, .textsWorking, .textsWaiting, .gmailTexts:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
@@ -192,7 +208,7 @@
         let account = MockAccountService(existing: .passkey, signedIn: true)
         account.resumeOutcome = scenario == .relaunchInterrupted ? .needsKeys : .needsUnlock(passkeyCanUnlock: true)
         return AccountSession(services: services(account), phase: .checking)
-      case .setupBank, .reviewAccount:
+      case .setupBank, .reviewAccount, .setupTexts:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
                               phase: .onboarding(.bank))
       case .setupEmail, .outlookAdmin, .outlookCancelled:

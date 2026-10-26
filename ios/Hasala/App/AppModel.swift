@@ -36,6 +36,9 @@ final class AppModel {
   /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   var cloudSort: (any CloudSortControlling)?
+  @ObservationIgnored let bankTexts: (any BankTextsConnecting)?
+  var usesBankTexts: Bool { bankTexts?.usesTexts == true }
+  var offersBankTextPaste: Bool { bankTexts?.offersPaste == true }
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
@@ -80,12 +83,14 @@ final class AppModel {
 
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
-    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads()
+    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads(),
+    bankTexts: (any BankTextsConnecting)? = nil
   ) {
     self.store = store
     self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
+    self.bankTexts = bankTexts
     self.layouts = layouts
     homeLayout = layouts?.load()
   }
@@ -154,7 +159,7 @@ final class AppModel {
 
   /// "Connect your email" or "Sign in again" on the bell, Profile and Bank alerts, when
   /// mail needs it.
-  var mailOffer: MailOffer? { mailbox?.offer }
+  var mailOffer: MailOffer? { usesBankTexts ? nil : mailbox?.offer }
 
   var period: Period {
     get { chosenPeriod.map(shown) ?? .month(store.now.date.yearMonth) }
