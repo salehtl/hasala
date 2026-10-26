@@ -103,10 +103,15 @@ payment cannot arrive through two channels, and no merge is needed.
   that already has a mailbox link, the texts choice is not offered; the device says that the
   account reads bank email and offers the switch.
 - With texts set up, the mailbox connect is not offered, and the reverse.
-- To change, the person switches in Profile › Bank alerts on any device. The switch stops
-  the old channel for the whole account: it disconnects the mailbox, or, once a mailbox link
-  exists, "Add bank text" on every device authors no row from then on and the app tells the
-  person to delete the automation in Shortcuts. Rows already added stay.
+- To change, the person switches in Profile › Bank alerts. The switch stops the old channel
+  for the whole account: it disconnects the mailbox, or, once a mailbox link exists, "Add
+  bank text" on every device authors no row from then on and the app tells the person to
+  delete the automation in Shortcuts. Rows already added stay. The switch to email can be
+  made on any device. The switch to texts disconnects the mailbox, and only the iPhone that
+  reads the mailbox can do that: the live mailbox lane refuses a disconnect from another
+  iPhone on purpose, because that iPhone holds no token for the mailbox's grant. On another
+  iPhone, Bank alerts says that a different iPhone reads the mailbox and asks the person to
+  switch there.
 - While the account has a mailbox link, "Add bank text" still runs the reading order below
   through step 4, but authors nothing and keeps no field. For each text that it would have
   kept and that may be a bank's (a template hit, or a payment shape from a bank sender or
@@ -234,8 +239,9 @@ Then, in this order:
    clause; a payment text that misses its template and carries a promotion line has a
    transaction clause and goes on to step 4.
 4. **The payment shape.** A text with a payment shape goes to Review: the template-free
-   readers (`template-free-reading.md`) prefill it, and Apple's on-device model may fill
-   what they leave, but neither ever files a row. The shape depends on the sender:
+   readers (`template-free-reading.md`) prefill it, and they never file a row. Apple's
+   on-device model does not read texts in v1 (see [Cut from v1](#cut-from-v1)). The shape
+   depends on the sender:
    - from a **bank sender**, or with **no sender**: a payment word (a closed, bundled list
      in English and Arabic, such as "purchase", "debited", "credited", "refund",
      "reversal", "transfer", "شراء", "مشتريات", "بمبلغ", "خصم", "ايداع", "إيداع", "تحويل") and
@@ -273,8 +279,7 @@ deletes it. The privacy policy says so.
 number, an unknown sender or with no sender, and that no template read, keeps a merchant
 only from a reader's merchant label for a card purchase ("at", "Merchant:", "لدى"), and only
 its first 4 words, at most 40 bytes. A merchant read from "to" or "from", the payee or payer
-of a transfer, is not kept, and Apple's on-device model does not fill the merchant on such a
-row. Otherwise `merchant_raw` is empty and the person names the payment in Review. Thus a
+of a transfer, is not kept. Otherwise `merchant_raw` is empty and the person names the payment in Review. Thus a
 person's message ("transfer the 200 to Ahmed for dinner tonight") never becomes a synced
 merchant made of its words. A template hit, and a row from a bank sender, keep the merchant as
 read.
@@ -283,16 +288,21 @@ Nothing is sent off the phone to read a text. A merchant name read from a text c
 Clef only under the Cloud suggestions opt-in (`cloud-suggestions.md`), and with the same
 limit as mail: only a row read by a card-purchase template whose ID is in
 `ModelSuggestionSweep.cloudTemplates`. For texts, only the SMS card-purchase templates (for
-DIB, the Arabic and English purchase templates) may join that list. The DIB SMS templates
+DIB, `dib.sms.purchase.v1`) may join that list. The DIB SMS templates
 for transfers, salary, credits, refunds, reversals and card payments never do, because the
 merchant of a transfer or a salary can be a person's name. The list stays fail-closed: a
-text row from the readers, from Apple's model, or with `tier: none` has no template in the
-list and is never sent. The text itself, its sender and its other fields never leave the
+text row from the readers, or with `tier: none`, has no template in the list and is never
+sent. The text itself, its sender and its other fields never leave the
 phone.
 
-**Templates tonight: DIB only.** DIB has SMS templates for its payment families (Arabic and
-English purchases, debits, credits and salary, reversals, refunds, own transfers and card
-payments). Texts from other banks go to Review, prefilled when a reader reads them. Real
+**Templates tonight: DIB only.** DIB has SMS templates for each payment family in the
+owner's DIB export (purchases, debits, credits, salary, refunds, reversals, own transfers
+and card payments), in the wordings that export holds: Arabic, and English for reversals.
+There is no English template for the other families, because the export has no real
+English wording to copy, and a template written from a guess could file wrong rows under
+D1. A DIB text in a wording that no template reads, such as an English purchase text, goes
+to Review, prefilled when a reader reads it. Texts from other banks go to Review the same
+way. Real
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only.
 
 ### Filing with no review
@@ -333,8 +343,7 @@ the real DIB thread. Mail has the DMARC gate for this (`gates.ar: pass`); texts 
 equal. A faker must now also know a card that the person already uses with that bank. This
 raises the bar; it does not close it, and the security page says so. Everything else goes
 to Review, prefilled: no sender, another sender, an unknown or `not_mine` card, a text with
-no card (most credits, reversals and transfers), the readers, Apple's model, and every
-pasted text. A person who uses only texts thus confirms their first payment on each card in
+no card (most credits, reversals and transfers), the readers, and every pasted text. A person who uses only texts thus confirms their first payment on each card in
 Review.
 
 ### What the phone keeps about texts
@@ -666,6 +675,8 @@ need:
 - The "gone quiet" alert for a bank that sends no texts for some days.
 - The locked-phone inbox (see D6).
 - The Wallet transaction trigger (D7).
+- Apple's on-device model for texts. It reads only Latin script, and most DIB texts are
+  Arabic. A text that no template reads is prefilled by the template-free readers only.
 
 ## Ruled out
 
@@ -683,7 +694,7 @@ need:
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | Can a text file with no review? | **Decided:** only on an SMS template hit whose `sms_sender` matches the sender that iOS gave the action, **and** whose card is known (see [Filing with no review](#filing-with-no-review)). A sender name alone can be faked. Without a sender, every text goes to Review, prefilled when a reader reads it. A pasted text always goes to Review, because the person chose the text, not the bank. The readers and the on-device model only fill Review. |
+| D1 | Can a text file with no review? | **Decided:** only on an SMS template hit whose `sms_sender` matches the sender that iOS gave the action, **and** whose card is known (see [Filing with no review](#filing-with-no-review)). A sender name alone can be faked. Without a sender, every text goes to Review, prefilled when a reader reads it. A pasted text always goes to Review, because the person chose the text, not the bank. The readers only fill Review; Apple's on-device model does not read texts in v1. |
 | D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
 | D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. |
