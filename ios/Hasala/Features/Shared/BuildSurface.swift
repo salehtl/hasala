@@ -37,6 +37,8 @@ nonisolated enum BuildSurface {
 
   static let showsGoogleBriefing = true
 
+  static let showsBankTexts = true
+
   /// Where testers and reviewers write to (support@ is routed to the owner).
   static let supportEmail = "support@hasala.app"
   static let supportMail = URL(string: "mailto:\(supportEmail)")!

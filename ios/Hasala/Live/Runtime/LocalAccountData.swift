@@ -60,6 +60,7 @@ enum LocalAccountData {
     HomeLayoutStore.forgetAll(defaults)
     NotificationReads.forget(defaults)
     PushRegistrar.forgetRegistration(defaults)
+    BankTextsDeviceData.forgetFiles()
     #if DEBUG && targetEnvironment(simulator)
       SimulatorApprovalKey.forgetAll(defaults)
     #endif

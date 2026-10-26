@@ -97,7 +97,8 @@ final class BootController {
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(),
-      unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard))
+      unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard),
+      bankTexts: BuildSurface.showsBankTexts ? LiveBankTexts(runtime: { holder.boot?.runtime }) : nil)
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -113,6 +114,7 @@ final class BootController {
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
     // can launch the app cold, before the account has opened: it waits for the opening.
     BackgroundScheduler.shared.install { kind, _ in
+      await AppGraph.boot?.start()
       guard let rt = await AppGraph.boot?.openedRuntime() else { return false }
       return await rt.backgroundWork(kind)
     }
@@ -311,6 +313,7 @@ final class BootController {
   /// runtime closes and the gate goes back to Welcome, whichever screen asked.
   private func left() async {
     await closeRuntime()
+    BankTextsDeviceData.forget(secrets: env.account.secrets.store)
     wall = nil
     if session.phase != .signedOut { session.signedOut() }
   }

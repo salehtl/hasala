@@ -5,8 +5,6 @@ import UIKit
 /// silent pushes. A silent push (`content-available`, sent when a peer uploads) is one
 /// `WorkCoordinator` run of at most 25 s; its outcome is what iOS is told.
 final class AppDelegate: NSObject, UIApplicationDelegate {
-  /// The live graph starts with the process, not with the window: a launch for a silent
-  /// push or a background task has an account to run before any scene connects.
   func application(
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
@@ -16,7 +14,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
       // purge, no network).
       if ScreenLaunch.isMockLaunch(ProcessInfo.processInfo.arguments) { return true }
     #endif
-    AppGraph.live().start()
+    let boot = AppGraph.live()
+    if application.applicationState != .background { boot.start() }
     return true
   }
 
@@ -35,6 +34,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     -> UIBackgroundFetchResult
   {
     let start = ContinuousClock.now
+    AppGraph.boot?.start()
     guard let coordinator = await AppGraph.boot?.openedRuntime()?.coordinator else { return .noData }
     let budget = Self.remainingBudget(Self.silentPushBudget, from: start, now: .now)
     guard budget > .zero else { return .noData }

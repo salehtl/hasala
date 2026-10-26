@@ -24,6 +24,9 @@
     var readDelay: Duration = .milliseconds(150)
     var addDelay: Duration = .zero
     var nextMatch: BankTextMatch?
+    var setAside: [BankTextsSetAside] = []
+    var lockedNotice: Int?
+    private(set) var refreshes = 0
     private(set) var added: [String] = []
     private(set) var replaced: [String] = []
     private(set) var finishCalls = 0
@@ -50,12 +53,16 @@
     static let codeText = "Your one-time code is 000000. Do not share it with anyone."
 
     static func working(now: Date = .now, mailbox: MockMailbox? = nil) -> MockBankTexts {
-      MockBankTexts(
+      let lane = MockBankTexts(
         setUp: true, mailbox: mailbox, lastRan: now.addingTimeInterval(-4 * 60),
         lastTexts: [
           .dib: now.addingTimeInterval(-4 * 60),
           .enbd: now.addingTimeInterval(-2 * 3600),
         ])
+      lane.setAside = [
+        BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.oneTimeCode: 8, .promotion: 2, .declined: 1])
+      ]
+      return lane
     }
 
     static func waiting(mailbox: MockMailbox? = nil) -> MockBankTexts {
@@ -88,6 +95,14 @@
       finishCalls += 1
       if finishFails { throw .failed("Hasala couldn't save this on your iPhone. Try again.") }
       isSetUp = true
+    }
+
+    func lockedNoticeShown() {
+      lockedNotice = nil
+    }
+
+    func refresh() {
+      refreshes += 1
     }
 
     func startTest() {

@@ -165,11 +165,26 @@ final class AccountRuntime {
     _ = await askServerLink()
   }
 
+  func noteOwnLink(facts: BankTextsFacts = .shared) {
+    guard let phase = store.mailboxPhase, Self.holdsLink(phase) else { return }
+    let nowMs = context.clock.nowMs()
+    guard facts.read(nowMs: nowMs).link?.linked != true else { return }
+    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: nowMs)
+  }
+
+  nonisolated static func holdsLink(_ phase: MailboxPhase) -> Bool {
+    switch phase {
+    case .unlinked: false
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted, .otherDevice: true
+    }
+  }
+
   /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
   /// couldn't be asked.
   func askServerLink() async -> MailboxLinkStatus? {
     guard let (link, provider) = try? await mailboxServer.linkStatusAndProvider() else { return nil }
     if serverLink != link { serverLink = link }
+    BankTextsLinkCopy.note(link, nowMs: context.clock.nowMs())
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
     if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
@@ -300,8 +315,10 @@ final class AccountRuntime {
       mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions, store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
+      await rt?.noteOwnLink()
       await rt?.checkServerLink()
     }
+    rt.noteOwnLink()
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()
