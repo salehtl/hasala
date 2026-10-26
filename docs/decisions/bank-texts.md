@@ -334,8 +334,8 @@ its own `author {}` call, so the confirm does not call it. Instead, its plan (wh
 ID, whether `account_set` is needed, the account's name and kind, and the skip when the card
 is already `mine`) moves to a pure function that `authorCards` and the confirm both call, and
 each applies the plan with `OpAuthor.setAccount` and `OpAuthor.linkCard` in its own closure.
-A row that filed itself, and a row from the readers or Apple's model that the person did
-not confirm, links no card. A card that the person already linked, as `mine` or `not_mine`, from mail or
+A row that filed itself, and a row from the readers that the person did not
+confirm, links no card. A card that the person already linked, as `mine` or `not_mine`, from mail or
 otherwise, keeps its link; the confirm does not change it.
 
 Why the card: an alphanumeric sender ID can be faked, and iOS puts a faked "DIB" text in
@@ -618,7 +618,7 @@ need:
    - Cloud suggestions: a text row read by a DIB SMS purchase template may leave the
      device under the opt-in (`mayLeaveDevice` is true); rows read by the DIB SMS
      transfer, salary, credit, refund, reversal and card-payment templates, rows from the
-     readers or Apple's model, and unparsed rows may not.
+     readers, and unparsed rows may not.
    - The key: equal texts in the same minute give two rows, the second a held probable
      copy; a double run across a minute boundary, the same; two runs of equal texts at
      the same time (started together, before either op is in the outbox) give `n` 0 and
@@ -645,8 +645,7 @@ need:
      body of 12 bytes or more that is not a field the row keeps (the amount, `merchant_raw`
      as read, the card digits, the date), or the sender. A text from a person's number or
      with no sender that no template reads keeps a merchant only from a card-purchase label,
-     at most 4 words and 40 bytes; a transfer's "to" payee is not kept; Apple's model does
-     not fill it.
+     at most 4 words and 40 bytes; a transfer's "to" payee is not kept.
    - The transfer pair on texts: a synthetic DIB SMS debit text and a DIB SMS transfer
      notice for the same amount within 30 minutes give a second row with `needs_review:
      true` that names the first, in either order, also when the second would file under D1;
