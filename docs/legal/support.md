@@ -146,7 +146,7 @@ Bank texts often don't share a word that Shortcuts could filter on, and a filter
 
 ### Why does a bank text wait in Review?
 
-A text's sender name can be faked. So a bank text adds a payment by itself only when Hasala's rules for that bank read it, it came from the bank's sender name, and it's for a card you've already confirmed in Hasala. The first payment on each card waits in **Review**; once you confirm it, later payments on that card can add themselves. Payments with no card in the text, such as most salaries, refunds and transfers, always wait in Review, and so do payment texts from other banks and texts iOS didn't give a sender for. If something in Review isn't a payment of yours, delete it there.
+A text's sender name can be faked. So a bank text adds a payment by itself only when Hasala's rules for that bank read it, it came from the bank's sender name, and it's for a card you've already confirmed as yours in Hasala. The first payment on each card waits in **Review**; once you confirm it, Hasala knows the card is yours, and later payments on that card can add themselves. A card you've marked as not yours never adds a payment by itself. Payments with no card in the text, such as most salaries, refunds and transfers, always wait in Review, and so do payment texts from other banks and texts iOS didn't give a sender for. If something in Review isn't a payment of yours, delete it there. If Hasala couldn't read the amount in a bank text, Review tells you so: find that text in Messages and paste it, and Hasala offers to replace the unread payment with it.
 
 ### How do I paste a bank text?
 
@@ -160,14 +160,14 @@ Open the **Shortcuts** app, tap **Automation**, then swipe left on the Hasala au
 
 Go to **Profile › Bank alerts** and switch the source. Hasala asks you to confirm first. Transactions it has already brought in stay.
 
-- **From texts to email:** Hasala brings in only emails newer than your last payment from a text, so nothing is counted twice. From then on, Hasala ignores texts the automation hands it on all your iPhones, so delete the automation in Shortcuts on each of them (see above). If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
+- **From texts to email:** Hasala brings in your bank emails as for any new mailbox, older ones included, so that a payment no text brought in isn't lost. An email for a payment that looks like one a text already brought in (same bank, amount, card and day) waits in **Review** beside that payment, so that you can archive the copy or keep both; nothing is counted twice without you seeing it. From then on, Hasala adds nothing from texts the automation hands it on any of your iPhones, so delete the automation in Shortcuts on each of them (see above). Until you do, **Profile › Bank alerts** shows how many bank payment texts it ignored. If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
 - **From email to texts:** Hasala disconnects your mailbox and reads texts from then on. Make the automation as above.
 
 ### Bank texts not showing up?
 
 1. In **Profile › Bank alerts**, check when the automation last ran.
 2. In Shortcuts, check that the automation is still there, that it runs for any message, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
-3. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. After you unlock, Hasala tells you how many bank texts arrived while it couldn't store them. The texts stay in Messages, so paste them.
+3. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. After you unlock, Hasala tells you how many bank payment texts arrived while it couldn't store them. It counts only texts that look like a bank payment. The texts stay in Messages, so paste them.
 4. Look in **Review**. Only DIB texts are read fully at the time of writing. Payment texts from other banks, and the first payment on each card, wait there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).
 5. If you're still stuck, email us (see [Contact us](#contact-us)). Tell us which bank it is and what **Profile › Bank alerts** says. Please don't send the text itself or a screenshot of it.
 

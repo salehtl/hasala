@@ -94,8 +94,16 @@ payment cannot arrive through two channels, and no merge is needed.
 - With texts set up, the mailbox connect is not offered, and the reverse.
 - To change, the person switches in Profile › Bank alerts on any device. The switch stops
   the old channel for the whole account: it disconnects the mailbox, or, once a mailbox link
-  exists, "Add bank text" on every device ignores texts from then on and the app tells the
+  exists, "Add bank text" on every device authors no row from then on and the app tells the
   person to delete the automation in Shortcuts. Rows already added stay.
+- While the account has a mailbox link, "Add bank text" still runs the reading order below
+  through step 3, but authors nothing and keeps no field. For each text that it would have
+  kept (a template hit or a payment shape), it adds one to that day's count of bank payment
+  texts ignored because the account reads email: a number only, on the device, for the last
+  30 days. Profile › Bank alerts shows it ("3 bank payment texts were ignored in the last 30
+  days because this account reads bank email") with two ways out: delete the automation in
+  Shortcuts, or switch the account to texts. Thus a bank that texts some payments and mails
+  none of them does not lose them with no trace.
 - "Add bank text" checks the account's mailbox link before it authors a row. It uses the
   last link state the device synced, because the action may run with no network. A device
   that has not synced since another device connected a mailbox can still add texts until it
@@ -104,35 +112,61 @@ payment cannot arrive through two channels, and no merge is needed.
   It is listed in [Open checks](#open-checks-for-the-beta).
 - Switching from texts to email sets a cutoff (D10). The cutoff is the newest text row in
   the account, from any device, read from the synced ledger, not from one device's state.
+  The cutoff skips no mail. It marks the overlap: the mail that the connect lists, dated at
+  or before the cutoff plus 24 hours. In the overlap, a mail that has a **text twin** (a
+  text row in the account with the same bank, amount, currency, direction and card, or no
+  card on both, whose `posted_at` is within 24 hours of the mail's) is authored with
+  `needs_review: true`, whatever its gates, and its Review card names the twin ("This may
+  be the same payment as a bank text from DIB on 3 March"). The person keeps both or
+  archives it. A mail in the overlap with no text twin is authored as any mail, because no
+  text brought that payment in: a text that the automation missed, that arrived before the
+  first unlock and was not pasted, or that another bank sent and step 4 set aside. When
+  the merchant strings match, the fold's probable-copy hold applies too. The twin test does
+  not use the merchant, because a bank's mail and its text often spell it differently.
 
 ### Reading happens inside Hasala, on the phone
 
-In this order:
+First, the sender is sorted, and nothing is dropped for it yet: a sender on the bundled list
+of bank sender IDs is a **bank sender**; a full phone number is a **person's number**; any
+other sender, and a text with no sender, is an **unknown sender**. The set-up test (above)
+is checked before step 1. Then, in this order:
 
-1. **The sender.** A sender that is a full phone number (a person) is dropped at once,
-   except the set-up test above. A sender on the bundled list of bank sender IDs is a bank.
-   Any other sender, and a text with no sender, goes on to step 2 as an unknown sender.
-2. **The SMS templates.** Templates gain a text channel: `channel: "sms"` (absent means
+1. **The SMS templates.** Templates gain a text channel: `channel: "sms"` (absent means
    mail), `match.sms_sender` in place of `match.sender_domain`, and `date_from: "received"`
-   for texts that carry no date. Go (`server/internal/tmpl`) and Swift
-   (`HasalaCore/Template/Exec`) agree byte for byte, with the conformance sets. A template
-   hit is a payment and is never dropped, whatever the sender.
-3. **The explicit drop patterns** (D11): one-time codes, declined payments, card blocked or
+   for texts that carry no date. A template is tried on the body whatever the sender;
+   `match.sms_sender` decides only whether the hit may file (D1). Go
+   (`server/internal/tmpl`) and Swift (`HasalaCore/Template/Exec`) agree byte for byte,
+   with the conformance sets. A template hit is a payment and is never dropped, whatever
+   the sender, a person's number included: a bank text that a roaming network or an
+   international gateway delivers with a numeric sender is still kept (in Review, because
+   its sender does not match).
+2. **The explicit drop patterns** (D11): one-time codes, declined payments, card blocked or
    activated, registrations, promotions and service tickets. Each pattern is a closed,
    tested list (bank patterns for DIB, and narrow generic ones for one-time codes and
    declines). A text is dropped here only when a pattern matches.
-4. **The payment shape.** A text with a payment word and either an amount (a number with a
-   currency word or code, in English or Arabic) or a masked card token goes to Review: the
-   template-free readers (`template-free-reading.md`) prefill it, and Apple's on-device
-   model may fill what they leave, but neither ever files a row. This is where other banks'
-   payment texts go, and every payment text that arrives with no sender.
-5. **Anything else** is dropped. From a bank sender, it adds one to that day's count of
-   texts set aside (see below); from any other sender, it leaves no trace.
+3. **The payment shape.** A text with a payment shape goes to Review: the template-free
+   readers (`template-free-reading.md`) prefill it, and Apple's on-device model may fill
+   what they leave, but neither ever files a row. The shape depends on the sender:
+   - from a **bank sender**: a payment word (a closed, bundled list in English and Arabic,
+     such as "purchase", "debited", "credited", "refund", "reversal", "transfer", "شراء",
+     "خصم", "ايداع", "إيداع", "تحويل") and any number. No currency word and no card are
+     needed, because most DIB Arabic purchase texts carry no currency word and most
+     credits, reversals and transfers carry no card. A bank text that a changed wording
+     takes out of its template thus still reaches Review;
+   - from any other sender, a person's number included: a payment word and either an
+     amount (a number with a currency word or code, in English or Arabic) or a masked card
+     token.
 
-The gate leans to Review: a bank payment is dropped only when an explicit drop pattern says
-it is not a payment. The cost is that, with no sender, a text from a person that looks like
-a payment ("I sent you AED 50") can reach Review. The privacy policy says so, and the person
-can delete it there.
+   This is where other banks' payment texts go, every payment text that arrives with no
+   sender, and a bank's texts that no template reads.
+4. **Anything else** is dropped. From a bank sender, it adds one to that day's count of
+   texts set aside (see below); from any other sender, a person's number included, it
+   leaves no trace.
+
+The gate leans to Review: a text from a bank sender is dropped only when an explicit drop
+pattern says it is not a payment, or when it has no payment word or no number at all. The
+cost is that a text from a person, or with no sender, that looks like a payment ("I sent you
+AED 50") can reach Review. The privacy policy says so, and the person can delete it there.
 
 Nothing is sent off the phone to read a text. A merchant name read from a text can go to
 Clef only under the Cloud suggestions opt-in, like a name read from mail
@@ -149,17 +183,32 @@ A text files with no review (`needs_review: false`) only when all of these hold:
 
 - an SMS template read it;
 - iOS gave the action a sender, and it is in that template's `match.sms_sender`;
-- the card in the text is **known**: its last four digits are on a row from the same bank
-  that the person confirmed in Review or sorted themselves, or on a mail row that passed
-  `gates.ar`. A row that filed itself does not make a card known.
+- the card in the text is **known**: the account has a `card_linked` for that bank and last
+  four digits with `state: mine`.
+
+The card gate is mail's, reused as it is: `RuntimeMailboxLedger.knownCards()` reads the
+projection's `card_linked` links, and `gates.card` maps them as `Disposition.finalize` does
+for mail: `mine` is `known`, `not_mine` is `not_mine`, no link is `unknown`, a text with no
+card is `none`. A `not_mine` card never files a text, as it never files mail; its texts go
+to Review with `gates.card: not_mine`. Thus `gates.card` means the same on a text row and a
+mail row.
+
+How a text-only person's cards become `mine`: when the person confirms or sorts, in Review,
+a text row whose bank and card have no `card_linked` yet, the app authors `card_linked
+{bank, last4, state: mine, account}` (with `account_set` when the card's account is new)
+through `RuntimeMailboxLedger.authorCards`, in the same edit as the confirm. A row that filed
+itself, and a row from the readers or Apple's model that the person did not confirm, links
+no card. A card that the person already linked, as `mine` or `not_mine`, from mail or
+otherwise, keeps its link; the confirm does not change it.
 
 Why the card: an alphanumeric sender ID can be faked, and iOS puts a faked "DIB" text in
 the real DIB thread. Mail has the DMARC gate for this (`gates.ar: pass`); texts have no
 equal. A faker must now also know a card that the person already uses with that bank. This
 raises the bar; it does not close it, and the security page says so. Everything else goes
-to Review, prefilled: no sender, another sender, an unknown card, a text with no card (most
-credits, reversals and transfers), the readers, Apple's model, and every pasted text. A
-person who uses only texts thus confirms their first payment on each card in Review.
+to Review, prefilled: no sender, another sender, an unknown or `not_mine` card, a text with
+no card (most credits, reversals and transfers), the readers, Apple's model, and every
+pasted text. A person who uses only texts thus confirms their first payment on each card in
+Review.
 
 ### What the phone keeps about texts
 
@@ -168,13 +217,26 @@ On the device, outside the synced data, and never sent:
 - the time the automation last ran (one value, overwritten on each run, for every text,
   because the app cannot see the automation any other way);
 - for each bank, the time of its last text that Hasala kept;
-- for each bank sender, a count for each day of texts set aside as not payments (step 5);
-- whether a set-up test passed;
+- for each bank sender, a count for each day of texts set aside as not payments (step 4),
+  for the last 30 days only; an older day's count is deleted;
+- while the account reads bank email, a count for each day of bank payment texts ignored
+  for that reason (see [One source for each person](#one-source-for-each-person)), for the
+  last 30 days only;
+- whether a set-up test passed, and, while a test runs, the time its 10-minute window
+  opened (deleted when the window closes);
 - the key secret for the text keys (below), in the Keychain, this device only;
-- the before-first-unlock marker (D6).
+- the before-first-unlock marker (D6): a count and the arrival minute of the latest, deleted
+  once the app has shown its notice.
 
-Texts from other senders leave only the last-run time. No text body, sender or field of a
-dropped text is kept. The privacy policy lists each item.
+These facts are deleted when the account is deleted and when the person signs out on that
+device. The files go with the app when it is deleted. The Keychain secret is the exception:
+iOS can keep a Keychain item after its app is deleted. The app deletes a secret that it finds
+with no account data on its first launch after an install, and makes a new one when it next
+needs it. A secret left behind by a deleted app is a random key that holds no data of the
+person and opens nothing.
+
+Texts from other senders leave only the last-run time, which the next text replaces. No text
+body, sender or field of a dropped text is kept. The privacy policy lists each item.
 
 ### The key for each text
 
@@ -186,8 +248,14 @@ plain SHA-256: a text is a short template plus fields that the row keeps, so a p
 could confirm a guess of a dropped part, such as a balance line. Why not a key derived from
 the account's data key: anyone who can open the rows holds that key too.
 
-`n` is the lowest number whose key is not in the ledger yet. Thus a key **never** makes
-Hasala drop a text:
+`n` is the lowest number whose key is not in the ledger yet. "In the ledger" counts the
+projection and the ops still in the outbox, as `RuntimeMailboxLedger.isIngested` does with
+`store.hasPendingIngest`. The choice of `n` and the write of the op to the outbox are one
+step inside one actor that every "Add bank text" run goes through, so two runs at the same
+time cannot both take the same `n`: the second waits for the first's op to be in the outbox,
+then sees that key as taken. The action runs only in the app's process (no App Intents
+extension), so one actor covers every run on the device. Thus a key **never** makes Hasala
+drop a text:
 
 - Two equal texts in the same minute (two equal charges, or a retried charge) get `n` 0 and
   1. The second is a probable copy: the fold holds it in Review, where "Keep both" or
@@ -208,6 +276,21 @@ and merchant, and the same minute when the text carries its date and time. When 
 one, it shows that row and asks before it adds the text. A pasted row never merges by
 itself. The support page tells people that the sheet does this.
 
+An **unparsed text row** is a payment-shaped text whose amount no reader could read
+(`tier: none`, `unparsed: true`). `CausalDecode.decodeTxnPayload` forbids an amount, a
+currency and a direction on it, and a text cannot be fetched again as mail can. So that the
+person can still find the payment, it keeps what the decoder allows and what the phone has:
+`bank` (from the sender list, absent when unknown), `last4` when a masked card was read,
+`merchant_raw` when a reader read one (else empty), `posted_at` with `posted_precision:
+time` (the date and time in the text, else the arrival minute), `received_at` and `channel:
+"sms"`. Its Review card says: "Hasala couldn't read this bank text. Find the text from
+\<bank\> at \<time\> in Messages, copy it and paste it here, or add the payment yourself."
+The paste pre-check also matches it: a pasted text from the same bank (and the same card,
+when both have one) whose date and time are within ten minutes of the unparsed row's
+`posted_at`, or, when the pasted text has no date, any unparsed text row of that bank from
+the last 7 days, is shown beside that row, and the sheet asks whether the paste replaces
+it. On yes, the pasted row is added and the unparsed row is deleted in the same edit.
+
 ### The op log
 
 A row from a text is a v4 `txn_ingested` that today's decoder folds with no anomaly (checked
@@ -219,12 +302,12 @@ existing values in closed enums, and two keys that older clients ignore:
 |---|---|---|
 | `ingest_id` | the HMAC key above (64 hex digits) | The ledger refuses the same key twice. |
 | `entry_method` | `mailbox` | The enum is closed (`mailbox`, `manual`, `import`; `Replay/V4/TxnV4.swift`). With `mailbox`, old and new clients run the probable-copy hold (`Duplicates.swift` needs it) and show the provenance line ("DIB transaction alert", "Read automatically"), which is true of a text. With `import` or none, text rows would lose both. |
-| `tier` | `template` on a template hit, `heuristic` when a reader prefilled, `none` with `unparsed: true` when nothing read | The closed set in `CausalDecode.tierOf`. |
+| `tier` | `template` on a template hit, `heuristic` when a reader prefilled, `none` with `unparsed: true` when nothing read (see the unparsed text row above for the fields it keeps) | The closed set in `CausalDecode.tierOf`. |
 | `bank` | the template's bank, or the bank of the sender list; absent when unknown | |
 | `gates.ar` | **absent** | It is a mail-only DMARC verdict. Absent, no client shows "Your mailbox couldn't confirm that this email came from your bank"; `no_ar` would. Thus `verifiedSender` is false for every text row: a text row never wins a certain-copy merge and never forms an implicit DIB transfer pair, which no account needs because mail and texts do not mix. |
 | `gates.sender` | `trusted` only when the sender matched the template's `sms_sender`, else `untrusted` | |
 | `gates.template` | `<id>@<version>` or `none` | |
-| `gates.card` | `known` (as defined above), `unknown`, or `none` when the text has no card | |
+| `gates.card` | `known`, `not_mine`, `unknown`, or `none` when the text has no card | From `knownCards()`, mapped as for mail (see [Filing with no review](#filing-with-no-review)). |
 | `gates.forwarded` | `false` | |
 | `gates.kind` | absent | |
 | `provenance` | **absent** | With a provider, a grant and a message ID, a client treats the row as mail that it can fetch again. A text cannot be fetched. |
@@ -243,10 +326,24 @@ The PRs that build bank texts also do this work, which the gate and the reposito
 need:
 
 1. **The real-text fence (PR-A, before any SMS fixture lands).** Step 0 of
-   `scripts/check.sh` covers only mail paths today. Extend it so that it fails on any file
-   under `conformance/sms/` that is not named `synthetic-*`, on any `corpus-*` file in an
-   SMS conformance set, and on any file under `server/internal/tmpl/seed/testdata`
-   (already covered). Real texts go only to `salehtl/hasala-fixtures` at the same paths.
+   `scripts/check.sh` (the real-mail fence, which `--fence-only` runs alone in CI job
+   `secrets`) covers only mail paths today. Each SMS set gets an exact-directory allowlist
+   in that step, as `conformance/normalizer` has:
+   - `conformance/sms-extract/`: every file must be named `synthetic-*`, except
+     `README.md` (`find conformance/sms-extract -type f ! -name 'synthetic-*' ! -name
+     README.md ! -name '.*'` must list nothing);
+   - SMS template cases go only in `conformance/templates/sms/`, where every file must be
+     named `synthetic-*` (`find conformance/templates/sms -type f ! -name 'synthetic-*' !
+     -name '.*'`); a file directly in `conformance/templates/` that holds `"channel":
+     "sms"` fails the fence, so an SMS case cannot sit outside the allowlisted directory;
+   - any later directory `conformance/sms-*` gets the same rule in the same step before
+     its first fixture lands;
+   - `conformance/swift/fold-v4-sms-*.json` holds only synthetic ops, and
+     `server/internal/tmpl/seed/testdata` stays fenced as it is.
+
+   Real texts go only to `salehtl/hasala-fixtures`, at the same paths. The fence has its
+   own test: a file named `corpus-1.json` or `x.json` in each of these directories makes
+   `scripts/check.sh --fence-only` fail.
 2. **The private fixtures lock.** After real texts are added to the private repository, run
    `scripts/private-fixtures-lock.sh write` and commit `private-fixtures.lock` with the
    change.
@@ -258,22 +355,49 @@ need:
 4. **The bundled templates.** After a seed template is added or changed in
    `server/internal/tmpl/seed`, run `swift ios/tools/templates/sync.swift`.
 5. **Tests.**
-   - D1: a template hit with a matching sender and a known card files; with no sender, with
-     another sender, with an unknown card, with no card and as a paste, it goes to Review.
-   - D10: the cutoff comes from the newest text row in the account from any device; mail at
-     or before it is skipped, not authored.
-   - One source: "Add bank text" authors nothing while the account has a mailbox link.
+   - D1: a template hit with a matching sender and a `card_linked` mine card files; with
+     no sender, with another sender, with an unknown card, with a `not_mine` card (as
+     `gates.card: not_mine`), with no card and as a paste, it goes to Review. Confirming
+     a text row with an unlinked card in Review authors `card_linked` mine in the same
+     edit, and the next text on that card files; a row that filed itself, or a reader row
+     left unconfirmed, links no card; a card already linked `not_mine` stays `not_mine`.
+   - D10: the cutoff comes from the newest text row in the account from any device; no
+     listed mail is skipped; a mail in the overlap with a text twin (also with a merchant
+     string that differs from the text's, and dated minutes after it) is authored with
+     `needs_review: true`; a mail in the overlap with no twin (a payment that no text
+     brought in) is authored as any mail.
+   - One source: "Add bank text" authors nothing while the account has a mailbox link; a
+     bank payment text then adds one to that day's ignored count, a text that is not a
+     payment does not, and Profile › Bank alerts shows the count with the advice.
    - D11: a synthetic fixture for each drop kind (one-time code, declined, card blocked,
-     card activated, registration, promotion, service ticket), each dropped; a person's
-     number, dropped; synthetic payment texts from other banks and with no sender, each in
-     Review; a template hit that also looks like a drop kind, kept.
+     card activated, registration, promotion, service ticket), each dropped; a text from a
+     person's number with no payment shape, dropped with no trace; a DIB template hit
+     from a numeric sender, kept (in Review); a template hit that also looks like a drop
+     kind, kept; synthetic payment texts from other banks and with no sender, each in
+     Review; a synthetic Arabic payment text from the DIB sender that no template reads
+     and that has no currency word and no card, in Review; a text from a bank sender with
+     no payment word, dropped and counted.
    - The key: equal texts in the same minute give two rows, the second a held probable
-     copy; a double run across a minute boundary, the same; equal texts on different days,
-     two rows with no hold; the secret is not in any op.
+     copy; a double run across a minute boundary, the same; two runs of equal texts at
+     the same time (started together, before either op is in the outbox) give `n` 0 and
+     1 and two rows, and neither op is refused as `duplicate_ingest`; a key whose op is
+     still in the outbox counts as taken; equal texts on different days, two rows with no
+     hold; the secret is not in any op; the secret is deleted on sign-out and on account
+     deletion, and a secret found with no account data on first launch is replaced.
    - Paste: the pre-check finds a matching row and asks; a paste never files and never
-     merges by itself.
-   - D6: before the first unlock, nothing is stored but the marker; after the unlock, the
-     notice shows and the marker is removed.
+     merges by itself; a pasted text that matches an unparsed text row (same bank and
+     card, within ten minutes) offers to replace it, and on yes the unparsed row is
+     deleted in the same edit.
+   - The unparsed text row: a payment-shaped bank text with no readable amount gives a
+     row with `tier: none`, `unparsed: true`, `bank`, `last4`, `posted_at` (`time`),
+     `received_at` and `channel: "sms"`, no amount, currency or direction, that today's
+     decoder folds with no anomaly; its Review copy tells the person to paste the text.
+   - What the phone keeps: a day's set-aside or ignored count older than 30 days is
+     deleted; the Test window's open time is deleted when it closes.
+   - D6: before the first unlock, nothing is stored but the marker; a template hit and a
+     payment-shaped text each add to the marker, and a promotion, a one-time code and a
+     text with no payment shape do not; after the unlock, the notice shows and the marker
+     is removed.
    - The op: a v4 canary op of a text row in the canary log (`Replay/Snapshot.swift`) and
      a fold golden `conformance/swift/fold-v4-sms-*.json` that folds it on the current
      decoder, with the probable-copy hold and `duplicate_ingest` cases.
@@ -306,12 +430,12 @@ need:
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
 | D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. |
 | D5 | Before or after the template-free readers ship in the app? | **Decided:** with them. Texts use templates first and the readers for Review. |
-| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 3 of the reading order, which need only bundled data. For a text that would be kept, it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. It then fails with "Hasala can't save bank texts until you unlock your iPhone. Paste this text later." After the unlock, the app shows "N bank texts arrived while your iPhone was locked after a restart. Paste them from Messages." and removes the marker. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
+| D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 3 of the reading order (the templates, the drop patterns and the payment shape), which need only bundled data. Only for a template hit or a text with a payment shape, the texts that would be kept, it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. It then fails with "Hasala can't save bank texts until you unlock your iPhone. Paste this text later." A text that steps 1 to 3 drop leaves no marker. After the unlock, the app shows "N bank payment texts arrived while your iPhone was locked after a restart. Paste them from Messages." and removes the marker. The privacy policy and the support page use the same words: the marker counts only texts that look like a bank payment. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
 | D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |
 | D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Decided:** yes. The "Transactions come from Gmail" line gains bank texts through the Shortcuts automation, read on the phone. |
 | D9 | Which filter words catch every bank text? | **Decided:** none. One catch-all automation, because only about 5% of DIB payment texts contain "AED". |
-| D10 | When a person switches from texts to email, what does email import? | **Decided:** only mail newer than the newest row from a text in the account, from any device, so the overlap is not counted twice. Listed mail at or before it is recorded as skipped and never authored. The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
-| D11 | What about texts that are not bank payments? | **Decided:** a text from a person's number, and a text that matches an explicit drop pattern (one-time codes, declined payments, card blocked or activated, registrations, promotions, service tickets), is dropped on the phone at once and never stored. A text with no template hit and no drop match that has a payment shape goes to Review, whatever the sender, and with no sender. Any other text is dropped; from a bank sender it adds one to a daily count on the device. A declined payment is never added. The fixtures include each kind. |
+| D10 | When a person switches from texts to email, what does email import? | **Decided:** all the mail that the connect lists, as for any connect; nothing is skipped by time, because a skip would lose payments that no text brought in. The cutoff, the newest row from a text in the account from any device, marks the overlap (mail dated at or before the cutoff plus 24 hours). A mail in the overlap that has a text twin (same bank, amount, currency, direction and card within 24 hours) waits in Review beside the twin and never files itself; the person keeps both or archives it. A mail in the overlap with no twin is authored as any mail. Thus a payment is neither lost nor counted twice without the person seeing it (see [One source for each person](#one-source-for-each-person)). The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
+| D11 | What about texts that are not bank payments? | **Decided:** a template hit is kept whatever the sender, a person's number included. A text that matches an explicit drop pattern (one-time codes, declined payments, card blocked or activated, registrations, promotions, service tickets) is dropped on the phone at once and never stored. A text with no template hit and no drop match that has a payment shape goes to Review, whatever the sender, and with no sender. From a bank sender, the shape is a payment word and any number; from any other sender, a payment word and an amount with a currency, or a masked card. Any other text is dropped; from a bank sender it adds one to a daily count on the device, and from a person's number or any other sender it leaves no trace. A declined payment is never added. The fixtures include each kind. |
 
 ## Open checks for the beta
 
@@ -319,7 +443,8 @@ Only real phones and real testers can answer these. Until each is checked, the a
 avoids the claim.
 
 - Whether iOS gives the action the sender, or only the text. Without a sender, D1 sends
-  every text to Review, and step 4 of the reading order decides what reaches it.
+  every text to Review, and step 3 of the reading order (the payment shape) decides what
+  reaches it.
 - Whether the automation runs, and the action can write, while the iPhone is locked (after
   the first unlock).
 - Whether iOS shows a banner for each run. With a catch-all automation, a banner would show
