@@ -129,20 +129,20 @@ Instead of connecting an email account, Hasala can read the texts (SMS) your ban
 
 ### How do I set up bank texts?
 
-During setup, at **How do your banks reach you?**, choose texts. If you've already finished setup, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
+During setup, at **How do your banks reach you?**, choose texts, then pick your banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
 
 1. Tap **Automation**, then make a new automation and choose **Message**.
 2. Leave the sender and **Message contains** empty, so it runs for any message. Choose **Run Immediately**, then tap **Next**.
 3. Tap **New Blank Automation**, then **Add Action**.
 4. Find **Hasala** and choose **Add bank text**. Check that its input is the message, then tap **Done**.
 
-Back in Hasala, tap **Test**, then, within 10 minutes, send yourself a text that says "Hasala test". Hasala tells you when it arrives, and doesn't keep the text. You can also skip the test, and Hasala confirms the automation with your next bank text. **Show me how** in Hasala shows the same steps with pictures.
+Back in Hasala, tap **Test**, then, within 10 minutes, send yourself a text that says "Hasala test". Hasala tells you when it arrives, and doesn't keep the text. You can also skip the test, and Hasala confirms the automation with your next bank text. The steps and the test stay in **Profile › Bank alerts** if you want them later. **Show me how** in Hasala shows the same steps with pictures.
 
 The automation only sees texts that arrive after you make it. To bring in an older bank text, paste it (see below).
 
 ### Why does the automation run for every text?
 
-Bank texts often don't share a word that Shortcuts could filter on, and a filter would miss payments without any sign. So the automation hands every text to Hasala, and Hasala looks at each one on your iPhone. It keeps only payment texts. Every other text, such as a message from a person, a one-time code or a promotion, is dropped at once and never stored.
+Bank texts often don't share a word that Shortcuts could filter on, and a filter would miss payments without any sign. So the automation hands every text to Hasala, and Hasala looks at each one on your iPhone. It keeps only texts that look like payments. Every other text, such as a one-time code, a declined payment, a promotion or a chat with a person, is dropped at once and never stored. A message that looks like a payment, even one from a person, waits in **Review**, where you can delete it.
 
 ### Why does a bank text wait in Review?
 
@@ -160,7 +160,7 @@ Open the **Shortcuts** app, tap **Automation**, then swipe left on the Hasala au
 
 Go to **Profile › Bank alerts** and switch the source. Hasala asks you to confirm first. Transactions it has already brought in stay.
 
-- **From texts to email:** Hasala brings in your bank emails as for any new mailbox, older ones included, so that a payment no text brought in isn't lost. An email for a payment that looks like one a text already brought in (same bank, amount, card and day) waits in **Review** beside that payment, so that you can archive the copy or keep both; nothing is counted twice without you seeing it. From then on, Hasala adds nothing from texts the automation hands it on any of your iPhones, so delete the automation in Shortcuts on each of them (see above). Until you do, **Profile › Bank alerts** shows how many bank payment texts it ignored. If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
+- **From texts to email:** Hasala brings in your bank emails as for any new mailbox, older ones included, so that a payment no text brought in isn't lost. An email for a payment that looks like one a text already brought in (same bank, amount, currency, direction and card, within a day, that is 24 hours, of the text) waits in **Review** beside that payment, so that you can archive the copy or keep both; nothing is counted twice without you seeing it. From then on, Hasala adds nothing from texts the automation hands it on any of your iPhones, so delete the automation in Shortcuts on each of them (see above). Until you do, **Profile › Bank alerts** shows how many bank payment texts it ignored. If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
 - **From email to texts:** Hasala disconnects your mailbox and reads texts from then on. Make the automation as above.
 
 ### Bank texts not showing up?
