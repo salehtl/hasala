@@ -65,7 +65,7 @@ struct ReviewTabView: View {
     }
     .sheet(isPresented: $pastingText) {
       if let lane = app.bankTexts {
-        PasteBankTextSheet(lane: lane) { app.say("Added to Review") }
+        PasteBankTextSheet(lane: lane, hidden: app.amountsHidden) { app.say("Added to Review") }
       }
     }
   }

@@ -162,8 +162,12 @@ struct BankTextsTests {
   }
 
   @Test func theTextsBanksSayHowEachIsRead() {
-    #expect(BankTexts.readNote(.dib) == "Read automatically")
+    #expect(BankTexts.readNote(.dib) == "Hasala reads them; some wait in Review")
     #expect(BankTexts.readNote(.enbd) == "You check each one in Review")
+    for line in SupportedBank.allCases.map(BankTexts.readNote) + [BankTexts.banksLine] {
+      #expect(!line.lowercased().contains("automatically"))
+    }
+    #expect(BankTexts.banksLine.contains("some still wait in Review"))
     for bank in SupportedBank.allCases {
       #expect(BankTexts.bankDetail(BankTextsBank(bank: bank, lastText: nil), now: now).hasSuffix("\n\(BankTexts.readNote(bank))"))
     }
@@ -223,7 +227,7 @@ struct BankTextsTests {
     let dib = BankTextsBank(bank: .dib, lastText: now.addingTimeInterval(-7200))
     let enbd = BankTextsBank(bank: .enbd, lastText: nil)
     #expect(dib.readsAutomatically && !enbd.readsAutomatically)
-    #expect(BankTexts.bankDetail(dib, now: now) == "Last text 2 h ago\nRead automatically")
+    #expect(BankTexts.bankDetail(dib, now: now) == "Last text 2 h ago\nHasala reads them; some wait in Review")
     #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nYou check each one in Review")
   }
 
@@ -410,7 +414,7 @@ struct BankTextsTests {
     let m = PasteBankTextModel(lane: lane)
     await m.paste(MockBankTexts.sampleText)
     #expect(m.match == row && m.addTitle == "Add anyway" && m.canAdd)
-    #expect(PasteBankTextModel.matchDetail(row).hasPrefix("AED 64.00") && PasteBankTextModel.matchDetail(row).hasSuffix("From email"))
+    #expect(PasteBankTextModel.matchDetail(row, hidden: false).hasPrefix("AED 64.00") && PasteBankTextModel.matchDetail(row, hidden: false).hasSuffix("From email"))
     #expect(PasteBankTextModel.matchQuestion(row).contains("already in Hasala"))
     #expect(await m.add())
     #expect(lane.added.count == 1 && lane.replaced.isEmpty)
@@ -616,6 +620,69 @@ struct BankTextsTests {
     #expect(BankTextsGuide.checklist.last?.title == BankTextsGuide.actionMissing.title)
   }
 
+  @Test func noGuideStepClaimsTheActionTakesTheMessageByItself() {
+    for step in BankTextsGuide.shortSteps + BankTextsGuide.fullSteps {
+      #expect(!step.contains("by itself") && !step.contains("takes the message"), "\(step)")
+    }
+    #expect(BankTextsGuide.shortSteps.last?.contains("Check that it shows Message") == true)
+    #expect(BankTextsGuide.fullSteps.last?.contains("pick Message") == true)
+  }
+
+  @Test func theFootnoteTellsADeviceThatRanTheAutomationToDeleteItWhenAnotherIPhoneReadsEmail() {
+    let lane = MockBankTexts(setUp: true, link: .linked)
+    let empty = UseBankTextsSection.footnote(MockMailbox(), lane: lane)
+    #expect(empty.hasPrefix(BankTexts.readsEmailNow) && empty.contains(SourceSwitch.readElsewhereLink))
+    var elsewhere = MockMailbox.gmail
+    elsewhere.readElsewhere = true
+    let other = MockMailbox(mailboxes: [elsewhere])
+    let read = UseBankTextsSection.footnote(other, lane: MockBankTexts(setUp: true, mailbox: other))
+    #expect(read.hasPrefix(BankTexts.readsEmailNow) && read.contains("Your other iPhone reads \(elsewhere.address)"))
+    let ran = MockBankTexts(link: .linked, lastRan: now)
+    #expect(UseBankTextsSection.footnote(MockMailbox(), lane: ran).hasPrefix(BankTexts.readsEmailNow))
+    #expect(UseBankTextsSection.footnote(MockMailbox(), lane: MockBankTexts(link: .linked)) == SourceSwitch.readElsewhereLink)
+  }
+
+  @Test func anEmailAccountCountsTheTextsThatLookLikePaymentsItIgnored() {
+    #expect(BankTexts.ignoredLine(0) == nil)
+    #expect(BankTexts.ignoredLine(1) == "1 text that looks like a payment was ignored in the last 30 days because this account reads bank email.")
+    #expect(BankTexts.ignoredLine(3) == "3 texts that look like payments were ignored in the last 30 days because this account reads bank email.")
+    let linked = MockBankTexts(link: .linked, ignored: 3)
+    #expect(UseBankTextsSection.ignoredLine(linked) == BankTexts.ignoredLine(3))
+    #expect(linked.sawAutomationRun && UseBankTextsSection.offersDeleteAutomation(linked))
+    #expect(UseBankTextsSection.ignoredLine(MockBankTexts(link: .notLinked, ignored: 3)) == nil)
+    #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(link: .linked)))
+    #expect(!UseBankTextsSection.offersDeleteAutomation(MockBankTexts(setUp: true, link: .notLinked)))
+  }
+
+  @Test func theLastDisconnectSaysTheAutomationStaysWhenThisDeviceSawItRun() {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    let ran = MockBankTexts(mailbox: mailbox, lastRan: now)
+    #expect(ran.status == .notSetUp && ran.lastRanAt == now && ran.sawAutomationRun)
+    #expect(BankTexts.disconnectNote(ran, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == BankTexts.automationStillThere)
+    let ignored = MockBankTexts(mailbox: mailbox, ignored: 2)
+    #expect(BankTexts.disconnectNote(ignored, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) != nil)
+    #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: mailbox), mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
+    #expect(BankTexts.disconnectNote(nil, mailbox: mailbox, disconnecting: MockMailbox.gmail.id) == nil)
+    let two = MockMailbox(mailboxes: [MockMailbox.gmail, MockMailbox.outlook])
+    #expect(BankTexts.disconnectNote(MockBankTexts(mailbox: two, lastRan: now), mailbox: two, disconnecting: MockMailbox.gmail.id) == nil)
+  }
+
+  @Test func theMatchHidesItsAmountWhenAmountsAreHidden() {
+    let match = BankTextMatch(
+      rowID: "r1", kind: .payment, merchant: "Sample Grocer", amount: .aed(6400), postedAt: now, fromText: false)
+    #expect(PasteBankTextModel.matchDetail(match, hidden: false).hasPrefix("AED 64"))
+    let hidden = PasteBankTextModel.matchDetail(match, hidden: true)
+    #expect(hidden.hasPrefix("Amount hidden") && !hidden.contains("64"))
+    #expect(PasteBankTextModel(lane: MockBankTexts(), hidden: true).hidden)
+  }
+
+  @Test func theHeroStateDoesNotDependOnTheTime() {
+    let status = BankTextsStatus.working(lastRan: now)
+    #expect(BankTextsAlertsPage.Hero.state(status) == BankTextsAlertsPage.Hero(status, lastText: nil, now: now).state)
+    #expect(BankTextsAlertsPage.Hero.state(.waitingForFirstText) == .ready)
+    #expect(BankTextsAlertsPage.Hero.state(.notSetUp) == .notSetUp)
+  }
+
   @Test func theTextsSummary() {
     let s = MailboxesSummary.texts(.working(lastRan: now.addingTimeInterval(-240)), now: now)
     #expect(s.title == "Bank texts are working" && s.detail == "Ran 4 min ago" && !s.needsYou)
@@ -624,8 +691,9 @@ struct BankTextsTests {
 
   @Test func setupSaysTheAccountReadsEmailWhenTheLinkCopySaysLinked() {
     let linked = model(services(texts: MockBankTexts(link: .linked)))
-    #expect(linked.readsBankEmailNote == BankTexts.setupReadsEmail)
+    #expect(linked.readsBankEmailNote == BankTexts.setupReadsEmailElsewhere)
     #expect(BankTexts.setupReadsEmail.contains("Profile \u{203A} Bank alerts"))
+    #expect(BankTexts.setupReadsEmailElsewhere.contains("on the iPhone that reads your bank email"))
     #expect(!linked.bankStepSubtitle.contains("SMS"))
     let open = model(services(texts: MockBankTexts(link: .notLinked)))
     #expect(open.readsBankEmailNote == nil && !open.bankStepSubtitle.contains("SMS"))
@@ -636,7 +704,12 @@ struct BankTextsTests {
     #expect(chose.readsBankEmailNote == nil)
     let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
     let connected = model(services(texts: MockBankTexts(mailbox: mailbox), mailbox: mailbox))
-    #expect(connected.readsBankEmailNote != nil && !connected.bankStepSubtitle.contains("SMS"))
+    #expect(connected.readsBankEmailNote == BankTexts.setupReadsEmail && !connected.bankStepSubtitle.contains("SMS"))
+    var elsewhere = MockMailbox.gmail
+    elsewhere.readElsewhere = true
+    let other = MockMailbox(mailboxes: [elsewhere])
+    let joined = model(services(texts: MockBankTexts(mailbox: other), mailbox: other))
+    #expect(joined.readsBankEmailNote == BankTexts.setupReadsEmailElsewhere)
     let sample = AccountServices(
       account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(offersSampleData: true),
       setup: MockSetupAuthoring(), notifications: MockNotificationPermission(), bankTexts: MockBankTexts())
@@ -648,6 +721,12 @@ struct BankTextsTests {
   @Test func theKeepingCopyCoversUnreadPaymentTexts() {
     for line in [BankTexts.keepsOnlyFields, BankTexts.keepsNoText] {
       #expect(!line.contains("payments it reads") && !line.contains("payment Hasala read"))
+    }
+    let keepsTexts = #/\bkeeps\b[^.]*?\btexts?\b/#
+    for line in [BankTexts.keepsOnlyFields, BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsPayments] {
+      for sentence in line.split(separator: ".") where sentence.contains(keepsTexts) {
+        #expect(sentence.contains("details"), "\(sentence)")
+      }
     }
     #expect(BankTexts.keepsOnlyFields.contains("texts that look like payments"))
     #expect(BankTexts.keepsNoText.contains("never the text itself"))

@@ -6,6 +6,7 @@ import SwiftUI
 @Observable
 final class PasteBankTextModel {
   let lane: any BankTextsConnecting
+  let hidden: Bool
   private(set) var text: String?
   private(set) var reading: BankTextReading?
   private(set) var match: BankTextMatch?
@@ -14,8 +15,9 @@ final class PasteBankTextModel {
   private(set) var failure: String?
   private var generation = 0
 
-  init(lane: any BankTextsConnecting) {
+  init(lane: any BankTextsConnecting, hidden: Bool = false) {
     self.lane = lane
+    self.hidden = hidden
   }
 
   var refused: Bool { !lane.offersPaste }
@@ -69,8 +71,8 @@ final class PasteBankTextModel {
     m.merchant ?? (m.kind == .unreadText ? "A bank text Hasala couldn't read" : "A payment")
   }
 
-  static func matchDetail(_ m: BankTextMatch) -> String {
-    let money = m.amount.map { "\($0.currency) \(MoneyFormat.string($0.minor))" }
+  static func matchDetail(_ m: BankTextMatch, hidden: Bool) -> String {
+    let money = m.amount.map { hidden ? "Amount hidden" : "\($0.currency) \(MoneyFormat.string($0.minor))" }
     let from = m.fromText ? "From a bank text" : "From email"
     return [money, BankTexts.dayAndTime(m.postedAt), from].compactMap { $0 }.joined(separator: " \u{00B7} ")
   }
@@ -102,8 +104,8 @@ struct PasteBankTextSheet: View {
   var added: () -> Void
   @Environment(\.dismiss) private var dismiss
 
-  init(lane: any BankTextsConnecting, added: @escaping () -> Void) {
-    _model = State(initialValue: PasteBankTextModel(lane: lane))
+  init(lane: any BankTextsConnecting, hidden: Bool, added: @escaping () -> Void) {
+    _model = State(initialValue: PasteBankTextModel(lane: lane, hidden: hidden))
     self.added = added
   }
 
@@ -196,7 +198,7 @@ struct PasteBankTextSheet: View {
       HListCard(alignment: .leading) {
         VStack(alignment: .leading, spacing: 2) {
           Text(PasteBankTextModel.matchTitle(match)).hType(.headline).foregroundStyle(HColor.textPrimary)
-          Text(PasteBankTextModel.matchDetail(match)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          Text(PasteBankTextModel.matchDetail(match, hidden: model.hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)

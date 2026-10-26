@@ -27,6 +27,14 @@ struct BankTextsAlertsPage: View {
 
     var working: Bool { state == .working }
 
+    static func state(_ status: BankTextsStatus) -> State {
+      switch status {
+      case .working: .working
+      case .waitingForFirstText: .ready
+      case .notSetUp: .notSetUp
+      }
+    }
+
     init(_ status: BankTextsStatus, lastText: Date?, now: Date) {
       switch status {
       case .working(let lastRan):
@@ -61,28 +69,26 @@ struct BankTextsAlertsPage: View {
   }
 
   var body: some View {
-    TimelineView(.periodic(from: .now, by: 60)) { context in
-      let now = context.date
-      let hero = Hero(lane.status, lastText: lane.lastTextAt, now: now)
-      ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          heroCard(hero)
-          automation(now)
-          banks(now)
-          howItReads
-          switchSection
+    ScrollView {
+      VStack(alignment: .leading, spacing: 24) {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+          heroCard(Hero(lane.status, lastText: lane.lastTextAt, now: context.date))
         }
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, 8)
-        .padding(.bottom, 48)
-        .hAnimation(.stateSwap, value: hero.state)
+        automation
+        TimelineView(.periodic(from: .now, by: 60)) { context in banks(context.date) }
+        howItReads
+        switchSection
       }
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.top, 8)
+      .padding(.bottom, 48)
+      .hAnimation(.stateSwap, value: Hero.state(lane.status))
     }
     .background(HColor.surfaceSecondary)
     .navigationTitle("Bank alerts")
     .navigationBarTitleDisplayMode(.inline)
     .sheet(isPresented: $pasting) {
-      PasteBankTextSheet(lane: lane) { app.say("Added to Review") }
+      PasteBankTextSheet(lane: lane, hidden: app.amountsHidden) { app.say("Added to Review") }
     }
     .sheet(isPresented: $testing) {
       NavigationStack {
@@ -136,7 +142,7 @@ struct BankTextsAlertsPage: View {
     .accessibilityIdentifier("bankAlerts.hero")
   }
 
-  private func automation(_ now: Date) -> some View {
+  private var automation: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Automation")
       HListCard {
@@ -149,8 +155,11 @@ struct BankTextsAlertsPage: View {
           VStack(alignment: .leading, spacing: 2) {
             Text("Add bank text").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
             Text("Runs on every text you get").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-            StatusPillView(Self.automationPill(lane.status, test: lane.test, now: now), size: .s26, surface: .tinted)
-              .padding(.top, 6)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+              StatusPillView(
+                Self.automationPill(lane.status, test: lane.test, now: context.date), size: .s26, surface: .tinted)
+            }
+            .padding(.top, 6)
           }
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -252,12 +261,22 @@ struct UseBankTextsSection: View {
   @State private var asking = false
   @State private var switching = false
   @State private var pasting = false
+  @Environment(\.openURL) private var openURL
 
   static func footnote(_ mailbox: (any MailboxConnecting)?, lane: any BankTextsConnecting) -> String {
-    if let blocker = SourceSwitch.textsBlocker(mailbox, texts: lane) { return blocker }
     let note = SourceSwitch.reading(mailbox).isEmpty
       ? BankTexts.oneSourceNote : "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
-    return lane.isSetUp && lane.readsEmail ? "\(BankTexts.readsEmailNow) \(note)" : note
+    let blocker = SourceSwitch.textsBlocker(mailbox, texts: lane)
+    return [offersDeleteAutomation(lane) ? BankTexts.readsEmailNow : nil, blocker ?? note]
+      .compactMap { $0 }.joined(separator: " ")
+  }
+
+  static func offersDeleteAutomation(_ lane: any BankTextsConnecting) -> Bool {
+    lane.readsEmail && (lane.isSetUp || lane.sawAutomationRun)
+  }
+
+  static func ignoredLine(_ lane: any BankTextsConnecting) -> String? {
+    lane.readsEmail ? BankTexts.ignoredLine(lane.ignoredLast30Days) : nil
   }
 
   static func switchMessage(_ mailbox: (any MailboxConnecting)?) -> String {
@@ -267,10 +286,21 @@ struct UseBankTextsSection: View {
   var body: some View {
     let blocked = SourceSwitch.textsBlocker(app.mailbox, texts: lane) != nil
     VStack(alignment: .leading, spacing: 8) {
+      if let ignored = Self.ignoredLine(lane) {
+        InlineStatus(tone: .neutral, text: ignored, size: .regular)
+          .accessibilityIdentifier("bankAlerts.useTexts.ignored")
+      }
       HListCard {
+        if Self.offersDeleteAutomation(lane) {
+          MailActionRow(
+            title: "Delete the automation", identifier: "bankAlerts.useTexts.deleteAutomation", icon: .trash,
+            detail: "In the Shortcuts app"
+          ) { openURL(BankTexts.shortcutsURL) }
+          HDivider(inset: .disc68)
+        }
         MailActionRow(
           title: "Use bank texts instead", identifier: "bankAlerts.useTexts", icon: .chat,
-          detail: "No inbox access. Set up a Shortcut once."
+          detail: switching ? "Switching to bank texts" : "No inbox access. Set up a Shortcut once.", busy: switching
         ) { asking = true }
         .disabled(switching || blocked)
         if lane.offersPaste {
@@ -289,7 +319,7 @@ struct UseBankTextsSection: View {
         .accessibilityIdentifier("bankAlerts.useTexts.note")
     }
     .sheet(isPresented: $pasting) {
-      PasteBankTextSheet(lane: lane) { app.say("Added to Review") }
+      PasteBankTextSheet(lane: lane, hidden: app.amountsHidden) { app.say("Added to Review") }
     }
     .alert("Switch to bank texts?", isPresented: $asking) {
       Button("Cancel", role: .cancel) {}

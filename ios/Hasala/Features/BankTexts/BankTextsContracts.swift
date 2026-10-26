@@ -91,6 +91,8 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var banks: [BankTextsBank] { get }
   var test: BankTextsTest { get }
   var lastTextAt: Date? { get }
+  var lastRanAt: Date? { get }
+  var ignoredLast30Days: Int { get }
   func finishSetUp() async throws(BankTextsFailure)
   func startTest()
   func read(_ text: String) async -> BankTextReading
@@ -109,6 +111,7 @@ extension BankTextsConnecting {
   var usesTexts: Bool { source == .texts }
   var readsEmail: Bool { link == .linked }
   var offersPaste: Bool { link != .linked }
+  var sawAutomationRun: Bool { lastRanAt != nil || ignoredLast30Days > 0 }
 }
 
 enum BankTexts {
@@ -150,7 +153,7 @@ enum BankTexts {
   }
 
   static func readNote(_ bank: SupportedBank) -> String {
-    readAutomatically.contains(bank) ? "Read automatically" : "You check each one in Review"
+    readAutomatically.contains(bank) ? "Hasala reads them; some wait in Review" : "You check each one in Review"
   }
 
   static let switchToEmailMessage =
@@ -170,6 +173,26 @@ enum BankTexts {
   static let setupReadsEmail =
     "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts."
 
+  static let setupReadsEmailElsewhere =
+    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts on the iPhone that reads your bank email."
+
+  static func ignoredLine(_ count: Int) -> String? {
+    guard count > 0 else { return nil }
+    let texts = count == 1 ? "1 text that looks like a payment was" : "\(count) texts that look like payments were"
+    return "\(texts) ignored in the last 30 days because this account reads bank email."
+  }
+
+  static let automationStillThere =
+    "Your Shortcuts automation is still there. Hasala will add bank texts from now on."
+
+  static func disconnectNote(
+    _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String
+  ) -> String? {
+    guard let lane, lane.sawAutomationRun else { return nil }
+    let others = SourceSwitch.reading(mailbox).filter { $0.id != id }
+    return others.isEmpty ? automationStillThere : nil
+  }
+
   static func pasteDetail(usesTexts: Bool) -> String {
     usesTexts ? "For texts from before you set up the automation" : "It waits in Review for you to check"
   }
@@ -179,21 +202,22 @@ enum BankTexts {
     return usesTexts ? "For a text from before your automation. \(how)" : "For a payment text from your bank. \(how)"
   }
 
-  static let keepsOnlyFields = "Texts stay on this iPhone. Hasala keeps only texts that look like payments, and only the fields it needs."
+  static let keepsOnlyFields =
+    "Texts stay on this iPhone. Hasala keeps only the details it needs from texts that look like payments, never the texts."
 
   static let keepsNoText =
-    "Hasala keeps only the fields it needs from a payment text, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
+    "Hasala keeps only the details it needs from a text that looks like a payment, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
 
   static let oneSourceNote =
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
 
   static let keepsPaymentShapedTexts =
-    "Hasala keeps bank payment texts. A text that looks like a payment, from any sender, waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
+    "Hasala keeps the payment details of bank texts. A text that looks like a payment, from any sender, waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
 
   static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
   static let banksLine =
-    "DIB texts are read automatically. Texts from your other banks come in to Review for you to check."
+    "Hasala reads DIB texts for you, though some still wait in Review. Texts from your other banks come in to Review for you to check."
 
   static let automationFootnote =
     "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."

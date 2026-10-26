@@ -201,7 +201,11 @@ final class SetupModel {
 
   var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected && bankTexts?.readsEmail != true }
 
-  var readsBankEmailNote: String? { bankTexts?.readsEmail == true && source != .email ? BankTexts.setupReadsEmail : nil }
+  var readsBankEmailNote: String? {
+    guard bankTexts?.readsEmail == true, source != .email else { return nil }
+    return SourceSwitch.textsBlocker(services.mailbox, texts: bankTexts) == nil
+      ? BankTexts.setupReadsEmail : BankTexts.setupReadsEmailElsewhere
+  }
 
   var bankStepSubtitle: String {
     let reads = "Hasala reads your banks' alert emails on this iPhone."

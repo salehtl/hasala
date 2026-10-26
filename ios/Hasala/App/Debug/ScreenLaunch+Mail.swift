@@ -29,6 +29,15 @@
         profile([.bankAlerts])(graph)
       }),
       Screen("bankAlerts.emailOrTexts", scenario: "gmailTexts", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.emailIgnored", scenario: "gmailTexts", prepare: { graph in
+        bankTexts(graph)?.ignoredLast30Days = 3
+        profile([.bankAlerts])(graph)
+      }),
+      Screen("mail.disconnectTexts", scenario: "gmailTexts", prepare: { graph in
+        bankTexts(graph)?.ignoredLast30Days = 3
+        MailLaunch.disconnectAlert = "gmail-1"
+        profile([.bankAlerts, .mailbox("gmail-1")])(graph)
+      }),
       Screen("bankAlerts.none", scenario: "noMailbox", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.refused", scenario: "noMailbox", prepare: { graph in
         mock(graph)?.connectRefusal = .sampleData

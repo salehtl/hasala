@@ -15,6 +15,7 @@
     var linkOverride: MailboxLinkCopy?
     private(set) var isSetUp: Bool
     var lastRan: Date?
+    var ignoredLast30Days: Int
     var lastTexts: [SupportedBank: Date] = [:]
     var test: BankTextsTest = .idle
     var testOutcome: TestOutcome = .received
@@ -32,13 +33,14 @@
 
     init(
       setUp: Bool = false, mailbox: MockMailbox? = nil, link: MailboxLinkCopy? = nil, lastRan: Date? = nil,
-      lastTexts: [SupportedBank: Date] = [:]
+      lastTexts: [SupportedBank: Date] = [:], ignored: Int = 0
     ) {
       isSetUp = setUp
       self.mailbox = mailbox
       linkOverride = link
       self.lastRan = lastRan
       self.lastTexts = lastTexts
+      ignoredLast30Days = ignored
     }
 
     static let sampleText =
@@ -79,6 +81,8 @@
     }
 
     var lastTextAt: Date? { lastTexts.values.max() }
+
+    var lastRanAt: Date? { lastRan }
 
     func finishSetUp() async throws(BankTextsFailure) {
       finishCalls += 1

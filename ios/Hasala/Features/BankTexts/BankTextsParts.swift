@@ -12,7 +12,7 @@ enum BankTextsGuide {
     "Leave Sender as Any and add no Message Contains filter.",
     runImmediately,
     newBlank,
-    "Search \u{201C}Hasala\u{201D}, pick Add bank text, then tap Done.",
+    "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue, then tap Done.",
   ]
 
   static let fullSteps = [
@@ -21,7 +21,7 @@ enum BankTextsGuide {
     "Leave Sender as Any, and don't add Message Contains. One automation then works for all your banks.",
     runImmediately,
     newBlank,
-    "Search \u{201C}Hasala\u{201D} and pick Add bank text. It takes the message by itself. Tap Done.",
+    "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue. If it doesn\u{2019}t, tap the blue word and pick Message. Tap Done.",
   ]
 
   static let checklist: [(title: String, detail: String)] = [

@@ -22,14 +22,14 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(el(app, "source.texts").isSelected)
     tap(app, "source.continue", opening: "textsBanks.continue")
     XCTAssertTrue(app.staticTexts["Which banks text you?"].exists)
-    XCTAssertTrue(el(app, "bank.dib").label.contains("Read automatically"))
+    XCTAssertTrue(el(app, "bank.dib").label.contains("Hasala reads them"))
     XCTAssertTrue(el(app, "bank.enbd").label.contains("You check each one in Review"))
     attach(app, "Which banks text you")
     try audit(app)
     tap(app, "textsBanks.continue", opening: "texts.steps")
     XCTAssertTrue(app.staticTexts["Make the automation"].exists)
     XCTAssertTrue(el(app, "texts.keepsOnly").exists, "the privacy line is missing")
-    XCTAssertTrue(el(app, "texts.banksLine").label.contains("DIB texts are read automatically"))
+    XCTAssertTrue(el(app, "texts.banksLine").label.contains("Hasala reads DIB texts"))
     XCTAssertTrue(el(app, "texts.openShortcuts").exists)
     attach(app, "Make the automation")
     try audit(app)
@@ -105,7 +105,7 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(status.waitForExistence(timeout: 30))
     XCTAssertTrue(status.label.contains("Working") && status.label.contains("ran 4 min ago"), status.label)
     XCTAssertTrue(el(app, "bankAlerts.texts.automation").label.contains("Ran 4 min ago"))
-    XCTAssertTrue(el(app, "bankAlerts.texts.bank.dib").label.contains("Read automatically"))
+    XCTAssertTrue(el(app, "bankAlerts.texts.bank.dib").label.contains("Hasala reads them"))
     XCTAssertTrue(el(app, "bankAlerts.texts.bank.adib").label.contains("No text yet"))
     attach(app, "Bank alerts · Texts · Working")
     try audit(app, overSheet: true)
@@ -170,6 +170,30 @@ final class BankTextsUITests: XCTestCase {
     let status = el(app, "bankAlerts.status")
     XCTAssertTrue(status.waitForExistence(timeout: uiWait))
     XCTAssertTrue(status.label.contains("Waiting for your first bank text"), status.label)
+  }
+
+  @MainActor
+  func testAnEmailAccountCountsTheTextsItIgnored() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.emailIgnored")
+    let ignored = el(app, "bankAlerts.useTexts.ignored")
+    XCTAssertTrue(ignored.waitForExistence(timeout: 30), "the ignored count is missing")
+    dragUntilHittable(app, ignored)
+    XCTAssertTrue(ignored.label.contains("3 texts that look like payments were ignored in the last 30 days"), ignored.label)
+    XCTAssertTrue(el(app, "bankAlerts.useTexts.deleteAutomation").exists, "Delete the automation is missing")
+    XCTAssertTrue(el(app, "bankAlerts.useTexts").exists)
+    XCTAssertTrue(el(app, "bankAlerts.useTexts.note").label.contains("Delete the automation in the Shortcuts app"))
+    attach(app, "Bank alerts · Email · Ignored texts")
+    try audit(app, overSheet: true)
+  }
+
+  @MainActor
+  func testTheLastDisconnectSaysTheAutomationStaysOn() throws {
+    let app = launch(scenario: nil, screen: "mail.disconnectTexts")
+    let alert = app.alerts.firstMatch
+    XCTAssertTrue(alert.waitForExistence(timeout: 30), "the disconnect alert did not open")
+    let line = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Your Shortcuts automation is still there'"))
+    XCTAssertEqual(line.count, 1, "the automation sentence is missing")
+    attach(app, "Disconnect · Automation still there")
   }
 
   @MainActor
