@@ -1,7 +1,7 @@
 # salehtl/hasala-fixtures: the private real-mail fixtures this commit expects.
 # Written by scripts/private-fixtures-lock.sh write; checked by scripts/check.sh
 # when HASALA_PRIVATE_FIXTURES is set. Do not edit by hand.
-commit 30c3e3a1a35a9f66ed59cc9dd23a5a6676c90a7b
+commit 8bb20c2422e038f65c7b630a98fdb3e9ebf98883
 e44a95198ce56c9e766ef228ef9a90007a218f2121bbdef4ec38f28cf795aafa  conformance/normalizer/apple-forward-dib-01.json
 c066cd81b25b6625de3570e7bf78dcd52df1b8f4305cdf57435323318a9b46ed  conformance/normalizer/apple-forward-dib-02.json
 805a183bedcb6fcdfb6d9f216c5e91a94a4640677c06ca2258974424d388a745  conformance/normalizer/apple-forward-enbd-alert.json
@@ -40,15 +40,6 @@ abd62022f2917c32481a360a01238badf30e9609fd426d8b2fb2ace8a3580477  conformance/no
 892fa888df7bff09e2c5d6a897b7d96c03328ec26d7b67d363832d7885624a43  conformance/normalizer/mislabelled-utf8-actually-windows-1256.json
 0a7a9b77a8b2e215b5214cece7eedf6bd61a582cb12d68e45c37c6c420399aba  conformance/normalizer/quoted-forward-recovers-no-headers.json
 e5f193c6b68c6659487d8bb2d5090b588b2fb00733b7cfa78ac0a181025dff9c  conformance/normalizer/us-ascii-plain.json
-7f182e0a245d03b53752c628f336e7fc021494a50ad21f3b1498cf67df06aec2  conformance/sms/dib-card-payment.json
-09b0dd306e5515abb79d06d73fac299991f372e4f19f9ea370c3eaaae32d870b  conformance/sms/dib-credit.json
-af9a1f5f8161c1486109843e063a39eb7c758359fbaccd775369e83de31b4ae8  conformance/sms/dib-debit.json
-e2ec1b3f543f82366fb11c41b74387dfda5b496e3dd2ae86b1a7ba378d4fec6f  conformance/sms/dib-other.json
-8ccc31e2abb19d04ce124dd0810f1f6031dd046e2c2b398eb83a74643584db4b  conformance/sms/dib-own-transfer.json
-19fe39cd36a4ea9ace31098ebf4a39c761e8b74c097d51b76df84e07c4908792  conformance/sms/dib-purchase.json
-3ae2a37fb46c0a2da5cb9e0e2fe96aca8b409ac356f6dba910f65d5ae9c120f5  conformance/sms/dib-refund.json
-6927d7d2bc613e2b2969cb2cb0dddc20108378f458366a5006550e72e4a31307  conformance/sms/dib-reversal.json
-97a3646c654c8aa5c6b8b73910f88f0bfe4ec546637ddedccde7f9be34fb8408  conformance/sms/dib-salary.json
 88d05ccefca3acd705bfa8318214a15b847f36416fbfae31f2d0ca6ee6676c86  conformance/templates/corpus-adib.account.v1.json
 bf31d46103fa567f0f034dd0e3a46672cbbdc6823ca187319d29e901e8689cc7  conformance/templates/corpus-adib.alert.v1.json
 01db7d2c9359d897b8594336be706b28a9a47ae62d79ad423caf2e724a206d75  conformance/templates/corpus-dib.account.v1.json
@@ -63,6 +54,15 @@ b3126250decf38f2b01df5c852710f31c3447402f0f6e698d2f8bd3ec5d12fd5  conformance/te
 8897f6a92f37caab0e904937dabed88616cf38c598ecb62bdc8ea01f2d816f10  conformance/templates/eml/adib.account.v1/adib-debit-01.eml
 a4a8795aab48beb4e57259162a2fae4d4567ea56dde8d1880bae8c52271ddc24  conformance/templates/eml/adib.alert.v1/adib-purchase-01.eml
 34032de75598c5fe4115f7b5aa2d8408d2ba64697b72580c4a7f90e4ac8d87c6  conformance/templates/eml/adib.alert.v1/adib-purchase-forwarded-01.eml
+e8743c457655ae182370fbba7f71fe9db0571b9234a593e3e312b02d140fb432  conformance/templates/sms/corpus-dib.sms.card-payment.v1.json
+f4914bc3a0b308b9cc236f6d73719d022723a3019b9ab066bd6259f72b841982  conformance/templates/sms/corpus-dib.sms.credit.v1.json
+b0bc2bad83ba97d8ffd29d9db655325fc9dbad3e53ec06d715c411cff75fb936  conformance/templates/sms/corpus-dib.sms.debit.v1.json
+4bfde3b00cd03f154704968b8dd951acdf891af84d1422dbc9a2522778cb89c2  conformance/templates/sms/corpus-dib.sms.own-transfer.v1.json
+8f9e3fd5b2d2c84a9de2d6919974cceb812e50f0445ecc9a7bada991eb3d3bb6  conformance/templates/sms/corpus-dib.sms.purchase.v1.json
+269bd9ac045acfd0b72c3a58237607f46133f736df81b258b02fff6fbdbef0be  conformance/templates/sms/corpus-dib.sms.refund.v1.json
+80f555f7747eab8972e4dc4190a405ef098d7e5f088bad1876f5a3f404577349  conformance/templates/sms/corpus-dib.sms.reversal.v1.json
+596fd69fa78801133bfb248a4696974414fdcd60a3d51c9f3e46d68e1d6c3a11  conformance/templates/sms/corpus-dib.sms.salary.v1.json
+b8967f00927ba8c71d3cab001ac17b3b40bb49d55f306f4b3daa658976285555  conformance/templates/sms/dib-other.json
 f3d86c1b2183d3128a9f9d467af602fc19787be88cc1ea1c7c6718a1e88cebd8  server/internal/origin/testdata/dib-dkim-unexpired.eml
 864c36cf78c62d23030094eaa6a455899c430154bfa682b589095b3b6cc7b8f0  server/internal/origin/testdata/enbd-proofpoint-p.eml
 b81adabe7182cd8fc47d536f0b648dcaa93fcf9c07e3cbf86d0b2fcecbc50be7  server/internal/origin/testdata/enbd-selector1.eml

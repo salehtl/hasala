@@ -48,14 +48,6 @@
         "value": "DIB OWN ACCOUNT TRANSFER"
       },
       {
-        "field": "last4",
-        "type": "last4",
-        "source": "body",
-        "patterns": [
-          "من حساب (?P<v>[^ \\n]+) "
-        ]
-      },
-      {
         "field": "direction",
         "type": "const",
         "source": "body",
@@ -76,7 +68,7 @@
   "cases": [
     {
       "name": "dib.sms.own-transfer.v1/own-transfer",
-      "source": "SYNTHETIC: a transfer between the person's own accounts: a debit, a transfer, the from-account",
+      "source": "SYNTHETIC: a transfer between the person's own accounts: a debit and a transfer; an account mask is no card, so no last four",
       "subject_base64": "",
       "normalized_body_base64": "2KrYrdmI2YrZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjZhdio2YTYuiBBRUQgNCwzMjEuMDkg2YXZhiDYrdiz2KfYqCAwMDEtMDAwLTEyM1hYWFgtMDEg2KfZhNmKINit2LPYp9ioIDAwMS0wMDAtNDU2WFhYWC0wMSDZgdmKIDA1LTA2LTIwMjYgTUIgRnVuZCBUcmFuc2ZlciDYsdi12YrYryDYrdiz2KfYqCDYp9mE2K7YtdmFINmH2YggQUVEIDksODc2LjU0INmI2K3Ys9in2Kgg2KfZhNin2YrYr9in2Lkg2YfZiCBBRUQgOCw3NjUuNDM=",
       "expect": {
@@ -87,7 +79,7 @@
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",
         "merchant": "DIB OWN ACCOUNT TRANSFER",
-        "last4": "2301",
+        "last4": "",
         "is_transfer": true,
         "empty_groups": []
       }
@@ -105,7 +97,7 @@
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",
         "merchant": "DIB OWN ACCOUNT TRANSFER",
-        "last4": "2301",
+        "last4": "",
         "is_transfer": true,
         "empty_groups": []
       }

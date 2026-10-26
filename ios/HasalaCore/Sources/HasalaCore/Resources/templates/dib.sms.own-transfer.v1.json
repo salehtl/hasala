@@ -41,14 +41,6 @@
       "value": "DIB OWN ACCOUNT TRANSFER"
     },
     {
-      "field": "last4",
-      "type": "last4",
-      "source": "body",
-      "patterns": [
-        "من حساب (?P<v>[^ \\n]+) "
-      ]
-    },
-    {
       "field": "direction",
       "type": "const",
       "source": "body",

@@ -126,14 +126,17 @@ leaked="$(
 		find conformance/normalizer -type f ! -name edge-cases.json ! -name charset-tables.ts ! -name '.*' || true
 		find conformance/templates -type f -name 'corpus-*' || true
 		find conformance/templates/eml -type f || true
-		find conformance/sms -type f || true
+		find conformance/templates/sms -type f ! -name 'synthetic-*' ! -name '.*' || true
+		find conformance -path 'conformance/sms*' -type f ! -name 'synthetic-*' ! -name README.md ! -name '.*' || true
+		find conformance/templates -path conformance/templates/sms -prune -o -type f ! -name '.*' \
+			-exec grep -lE '\\?"channel\\?"[[:space:]]*:[[:space:]]*\\?"sms\\?"' {} + || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true
 	} 2>/dev/null | sort -u
 )"
 if [[ -n "$leaked" ]]; then
-	echo "check: real-mail fixtures are back in the public tree; they belong in salehtl/hasala-fixtures:" >&2
+	echo "check: real bank mail or text fixtures are in the public tree; they belong in salehtl/hasala-fixtures:" >&2
 	echo "$leaked" >&2
 	exit 1
 fi
@@ -141,6 +144,9 @@ echo "no real-mail fixture or private expectation file in the public tree"
 if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0
 fi
+
+step "real-mail fence self-test"
+"$ROOT/scripts/tests/fence_test.sh"
 
 # --- 0b. HasalaCore source lints ------------------------------------------------
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source

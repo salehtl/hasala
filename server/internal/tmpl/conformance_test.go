@@ -291,6 +291,7 @@ func probeCorpus() []struct{ name, in string } {
 		{"dib-sms-card-purchase", "مشتريات بمبلغ AED 123.45 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE SHOP. الحد الائتماني المتاح 1,234.56"},
 		{"dib-sms-account-purchase", "مشتريات بمبلغ 23.45 في 05-06-2026 11:22 من SAMPLE CAFE رصيدك الحالي 2,345.67"},
 		{"dib-sms-card-payment", "تم سداد مبلغ 4,321.09 لبطاقتك المنتهية بــ 1234 في .05-06-2026 12:33 الحد الائتماني المتاح 5,432.10"},
+		{"dib-sms-one-digit-hour", "مشتريات بمبلغ 34.56 في 05-06-2026 9:22 من SAMPLE CAFE رصيدك الحالي 3,456.78"},
 	}
 }
 
@@ -519,12 +520,12 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 		{"seed-enbd-transfer-merchant", `Beneficiary Name:\n(?P<v>[^\n]+)`, []string{"i"}},
 		{"seed-dib-direction-override", `DEBIT$`, []string{"i"}},
 		{"seed-dib-sms-purchase-amount", `^مشتريات بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\.[0-9]{2}) `, nil},
-		{"seed-dib-sms-purchase-date", ` في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}) من `, nil},
-		{"seed-dib-sms-purchase-card-merchant", `[0-9]{2}:[0-9]{2} من (?P<v>[^\n]+)\. الحد الائتماني`, nil},
-		{"seed-dib-sms-purchase-account-merchant", `[0-9]{2}:[0-9]{2} من (?P<v>[^\n]+) رصيدك`, nil},
+		{"seed-dib-sms-purchase-date", ` في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) من `, nil},
+		{"seed-dib-sms-purchase-card-merchant", `[0-9]{1,2}:[0-9]{2} من (?P<v>[^\n]+)\. الحد الائتماني`, nil},
+		{"seed-dib-sms-purchase-account-merchant", `[0-9]{1,2}:[0-9]{2} من (?P<v>[^\n]+) رصيدك`, nil},
 		{"seed-dib-sms-purchase-last4", `من بطاقة (?P<v>[^ \n]+) في `, nil},
 		{"seed-dib-sms-card-payment-last4", `لبطاقتك المنتهية بـ{0,8} (?P<v>[^ \n]+) في `, nil},
-		{"seed-dib-sms-card-payment-date", ` في \.?(?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}) `, nil},
+		{"seed-dib-sms-card-payment-date", ` في \.?(?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) `, nil},
 		// Not a seed, but the adversarial ToJS shape: an ESCAPED paren followed
 		// by ?P<. It is dialect-valid, so it goes through the full probe
 		// machinery and the two engines are compared on it directly rather

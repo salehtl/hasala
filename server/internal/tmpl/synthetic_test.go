@@ -36,7 +36,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -1032,6 +1034,9 @@ func buildSyntheticFixture(t *testing.T, g syntheticGroup) ([]byte, templateFixt
 	if d.ID != g.template {
 		t.Fatalf("%s: definition id %q, group says %q", g.file, d.ID, g.template)
 	}
+	if d.IsSMS() != strings.HasPrefix(g.file, smsFixtureSubdir+"/") {
+		t.Fatalf("%s: a text template's cases go in conformance/templates/%s/ and a mail template's in conformance/templates/", g.file, smsFixtureSubdir)
+	}
 	var compactBuf bytes.Buffer
 	if err := json.Compact(&compactBuf, []byte(g.definition)); err != nil {
 		t.Fatal(err)
@@ -1085,12 +1090,13 @@ func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 	if os.Getenv(writeFixturesEnv) == "" {
 		t.Skipf("%s is unset; fixtures are committed and regenerated deliberately", writeFixturesEnv)
 	}
-	if err := os.MkdirAll(templateConformanceDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for _, g := range syntheticGroups(t) {
 		b, f := buildSyntheticFixture(t, g)
-		if err := os.WriteFile(filepath.Join(templateConformanceDir, g.file), b, 0o644); err != nil {
+		out := filepath.Join(templateConformanceDir, filepath.FromSlash(g.file))
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(out, b, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		matched := 0
@@ -1108,9 +1114,11 @@ func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 // TABLE rather than from the committed inputs, so it also catches a case that
 // was added to the table and never written to disk.
 func TestSyntheticFixturesAreWhatThisBuildProduces(t *testing.T) {
+	written := map[string]bool{}
 	for _, g := range syntheticGroups(t) {
+		written[g.file] = true
 		want, _ := buildSyntheticFixture(t, g)
-		got, err := os.ReadFile(filepath.Join(templateConformanceDir, g.file))
+		got, err := os.ReadFile(filepath.Join(templateConformanceDir, filepath.FromSlash(g.file)))
 		if err != nil {
 			t.Fatalf("%v; regenerate with %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures",
 				err, writeFixturesEnv)
@@ -1118,6 +1126,17 @@ func TestSyntheticFixturesAreWhatThisBuildProduces(t *testing.T) {
 		if string(got) != string(want) {
 			t.Errorf("conformance/templates/%s is stale: this build produces different bytes. Regenerate with\n"+
 				"  %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures", g.file, writeFixturesEnv)
+		}
+	}
+	for _, dir := range []string{"", smsFixtureSubdir} {
+		names, err := filepath.Glob(filepath.Join(templateConformanceDir, dir, "synthetic-*.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range names {
+			if rel := path.Join(dir, filepath.Base(n)); !written[rel] {
+				t.Errorf("conformance/templates/%s is not written by TestWriteSyntheticTemplateFixtures; delete it or add its group", rel)
+			}
 		}
 	}
 }

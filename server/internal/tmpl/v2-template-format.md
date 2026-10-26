@@ -104,6 +104,13 @@ mail template in four ways:
 `DecodeWitnesses` returns nothing for a text template: a text is not decoded
 from bytes, so nothing witnesses a decode.
 
+A text template's conformance cases go only in `conformance/templates/sms/`:
+the synthetic ones (`synthetic-*.json`) in this repository, the real ones
+(`corpus-<id>.json`) in the private fixtures at the same path. A mail
+template's cases stay in `conformance/templates/`. The real-mail fence in
+`scripts/check.sh` fails on any other file in `conformance/templates/sms/` and
+on a file elsewhere in `conformance/templates/` that holds `"channel": "sms"`.
+
 ### `extract` entries
 
 ```jsonc
@@ -198,7 +205,7 @@ DD-MM-YYYY HH:mm
 
 `DD-MM-YYYY HH:mm` is Go's `02-01-2006 15:04`: a 24-hour clock whose hour may
 have one or two digits (Go's `15` is not fixed-width) and whose minute has two.
-`conformance/templates/synthetic-sms-dates.json` pins its edges.
+`conformance/templates/sms/synthetic-sms-dates.json` pins its edges.
 
 ---
 

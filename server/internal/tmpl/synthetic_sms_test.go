@@ -50,7 +50,7 @@ func syntheticDIBSMS(t *testing.T) []syntheticGroup {
 	t.Helper()
 	group := func(family string, cases []syntheticCase) syntheticGroup {
 		id := "dib.sms." + family + ".v1"
-		return syntheticGroup{file: "synthetic-dib-sms-" + family + ".json", template: id, definition: readSeed(t, id+".json"), cases: cases}
+		return syntheticGroup{file: "sms/synthetic-dib-sms-" + family + ".json", template: id, definition: readSeed(t, id+".json"), cases: cases}
 	}
 	return []syntheticGroup{
 		group("purchase", []syntheticCase{
@@ -72,8 +72,10 @@ func syntheticDIBSMS(t *testing.T) []syntheticGroup {
 				sms(smsPurchase, "67.89", "في", "05-06-2026 10:04", "من", "AL SAMPLE", "من", "DUBAI", smsBalanceY, "6,789.01")},
 			{"no-merchant", "an empty merchant leaves the field unset; the row still reads", "",
 				sms(smsPurchase, "78.12", "في", "05-06-2026 10:05", "من", smsBalanceY, "7,890.12")},
-			{"one-digit-hour", "the date pattern wants two hour digits: undated, so the receive time applies", "",
+			{"one-digit-hour", "one hour digit: the date, its time and the merchant still read", "",
 				sms(smsPurchase, "89.01", "في", "05-06-2026 9:06", "من", "SAMPLE CAFE", smsBalanceY, "8,901.23")},
+			{"one-digit-hour-card", "one hour digit on a card purchase: the merchant up to the limit sentence still reads", "",
+				sms(smsPurchase, "90.12", smsCard, "XX1234", "في", "05-06-2026 8:07", "من", "SAMPLE BAKERY"+smsLimit, "9,123.45")},
 			{"non-two-decimal-currency", "JPY has exponent 0: the amount is refused", "",
 				sms(smsPurchase, "JPY 1,234.00", "في", "05-06-2026 10:07", "من", "SAMPLE JAPAN", smsBalanceY, "9,012.34")},
 			{"three-decimals", "a third decimal is not an amount", "",
@@ -149,7 +151,7 @@ func syntheticDIBSMS(t *testing.T) []syntheticGroup {
 				"A transaction to the value of AED 34.56 made at SAMPLE SHOP on your DIB card ending with XX1234 has been approved."},
 		}),
 		group("own-transfer", []syntheticCase{
-			{"own-transfer", "a transfer between the person's own accounts: a debit, a transfer, the from-account", "",
+			{"own-transfer", "a transfer between the person's own accounts: a debit and a transfer; an account mask is no card, so no last four", "",
 				smsOwnTransfer("AED")},
 			{"no-currency", "without a code AED applies", "", smsOwnTransfer("")},
 		}),
@@ -160,6 +162,8 @@ func syntheticDIBSMS(t *testing.T) []syntheticGroup {
 				sms(smsCardPaid, "3,210.98", smsYourCard, "بــ", "1234", "في", "05-06-2026 11:22", smsLimitWord, "6,543.21")},
 			{"one-tatweel", "the tatweel run after the preposition is bounded, not fixed", "",
 				sms(smsCardPaid, "2,109.87", smsYourCard, "بـ", "1234", "في", ".05-06-2026 12:33", smsLimitWord, "7,654.32")},
+			{"one-digit-hour", "one hour digit: the date and its time still read", "",
+				sms(smsCardPaid, "1,098.76", smsYourCard, "بــ", "1234", "في", ".05-06-2026 7:44", smsLimitWord, "8,765.43")},
 		}),
 	}
 }
@@ -176,7 +180,7 @@ func syntheticSMSDates() syntheticGroup {
 	     "patterns":["Date: (?P<d>[^\\n]+)"]}
 	  ],
 	  "required":["amount","direction"]}`
-	g := syntheticGroup{file: "synthetic-sms-dates.json", template: "synth.sms-dates", definition: def}
+	g := syntheticGroup{file: "sms/synthetic-sms-dates.json", template: "synth.sms-dates", definition: def}
 	for _, c := range []struct{ name, date, why string }{
 		{"timed", "05-06-2026 14:30", "the timed layout, whole string"},
 		{"midnight", "05-06-2026 00:00", "a timed midnight"},

@@ -34,7 +34,7 @@ type Definition struct {
 	Channel           string    `json:"channel,omitempty"`
 	Match             Match     `json:"match"`
 	DefaultCurrency   string    `json:"default_currency"`
-	DateFrom          string    `json:"date_from"` // "body" | "email" | "received"
+	DateFrom          string    `json:"date_from"`
 	Extract           []Extract `json:"extract"`
 	Required          []string  `json:"required"`
 }
@@ -76,8 +76,6 @@ const (
 	LayoutDDMonYYYY      = "DD/Mon/YYYY"
 	LayoutDDMMYYYYHHmm   = "DD-MM-YYYY HH:mm"
 )
-
-var dateLayouts = []string{LayoutDDMMYYYY, LayoutDDMonYYYYHHMMA, LayoutDDMonYYYY, LayoutDDMMYYYYHHmm}
 
 const (
 	ChannelMail = "mail"
@@ -182,9 +180,7 @@ func ParseDefinition(b []byte) (Definition, error) {
 //
 //  2. Every key is always present. No omitempty, nil slices render as [], the
 //     empty string as "". A TypeScript mirror therefore never has to reproduce
-//     Go's emptiness rules. The two exceptions are channel (absent for mail)
-//     and match.sms_sender (absent when empty): a mail definition keeps the
-//     bytes it had before texts existed.
+//     Go's emptiness rules.
 //
 //  3. Strings are escaped exactly as JSON.stringify escapes them. Go's
 //     encoding/json is wrong here twice over: by default it escapes &, < and >
@@ -545,8 +541,8 @@ func validateExtract(i int, e Extract) []error {
 		add("layouts are only meaningful on a date entry")
 	}
 	for j, l := range e.Layouts {
-		if !slices.Contains(dateLayouts, l) {
-			add("layouts[%d] %q is not one of the supported layouts %q", j, l, dateLayouts)
+		if _, ok := goDateLayouts[l]; !ok {
+			add("layouts[%d] %q is not one of the supported layouts %q", j, l, slices.Sorted(maps.Keys(goDateLayouts)))
 		}
 	}
 
