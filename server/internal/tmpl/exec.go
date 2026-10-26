@@ -215,6 +215,10 @@ func Compile(d Definition) (*Compiled, error) {
 		return nil, fmt.Errorf("%w: an sms template has subject_contains, and a text has no subject", ErrDefinition)
 	case !d.IsSMS() && len(d.Match.SMSSender) > 0:
 		return nil, fmt.Errorf("%w: a mail template names an sms_sender", ErrDefinition)
+	case !d.transferRoleKnown():
+		return nil, fmt.Errorf("%w: transfer_role %q is neither %q nor %q", ErrDefinition, d.TransferRole, TransferRoleNotice, TransferRoleAlert)
+	case !d.IsSMS() && d.TransferRole != "":
+		return nil, fmt.Errorf("%w: a mail template names a transfer_role", ErrDefinition)
 	}
 	for i, x := range d.Extract {
 		if d.IsSMS() && x.Source == SourceSubject {

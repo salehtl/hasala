@@ -106,6 +106,8 @@ public struct CompiledTemplate: Sendable {
       }
       guard d.match.smsSender.isEmpty else { throw .definition("a mail template names an sms_sender") }
     }
+    guard d.transferRoleKnown else { throw .definition("transfer_role is neither \"notice\" nor \"alert\"") }
+    guard d.isSMS || d.transferRole.isEmpty else { throw .definition("a mail template names a transfer_role") }
     for f in d.required {
       guard Field(f) != nil else { throw .definition("required names \(f), which is not a field") }
       if Field(f) == .isTransfer {

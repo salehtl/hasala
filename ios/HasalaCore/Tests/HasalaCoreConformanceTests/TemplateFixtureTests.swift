@@ -65,6 +65,24 @@ enum TemplateFixtures {
     return diffs
   }
 
+  static func uncovered(_ files: [TemplateFixtureFile], bundled: [TemplateDefinition]) throws -> [String] {
+    var gaps: [String] = []
+    var covered: [String: Bool] = [:]
+    for f in files {
+      let def = try definition(f)
+      if def.isSMS == inSMSDir(f) {
+        covered[def.id] = def.isSMS
+      } else {
+        gaps.append("\(f.file) holds \(def.id), whose cases belong in templates/\(def.isSMS ? smsSubdir + "/" : "")")
+      }
+    }
+    for d in bundled where covered[d.id] != d.isSMS {
+      gaps.append("no corpus fixture for \(d.id) in the private templates/\(d.isSMS ? smsSubdir + "/" : "")")
+    }
+    if files.count != bundled.count { gaps.append("\(files.count) corpus files for \(bundled.count) bundled templates") }
+    return gaps
+  }
+
   static func synthetic() -> [TemplateFixtureFile] { files(publicDir, prefix: "synthetic-") }
   static func corpus() -> [TemplateFixtureFile] { files(privateDir, prefix: "corpus-") }
 
@@ -131,16 +149,8 @@ struct TemplateFixtureTests {
   func corpus() throws {
     let files = TemplateFixtures.corpus()
     let bundled = (BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition)
-    var covered: [String: Bool] = [:]
-    for f in files {
-      let def = try TemplateFixtures.definition(f)
-      #expect(def.isSMS == TemplateFixtures.inSMSDir(f), "\(f.file)")
-      covered[def.id] = def.isSMS
-    }
-    for d in bundled {
-      #expect(covered[d.id] == d.isSMS, "no corpus fixture for \(d.id) in the private templates/\(d.isSMS ? TemplateFixtures.smsSubdir + "/" : "")")
-    }
-    #expect(files.count == bundled.count)
+    let gaps = try TemplateFixtures.uncovered(files, bundled: bundled)
+    #expect(gaps.isEmpty, "\(gaps.joined(separator: "; "))")
     var total = 0
     var matched = 0
     for f in files {

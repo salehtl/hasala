@@ -40,6 +40,8 @@ package tmpl
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -83,35 +85,12 @@ func TestTemplateFixturesAreWhatThisBuildProduces(t *testing.T) {
 	files := readTemplateFixtures(t)
 	total, matched := 0, 0
 	for _, f := range files {
-		d, err := ParseDefinition(f.Definition)
+		n, m, err := replayTemplateFixture(f)
 		if err != nil {
-			t.Fatalf("%s: %v", f.Template, err)
+			t.Fatal(err)
 		}
-		if d.ID != f.Template {
-			t.Errorf("%s: definition id is %q", f.Template, d.ID)
-		}
-		c, err := Compile(d)
-		if err != nil {
-			t.Fatalf("%s: %v", f.Template, err)
-		}
-		for _, tc := range f.Cases {
-			subject := decodeB64(t, tc.SubjectBase64)
-			body := decodeB64(t, tc.NormalizedBodyBase64)
-			e, execErr := c.Execute(subject, body)
-			got := expectOf(e, execErr)
-			if !sameExpect(got, tc.Expect) {
-				regenerate := "./gates/tmpl/ -run TestWriteTemplateFixtures in server/oracle, with the corpus database"
-				if d.IsSMS() {
-					regenerate = "./internal/tmpl/seed/ -run TestWriteDIBSMSCorpus in server/, with " + privatefixtures.EnvVar
-				}
-				t.Fatalf("%s is stale: %s\n got %+v\nwant %+v\nregenerate with\n  %s=1 go test %s",
-					f.Template, tc.Name, got, tc.Expect, writeFixturesEnv, regenerate)
-			}
-			total++
-			if tc.Expect.Matched {
-				matched++
-			}
-		}
+		total += n
+		matched += m
 	}
 	// A fixture set that matched nothing would pass every assertion above while
 	// proving nothing about extraction.
@@ -192,17 +171,29 @@ func TestTemplateFixturesCoverEveryFieldAndEveryFailureMode(t *testing.T) {
 // their own are pinned by TestSyntheticFixturesAreWhatThisBuildProduces.
 func readTemplateFixtures(t *testing.T) []templateFixture {
 	t.Helper()
+	privatefixtures.Path(t, path.Join(corpusTemplateDir, smsFixtureSubdir))
+	out, err := collectTemplateFixtures(templateConformanceDir, privatefixtures.Path(t, corpusTemplateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func collectTemplateFixtures(publicDir, privateDir string) ([]templateFixture, error) {
 	type fixtureFile struct{ dir, path string }
 	var names []fixtureFile
 	for _, dir := range []string{"", smsFixtureSubdir} {
-		private := privatefixtures.Path(t, path.Join(corpusTemplateDir, dir))
-		if public, _ := filepath.Glob(filepath.Join(templateConformanceDir, dir, "corpus-*.json")); len(public) > 0 {
-			t.Fatalf("%v: corpus fixtures are real bank mail or texts and belong in %s, not in this repository", public, privatefixtures.Repo)
+		if public, _ := filepath.Glob(filepath.Join(publicDir, dir, "corpus-*.json")); len(public) > 0 {
+			return nil, fmt.Errorf("%v: corpus fixtures are real bank mail or texts and belong in %s, not in this repository", public, privatefixtures.Repo)
 		}
-		for _, glob := range []string{filepath.Join(private, "corpus-*.json"), filepath.Join(templateConformanceDir, dir, "synthetic-*.json")} {
+		globs := []string{filepath.Join(publicDir, dir, "synthetic-*.json")}
+		if privateDir != "" {
+			globs = append(globs, filepath.Join(privateDir, dir, "corpus-*.json"))
+		}
+		for _, glob := range globs {
 			found, err := filepath.Glob(glob)
 			if err != nil {
-				t.Fatal(err)
+				return nil, err
 			}
 			for _, n := range found {
 				names = append(names, fixtureFile{dir, n})
@@ -216,41 +207,72 @@ func readTemplateFixtures(t *testing.T) []templateFixture {
 	for _, n := range names {
 		b, err := os.ReadFile(n.path)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		var f templateFixture
 		if err := json.Unmarshal(b, &f); err != nil {
-			t.Fatalf("%s: %v", n.path, err)
+			return nil, fmt.Errorf("%s: %w", n.path, err)
 		}
 		if len(f.Cases) == 0 {
-			t.Fatalf("%s has no cases", n.path)
+			return nil, fmt.Errorf("%s has no cases", n.path)
 		}
 		d, err := ParseDefinition(f.Definition)
 		if err != nil {
-			t.Fatalf("%s: %v", n.path, err)
+			return nil, fmt.Errorf("%s: %w", n.path, err)
 		}
 		if want := corpusDirFor(d); path.Join(corpusTemplateDir, n.dir) != want {
-			t.Fatalf("%s holds %s, whose cases belong in %s", n.path, d.ID, want)
+			return nil, fmt.Errorf("%s holds %s, whose cases belong in %s", n.path, d.ID, want)
 		}
 		out = append(out, f)
 	}
-	return out
+	return out, nil
 }
+
+func replayTemplateFixture(f templateFixture) (cases, matched int, err error) {
+	d, err := ParseDefinition(f.Definition)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", f.Template, err)
+	}
+	if d.ID != f.Template {
+		return 0, 0, fmt.Errorf("%s: definition id is %q", f.Template, d.ID)
+	}
+	c, err := Compile(d)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: %w", f.Template, err)
+	}
+	for _, tc := range f.Cases {
+		subject, err := base64.StdEncoding.DecodeString(tc.SubjectBase64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("%s %s: %w", f.Template, tc.Name, err)
+		}
+		body, err := base64.StdEncoding.DecodeString(tc.NormalizedBodyBase64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("%s %s: %w", f.Template, tc.Name, err)
+		}
+		e, execErr := c.Execute(string(subject), string(body))
+		if got := expectOf(e, execErr); !sameExpect(got, tc.Expect) {
+			regenerate := "./gates/tmpl/ -run TestWriteTemplateFixtures in server/oracle, with the corpus database"
+			if d.IsSMS() {
+				regenerate = "./internal/tmpl/seed/ -run TestWriteDIBSMSCorpus in server/, with " + privatefixtures.EnvVar
+			}
+			return 0, 0, fmt.Errorf("%w: %s %s\n got %+v\nwant %+v\nregenerate with\n  %s=1 go test %s",
+				errStaleFixture, f.Template, tc.Name, got, tc.Expect, writeFixturesEnv, regenerate)
+		}
+		cases++
+		if tc.Expect.Matched {
+			matched++
+		}
+	}
+	return cases, matched, nil
+}
+
+var errStaleFixture = errors.New("stale template fixture")
 
 func corpusDirFor(d Definition) string {
 	if d.IsSMS() {
 		return path.Join(corpusTemplateDir, smsFixtureSubdir)
 	}
 	return corpusTemplateDir
-}
-
-func decodeB64(t *testing.T, s string) string {
-	t.Helper()
-	b, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
 }
 
 func sameExpect(a, b templateExpect) bool {

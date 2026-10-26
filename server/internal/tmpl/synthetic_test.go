@@ -1114,29 +1114,39 @@ func TestWriteSyntheticTemplateFixtures(t *testing.T) {
 // TABLE rather than from the committed inputs, so it also catches a case that
 // was added to the table and never written to disk.
 func TestSyntheticFixturesAreWhatThisBuildProduces(t *testing.T) {
+	for _, d := range syntheticFixtureDrift(t, templateConformanceDir) {
+		t.Error(d)
+	}
+}
+
+func syntheticFixtureDrift(t *testing.T, dir string) []string {
+	t.Helper()
+	var drift []string
 	written := map[string]bool{}
 	for _, g := range syntheticGroups(t) {
 		written[g.file] = true
 		want, _ := buildSyntheticFixture(t, g)
-		got, err := os.ReadFile(filepath.Join(templateConformanceDir, filepath.FromSlash(g.file)))
+		got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(g.file)))
 		if err != nil {
-			t.Fatalf("%v; regenerate with %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures",
-				err, writeFixturesEnv)
+			drift = append(drift, fmt.Sprintf("%v; regenerate with %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures",
+				err, writeFixturesEnv))
+			continue
 		}
 		if string(got) != string(want) {
-			t.Errorf("conformance/templates/%s is stale: this build produces different bytes. Regenerate with\n"+
-				"  %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures", g.file, writeFixturesEnv)
+			drift = append(drift, fmt.Sprintf("conformance/templates/%s is stale: this build produces different bytes. Regenerate with\n"+
+				"  %s=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures", g.file, writeFixturesEnv))
 		}
 	}
-	for _, dir := range []string{"", smsFixtureSubdir} {
-		names, err := filepath.Glob(filepath.Join(templateConformanceDir, dir, "synthetic-*.json"))
+	for _, sub := range []string{"", smsFixtureSubdir} {
+		names, err := filepath.Glob(filepath.Join(dir, sub, "synthetic-*.json"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, n := range names {
-			if rel := path.Join(dir, filepath.Base(n)); !written[rel] {
-				t.Errorf("conformance/templates/%s is not written by TestWriteSyntheticTemplateFixtures; delete it or add its group", rel)
+			if rel := path.Join(sub, filepath.Base(n)); !written[rel] {
+				drift = append(drift, fmt.Sprintf("conformance/templates/%s is not written by TestWriteSyntheticTemplateFixtures; delete it or add its group", rel))
 			}
 		}
 	}
+	return drift
 }

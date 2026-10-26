@@ -10,6 +10,7 @@
     "version": 1,
     "bank": "dib",
     "channel": "sms",
+    "transfer_role": "notice",
     "normalizer_version": 1,
     "match": {
       "sms_sender": [

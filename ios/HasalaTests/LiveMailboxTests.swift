@@ -243,7 +243,6 @@ struct LiveMailboxTests {
     #expect(LiveMailboxConnecting.banks(trusted: MailboxLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
   }
 
-  /// The lane loads the bundled mail templates once and shares them; no text template is among them.
   @Test func theLaneSharesTheBundledMailTemplates() {
     let loaded = BundledTemplates.load(channel: .mail).templates.map(\.definition.id)
     #expect(!loaded.isEmpty)

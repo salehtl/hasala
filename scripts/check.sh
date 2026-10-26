@@ -466,7 +466,7 @@ CONFORMANCE=(
 	"outlook-sender|"
 	"replay|"
 	"swift|"
-	"templates|./internal/tmpl"
+	"templates|./internal/tmpl ./internal/tmpl/seed"
 	"ts|./internal/oplog/opref"
 )
 step "conformance"

@@ -367,8 +367,8 @@ func buildDialectFixture(t *testing.T) dialectFixture {
 				"with SetEscapeHTML(false), while JSON.stringify does neither.",
 		},
 		CanonicalSMS: canonicalCase{
-			Why: "A text definition adds channel and match.sms_sender to the canonical form; a mail " +
-				"definition renders neither, so its bytes are the ones it had before texts existed.",
+			Why: "A text definition adds channel, match.sms_sender and transfer_role to the canonical form; a mail " +
+				"definition renders none of them, so its bytes are the ones it had before texts existed.",
 		},
 		EngineNotes: measuredDivergences(),
 		Corpus:      buildCorpusDigest(),

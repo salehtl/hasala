@@ -317,10 +317,14 @@ type smsTemplates struct {
 func loadSMSTemplates(t *testing.T) smsTemplates {
 	t.Helper()
 	var s smsTemplates
+	var texts []tmpl.Definition
 	for _, d := range Seed() {
-		if !d.IsSMS() {
-			continue
+		if d.IsSMS() {
+			texts = append(texts, d)
 		}
+	}
+	slices.SortFunc(texts, func(a, b tmpl.Definition) int { return strings.Compare(a.ID, b.ID) })
+	for _, d := range texts {
 		c, err := tmpl.Compile(d)
 		if err != nil {
 			t.Fatal(err)

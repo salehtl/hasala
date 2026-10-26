@@ -32,6 +32,7 @@ type Definition struct {
 	Bank              string    `json:"bank"`
 	NormalizerVersion int       `json:"normalizer_version"`
 	Channel           string    `json:"channel,omitempty"`
+	TransferRole      string    `json:"transfer_role,omitempty"`
 	Match             Match     `json:"match"`
 	DefaultCurrency   string    `json:"default_currency"`
 	DateFrom          string    `json:"date_from"`
@@ -82,7 +83,28 @@ const (
 	ChannelSMS  = "sms"
 )
 
+const (
+	TransferRoleNotice = "notice"
+	TransferRoleAlert  = "alert"
+)
+
 func (d Definition) IsSMS() bool { return d.Channel == ChannelSMS }
+
+func (d Definition) transferRoleKnown() bool {
+	return d.TransferRole == "" || d.TransferRole == TransferRoleNotice || d.TransferRole == TransferRoleAlert
+}
+
+func (d Definition) alwaysDebit() bool {
+	for _, e := range d.Extract {
+		if v, ok := e.OnMatch[FieldDirection]; ok && v != "debit" {
+			return false
+		}
+		if e.Field == FieldDirection && e.Value != "debit" {
+			return false
+		}
+	}
+	return true
+}
 
 func (d Definition) channelKnown() bool {
 	return d.Channel == "" || d.Channel == ChannelMail || d.Channel == ChannelSMS
@@ -235,6 +257,9 @@ func (d Definition) Canonical() ([]byte, error) {
 	if d.Channel != "" && d.Channel != ChannelMail {
 		fields = append(fields, canonicalField{"channel", canonicalString(d.Channel)})
 	}
+	if d.TransferRole != "" {
+		fields = append(fields, canonicalField{"transfer_role", canonicalString(d.TransferRole)})
+	}
 	return canonicalObject(fields), nil
 }
 
@@ -255,6 +280,7 @@ func (d Definition) checkUTF8() error {
 		{"default_currency", []string{d.DefaultCurrency}},
 		{"date_from", []string{d.DateFrom}},
 		{"channel", []string{d.Channel}},
+		{"transfer_role", []string{d.TransferRole}},
 		{"match.sender_domain", d.Match.SenderDomain},
 		{"match.sms_sender", d.Match.SMSSender},
 		{"match.subject_contains", d.Match.SubjectContains},
@@ -454,6 +480,15 @@ func ValidateDefinition(d Definition) []error {
 	if d.DateFrom == DateFromReceived && slices.Contains(d.Required, FieldDate) {
 		add("required cannot include %q when date_from is %q: the receive time stands in for a missing date",
 			FieldDate, DateFromReceived)
+	}
+	switch {
+	case !d.transferRoleKnown():
+		add("transfer_role must be %q or %q when it is set, got %q", TransferRoleNotice, TransferRoleAlert, d.TransferRole)
+	case d.TransferRole != "" && !d.IsSMS():
+		add("transfer_role is only meaningful on an sms template: the fold pairs DIB's transfer mail itself")
+	case d.TransferRole != "" && !d.alwaysDebit():
+		add("a template with a transfer_role must read every hit as a debit: every direction entry and " +
+			"every on_match that sets direction must say \"debit\"")
 	}
 
 	if len(d.Extract) == 0 {

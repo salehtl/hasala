@@ -1091,6 +1091,12 @@ func TestCompileHoldsTheChannelRules(t *testing.T) {
 		"mail with an sms_sender": `{"id":"x","version":1,"bank":"t","normalizer_version":1,
 		  "match":{"sender_domain":["example.com"],"sms_sender":["B"]},"default_currency":"AED","date_from":"email",
 		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with an unknown transfer role": `{"id":"x","version":1,"bank":"t","channel":"sms","transfer_role":"both","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"mail with a transfer role": `{"id":"x","version":1,"bank":"t","transfer_role":"alert","normalizer_version":1,
+		  "match":{"sender_domain":["example.com"]},"default_currency":"AED","date_from":"email",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
 	} {
 		d, err := ParseDefinition([]byte(src))
 		if err != nil {
@@ -1100,6 +1106,28 @@ func TestCompileHoldsTheChannelRules(t *testing.T) {
 		if _, err := Compile(d); !errors.Is(err, ErrDefinition) {
 			t.Errorf("%s: Compile returned %v, want ErrDefinition", name, err)
 		}
+	}
+}
+
+func TestCompileTakesATransferRoleOnlyOnAText(t *testing.T) {
+	for _, role := range []string{"", TransferRoleNotice, TransferRoleAlert} {
+		d := smsDef(t, `"DD-MM-YYYY"`)
+		d.TransferRole = role
+		c, err := Compile(d)
+		if err != nil {
+			t.Fatalf("role %q: %v", role, err)
+		}
+		if c.Definition().TransferRole != role {
+			t.Fatalf("role %q not kept: %q", role, c.Definition().TransferRole)
+		}
+	}
+	mail := mustLoad(t, "testdata/dib.transfer.v1.json")
+	if _, err := Compile(mail); err != nil {
+		t.Fatal(err)
+	}
+	mail.TransferRole = TransferRoleNotice
+	if _, err := Compile(mail); !errors.Is(err, ErrDefinition) {
+		t.Fatalf("a mail template with a transfer role must not compile: %v", err)
 	}
 }
 

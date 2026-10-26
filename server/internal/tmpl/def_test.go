@@ -390,6 +390,7 @@ const validSMSDefinitionJSON = `{
   "version": 1,
   "bank": "bank",
   "channel": "sms",
+  "transfer_role": "alert",
   "normalizer_version": 1,
   "match": {
     "sms_sender": ["BANK-SMS"],
@@ -412,8 +413,8 @@ const validSMSDefinitionJSON = `{
 
 func TestValidateDefinitionAcceptsAWellFormedSMSDefinition(t *testing.T) {
 	d := mustParse(t, validSMSDefinitionJSON)
-	if !d.IsSMS() || len(d.Match.SMSSender) != 1 || d.Match.SMSSender[0] != "BANK-SMS" {
-		t.Fatalf("channel or sms_sender not read: %+v", d)
+	if !d.IsSMS() || len(d.Match.SMSSender) != 1 || d.Match.SMSSender[0] != "BANK-SMS" || d.TransferRole != TransferRoleAlert {
+		t.Fatalf("channel, sms_sender or transfer_role not read: %+v", d)
 	}
 	if err := ValidateForPublish(d); err != nil {
 		t.Fatalf("a well-formed sms definition must publish: %v", err)
@@ -447,6 +448,57 @@ func TestValidateDefinitionHoldsTheSMSRules(t *testing.T) {
 				t.Fatalf("%s must be rejected", tc.name)
 			}
 		})
+	}
+}
+
+func TestValidateDefinitionHoldsTheTransferRoleRules(t *testing.T) {
+	const direction = `{"field":"direction","type":"const","source":"body","value":"debit"}`
+	for _, tc := range []struct{ name, from, to string }{
+		{"no role", `"transfer_role": "alert",`, ``},
+		{"the notice role", `"transfer_role": "alert"`, `"transfer_role": "notice"`},
+		{"a conditional debit entry", direction,
+			`{"field":"direction","type":"const","source":"body","value":"debit","patterns":["Debit"]},` + direction},
+		{"an on_match that sets debit", direction,
+			`{"field":"is_transfer","type":"flag","source":"body","value":"true","patterns":["Transfer"],"on_match":{"direction":"debit"}},` + direction},
+	} {
+		s := strings.Replace(validSMSDefinitionJSON, tc.from, tc.to, 1)
+		if errs := ValidateDefinition(mustParse(t, s)); len(errs) != 0 {
+			t.Errorf("%s must publish: %v", tc.name, errs)
+		}
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"an unknown role", `"transfer_role": "alert"`, `"transfer_role": "both"`},
+		{"an upper-case role", `"transfer_role": "alert"`, `"transfer_role": "ALERT"`},
+		{"a role on a credit template", direction, `{"field":"direction","type":"const","source":"body","value":"credit"}`},
+		{"a role with a conditional credit entry", direction,
+			`{"field":"direction","type":"const","source":"body","value":"credit","patterns":["Refund"]},` + direction},
+		{"a role whose direction an on_match can set", direction,
+			`{"field":"is_transfer","type":"flag","source":"body","value":"true","patterns":["Refund"],"on_match":{"direction":"credit"}},` + direction},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := strings.Replace(validSMSDefinitionJSON, tc.from, tc.to, 1)
+			if s == validSMSDefinitionJSON {
+				t.Fatalf("test setup: %q not found in the fixture", tc.from)
+			}
+			if errs := ValidateDefinition(mustParse(t, s)); len(errs) == 0 {
+				t.Fatalf("%s must be rejected", tc.name)
+			}
+			bare := mustParse(t, s)
+			bare.TransferRole = ""
+			if errs := ValidateDefinition(bare); len(errs) != 0 {
+				t.Fatalf("test setup: %s is rejected for another reason: %v", tc.name, errs)
+			}
+		})
+	}
+	mail := strings.Replace(validDefinitionJSON, `"normalizer_version": 1,`, `"normalizer_version": 1, "transfer_role": "alert",`, 1)
+	if mail == validDefinitionJSON {
+		t.Fatal("test setup: normalizer_version not found in the mail fixture")
+	}
+	if errs := ValidateDefinition(mustParse(t, mail)); len(errs) == 0 {
+		t.Fatal("a transfer role on a mail template must be rejected: the fold pairs DIB's transfer mail itself")
+	}
+	if errs := ValidateDefinition(mustParse(t, validDefinitionJSON)); len(errs) != 0 {
+		t.Fatalf("test setup: the mail fixture is rejected: %v", errs)
 	}
 }
 
@@ -488,7 +540,7 @@ func TestCanonicalOfAMailDefinitionIsUnchangedByTheTextChannel(t *testing.T) {
 	if !bytes.Equal(plain, explicit) {
 		t.Fatalf("an absent channel and \"mail\" must canonicalize alike:\n%s\n%s", plain, explicit)
 	}
-	if bytes.Contains(plain, []byte(`"channel"`)) || bytes.Contains(plain, []byte(`"sms_sender"`)) {
+	if bytes.Contains(plain, []byte(`"channel"`)) || bytes.Contains(plain, []byte(`"sms_sender"`)) || bytes.Contains(plain, []byte(`"transfer_role"`)) {
 		t.Fatalf("a mail definition's canonical form must not gain the text keys: %s", plain)
 	}
 }
@@ -510,5 +562,16 @@ func TestCanonicalOfAnSMSDefinitionCarriesItsChannelAndSender(t *testing.T) {
 	}
 	if _, err := (Definition{ID: "x", Channel: "\xff"}).Canonical(); err == nil {
 		t.Fatal("invalid UTF-8 in channel must be an error")
+	}
+	roled, err := mustParse(t, `{"id":"x","version":1,"channel":"sms","transfer_role":"notice","match":{"sms_sender":["B"]}}`).Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = strings.Replace(want, `"required":[],`, `"required":[],"transfer_role":"notice",`, 1)
+	if string(roled) != want {
+		t.Fatalf("canonical form with a transfer role:\n got %s\nwant %s", roled, want)
+	}
+	if _, err := (Definition{ID: "x", TransferRole: "\xff"}).Canonical(); err == nil {
+		t.Fatal("invalid UTF-8 in transfer_role must be an error")
 	}
 }

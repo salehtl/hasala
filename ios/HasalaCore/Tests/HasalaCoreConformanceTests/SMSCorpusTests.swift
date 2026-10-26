@@ -18,6 +18,34 @@ enum SMSCorpus {
 
 @Suite("conformance/templates/sms")
 struct SMSCorpusTests {
+  @Test("no synthetic text is read by two text templates, and the text templates are tried in ID order, as in Go")
+  func syntheticTextsHaveOneReader() throws {
+    let texts = BundledTemplates.load(channel: .sms).templates
+    let ids = texts.map(\.definition.id)
+    #expect(ids.count == SMSCorpus.families.count - 1)
+    #expect(ids == ids.sorted())
+    let files = TemplateFixtures.synthetic().filter(TemplateFixtures.inSMSDir)
+    #expect(files.count >= ids.count)
+    var own: [String: Int] = [:]
+    var failures: [String] = []
+    for f in files {
+      let doc = try f.load()
+      let template = try doc.string("template")
+      for c in try doc.array("cases") {
+        let name = try c.string("name")
+        let body = String(decoding: try c.base64("normalized_body_base64"), as: UTF8.self)
+        let hits = try texts.filter { try $0.execute(subject: "", normalizedBody: body).matched }.map(\.definition.id)
+        if hits.count > 1 { failures.append("\(template) \(name): read by \(hits)") }
+        if ids.contains(template), c["expect"]?["matched"]?.boolValue == true {
+          own[template, default: 0] += 1
+          if hits.first != template { failures.append("\(template) \(name): its own template reads it, but the first hit is \(hits)") }
+        }
+      }
+    }
+    #expect(failures.isEmpty, "\(failures.joined(separator: "; "))")
+    for id in ids { #expect(own[id, default: 0] > 0, "no synthetic case is read by \(id)") }
+  }
+
   @Test(
     "[real-corpus] the DIB texts normalize and read exactly as Go's executor read them",
     .enabled(if: Fixtures.hasPrivate, "HASALA_PRIVATE_FIXTURES is unset"))
@@ -26,6 +54,7 @@ struct SMSCorpusTests {
     #expect(TemplateFixtures.jsonNames(dir) == SMSCorpus.families.map(SMSCorpus.fileName).sorted())
     let texts = BundledTemplates.load(channel: .sms).templates
     #expect(texts.count == SMSCorpus.families.count - 1)
+    #expect(texts.map(\.definition.id) == texts.map(\.definition.id).sorted())
     var total = 0
     var matched = 0
     var failures: [String] = []
@@ -74,7 +103,7 @@ struct SMSCorpusTests {
         let got = try own.map { try $0.execute(subject: "", normalizedBody: normalized) } ?? first
         var diffs = try TemplateFixtures.diffs(got, try #require(c["expect"]))
         if readBy != (try c.string("read_by")) { diffs.append("read_by") }
-        if gated != DialectFixture.strings(c["gated"]) { diffs.append("gated") }
+        if gated.sorted() != DialectFixture.strings(c["gated"]).sorted() { diffs.append("gated") }
         if !diffs.isEmpty { failures.append("\(name): \(diffs.joined(separator: ", "))") }
       }
     }

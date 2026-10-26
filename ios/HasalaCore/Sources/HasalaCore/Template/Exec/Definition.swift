@@ -53,6 +53,7 @@ public struct TemplateDefinition: Sendable, Equatable {
   public var bank: String
   public var normalizerVersion: Int
   public var channel: String
+  public var transferRole: String
   public var match: Match
   public var defaultCurrency: String
   public var dateFrom: String
@@ -77,6 +78,7 @@ public struct TemplateDefinition: Sendable, Equatable {
     bank = try Self.string(o, "bank") ?? ""
     normalizerVersion = try Self.int(o, "normalizer_version") ?? 0
     channel = try Self.string(o, "channel") ?? ""
+    transferRole = try Self.string(o, "transfer_role") ?? ""
     let m = try Self.object(o, "match") ?? JSONObject()
     match = Match(
       senderDomain: try Self.strings(m, "sender_domain"), smsSender: try Self.strings(m, "sms_sender"),
@@ -141,12 +143,15 @@ public struct TemplateDefinition: Sendable, Equatable {
       ("version", .number(JSONNumber(Int64(version)))),
     ]
     if !channel.isEmpty && !channel.utf8.elementsEqual("mail".utf8) { fields.append(("channel", .string(channel))) }
+    if !transferRole.isEmpty { fields.append(("transfer_role", .string(transferRole))) }
     return JSONWriter().bytes(JSONValue.object(JSONObject(fields)).sortingKeysByUTF8())
   }
 
   public var isSMS: Bool { channel.utf8.elementsEqual("sms".utf8) }
 
   var channelKnown: Bool { channel.isEmpty || channel.utf8.elementsEqual("mail".utf8) || isSMS }
+
+  var transferRoleKnown: Bool { transferRole.isEmpty || TextTransferRole.parse(transferRole) != nil }
 
   public func matchesSMSSender(_ sender: String) -> Bool {
     guard isSMS else { return false }

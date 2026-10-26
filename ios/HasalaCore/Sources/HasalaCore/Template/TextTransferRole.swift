@@ -2,15 +2,20 @@ public enum TextTransferRole: String, Sendable, Equatable, CaseIterable {
   case notice
   case alert
 
-  public static let byTemplate: [String: TextTransferRole] = [
-    "dib.sms.own-transfer.v1": .notice,
-    "dib.sms.debit.v1": .alert,
-  ]
+  static func parse(_ s: String) -> TextTransferRole? {
+    allCases.first { $0.rawValue.utf8.elementsEqual(s.utf8) }
+  }
 
-  public static let withoutRole: Set<String> = [
-    "dib.sms.card-payment.v1", "dib.sms.credit.v1", "dib.sms.purchase.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1",
-    "dib.sms.salary.v1",
-  ]
+  public init?(definition d: TemplateDefinition) {
+    guard d.isSMS, let role = Self.parse(d.transferRole) else { return nil }
+    self = role
+  }
+
+  public static let byTemplate: [String: TextTransferRole] = Dictionary(
+    BundledTemplates.load(channel: .sms).templates.compactMap { t in
+      TextTransferRole(definition: t.definition).map { (t.definition.id, $0) }
+    },
+    uniquingKeysWith: { first, _ in first })
 
   public static func of(templateRef ref: String) -> TextTransferRole? {
     byTemplate[String(ref.prefix { $0 != "@" })]

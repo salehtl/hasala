@@ -25,7 +25,7 @@ struct TextTemplateGateTests {
     let bundled = Set((BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition.id))
     let named =
       MessageDisposer.refundTemplates + ModelSuggestionSweep.cloudTemplates.sorted()
-      + TextTransferRole.byTemplate.keys.sorted() + TextTransferRole.withoutRole.sorted()
+      + TextTransferRole.byTemplate.keys.sorted()
     #expect(!named.isEmpty)
     for id in named {
       #expect(bundled.contains(id), "\(id) is named in the app but no bundled template has that id")

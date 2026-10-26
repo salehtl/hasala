@@ -135,6 +135,11 @@ struct TextChannelTests {
       + "\"match\":{\"body_contains\":[],\"body_not_contains\":[],\"sender_domain\":[],\"sms_sender\":[\"B\"],\"subject_contains\":[]},"
       + "\"normalizer_version\":0,\"required\":[],\"version\":1}"
     #expect(String(decoding: sms.canonicalJSON(), as: UTF8.self) == want)
+    let roled = try TemplateDefinition(
+      json: Array("{\"id\":\"x\",\"version\":1,\"channel\":\"sms\",\"transfer_role\":\"notice\",\"match\":{\"sms_sender\":[\"B\"]}}".utf8))
+    let wantRoled = want.replacingOccurrences(of: "\"required\":[],", with: "\"required\":[],\"transfer_role\":\"notice\",")
+    #expect(String(decoding: roled.canonicalJSON(), as: UTF8.self) == wantRoled)
+    #expect(!String(decoding: plain.canonicalJSON(), as: UTF8.self).contains("transfer_role"))
   }
 
   @Test("the bundled sms templates read the DIB text families and never run as mail templates")

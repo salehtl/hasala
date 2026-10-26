@@ -68,11 +68,12 @@ defect.
 
 A template reads mail unless it says `"channel": "sms"`. An absent `channel`
 and `"channel": "mail"` mean the same thing. A text template differs from a
-mail template in four ways:
+mail template in five ways:
 
 ```jsonc
 {
   "channel": "sms",
+  "transfer_role": "alert",        // optional: "notice", "alert" or absent
   "match": {
     "sms_sender": ["DIB-SMS"],     // sender IDs, at least one; no sender_domain
     "body_contains": ["مشتريات بمبلغ"]
@@ -105,11 +106,23 @@ mail template in four ways:
   lines dropped). Both are pinned by `text_cases` in
   `conformance/normalizer/edge-cases.json`.
 
+- `transfer_role` (optional, text templates only): `"notice"` on a template
+  that reads a bank's transfer notice, `"alert"` on one that reads the
+  account debit alert for the same movement, absent on every other template.
+  When the app adds a debit row from a template with a role, it holds the row
+  in Review if a text row of the other role, the same bank, amount and
+  currency lies within 30 minutes of it (decision record `bank-texts.md`, "The
+  transfer pair on texts"). Swift's `TextTransferRole` reads the role from the
+  bundled definitions. `ValidateDefinition` also requires every direction
+  entry, and every `on_match` that sets `direction`, of a template with a role
+  to say `"debit"`.
+
 `ValidateDefinition`, `Compile` (Go) and the `CompiledTemplate` init (Swift)
 all refuse a text template that names a `sender_domain`, names no
 `sms_sender`, has `subject_contains`, reads `source: "subject"` or takes a
-`date_from` other than `received`, and a mail template that names an
-`sms_sender`. The app never runs `ValidateDefinition`, so the executors hold
+`date_from` other than `received`, a mail template that names an
+`sms_sender` or a `transfer_role`, and a `transfer_role` other than `notice`
+or `alert`. The app never runs `ValidateDefinition`, so the executors hold
 these rules themselves.
 
 `DecodeWitnesses` returns nothing for a text template: a text is not decoded
@@ -505,11 +518,11 @@ produce identical bytes for identical templates.
    insertion order; neither is reproducible from the other, but both can sort.
 2. **Every key always present.** No `omitempty`; nil slices render as `[]`, the
    empty string as `""`, absent booleans as `false`. A TypeScript mirror
-   therefore never has to reproduce Go's emptiness rules. The two exceptions
+   therefore never has to reproduce Go's emptiness rules. The three exceptions
    came with the text channel: `channel` is absent for a mail template (absent
-   and `"mail"` render alike), and `match.sms_sender` is absent when it is
-   empty. A mail template's canonical bytes are therefore the bytes it had
-   before texts existed.
+   and `"mail"` render alike), and `match.sms_sender` and `transfer_role` are
+   absent when they are empty. A mail template's canonical bytes are therefore
+   the bytes it had before texts existed.
 3. **Strings escaped exactly as `JSON.stringify` escapes them**: only `"`, `\`
    and the C0 controls, with the short forms where they exist and `\u00xx`
    (lower-case hex) otherwise.

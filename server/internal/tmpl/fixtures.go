@@ -26,9 +26,8 @@ import (
 const CorpusTemplateDir = "conformance/templates"
 
 // MailSeedTemplateFiles are the mail seed templates, in the order their files
-// are written; the text seeds' corpus is written by seed's TestWriteDIBSMSCorpus.
-// Named explicitly rather than globbed: a regeneration must not silently pick
-// up a template someone dropped into testdata/.
+// are written. Named explicitly rather than globbed: a regeneration must not
+// silently pick up a template someone dropped into testdata/.
 var MailSeedTemplateFiles = []string{
 	"dib.card.v1.json",
 	"dib.account.v1.json",
