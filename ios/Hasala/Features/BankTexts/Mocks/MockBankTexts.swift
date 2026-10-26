@@ -70,14 +70,12 @@
       source = .texts
     }
 
-    func useEmail() async throws(BankTextsFailure) -> Date? {
+    func useEmail() async throws(BankTextsFailure) {
       useEmailCalls += 1
       if switchFails { throw .failed("Hasala couldn't switch to bank email. Try again.") }
-      let cutoff = source == .texts ? lastTextAt : nil
       source = .email
       testTask?.cancel()
       test = .idle
-      return cutoff
     }
 
     func startTest() {
@@ -103,16 +101,21 @@
 
     func addToReview(_ text: String) async throws(BankTextsFailure) {
       guard Self.reading(text) != .notAPayment else { throw .failed("This isn't a bank payment text.") }
-      let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !added.contains(key) { added.append(key) }
+      added.append(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
+
+    static let codeMarkers = [#"\bone[- ]time (pass)?code\b"#, #"\botp\b"#, #"\bverification code\b"#, #"\bdeclined\b"#]
+    static let transactionClauses = [
+      #"\bspent\b"#, #"\bdebited\b"#, #"\bcredited\b"#, #"\bhas been charged\b"#, #"\bpurchase of .+ was successful\b"#,
+      #"\breceived\b"#, #"\breversed\b"#, #"\brefunded\b"#,
+    ]
 
     static func reading(_ text: String) -> BankTextReading {
       let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
       let lower = t.lowercased()
-      if t.isEmpty || lower.contains(BankTexts.testPhrase.lowercased()) || lower.contains("code")
-        || lower.contains("otp")
-      {
+      let marked = codeMarkers.contains { matches($0, lower) }
+      let moved = transactionClauses.contains { matches($0, lower) }
+      if t.isEmpty || lower.contains(BankTexts.testPhrase.lowercased()) || (marked && !moved) {
         return .notAPayment
       }
       guard let amount = firstMatch(#"AED\s?([0-9][0-9,]*\.[0-9]{2})"#, in: t),
@@ -123,6 +126,10 @@
         amount: .aed(minor), direction: incoming ? .incoming : .out,
         merchant: firstMatch(#" at (.+?) on "#, in: t), date: date(in: t), bank: nil,
         cardEnding: firstMatch(#"ending ([0-9]{4})"#, in: t)))
+    }
+
+    private static func matches(_ pattern: String, _ text: String) -> Bool {
+      text.range(of: pattern, options: .regularExpression) != nil
     }
 
     private static func firstMatch(_ pattern: String, in text: String) -> String? {

@@ -197,7 +197,7 @@ struct LaunchView: View {
         app: AppModel(
           store: InMemoryLedger(state: state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
-          layouts: mockLayouts(arguments)),
+          layouts: mockLayouts(arguments), services: session.services),
         session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments),
         syncHalt: MockSyncHalt(arguments))
       if let delay = milliseconds(after: refreshDelayArgument, in: arguments) {
@@ -205,7 +205,6 @@ struct LaunchView: View {
       }
       if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
       graph.app.cloudSort = MockCloudSortController.fromLaunchArguments(arguments)
-      graph.app.bankTextsLane = session.services.bankTexts
       launch?.open(graph)
       return graph
     }

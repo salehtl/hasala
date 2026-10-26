@@ -70,8 +70,7 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var test: BankTextsTest { get }
   var lastTextAt: Date? { get }
   func useTexts() async throws(BankTextsFailure)
-  @discardableResult
-  func useEmail() async throws(BankTextsFailure) -> Date?
+  func useEmail() async throws(BankTextsFailure)
   func startTest()
   func read(_ text: String) async -> BankTextReading
   func addToReview(_ text: String) async throws(BankTextsFailure)
@@ -134,19 +133,19 @@ enum BankTexts {
     return bank.readsAutomatically ? "\(when)\nRead automatically" : "\(when)\nYou check each one in Review"
   }
 
-  static func switchToEmailMessage(cutoff: Date?) -> String {
-    let stop = "Hasala stops reading bank texts; delete the automation in the Shortcuts app too."
-    guard let cutoff else { return stop }
-    return stop + " Email adds only payments after your last bank text (\(day(cutoff))), so nothing counts twice."
-  }
+  static let switchToEmailMessage =
+    "Hasala stops reading bank texts; delete the automation in the Shortcuts app too. Email brings in all the bank mail it finds. A mail that may be the same payment as a bank text waits in Review beside it, where you keep both or archive one."
 
   static let switchToTextsMessage =
     "Hasala disconnects your mailbox. Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."
 
-  static let oneSourceNote = "Hasala uses one source at a time, so no payment counts twice."
+  static let oneSourceNote =
+    "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
 
-  static let keepsOnlyPayments =
-    "Hasala looks at each text on this iPhone and keeps only your banks' payment texts. Every other text is dropped at once, never saved or sent anywhere."
+  static let keepsPaymentShapedTexts =
+    "Hasala keeps bank payment texts. A text that looks like a payment, from any sender, waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
+
+  static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
   static let banksLine =
     "DIB texts are read automatically. Texts from your other banks come in to Review for you to check."

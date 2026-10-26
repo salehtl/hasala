@@ -10,8 +10,8 @@ struct SourceStep: View {
   var body: some View {
     AccountScreen(
       title: "How do your banks reach you?",
-      subtitle: "Pick one. Hasala reads it on this iPhone, and uses only one so no payment counts twice.",
-      trailing: ("Skip", model.skipBanks)
+      subtitle: "Pick one. Hasala reads it on this iPhone, and reads only one at a time.",
+      trailing: ("Skip", { Task { await model.skipSource() } })
     ) {
       VStack(alignment: .leading, spacing: 12) {
         SourceCard(source: .texts, picked: picked == .texts) { picked = .texts }
@@ -129,7 +129,7 @@ struct TextsSetUpStep: View {
       VStack(alignment: .leading, spacing: 16) {
         NumberedStepsCard(steps: BankTextsGuide.shortSteps)
         TextsLinkRow(title: "Show me how, step by step", identifier: "texts.showMeHow") { guiding = true }
-        TextsNote(icon: .privacy, text: BankTexts.keepsOnlyPayments)
+        TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
         TextsNote(icon: .bank, text: BankTexts.banksLine)
           .accessibilityIdentifier("texts.banksLine")

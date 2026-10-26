@@ -93,7 +93,7 @@ struct BankTextsAlertsPage: View {
       Button("Switch to email") { switchToEmail() }
         .accessibilityIdentifier("bankAlerts.texts.switchConfirm")
     } message: {
-      Text(BankTexts.switchToEmailMessage(cutoff: lane.lastTextAt))
+      Text(BankTexts.switchToEmailMessage)
     }
   }
 
@@ -201,7 +201,7 @@ struct BankTextsAlertsPage: View {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
       readsRow(.chat, "The automation hands Hasala each text you get, on this iPhone.")
-      readsRow(.privacy, "Hasala keeps only your banks' payment texts. Every other text is dropped at once, never saved or sent anywhere.")
+      readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
       readsRow(.lock, "Only the payment Hasala read is kept. It syncs only end\u{2011}to\u{2011}end encrypted; the text itself never leaves this iPhone.")
     }
     .padding(.top, 18)
@@ -261,22 +261,28 @@ struct UseBankTextsSection: View {
   @State private var asking = false
   @State private var switching = false
 
+  static func footnote(_ mailbox: (any MailboxConnecting)?) -> String {
+    if let blocker = SourceSwitch.textsBlocker(mailbox) { return blocker }
+    return SourceSwitch.reading(mailbox).isEmpty
+      ? BankTexts.oneSourceNote : "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
+  }
+
   var body: some View {
+    let blocked = SourceSwitch.textsBlocker(app.mailbox) != nil
     VStack(alignment: .leading, spacing: 8) {
       HListCard {
         TextsActionRow(
           title: "Use bank texts instead", detail: "No inbox access. Set up a Shortcut once.", icon: .chat,
           identifier: "bankAlerts.useTexts"
         ) { asking = true }
-        .disabled(switching)
+        .disabled(switching || blocked)
       }
-      Text(app.mailbox?.mailboxes.contains { $0.state != .disconnected } == true
-        ? "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
-        : BankTexts.oneSourceNote)
+      Text(Self.footnote(app.mailbox))
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
+        .accessibilityIdentifier("bankAlerts.useTexts.note")
     }
     .alert("Switch to bank texts?", isPresented: $asking) {
       Button("Cancel", role: .cancel) {}

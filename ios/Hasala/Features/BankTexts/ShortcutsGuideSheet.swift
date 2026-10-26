@@ -29,7 +29,7 @@ struct ShortcutsGuideSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          Text("One automation hands Hasala each text you get. \(BankTexts.keepsOnlyPayments)")
+          Text("One automation hands Hasala each text you get. \(BankTexts.keepsPayments)")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)

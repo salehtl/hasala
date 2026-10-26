@@ -113,8 +113,8 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "bankAlerts.texts.useEmail")
     let alert = app.alerts["Switch to bank email?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait), "the switch alert did not open")
-    let message = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Email adds only payments after your last bank text'"))
-    XCTAssertEqual(message.count, 1, "the cutoff sentence is missing")
+    let message = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'may be the same payment as a bank text waits in Review'"))
+    XCTAssertEqual(message.count, 1, "the overlap sentence is missing")
     attach(app, "Switch to bank email")
     alert.buttons["Switch to email"].firstMatch.tap()
     XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: uiWait), "Add a mailbox did not open")

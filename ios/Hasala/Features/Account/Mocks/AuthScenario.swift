@@ -163,7 +163,7 @@
       let unseenPhrase = InMemoryUnseenPhrase()
       if arguments.contains("-HasalaPhraseUnseen") { unseenPhrase.noteUnseen(at: .now) }
       let manualEntry = ManualEntryChoice()
-      let bankTexts = releaseSurface ? nil : bankTexts(for: scenario)
+      let bankTexts = bankTexts(for: scenario)
       func services(_ account: MockAccountService) -> AccountServices {
         account.passkeyPRF = !arguments.contains("-HasalaPasskeyNoPRF")
         account.passkeySynced = !arguments.contains("-HasalaPasskeyNotSynced")

@@ -95,7 +95,7 @@ struct PasteBankTextSheet: View {
           if let failure = model.failure {
             InlineStatus(tone: .warning, text: failure, size: .regular)
           }
-          TextsNote(text: "Pasted texts always go to Review, so you check them before they count. The same text pasted twice is added once.")
+          TextsNote(text: "Pasted texts always go to Review, so you check them before they count.")
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)

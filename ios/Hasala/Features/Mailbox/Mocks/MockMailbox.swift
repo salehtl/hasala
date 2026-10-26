@@ -44,6 +44,7 @@
     var gmailPermissionMissing = false
     var signInAgainReads: String?
     var switchRemoveFails = false
+    var disconnectFails = false
     private(set) var questions: [MailSwitchQuestion] = []
     /// Every connect finds the mailbox already connected.
     var alreadyConnected = false
@@ -271,6 +272,7 @@
 
     func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
       try? await Task.sleep(for: connectDelay)
+      if disconnectFails { throw .offline }
       guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return }
       mailboxes[i].state = .disconnected
       mailboxes[i].meta = "Off since 10 Oct"

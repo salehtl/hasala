@@ -36,8 +36,7 @@ final class AppModel {
   /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   var cloudSort: (any CloudSortControlling)?
-  @ObservationIgnored var bankTextsLane: (any BankTextsConnecting)?
-  var bankTexts: (any BankTextsConnecting)? { BuildSurface.showsBankTexts ? bankTextsLane : nil }
+  @ObservationIgnored let bankTexts: (any BankTextsConnecting)?
   var usesBankTexts: Bool { bankTexts?.usesTexts == true }
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
@@ -83,12 +82,14 @@ final class AppModel {
 
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
-    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads()
+    layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads(),
+    services: AccountServices? = nil
   ) {
     self.store = store
     self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
+    bankTexts = services?.offeredBankTexts
     self.layouts = layouts
     homeLayout = layouts?.load()
   }

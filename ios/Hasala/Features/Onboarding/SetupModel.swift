@@ -235,8 +235,27 @@ final class SetupModel {
     draft.source = nil
   }
 
+  func skipSource() async {
+    guard !busy else { return }
+    if let lane = bankTexts, lane.usesTexts {
+      didResume = true
+      failure = nil
+      busy = true
+      defer { busy = false }
+      do {
+        try await lane.useEmail()
+      } catch {
+        failure = .failed(error.message)
+        return
+      }
+    }
+    draft.source = nil
+    skipBanks()
+  }
+
   func sendTestText() {
     guard path.last != .textsTest else { return }
+    bankTexts?.startTest()
     go(.textsTest)
   }
 
