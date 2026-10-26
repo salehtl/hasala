@@ -23,8 +23,8 @@ struct BankTextsAlertsPage: View {
       switch status {
       case .working(let lastRan):
         title = "Working"
-        detail = ["Bank texts \u{00B7} ran \(BankTexts.ago(lastRan, now: now))",
-                  lastText.map { "Last bank text \(BankTexts.ago($0, now: now))" }]
+        detail = ["Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))",
+                  lastText.map { "Last bank text \(RelativeTime.ago($0, now: now))" }]
           .compactMap { $0 }.joined(separator: "\n")
         hue = .mint
         working = true
@@ -44,7 +44,7 @@ struct BankTextsAlertsPage: View {
 
   static func automationPill(_ status: BankTextsStatus, test: BankTextsTest, now: Date) -> StatusPill {
     switch status {
-    case .working(let lastRan): StatusPill("Ran \(BankTexts.ago(lastRan, now: now))", tone: .success, showsDot: false)
+    case .working(let lastRan): StatusPill("Ran \(RelativeTime.ago(lastRan, now: now))", tone: .success, showsDot: false)
     case .waitingForFirstText:
       if case .received = test { StatusPill("Test passed", tone: .success, showsDot: false) }
       else { StatusPill("Not run yet", tone: .accent, showsDot: false) }
@@ -243,16 +243,17 @@ struct UseBankTextsSection: View {
   @Binding var guiding: Bool
   @State private var asking = false
   @State private var switching = false
+  @State private var pasting = false
 
   static func footnote(_ mailbox: (any MailboxConnecting)?, lane: any BankTextsConnecting) -> String {
-    if let blocker = SourceSwitch.textsBlocker(mailbox) { return blocker }
+    if let blocker = SourceSwitch.textsBlocker(mailbox, texts: lane) { return blocker }
     let note = SourceSwitch.reading(mailbox).isEmpty
       ? BankTexts.oneSourceNote : "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
     return lane.isSetUp && lane.readsEmail ? "\(BankTexts.readsEmailNow) \(note)" : note
   }
 
   var body: some View {
-    let blocked = SourceSwitch.textsBlocker(app.mailbox) != nil
+    let blocked = SourceSwitch.textsBlocker(app.mailbox, texts: lane) != nil
     VStack(alignment: .leading, spacing: 8) {
       HListCard {
         TextsActionRow(
@@ -260,6 +261,13 @@ struct UseBankTextsSection: View {
           identifier: "bankAlerts.useTexts"
         ) { asking = true }
         .disabled(switching || blocked)
+        if lane.offersPaste {
+          HDivider(inset: .disc68)
+          TextsActionRow(
+            title: "Paste a bank text", detail: "It waits in Review for you to check", icon: .paper,
+            identifier: "bankAlerts.useTexts.paste"
+          ) { pasting = true }
+        }
       }
       Text(Self.footnote(app.mailbox, lane: lane))
         .hType(.footnote)
@@ -267,6 +275,9 @@ struct UseBankTextsSection: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
         .accessibilityIdentifier("bankAlerts.useTexts.note")
+    }
+    .sheet(isPresented: $pasting) {
+      PasteBankTextSheet(lane: lane) { app.say("Added to Review") }
     }
     .alert("Switch to bank texts?", isPresented: $asking) {
       Button("Cancel", role: .cancel) {}

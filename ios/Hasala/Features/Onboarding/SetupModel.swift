@@ -199,7 +199,9 @@ final class SetupModel {
 
   var bankTexts: (any BankTextsConnecting)? { services.bankTexts }
 
-  var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected }
+  var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected && bankTexts?.readsEmail != true }
+
+  var connectBusy: Bool { connecting || coordinators.values.contains(where: \.busy) }
 
   var asksSource: Bool { offersBankTexts && draft.source != .email }
 
@@ -208,7 +210,7 @@ final class SetupModel {
   private(set) var lastPickedSource: PaymentSource?
 
   func chooseSource(_ source: PaymentSource) {
-    guard !busy, bankTexts != nil else { return }
+    guard !busy, !connectBusy, bankTexts != nil else { return }
     didResume = true
     failure = nil
     lastPickedSource = source
@@ -223,6 +225,7 @@ final class SetupModel {
   }
 
   func backToSourceChoice() {
+    guard !busy, !connectBusy else { return }
     failure = nil
     draft.source = nil
   }

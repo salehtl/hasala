@@ -38,6 +38,7 @@ final class AppModel {
   var cloudSort: (any CloudSortControlling)?
   @ObservationIgnored let bankTexts: (any BankTextsConnecting)?
   var usesBankTexts: Bool { bankTexts?.usesTexts == true }
+  var offersBankTextPaste: Bool { bankTexts?.offersPaste == true }
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
@@ -83,13 +84,13 @@ final class AppModel {
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
     layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads(),
-    services: AccountServices? = nil
+    bankTexts: (any BankTextsConnecting)? = nil
   ) {
     self.store = store
     self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
-    bankTexts = services?.bankTexts
+    self.bankTexts = bankTexts
     self.layouts = layouts
     homeLayout = layouts?.load()
   }

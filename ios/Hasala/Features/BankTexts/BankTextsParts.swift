@@ -3,12 +3,25 @@ import HasalaModels
 import SwiftUI
 
 enum BankTextsGuide {
+  static let runImmediately = "Choose Run Immediately, then tap Next."
+  static let newBlank = "Tap New Blank Automation, then Add Action."
+  static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")
+
   static let shortSteps = [
     "In the Shortcuts app, open the Automation tab, tap +, then Message.",
     "Leave Sender as Any and add no Message Contains filter.",
-    "Choose Run Immediately, then tap Next.",
-    "Tap New Blank Automation, then Add Action.",
+    runImmediately,
+    newBlank,
     "Search \u{201C}Hasala\u{201D}, pick Add bank text, then tap Done.",
+  ]
+
+  static let fullSteps = [
+    "Open the Shortcuts app and tap Automation at the bottom. Then tap + at the top.",
+    "Choose Message as what starts it.",
+    "Leave Sender as Any, and don't add Message Contains. One automation then works for all your banks.",
+    runImmediately,
+    newBlank,
+    "Search \u{201C}Hasala\u{201D} and pick Add bank text. It takes the message by itself. Tap Done.",
   ]
 
   static let checklist: [(title: String, detail: String)] = [
@@ -16,7 +29,7 @@ enum BankTextsGuide {
     ("Sender is Any, with no filter", "A Message Contains filter can leave your test out."),
     ("Add bank text gets the message", "The action should show Message in blue."),
     ("The test went to your own number", "Or ask someone to text you \u{201C}\(BankTexts.testPhrase)\u{201D}."),
-    ("Hasala action not in the list?", "Open Hasala once, then search again in the Shortcuts app."),
+    actionMissing,
   ]
 }
 

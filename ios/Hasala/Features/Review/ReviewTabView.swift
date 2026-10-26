@@ -44,7 +44,7 @@ struct ReviewTabView: View {
             startCard
           }
           if unread > 0 { unreadable(unread) }
-          if app.usesBankTexts { pasteTextRow }
+          if app.offersBankTextPaste { pasteTextRow }
           if !cards.isEmpty { list(cards) }
         }
         .padding(.horizontal, HSpacing.insetPage)

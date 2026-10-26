@@ -16,14 +16,8 @@ struct ShortcutsGuideSheet: View {
     case tabs, trigger, when, run, blank, action
   }
 
-  private let steps = [
-    Step(id: 1, text: "Open the Shortcuts app and tap Automation at the bottom. Then tap + at the top.", sketch: .tabs),
-    Step(id: 2, text: "Choose Message as what starts it.", sketch: .trigger),
-    Step(id: 3, text: "Leave Sender as Any, and don't add Message Contains. One automation then works for all your banks.", sketch: .when),
-    Step(id: 4, text: "Choose Run Immediately, then tap Next.", sketch: .run),
-    Step(id: 5, text: "Tap New Blank Automation, then Add Action.", sketch: .blank),
-    Step(id: 6, text: "Search \u{201C}Hasala\u{201D} and pick Add bank text. It takes the message by itself. Tap Done.", sketch: .action),
-  ]
+  private let steps = zip(BankTextsGuide.fullSteps, [Sketch.tabs, .trigger, .when, .run, .blank, .action])
+    .enumerated().map { i, pair in Step(id: i + 1, text: pair.0, sketch: pair.1) }
 
   var body: some View {
     NavigationStack {
@@ -52,7 +46,7 @@ struct ShortcutsGuideSheet: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("textsGuide.step\(step.id)")
           }
-          TextsNote(text: "Hasala action not in the list? Open Hasala once, then search again in the Shortcuts app.")
+          TextsNote(text: "\(BankTextsGuide.actionMissing.title) \(BankTextsGuide.actionMissing.detail)")
           TextsNote(icon: .chat, text: "Then send yourself \u{201C}\(BankTexts.testPhrase)\u{201D} to check that it runs.")
           Button { openURL(BankTexts.shortcutsURL) } label: {
             Text("Open Shortcuts").fixedSize(horizontal: false, vertical: true)

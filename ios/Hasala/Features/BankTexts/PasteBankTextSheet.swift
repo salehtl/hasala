@@ -18,7 +18,7 @@ final class PasteBankTextModel {
     self.lane = lane
   }
 
-  var refused: Bool { lane.readsEmail }
+  var refused: Bool { !lane.offersPaste }
 
   var canAdd: Bool {
     guard !refused, text != nil, !isReading, !adding, let reading else { return false }

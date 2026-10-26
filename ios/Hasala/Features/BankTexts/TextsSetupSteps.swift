@@ -119,10 +119,6 @@ struct TextsBanksStep: View {
   @Bindable var model: SetupModel
   @State private var telling = false
 
-  static func note(_ bank: SupportedBank) -> String {
-    BankTexts.readAutomatically.contains(bank) ? "Read automatically" : "You check each one in Review"
-  }
-
   var body: some View {
     AccountScreen(
       title: "Which banks text you?",
@@ -137,7 +133,7 @@ struct TextsBanksStep: View {
           .padding(.horizontal, 16)
           .padding(.top, 4)
           .accessibilityAddTraits(.isHeader)
-        BankList(chosen: model.chosenBanks, note: { Self.note($0) }, toggle: model.toggle)
+        BankList(chosen: model.chosenBanks, note: { BankTexts.readNote($0) }, toggle: model.toggle)
         AnotherBankCard(sent: model.bankRequestSent, sample: false) { telling = true }
         SetupFailureBanner(failure: model.failure)
         DockNote(text: "Texts stay on this iPhone. Hasala keeps only the payments it reads.").padding(.top, 4)

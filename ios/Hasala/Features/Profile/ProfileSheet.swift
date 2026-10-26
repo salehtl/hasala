@@ -45,7 +45,9 @@ struct ProfileSheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
           ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
-          BankAlertsCard(summary: summary) { push(.bankAlerts) }
+          TimelineView(.periodic(from: .now, by: 60)) { context in
+            BankAlertsCard(summary: summary(now: context.date)) { push(.bankAlerts) }
+          }
           money
           settings
           GravatarSection()
@@ -108,8 +110,8 @@ struct ProfileSheet: View {
 
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
   /// row also draw from.
-  private var summary: MailboxesSummary {
-    if let texts = app.bankTexts, texts.usesTexts { return .texts(texts.status, now: .now) }
+  private func summary(now: Date) -> MailboxesSummary {
+    if let texts = app.bankTexts, texts.usesTexts { return .texts(texts.status, now: now) }
     return MailboxesSummary(
       app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
   }

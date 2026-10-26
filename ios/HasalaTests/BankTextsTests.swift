@@ -162,8 +162,11 @@ struct BankTextsTests {
   }
 
   @Test func theTextsBanksSayHowEachIsRead() {
-    #expect(TextsBanksStep.note(.dib) == "Read automatically")
-    #expect(TextsBanksStep.note(.enbd) == "You check each one in Review")
+    #expect(BankTexts.readNote(.dib) == "Read automatically")
+    #expect(BankTexts.readNote(.enbd) == "You check each one in Review")
+    for bank in SupportedBank.allCases {
+      #expect(BankTexts.bankDetail(BankTextsBank(bank: bank, lastText: nil), now: now).hasSuffix("\n\(BankTexts.readNote(bank))"))
+    }
   }
 
   @Test func emailShowsTheBankStepAndBackReturnsToTheChoice() {
@@ -208,12 +211,12 @@ struct BankTextsTests {
   }
 
   @Test func relativeTimes() {
-    #expect(BankTexts.ago(now, now: now) == "just now")
-    #expect(BankTexts.ago(now.addingTimeInterval(-59 * 60), now: now) == "59 min ago")
-    #expect(BankTexts.ago(now.addingTimeInterval(-2 * 3600), now: now) == "2 h ago")
-    #expect(BankTexts.ago(now.addingTimeInterval(-3 * 86_400), now: now) == "3 days ago")
-    #expect(BankTexts.ago(now.addingTimeInterval(60), now: now) == "just now")
-    #expect(BankTexts.ago(now.addingTimeInterval(-240), now: now) == RelativeTime.ago(ms: 240_000))
+    #expect(RelativeTime.ago(now, now: now) == "just now")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-59 * 60), now: now) == "59 min ago")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-2 * 3600), now: now) == "2 h ago")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-3 * 86_400), now: now) == "3 days ago")
+    #expect(RelativeTime.ago(now.addingTimeInterval(60), now: now) == "just now")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-240), now: now) == RelativeTime.ago(ms: 240_000))
   }
 
   @Test func onlyDIBIsReadAutomatically() {
@@ -284,7 +287,7 @@ struct BankTextsTests {
     let mailbox = MockMailbox(mailboxes: [elsewhere])
     mailbox.connectDelay = .zero
     let lane = MockBankTexts(mailbox: mailbox)
-    let blocker = SourceSwitch.textsBlocker(mailbox)
+    let blocker = SourceSwitch.textsBlocker(mailbox, texts: lane)
     #expect(blocker?.contains("Your other iPhone reads \(elsewhere.address)") == true)
     #expect(blocker?.contains(MailCopy.consentPage(.gmail)) == true)
     #expect(UseBankTextsSection.footnote(mailbox, lane: lane) == blocker)
@@ -297,7 +300,7 @@ struct BankTextsTests {
     mailbox.connectDelay = .zero
     mailbox.capabilities.remove(.disconnect)
     let lane = MockBankTexts(mailbox: mailbox)
-    #expect(SourceSwitch.textsBlocker(mailbox) != nil)
+    #expect(SourceSwitch.textsBlocker(mailbox, texts: lane) != nil)
     guard case .failed = await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) else {
       Issue.record("the switch went ahead")
       return
@@ -491,9 +494,9 @@ struct BankTextsTests {
 
   @Test func textsTakeTheMailOfferAway() {
     #expect(AppModel(store: InMemoryLedger(), mailbox: MockMailbox()).mailOffer == .connect)
-    let texts = AppModel(store: InMemoryLedger(), mailbox: MockMailbox(), services: services(texts: MockBankTexts(setUp: true)))
+    let texts = AppModel(store: InMemoryLedger(), mailbox: MockMailbox(), bankTexts: MockBankTexts(setUp: true))
     #expect(texts.mailOffer == nil && texts.usesBankTexts)
-    let email = AppModel(store: InMemoryLedger(), mailbox: MockMailbox(), services: services(texts: MockBankTexts(setUp: false, link: .linked)))
+    let email = AppModel(store: InMemoryLedger(), mailbox: MockMailbox(), bankTexts: MockBankTexts(setUp: false, link: .linked))
     #expect(email.mailOffer == .connect && !email.usesBankTexts)
   }
 
@@ -516,11 +519,101 @@ struct BankTextsTests {
 
   @Test func theAppAndSetupReadOneLane() {
     let s = AuthScenario.session(for: .textsWorking, releaseSurface: false).services
-    let app = AppModel(store: InMemoryLedger(), mailbox: s.mailbox, services: s)
+    let app = AppModel(store: InMemoryLedger(), mailbox: s.mailbox, bankTexts: s.bankTexts)
     let lane = s.bankTexts
     #expect(lane != nil && app.bankTexts === lane && model(s).bankTexts === lane)
     #expect(AuthScenario.session(for: .textsWorking, releaseSurface: true).services.bankTexts != nil)
     #expect(AuthScenario.session(for: .setupBank, releaseSurface: false).services.bankTexts == nil)
+  }
+
+  @Test func aSwitchWhileTheMailboxesAreNotKnownIsRefused() async {
+    let base = MockMailbox(mailboxes: [MockMailbox.gmail])
+    base.connectDelay = .zero
+    let mailbox = CountingMailbox(base)
+    mailbox.known = false
+    let lane = MockBankTexts(mailbox: base)
+    #expect(SourceSwitch.textsBlocker(mailbox, texts: lane) == SourceSwitch.checking)
+    #expect(UseBankTextsSection.footnote(mailbox, lane: lane) == SourceSwitch.checking)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .failed(SourceSwitch.checking))
+    #expect(base.mailboxes.allSatisfy { $0.state != .disconnected } && lane.finishCalls == 0 && !lane.isSetUp)
+    mailbox.known = true
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .switched)
+    #expect(lane.usesTexts)
+  }
+
+  @Test func aLinkWithNoMailboxListedHereDoesNotSwitch() async {
+    let mailbox = MockMailbox()
+    let lane = MockBankTexts(mailbox: mailbox, link: .linked)
+    #expect(SourceSwitch.textsBlocker(mailbox, texts: lane) == SourceSwitch.readElsewhereLink)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .failed(SourceSwitch.readElsewhereLink))
+    #expect(lane.finishCalls == 0 && !lane.isSetUp && !lane.usesTexts)
+    #expect(await SourceSwitch.toTexts(mailbox: nil, texts: lane) == .failed(SourceSwitch.readElsewhereLink))
+    #expect(lane.finishCalls == 0)
+  }
+
+  @Test func aDisconnectThatLeavesTheLinkDoesNotSwitch() async {
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    mailbox.connectDelay = .zero
+    let lane = MockBankTexts(mailbox: mailbox, link: .linked)
+    #expect(SourceSwitch.textsBlocker(mailbox, texts: lane) == nil)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .failed(SourceSwitch.linkRemains))
+    #expect(SourceSwitch.reading(mailbox).isEmpty && lane.finishCalls == 0 && !lane.isSetUp && lane.readsEmail)
+    lane.linkOverride = nil
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox, texts: lane) == .switched)
+    #expect(lane.usesTexts && !lane.readsEmail)
+  }
+
+  @Test func setupDoesNotOfferTextsWhenTheLinkCopySaysLinked() {
+    let linked = model(services(texts: MockBankTexts(link: .linked)))
+    #expect(!linked.mailConnected && !linked.offersBankTexts && !linked.asksSource)
+    #expect(model(services(texts: MockBankTexts(link: .unknown))).offersBankTexts)
+    #expect(model(services(texts: MockBankTexts(link: .notLinked))).offersBankTexts)
+  }
+
+  @Test func theSourceCannotChangeWhileAMailboxConnects() async throws {
+    let mailbox = MockMailbox()
+    let lane = MockBankTexts(mailbox: mailbox)
+    let s = services(texts: lane, mailbox: mailbox)
+    mailbox.connectDelay = .milliseconds(300)
+    let m = model(s)
+    m.chooseSource(.email)
+    #expect(m.source == .email && !m.asksSource)
+    let connect = Task { await m.connectMail(.gmail) }
+    for _ in 0..<200 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.connectBusy)
+    m.backToSourceChoice()
+    #expect(m.source == .email && !m.asksSource)
+    m.chooseSource(.texts)
+    #expect(m.source == .email && m.path.isEmpty)
+    await connect.value
+    #expect(!m.connectBusy && m.facts.mailbox == .scanning && m.path.isEmpty && lane.finishCalls == 0)
+  }
+
+  @Test func pasteIsOfferedWheneverTheCopyIsNotLinked() async {
+    for link in [MailboxLinkCopy.notLinked, .unknown] {
+      let lane = MockBankTexts(setUp: false, link: link)
+      lane.readDelay = .zero
+      #expect(lane.offersPaste && !lane.usesTexts)
+      #expect(AppModel(store: InMemoryLedger(), bankTexts: lane).offersBankTextPaste)
+      let m = PasteBankTextModel(lane: lane)
+      #expect(!m.refused)
+      await m.paste(MockBankTexts.sampleText)
+      #expect(m.canAdd)
+      let added = await m.add()
+      #expect(added && lane.added.count == 1)
+    }
+    let linked = MockBankTexts(setUp: true, link: .linked)
+    #expect(!linked.offersPaste && !AppModel(store: InMemoryLedger(), bankTexts: linked).offersBankTextPaste)
+    #expect(!AppModel(store: InMemoryLedger()).offersBankTextPaste)
+  }
+
+  @Test func theFullGuideSharesTheShortGuideLines() {
+    #expect(BankTextsGuide.shortSteps.contains(BankTextsGuide.runImmediately))
+    #expect(BankTextsGuide.fullSteps.contains(BankTextsGuide.runImmediately))
+    #expect(BankTextsGuide.shortSteps.contains(BankTextsGuide.newBlank))
+    #expect(BankTextsGuide.fullSteps.contains(BankTextsGuide.newBlank))
+    #expect(BankTextsGuide.shortSteps.count == 5 && BankTextsGuide.fullSteps.count == 6)
+    #expect(BankTextsGuide.checklist.last?.title == BankTextsGuide.actionMissing.title)
   }
 
   @Test func theTextsSummary() {

@@ -17,13 +17,13 @@ struct BankStep: View {
     let provider = model.provider
     let coordinator = model.coordinator(provider)
     let connected = model.connectedMailbox
-    let connectBusy = starting || model.connecting || coordinator.busy
+    let connectBusy = starting || model.connectBusy || coordinator.busy
     AccountScreen(
       title: "Connect your bank alerts",
       subtitle: model.offersBankTexts
         ? "Hasala reads your banks' alert emails on this iPhone."
         : "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
-      back: model.offersBankTexts ? .action(model.backToSourceChoice) : .none,
+      back: model.offersBankTexts && !connectBusy && !model.busy ? .action(model.backToSourceChoice) : .none,
       trailing: skip(connected)
     ) {
       VStack(alignment: .leading, spacing: 12) {

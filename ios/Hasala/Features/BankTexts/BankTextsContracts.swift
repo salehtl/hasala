@@ -18,6 +18,7 @@ struct BankTextsBank: Equatable, Identifiable, Sendable {
 
   var id: SupportedBank { bank }
   var readsAutomatically: Bool { BankTexts.readAutomatically.contains(bank) }
+  var readNote: String { BankTexts.readNote(bank) }
 }
 
 enum BankTextsTest: Equatable, Sendable {
@@ -107,7 +108,7 @@ extension BankTextsConnecting {
 
   var usesTexts: Bool { source == .texts }
   var readsEmail: Bool { link == .linked }
-  var offersPaste: Bool { usesTexts }
+  var offersPaste: Bool { link != .linked }
 }
 
 enum BankTexts {
@@ -117,8 +118,6 @@ enum BankTexts {
   static let messagesURL = URL(string: "sms:")!
 
   static let clock = TimeZone(secondsFromGMT: 4 * 3600)!
-
-  static func ago(_ date: Date, now: Date) -> String { RelativeTime.ago(date, now: now) }
 
   private static func formatter(_ format: String) -> DateFormatter {
     let f = DateFormatter()
@@ -141,13 +140,17 @@ enum BankTexts {
     switch status {
     case .notSetUp: "Not set up on this iPhone"
     case .waitingForFirstText: "Waiting for your first bank text"
-    case .working(let lastRan): "Ran \(ago(lastRan, now: now))"
+    case .working(let lastRan): "Ran \(RelativeTime.ago(lastRan, now: now))"
     }
   }
 
   static func bankDetail(_ bank: BankTextsBank, now: Date) -> String {
-    let when = bank.lastText.map { "Last text \(ago($0, now: now))" } ?? "No text yet"
-    return bank.readsAutomatically ? "\(when)\nRead automatically" : "\(when)\nYou check each one in Review"
+    let when = bank.lastText.map { "Last text \(RelativeTime.ago($0, now: now))" } ?? "No text yet"
+    return "\(when)\n\(bank.readNote)"
+  }
+
+  static func readNote(_ bank: SupportedBank) -> String {
+    readAutomatically.contains(bank) ? "Read automatically" : "You check each one in Review"
   }
 
   static let switchToEmailMessage =
