@@ -20,7 +20,13 @@ final class BankTextsUITests: XCTestCase {
 
     tap(app, "source.texts")
     XCTAssertTrue(el(app, "source.texts").isSelected)
-    tap(app, "source.continue", opening: "texts.steps")
+    tap(app, "source.continue", opening: "textsBanks.continue")
+    XCTAssertTrue(app.staticTexts["Which banks text you?"].exists)
+    XCTAssertTrue(el(app, "bank.dib").label.contains("Read automatically"))
+    XCTAssertTrue(el(app, "bank.enbd").label.contains("You check each one in Review"))
+    attach(app, "Which banks text you")
+    try audit(app)
+    tap(app, "textsBanks.continue", opening: "texts.steps")
     XCTAssertTrue(app.staticTexts["Make the automation"].exists)
     XCTAssertTrue(el(app, "texts.keepsOnly").exists, "the privacy line is missing")
     XCTAssertTrue(el(app, "texts.banksLine").label.contains("DIB texts are read automatically"))
@@ -80,7 +86,10 @@ final class BankTextsUITests: XCTestCase {
     attach(app, "Choice · AX")
     try audit(app, atLargeText: true)
     tap(app, "source.texts")
-    tap(app, "source.continue", opening: "texts.steps")
+    tap(app, "source.continue", opening: "textsBanks.continue")
+    attach(app, "Which banks text you · AX")
+    try audit(app, atLargeText: true)
+    tap(app, "textsBanks.continue", opening: "texts.steps")
     attach(app, "Make the automation · AX")
     try audit(app, atLargeText: true)
     tap(app, "texts.toTest", opening: "textsTest.phrase")
@@ -116,8 +125,20 @@ final class BankTextsUITests: XCTestCase {
     let message = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'may be the same payment as a bank text waits in Review'"))
     XCTAssertEqual(message.count, 1, "the overlap sentence is missing")
     attach(app, "Switch to bank email")
-    alert.buttons["Switch to email"].firstMatch.tap()
+    alert.buttons["Connect email"].firstMatch.tap()
     XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: uiWait), "Add a mailbox did not open")
+    back(app)
+    XCTAssertTrue(el(app, "bankAlerts.texts.automation").waitForExistence(timeout: uiWait), "backing out left bank texts")
+  }
+
+  @MainActor
+  func testTheAutomationStepCanBeSkipped() throws {
+    let app = launch(scenario: nil, screen: "setup.texts")
+    let skip = el(app, "texts.skip")
+    XCTAssertTrue(skip.waitForExistence(timeout: 30), "Skip is missing from the automation step")
+    dragUntilHittable(app, skip)
+    skip.tap()
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Skip did not finish setup")
   }
 
   @MainActor
@@ -163,6 +184,19 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "pasteText.add")
     XCTAssertTrue(el(app, "pasteText").waitForNonExistence(timeout: uiWait), "the sheet stayed")
     XCTAssertTrue(el(app, "review.tab.pasteText").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testAPasteThatMayReplaceAnUnreadTextAsks() throws {
+    let app = launch(scenario: nil, screen: "review.pasteText.match")
+    XCTAssertTrue(el(app, "pasteText.match").waitForExistence(timeout: 30), "the matching row is missing")
+    XCTAssertTrue(el(app, "pasteText.undated").exists, "the undated note is missing")
+    XCTAssertTrue(el(app, "pasteText.addNew").exists)
+    XCTAssertEqual(el(app, "pasteText.add").label, "Replace it")
+    attach(app, "Paste a bank text · Matches an unread text")
+    try audit(app, overSheet: true)
+    tap(app, "pasteText.addNew")
+    XCTAssertTrue(el(app, "pasteText").waitForNonExistence(timeout: uiWait), "the sheet stayed")
   }
 
   @MainActor

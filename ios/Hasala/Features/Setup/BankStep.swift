@@ -294,13 +294,14 @@ private struct NumberedLine: View {
 /// inset to the text.
 struct BankList: View {
   let chosen: Set<SupportedBank>
+  var note: (SupportedBank) -> String? = { $0.note }
   var toggle: (SupportedBank) -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       ForEach(Array(SupportedBank.allCases.enumerated()), id: \.element) { i, bank in
         if i > 0 { HDivider(inset: .disc68) }
-        BankChoiceRow(bank: bank, on: chosen.contains(bank)) { toggle(bank) }
+        BankChoiceRow(bank: bank, note: note(bank), on: chosen.contains(bank)) { toggle(bank) }
       }
     }
     .padding(.vertical, 4)
@@ -315,6 +316,7 @@ struct BankList: View {
 /// from the profile when the account reads none (`ConnectMailPage`).
 struct BankChoiceRow: View {
   let bank: SupportedBank
+  var note: String?
   let on: Bool
   var toggle: () -> Void
 
@@ -324,7 +326,7 @@ struct BankChoiceRow: View {
         BankMonogram(bank: bank)
         VStack(alignment: .leading, spacing: 0) {
           Text(bank.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          if let note = bank.note { Text(note).hType(.footnote).foregroundStyle(HColor.textSecondary) }
+          if let note = note ?? bank.note { Text(note).hType(.footnote).foregroundStyle(HColor.textSecondary) }
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -398,7 +400,7 @@ struct CheckCircle: View {
 /// "Bank not listed?" (Paper X4 "Bank not listed?"): a ringed "+" plate, the line, and the
 /// "Tell us" pill, which asks for the bank's name. Where the account offers sample data it
 /// says so; otherwise Skip is the way on, by hand.
-private struct AnotherBankCard: View {
+struct AnotherBankCard: View {
   let sent: Bool
   let sample: Bool
   var tellUs: () -> Void

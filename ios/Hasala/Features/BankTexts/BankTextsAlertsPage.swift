@@ -9,7 +9,6 @@ struct BankTextsAlertsPage: View {
   @State private var pasting = false
   @State private var testing = false
   @State private var askingEmail = false
-  @State private var switching = false
   @State private var requestingBank = false
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -90,7 +89,7 @@ struct BankTextsAlertsPage: View {
     }
     .alert("Switch to bank email?", isPresented: $askingEmail) {
       Button("Cancel", role: .cancel) {}
-      Button("Switch to email") { switchToEmail() }
+      Button("Connect email") { app.router.profile.append(.addMailbox) }
         .accessibilityIdentifier("bankAlerts.texts.switchConfirm")
     } message: {
       Text(BankTexts.switchToEmailMessage)
@@ -228,28 +227,12 @@ struct BankTextsAlertsPage: View {
           title: "Use bank email instead", detail: "Gmail or Outlook, read-only", icon: .envelope,
           identifier: "bankAlerts.texts.useEmail"
         ) { askingEmail = true }
-        .disabled(switching)
       }
       Text(BankTexts.oneSourceNote)
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
-    }
-  }
-
-  private func switchToEmail() {
-    guard !switching else { return }
-    switching = true
-    Task {
-      defer { switching = false }
-      switch await SourceSwitch.toEmail(texts: lane) {
-      case .switched:
-        app.say("Hasala stopped reading bank texts")
-        app.router.profile.append(.addMailbox)
-      case .failed(let line):
-        app.say(line, icon: .info)
-      }
     }
   }
 }
@@ -261,10 +244,11 @@ struct UseBankTextsSection: View {
   @State private var asking = false
   @State private var switching = false
 
-  static func footnote(_ mailbox: (any MailboxConnecting)?) -> String {
+  static func footnote(_ mailbox: (any MailboxConnecting)?, lane: any BankTextsConnecting) -> String {
     if let blocker = SourceSwitch.textsBlocker(mailbox) { return blocker }
-    return SourceSwitch.reading(mailbox).isEmpty
+    let note = SourceSwitch.reading(mailbox).isEmpty
       ? BankTexts.oneSourceNote : "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
+    return lane.isSetUp && lane.readsEmail ? "\(BankTexts.readsEmailNow) \(note)" : note
   }
 
   var body: some View {
@@ -277,7 +261,7 @@ struct UseBankTextsSection: View {
         ) { asking = true }
         .disabled(switching || blocked)
       }
-      Text(Self.footnote(app.mailbox))
+      Text(Self.footnote(app.mailbox, lane: lane))
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)

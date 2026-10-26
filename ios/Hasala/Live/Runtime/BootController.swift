@@ -268,7 +268,7 @@ final class BootController {
         await rt.close()
         return nil
       }
-      var facts = Self.facts(rt)
+      var facts = Self.facts(rt, texts: self.services.bankTexts)
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
       self.opening = nil
       self.runtime = rt
@@ -450,8 +450,9 @@ final class BootController {
 
   /// Where setup resumes, from what the account's ledger already holds (§6.6: derived
   /// from facts, never stored).
-  static func facts(_ rt: AccountRuntime) -> OnboardingStep.Facts {
+  static func facts(_ rt: AccountRuntime, texts: (any BankTextsConnecting)?) -> OnboardingStep.Facts {
     var f = OnboardingStep.Facts(hasSession: true, keysReady: true)
+    f.textsChosen = BankTexts.setUpHere(texts)
     let r = rt.projection.reader
     f.banksChosen = !((try? r.senderTrust()) ?? [:]).isEmpty
     f.sampleLoaded = ((try? r.activity(limit: 1_000)) ?? []).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true }

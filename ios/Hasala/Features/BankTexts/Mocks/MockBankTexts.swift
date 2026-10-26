@@ -11,49 +11,64 @@
       case nothing
     }
 
-    private(set) var source: PaymentSource?
+    @ObservationIgnored private let mailbox: MockMailbox?
+    var linkOverride: MailboxLinkCopy?
+    private(set) var isSetUp: Bool
     var lastRan: Date?
     var lastTexts: [SupportedBank: Date] = [:]
     var test: BankTextsTest = .idle
     var testOutcome: TestOutcome = .received
     var testDelay: Duration = .seconds(2)
-    var switchFails = false
+    var finishFails = false
     var readDelay: Duration = .milliseconds(150)
+    var nextMatch: BankTextMatch?
     private(set) var added: [String] = []
-    private(set) var useTextsCalls = 0
-    private(set) var useEmailCalls = 0
+    private(set) var replaced: [String] = []
+    private(set) var finishCalls = 0
     private(set) var testsStarted = 0
     @ObservationIgnored private var testTask: Task<Void, Never>?
     @ObservationIgnored var now: () -> Date = { .now }
 
-    init(source: PaymentSource? = nil, lastRan: Date? = nil, lastTexts: [SupportedBank: Date] = [:]) {
-      self.source = source
+    init(
+      setUp: Bool = false, mailbox: MockMailbox? = nil, link: MailboxLinkCopy? = nil, lastRan: Date? = nil,
+      lastTexts: [SupportedBank: Date] = [:]
+    ) {
+      isSetUp = setUp
+      self.mailbox = mailbox
+      linkOverride = link
       self.lastRan = lastRan
       self.lastTexts = lastTexts
     }
 
     static let sampleText =
       "AED 64.00 spent on card ending 0000 at Sample Grocer on 19/10 18:30. Available balance AED 2,940.00."
+    static let undatedText = "AED 64.00 refunded to card ending 0000 by Sample Grocer."
     static let unreadableText = "Your card ending 0000 was used. Call us for details."
     static let codeText = "Your one-time code is 000000. Do not share it with anyone."
 
-    static func working(now: Date = .now) -> MockBankTexts {
+    static func working(now: Date = .now, mailbox: MockMailbox? = nil) -> MockBankTexts {
       MockBankTexts(
-        source: .texts, lastRan: now.addingTimeInterval(-4 * 60),
+        setUp: true, mailbox: mailbox, lastRan: now.addingTimeInterval(-4 * 60),
         lastTexts: [
           .dib: now.addingTimeInterval(-4 * 60),
           .enbd: now.addingTimeInterval(-2 * 3600),
         ])
     }
 
-    static func waiting() -> MockBankTexts {
-      let lane = MockBankTexts(source: .texts)
+    static func waiting(mailbox: MockMailbox? = nil) -> MockBankTexts {
+      let lane = MockBankTexts(setUp: true, mailbox: mailbox)
       lane.test = .received(at: .now.addingTimeInterval(-3600))
       return lane
     }
 
+    var link: MailboxLinkCopy {
+      if let linkOverride { return linkOverride }
+      guard let mailbox else { return .notLinked }
+      return mailbox.mailboxes.contains { $0.state != .disconnected } ? .linked : .notLinked
+    }
+
     var status: BankTextsStatus {
-      guard source == .texts else { return .notSetUp }
+      guard usesTexts else { return .notSetUp }
       if let lastRan { return .working(lastRan: lastRan) }
       return .waitingForFirstText
     }
@@ -64,18 +79,10 @@
 
     var lastTextAt: Date? { lastTexts.values.max() }
 
-    func useTexts() async throws(BankTextsFailure) {
-      useTextsCalls += 1
-      if switchFails { throw .failed("Hasala couldn't switch to bank texts. Try again.") }
-      source = .texts
-    }
-
-    func useEmail() async throws(BankTextsFailure) {
-      useEmailCalls += 1
-      if switchFails { throw .failed("Hasala couldn't switch to bank email. Try again.") }
-      source = .email
-      testTask?.cancel()
-      test = .idle
+    func finishSetUp() async throws(BankTextsFailure) {
+      finishCalls += 1
+      if finishFails { throw .failed("Hasala couldn't save this on your iPhone. Try again.") }
+      isSetUp = true
     }
 
     func startTest() {
@@ -99,9 +106,15 @@
       return Self.reading(text)
     }
 
-    func addToReview(_ text: String) async throws(BankTextsFailure) {
+    func match(_ text: String) async -> BankTextMatch? {
+      Self.reading(text) == .notAPayment ? nil : nextMatch
+    }
+
+    func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure) {
+      guard !readsEmail else { throw .failed(BankTexts.pasteRefused) }
       guard Self.reading(text) != .notAPayment else { throw .failed("This isn't a bank payment text.") }
       added.append(text.trimmingCharacters(in: .whitespacesAndNewlines))
+      if let replacing, replacing.kind == .unreadText { replaced.append(replacing.rowID) }
     }
 
     static let codeMarkers = [#"\bone[- ]time (pass)?code\b"#, #"\botp\b"#, #"\bverification code\b"#, #"\bdeclined\b"#]
@@ -121,7 +134,7 @@
       guard let amount = firstMatch(#"AED\s?([0-9][0-9,]*\.[0-9]{2})"#, in: t),
         let minor = minorUnits(amount)
       else { return .unreadable }
-      let incoming = lower.contains("credited") || lower.contains("received")
+      let incoming = ["credited", "received", "refunded"].contains { lower.contains($0) }
       return .read(BankTextPreview(
         amount: .aed(minor), direction: incoming ? .incoming : .out,
         merchant: firstMatch(#" at (.+?) on "#, in: t), date: date(in: t), bank: nil,

@@ -11,7 +11,7 @@ struct SourceStep: View {
     AccountScreen(
       title: "How do your banks reach you?",
       subtitle: "Pick one. Hasala reads it on this iPhone, and reads only one at a time.",
-      trailing: ("Skip", { Task { await model.skipSource() } })
+      trailing: ("Skip", model.skipSource)
     ) {
       VStack(alignment: .leading, spacing: 12) {
         SourceCard(source: .texts, picked: picked == .texts) { picked = .texts }
@@ -27,7 +27,7 @@ struct SourceStep: View {
         identifier: "source.continue"
       ) {
         guard let picked else { return }
-        Task { await model.chooseSource(picked) }
+        model.chooseSource(picked)
       }
       .dockPill()
     }
@@ -115,6 +115,48 @@ private struct SourceCard: View {
   }
 }
 
+struct TextsBanksStep: View {
+  @Bindable var model: SetupModel
+  @State private var telling = false
+
+  static func note(_ bank: SupportedBank) -> String {
+    BankTexts.readAutomatically.contains(bank) ? "Read automatically" : "You check each one in Review"
+  }
+
+  var body: some View {
+    AccountScreen(
+      title: "Which banks text you?",
+      subtitle: "Pick the banks that send you payment texts.",
+      back: .system,
+      trailing: ("Skip", model.skipSource)
+    ) {
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Your banks")
+          .hType(.overline)
+          .foregroundStyle(HColor.textGroupedHeader)
+          .padding(.horizontal, 16)
+          .padding(.top, 4)
+          .accessibilityAddTraits(.isHeader)
+        BankList(chosen: model.chosenBanks, note: { Self.note($0) }, toggle: model.toggle)
+        AnotherBankCard(sent: model.bankRequestSent, sample: false) { telling = true }
+        SetupFailureBanner(failure: model.failure)
+        DockNote(text: "Texts stay on this iPhone. Hasala keeps only the payments it reads.").padding(.top, 4)
+      }
+      .padding(.top, -8)
+    } footer: {
+      BusyButton(
+        title: "Continue", busy: model.busy, enabled: !model.chosenBanks.isEmpty, identifier: "textsBanks.continue"
+      ) { Task { await model.continueWithTextBanks() } }
+        .dockPill()
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("texts.banks")
+    .sheet(isPresented: $telling) {
+      RequestBankSheet(setup: model.bankRequests, prober: nil) { _ in model.noteBankRequestSent() }
+    }
+  }
+}
+
 struct TextsSetUpStep: View {
   @Bindable var model: SetupModel
   @State private var guiding = false
@@ -133,6 +175,7 @@ struct TextsSetUpStep: View {
           .accessibilityIdentifier("texts.keepsOnly")
         TextsNote(icon: .bank, text: BankTexts.banksLine)
           .accessibilityIdentifier("texts.banksLine")
+        SetupFailureBanner(failure: model.failure)
       }
       .padding(.top, -8)
     } footer: {
@@ -148,6 +191,7 @@ struct TextsSetUpStep: View {
       .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
       .dockPill()
       .accessibilityIdentifier("texts.toTest")
+      SkipToNextTextLink(identifier: "texts.skip") { Task { await model.finishTexts() } }
     }
     .sheet(isPresented: $guiding) { ShortcutsGuideSheet() }
   }
@@ -159,18 +203,23 @@ struct TextsTestStep: View {
   var body: some View {
     if let lane = model.bankTexts {
       BankTextsTestScreen(
-        lane: lane, back: .system, doneTitle: "Go to Home", done: model.finishTexts, skip: model.finishTexts)
+        lane: lane, back: .system, inSetup: true, doneTitle: "Go to Home", done: finish, skip: finish,
+        failure: model.failure)
     }
   }
+
+  private func finish() { Task { await model.finishTexts() } }
 }
 
 struct BankTextsTestScreen: View {
   let lane: any BankTextsConnecting
   var back: AccountBack = .none
   var trailing: (title: String, action: () -> Void)?
+  var inSetup = false
   var doneTitle: String
   var done: () -> Void
   var skip: (() -> Void)?
+  var failure: SetupFailure?
   @State private var copied = false
   @Environment(\.openURL) private var openURL
 
@@ -182,7 +231,9 @@ struct BankTextsTestScreen: View {
         case .received(let at):
           receivedCard(at)
           TextsNote(text: "Texts from before now don't come in. Paste one from Review if you need it.")
-          TextsNote(icon: .history, text: "Change it any time in Profile \u{203A} Bank alerts.")
+          if inSetup {
+            TextsNote(icon: .history, text: "Change it any time in Profile \u{203A} Bank alerts.")
+          }
         case .nothingYet:
           checklist
           TextsNote(text: "Hasala is still watching for the test text.")
@@ -191,6 +242,7 @@ struct BankTextsTestScreen: View {
           TextsNote(text: "Hasala adds nothing for this text. It only checks that the automation runs.")
           TextsNote(icon: .chat, text: "If nothing arrives in a minute, Hasala shows what to check.")
         }
+        SetupFailureBanner(failure: failure)
       }
       .padding(.top, -8)
       .hAnimation(.stateSwap, value: test)
@@ -204,6 +256,9 @@ struct BankTextsTestScreen: View {
     }
   }
 
+  static let worksLine =
+    "From now on, each bank payment text comes in as it arrives, filed or to Review for you to check."
+
   static func title(_ test: BankTextsTest) -> String {
     switch test {
     case .received: "Your automation works"
@@ -214,7 +269,7 @@ struct BankTextsTestScreen: View {
 
   static func subtitle(_ test: BankTextsTest) -> String {
     switch test {
-    case .received: "From now on, each bank payment text adds a payment as it arrives."
+    case .received: Self.worksLine
     case .nothingYet: "Check these in the Shortcuts app, then send the test again."
     case .idle, .waiting: "In Messages, send this to your own number. Hasala is watching for it."
     }
@@ -251,19 +306,7 @@ struct BankTextsTestScreen: View {
   }
 
   @ViewBuilder private var skipLink: some View {
-    if let skip {
-      Button(action: skip) {
-        Text("Skip, confirm with my next bank text")
-          .hType(HType.subheadline.weight(.semibold))
-          .foregroundStyle(HColor.textLink)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("textsTest.skip")
-    }
+    if let skip { SkipToNextTextLink(identifier: "textsTest.skip", action: skip) }
   }
 
   private var waitingCard: some View {
@@ -353,5 +396,24 @@ struct BankTextsTestScreen: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("textsTest.checklist")
+  }
+}
+
+struct SkipToNextTextLink: View {
+  let identifier: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Text("Skip, confirm with my next bank text")
+        .hType(HType.subheadline.weight(.semibold))
+        .foregroundStyle(HColor.textLink)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier(identifier)
   }
 }

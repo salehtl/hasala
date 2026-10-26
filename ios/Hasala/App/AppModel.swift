@@ -89,7 +89,7 @@ final class AppModel {
     self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
-    bankTexts = services?.offeredBankTexts
+    bankTexts = services?.bankTexts
     self.layouts = layouts
     homeLayout = layouts?.load()
   }

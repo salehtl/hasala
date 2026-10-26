@@ -8,6 +8,7 @@ final class PasteBankTextModel {
   let lane: any BankTextsConnecting
   private(set) var text: String?
   private(set) var reading: BankTextReading?
+  private(set) var match: BankTextMatch?
   private(set) var isReading = false
   private(set) var adding = false
   private(set) var failure: String?
@@ -17,38 +18,72 @@ final class PasteBankTextModel {
     self.lane = lane
   }
 
+  var refused: Bool { lane.readsEmail }
+
   var canAdd: Bool {
-    guard text != nil, !isReading, !adding, let reading else { return false }
+    guard !refused, text != nil, !isReading, !adding, let reading else { return false }
     return reading != .notAPayment
+  }
+
+  var addTitle: String {
+    switch match?.kind {
+    case .payment?: "Add anyway"
+    case .unreadText?: "Replace it"
+    case nil: "Add to Review"
+    }
   }
 
   func paste(_ pasted: String?) async {
     let trimmed = pasted?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard !trimmed.isEmpty else { return }
+    guard !refused, !trimmed.isEmpty else { return }
     generation += 1
     let mine = generation
     text = trimmed
     reading = nil
+    match = nil
     failure = nil
     isReading = true
     let result = await lane.read(trimmed)
     guard mine == generation else { return }
+    let found = result == .notAPayment ? nil : await lane.match(trimmed)
+    guard mine == generation else { return }
     reading = result
+    match = found
     isReading = false
   }
 
-  func add() async -> Bool {
+  func add(replacing: Bool = true) async -> Bool {
     guard canAdd, let text else { return false }
     adding = true
     defer { adding = false }
     do {
-      try await lane.addToReview(text)
+      try await lane.addToReview(text, replacing: replacing && match?.kind == .unreadText ? match : nil)
       return true
     } catch {
       failure = error.message
       return false
     }
   }
+
+  static func matchTitle(_ m: BankTextMatch) -> String {
+    m.merchant ?? (m.kind == .unreadText ? "A bank text Hasala couldn't read" : "A payment")
+  }
+
+  static func matchDetail(_ m: BankTextMatch) -> String {
+    let money = m.amount.map { "\($0.currency) \(MoneyFormat.string($0.minor))" }
+    let from = m.fromText ? "From a bank text" : "From email"
+    return [money, BankTexts.dayAndTime(m.postedAt), from].compactMap { $0 }.joined(separator: " \u{00B7} ")
+  }
+
+  static func matchQuestion(_ m: BankTextMatch) -> String {
+    switch m.kind {
+    case .payment: "A payment like this is already in Hasala. Add this text anyway?"
+    case .unreadText: "This may be the bank text Hasala couldn't read. Replace it with this one?"
+    }
+  }
+
+  static let undatedNote =
+    "This text has no date, so Hasala dates it when you paste it. Change the date in Review if the payment was earlier."
 
   static func amountLine(_ p: BankTextPreview) -> String {
     let money = "\(p.amount.currency) \(MoneyFormat.string(p.amount.minor))"
@@ -80,17 +115,23 @@ struct PasteBankTextSheet: View {
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
-          PasteButton(payloadType: String.self) { strings in
-            let first = strings.first
-            Task { @MainActor in await model.paste(first) }
+          if model.refused {
+            InlineStatus(tone: .neutral, text: BankTexts.pasteRefused, size: .regular)
+              .accessibilityIdentifier("pasteText.refused")
+          } else {
+            PasteButton(payloadType: String.self) { strings in
+              let first = strings.first
+              Task { @MainActor in await model.paste(first) }
+            }
+            .buttonBorderShape(.capsule)
+            .tint(HColor.actionAccent)
+            .frame(minHeight: HSpacing.targetMinimum)
+            .accessibilityIdentifier("pasteText.paste")
           }
-          .buttonBorderShape(.capsule)
-          .tint(HColor.actionAccent)
-          .frame(minHeight: HSpacing.targetMinimum)
-          .accessibilityIdentifier("pasteText.paste")
           if let text = model.text {
             pasted(text)
             result
+            if let match = model.match, model.reading != nil { matchCard(match) }
           }
           if let failure = model.failure {
             InlineStatus(tone: .warning, text: failure, size: .regular)
@@ -103,22 +144,26 @@ struct PasteBankTextSheet: View {
       }
       .scrollEdgeEffectStyle(.soft, for: .bottom)
       .safeAreaBar(edge: .bottom) {
-        Button {
-          Task {
-            if await model.add() {
-              added()
-              dismiss()
-            }
+        VStack(spacing: 8) {
+          Button { add(replacing: true) } label: {
+            Text(model.addTitle).fixedSize(horizontal: false, vertical: true)
           }
-        } label: {
-          Text("Add to Review").fixedSize(horizontal: false, vertical: true)
+          .buttonStyle(.pill(.primary, fill: true, loading: model.adding))
+          .disabled(!model.canAdd)
+          .dockPill()
+          .accessibilityIdentifier("pasteText.add")
+          if model.match?.kind == .unreadText {
+            Button { add(replacing: false) } label: {
+              Text("Add as a new payment").fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
+            .disabled(!model.canAdd)
+            .dockPill()
+            .accessibilityIdentifier("pasteText.addNew")
+          }
         }
-        .buttonStyle(.pill(.primary, fill: true, loading: model.adding))
-        .disabled(!model.canAdd)
-        .dockPill()
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.bottom, 8)
-        .accessibilityIdentifier("pasteText.add")
       }
       .background(HColor.surfaceSecondary)
       .navigationTitle("Paste a bank text")
@@ -132,6 +177,35 @@ struct PasteBankTextSheet: View {
         if let text = BankTextsLaunch.takePasted() { await model.paste(text) }
       #endif
     }
+  }
+
+  private func add(replacing: Bool) {
+    Task {
+      if await model.add(replacing: replacing) {
+        added()
+        dismiss()
+      }
+    }
+  }
+
+  private func matchCard(_ match: BankTextMatch) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Already in Hasala?").hType(.overline).foregroundStyle(HColor.textGroupedHeader)
+        .accessibilityAddTraits(.isHeader)
+      TextsCard {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(PasteBankTextModel.matchTitle(match)).hType(.headline).foregroundStyle(HColor.textPrimary)
+          Text(PasteBankTextModel.matchDetail(match)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .accessibilityElement(children: .combine)
+      }
+      TextsNote(text: PasteBankTextModel.matchQuestion(match))
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("pasteText.match")
   }
 
   private func pasted(_ text: String) -> some View {
@@ -169,7 +243,7 @@ struct PasteBankTextSheet: View {
             KeyValueRow("Merchant", value: preview.merchant ?? "Not in the text", placeholder: preview.merchant == nil)
             HDivider(inset: .none)
             KeyValueRow(
-              "Date", value: preview.date.map(BankTexts.dayAndTime) ?? "When it arrived", placeholder: preview.date == nil)
+              "Date", value: preview.date.map(BankTexts.dayAndTime) ?? "When you paste it", placeholder: preview.date == nil)
             if let card = PasteBankTextModel.cardLine(preview) {
               HDivider(inset: .none)
               KeyValueRow("Card", value: card)
@@ -179,6 +253,10 @@ struct PasteBankTextSheet: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pasteText.read")
+        if preview.date == nil {
+          TextsNote(text: PasteBankTextModel.undatedNote)
+            .accessibilityIdentifier("pasteText.undated")
+        }
       case .unreadable?:
         InlineStatus(
           tone: .warning, text: "Hasala couldn't read this text. Add it to Review and fill in the payment yourself.",

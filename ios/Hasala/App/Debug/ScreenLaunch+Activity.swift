@@ -42,6 +42,14 @@
         BankTextsLaunch.openPaste = true
         shell(.review)(graph)
       }),
+      Screen("review.pasteText.match", scenario: "textsWorking", prepare: { graph in
+        (graph.session.services.bankTexts as? MockBankTexts)?.nextMatch = BankTextMatch(
+          rowID: "sample-unread", kind: .unreadText, merchant: nil, amount: nil,
+          postedAt: .now.addingTimeInterval(-2 * 86_400), fromText: true)
+        BankTextsLaunch.pasted = MockBankTexts.undatedText
+        BankTextsLaunch.openPaste = true
+        shell(.review)(graph)
+      }),
       Screen("review.cloudSort", scenario: "maya", prepare: { graph in
         (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
         shell(.review)(graph)

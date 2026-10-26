@@ -98,8 +98,9 @@
     }
 
     /// Where setup resumes: the email-step scenarios have chosen their banks.
-    static func setupFacts(for scenario: AuthScenario?) -> OnboardingStep.Facts {
+    static func setupFacts(for scenario: AuthScenario?, texts: (any BankTextsConnecting)? = nil) -> OnboardingStep.Facts {
       var facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
+      facts.textsChosen = BankTexts.setUpHere(texts)
       switch scenario {
       case .setupEmail, .outlookAdmin, .outlookCancelled: facts.banksChosen = true
       default: break
@@ -135,12 +136,11 @@
     }
 
     @MainActor
-    static func bankTexts(for scenario: AuthScenario?) -> MockBankTexts? {
+    static func bankTexts(for scenario: AuthScenario?, mailbox: MockMailbox? = nil) -> MockBankTexts? {
       switch scenario {
-      case .setupTexts: MockBankTexts()
-      case .textsWorking: MockBankTexts.working()
-      case .textsWaiting: MockBankTexts.waiting()
-      case .gmailTexts: MockBankTexts(source: .email)
+      case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
+      case .textsWorking: MockBankTexts.working(mailbox: mailbox)
+      case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
       default: nil
       }
     }
@@ -163,7 +163,7 @@
       let unseenPhrase = InMemoryUnseenPhrase()
       if arguments.contains("-HasalaPhraseUnseen") { unseenPhrase.noteUnseen(at: .now) }
       let manualEntry = ManualEntryChoice()
-      let bankTexts = bankTexts(for: scenario)
+      let bankTexts = bankTexts(for: scenario, mailbox: mailbox)
       func services(_ account: MockAccountService) -> AccountServices {
         account.passkeyPRF = !arguments.contains("-HasalaPasskeyNoPRF")
         account.passkeySynced = !arguments.contains("-HasalaPasskeyNotSynced")

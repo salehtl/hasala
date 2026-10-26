@@ -25,30 +25,28 @@ enum SourceSwitch {
 
   static func toTexts(mailbox: (any MailboxConnecting)?, texts: any BankTextsConnecting) async -> Outcome {
     if let blocker = textsBlocker(mailbox) { return .failed(blocker) }
-    let wasTexts = texts.usesTexts
+    if let mailbox {
+      var off: [MailboxSnapshot] = []
+      for m in reading(mailbox) {
+        do {
+          try await mailbox.disconnect(m.id, removeTransactions: false)
+          off.append(m)
+        } catch {
+          return .failed(partialFailure(disconnected: off, failed: m))
+        }
+      }
+    }
     do {
-      try await texts.useTexts()
+      try await texts.finishSetUp()
     } catch {
       return .failed(error.message)
-    }
-    guard let mailbox else { return .switched }
-    for m in reading(mailbox) {
-      do {
-        try await mailbox.disconnect(m.id, removeTransactions: false)
-      } catch {
-        if !wasTexts { try? await texts.useEmail() }
-        return .failed(error.message(for: m.provider) ?? "Hasala couldn't disconnect \(m.address). Try again.")
-      }
     }
     return .switched
   }
 
-  static func toEmail(texts: any BankTextsConnecting) async -> Outcome {
-    do {
-      try await texts.useEmail()
-    } catch {
-      return .failed(error.message)
-    }
-    return .switched
+  static func partialFailure(disconnected: [MailboxSnapshot], failed: MailboxSnapshot) -> String {
+    guard !disconnected.isEmpty else { return "Hasala couldn't disconnect \(failed.address). Nothing changed. Try again." }
+    let done = disconnected.map(\.address).formatted(.list(type: .and))
+    return "Hasala disconnected \(done), but couldn't disconnect \(failed.address). It still reads bank email until \(failed.address) disconnects. Try again to finish the switch."
   }
 }

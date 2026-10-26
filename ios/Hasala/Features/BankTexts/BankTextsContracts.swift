@@ -62,22 +62,52 @@ enum BankTextsFailure: Error, Equatable, Sendable {
   }
 }
 
+enum MailboxLinkCopy: Equatable, Sendable {
+  case linked
+  case notLinked
+  case unknown
+}
+
+struct BankTextMatch: Equatable, Sendable {
+  enum Kind: Equatable, Sendable {
+    case payment
+    case unreadText
+  }
+
+  var rowID: String
+  var kind: Kind
+  var merchant: String?
+  var amount: Money?
+  var postedAt: Date
+  var fromText: Bool
+}
+
 @MainActor
 protocol BankTextsConnecting: AnyObject, Observable {
-  var source: PaymentSource? { get }
+  var link: MailboxLinkCopy { get }
+  var isSetUp: Bool { get }
   var status: BankTextsStatus { get }
   var banks: [BankTextsBank] { get }
   var test: BankTextsTest { get }
   var lastTextAt: Date? { get }
-  func useTexts() async throws(BankTextsFailure)
-  func useEmail() async throws(BankTextsFailure)
+  func finishSetUp() async throws(BankTextsFailure)
   func startTest()
   func read(_ text: String) async -> BankTextReading
-  func addToReview(_ text: String) async throws(BankTextsFailure)
+  func match(_ text: String) async -> BankTextMatch?
+  func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure)
 }
 
 extension BankTextsConnecting {
+  var source: PaymentSource? {
+    switch link {
+    case .linked: .email
+    case .notLinked, .unknown: isSetUp ? .texts : nil
+    }
+  }
+
   var usesTexts: Bool { source == .texts }
+  var readsEmail: Bool { link == .linked }
+  var offersPaste: Bool { usesTexts }
 }
 
 enum BankTexts {
@@ -88,37 +118,24 @@ enum BankTexts {
 
   static let clock = TimeZone(secondsFromGMT: 4 * 3600)!
 
-  static func ago(_ date: Date, now: Date) -> String {
-    let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
-    if minutes < 1 { return "just now" }
-    if minutes < 60 { return "\(minutes) min ago" }
-    if minutes < 48 * 60 { return "\(minutes / 60) h ago" }
-    return "\(minutes / (24 * 60)) days ago"
-  }
+  static func ago(_ date: Date, now: Date) -> String { RelativeTime.ago(date, now: now) }
 
-  static func day(_ date: Date) -> String {
+  private static func formatter(_ format: String) -> DateFormatter {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
     f.timeZone = clock
-    f.dateFormat = "EEE d MMM"
-    return f.string(from: date)
+    f.dateFormat = format
+    return f
   }
 
-  static func dayAndTime(_ date: Date) -> String {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = clock
-    f.dateFormat = "EEE d MMM, HH:mm"
-    return f.string(from: date)
-  }
+  private static let dayAndTimeFormat = formatter("EEE d MMM, HH:mm")
+  private static let timeFormat = formatter("HH:mm")
 
-  static func time(_ date: Date) -> String {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = clock
-    f.dateFormat = "HH:mm"
-    return f.string(from: date)
-  }
+  static func dayAndTime(_ date: Date) -> String { dayAndTimeFormat.string(from: date) }
+
+  static func time(_ date: Date) -> String { timeFormat.string(from: date) }
+
+  static func setUpHere(_ lane: (any BankTextsConnecting)?) -> Bool { lane?.isSetUp == true }
 
   static func statusLine(_ status: BankTextsStatus, now: Date) -> String {
     switch status {
@@ -134,7 +151,13 @@ enum BankTexts {
   }
 
   static let switchToEmailMessage =
-    "Hasala stops reading bank texts; delete the automation in the Shortcuts app too. Email brings in all the bank mail it finds. A mail that may be the same payment as a bank text waits in Review beside it, where you keep both or archive one."
+    "Next, you connect Gmail or Outlook. Once it connects, Hasala stops adding bank texts; delete the automation in the Shortcuts app too. Email brings in all the bank mail it finds. A mail that may be the same payment as a bank text waits in Review beside it, where you keep both or archive one."
+
+  static let readsEmailNow =
+    "This account reads bank email, so Hasala adds no bank texts. Delete the automation in the Shortcuts app."
+
+  static let pasteRefused =
+    "This account reads bank email. Switch to bank texts in Profile \u{203A} Bank alerts to paste a text."
 
   static let switchToTextsMessage =
     "Hasala disconnects your mailbox. Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."

@@ -72,14 +72,18 @@ final class FinishSetupModel {
   }
 
   var items: [FinishSetupItem] {
-    FinishSetupItem.allCases.filter { (listed.contains($0) || !isDone($0)) && !($0 == .connectEmail && entersByHand) }
+    FinishSetupItem.allCases.filter {
+      (listed.contains($0) || !isDone($0)) && !($0 == .connectEmail && (entersByHand || usesTexts))
+    }
   }
 
   var noAlerts: Bool { ledgerEmpty && !alertsFound && (checkingAgain || services.mailbox.firstScanFinished) }
 
+  var usesTexts: Bool { services.bankTexts?.usesTexts == true }
+
   var needsEmail: Bool {
     let mailbox = services.mailbox
-    guard services.offeredBankTexts?.usesTexts != true else { return false }
+    guard !usesTexts else { return false }
     return mailbox.mailboxesKnown && mailbox.heldElsewhere == nil && mailbox.offer == .connect
   }
 

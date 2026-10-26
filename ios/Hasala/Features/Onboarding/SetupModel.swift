@@ -197,7 +197,7 @@ final class SetupModel {
 
   func noteBankRequestSent() { draft.bankRequestSent = true }
 
-  var bankTexts: (any BankTextsConnecting)? { services.offeredBankTexts }
+  var bankTexts: (any BankTextsConnecting)? { services.bankTexts }
 
   var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected }
 
@@ -207,26 +207,18 @@ final class SetupModel {
 
   private(set) var lastPickedSource: PaymentSource?
 
-  func chooseSource(_ source: PaymentSource) async {
-    guard !busy, let lane = bankTexts else { return }
+  func chooseSource(_ source: PaymentSource) {
+    guard !busy, bankTexts != nil else { return }
     didResume = true
     failure = nil
     lastPickedSource = source
-    busy = true
-    defer { busy = false }
-    do {
-      switch source {
-      case .email:
-        if lane.usesTexts { try await lane.useEmail() }
-        draft.source = .email
-      case .texts:
-        try await lane.useTexts()
-        draft.source = .texts
-        path = []
-        go(.textsSetUp)
-      }
-    } catch {
-      failure = .failed(error.message)
+    draft.source = source
+    switch source {
+    case .email:
+      path = []
+    case .texts:
+      path = []
+      go(.textsBanks)
     }
   }
 
@@ -235,22 +227,15 @@ final class SetupModel {
     draft.source = nil
   }
 
-  func skipSource() async {
+  func skipSource() {
     guard !busy else { return }
-    if let lane = bankTexts, lane.usesTexts {
-      didResume = true
-      failure = nil
-      busy = true
-      defer { busy = false }
-      do {
-        try await lane.useEmail()
-      } catch {
-        failure = .failed(error.message)
-        return
-      }
-    }
     draft.source = nil
     skipBanks()
+  }
+
+  func continueWithTextBanks() async {
+    guard path.last == .textsBanks, await saveBanks() else { return }
+    go(.textsSetUp)
   }
 
   func sendTestText() {
@@ -259,7 +244,18 @@ final class SetupModel {
     go(.textsTest)
   }
 
-  func finishTexts() {
+  func finishTexts() async {
+    guard !busy, let lane = bankTexts else { return }
+    didResume = true
+    failure = nil
+    busy = true
+    defer { busy = false }
+    do {
+      try await lane.finishSetUp()
+    } catch {
+      failure = .failed(error.message)
+      return
+    }
     facts.textsChosen = true
     finish()
   }
