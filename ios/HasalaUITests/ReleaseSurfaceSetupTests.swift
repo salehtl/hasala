@@ -135,4 +135,23 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "the pick did not connect Outlook")
     assertPersonalAccountsOnly(app, "Home")
   }
+
+  @MainActor
+  func testBankTextsOnTheReleaseSurface() throws {
+    let setup = launchRelease("setupTexts", waitForHome: false)
+    XCTAssertTrue(el(setup, "source.texts").waitForExistence(timeout: 15), "the source choice is missing")
+    XCTAssertTrue(el(setup, "source.email").exists)
+    tap(setup, "source.texts")
+    tap(setup, "source.continue", opening: "textsBanks.continue")
+    tap(setup, "textsBanks.continue", opening: "texts.steps")
+    setup.terminate()
+
+    let review = launchRelease("textsWorking", waitForHome: false, screen: "review.texts")
+    XCTAssertTrue(el(review, "review.tab.pasteText").waitForExistence(timeout: 15), "Paste a bank text is missing")
+    review.terminate()
+
+    let alerts = launchRelease("textsWorking", waitForHome: false, screen: "bankAlerts.texts")
+    XCTAssertTrue(el(alerts, "bankAlerts.texts.automation").waitForExistence(timeout: 15), "the texts page is missing")
+    assertPersonalAccountsOnly(alerts, "Bank alerts")
+  }
 }

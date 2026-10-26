@@ -368,7 +368,7 @@ nonisolated enum LedgerStateMapper {
     let newest = st.health.compactMap(\.lastEmailAtMs).max() ?? st.lastSuccessAtMs
     let names = Set(st.health.compactMap { bankName(domain: $0.domain) }).sorted()
     return MailboxHealth(
-      status: status, lastEmail: newest.map { ago(nowMs - $0) } ?? "", banks: names.joined(separator: " and "),
+      status: status, lastEmail: newest.map { RelativeTime.ago(ms: nowMs - $0) } ?? "", banks: names.joined(separator: " and "),
       unreadable: st.unreadable)
   }
 
@@ -385,15 +385,6 @@ nonisolated enum LedgerStateMapper {
   /// The bank a sender domain belongs to, if it is one the beta reads.
   static func bankName(domain: String) -> String? {
     bank(domain: domain).flatMap { bankNames[$0] }
-  }
-
-  /// "4 min ago", "3 h ago", "2 days ago".
-  static func ago(_ ms: Int64) -> String {
-    let minutes = max(0, ms / 60_000)
-    if minutes < 1 { return "just now" }
-    if minutes < 60 { return "\(minutes) min ago" }
-    if minutes < 48 * 60 { return "\(minutes / 60) h ago" }
-    return "\(minutes / (24 * 60)) days ago"
   }
 
   // MARK: Rules
