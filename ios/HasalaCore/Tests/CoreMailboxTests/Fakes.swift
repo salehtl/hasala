@@ -217,7 +217,7 @@ struct Rig {
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
     gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil,
     wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil,
-    templates: [CompiledTemplate] = BundledTemplates.load().templates
+    templates: [CompiledTemplate] = BundledTemplates.load(channel: .mail).templates
   ) {
     self.gmail = gmail
     self.backend = backend

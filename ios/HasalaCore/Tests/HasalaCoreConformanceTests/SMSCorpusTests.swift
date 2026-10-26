@@ -24,7 +24,7 @@ struct SMSCorpusTests {
   func corpus() throws {
     let dir = try #require(SMSCorpus.dir)
     #expect(TemplateFixtures.jsonNames(dir) == SMSCorpus.families.map(SMSCorpus.fileName).sorted())
-    let texts = BundledTemplates.load().templates.filter(\.definition.isSMS)
+    let texts = BundledTemplates.load(channel: .sms).templates
     #expect(texts.count == SMSCorpus.families.count - 1)
     var total = 0
     var matched = 0

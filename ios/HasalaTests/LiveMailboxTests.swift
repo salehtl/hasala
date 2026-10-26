@@ -1,4 +1,5 @@
 import CoreMailbox
+import CoreTemplate
 import Foundation
 import HasalaModels
 import Synchronization
@@ -240,6 +241,18 @@ struct LiveMailboxTests {
     #expect(LiveMailboxConnecting.banks(trusted: []) == [])
     #expect(LiveMailboxConnecting.banks(trusted: ["dib.ae"]) == [.dib])
     #expect(LiveMailboxConnecting.banks(trusted: MailboxLane.senderDomains(bank: "enbd") + ["dib.ae"]) == [.enbd, .dib])
+  }
+
+  /// The lane loads the bundled mail templates once and shares them; no text template is among them.
+  @Test func theLaneSharesTheBundledMailTemplates() {
+    let loaded = BundledTemplates.load(channel: .mail).templates.map(\.definition.id)
+    #expect(!loaded.isEmpty)
+    #expect(MailboxLane.mailTemplates.map(\.definition.id) == loaded)
+    #expect(MailboxLane.mailDefinitions.map(\.id) == loaded)
+    #expect(MailboxLane.mailDefinitions.allSatisfy { !$0.isSMS })
+    #expect(MailboxLane.senderDomains(bank: "dib") == ["dib.ae"])
+    #expect(MailboxLane.senderDomains(bank: "enbd") == ["emiratesnbd.com"])
+    #expect(MailboxLane.senderDomains(bank: "none").isEmpty)
   }
 
   /// Bank alerts names each bank by its templates' sender domains (Emirates NBD's is

@@ -127,9 +127,19 @@ leaked="$(
 		find conformance/templates -type f -name 'corpus-*' || true
 		find conformance/templates/eml -type f || true
 		find conformance/templates/sms -type f ! -name 'synthetic-*' ! -name '.*' || true
-		find conformance -path 'conformance/sms*' -type f ! -name 'synthetic-*' ! -name README.md ! -name '.*' || true
+		find conformance -type f \( -ipath 'conformance/*sms*/*' -o -ipath 'conformance/*text*/*' \) \
+			! -name 'synthetic-*' ! -name README.md ! -name '.*' || true
 		find conformance/templates -path conformance/templates/sms -prune -o -type f ! -name '.*' \
 			-exec grep -lE '\\?"channel\\?"[[:space:]]*:[[:space:]]*\\?"sms\\?"' {} + || true
+		{
+			find conformance -type f ! -name '.*' || true
+			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | sort -u | tr '\n' '\0' | xargs -0 grep -lE '\\?"note\\?"[[:space:]]*:[[:space:]]*\\?"PRIVATE:' /dev/null || true
+		{
+			find conformance -type f ! -name 'synthetic-*' ! -name '.*' || true
+			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | grep -v '/synthetic-[^/]*$' | sort -u | tr '\n' '\0' |
+			xargs -0 grep -lE '\\?"read_by\\?"[[:space:]]*:|\\?"sender\\?"[[:space:]]*:[[:space:]]*\\?"DIB-SMS\\?"|^DIB-SMS,|,DIB-SMS(,|$)' /dev/null || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true

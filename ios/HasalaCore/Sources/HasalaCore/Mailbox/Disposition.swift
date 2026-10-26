@@ -274,7 +274,7 @@ public enum MessageDisposer {
 
   static func templatesMatching(_ templates: [CompiledTemplate], domains: [String]) -> [CompiledTemplate] {
     templates.filter { t in
-      !t.definition.isSMS && t.definition.match.senderDomain.contains { want in
+      t.definition.match.senderDomain.contains { want in
         domains.contains { BankDomains.isMember($0, of: [asciiLowered(want)]) }
       }
     }

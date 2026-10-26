@@ -337,15 +337,21 @@ struct ExecutorTests {
 struct BundledTemplateTests {
   @Test("the bundle loads every seed template, and they are the server's seed byte for byte")
   func bundle() throws {
-    let r = BundledTemplates.load()
-    #expect(r.skipped == [])
+    let mail = BundledTemplates.load(channel: .mail)
+    let texts = BundledTemplates.load(channel: .sms)
+    #expect(mail.skipped == [] && texts.skipped == [])
     #expect(
-      r.templates.map(\.definition.id) == [
+      mail.templates.map(\.definition.id) == [
         "adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card-refund.v1", "dib.card-reversal.v1", "dib.card.v1",
-        "dib.money-transfer.v1", "dib.sms.card-payment.v1", "dib.sms.credit.v1", "dib.sms.debit.v1",
-        "dib.sms.own-transfer.v1", "dib.sms.purchase.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1", "dib.sms.salary.v1",
-        "dib.transfer.v1", "enbd.alert.v1", "enbd.transfer.v1",
+        "dib.money-transfer.v1", "dib.transfer.v1", "enbd.alert.v1", "enbd.transfer.v1",
       ])
+    #expect(
+      texts.templates.map(\.definition.id) == [
+        "dib.sms.card-payment.v1", "dib.sms.credit.v1", "dib.sms.debit.v1", "dib.sms.own-transfer.v1", "dib.sms.purchase.v1",
+        "dib.sms.refund.v1", "dib.sms.reversal.v1", "dib.sms.salary.v1",
+      ])
+    #expect(
+      (mail.templates + texts.templates).map(\.definition.id).sorted() == TemplatesManifest.entries.map(\.id).sorted())
     let seed = repoRoot().appendingPathComponent("server/internal/tmpl/seed")
     let seedFiles = try FileManager.default.contentsOfDirectory(atPath: seed.path).filter { $0.hasSuffix(".json") }.sorted()
     #expect(seedFiles == TemplatesManifest.entries.map(\.file))
@@ -364,7 +370,7 @@ struct BundledTemplateTests {
       TemplatesManifest.Entry(file: "x.json", id: "x", version: 1, sha256: String(repeating: "0", count: 64)),
       TemplatesManifest.Entry(file: "missing.json", id: "missing", version: 1, sha256: ""),
     ]
-    let r = BundledTemplates.load(entries: entries) { f in
+    let r = BundledTemplates.load(entries: entries, channel: .mail) { f in
       if f == "missing.json" { return nil }
       return CoreResources.bundle.url(forResource: good.file, withExtension: nil, subdirectory: "templates")
         .flatMap { try? Data(contentsOf: $0) }
@@ -397,7 +403,7 @@ struct BundledTemplateTests {
     ]
     let subject = "Transaction advice for your account ending with 8642"
     let hostileSubject = rep("account ending with ", 3_000)
-    for t in BundledTemplates.load().templates {
+    for t in BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates {
       var runs = hostile.map { ($0.0, subject, $0.1) }
       runs.append(("a hostile subject", hostileSubject, "AED 1.00"))
       for (name, s, b) in runs {
@@ -414,7 +420,7 @@ struct BundledTemplateTests {
   @Test("every bundled amount anchor has a bounded digit run")
   func boundedAmounts() {
     var checked = 0
-    for t in BundledTemplates.load().templates {
+    for t in BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates {
       for x in t.definition.extract where x.type == "amount" {
         for p in x.patterns {
           #expect(!p.contains("[0-9,]*"), "\(t.definition.id): \(p)")

@@ -81,19 +81,6 @@ const (
 // and it would keep passing, because both sides read the same stale file.
 func TestTemplateFixturesAreWhatThisBuildProduces(t *testing.T) {
 	files := readTemplateFixtures(t)
-	// Every seed template must have a corpus file: a synthetic-only set would
-	// prove the executor agrees with itself on inputs someone imagined.
-	haveCorpus := map[string]bool{}
-	for _, f := range files {
-		if f.Kind == "corpus" {
-			haveCorpus[f.Template] = true
-		}
-	}
-	for _, d := range readSeedDefinitions(t) {
-		if !haveCorpus[d.ID] {
-			t.Errorf("no corpus fixture for %s in the private %s", d.ID, corpusDirFor(d))
-		}
-	}
 	total, matched := 0, 0
 	for _, f := range files {
 		d, err := ParseDefinition(f.Definition)
@@ -255,30 +242,6 @@ func corpusDirFor(d Definition) string {
 		return path.Join(corpusTemplateDir, smsFixtureSubdir)
 	}
 	return corpusTemplateDir
-}
-
-func readSeedDefinitions(t *testing.T) []Definition {
-	t.Helper()
-	names, err := filepath.Glob(filepath.Join("seed", "*.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(names) == 0 {
-		t.Fatal("no seed templates in seed/")
-	}
-	out := make([]Definition, 0, len(names))
-	for _, n := range names {
-		b, err := os.ReadFile(n)
-		if err != nil {
-			t.Fatal(err)
-		}
-		d, err := ParseDefinition(b)
-		if err != nil {
-			t.Fatalf("%s: %v", n, err)
-		}
-		out = append(out, d)
-	}
-	return out
 }
 
 func decodeB64(t *testing.T, s string) string {

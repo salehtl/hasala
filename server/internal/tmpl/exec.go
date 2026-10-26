@@ -207,6 +207,19 @@ func Compile(d Definition) (*Compiled, error) {
 		return nil, fmt.Errorf("%w: an sms template's date_from %q is not %q", ErrDefinition, d.DateFrom, DateFromReceived)
 	case !d.IsSMS() && d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail:
 		return nil, fmt.Errorf("%w: date_from %q is neither %q nor %q", ErrDefinition, d.DateFrom, DateFromBody, DateFromEmail)
+	case d.IsSMS() && len(d.Match.SMSSender) == 0:
+		return nil, fmt.Errorf("%w: an sms template names no sms_sender", ErrDefinition)
+	case d.IsSMS() && len(d.Match.SenderDomain) > 0:
+		return nil, fmt.Errorf("%w: an sms template names a sender_domain, and a text has no signing domain", ErrDefinition)
+	case d.IsSMS() && len(d.Match.SubjectContains) > 0:
+		return nil, fmt.Errorf("%w: an sms template has subject_contains, and a text has no subject", ErrDefinition)
+	case !d.IsSMS() && len(d.Match.SMSSender) > 0:
+		return nil, fmt.Errorf("%w: a mail template names an sms_sender", ErrDefinition)
+	}
+	for i, x := range d.Extract {
+		if d.IsSMS() && x.Source == SourceSubject {
+			return nil, fmt.Errorf("%w: extract[%d]: an sms template reads the body only, and a text has no subject", ErrDefinition, i)
+		}
 	}
 	for _, f := range d.Required {
 		if _, ok := fieldTypes[f]; !ok {

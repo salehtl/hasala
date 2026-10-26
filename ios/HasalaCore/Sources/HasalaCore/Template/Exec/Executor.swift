@@ -90,10 +90,21 @@ public struct CompiledTemplate: Sendable {
     guard d.channelKnown else { throw .definition("channel is neither \"mail\" nor \"sms\"") }
     if d.isSMS {
       guard same(d.dateFrom, "received") else { throw .definition("an sms template's date_from is not \"received\"") }
+      guard !d.match.smsSender.isEmpty else { throw .definition("an sms template names no sms_sender") }
+      guard d.match.senderDomain.isEmpty else {
+        throw .definition("an sms template names a sender_domain, and a text has no signing domain")
+      }
+      guard d.match.subjectContains.isEmpty else {
+        throw .definition("an sms template has subject_contains, and a text has no subject")
+      }
+      for (i, x) in d.extract.enumerated() where same(x.source, "subject") {
+        throw .definition("extract[\(i)]: an sms template reads the body only, and a text has no subject")
+      }
     } else {
       guard same(d.dateFrom, "body") || same(d.dateFrom, "email") else {
         throw .definition("date_from is neither \"body\" nor \"email\"")
       }
+      guard d.match.smsSender.isEmpty else { throw .definition("a mail template names an sms_sender") }
     }
     for f in d.required {
       guard Field(f) != nil else { throw .definition("required names \(f), which is not a field") }

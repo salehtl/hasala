@@ -9,21 +9,20 @@ import Testing
 
 @Suite("text templates and mail")
 struct TextTemplateGateTests {
-  @Test("mail never runs a text template, even one that names a mail domain")
+  @Test("mail never runs a text template: one that names a mail domain does not compile")
   func mailNeverRunsATextTemplate() throws {
-    let templates = BundledTemplates.load().templates
-    var forged = try #require(templates.first { $0.definition.isSMS }).definition
+    let texts = BundledTemplates.load(channel: .sms).templates
+    var forged = try #require(texts.first).definition
     forged.match.senderDomain = ["dib.ae"]
-    let compiled = try CompiledTemplate(forged)
-    #expect(MessageDisposer.templatesMatching([compiled], domains: ["dib.ae"]).isEmpty)
-    let matching = MessageDisposer.templatesMatching(templates, domains: ["dib.ae"])
+    #expect(throws: TemplateError.self) { try CompiledTemplate(forged) }
+    let matching = MessageDisposer.templatesMatching(BundledTemplates.load(channel: .mail).templates + texts, domains: ["dib.ae"])
     #expect(!matching.isEmpty)
     #expect(matching.allSatisfy { !$0.definition.isSMS })
   }
 
   @Test("every template the app names by id is a bundled template")
   func namedTemplatesAreBundled() {
-    let bundled = Set(BundledTemplates.load().templates.map(\.definition.id))
+    let bundled = Set((BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition.id))
     let named =
       MessageDisposer.refundTemplates + ModelSuggestionSweep.cloudTemplates.sorted()
       + TextTransferRole.byTemplate.keys.sorted() + TextTransferRole.withoutRole.sorted()
@@ -44,12 +43,14 @@ struct TextTemplateGateTests {
     let read: (String) -> Data? = { file in
       CoreResources.bundle.url(forResource: file, withExtension: nil, subdirectory: "templates").flatMap { try? Data(contentsOf: $0) }
     }
-    let loaded = BundledTemplates.load(entries: entries, read: read)
-    #expect(Set(loaded.templates.map(\.definition.id)) == textIDs)
-    #expect(loaded.skipped.count == entries.count - textIDs.count)
-    #expect(BundledTemplates.load(entries: entries, channel: .mail, read: read).templates.isEmpty)
+    let texts = BundledTemplates.load(entries: entries, channel: .sms, read: read)
+    #expect(Set(texts.templates.map(\.definition.id)) == textIDs)
+    #expect(texts.skipped.count == entries.count - textIDs.count)
+    let mailOnly = BundledTemplates.load(entries: entries, channel: .mail, read: read)
+    #expect(mailOnly.templates.isEmpty)
+    #expect(mailOnly.skipped.count == entries.count - textIDs.count)
 
-    let rig = Rig(templates: loaded.templates)
+    let rig = Rig(templates: mailOnly.templates + texts.templates)
     rig.gmail.add(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0 - 86_400_000))
     await rig.connectAndActivate()
     let r = await rig.engine.runCycle(trigger: .refresh)
@@ -58,7 +59,7 @@ struct TextTemplateGateTests {
     #expect(await rig.enqueued().isEmpty)
     #expect(rig.rawRequests.isEmpty)
 
-    let mail = Rig(templates: BundledTemplates.load().templates)
+    let mail = Rig(templates: BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates)
     mail.gmail.add(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0 - 86_400_000))
     await mail.connectAndActivate()
     #expect(await mail.state().haltedOn == nil)

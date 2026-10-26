@@ -4,7 +4,7 @@ import Testing
 
 @Suite("text transfer roles")
 struct TextTransferRoleTests {
-  static var textTemplates: [CompiledTemplate] { BundledTemplates.load().templates.filter { $0.definition.isSMS } }
+  static var textTemplates: [CompiledTemplate] { BundledTemplates.load(channel: .sms).templates }
 
   @Test("every bundled text template has its transfer role decided, and the tables name nothing else")
   func everyTextTemplateIsDecided() {

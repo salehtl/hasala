@@ -105,6 +105,13 @@ mail template in four ways:
   lines dropped). Both are pinned by `text_cases` in
   `conformance/normalizer/edge-cases.json`.
 
+`ValidateDefinition`, `Compile` (Go) and the `CompiledTemplate` init (Swift)
+all refuse a text template that names a `sender_domain`, names no
+`sms_sender`, has `subject_contains`, reads `source: "subject"` or takes a
+`date_from` other than `received`, and a mail template that names an
+`sms_sender`. The app never runs `ValidateDefinition`, so the executors hold
+these rules themselves.
+
 `DecodeWitnesses` returns nothing for a text template: a text is not decoded
 from bytes, so nothing witnesses a decode.
 
@@ -112,8 +119,13 @@ A text template's conformance cases go only in `conformance/templates/sms/`:
 the synthetic ones (`synthetic-*.json`) in this repository, the real ones
 (`corpus-<id>.json`) in the private fixtures at the same path. A mail
 template's cases stay in `conformance/templates/`. The real-mail fence in
-`scripts/check.sh` fails on any other file in `conformance/templates/sms/` and
-on a file elsewhere in `conformance/templates/` that holds `"channel": "sms"`.
+`scripts/check.sh` fails on any other file in `conformance/templates/sms/`; on
+a file elsewhere in `conformance/templates/` that holds `"channel": "sms"`; on
+a file not named `synthetic-*` or `README.md` in any directory under
+`conformance/` whose name holds `sms` or `text`; and on a private corpus
+marker in any file under `conformance/` or any JSON, JSONL, CSV or text file
+in the tree: a `note` that starts `PRIVATE:`, and, outside `synthetic-*`
+files, a `read_by` key or the sender `DIB-SMS`.
 
 ### `extract` entries
 

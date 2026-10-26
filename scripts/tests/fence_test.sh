@@ -82,6 +82,28 @@ refuses conformance/templates/eml/x.eml 'x'
 refuses conformance/normalizer/x.json '{}'
 refuses conformance/x.eml 'x'
 
+corpus_case='{"cases": [{"name": "x", "sender": "DIB-SMS", "text_base64": "eA==", "read_by": "", "gated": []}]}'
+private_note='{"note": "PRIVATE: x", "cases": []}'
+
+for dir in conformance/text-extract conformance/bank-texts conformance/SMS-later conformance/extract/sms conformance/templates/texts; do
+	refuses "$dir/x.json" '{}'
+	refuses "$dir/corpus-1.json" "$corpus_case"
+done
+refuses conformance/normalizer/edge-cases.json '{"text_cases": [{"name": "x", "read_by": "dib.sms.debit.v1"}]}'
+refuses conformance/dialect/patterns.json "$private_note"
+refuses conformance/extract/cases.json "$corpus_case"
+refuses conformance/extract/cases.json '{"sender":"DIB-SMS"}'
+refuses conformance/extract/cases.json '{"definition": "{\"read_by\":\"x\"}"}'
+refuses conformance/extract/cases.txt 'DIB-SMS,2026-06-05,x'
+refuses conformance/templates/sms/synthetic-x.json "$private_note"
+refuses ios/HasalaCore/Tests/Fixtures/texts.json '{"rows": [{"ts": "x", "sender": "DIB-SMS", "text": "x"}]}'
+refuses server/internal/x/testdata/texts.json '{"read_by": "x"}'
+refuses web/x.csv '1,DIB-SMS,x'
+
+allows conformance/text-extract/synthetic-x.json '{"sender": "DIB-SMS"}'
+allows conformance/text-extract/README.md '# x'
+allows conformance/extract/cases.json '{"sender_domain": ["dib.ae"], "sender": "AD-Bank"}'
+allows ios/x/dib.sms.x.v1.json '{"match": {"sms_sender": ["DIB-SMS"]}}'
 allows conformance/templates/sms/synthetic-x.json "$sms_spaced"
 allows conformance/sms-extract/synthetic-x.json '{}'
 allows conformance/sms-extract/README.md '# x'

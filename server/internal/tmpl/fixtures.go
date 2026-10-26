@@ -25,10 +25,11 @@ import (
 // internal/privatefixtures).
 const CorpusTemplateDir = "conformance/templates"
 
-// SeedTemplateFiles are the published seed templates, in the order their files
-// are written. Named explicitly rather than globbed: a regeneration must not
-// silently pick up a template someone dropped into testdata/.
-var SeedTemplateFiles = []string{
+// MailSeedTemplateFiles are the mail seed templates, in the order their files
+// are written; the text seeds' corpus is written by seed's TestWriteDIBSMSCorpus.
+// Named explicitly rather than globbed: a regeneration must not silently pick
+// up a template someone dropped into testdata/.
+var MailSeedTemplateFiles = []string{
 	"dib.card.v1.json",
 	"dib.account.v1.json",
 	"dib.transfer.v1.json",
@@ -139,13 +140,13 @@ func ExpectOf(e Extraction, err error) TemplateExpect {
 	}
 }
 
-// LoadSeedTemplates reads the seed templates named by SeedTemplateFiles from
-// dir (internal/tmpl/testdata), refusing any that is not publishable: a
-// fixture may only be written from a PUBLISHABLE template.
-func LoadSeedTemplates(dir string) ([]Definition, []json.RawMessage, error) {
-	defs := make([]Definition, 0, len(SeedTemplateFiles))
-	raws := make([]json.RawMessage, 0, len(SeedTemplateFiles))
-	for _, name := range SeedTemplateFiles {
+// LoadMailSeedTemplates reads the mail seed templates named by
+// MailSeedTemplateFiles from dir (internal/tmpl/testdata), refusing any that is
+// not publishable: a fixture may only be written from a PUBLISHABLE template.
+func LoadMailSeedTemplates(dir string) ([]Definition, []json.RawMessage, error) {
+	defs := make([]Definition, 0, len(MailSeedTemplateFiles))
+	raws := make([]json.RawMessage, 0, len(MailSeedTemplateFiles))
+	for _, name := range MailSeedTemplateFiles {
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return nil, nil, err

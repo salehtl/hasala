@@ -59,6 +59,17 @@
         ]
       },
       {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          " بتاريخ (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+        ]
+      },
+      {
         "field": "merchant",
         "type": "const",
         "source": "body",
@@ -293,6 +304,60 @@
         "matched": true,
         "error": "",
         "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE DEBIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/dated-with-year",
+      "source": "SYNTHETIC: the same debit dated with a year reads its date",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYrti12YUgMywyMTAuOTgg2YXZhiDYrdiz2KfYqNmDIDEyMzQqKjU2NyDYqNiq2KfYsdmK2K4gMDUtMDYtMjAyNiBTQU1QTEUgREVCSVQ=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "321098",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SAMPLE DEBIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/dated-with-year-transfer",
+      "source": "SYNTHETIC: a dated debit whose description names a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYrti12YUgMiwxMDkuODcg2YXZhiDYrdiz2KfYqNmDIDEyMzQqKjU2NyDYqNiq2KfYsdmK2K4gMDctMDgtMjAyNiBTQU1QTEUgRlVORCBUUkFOU0ZFUg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "210987",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-08-07T00:00:00Z",
+        "merchant": "SAMPLE FUND TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/dated-bad-day",
+      "source": "SYNTHETIC: a day out of range on the dated debit leaves the row undated",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYrti12YUgMSwwOTguNzYg2YXZhiDYrdiz2KfYqNmDIDEyMzQqKjU2NyDYqNiq2KfYsdmK2K4gMzEtMDItMjAyNiBTQU1QTEUgREVCSVQ=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "109876",
         "currency": "AED",
         "direction": "debit",
         "posted_at": "",

@@ -52,6 +52,17 @@
       ]
     },
     {
+      "field": "date",
+      "type": "date",
+      "source": "body",
+      "layouts": [
+        "DD-MM-YYYY"
+      ],
+      "patterns": [
+        " بتاريخ (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+      ]
+    },
+    {
       "field": "merchant",
       "type": "const",
       "source": "body",

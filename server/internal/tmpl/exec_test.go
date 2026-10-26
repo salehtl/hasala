@@ -1072,6 +1072,25 @@ func TestCompileHoldsTheChannelRules(t *testing.T) {
 		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
 		  "extract":[{"field":"date","type":"date","source":"body","layouts":["DD-MM-YYYY"],
 		    "patterns":["(?P<d>[^\\n]+)"]}],"required":["direction","date"]}`,
+		"sms with no sms_sender": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":[]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with an absent match": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with a sender_domain": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"],"sender_domain":["dib.ae"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with subject_contains": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"],"subject_contains":["Alert"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms reading the subject": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"},
+		    {"field":"merchant","type":"text","source":"subject","patterns":["(?P<v>[^\\n]+)"]}],"required":["direction"]}`,
+		"mail with an sms_sender": `{"id":"x","version":1,"bank":"t","normalizer_version":1,
+		  "match":{"sender_domain":["example.com"],"sms_sender":["B"]},"default_currency":"AED","date_from":"email",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
 	} {
 		d, err := ParseDefinition([]byte(src))
 		if err != nil {
@@ -1115,8 +1134,8 @@ func TestMatchesSMSSenderIsExactAndIgnoresASCIICase(t *testing.T) {
 		t.Fatal("a mail template never matches a text sender")
 	}
 	d.Match.SenderDomain = []string{"example.com"}
-	if _, err := Compile(d); err != nil {
-		t.Fatal(err)
+	if _, err := Compile(d); !errors.Is(err, ErrDefinition) {
+		t.Fatalf("an sms template that names a mail domain must not compile: %v", err)
 	}
 	if MatchesSenderDomain(d, "example.com") || MatchesSenderDomain(d, "alerts.example.com") {
 		t.Fatal("an sms template never matches a mail domain, even one it names")

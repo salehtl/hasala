@@ -130,7 +130,7 @@ struct TemplateFixtureTests {
     .enabled(if: Fixtures.hasPrivate, "HASALA_PRIVATE_FIXTURES is unset"))
   func corpus() throws {
     let files = TemplateFixtures.corpus()
-    let bundled = BundledTemplates.load().templates.map(\.definition)
+    let bundled = (BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition)
     var covered: [String: Bool] = [:]
     for f in files {
       let def = try TemplateFixtures.definition(f)

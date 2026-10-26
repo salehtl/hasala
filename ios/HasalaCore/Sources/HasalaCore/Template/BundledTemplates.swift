@@ -27,16 +27,16 @@ public enum BundledTemplates {
     case mail, sms
   }
 
-  /// Loads, verifies and compiles every bundled template.
-  public static func load(channel: Channel? = nil) -> LoadResult {
+  /// Loads, verifies and compiles the bundled templates of one channel.
+  public static func load(channel: Channel) -> LoadResult {
     load(entries: TemplatesManifest.entries, channel: channel) { file in
       CoreResources.bundle.url(forResource: file, withExtension: nil, subdirectory: "templates")
         .flatMap { try? Data(contentsOf: $0) }
     }
   }
 
-  /// `load()` over an explicit manifest and reader (tests).
-  static func load(entries: [TemplatesManifest.Entry], channel: Channel? = nil, read: (String) -> Data?) -> LoadResult {
+  /// `load(channel:)` over an explicit manifest and reader (tests).
+  static func load(entries: [TemplatesManifest.Entry], channel: Channel, read: (String) -> Data?) -> LoadResult {
     var templates: [CompiledTemplate] = []
     var skipped: [Skipped] = []
     for e in entries {
@@ -50,7 +50,7 @@ public enum BundledTemplates {
       }
       do throws(TemplateError) {
         let d = try TemplateDefinition(json: [UInt8](data))
-        if let channel, d.isSMS != (channel == .sms) { continue }
+        if d.isSMS != (channel == .sms) { continue }
         let t = try CompiledTemplate(d)
         guard t.definition.id.utf8.elementsEqual(e.id.utf8), t.definition.version == e.version else {
           skipped.append(Skipped(id: e.id, reason: "definition"))
