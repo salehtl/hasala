@@ -1,0 +1,65 @@
+{
+  "id": "dib.sms.purchase.v1",
+  "version": 1,
+  "bank": "dib",
+  "channel": "sms",
+  "normalizer_version": 1,
+  "match": {
+    "sms_sender": [
+      "DIB-SMS"
+    ],
+    "body_contains": [
+      "مشتريات بمبلغ"
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "received",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "patterns": [
+        "^مشتريات بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) "
+      ]
+    },
+    {
+      "field": "date",
+      "type": "date",
+      "source": "body",
+      "layouts": [
+        "DD-MM-YYYY HH:mm"
+      ],
+      "patterns": [
+        " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) من "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "text",
+      "source": "body",
+      "patterns": [
+        "[0-9]{1,2}:[0-9]{2} من (?P<v>[^\\n]+)\\. الحد الائتماني",
+        "[0-9]{1,2}:[0-9]{2} من (?P<v>[^\\n]+) رصيدك"
+      ]
+    },
+    {
+      "field": "last4",
+      "type": "last4",
+      "source": "body",
+      "patterns": [
+        "من بطاقة (?P<v>[^ \\n]+) في "
+      ]
+    },
+    {
+      "field": "direction",
+      "type": "const",
+      "source": "body",
+      "value": "debit"
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}

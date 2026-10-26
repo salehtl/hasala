@@ -667,7 +667,7 @@ let day: Int64 = 86_400_000
     rig.gmail.add(e1)
     _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
     let trusted = ["dib.ae", "emiratesnbd.com"]
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     var c = MailboxCommit()
     for m in [d1, e1] {
       guard

@@ -3,6 +3,7 @@
 // bundle; every field is type-checked here, and anything malformed is refused (fail closed:
 // the mailbox routes the mail to review rather than guessing).
 import CoreJSON
+import HasalaText
 
 public enum TemplateError: Error, Equatable, Sendable {
   /// A definition this executor cannot run (the publish gate refuses these; one here means a
@@ -20,6 +21,7 @@ public enum TemplateError: Error, Equatable, Sendable {
 public struct TemplateDefinition: Sendable, Equatable {
   public struct Match: Sendable, Equatable {
     public var senderDomain: [String]
+    public var smsSender: [String]
     public var subjectContains: [String]
     public var bodyContains: [String]
     public var bodyNotContains: [String]
@@ -50,6 +52,8 @@ public struct TemplateDefinition: Sendable, Equatable {
   public var version: Int
   public var bank: String
   public var normalizerVersion: Int
+  public var channel: String
+  public var transferRole: String
   public var match: Match
   public var defaultCurrency: String
   public var dateFrom: String
@@ -73,10 +77,13 @@ public struct TemplateDefinition: Sendable, Equatable {
     version = try Self.int(o, "version") ?? 0
     bank = try Self.string(o, "bank") ?? ""
     normalizerVersion = try Self.int(o, "normalizer_version") ?? 0
+    channel = try Self.string(o, "channel") ?? ""
+    transferRole = try Self.string(o, "transfer_role") ?? ""
     let m = try Self.object(o, "match") ?? JSONObject()
     match = Match(
-      senderDomain: try Self.strings(m, "sender_domain"), subjectContains: try Self.strings(m, "subject_contains"),
-      bodyContains: try Self.strings(m, "body_contains"), bodyNotContains: try Self.strings(m, "body_not_contains"))
+      senderDomain: try Self.strings(m, "sender_domain"), smsSender: try Self.strings(m, "sms_sender"),
+      subjectContains: try Self.strings(m, "subject_contains"), bodyContains: try Self.strings(m, "body_contains"),
+      bodyNotContains: try Self.strings(m, "body_not_contains"))
     defaultCurrency = try Self.string(o, "default_currency") ?? ""
     dateFrom = try Self.string(o, "date_from") ?? ""
     required = try Self.strings(o, "required")
@@ -124,22 +131,33 @@ public struct TemplateDefinition: Sendable, Equatable {
           ("type", .string(e.type)), ("value", .string(e.value ?? "")), ("why", .string(e.why)),
         ]))
     }
-    let v = JSONValue.object(
-      JSONObject([
-        ("bank", .string(bank)), ("date_from", .string(dateFrom)), ("default_currency", .string(defaultCurrency)),
-        ("extract", .array(extracts)), ("id", .string(id)),
-        (
-          "match",
-          .object(
-            JSONObject([
-              ("body_contains", strs(match.bodyContains)), ("body_not_contains", strs(match.bodyNotContains)),
-              ("sender_domain", strs(match.senderDomain)), ("subject_contains", strs(match.subjectContains)),
-            ]))
-        ),
-        ("normalizer_version", .number(JSONNumber(Int64(normalizerVersion)))), ("required", strs(required)),
-        ("version", .number(JSONNumber(Int64(version)))),
-      ]))
-    return JSONWriter().bytes(v.sortingKeysByUTF8())
+    var matchFields: [(String, JSONValue)] = [
+      ("body_contains", strs(match.bodyContains)), ("body_not_contains", strs(match.bodyNotContains)),
+      ("sender_domain", strs(match.senderDomain)), ("subject_contains", strs(match.subjectContains)),
+    ]
+    if !match.smsSender.isEmpty { matchFields.append(("sms_sender", strs(match.smsSender))) }
+    var fields: [(String, JSONValue)] = [
+      ("bank", .string(bank)), ("date_from", .string(dateFrom)), ("default_currency", .string(defaultCurrency)),
+      ("extract", .array(extracts)), ("id", .string(id)), ("match", .object(JSONObject(matchFields))),
+      ("normalizer_version", .number(JSONNumber(Int64(normalizerVersion)))), ("required", strs(required)),
+      ("version", .number(JSONNumber(Int64(version)))),
+    ]
+    if !channel.isEmpty && !channel.utf8.elementsEqual("mail".utf8) { fields.append(("channel", .string(channel))) }
+    if !transferRole.isEmpty { fields.append(("transfer_role", .string(transferRole))) }
+    return JSONWriter().bytes(JSONValue.object(JSONObject(fields)).sortingKeysByUTF8())
+  }
+
+  public var isSMS: Bool { channel.utf8.elementsEqual("sms".utf8) }
+
+  var channelKnown: Bool { channel.isEmpty || channel.utf8.elementsEqual("mail".utf8) || isSMS }
+
+  var transferRoleKnown: Bool { transferRole.isEmpty || TextTransferRole.parse(transferRole) != nil }
+
+  public func matchesSMSSender(_ sender: String) -> Bool {
+    guard isSMS else { return false }
+    let s = ASCII.lowercased(CompiledTemplate.trimCapture(sender))
+    if s.isEmpty { return false }
+    return match.smsSender.contains { ASCII.lowercased($0).utf8.elementsEqual(s.utf8) }
   }
 
   // MARK: - Field access (null and absent are the same: Go's zero value)

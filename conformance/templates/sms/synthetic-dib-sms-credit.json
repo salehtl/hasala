@@ -1,0 +1,209 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.sms.credit.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.sms.credit.v1",
+    "version": 1,
+    "bank": "dib",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "DIB-SMS"
+      ],
+      "body_contains": [
+        "يداع"
+      ],
+      "body_not_contains": [
+        "راتب",
+        "بين حساباتك"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^ايداع (?:بمبلغ )?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) في ",
+          "^إيداع (?:بمبلغ )?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) في "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          " في [0-9]{2}-[0-9]{2}-[0-9]{4} (?P<v>[^\\n]+) رصيدك"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          " في [0-9]{2}-[0-9]{2}-[0-9]{4} [^\\n]*(?:TRNSFER|TRANSFER)"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.sms.credit.v1/transfer",
+      "source": "SYNTHETIC: an incoming transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "2KfZitiv2KfYuSA5ODcuNjUg2YHZiiAwNS0wNi0yMDI2IElOV0FSRCBVQUUgRlVORFMgVFJBTlNGRVIg2LHYtdmK2K/ZgyAyLDEyMS4yMQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "98765",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "INWARD UAE FUNDS TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/bimablagh",
+      "source": "SYNTHETIC: the bimablagh wording",
+      "subject_base64": "",
+      "normalized_body_base64": "2KfZitiv2KfYuSDYqNmF2KjZhNi6IDgsNzY1LjQzINmB2YogMDUtMDYtMjAyNiBNQiBGVU5EIFRSQU5TRkVSIENSRURJVCDYsdi12YrYr9mDINin2YTYrdin2YTZiTMsMTMxLjMx",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "876543",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "MB FUND TRANSFER CREDIT",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/hamza",
+      "source": "SYNTHETIC: the spelling with a hamza",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXZitiv2KfYuSDYqNmF2KjZhNi6IDc2LjU0INmB2YogMDUtMDYtMjAyNiBSRUZVTkQg2LHYtdmK2K/ZgyDYp9mE2K3Yp9mE2YkgNCwxNDEuNDE=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7654",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "REFUND",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/reference-in-description",
+      "source": "SYNTHETIC: a description with a reference is kept whole",
+      "subject_base64": "",
+      "normalized_body_base64": "2KfZitiv2KfYuSA2NS40MyDZgdmKIDA1LTA2LTIwMjYgU0FNUExFIFBVUlBPU0UtRElCRlRTIDogWzEyMzQ1Njcg2LHYtdmK2K/ZgyA1LDE1MS41MQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "6543",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SAMPLE PURPOSE-DIBFTS : [1234567",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/own-account",
+      "source": "SYNTHETIC: an own-account credit is a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "2KfZitiv2KfYuSA1LDQzMi4xMCDZgdmKIDA1LTA2LTIwMjYgT1dOIEFDQ09VTlQgVFJOU0ZFUiDYsdi12YrYr9mDIDYsMTYxLjYx",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "543210",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "OWN ACCOUNT TRNSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/salary",
+      "source": "SYNTHETIC: a salary credit belongs to its own template",
+      "subject_base64": "",
+      "normalized_body_base64": "2KXZitiv2KfYuSDYsdin2KrYqCAwNS0wNi0yMDI2IC0g2YXYqNmE2LogMTIsMzQ1LjY3INix2LXZitiv2YMgNywxNzEuNzE=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.credit.v1/own-transfer",
+      "source": "SYNTHETIC: an own transfer names a credit account and belongs to its own template",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjZhdio2YTYuiBBRUQgNCwzMjEuMDkg2YXZhiDYrdiz2KfYqCAwMDEtMDAwLTEyM1hYWFgtMDEg2KfZhNmKINit2LPYp9ioIDAwMS0wMDAtNDU2WFhYWC0wMSDZgdmKIDA1LTA2LTIwMjYgTUIgRnVuZCBUcmFuc2ZlciDYsdi12YrYryDYrdiz2KfYqCDYp9mE2K7YtdmFINmH2YggQUVEIDksODc2LjU0INmI2K3Ys9in2Kgg2KfZhNin2YrYr9in2Lkg2YfZiCBBRUQgOCw3NjUuNDM=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

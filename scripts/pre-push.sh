@@ -133,6 +133,7 @@ gitleaks_check() {
 echo "pre-push: base ${BASE:0:12}$([[ -n "$ALL" ]] && echo ', --all' || echo ", $(printf '%s\n' "$CHANGED" | grep -c . || true) changed file(s)")"
 
 run "real-mail fence" scripts/check.sh --fence-only
+run "real-mail fence self-test" scripts/tests/fence_test.sh
 run "HasalaCore import lint" ios/scripts/check-imports.sh --no-manifest
 run "HasalaCore forbidden-API lint" ios/scripts/check-forbidden.sh
 

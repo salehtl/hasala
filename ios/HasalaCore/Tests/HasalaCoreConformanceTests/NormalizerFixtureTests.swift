@@ -139,6 +139,21 @@ struct NormalizerFixtureTests {
     #expect(NormalizerFixtures.edgeCases().count == cases.count, "a case failed to load")
   }
 
+  @Test("the text cases are what Go's NormalizeText produced, byte for byte")
+  func textCases() throws {
+    let doc = try NormalizerFixtures.edgeDoc.get()
+    let cases = try doc.array("text_cases")
+    #expect(cases.count >= 10)
+    for c in cases {
+      let name = try c.string("name")
+      let text = String(decoding: try c.base64("text_base64"), as: UTF8.self)
+      let want = [UInt8](try c.base64("expect_text_base64"))
+      let got = try Normalizer.normalizeText(version: try doc.int("normalizer_version"), text: text)
+      #expect(Array(got.utf8) == want, "\(name)")
+    }
+    #expect(throws: NormalizeError.unknownVersion(2)) { try Normalizer.normalizeText(version: 2, text: "x") }
+  }
+
   @Test("normalizer edge case", arguments: NormalizerFixtures.edgeCases())
   func edgeCase(_ c: NormalizerCase) throws {
     let m = try c.mismatches()

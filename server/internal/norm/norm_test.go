@@ -370,3 +370,40 @@ func TestSubjectIsRFC2047Decoded(t *testing.T) {
 		t.Fatalf("Subject = %q", got.Subject)
 	}
 }
+
+func TestNormalizeTextIsTheBodyStagesOfAPlainLeaf(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"a  b\t\u00a0c", "a b c"},
+		{" \ufeffa\u00a0", "a"},
+		{"a\r\nb\rc\n\nd", "a\nb\nc\nd"},
+		{"&amp;lt;", "&lt;"},
+		{"<p>x</p>", "<p>x</p>"},
+		{"", ""},
+	} {
+		got, err := NormalizeText(CurrentVersion, tc.in)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Errorf("NormalizeText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	raw := "From: a@b.c\r\nSubject: s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nAED  1.00\u00a0 at\r\n\r\n SHOP \r\n"
+	res, err := Normalize(CurrentVersion, []byte(raw), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := NormalizeText(CurrentVersion, "AED  1.00\u00a0 at\r\n\r\n SHOP \r\n")
+	if err != nil || got != res.Text {
+		t.Fatalf("a text normalizes as the same words in a plain mail body: %q vs %q (%v)", got, res.Text, err)
+	}
+}
+
+func TestNormalizeTextRefusesWhatItCannotRun(t *testing.T) {
+	if _, err := NormalizeText(2, "x"); !errors.Is(err, ErrUnknownVersion) {
+		t.Fatalf("version 2: %v", err)
+	}
+	if _, err := NormalizeText(CurrentVersion, "a\xffb"); !errors.Is(err, ErrInvalidText) {
+		t.Fatalf("invalid UTF-8: %v", err)
+	}
+}
