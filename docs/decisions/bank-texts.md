@@ -34,7 +34,7 @@ Hasala with no mailbox at all.
 
 ### 1. A Messages automation that calls a Hasala action (recommended)
 
-The app adds an App Intent, "Add bank message", with a `text` parameter and an optional
+The app adds an App Intent, "Add bank text", with a `text` parameter and an optional
 `sender` parameter. An `AppShortcutsProvider` registers it, so the action shows in Shortcuts
 with nothing to install and no shared iCloud shortcut. The only App Intents today are the
 widget ones (`ios/HasalaWidgets/Intents.swift`).
@@ -44,7 +44,7 @@ The person makes the automation once, in Shortcuts:
 1. Automation → New → Message.
 2. Filter by sender, or by "Message contains" with a word the bank's texts always use.
 3. Run Immediately.
-4. Action: Hasala → Add bank message, with the message as its input.
+4. Action: Hasala → Add bank text, with the message as its input.
 
 What iOS allows:
 
@@ -119,14 +119,18 @@ this on the owner's texts before any template is written.
 
 ### Duplicates across channels
 
-When mail and texts are both on for one bank, the same payment arrives two times. Two ways:
+**Decided by the owner (2026-10-26): a person sets up one or the other, a mailbox or bank
+texts, never both.** Thus the same payment cannot arrive through two channels, and no merge
+is needed.
 
-- **One channel for each bank (proposed for v1).** When the phone reads a bank's mail, it
-  disregards that bank's texts, and the reverse. The setup screen shows which one is in use.
-- **Merge.** Match on amount, currency, card and a time window. This is the same kind of
-  work as the merge of DIB's transfer notice and debit alert, which is decided but not built.
+- Setup asks once how Hasala gets payments: bank email or bank texts.
+- With texts set up, the mailbox connect is not offered, and the reverse.
+- To change, the person switches in Settings. The switch stops the old channel: it
+  disconnects the mailbox, or Hasala ignores texts from then on and tells the person to
+  remove the automation in Shortcuts. Rows already added stay.
 
-See D3.
+A merge (amount, currency, card and a time window, like the DIB notice merge) is not
+planned. See D3.
 
 ### The key for each text
 
@@ -166,8 +170,8 @@ steps.
 | # | Question | Recommendation |
 |---|---|---|
 | D1 | Can a text file with no review? | **Open (owner).** Recommendation: only on a template hit whose sender ID matches. Each other text, and each pasted text, goes to Review. |
-| D2 | Can a person use Hasala with texts only, with no mailbox? | **Open (owner).** Recommendation: yes. It is the main reason for this path (the Google limit, people who refuse inbox access). Onboarding then needs a "texts only" branch. |
-| D3 | One channel for each bank, or merge mail and texts? | **Open (owner).** Recommendation: one channel for each bank in v1. Merge after the DIB notice merge is built. |
+| D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided by D3:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
+| D3 | One channel for each bank, or merge mail and texts? | **Decided (owner, 2026-10-26):** a person sets up one or the other, never both. No merge. See [Duplicates](#duplicates-across-channels). |
 | D4 | Which banks first? | **Open (owner).** It depends on whose real texts can go into `hasala-fixtures`. Recommendation: the banks that already have mail templates (DIB, ADIB, Emirates NBD), so the two channels can be compared. |
 | D5 | Before or after the template-free readers ship in the app? | **Open (owner).** Recommendation: after. Texts can then use templates and the readers from the start. |
 | D6 | Can the locked-phone inbox keep raw text until the next unlock? | **Open (owner).** Recommendation: yes, on the device only, deleted after it is read, and stated in the privacy policy. The other choice is to drop texts that arrive while the phone is locked, which breaks "nothing is dropped silently". |
