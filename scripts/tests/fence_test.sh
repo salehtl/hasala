@@ -69,6 +69,9 @@ for dir in conformance/templates/sms conformance/sms-extract conformance/sms-lat
 	refuses "$dir/nested/x.json" '{}'
 done
 refuses conformance/templates/sms/README.md '# x'
+refuses conformance/templates/sms/nested/synthetic-x.json "$sms_spaced"
+refuses conformance/templates/sms/dib/synthetic-dib-sms-x.json "$sms_compact"
+refuses conformance/templates/sms/a/b/synthetic-x.json "$sms_spaced"
 refuses conformance/templates/x.json "$sms_spaced"
 refuses conformance/templates/synthetic-x.json "$sms_spaced"
 refuses conformance/templates/synthetic-x.json "$sms_compact"
@@ -80,7 +83,6 @@ refuses conformance/normalizer/x.json '{}'
 refuses conformance/x.eml 'x'
 
 allows conformance/templates/sms/synthetic-x.json "$sms_spaced"
-allows conformance/templates/sms/nested/synthetic-x.json "$sms_spaced"
 allows conformance/sms-extract/synthetic-x.json '{}'
 allows conformance/sms-extract/README.md '# x'
 allows conformance/templates/synthetic-x.json "$mail"

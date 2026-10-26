@@ -1,3 +1,4 @@
+import CoreDomain
 import CoreTemplate
 import Testing
 
@@ -15,5 +16,17 @@ struct TextTemplateGateTests {
     let matching = MessageDisposer.templatesMatching(templates, domains: ["dib.ae"])
     #expect(!matching.isEmpty)
     #expect(matching.allSatisfy { !$0.definition.isSMS })
+  }
+
+  @Test("every template the app names by id is a bundled template")
+  func namedTemplatesAreBundled() {
+    let bundled = Set(BundledTemplates.load().templates.map(\.definition.id))
+    let named =
+      MessageDisposer.refundTemplates + ModelSuggestionSweep.cloudTemplates.sorted()
+      + TextTransferRole.byTemplate.keys.sorted() + TextTransferRole.withoutRole.sorted()
+    #expect(!named.isEmpty)
+    for id in named {
+      #expect(bundled.contains(id), "\(id) is named in the app but no bundled template has that id")
+    }
   }
 }

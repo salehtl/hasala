@@ -1112,8 +1112,12 @@ func TestMatchesSMSSenderIsExactAndIgnoresASCIICase(t *testing.T) {
 	if MatchesSMSSender(mail, "BANK-SMS") {
 		t.Fatal("a mail template never matches a text sender")
 	}
-	if MatchesSenderDomain(d, "example.com") {
-		t.Fatal("an sms template never matches a mail domain")
+	d.Match.SenderDomain = []string{"example.com"}
+	if _, err := Compile(d); err != nil {
+		t.Fatal(err)
+	}
+	if MatchesSenderDomain(d, "example.com") || MatchesSenderDomain(d, "alerts.example.com") {
+		t.Fatal("an sms template never matches a mail domain, even one it names")
 	}
 }
 

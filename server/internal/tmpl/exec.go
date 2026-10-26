@@ -836,6 +836,9 @@ func convertLast4(s string) (string, bool) {
 // rather than expressing it again in SQL, so the set of templates the ingest
 // path runs and the set an operator queries can never disagree.
 func MatchesSenderDomain(d Definition, verified string) bool {
+	if d.IsSMS() {
+		return false
+	}
 	v := asciiLower(strings.TrimSuffix(strings.TrimSpace(verified), "."))
 	// A domain that is not shaped like a domain matches nothing. ".dib.ae" has
 	// an empty first label, and a plain suffix test would accept it as

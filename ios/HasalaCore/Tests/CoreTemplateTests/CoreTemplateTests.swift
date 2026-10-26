@@ -310,7 +310,7 @@ struct ExecutorTests {
     #expect(CompiledTemplate.convertAmount("1.00\u{A0}", nil, "AED") == nil)  // NBSP is not in the cutset
   }
 
-  @Test("dates: three layouts, fixed widths, ASCII month folding, upper-case AM/PM, first-token retry")
+  @Test("dates: the mail layouts, fixed widths, ASCII month folding, upper-case AM/PM, first-token retry")
   func dates() {
     #expect(CompiledTemplate.convertDate("05-06-2026", ["DD-MM-YYYY"]) == "2026-06-05T00:00:00Z")
     #expect(CompiledTemplate.convertDate("15/mar/2026 09:15 PM", ["DD/Mon/YYYY hh:mm A"]) == "2026-03-15T21:15:00Z")

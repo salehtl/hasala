@@ -140,6 +140,12 @@ if [[ -n "$leaked" ]]; then
 	echo "$leaked" >&2
 	exit 1
 fi
+unread="$(cd "$ROOT" && find conformance/templates/sms -mindepth 2 -type f ! -name '.*' 2>/dev/null | sort)"
+if [[ -n "$unread" ]]; then
+	echo "check: no template runner reads a subdirectory of conformance/templates/sms, so these cases would never run; move them into conformance/templates/sms itself:" >&2
+	echo "$unread" >&2
+	exit 1
+fi
 echo "no real-mail fixture or private expectation file in the public tree"
 if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0

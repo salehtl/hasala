@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -487,6 +488,293 @@ func TestDIBSMSCorpusAgreesWithAnIndependentReading(t *testing.T) {
 		wrongAmount, wrongCurrency, wrongDirection, unread, misread, nonPaymentMatched)
 	t.Logf("other texts with a payment shape: one-time code %d, failed scheduled transfer %d, card application approval %d, cashback notice %d, unknown %d",
 		kinds["one-time code"], kinds["failed scheduled transfer"], kinds["card application approval"], kinds["cashback notice"], unknownShape)
+}
+
+const (
+	smsBalanceWindow     = 8
+	smsMinCorroborated   = 5
+	smsMaxSettleItems    = 6
+	smsVerdictAgrees     = "agrees"
+	smsVerdictContradict = "contradicts"
+)
+
+var smsBalanceMarkers = []string{"رصيدك", "رصيد حساب الخصم هو", "الحد الائتماني المتاح"}
+
+var smsUncorroboratedWordings = map[string]string{
+	"تم خصم": "the undated account debit: one text in the export, and it carries no balance",
+	"خصم صراف آلي دولي بمبلغ": "the international ATM withdrawal: one text in the export, and its balance follows no balance before it",
+}
+
+func smsWording(text string) string {
+	var words []string
+	for _, f := range strings.Fields(text) {
+		if strings.ContainsAny(f, "0123456789") {
+			break
+		}
+		if isCurrencyToken(f) {
+			continue
+		}
+		words = append(words, f)
+	}
+	return strings.Join(words, " ")
+}
+
+func firstSignedMoney(s string) (int64, bool) {
+	start := strings.IndexAny(s, "0123456789")
+	if start < 0 {
+		return 0, false
+	}
+	end := start
+	for end < len(s) && (s[end] >= '0' && s[end] <= '9' || s[end] == ',' || s[end] == '.') {
+		end++
+	}
+	n, ok := parseMoneyToken(strings.TrimRight(s[start:end], ".,"))
+	if ok && start > 0 && s[start-1] == '-' {
+		n = -n
+	}
+	return n, ok
+}
+
+func balanceAfter(text string) (int64, bool) {
+	for _, m := range smsBalanceMarkers {
+		if i := strings.LastIndex(text, m); i >= 0 {
+			return firstSignedMoney(text[i+len(m):])
+		}
+	}
+	return 0, false
+}
+
+func smsCardKey(text string) string {
+	for _, raw := range strings.Fields(text) {
+		f := strings.Trim(raw, "().,:;")
+		if len(f) < 4 {
+			continue
+		}
+		digits, mask := f[len(f)-4:], f[:len(f)-4]
+		if strings.Trim(digits, "0123456789") == "" && strings.Trim(mask, "Xx*") == "" {
+			return digits
+		}
+	}
+	return ""
+}
+
+type smsBalanceRow struct {
+	name      string
+	text      string
+	direction string
+}
+
+type smsMovement struct {
+	name      string
+	direction string
+	amount    int64
+	inAED     bool
+}
+
+func smsBalanceVerdicts(rows []smsBalanceRow) map[string]string {
+	verdicts := map[string]string{}
+	judge := func(m smsMovement, credit bool) {
+		if (m.direction == "credit") == credit {
+			verdicts[m.name] = smsVerdictAgrees
+		} else {
+			verdicts[m.name] = smsVerdictContradict
+		}
+	}
+	settle := func(delta int64, items []smsMovement) bool {
+		if len(items) > smsMaxSettleItems {
+			return false
+		}
+		for _, m := range items {
+			if !m.inAED || m.amount == 0 {
+				return false
+			}
+		}
+		solutions, found := 0, 0
+		for signs := 0; signs < 1<<len(items); signs++ {
+			var sum int64
+			for k, m := range items {
+				if signs&(1<<k) != 0 {
+					sum += m.amount
+				} else {
+					sum -= m.amount
+				}
+			}
+			if sum == delta {
+				solutions++
+				found = signs
+			}
+		}
+		if solutions != 1 {
+			return false
+		}
+		for k, m := range items {
+			judge(m, found&(1<<k) != 0)
+		}
+		return true
+	}
+	var recent []int64
+	last := map[string]int64{}
+	pending := map[string][]smsMovement{}
+	for _, r := range rows {
+		want := independentReading(r.text)
+		m := smsMovement{name: r.name, direction: r.direction, amount: want.amountMinor, inAED: want.currency == "AED"}
+		key := smsCardKey(r.text)
+		bal, ok := balanceAfter(r.text)
+		if !ok {
+			pending[key] = append(pending[key], m)
+			continue
+		}
+		settled := false
+		if ps := pending[key]; len(ps) > 0 {
+			delete(pending, key)
+			if prev, seen := last[key]; seen {
+				settled = settle(bal-prev, append([]smsMovement{m}, ps...))
+			}
+		}
+		if !settled && m.inAED && m.amount != 0 {
+			debit := slices.Contains(recent, bal+m.amount)
+			credit := slices.Contains(recent, bal-m.amount)
+			if debit != credit {
+				judge(m, credit)
+			}
+		}
+		last[key] = bal
+		recent = append(recent, bal)
+		if len(recent) > smsBalanceWindow {
+			recent = recent[1:]
+		}
+	}
+	return verdicts
+}
+
+func TestDIBSMSCorpusDirectionsAgreeWithTheBalances(t *testing.T) {
+	files := readSMSCorpus(t)
+	s := loadSMSTemplates(t)
+	type dated struct {
+		at  string
+		row smsBalanceRow
+		fam string
+	}
+	var all []dated
+	for _, f := range files {
+		if f.Family == smsFamilyOther {
+			continue
+		}
+		for _, c := range f.Cases {
+			_, normalized := decodeCase(t, c)
+			_, _, e, _ := s.run(c.Sender, normalized)
+			all = append(all, dated{c.ReceivedAt, smsBalanceRow{c.Name, normalized, e.Direction}, f.Family})
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].at < all[j].at })
+	rows := make([]smsBalanceRow, len(all))
+	for i, d := range all {
+		rows[i] = d.row
+	}
+	verdicts := smsBalanceVerdicts(rows)
+	agrees := map[string]int{}
+	judged := map[string]int{}
+	byWording := map[string]int{}
+	seen := map[string]bool{}
+	contradictions := 0
+	for _, d := range all {
+		w := smsWording(d.row.text)
+		seen[w] = true
+		switch verdicts[d.row.name] {
+		case smsVerdictAgrees:
+			agrees[d.fam]++
+			byWording[w]++
+			judged[d.fam]++
+		case smsVerdictContradict:
+			contradictions++
+			judged[d.fam]++
+			t.Errorf("%s: the template reads a %s, but the balance moved the other way by the amount", d.row.name, d.row.direction)
+		}
+	}
+	for _, fam := range smsFamilies[:len(smsFamilies)-1] {
+		if agrees[fam] < smsMinCorroborated {
+			t.Errorf("only %d %s texts have their direction confirmed by a balance; want at least %d", agrees[fam], fam, smsMinCorroborated)
+		}
+	}
+	for w := range seen {
+		_, listed := smsUncorroboratedWordings[w]
+		switch {
+		case byWording[w] == 0 && !listed:
+			t.Errorf("no text worded %q has its direction confirmed by a balance", w)
+		case byWording[w] > 0 && listed:
+			t.Errorf("texts worded %q now have their direction confirmed by a balance; remove the wording from smsUncorroboratedWordings", w)
+		}
+	}
+	for w := range smsUncorroboratedWordings {
+		if !seen[w] {
+			t.Errorf("no payment text is worded %q; remove it from smsUncorroboratedWordings", w)
+		}
+	}
+	t.Logf("%s directions confirmed by the balance or available limit (agree/judged): purchase %d/%d, debit %d/%d, credit %d/%d, salary %d/%d, refund %d/%d, reversal %d/%d, own-transfer %d/%d, card-payment %d/%d; %d contradictions",
+		privatefixtures.Marker, agrees["purchase"], judged["purchase"], agrees["debit"], judged["debit"], agrees["credit"], judged["credit"],
+		agrees["salary"], judged["salary"], agrees["refund"], judged["refund"], agrees["reversal"], judged["reversal"],
+		agrees["own-transfer"], judged["own-transfer"], agrees["card-payment"], judged["card-payment"], contradictions)
+}
+
+func TestTheBalanceReaderReadsEachShape(t *testing.T) {
+	for _, tc := range []struct {
+		text    string
+		balance int64
+		ok      bool
+		card    string
+		wording string
+	}{
+		{"خصم 1,234.56 في 05-06-2026 SAMPLE رصيدك 1,000.00", 100000, true, "", "خصم"},
+		{"ايداع بمبلغ 10.00 في 05-06-2026 SAMPLE رصيدك الحالى2,345.67", 234567, true, "", "ايداع بمبلغ"},
+		{"مشتريات بمبلغ USD 7.89 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE. الحد الائتماني المتاح -123.45", -12345, true, "1234", "مشتريات بمبلغ"},
+		{"تحويل بين حساباتك بمبلغ AED 4,321.09 من حساب 001-000-123XXXX-01 الي حساب 001-000-456XXXX-01 في 05-06-2026 SAMPLE رصيد حساب الخصم هو AED 1,000.00 وحساب الايداع هو AED 5,000.00", 100000, true, "", "تحويل بين حساباتك بمبلغ"},
+		{"تم إرجاع مبلغ 12.34 درهم على بطاقة SAMPLE والمنتهية بالرقم 1234.", 0, false, "1234", "تم إرجاع مبلغ"},
+		{"A transaction to the value of AED 12.34 made at SAMPLE on your DIB card ending with XX1234 has been reversed.", 0, false, "1234", "A transaction to the value of"},
+		{"خصم 1.00 في 05-06-2026 SAMPLE رصيدك", 0, false, "", "خصم"},
+		{"خصم 1.00 في 05-06-2026 SAMPLE رصيدك 1.5", 0, false, "", "خصم"},
+	} {
+		b, ok := balanceAfter(tc.text)
+		if ok != tc.ok || b != tc.balance {
+			t.Errorf("%q: balance %d %v, want %d %v", tc.text, b, ok, tc.balance, tc.ok)
+		}
+		if got := smsCardKey(tc.text); got != tc.card {
+			t.Errorf("%q: card %q, want %q", tc.text, got, tc.card)
+		}
+		if got := smsWording(tc.text); got != tc.wording {
+			t.Errorf("%q: wording %q, want %q", tc.text, got, tc.wording)
+		}
+	}
+}
+
+func TestTheBalancesCatchAWrongDirection(t *testing.T) {
+	rows := []smsBalanceRow{
+		{"a", "ايداع 1,000.00 في 05-06-2026 SAMPLE رصيدك 1,000.00", "credit"},
+		{"b", "خصم 100.00 في 05-06-2026 SAMPLE رصيدك 900.00", "debit"},
+		{"c", "خصم 40.00 في 05-06-2026 SAMPLE رصيدك 940.00", "debit"},
+		{"d", "ايداع 25.00 في 05-06-2026 SAMPLE رصيدك 915.00", "credit"},
+		{"e", "خصم 7.00 في 05-06-2026 SAMPLE رصيدك 12,345.67", "debit"},
+		{"p1", "مشتريات بمبلغ 20.00 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE. الحد الائتماني المتاح 500.00", "debit"},
+		{"r", "تم إرجاع مبلغ 12.34 درهم على بطاقة SAMPLE والمنتهية بالرقم 1234.", "credit"},
+		{"p2", "مشتريات بمبلغ 30.00 من بطاقة XX1234 في 05-06-2026 10:12 من SAMPLE. الحد الائتماني المتاح 482.34", "debit"},
+		{"r2", "تم إرجاع مبلغ 1.11 درهم على بطاقة SAMPLE والمنتهية بالرقم 1234.", "debit"},
+		{"p3", "مشتريات بمبلغ 2.00 من بطاقة XX1234 في 05-06-2026 10:13 من SAMPLE. الحد الائتماني المتاح 481.45", "debit"},
+		{"f", "مشتريات بمبلغ USD 3.00 من بطاقة XX1234 في 05-06-2026 10:14 من SAMPLE. الحد الائتماني المتاح 478.45", "debit"},
+	}
+	got := smsBalanceVerdicts(rows)
+	want := map[string]string{
+		"b": smsVerdictAgrees, "c": smsVerdictContradict, "d": smsVerdictContradict,
+		"p2": smsVerdictAgrees, "r": smsVerdictAgrees, "p3": smsVerdictAgrees, "r2": smsVerdictContradict,
+	}
+	for name, v := range want {
+		if got[name] != v {
+			t.Errorf("%s: verdict %q, want %q", name, got[name], v)
+		}
+	}
+	for _, name := range []string{"a", "e", "p1", "f"} {
+		if v, ok := got[name]; ok {
+			t.Errorf("%s: verdict %q, want none: nothing before it confirms or refutes it", name, v)
+		}
+	}
 }
 
 func TestTheIndependentReadingReadsEachShape(t *testing.T) {

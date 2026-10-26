@@ -351,7 +351,7 @@ func syntheticADIBAccount(t *testing.T) syntheticGroup {
 	}
 }
 
-// dates: the three layouts and every semantic Go's time.Parse decides for us.
+// dates: the mail layouts and every semantic Go's time.Parse decides for us.
 // Mirrors TestDateParsingSemanticsTheTypeScriptMirrorMustReproduce, but as a
 // fixture the TypeScript executor is checked against rather than a Go-only test.
 func syntheticDates() syntheticGroup {

@@ -9,8 +9,8 @@
 //
 // Every place where platforms differ by default is pinned: the trim cutset is " \t\n\v\f\r",
 // only ASCII a-z is upper-cased, lengths are runes or UTF-8 bytes, money is an integer parsed
-// from a digit string that already passed a shape check, the three date layouts are parsed by
-// hand, and every text comparison is on bytes.
+// from a digit string that already passed a shape check, the date layouts are parsed by hand,
+// and every text comparison is on bytes.
 //
 // The sender-domain gate is NOT applied here: it belongs to the trusted lane (CoreMail's
 // verified domain), and giving this function a domain would invite a caller to hand it the
@@ -554,8 +554,9 @@ public struct CompiledTemplate: Sendable {
     .map { Array($0.utf16) }
 
   /// One layout, whole string, no trailing text: the hand-written mirror of Go's time.Parse for
-  /// exactly these three layouts (month names fold ASCII case, AM/PM does not; numeric fields
-  /// are fixed-width; calendar ranges checked; no zone, so UTC).
+  /// exactly the layouts in `layouts` (month names fold ASCII case, AM/PM does not; every numeric
+  /// field is fixed-width except the hour of "DD-MM-YYYY HH:mm", which takes one or two digits as
+  /// Go's `15` does; calendar ranges checked; no zone, so UTC).
   static func parseExact(_ s: ArraySlice<UInt16>, _ layout: String) -> String? {
     var i = s.startIndex
     func num(_ n: Int) -> Int? {

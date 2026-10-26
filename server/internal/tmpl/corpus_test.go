@@ -7,7 +7,7 @@ package tmpl
 // The dialect fixture proves the two validators agree about which patterns are
 // legal, and the two engines agree about what those patterns match. Neither
 // claim says anything about the executor built on top: first-entry-wins,
-// override, on_match, the typed conversions, the three date layouts, the
+// override, on_match, the typed conversions, the date layouts, the
 // empty-group diagnostic and the required-field gate are all decisions ABOVE
 // the regex engine, and every one of them is a place two hand-written
 // implementations can differ while every regex in the template behaves
