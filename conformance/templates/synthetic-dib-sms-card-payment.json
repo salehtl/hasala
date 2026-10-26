@@ -1,0 +1,132 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.sms.card-payment.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.sms.card-payment.v1",
+    "version": 1,
+    "bank": "dib",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "DIB-SMS"
+      ],
+      "body_contains": [
+        "تم سداد مبلغ"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^تم سداد مبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) لبطاقتك "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY HH:mm"
+        ],
+        "patterns": [
+          " في \\.?(?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}) "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB CARD PAYMENT"
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "لبطاقتك المنتهية بـ{0,8} (?P<v>[^ \\n]+) في "
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.sms.card-payment.v1/card-payment",
+      "source": "SYNTHETIC: a payment received on the card: a credit, a transfer, a timed date",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYs9iv2KfYryDZhdio2YTYuiA0LDMyMS4wOSDZhNio2LfYp9mC2KrZgyDYp9mE2YXZhtiq2YfZitipINio2YDZgCAxMjM0INmB2YogLjA1LTA2LTIwMjYgMTA6MTEg2KfZhNit2K8g2KfZhNin2KbYqtmF2KfZhtmKINin2YTZhdiq2KfYrSA1LDQzMi4xMA==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T10:11:00Z",
+        "merchant": "DIB CARD PAYMENT",
+        "last4": "1234",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.card-payment.v1/no-dot-before-the-date",
+      "source": "SYNTHETIC: the dot before the date is optional",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYs9iv2KfYryDZhdio2YTYuiAzLDIxMC45OCDZhNio2LfYp9mC2KrZgyDYp9mE2YXZhtiq2YfZitipINio2YDZgCAxMjM0INmB2YogMDUtMDYtMjAyNiAxMToyMiDYp9mE2K3YryDYp9mE2KfYptiq2YXYp9mG2Yog2KfZhNmF2KrYp9itIDYsNTQzLjIx",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "321098",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T11:22:00Z",
+        "merchant": "DIB CARD PAYMENT",
+        "last4": "1234",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.card-payment.v1/one-tatweel",
+      "source": "SYNTHETIC: the tatweel run after the preposition is bounded, not fixed",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYs9iv2KfYryDZhdio2YTYuiAyLDEwOS44NyDZhNio2LfYp9mC2KrZgyDYp9mE2YXZhtiq2YfZitipINio2YAgMTIzNCDZgdmKIC4wNS0wNi0yMDI2IDEyOjMzINin2YTYrdivINin2YTYp9im2KrZhdin2YbZiiDYp9mE2YXYqtin2K0gNyw2NTQuMzI=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "210987",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T12:33:00Z",
+        "merchant": "DIB CARD PAYMENT",
+        "last4": "1234",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    }
+  ]
+}

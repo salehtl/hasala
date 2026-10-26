@@ -126,6 +126,7 @@ leaked="$(
 		find conformance/normalizer -type f ! -name edge-cases.json ! -name charset-tables.ts ! -name '.*' || true
 		find conformance/templates -type f -name 'corpus-*' || true
 		find conformance/templates/eml -type f || true
+		find conformance/sms -type f || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true

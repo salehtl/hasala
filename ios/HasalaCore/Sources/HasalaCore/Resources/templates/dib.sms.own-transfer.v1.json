@@ -1,0 +1,68 @@
+{
+  "id": "dib.sms.own-transfer.v1",
+  "version": 1,
+  "bank": "dib",
+  "channel": "sms",
+  "normalizer_version": 1,
+  "match": {
+    "sms_sender": [
+      "DIB-SMS"
+    ],
+    "body_contains": [
+      "تحويل بين حساباتك بمبلغ"
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "received",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "patterns": [
+        "^تحويل بين حساباتك بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) من حساب "
+      ]
+    },
+    {
+      "field": "date",
+      "type": "date",
+      "source": "body",
+      "layouts": [
+        "DD-MM-YYYY"
+      ],
+      "patterns": [
+        " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "DIB OWN ACCOUNT TRANSFER"
+    },
+    {
+      "field": "last4",
+      "type": "last4",
+      "source": "body",
+      "patterns": [
+        "من حساب (?P<v>[^ \\n]+) "
+      ]
+    },
+    {
+      "field": "direction",
+      "type": "const",
+      "source": "body",
+      "value": "debit"
+    },
+    {
+      "field": "is_transfer",
+      "type": "flag",
+      "source": "body",
+      "value": "true"
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}

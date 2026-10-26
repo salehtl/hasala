@@ -31,9 +31,10 @@ type Definition struct {
 	Version           int       `json:"version"`
 	Bank              string    `json:"bank"`
 	NormalizerVersion int       `json:"normalizer_version"`
+	Channel           string    `json:"channel,omitempty"`
 	Match             Match     `json:"match"`
 	DefaultCurrency   string    `json:"default_currency"`
-	DateFrom          string    `json:"date_from"` // "body" | "email"
+	DateFrom          string    `json:"date_from"` // "body" | "email" | "received"
 	Extract           []Extract `json:"extract"`
 	Required          []string  `json:"required"`
 }
@@ -45,6 +46,7 @@ type Definition struct {
 // never against norm.Result.From, which is attacker-authored body text.
 type Match struct {
 	SenderDomain    []string `json:"sender_domain"`
+	SMSSender       []string `json:"sms_sender,omitempty"`
 	SubjectContains []string `json:"subject_contains,omitempty"`
 	BodyContains    []string `json:"body_contains,omitempty"`
 	BodyNotContains []string `json:"body_not_contains,omitempty"`
@@ -65,14 +67,28 @@ type Extract struct {
 	OnMatch  map[string]string `json:"on_match,omitempty"`
 }
 
-// The three date layouts. This is a closed enum: both executors implement
+// The date layouts. This is a closed enum: both executors implement
 // exactly these and nothing else, because a layout one executor understands
 // and the other does not is a silent per-device date difference.
 const (
 	LayoutDDMMYYYY       = "DD-MM-YYYY"
 	LayoutDDMonYYYYHHMMA = "DD/Mon/YYYY hh:mm A"
 	LayoutDDMonYYYY      = "DD/Mon/YYYY"
+	LayoutDDMMYYYYHHmm   = "DD-MM-YYYY HH:mm"
 )
+
+var dateLayouts = []string{LayoutDDMMYYYY, LayoutDDMonYYYYHHMMA, LayoutDDMonYYYY, LayoutDDMMYYYYHHmm}
+
+const (
+	ChannelMail = "mail"
+	ChannelSMS  = "sms"
+)
+
+func (d Definition) IsSMS() bool { return d.Channel == ChannelSMS }
+
+func (d Definition) channelKnown() bool {
+	return d.Channel == "" || d.Channel == ChannelMail || d.Channel == ChannelSMS
+}
 
 // Field, type, source and date-source enums.
 const (
@@ -93,8 +109,9 @@ const (
 	SourceBody    = "body"
 	SourceSubject = "subject"
 
-	DateFromBody  = "body"
-	DateFromEmail = "email"
+	DateFromBody     = "body"
+	DateFromEmail    = "email"
+	DateFromReceived = "received"
 )
 
 // fieldTypes is the legal (field, type) pairing. A pairing table rather than
@@ -122,9 +139,10 @@ var groupNamesByType = map[string]struct{ required, optional []string }{
 }
 
 var (
-	idRe       = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*$`)
-	currencyRe = regexp.MustCompile(`^[A-Z]{3}$`)
-	domainRe   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+	idRe        = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*$`)
+	currencyRe  = regexp.MustCompile(`^[A-Z]{3}$`)
+	domainRe    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+	smsSenderRe = regexp.MustCompile(`^[A-Za-z0-9+](?:[A-Za-z0-9._ -]{0,30}[A-Za-z0-9])?$`)
 )
 
 // ParseDefinition reads a definition from JSON, strictly.
@@ -164,7 +182,9 @@ func ParseDefinition(b []byte) (Definition, error) {
 //
 //  2. Every key is always present. No omitempty, nil slices render as [], the
 //     empty string as "". A TypeScript mirror therefore never has to reproduce
-//     Go's emptiness rules.
+//     Go's emptiness rules. The two exceptions are channel (absent for mail)
+//     and match.sms_sender (absent when empty): a mail definition keeps the
+//     bytes it had before texts existed.
 //
 //  3. Strings are escaped exactly as JSON.stringify escapes them. Go's
 //     encoding/json is wrong here twice over: by default it escapes &, < and >
@@ -196,23 +216,30 @@ func (d Definition) Canonical() ([]byte, error) {
 			{"why", canonicalString(e.Why)},
 		}))
 	}
-	match := canonicalObject([]canonicalField{
+	matchFields := []canonicalField{
 		{"body_contains", canonicalStrings(d.Match.BodyContains)},
 		{"body_not_contains", canonicalStrings(d.Match.BodyNotContains)},
 		{"sender_domain", canonicalStrings(d.Match.SenderDomain)},
 		{"subject_contains", canonicalStrings(d.Match.SubjectContains)},
-	})
-	return canonicalObject([]canonicalField{
+	}
+	if len(d.Match.SMSSender) > 0 {
+		matchFields = append(matchFields, canonicalField{"sms_sender", canonicalStrings(d.Match.SMSSender)})
+	}
+	fields := []canonicalField{
 		{"bank", canonicalString(d.Bank)},
 		{"date_from", canonicalString(d.DateFrom)},
 		{"default_currency", canonicalString(d.DefaultCurrency)},
 		{"extract", canonicalArray(extract)},
 		{"id", canonicalString(d.ID)},
-		{"match", match},
+		{"match", canonicalObject(matchFields)},
 		{"normalizer_version", canonicalInt(d.NormalizerVersion)},
 		{"required", canonicalStrings(d.Required)},
 		{"version", canonicalInt(d.Version)},
-	}), nil
+	}
+	if d.Channel != "" && d.Channel != ChannelMail {
+		fields = append(fields, canonicalField{"channel", canonicalString(d.Channel)})
+	}
+	return canonicalObject(fields), nil
 }
 
 func (d Definition) checkUTF8() error {
@@ -231,7 +258,9 @@ func (d Definition) checkUTF8() error {
 		{"bank", []string{d.Bank}},
 		{"default_currency", []string{d.DefaultCurrency}},
 		{"date_from", []string{d.DateFrom}},
+		{"channel", []string{d.Channel}},
 		{"match.sender_domain", d.Match.SenderDomain},
+		{"match.sms_sender", d.Match.SMSSender},
 		{"match.subject_contains", d.Match.SubjectContains},
 		{"match.body_contains", d.Match.BodyContains},
 		{"match.body_not_contains", d.Match.BodyNotContains},
@@ -382,18 +411,53 @@ func ValidateDefinition(d Definition) []error {
 	if !currencyRe.MatchString(d.DefaultCurrency) {
 		add("default_currency %q must be three upper-case letters", d.DefaultCurrency)
 	}
-	if d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail {
-		add("date_from must be %q or %q, got %q", DateFromBody, DateFromEmail, d.DateFrom)
-	}
-
-	if len(d.Match.SenderDomain) == 0 {
-		add("match.sender_domain must list at least one domain: without it the template would " +
-			"match on message content alone, and content is attacker-authored")
+	switch {
+	case !d.channelKnown():
+		add("channel must be %q or %q, got %q", ChannelMail, ChannelSMS, d.Channel)
+	case d.IsSMS():
+		if d.DateFrom != DateFromReceived {
+			add("an sms template's date_from must be %q, got %q", DateFromReceived, d.DateFrom)
+		}
+		if len(d.Match.SMSSender) == 0 {
+			add("match.sms_sender must list at least one sender: without it the template would " +
+				"match on message content alone, and content is attacker-authored")
+		}
+		for i, s := range d.Match.SMSSender {
+			if !smsSenderRe.MatchString(s) {
+				add("match.sms_sender[%d] %q must be a sender ID of letters, digits and . _ - or space", i, s)
+			}
+		}
+		if len(d.Match.SenderDomain) > 0 {
+			add("match.sender_domain must be empty on an sms template: a text has no signing domain")
+		}
+		if len(d.Match.SubjectContains) > 0 {
+			add("match.subject_contains must be empty on an sms template: a text has no subject")
+		}
+		for i, e := range d.Extract {
+			if e.Source == SourceSubject {
+				add("extract[%d]: an sms template reads the body only; a text has no subject", i)
+			}
+		}
+	default:
+		if d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail {
+			add("date_from must be %q or %q, got %q", DateFromBody, DateFromEmail, d.DateFrom)
+		}
+		if len(d.Match.SenderDomain) == 0 {
+			add("match.sender_domain must list at least one domain: without it the template would " +
+				"match on message content alone, and content is attacker-authored")
+		}
+		if len(d.Match.SMSSender) > 0 {
+			add("match.sms_sender is only meaningful on an sms template")
+		}
 	}
 	for i, dom := range d.Match.SenderDomain {
 		if !domainRe.MatchString(dom) {
 			add("match.sender_domain[%d] %q must be a lower-case domain name", i, dom)
 		}
+	}
+	if d.DateFrom == DateFromReceived && slices.Contains(d.Required, FieldDate) {
+		add("required cannot include %q when date_from is %q: the receive time stands in for a missing date",
+			FieldDate, DateFromReceived)
 	}
 
 	if len(d.Extract) == 0 {
@@ -481,9 +545,8 @@ func validateExtract(i int, e Extract) []error {
 		add("layouts are only meaningful on a date entry")
 	}
 	for j, l := range e.Layouts {
-		if l != LayoutDDMMYYYY && l != LayoutDDMonYYYYHHMMA && l != LayoutDDMonYYYY {
-			add("layouts[%d] %q is not one of the three supported layouts (%q, %q, %q)",
-				j, l, LayoutDDMMYYYY, LayoutDDMonYYYYHHMMA, LayoutDDMonYYYY)
+		if !slices.Contains(dateLayouts, l) {
+			add("layouts[%d] %q is not one of the supported layouts %q", j, l, dateLayouts)
 		}
 	}
 

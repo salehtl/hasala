@@ -342,7 +342,9 @@ struct BundledTemplateTests {
     #expect(
       r.templates.map(\.definition.id) == [
         "adib.account.v1", "adib.alert.v1", "dib.account.v1", "dib.card-refund.v1", "dib.card-reversal.v1", "dib.card.v1",
-        "dib.money-transfer.v1", "dib.transfer.v1", "enbd.alert.v1", "enbd.transfer.v1",
+        "dib.money-transfer.v1", "dib.sms.card-payment.v1", "dib.sms.credit.v1", "dib.sms.debit.v1",
+        "dib.sms.own-transfer.v1", "dib.sms.purchase.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1", "dib.sms.salary.v1",
+        "dib.transfer.v1", "enbd.alert.v1", "enbd.transfer.v1",
       ])
     let seed = repoRoot().appendingPathComponent("server/internal/tmpl/seed")
     let seedFiles = try FileManager.default.contentsOfDirectory(atPath: seed.path).filter { $0.hasSuffix(".json") }.sorted()
@@ -388,6 +390,10 @@ struct BundledTemplateTests {
       ("the DIB merchant anchor repeated", rep("الدفع الى\n", n / 20)),
       ("the ENBD verb, never completed", rep("AED 1.00 has been ", n / 40)), ("newlines only", rep("\n", n)),
       ("a near-miss subject line", rep("account ending with ", n / 40)),
+      ("the purchase phrase then a run", "مشتريات بمبلغ " + rep("1,", n / 2)),
+      ("the purchase time anchor repeated", rep("12:30 من x", n / 10)),
+      ("the balance word repeated", rep("في 05-06-2026 x رصيدك", n / 20)),
+      ("the card payment preposition repeated", rep("لبطاقتك المنتهية بـ", n / 20)),
     ]
     let subject = "Transaction advice for your account ending with 8642"
     let hostileSubject = rep("account ending with ", 3_000)

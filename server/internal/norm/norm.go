@@ -97,6 +97,20 @@ func Normalize(version int, raw []byte, receivedAt time.Time) (Result, error) {
 	return normalizeWith(version, raw, receivedAt, trimExplicit)
 }
 
+var ErrInvalidText = errors.New("norm: the text is not valid UTF-8")
+
+func NormalizeText(version int, text string) (string, error) {
+	if version != CurrentVersion {
+		return "", fmt.Errorf("%w: %d (supported: %v)", ErrUnknownVersion, version, Versions())
+	}
+	if !utf8.ValidString(text) {
+		return "", ErrInvalidText
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return collapseWith(text, trimExplicit), nil
+}
+
 // normalizeWith is [Normalize] with the line trim as a parameter. See
 // [trimmer]: production always reaches it through [Normalize], and the ONLY
 // other caller is the corpus equivalence gate's substitution shadow.

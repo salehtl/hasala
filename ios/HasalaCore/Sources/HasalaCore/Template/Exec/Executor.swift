@@ -87,13 +87,21 @@ public struct CompiledTemplate: Sendable {
     guard Self.isCurrency(d.defaultCurrency) else {
       throw .definition("default_currency is not three upper-case letters, so no amount could carry a currency")
     }
-    guard same(d.dateFrom, "body") || same(d.dateFrom, "email") else {
-      throw .definition("date_from is neither \"body\" nor \"email\"")
+    guard d.channelKnown else { throw .definition("channel is neither \"mail\" nor \"sms\"") }
+    if d.isSMS {
+      guard same(d.dateFrom, "received") else { throw .definition("an sms template's date_from is not \"received\"") }
+    } else {
+      guard same(d.dateFrom, "body") || same(d.dateFrom, "email") else {
+        throw .definition("date_from is neither \"body\" nor \"email\"")
+      }
     }
     for f in d.required {
       guard Field(f) != nil else { throw .definition("required names \(f), which is not a field") }
       if Field(f) == .isTransfer {
         throw .definition("is_transfer cannot be required: a false flag is indistinguishable from an unset one")
+      }
+      if Field(f) == .date && same(d.dateFrom, "received") {
+        throw .definition("date cannot be required when date_from is \"received\"")
       }
     }
     var entries: [Entry] = []
@@ -158,7 +166,7 @@ public struct CompiledTemplate: Sendable {
     }
   }
 
-  static let layouts = ["DD-MM-YYYY", "DD/Mon/YYYY hh:mm A", "DD/Mon/YYYY"]
+  static let layouts = ["DD-MM-YYYY", "DD/Mon/YYYY hh:mm A", "DD/Mon/YYYY", "DD-MM-YYYY HH:mm"]
 
   static func compileEntry(_ i: Int, _ x: TemplateDefinition.Extract) throws(TemplateError) -> Entry {
     func fail(_ msg: String) -> TemplateError { .definition("extract[\(i)]: \(msg)") }
@@ -180,7 +188,7 @@ public struct CompiledTemplate: Sendable {
     if type == .date {
       if x.layouts.isEmpty { throw fail("a date entry with no layouts can never convert its capture") }
       for l in x.layouts where !layouts.contains(where: { same($0, l) }) {
-        throw fail("layout \(l) is not one of the three supported layouts")
+        throw fail("layout \(l) is not one of the supported layouts")
       }
     }
 
@@ -572,9 +580,17 @@ public struct CompiledTemplate: Sendable {
     let day: Int
     let month: Int
     let year: Int
-    if same(layout, "DD-MM-YYYY") {
+    if same(layout, "DD-MM-YYYY") || same(layout, "DD-MM-YYYY HH:mm") {
       guard let d = num(2), lit(0x2d), let mo = num(2), lit(0x2d), let y = num(4) else { return nil }
       (day, month, year) = (d, mo, y)
+      if same(layout, "DD-MM-YYYY HH:mm") {
+        guard lit(0x20), i < s.endIndex, s[i] >= 0x30 && s[i] <= 0x39 else { return nil }
+        let wide = i + 1 < s.endIndex && s[i + 1] >= 0x30 && s[i + 1] <= 0x39
+        guard let h = num(wide ? 2 : 1), lit(0x3a), let m = num(2) else { return nil }
+        if h > 23 || m > 59 { return nil }
+        hour = h
+        minute = m
+      }
     } else {
       guard let d = num(2), lit(0x2f) else { return nil }
       // Go's lookup(shortMonthNames): exactly three characters, ASCII-case-insensitive.

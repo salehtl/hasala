@@ -1,7 +1,7 @@
 # salehtl/hasala-fixtures: the private real-mail fixtures this commit expects.
 # Written by scripts/private-fixtures-lock.sh write; checked by scripts/check.sh
 # when HASALA_PRIVATE_FIXTURES is set. Do not edit by hand.
-commit a7511b14d489072d2ba21302b7d5ad8fa15a27e3
+commit 30c3e3a1a35a9f66ed59cc9dd23a5a6676c90a7b
 e44a95198ce56c9e766ef228ef9a90007a218f2121bbdef4ec38f28cf795aafa  conformance/normalizer/apple-forward-dib-01.json
 c066cd81b25b6625de3570e7bf78dcd52df1b8f4305cdf57435323318a9b46ed  conformance/normalizer/apple-forward-dib-02.json
 805a183bedcb6fcdfb6d9f216c5e91a94a4640677c06ca2258974424d388a745  conformance/normalizer/apple-forward-enbd-alert.json
@@ -40,6 +40,15 @@ abd62022f2917c32481a360a01238badf30e9609fd426d8b2fb2ace8a3580477  conformance/no
 892fa888df7bff09e2c5d6a897b7d96c03328ec26d7b67d363832d7885624a43  conformance/normalizer/mislabelled-utf8-actually-windows-1256.json
 0a7a9b77a8b2e215b5214cece7eedf6bd61a582cb12d68e45c37c6c420399aba  conformance/normalizer/quoted-forward-recovers-no-headers.json
 e5f193c6b68c6659487d8bb2d5090b588b2fb00733b7cfa78ac0a181025dff9c  conformance/normalizer/us-ascii-plain.json
+7f182e0a245d03b53752c628f336e7fc021494a50ad21f3b1498cf67df06aec2  conformance/sms/dib-card-payment.json
+09b0dd306e5515abb79d06d73fac299991f372e4f19f9ea370c3eaaae32d870b  conformance/sms/dib-credit.json
+af9a1f5f8161c1486109843e063a39eb7c758359fbaccd775369e83de31b4ae8  conformance/sms/dib-debit.json
+e2ec1b3f543f82366fb11c41b74387dfda5b496e3dd2ae86b1a7ba378d4fec6f  conformance/sms/dib-other.json
+8ccc31e2abb19d04ce124dd0810f1f6031dd046e2c2b398eb83a74643584db4b  conformance/sms/dib-own-transfer.json
+19fe39cd36a4ea9ace31098ebf4a39c761e8b74c097d51b76df84e07c4908792  conformance/sms/dib-purchase.json
+3ae2a37fb46c0a2da5cb9e0e2fe96aca8b409ac356f6dba910f65d5ae9c120f5  conformance/sms/dib-refund.json
+6927d7d2bc613e2b2969cb2cb0dddc20108378f458366a5006550e72e4a31307  conformance/sms/dib-reversal.json
+97a3646c654c8aa5c6b8b73910f88f0bfe4ec546637ddedccde7f9be34fb8408  conformance/sms/dib-salary.json
 88d05ccefca3acd705bfa8318214a15b847f36416fbfae31f2d0ca6ee6676c86  conformance/templates/corpus-adib.account.v1.json
 bf31d46103fa567f0f034dd0e3a46672cbbdc6823ca187319d29e901e8689cc7  conformance/templates/corpus-adib.alert.v1.json
 01db7d2c9359d897b8594336be706b28a9a47ae62d79ad423caf2e724a206d75  conformance/templates/corpus-dib.account.v1.json

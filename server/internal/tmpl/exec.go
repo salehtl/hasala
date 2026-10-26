@@ -200,7 +200,12 @@ func Compile(d Definition) (*Compiled, error) {
 		return nil, fmt.Errorf("%w: default_currency %q is not three upper-case letters, so no amount could carry a currency",
 			ErrDefinition, d.DefaultCurrency)
 	}
-	if d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail {
+	switch {
+	case !d.channelKnown():
+		return nil, fmt.Errorf("%w: channel %q is neither %q nor %q", ErrDefinition, d.Channel, ChannelMail, ChannelSMS)
+	case d.IsSMS() && d.DateFrom != DateFromReceived:
+		return nil, fmt.Errorf("%w: an sms template's date_from %q is not %q", ErrDefinition, d.DateFrom, DateFromReceived)
+	case !d.IsSMS() && d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail:
 		return nil, fmt.Errorf("%w: date_from %q is neither %q nor %q", ErrDefinition, d.DateFrom, DateFromBody, DateFromEmail)
 	}
 	for _, f := range d.Required {
@@ -210,6 +215,9 @@ func Compile(d Definition) (*Compiled, error) {
 		if f == FieldIsTransfer {
 			return nil, fmt.Errorf("%w: is_transfer cannot be required — a flag that is false is "+
 				"indistinguishable from one that was never set, so the requirement could never be enforced", ErrDefinition)
+		}
+		if f == FieldDate && d.DateFrom == DateFromReceived {
+			return nil, fmt.Errorf("%w: date cannot be required when date_from is %q", ErrDefinition, DateFromReceived)
 		}
 	}
 
@@ -276,7 +284,7 @@ func compileEntry(i int, x Extract) (compiledEntry, error) {
 		}
 		for _, l := range x.Layouts {
 			if _, ok := goDateLayouts[l]; !ok {
-				return fail("layout %q is not one of the three supported layouts", l)
+				return fail("layout %q is not one of the supported layouts", l)
 			}
 		}
 	}
@@ -715,6 +723,7 @@ var goDateLayouts = map[string]string{
 	LayoutDDMMYYYY:       "02-01-2006",
 	LayoutDDMonYYYYHHMMA: "02/Jan/2006 03:04 PM",
 	LayoutDDMonYYYY:      "02/Jan/2006",
+	LayoutDDMMYYYYHHmm:   "02-01-2006 15:04",
 }
 
 // convertDate implements rule 6: for each declared layout in order, try the
@@ -841,6 +850,22 @@ func MatchesSenderDomain(d Definition, verified string) bool {
 			continue
 		}
 		if v == l || strings.HasSuffix(v, "."+l) {
+			return true
+		}
+	}
+	return false
+}
+
+func MatchesSMSSender(d Definition, sender string) bool {
+	if !d.IsSMS() {
+		return false
+	}
+	s := asciiLower(trimCapture(sender))
+	if s == "" {
+		return false
+	}
+	for _, listed := range d.Match.SMSSender {
+		if asciiLower(listed) == s {
 			return true
 		}
 	}

@@ -1,0 +1,331 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.sms.debit.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.sms.debit.v1",
+    "version": 1,
+    "bank": "dib",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "DIB-SMS"
+      ],
+      "body_contains": [
+        "خصم"
+      ],
+      "body_not_contains": [
+        "بين حساباتك",
+        "للخصم"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^خصم (?:بمبلغ )?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) في ",
+          "^تم خصم (?:مبلغ )?(?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) ",
+          "^خصم صراف آلي دولي بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) في "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB CARD PAYMENT",
+        "patterns": [
+          "دفعة لبطاقة دبي الإسلامي الائتمانية",
+          "كدفعة للبطاقة"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB INTERNATIONAL ATM WITHDRAWAL",
+        "patterns": [
+          "^خصم صراف آلي دولي بمبلغ "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          " في [0-9]{2}-[0-9]{2}-[0-9]{4} (?P<v>[^\\n]+) رصيدك",
+          " بتاريخ [0-9]{2}-[0-9]{2}(?:-[0-9]{4})? (?P<v>[^\\n]+)$"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true",
+        "patterns": [
+          "دفعة لبطاقة دبي الإسلامي الائتمانية",
+          "كدفعة للبطاقة"
+        ]
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true",
+        "flags": [
+          "i"
+        ],
+        "patterns": [
+          " في [0-9]{2}-[0-9]{2}-[0-9]{4} [^\\n]*(?:TRNSFER|TRANSFER)",
+          " بتاريخ [^\\n]*(?:TRNSFER|TRANSFER)"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.sms.debit.v1/transfer",
+      "source": "SYNTHETIC: an account debit whose description names a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFIDEsMjM0LjU2INmB2YogMDUtMDYtMjAyNiBNQiBGVU5EIFRSQU5TRkVSIERFQklUINix2LXZitiv2YMgMywzMzMuMzM=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123456",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "MB FUND TRANSFER DEBIT",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/bimablagh",
+      "source": "SYNTHETIC: the bimablagh wording, and a balance glued to its word",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFINio2YXYqNmE2LogMjM0LjU2INmB2YogMDUtMDYtMjAyNiBPVVRHT0lORyBET01FU1RJQyBGVU5EIFRSINix2LXZitiv2YMg2KfZhNit2KfZhNmJNCw0NDQuNDQ=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "23456",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "OUTGOING DOMESTIC FUND TR",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/fee",
+      "source": "SYNTHETIC: a charge is a debit and not a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFIDMuNDUg2YHZiiAwNS0wNi0yMDI2IENBU0ggTUdNVC4gU0VSVklDRSBDSEFSR0VTINix2LXZitiv2YMgNSw1NTUuNTU=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "345",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "CASH MGMT. SERVICE CHARGES",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/lower-case-transfer",
+      "source": "SYNTHETIC: the transfer flag folds ASCII case",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFIDQ1Ni43OCDZgdmKIDA1LTA2LTIwMjYgTUIgRnVuZCBUcmFuc2ZlciBEZWJpdCDYsdi12YrYr9mDIDYsNjY2LjY2",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "45678",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "MB Fund Transfer Debit",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/card-payment-from-account",
+      "source": "SYNTHETIC: paying the DIB credit card from the account moves money to the person's own card",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFINio2YXYqNmE2LogMiwzNDUuNjcg2YHZiiAwNS0wNi0yMDI2INiv2YHYudipINmE2KjYt9in2YLYqSDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2KfYptiq2YXYp9mG2YrYqSDYsdi12YrYr9mDINin2YTYrdin2YTZiiA3LDc3Ny43Nw==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "234567",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "DIB CARD PAYMENT",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/card-payment-second-wording",
+      "source": "SYNTHETIC: the other card payment wording",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYrti12YUg2YXYqNmE2LogMyw0NTYuNzgg2YHZiiAwNS0wNi0yMDI2INmD2K/Zgdi52Kkg2YTZhNio2LfYp9mC2Kkg2LHYtdmK2K/ZgyDYp9mE2K3Yp9mE2YogOCw4ODguODg=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "345678",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "DIB CARD PAYMENT",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/international-atm",
+      "source": "SYNTHETIC: an international cash withdrawal: a constant merchant, the date without its time",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFINi12LHYp9mBINii2YTZiiDYr9mI2YTZiiDYqNmF2KjZhNi6IDU2Ny44OSDZgdmKIDA1LTA2LTIwMjYgMTA6MTEg2LHYtdmK2K/ZgyDYp9mE2K3Yp9mE2YogOSw5OTkuOTk=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "56789",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "DIB INTERNATIONAL ATM WITHDRAWAL",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/no-year",
+      "source": "SYNTHETIC: a debit dated with no year is undated, so the receive time applies",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYrti12YUgNCwzMjEuMDkg2YXZhiDYrdiz2KfYqNmDIDEyMzQqKjU2NyDYqNiq2KfYsdmK2K4gMDUtMDYgU0FNUExFIERFQklU",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE DEBIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/foreign-currency",
+      "source": "SYNTHETIC: a currency code before the amount",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFIFVTRCA2Ljc4INmB2YogMDUtMDYtMjAyNiBTQU1QTEUgRkVFINix2LXZitiv2YMgMSwyMTIuMTI=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "678",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "SAMPLE FEE",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/service-notice",
+      "source": "SYNTHETIC: a notice that only mentions debiting is gated out",
+      "subject_base64": "",
+      "normalized_body_base64": "2LnYstmK2LLZiiDYp9mE2YXYqti52KfZhdmE2Iwg2KjYudi2INin2YTZhdi52KfZhdmE2KfYqiDYp9mE2KrZiiDYqtmF2Kog2LnZhNmJINio2LfYp9mC2KrZgyDZhNmE2K7YtdmFINmF2YYg2KjZhtmDINiv2KjZiiDYp9mE2KXYs9mE2KfZhdmKLg==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/discount-promotion",
+      "source": "SYNTHETIC: the word for a debit is also the word for a discount; the amount pattern refuses it",
+      "subject_base64": "",
+      "normalized_body_base64": "2KfYrdi12YQg2LnZhNmJINiu2LXZhSAyMCUg2LnZhNmJIFNBTVBMRQ==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/own-transfer",
+      "source": "SYNTHETIC: a transfer between the person's accounts belongs to its own template",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjZhdio2YTYuiBBRUQgNCwzMjEuMDkg2YXZhiDYrdiz2KfYqCAwMDEtMDAwLTEyM1hYWFgtMDEg2KfZhNmKINit2LPYp9ioIDAwMS0wMDAtNDU2WFhYWC0wMSDZgdmKIDA1LTA2LTIwMjYgTUIgRnVuZCBUcmFuc2ZlciDYsdi12YrYryDYrdiz2KfYqCDYp9mE2K7YtdmFINmH2YggQUVEIDksODc2LjU0INmI2K3Ys9in2Kgg2KfZhNin2YrYr9in2Lkg2YfZiCBBRUQgOCw3NjUuNDM=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

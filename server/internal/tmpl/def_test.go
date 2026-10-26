@@ -384,3 +384,131 @@ func TestValidateDefinitionRequiresLayoutsOnADateEntry(t *testing.T) {
 		t.Fatal("a date entry with no layouts can never convert")
 	}
 }
+
+const validSMSDefinitionJSON = `{
+  "id": "bank.sms.purchase.v1",
+  "version": 1,
+  "bank": "bank",
+  "channel": "sms",
+  "normalizer_version": 1,
+  "match": {
+    "sms_sender": ["BANK-SMS"],
+    "body_contains": ["Purchase of"]
+  },
+  "default_currency": "AED",
+  "date_from": "received",
+  "extract": [
+    {"field":"amount","type":"amount","source":"body",
+     "patterns":["^Purchase of (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) "]},
+    {"field":"date","type":"date","source":"body",
+     "patterns":[" on (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}) at "],
+     "layouts":["DD-MM-YYYY HH:mm"]},
+    {"field":"merchant","type":"text","source":"body",
+     "patterns":[" at (?P<v>[^\\n]+)\\. Balance "]},
+    {"field":"direction","type":"const","source":"body","value":"debit"}
+  ],
+  "required": ["amount","direction"]
+}`
+
+func TestValidateDefinitionAcceptsAWellFormedSMSDefinition(t *testing.T) {
+	d := mustParse(t, validSMSDefinitionJSON)
+	if !d.IsSMS() || len(d.Match.SMSSender) != 1 || d.Match.SMSSender[0] != "BANK-SMS" {
+		t.Fatalf("channel or sms_sender not read: %+v", d)
+	}
+	if err := ValidateForPublish(d); err != nil {
+		t.Fatalf("a well-formed sms definition must publish: %v", err)
+	}
+	if mustParse(t, validDefinitionJSON).IsSMS() {
+		t.Fatal("a definition with no channel is a mail definition")
+	}
+}
+
+func TestValidateDefinitionHoldsTheSMSRules(t *testing.T) {
+	for _, tc := range []struct{ name, from, to string }{
+		{"no sms_sender", `"sms_sender": ["BANK-SMS"],`, ``},
+		{"empty sms_sender", `"sms_sender": ["BANK-SMS"]`, `"sms_sender": []`},
+		{"malformed sender", `"sms_sender": ["BANK-SMS"]`, `"sms_sender": ["BANK SMS!"]`},
+		{"sender with a trailing space", `"sms_sender": ["BANK-SMS"]`, `"sms_sender": ["BANK-SMS "]`},
+		{"a sender domain", `"sms_sender": ["BANK-SMS"],`, `"sms_sender": ["BANK-SMS"], "sender_domain": ["bank.example"],`},
+		{"a subject gate", `"sms_sender": ["BANK-SMS"],`, `"sms_sender": ["BANK-SMS"], "subject_contains": ["x"],`},
+		{"a subject source", `{"field":"direction","type":"const","source":"body","value":"debit"}`,
+			`{"field":"direction","type":"const","source":"subject","value":"debit"}`},
+		{"date_from body", `"date_from": "received"`, `"date_from": "body"`},
+		{"date_from email", `"date_from": "received"`, `"date_from": "email"`},
+		{"a required date", `"required": ["amount","direction"]`, `"required": ["amount","direction","date"]`},
+		{"an unknown channel", `"channel": "sms"`, `"channel": "fax"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := strings.Replace(validSMSDefinitionJSON, tc.from, tc.to, 1)
+			if s == validSMSDefinitionJSON {
+				t.Fatalf("test setup: %q not found in the fixture", tc.from)
+			}
+			if errs := ValidateDefinition(mustParse(t, s)); len(errs) == 0 {
+				t.Fatalf("%s must be rejected", tc.name)
+			}
+		})
+	}
+}
+
+func TestValidateDefinitionKeepsTheMailRulesForMail(t *testing.T) {
+	for _, tc := range []struct{ name, from, to string }{
+		{"an sms sender on mail", `"sender_domain": ["dib.ae"],`, `"sender_domain": ["dib.ae"], "sms_sender": ["DIB-SMS"],`},
+		{"date_from received on mail", `"date_from": "body"`, `"date_from": "received"`},
+		{"channel mail without a domain", `"sender_domain": ["dib.ae"],`, ``},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := strings.Replace(validDefinitionJSON, tc.from, tc.to, 1)
+			if tc.name == "channel mail without a domain" {
+				s = strings.Replace(s, `"normalizer_version": 1,`, `"normalizer_version": 1, "channel": "mail",`, 1)
+			}
+			if s == validDefinitionJSON {
+				t.Fatalf("test setup: %q not found in the fixture", tc.from)
+			}
+			if errs := ValidateDefinition(mustParse(t, s)); len(errs) == 0 {
+				t.Fatalf("%s must be rejected", tc.name)
+			}
+		})
+	}
+	explicit := strings.Replace(validDefinitionJSON, `"normalizer_version": 1,`, `"normalizer_version": 1, "channel": "mail",`, 1)
+	if errs := ValidateDefinition(mustParse(t, explicit)); len(errs) != 0 {
+		t.Fatalf(`"channel": "mail" is the default spelled out: %v`, errs)
+	}
+}
+
+func TestCanonicalOfAMailDefinitionIsUnchangedByTheTextChannel(t *testing.T) {
+	plain, err := mustParse(t, validDefinitionJSON).Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, err := mustParse(t, strings.Replace(validDefinitionJSON, `"normalizer_version": 1,`,
+		`"normalizer_version": 1, "channel": "mail",`, 1)).Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(plain, explicit) {
+		t.Fatalf("an absent channel and \"mail\" must canonicalize alike:\n%s\n%s", plain, explicit)
+	}
+	if bytes.Contains(plain, []byte(`"channel"`)) || bytes.Contains(plain, []byte(`"sms_sender"`)) {
+		t.Fatalf("a mail definition's canonical form must not gain the text keys: %s", plain)
+	}
+}
+
+func TestCanonicalOfAnSMSDefinitionCarriesItsChannelAndSender(t *testing.T) {
+	d := mustParse(t, `{"id":"x","version":1,"channel":"sms","match":{"sms_sender":["B"]}}`)
+	b, err := d.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"bank":"","channel":"sms","date_from":"","default_currency":"","extract":[],"id":"x",` +
+		`"match":{"body_contains":[],"body_not_contains":[],"sender_domain":[],"sms_sender":["B"],"subject_contains":[]},` +
+		`"normalizer_version":0,"required":[],"version":1}`
+	if string(b) != want {
+		t.Fatalf("canonical form:\n got %s\nwant %s", b, want)
+	}
+	if _, err := (Definition{ID: "x", Match: Match{SMSSender: []string{"\xff"}}}).Canonical(); err == nil {
+		t.Fatal("invalid UTF-8 in sms_sender must be an error")
+	}
+	if _, err := (Definition{ID: "x", Channel: "\xff"}).Canonical(); err == nil {
+		t.Fatal("invalid UTF-8 in channel must be an error")
+	}
+}

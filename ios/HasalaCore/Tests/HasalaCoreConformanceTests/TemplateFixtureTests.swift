@@ -109,7 +109,7 @@ struct TemplateFixtureTests {
     .enabled(if: Fixtures.hasPrivate, "HASALA_PRIVATE_FIXTURES is unset"))
   func corpus() throws {
     let files = TemplateFixtures.corpus()
-    #expect(files.count == TemplatesManifest.entries.count)
+    #expect(files.count == BundledTemplates.load().templates.filter { !$0.definition.isSMS }.count)
     var total = 0
     var matched = 0
     for f in files {
