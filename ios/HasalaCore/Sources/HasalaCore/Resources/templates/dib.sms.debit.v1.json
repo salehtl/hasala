@@ -34,6 +34,17 @@
       "type": "date",
       "source": "body",
       "layouts": [
+        "DD-MM-YYYY HH:mm"
+      ],
+      "patterns": [
+        " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) "
+      ]
+    },
+    {
+      "field": "date",
+      "type": "date",
+      "source": "body",
+      "layouts": [
         "DD-MM-YYYY"
       ],
       "patterns": [

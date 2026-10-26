@@ -52,21 +52,25 @@ struct SMSCorpusTests {
           failures.append("\(name): normalized text")
           continue
         }
-        var readBy = ""
+        var reader: CompiledTemplate?
         var first = Extraction.zero(.noMatch)
         var gated: [String] = []
-        for t in texts where t.definition.matchesSMSSender(sender) {
+        for t in texts {
           let x = try t.execute(subject: "", normalizedBody: normalized)
           if x.matched {
-            if readBy.isEmpty {
-              readBy = t.definition.id
+            if reader == nil {
+              reader = t
               first = x
             }
           } else if x.error == .missingField {
             gated.append(t.definition.id)
           }
         }
-        if !readBy.isEmpty { matched += 1 }
+        let readBy = reader?.definition.id ?? ""
+        if let reader {
+          matched += 1
+          if !reader.definition.matchesSMSSender(sender) { failures.append("\(name): \(readBy) does not name the sender") }
+        }
         let got = try own.map { try $0.execute(subject: "", normalizedBody: normalized) } ?? first
         var diffs = try TemplateFixtures.diffs(got, try #require(c["expect"]))
         if readBy != (try c.string("read_by")) { diffs.append("read_by") }

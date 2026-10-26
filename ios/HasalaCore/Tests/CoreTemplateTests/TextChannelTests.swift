@@ -1,4 +1,6 @@
 import CoreJSON
+import CorePrimitives
+import CoreResources
 import Foundation
 import Testing
 
@@ -63,12 +65,33 @@ struct TextChannelTests {
     for (s, want) in [
       ("BANK-SMS", true), ("bank-sms", true), (" BANK-SMS\n", true), ("ad-bank", true), ("BANK-SMS2", false), ("BANK", false),
       ("BANK SMS", false), ("", false), ("   ", false), ("BANK-SMS\u{A0}", false),
+      (" \t\u{0B}\u{0C}\r\nBANK-SMS\u{0B}", true), ("\u{85}BANK-SMS", false),
     ] {
       #expect(d.matchesSMSSender(s) == want, "\(s)")
     }
     var mail = d
     mail.channel = ""
     #expect(!mail.matchesSMSSender("BANK-SMS"))
+  }
+
+  @Test("a channel load leaves the other channel's templates out before it compiles them")
+  func channelLoad() throws {
+    let all = BundledTemplates.load().templates
+    let mail = BundledTemplates.load(channel: .mail)
+    let texts = BundledTemplates.load(channel: .sms)
+    #expect(mail.skipped.isEmpty && texts.skipped.isEmpty)
+    #expect(mail.templates.map(\.definition.id) == all.filter { !$0.definition.isSMS }.map(\.definition.id))
+    #expect(texts.templates.map(\.definition.id) == all.filter(\.definition.isSMS).map(\.definition.id))
+    #expect(mail.templates.count == 10 && texts.templates.count == 8)
+
+    let broken = Self.sms(dateFrom: "body")
+    #expect(throws: TemplateError.self) { try CompiledTemplate(json: broken) }
+    let entry = TemplatesManifest.Entry(file: "t.sms.v1.json", id: "t.sms.v1", version: 1, sha256: Hex.encode(sha256(Data(broken))))
+    let read: (String) -> Data? = { _ in Data(broken) }
+    #expect(BundledTemplates.load(entries: [entry], read: read).skipped == [BundledTemplates.Skipped(id: "t.sms.v1", reason: "definition")])
+    let asMail = BundledTemplates.load(entries: [entry], channel: .mail, read: read)
+    #expect(asMail.templates.isEmpty && asMail.skipped.isEmpty)
+    #expect(BundledTemplates.load(entries: [entry], channel: .sms, read: read).skipped.map(\.reason) == ["definition"])
   }
 
   @Test("a mail definition's canonical bytes do not gain the text keys; an sms definition's do")

@@ -415,8 +415,8 @@ func ValidateDefinition(d Definition) []error {
 			add("an sms template's date_from must be %q, got %q", DateFromReceived, d.DateFrom)
 		}
 		if len(d.Match.SMSSender) == 0 {
-			add("match.sms_sender must list at least one sender: without it the template would " +
-				"match on message content alone, and content is attacker-authored")
+			add("match.sms_sender must list at least one sender: it is what lets a hit file with no " +
+				"review, and a text's content alone is attacker-authored")
 		}
 		for i, s := range d.Match.SMSSender {
 			if !smsSenderRe.MatchString(s) {

@@ -5,7 +5,7 @@
 //
 // A template that fails the SHA-256 check, the definition checks or the dialect gate is
 // SKIPPED and reported by id and reason (content-free, for diagnostics); the others still
-// load. When none load, the mailbox halts with `templates_unavailable` (spec 04 §7.11).
+// load. When no mail template loads, the mailbox halts with `templates_unavailable` (spec 04 §7.11).
 import CorePrimitives
 import CoreResources
 import Foundation
@@ -23,16 +23,20 @@ public enum BundledTemplates {
     public let skipped: [Skipped]
   }
 
+  public enum Channel: Sendable {
+    case mail, sms
+  }
+
   /// Loads, verifies and compiles every bundled template.
-  public static func load() -> LoadResult {
-    load(entries: TemplatesManifest.entries) { file in
+  public static func load(channel: Channel? = nil) -> LoadResult {
+    load(entries: TemplatesManifest.entries, channel: channel) { file in
       CoreResources.bundle.url(forResource: file, withExtension: nil, subdirectory: "templates")
         .flatMap { try? Data(contentsOf: $0) }
     }
   }
 
   /// `load()` over an explicit manifest and reader (tests).
-  static func load(entries: [TemplatesManifest.Entry], read: (String) -> Data?) -> LoadResult {
+  static func load(entries: [TemplatesManifest.Entry], channel: Channel? = nil, read: (String) -> Data?) -> LoadResult {
     var templates: [CompiledTemplate] = []
     var skipped: [Skipped] = []
     for e in entries {
@@ -45,7 +49,9 @@ public enum BundledTemplates {
         continue
       }
       do throws(TemplateError) {
-        let t = try CompiledTemplate(json: [UInt8](data))
+        let d = try TemplateDefinition(json: [UInt8](data))
+        if let channel, d.isSMS != (channel == .sms) { continue }
+        let t = try CompiledTemplate(d)
         guard t.definition.id.utf8.elementsEqual(e.id.utf8), t.definition.version == e.version else {
           skipped.append(Skipped(id: e.id, reason: "definition"))
           continue

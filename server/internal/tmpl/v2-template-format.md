@@ -86,8 +86,12 @@ mail template in four ways:
   `sms_sender` empty. `MatchesSMSSender` (Go) and
   `TemplateDefinition.matchesSMSSender` (Swift) compare the whole sender ID,
   ASCII case-insensitively, after trimming the executor's cutset. An empty
-  sender matches nothing. As with `sender_domain`, the executor does not apply
-  the gate; the caller does.
+  sender matches nothing. Unlike `sender_domain`, `sms_sender` is not a gate
+  before execution: the caller tries every text template on the body whatever
+  the sender (a person's number, an unknown sender or no sender included), and
+  the executor never reads the sender. `sms_sender` decides only whether a hit
+  may file with no review (decision record `bank-texts.md`, D1). A hit whose
+  sender is not listed is still a payment, and the caller keeps it in Review.
 - `date_from: "received"`: a date entry that reads a date from the text wins;
   when none does, the extraction carries no date and the caller uses the time
   the text arrived. `required` cannot name `date`, and any number of date

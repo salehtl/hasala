@@ -41,6 +41,17 @@
         "type": "date",
         "source": "body",
         "layouts": [
+          "DD-MM-YYYY HH:mm"
+        ],
+        "patterns": [
+          " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
           "DD-MM-YYYY"
         ],
         "patterns": [
@@ -221,13 +232,49 @@
     },
     {
       "name": "dib.sms.debit.v1/international-atm",
-      "source": "SYNTHETIC: an international cash withdrawal: a constant merchant, the date without its time",
+      "source": "SYNTHETIC: an international cash withdrawal: a constant merchant, the date with its time",
       "subject_base64": "",
       "normalized_body_base64": "2K7YtdmFINi12LHYp9mBINii2YTZiiDYr9mI2YTZiiDYqNmF2KjZhNi6IDU2Ny44OSDZgdmKIDA1LTA2LTIwMjYgMTA6MTEg2LHYtdmK2K/ZgyDYp9mE2K3Yp9mE2YogOSw5OTkuOTk=",
       "expect": {
         "matched": true,
         "error": "",
         "amount_minor": "56789",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T10:11:00Z",
+        "merchant": "DIB INTERNATIONAL ATM WITHDRAWAL",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/international-atm-one-digit-hour",
+      "source": "SYNTHETIC: one hour digit on a cash withdrawal: the date keeps its time",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFINi12LHYp9mBINii2YTZiiDYr9mI2YTZiiDYqNmF2KjZhNi6IDY3OC45MCDZgdmKIDA1LTA2LTIwMjYgNzowOCDYsdi12YrYr9mDINin2YTYrdin2YTZiiA5LDg5OC45OA==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "67890",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T07:08:00Z",
+        "merchant": "DIB INTERNATIONAL ATM WITHDRAWAL",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.debit.v1/international-atm-bad-time",
+      "source": "SYNTHETIC: a time out of range falls back to the bare date",
+      "subject_base64": "",
+      "normalized_body_base64": "2K7YtdmFINi12LHYp9mBINii2YTZiiDYr9mI2YTZiiDYqNmF2KjZhNi6IDc4OS4wMSDZgdmKIDA1LTA2LTIwMjYgMjU6NjEg2LHYtdmK2K/ZgyDYp9mE2K3Yp9mE2YogOSw3OTcuOTc=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "78901",
         "currency": "AED",
         "direction": "debit",
         "posted_at": "2026-06-05T00:00:00Z",

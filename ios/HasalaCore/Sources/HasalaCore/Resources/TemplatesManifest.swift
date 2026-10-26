@@ -32,7 +32,7 @@ public enum TemplatesManifest {
     Entry(file: "dib.money-transfer.v1.json", id: "dib.money-transfer.v1", version: 1, sha256: "fee7d81b2c41c777acd9221afe13ffe7dc7c312a3326178a96fe2b0c52c4541b"),
     Entry(file: "dib.sms.card-payment.v1.json", id: "dib.sms.card-payment.v1", version: 1, sha256: "16fbb862489c53037556faf2c5a429fe3a19821a356b73939007a3a41621e068"),
     Entry(file: "dib.sms.credit.v1.json", id: "dib.sms.credit.v1", version: 1, sha256: "77be0bfa379a32ef0e4f839c93fe958bca7c3074933dff8a7439d170b21133d2"),
-    Entry(file: "dib.sms.debit.v1.json", id: "dib.sms.debit.v1", version: 1, sha256: "14eb683f2d094e059abd44ea1d54719c082816d0bded8324345cd2be8a204d84"),
+    Entry(file: "dib.sms.debit.v1.json", id: "dib.sms.debit.v1", version: 1, sha256: "78bb127ce3ea753b76e6d7def223839e3b48be6732feef476ddfe72a98c62277"),
     Entry(file: "dib.sms.own-transfer.v1.json", id: "dib.sms.own-transfer.v1", version: 1, sha256: "a0280c71c59aef44b552156f3ec8dc38f0a025bf2d4e8ac61300d78bbdd9965f"),
     Entry(file: "dib.sms.purchase.v1.json", id: "dib.sms.purchase.v1", version: 1, sha256: "d4954d61761a79caa2c8e8cd4935fd24f3ad50ec55b02b7d03a43735ba7ba076"),
     Entry(file: "dib.sms.refund.v1.json", id: "dib.sms.refund.v1", version: 1, sha256: "7a55c21ca6808558ede930f95e94224ffc2e735efa02570385d8aeeb70f3438b"),

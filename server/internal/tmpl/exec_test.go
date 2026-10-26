@@ -1102,6 +1102,8 @@ func TestMatchesSMSSenderIsExactAndIgnoresASCIICase(t *testing.T) {
 		{"", false},
 		{"   ", false},
 		{"BANK-SMS\u00a0", false},
+		{" \t\v\f\r\nBANK-SMS\v", true},
+		{"\u0085BANK-SMS", false},
 	} {
 		if got := MatchesSMSSender(d, tc.sender); got != tc.want {
 			t.Errorf("MatchesSMSSender(%q) = %v, want %v", tc.sender, got, tc.want)

@@ -59,7 +59,7 @@ nonisolated final class MailboxLane: Sendable {
     engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: userID.string, buildTopic: nil), provider: mail, tokens: tokens,
       store: persistence, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer,
-      templates: BundledTemplates.load().templates, clock: clock, random: SystemRandom())
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: SystemRandom())
     self.presenter = presenter
   }
 
@@ -174,7 +174,7 @@ nonisolated final class MailboxLane: Sendable {
 
   /// The sender domains Setup's bank step trusts for a bank (03c §7.2), e.g. "dib" → dib.ae.
   static func senderDomains(bank: String) -> [String] {
-    BankDomains.templateDomains(bank: bank, templates: BundledTemplates.load().templates.map(\.definition))
+    BankDomains.templateDomains(bank: bank, templates: BundledTemplates.load(channel: .mail).templates.map(\.definition))
   }
 
   /// Bank alerts (spec 04 §7.10).

@@ -166,14 +166,75 @@ var smsPaymentWords = []string{
 
 var smsCurrencyWords = []string{"درهم", "دولار", "يورو"}
 
+const smsOneTimeCodeKind = "one-time code"
+
 var smsUntemplatedKinds = []struct {
 	kind    string
 	markers []string
 }{
-	{"one-time code", []string{"OTP", "كلمة المرور", "كلمة السر"}},
 	{"failed scheduled transfer", []string{"could not be processed"}},
 	{"card application approval", []string{"Application has been approved"}},
 	{"cashback notice", []string{"استرداد نقدي"}},
+}
+
+var smsCodeWords = [][]string{{"OTP"}, {"code"}, {"passcode"}, {"رمز"}, {"كلمة", "المرور"}, {"كلمة", "السر"}}
+
+var smsCodeLinks = []string{"is", "your", "هو", "هي"}
+
+func isOneTimeCode(s string) bool {
+	if len(s) < 4 || len(s) > 8 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func smsCodeWordAt(tokens []string, i int, word []string) bool {
+	if i+len(word) > len(tokens) {
+		return false
+	}
+	for k, w := range word {
+		if !strings.EqualFold(tokens[i+k], w) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSMSCodeLink(s string) bool {
+	return slices.ContainsFunc(smsCodeLinks, func(l string) bool { return strings.EqualFold(s, l) })
+}
+
+func smsCodeBeside(tokens []string, from, step int) bool {
+	for k, links := from, 0; k >= 0 && k < len(tokens); k += step {
+		if isOneTimeCode(tokens[k]) {
+			return true
+		}
+		if !isSMSCodeLink(tokens[k]) || links == 2 {
+			return false
+		}
+		links++
+	}
+	return false
+}
+
+func hasOneTimeCodeMarker(text string) bool {
+	var tokens []string
+	for _, raw := range strings.Fields(text) {
+		tokens = append(tokens, strings.Trim(raw, "().,:;!؛،\"'"))
+	}
+	for i := range tokens {
+		for _, w := range smsCodeWords {
+			if smsCodeWordAt(tokens, i, w) && (smsCodeBeside(tokens, i+len(w), 1) || smsCodeBeside(tokens, i-1, -1)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isWholeNumber(s string) bool {
@@ -235,6 +296,9 @@ func paymentShaped(text string) bool {
 }
 
 func untemplatedKind(text string) string {
+	if hasOneTimeCodeMarker(text) {
+		return smsOneTimeCodeKind
+	}
 	for _, k := range smsUntemplatedKinds {
 		for _, m := range k.markers {
 			if strings.Contains(text, m) {
@@ -284,13 +348,19 @@ func (s smsTemplates) byID(id string) *tmpl.Compiled {
 	return nil
 }
 
-func (s smsTemplates) run(sender, normalized string) (readBy string, gated []string, expect tmpl.TemplateExpect, matched []string) {
+func (s smsTemplates) mayFile(readBy, sender string) bool {
+	for _, d := range s.defs {
+		if d.ID == readBy {
+			return tmpl.MatchesSMSSender(d, sender)
+		}
+	}
+	return false
+}
+
+func (s smsTemplates) run(normalized string) (readBy string, gated []string, expect tmpl.TemplateExpect, matched []string) {
 	gated = []string{}
 	expect = tmpl.ExpectOf(tmpl.Extraction{}, tmpl.ErrNoMatch)
 	for i, c := range s.compiled {
-		if !tmpl.MatchesSMSSender(s.defs[i], sender) {
-			continue
-		}
 		e, err := c.Execute("", normalized)
 		switch {
 		case err == nil:
@@ -324,6 +394,11 @@ func compactJSON(t *testing.T, b []byte) []byte {
 
 func readSMSCorpus(t *testing.T) []smsCorpusFile {
 	t.Helper()
+	return readSMSCorpusFiles(t, true)
+}
+
+func readSMSCorpusFiles(t *testing.T, currentDefinitions bool) []smsCorpusFile {
+	t.Helper()
 	dir := privatefixtures.Path(t, smsCorpusDir)
 	raw := Raw()
 	var out []smsCorpusFile
@@ -351,7 +426,7 @@ func readSMSCorpus(t *testing.T) []smsCorpusFile {
 			if f.Template != id {
 				t.Fatalf("%s names template %q, want %s", name, f.Template, id)
 			}
-			if !bytes.Equal(compactJSON(t, f.Definition), compactJSON(t, raw[id])) {
+			if currentDefinitions && !bytes.Equal(compactJSON(t, f.Definition), compactJSON(t, raw[id])) {
 				t.Fatalf("%s holds a definition that is not the seed %s.json; regenerate with %s=1 go test ./internal/tmpl/seed/ -run TestWriteDIBSMSCorpus",
 					name, id, writeCorpusEnv)
 			}
@@ -397,7 +472,7 @@ func TestDIBSMSCorpusIsWhatThisBuildProduces(t *testing.T) {
 				t.Fatalf("%s: the normalized text is stale; regenerate with %s=1 go test ./internal/tmpl/seed/ -run TestWriteDIBSMSCorpus",
 					c.Name, writeCorpusEnv)
 			}
-			readBy, gated, runExpect, _ := s.run(c.Sender, normalized)
+			readBy, gated, runExpect, _ := s.run(normalized)
 			expect := s.fileExpect(f.Family, normalized, runExpect)
 			if readBy != c.ReadBy || strings.Join(gated, ",") != strings.Join(c.Gated, ",") ||
 				!sameSMSExpect(expect, c.Expect) {
@@ -413,7 +488,7 @@ func TestDIBSMSCorpusAgreesWithAnIndependentReading(t *testing.T) {
 	s := loadSMSTemplates(t)
 	read := map[string]int{}
 	kinds := map[string]int{}
-	var wrongAmount, wrongCurrency, wrongDirection, unread, misread, nonPaymentMatched, doubleMatched, gatedOut, unknownShape int
+	var wrongAmount, wrongCurrency, wrongDirection, unread, misread, nonPaymentMatched, doubleMatched, gatedOut, unknownShape, unfiled int
 	total := 0
 	for _, f := range files {
 		for _, c := range f.Cases {
@@ -423,7 +498,7 @@ func TestDIBSMSCorpusAgreesWithAnIndependentReading(t *testing.T) {
 			if want.family != f.Family {
 				t.Errorf("%s sits in %s but reads as %s", c.Name, smsCorpusFileName(f.Family), want.family)
 			}
-			readBy, gated, expect, matched := s.run(c.Sender, normalized)
+			readBy, gated, expect, matched := s.run(normalized)
 			gatedOut += len(gated)
 			if len(matched) > 1 {
 				doubleMatched++
@@ -452,6 +527,10 @@ func TestDIBSMSCorpusAgreesWithAnIndependentReading(t *testing.T) {
 			if readBy != smsTemplateID(want.family) {
 				misread++
 				t.Errorf("%s: %s read a %s text", c.Name, readBy, want.family)
+			}
+			if !s.mayFile(readBy, c.Sender) {
+				unfiled++
+				t.Errorf("%s: %s read it, but its sender is not in the template's sms_sender, so the hit could not file", c.Name, readBy)
 			}
 			if expect.AmountMinor != fmt.Sprint(want.amountMinor) {
 				wrongAmount++
@@ -484,10 +563,10 @@ func TestDIBSMSCorpusAgreesWithAnIndependentReading(t *testing.T) {
 	t.Logf("%s %d texts: %d payments read (purchase %d, debit %d, credit %d, salary %d, refund %d, reversal %d, own-transfer %d, card-payment %d), %d other",
 		privatefixtures.Marker, total, payments, read["purchase"], read["debit"], read["credit"], read["salary"], read["refund"],
 		read["reversal"], read["own-transfer"], read["card-payment"], total-payments)
-	t.Logf("wrong amounts %d, wrong currencies %d, wrong directions %d, unread payments %d, misread %d, non-payments matched %d",
-		wrongAmount, wrongCurrency, wrongDirection, unread, misread, nonPaymentMatched)
+	t.Logf("wrong amounts %d, wrong currencies %d, wrong directions %d, unread payments %d, misread %d, non-payments matched %d, hits from a sender the template does not name %d",
+		wrongAmount, wrongCurrency, wrongDirection, unread, misread, nonPaymentMatched, unfiled)
 	t.Logf("other texts with a payment shape: one-time code %d, failed scheduled transfer %d, card application approval %d, cashback notice %d, unknown %d",
-		kinds["one-time code"], kinds["failed scheduled transfer"], kinds["card application approval"], kinds["cashback notice"], unknownShape)
+		kinds[smsOneTimeCodeKind], kinds["failed scheduled transfer"], kinds["card application approval"], kinds["cashback notice"], unknownShape)
 }
 
 const (
@@ -662,7 +741,7 @@ func TestDIBSMSCorpusDirectionsAgreeWithTheBalances(t *testing.T) {
 		}
 		for _, c := range f.Cases {
 			_, normalized := decodeCase(t, c)
-			_, _, e, _ := s.run(c.Sender, normalized)
+			_, _, e, _ := s.run(normalized)
 			all = append(all, dated{c.ReceivedAt, smsBalanceRow{c.Name, normalized, e.Direction}, f.Family})
 		}
 	}
@@ -813,8 +892,18 @@ func TestThePaymentShapeFindsAnUnknownPaymentWording(t *testing.T) {
 		{"سحب نقدي بمبلغ 500 درهم من صراف SAMPLE", true, ""},
 		{"Transfer of AED1,000 to SAMPLE PERSON is complete", true, ""},
 		{"تم تحويل 1,234.56 إلى حساب SAMPLE", true, ""},
-		{"123456 هو OTP للمشتريات من SAMPLE SHOP بمبلغ 12.34 AED على بطاقتك 1234", true, "one-time code"},
-		{"123456 كلمة المرور الخاصة بك لعملية شراء بمبلغ 12.34 درهم", true, "one-time code"},
+		{"123456 هو OTP للمشتريات من SAMPLE SHOP بمبلغ 12.34 AED على بطاقتك 1234", true, smsOneTimeCodeKind},
+		{"123456 كلمة المرور الخاصة بك لعملية شراء بمبلغ 12.34 درهم", true, smsOneTimeCodeKind},
+		{"Your OTP is 482913 for a purchase of AED 12.34 at SAMPLE SHOP", true, smsOneTimeCodeKind},
+		{"482913 is your code for a payment of AED 12.34 to SAMPLE", true, smsOneTimeCodeKind},
+		{"رمز 4829 لعملية شراء بمبلغ 12.34 درهم", true, smsOneTimeCodeKind},
+		{"Your DIB card was debited for AED 12.34 at SAMPLE SHOP. Never share your OTP with anyone.", true, ""},
+		{"Purchase of AED 12.34 at SAMPLE SHOP. Do not share this OTP or code with anyone.", true, ""},
+		{"Purchase of AED 12.34 at FOOTPATH SHOP on card XX1234", true, ""},
+		{"مشتريات بقيمة 12.34 درهم من SAMPLE. لا تشارك كلمة المرور مع أي شخص", true, ""},
+		{"تم خصم 12.34 درهم لدى SAMPLE. لا تشارك كلمة السر أو الرمز مع أحد", true, ""},
+		{"Purchase of AED 12.34 at SAMPLE SHOP. An OTP is valid for 5 minutes only", true, ""},
+		{"Purchase of AED 12.34 at SAMPLE SHOP, ref 123456789 OTP", true, ""},
 		{"A transfer of AED 1,000 could not be processed", true, "failed scheduled transfer"},
 		{"A transfer ref# REF123 could not be processed", true, "failed scheduled transfer"},
 		{"Your Credit Card Application has been approved for AED 10,000.00.", true, "card application approval"},
@@ -832,6 +921,30 @@ func TestThePaymentShapeFindsAnUnknownPaymentWording(t *testing.T) {
 	}
 }
 
+func TestATemplateReadsATextWhateverTheSender(t *testing.T) {
+	s := loadSMSTemplates(t)
+	text := "مشتريات بمبلغ 12.34 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE SHOP. الحد الائتماني المتاح 1,234.56"
+	readBy, _, e, matched := s.run(text)
+	if readBy != smsTemplateID("purchase") || len(matched) != 1 || e.AmountMinor != "1234" {
+		t.Fatalf("read by %q (%v), amount %s", readBy, matched, e.AmountMinor)
+	}
+	for _, tc := range []struct {
+		sender string
+		files  bool
+	}{
+		{smsCorpusSender, true},
+		{"dib-sms", true},
+		{"+971500000000", false},
+		{"971500000000", false},
+		{"DIB", false},
+		{"", false},
+	} {
+		if got := s.mayFile(readBy, tc.sender); got != tc.files {
+			t.Errorf("sender %q: may file %v, want %v; the template reads the text either way", tc.sender, got, tc.files)
+		}
+	}
+}
+
 func TestAnAccountMaskIsNeverALastFour(t *testing.T) {
 	s := loadSMSTemplates(t)
 	for _, text := range []string{
@@ -841,7 +954,7 @@ func TestAnAccountMaskIsNeverALastFour(t *testing.T) {
 		"خصم 1,234.56 في 05-06-2026 MB FUND TRANSFER DEBIT رصيدك 3,333.33",
 		"ايداع 987.65 في 05-06-2026 INWARD UAE FUNDS TRANSFER رصيدك 2,121.21",
 	} {
-		readBy, _, e, _ := s.run(smsCorpusSender, text)
+		readBy, _, e, _ := s.run(text)
 		if readBy == "" {
 			t.Errorf("%q: no template read it", text)
 			continue
@@ -887,7 +1000,7 @@ func smsInputs(t *testing.T) []smsExportRow {
 		return rows
 	}
 	var rows []smsExportRow
-	for _, f := range readSMSCorpus(t) {
+	for _, f := range readSMSCorpusFiles(t, false) {
 		for _, c := range f.Cases {
 			text, _ := decodeCase(t, c)
 			rows = append(rows, smsExportRow{Ts: c.ReceivedAt, Sender: c.Sender, Text: text})
@@ -912,7 +1025,7 @@ func TestWriteDIBSMSCorpus(t *testing.T) {
 	raw := Raw()
 	regenerate := "Written by server/internal/tmpl/seed TestWriteDIBSMSCorpus (" + writeCorpusEnv + "=1, " +
 		privatefixtures.EnvVar + ", and " + smsExportEnv + " for a new export); received_at is the export's UAE wall clock in UTC. " +
-		"`read_by` and `gated` are what every DIB text template did with the sender gate, over the normalized text."
+		"`read_by` and `gated` are what every DIB text template did with the normalized text, whatever the sender: `match.sms_sender` decides only whether a hit may file."
 	files := map[string]*smsCorpusFile{}
 	for _, fam := range smsFamilies {
 		f := &smsCorpusFile{
@@ -941,7 +1054,7 @@ func TestWriteDIBSMSCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 		f := files[independentReading(normalized).family]
-		readBy, gated, runExpect, _ := s.run(r.Sender, normalized)
+		readBy, gated, runExpect, _ := s.run(normalized)
 		prefix := smsTemplateID(f.Family)
 		if f.Family == smsFamilyOther {
 			prefix = "dib.sms.other"

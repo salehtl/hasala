@@ -150,7 +150,7 @@ public struct TemplateDefinition: Sendable, Equatable {
 
   public func matchesSMSSender(_ sender: String) -> Bool {
     guard isSMS else { return false }
-    let s = ASCII.lowercased(sender.trimming(.asciiSpace))
+    let s = ASCII.lowercased(CompiledTemplate.trimCapture(sender))
     if s.isEmpty { return false }
     return match.smsSender.contains { ASCII.lowercased($0).utf8.elementsEqual(s.utf8) }
   }

@@ -216,7 +216,8 @@ struct Rig {
   init(
     backend: Backend = .sqlite, categorizer: any IngestCategorizer = NoCategorizer(), stepUpFails: Bool = false,
     gmail: FakeGmail = FakeGmail(), config: ((inout MailboxEngineConfig) -> Void)? = nil,
-    wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil
+    wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil,
+    templates: [CompiledTemplate] = BundledTemplates.load().templates
   ) {
     self.gmail = gmail
     self.backend = backend
@@ -245,7 +246,7 @@ struct Rig {
     let clock = self.clock
     engine = MailboxEngine(
       config: c, oauth: oauth, tokens: tokens, gmailHTTP: gmail, store: store, ledger: ledger, server: server,
-      stepUp: FakeStepUp(fail: stepUpFails, log: stepUps), categorizer: categorizer, templates: BundledTemplates.load().templates,
+      stepUp: FakeStepUp(fail: stepUpFails, log: stepUps), categorizer: categorizer, templates: templates,
       clock: clock, random: CountingRandom(), sleep: { ms in clock.advance(ms) })
     gmail.watchExpirationMs = Rig.t0 + 7 * 86_400_000
   }
