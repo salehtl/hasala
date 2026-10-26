@@ -421,10 +421,14 @@ public enum MessageDisposer {
     return .object(JSONObject(fields))
   }
 
-  public static let refundTemplates = ["dib.card-refund.v1", "dib.card-reversal.v1"]
+  public static let refundTemplates = ["dib.card-refund.v1", "dib.card-reversal.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1"]
 
   static func refundDecision(_ m: ParsedMail, _ f: ParsedFields) -> IngestDecision? {
-    guard f.direction == "credit", let ref = m.gates.template,
+    refundDecision(template: m.gates.template, direction: f.direction)
+  }
+
+  static func refundDecision(template ref: String?, direction: String) -> IngestDecision? {
+    guard direction == "credit", let ref,
       let id = ref.split(separator: "@", maxSplits: 1).first.map(String.init), refundTemplates.contains(id)
     else { return nil }
     return IngestDecision(

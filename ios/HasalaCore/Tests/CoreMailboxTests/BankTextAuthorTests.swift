@@ -1,0 +1,563 @@
+import CoreCategorize
+import CoreDomain
+import CoreExtract
+import CoreJSON
+import CoreMailbox
+import CorePrimitives
+import CoreReplay
+import CoreTemplate
+import CoreTestSupport
+import CoreTime
+import CoreWire
+import Foundation
+import Testing
+
+@testable import CoreMailbox
+
+@Suite("bank texts: filing with no review (D1)")
+struct BankTextFilingTests {
+  @Test("a template hit from its sms_sender on a card_linked mine card files; the op is a v4 txn_ingested with the text fields")
+  func filesOnKnownCard() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let added = try #require(await rig.add(try TextCase.named("dib-purchase-credit-card")).added)
+    #expect(added.filed && !added.unparsed && added.bank == "dib" && added.repeatNumber == 0 && added.keptAtMs == TextRig.t0)
+    let p = try rig.payload(added.txnID)
+    #expect(p["needs_review"]?.boolValue == false)
+    #expect(p["entry_method"]?.stringValue == "mailbox" && p["tier"]?.stringValue == "template" && p["unparsed"]?.boolValue == false)
+    #expect(p["channel"]?.stringValue == "sms" && p["received_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+    #expect(p["amount_minor"]?.stringValue == "12345" && p["currency"]?.stringValue == "AED" && p["direction"]?.stringValue == "debit")
+    #expect(p["posted_at"]?.stringValue == "2026-06-05T06:11:00.000Z" && p["posted_precision"]?.stringValue == "time")
+    #expect(p["merchant_raw"]?.stringValue == "SAMPLE SHOP" && p["last4"]?.stringValue == "1234" && p["bank"]?.stringValue == "dib")
+    #expect(p["provenance"] == nil && p["dedupe"] == nil)
+    let g = try #require(p["gates"]?.objectValue)
+    #expect(g["ar"] == nil && g["kind"] == nil && g["reader"] == nil)
+    #expect(g["sender"]?.stringValue == "trusted" && g["card"]?.stringValue == "known" && g["forwarded"]?.boolValue == false)
+    #expect(g["template"]?.stringValue == "dib.sms.purchase.v1@1")
+    let ingest = try #require(try rig.ingests().first)
+    #expect(ingest.v == 4 && ingest.ingestID?.utf8.count == 64)
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty)
+    let t = try #require(s.txns[added.txnID])
+    #expect(t.channel == "sms" && t.receivedAt == "2026-06-05T08:00:00.000Z" && t.isText && !t.needsReview && !t.verifiedSender)
+    let row = try #require(try rig.row(added.txnID))
+    #expect(row.isText && row.receivedMs == TextRig.t0 && row.templateRef == "dib.sms.purchase.v1@1")
+  }
+
+  @Test("no sender, another sender, an unknown card, a not_mine card, no card and a paste each go to Review")
+  func everythingElseGoesToReview() async throws {
+    let purchase = try TextCase.named("dib-purchase-credit-card")
+    var cases: [(String, TextCase, CardState?, String)] = []
+    cases.append(("no sender", try TextCase.named("dib-purchase-no-sender"), .mine, "known"))
+    cases.append(("other sender", try TextCase.named("dib-purchase-other-bank-sender"), .mine, "known"))
+    cases.append(("numeric sender", try TextCase.named("dib-purchase-numeric-sender"), .mine, "known"))
+    cases.append(("unknown card", purchase, nil, "unknown"))
+    cases.append(("not mine", purchase, .notMine, "not_mine"))
+    cases.append(("no card", try TextCase.named("dib-purchase-debit-card"), .mine, "none"))
+    for (why, c, card, gate) in cases {
+      let rig = try TextRig()
+      if let card { try await rig.linkCard("dib", "1234", card) }
+      let added = try #require(await rig.add(c).added, "\(why)")
+      #expect(!added.filed, "\(why)")
+      let p = try rig.payload(added.txnID)
+      #expect(p["needs_review"]?.boolValue == true, "\(why)")
+      #expect(p["gates"]?["card"]?.stringValue == gate, "\(why)")
+      #expect(try rig.fold().anomalies.isEmpty, "\(why)")
+    }
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let pasted = try #require(await rig.author.paste(purchase.text, atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked).added)
+    #expect(!pasted.filed)
+    let p = try rig.payload(pasted.txnID)
+    #expect(p["needs_review"]?.boolValue == true && p["gates"]?["sender"]?.stringValue == "untrusted")
+  }
+
+  @Test("a marker beside a transaction clause never files, even on a template hit from its sender with a known card")
+  func markedNeverFiles() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let added = try #require(await rig.add(try TextCase.named("dib-template-hit-with-code-and-clause")).added)
+    #expect(!added.filed)
+    #expect(try rig.payload(added.txnID)["needs_review"]?.boolValue == true)
+    let generic = try #require(await rig.add(try TextCase.named("generic-code-with-clause")).added)
+    #expect(!generic.filed)
+  }
+
+  @Test("a one-time code and a declined purchase that the purchase template would read are dropped before it, with a known card")
+  func codesAndDeclinesNeverReachTheTemplates() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    for name in ["dib-otp-worded-as-purchase", "dib-declined-worded-as-purchase"] {
+      let c = try TextCase.named(name)
+      let template = try #require(BankTextReader.templates.first { $0.definition.id == "dib.sms.purchase.v1" })
+      #expect(try template.execute(subject: "", normalizedBody: BankTextReader.normalized(c.text)).matched, "\(name)")
+      let calls = LinkCalls(.notLinked)
+      let out = await rig.author.add(c.arrival, secret: TextRig.secret, link: { calls.call() })
+      guard case .dropped(let k, let counted, let bank) = out else {
+        Issue.record("\(name): \(out)")
+        continue
+      }
+      #expect(k == (name.contains("otp") ? .oneTimeCode : .declined) && counted && bank == "dib")
+      #expect(calls.count == 0)
+    }
+    #expect(try rig.ingests().isEmpty)
+  }
+
+  @Test("a row from a filing template with a transfer partner never files")
+  func transferPartnerHolds() throws {
+    let (r, _) = BankTextReader.read(try TextCase.named("dib-purchase-credit-card").arrival)
+    let k = try #require(r.kept)
+    #expect(BankTextPayload.filesItself(k, card: "known", link: .notLinked, origin: .automation, transferPartner: false))
+    #expect(!BankTextPayload.filesItself(k, card: "known", link: .notLinked, origin: .automation, transferPartner: true))
+    #expect(!BankTextPayload.filesItself(k, card: "known", link: .unknownUnanswered, origin: .automation, transferPartner: false))
+    #expect(!BankTextPayload.filesItself(k, card: "known", link: .notLinked, origin: .paste, transferPartner: false))
+    var held = k
+    held.held = true
+    #expect(!BankTextPayload.filesItself(held, card: "known", link: .notLinked, origin: .automation, transferPartner: false))
+  }
+}
+
+@Suite("bank texts: one source and the link copy")
+struct BankTextLinkTests {
+  @Test("while linked nothing is authored; template hits and bank or no-sender payment shapes count as ignored, others do not")
+  func linkedIgnores() async throws {
+    let rig = try TextRig()
+    let want: [(String, Bool, String?)] = [
+      ("dib-purchase-credit-card", true, "dib"), ("dib-purchase-numeric-sender", true, "dib"), ("dib-english-purchase", true, "dib"),
+      ("dib-arabic-cash-no-template-no-sender", true, nil), ("person-sent-money", false, nil), ("unknown-sender-payment", false, nil),
+    ]
+    for (name, counted, bank) in want {
+      let out = await rig.add(try TextCase.named(name), link: .linked)
+      #expect(out == .ignored(counted: counted, bank: bank), "\(name): \(out)")
+    }
+    for name in ["dib-otp-purchase", "bank-no-payment-word", "person-chat"] {
+      guard case .dropped = await rig.add(try TextCase.named(name), link: .linked) else {
+        Issue.record("\(name) was not dropped")
+        continue
+      }
+    }
+    #expect(try rig.pendingOps().isEmpty)
+    let paste = await rig.author.paste(try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0, secret: TextRig.secret, link: .linked)
+    #expect(paste == .ignored(counted: true, bank: "dib"))
+    #expect(try rig.pendingOps().isEmpty)
+  }
+
+  @Test("with no answer about the link, a kept text is authored for Review and never files; a dropped text never asks")
+  func unknownLinkNeverFiles() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let calls = LinkCalls(.unknownUnanswered)
+    let out = await rig.author.add(try TextCase.named("dib-purchase-credit-card").arrival, secret: TextRig.secret, link: { calls.call() })
+    let added = try #require(out.added)
+    #expect(!added.filed && calls.count == 1)
+    #expect(try rig.payload(added.txnID)["needs_review"]?.boolValue == true)
+    for name in ["dib-otp-purchase", "person-chat", "no-sender-chat", "set-up-test-bank", "dib-promotion"] {
+      _ = await rig.author.add(try TextCase.named(name).arrival, secret: TextRig.secret, link: { calls.call() })
+    }
+    #expect(calls.count == 1)
+  }
+
+  @Test("the set-up test marks the test passed and authors nothing, from any sender; outside the window it leaves no trace")
+  func setUpTest() async throws {
+    let rig = try TextRig()
+    for name in ["set-up-test-person", "set-up-test-unknown", "set-up-test-bank", "set-up-test-no-sender"] {
+      let c = try TextCase.named(name)
+      #expect(await rig.add(c) == .testPassed, "\(name)")
+      let (r, _) = BankTextReader.read(c.arrival)
+      #expect(!r.countsAsPayment, "\(name)")
+    }
+    for name in ["set-up-test-outside-window", "set-up-test-outside-window-no-sender"] {
+      #expect(await rig.add(try TextCase.named(name)) == .dropped(.noPaymentShape, counted: false, bank: nil), "\(name)")
+    }
+    #expect(try rig.pendingOps().isEmpty)
+  }
+}
+
+@Suite("bank texts: the key for each text")
+struct BankTextKeyTests {
+  @Test("the key is 64 hex digits of HMAC-SHA256 over length-prefixed fields; any change in any field changes it")
+  func key() throws {
+    let s = TextRig.secret
+    let k = try #require(BankTextKey.ingestID(secret: s, sender: "dib-sms", normalizedText: "abc", arrivalMinuteMs: 60_000, n: 0))
+    #expect(k.utf8.count == 64 && k.utf8.allSatisfy { (0x30...0x39).contains($0) || (0x61...0x66).contains($0) })
+    var variants: Set<String> = [k]
+    for v in [
+      BankTextKey.ingestID(secret: s, sender: "dib-sm", normalizedText: "sabc", arrivalMinuteMs: 60_000, n: 0),
+      BankTextKey.ingestID(secret: s, sender: "", normalizedText: "abc", arrivalMinuteMs: 60_000, n: 0),
+      BankTextKey.ingestID(secret: s, sender: nil, normalizedText: "dib-smsabc", arrivalMinuteMs: 60_000, n: 0),
+      BankTextKey.ingestID(secret: s, sender: "dib-sms", normalizedText: "abc", arrivalMinuteMs: 120_000, n: 0),
+      BankTextKey.ingestID(secret: s, sender: "dib-sms", normalizedText: "abc", arrivalMinuteMs: 60_000, n: 1),
+      BankTextKey.ingestID(secret: Data(repeating: 1, count: 32), sender: "dib-sms", normalizedText: "abc", arrivalMinuteMs: 60_000, n: 0),
+      BankTextKey.ingestID(secret: s, sender: "dib-sms", normalizedText: "abc1", arrivalMinuteMs: 6_000, n: 0),
+    ] {
+      #expect(variants.insert(try #require(v)).inserted)
+    }
+    #expect(BankTextKey.ingestID(secret: s, sender: "dib-sms", normalizedText: "abc", arrivalMinuteMs: 60_000, n: 0) == k)
+    #expect(BankTextKey.ingestID(secret: Data(count: 31), sender: nil, normalizedText: "x", arrivalMinuteMs: 0, n: 0) == nil)
+    #expect(BankTextKey.ingestID(secret: Data(count: 33), sender: nil, normalizedText: "x", arrivalMinuteMs: 0, n: 0) == nil)
+  }
+
+  @Test("equal texts in the same minute get n 0 and 1; the fold holds the second as a probable copy; the same key again is duplicate_ingest")
+  func sameMinute() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let a = try #require(await rig.add(c, at: TextRig.t0 + 5_000).added)
+    let b = try #require(await rig.add(c, at: TextRig.t0 + 50_000).added)
+    #expect(a.repeatNumber == 0 && b.repeatNumber == 1 && a.txnID != b.txnID)
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty)
+    #expect(s.txns[b.txnID]?.copyOf == a.txnID && s.txns[b.txnID]?.isHeldCopy == true && s.txns[a.txnID]?.copyOf == nil)
+    let first = try #require(try rig.ingests().first)
+    var a2 = OpAuthor(AuthorContext(writerID: TextRig.writer.string, nowMs: TextRig.t0 + 86_400_000, ownLastMs: nil, maxAuthored: [:], random: SeededRandom(seed: "again")))
+    try a2.ingest(payload: try #require(first.payload.objectValue), ingestID: try #require(first.ingestID))
+    var again = s
+    try Replay.foldOps(try a2.build().ops, seq: 999, writerID: TextRig.writer.string, into: &again)
+    #expect(again.anomalies.map(\.kind) == ["duplicate_ingest"])
+  }
+
+  @Test("an automation that runs twice across a minute boundary gives two rows, the second held")
+  func acrossMinutes() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let a = try #require(await rig.add(c, at: TextRig.t0 + 59_000).added)
+    let b = try #require(await rig.add(c, at: TextRig.t0 + 61_000).added)
+    #expect(a.repeatNumber == 0 && b.repeatNumber == 0)
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns[b.txnID]?.copyOf == a.txnID)
+  }
+
+  @Test("two runs of equal texts started together get n 0 and 1 and two rows; neither is refused as duplicate_ingest")
+  func concurrent() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-reversal")
+    let outcomes = await withTaskGroup(of: BankTextOutcome.self) { g in
+      for _ in 0..<2 { g.addTask { await rig.add(c) } }
+      var out: [BankTextOutcome] = []
+      for await o in g { out.append(o) }
+      return out
+    }
+    #expect(outcomes.compactMap(\.added).map(\.repeatNumber).sorted() == [0, 1])
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns.count == 2)
+    #expect(Set(try rig.ingests().compactMap(\.ingestID)).count == 2)
+  }
+
+  @Test("a key whose op is still in the outbox counts as taken")
+  func outboxCountsAsTaken() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-reversal")
+    _ = try #require(await rig.add(c).added)
+    let text = BankTextReader.normalized(c.text)
+    let key0 = try #require(BankTextKey.ingestID(secret: TextRig.secret, sender: "dib-sms", normalizedText: text, arrivalMinuteMs: TextRig.t0, n: 0))
+    #expect(try rig.store.hasPendingIngest(key0))
+    #expect(await rig.ledger.isIngested(key0))
+    let fake = FakeTextLedger(outbox: [key0])
+    let out = await BankTextAuthor(ledger: fake).add(c.arrival, secret: TextRig.secret, link: { .notLinked })
+    #expect(out.added?.repeatNumber == 1)
+  }
+
+  @Test("equal texts on different days are two rows with no hold")
+  func differentDays() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-reversal")
+    let a = try #require(await rig.add(c).added)
+    let b = try #require(await rig.add(c, at: TextRig.t0 + 86_400_000).added)
+    #expect(a.repeatNumber == 0 && b.repeatNumber == 0)
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns[b.txnID]?.copyOf == nil && s.txns[a.txnID]?.copyOf == nil)
+  }
+
+  @Test("a repeat the fold cannot hold as a copy (no bank) is a second row in Review, beside the first as a possible duplicate")
+  func noBankRepeat() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-english-purchase-no-sender")
+    let a = try #require(await rig.add(c).added)
+    let b = try #require(await rig.add(c).added)
+    #expect(!a.filed && !b.filed && b.repeatNumber == 1)
+    let s = try rig.fold()
+    #expect(s.anomalies.map(\.kind) == ["possible_duplicate"])
+    #expect(s.txns.count == 2 && s.txns[b.txnID]?.needsReview == true && s.txns[b.txnID]?.copyOf == nil)
+    #expect(s.txns[b.txnID]?.possibleDuplicateOf == a.txnID && s.txns[a.txnID]?.isLive == true && s.txns[b.txnID]?.isLive == true)
+  }
+}
+
+actor FakeTextLedger: BankTextLedger {
+  var outbox: Set<String>
+  var rows: [BankTextRow] = []
+  var authored: [BankTextDraft] = []
+
+  init(outbox: Set<String> = []) { self.outbox = outbox }
+
+  func knownCards() async -> [CardKey: CardState] { [:] }
+  func isIngested(_ ingestID: String) async -> Bool { outbox.contains(ingestID) || authored.contains { $0.ingestID == ingestID } }
+  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { rows }
+  func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
+    authored.append(draft)
+    return "01JC00000000000000000000\(authored.count < 10 ? "0" : "")\(authored.count)"
+  }
+}
+
+@Suite("bank texts: the transfer pair")
+struct BankTextTransferPairTests {
+  static func ownTransfer(_ amount: String) -> String {
+    "تحويل بين حساباتك بمبلغ AED \(amount) من حساب 001-000-123XXXX-01 الي حساب 001-000-456XXXX-01 في 05-06-2026 MB Fund Transfer رصيد حساب الخصم هو AED 9,876.54 وحساب الايداع هو AED 8,765.43"
+  }
+
+  static func debit(_ amount: String) -> String { "خصم بمبلغ \(amount) في 05-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44" }
+
+  @Test("a DIB debit alert and a transfer notice for one amount within 30 minutes: the second waits in Review naming the first, in either order")
+  func pairs() async throws {
+    for order in [[Self.debit("234.56"), Self.ownTransfer("234.56")], [Self.ownTransfer("234.56"), Self.debit("234.56")]] {
+      let rig = try TextRig()
+      let first = try #require(await rig.add(TextCase(name: "a", sender: "DIB-SMS", text: order[0], receivedAtMs: TextRig.t0)).added)
+      let second = try #require(
+        await rig.add(TextCase(name: "b", sender: "DIB-SMS", text: order[1], receivedAtMs: TextRig.t0 + 29 * 60_000)).added)
+      #expect(first.transferPartner == nil && second.transferPartner == first.txnID && !second.filed)
+      #expect(try rig.payload(second.txnID)["needs_review"]?.boolValue == true)
+      let s = try rig.fold()
+      #expect(s.anomalies.isEmpty && s.txns[first.txnID]?.isLive == true && s.txns[second.txnID]?.isLive == true)
+      #expect(s.txns[first.txnID]?.copyOf == nil && s.txns[second.txnID]?.copyOf == nil && s.txns[second.txnID]?.mergedInto == nil)
+    }
+  }
+
+  @Test("31 minutes apart, another amount, or two of the same role: no hold")
+  func noPair() async throws {
+    let cases: [(String, String, Int64)] = [
+      (Self.debit("234.56"), Self.ownTransfer("234.56"), 31), (Self.debit("234.56"), Self.ownTransfer("234.57"), 5),
+      (Self.debit("234.56"), Self.debit("234.56"), 5),
+    ]
+    for (a, b, minutes) in cases {
+      let rig = try TextRig()
+      _ = try #require(await rig.add(TextCase(name: "a", sender: "DIB-SMS", text: a, receivedAtMs: TextRig.t0)).added)
+      let second = try #require(
+        await rig.add(TextCase(name: "b", sender: "DIB-SMS", text: b, receivedAtMs: TextRig.t0 + minutes * 60_000)).added)
+      #expect(second.transferPartner == nil)
+    }
+  }
+
+  @Test("the pure check: other role, same bank, amount and currency, within the window, nearest first")
+  func pureCheck() {
+    func row(_ id: String, _ t: String, _ ms: Int64, amount: Int64 = 100, bank: String? = "dib", currency: String = "AED") -> BankTextRow {
+      BankTextRow(id: id, bank: bank, amountMinor: amount, currency: currency, direction: "debit", last4: "", postedMs: ms, templateRef: t, unparsed: false)
+    }
+    let alert = row("x", "dib.sms.debit.v1@1", 0)
+    let rows = [
+      row("a", "dib.sms.own-transfer.v1@1", 20 * 60_000), row("b", "dib.sms.own-transfer.v1@1", -10 * 60_000),
+      row("c", "dib.sms.debit.v1@1", 60_000), row("d", "dib.sms.own-transfer.v1@1", 60_000, amount: 101),
+      row("e", "dib.sms.own-transfer.v1@1", 60_000, bank: nil), row("f", "dib.sms.own-transfer.v1@1", 60_000, currency: "USD"),
+      row("g", "dib.sms.purchase.v1@1", 0),
+    ]
+    #expect(BankTextTransferPair.partner(of: alert, among: rows)?.id == "b")
+    #expect(BankTextTransferPair.partner(of: row("y", "dib.sms.purchase.v1@1", 0), among: rows) == nil)
+    #expect(BankTextTransferPair.partner(of: alert, among: [row("z", "dib.sms.own-transfer.v1@1", 31 * 60_000)]) == nil)
+  }
+}
+
+@Suite("bank texts: the unparsed text row, paste and categorization")
+struct BankTextRowTests {
+  @Test("a payment-shaped bank text with no readable amount is an unparsed text row that folds with no anomaly")
+  func unparsedRow() async throws {
+    let rig = try TextRig()
+    let added = try #require(await rig.add(try TextCase.named("dib-arabic-no-amount")).added)
+    #expect(added.unparsed && !added.filed)
+    let p = try rig.payload(added.txnID)
+    #expect(p["tier"]?.stringValue == "none" && p["unparsed"]?.boolValue == true && p["needs_review"]?.boolValue == true)
+    #expect(p["amount_minor"] == nil && p["currency"] == nil && p["direction"] == nil)
+    #expect(p["bank"]?.stringValue == "dib" && p["last4"]?.stringValue == "1234" && p["posted_precision"]?.stringValue == "time")
+    #expect(p["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z" && p["received_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+    #expect(p["channel"]?.stringValue == "sms" && p["gates"]?["template"]?.stringValue == "none")
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns[added.txnID]?.unparsed == true && s.txns[added.txnID]?.isText == true)
+    let row = try #require(try rig.row(added.txnID))
+    #expect(row.unparsed && row.isText && row.reviewLane == "unreadable")
+  }
+
+  @Test("a paste that replaces an unparsed text row archives it in the same blob, and the fold accepts it")
+  func pasteReplaces() async throws {
+    let rig = try TextRig()
+    let unread = try #require(await rig.add(try TextCase.named("dib-arabic-no-amount")).added)
+    let pasted = try #require(
+      await rig.author.paste(
+        try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0 + 3_600_000, secret: TextRig.secret, link: .unknownUnanswered,
+        replacing: unread.txnID
+      ).added)
+    #expect(!pasted.filed)
+    let ops = try rig.pendingOps()
+    let annotate = try #require(ops.last)
+    #expect(annotate.type == .txnAnnotated && annotate.payload["txn_id"]?.stringValue == unread.txnID)
+    #expect(annotate.payload["set"]?["archived"]?.stringValue == "user")
+    let rows = try rig.store.pendingOps()
+    #expect(Set(rows.suffix(2).map(\.enqueuedAt)).count == 1 && rows.suffix(2).first?.opType == "txn_ingested")
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns[unread.txnID]?.annotation("archived") == "user")
+    let p = try rig.payload(pasted.txnID)
+    #expect(p["received_at"]?.stringValue == "2026-06-05T09:00:00.000Z")
+  }
+
+  @Test("the SMS refund and reversal templates file credits under refunds")
+  func refunds() async throws {
+    struct Shops: IngestCategorizer {
+      func decide(merchantRaw: String, direction: String) -> IngestDecision { .none }
+    }
+    let rig = try TextRig(categorizer: Shops())
+    for name in ["dib-refund", "dib-reversal"] {
+      let added = try #require(await rig.add(try TextCase.named(name)).added)
+      let p = try rig.payload(added.txnID)
+      #expect(p["category"]?.stringValue == "refunds", "\(name)")
+      #expect(p["category_source"]?["entry"]?.stringValue?.hasPrefix("template:dib.sms.") == true, "\(name)")
+    }
+    #expect(try rig.fold().anomalies.isEmpty)
+  }
+
+  @Test("only rows read by the SMS purchase template may leave the device under Cloud suggestions")
+  func cloudSuggestions() async throws {
+    let rig = try TextRig()
+    var ids: [String: String] = [:]
+    for name in [
+      "dib-purchase-credit-card", "dib-own-transfer", "dib-salary", "dib-credit-transfer", "dib-refund", "dib-reversal", "dib-card-payment",
+      "dib-debit", "dib-english-purchase", "dib-arabic-no-amount",
+    ] {
+      ids[name] = try #require(await rig.add(try TextCase.named(name)).added?.txnID, "\(name)")
+    }
+    let rows = Dictionary(uniqueKeysWithValues: try rig.observer.reader.sweepRows().map { ($0.id, $0) })
+    for (name, id) in ids {
+      let r = try #require(rows[id], "\(name)")
+      #expect(r.text, "\(name)")
+      #expect(ModelSuggestionSweep.mayLeaveDevice(r) == (name == "dib-purchase-credit-card"), "\(name)")
+      #expect(!ModelSuggestionSweep.mayStayOnDevice(r), "\(name)")
+    }
+  }
+
+  @Test("learned layouts train only on bank senders, keyed sms:<sender>, and only when a row is authored")
+  func layouts() async throws {
+    let store = MemoryBankTextLayouts()
+    let rig = try TextRig(layouts: store)
+    _ = await rig.add(try TextCase.named("person-sent-money"))
+    _ = await rig.add(try TextCase.named("dib-english-purchase-no-sender"))
+    #expect(await store.load() == LearnedLayouts())
+    _ = await rig.add(try TextCase.named("dib-english-purchase"), link: .linked)
+    #expect(await store.load() == LearnedLayouts())
+    _ = await rig.add(try TextCase.named("dib-english-purchase"))
+    let trained = await store.load()
+    #expect(trained.senders.keys.sorted() == ["sms:dib-sms"])
+  }
+}
+
+@Suite("bank texts: no text in an op")
+struct BankTextNoTextInOpTests {
+  static func strings(_ v: JSONValue, _ out: inout [String]) {
+    switch v {
+    case .string(let s): out.append(s)
+    case .array(let a): for x in a { strings(x, &out) }
+    case .object(let o): for m in o.members where m.key != "bank" { strings(m.value, &out) }
+    default: break
+    }
+  }
+
+  static func pieces(_ text: String) -> [String] {
+    var out: [String] = []
+    for line in text.split(separator: "\n") {
+      out.append(String(line))
+      var current = ""
+      for ch in line {
+        current.append(ch)
+        if ".!?؟،؛".contains(ch) {
+          out.append(current.trimmingCharacters(in: .whitespaces))
+          current = ""
+        }
+      }
+      if !current.isEmpty { out.append(current.trimmingCharacters(in: .whitespaces)) }
+    }
+    return out.filter { $0.utf8.count >= 12 }
+  }
+
+  @Test("no op holds the body, a sentence or line of it, the sender or the secret")
+  func scan() async throws {
+    var checked = 0
+    for c in try TextCase.all() {
+      let rig = try TextRig()
+      try await rig.linkCard("dib", "1234", .mine)
+      _ = await rig.add(c)
+      _ = await rig.author.paste(c.text, atMs: c.receivedAtMs, secret: TextRig.secret, link: .notLinked)
+      for op in try rig.ingests() {
+        checked += 1
+        let json = String(decoding: try OpCodec.encodeBlobOps([op]), as: UTF8.self)
+        #expect(!json.contains(Hex.encode(TextRig.secret)) && !json.contains(Base64.encode(TextRig.secret)), "\(c.name)")
+        var values: [String] = []
+        Self.strings(op.payload, &values)
+        let body = BankTextReader.normalized(c.text)
+        let merchant = op.payload["merchant_raw"]?.stringValue ?? ""
+        for v in values {
+          #expect(v != body || body.utf8.count < 12, "\(c.name): the whole body is in an op")
+          if let s = c.sender, !s.isEmpty { #expect(!v.localizedCaseInsensitiveContains(s), "\(c.name): the sender is in an op") }
+          for piece in Self.pieces(body) where v.contains(piece) {
+            #expect(v == merchant && merchant.contains(piece), "\(c.name): a line of the text is in an op")
+          }
+        }
+        if c.sender == nil || c.sender?.first == "+" || c.sender == "SAMPLEINFO",
+          op.payload["gates"]?["template"]?.stringValue == "none"
+        {
+          #expect(merchant.split(separator: " ").count <= TextGate.merchantWordLimit && merchant.utf8.count <= TextGate.merchantByteLimit, "\(c.name)")
+        }
+      }
+    }
+    #expect(checked > 60)
+  }
+
+  @Test("a person's text keeps a merchant only from a card-purchase label, at most 4 words and 40 bytes; a transfer's payee is not kept")
+  func personMerchant() throws {
+    func merchant(_ name: String) throws -> String? {
+      let (r, _) = BankTextReader.read(try TextCase.named(name).arrival)
+      return r.kept.map { $0.fields?.merchant ?? $0.merchant }
+    }
+    #expect(try merchant("person-card-purchase") == "SYNTHETIC BAKERY DOWNTOWN DUBAI")
+    #expect(try merchant("person-sent-money") == "")
+    #expect(try merchant("no-sender-transfer-to-payee") == "")
+    #expect(try merchant("no-sender-transfer-no-currency") == "")
+    #expect(TextGate.limited("ABCDEFGHIJ ABCDEFGHIJ ABCDEFGHIJ ABCDEFGHIJ") == "ABCDEFGHIJ ABCDEFGHIJ ABCDEFGHIJ")
+    #expect(TextGate.limited(String(repeating: "م", count: 30)).utf8.count <= 40)
+    #expect(try merchant("dib-english-purchase") == "SYNTHETIC SHOP")
+  }
+}
+
+@Suite("bank texts: the authored op is the fold golden's op")
+struct BankTextGoldenOpTests {
+  static func golden(_ caseName: String, _ opID: String) throws -> JSONValue {
+    let doc = try TextGolden.json("swift/fold-v4-sms-texts.json")
+    let c = try #require(doc["cases"]?.arrayValue?.first { $0["name"]?.stringValue == caseName })
+    let ops = (c["log"]?.arrayValue ?? []).flatMap { $0["ops"]?.arrayValue ?? [] }
+    let op = try #require(ops.first { $0["op_id"]?.stringValue == opID })
+    return try #require(op["payload"]).sortingKeysByUTF8()
+  }
+
+  @Test("every text row in conformance/swift/fold-v4-sms-texts.json is what the author writes for its synthetic text")
+  func sameOps() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let filed = try #require(await rig.add(try TextCase.named("dib-purchase-credit-card")).added)
+    #expect(JSONValue.object(try rig.payload(filed.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-template-row", "op-sms-1")))
+
+    let other = try TextRig()
+    let unread = try #require(await other.add(try TextCase.named("dib-arabic-no-amount")).added)
+    #expect(JSONValue.object(try other.payload(unread.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-unparsed-pasted-over", "op-sms-1")))
+    let pasted = try #require(
+      await other.author.paste(
+        try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0 + 3_600_000, secret: TextRig.secret,
+        link: .unknownUnanswered, replacing: unread.txnID
+      ).added)
+    #expect(JSONValue.object(try other.payload(pasted.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-unparsed-pasted-over", "op-sms-2")))
+    let reader = try #require(await other.add(try TextCase.named("dib-english-purchase-no-sender")).added)
+    #expect(JSONValue.object(try other.payload(reader.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-reader-repeat-no-bank", "op-sms-1")))
+
+    let pair = try TextRig()
+    let alert = try #require(
+      await pair.add(TextCase(name: "a", sender: "DIB-SMS", text: BankTextTransferPairTests.debit("234.56"), receivedAtMs: TextRig.t0)).added)
+    let notice = try #require(
+      await pair.add(
+        TextCase(name: "b", sender: "DIB-SMS", text: BankTextTransferPairTests.ownTransfer("234.56"), receivedAtMs: TextRig.t0 + 600_000)
+      ).added)
+    #expect(notice.transferPartner == alert.txnID)
+    #expect(JSONValue.object(try pair.payload(alert.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-transfer-pair-kept", "op-sms-1")))
+    #expect(JSONValue.object(try pair.payload(notice.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-transfer-pair-kept", "op-sms-2")))
+  }
+}

@@ -45,6 +45,8 @@ struct TxnPayload {
   var sourceMailbox: String?
   var sourceProvider: String?
   var dedupe: TxnDedupe?
+  var channel: String?
+  var receivedAt: String?
 }
 
 struct EditPayload {
@@ -288,6 +290,8 @@ extension State {
     t.sourceMailbox = p.sourceMailbox
     t.sourceProvider = p.sourceProvider
     t.dedupe = p.dedupe
+    t.channel = p.channel
+    t.receivedAt = p.receivedAt
 
     // 03c §3.1: a v4 supersede links the predecessor and carries its
     // annotations forward (only note and archived onto an unparsed successor).

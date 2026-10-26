@@ -193,7 +193,7 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
-GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay)
+GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"
 if [[ -n "$CI_RUN" ]]; then
@@ -465,6 +465,7 @@ CONFORMANCE=(
 	"op|./internal/oplog/opref"
 	"outlook-sender|"
 	"replay|"
+	"sms-extract|"
 	"swift|"
 	"templates|./internal/tmpl ./internal/tmpl/seed"
 	"ts|./internal/oplog/opref"

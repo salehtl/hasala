@@ -136,8 +136,8 @@ public enum Projector {
           successor_id, possible_duplicate_of, duplicate_disposition, mailbox_message_id, note, archived, account_id,
           effective_account_id, counter_account_id, project_id, refund_of, refund_target, refund_state, transfer_peer,
           transfer_target, transfer_state, is_new_merchant, version, pending, review_lane, source_mailbox, source_provider,
-          user_touched, copy_of, copy_decision, held_copy, merchant_group, categorized_ms)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          user_touched, copy_of, copy_decision, held_copy, merchant_group, categorized_ms, channel, received_at, received_ms)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """)
     let part = try db.makeStatement(
       sql: "INSERT INTO txn_part (txn_id, idx, category, amount_minor, amount_home_minor, note) VALUES (?,?,?,?,?,?)")
@@ -174,6 +174,7 @@ public enum Projector {
         peer == nil ? nil : Attribution.transferState(t, target: peerTarget.flatMap { s.txns[$0] }, targetPeer: peerBack),
         isNew, t.version, pending.contains(id), ReviewQueue.lane(t)?.rawValue, t.sourceMailbox, t.sourceProvider,
         userTouched(t), t.copyOf, t.copyDecision, t.isHeldCopy, groupOf[ExactKey(merchantRaw)].flatMap { $0.isEmpty ? nil : $0 }, categorizedMs(s, id, t),
+        t.channel, t.receivedAt, t.receivedAt.flatMap { try? parseInstantMs($0) },
       ]
       try insert.execute(arguments: StatementArguments(args))
       for (k, a) in t.aliases.enumerated() {

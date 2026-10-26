@@ -141,7 +141,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   /// Builds one blob with `body` (under the account's shared stamps),
   /// enqueues it and re-projects.
-  private func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
+  func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
     let ctx: AuthorContext
     do { ctx = try await observer.authorContext() } catch { throw MailboxLedgerError("context_\(Self.code(error))") }
     let built: AuthoredBlob?

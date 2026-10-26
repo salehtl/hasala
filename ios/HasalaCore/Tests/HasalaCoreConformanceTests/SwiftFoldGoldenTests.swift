@@ -38,7 +38,7 @@ enum FoldGoldens {
     return s + #","payload":\#(payload)}"#
   }
 
-  static let sets: [FoldGoldenSet] = [MailboxRetireGoldens.set, DuplicateGoldens.set, EdgeGoldens.set]
+  static let sets: [FoldGoldenSet] = [MailboxRetireGoldens.set, DuplicateGoldens.set, EdgeGoldens.set, SMSFoldGoldens.set]
 
   static func file(_ set: FoldGoldenSet) throws -> JSONValue {
     var cases: [JSONValue] = []

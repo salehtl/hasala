@@ -7,12 +7,14 @@ every set.
 
 ## Golden files
 
-These eight sets are golden files: `authres`, `categorize`, `extract`, `fx`,
-`merchant-group`, `norm-dates`, `outlook-sender` and `replay`. The ledgerd
+These nine sets are golden files: `authres`, `categorize`, `extract`, `fx`,
+`merchant-group`, `norm-dates`, `outlook-sender`, `replay` and `sms-extract`. The ledgerd
 TypeScript client wrote six of them; it was removed after commit 9b4aae2, and
-that commit still has its generators. The Swift tests wrote `merchant-group`
-and `extract` first. The inputs are now edited by hand. The Swift tests in
-`ios/HasalaCore/Tests/HasalaCoreConformanceTests` own the expected output:
+that commit still has its generators. The Swift tests wrote `merchant-group`,
+`extract` and `sms-extract` first. The inputs are now edited by hand. The Swift tests in
+`ios/HasalaCore/Tests/HasalaCoreConformanceTests` own the expected output, and
+`sms-extract` is owned by `ios/HasalaCore/Tests/CoreMailboxTests`, because it runs the
+bank-text reader of CoreMailbox:
 
 | Set | Swift test |
 | --- | --- |
@@ -24,6 +26,7 @@ and `extract` first. The inputs are now edited by hand. The Swift tests in
 | `norm-dates` | `NormDatesConformanceTests/golden` |
 | `outlook-sender` | `OutlookSenderConformanceTests/golden` |
 | `replay` | `ReplayConformanceTests/golden` |
+| `sms-extract` | `SMSExtractGoldenTests/golden` (CoreMailboxTests) |
 
 Each test computes the expected output of every case with the Swift code and
 writes the file as the TypeScript generator did: two-space JSON, keys in
@@ -59,7 +62,7 @@ not change, and drops it when the state changes.
 
 ### The gate
 
-`scripts/check.sh` fails when a file under one of the eight sets changes on a
+`scripts/check.sh` fails when a file under one of the nine sets changes on a
 branch with no change under `ios/HasalaCore/Tests`. In CI it compares with
 `HEAD^1`; locally, with the merge base of `origin/main`.
 

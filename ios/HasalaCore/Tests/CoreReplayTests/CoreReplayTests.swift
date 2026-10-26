@@ -333,7 +333,10 @@ struct SnapshotTests {
   @Test("the canary folds with only its intended notices")
   func canary() {
     let s = FoldCanary.state()
-    #expect(s.cursors.hot == 50)
+    #expect(s.cursors.hot == 51)
+    let text = s.txns["01JC0000000000000000000016"]
+    #expect(text?.channel == "sms" && text?.receivedAt == "2026-06-05T08:00:00.000Z" && text?.isText == true)
+    #expect(text?.needsReview == false && text?.verifiedSender == false && text?.copyOf == nil)
     #expect(s.bills["bd_axa"]?.changes.map(\.amountMinor) == [60000] && s.bills["bd_axa"]?.version == 3)
     #expect(s.bills["bd_netflix"]?.status == "dismissed" && s.bills["bd_netflix"]?.firstSeq == 47)
     #expect(s.forks.filter { $0.entityKind == "bill" }.map(\.loserOp) == ["canary-v4-39"])

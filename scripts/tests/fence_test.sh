@@ -100,6 +100,10 @@ refuses ios/HasalaCore/Tests/Fixtures/texts.json '{"rows": [{"ts": "x", "sender"
 refuses server/internal/x/testdata/texts.json '{"read_by": "x"}'
 refuses web/x.csv '1,DIB-SMS,x'
 
+refuses conformance/swift/fold-v4-sms-x.json '{"cases": [{"sender": "DIB-SMS", "text": "x"}]}'
+refuses conformance/swift/fold-v4-sms-x.json "$corpus_case"
+refuses conformance/sms-extract/synthetic-x/corpus-1.json "$corpus_case"
+
 allows conformance/text-extract/synthetic-x.json '{"sender": "DIB-SMS"}'
 allows conformance/text-extract/README.md '# x'
 allows conformance/extract/cases.json '{"sender_domain": ["dib.ae"], "sender": "AD-Bank"}'
@@ -107,6 +111,7 @@ allows ios/x/dib.sms.x.v1.json '{"match": {"sms_sender": ["DIB-SMS"]}}'
 allows conformance/templates/sms/synthetic-x.json "$sms_spaced"
 allows conformance/sms-extract/synthetic-x.json '{}'
 allows conformance/sms-extract/README.md '# x'
+allows conformance/swift/fold-v4-sms-x.json '{"cases": [{"payload": {"channel": "sms", "gates": {"sender": "trusted"}}}]}'
 allows conformance/templates/synthetic-x.json "$mail"
 allows conformance/templates/x.json "$mail"
 
