@@ -280,7 +280,7 @@ public actor MailboxEngine {
     self.server = server
     self.stepUp = stepUp
     self.categorizer = categorizer
-    self.templates = templates
+    self.templates = templates.filter { !$0.definition.isSMS }
     self.clock = clock
     self.random = random
     self.sleep = sleep

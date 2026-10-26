@@ -750,7 +750,7 @@ func TestDIBSeedsPartitionEveryDIBMessage(t *testing.T) {
 	var dib []tmpl.Definition
 	var card, account tmpl.Definition
 	for _, d := range Seed() {
-		if d.Bank != "dib" {
+		if d.Bank != "dib" || d.IsSMS() {
 			continue
 		}
 		dib = append(dib, d)

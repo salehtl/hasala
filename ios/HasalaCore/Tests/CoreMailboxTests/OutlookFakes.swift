@@ -105,7 +105,7 @@ struct OutlookRig {
     engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001"), provider: provider, tokens: tokens,
       store: store, ledger: ledger, server: server, stepUp: FakeStepUp(log: stepUps), categorizer: categorizer,
-      templates: BundledTemplates.load().templates, clock: clock, random: CountingRandom(),
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: CountingRandom(),
       sleep: { ms in clock.advance(ms) })
     graph.nowMs = { clock.nowMs() }
   }

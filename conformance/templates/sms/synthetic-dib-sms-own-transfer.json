@@ -1,0 +1,107 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.sms.own-transfer.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.sms.own-transfer.v1",
+    "version": 1,
+    "bank": "dib",
+    "channel": "sms",
+    "transfer_role": "notice",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "DIB-SMS"
+      ],
+      "body_contains": [
+        "تحويل بين حساباتك بمبلغ"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^تحويل بين حساباتك بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) من حساب "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB OWN ACCOUNT TRANSFER"
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.sms.own-transfer.v1/own-transfer",
+      "source": "SYNTHETIC: a transfer between the person's own accounts: a debit and a transfer; an account mask is no card, so no last four",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjZhdio2YTYuiBBRUQgNCwzMjEuMDkg2YXZhiDYrdiz2KfYqCAwMDEtMDAwLTEyM1hYWFgtMDEg2KfZhNmKINit2LPYp9ioIDAwMS0wMDAtNDU2WFhYWC0wMSDZgdmKIDA1LTA2LTIwMjYgTUIgRnVuZCBUcmFuc2ZlciDYsdi12YrYryDYrdiz2KfYqCDYp9mE2K7YtdmFINmH2YggQUVEIDksODc2LjU0INmI2K3Ys9in2Kgg2KfZhNin2YrYr9in2Lkg2YfZiCBBRUQgOCw3NjUuNDM=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.own-transfer.v1/no-currency",
+      "source": "SYNTHETIC: without a code AED applies",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrYrdmI2YrZhCDYqNmK2YYg2K3Ys9in2KjYp9iq2YMg2KjZhdio2YTYuiA0LDMyMS4wOSDZhdmGINit2LPYp9ioIDAwMS0wMDAtMTIzWFhYWC0wMSDYp9mE2Yog2K3Ys9in2KggMDAxLTAwMC00NTZYWFhYLTAxINmB2YogMDUtMDYtMjAyNiBNQiBGdW5kIFRyYW5zZmVyINix2LXZitivINit2LPYp9ioINin2YTYrti12YUg2YfZiCBBRUQgOSw4NzYuNTQg2YjYrdiz2KfYqCDYp9mE2KfZitiv2KfYuSDZh9mIIEFFRCA4LDc2NS40Mw==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "432109",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "DIB OWN ACCOUNT TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    }
+  ]
+}

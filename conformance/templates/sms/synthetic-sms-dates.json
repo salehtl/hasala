@@ -1,0 +1,326 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "synth.sms-dates",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "synth.sms-dates",
+    "version": 1,
+    "bank": "t",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "TEST-SMS"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "Amt: (?P<amt>[^\\n]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY HH:mm",
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          "Date: (?P<d>[^\\n]+)"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "synth.sms-dates/timed",
+      "source": "SYNTHETIC: the timed layout, whole string",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMTQ6MzA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T14:30:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/midnight",
+      "source": "SYNTHETIC: a timed midnight",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMDA6MDA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/last-minute",
+      "source": "SYNTHETIC: the last minute of the day",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMjM6NTk=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T23:59:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/one-digit-hour",
+      "source": "SYNTHETIC: Go's 15 accepts one hour digit",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgODowNQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T08:05:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/hour-24",
+      "source": "SYNTHETIC: hour 24 is out of range; the date-only layout reads the first token",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMjQ6MDA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/minute-60",
+      "source": "SYNTHETIC: minute 60 is out of range; the first token still reads",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMTI6NjA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/one-minute-digit",
+      "source": "SYNTHETIC: the minute needs two digits",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMTI6NQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/three-hour-digits",
+      "source": "SYNTHETIC: three hour digits leave trailing text",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMTIzOjQ1",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/date-only",
+      "source": "SYNTHETIC: no time: the second layout",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjY=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/trailing-text",
+      "source": "SYNTHETIC: trailing text: only the first token reads, as a date",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgMTQ6MzAgZXh0cmE=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/two-spaces",
+      "source": "SYNTHETIC: two spaces: no whole-string attempt",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjYgIDE0OjMw",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/t-separator",
+      "source": "SYNTHETIC: the separator is one U+0020",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDA1LTA2LTIwMjZUMTQ6MzA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/leap-day",
+      "source": "SYNTHETIC: a leap day",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDI5LTAyLTIwMjggMDY6MDA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "2028-02-29T06:00:00Z",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/not-a-leap-day",
+      "source": "SYNTHETIC: calendar ranges are checked",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAwCkRhdGU6IDI5LTAyLTIwMjYgMDY6MDA=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "synth.sms-dates/undated",
+      "source": "SYNTHETIC: no date in the text: matched, and the receive time applies",
+      "subject_base64": "",
+      "normalized_body_base64": "QW10OiAxLjAw",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "100",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

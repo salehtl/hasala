@@ -29,7 +29,7 @@ func TestWriteDerivedTemplateFixtures(t *testing.T) {
 		t.Fatalf("%s is unset: corpus fixtures are real mail and are written only into a checkout of %s, "+
 			"never into this repository", privatefixtures.EnvVar, privatefixtures.Repo)
 	}
-	defs, raws, err := LoadSeedTemplates(seedDir)
+	defs, raws, err := LoadMailSeedTemplates(seedDir)
 	if err != nil {
 		t.Fatal(err)
 	}

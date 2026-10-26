@@ -60,6 +60,9 @@ import "unicode/utf8"
 // extraction actually read. This function reports what CAN witness, never what
 // did; see ingest.decodeWitnessed.
 func (d Definition) DecodeWitnesses() []string {
+	if d.IsSMS() {
+		return nil
+	}
 	var out []string
 	for _, s := range d.Match.BodyContains {
 		if hasNonASCII(s) {

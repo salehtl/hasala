@@ -169,9 +169,9 @@ struct DialectFixtureTests {
     #expect(Hex.encode(sha256(digestInput)) == digest)
   }
 
-  @Test("the canonical definition bytes are Go's")
-  func canonical() throws {
-    let c = try #require(try DialectFixture.doc.get()["canonical"])
+  @Test("the canonical definition bytes are Go's", arguments: ["canonical", "canonical_sms"])
+  func canonical(_ key: String) throws {
+    let c = try #require(try DialectFixture.doc.get()[key])
     let def = try TemplateDefinition(json: [UInt8](try c.base64("definition_base64")))
     let want = [UInt8](try c.base64("canonical_base64"))
     #expect(def.canonicalJSON() == want)

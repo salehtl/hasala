@@ -75,6 +75,14 @@ var IDs = []string{
 	"enbd.alert.v1",
 	"adib.alert.v1",
 	"adib.account.v1",
+	"dib.sms.purchase.v1",
+	"dib.sms.debit.v1",
+	"dib.sms.credit.v1",
+	"dib.sms.salary.v1",
+	"dib.sms.refund.v1",
+	"dib.sms.reversal.v1",
+	"dib.sms.own-transfer.v1",
+	"dib.sms.card-payment.v1",
 }
 
 // Seed returns the published seed set.

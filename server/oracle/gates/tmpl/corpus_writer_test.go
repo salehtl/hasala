@@ -129,7 +129,7 @@ func TestWriteTemplateFixtures(t *testing.T) {
 	}
 	defer db.Close()
 
-	defs, raws, err := LoadSeedTemplates(seedDir)
+	defs, raws, err := LoadMailSeedTemplates(seedDir)
 	if err != nil {
 		t.Fatal(err)
 	}

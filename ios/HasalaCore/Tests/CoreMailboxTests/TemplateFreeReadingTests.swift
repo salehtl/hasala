@@ -59,7 +59,7 @@ extension NovelMail {
 }
 
 @Suite struct TemplateFreeDispositionTests {
-  let templates = BundledTemplates.load().templates
+  let templates = BundledTemplates.load(channel: .mail).templates
   let trusted = ["dib.ae", "emiratesnbd.com"]
 
   func parse(_ m: FakeGmail.Message, _ reader: inout MailReaderState?) -> MessageDisposer.Parse {
@@ -399,7 +399,7 @@ extension NovelMail {
 
   @Test func anAEDAliasCapturedByATemplateFilesAsAED() throws {
     var none: MailReaderState?
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let p = try mail(enbd("d1", "DHS"), templates, &none)
     #expect(p.gates.template?.hasPrefix("enbd.alert.v1@") == true)
     #expect(p.fields?.currency == "AED" && p.fields?.amountMinor == 12_000 && p.held == nil)
@@ -408,7 +408,7 @@ extension NovelMail {
 
   @Test func aCurrencyThatIsNotISOGoesToReview() throws {
     var none: MailReaderState?
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let p = try mail(enbd("x1", "XYZ"), templates, &none)
     #expect(p.gates.template?.hasPrefix("enbd.alert.v1@") == true && p.fields?.currency == "XYZ")
     #expect(p.held == true && finalize(p).needsReview)

@@ -169,7 +169,7 @@ import Testing
   }
 
   @Test func bankTemplateDomains() {
-    let defs = BundledTemplates.load().templates.map(\.definition)
+    let defs = BundledTemplates.load(channel: .mail).templates.map(\.definition)
     #expect(BankDomains.templateDomains(bank: "dib", templates: defs) == ["dib.ae"])
     #expect(BankDomains.templateDomains(bank: "enbd", templates: defs) == ["emiratesnbd.com"])
   }
@@ -257,7 +257,7 @@ import Testing
 }
 
 @Suite struct DispositionTests {
-  let templates = BundledTemplates.load().templates
+  let templates = BundledTemplates.load(channel: .mail).templates
   let trusted = ["dib.ae", "emiratesnbd.com"]
 
   func parse(_ m: FakeGmail.Message) -> MessageDisposer.Parse {

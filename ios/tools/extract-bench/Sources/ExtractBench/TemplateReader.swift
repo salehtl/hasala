@@ -7,7 +7,7 @@ final class TemplateReader: Reader {
   let templates: [(CompiledTemplate, [String])]
 
   init() {
-    templates = BundledTemplates.load().templates.map { t in (t, t.definition.match.senderDomain.map(Self.asciiLower)) }
+    templates = BundledTemplates.load(channel: .mail).templates.map { t in (t, t.definition.match.senderDomain.map(Self.asciiLower)) }
   }
 
   static func asciiLower(_ s: String) -> String {
