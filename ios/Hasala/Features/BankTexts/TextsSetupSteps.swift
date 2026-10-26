@@ -136,7 +136,7 @@ struct TextsBanksStep: View {
         BankList(chosen: model.chosenBanks, note: { BankTexts.readNote($0) }, toggle: model.toggle)
         AnotherBankCard(sent: model.bankRequestSent, sample: false) { telling = true }
         SetupFailureBanner(failure: model.failure)
-        DockNote(text: "Texts stay on this iPhone. Hasala keeps only the payments it reads.").padding(.top, 4)
+        DockNote(text: BankTexts.keepsOnlyFields).padding(.top, 4)
       }
       .padding(.top, -8)
     } footer: {
@@ -306,7 +306,7 @@ struct BankTextsTestScreen: View {
   }
 
   private var waitingCard: some View {
-    TextsCard {
+    HListCard(alignment: .leading) {
       ReflowingRow(spacing: 12) {
         Button {
           UIPasteboard.general.string = BankTexts.testPhrase
@@ -354,7 +354,7 @@ struct BankTextsTestScreen: View {
   }
 
   private func receivedCard(_ at: Date) -> some View {
-    TextsCard {
+    HListCard(alignment: .leading) {
       HStack(spacing: 14) {
         Circle().fill(HColor.statusSuccessSurface).frame(width: 48, height: 48)
           .overlay { HIconView(.check, size: 22, color: HColor.statusSuccessForeground, strokeWidth: 2.4) }
@@ -373,7 +373,7 @@ struct BankTextsTestScreen: View {
   }
 
   private var checklist: some View {
-    TextsCard {
+    HListCard(alignment: .leading) {
       ForEach(Array(BankTextsGuide.checklist.enumerated()), id: \.offset) { i, item in
         if i > 0 { HDivider(inset: .disc68) }
         HStack(alignment: .firstTextBaseline, spacing: 14) {

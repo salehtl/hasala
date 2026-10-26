@@ -79,7 +79,7 @@ struct ReviewTabView: View {
         VStack(alignment: .leading, spacing: 0) {
           Text("Paste a bank text")
             .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-          Text("For texts from before you set up the automation")
+          Text(BankTexts.pasteDetail(usesTexts: app.usesBankTexts))
             .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
             .foregroundStyle(HColor.textSecondary)
         }

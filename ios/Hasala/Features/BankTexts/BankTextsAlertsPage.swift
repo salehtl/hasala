@@ -14,30 +14,38 @@ struct BankTextsAlertsPage: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   struct Hero: Equatable {
+    enum State: Equatable {
+      case working
+      case ready
+      case notSetUp
+    }
+
+    let state: State
     let title: String
     let detail: String
     let hue: Hue
-    let working: Bool
+
+    var working: Bool { state == .working }
 
     init(_ status: BankTextsStatus, lastText: Date?, now: Date) {
       switch status {
       case .working(let lastRan):
+        state = .working
         title = "Working"
         detail = ["Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))",
                   lastText.map { "Last bank text \(RelativeTime.ago($0, now: now))" }]
           .compactMap { $0 }.joined(separator: "\n")
         hue = .mint
-        working = true
       case .waitingForFirstText:
+        state = .ready
         title = "Ready"
         detail = "Waiting for your first bank text.\nYour next payment shows up here."
         hue = .sky
-        working = false
       case .notSetUp:
+        state = .notSetUp
         title = "Not set up"
         detail = "Make the automation in the Shortcuts app."
         hue = .sand
-        working = false
       }
     }
   }
@@ -67,7 +75,7 @@ struct BankTextsAlertsPage: View {
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)
         .padding(.bottom, 48)
-        .hAnimation(.stateSwap, value: hero)
+        .hAnimation(.stateSwap, value: hero.state)
       }
     }
     .background(HColor.surfaceSecondary)
@@ -153,17 +161,17 @@ struct BankTextsAlertsPage: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("bankAlerts.texts.automation")
         HDivider(inset: .disc68)
-        TextsActionRow(title: "Test it again", icon: .chat, identifier: "bankAlerts.texts.test") {
+        MailActionRow(title: "Test it again", identifier: "bankAlerts.texts.test", icon: .chat) {
           lane.startTest()
           testing = true
         }
         HDivider(inset: .disc68)
-        TextsActionRow(
-          title: "Paste a bank text", detail: "For texts from before you set this up", icon: .paper,
-          identifier: "bankAlerts.texts.paste"
+        MailActionRow(
+          title: "Paste a bank text", identifier: "bankAlerts.texts.paste", icon: .paper,
+          detail: BankTexts.pasteDetail(usesTexts: true)
         ) { pasting = true }
         HDivider(inset: .disc68)
-        TextsActionRow(title: "Show me how", icon: .help, identifier: "bankAlerts.texts.showMeHow") { guiding = true }
+        MailActionRow(title: "Show me how", identifier: "bankAlerts.texts.showMeHow", icon: .help) { guiding = true }
       }
       Text(BankTexts.automationFootnote)
         .hType(.footnote)
@@ -201,7 +209,7 @@ struct BankTextsAlertsPage: View {
         .accessibilityAddTraits(.isHeader)
       readsRow(.chat, "The automation hands Hasala each text you get, on this iPhone.")
       readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
-      readsRow(.lock, "Only the payment Hasala read is kept. It syncs only end\u{2011}to\u{2011}end encrypted; the text itself never leaves this iPhone.")
+      readsRow(.lock, BankTexts.keepsNoText)
     }
     .padding(.top, 18)
     .padding([.horizontal, .bottom], 20)
@@ -223,9 +231,9 @@ struct BankTextsAlertsPage: View {
   private var switchSection: some View {
     VStack(alignment: .leading, spacing: 8) {
       HListCard {
-        TextsActionRow(
-          title: "Use bank email instead", detail: "Gmail or Outlook, read-only", icon: .envelope,
-          identifier: "bankAlerts.texts.useEmail"
+        MailActionRow(
+          title: "Use bank email instead", identifier: "bankAlerts.texts.useEmail", icon: .envelope,
+          detail: "Gmail or Outlook, read-only"
         ) { askingEmail = true }
       }
       Text(BankTexts.oneSourceNote)
@@ -252,20 +260,24 @@ struct UseBankTextsSection: View {
     return lane.isSetUp && lane.readsEmail ? "\(BankTexts.readsEmailNow) \(note)" : note
   }
 
+  static func switchMessage(_ mailbox: (any MailboxConnecting)?) -> String {
+    BankTexts.switchToTextsMessage(disconnects: !SourceSwitch.reading(mailbox).isEmpty)
+  }
+
   var body: some View {
     let blocked = SourceSwitch.textsBlocker(app.mailbox, texts: lane) != nil
     VStack(alignment: .leading, spacing: 8) {
       HListCard {
-        TextsActionRow(
-          title: "Use bank texts instead", detail: "No inbox access. Set up a Shortcut once.", icon: .chat,
-          identifier: "bankAlerts.useTexts"
+        MailActionRow(
+          title: "Use bank texts instead", identifier: "bankAlerts.useTexts", icon: .chat,
+          detail: "No inbox access. Set up a Shortcut once."
         ) { asking = true }
         .disabled(switching || blocked)
         if lane.offersPaste {
           HDivider(inset: .disc68)
-          TextsActionRow(
-            title: "Paste a bank text", detail: "It waits in Review for you to check", icon: .paper,
-            identifier: "bankAlerts.useTexts.paste"
+          MailActionRow(
+            title: "Paste a bank text", identifier: "bankAlerts.useTexts.paste", icon: .paper,
+            detail: BankTexts.pasteDetail(usesTexts: lane.usesTexts)
           ) { pasting = true }
         }
       }
@@ -283,7 +295,7 @@ struct UseBankTextsSection: View {
       Button("Cancel", role: .cancel) {}
       Button("Switch to texts") { switchToTexts() }
     } message: {
-      Text(BankTexts.switchToTextsMessage)
+      Text(Self.switchMessage(app.mailbox))
     }
   }
 

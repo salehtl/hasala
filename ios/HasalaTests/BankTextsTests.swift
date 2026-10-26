@@ -621,4 +621,76 @@ struct BankTextsTests {
     #expect(s.title == "Bank texts are working" && s.detail == "Ran 4 min ago" && !s.needsYou)
     #expect(MailboxesSummary.texts(.waitingForFirstText, now: now).detail == "Waiting for your first bank text")
   }
+
+  @Test func setupSaysTheAccountReadsEmailWhenTheLinkCopySaysLinked() {
+    let linked = model(services(texts: MockBankTexts(link: .linked)))
+    #expect(linked.readsBankEmailNote == BankTexts.setupReadsEmail)
+    #expect(BankTexts.setupReadsEmail.contains("Profile \u{203A} Bank alerts"))
+    #expect(!linked.bankStepSubtitle.contains("SMS"))
+    let open = model(services(texts: MockBankTexts(link: .notLinked)))
+    #expect(open.readsBankEmailNote == nil && !open.bankStepSubtitle.contains("SMS"))
+    let lane = MockBankTexts(link: .notLinked)
+    let chose = model(services(texts: lane))
+    chose.chooseSource(.email)
+    lane.linkOverride = .linked
+    #expect(chose.readsBankEmailNote == nil)
+    let mailbox = MockMailbox(mailboxes: [MockMailbox.gmail])
+    let connected = model(services(texts: MockBankTexts(mailbox: mailbox), mailbox: mailbox))
+    #expect(connected.readsBankEmailNote != nil && !connected.bankStepSubtitle.contains("SMS"))
+    let sample = AccountServices(
+      account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(offersSampleData: true),
+      setup: MockSetupAuthoring(), notifications: MockNotificationPermission(), bankTexts: MockBankTexts())
+    #expect(!model(sample).bankStepSubtitle.contains("SMS"))
+    let noLane = model(services(texts: nil))
+    #expect(noLane.readsBankEmailNote == nil && noLane.bankStepSubtitle.contains("not only SMS"))
+  }
+
+  @Test func theKeepingCopyCoversUnreadPaymentTexts() {
+    for line in [BankTexts.keepsOnlyFields, BankTexts.keepsNoText] {
+      #expect(!line.contains("payments it reads") && !line.contains("payment Hasala read"))
+    }
+    #expect(BankTexts.keepsOnlyFields.contains("texts that look like payments"))
+    #expect(BankTexts.keepsNoText.contains("never the text itself"))
+  }
+
+  @Test func aPasteWhileAddingIsIgnored() async throws {
+    let lane = MockBankTexts(setUp: true)
+    lane.readDelay = .zero
+    lane.addDelay = .milliseconds(200)
+    let m = PasteBankTextModel(lane: lane)
+    await m.paste(MockBankTexts.sampleText)
+    let adding = Task { await m.add() }
+    for _ in 0..<200 where !m.adding { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.adding)
+    await m.paste(MockBankTexts.undatedText)
+    #expect(m.text == MockBankTexts.sampleText)
+    let added = await adding.value
+    #expect(added && lane.added == [MockBankTexts.sampleText] && m.text == MockBankTexts.sampleText)
+  }
+
+  @Test func pasteCopyNamesTheAutomationOnlyForTexts() {
+    #expect(BankTexts.pasteDetail(usesTexts: true).contains("automation"))
+    #expect(BankTexts.pasteIntro(usesTexts: true).contains("automation"))
+    #expect(!BankTexts.pasteDetail(usesTexts: false).contains("automation"))
+    #expect(!BankTexts.pasteIntro(usesTexts: false).contains("automation"))
+    #expect(BankTexts.pasteIntro(usesTexts: false).contains("paste it here"))
+  }
+
+  @Test func theSwitchToTextsSaysItDisconnectsOnlyWhenAMailboxIsRead() {
+    #expect(!UseBankTextsSection.switchMessage(MockMailbox()).contains("disconnect"))
+    #expect(!UseBankTextsSection.switchMessage(nil).contains("disconnect"))
+    #expect(UseBankTextsSection.switchMessage(MockMailbox(mailboxes: [MockMailbox.gmail])).hasPrefix("Hasala disconnects your mailbox."))
+  }
+
+  @Test func theHeroAnimatesOnlyWhenItsStateChanges() {
+    let a = BankTextsAlertsPage.Hero(.working(lastRan: now.addingTimeInterval(-60)), lastText: nil, now: now)
+    let b = BankTextsAlertsPage.Hero(.working(lastRan: now.addingTimeInterval(-60)), lastText: nil, now: now.addingTimeInterval(120))
+    #expect(a.detail != b.detail && a.state == b.state && a.working)
+    let ready = BankTextsAlertsPage.Hero(.waitingForFirstText, lastText: nil, now: now)
+    #expect(ready.state != a.state && !ready.working)
+  }
+
+  @Test func bankTextTimesUseTheLedgerClock() {
+    #expect(BankTexts.clock.secondsFromGMT() == 4 * 3600)
+  }
 }

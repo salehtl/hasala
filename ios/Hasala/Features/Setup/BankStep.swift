@@ -20,9 +20,7 @@ struct BankStep: View {
     let connectBusy = starting || model.connectBusy || coordinator.busy
     AccountScreen(
       title: "Connect your bank alerts",
-      subtitle: model.offersBankTexts
-        ? "Hasala reads your banks' alert emails on this iPhone."
-        : "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
+      subtitle: model.bankStepSubtitle,
       back: model.offersBankTexts && !connectBusy && !model.busy ? .action(model.backToSourceChoice) : .none,
       trailing: skip(connected)
     ) {
@@ -43,6 +41,10 @@ struct BankStep: View {
         if connected == nil, model.connectable.count <= 1 { TellUsWhichLink(small: true, leading: true) }
         if connected == nil, provider == .gmail, BuildSurface.showsGoogleBriefing { GoogleBriefingCard() }
         SetupFailureBanner(failure: model.failure)
+        if let readsEmail = model.readsBankEmailNote {
+          TextsNote(icon: .chat, text: readsEmail)
+            .accessibilityIdentifier("bank.readsEmail")
+        }
         note(connected).padding(.top, 4)
       }
       .padding(.top, -8)

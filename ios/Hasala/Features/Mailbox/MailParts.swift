@@ -580,6 +580,8 @@ struct MailActionRow: View {
   let identifier: String
   /// Add a mailbox's plus, or the envelope for "Use another email".
   var glyph = PaperGlyph.plus
+  var icon: HIcon?
+  var detail: String?
   let action: () -> Void
 
   var body: some View {
@@ -588,9 +590,22 @@ struct MailActionRow: View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .fill(HColor.actionAccentSubtle)
           .frame(width: 40, height: 40)
-          .overlay { PaperGlyph(glyph, size: 18, color: HColor.textLink, lineWidth: 2.4) }
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.textLink)
-          .frame(maxWidth: .infinity, alignment: .leading)
+          .overlay {
+            if let icon {
+              HIconView(icon, size: 18, color: HColor.textLink, strokeWidth: 2)
+            } else {
+              PaperGlyph(glyph, size: 18, color: HColor.textLink, lineWidth: 2.4)
+            }
+          }
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).hType(.rowTitle).foregroundStyle(HColor.textLink)
+          if let detail {
+            Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+          }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(.horizontal, HSpacing.listRowInsetInline)
       .padding(.vertical, 8)

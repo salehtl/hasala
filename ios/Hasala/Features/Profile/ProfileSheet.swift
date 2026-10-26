@@ -45,8 +45,12 @@ struct ProfileSheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
           ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
-          TimelineView(.periodic(from: .now, by: 60)) { context in
-            BankAlertsCard(summary: summary(now: context.date)) { push(.bankAlerts) }
+          if let texts = app.bankTexts, texts.usesTexts {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+              BankAlertsCard(summary: .texts(texts.status, now: context.date)) { push(.bankAlerts) }
+            }
+          } else {
+            BankAlertsCard(summary: summary) { push(.bankAlerts) }
           }
           money
           settings
@@ -110,9 +114,8 @@ struct ProfileSheet: View {
 
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
   /// row also draw from.
-  private func summary(now: Date) -> MailboxesSummary {
-    if let texts = app.bankTexts, texts.usesTexts { return .texts(texts.status, now: now) }
-    return MailboxesSummary(
+  private var summary: MailboxesSummary {
+    MailboxesSummary(
       app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
   }
 

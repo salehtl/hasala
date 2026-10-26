@@ -201,6 +201,13 @@ final class SetupModel {
 
   var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected && bankTexts?.readsEmail != true }
 
+  var readsBankEmailNote: String? { bankTexts?.readsEmail == true && source != .email ? BankTexts.setupReadsEmail : nil }
+
+  var bankStepSubtitle: String {
+    let reads = "Hasala reads your banks' alert emails on this iPhone."
+    return bankTexts == nil ? "\(reads) Alerts must come by email, not only SMS." : reads
+  }
+
   var connectBusy: Bool { connecting || coordinators.values.contains(where: \.busy) }
 
   var asksSource: Bool { offersBankTexts && draft.source != .email }

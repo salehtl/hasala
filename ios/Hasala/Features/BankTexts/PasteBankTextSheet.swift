@@ -35,7 +35,7 @@ final class PasteBankTextModel {
 
   func paste(_ pasted: String?) async {
     let trimmed = pasted?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard !refused, !trimmed.isEmpty else { return }
+    guard !refused, !adding, !trimmed.isEmpty else { return }
     generation += 1
     let mine = generation
     text = trimmed
@@ -111,7 +111,7 @@ struct PasteBankTextSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          Text("For a text from before your automation. Copy it in Messages, then paste it here. Hasala reads it on this iPhone.")
+          Text(BankTexts.pasteIntro(usesTexts: model.lane.usesTexts))
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -125,6 +125,7 @@ struct PasteBankTextSheet: View {
             }
             .buttonBorderShape(.capsule)
             .tint(HColor.actionAccent)
+            .disabled(model.adding)
             .frame(minHeight: HSpacing.targetMinimum)
             .accessibilityIdentifier("pasteText.paste")
           }
@@ -192,7 +193,7 @@ struct PasteBankTextSheet: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Already in Hasala?").hType(.overline).foregroundStyle(HColor.textGroupedHeader)
         .accessibilityAddTraits(.isHeader)
-      TextsCard {
+      HListCard(alignment: .leading) {
         VStack(alignment: .leading, spacing: 2) {
           Text(PasteBankTextModel.matchTitle(match)).hType(.headline).foregroundStyle(HColor.textPrimary)
           Text(PasteBankTextModel.matchDetail(match)).hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -236,7 +237,7 @@ struct PasteBankTextSheet: View {
         .padding(16)
         .accessibilityElement(children: .combine)
       case .read(let preview)?:
-        TextsCard {
+        HListCard(alignment: .leading) {
           VStack(spacing: 0) {
             KeyValueRow("Amount", value: PasteBankTextModel.amountLine(preview))
             HDivider(inset: .none)

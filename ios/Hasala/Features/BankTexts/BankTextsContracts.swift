@@ -117,7 +117,7 @@ enum BankTexts {
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
 
-  static let clock = TimeZone(secondsFromGMT: 4 * 3600)!
+  static let clock = LiveMailboxConnecting.localTimeZone
 
   private static func formatter(_ format: String) -> DateFormatter {
     let f = DateFormatter()
@@ -162,8 +162,27 @@ enum BankTexts {
   static let pasteRefused =
     "This account reads bank email. Switch to bank texts in Profile \u{203A} Bank alerts to paste a text."
 
-  static let switchToTextsMessage =
-    "Hasala disconnects your mailbox. Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."
+  static func switchToTextsMessage(disconnects: Bool) -> String {
+    let rest = "Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."
+    return disconnects ? "Hasala disconnects your mailbox. \(rest)" : rest
+  }
+
+  static let setupReadsEmail =
+    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts."
+
+  static func pasteDetail(usesTexts: Bool) -> String {
+    usesTexts ? "For texts from before you set up the automation" : "It waits in Review for you to check"
+  }
+
+  static func pasteIntro(usesTexts: Bool) -> String {
+    let how = "Copy it in Messages, then paste it here. Hasala reads it on this iPhone."
+    return usesTexts ? "For a text from before your automation. \(how)" : "For a payment text from your bank. \(how)"
+  }
+
+  static let keepsOnlyFields = "Texts stay on this iPhone. Hasala keeps only texts that look like payments, and only the fields it needs."
+
+  static let keepsNoText =
+    "Hasala keeps only the fields it needs from a payment text, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
 
   static let oneSourceNote =
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
