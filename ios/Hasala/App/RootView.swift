@@ -205,6 +205,7 @@ struct LaunchView: View {
       }
       if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
       graph.app.cloudSort = MockCloudSortController.fromLaunchArguments(arguments)
+      graph.app.bankTextsLane = session.services.bankTexts
       launch?.open(graph)
       return graph
     }

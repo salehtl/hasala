@@ -22,6 +22,13 @@
       // The profile.
       Screen("bankAlerts", scenario: "mailboxes2", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.oneGmail", scenario: "passkeyUser", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.texts", scenario: "textsWorking", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.texts.waiting", scenario: "textsWaiting", prepare: profile([.bankAlerts])),
+      Screen("bankAlerts.texts.paste", scenario: "textsWorking", prepare: { graph in
+        BankTextsLaunch.pasted = MockBankTexts.sampleText
+        profile([.bankAlerts])(graph)
+      }),
+      Screen("bankAlerts.emailOrTexts", scenario: "gmailTexts", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.none", scenario: "noMailbox", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.refused", scenario: "noMailbox", prepare: { graph in
         mock(graph)?.connectRefusal = .sampleData

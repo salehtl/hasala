@@ -36,6 +36,12 @@
       }),
       // Review · Tab · To sort (6) (NPV-0).
       Screen("review", scenario: "maya", prepare: shell(.review)),
+      Screen("review.texts", scenario: "textsWorking", prepare: shell(.review)),
+      Screen("review.pasteText", scenario: "textsWorking", prepare: { graph in
+        BankTextsLaunch.pasted = MockBankTexts.sampleText
+        BankTextsLaunch.openPaste = true
+        shell(.review)(graph)
+      }),
       Screen("review.cloudSort", scenario: "maya", prepare: { graph in
         (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
         shell(.review)(graph)

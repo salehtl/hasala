@@ -19,6 +19,14 @@ nonisolated enum BuildSurface {
     #endif
   }()
 
+  static let showsBankTexts: Bool = {
+    #if DEBUG
+      !ProcessInfo.processInfo.arguments.contains(releaseArgument)
+    #else
+      false
+    #endif
+  }()
+
   static let showsPlanTab: Bool = {
     #if DEBUG
       ProcessInfo.processInfo.arguments.contains(planTabArgument)

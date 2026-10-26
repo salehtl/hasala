@@ -31,6 +31,7 @@ struct BankAlertsPage: View {
   @State private var requestingBank = false
   @State private var bankRequests: [RequestedBank] = []
   @State private var addingSender: UnlistedSender?
+  @State private var guidingTexts = false
   @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.hMotion) private var motion
 
@@ -48,6 +49,17 @@ struct BankAlertsPage: View {
   private var stateKnown: Bool { lane?.mailboxesKnown ?? true }
 
   var body: some View {
+    Group {
+      if let texts = app.bankTexts, texts.usesTexts {
+        BankTextsAlertsPage(app: app, lane: texts, guiding: $guidingTexts)
+      } else {
+        mailBody
+      }
+    }
+    .sheet(isPresented: $guidingTexts) { ShortcutsGuideSheet() }
+  }
+
+  @ViewBuilder private var mailBody: some View {
     let health = app.store.state.mailbox
     let summary = MailboxesSummary(mailboxes, health: health, offer: app.mailOffer, known: stateKnown)
     let hero = Hero(
@@ -61,6 +73,9 @@ struct BankAlertsPage: View {
         unlistedSection
         needsALook
         howItReads
+        if let texts = app.bankTexts {
+          UseBankTextsSection(app: app, lane: texts, guiding: $guidingTexts)
+        }
       }
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 8)

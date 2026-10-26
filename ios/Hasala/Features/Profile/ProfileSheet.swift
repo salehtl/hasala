@@ -109,7 +109,8 @@ struct ProfileSheet: View {
   /// What the card says: `MailboxesSummary`, which Bank alerts' hero and the bell's mail
   /// row also draw from.
   private var summary: MailboxesSummary {
-    MailboxesSummary(
+    if let texts = app.bankTexts, texts.usesTexts { return .texts(texts.status, now: .now) }
+    return MailboxesSummary(
       app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
   }
 

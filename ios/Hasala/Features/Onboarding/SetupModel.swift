@@ -20,6 +20,7 @@ struct SetupDraft: Equatable, Sendable {
   /// The provider the person connected or picked in "Choose your email"; it skips the
   /// chooser next time (plan B3.2 rule 5).
   var provider: MailProviderKind?
+  var source: PaymentSource?
   var authored = AuthoredSetup()
 }
 
@@ -116,6 +117,7 @@ final class SetupModel {
     facts.keysReady = facts.keysReady || new.keysReady
     facts.banksChosen = facts.banksChosen || new.banksChosen || draft.authored.banks != nil
     facts.sampleLoaded = facts.sampleLoaded || new.sampleLoaded
+    facts.textsChosen = facts.textsChosen || new.textsChosen
     facts.mailbox = new.mailbox
     if draft.chosenBanks == nil, !banks.isEmpty { draft.chosenBanks = Set(banks) }
     if draft.authored.banks == nil, new.banksChosen, !banks.isEmpty { draft.authored.banks = banks }
@@ -194,6 +196,54 @@ final class SetupModel {
   var bankRequests: SetupAuthoring { services.setup }
 
   func noteBankRequestSent() { draft.bankRequestSent = true }
+
+  var bankTexts: (any BankTextsConnecting)? { services.offeredBankTexts }
+
+  var offersBankTexts: Bool { bankTexts != nil && !offersSampleData && !mailConnected }
+
+  var asksSource: Bool { offersBankTexts && draft.source != .email }
+
+  var source: PaymentSource? { draft.source }
+
+  private(set) var lastPickedSource: PaymentSource?
+
+  func chooseSource(_ source: PaymentSource) async {
+    guard !busy, let lane = bankTexts else { return }
+    didResume = true
+    failure = nil
+    lastPickedSource = source
+    busy = true
+    defer { busy = false }
+    do {
+      switch source {
+      case .email:
+        if lane.usesTexts { try await lane.useEmail() }
+        draft.source = .email
+      case .texts:
+        try await lane.useTexts()
+        draft.source = .texts
+        path = []
+        go(.textsSetUp)
+      }
+    } catch {
+      failure = .failed(error.message)
+    }
+  }
+
+  func backToSourceChoice() {
+    failure = nil
+    draft.source = nil
+  }
+
+  func sendTestText() {
+    guard path.last != .textsTest else { return }
+    go(.textsTest)
+  }
+
+  func finishTexts() {
+    facts.textsChosen = true
+    finish()
+  }
 
   // MARK: Your email (step 2)
 

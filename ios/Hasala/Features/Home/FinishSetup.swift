@@ -79,6 +79,7 @@ final class FinishSetupModel {
 
   var needsEmail: Bool {
     let mailbox = services.mailbox
+    guard services.offeredBankTexts?.usesTexts != true else { return false }
     return mailbox.mailboxesKnown && mailbox.heldElsewhere == nil && mailbox.offer == .connect
   }
 

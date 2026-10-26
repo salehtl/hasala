@@ -36,6 +36,9 @@ final class AppModel {
   /// alerts offer.
   @ObservationIgnored let mailbox: (any MailboxConnecting)?
   var cloudSort: (any CloudSortControlling)?
+  @ObservationIgnored var bankTextsLane: (any BankTextsConnecting)?
+  var bankTexts: (any BankTextsConnecting)? { BuildSurface.showsBankTexts ? bankTextsLane : nil }
+  var usesBankTexts: Bool { bankTexts?.usesTexts == true }
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
@@ -154,7 +157,7 @@ final class AppModel {
 
   /// "Connect your email" or "Sign in again" on the bell, Profile and Bank alerts, when
   /// mail needs it.
-  var mailOffer: MailOffer? { mailbox?.offer }
+  var mailOffer: MailOffer? { usesBankTexts ? nil : mailbox?.offer }
 
   var period: Period {
     get { chosenPeriod.map(shown) ?? .month(store.now.date.yearMonth) }

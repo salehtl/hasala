@@ -20,7 +20,10 @@ struct BankStep: View {
     let connectBusy = starting || model.connecting || coordinator.busy
     AccountScreen(
       title: "Connect your bank alerts",
-      subtitle: "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
+      subtitle: model.offersBankTexts
+        ? "Hasala reads your banks' alert emails on this iPhone."
+        : "Hasala reads your banks' alert emails on this iPhone. Alerts must come by email, not only SMS.",
+      back: model.offersBankTexts ? .action(model.backToSourceChoice) : .none,
       trailing: skip(connected)
     ) {
       VStack(alignment: .leading, spacing: 12) {

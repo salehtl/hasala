@@ -199,4 +199,7 @@ struct AccountServices {
   var cloudSort: CloudSortOffering?
   var unseenPhrase: any UnseenPhraseNoting = InMemoryUnseenPhrase()
   var manualEntry = ManualEntryChoice()
+  var bankTexts: (any BankTextsConnecting)?
+
+  var offeredBankTexts: (any BankTextsConnecting)? { BuildSurface.showsBankTexts ? bankTexts : nil }
 }

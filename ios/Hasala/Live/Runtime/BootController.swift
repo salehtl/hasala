@@ -270,6 +270,7 @@ final class BootController {
       }
       var facts = Self.facts(rt)
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
+      facts.textsChosen = self.services.offeredBankTexts?.usesTexts == true
       self.opening = nil
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
@@ -277,6 +278,7 @@ final class BootController {
         store: rt.store, mailbox: self.services.mailbox, layouts: layouts,
         notificationReads: NotificationReads(defaults: .standard))
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
+      app.bankTextsLane = self.services.bankTexts
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }

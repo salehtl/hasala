@@ -5,4 +5,6 @@ import HasalaModels
 enum SetupRoute: Hashable {
   /// The connect didn't happen (an admin's approval, a closed or declined sign-in).
   case connectError(MailProviderKind)
+  case textsSetUp
+  case textsTest
 }
