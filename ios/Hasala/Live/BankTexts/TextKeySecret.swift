@@ -1,28 +1,21 @@
 import CorePrimitives
 import CoreStore
 import Foundation
-import Security
 
 nonisolated struct TextKeySecret: Sendable {
   static let length = 32
 
   let store: any SecretStore
-  var random: @Sendable (Int) -> Data? = TextKeySecret.systemRandom
+  let random: any RandomSource
 
-  init(store: any SecretStore, random: @escaping @Sendable (Int) -> Data? = TextKeySecret.systemRandom) {
+  init(store: any SecretStore, random: any RandomSource = SystemRandom()) {
     self.store = store
     self.random = random
   }
 
-  static func systemRandom(_ n: Int) -> Data? {
-    var bytes = Data(count: n)
-    let status = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, n, $0.baseAddress!) }
-    return status == errSecSuccess ? bytes : nil
-  }
-
   func current() throws(SecretStoreError) -> Data {
     if let held = try store.read(.textKeySecret), held.count == Self.length { return held }
-    guard let made = random(Self.length), made.count == Self.length else { throw .failed(status: -1) }
+    guard let made = try? random.bytes(Self.length), made.count == Self.length else { throw .failed(status: -1) }
     try store.write(.textKeySecret, made)
     return made
   }
