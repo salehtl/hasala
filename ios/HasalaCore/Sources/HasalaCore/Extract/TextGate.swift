@@ -176,7 +176,7 @@ public enum TextGate {
 
   enum Markers {
     static let oneTimeCode = RuleText.re(
-      "(?<![a-z])(?<!auth |authorization |approval |ref |reference |transaction |txn )(?:otp|one[- ]time password|passcode|password|verification code|security code|code|pin)(?![a-z])\\s{0,2}(?:is|:|-|=|هو|هي)?\\s{0,2}[\"']?[0-9]{4,8}(?![0-9])"
+      "(?<![a-z])(?<!(?:auth|authori[sz]ation|approval|appr|ref|reference|transaction|txn|trx)[\\s.:#-]{1,3})(?:otp|one[- ]time password|passcode|password|verification code|security code|code|pin)(?![a-z])\\s{0,2}(?:is|:|-|=|هو|هي)?\\s{0,2}[\"']?[0-9]{4,8}(?![0-9])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}(?:is\\s+(?:your\\s+)?|هو\\s+|هي\\s+)?(?:otp|one[- ]time password|passcode|verification code)(?![a-z])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}is\\s+(?:your\\s+)?(?:code|password|pin)(?![a-z])"
         + "|(?:رمز|كلمه المرور|كلمه السر)(?:\\s+(?:التحقق|التفعيل|الدخول|المرور))?\\s{0,2}(?:هو|هي|:)?\\s{0,2}[0-9]{4,8}(?![0-9])"
@@ -193,7 +193,11 @@ public enum TextGate {
       RuleText.words(
         [
           "has been blocked", "is blocked", "temporarily blocked", "has been suspended", "has been activated", "has been deactivated",
-          "activated", "deactivated", "registration", "registered", "service request", "ticket number", "has been reset",
+          "is now active", "is now activated", "successfully activated", "activated successfully", "successfully deactivated",
+          "has been registered", "have been registered", "is now registered", "are now registered", "successfully registered",
+          "registered successfully", "registration request", "registration is successful", "registration was successful",
+          "registration successful", "registration is complete", "registration completed", "service request", "ticket number",
+          "has been reset",
         ],
         ["تم ايقاف", "الايقاف المؤقت", "ايقاف مؤقت", "تم تفعيل", "الغاء تفعيل", "اعاده تفعيل", "تسجيلك", "مسجل لاستخدام", "رقم تذكره", "تذكره الخدمه"]
       ).pattern + "|(?<![a-z])request\\s?#")
@@ -208,6 +212,8 @@ public enum TextGate {
         + "|(?<![a-z])(?:you|you've|you have) (?:paid|spent|sent)(?![a-z])"
         + "|(?<![a-z])purchase of [^\\n]{1,80}? (?:was|is|has been) (?:successful|approved|completed)(?![a-z])"
         + "|(?<![a-z])successful purchase(?![a-z])"
+        + "|(?:(?<![a-z])(?:\(Shape.currencies))(?![a-z])\\s{0,2}[0-9][0-9.,]*|(?<![0-9.,])[0-9][0-9.,]*\\s{0,2}(?:\(Shape.currencies))(?![a-z]))"
+        + "\\s{1,2}(?:(?:was|has been|have been|is) )?(?:spent|charged|paid|used|sent|received)(?![a-z])"
         + "|تم (?:خصم|ايداع|تحويل|سداد|ارجاع|سحب|دفع|شراء|اضافه|استرداد)|تمت عمليه|تمت (?:عمليه )?(?:الشراء|شراء)")
   }
 

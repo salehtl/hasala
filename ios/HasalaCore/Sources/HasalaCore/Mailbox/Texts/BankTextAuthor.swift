@@ -5,24 +5,11 @@ import CoreTime
 import Foundation
 
 public protocol BankTextLedger: Sendable {
+  var textWrites: WriteSerial { get }
   func knownCards() async -> [CardKey: CardState]
   func isIngested(_ ingestID: String) async -> Bool
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String
-}
-
-public protocol BankTextLayoutStore: Sendable {
-  func load() async -> LearnedLayouts
-  func save(_ layouts: LearnedLayouts) async
-}
-
-public actor MemoryBankTextLayouts: BankTextLayoutStore {
-  private var layouts: LearnedLayouts
-
-  public init(_ layouts: LearnedLayouts = LearnedLayouts()) { self.layouts = layouts }
-
-  public func load() -> LearnedLayouts { layouts }
-  public func save(_ layouts: LearnedLayouts) { self.layouts = layouts }
 }
 
 public struct BankTextAdded: Sendable, Equatable {
@@ -40,6 +27,7 @@ public enum BankTextOutcome: Sendable, Equatable {
   case dropped(TextDropKind, counted: Bool, bank: String?)
   case ignored(counted: Bool, bank: String?)
   case added(BankTextAdded)
+  case pasteRefused
   case failed(String)
 }
 
@@ -47,19 +35,19 @@ public actor BankTextAuthor {
   public static let maxRepeats = 1_000
 
   let ledger: any BankTextLedger
-  let layouts: any BankTextLayoutStore
   let categorizer: any IngestCategorizer
   let templates: [CompiledTemplate]
-  let serial = WriteSerial()
+  let banks: [String: String]
+  private(set) var layouts = LearnedLayouts()
 
   public init(
-    ledger: any BankTextLedger, layouts: any BankTextLayoutStore = MemoryBankTextLayouts(),
-    categorizer: any IngestCategorizer = NoCategorizer(), templates: [CompiledTemplate] = BankTextReader.templates
+    ledger: any BankTextLedger, categorizer: any IngestCategorizer = NoCategorizer(),
+    templates: [CompiledTemplate] = BankTextReader.templates
   ) {
     self.ledger = ledger
-    self.layouts = layouts
     self.categorizer = categorizer
     self.templates = templates
+    banks = BankTextSenders.bankSenders(templates: templates)
   }
 
   public nonisolated func add(
@@ -71,7 +59,8 @@ public actor BankTextAuthor {
   public nonisolated func paste(
     _ text: String, atMs: Int64, secret: Data, link: BankTextLink, replacing unparsedRowID: String? = nil
   ) async -> BankTextOutcome {
-    await run(
+    if link == .linked { return .pasteRefused }
+    return await run(
       BankTextArrival(text: text, sender: nil, receivedAtMs: atMs), origin: .paste, secret: secret, archiving: unparsedRowID,
       link: { link })
   }
@@ -82,7 +71,9 @@ public actor BankTextAuthor {
   ) async -> BankTextOutcome {
     guard secret.count == BankTextKey.secretBytes else { return .failed("secret") }
     do {
-      return try await serial.run { await self.serialized(arrival, origin: origin, secret: secret, archiving: archiving, link: link) }
+      return try await ledger.textWrites.run {
+        await self.serialized(arrival, origin: origin, secret: secret, archiving: archiving, link: link)
+      }
     } catch {
       return .failed("serial")
     }
@@ -92,11 +83,10 @@ public actor BankTextAuthor {
     _ arrival: BankTextArrival, origin: BankTextOrigin, secret: Data, archiving: String?,
     link: @Sendable () async -> BankTextLink
   ) async -> BankTextOutcome {
-    let memory = await layouts.load()
-    let (reading, next) = BankTextReader.read(arrival, templates: templates, layouts: memory)
+    let read = BankTextReader.read(arrival, templates: templates, banks: banks, layouts: layouts)
     if Task.isCancelled { return .failed("cancelled") }
     let kept: BankTextKept
-    switch reading {
+    switch read.reading {
     case .setUpTest: return .testPassed
     case .dropped(let k, let counted, let bank): return .dropped(k, counted: counted, bank: bank)
     case .kept(let k): kept = k
@@ -105,8 +95,8 @@ public actor BankTextAuthor {
     if state == .linked { return .ignored(counted: kept.countsAsPayment, bank: kept.bank) }
     if Task.isCancelled { return .failed("cancelled") }
 
-    let sender = BankTextReader.sender(arrival.sender, templates: templates)
-    let text = BankTextReader.normalized(arrival.text)
+    let sender = read.sender
+    let text = read.text
     let minute = arrival.arrivalMinuteMs
     var key: (id: String, n: Int)?
     for n in 0..<Self.maxRepeats {
@@ -149,7 +139,7 @@ public actor BankTextAuthor {
       }
     }
     guard let txnID else { return .failed(lastError) }
-    if sender.kind == .bank, next != memory { await layouts.save(next) }
+    if sender.kind == .bank { layouts = read.layouts }
     return .added(
       BankTextAdded(
         txnID: txnID, bank: kept.bank, keptAtMs: arrival.receivedAtMs, filed: !authored.needsReview,

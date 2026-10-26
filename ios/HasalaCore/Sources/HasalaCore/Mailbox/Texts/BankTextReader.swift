@@ -67,20 +67,41 @@ public enum BankTextReader {
     (try? Normalizer.normalizeText(version: Normalizer.currentVersion, text: text)) ?? text
   }
 
-  public static func sender(_ sender: String?, templates: [CompiledTemplate] = BankTextReader.templates) -> BankTextSender {
-    BankTextSenders.classify(sender, banks: banks(templates))
+  public static func sender(_ sender: String?) -> BankTextSender {
+    BankTextSenders.classify(sender, banks: bundledBanks)
   }
 
-  static func banks(_ templates: [CompiledTemplate]) -> [String: String] {
-    templates.count == Self.templates.count && zip(templates, Self.templates).allSatisfy { $0.definition == $1.definition }
-      ? bundledBanks : BankTextSenders.bankSenders(templates: templates)
+  struct Read {
+    var reading: BankTextReading
+    var layouts: LearnedLayouts
+    var sender: BankTextSender
+    var text: String
   }
 
-  public static func read(
-    _ a: BankTextArrival, templates: [CompiledTemplate] = BankTextReader.templates, layouts: LearnedLayouts = LearnedLayouts()
-  ) -> (reading: BankTextReading, layouts: LearnedLayouts) {
-    let sender = BankTextSenders.classify(a.sender, banks: banks(templates))
+  public static func read(_ a: BankTextArrival, layouts: LearnedLayouts = LearnedLayouts()) -> (
+    reading: BankTextReading, layouts: LearnedLayouts
+  ) {
+    let r = read(a, templates: templates, banks: bundledBanks, layouts: layouts)
+    return (r.reading, r.layouts)
+  }
+
+  public static func read(_ a: BankTextArrival, templates: [CompiledTemplate], layouts: LearnedLayouts = LearnedLayouts()) -> (
+    reading: BankTextReading, layouts: LearnedLayouts
+  ) {
+    let r = read(a, templates: templates, banks: BankTextSenders.bankSenders(templates: templates), layouts: layouts)
+    return (r.reading, r.layouts)
+  }
+
+  static func read(_ a: BankTextArrival, templates: [CompiledTemplate], banks: [String: String], layouts: LearnedLayouts) -> Read {
+    let sender = BankTextSenders.classify(a.sender, banks: banks)
     let text = normalized(a.text)
+    let (r, next) = reading(a, sender: sender, text: text, templates: templates, layouts: layouts)
+    return Read(reading: r, layouts: next, sender: sender, text: text)
+  }
+
+  static func reading(
+    _ a: BankTextArrival, sender: BankTextSender, text: String, templates: [CompiledTemplate], layouts: LearnedLayouts
+  ) -> (BankTextReading, LearnedLayouts) {
     func drop(_ k: TextDropKind) -> (BankTextReading, LearnedLayouts) {
       let counted = sender.kind == .bank
       return (.dropped(k, counted: counted, bank: counted ? sender.bank : nil), layouts)

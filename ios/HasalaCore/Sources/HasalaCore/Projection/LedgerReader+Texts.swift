@@ -20,7 +20,7 @@ extension LedgerReader {
       try Row.fetchAll(
         db,
         sql: """
-          SELECT * FROM txn WHERE superseded_by IS NULL AND channel = ? AND posted_ms >= ? AND posted_ms <= ?
+          SELECT * FROM txn WHERE superseded_by IS NULL AND archived IS NULL AND channel = ? AND posted_ms >= ? AND posted_ms <= ?
           ORDER BY posted_ms, id
           """, arguments: [TxnChannel.sms, postedFromMs, toMs]
       ).map(TxnRow.init)

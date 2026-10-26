@@ -29,7 +29,7 @@ final class TextRig: Sendable {
   let author: BankTextAuthor
   let clock: FakeClock
 
-  init(categorizer: any IngestCategorizer = NoCategorizer(), layouts: any BankTextLayoutStore = MemoryBankTextLayouts()) throws {
+  init(categorizer: any IngestCategorizer = NoCategorizer()) throws {
     let s = try LedgerStore.inMemory()
     try s.create(StoreMeta(userID: Self.user, writerID: Self.writer, apiBase: "b", keyEpoch: 1, createdAt: 1))
     store = s
@@ -41,7 +41,7 @@ final class TextRig: Sendable {
     let engine = SyncEngine(context: context, observer: observer)
     let outbox = Outbox(store: s, clock: clock, debounce: .seconds(3600), onAuthored: {})
     ledger = RuntimeMailboxLedger(engine: engine, observer: observer, outbox: outbox, authoring: MailboxAuthoring(observer: observer))
-    author = BankTextAuthor(ledger: ledger, layouts: layouts, categorizer: categorizer)
+    author = BankTextAuthor(ledger: ledger, categorizer: categorizer)
   }
 
   func add(_ c: TextCase, link: BankTextLink = .notLinked, at ms: Int64? = nil) async -> BankTextOutcome {

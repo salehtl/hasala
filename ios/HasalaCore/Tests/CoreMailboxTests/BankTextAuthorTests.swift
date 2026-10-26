@@ -137,9 +137,26 @@ struct BankTextLinkTests {
       }
     }
     #expect(try rig.pendingOps().isEmpty)
-    let paste = await rig.author.paste(try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0, secret: TextRig.secret, link: .linked)
-    #expect(paste == .ignored(counted: true, bank: "dib"))
     #expect(try rig.pendingOps().isEmpty)
+  }
+
+  @Test("while linked the paste refuses, whatever the text, and is not counted as ignored; not linked or unknown, it adds")
+  func pasteRefusedWhileLinked() async throws {
+    let rig = try TextRig()
+    for name in ["dib-purchase-credit-card", "dib-english-purchase", "person-chat", "dib-otp-purchase"] {
+      let out = await rig.author.paste(try TextCase.named(name).text, atMs: TextRig.t0, secret: TextRig.secret, link: .linked)
+      #expect(out == .pasteRefused, "\(name): \(out)")
+    }
+    #expect(try rig.pendingOps().isEmpty)
+    let unread = try #require(await rig.add(try TextCase.named("dib-arabic-no-amount")).added)
+    let refused = await rig.author.paste(
+      try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0, secret: TextRig.secret, link: .linked, replacing: unread.txnID)
+    #expect(refused == .pasteRefused)
+    #expect(try rig.pendingOps().count == 1)
+    for link in [BankTextLink.notLinked, .unknownUnanswered] {
+      let out = await rig.author.paste(try TextCase.named("dib-english-purchase").text, atMs: TextRig.t0, secret: TextRig.secret, link: link)
+      #expect(out.added?.filed == false, "\(link): \(out)")
+    }
   }
 
   @Test("with no answer about the link, a kept text is authored for Review and never files; a dropped text never asks")
@@ -242,6 +259,25 @@ struct BankTextKeyTests {
     #expect(Set(try rig.ingests().compactMap(\.ingestID)).count == 2)
   }
 
+  @Test("two authors on one ledger share its serial: equal texts started together get n 0 and 1, and neither is a duplicate_ingest")
+  func twoAuthorsOneLedger() async throws {
+    let c = try TextCase.named("dib-reversal")
+    for _ in 0..<4 {
+      let rig = try TextRig()
+      let authors = [rig.author, BankTextAuthor(ledger: rig.ledger), BankTextAuthor(ledger: rig.ledger)]
+      let outcomes = await withTaskGroup(of: BankTextOutcome.self) { g in
+        for a in authors { g.addTask { await a.add(c.arrival, secret: TextRig.secret, link: { .notLinked }) } }
+        var out: [BankTextOutcome] = []
+        for await o in g { out.append(o) }
+        return out
+      }
+      #expect(outcomes.compactMap(\.added).map(\.repeatNumber).sorted() == [0, 1, 2])
+      let s = try rig.fold()
+      #expect(s.anomalies.isEmpty && s.txns.count == 3)
+      #expect(Set(try rig.ingests().compactMap(\.ingestID)).count == 3)
+    }
+  }
+
   @Test("a key whose op is still in the outbox counts as taken")
   func outboxCountsAsTaken() async throws {
     let rig = try TextRig()
@@ -282,6 +318,7 @@ struct BankTextKeyTests {
 }
 
 actor FakeTextLedger: BankTextLedger {
+  nonisolated let textWrites = WriteSerial()
   var outbox: Set<String>
   var rows: [BankTextRow] = []
   var authored: [BankTextDraft] = []
@@ -333,6 +370,21 @@ struct BankTextTransferPairTests {
         await rig.add(TextCase(name: "b", sender: "DIB-SMS", text: b, receivedAtMs: TextRig.t0 + minutes * 60_000)).added)
       #expect(second.transferPartner == nil)
     }
+  }
+
+  @Test("an archived text row is no transfer partner; textRows lists only live text rows")
+  func archivedIsNoPartner() async throws {
+    let rig = try TextRig()
+    let alert = try #require(
+      await rig.add(TextCase(name: "a", sender: "DIB-SMS", text: Self.debit("234.56"), receivedAtMs: TextRig.t0)).added)
+    #expect(try rig.observer.reader.textRows(postedFromMs: TextRig.t0 - 3_600_000, toMs: TextRig.t0 + 3_600_000).map(\.id) == [alert.txnID])
+    try await rig.ledger.author { a throws(AuthorError) in a.annotate(txnID: alert.txnID, set: [("archived", "user")]) }
+    #expect(try rig.observer.reader.textRows(postedFromMs: TextRig.t0 - 3_600_000, toMs: TextRig.t0 + 3_600_000).isEmpty)
+    #expect(try rig.observer.reader.textRowSpan()?.count == 1)
+    let notice = try #require(
+      await rig.add(TextCase(name: "b", sender: "DIB-SMS", text: Self.ownTransfer("234.56"), receivedAtMs: TextRig.t0 + 600_000)).added)
+    #expect(notice.transferPartner == nil)
+    #expect(try rig.fold().anomalies.isEmpty)
   }
 
   @Test("the pure check: other role, same bank, amount and currency, within the window, nearest first")
@@ -428,18 +480,22 @@ struct BankTextRowTests {
     }
   }
 
-  @Test("learned layouts train only on bank senders, keyed sms:<sender>, and only when a row is authored")
+  @Test("learned layouts train only on bank senders, keyed sms:<sender>, only when a row is authored, and live only in the author's memory")
   func layouts() async throws {
-    let store = MemoryBankTextLayouts()
-    let rig = try TextRig(layouts: store)
+    let rig = try TextRig()
     _ = await rig.add(try TextCase.named("person-sent-money"))
     _ = await rig.add(try TextCase.named("dib-english-purchase-no-sender"))
-    #expect(await store.load() == LearnedLayouts())
+    #expect(await rig.author.layouts == LearnedLayouts())
     _ = await rig.add(try TextCase.named("dib-english-purchase"), link: .linked)
-    #expect(await store.load() == LearnedLayouts())
+    #expect(await rig.author.layouts == LearnedLayouts())
+    _ = await rig.add(try TextCase.named("dib-otp-purchase"))
+    #expect(await rig.author.layouts == LearnedLayouts())
     _ = await rig.add(try TextCase.named("dib-english-purchase"))
-    let trained = await store.load()
-    #expect(trained.senders.keys.sorted() == ["sms:dib-sms"])
+    #expect(await rig.author.layouts.senders.keys.sorted() == ["sms:dib-sms"])
+    let next = BankTextAuthor(ledger: rig.ledger)
+    #expect(await next.layouts == LearnedLayouts())
+    _ = try #require(await next.add(try TextCase.named("dib-english-purchase").arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(await next.layouts.senders.keys.sorted() == ["sms:dib-sms"])
   }
 }
 
@@ -559,5 +615,115 @@ struct BankTextGoldenOpTests {
     #expect(notice.transferPartner == alert.txnID)
     #expect(JSONValue.object(try pair.payload(alert.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-transfer-pair-kept", "op-sms-1")))
     #expect(JSONValue.object(try pair.payload(notice.txnID)).sortingKeysByUTF8() == (try Self.golden("sms-transfer-pair-kept", "op-sms-2")))
+  }
+}
+
+actor RefusingTextLedger: BankTextLedger {
+  nonisolated let textWrites = WriteSerial()
+  let refusals: Int
+  let error: String
+  var attempts: [(draft: BankTextDraft, archiving: String?)] = []
+
+  init(refusing refusals: Int, with error: String = "invalid_op") {
+    self.refusals = refusals
+    self.error = error
+  }
+
+  func knownCards() async -> [CardKey: CardState] { [CardKey(bank: "dib", last4: "1234"): .mine] }
+  func isIngested(_ ingestID: String) async -> Bool { false }
+  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { [] }
+  func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
+    attempts.append((draft, archiving))
+    if attempts.count <= refusals { throw MailboxLedgerError(error) }
+    return "01JC0000000000000000000001"
+  }
+}
+
+@Suite("bank texts: a refused draft falls back to an unparsed row")
+struct BankTextFallbackTests {
+  static func folds(_ d: BankTextDraft) throws -> Bool {
+    var a = OpAuthor(
+      AuthorContext(writerID: TextRig.writer.string, nowMs: TextRig.t0, ownLastMs: nil, maxAuthored: [:], random: SeededRandom(seed: "fallback")))
+    try a.ingest(payload: d.payload, ingestID: d.ingestID)
+    var s = State()
+    try Replay.foldOps(try a.build().ops, seq: 1, writerID: TextRig.writer.string, into: &s)
+    return s.anomalies.isEmpty && s.txns.count == 1
+  }
+
+  static func add(_ ledger: RefusingTextLedger, _ c: TextCase) async -> BankTextOutcome {
+    await BankTextAuthor(ledger: ledger).add(c.arrival, secret: TextRig.secret, link: { .notLinked })
+  }
+
+  @Test("each refusal takes the next draft: unparsed with the merchant, then without it, then without bank, card and the text's time")
+  func chain() async throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let ledger = RefusingTextLedger(refusing: 3)
+    let added = try #require(await Self.add(ledger, c).added)
+    #expect(added.unparsed && !added.filed && added.bank == "dib")
+    let drafts = await ledger.attempts.map(\.draft)
+    #expect(drafts.count == 4 && Set(drafts.map(\.ingestID)).count == 1)
+    #expect(drafts[0].payload["unparsed"]?.boolValue == false && drafts[0].payload["amount_minor"]?.stringValue == "12345")
+    #expect(drafts[0].payload["needs_review"]?.boolValue == false && !drafts[0].needsReview)
+    for d in drafts.dropFirst() {
+      let p = d.payload
+      #expect(d.needsReview && p["needs_review"]?.boolValue == true && p["unparsed"]?.boolValue == true && p["tier"]?.stringValue == "none")
+      #expect(p["amount_minor"] == nil && p["currency"] == nil && p["direction"] == nil && p["category"] == .null)
+      #expect(p["channel"]?.stringValue == "sms" && p["received_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+      #expect(p["posted_precision"]?.stringValue == "time" && p["gates"]?["template"]?.stringValue == "none")
+      #expect(p["gates"]?["sender"]?.stringValue == "untrusted")
+    }
+    for d in drafts { #expect(try Self.folds(d)) }
+    let (one, two, three) = (drafts[1].payload, drafts[2].payload, drafts[3].payload)
+    #expect(one["merchant_raw"]?.stringValue == "SAMPLE SHOP" && one["bank"]?.stringValue == "dib" && one["last4"]?.stringValue == "1234")
+    #expect(one["posted_at"]?.stringValue == "2026-06-05T06:11:00.000Z" && one["gates"]?["card"]?.stringValue == "known")
+    #expect(two["merchant_raw"]?.stringValue == "" && two["bank"]?.stringValue == "dib" && two["last4"]?.stringValue == "1234")
+    #expect(two["posted_at"]?.stringValue == "2026-06-05T06:11:00.000Z")
+    #expect(three["merchant_raw"]?.stringValue == "" && three["bank"] == nil && three["last4"]?.stringValue == "")
+    #expect(three["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z" && three["gates"]?["card"]?.stringValue == "none")
+  }
+
+  @Test("a refusal of every draft fails with the refusal; an error that is no refusal stops at the first draft")
+  func stops() async throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let all = RefusingTextLedger(refusing: 4)
+    #expect(await Self.add(all, c) == .failed("invalid_op"))
+    #expect(await all.attempts.count == 4)
+    for refusal in ["op_too_large", "refused_cap"] {
+      let r = RefusingTextLedger(refusing: 1, with: refusal)
+      #expect(await Self.add(r, c).added?.unparsed == true, "\(refusal)")
+      #expect(await r.attempts.count == 2, "\(refusal)")
+    }
+    for other in ["enqueue", "context_offline", "not_authored"] {
+      let r = RefusingTextLedger(refusing: 1, with: other)
+      #expect(await Self.add(r, c) == .failed(other), "\(other)")
+      #expect(await r.attempts.count == 1, "\(other)")
+    }
+  }
+
+  @Test("the archive of the row a paste replaces rides along with every draft")
+  func archiving() async throws {
+    let ledger = RefusingTextLedger(refusing: 2)
+    let out = await BankTextAuthor(ledger: ledger).paste(
+      try TextCase.named("dib-purchase-credit-card").text, atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked,
+      replacing: "01JC0000000000000000000009")
+    #expect(out.added?.unparsed == true)
+    let attempts = await ledger.attempts
+    #expect(attempts.count == 3 && attempts.allSatisfy { $0.archiving == "01JC0000000000000000000009" })
+  }
+
+  @Test("a text with only a date is read with day precision; its unparsed fallbacks take the arrival minute as time")
+  func dayPrecision() async throws {
+    let text = "خصم بمبلغ 234.56 في 03-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
+    let c = TextCase(name: "day", sender: "DIB-SMS", text: text, receivedAtMs: TextRig.t0)
+    let k = try #require(BankTextReader.read(c.arrival).reading.kept)
+    #expect(k.fields?.precision == "day" && k.postedAt != "2026-06-05T08:00:00.000Z")
+    let ledger = RefusingTextLedger(refusing: 3)
+    _ = try #require(await Self.add(ledger, c).added)
+    let drafts = await ledger.attempts.map(\.draft)
+    #expect(drafts[0].payload["posted_precision"]?.stringValue == "day" && drafts[0].payload["posted_at"]?.stringValue == k.postedAt)
+    for d in drafts.dropFirst() {
+      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+      #expect(try Self.folds(d))
+    }
   }
 }

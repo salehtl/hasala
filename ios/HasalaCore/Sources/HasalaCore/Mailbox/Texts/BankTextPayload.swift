@@ -130,8 +130,10 @@ enum BankTextPayload {
     var u = k
     u.fields = nil
     u.template = nil
+    let timed = k.precision == "time" && (try? parseInstantMs(k.postedAt)) != nil
     var p = JSONObject([
-      ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("tier", .string("none")), ("posted_at", .string(k.postedAt)),
+      ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("tier", .string("none")),
+      ("posted_at", .string(timed ? k.postedAt : received)),
       ("posted_precision", .string("time")), ("merchant_raw", .string(k.merchant)), ("last4", .string(k.last4)),
       ("category", .null), ("entry_method", .string("mailbox")),
     ])
@@ -146,7 +148,6 @@ enum BankTextPayload {
     let received = Instant.iso(receivedMinuteMs) ?? ""
     var bare = k
     bare.merchant = ""
-    if (try? parseInstantMs(bare.postedAt)) == nil { bare.postedAt = received }
     var plain = bare
     plain.last4 = ""
     plain.bank = nil
