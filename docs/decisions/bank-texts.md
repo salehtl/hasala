@@ -53,10 +53,22 @@ What iOS allows:
 - An app cannot make the automation for the person. Hasala can only guide them.
 - An automation sees only texts that arrive after it is made. It cannot read older texts.
 
-**To check on a real iPhone before any build:** the exact fields of the Message trigger,
-and whether the shortcut gets the sender or only the text. Bank sender IDs are usually not
-contacts, so "Message contains" may be the only filter that works. In that case the action
-must check the sender itself, or treat each text as from an unknown sender.
+**To check on a real iPhone before any build:**
+
+- The exact fields of the Message trigger, and whether the action gets the sender or only
+  the text. Bank sender IDs are usually not contacts, so "Message contains" may be the only
+  filter that works. In that case the action treats each text as from an unknown sender,
+  and the app words its filtering by content, not by sender.
+- Whether a text sent to your own number fires the automation (the set-up test).
+- Whether the action can run and write while the iPhone is locked.
+- Whether the "Running your automation" banner can be turned off for this trigger. Sources
+  disagree for iOS 18.
+- Whether the action can take the message as its input by default, so the person does not
+  set it by hand.
+- Whether iOS lists the action before Hasala has been opened once.
+
+Until each is checked, the app's copy says "to verify" or avoids the claim. The app cannot
+see the automation, so its status shows only what it observed ("Last ran 4 min ago").
 
 The app needs a setup screen ("Bank texts") with the steps for each bank and a test step.
 In the test step, the person sends themselves a fixed phrase. The action recognises it and
@@ -176,6 +188,9 @@ steps.
 | D5 | Before or after the template-free readers ship in the app? | **Open (owner).** Recommendation: after. Texts can then use templates and the readers from the start. |
 | D6 | Can the locked-phone inbox keep raw text until the next unlock? | **Open (owner).** Recommendation: yes, on the device only, deleted after it is read, and stated in the privacy policy. The other choice is to drop texts that arrive while the phone is locked, which breaks "nothing is dropped silently". |
 | D7 | Build option 3 (Apple Pay through the Wallet trigger) too? | **Open (owner).** Recommendation: not in v1. It needs the merge from D3. |
+| D9 | Which filter words catch every bank text? | **Open (owner).** Recommendation: check each bank's real texts. One automation for each word, likely "AED" and "درهم". The app flags a bank it has never had a text from. A text without the word never reaches Hasala, and nothing else shows that it is missing. |
+| D10 | When a person switches from texts to email, what does email import? | **Open (owner).** Recommendation: only mail newer than the last row from a text, so the overlap is not counted twice. The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
+| D11 | What about texts with the word that are not payments? | **Open (owner).** Recommendation: one-time codes, declined payments, pre-authorisations and promotions are ignored and never kept. A declined payment is never added. The fixtures must include each kind. |
 | D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Open (owner).** Recommendation: when D1 to D3 are decided, add that transactions also come from bank texts, which the phone reads; that Shortcuts gives them to the app; and that nothing sends them off the phone. |
 
 ## Build plan (when decided)
