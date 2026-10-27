@@ -186,6 +186,33 @@ struct TextGateTests {
     }
   }
 
+  @Test("a payment noun or verb a few words before its amount keeps a text with a promotion line; a conditional or promoted amount does not")
+  func nearStatements() {
+    for text in [
+      "A purchase of AED 89.50 was made at SYNTHETIC SHOP with card XX1234. T&C apply", "Purchase at SYNTHETIC SHOP for AED 89.50 on card XX1234. T&C apply",
+      "Card XX1234 used for AED 89.50 at SYNTHETIC SHOP. T&C apply", "Transaction at SYNTHETIC SHOP AED 89.50 card XX1234. T&C apply",
+      "Amount: AED 89.50 Merchant: SYNTHETIC SHOP Card: XX1234. T&C apply", "Purchase AED 89.50 at SYNTHETIC SHOP card XX1234. T&C apply",
+      "POS purchase of AED 89.50 at SYNTHETIC SHOP. T&C apply", "Online purchase AED 89.50 SYNTHETIC SHOP card XX1234. Offer valid till 30-06-2026",
+      "Thank you for using your card XX1234 for AED 89.50 at SYNTHETIC SHOP. T&C apply", "Cash withdrawal AED 500.00 card XX1234 ATM SAMPLE. T&C apply",
+      "Payment received AED 500.00 thank you. T&C apply", "استخدمت بطاقتك XX1234 لشراء بمبلغ 89.50 درهم لدى متجر. عرض خاص",
+      "تم استخدام بطاقتك XX1234 بمبلغ 89.50 درهم لدى متجر. عرض خاص",
+    ] {
+      #expect(TextGate.hasPaymentStatement(text), "\(text)")
+      #expect(TextGate.notice(text) == nil, "\(text)")
+      #expect(TextGate.neverAPayment(text) == .pass(marked: false), "\(text)")
+    }
+    for text in [
+      "عند استخدام بطاقتك لشراء بمبلغ 100 درهم او اكثر احصل على 5%. عرض خاص", "Enjoy 0% on balance transfer of AED 5,000. T&C apply",
+      "Use your card for a purchase of AED 100 and get 10% back. T&C apply", "Transfer AED 1,000 or more to get a gift. T&C apply",
+      "Purchase AED 200 to earn double points. T&C apply", "Your next purchase of AED 100 gets 5% off. T&C apply",
+      "A purchase of AED 100 earns 500 points. T&C apply", "Vouchers can be used for AED 50 off at SAMPLE SHOP. T&C apply",
+      "Spend AED 500 on any purchase and win. T&C apply", "Payments of AED 1,000 qualify for the draw. T&C apply",
+    ] {
+      #expect(!TextGate.hasPaymentStatement(text), "\(text)")
+      #expect(TextGate.notice(text) == .promotion, "\(text)")
+    }
+  }
+
   @Test("a payment stated at the start of a sentence or line keeps a text that has a notice or promotion marker; after other words, or of an amount or more, it is none")
   func statements() {
     for text in [

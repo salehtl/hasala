@@ -235,11 +235,34 @@ public enum TextGate {
 
     static let paymentNoun = "(?:purchase|transfer|payment|withdrawal|refund|deposit|transaction|txn)"
 
+    static let promoCue =
+      "(?<![a-z])(?:above|over|more|minimum|min|least|upto|up\\s+to|spend|earn|earns|get|gets|win|wins|when|if|every|each|any|next"
+      + "|cashback|back|save|enjoy|offer|qualify|qualifies|eligible|balance)(?![a-z])"
+
+    static let notPromoted =
+      "(?<!(?:make|makes|every|each|any|next|all|first|on|win|get|earn|minimum|min|per|be|can|to|balance)\\s)"
+      + "(?<!(?:make|makes|every|each|any|next|all|first|on|for|with|per|win|get)\\s(?:an?|your|the)\\s)"
+
+    static let notPromotedAfter =
+      notMore + "(?!\\s+(?:minimum|min)(?![a-z]))(?!\\s{0,2}(?:%|\\+))"
+      + "(?!\\s+(?:or|and|to|&)\\s+(?:above|over|more|get|earn|win|receive|enjoy|save)(?![a-z]))"
+      + "(?!\\s+(?:earns?|gets?|wins?|qualif)(?![a-z]))"
+
+    static let nearStatement =
+      "(?<![a-z])" + notPromoted
+      + "(?:\(paymentNoun)|purchased|paid|spent|charged|sent|received|withdrew|used|using|debit|credit)(?![a-z])"
+      + "(?:(?!\(promoCue))(?:[^\\n.!?%;]|\\.(?=\\S))){0,60}?(?<![a-z])" + statedAmount + notPromotedAfter
+
+    static let arabicCardUse =
+      "(?:تم\\s+استخدام|استخدمت)\\s+(?:ال)?بطاق\\S*(?:\\s+\\S+){0,3}?\\s+(?:(?:ل|ب)?(?:شراء|مشتريات|سحب|دفع|سداد)\\s+)?"
+      + "(?:بمبلغ|مبلغ|بقيمه|قيمه)\\s+(?:(?:aed|درهم)\\s{0,2})?[0-9][0-9.,]*+(?!\\s{0,2}(?:درهم|aed)?\\s{0,2}(?:او|و|ف)\\s{0,2}(?:اكثر|فوق|ما\\s+فوق))"
+
     static let paymentStatement = RuleText.re(
-      lead
+      nearStatement + "|" + arabicCardUse
+        + "|" + lead
         + "(?:\(paymentNoun)\\s+of|paid|spent|charged|sent|received|purchased|withdrew)\\s+(?:an?\\s+amount\\s+of\\s+)?"
         + statedAmount + notMore
-        + "|" + lead + "(?:\(paymentNoun)|debit|credit)\\s{0,2}(?::|-)\\s{0,2}" + statedAmount + notMore
+        + "|" + lead + "(?:\(paymentNoun)|debit|credit|amount|amt)\\s{0,2}(?::|-)\\s{0,2}" + statedAmount + notMore
         + "|" + lead + statedAmount + "\\s{1,2}(?:\(paymentNoun)|debit|credit)(?![a-z])" + notMore + "(?!\\s+(?:minimum|min)(?![a-z]))"
         + "|" + lead
         + "(?:عمليه\\s+)?(?:شراء|مشتريات|سحب(?:\\s+نقدي)?|ايداع(?:\\s+راتب)?|تحويل|سداد|دفع|خصم(?=\\s+(?:بمبلغ|مبلغ)))(?:\\s+[^\\s0-9]+){0,4}?\\s+"
