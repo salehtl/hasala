@@ -101,6 +101,27 @@ public enum Normalizer {
       forwarded: fwd.found, emailDate: emailDate, dateSource: dateSource)
   }
 
+  public static func normalizeText(version: Int, text: String) throws(NormalizeError) -> String {
+    guard version == currentVersion else { throw .unknownVersion(version) }
+    var lines: Scalars = []
+    lines.reserveCapacity(text.unicodeScalars.count)
+    var pendingCR = false
+    for c in text.unicodeScalars {
+      if pendingCR {
+        pendingCR = false
+        lines.append("\n")
+        if c == "\n" { continue }
+      }
+      if c == "\r" {
+        pendingCR = true
+        continue
+      }
+      lines.append(c)
+    }
+    if pendingCR { lines.append("\n") }
+    return collapse(lines)
+  }
+
   static func emailDateOf(forwardDate: String, receivedAtMs: Int64) -> (String, DateSource) {
     if !forwardDate.isEmpty, let parsed = Unwrap.parseForwardDate(forwardDate) {
       return (format(parsed), .forwardHeader)

@@ -18,7 +18,7 @@ private let privateRoot: URL? = {
 struct PrivateCorpusDispositionTests {
   @Test func realBankMailIsNeverSetAsideAndDirectAlertsParse() throws {
     let root = try #require(privateRoot)
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let banks = ["dib.ae", "emiratesnbd.com"]
     let files = try FileManager.default.contentsOfDirectory(atPath: root.path).filter {
       ($0.hasPrefix("dib-") || $0.hasPrefix("enbd-")) && $0.hasSuffix(".json")
@@ -76,7 +76,7 @@ struct PrivateGmailDeliveredTests {
       return ar.map { $0.dropFirst("authentication-results:".count).trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("mx.google.com;") } ?? false
     }
     #expect(gmailDelivered.count >= 5, "\(gmailDelivered.count) Gmail-delivered .eml files")
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let banks = ["adib.ae", "dib.ae", "emiratesnbd.com"]
     for url in gmailDelivered {
       let f = url.lastPathComponent
@@ -125,7 +125,7 @@ struct PrivateOutlookSenderRuleTests {
         raws.append((url.lastPathComponent, [UInt8](try Data(contentsOf: url))))
       }
     }
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let banks = OutlookSenders.dmarcReject
     let gate = OutlookProvider(
       oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),
@@ -153,7 +153,7 @@ struct PrivateOutlookSenderRuleTests {
 @Suite(.enabled(if: !outlookDelivered.isEmpty, "needs HASALA_PRIVATE_FIXTURES with conformance/outlook/outlook-*.eml"))
 struct PrivateOutlookDeliveredTests {
   @Test func outlookDeliveredBankMailInTheInboxPassesTheSenderRule() throws {
-    let templates = BundledTemplates.load().templates
+    let templates = BundledTemplates.load(channel: .mail).templates
     let banks = OutlookSenders.dmarcReject
     let gate = OutlookProvider(
       oauth: MicrosoftOAuthClient(config: MicrosoftOAuthConfig(clientID: "unset", redirectScheme: "unset"), http: NoHTTP()),

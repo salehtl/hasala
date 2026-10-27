@@ -162,6 +162,8 @@ public struct Txn: Sendable, Equatable, Codable {
   public var aliases: [TxnAlias] = []
   public var copyOf: String?
   public var copyDecision: String?
+  public var channel: String? = nil
+  public var receivedAt: String? = nil
   /// field → keyed value (03c §3.5); every value is a string or a clear.
   public var annotations: OrderedDictionary<String, Keyed<String?>> = [:]
 
@@ -173,6 +175,11 @@ public struct Txn: Sendable, Equatable, Codable {
   public var isLive: Bool { supersededBy == nil && retiredBy == nil && mergedInto == nil }
   public var isHeldCopy: Bool { copyOf != nil && copyDecision == nil && isLive }
   public var verifiedSender: Bool { gates?.ar == "pass" && gates?.sender == "trusted" }
+  public var isText: Bool { channel.map { utf8Equal($0, TxnChannel.sms) } ?? false }
+}
+
+public enum TxnChannel {
+  public static let sms = "sms"
 }
 
 // MARK: - Rules, categories, configuration

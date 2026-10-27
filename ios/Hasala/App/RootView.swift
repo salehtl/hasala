@@ -197,8 +197,8 @@ struct LaunchView: View {
         app: AppModel(
           store: InMemoryLedger(state: state, now: scenario.now),
           amountsHidden: scenario.startsWithAmountsHidden, mailbox: session.services.mailbox,
-          layouts: mockLayouts(arguments)),
-        session: session, setupFacts: AuthScenario.setupFacts(for: auth), lock: MockAppLock(arguments),
+          layouts: mockLayouts(arguments), bankTexts: session.services.bankTexts),
+        session: session, setupFacts: AuthScenario.setupFacts(for: auth, texts: session.services.bankTexts), lock: MockAppLock(arguments),
         syncHalt: MockSyncHalt(arguments))
       if let delay = milliseconds(after: refreshDelayArgument, in: arguments) {
         graph.app.refreshWork = { try? await Task.sleep(for: delay) }

@@ -970,3 +970,210 @@ func TestExecuteMatchesExactlyWhenItReturnsNoError(t *testing.T) {
 		}
 	}
 }
+
+func smsDef(t *testing.T, layouts string) Definition {
+	t.Helper()
+	return mustDef(t, fmt.Sprintf(`{
+	  "id":"sms","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+	  "match":{"sms_sender":["BANK-SMS","AD-Bank"]},
+	  "default_currency":"AED","date_from":"received",
+	  "extract":[
+	    {"field":"amount","type":"amount","source":"body","patterns":["Amt: (?P<amt>[^\\n]+)"]},
+	    {"field":"direction","type":"const","source":"body","value":"debit"},
+	    {"field":"date","type":"date","source":"body","layouts":[%s],
+	     "patterns":["Date: (?P<d>[^\\n]+)"]}
+	  ],
+	  "required":["amount","direction"]}`, layouts))
+}
+
+func TestTheTimedNumericLayoutReadsAsGoReadsIt(t *testing.T) {
+	d := smsDef(t, `"DD-MM-YYYY HH:mm"`)
+	for _, tc := range []struct {
+		text string
+		want string
+		why  string
+	}{
+		{"05-06-2026 14:30", "2026-06-05T14:30:00Z", "24-hour clock"},
+		{"05-06-2026 00:00", "2026-06-05T00:00:00Z", "midnight"},
+		{"05-06-2026 23:59", "2026-06-05T23:59:00Z", "the last minute"},
+		{"05-06-2026 8:05", "2026-06-05T08:05:00Z", "Go's 15 accepts a one-digit hour"},
+		{"05-06-2026 24:00", "", "hour 24 is out of range"},
+		{"05-06-2026 12:60", "", "minute 60 is out of range"},
+		{"05-06-2026 12:5", "", "the minute needs two digits"},
+		{"05-06-2026 123:45", "", "three hour digits leave trailing text"},
+		{"05-06-2026", "", "the timed layout needs the time"},
+		{"05-06-2026 14:30 extra", "", "trailing text, and the first token has no time"},
+		{"05-06-2026  14:30", "", "two spaces: no whole-string attempt, and the first token has no time"},
+		{"05-06-2026T14:30", "", "the separator is one U+0020"},
+		{"31-02-2026 10:00", "", "calendar ranges are checked"},
+	} {
+		e, err := Execute(d, "", "Amt: 1.00\nDate: "+tc.text)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.text, err)
+		}
+		got := ""
+		if !e.PostedAt.IsZero() {
+			got = e.PostedAt.Format(time.RFC3339)
+		}
+		if got != tc.want {
+			t.Errorf("%q (%s): got %q, want %q", tc.text, tc.why, got, tc.want)
+		}
+	}
+	both := smsDef(t, `"DD-MM-YYYY HH:mm","DD-MM-YYYY"`)
+	e, err := Execute(both, "", "Amt: 1.00\nDate: 05-06-2026 garbage")
+	if err != nil || e.PostedAt.Format(time.RFC3339) != "2026-06-05T00:00:00Z" {
+		t.Fatalf("the date-only layout after the timed one reads the first token: %v %v", e.PostedAt, err)
+	}
+}
+
+func TestDateFromReceivedLeavesTheDateToTheCallerOnlyWhenTheTextHasNone(t *testing.T) {
+	d := smsDef(t, `"DD-MM-YYYY HH:mm"`)
+	e, err := Execute(d, "", "Amt: 12.34\nDate: 05-06-2026 14:30")
+	if err != nil || !e.Matched {
+		t.Fatalf("a dated text must match: %v", err)
+	}
+	if e.PostedAt.Format(time.RFC3339) != "2026-06-05T14:30:00Z" {
+		t.Fatalf("the text's own date wins: %v", e.PostedAt)
+	}
+	e, err = Execute(d, "", "Amt: 12.34")
+	if err != nil || !e.Matched {
+		t.Fatalf("an undated text still matches under date_from received: %v", err)
+	}
+	if !e.PostedAt.IsZero() {
+		t.Fatalf("no date in the text leaves PostedAt zero for the receive time: %v", e.PostedAt)
+	}
+	noDateEntry := mustDef(t, `{
+	  "id":"sms","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+	  "match":{"sms_sender":["BANK-SMS"]},"default_currency":"AED","date_from":"received",
+	  "extract":[{"field":"amount","type":"amount","source":"body","patterns":["Amt: (?P<amt>[^\\n]+)"]},
+	    {"field":"direction","type":"const","source":"body","value":"credit"}],
+	  "required":["amount","direction"]}`)
+	if e, err := Execute(noDateEntry, "", "Amt: 1.00"); err != nil || !e.Matched || !e.PostedAt.IsZero() {
+		t.Fatalf("date_from received needs no date entry: %+v %v", e, err)
+	}
+}
+
+func TestCompileHoldsTheChannelRules(t *testing.T) {
+	for name, src := range map[string]string{
+		"an unknown channel": `{"id":"x","version":1,"bank":"t","channel":"fax","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with date_from body": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"body",
+		  "extract":[{"field":"date","type":"date","source":"body","layouts":["DD-MM-YYYY"],
+		    "patterns":["(?P<d>[^\\n]+)"]}],"required":["direction"]}`,
+		"sms with date_from email": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"email",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"mail with date_from received": `{"id":"x","version":1,"bank":"t","normalizer_version":1,
+		  "match":{"sender_domain":["example.com"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"received with a required date": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"date","type":"date","source":"body","layouts":["DD-MM-YYYY"],
+		    "patterns":["(?P<d>[^\\n]+)"]}],"required":["direction","date"]}`,
+		"sms with no sms_sender": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":[]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with an absent match": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with a sender_domain": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"],"sender_domain":["dib.ae"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with subject_contains": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"],"subject_contains":["Alert"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms reading the subject": `{"id":"x","version":1,"bank":"t","channel":"sms","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"},
+		    {"field":"merchant","type":"text","source":"subject","patterns":["(?P<v>[^\\n]+)"]}],"required":["direction"]}`,
+		"mail with an sms_sender": `{"id":"x","version":1,"bank":"t","normalizer_version":1,
+		  "match":{"sender_domain":["example.com"],"sms_sender":["B"]},"default_currency":"AED","date_from":"email",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"sms with an unknown transfer role": `{"id":"x","version":1,"bank":"t","channel":"sms","transfer_role":"both","normalizer_version":1,
+		  "match":{"sms_sender":["B"]},"default_currency":"AED","date_from":"received",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+		"mail with a transfer role": `{"id":"x","version":1,"bank":"t","transfer_role":"alert","normalizer_version":1,
+		  "match":{"sender_domain":["example.com"]},"default_currency":"AED","date_from":"email",
+		  "extract":[{"field":"direction","type":"const","source":"body","value":"debit"}],"required":["direction"]}`,
+	} {
+		d, err := ParseDefinition([]byte(src))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if _, err := Compile(d); !errors.Is(err, ErrDefinition) {
+			t.Errorf("%s: Compile returned %v, want ErrDefinition", name, err)
+		}
+	}
+}
+
+func TestCompileTakesATransferRoleOnlyOnAText(t *testing.T) {
+	for _, role := range []string{"", TransferRoleNotice, TransferRoleAlert} {
+		d := smsDef(t, `"DD-MM-YYYY"`)
+		d.TransferRole = role
+		c, err := Compile(d)
+		if err != nil {
+			t.Fatalf("role %q: %v", role, err)
+		}
+		if c.Definition().TransferRole != role {
+			t.Fatalf("role %q not kept: %q", role, c.Definition().TransferRole)
+		}
+	}
+	mail := mustLoad(t, "testdata/dib.transfer.v1.json")
+	if _, err := Compile(mail); err != nil {
+		t.Fatal(err)
+	}
+	mail.TransferRole = TransferRoleNotice
+	if _, err := Compile(mail); !errors.Is(err, ErrDefinition) {
+		t.Fatalf("a mail template with a transfer role must not compile: %v", err)
+	}
+}
+
+func TestMatchesSMSSenderIsExactAndIgnoresASCIICase(t *testing.T) {
+	d := smsDef(t, `"DD-MM-YYYY"`)
+	for _, tc := range []struct {
+		sender string
+		want   bool
+	}{
+		{"BANK-SMS", true},
+		{"bank-sms", true},
+		{"Bank-Sms", true},
+		{" BANK-SMS\n", true},
+		{"AD-BANK", true},
+		{"BANK-SMS2", false},
+		{"BANK", false},
+		{"XBANK-SMS", false},
+		{"BANK SMS", false},
+		{"", false},
+		{"   ", false},
+		{"BANK-SMS\u00a0", false},
+		{" \t\v\f\r\nBANK-SMS\v", true},
+		{"\u0085BANK-SMS", false},
+	} {
+		if got := MatchesSMSSender(d, tc.sender); got != tc.want {
+			t.Errorf("MatchesSMSSender(%q) = %v, want %v", tc.sender, got, tc.want)
+		}
+	}
+	mail := mustLoad(t, "testdata/dib.card.v1.json")
+	mail.Match.SMSSender = []string{"BANK-SMS"}
+	if MatchesSMSSender(mail, "BANK-SMS") {
+		t.Fatal("a mail template never matches a text sender")
+	}
+	d.Match.SenderDomain = []string{"example.com"}
+	if _, err := Compile(d); !errors.Is(err, ErrDefinition) {
+		t.Fatalf("an sms template that names a mail domain must not compile: %v", err)
+	}
+	if MatchesSenderDomain(d, "example.com") || MatchesSenderDomain(d, "alerts.example.com") {
+		t.Fatal("an sms template never matches a mail domain, even one it names")
+	}
+}
+
+func TestAnSMSTemplateWitnessesNoDecode(t *testing.T) {
+	d := smsDef(t, `"DD-MM-YYYY"`)
+	d.Match.BodyContains = []string{"مشتريات"}
+	if w := d.DecodeWitnesses(); w != nil {
+		t.Fatalf("a text is not decoded from bytes, so nothing witnesses a decode: %q", w)
+	}
+}

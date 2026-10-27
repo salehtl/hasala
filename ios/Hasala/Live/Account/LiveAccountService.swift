@@ -36,6 +36,8 @@ final class LiveAccountService: AccountService {
   var grantEnds = MailGrantEnds.shared
   /// What the account runtime and the gate lend the service. Set by `BootController`.
   var hooks = LiveAccountHooks()
+  var bankTextFacts = BankTextsFacts.shared
+  var bankTextMarker = LockedTextsMarkerFile.shared
 
   var capabilities: AccountCapabilities { .beta }
   private(set) var profile: AccountProfile?
@@ -616,7 +618,7 @@ final class LiveAccountService: AccountService {
         // The server dropped the push token with the account.
         PushRegistrar.shared.forget()
         await leftThisIPhone(grant: grant, stopWatch: true)
-        await hooks.left()
+        await left()
       case .removeDevice(let id) where id == b.writer_id:
         // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
         // writer is revoked at its verified head (#25) and the local data is wiped. A
@@ -633,13 +635,13 @@ final class LiveAccountService: AccountService {
           throw error
         }
         await leftThisIPhone(grant: grant, stopWatch: false)
-        await hooks.left()
+        await left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
         try await guarded(.sessionLogoutAll, "/api/v1/auth/logout-all", factor: factor, binding: b, action: action)
         try? env.secrets.deleteSession()
         signIn = nil
-        await hooks.left()
+        await left()
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
       case .unfreeze:
@@ -674,7 +676,7 @@ final class LiveAccountService: AccountService {
         // revoked session, this iPhone signs in again, and then shows their wall.
         try? env.secrets.deleteSession()
         signIn = nil
-        await hooks.left()
+        await left()
         throw .sessionEnded
       }
       if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw .frozenByOperator }
@@ -771,7 +773,7 @@ final class LiveAccountService: AccountService {
   /// shows Welcome: it reaches Google before any new link can be made.
   private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) async {
     try? env.secrets.deleteSession()
-    LocalAccountData.forget()
+    LocalAccountData.forget(facts: bankTextFacts, marker: bankTextMarker)
     clearSignedIn()
     guard let grant, let endGrant else { return }
     grantEnds.enqueue { await endGrant(grant, stopWatch) }
@@ -790,11 +792,16 @@ final class LiveAccountService: AccountService {
     recovery = nil
   }
 
+  private func left() async {
+    await hooks.left()
+    BankTextsDeviceData.forget(secrets: env.secrets.store, facts: bankTextFacts, marker: bankTextMarker)
+  }
+
   func signOut() async {
     await AccountSignIn.signOut(env)
     endUnlockOffer()
     signIn = nil
-    await hooks.left()
+    await left()
   }
 
   // MARK: Failures

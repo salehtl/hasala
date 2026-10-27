@@ -64,6 +64,82 @@ against a `From` header and never against `norm.Result.From`, which is
 attacker-authored body text. A use of `Result.From` in a trust decision is a
 defect.
 
+### The text channel
+
+A template reads mail unless it says `"channel": "sms"`. An absent `channel`
+and `"channel": "mail"` mean the same thing. A text template differs from a
+mail template in five ways:
+
+```jsonc
+{
+  "channel": "sms",
+  "transfer_role": "alert",        // optional: "notice", "alert" or absent
+  "match": {
+    "sms_sender": ["DIB-SMS"],     // sender IDs, at least one; no sender_domain
+    "body_contains": ["مشتريات بمبلغ"]
+  },
+  "date_from": "received"          // the only date_from a text template takes
+}
+```
+
+- `match.sms_sender` replaces `match.sender_domain`. A text has no signing
+  domain, so `sender_domain` must be empty, and a mail template must leave
+  `sms_sender` empty. `MatchesSMSSender` (Go) and
+  `TemplateDefinition.matchesSMSSender` (Swift) compare the whole sender ID,
+  ASCII case-insensitively, after trimming the executor's cutset. An empty
+  sender matches nothing. Unlike `sender_domain`, `sms_sender` is not a gate
+  before execution: the caller tries every text template on the body whatever
+  the sender (a person's number, an unknown sender or no sender included), and
+  the executor never reads the sender. `sms_sender` decides only whether a hit
+  may file with no review (decision record `bank-texts.md`, D1). A hit whose
+  sender is not listed is still a payment, and the caller keeps it in Review.
+- `date_from: "received"`: a date entry that reads a date from the text wins;
+  when none does, the extraction carries no date and the caller uses the time
+  the text arrived. `required` cannot name `date`, and any number of date
+  entries is allowed.
+- A text has no subject: `subject_contains` must be empty and no entry may
+  read `source: "subject"`. The caller passes an empty subject.
+- The body is the text after `norm.NormalizeText` (Go) or
+  `Normalizer.normalizeText` (Swift) at the template's `normalizer_version`:
+  CRLF and a lone CR become LF, then the stages a `text/plain` mail leaf goes
+  through (the six entities, the whitespace collapse, the line trim, empty
+  lines dropped). Both are pinned by `text_cases` in
+  `conformance/normalizer/edge-cases.json`.
+
+- `transfer_role` (optional, text templates only): `"notice"` on a template
+  that reads a bank's transfer notice, `"alert"` on one that reads the
+  account debit alert for the same movement, absent on every other template.
+  When the app adds a debit row from a template with a role, it holds the row
+  in Review if a text row of the other role, the same bank, amount and
+  currency lies within 30 minutes of it (decision record `bank-texts.md`, "The
+  transfer pair on texts"). Swift's `TextTransferRole` reads the role from the
+  bundled definitions. `ValidateDefinition` also requires every direction
+  entry, and every `on_match` that sets `direction`, of a template with a role
+  to say `"debit"`.
+
+`ValidateDefinition`, `Compile` (Go) and the `CompiledTemplate` init (Swift)
+all refuse a text template that names a `sender_domain`, names no
+`sms_sender`, has `subject_contains`, reads `source: "subject"` or takes a
+`date_from` other than `received`, a mail template that names an
+`sms_sender` or a `transfer_role`, and a `transfer_role` other than `notice`
+or `alert`. The app never runs `ValidateDefinition`, so the executors hold
+these rules themselves.
+
+`DecodeWitnesses` returns nothing for a text template: a text is not decoded
+from bytes, so nothing witnesses a decode.
+
+A text template's conformance cases go only in `conformance/templates/sms/`:
+the synthetic ones (`synthetic-*.json`) in this repository, the real ones
+(`corpus-<id>.json`) in the private fixtures at the same path. A mail
+template's cases stay in `conformance/templates/`. The real-mail fence in
+`scripts/check.sh` fails on any other file in `conformance/templates/sms/`; on
+a file elsewhere in `conformance/templates/` that holds `"channel": "sms"`; on
+a file not named `synthetic-*` or `README.md` in any directory under
+`conformance/` whose name holds `sms` or `text`; and on a private corpus
+marker in any file under `conformance/` or any JSON, JSONL, CSV or text file
+in the tree: a `note` that starts `PRIVATE:`, and, outside `synthetic-*`
+files, a `read_by` key or the sender `DIB-SMS`.
+
 ### `extract` entries
 
 ```jsonc
@@ -145,7 +221,7 @@ change what JavaScript matches.
 
 ### Date layouts
 
-A closed enum. Both executors implement exactly these three and nothing else,
+A closed enum. Both executors implement exactly these four and nothing else,
 because a layout one executor understands and the other does not is a silent
 per-device date difference.
 
@@ -153,7 +229,12 @@ per-device date difference.
 DD-MM-YYYY
 DD/Mon/YYYY hh:mm A
 DD/Mon/YYYY
+DD-MM-YYYY HH:mm
 ```
+
+`DD-MM-YYYY HH:mm` is Go's `02-01-2006 15:04`: a 24-hour clock whose hour may
+have one or two digits (Go's `15` is not fixed-width) and whose minute has two.
+`conformance/templates/sms/synthetic-sms-dates.json` pins its edges.
 
 ---
 
@@ -437,7 +518,11 @@ produce identical bytes for identical templates.
    insertion order; neither is reproducible from the other, but both can sort.
 2. **Every key always present.** No `omitempty`; nil slices render as `[]`, the
    empty string as `""`, absent booleans as `false`. A TypeScript mirror
-   therefore never has to reproduce Go's emptiness rules.
+   therefore never has to reproduce Go's emptiness rules. The three exceptions
+   came with the text channel: `channel` is absent for a mail template (absent
+   and `"mail"` render alike), and `match.sms_sender` and `transfer_role` are
+   absent when they are empty. A mail template's canonical bytes are therefore
+   the bytes it had before texts existed.
 3. **Strings escaped exactly as `JSON.stringify` escapes them**: only `"`, `\`
    and the C0 controls, with the short forms where they exist and `\u00xx`
    (lower-case hex) otherwise.
@@ -472,7 +557,8 @@ and cannot move; Go's encoder is configurable, so Go is the side that moves.
 substitute U+FFFD and JavaScript would not.
 
 The bytes are pinned in `conformance/dialect/patterns.json` under `canonical`
-and reproduced from Bun by `client/src/tmpl/agreement.test.ts`.
+(a mail template) and `canonical_sms` (a text template), and reproduced by the
+Swift `DialectFixtureTests`.
 
 ---
 

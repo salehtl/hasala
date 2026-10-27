@@ -16,6 +16,7 @@ struct ReviewTabView: View {
   @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(AccountSession.self) private var session: AccountSession?
   @State private var cloudSortAnswered = false
+  @State private var pastingText = false
 
   init(app: AppModel) {
     self.app = app
@@ -43,6 +44,7 @@ struct ReviewTabView: View {
             startCard
           }
           if unread > 0 { unreadable(unread) }
+          if app.offersBankTextPaste { pasteTextRow }
           if !cards.isEmpty { list(cards) }
         }
         .padding(.horizontal, HSpacing.insetPage)
@@ -56,6 +58,54 @@ struct ReviewTabView: View {
         app.cloudSort?.countsChanged()
       }
     }
+    .onAppear {
+      #if HASALA_MOCKS
+        if BankTextsLaunch.takeOpenPaste() { pastingText = true }
+      #endif
+      takePasteRequest()
+    }
+    .onChange(of: app.router.pasteBankText) { _, _ in takePasteRequest() }
+    .sheet(isPresented: $pastingText) {
+      if let lane = app.bankTexts {
+        PasteBankTextSheet(lane: lane, hidden: app.amountsHidden) { app.say("Added to Review") }
+      }
+    }
+  }
+
+  private func takePasteRequest() {
+    guard app.router.pasteBankText else { return }
+    app.router.pasteBankText = false
+    if app.offersBankTextPaste { pastingText = true }
+  }
+
+  private var pasteTextRow: some View {
+    Button { pastingText = true } label: {
+      HStack(spacing: 12) {
+        Circle().fill(HColor.actionAccentSubtle).frame(width: 32, height: 32)
+          .overlay { HIconView(.paper, size: 16, color: HColor.actionAccent, strokeWidth: 2) }
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 0) {
+          Text("Paste a bank text")
+            .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+          Text(BankTexts.pasteDetail(usesTexts: app.usesBankTexts))
+            .hType(HType(size: 13, leading: 16, weight: .regular, textStyle: .footnote))
+            .foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if !typeSize.isAccessibilitySize {
+          HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+        }
+      }
+      .padding(.vertical, 14)
+      .padding(.horizontal, 16)
+      .background(cardSurface)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isButton)
+    .accessibilityIdentifier("review.tab.pasteText")
   }
 
   private var asksCloudSort: Bool {

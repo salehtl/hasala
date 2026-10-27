@@ -1554,5 +1554,121 @@
       "expect_email_date": "2026-08-01T12:00:00Z",
       "expect_date_source": "received"
     }
+  ],
+  "text_cases": [
+    {
+      "name": "plain",
+      "note": "a text already in normal form passes unchanged",
+      "text_base64": "UHVyY2hhc2Ugb2YgQUVEIDEyLjM0IGF0IFNBTVBMRSBTSE9Q",
+      "expect_text_base64": "UHVyY2hhc2Ugb2YgQUVEIDEyLjM0IGF0IFNBTVBMRSBTSE9Q"
+    },
+    {
+      "name": "empty",
+      "note": "an empty text normalizes to empty",
+      "text_base64": "",
+      "expect_text_base64": ""
+    },
+    {
+      "name": "whitespace-only",
+      "note": "spaces, tabs and NBSP only",
+      "text_base64": "IAnCoCA=",
+      "expect_text_base64": ""
+    },
+    {
+      "name": "nbsp-after-word",
+      "note": "a no-break space between a word and the amount becomes U+0020",
+      "text_base64": "2K7YtdmFwqAxMi4zNCDZgdmKIDA1LTA2LTIwMjY=",
+      "expect_text_base64": "2K7YtdmFIDEyLjM0INmB2YogMDUtMDYtMjAyNg=="
+    },
+    {
+      "name": "runs-collapse",
+      "note": "runs of spaces, tabs and NBSP become one space",
+      "text_base64": "QUVEICAxMi4zNAkJYXQgwqAgU0hPUA==",
+      "expect_text_base64": "QUVEIDEyLjM0IGF0IFNIT1A="
+    },
+    {
+      "name": "outer-trim",
+      "note": "the line trim set includes U+FEFF and U+00A0",
+      "text_base64": "77u/wqAgQUVEIDEuMDAgwqDvu78=",
+      "expect_text_base64": "QUVEIDEuMDA="
+    },
+    {
+      "name": "crlf",
+      "note": "CRLF ends a line",
+      "text_base64": "bGluZSBvbmUNCmxpbmUgdHdv",
+      "expect_text_base64": "bGluZSBvbmUKbGluZSB0d28="
+    },
+    {
+      "name": "lone-cr",
+      "note": "a lone CR also ends a line",
+      "text_base64": "bGluZSBvbmUNbGluZSB0d28=",
+      "expect_text_base64": "bGluZSBvbmUKbGluZSB0d28="
+    },
+    {
+      "name": "cr-cr-lf",
+      "note": "CR CR LF is two line ends, and the empty line between them is dropped",
+      "text_base64": "YQ0NCmI=",
+      "expect_text_base64": "YQpi"
+    },
+    {
+      "name": "trailing-cr",
+      "note": "a trailing CR is a line end",
+      "text_base64": "YQ0=",
+      "expect_text_base64": "YQ=="
+    },
+    {
+      "name": "blank-lines",
+      "note": "empty and whitespace-only lines are dropped",
+      "text_base64": "YQoKIAkKYgo=",
+      "expect_text_base64": "YQpi"
+    },
+    {
+      "name": "entities",
+      "note": "the six entities decode in one pass, exactly as for a mail body",
+      "text_base64": "QVQmYW1wO1QgJmFtcDtsdDsgJiMzOTt4JiMzOTsgJm5ic3A7eQ==",
+      "expect_text_base64": "QVQmVCAmbHQ7ICd4JyB5"
+    },
+    {
+      "name": "unknown-entity",
+      "note": "an entity outside the six stays as written",
+      "text_base64": "JmV1cm87NS4wMA==",
+      "expect_text_base64": "JmV1cm87NS4wMA=="
+    },
+    {
+      "name": "html-is-text",
+      "note": "a text is never stripped of tags",
+      "text_base64": "PGI+QUVEIDEuMDA8L2I+",
+      "expect_text_base64": "PGI+QUVEIDEuMDA8L2I+"
+    },
+    {
+      "name": "line-separator",
+      "note": "U+2028 is not a line end",
+      "text_base64": "YeKAqGI=",
+      "expect_text_base64": "YeKAqGI="
+    },
+    {
+      "name": "zero-width",
+      "note": "zero-width and bidi marks are kept",
+      "text_base64": "4oCPQUVE4oCLIDEuMDDigI4=",
+      "expect_text_base64": "4oCPQUVE4oCLIDEuMDDigI4="
+    },
+    {
+      "name": "vertical-tab",
+      "note": "VT and FF are trimmed at a line's ends but not collapsed inside it",
+      "text_base64": "C2ELYgw=",
+      "expect_text_base64": "YQti"
+    },
+    {
+      "name": "arabic-tatweel",
+      "note": "tatweel is a letter, not space",
+      "text_base64": "2KjZgNmAIDEyMzQ=",
+      "expect_text_base64": "2KjZgNmAIDEyMzQ="
+    },
+    {
+      "name": "c1-controls",
+      "note": "C1 controls pass through",
+      "text_base64": "eMKDwoF5",
+      "expect_text_base64": "eMKDwoF5"
+    }
   ]
 }

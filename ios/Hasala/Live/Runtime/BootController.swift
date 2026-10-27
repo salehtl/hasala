@@ -97,7 +97,8 @@ final class BootController {
         runtime: { holder.boot?.runtime }, buildProviders: LiveMailboxConnecting.providers(build: env.build)),
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(),
-      unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard))
+      unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard),
+      bankTexts: LiveBankTexts(runtime: { holder.boot?.runtime }))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -112,10 +113,11 @@ final class BootController {
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
     // can launch the app cold, before the account has opened: it waits for the opening.
-    BackgroundScheduler.shared.install { kind, _ in
-      guard let rt = await AppGraph.boot?.openedRuntime() else { return false }
-      return await rt.backgroundWork(kind)
-    }
+    BackgroundScheduler.shared.install { kind, _ in await BootController.backgroundTask(kind) }
+  }
+
+  static func backgroundTask(_ kind: BackgroundScheduler.Kind) async -> Bool {
+    await BackgroundEntry.task(BackgroundEntry.live()) { await $0.backgroundWork(kind) }
   }
 
   /// Setup and the root view wait for the runtime: setup authors into it, and resumes
@@ -145,6 +147,7 @@ final class BootController {
     LocalAccountData.migrate(boundUserID: facts.binding?.user_id)
     MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: LocalAccountData.setupFinished())
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
+    Self.dropLockedTextsMarker(phase)
     self.wall = wall
     session = AccountSession(services: services, phase: phase)
     state = .decided
@@ -174,6 +177,11 @@ final class BootController {
       self?.startRetry = nil
       self?.start()
     }
+  }
+
+  static func dropLockedTextsMarker(_ phase: AccountSession.Phase, marker: LockedTextsMarkerFile = .shared) {
+    guard phase == .signedOut else { return }
+    marker.remove()
   }
 
   /// The gate's first phase and wall from what is on this iPhone (§6.5, no network).
@@ -268,14 +276,14 @@ final class BootController {
         await rt.close()
         return nil
       }
-      var facts = Self.facts(rt)
+      var facts = Self.facts(rt, texts: self.services.bankTexts)
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
       self.opening = nil
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(
         store: rt.store, mailbox: self.services.mailbox, layouts: layouts,
-        notificationReads: NotificationReads(defaults: .standard))
+        notificationReads: NotificationReads(defaults: .standard), bankTexts: self.services.bankTexts)
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
@@ -450,8 +458,9 @@ final class BootController {
 
   /// Where setup resumes, from what the account's ledger already holds (§6.6: derived
   /// from facts, never stored).
-  static func facts(_ rt: AccountRuntime) -> OnboardingStep.Facts {
+  static func facts(_ rt: AccountRuntime, texts: (any BankTextsConnecting)?) -> OnboardingStep.Facts {
     var f = OnboardingStep.Facts(hasSession: true, keysReady: true)
+    f.textsChosen = BankTexts.setUpHere(texts)
     let r = rt.projection.reader
     f.banksChosen = !((try? r.senderTrust()) ?? [:]).isEmpty
     f.sampleLoaded = ((try? r.activity(limit: 1_000)) ?? []).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true }
@@ -489,6 +498,29 @@ final class BootController {
 @MainActor
 private final class RuntimeHolder {
   weak var boot: BootController?
+}
+
+struct BackgroundEntry<Runtime> {
+  var start: () -> Void
+  var opened: () async -> Runtime?
+
+  func runtime() async -> Runtime? {
+    start()
+    return await opened()
+  }
+
+  static func task(_ entry: BackgroundEntry?, _ work: (Runtime) async -> Bool) async -> Bool {
+    guard let rt = await entry?.runtime() else { return false }
+    return await work(rt)
+  }
+}
+
+extension BackgroundEntry where Runtime == AccountRuntime {
+  init(_ boot: BootController) {
+    self.init(start: { boot.start() }, opened: { await boot.openedRuntime() })
+  }
+
+  static func live() -> BackgroundEntry? { AppGraph.boot.map(BackgroundEntry.init) }
 }
 
 /// The live graph, once per process, and its entry point for UIKit callbacks

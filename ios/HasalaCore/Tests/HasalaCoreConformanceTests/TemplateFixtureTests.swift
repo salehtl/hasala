@@ -26,14 +26,61 @@ struct TemplateFixtureFile: CustomTestStringConvertible, Sendable {
 }
 
 enum TemplateFixtures {
+  static let smsSubdir = "sms"
   static var publicDir: URL { Fixtures.conformanceRoot.appendingPathComponent("templates") }
   static var privateDir: URL? { Fixtures.privateConformanceRoot?.appendingPathComponent("templates") }
 
+  static func jsonNames(_ dir: URL) -> [String] {
+    ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
+  }
+
   static func files(_ dir: URL?, prefix: String) -> [TemplateFixtureFile] {
-    guard let dir, let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
-    return names.filter { $0.hasPrefix(prefix) && $0.hasSuffix(".json") }.sorted().map {
-      TemplateFixtureFile(file: $0, root: dir)
+    guard let dir else { return [] }
+    return ["", smsSubdir].flatMap { sub in
+      jsonNames(sub.isEmpty ? dir : dir.appendingPathComponent(sub)).filter { $0.hasPrefix(prefix) }.map {
+        TemplateFixtureFile(file: sub.isEmpty ? $0 : "\(sub)/\($0)", root: dir)
+      }
     }
+  }
+
+  static func inSMSDir(_ f: TemplateFixtureFile) -> Bool { f.file.hasPrefix(smsSubdir + "/") }
+
+  static func definition(_ f: TemplateFixtureFile) throws -> TemplateDefinition {
+    try TemplateDefinition(json: try #require(try f.load()["definition"]))
+  }
+
+  static func diffs(_ got: Extraction, _ e: JSONValue) throws -> [String] {
+    var diffs: [String] = []
+    func check(_ field: String, _ ok: Bool) { if !ok { diffs.append(field) } }
+    check("matched", got.matched == (e["matched"]?.boolValue == true))
+    check("error", got.error.rawValue == (try e.string("error")))
+    check("amount_minor", String(got.amountMinor) == (try e.string("amount_minor")))
+    check("currency", same(got.currency, try e.string("currency")))
+    check("direction", same(got.direction, try e.string("direction")))
+    check("posted_at", same(got.postedAt, try e.string("posted_at")))
+    check("merchant", Array(got.merchant.utf8) == Array((try e.string("merchant")).utf8))
+    check("last4", same(got.last4, try e.string("last4")))
+    check("is_transfer", got.isTransfer == (e["is_transfer"]?.boolValue == true))
+    check("empty_groups", got.emptyGroups == DialectFixture.strings(e["empty_groups"]))
+    return diffs
+  }
+
+  static func uncovered(_ files: [TemplateFixtureFile], bundled: [TemplateDefinition]) throws -> [String] {
+    var gaps: [String] = []
+    var covered: [String: Bool] = [:]
+    for f in files {
+      let def = try definition(f)
+      if def.isSMS == inSMSDir(f) {
+        covered[def.id] = def.isSMS
+      } else {
+        gaps.append("\(f.file) holds \(def.id), whose cases belong in templates/\(def.isSMS ? smsSubdir + "/" : "")")
+      }
+    }
+    for d in bundled where covered[d.id] != d.isSMS {
+      gaps.append("no corpus fixture for \(d.id) in the private templates/\(d.isSMS ? smsSubdir + "/" : "")")
+    }
+    if files.count != bundled.count { gaps.append("\(files.count) corpus files for \(bundled.count) bundled templates") }
+    return gaps
   }
 
   static func synthetic() -> [TemplateFixtureFile] { files(publicDir, prefix: "synthetic-") }
@@ -54,18 +101,7 @@ enum TemplateFixtures {
       let e = try #require(c["expect"])
       let got = try compiled.execute(subject: subject, normalizedBody: body)
       if got.matched { matched += 1 }
-      var diffs: [String] = []
-      func check(_ field: String, _ ok: Bool) { if !ok { diffs.append(field) } }
-      check("matched", got.matched == (e["matched"]?.boolValue == true))
-      check("error", got.error.rawValue == (try e.string("error")))
-      check("amount_minor", String(got.amountMinor) == (try e.string("amount_minor")))
-      check("currency", same(got.currency, try e.string("currency")))
-      check("direction", same(got.direction, try e.string("direction")))
-      check("posted_at", same(got.postedAt, try e.string("posted_at")))
-      check("merchant", Array(got.merchant.utf8) == Array((try e.string("merchant")).utf8))
-      check("last4", same(got.last4, try e.string("last4")))
-      check("is_transfer", got.isTransfer == (e["is_transfer"]?.boolValue == true))
-      check("empty_groups", got.emptyGroups == DialectFixture.strings(e["empty_groups"]))
+      let diffs = try diffs(got, e)
       if !diffs.isEmpty { failures.append("\(name): \(diffs.joined(separator: ", "))") }
     }
     return (cases.count, matched, failures)
@@ -76,12 +112,15 @@ enum TemplateFixtures {
 struct TemplateFixtureTests {
   @Test("only synthetic fixtures are committed here; the real ones are private")
   func publicTreeIsSynthetic() throws {
-    let names = try FileManager.default.contentsOfDirectory(atPath: TemplateFixtures.publicDir.path)
-      .filter { $0.hasSuffix(".json") }
+    let names = TemplateFixtures.jsonNames(TemplateFixtures.publicDir)
+    let sms = TemplateFixtures.jsonNames(TemplateFixtures.publicDir.appendingPathComponent(TemplateFixtures.smsSubdir))
     #expect(names.count > 5)
-    #expect(names.allSatisfy { $0.hasPrefix("synthetic-") })
+    #expect(sms.count > 5)
+    #expect((names + sms).allSatisfy { $0.hasPrefix("synthetic-") })
+    #expect(TemplateFixtures.synthetic().count == names.count + sms.count)
     for f in TemplateFixtures.synthetic() {
       #expect(try f.load()["kind"]?.stringValue == "synthetic", "\(f.file)")
+      #expect(try TemplateFixtures.definition(f).isSMS == TemplateFixtures.inSMSDir(f), "\(f.file)")
     }
   }
 
@@ -105,11 +144,13 @@ struct TemplateFixtureTests {
   }
 
   @Test(
-    "[real-corpus] template conformance on the operator's real mail",
+    "[real-corpus] template conformance on the operator's real mail and texts",
     .enabled(if: Fixtures.hasPrivate, "HASALA_PRIVATE_FIXTURES is unset"))
   func corpus() throws {
     let files = TemplateFixtures.corpus()
-    #expect(files.count == TemplatesManifest.entries.count)
+    let bundled = (BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition)
+    let gaps = try TemplateFixtures.uncovered(files, bundled: bundled)
+    #expect(gaps.isEmpty, "\(gaps.joined(separator: "; "))")
     var total = 0
     var matched = 0
     for f in files {

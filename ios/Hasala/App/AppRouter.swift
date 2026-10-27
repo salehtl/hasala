@@ -25,6 +25,7 @@ final class AppRouter {
   /// Sheet B after sheet A closes (never two at once): the bell row "Sign in again" opens
   /// Profile › Bank alerts.
   var nextSheet: (SheetRoute, profilePath: [ProfileRoute])?
+  var pasteBankText = false
 
   #if HASALA_MOCKS
     /// What a Debug launch argument presents once the shell is on screen (`ScreenLaunch`).

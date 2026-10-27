@@ -1,0 +1,1355 @@
+{
+  "note": "Rows from bank texts (docs/decisions/bank-texts.md, The op log). A text row is a v4 txn_ingested with entry_method mailbox, no provenance, no dedupe and no gates.ar, gates.sender trusted only when the sender matched the template's sms_sender, and two keys that older builds ignore: channel \"sms\" and received_at (the arrival minute). Its ingest_id is an HMAC key (64 hex digits). The fold keeps channel and received_at on the row for the projection and leaves both out of the witness, so state_sha256 is what a build from before bank texts gives. A text row never forms the fold's implicit transfer pair (no gates.ar pass); the authoring side holds the second row of a DIB debit alert and transfer notice in Review instead, and the fold keeps both rows. A repeat with a new key inside ten minutes is a held probable copy; the same key again is duplicate_ingest; a repeat with no bank is a second row beside the first; an unparsed text row folds and accepts an archive. Every op is synthetic. Written by the Swift executor.",
+  "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
+  "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
+  "cases": [
+    {
+      "name": "sms-template-row",
+      "group": "fold_v4",
+      "note": "A DIB SMS purchase that filed itself: no anomaly.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": false,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "1234|12345|debit|SAMPLE SHOP|2026-06-05",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "1"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "00000000000000000000000000000000000000000000000000000000000000c1",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "12345",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SAMPLE SHOP",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "f5784a06226417891792f4f5267e27583f86428d1500b6439a0fb3723016a350",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "sms-repeat-held",
+      "group": "fold_v4",
+      "note": "Equal texts in one minute get keys n 0 and n 1: the second is a held probable copy.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": false,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-2",
+              "authored_at": "2026-06-05T08:00:51.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c2",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": false,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "1234|12345|debit|SAMPLE SHOP|2026-06-05",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1780646451000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sms-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "00000000000000000000000000000000000000000000000000000000000000c1",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "00000000000000000000000000000000000000000000000000000000000000c2",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "12345",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SAMPLE SHOP",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "12345",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "copy_of": "01JC0000000000000000000001",
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c2",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SAMPLE SHOP",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "bb540b47b21b74fe46be5edc1b0a7aee1da38b721d146b598dbb8c04be9ee5b1",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "sms-same-key",
+      "group": "fold_v4",
+      "note": "The same key again is duplicate_ingest.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": false,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-2",
+              "authored_at": "2026-06-05T08:00:51.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": false,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "known",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "duplicate_ingest"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "1234|12345|debit|SAMPLE SHOP|2026-06-05",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "00000000000000000000000000000000000000000000000000000000000000c1",
+              "01JC0000000000000000000001"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "12345",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "known",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.purchase.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "00000000000000000000000000000000000000000000000000000000000000c1",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SAMPLE SHOP",
+                "needs_review": false,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "f0e66d1843d5060a0ff8a76953818078ed8336c934b7741e9b00e7eaea0bfda8",
+        "anomaly_kinds": [
+          "duplicate_ingest"
+        ]
+      }
+    },
+    {
+      "name": "sms-transfer-pair-kept",
+      "group": "fold_v4",
+      "note": "A DIB debit alert and a transfer notice from texts, ten minutes apart: two rows, no merge.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "23456",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "OUTGOING DOMESTIC FUND TR",
+                "last4": "",
+                "needs_review": true,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.debit.v1@1",
+                  "card": "none",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-2",
+              "authored_at": "2026-06-05T08:10:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "23456",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T08:10:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "DIB OWN ACCOUNT TRANSFER",
+                "last4": "",
+                "needs_review": true,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "trusted",
+                  "template": "dib.sms.own-transfer.v1@1",
+                  "card": "none",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:10:00.000Z"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "|23456|debit|DIB OWN ACCOUNT TRANSFER|2026-06-05",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "|23456|debit|OUTGOING DOMESTIC FUND TR|2026-06-05",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1780647001000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sms-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "23456",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "none",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.debit.v1@1"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "",
+                "mailbox_message_id": null,
+                "merchant_raw": "OUTGOING DOMESTIC FUND TR",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "23456",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "none",
+                  "forwarded": false,
+                  "sender": "trusted",
+                  "template": "dib.sms.own-transfer.v1@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "",
+                "mailbox_message_id": null,
+                "merchant_raw": "DIB OWN ACCOUNT TRANSFER",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T08:10:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "5b47c629d04e1c2b011a01112042581210b023422b0731e69d0fbfffa8755aef",
+        "anomaly_kinds": []
+      }
+    },
+    {
+      "name": "sms-reader-repeat-no-bank",
+      "group": "fold_v4",
+      "note": "A reader row with no bank, twice: a second row beside the first.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "amount_minor": "4500",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SYNTHETIC SHOP",
+                "last4": "1234",
+                "needs_review": true,
+                "unparsed": false,
+                "tier": "heuristic",
+                "entry_method": "mailbox",
+                "gates": {
+                  "sender": "untrusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-2",
+              "authored_at": "2026-06-05T08:00:30.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "4500",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SYNTHETIC SHOP",
+                "last4": "1234",
+                "needs_review": true,
+                "unparsed": false,
+                "tier": "heuristic",
+                "entry_method": "mailbox",
+                "gates": {
+                  "sender": "untrusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [
+            {
+              "at_seq": "2",
+              "detail": "",
+              "kind": "possible_duplicate"
+            }
+          ],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "1234|4500|debit|SYNTHETIC SHOP|2026-06-05",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1780646430000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sms-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000001",
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "4500",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SYNTHETIC SHOP",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "heuristic",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "4500",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SYNTHETIC SHOP",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": "01JC0000000000000000000001",
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "heuristic",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "2e0253e73eef5050ad747e4840271235492ca99b5a202b975ffa0a59728cfe2d",
+        "anomaly_kinds": [
+          "possible_duplicate"
+        ]
+      }
+    },
+    {
+      "name": "sms-unparsed-pasted-over",
+      "group": "fold_v4",
+      "note": "An unparsed text row, then a pasted text that replaces it: the paste and the archive are one blob.",
+      "schema_version": 4,
+      "log": [
+        {
+          "seq": "1",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-1",
+              "authored_at": "2026-06-05T08:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000001"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+              "payload": {
+                "unparsed": true,
+                "needs_review": true,
+                "tier": "none",
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "",
+                "last4": "1234",
+                "category": null,
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "untrusted",
+                  "template": "none",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T08:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "seq": "2",
+          "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+          "ops": [
+            {
+              "v": 4,
+              "type": "txn_ingested",
+              "op_id": "op-sms-2",
+              "authored_at": "2026-06-05T09:00:01.000Z",
+              "entity": {
+                "kind": "txn",
+                "id": "01JC0000000000000000000002"
+              },
+              "parent_version": null,
+              "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+              "payload": {
+                "amount_minor": "12345",
+                "currency": "AED",
+                "direction": "debit",
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "merchant_raw": "SAMPLE SHOP",
+                "last4": "1234",
+                "needs_review": true,
+                "unparsed": false,
+                "tier": "template",
+                "entry_method": "mailbox",
+                "bank": "dib",
+                "gates": {
+                  "sender": "untrusted",
+                  "template": "dib.sms.purchase.v1@1",
+                  "card": "unknown",
+                  "forwarded": false
+                },
+                "channel": "sms",
+                "received_at": "2026-06-05T09:00:00.000Z"
+              }
+            },
+            {
+              "v": 4,
+              "type": "txn_annotated",
+              "op_id": "op-sms-archive",
+              "authored_at": "2026-06-05T09:00:01.001Z",
+              "parent_version": null,
+              "payload": {
+                "txn_id": "01JC0000000000000000000001",
+                "set": {
+                  "archived": "user"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "error": null,
+        "state": {
+          "anomalies": [],
+          "banks": [],
+          "budgetMonthlyTotal": null,
+          "budgetSplit": null,
+          "byFingerprint": [
+            [
+              "1234|12345|debit|SAMPLE SHOP|2026-06-05",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ],
+            [
+              "unparsed|0000000000000000000000000000000000000000000000000000000000000001",
+              [
+                "01JC0000000000000000000001"
+              ]
+            ]
+          ],
+          "categories": [],
+          "checkpoints": [],
+          "cursors": {
+            "cold": "0",
+            "hot": "2"
+          },
+          "forks": [],
+          "heads": [
+            [
+              "txn\u000001JC0000000000000000000001",
+              {
+                "authored_at_ms": 1780646401000,
+                "id": "01JC0000000000000000000001",
+                "kind": "txn",
+                "op_id": "op-sms-1",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ],
+            [
+              "txn\u000001JC0000000000000000000002",
+              {
+                "authored_at_ms": 1780650001000,
+                "id": "01JC0000000000000000000002",
+                "kind": "txn",
+                "op_id": "op-sms-2",
+                "version": 1,
+                "writer_id": "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+              }
+            ]
+          ],
+          "homeCurrency": null,
+          "liveByIngestID": [
+            [
+              "0000000000000000000000000000000000000000000000000000000000000001",
+              "01JC0000000000000000000001"
+            ],
+            [
+              "0000000000000000000000000000000000000000000000000000000000000002",
+              "01JC0000000000000000000002"
+            ]
+          ],
+          "pendingByCurrency": [
+            [
+              "AED",
+              [
+                "01JC0000000000000000000002"
+              ]
+            ]
+          ],
+          "rateUpdatedAt": [],
+          "rates": [],
+          "rules": [],
+          "txns": [
+            [
+              "01JC0000000000000000000001",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "0",
+                "annotations": [
+                  [
+                    "archived",
+                    {
+                      "op_id": "op-sms-archive",
+                      "value": "user"
+                    }
+                  ]
+                ],
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "",
+                "direction": "",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "none"
+                },
+                "id": "01JC0000000000000000000001",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T08:00:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "none",
+                "unparsed": true,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ],
+            [
+              "01JC0000000000000000000002",
+              {
+                "amount_home_minor": null,
+                "amount_minor": "12345",
+                "bank": "dib",
+                "category": null,
+                "category_source": {
+                  "kind": "none"
+                },
+                "currency": "AED",
+                "direction": "debit",
+                "duplicate_disposition": null,
+                "entry_method": "mailbox",
+                "gates": {
+                  "card": "unknown",
+                  "forwarded": false,
+                  "sender": "untrusted",
+                  "template": "dib.sms.purchase.v1@1"
+                },
+                "id": "01JC0000000000000000000002",
+                "ingest_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                "last4": "1234",
+                "mailbox_message_id": null,
+                "merchant_raw": "SAMPLE SHOP",
+                "needs_review": true,
+                "parse_error": null,
+                "possible_duplicate_of": null,
+                "posted_at": "2026-06-05T06:11:00.000Z",
+                "posted_precision": "time",
+                "provenance": "user",
+                "splits": [],
+                "superseded_by": null,
+                "tier": "template",
+                "unparsed": false,
+                "verified_origin_domain": null,
+                "version": 1
+              }
+            ]
+          ],
+          "unreadable": []
+        },
+        "state_sha256": "b6debde2c22ce297343368484a03365ada821e880a1f99dde1429458b716ec0b",
+        "anomaly_kinds": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+import Foundation
+import HasalaModels
+
+enum PaymentSource: String, Equatable, Sendable {
+  case email
+  case texts
+}
+
+enum BankTextsStatus: Equatable, Sendable {
+  case notSetUp
+  case waitingForFirstText
+  case working(lastRan: Date)
+}
+
+struct BankTextsSetAside: Equatable, Identifiable, Sendable {
+  var sender: String
+  var bank: SupportedBank?
+  var counts: [BankTextDropKind: Int]
+
+  var id: String { sender }
+  var total: Int { counts.values.reduce(0, +) }
+  var name: String { bank?.shortName ?? sender }
+}
+
+struct BankTextsBank: Equatable, Identifiable, Sendable {
+  var bank: SupportedBank
+  var lastText: Date?
+
+  var id: SupportedBank { bank }
+  var readsAutomatically: Bool { BankTexts.readAutomatically.contains(bank) }
+  var readNote: String { BankTexts.readNote(bank) }
+}
+
+enum BankTextsTest: Equatable, Sendable {
+  case idle
+  case waiting(since: Date)
+  case received(at: Date)
+  case nothingYet
+
+  var isWaiting: Bool {
+    if case .waiting = self { return true }
+    return false
+  }
+}
+
+struct BankTextPreview: Equatable, Sendable {
+  enum Direction: Equatable, Sendable {
+    case out
+    case incoming
+  }
+
+  var amount: Money
+  var direction: Direction
+  var merchant: String?
+  var date: Date?
+  var bank: SupportedBank?
+  var cardEnding: String?
+}
+
+enum BankTextReading: Equatable, Sendable {
+  case read(BankTextPreview)
+  case unreadable
+  case notAPayment
+}
+
+enum BankTextsFailure: Error, Equatable, Sendable {
+  case failed(String)
+
+  var message: String {
+    switch self {
+    case .failed(let line): line
+    }
+  }
+}
+
+enum MailboxLinkCopy: Equatable, Sendable {
+  case linked
+  case notLinked
+  case unknown
+}
+
+struct BankTextMatch: Equatable, Sendable {
+  enum Kind: Equatable, Sendable {
+    case payment
+    case unreadText
+  }
+
+  var rowID: String
+  var kind: Kind
+  var merchant: String?
+  var amount: Money?
+  var postedAt: Date
+  var fromText: Bool
+}
+
+@MainActor
+protocol BankTextsConnecting: AnyObject, Observable {
+  var link: MailboxLinkCopy { get }
+  var isSetUp: Bool { get }
+  var status: BankTextsStatus { get }
+  var banks: [BankTextsBank] { get }
+  var test: BankTextsTest { get }
+  var lastTextAt: Date? { get }
+  var lastRanAt: Date? { get }
+  var ignoredLast30Days: Int { get }
+  func finishSetUp() async throws(BankTextsFailure)
+  func startTest()
+  func read(_ text: String) async -> BankTextReading
+  func match(_ text: String) async -> BankTextMatch?
+  func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure)
+  var setAside: [BankTextsSetAside] { get }
+  var lockedNotice: Int? { get }
+  func lockedNoticeShown()
+  func refresh()
+}
+
+extension BankTextsConnecting {
+  var source: PaymentSource? {
+    switch link {
+    case .linked: .email
+    case .notLinked, .unknown: isSetUp ? .texts : nil
+    }
+  }
+
+  var usesTexts: Bool { source == .texts }
+  var readsEmail: Bool { link == .linked }
+  var offersPaste: Bool { link != .linked }
+  var sawAutomationRun: Bool { lastRanAt != nil || ignoredLast30Days > 0 }
+}
+
+enum BankTexts {
+  static let readAutomatically: Set<SupportedBank> = [.dib]
+  static let testPhrase = "Hasala test"
+  static let shortcutsURL = URL(string: "shortcuts://")!
+  static let messagesURL = URL(string: "sms:")!
+
+  static let clock = LiveMailboxConnecting.localTimeZone
+
+  private static func formatter(_ format: String) -> DateFormatter {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = clock
+    f.dateFormat = format
+    return f
+  }
+
+  private static let dayAndTimeFormat = formatter("EEE d MMM, HH:mm")
+  private static let timeFormat = formatter("HH:mm")
+
+  static func dayAndTime(_ date: Date) -> String { dayAndTimeFormat.string(from: date) }
+
+  static func time(_ date: Date) -> String { timeFormat.string(from: date) }
+
+  static func setUpHere(_ lane: (any BankTextsConnecting)?) -> Bool { lane?.isSetUp == true }
+
+  static func statusLine(_ status: BankTextsStatus, now: Date) -> String {
+    switch status {
+    case .notSetUp: "Not set up on this iPhone"
+    case .waitingForFirstText: "Waiting for your first bank text"
+    case .working(let lastRan): "Ran \(RelativeTime.ago(lastRan, now: now))"
+    }
+  }
+
+  static func bankDetail(_ bank: BankTextsBank, now: Date) -> String {
+    let when = bank.lastText.map { "Last text \(RelativeTime.ago($0, now: now))" } ?? "No text yet"
+    return "\(when)\n\(bank.readNote)"
+  }
+
+  static func readNote(_ bank: SupportedBank) -> String {
+    readAutomatically.contains(bank) ? "Hasala reads them; some wait in Review" : "You check each one in Review"
+  }
+
+  static let switchToEmailMessage =
+    "Next, you connect Gmail or Outlook. Once it connects, Hasala stops adding bank texts; delete the automation in the Shortcuts app too. Email brings in all the bank mail it finds. A mail that may be the same payment as a bank text waits in Review beside it, where you keep both or archive one."
+
+  static let readsEmailNow =
+    "This account reads bank email, so Hasala adds no bank texts. Delete the automation in the Shortcuts app."
+
+  static let pasteRefused =
+    "This account reads bank email. Switch to bank texts in Profile \u{203A} Bank alerts to paste a text."
+
+  static func switchToTextsMessage(disconnects: Bool) -> String {
+    let rest = "Texts count from now on; payments already added stay. Next, you make the automation in the Shortcuts app."
+    return disconnects ? "Hasala disconnects your mailbox. \(rest)" : rest
+  }
+
+  static let setupReadsEmail =
+    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts."
+
+  static let setupReadsEmailElsewhere =
+    "This account already reads bank email, so Hasala doesn't offer bank texts here. To use texts instead, switch in Profile \u{203A} Bank alerts on the iPhone that reads your bank email."
+
+  static func ignoredLine(_ count: Int) -> String? {
+    guard count > 0 else { return nil }
+    let texts = count == 1 ? "1 text that looks like a payment was" : "\(count) texts that look like payments were"
+    return "\(texts) ignored in the last 30 days because this account reads bank email."
+  }
+
+  static let automationStillThere =
+    "Your Shortcuts automation is still there. Hasala will add bank texts from now on."
+
+  static func disconnectNote(
+    _ lane: (any BankTextsConnecting)?, mailbox: (any MailboxConnecting)?, disconnecting id: String
+  ) -> String? {
+    guard let lane, lane.sawAutomationRun else { return nil }
+    let others = SourceSwitch.reading(mailbox).filter { $0.id != id }
+    return others.isEmpty ? automationStillThere : nil
+  }
+
+  static func pasteDetail(usesTexts: Bool) -> String {
+    usesTexts ? "For texts from before you set up the automation" : "It waits in Review for you to check"
+  }
+
+  static func pasteIntro(usesTexts: Bool) -> String {
+    let how = "Copy it in Messages, then paste it here. Hasala reads it on this iPhone."
+    return usesTexts ? "For a text from before your automation. \(how)" : "For a payment text from your bank. \(how)"
+  }
+
+  static let keepsOnlyFields =
+    "Texts stay on this iPhone. Hasala keeps only the details it needs from texts that look like payments, never the texts."
+
+  static let keepsNoText =
+    "Hasala keeps only the details it needs from a text that looks like a payment, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
+
+  static let oneSourceNote =
+    "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
+
+  static let keepsPaymentShapedTexts =
+    "Hasala keeps the payment details of bank texts. A text that looks like a payment, from any sender, waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
+
+  static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
+
+  static let banksLine =
+    "Hasala reads DIB texts for you, though some still wait in Review. Texts from your other banks come in to Review for you to check."
+
+  static func lockedNoticeLine(_ n: Int) -> String {
+    n == 1
+      ? "1 text that looks like a payment arrived while your iPhone was locked after a restart. Paste it from Messages."
+      : "\(n) texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages."
+  }
+
+  static func kindName(_ kind: BankTextDropKind, count n: Int) -> String {
+    let one = n == 1
+    return switch kind {
+    case .oneTimeCode: one ? "1 one-time code" : "\(n) one-time codes"
+    case .declined: one ? "1 declined payment" : "\(n) declined payments"
+    case .notice: one ? "1 notice" : "\(n) notices"
+    case .promotion: one ? "1 promotion" : "\(n) promotions"
+    case .noPaymentShape: one ? "1 other text" : "\(n) other texts"
+    }
+  }
+
+  static func setAsideDetail(_ s: BankTextsSetAside) -> String {
+    let head = s.total == 1 ? "1 text set aside in the last 30 days" : "\(s.total) texts set aside in the last 30 days"
+    let kinds = BankTextDropKind.allCases.compactMap { k in s.counts[k].flatMap { $0 > 0 ? kindName(k, count: $0) : nil } }
+    return "\(head)\n\(kinds.joined(separator: ", "))"
+  }
+
+  static let setAsideFootnote =
+    "Texts from your banks that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
+
+  static let automationFootnote =
+    "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."
+}
+
+extension MailboxesSummary {
+  static func texts(_ status: BankTextsStatus, now: Date) -> MailboxesSummary {
+    switch status {
+    case .working:
+      MailboxesSummary(
+        title: "Bank texts are working", detail: BankTexts.statusLine(status, now: now), hue: .mint, needsYou: false)
+    case .waitingForFirstText:
+      MailboxesSummary(
+        title: "Bank texts are ready", detail: BankTexts.statusLine(status, now: now), hue: .sky, needsYou: false)
+    case .notSetUp:
+      MailboxesSummary(
+        title: "Bank texts aren't set up", detail: "Make the automation in the Shortcuts app.", hue: .sand,
+        needsYou: true)
+    }
+  }
+}

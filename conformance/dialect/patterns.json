@@ -127,6 +127,22 @@
     {
       "name": "trailing-newline",
       "input_base64": "YWJjCg=="
+    },
+    {
+      "name": "dib-sms-card-purchase",
+      "input_base64": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiBBRUQgMTIzLjQ1INmF2YYg2KjYt9in2YLYqSBYWDEyMzQg2YHZiiAwNS0wNi0yMDI2IDEwOjExINmF2YYgU0FNUExFIFNIT1AuINin2YTYrdivINin2YTYp9im2KrZhdin2YbZiiDYp9mE2YXYqtin2K0gMSwyMzQuNTY="
+    },
+    {
+      "name": "dib-sms-account-purchase",
+      "input_base64": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiAyMy40NSDZgdmKIDA1LTA2LTIwMjYgMTE6MjIg2YXZhiBTQU1QTEUgQ0FGRSDYsdi12YrYr9mDINin2YTYrdin2YTZiiAyLDM0NS42Nw=="
+    },
+    {
+      "name": "dib-sms-card-payment",
+      "input_base64": "2KrZhSDYs9iv2KfYryDZhdio2YTYuiA0LDMyMS4wOSDZhNio2LfYp9mC2KrZgyDYp9mE2YXZhtiq2YfZitipINio2YDZgCAxMjM0INmB2YogLjA1LTA2LTIwMjYgMTI6MzMg2KfZhNit2K8g2KfZhNin2KbYqtmF2KfZhtmKINin2YTZhdiq2KfYrSA1LDQzMi4xMA=="
+    },
+    {
+      "name": "dib-sms-one-digit-hour",
+      "input_base64": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiAzNC41NiDZgdmKIDA1LTA2LTIwMjYgOToyMiDZhdmGIFNBTVBMRSBDQUZFINix2LXZitiv2YMg2KfZhNit2KfZhNmKIDMsNDU2Ljc4"
     }
   ],
   "rejected": [
@@ -717,6 +733,30 @@
           "match": true,
           "text": "YQ==",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -897,6 +937,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -1083,6 +1147,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -1263,6 +1351,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QUVEIDEyMw==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -1449,6 +1561,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QUVE",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -1631,6 +1767,30 @@
           "input": "trailing-newline",
           "match": false,
           "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "Uw==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "Uw==",
           "groups": {}
         }
       ]
@@ -1815,6 +1975,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "QQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "QQ==",
+          "groups": {}
         }
       ]
     },
@@ -1995,6 +2179,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -2181,6 +2389,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -2364,6 +2596,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -2544,6 +2800,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -2732,6 +3012,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QUVE",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -2912,6 +3216,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -3158,6 +3486,38 @@
           "groups": {
             "amt": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "MQ==",
+          "groups": {
+            "amt": "MQ=="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "Mg==",
+          "groups": {
+            "amt": "Mg=="
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "NA==",
+          "groups": {
+            "amt": "NA=="
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "Mw==",
+          "groups": {
+            "amt": "Mw=="
+          }
         }
       ]
     },
@@ -3401,6 +3761,38 @@
           "groups": {
             "amt": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "MQ==",
+          "groups": {
+            "amt": "MQ=="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "Mg==",
+          "groups": {
+            "amt": "Mg=="
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "NA==",
+          "groups": {
+            "amt": "NA=="
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "Mw==",
+          "groups": {
+            "amt": "Mw=="
+          }
         }
       ]
     },
@@ -3639,6 +4031,38 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "a0": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "a0": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "a0": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "a0": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -3917,6 +4341,42 @@
             "v": "YQ==",
             "w": "Yg=="
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null,
+            "w": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null,
+            "w": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null,
+            "w": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null,
+            "w": null
+          }
         }
       ]
     },
@@ -4100,6 +4560,30 @@
           "match": true,
           "text": "YQ==",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -4280,6 +4764,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -4466,6 +4974,30 @@
           "match": true,
           "text": "YWJj",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -4646,6 +5178,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": true,
           "text": "",
           "groups": {}
@@ -4832,6 +5388,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -5015,6 +5595,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "MTIzNA==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "MjAyNg==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "MTIzNA==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "MjAyNg==",
+          "groups": {}
         }
       ]
     },
@@ -5195,6 +5799,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -5381,6 +6009,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -5563,6 +6215,30 @@
           "input": "trailing-newline",
           "match": true,
           "text": "YQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "",
           "groups": {}
         }
       ]
@@ -5747,6 +6423,30 @@
           "match": true,
           "text": "YQ==",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -5929,6 +6629,30 @@
           "input": "trailing-newline",
           "match": true,
           "text": "YQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
           "groups": {}
         }
       ]
@@ -6113,6 +6837,30 @@
           "match": true,
           "text": "YQ==",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "QQ==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "Uw==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "Uw==",
+          "groups": {}
         }
       ]
     },
@@ -6295,6 +7043,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "WA==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -6483,6 +7255,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "WA==",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -6666,6 +7462,30 @@
           "match": true,
           "text": "YQ==",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     },
@@ -6847,6 +7667,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -7034,6 +7878,30 @@
           "match": true,
           "text": "",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "",
+          "groups": {}
         }
       ]
     },
@@ -7217,6 +8085,30 @@
           "input": "trailing-newline",
           "match": true,
           "text": "YWJj",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
           "groups": {}
         }
       ]
@@ -7402,6 +8294,30 @@
           "match": true,
           "text": "",
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "",
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "",
+          "groups": {}
         }
       ]
     },
@@ -7583,6 +8499,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -7859,6 +8799,42 @@
             "amt": null,
             "ccy": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
         }
       ]
     },
@@ -8097,6 +9073,38 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -8345,6 +9353,38 @@
           "groups": {
             "v": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
         }
       ]
     },
@@ -8583,6 +9623,38 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -8857,6 +9929,42 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -9138,6 +10246,42 @@
             "amt": null,
             "ccy": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
         }
       ]
     },
@@ -9407,6 +10551,42 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -9688,6 +10868,42 @@
             "amt": null,
             "ccy": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
         }
       ]
     },
@@ -9868,6 +11084,30 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {}
@@ -10111,6 +11351,38 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -10391,6 +11663,42 @@
             "amt": null,
             "ccy": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
         }
       ]
     },
@@ -10631,6 +11939,38 @@
         },
         {
           "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
           "match": false,
           "text": null,
           "groups": {
@@ -10881,6 +12221,38 @@
           "groups": {
             "v": null
           }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
         }
       ]
     },
@@ -11066,6 +12438,1989 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-purchase-amount",
+      "pattern": "^مشتريات بمبلغ (?P<ccy>[A-Z]{3} )?(?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) ",
+      "js_pattern": "^مشتريات بمبلغ (?<ccy>[A-Z]{3} )?(?<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) ",
+      "flags": [],
+      "group_names": [
+        "ccy",
+        "amt"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiBBRUQgMTIzLjQ1IA==",
+          "groups": {
+            "amt": "MTIzLjQ1",
+            "ccy": "QUVEIA=="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiAyMy40NSA=",
+          "groups": {
+            "amt": "MjMuNDU=",
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "amt": null,
+            "ccy": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "2YXYtNiq2LHZitin2Kog2KjZhdio2YTYuiAzNC41NiA=",
+          "groups": {
+            "amt": "MzQuNTY=",
+            "ccy": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-purchase-date",
+      "pattern": " في (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) من ",
+      "js_pattern": " في (?<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) من ",
+      "flags": [],
+      "group_names": [
+        "d"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiAxMDoxMSDZhdmGIA==",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiAxMDoxMQ=="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiAxMToyMiDZhdmGIA==",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiAxMToyMg=="
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiA5OjIyINmF2YYg",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiA5OjIy"
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-purchase-card-merchant",
+      "pattern": "[0-9]{1,2}:[0-9]{2} من (?P<v>[^\\n]+)\\. الحد الائتماني",
+      "js_pattern": "[0-9]{1,2}:[0-9]{2} من (?<v>[^\\n]+)\\. الحد الائتماني",
+      "flags": [],
+      "group_names": [
+        "v"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "MTA6MTEg2YXZhiBTQU1QTEUgU0hPUC4g2KfZhNit2K8g2KfZhNin2KbYqtmF2KfZhtmK",
+          "groups": {
+            "v": "U0FNUExFIFNIT1A="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-purchase-account-merchant",
+      "pattern": "[0-9]{1,2}:[0-9]{2} من (?P<v>[^\\n]+) رصيدك",
+      "js_pattern": "[0-9]{1,2}:[0-9]{2} من (?<v>[^\\n]+) رصيدك",
+      "flags": [],
+      "group_names": [
+        "v"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "MTE6MjIg2YXZhiBTQU1QTEUgQ0FGRSDYsdi12YrYr9mD",
+          "groups": {
+            "v": "U0FNUExFIENBRkU="
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "OToyMiDZhdmGIFNBTVBMRSBDQUZFINix2LXZitiv2YM=",
+          "groups": {
+            "v": "U0FNUExFIENBRkU="
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-purchase-last4",
+      "pattern": "من بطاقة (?P<v>[^ \\n]+) في ",
+      "js_pattern": "من بطاقة (?<v>[^ \\n]+) في ",
+      "flags": [],
+      "group_names": [
+        "v"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "2YXZhiDYqNi32KfZgtipIFhYMTIzNCDZgdmKIA==",
+          "groups": {
+            "v": "WFgxMjM0"
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-card-payment-last4",
+      "pattern": "لبطاقتك المنتهية بـ{0,8} (?P<v>[^ \\n]+) في ",
+      "js_pattern": "لبطاقتك المنتهية بـ{0,8} (?<v>[^ \\n]+) في ",
+      "flags": [],
+      "group_names": [
+        "v"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "2YTYqNi32KfZgtiq2YMg2KfZhNmF2YbYqtmH2YrYqSDYqNmA2YAgMTIzNCDZgdmKIA==",
+          "groups": {
+            "v": "MTIzNA=="
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {
+            "v": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "seed-dib-sms-card-payment-date",
+      "pattern": " في \\.?(?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) ",
+      "js_pattern": " في \\.?(?<d>[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{1,2}:[0-9]{2}) ",
+      "flags": [],
+      "group_names": [
+        "d"
+      ],
+      "probes": [
+        {
+          "input": "empty",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "ascii-amount",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-amount-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-amount-no-currency",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-lowercase",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-deposited-into",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-tab-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-formfeed-separated",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-alert-credit-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "subject-last4",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "subject-last4-two-spaces",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-transfer-advice",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "enbd-transfer-currency-adjacent",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "carriage-return",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "line-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "paragraph-separator",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "vertical-tab",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "zero-width-no-break-space",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "kelvin-sign",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "latin-small-long-s",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-card-block",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-merchant-with-cr",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "repeated-a",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "metacharacters",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "trailing-newline",
+          "match": false,
+          "text": null,
+          "groups": {
+            "d": null
+          }
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiAxMDoxMSA=",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiAxMDoxMQ=="
+          }
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiAxMToyMiA=",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiAxMToyMg=="
+          }
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": true,
+          "text": "INmB2YogLjA1LTA2LTIwMjYgMTI6MzMg",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiAxMjozMw=="
+          }
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": true,
+          "text": "INmB2YogMDUtMDYtMjAyNiA5OjIyIA==",
+          "groups": {
+            "d": "MDUtMDYtMjAyNiA5OjIy"
+          }
         }
       ]
     },
@@ -11249,6 +14604,30 @@
           "match": false,
           "text": null,
           "groups": {}
+        },
+        {
+          "input": "dib-sms-card-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-account-purchase",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-card-payment",
+          "match": false,
+          "text": null,
+          "groups": {}
+        },
+        {
+          "input": "dib-sms-one-digit-hour",
+          "match": false,
+          "text": null,
+          "groups": {}
         }
       ]
     }
@@ -11284,6 +14663,11 @@
     "definition_base64": "ewogICJpZCI6ICJkaWIuY2FyZC52MSIsCiAgInZlcnNpb24iOiAxLAogICJiYW5rIjogImRpYiIsCiAgIm5vcm1hbGl6ZXJfdmVyc2lvbiI6IDEsCiAgIm1hdGNoIjogewogICAgInNlbmRlcl9kb21haW4iOiBbImRpYi5hZSJdLAogICAgImJvZHlfY29udGFpbnMiOiBbItil2LTYudin2LEg2YXYtNiq2LHZitin2KoiXQogIH0sCiAgImRlZmF1bHRfY3VycmVuY3kiOiAiQUVEIiwKICAiZGF0ZV9mcm9tIjogImJvZHkiLAogICJleHRyYWN0IjogWwogICAgeyJmaWVsZCI6ImFtb3VudCIsInR5cGUiOiJhbW91bnQiLCJzb3VyY2UiOiJib2R5IiwKICAgICAicGF0dGVybnMiOlsi2KfZhNmF2KjZhNi6XFxuKD9QPGNjeT5bQS1aXXszfSApPyg/UDxhbXQ+WzAtOV1bMC05LF0qXFwuWzAtOV17Mn0pIl19LAogICAgeyJmaWVsZCI6ImRhdGUiLCJ0eXBlIjoiZGF0ZSIsInNvdXJjZSI6ImJvZHkiLAogICAgICJwYXR0ZXJucyI6WyLYqNiq2KfYsdmK2K4gKD9QPGQ+WzAtOV17Mn0tWzAtOV17Mn0tWzAtOV17NH0pIl0sCiAgICAgImxheW91dHMiOlsiREQtTU0tWVlZWSJdfSwKICAgIHsiZmllbGQiOiJtZXJjaGFudCIsInR5cGUiOiJ0ZXh0Iiwic291cmNlIjoiYm9keSIsCiAgICAgInBhdHRlcm5zIjpbItin2YTYr9mB2Lkg2KfZhNmJXFxuKD9QPHY+W15cXG5dKykiXX0sCiAgICB7ImZpZWxkIjoibGFzdDQiLCJ0eXBlIjoibGFzdDQiLCJzb3VyY2UiOiJib2R5IiwKICAgICAicGF0dGVybnMiOlsi2LHZgtmFINin2YTYqNi32KfZgtipXFxuKD9QPHY+W14gXFxuXSspIl19LAogICAgeyJmaWVsZCI6ImRpcmVjdGlvbiIsInR5cGUiOiJjb25zdCIsInNvdXJjZSI6ImJvZHkiLCJ2YWx1ZSI6ImRlYml0In0sCiAgICB7ImZpZWxkIjoiaXNfdHJhbnNmZXIiLCJ0eXBlIjoiZmxhZyIsInNvdXJjZSI6ImJvZHkiLCJ2YWx1ZSI6ImZhbHNlIn0KICBdLAogICJyZXF1aXJlZCI6IFsiYW1vdW50IiwiZGlyZWN0aW9uIl0KfQ==",
     "canonical_base64": "eyJiYW5rIjoiZGliIiwiZGF0ZV9mcm9tIjoiYm9keSIsImRlZmF1bHRfY3VycmVuY3kiOiJBRUQiLCJleHRyYWN0IjpbeyJmaWVsZCI6ImFtb3VudCIsImZsYWdzIjpbXSwibGF5b3V0cyI6W10sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6WyLYp9mE2YXYqNmE2LpcXG4oP1A8Y2N5PltBLVpdezN9ICk/KD9QPGFtdD5bMC05XVswLTksXSpcXC5bMC05XXsyfSkiXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJhbW91bnQiLCJ2YWx1ZSI6IiIsIndoeSI6IiJ9LHsiZmllbGQiOiJkYXRlIiwiZmxhZ3MiOltdLCJsYXlvdXRzIjpbIkRELU1NLVlZWVkiXSwib25fbWF0Y2giOnt9LCJvdmVycmlkZSI6ZmFsc2UsInBhdHRlcm5zIjpbItio2KrYp9ix2YrYriAoP1A8ZD5bMC05XXsyfS1bMC05XXsyfS1bMC05XXs0fSkiXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJkYXRlIiwidmFsdWUiOiIiLCJ3aHkiOiIifSx7ImZpZWxkIjoibWVyY2hhbnQiLCJmbGFncyI6W10sImxheW91dHMiOltdLCJvbl9tYXRjaCI6e30sIm92ZXJyaWRlIjpmYWxzZSwicGF0dGVybnMiOlsi2KfZhNiv2YHYuSDYp9mE2YlcXG4oP1A8dj5bXlxcbl0rKSJdLCJzb3VyY2UiOiJib2R5IiwidHlwZSI6InRleHQiLCJ2YWx1ZSI6IiIsIndoeSI6IiJ9LHsiZmllbGQiOiJsYXN0NCIsImZsYWdzIjpbXSwibGF5b3V0cyI6W10sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6WyLYsdmC2YUg2KfZhNio2LfYp9mC2KlcXG4oP1A8dj5bXiBcXG5dKykiXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJsYXN0NCIsInZhbHVlIjoiIiwid2h5IjoiIn0seyJmaWVsZCI6ImRpcmVjdGlvbiIsImZsYWdzIjpbXSwibGF5b3V0cyI6W10sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6W10sInNvdXJjZSI6ImJvZHkiLCJ0eXBlIjoiY29uc3QiLCJ2YWx1ZSI6ImRlYml0Iiwid2h5IjoiIn0seyJmaWVsZCI6ImlzX3RyYW5zZmVyIiwiZmxhZ3MiOltdLCJsYXlvdXRzIjpbXSwib25fbWF0Y2giOnt9LCJvdmVycmlkZSI6ZmFsc2UsInBhdHRlcm5zIjpbXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJmbGFnIiwidmFsdWUiOiJmYWxzZSIsIndoeSI6IiJ9XSwiaWQiOiJkaWIuY2FyZC52MSIsIm1hdGNoIjp7ImJvZHlfY29udGFpbnMiOlsi2KXYtNi52KfYsSDZhdi02KrYsdmK2KfYqiJdLCJib2R5X25vdF9jb250YWlucyI6W10sInNlbmRlcl9kb21haW4iOlsiZGliLmFlIl0sInN1YmplY3RfY29udGFpbnMiOltdfSwibm9ybWFsaXplcl92ZXJzaW9uIjoxLCJyZXF1aXJlZCI6WyJhbW91bnQiLCJkaXJlY3Rpb24iXSwidmVyc2lvbiI6MX0=",
     "why": "Canonical() is key-sorted, total (no omitempty) and escaped exactly as JSON.stringify escapes: Go's encoding/json escapes &, < and > by default, and escapes U+2028/U+2029 even with SetEscapeHTML(false), while JSON.stringify does neither."
+  },
+  "canonical_sms": {
+    "definition_base64": "ewogICJpZCI6ICJiYW5rLnNtcy5wdXJjaGFzZS52MSIsCiAgInZlcnNpb24iOiAxLAogICJiYW5rIjogImJhbmsiLAogICJjaGFubmVsIjogInNtcyIsCiAgInRyYW5zZmVyX3JvbGUiOiAiYWxlcnQiLAogICJub3JtYWxpemVyX3ZlcnNpb24iOiAxLAogICJtYXRjaCI6IHsKICAgICJzbXNfc2VuZGVyIjogWyJCQU5LLVNNUyJdLAogICAgImJvZHlfY29udGFpbnMiOiBbIlB1cmNoYXNlIG9mIl0KICB9LAogICJkZWZhdWx0X2N1cnJlbmN5IjogIkFFRCIsCiAgImRhdGVfZnJvbSI6ICJyZWNlaXZlZCIsCiAgImV4dHJhY3QiOiBbCiAgICB7ImZpZWxkIjoiYW1vdW50IiwidHlwZSI6ImFtb3VudCIsInNvdXJjZSI6ImJvZHkiLAogICAgICJwYXR0ZXJucyI6WyJeUHVyY2hhc2Ugb2YgKD9QPGNjeT5bQS1aXXszfSApPyg/UDxhbXQ+WzAtOV1bMC05LF17MCwyNH1cXC5bMC05XXsyfSkgIl19LAogICAgeyJmaWVsZCI6ImRhdGUiLCJ0eXBlIjoiZGF0ZSIsInNvdXJjZSI6ImJvZHkiLAogICAgICJwYXR0ZXJucyI6WyIgb24gKD9QPGQ+WzAtOV17Mn0tWzAtOV17Mn0tWzAtOV17NH0gWzAtOV17Mn06WzAtOV17Mn0pIGF0ICJdLAogICAgICJsYXlvdXRzIjpbIkRELU1NLVlZWVkgSEg6bW0iXX0sCiAgICB7ImZpZWxkIjoibWVyY2hhbnQiLCJ0eXBlIjoidGV4dCIsInNvdXJjZSI6ImJvZHkiLAogICAgICJwYXR0ZXJucyI6WyIgYXQgKD9QPHY+W15cXG5dKylcXC4gQmFsYW5jZSAiXX0sCiAgICB7ImZpZWxkIjoiZGlyZWN0aW9uIiwidHlwZSI6ImNvbnN0Iiwic291cmNlIjoiYm9keSIsInZhbHVlIjoiZGViaXQifQogIF0sCiAgInJlcXVpcmVkIjogWyJhbW91bnQiLCJkaXJlY3Rpb24iXQp9",
+    "canonical_base64": "eyJiYW5rIjoiYmFuayIsImNoYW5uZWwiOiJzbXMiLCJkYXRlX2Zyb20iOiJyZWNlaXZlZCIsImRlZmF1bHRfY3VycmVuY3kiOiJBRUQiLCJleHRyYWN0IjpbeyJmaWVsZCI6ImFtb3VudCIsImZsYWdzIjpbXSwibGF5b3V0cyI6W10sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6WyJeUHVyY2hhc2Ugb2YgKD9QPGNjeT5bQS1aXXszfSApPyg/UDxhbXQ+WzAtOV1bMC05LF17MCwyNH1cXC5bMC05XXsyfSkgIl0sInNvdXJjZSI6ImJvZHkiLCJ0eXBlIjoiYW1vdW50IiwidmFsdWUiOiIiLCJ3aHkiOiIifSx7ImZpZWxkIjoiZGF0ZSIsImZsYWdzIjpbXSwibGF5b3V0cyI6WyJERC1NTS1ZWVlZIEhIOm1tIl0sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6WyIgb24gKD9QPGQ+WzAtOV17Mn0tWzAtOV17Mn0tWzAtOV17NH0gWzAtOV17Mn06WzAtOV17Mn0pIGF0ICJdLCJzb3VyY2UiOiJib2R5IiwidHlwZSI6ImRhdGUiLCJ2YWx1ZSI6IiIsIndoeSI6IiJ9LHsiZmllbGQiOiJtZXJjaGFudCIsImZsYWdzIjpbXSwibGF5b3V0cyI6W10sIm9uX21hdGNoIjp7fSwib3ZlcnJpZGUiOmZhbHNlLCJwYXR0ZXJucyI6WyIgYXQgKD9QPHY+W15cXG5dKylcXC4gQmFsYW5jZSAiXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJ0ZXh0IiwidmFsdWUiOiIiLCJ3aHkiOiIifSx7ImZpZWxkIjoiZGlyZWN0aW9uIiwiZmxhZ3MiOltdLCJsYXlvdXRzIjpbXSwib25fbWF0Y2giOnt9LCJvdmVycmlkZSI6ZmFsc2UsInBhdHRlcm5zIjpbXSwic291cmNlIjoiYm9keSIsInR5cGUiOiJjb25zdCIsInZhbHVlIjoiZGViaXQiLCJ3aHkiOiIifV0sImlkIjoiYmFuay5zbXMucHVyY2hhc2UudjEiLCJtYXRjaCI6eyJib2R5X2NvbnRhaW5zIjpbIlB1cmNoYXNlIG9mIl0sImJvZHlfbm90X2NvbnRhaW5zIjpbXSwic2VuZGVyX2RvbWFpbiI6W10sInNtc19zZW5kZXIiOlsiQkFOSy1TTVMiXSwic3ViamVjdF9jb250YWlucyI6W119LCJub3JtYWxpemVyX3ZlcnNpb24iOjEsInJlcXVpcmVkIjpbImFtb3VudCIsImRpcmVjdGlvbiJdLCJ0cmFuc2Zlcl9yb2xlIjoiYWxlcnQiLCJ2ZXJzaW9uIjoxfQ==",
+    "why": "A text definition adds channel, match.sms_sender and transfer_role to the canonical form; a mail definition renders none of them, so its bytes are the ones it had before texts existed."
   },
   "corpus": {
     "spec": "pats = dialectCorpus() in internal/tmpl/conformance_test.go, transliterated in client/src/tmpl/dialect.test.ts. sha256 over, for each pattern in order: pattern + \"\\x00\" + ValidatePattern(pattern, []).codes.join(\",\") + \"\\n\", as UTF-8.",

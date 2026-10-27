@@ -1,0 +1,133 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "dib.sms.refund.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "dib.sms.refund.v1",
+    "version": 1,
+    "bank": "dib",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "DIB-SMS"
+      ],
+      "body_contains": [
+        "تم إرجاع مبلغ"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^تم إرجاع مبلغ (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) درهم "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "DIB CARD REFUND"
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          "والمنتهية بالرقم (?P<v>[^ \\n.]+)"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "dib.sms.refund.v1/refund",
+      "source": "SYNTHETIC: an amount returned to a card: a credit with the card's last four",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYpdix2KzYp9i5INmF2KjZhNi6IDEyMy40NSDYr9ix2YfZhSDYudmE2Ykg2KjYt9in2YLYqSDYqNmG2YMg2K/YqNmKINin2YTYpdiz2YTYp9mF2Yog2KfZhNiu2KfYtdipINio2YMg2YjYp9mE2YXZhtiq2YfZitipINio2KfZhNix2YLZhSBYWDEyMzQu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "12345",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.refund.v1/thousands",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYpdix2KzYp9i5INmF2KjZhNi6IDEsMjM0LjU2INiv2LHZh9mFINi52YTZiSDYqNi32KfZgtipINio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2K7Yp9i12Kkg2KjZgyDZiNin2YTZhdmG2KrZh9mK2Kkg2KjYp9mE2LHZgtmFIFhYMTIzNC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123456",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.refund.v1/other-currency-word",
+      "source": "SYNTHETIC: only dirhams are read",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYpdix2KzYp9i5INmF2KjZhNi6IDEyLjM0INiv2YjZhNin2LEg2LnZhNmJINio2LfYp9mC2Kkg2KjZhtmDINiv2KjZiiDYp9mE2KXYs9mE2KfZhdmKINin2YTYrtin2LXYqSDYqNmDINmI2KfZhNmF2YbYqtmH2YrYqSDYqNin2YTYsdmC2YUgWFgxMjM0Lg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "dib.sms.refund.v1/no-card",
+      "source": "SYNTHETIC: the card is optional",
+      "subject_base64": "",
+      "normalized_body_base64": "2KrZhSDYpdix2KzYp9i5INmF2KjZhNi6IDIzLjQ1INiv2LHZh9mFINi52YTZiSDYqNi32KfZgtipINio2YbZgyDYr9io2Yog2KfZhNil2LPZhNin2YXZiiDYp9mE2K7Yp9i12Kkg2KjZgy4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2345",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "DIB CARD REFUND",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

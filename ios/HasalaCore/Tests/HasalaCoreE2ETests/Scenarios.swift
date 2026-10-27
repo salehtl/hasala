@@ -128,7 +128,7 @@ enum Scenarios {
       config: MailboxEngineConfig(grantID: a.context.userID.string), oauth: oauth, tokens: tokens, gmailHTTP: gmail,
       store: persistence, ledger: ledger, server: LinkServer(), stepUp: ApprovedStepUp(),
       categorizer: PipelineCategorizer(projection: a.projection, dictionary: bundledDictionary),
-      templates: BundledTemplates.load().templates, clock: clock, random: a.context.random, sleep: { _ in })
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: a.context.random, sleep: { _ in })
     return (engine, ledger)
   }
 
@@ -160,7 +160,7 @@ enum Scenarios {
       config: MailboxEngineConfig(grantID: a.context.userID.string), provider: provider, tokens: tokens,
       store: persistence, ledger: ledger, server: LinkServer(), stepUp: ApprovedStepUp(),
       categorizer: PipelineCategorizer(projection: a.projection, dictionary: bundledDictionary),
-      templates: BundledTemplates.load().templates, clock: clock, random: a.context.random, sleep: { _ in })
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: a.context.random, sleep: { _ in })
     return (engine, ledger)
   }
 

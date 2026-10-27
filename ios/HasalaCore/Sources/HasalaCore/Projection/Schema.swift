@@ -12,7 +12,7 @@ import GRDB
 
 public enum ProjectionSchema {
   /// Bump on any change to a table, a view or a derived column.
-  public static let version = 11
+  public static let version = 12
 
   static let tables = [
     "projection_meta", "txn", "txn_alias", "txn_part", "category", "rule", "rule_pattern", "merchant_name", "merchant_rejection", "sender_trust", "project", "goal",
@@ -105,7 +105,10 @@ public enum ProjectionSchema {
       copy_decision         TEXT CHECK (copy_decision IN ('keep_both')),
       held_copy             INTEGER NOT NULL DEFAULT 0 CHECK (held_copy IN (0,1)),
       merchant_group        TEXT CHECK (merchant_group IS NULL OR merchant_group <> ''),
-      categorized_ms        INTEGER
+      categorized_ms        INTEGER,
+      channel               TEXT CHECK (channel IS NULL OR channel IN ('sms')),
+      received_at           TEXT,
+      received_ms           INTEGER
     );
     CREATE INDEX txn_local_month ON txn(local_month, posted_ms DESC);
     CREATE INDEX txn_category    ON txn(category);
@@ -117,6 +120,7 @@ public enum ProjectionSchema {
     CREATE INDEX txn_needs_review    ON txn(needs_review) WHERE needs_review = 1;
     CREATE INDEX txn_review_lane     ON txn(review_lane) WHERE review_lane IS NOT NULL;
     CREATE INDEX txn_source_mailbox  ON txn(source_provider, source_mailbox) WHERE source_mailbox IS NOT NULL;
+    CREATE INDEX txn_channel         ON txn(channel, posted_ms) WHERE channel IS NOT NULL;
 
     CREATE TABLE txn_alias (
       txn_id             TEXT NOT NULL REFERENCES txn(id),

@@ -203,7 +203,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   static func lastEmail(_ bank: SupportedBank, health: [BankHealthRow], nowMs: Int64) -> String? {
     let domains = MailboxLane.senderDomains(bank: bank.rawValue)
     let newest = health.filter { BankDomains.isMember($0.domain, of: domains) }.compactMap(\.lastEmailAtMs).max()
-    return newest.map { LedgerStateMapper.ago(nowMs - $0) }
+    return newest.map { RelativeTime.ago(ms: nowMs - $0) }
   }
 
   /// The rows' `readThisMonth` for the local month of `nowMs` ("214 read in October"); a
@@ -230,7 +230,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
     provider: MailProviderKind = .gmail, nowMs: Int64, timeZone: TimeZone = localTimeZone
   ) -> [MailboxSnapshot] {
-    let checked = lastSuccessAtMs.map { "Checked \(LedgerStateMapper.ago(nowMs - $0))" } ?? "Not checked yet"
+    let checked = lastSuccessAtMs.map { "Checked \(RelativeTime.ago(ms: nowMs - $0))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
       id: mailboxID(provider), provider: provider, address: address ?? provider.appName, state: .connected, meta: checked,
       accountKind: provider == .outlook ? "Personal Microsoft" : nil,
@@ -399,7 +399,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       await old?.resume()
       throw error
     }
-    rt.activate(provider)
+    rt.linkedHere(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
     if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
@@ -466,7 +466,13 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     try Self.checkDisconnect(await lane.status().phase)
     let plan = removeTransactions ? await lane.retirePlan() : nil
     let outcome = await lane.disconnect(removing: plan)
-    await runtime()?.refreshMailbox()
+    let rt = runtime()
+    await rt?.refreshMailbox()
+    if let rt {
+      rt.unlinkedHere(outcome)
+    } else {
+      BankTextsLinkKeeper(nowMs: { SystemClock().nowMs() }).disconnected(outcome)
+    }
     try Self.disconnected(outcome, provider: lane.provider)
   }
 

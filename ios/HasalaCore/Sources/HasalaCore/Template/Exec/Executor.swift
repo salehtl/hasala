@@ -9,8 +9,8 @@
 //
 // Every place where platforms differ by default is pinned: the trim cutset is " \t\n\v\f\r",
 // only ASCII a-z is upper-cased, lengths are runes or UTF-8 bytes, money is an integer parsed
-// from a digit string that already passed a shape check, the three date layouts are parsed by
-// hand, and every text comparison is on bytes.
+// from a digit string that already passed a shape check, the date layouts are parsed by hand,
+// and every text comparison is on bytes.
 //
 // The sender-domain gate is NOT applied here: it belongs to the trusted lane (CoreMail's
 // verified domain), and giving this function a domain would invite a caller to hand it the
@@ -87,13 +87,34 @@ public struct CompiledTemplate: Sendable {
     guard Self.isCurrency(d.defaultCurrency) else {
       throw .definition("default_currency is not three upper-case letters, so no amount could carry a currency")
     }
-    guard same(d.dateFrom, "body") || same(d.dateFrom, "email") else {
-      throw .definition("date_from is neither \"body\" nor \"email\"")
+    guard d.channelKnown else { throw .definition("channel is neither \"mail\" nor \"sms\"") }
+    if d.isSMS {
+      guard same(d.dateFrom, "received") else { throw .definition("an sms template's date_from is not \"received\"") }
+      guard !d.match.smsSender.isEmpty else { throw .definition("an sms template names no sms_sender") }
+      guard d.match.senderDomain.isEmpty else {
+        throw .definition("an sms template names a sender_domain, and a text has no signing domain")
+      }
+      guard d.match.subjectContains.isEmpty else {
+        throw .definition("an sms template has subject_contains, and a text has no subject")
+      }
+      for (i, x) in d.extract.enumerated() where same(x.source, "subject") {
+        throw .definition("extract[\(i)]: an sms template reads the body only, and a text has no subject")
+      }
+    } else {
+      guard same(d.dateFrom, "body") || same(d.dateFrom, "email") else {
+        throw .definition("date_from is neither \"body\" nor \"email\"")
+      }
+      guard d.match.smsSender.isEmpty else { throw .definition("a mail template names an sms_sender") }
     }
+    guard d.transferRoleKnown else { throw .definition("transfer_role is neither \"notice\" nor \"alert\"") }
+    guard d.isSMS || d.transferRole.isEmpty else { throw .definition("a mail template names a transfer_role") }
     for f in d.required {
       guard Field(f) != nil else { throw .definition("required names \(f), which is not a field") }
       if Field(f) == .isTransfer {
         throw .definition("is_transfer cannot be required: a false flag is indistinguishable from an unset one")
+      }
+      if Field(f) == .date && same(d.dateFrom, "received") {
+        throw .definition("date cannot be required when date_from is \"received\"")
       }
     }
     var entries: [Entry] = []
@@ -158,7 +179,7 @@ public struct CompiledTemplate: Sendable {
     }
   }
 
-  static let layouts = ["DD-MM-YYYY", "DD/Mon/YYYY hh:mm A", "DD/Mon/YYYY"]
+  static let layouts = ["DD-MM-YYYY", "DD/Mon/YYYY hh:mm A", "DD/Mon/YYYY", "DD-MM-YYYY HH:mm"]
 
   static func compileEntry(_ i: Int, _ x: TemplateDefinition.Extract) throws(TemplateError) -> Entry {
     func fail(_ msg: String) -> TemplateError { .definition("extract[\(i)]: \(msg)") }
@@ -180,7 +201,7 @@ public struct CompiledTemplate: Sendable {
     if type == .date {
       if x.layouts.isEmpty { throw fail("a date entry with no layouts can never convert its capture") }
       for l in x.layouts where !layouts.contains(where: { same($0, l) }) {
-        throw fail("layout \(l) is not one of the three supported layouts")
+        throw fail("layout \(l) is not one of the supported layouts")
       }
     }
 
@@ -546,8 +567,9 @@ public struct CompiledTemplate: Sendable {
     .map { Array($0.utf16) }
 
   /// One layout, whole string, no trailing text: the hand-written mirror of Go's time.Parse for
-  /// exactly these three layouts (month names fold ASCII case, AM/PM does not; numeric fields
-  /// are fixed-width; calendar ranges checked; no zone, so UTC).
+  /// exactly the layouts in `layouts` (month names fold ASCII case, AM/PM does not; every numeric
+  /// field is fixed-width except the hour of "DD-MM-YYYY HH:mm", which takes one or two digits as
+  /// Go's `15` does; calendar ranges checked; no zone, so UTC).
   static func parseExact(_ s: ArraySlice<UInt16>, _ layout: String) -> String? {
     var i = s.startIndex
     func num(_ n: Int) -> Int? {
@@ -572,9 +594,17 @@ public struct CompiledTemplate: Sendable {
     let day: Int
     let month: Int
     let year: Int
-    if same(layout, "DD-MM-YYYY") {
+    if same(layout, "DD-MM-YYYY") || same(layout, "DD-MM-YYYY HH:mm") {
       guard let d = num(2), lit(0x2d), let mo = num(2), lit(0x2d), let y = num(4) else { return nil }
       (day, month, year) = (d, mo, y)
+      if same(layout, "DD-MM-YYYY HH:mm") {
+        guard lit(0x20), i < s.endIndex, s[i] >= 0x30 && s[i] <= 0x39 else { return nil }
+        let wide = i + 1 < s.endIndex && s[i + 1] >= 0x30 && s[i + 1] <= 0x39
+        guard let h = num(wide ? 2 : 1), lit(0x3a), let m = num(2) else { return nil }
+        if h > 23 || m > 59 { return nil }
+        hour = h
+        minute = m
+      }
     } else {
       guard let d = num(2), lit(0x2f) else { return nil }
       // Go's lookup(shortMonthNames): exactly three characters, ASCII-case-insensitive.

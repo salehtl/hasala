@@ -126,20 +126,43 @@ leaked="$(
 		find conformance/normalizer -type f ! -name edge-cases.json ! -name charset-tables.ts ! -name '.*' || true
 		find conformance/templates -type f -name 'corpus-*' || true
 		find conformance/templates/eml -type f || true
+		find conformance/templates/sms -type f ! -name 'synthetic-*' ! -name '.*' || true
+		find conformance -type f \( -ipath 'conformance/*sms*/*' -o -ipath 'conformance/*text*/*' \) \
+			! -name 'synthetic-*' ! -name README.md ! -name '.*' || true
+		find conformance/templates -path conformance/templates/sms -prune -o -type f ! -name '.*' \
+			-exec grep -lE '\\?"channel\\?"[[:space:]]*:[[:space:]]*\\?"sms\\?"' {} + || true
+		{
+			find conformance -type f ! -name '.*' || true
+			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | sort -u | tr '\n' '\0' | xargs -0 grep -lE '\\?"note\\?"[[:space:]]*:[[:space:]]*\\?"PRIVATE:' /dev/null || true
+		{
+			find conformance -type f ! -name 'synthetic-*' ! -name '.*' || true
+			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | grep -v '/synthetic-[^/]*$' | sort -u | tr '\n' '\0' |
+			xargs -0 grep -lE '\\?"read_by\\?"[[:space:]]*:|\\?"sender\\?"[[:space:]]*:[[:space:]]*\\?"DIB-SMS\\?"|^DIB-SMS,|,DIB-SMS(,|$)' /dev/null || true
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true
 	} 2>/dev/null | sort -u
 )"
 if [[ -n "$leaked" ]]; then
-	echo "check: real-mail fixtures are back in the public tree; they belong in salehtl/hasala-fixtures:" >&2
+	echo "check: real bank mail or text fixtures are in the public tree; they belong in salehtl/hasala-fixtures:" >&2
 	echo "$leaked" >&2
+	exit 1
+fi
+unread="$(cd "$ROOT" && find conformance/templates/sms -mindepth 2 -type f ! -name '.*' 2>/dev/null | sort)"
+if [[ -n "$unread" ]]; then
+	echo "check: no template runner reads a subdirectory of conformance/templates/sms, so these cases would never run; move them into conformance/templates/sms itself:" >&2
+	echo "$unread" >&2
 	exit 1
 fi
 echo "no real-mail fixture or private expectation file in the public tree"
 if [[ -n "$FENCE_ONLY" ]]; then
 	exit 0
 fi
+
+step "real-mail fence self-test"
+"$ROOT/scripts/tests/fence_test.sh"
 
 # --- 0b. HasalaCore source lints ------------------------------------------------
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
@@ -170,7 +193,7 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
-GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay)
+GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"
 if [[ -n "$CI_RUN" ]]; then
@@ -442,8 +465,9 @@ CONFORMANCE=(
 	"op|./internal/oplog/opref"
 	"outlook-sender|"
 	"replay|"
+	"sms-extract|"
 	"swift|"
-	"templates|./internal/tmpl"
+	"templates|./internal/tmpl ./internal/tmpl/seed"
 	"ts|./internal/oplog/opref"
 )
 step "conformance"

@@ -45,7 +45,13 @@ struct ProfileSheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
           ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
-          BankAlertsCard(summary: summary) { push(.bankAlerts) }
+          if let texts = app.bankTexts, texts.usesTexts {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+              BankAlertsCard(summary: .texts(texts.status, now: context.date)) { push(.bankAlerts) }
+            }
+          } else {
+            BankAlertsCard(summary: summary) { push(.bankAlerts) }
+          }
           money
           settings
           GravatarSection()

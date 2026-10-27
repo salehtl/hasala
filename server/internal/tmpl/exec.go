@@ -200,8 +200,30 @@ func Compile(d Definition) (*Compiled, error) {
 		return nil, fmt.Errorf("%w: default_currency %q is not three upper-case letters, so no amount could carry a currency",
 			ErrDefinition, d.DefaultCurrency)
 	}
-	if d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail {
+	switch {
+	case !d.channelKnown():
+		return nil, fmt.Errorf("%w: channel %q is neither %q nor %q", ErrDefinition, d.Channel, ChannelMail, ChannelSMS)
+	case d.IsSMS() && d.DateFrom != DateFromReceived:
+		return nil, fmt.Errorf("%w: an sms template's date_from %q is not %q", ErrDefinition, d.DateFrom, DateFromReceived)
+	case !d.IsSMS() && d.DateFrom != DateFromBody && d.DateFrom != DateFromEmail:
 		return nil, fmt.Errorf("%w: date_from %q is neither %q nor %q", ErrDefinition, d.DateFrom, DateFromBody, DateFromEmail)
+	case d.IsSMS() && len(d.Match.SMSSender) == 0:
+		return nil, fmt.Errorf("%w: an sms template names no sms_sender", ErrDefinition)
+	case d.IsSMS() && len(d.Match.SenderDomain) > 0:
+		return nil, fmt.Errorf("%w: an sms template names a sender_domain, and a text has no signing domain", ErrDefinition)
+	case d.IsSMS() && len(d.Match.SubjectContains) > 0:
+		return nil, fmt.Errorf("%w: an sms template has subject_contains, and a text has no subject", ErrDefinition)
+	case !d.IsSMS() && len(d.Match.SMSSender) > 0:
+		return nil, fmt.Errorf("%w: a mail template names an sms_sender", ErrDefinition)
+	case !d.transferRoleKnown():
+		return nil, fmt.Errorf("%w: transfer_role %q is neither %q nor %q", ErrDefinition, d.TransferRole, TransferRoleNotice, TransferRoleAlert)
+	case !d.IsSMS() && d.TransferRole != "":
+		return nil, fmt.Errorf("%w: a mail template names a transfer_role", ErrDefinition)
+	}
+	for i, x := range d.Extract {
+		if d.IsSMS() && x.Source == SourceSubject {
+			return nil, fmt.Errorf("%w: extract[%d]: an sms template reads the body only, and a text has no subject", ErrDefinition, i)
+		}
 	}
 	for _, f := range d.Required {
 		if _, ok := fieldTypes[f]; !ok {
@@ -210,6 +232,9 @@ func Compile(d Definition) (*Compiled, error) {
 		if f == FieldIsTransfer {
 			return nil, fmt.Errorf("%w: is_transfer cannot be required — a flag that is false is "+
 				"indistinguishable from one that was never set, so the requirement could never be enforced", ErrDefinition)
+		}
+		if f == FieldDate && d.DateFrom == DateFromReceived {
+			return nil, fmt.Errorf("%w: date cannot be required when date_from is %q", ErrDefinition, DateFromReceived)
 		}
 	}
 
@@ -276,7 +301,7 @@ func compileEntry(i int, x Extract) (compiledEntry, error) {
 		}
 		for _, l := range x.Layouts {
 			if _, ok := goDateLayouts[l]; !ok {
-				return fail("layout %q is not one of the three supported layouts", l)
+				return fail("layout %q is not one of the supported layouts", l)
 			}
 		}
 	}
@@ -715,6 +740,7 @@ var goDateLayouts = map[string]string{
 	LayoutDDMMYYYY:       "02-01-2006",
 	LayoutDDMonYYYYHHMMA: "02/Jan/2006 03:04 PM",
 	LayoutDDMonYYYY:      "02/Jan/2006",
+	LayoutDDMMYYYYHHmm:   "02-01-2006 15:04",
 }
 
 // convertDate implements rule 6: for each declared layout in order, try the
@@ -827,6 +853,9 @@ func convertLast4(s string) (string, bool) {
 // rather than expressing it again in SQL, so the set of templates the ingest
 // path runs and the set an operator queries can never disagree.
 func MatchesSenderDomain(d Definition, verified string) bool {
+	if d.IsSMS() {
+		return false
+	}
 	v := asciiLower(strings.TrimSuffix(strings.TrimSpace(verified), "."))
 	// A domain that is not shaped like a domain matches nothing. ".dib.ae" has
 	// an empty first label, and a plain suffix test would accept it as
@@ -841,6 +870,22 @@ func MatchesSenderDomain(d Definition, verified string) bool {
 			continue
 		}
 		if v == l || strings.HasSuffix(v, "."+l) {
+			return true
+		}
+	}
+	return false
+}
+
+func MatchesSMSSender(d Definition, sender string) bool {
+	if !d.IsSMS() {
+		return false
+	}
+	s := asciiLower(trimCapture(sender))
+	if s == "" {
+		return false
+	}
+	for _, listed := range d.Match.SMSSender {
+		if asciiLower(listed) == s {
 			return true
 		}
 	}

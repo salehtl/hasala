@@ -68,7 +68,7 @@ func TestWriteEMLTemplateFixtures(t *testing.T) {
 	if len(ids) == 0 {
 		t.Fatalf("%s holds no template directories", filepath.Join(root, EMLTemplateDir))
 	}
-	defs, raws, err := LoadSeedTemplates(seedDir)
+	defs, raws, err := LoadMailSeedTemplates(seedDir)
 	if err != nil {
 		t.Fatal(err)
 	}
