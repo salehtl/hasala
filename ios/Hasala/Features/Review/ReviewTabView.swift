@@ -64,12 +64,20 @@ struct ReviewTabView: View {
       #if HASALA_MOCKS
         if BankTextsLaunch.takeOpenPaste() { pastingText = true }
       #endif
+      takePasteRequest()
     }
+    .onChange(of: app.router.pasteBankText) { _, _ in takePasteRequest() }
     .sheet(isPresented: $pastingText) {
       if let lane = app.bankTexts {
         PasteBankTextSheet(lane: lane, hidden: app.amountsHidden) { app.say("Added to Review") }
       }
     }
+  }
+
+  private func takePasteRequest() {
+    guard app.router.pasteBankText else { return }
+    app.router.pasteBankText = false
+    if app.offersBankTextPaste { pastingText = true }
   }
 
   private var pasteTextRow: some View {

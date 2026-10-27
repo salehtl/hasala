@@ -152,5 +152,6 @@ public struct Secrets: Sendable {
     }
     for p in MailSecretProvider.allCases { try store.delete(.mailRefresh(provider: p, userID: userID)) }
     try store.delete(.outlookClientState(userID: userID))
+    try store.delete(.textKeySecret)
   }
 }

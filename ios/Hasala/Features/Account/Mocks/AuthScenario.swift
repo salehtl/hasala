@@ -139,12 +139,18 @@
 
     @MainActor
     static func bankTexts(for scenario: AuthScenario?, mailbox: MockMailbox? = nil) -> MockBankTexts? {
-      switch scenario {
-      case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
-      case .textsWorking, .mayaTexts: MockBankTexts.working(mailbox: mailbox)
-      case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
-      default: nil
+      let lane: MockBankTexts? =
+        switch scenario {
+        case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
+        case .textsWorking, .mayaTexts: MockBankTexts.working(mailbox: mailbox)
+        case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
+        default: nil
+        }
+      let arguments = ProcessInfo.processInfo.arguments
+      if let i = arguments.firstIndex(of: "-HasalaLockedTexts"), i + 1 < arguments.count, let n = Int(arguments[i + 1]) {
+        lane?.lockedNotice = n
       }
+      return lane
     }
 
     @MainActor

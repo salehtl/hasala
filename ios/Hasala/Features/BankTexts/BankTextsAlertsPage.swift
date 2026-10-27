@@ -76,6 +76,7 @@ struct BankTextsAlertsPage: View {
         }
         automation
         TimelineView(.periodic(from: .now, by: 60)) { context in banks(context.date) }
+        if !lane.setAside.isEmpty { setAsideSection }
         howItReads
         switchSection
       }
@@ -210,6 +211,46 @@ struct BankTextsAlertsPage: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
     }
+  }
+
+  private var setAsideSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HSectionHeader("Set aside")
+      HListCard {
+        ForEach(Array(lane.setAside.enumerated()), id: \.element.id) { i, row in
+          if i > 0 { HDivider(inset: .disc68) }
+          setAsideRow(row)
+        }
+      }
+      Text(BankTexts.setAsideFootnote)
+        .hType(.footnote)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bankAlerts.texts.setAside")
+  }
+
+  private func setAsideRow(_ row: BankTextsSetAside) -> some View {
+    HStack(alignment: .top, spacing: HSpacing.listRowGap) {
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(HColor.actionAccentSubtle)
+        .frame(width: 40, height: 40)
+        .overlay { HIconView(.chat, size: 20, color: HColor.actionAccent, strokeWidth: 1.8) }
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(row.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+        Text(BankTexts.setAsideDetail(row)).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, HSpacing.listRowInsetInline)
+    .padding(.vertical, HSpacing.listRowInsetBlock)
+    .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("bankAlerts.texts.setAside.\(row.sender)")
   }
 
   private var howItReads: some View {

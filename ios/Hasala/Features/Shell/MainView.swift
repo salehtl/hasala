@@ -18,6 +18,7 @@ struct MainView: View {
   @State private var home: HomeViewModel
   @State private var plan: PlanViewModel
   @State private var activity: ActivityViewModel
+  @Environment(\.scenePhase) private var scenePhase
 
   init(app: AppModel) {
     _app = State(initialValue: app)
@@ -81,6 +82,24 @@ struct MainView: View {
       openPendingWidgetLink()
     }
     .onChange(of: WidgetLinkInbox.shared.pending) { _, _ in openPendingWidgetLink() }
+    .onChange(of: scenePhase, initial: true) { _, phase in
+      if phase == .active { app.bankTexts?.refresh() }
+    }
+    .alert(
+      "Bank texts while locked", isPresented: lockedNoticeShowing,
+      presenting: app.bankTexts?.lockedNotice
+    ) { _ in
+      Button("Paste a text") {
+        app.bankTexts?.lockedNoticeShown()
+        app.router.tab = .review
+        app.router.pasteBankText = true
+      }
+      .accessibilityIdentifier("lockedTexts.paste")
+      Button("OK", role: .cancel) { app.bankTexts?.lockedNoticeShown() }
+        .accessibilityIdentifier("lockedTexts.ok")
+    } message: { count in
+      Text(BankTexts.lockedNoticeLine(count))
+    }
     .sheet(item: Bindable(app.router).sheet, onDismiss: { app.router.sheetDismissed() }) { route in
       switch route {
       case .transaction(let id):
@@ -118,6 +137,12 @@ struct MainView: View {
       case .review: ReviewCover(app: app)
       }
     }
+  }
+
+  private var lockedNoticeShowing: Binding<Bool> {
+    Binding(
+      get: { app.bankTexts?.lockedNotice != nil && app.router.sheet == nil && app.router.cover == nil },
+      set: { if !$0 { app.bankTexts?.lockedNoticeShown() } })
   }
 
   private func openPendingWidgetLink() {

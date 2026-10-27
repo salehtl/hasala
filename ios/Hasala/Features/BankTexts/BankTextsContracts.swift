@@ -12,6 +12,16 @@ enum BankTextsStatus: Equatable, Sendable {
   case working(lastRan: Date)
 }
 
+struct BankTextsSetAside: Equatable, Identifiable, Sendable {
+  var sender: String
+  var bank: SupportedBank?
+  var counts: [BankTextDropKind: Int]
+
+  var id: String { sender }
+  var total: Int { counts.values.reduce(0, +) }
+  var name: String { bank?.shortName ?? sender }
+}
+
 struct BankTextsBank: Equatable, Identifiable, Sendable {
   var bank: SupportedBank
   var lastText: Date?
@@ -98,6 +108,10 @@ protocol BankTextsConnecting: AnyObject, Observable {
   func read(_ text: String) async -> BankTextReading
   func match(_ text: String) async -> BankTextMatch?
   func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure)
+  var setAside: [BankTextsSetAside] { get }
+  var lockedNotice: Int? { get }
+  func lockedNoticeShown()
+  func refresh()
 }
 
 extension BankTextsConnecting {
@@ -218,6 +232,32 @@ enum BankTexts {
 
   static let banksLine =
     "Hasala reads DIB texts for you, though some still wait in Review. Texts from your other banks come in to Review for you to check."
+
+  static func lockedNoticeLine(_ n: Int) -> String {
+    n == 1
+      ? "1 text that looks like a payment arrived while your iPhone was locked after a restart. Paste it from Messages."
+      : "\(n) texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages."
+  }
+
+  static func kindName(_ kind: BankTextDropKind, count n: Int) -> String {
+    let one = n == 1
+    return switch kind {
+    case .oneTimeCode: one ? "1 one-time code" : "\(n) one-time codes"
+    case .declined: one ? "1 declined payment" : "\(n) declined payments"
+    case .notice: one ? "1 notice" : "\(n) notices"
+    case .promotion: one ? "1 promotion" : "\(n) promotions"
+    case .noPaymentShape: one ? "1 other text" : "\(n) other texts"
+    }
+  }
+
+  static func setAsideDetail(_ s: BankTextsSetAside) -> String {
+    let head = s.total == 1 ? "1 text set aside in the last 30 days" : "\(s.total) texts set aside in the last 30 days"
+    let kinds = BankTextDropKind.allCases.compactMap { k in s.counts[k].flatMap { $0 > 0 ? kindName(k, count: $0) : nil } }
+    return "\(head)\n\(kinds.joined(separator: ", "))"
+  }
+
+  static let setAsideFootnote =
+    "Texts from your banks that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
 
   static let automationFootnote =
     "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."
