@@ -46,7 +46,9 @@ enum LocalAccountData {
   /// a wall): forget the setup flag, the mailbox provider, the skipped review cards, the push registration,
   /// the recent searches (held in memory only) and, in Debug simulator runs, the simulator's
   /// approval keys.
-  static func forget(defaults: UserDefaults = .standard) {
+  static func forget(
+    defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared, marker: LockedTextsMarkerFile = .shared
+  ) {
     SearchHistory.shared.clear()
     WidgetLinkInbox.shared.pending = nil
     defaults.removeObject(forKey: setupFinishedKey)
@@ -60,6 +62,7 @@ enum LocalAccountData {
     HomeLayoutStore.forgetAll(defaults)
     NotificationReads.forget(defaults)
     PushRegistrar.forgetRegistration(defaults)
+    BankTextsDeviceData.forgetFiles(facts: facts, marker: marker)
     #if DEBUG && targetEnvironment(simulator)
       SimulatorApprovalKey.forgetAll(defaults)
     #endif

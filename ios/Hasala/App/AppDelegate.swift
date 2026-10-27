@@ -5,8 +5,6 @@ import UIKit
 /// silent pushes. A silent push (`content-available`, sent when a peer uploads) is one
 /// `WorkCoordinator` run of at most 25 s; its outcome is what iOS is told.
 final class AppDelegate: NSObject, UIApplicationDelegate {
-  /// The live graph starts with the process, not with the window: a launch for a silent
-  /// push or a background task has an account to run before any scene connects.
   func application(
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
@@ -16,9 +14,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
       // purge, no network).
       if ScreenLaunch.isMockLaunch(ProcessInfo.processInfo.arguments) { return true }
     #endif
-    AppGraph.live().start()
+    let boot = AppGraph.live()
+    if Self.startsAtLaunch(application.applicationState) { boot.start() }
     return true
   }
+
+  static func startsAtLaunch(_ state: UIApplication.State) -> Bool { state != .background }
 
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
     Task { await PushRegistrar.shared.didRegister(token: deviceToken) }
@@ -34,13 +35,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async
     -> UIBackgroundFetchResult
   {
+    await Self.silentPush(BackgroundEntry.live()) { rt, budget in
+      let out = await rt.coordinator.run(.silentPush, budget: budget)
+      if out.failed { return .failed }
+      return out.newData ? .newData : .noData
+    }
+  }
+
+  static func silentPush<Runtime>(
+    _ entry: BackgroundEntry<Runtime>?, run: (Runtime, Duration) async -> UIBackgroundFetchResult
+  ) async -> UIBackgroundFetchResult {
     let start = ContinuousClock.now
-    guard let coordinator = await AppGraph.boot?.openedRuntime()?.coordinator else { return .noData }
+    guard let rt = await entry?.runtime() else { return .noData }
     let budget = Self.remainingBudget(Self.silentPushBudget, from: start, now: .now)
     guard budget > .zero else { return .noData }
-    let out = await coordinator.run(.silentPush, budget: budget)
-    if out.failed { return .failed }
-    return out.newData ? .newData : .noData
+    return await run(rt, budget)
   }
 
   static let silentPushBudget: Duration = .seconds(25)

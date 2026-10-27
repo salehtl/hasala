@@ -533,6 +533,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var passkeyLogins: Set<String> = []
     var passkeySignsInAs: String?
     var passkeyLoginRefusal: (status: Int, code: String)?
+    var mailboxLink: (thisDevice: Bool, provider: String)?
+    var mailboxLinkAsks = 0
   }
 
   private let lock = NSLock()
@@ -558,6 +560,11 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
+  var mailboxLinkAsks: Int { state.withLock { $0.mailboxLinkAsks } }
+  var mailboxLink: (thisDevice: Bool, provider: String)? {
+    get { state.withLock { $0.mailboxLink } }
+    set { state.withLock { $0.mailboxLink = newValue } }
+  }
   var passkeySignsInAs: String? {
     get { state.withLock { $0.passkeySignsInAs } }
     set { state.withLock { $0.passkeySignsInAs = newValue } }
@@ -788,6 +795,10 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       s.users[u.id]?.frozenBy = nil
       s.users[u.id]?.freezeTriggerAt = nil
       return APIResponse(status: 204)
+    case "GET /api/v1/mailbox/link":
+      s.mailboxLinkAsks += 1
+      guard let link = s.mailboxLink else { return error(404, "no_link") }
+      return ok(["holder": ["is_this_device": link.thisDevice], "provider": link.provider, "watch_expires_at": NSNull()])
     case "DELETE /api/v1/account":
       guard b["step_up"] != nil, b["sig"] != nil else { return error(400, "bad_request") }
       s.users[u.id]?.deleted = true

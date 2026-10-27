@@ -37,6 +37,8 @@ final class AccountRuntime {
   @ObservationIgnored let mailboxServer: HTTPMailboxServer
   @ObservationIgnored let backlog: BacklogSorter
   @ObservationIgnored let suggestions: ModelSuggestionStage
+  @ObservationIgnored let bankTexts: CoreBankTextAuthoring
+  @ObservationIgnored let linkCopy: BankTextsLinkKeeper
   @ObservationIgnored private var switchOff: NSObjectProtocol?
   @ObservationIgnored private var switchOn: NSObjectProtocol?
   let store: LiveLedgerStore
@@ -67,7 +69,8 @@ final class AccountRuntime {
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
     lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
-    mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage, store: LiveLedgerStore
+    mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage,
+    bankTexts: CoreBankTextAuthoring, linkCopy: BankTextsLinkKeeper, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -84,6 +87,8 @@ final class AccountRuntime {
     self.mailboxServer = mailboxServer
     self.backlog = backlog
     self.suggestions = suggestions
+    self.bankTexts = bankTexts
+    self.linkCopy = linkCopy
     self.store = store
   }
 
@@ -109,6 +114,15 @@ final class AccountRuntime {
     active.set(lane)
     if activeProvider != provider { activeProvider = provider }
     LocalAccountData.setMailboxProvider(provider)
+  }
+
+  func linkedHere(_ provider: MailboxProvider) {
+    activate(provider)
+    linkCopy.connected()
+  }
+
+  func unlinkedHere(_ outcome: MailboxDisconnectOutcome) {
+    linkCopy.disconnected(outcome)
   }
 
   /// The lane to run when the account opens: the provider this iPhone ran last, else the one
@@ -161,14 +175,15 @@ final class AccountRuntime {
   /// move it to the other provider, whose lane then runs here. Offline, the last answer
   /// stays until the next run.
   func checkServerLink() async {
-    guard lane != nil, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice else { return }
-    _ = await askServerLink()
+    guard lane != nil else { return }
+    await linkCopy.afterRun(store.mailboxPhase) { _ = await askServerLink() }
   }
 
   /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
   /// couldn't be asked.
   func askServerLink() async -> MailboxLinkStatus? {
-    guard let (link, provider) = try? await mailboxServer.linkStatusAndProvider() else { return nil }
+    let server = mailboxServer
+    guard let (link, provider) = await linkCopy.ask({ try await server.linkStatusAndProvider() }) else { return nil }
     if serverLink != link { serverLink = link }
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
@@ -185,7 +200,7 @@ final class AccountRuntime {
   static func open(
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
-    stopped: @escaping @Sendable (SyncStop) async -> Void
+    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
@@ -297,11 +312,14 @@ final class AccountRuntime {
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
-      mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions, store: store)
+      mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions,
+      bankTexts: CoreBankTextAuthoring(ledger: mailboxLedger, reader: projection.reader, categorizer: categorizer),
+      linkCopy: BankTextsLinkKeeper(facts: bankTextFacts, nowMs: { context.clock.nowMs() }), store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
+    rt.linkCopy.ownLink(store.mailboxPhase)
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()

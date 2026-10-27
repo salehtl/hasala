@@ -230,4 +230,30 @@ final class BankTextsUITests: XCTestCase {
     attach(app, "Paste a bank text · AX")
     try audit(app, atLargeText: true, overSheet: true)
   }
+
+  @MainActor
+  func testSetAsideCountsShowOnBankAlerts() throws {
+    let app = launch(scenario: nil, screen: "bankAlerts.texts")
+    let row = el(app, "bankAlerts.texts.setAside.DIB")
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "the set-aside counts are missing")
+    dragUntilHittable(app, row)
+    XCTAssertTrue(row.label.contains("11 texts set aside in the last 30 days"), row.label)
+    XCTAssertTrue(row.label.contains("8 one-time codes"), row.label)
+    attach(app, "Bank alerts · Set aside")
+    try audit(app, overSheet: true)
+  }
+
+  @MainActor
+  func testTheNoticeAfterUnlockOffersPaste() throws {
+    let app = launch(scenario: "textsWorking", arguments: ["-HasalaLockedTexts", "2"])
+    let alert = app.alerts["Bank texts while locked"]
+    XCTAssertTrue(alert.waitForExistence(timeout: 30), "the notice did not show")
+    let line = alert.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS '2 texts that look like payments arrived while your iPhone was locked after a restart'"))
+    XCTAssertEqual(line.count, 1)
+    attach(app, "Notice after unlock")
+    alert.buttons["Paste a text"].tap()
+    XCTAssertTrue(el(app, "pasteText").waitForExistence(timeout: uiWait), "the paste sheet did not open")
+    XCTAssertFalse(app.alerts["Bank texts while locked"].exists)
+  }
 }

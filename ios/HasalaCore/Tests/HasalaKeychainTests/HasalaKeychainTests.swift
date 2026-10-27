@@ -60,6 +60,10 @@ struct KeychainTests {
     let k = KeychainSecretStore(accessGroup: "G1", api: api)
     try k.write(.session(apiHost: "api.hasala.app"), Data("s".utf8))
     try k.write(.writerKey(userID: user, writerID: writer), Data(count: 33))
+    try k.write(.textKeySecret, Data(repeating: 5, count: 32))
+    #expect(api.attributes(service: "app.hasala.text-key", account: "device", group: "G1")?["accessible"]
+      == "\(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)")
+    #expect(api.attributes(service: "app.hasala.text-key", account: "device", group: "G1")?["sync"] == "false")
     let r = k.purgeAll(groups: ["G1", "G2"])
     #expect(r.complete && api.count == 0)
     api.locked = true
