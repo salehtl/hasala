@@ -23,7 +23,7 @@ struct ShortcutsGuideSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          Text("One automation hands Hasala each text you get. \(BankTexts.keepsPayments)")
+          Text("One automation hands Hasala each text you get that has a full stop. \(BankTexts.keepsPayments)")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -47,7 +47,7 @@ struct ShortcutsGuideSheet: View {
             .accessibilityIdentifier("textsGuide.step\(step.id)")
           }
           TextsNote(text: "\(BankTextsGuide.actionMissing.title) \(BankTextsGuide.actionMissing.detail)")
-          TextsNote(icon: .chat, text: "Then send yourself \u{201C}\(BankTexts.testPhrase)\u{201D} to check that it runs.")
+          TextsNote(icon: .chat, text: "Then send yourself \u{201C}\(BankTexts.testPhrase)\u{201D}, full stop included, to check that it runs.")
           Button { openURL(BankTexts.shortcutsURL) } label: {
             Text("Open Shortcuts").fixedSize(horizontal: false, vertical: true)
           }
@@ -97,9 +97,9 @@ struct ShortcutsGuideSheet: View {
         sketchGroup {
           sketchRow(icon: .chat, "When I get a message")
           HDivider(inset: .text16)
-          sketchRow("Sender", value: "Any")
+          sketchRow("Sender", value: "Leave empty")
           HDivider(inset: .text16)
-          sketchRow("Message Contains", value: "Leave empty")
+          sketchRow("Message Contains", value: "\u{201C}.\u{201D}")
         }
       case .run:
         sketchGroup {

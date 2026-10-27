@@ -130,7 +130,7 @@ extension BankTextsConnecting {
 
 enum BankTexts {
   static let readAutomatically: Set<SupportedBank> = [.dib]
-  static let testPhrase = "Hasala test"
+  static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
 
