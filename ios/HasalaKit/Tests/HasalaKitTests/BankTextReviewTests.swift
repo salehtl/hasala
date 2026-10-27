@@ -1,4 +1,5 @@
 import Foundation
+import HasalaDesign
 import HasalaMocks
 import HasalaModels
 import Testing
@@ -49,6 +50,18 @@ struct BankTextReviewTests {
       ReviewEngine.unreadTextBody(texts[1], today: today, canPaste: true)
         == "Hasala couldn't read this bank text. Find the text at 19:12 on Thu 8 Oct in Messages, copy it and paste it here, or add the payment yourself.")
     #expect(s.unreadMail.isEmpty && ReviewEngine.unreadCount(s) == 0)
+  }
+
+  @Test func theBellGetsOneItemForUnreadTextsThatOpensTheirPage() {
+    var t = s
+    let bell = NotificationsEngine.snapshot(t, now: now)
+    let item = bell.needsALook.first { $0.id == "unreadTexts" }
+    #expect(item?.title == "2 bank texts we couldn't read" && item?.destination == .unreadTexts)
+    #expect(item?.disc == .neutral(.chat) && item?.line.rendered(hidden: false) == "Add each one by hand or dismiss it" && item?.when == "Today")
+    #expect(bell.needsALook.first { $0.id == "unread" } == nil)
+    t.unreadTexts = []
+    #expect(NotificationsEngine.snapshot(t, now: now).needsALook.first { $0.id == "unreadTexts" } == nil)
+    #expect(Glyph.chat.icon == .chat)
   }
 
   @Test func aTextProvenanceSurvivesCodingAndAnOldOneIsMail() throws {

@@ -59,7 +59,6 @@ struct TextTwinTests {
     #expect(BankTextTwin.matches(Twins.text("usd", amount: 2000, currency: "USD", at: t), Twins.mail(amount: 7345, at: at)))
     #expect(BankTextTwin.matches(Twins.text("no-bank", bank: nil, at: t), Twins.mail(at: at)))
     #expect(BankTextTwin.matches(Twins.text("unparsed", at: t, unparsed: true), Twins.mail(amount: 99_999, at: at)))
-    #expect(BankTextTwin.matches(Twins.text("mail-no-bank", at: t), Twins.mail(bank: nil, at: at)))
   }
 
   @Test("another amount in the same currency, the other direction, another bank or another card is no twin")
@@ -69,12 +68,29 @@ struct TextTwinTests {
     #expect(!BankTextTwin.matches(Twins.text("credit", direction: "credit", at: t), Twins.mail(at: at)))
     #expect(!BankTextTwin.matches(Twins.text("bank", bank: "dib", at: t), Twins.mail(at: at)))
     #expect(!BankTextTwin.matches(Twins.text("card", last4: "1111", at: t), Twins.mail(last4: "2222", at: at)))
+    #expect(!BankTextTwin.matches(Twins.text("mail-no-bank", at: t), Twins.mail(bank: nil, at: at)))
+    #expect(BankTextTwin.matches(Twins.text("neither", bank: nil, at: t), Twins.mail(bank: nil, at: at)))
   }
 
   @Test("the nearest twin is named")
   func nearest() {
     let rows = [Twins.text("far", at: t - 600 * Twins.minute), Twins.text("near", at: t - 3 * Twins.minute)]
     #expect(BankTextTwin.twin(of: Twins.mail(at: t), among: rows)?.id == "near")
+  }
+
+  @Test("the overlap keeps its rows sorted and searches only the 24 hours around a mail, bounds included")
+  func window() {
+    let w = BankTextTwin.windowMs
+    let rows = [
+      Twins.text("late", at: t + w + 1), Twins.text("edge-after", at: t + w), Twins.text("b", at: t), Twins.text("a", at: t),
+      Twins.text("early", at: t - w - 1), Twins.text("edge-before", at: t - w), Twins.text("far", at: t - 30 * day),
+    ]
+    let o = Twins.overlap(rows)
+    #expect(o.rows.map(\.id) == ["far", "early", "edge-before", "a", "b", "edge-after", "late"])
+    #expect(BankTextTwin.window(o.rows, around: t, w).map(\.id) == ["edge-before", "a", "b", "edge-after"])
+    #expect(BankTextTwin.window(o.rows, around: t - 10 * day, w).isEmpty)
+    #expect(BankTextTwin.window([], around: t, w).isEmpty)
+    #expect(BankTextTwin.window(o.rows, around: t + 5 * day, w).isEmpty)
   }
 
   @Test("the overlap runs from the oldest text row minus 24 hours to the newest plus 24 hours")
@@ -183,6 +199,51 @@ struct TextOverlapEngineTests {
     #expect(await Self.byID(rig)["m"]?.needsReview == false)
   }
 
+  @Test("Add a sender pulls to head first: a text row another iPhone added holds its twin mail")
+  func addASenderPullsFirst() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let syncs = await rig.ledger.syncs
+    await rig.ledger.setTextsOnPull(Twins.overlap([Twins.text("peer", at: Rig.t0 - 2 * day)]))
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "imp-twin", dateMs: Rig.t0 - 2 * day + 4 * Twins.minute))
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "imp-lone", amount: "61.00", dateMs: Rig.t0 - 2 * day))
+    let r = try await rig.engine.importSender("emiratesnbd.com").get()
+    #expect(r.haltedOn == nil && r.ops == 2)
+    #expect(await rig.ledger.syncs == syncs + 1)
+    let d = await Self.byID(rig)
+    #expect(d["imp-twin"]?.needsReview == true && d["imp-lone"]?.needsReview == false)
+  }
+
+  @Test("Add a sender that cannot pull stops as offline and authors nothing")
+  func addASenderOffline() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    await rig.ledger.setSyncFails(true)
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "imp", dateMs: Rig.t0 - 2 * day))
+    let r = try await rig.engine.importSender("emiratesnbd.com").get()
+    #expect(r.haltedOn == .offline && r.ops == 0)
+    #expect(await Self.byID(rig)["imp"] == nil)
+  }
+
+  @Test("the text rows are read once for a cycle that authors mail, and not for a cycle that authors none")
+  func readOnlyWhenAuthoring() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    #expect(await rig.ledger.textReads == 0)
+    await rig.ledger.setTexts(Twins.overlap([Twins.text("t", at: Rig.t0 - day)]))
+    _ = await rig.engine.runCycle(trigger: .silentPush)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.ledger.textReads == 0)
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "one", dateMs: Rig.t0 - day + Twins.minute))
+    rig.gmail.add(SyntheticMail.enbdAlert(id: "two", amount: "8.00", dateMs: Rig.t0 - day))
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.ledger.textReads == 1)
+    let d = await Self.byID(rig)
+    #expect(d["one"]?.needsReview == true && d["two"]?.needsReview == false)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.ledger.textReads == 1)
+  }
+
   @Test("a mail with another amount in the same currency, or the other direction, is authored as any mail")
   func notTwinsFile() async throws {
     let rig = Rig()
@@ -231,7 +292,7 @@ struct CardLinkOnConfirmTests {
     let current = await ledger.knownCards()
     let link = CardLinkPlan.confirming(
       bank: row.bank, last4: row.last4, accounts: accounts, current: current,
-      creditCards: CardLinkPlan.creditCards(rig.store))
+      creditCards: CardLinkPlan.creditCards(rig.store, reader: rig.observer.reader))
     let ctx = try await rig.observer.authorContext()
     let blob = try rig.observer.stamps.build(ctx) { a throws(AuthorError) in
       try CardLinkPlan.apply(link, to: &a)
@@ -250,6 +311,7 @@ struct CardLinkOnConfirmTests {
   @Test("authorCards and the confirm get the same account id, name and kind for the same card from the shared plan")
   func samePlan() async throws {
     let viaCards = try TextRig()
+    _ = try #require(await viaCards.add(try TextCase.named("dib-purchase-credit-card")).added)
     try await viaCards.linkCard("dib", "1234", .mine)
     let a = try #require(Self.accountSet(try viaCards.pendingOps()))
     let viaConfirm = try TextRig()
@@ -257,9 +319,32 @@ struct CardLinkOnConfirmTests {
     let blob = try #require(try await Self.confirm(viaConfirm, added.txnID))
     let b = try #require(Self.accountSet(blob.ops))
     #expect(a["id"] == b["id"] && a["name"] == b["name"] && a["kind"] == b["kind"])
-    #expect(b["name"]?.stringValue == "DIB ···1234" && b["kind"]?.stringValue == "current")
+    #expect(b["name"]?.stringValue == "DIB ···1234" && b["kind"]?.stringValue == "credit_card")
     let link = try #require(blob.ops.first { $0.type == .cardLinked }?.payload)
     #expect(link["account"] == b["id"] && link["state"]?.stringValue == "mine")
+  }
+
+  @Test("a card read by a card purchase or card payment text is a credit card; a card from another text is a current account")
+  func textCardKinds() async throws {
+    for (name, kind) in [("dib-card-payment", "credit_card"), ("dib-refund", "current"), ("dib-english-purchase", "current")] {
+      let rig = try TextRig()
+      let added = try #require(await rig.add(try TextCase.named(name)).added, "\(name)")
+      let blob = try #require(try await Self.confirm(rig, added.txnID), "\(name)")
+      #expect(Self.accountSet(blob.ops)?["kind"]?.stringValue == kind, "\(name)")
+    }
+    #expect(CardLinkPlan.isCardTemplate("dib.sms.purchase.v1@1", bank: "dib"))
+    #expect(CardLinkPlan.isCardTemplate("dib.card.v1@2", bank: "dib"))
+    #expect(!CardLinkPlan.isCardTemplate("dib.card-refund.v1@1", bank: "dib"))
+    #expect(!CardLinkPlan.isCardTemplate("dib.sms.purchase.v1@1", bank: "enbd"))
+    #expect(!CardLinkPlan.isCardTemplate("dib.sms.purchase.v1@1", bank: ""))
+  }
+
+  @Test("an account name uses the one bank name table")
+  func accountNames() {
+    #expect(CardLinkPlan.accountName(bank: "ei", last4: "1234") == "Emirates Islamic ···1234")
+    #expect(CardLinkPlan.accountName(bank: "zz", last4: "1234") == "ZZ ···1234")
+    #expect(CardLinkPlan.accountName(bank: nil, last4: "1234") == "Card ···1234")
+    #expect(RuntimeMailboxLedger.bankName("dib") == "DIB")
   }
 
   @Test("the confirm, the card_linked and the account_set are one blob; a failure after the closure's last op leaves none of them")

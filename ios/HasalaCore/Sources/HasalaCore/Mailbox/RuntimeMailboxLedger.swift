@@ -28,7 +28,13 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public nonisolated let textWrites = WriteSerial()
 
   /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
-  public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB"]
+  public static let bankNames: [String: String] = [
+    "enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB", "adcb": "ADCB", "fab": "FAB", "mashreq": "Mashreq",
+    "rakbank": "RAKBANK", "cbd": "CBD", "ei": "Emirates Islamic", "hsbc": "HSBC", "citi": "Citibank", "nbf": "NBF",
+    "sib": "SIB", "ajman_bank": "Ajman Bank", "uab": "UAB", "liv": "Liv", "wio": "Wio", "alhilal": "Al Hilal Bank",
+  ]
+
+  public static func bankName(_ bank: String) -> String { bankNames[bank] ?? bank.uppercased() }
 
   /// `authoring` must be the one given to `LedgerMailboxPersistence`, built
   /// with `MailboxAuthoring(observer:)` so it shares the observer's stamps.
@@ -99,9 +105,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     return (try? observer.context.store.pendingCount()) == 0 ? .flushed : .failed
   }
 
-  /// The cards whose staged alerts a card template read (`<bank>.card.*`): their
-  /// new account is a credit card, the others current accounts (03b §4.2).
-  func stagedCardTemplates() -> Set<CardKey> { CardLinkPlan.creditCards(observer.context.store) }
+  func stagedCardTemplates() -> Set<CardKey> { CardLinkPlan.creditCards(observer.context.store, reader: reader) }
 
   /// Builds one blob with `body` (under the account's shared stamps),
   /// enqueues it and re-projects.

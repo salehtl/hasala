@@ -126,13 +126,13 @@ import Testing
     rig.gmail.add(SyntheticMail.dibCard(id: "w1", dateMs: rig.clock.nowMs() - 1000))
     let token = try await rig.tokens.accessToken(forceRefresh: false)
     let source = await rig.engine.source(token)
-    var run = MailboxEngine.Run(trusted: ["dib.ae"], cards: [:], grant: "g", texts: nil)
+    var run = MailboxEngine.Run(trusted: ["dib.ae"], cards: [:], grant: "g")
     run.saw429 = true
     run.width = 1
     var report = CycleReport()
     _ = try await rig.engine.process(source, ids: ["w1"], mode: .author, run: &run, report: &report, deadlineMs: nil)
     #expect(run.width == 1)
-    var fresh = MailboxEngine.Run(trusted: ["dib.ae"], cards: [:], grant: "g", texts: nil)
+    var fresh = MailboxEngine.Run(trusted: ["dib.ae"], cards: [:], grant: "g")
     fresh.width = 1
     _ = try await rig.engine.process(source, ids: ["w1"], mode: .author, run: &fresh, report: &report, deadlineMs: nil)
     #expect(fresh.width > 1)

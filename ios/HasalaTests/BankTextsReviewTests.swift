@@ -89,8 +89,6 @@ struct BankTextsReviewTests {
 
   static let card = CardKey(bank: "dib", last4: "1234")
 
-  // MARK: The card link on confirm
-
   @Test func sortingATextRowInReviewLinksItsCardInTheSameBlobAndTheNextTextFiles() async throws {
     let l = try await Self.live("texts.review.confirm")
     let first = try await l.add(Self.purchase)
@@ -101,7 +99,7 @@ struct BankTextsReviewTests {
     let added = try Array(l.ops().dropFirst(before))
     #expect(added.map(\.type) == [.accountSet, .cardLinked, .txnCategorized])
     let account = try #require(added.first?.payload.objectValue)
-    #expect(account["name"]?.stringValue == "DIB ···1234" && account["kind"]?.stringValue == "current")
+    #expect(account["name"]?.stringValue == "DIB ···1234" && account["kind"]?.stringValue == "credit_card")
     #expect(added[1].payload["account"] == account["id"] && added[1].payload["state"]?.stringValue == "mine")
     #expect(try l.cards()[Self.card] == .mine)
     let next = try await l.add(Self.nextPurchase, at: Self.june5 + 86_400_000)
@@ -169,6 +167,85 @@ struct BankTextsReviewTests {
     #expect(try l.cards()[Self.card] == .mine)
   }
 
+  static func inOrder(_ types: [OpType], _ wanted: [OpType]) -> Bool {
+    var i = types.startIndex
+    for w in wanted {
+      guard let j = types[i...].firstIndex(of: w) else { return false }
+      i = types.index(after: j)
+    }
+    return true
+  }
+
+  @Test func alwaysUseItOnATextRowLinksTheCardInTheFirstBlobAndUndoForgetsIt() async throws {
+    let l = try await Self.live("texts.review.alwaysUse")
+    let row = try await l.add(Self.purchase)
+    #expect(try l.reader.txn(row.txnID)?.merchantGroup != nil)
+    let before = try l.ops().count
+    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: true, project: nil)))
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
+    let types = try l.ops().dropFirst(before).map(\.type)
+    #expect(Array(types.prefix(3)) == [.accountSet, .cardLinked, .txnCategorized])
+    #expect(types.contains(.ruleAdded))
+    #expect(try l.cards()[Self.card] == .mine)
+    l.store.undo(token)
+    try await Mapper.eventually { try l.cards()[Self.card] == nil }
+  }
+
+  @Test func addingACategoryWithAlwaysUseItLinksTheCardInTheFirstBlobAndUndoForgetsIt() async throws {
+    let l = try await Self.live("texts.review.addAlwaysUse")
+    let row = try await l.add(Self.purchase)
+    let before = try l.ops().count
+    let draft = CategoryDraft(id: l.store.newCategoryID(), name: "VPN", glyph: .subscriptions, parent: "subscriptions")
+    let token = try #require(try l.store.apply(.addCategoryAndSort(draft, row.txnID, alwaysUse: true, project: nil)))
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
+    let types = try l.ops().dropFirst(before).map(\.type)
+    #expect(Self.inOrder(types, [.accountSet, .cardLinked, .txnCategorized, .ruleAdded]))
+    #expect(types.firstIndex(of: .ruleAdded).map { r in !types[..<r].contains(.txnSplit) } == true)
+    #expect(try l.cards()[Self.card] == .mine)
+    l.store.undo(token)
+    try await Mapper.eventually { try l.cards()[Self.card] == nil }
+  }
+
+  @Test func markingATextRowATransferOrARefundOrSplittingItLinksTheCardAndUndoForgetsIt() async throws {
+    let edits: [(String, (String) -> LedgerEdit, OpType)] = [
+      ("transfer", { .markTransfer($0) }, .txnCategorized),
+      ("refund", { .markRefund($0) }, .txnCategorized),
+      ("split", { id in
+        .split(id, [
+          SplitLine(id: 0, categoryID: "groceries", amount: .aed(100_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(23_45)),
+        ])
+      }, .txnSplit),
+    ]
+    for (name, edit, op) in edits {
+      let l = try await Self.live("texts.review.mark.\(name)")
+      let row = try await l.add(Self.purchase)
+      let before = try l.ops().count
+      let token = try #require(try l.store.apply(edit(row.txnID)), "\(name)")
+      try await Mapper.eventually { try l.cards()[Self.card] == .mine }
+      #expect(try l.ops().dropFirst(before).map(\.type) == [.accountSet, .cardLinked, op], "\(name)")
+      l.store.undo(token)
+      try await Mapper.eventually { try l.cards()[Self.card] == nil }
+    }
+  }
+
+  @Test func takingARefundBackLinksNoCard() async throws {
+    let l = try await Self.live("texts.review.refundBack")
+    let row = try await l.add(Self.purchase)
+    let version = try #require(try l.reader.txn(row.txnID)?.version)
+    let blob = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
+      o.categorize(txnID: row.txnID, parentVersion: version, category: "refunds", needsReview: true)
+    }
+    if let blob { try await l.a.outbox.enqueue(blob.ops) }
+    try await l.a.observer.reproject()
+    await l.store.reload()
+    #expect(try l.reader.txn(row.txnID)?.category == "refunds" && l.reader.txn(row.txnID)?.needsReview == true)
+    let before = try l.ops().count
+    _ = try l.store.apply(.markRefund(row.txnID))
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.category == nil }
+    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized])
+    #expect(try l.cards()[Self.card] == nil)
+  }
+
   @Test func undoingTheSortForgetsTheCardItLinked() async throws {
     let l = try await Self.live("texts.review.undo")
     let row = try await l.add(Self.purchase)
@@ -179,8 +256,6 @@ struct BankTextsReviewTests {
     #expect(try l.cards()[Self.card] == nil)
     #expect(try l.reader.txn(row.txnID)?.needsReview == true)
   }
-
-  // MARK: Read models
 
   @Test func aTextRowShowsBankTextAsItsSource() async throws {
     let l = try await Self.live("texts.review.source")
@@ -246,6 +321,27 @@ struct BankTextsReviewTests {
     #expect(twin.activeReviewReason == .mayRepeat)
     #expect(mails.first { $0.amount.minor == 99900 }?.mayRepeat == nil)
     #expect(l.store.state.txn(text.txnID)?.mayRepeat == nil)
+  }
+
+  @Test func aMailHeldForAnUnparsedTextNamesItsTwin() async throws {
+    let l = try await Self.live("texts.review.unparsedTwin")
+    let text = try await l.add(Self.noAmount)
+    #expect(text.unparsed)
+    try await l.ingestMail(
+      [("amount_minor", .string("12345")), ("posted_at", .string("2026-06-05T08:20:00.000Z"))], id: "m-unparsed-twin")
+    let mail = try #require(l.store.state.txns.first { $0.provenance?.isText == false && $0.amount.minor == 12345 })
+    #expect(mail.mayRepeat == MayRepeat(of: text.txnID, line: "This may be the same payment as a bank text from DIB on 5 June."))
+    #expect(mail.activeReviewReason == .mayRepeat)
+    #expect(ReviewEngine.card(mail, l.store.state).reasonLine == mail.mayRepeat?.line)
+  }
+
+  @Test func theBellListsUnreadTextsAndOpensTheirPage() throws {
+    let app = AppModel(store: InMemoryLedger(state: Scenario.mayaTexts.state))
+    let home = HomeViewModel(app: app)
+    let item = try #require(home.bell.needsALook.first { $0.id == "unreadTexts" })
+    #expect(item.title == "2 bank texts we couldn't read" && item.destination == .unreadTexts)
+    #expect(home.openNotification(.unreadTexts) == nil)
+    #expect(app.router.tab == .review && app.router.review == [.unreadTexts])
   }
 
   @Test func addingAnUnreadTextByHandStartsAtItsTimeAndBank() throws {

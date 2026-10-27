@@ -141,15 +141,21 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c) + Self.unlinking(link)
     case .markTransfer(let id):
       let row = try txn(id)
+      let link = try confirmLink(row)
       try await build { a throws(AuthorError) in
+        try CardLinkPlan.apply(link, to: &a)
         a.categorize(txnID: id, parentVersion: row.version, category: "transfer", needsReview: false)
       }
+      return Self.unlinking(link)
     case .markRefund(let id):
       let row = try txn(id)
       let undo = row.category == "refunds"
+      let link = try undo ? [] : confirmLink(row)
       try await build { a throws(AuthorError) in
+        try CardLinkPlan.apply(link, to: &a)
         a.categorize(txnID: id, parentVersion: row.version, category: undo ? nil : "refunds", needsReview: undo)
       }
+      return Self.unlinking(link)
     case .setNote(let id, let note):
       _ = try txn(id)
       let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -159,11 +165,14 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in a.renameMerchant(raw: row.merchantRaw, to: name) }
     case .split(let id, let lines):
       let row = try txn(id)
+      let link = try lines.isEmpty ? [] : confirmLink(row)
       try await build { a throws(AuthorError) in
+        try CardLinkPlan.apply(link, to: &a)
         a.split(
           txnID: id, parentVersion: row.version,
           parts: lines.map { (category: $0.categoryID, amountMinor: $0.amount.minor, note: $0.note.isEmpty ? nil : $0.note) })
       }
+      return Self.unlinking(link)
     case .resolveCopy(let id, let merge):
       let row = try txn(id)
       guard let other = row.copyOf else { throw Failure.notFound }
@@ -545,13 +554,13 @@ nonisolated struct LedgerEditAuthor: Sendable {
     }
   }
 
-  // MARK: Card links
-
   func confirmLink(_ row: TxnRow) throws -> [CardLinkStep] {
-    guard row.isText, row.needsReview, !row.unparsed else { return [] }
+    guard row.isText, row.needsReview, !row.unparsed, let bank = row.bank, !bank.isEmpty, !row.last4.isEmpty else { return [] }
+    let current = CardLinkPlan.current(try reader.cards())
+    guard current[CardKey(bank: bank, last4: row.last4)] == nil else { return [] }
     return CardLinkPlan.confirming(
-      bank: row.bank, last4: row.last4, accounts: Set(try reader.accounts().map(\.id)),
-      current: CardLinkPlan.current(try reader.cards()), creditCards: CardLinkPlan.creditCards(observer.context.store))
+      bank: bank, last4: row.last4, accounts: Set(try reader.accounts().map(\.id)), current: current,
+      creditCards: CardLinkPlan.creditCards(observer.context.store, reader: reader))
   }
 
   static func confirming(

@@ -124,6 +124,11 @@ final class HomeViewModel: HomeModel {
       router.tab = .review
       router.review = [.unreadMail]
       return nil
+    case .unreadTexts:
+      close()
+      router.tab = .review
+      router.review = [.unreadTexts]
+      return nil
     case .bill(let id):
       close()
       router.tab = .home

@@ -52,9 +52,11 @@ actor FakeLedger: MailboxLedger {
   func setAccountFull(after flushes: Int?) { accountFullAfter = flushes }
   func setSyncFails(_ v: Bool) { syncFails = v }
   var texts: TextOverlap?
+  var textsOnPull: TextOverlap?
   var textReads = 0
   var textFails = false
   func setTexts(_ t: TextOverlap?) { texts = t }
+  func setTextsOnPull(_ t: TextOverlap?) { textsOnPull = t }
   func setTextFails(_ v: Bool) { textFails = v }
   func textOverlap() async throws(MailboxLedgerError) -> TextOverlap? {
     textReads += 1
@@ -65,6 +67,10 @@ actor FakeLedger: MailboxLedger {
   func syncToHead() async throws(MailboxLedgerError) {
     syncs += 1
     if syncFails { throw MailboxLedgerError("offline") }
+    if let pulled = textsOnPull {
+      texts = pulled
+      textsOnPull = nil
+    }
   }
   func senderTrust() async -> [String: Bool] { trust }
   func knownCards() async -> [CardKey: CardState] { cards }

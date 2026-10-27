@@ -102,7 +102,7 @@ nonisolated enum LedgerStateMapper {
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)
-    markRepeats(&txns, rows: rows)
+    markRepeats(&txns, rows: rows, texts: try liveTextRows(r))
     let picks = LastPick.picks(pickRows)
     for i in txns.indices where txns[i].inReview {
       txns[i].lastPick = pickRows[i].key.flatMap { picks[$0] }
@@ -338,17 +338,9 @@ nonisolated enum LedgerStateMapper {
     }
   }
 
-  // MARK: Bank texts
-
-  static let textBankNames: [String: String] = [
-    "adcb": "ADCB", "fab": "FAB", "mashreq": "Mashreq", "rakbank": "RAKBANK", "cbd": "CBD", "ei": "Emirates Islamic",
-    "hsbc": "HSBC", "citi": "Citibank", "nbf": "NBF", "sib": "SIB", "ajman_bank": "Ajman Bank", "uab": "UAB",
-    "liv": "Liv", "wio": "Wio", "alhilal": "Al Hilal Bank",
-  ]
-
   static func textBankName(_ bank: String?) -> String? {
     guard let bank, !bank.isEmpty else { return nil }
-    return bankNames[bank] ?? textBankNames[bank] ?? bank.uppercased()
+    return RuntimeMailboxLedger.bankName(bank)
   }
 
   static func textSource(_ bank: String?) -> String {
@@ -360,11 +352,13 @@ nonisolated enum LedgerStateMapper {
     return Provenance(title: textSource(row.bank), readAt: readAt, rawMerchant: row.merchantRaw, isText: true)
   }
 
-  static func markRepeats(_ txns: inout [HasalaModels.Txn], rows: [TxnRow]) {
-    let live: [TxnRow] = rows.filter { $0.isText && $0.archived == nil && $0.supersededBy == nil }
-    var texts: [BankTextRow] = live.map { (t: TxnRow) -> BankTextRow in BankTextRow(t) }
-    texts.sort { (x: BankTextRow, y: BankTextRow) -> Bool in x.postedMs == y.postedMs ? x.id < y.id : x.postedMs < y.postedMs }
-    guard !texts.isEmpty else { return }
+  static func liveTextRows(_ r: LedgerReader) throws -> [BankTextRow] {
+    try r.textRows(postedFromMs: .min, toMs: .max).map(BankTextRow.init)
+  }
+
+  static func markRepeats(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], texts live: [BankTextRow]) {
+    guard !live.isEmpty else { return }
+    let texts = BankTextTwin.sorted(live)
     var byID: [String: BankTextRow] = [:]
     for t in texts { byID[t.id] = t }
     for (i, row) in rows.enumerated() where row.needsReview && row.archived == nil && !row.unparsed {
@@ -377,34 +371,17 @@ nonisolated enum LedgerStateMapper {
     if row.isText {
       let me = byID[row.id] ?? BankTextRow(row)
       guard me.transferRole != nil else { return nil }
-      let near = window(texts, around: row.postedMs, BankTextTransferPair.windowMs)
-      guard let other = BankTextTransferPair.partner(of: me, among: near) else { return nil }
+      let near = BankTextTwin.window(texts, around: row.postedMs, BankTextTransferPair.windowMs)
+      guard let other = BankTextTransferPair.partner(of: me, among: Array(near)) else { return nil }
       return MayRepeat(of: other.id, line: transferLine(other))
     }
     guard row.entryMethod == "mailbox" else { return nil }
     let mail = TextTwinMail(
       bank: row.bank, last4: row.last4, amountMinor: row.amountMinor, currency: row.currency, direction: row.direction,
       postedMs: row.postedMs)
-    guard let twin = BankTextTwin.twin(of: mail, among: window(texts, around: row.postedMs, BankTextTwin.windowMs)) else {
-      return nil
-    }
+    let near = BankTextTwin.window(texts, around: row.postedMs, BankTextTwin.windowMs)
+    guard let twin = BankTextTwin.twin(of: mail, among: near) else { return nil }
     return MayRepeat(of: twin.id, line: twinLine(twin))
-  }
-
-  static func window(_ sorted: [BankTextRow], around ms: Int64, _ width: Int64) -> [BankTextRow] {
-    var lo = 0
-    var hi = sorted.count
-    while lo < hi {
-      let mid = (lo + hi) / 2
-      if sorted[mid].postedMs < ms - width { lo = mid + 1 } else { hi = mid }
-    }
-    var out: [BankTextRow] = []
-    var i = lo
-    while i < sorted.count, sorted[i].postedMs <= ms + width {
-      out.append(sorted[i])
-      i += 1
-    }
-    return out
   }
 
   static func transferLine(_ other: BankTextRow) -> String {

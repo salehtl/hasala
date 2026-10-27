@@ -1,4 +1,5 @@
 import CoreDomain
+import CoreProjection
 import CoreReplay
 import CoreStore
 import Foundation
@@ -72,17 +73,27 @@ public enum CardLinkPlan {
   }
 
   public static func accountName(bank: String?, last4: String) -> String {
-    "\(bank.map { RuntimeMailboxLedger.bankNames[$0] ?? $0.uppercased() } ?? "Card") ···\(last4)"
+    "\(bank.map(RuntimeMailboxLedger.bankName) ?? "Card") ···\(last4)"
   }
 
-  public static func creditCards(_ store: LedgerStore) -> Set<CardKey> {
+  public static let cardFamilies = ["card.", "sms.purchase.", "sms.card-payment."]
+
+  public static func isCardTemplate(_ ref: String, bank: String) -> Bool {
+    !bank.isEmpty && cardFamilies.contains { ref.hasPrefix("\(bank).\($0)") }
+  }
+
+  public static func creditCards(_ store: LedgerStore, reader: LedgerReader) -> Set<CardKey> {
     let rows = (try? MailboxTableStore(writer: store.db).staged(limit: 10_000)) ?? []
     var out: Set<CardKey> = []
     for r in rows {
       guard let g = try? JSONDecoder().decode(MailGates.self, from: r.gatesJSON), let t = g.template,
-        t.hasPrefix("\(r.bank).card.")
+        isCardTemplate(t, bank: r.bank)
       else { continue }
       out.insert(CardKey(bank: r.bank, last4: r.last4))
+    }
+    for t in (try? reader.textRows(postedFromMs: .min, toMs: .max)) ?? [] {
+      guard let bank = t.bank, !t.last4.isEmpty, let ref = t.templateRef, isCardTemplate(ref, bank: bank) else { continue }
+      out.insert(CardKey(bank: bank, last4: t.last4))
     }
     return out
   }
