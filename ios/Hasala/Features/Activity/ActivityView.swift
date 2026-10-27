@@ -145,6 +145,7 @@ struct ActiveFilterChip: View {
 struct ActivityContent: View {
   let model: any ActivityModel
   var showsChips = true
+  @State private var openRow: TxnID?
 
   private var snap: ActivitySnapshot { model.snapshot }
 
@@ -259,13 +260,27 @@ struct ActivityContent: View {
     HListCard {
       ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
         if i > 0 { HDivider(inset: .disc68) }
-        Button { model.open(row.id) } label: {
-          TransactionRow(row, hidden: model.hidden).contentShape(Rectangle())
+        SwipeActionRow(id: row.id, open: $openRow, action: swipe(row.id)) {
+          Button { model.open(row.id) } label: {
+            TransactionRow(row, hidden: model.hidden).contentShape(Rectangle())
+          }
+          .buttonStyle(HRowPressStyle())
+          // One element per row: the amount must not be its own tiny target.
+          .accessibilityElement(children: .combine)
+          .accessibilityIdentifier("txn.\(row.id)")
         }
-        .buttonStyle(HRowPressStyle())
-        // One element per row: the amount must not be its own tiny target.
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("txn.\(row.id)")
+      }
+    }
+  }
+
+  private func swipe(_ id: TxnID) -> SwipeAction {
+    if snap.filter.kind == .archived {
+      SwipeAction(title: "Restore", icon: .archive, fill: HColor.actionAccent, ink: HColor.textOnAccent) {
+        model.setArchived(id, false)
+      }
+    } else {
+      SwipeAction(title: "Archive", icon: .archive, fill: HColor.actionDestructive, ink: HColor.textOnDestructive) {
+        model.setArchived(id, true)
       }
     }
   }

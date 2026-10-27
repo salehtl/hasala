@@ -20,6 +20,7 @@ protocol ActivityModel: AnyObject, Observable {
   func choosePeriod()
   func backToThisMonth()
   func open(_ txn: TxnID)
+  func setArchived(_ txn: TxnID, _ archived: Bool)
   func openBill(_ bill: BillID)
   func startReview()
 }
@@ -69,6 +70,7 @@ final class ActivityViewModel: ActivityModel {
   func backToThisMonth() { app.period = .month(app.store.now.date.yearMonth) }
 
   func open(_ txn: TxnID) { app.open(txn) }
+  func setArchived(_ txn: TxnID, _ archived: Bool) { app.perform(.archive(txn, archived)) }
   func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }
   func startReview() { ReviewEntry.open(app, at: nil) }
 }
