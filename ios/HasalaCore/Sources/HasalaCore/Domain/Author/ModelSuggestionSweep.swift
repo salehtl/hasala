@@ -28,7 +28,9 @@ public enum ModelSuggestionSweep {
     }
   }
 
-  public static let cloudTemplates: Set<String> = ["adib.alert.v1", "dib.card.v1", "enbd.alert.v1"]
+  public static let cloudTemplates: Set<String> = ["adib.alert.v1", "dib.card.v1", "dib.sms.purchase.v1", "enbd.alert.v1"]
+
+  public static func mayStayOnDevice(_ r: SweepRow) -> Bool { !r.text }
 
   public static func mayLeaveDevice(_ r: SweepRow) -> Bool {
     guard let t = r.template else { return false }
@@ -57,6 +59,9 @@ public enum ModelSuggestionSweep {
     var blocked: Set<String> = []
     for q in queued where !mayLeaveDevice(q.row) { blocked.insert(q.subject) }
     let held = blocked
+    var texts: Set<String> = []
+    for q in queued where !mayStayOnDevice(q.row) { texts.insert(q.subject) }
+    let fromTexts = texts
     var refused: [String: Set<String>] = [:]
     for q in queued where !q.row.rejected.isEmpty { refused[q.subject, default: []].formUnion(q.row.rejected) }
     let rejected = refused
@@ -66,7 +71,7 @@ public enum ModelSuggestionSweep {
     var answer: [String: ModelTier.StagedSuggestion] = [:]
     var stale: [(subject: String, modelTag: String)] = []
     subjects: for s in subjects {
-      for stage in stages where stage.accepts(s) && !(stage.leavesDevice && held.contains(s)) {
+      for stage in stages where stage.accepts(s) && (stage.leavesDevice ? !held.contains(s) : !fromTexts.contains(s)) {
         let tag = stage.model.modelTag
         if stage.leavesDevice, let k = try cache.keptAnswer(subject: s, modelTag: tag) {
           if rejects(s, k) {
@@ -95,7 +100,7 @@ public enum ModelSuggestionSweep {
     let r = await ModelTier.run(
       subjects: subjects.filter { answer[$0] == nil }, stages: stages, allowed: allowed, context: context, now: now,
       callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) },
-      maxCloudCalls: maxCloudCalls, rejects: rejects, mayAsk: mayAsk)
+      mayStayOnDevice: { !fromTexts.contains($0) }, maxCloudCalls: maxCloudCalls, rejects: rejects, mayAsk: mayAsk)
     if r.cloudRequests > 0 { spent(r.cloudRequests) }
     if r.cutShort { cutShort() }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())

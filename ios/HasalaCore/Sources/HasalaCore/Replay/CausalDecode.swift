@@ -113,6 +113,8 @@ extension State {
         out.sourceMailbox = source.grant
       }
       if let v = P.present(p["dedupe"]) { out.dedupe = try decodeDedupe(v) }
+      if let c = p["channel"]?.stringValue, utf8Equal(c, TxnChannel.sms) { out.channel = TxnChannel.sms }
+      if P.present(p["received_at"]) != nil { out.receivedAt = try? P.instant(p["received_at"], "received_at") }
     }
     return out
   }

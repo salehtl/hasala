@@ -25,6 +25,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   let outbox: Outbox
   /// The persistence's op author; its stamps follow this ledger's pulls.
   public let authoring: MailboxAuthoring
+  public nonisolated let textWrites = WriteSerial()
 
   /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
   public static let bankNames: [String: String] = ["enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB"]
@@ -141,7 +142,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   /// Builds one blob with `body` (under the account's shared stamps),
   /// enqueues it and re-projects.
-  private func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
+  func author(_ body: (inout OpAuthor) throws(AuthorError) -> Void) async throws(MailboxLedgerError) {
     let ctx: AuthorContext
     do { ctx = try await observer.authorContext() } catch { throw MailboxLedgerError("context_\(Self.code(error))") }
     let built: AuthoredBlob?

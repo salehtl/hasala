@@ -65,6 +65,12 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var senderCheck: String?
   public var merchantGroup: String?
   public var categorizedMs: Int64?
+  public var channel: String?
+  public var receivedAt: String?
+  public var receivedMs: Int64?
+  public var templateRef: String?
+
+  public var isText: Bool { channel.map { utf8Equal($0, TxnChannel.sms) } ?? false }
 
   init(_ r: Row) { self.init(r, gates: Self.gates(r["gates_json"])) }
 
@@ -118,6 +124,10 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     heldCopy = r["held_copy"]
     merchantGroup = r["merchant_group"]
     categorizedMs = r["categorized_ms"]
+    channel = r["channel"]
+    receivedAt = r["received_at"]
+    receivedMs = r["received_ms"]
+    templateRef = gates?["template"]?.stringValue
     reviewReason = Self.reviewReason(gates)
     senderCheck = Self.senderCheck(gates)
   }
@@ -361,7 +371,7 @@ public struct LedgerReader: Sendable {
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
           candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
           template: gates?["template"]?.stringValue, merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
-          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] })
+          rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] }, text: t.isText)
       }
     }
   }

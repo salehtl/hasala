@@ -313,7 +313,15 @@ struct ModelSuggestionSweepTests {
         id: "x", merchantRaw: "SHOP", direction: .debit, category: nil, sourceKind: .none, sourceRef: nil, needsReview: true, candidate: true,
         version: 1, template: t)
     }
-    for t in ["adib.alert.v1@1", "dib.card.v1@3", "enbd.alert.v1@2", "enbd.alert.v1"] { #expect(ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)") }
+    for t in ["adib.alert.v1@1", "dib.card.v1@3", "dib.sms.purchase.v1@1", "enbd.alert.v1@2", "enbd.alert.v1"] {
+      #expect(ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)")
+    }
+    for t in [
+      "dib.sms.own-transfer.v1@1", "dib.sms.salary.v1@1", "dib.sms.credit.v1@1", "dib.sms.refund.v1@1", "dib.sms.reversal.v1@1",
+      "dib.sms.card-payment.v1@1", "dib.sms.debit.v1@1",
+    ] {
+      #expect(!ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)")
+    }
     for t in [nil, "", "none", "enbd.transfer.v1@2", "dib.account.v1@1", "adib.account.v1@1", "enbd.alert.v2@1", "enbd.alert.v1x@1", "@1"] {
       #expect(!ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t ?? "nil")")
     }
@@ -353,4 +361,38 @@ struct ModelSuggestionSweepTests {
     #expect(
       device.calls.sorted() == ["account text two", "adib account three", "card shop five", "card shop six", "manual shop one", "shared name four"])
   }
+
+  @Test("Apple's on-device model never reads a merchant from a bank text; only the SMS purchase template's names may go to Clef")
+  func textsNeverReachTheOnDeviceModel() async throws {
+    var l = Ledger()
+    let purchase = try l.ingest([("TEXT SHOP ONE", "debit")], template: "dib.sms.purchase.v1@1")
+    let debit = try l.ingest([("TEXT DEBIT TWO", "debit")], template: "dib.sms.debit.v1@1")
+    let reader = try l.ingest([("TEXT READER THREE", "debit")], template: "none")
+    _ = try l.ingest([("MAIL SHOP FOUR", "debit")], template: "dib.card.v1@1")
+    _ = try l.ingest([("SHARED SHOP FIVE", "debit")], template: "dib.card.v1@1")
+    let shared = try l.ingest([("SHARED SHOP FIVE", "debit")], template: "dib.sms.purchase.v1@1")
+    let texts = Set(purchase + debit + reader + shared)
+    let rows = l.rows().map { r in
+      SweepRow(
+        id: r.id, merchantRaw: r.merchantRaw, direction: r.direction, category: r.category, sourceKind: r.sourceKind, sourceRef: r.sourceRef,
+        needsReview: r.needsReview, candidate: r.candidate, version: r.version, template: r.template, text: texts.contains(r.id))
+    }
+    #expect(rows.filter(\.text).count == 4)
+    #expect(rows.allSatisfy { ModelSuggestionSweep.mayStayOnDevice($0) == !$0.text })
+    let device = SweepModel("apple-fm/26.1")
+    let cloud = SweepModel("cf-clef/1")
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: Self.categorizer, allowed: Self.allowed, stages: Self.stages(device, cloud), context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(device.calls.sorted() == ["mail shop four"])
+    #expect(cloud.calls.sorted() == ["mail shop four", "shared shop five", "text shop one"])
+
+    let deviceOnly = SweepModel("apple-fm/26.1", fallback: .category("shopping"))
+    let alone = try await ModelSuggestionSweep.suggest(
+      rows: rows, categorizer: Self.categorizer, allowed: Self.allowed, stages: [.onDevice(deviceOnly)], context: .foreground,
+      cache: MemoryCache(), now: { now })
+    #expect(deviceOnly.calls == ["mail shop four"])
+    #expect(alone.allSatisfy { !texts.contains($0.txnID) })
+  }
+
 }

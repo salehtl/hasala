@@ -58,7 +58,8 @@ extension ModelTier {
   public static func run(
     subjects: [String], stages: [ModelStage], allowed: [AllowedCategory], context: Context, now: @Sendable () -> Int64,
     callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
-    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1,
+    mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, mayStayOnDevice: @Sendable (String) -> Bool = { _ in true },
+    maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1,
     rejects: @Sendable (_ subject: String, _ category: String) -> Bool = { _, _ in false }, mayAsk: @Sendable () -> Bool = { true }
   ) async -> StagedRun {
     let budget = context.budget
@@ -70,8 +71,8 @@ extension ModelTier {
     if concurrency > 1, stages.count == 1 {
       return await concurrent(
         subjects: subjects, stage: stages[0], allowed: allowed, callCap: stages[0].leavesDevice ? min(callCap, cloudCap) : callCap,
-        phaseMs: budget.phaseMs, limit: limit, now: now, isCached: isCached, mayLeaveDevice: mayLeaveDevice, width: concurrency,
-        mayAsk: mayAsk)
+        phaseMs: budget.phaseMs, limit: limit, now: now, isCached: isCached,
+        mayLeaveDevice: stages[0].leavesDevice ? mayLeaveDevice : mayStayOnDevice, width: concurrency, mayAsk: mayAsk)
     }
     let start = now()
     var seen: Set<String> = []
@@ -86,7 +87,8 @@ extension ModelTier {
     subjects: for subject in subjects where seen.insert(subject).inserted {
       for (i, stage) in stages.enumerated() where live[i] {
         let tag = stage.model.modelTag
-        guard stage.accepts(subject), !stage.leavesDevice || mayLeaveDevice(subject), !isCached(subject, tag) else { continue }
+        guard stage.accepts(subject), stage.leavesDevice ? mayLeaveDevice(subject) : mayStayOnDevice(subject), !isCached(subject, tag)
+        else { continue }
         if stage.leavesDevice, cloudCalls >= cloudCap { continue }
         if calls >= callCap || now() - start >= budget.phaseMs || Task.isCancelled { break subjects }
         guard mayAsk() else {
@@ -148,7 +150,7 @@ extension ModelTier {
     let tag = model.modelTag
     var seen: Set<String> = []
     let queue = subjects.filter { s in
-      seen.insert(s).inserted && stage.accepts(s) && (!stage.leavesDevice || mayLeaveDevice(s)) && !isCached(s, tag)
+      seen.insert(s).inserted && stage.accepts(s) && mayLeaveDevice(s) && !isCached(s, tag)
     }
     let start = now()
     var out: [StagedSuggestion] = []
