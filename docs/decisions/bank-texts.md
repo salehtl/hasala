@@ -365,8 +365,11 @@ an explicit drop pattern says it is not a payment, or when it has no payment wor
 number at all. The cost is that a text from a person that looks like a payment ("I sent you
 AED 50"), and, with no sender, any text with a payment word and a number ("the transfer is
 200"), reaches Review as a synced row with the fields of any text row (see
-[The op log](#the-op-log)), such as `merchant_raw`, the amount and `last4`, until the person
-deletes it. The privacy policy says so.
+[The op log](#the-op-log)), such as `merchant_raw`, the amount and `last4`, until the account is
+deleted. The app has no delete for a transaction: Review's **Dismiss** and the transaction
+sheet's **Archive** author `txn_annotated` with `field: archived`, which **Restore** undoes,
+so an archived text row stays sealed on every device and on the server. The privacy policy
+says so.
 
 **The merchant on a row that may be a person's text.** A row whose text came from a person's
 number, an unknown sender or with no sender, and that no template read, keeps a merchant
@@ -405,9 +408,12 @@ text row from the readers, or with `tier: none`, has no template in the list and
 sent. The text itself, its sender and its other fields never leave the
 phone. A Clef answer on a text row keeps the row's own `needs_review`
 (`ModelSuggestionSweep.items`), so "Sort automatically" never files a text row that D1 sent
-to Review. Apple's on-device stage is never asked about a merchant subject that any text
-row carries, and no cached on-device answer is applied to it, mail rows with the same
-subject included (`ModelSuggestionSweep.mayStayOnDevice`).
+to Review. Apple's on-device stage is not asked about a merchant subject that a text row
+in the same sweep's queue carries, and no cached on-device answer is applied to it, queued
+mail rows with the same subject included (`ModelSuggestionSweep.mayStayOnDevice`). Only
+queued rows count: a text row that is not in the queue (already categorized, a credit, or
+with a last pick) does not hold back its subject, so a queued mail row with that subject can
+still be asked of Apple's model. Nothing leaves the device, and the text row is not changed.
 
 **Templates tonight: DIB only.** DIB has SMS templates for each payment family in the
 owner's DIB export (purchases, debits, credits, salary, refunds, reversals, own transfers
@@ -511,7 +517,8 @@ On the device, outside the synced data, and never sent:
   [One source for each person](#one-source-for-each-person)), for the
   last 30 days only;
 - the time the last set-up test passed, and, while a test runs, the time its 10-minute
-  window opened (deleted when the window closes);
+  window opened (cleared by the next read or update of the facts after the window closes,
+  `BankTextsFactsData.prune`, so it can stay in the file until the next text or app open);
 - the key secret for the text keys (below), in the Keychain, this device only;
 - the before-first-unlock marker (D6): a count and the arrival minute of the latest, deleted
   once the person answers the app's notice, once it is added to the ignored count, or when
@@ -538,7 +545,8 @@ from a bank sender, one more in that day's count. No text body, sender or field 
 text is kept. A text that is kept, from any sender, is different: a template hit, and a text
 with a payment shape from a bank, a person's number, an unknown sender or no sender, becomes
 a synced row in Review (or a filed row, under D1) with the fields in [The op log](#the-op-log),
-such as `merchant_raw`, the amount and `last4`, until the person deletes it. Before the first
+such as `merchant_raw`, the amount and `last4`, until the account is deleted (archiving hides
+it; the op log has no delete). Before the first
 unlock, such a text adds to the D6 marker instead (only a template hit, or a payment shape
 from a bank sender or with no sender). The privacy policy lists each item.
 
@@ -907,7 +915,11 @@ need:
 Only real phones and real testers can answer these. Until each is checked, the app's copy
 avoids the claim.
 
-- Whether iOS gives the action the sender, or only the text. Without a sender, D1 sends
+- Whether iOS gives the action the sender, or only the text. The support page's steps and
+  the app's guide (`BankTextsGuide`) do not map **Sender** to Shortcut Input › Sender, so
+  the action gets a sender only if Shortcuts binds the optional parameter by itself. The
+  privacy policy and the support page say so: without a sender, every text waits in Review
+  and no set-aside count is kept. Without a sender, D1 sends
   every kept text to Review, and step 4 of the reading order uses the lenient shape (a
   payment word and any number) for every text, so a person's texts with a payment word and
   a number reach Review more often.
