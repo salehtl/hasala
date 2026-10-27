@@ -39,7 +39,7 @@ no mailbox at all.
 
 ## What was decided
 
-### One catch-all automation
+### One automation that looks for a full stop
 
 The app adds an App Intent, "Add bank text", with a `text` parameter and an optional
 `sender` parameter. An `AppShortcutsProvider` in the main app target registers it, so the
@@ -51,7 +51,7 @@ starts it, so a text that the reading order drops never starts a request.
 The person makes **one** automation, once, in Shortcuts:
 
 1. Automation → New → Message.
-2. Any sender, with no "Message contains" filter.
+2. No sender, and "Message Contains" set to a single full stop (`.`).
 3. Run Immediately.
 4. New Blank Automation → Add Action.
 5. Hasala → Add bank text, with the message as its input.
@@ -60,10 +60,18 @@ There are no filter words for each bank and no automation for each bank. Why: in
 owner's DIB texts, only about 5% of the payment texts contain "AED". Most Arabic purchase
 texts carry no currency word at all, so a "contains AED" filter would miss most payments,
 with no sign that they are missing. A filter by sender does not work either, because bank
-sender IDs are not contacts. (These are aggregate counts only. No text from that export is
-in this repository.)
+sender IDs are not contacts.
 
-Thus the action runs on every incoming text. Hasala looks at each text on the phone, keeps
+The first design was a catch-all automation (any sender, no "Message Contains"). On a real
+iPhone (owner, 2026-10-27), Shortcuts refuses a Message automation with neither a sender
+nor a "Message Contains" phrase. A single full stop is the widest phrase it allows that
+still reaches every bank payment text: all 4,511 payment texts in the owner's DIB export
+contain "." (each has a decimal amount, such as 12.50), and so do 429 of its 457 other
+texts. (These are aggregate counts only. No text from that export is in this repository.)
+A text with no full stop never reaches Hasala; a bank that writes an amount with no
+decimals ("AED 50") and no other full stop would be missed (an open check).
+
+Thus the action runs on almost every incoming text. Hasala looks at each text on the phone, keeps
 only texts that look like bank payments, and drops every other text at once without storing
 it (D11). A text from a person that looks like a payment can reach Review (see the gate
 below). The
@@ -82,11 +90,12 @@ ago", the last text for each bank). What the phone keeps for this, and nothing m
 
 The set-up test: when the person taps **I made it, send a test** in setup, or **Test it
 again** in Profile › Bank alerts, the app opens a 10-minute window on that iPhone. A text
-whose folded body is "hasala test" (any case, with trailing spaces, "." and "!" ignored,
-because autocorrect often adds them) that arrives in the window marks the test as passed,
+whose folded body is "hasala test" (any case, with trailing spaces, "." and "!" ignored)
+that arrives in the window marks the test as passed,
 with its time, and is then dropped like any other text that is not a bank payment. Outside
 the window the same text is dropped with no trace, from any sender, a bank sender included.
-The test does not depend on the sender.
+The test does not depend on the sender. The app asks for "Hasala test." with the full stop,
+so that the automation runs for it.
 
 ### One source for each person
 
@@ -889,7 +898,8 @@ need:
 - **An SMS filter extension (`ILMessageFilterExtension`).** It is sandboxed and cannot share
   data with the app. Its only way out is a network request to our server, which is plaintext
   again.
-- **Filter words for each bank.** See [One catch-all automation](#one-catch-all-automation).
+- **Filter words for each bank.** See [One automation that looks for a full stop](#one-automation-that-looks-for-a-full-stop).
+- **A catch-all automation with no sender and no phrase.** Shortcuts refuses it.
 - **A source for each device.** The mailbox link is account-wide, so a choice on each device
   would let one iPhone read texts while another reads the mailbox, and every payment would
   arrive twice.
@@ -906,7 +916,7 @@ need:
 | D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save bank texts until you unlock your iPhone. Paste this text later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala, then paste the text from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
 | D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |
 | D8 | Add to the 2026-10-11 decisions in CLAUDE.md? | **Decided:** yes. The "Transactions come from Gmail" line gains bank texts through the Shortcuts automation, read on the phone. |
-| D9 | Which filter words catch every bank text? | **Decided:** none. One catch-all automation, because only about 5% of DIB payment texts contain "AED". |
+| D9 | Which filter words catch every bank text? | **Decided (revised 2026-10-27):** a single full stop. Shortcuts needs a sender or a phrase, only about 5% of DIB payment texts contain "AED", and every DIB payment text in the owner's export contains "." in its amount. |
 | D10 | When a mailbox is connected on an account that has text rows (a switch from texts to email, or a reconnect after a disconnect), what does email import? | **Decided:** all the mail that the connect lists, as for any connect; nothing is skipped by time, because a skip would lose payments that no text brought in. Every such connect runs the overlap check, whatever flow made it (as built, the check applies to every mail the engine authors). The overlap is the listed mail dated from the oldest text row in the account minus 24 hours to the newest plus 24 hours, from any device. A mail in the overlap that has a text twin (within 24 hours; same direction, or an unparsed text row; same bank or none on the text; same card or none on either side; same amount and currency, or different currencies, or an unparsed text row) waits in Review beside the twin and never files itself; the person keeps both or archives it. A mail in the overlap with no twin is authored as any mail. Thus a payment is not lost, and a mail that may repeat a text waits in Review; a payment whose mail and text differ more than the twin test allows can still show twice, and the person archives one (see [One source for each person](#one-source-for-each-person)). The switch alert says so. A switch from email to texts needs no rule: texts start from the switch. |
 | D11 | What about texts that are not bank payments? | **Decided:** declined payments and one-time codes are dropped first, before the templates, so a declined purchase or a code for a purchase is never added, even when a purchase template would read it. Then a template hit is kept whatever the sender, a person's number included. Then a text that matches a notice pattern (card blocked or activated, registrations, promotions, service tickets) is dropped. A text with no template hit and no drop match that has a payment shape goes to Review, whatever the sender, and with no sender. From a bank sender, or with no sender, the shape is a payment word and any number; from a person's number or another sender, a payment word and an amount with a currency, or a masked card. Any other text is dropped. Every text dropped is dropped on the phone at once and never stored. A drop pattern is a whole-body pattern (DIB's wordings) or a marker; a marker drops a text only when it has no transaction clause, so a payment text with a code line or a promotion line that no template reads still reaches Review, and a kept text with a one-time-code or declined marker never files. A drop of a bank sender's text, by a pattern or for no payment shape, adds one to that day's count for its kind on the device (after the first unlock); a drop of any other text leaves no trace. The fixtures include each kind. |
 
@@ -925,8 +935,10 @@ avoids the claim.
   a number reach Review more often.
 - Whether the automation runs, and the action can write, while the iPhone is locked (after
   the first unlock).
-- Whether iOS shows a banner for each run. With a catch-all automation, a banner would show
-  on every text. The owner's test showed none.
+- Whether every UAE bank's payment texts contain a full stop (a decimal amount or a sentence
+  end). A bank that does not would need its own phrase.
+- Whether iOS shows a banner for each run. With an automation that runs on almost every
+  text, a banner would show on each one. The owner's test showed none.
 - Whether the action takes the message as its input by default, so the person does not set
   it by hand.
 - Whether iOS lists the action before Hasala has been opened once.

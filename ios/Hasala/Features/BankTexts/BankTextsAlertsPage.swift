@@ -155,7 +155,7 @@ struct BankTextsAlertsPage: View {
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             Text("Add bank text").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-            Text("Runs on every text you get").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+            Text("Runs on every text with a full stop").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
             TimelineView(.periodic(from: .now, by: 60)) { context in
               StatusPillView(
                 Self.automationPill(lane.status, test: lane.test, now: context.date), size: .s26, surface: .tinted)
@@ -257,7 +257,7 @@ struct BankTextsAlertsPage: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      readsRow(.chat, "The automation hands Hasala each text you get, on this iPhone.")
+      readsRow(.chat, "The automation hands Hasala each text with a full stop, on this iPhone.")
       readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
       readsRow(.lock, BankTexts.keepsNoText)
     }

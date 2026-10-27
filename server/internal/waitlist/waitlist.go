@@ -337,13 +337,17 @@ func MintToken(ctx context.Context, tx pgx.Tx, entry uuid.UUID, purpose string) 
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// LeaveURL mints a leave token and returns its link.
-func LeaveURL(ctx context.Context, tx pgx.Tx, webBase string, entry uuid.UUID) (string, error) {
+const UnsubscribeURL = "https://api.hasala.app/api/v1/waitlist/unsubscribe"
+
+type Leave struct{ Page, OneClick string }
+
+func LeaveLinks(ctx context.Context, tx pgx.Tx, webBase string, entry uuid.UUID) (Leave, error) {
 	tok, err := MintToken(ctx, tx, entry, "leave")
 	if err != nil {
-		return "", err
+		return Leave{}, err
 	}
-	return strings.TrimSuffix(webBase, "/") + "/waitlist/leave#" + tok, nil
+	return Leave{Page: strings.TrimSuffix(webBase, "/") + "/waitlist/leave#" + tok,
+		OneClick: UnsubscribeURL + "?token=" + tok}, nil
 }
 
 // Sweep is spec 07 §2.11's waitlist sweeps.
@@ -398,6 +402,12 @@ func toMessage(row mailq.Row, r mailq.Rendered) mail.Message {
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}
 }
 
+func withLeave(row mailq.Row, r mailq.Rendered, leave Leave) mail.Message {
+	m := toMessage(row, r)
+	m.Unsubscribe = leave.OneClick
+	return m
+}
+
 func dateOf(t *time.Time) string {
 	if t == nil {
 		return ""
@@ -422,7 +432,7 @@ func (s *Service) Register(q *mailq.Queue) {
 		if err != nil {
 			return mail.Message{}, err
 		}
-		leave, err := LeaveURL(ctx, tx, s.WebBase, *row.EntryID)
+		leave, err := LeaveLinks(ctx, tx, s.WebBase, *row.EntryID)
 		if err != nil {
 			return mail.Message{}, err
 		}
@@ -431,8 +441,8 @@ func (s *Service) Register(q *mailq.Queue) {
 			bank = *v.bankName
 		}
 		r, err := mailq.RenderTemplate("waitlist", mailq.Content{Email: row.Recipient, BankName: bank,
-			ConfirmURL: s.WebBase + "/waitlist/confirm#" + confirm, LeaveURL: leave, Why: inviteWhy})
-		return toMessage(row, r), err
+			ConfirmURL: s.WebBase + "/waitlist/confirm#" + confirm, LeaveURL: leave.Page, Why: inviteWhy})
+		return withLeave(row, r, leave), err
 	}))
 	q.Register("waitlist_already", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 		if row.EntryID == nil {
@@ -442,14 +452,14 @@ func (s *Service) Register(q *mailq.Queue) {
 		if err != nil || (v.state != "confirmed" && v.state != "invited") {
 			return mail.Message{}, ErrStale
 		}
-		leave, err := LeaveURL(ctx, tx, s.WebBase, *row.EntryID)
+		leave, err := LeaveLinks(ctx, tx, s.WebBase, *row.EntryID)
 		if err != nil {
 			return mail.Message{}, err
 		}
-		r, err := mailq.RenderTemplate("waitlist_already", mailq.Content{Email: row.Recipient, LeaveURL: leave,
+		r, err := mailq.RenderTemplate("waitlist_already", mailq.Content{Email: row.Recipient, LeaveURL: leave.Page,
 			Invited: v.state == "invited", ConfirmedOn: dateOf(v.confirmedAt), InvitedOn: dateOf(v.invitedAt),
 			Until: dateOf(v.until), Why: inviteWhy})
-		return toMessage(row, r), err
+		return withLeave(row, r, leave), err
 	}))
 	q.Register("waitlist_has_account", mailq.RenderFunc(func(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
 		// Greeted by name only when an account has verified this very address
@@ -494,11 +504,11 @@ func (s *Service) renderBankSupported(ctx context.Context, tx pgx.Tx, row mailq.
 	if err != nil || (v.state != "confirmed" && v.state != "invited") {
 		return mail.Message{}, ErrStale
 	}
-	leave, err := LeaveURL(ctx, tx, s.WebBase, *row.EntryID)
+	leave, err := LeaveLinks(ctx, tx, s.WebBase, *row.EntryID)
 	if err != nil {
 		return mail.Message{}, err
 	}
 	r, err := mailq.RenderTemplate("bank_supported", mailq.Content{Email: row.Recipient, BankName: bank,
-		LeaveURL: leave, Why: inviteWhy})
-	return toMessage(row, r), err
+		LeaveURL: leave.Page, Why: inviteWhy})
+	return withLeave(row, r, leave), err
 }

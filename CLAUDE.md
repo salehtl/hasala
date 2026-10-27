@@ -616,9 +616,10 @@ the approval of the owner for that deployment.
   message id and the parsed fields. Email forwarding and SMTP ingest are not
   used in this version.
 - **Transactions also come from bank texts (2026-10-26). The phone reads
-  them.** The person makes one Shortcuts automation (any message, Run
-  Immediately, Hasala › Add bank text). It hands each incoming text to the app
-  on the phone. An account uses bank email or bank texts, not both: texts work
+  them.** The person makes one Shortcuts automation (Message Contains ".", no
+  sender, Run Immediately, Hasala › Add bank text); Shortcuts needs a sender or
+  a phrase, and every DIB payment text has a full stop in its amount. It hands
+  each such incoming text to the app on the phone. An account uses bank email or bank texts, not both: texts work
   only while the account has no mailbox link, on every device. The phone keeps
   only payment texts and drops all other texts at once, with no storage; when
   it is not sure, a text with a payment shape goes to Review. Nothing sends a

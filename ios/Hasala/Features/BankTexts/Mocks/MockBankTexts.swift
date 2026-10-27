@@ -149,7 +149,7 @@
       let lower = t.lowercased()
       let marked = codeMarkers.contains { matches($0, lower) }
       let moved = transactionClauses.contains { matches($0, lower) }
-      if t.isEmpty || lower.contains(BankTexts.testPhrase.lowercased()) || (marked && !moved) {
+      if t.isEmpty || lower.contains(BankTexts.testPhrase.lowercased().trimmingCharacters(in: .punctuationCharacters)) || (marked && !moved) {
         return .notAPayment
       }
       guard let amount = firstMatch(#"AED\s?([0-9][0-9,]*\.[0-9]{2})"#, in: t),

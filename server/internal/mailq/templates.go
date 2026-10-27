@@ -135,13 +135,13 @@ func EnqueueTest(ctx context.Context, tx pgx.Tx, q *Queue, address string) (int6
 	return q.EnqueueTx(ctx, tx, Enqueue{Kind: "test", Lane: LaneTransactional, To: to})
 }
 
-// TestRenderer renders the `test` kind: plain text, no secret.
+// TestRenderer renders the `test` kind: text and HTML, no secret.
 var TestRenderer = RenderFunc(func(_ context.Context, _ pgx.Tx, row Row) (mail.Message, error) {
-	r, err := RenderTemplate("test", Content{})
+	r, err := RenderTemplate("test", Content{Why: "You're getting this because the Hasala team sent a test email to this address."})
 	if err != nil {
 		return mail.Message{}, err
 	}
-	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text}, nil
+	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}, nil
 })
 
 // DeletedRenderer renders the `deleted` kind, the goodbye a purge queues

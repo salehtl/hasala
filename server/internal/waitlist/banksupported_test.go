@@ -45,7 +45,7 @@ func TestBankSupportedEmailForBothAudiences(t *testing.T) {
 		var out string
 		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 			m, err := s.renderBankSupported(ctx, tx, row)
-			out = m.Subject + "\n" + m.Text
+			out = m.Subject + "\n" + m.Text + "\n" + m.Unsubscribe
 			return err
 		})
 		return out, err
@@ -70,11 +70,12 @@ func TestBankSupportedEmailForBothAudiences(t *testing.T) {
 	acct, err := render(mailq.Row{Recipient: "maya@example.test", UserID: &user, BankSlug: &slug})
 	if err != nil || !strings.HasPrefix(acct, "First Abu Dhabi Bank works with Hasala now\n") ||
 		!strings.Contains(acct, "Hi Maya,") || !strings.Contains(acct, "Update Hasala in TestFlight") ||
-		strings.Contains(acct, "Leave the list") {
+		strings.Contains(acct, "Leave the list") || strings.Contains(acct, UnsubscribeURL) {
 		t.Fatalf("account email %v:\n%s", err, acct)
 	}
 	wl, err := render(mailq.Row{Recipient: "guest@example.test", EntryID: &entry, BankSlug: &slug})
-	if err != nil || !strings.Contains(wl, "still on the list") || !strings.Contains(wl, "https://hasala.example/waitlist/leave#") {
+	if err != nil || !strings.Contains(wl, "still on the list") || !strings.Contains(wl, "https://hasala.example/waitlist/leave#") ||
+		!strings.Contains(wl, UnsubscribeURL+"?token=") {
 		t.Fatalf("waitlist email %v:\n%s", err, wl)
 	}
 	if _, err := render(mailq.Row{Recipient: "other@example.test", UserID: &user, BankSlug: &slug}); !errors.Is(err, ErrStale) {

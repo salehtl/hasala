@@ -19,6 +19,7 @@ import (
 // Message is one email to one recipient. HTML is optional.
 type Message struct {
 	To, Subject, Text, HTML string
+	Unsubscribe             string
 }
 
 // Sender sends one message and returns the provider's message id when it gives

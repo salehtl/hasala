@@ -52,7 +52,7 @@ func checkHTML(t *testing.T, m Message) {
 	if !strings.Contains(h, `<p class="greeting">`+greeting+`</p>`) {
 		t.Errorf("%q: HTML does not open with %q", m.Subject, greeting)
 	}
-	if !strings.Contains(h, "Hasala never asks for your recovery phrase") {
+	if !strings.Contains(h, "We'll never ask you to share anything from the Hasala app") {
 		t.Errorf("%q: HTML has no footer", m.Subject)
 	}
 }

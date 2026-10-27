@@ -81,6 +81,23 @@ func TestCloudflareClassifiesAnswers(t *testing.T) {
 	if f, ok := gotBody["from"].(map[string]any); !ok || len(f) != 2 || f["address"] != "no-reply@hasala.app" || f["name"] != "Hasala" {
 		t.Fatalf("named from %#v", gotBody["from"])
 	}
+	if gotBody["headers"] != nil {
+		t.Fatalf("headers without an unsubscribe link: %#v", gotBody["headers"])
+	}
+
+	const oneClick = "https://api.hasala.app/api/v1/waitlist/unsubscribe?token=abc"
+	if _, err := c.Send(ctx, Message{To: "a@example.com", Subject: "s", Text: "t", Unsubscribe: oneClick}); err != nil {
+		t.Fatalf("unsubscribe: %v", err)
+	}
+	if h, ok := gotBody["headers"].(map[string]any); !ok || len(h) != 2 || h["List-Unsubscribe"] != "<"+oneClick+">" ||
+		h["List-Unsubscribe-Post"] != "List-Unsubscribe=One-Click" {
+		t.Fatalf("headers %#v", gotBody["headers"])
+	}
+	for _, bad := range []string{"http://api.hasala.app/x", "https://a/x>, <mailto:b@example.com", "https://a/x\r\nBcc: c@example.com"} {
+		if _, err := c.Send(ctx, Message{To: "a@example.com", Unsubscribe: bad}); !errors.Is(err, ErrPermanent) {
+			t.Errorf("unsubscribe %q was not refused: %v", bad, err)
+		}
+	}
 	status, answer = 429, `{"success":false,"errors":[{"code":10004,"message":"x"}],"result":null}`
 	if _, err := c.Send(ctx, Message{To: "a@example.com"}); err == nil || errors.Is(err, ErrPermanent) ||
 		errors.Is(err, ErrAuth) || strings.Contains(err.Error(), "a@example") {

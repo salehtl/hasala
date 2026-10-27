@@ -9,7 +9,7 @@ enum BankTextsGuide {
 
   static let shortSteps = [
     "In the Shortcuts app, open the Automation tab, tap +, then Message.",
-    "Leave Sender as Any and add no Message Contains filter.",
+    "Leave Sender empty. Tap Message Contains and type a full stop (.).",
     runImmediately,
     newBlank,
     "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue, then tap Done.",
@@ -18,7 +18,7 @@ enum BankTextsGuide {
   static let fullSteps = [
     "Open the Shortcuts app and tap Automation at the bottom. Then tap + at the top.",
     "Choose Message as what starts it.",
-    "Leave Sender as Any, and don't add Message Contains. One automation then works for all your banks.",
+    "Leave Sender empty. Tap Message Contains and type just a full stop (.). Bank payment texts usually have one in their amount, as all of DIB\u{2019}s do. A text with no full stop doesn\u{2019}t reach Hasala, so paste it instead.",
     runImmediately,
     newBlank,
     "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue. If it doesn\u{2019}t, tap the blue word and pick Message. Tap Done.",
@@ -26,9 +26,9 @@ enum BankTextsGuide {
 
   static let checklist: [(title: String, detail: String)] = [
     ("Run Immediately is chosen", "If it asks first, the text waits for your tap."),
-    ("Sender is Any, with no filter", "A Message Contains filter can leave your test out."),
+    ("Message Contains is a full stop", "Leave Sender empty and type only a full stop (.) in Message Contains. Any other word can leave payments out."),
     ("Add bank text gets the message", "The action should show Message in blue."),
-    ("The test went to your own number", "Or ask someone to text you \u{201C}\(BankTexts.testPhrase)\u{201D}."),
+    ("The test had its full stop", "Send \u{201C}\(BankTexts.testPhrase)\u{201D} to your own number, or ask someone to text it to you. Without the full stop the automation doesn\u{2019}t run."),
     actionMissing,
   ]
 }
