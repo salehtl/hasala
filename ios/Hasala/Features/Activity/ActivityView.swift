@@ -160,6 +160,7 @@ struct ActivityContent: View {
         overview
       }
     }
+    .onChange(of: snap.filter) { openRow = nil }
   }
 
   // MARK: Overview
@@ -261,7 +262,9 @@ struct ActivityContent: View {
       ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
         if i > 0 { HDivider(inset: .disc68) }
         SwipeActionRow(id: row.id, open: $openRow, action: swipe(row.id)) {
-          Button { model.open(row.id) } label: {
+          Button {
+            if openRow != nil { openRow = nil } else { model.open(row.id) }
+          } label: {
             TransactionRow(row, hidden: model.hidden).contentShape(Rectangle())
           }
           .buttonStyle(HRowPressStyle())

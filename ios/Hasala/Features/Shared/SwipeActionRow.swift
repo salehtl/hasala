@@ -41,10 +41,13 @@ struct SwipeActionRow<Content: View>: View {
       .clipped()
       .gesture(HorizontalPan(opensRightward: offset < 0, changed: drag, ended: release))
       .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+      .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { _ in
+        if offset != 0, start == nil, !committing { settle(0) }
+      }
       .onChange(of: open) { _, now in
         if now != id, offset != 0, start == nil, !committing { settle(0) }
       }
-      .hHaptic(.impactLight, trigger: pastCommit) { !$0 && $1 }
+      .hHaptic(.impactLight, trigger: pastCommit) { [start] in start != nil && !$0 && $1 }
   }
 
   private var revealed: some View {
@@ -151,6 +154,10 @@ private struct HorizontalPan: UIGestureRecognizerRepresentable {
   final class Coordinator: NSObject, UIGestureRecognizerDelegate {
     var opensRightward = false
     private weak var scrollPan: UIGestureRecognizer?
+
+    isolated deinit {
+      scrollPan?.isEnabled = true
+    }
 
     func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
       guard let pan = recognizer as? UIPanGestureRecognizer else { return false }

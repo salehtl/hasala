@@ -53,4 +53,35 @@ final class ActivitySwipeUITests: XCTestCase {
     XCTAssertEqual(row.frame.minX, x, accuracy: 1)
     XCTAssertFalse(el(app, "toast").exists)
   }
+
+  @MainActor
+  func testHalfSwipeRevealsArchiveAndATapClosesIt() throws {
+    let app = launch()
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    let row = el(app, "txn.carrefour")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, row))
+    let x = row.frame.minX
+    let frame = row.frame
+
+    func halfSwipe() {
+      let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+      let to = from.withOffset(CGVector(dx: -110, dy: 0))
+      from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.2)
+      waitForStill(app)
+    }
+
+    halfSwipe()
+    XCTAssertLessThan(row.frame.minX, x - 40)
+    row.tap()
+    waitForStill(app)
+    XCTAssertEqual(row.frame.minX, x, accuracy: 1)
+    XCTAssertFalse(el(app, "txn.merchant").exists)
+
+    halfSwipe()
+    app.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: frame.maxX - 30, dy: frame.midY)).tap()
+    XCTAssertTrue(el(app, "toast").staticTexts["Archived"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(row.waitForNonExistence(timeout: uiWait))
+  }
 }
