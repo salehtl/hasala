@@ -398,6 +398,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
         return ("Dismissed", [.archived(txn: id, archived: false)])
       }
       let i = try index(id)
+      if !archived, s.txns[i].mergedInto != nil { throw .refused(SamePurchaseText.restoreRefused) }
       s.txns[i].archived = archived
       return (archived ? "Archived" : "Restored", [.archived(txn: id, archived: !archived)])
     case .resolveCopy(let id, let merge):
@@ -425,6 +426,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       let previousRate = s.txns[j].homeSource == .rate ? s.txns[j].homeRateMicro : nil
       let oldNote = s.txns[i].note
       s.txns[i].archived = true
+      s.txns[i].mergedInto = match.of
       s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
       s.txns[j].homeMinor = s.txns[i].amount.minor
       return (

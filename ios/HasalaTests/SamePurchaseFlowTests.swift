@@ -70,6 +70,46 @@ struct SamePurchaseFlowTests {
     }
   }
 
+  @Test func restoringAMergedAlertIsRefused() throws {
+    var s = Scenario.mayaSamePurchase.state
+    _ = try LiveLedgerStore.patch(.resolveSamePurchase("amazon-aed", same: true), &s, now: MayaLedger.now)
+    #expect(s.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) {
+      try LiveLedgerStore.patch(.archive("amazon-aed", false), &s, now: MayaLedger.now)
+    }
+    #expect(s.txn("amazon-aed")?.archived == true)
+
+    let store = InMemoryLedger(state: Scenario.mayaSamePurchase.state)
+    let token = try #require(try store.apply(.resolveSamePurchase("amazon-aed", same: true)))
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) { try store.apply(.archive("amazon-aed", false)) }
+    store.undo(token)
+    #expect(store.state.txn("amazon-aed")?.mergedInto == nil && store.state.txn("amazon-aed")?.archived == false)
+    _ = try store.apply(.archive("amazon-aed", true))
+    _ = try store.apply(.archive("amazon-aed", false))
+    #expect(store.state.txn("amazon-aed")?.archived == false)
+  }
+
+  @Test func theMapperMarksAMergedAlert() throws {
+    var a = OpAuthor(AuthorContext(writerID: "ios-w", nowMs: 1_791_625_200_000, ownLastMs: nil, maxAuthored: [:], random: SystemRandom()))
+    a.setHomeCurrency("AED")
+    try a.setRate(currency: "USD", rateMicro: 3_672_500)
+    let f = try a.ingest(payload: Self.payload("2500", "USD", "2026-10-07T16:15:00.000Z", "AMAZON"), ingestID: String(repeating: "a", count: 64))
+    let h = try a.ingest(
+      payload: Self.payload("9300", "AED", "2026-10-09T04:00:00.000Z", "AMAZON MKTPLACE"), ingestID: String(repeating: "b", count: 64))
+    a.confirmSamePurchase(foreignID: f, foreignVersion: 1, homeID: h, homeAmountMinor: 9_300, foreignMinor: 2_500, foreignCurrency: "USD")
+    var s = State()
+    try Replay.foldOps(try a.build().ops, seq: 1, writerID: "ios-w", into: &s)
+    let db = try Projector.open(path: nil)
+    try Projector.project(s, dictionary: AccountRuntime.dictionary, projectedAtMs: 0, into: db)
+    let r = LedgerReader(db)
+    let rows = try r.activity(limit: 100) + r.archived(limit: 100)
+    var txns = try rows.map { try LedgerStateMapper.txn($0, r: r, ruleByID: [:], billID: nil) }
+    LedgerStateMapper.markSamePurchases(&txns, rows: rows, home: "AED")
+    #expect(txns.first { $0.id == h }?.archived == true)
+    #expect(txns.first { $0.id == h }?.mergedInto == f)
+    #expect(txns.first { $0.id == f }?.mergedInto == nil)
+  }
+
   @Test func theNoteMatchesTheCore() {
     #expect(SamePurchaseText.note(Money(minor: 25_00, currency: "USD")) == SamePurchase.note(foreignMinor: 25_00, currency: "USD"))
   }

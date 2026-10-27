@@ -329,12 +329,20 @@ nonisolated enum LedgerStateMapper {
   }
 
   static func markSamePurchases(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], home: String) {
-    let pairs = SamePurchase.pairs(rows.map(\.samePurchaseRow), home: home)
-    guard !pairs.isEmpty else { return }
+    let shapes = rows.map(\.samePurchaseRow)
+    let pairs = SamePurchase.pairs(shapes, home: home)
+    let foreign = shapes.filter { SamePurchase.isForeign($0, home: home) }
+    guard !pairs.isEmpty || !foreign.isEmpty else { return }
     let index = Dictionary(txns.indices.map { (txns[$0].id, $0) }, uniquingKeysWith: { a, _ in a })
     for p in pairs {
       guard let i = index[p.home], index[p.foreign] != nil else { continue }
       txns[i].samePurchase = SamePurchaseMatch(of: p.foreign, merchantMissing: p.merchantMissing)
+    }
+    for (k, row) in rows.enumerated() where row.archived != nil {
+      guard let i = index[row.id],
+        let f = SamePurchase.mergedForeign(of: shapes[k], note: row.note, among: foreign, home: home)
+      else { continue }
+      txns[i].mergedInto = f
     }
   }
 

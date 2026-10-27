@@ -272,6 +272,7 @@ public final class InMemoryLedger: LedgerStore {
         s.unreadTexts.removeAll { $0.id == id }
         title = "Dismissed"
       } else {
+        if !archived, s.txn(id)?.mergedInto != nil { throw .refused(SamePurchaseText.restoreRefused) }
         try editTxn(id) { $0.archived = archived }
         title = archived ? "Archived" : "Restored"
       }
@@ -295,6 +296,7 @@ public final class InMemoryLedger: LedgerStore {
         t.samePurchase = nil
         if same {
           t.archived = true
+          t.mergedInto = f.id
           t.note = SamePurchaseText.note(f.amount)
         }
       }
@@ -644,6 +646,7 @@ public final class InMemoryLedger: LedgerStore {
     field(\.samePurchase)
     field(\.heldCopy)
     field(\.combinedCopy)
+    field(\.mergedInto)
     field(\.billID)
   }
 

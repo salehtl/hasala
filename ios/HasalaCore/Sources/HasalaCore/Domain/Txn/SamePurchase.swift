@@ -120,6 +120,17 @@ public enum SamePurchase {
     return out
   }
 
+  public static func mergedForeign(of a: Row, note: String?, among rows: [Row], home: String) -> String? {
+    guard a.archived, let note, !note.isEmpty else { return nil }
+    var open = a
+    open.archived = false
+    return rows.filter { f in
+      f.amountHomeMinor == a.amountMinor && utf8Equal(note, Self.note(foreignMinor: f.amountMinor, currency: f.currency))
+        && qualifies(f, open, home: home)
+    }
+    .min { closer($0, open, than: $1, open) }?.id
+  }
+
   static func closer(_ f1: Row, _ a1: Row, than f2: Row, _ a2: Row) -> Bool {
     let h1 = Int128(f1.amountHomeMinor ?? 0), h2 = Int128(f2.amountHomeMinor ?? 0)
     let d1 = Int128(a1.amountMinor) - h1, d2 = Int128(a2.amountMinor) - h2
