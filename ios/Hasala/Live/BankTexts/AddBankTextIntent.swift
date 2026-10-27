@@ -43,19 +43,19 @@ struct HasalaShortcuts: AppShortcutsProvider {
   }
 }
 
-final class RuntimeBankTextAccount: BankTextAccount {
-  private let runtime: AccountRuntime
+nonisolated final class RuntimeBankTextAccount: BankTextAccount {
+  let author: any BankTextsAuthoring
+  private let ask: @MainActor @Sendable () async -> Bool?
 
-  init(_ runtime: AccountRuntime) {
-    self.runtime = runtime
+  @MainActor init(_ runtime: AccountRuntime) {
+    author = BankTextsWiring.author(runtime)
+    ask = {
+      guard let status = await runtime.askServerLink() else { return nil }
+      return BankTextsLinkCopy.linked(status)
+    }
   }
 
-  var author: any BankTextsAuthoring { BankTextsWiring.author(runtime) }
-
-  func askLink() async -> Bool? {
-    guard let status = await runtime.askServerLink() else { return nil }
-    return BankTextsLinkCopy.linked(status)
-  }
+  func askLink() async -> Bool? { await ask() }
 }
 
 enum BankTextsWiring {

@@ -70,18 +70,20 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
   }
 }
 
-final class FakeTextAccount: BankTextAccount {
+nonisolated final class FakeTextAccount: BankTextAccount {
   let author: any BankTextsAuthoring
-  var answer: Bool?
-  var asks = 0
+  let answer: Bool?
+  private let count = Mutex(0)
 
   init(author: any BankTextsAuthoring, answer: Bool? = nil) {
     self.author = author
     self.answer = answer
   }
 
+  var asks: Int { count.withLock { $0 } }
+
   func askLink() async -> Bool? {
-    asks += 1
+    count.withLock { $0 += 1 }
     return answer
   }
 }

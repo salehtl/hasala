@@ -26,18 +26,20 @@ nonisolated final class CountingOffline: Transport {
   }
 }
 
-final class CoreTextAccount: BankTextAccount {
+nonisolated final class CoreTextAccount: BankTextAccount {
   let author: any BankTextsAuthoring
-  var answer: Bool?
-  var asks = 0
+  let answer: Bool?
+  private let count = Mutex(0)
 
   init(author: any BankTextsAuthoring, answer: Bool?) {
     self.author = author
     self.answer = answer
   }
 
+  var asks: Int { count.withLock { $0 } }
+
   func askLink() async -> Bool? {
-    asks += 1
+    count.withLock { $0 += 1 }
     return answer
   }
 }

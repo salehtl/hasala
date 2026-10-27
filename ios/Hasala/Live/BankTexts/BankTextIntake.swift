@@ -1,7 +1,7 @@
 import CoreMailbox
 import Foundation
 
-protocol BankTextAccount: AnyObject, Sendable {
+nonisolated protocol BankTextAccount: AnyObject, Sendable {
   var author: any BankTextsAuthoring { get }
   func askLink() async -> Bool?
 }
