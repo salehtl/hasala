@@ -615,6 +615,23 @@ the approval of the owner for that deployment.
   no data. Do not put raw bank email in the op log. Keep only the Gmail
   message id and the parsed fields. Email forwarding and SMTP ingest are not
   used in this version.
+- **Transactions also come from bank texts (2026-10-26). The phone reads
+  them.** The person makes one Shortcuts automation (any message, Run
+  Immediately, Hasala › Add bank text). It hands each incoming text to the app
+  on the phone. An account uses bank email or bank texts, not both: texts work
+  only while the account has no mailbox link, on every device. The phone keeps
+  only payment texts and drops all other texts at once, with no storage; when
+  it is not sure, a text with a payment shape goes to Review. Nothing sends a
+  text off the phone, and hasalad never sees one. Do not put a raw text in the
+  op log. The text key is an HMAC under a secret that stays on the device, and
+  a key never drops a text (a repeat is a held probable copy). A text files
+  with no review only on an SMS template hit with a matching sender and a
+  known card (`card_linked` mine, as for mail). The readers only fill Review;
+  Apple's on-device model does not read texts. Learned text layouts stay in
+  memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
+  `provenance` or `dedupe`. A mail that may repeat a text row's payment waits
+  in Review and never files itself (D10). Refer to
+  `docs/decisions/bank-texts.md`.
 - **Categorization occurs on the device**, in this sequence: user rules, then
   the UAE merchant dictionary in the app, then the person's last pick for
   that merchant group and direction (`LastPick`: the newest filed row they

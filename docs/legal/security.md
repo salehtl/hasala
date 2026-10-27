@@ -1,7 +1,7 @@
 ---
 title: "Security"
 description: "How Hasala protects your data, what its design can and can't defend against, and how to report a security problem to security@hasala.app."
-lastUpdated: 2026-10-24
+lastUpdated: 2026-10-26
 status: "final"
 plainWords: "Hasala reads your bank alerts and seals your money data on your iPhone, so our server stores only data it can't open. Your recovery phrase and passkey are what unlock it. If you find a security problem, email security@hasala.app. We won't take legal action against good-faith research that follows this policy."
 ---
@@ -12,9 +12,11 @@ Hasala is an experimental beta: features change often, things can break, and dat
 
 This is a plain summary of Hasala's security design during the beta. It describes what the design protects, and also what it doesn't. The details may change as Hasala develops.
 
-### Bank emails are read on your iPhone
+### Bank emails and texts are read on your iPhone
 
 Hasala connects to your Gmail or Outlook with read-only access, from your iPhone. Your iPhone asks your mailbox only for messages from your banks' alert addresses, so the rest of your inbox is never downloaded. Your iPhone checks each message before it uses it. If Hasala can't be confident that a message really came from your bank, for example because it's in Spam or Junk Email, it waits in your review. Mail that turns out not to be from a bank at all is set aside. How Hasala decides may change as we learn how each bank sends its mail. The access tokens live in your iPhone's Keychain and are never sent to our server. Raw bank emails are not stored in your Hasala data and are never sent to us.
+
+If you use bank texts instead of email, an automation you make in Apple's Shortcuts app hands each text you receive to Hasala on your iPhone. Hasala reads it there, keeps only the details of texts that look like payments, and drops every other text at once without storing it. No text is sent to our server or anyone else. A text's sender name can be faked, and iOS may show a faked text in your bank's own thread. So a bank text files a payment by itself only when Hasala's rules for that bank read it, it came from that bank's sender name, and it names a card you have already confirmed as yours in Hasala, for example by confirming an earlier payment on it in Review. Any other payment text, and any text you paste, waits for you in Review. This makes a faked payment harder to add, not impossible: someone who knows your bank and the last digits of your card could still send one that files itself. Check payments you don't recognise against your bank's app. See [Bank texts](/privacy#bank-texts).
 
 ### Sorting happens on your iPhone
 
@@ -76,7 +78,7 @@ The notices that tell our server about new mail carry no content either. If you 
 
 No design is perfect. These are the limits we know about and accept during the beta.
 
-- **Metadata.** Our server and Cloudflare can see when you sync, roughly how much data you store, your IP address, and when something changes in your Gmail or a new message arrives in your Outlook. Because your iPhone uploads soon after a bank alert arrives, they can also tell roughly when, and how often, you get bank alerts. They can't see what the mail says or what your transactions are.
+- **Metadata.** Our server and Cloudflare can see when you sync, roughly how much data you store, your IP address, and when something changes in your Gmail or a new message arrives in your Outlook. Because your iPhone uploads soon after a bank alert or a bank text arrives, they can also tell roughly when, and how often, you get them. They can't see what the mail or text says or what your transactions are.
 - **Your mailbox address.** Google sends your Gmail address to our server each time something changes in your Gmail. With Outlook, our server sees your address only once, when you connect. In both cases we keep only a keyed hash of it, but the server sees it briefly.
 - **Outlook access you've given us.** Microsoft doesn't let an app withdraw its own permission. When you disconnect Outlook, Hasala deletes its tokens from your iPhone, but the permission stays in your Microsoft account until you remove it at [account.live.com/consent/Manage](https://account.live.com/consent/Manage).
 - **Your recovery phrase is your account.** Anyone who has your 12 words and can sign in, or can get a code from your email, can read your data and add devices. Making a new phrase stops the old words from working with our server (our encrypted backups keep the old recovery data for up to 30 days), but it can't take back what someone already got with them. If you think someone has seen your words, the fix is to create a new account.
