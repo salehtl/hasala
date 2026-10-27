@@ -104,7 +104,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case trust(category: String, modelTag: String?, corrections: Int)
-    case cardLinked(bank: String?, last4: String)
+    case cardLinked(bank: String?, last4: String, account: String, created: OpAuthor.AccountDraft?)
   }
 
   enum Failure: Error, Equatable {
@@ -477,6 +477,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       for r in try reader.rates() { if let micro = r.rateMicro { liveRates[r.currency] = micro } }
     }
     let ctx = try await observer.authorContext()
+    let unlinks = try cardUndos(inverses, today: LocalClock.localDate(ctx.nowMs))
     return try observer.stamps.build(ctx) { a throws(AuthorError) in
       for inv in inverses {
         switch inv {
@@ -488,8 +489,10 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.rule(id: id, parentVersion: version, restore)
         case .trust, .prior:
           continue
-        case .cardLinked(let bank, let last4):
+        case .cardLinked(let bank, let last4, let account, _):
+          guard let u = unlinks[CardKey(bank: bank ?? "", last4: last4)], u.account == account else { continue }
           a.linkCard(bank: bank, last4: last4, .forget)
+          if let close = u.close { try a.setAccount(id: account, close) }
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
@@ -557,10 +560,11 @@ nonisolated struct LedgerEditAuthor: Sendable {
   func confirmLink(_ row: TxnRow) throws -> [CardLinkStep] {
     guard row.isText, row.needsReview, !row.unparsed, let bank = row.bank, !bank.isEmpty, !row.last4.isEmpty else { return [] }
     let current = CardLinkPlan.current(try reader.cards())
-    guard current[CardKey(bank: bank, last4: row.last4)] == nil else { return [] }
+    let card = CardKey(bank: bank, last4: row.last4)
+    guard current[card] == nil else { return [] }
     return CardLinkPlan.confirming(
-      bank: bank, last4: row.last4, accounts: Set(try reader.accounts().map(\.id)), current: current,
-      creditCards: CardLinkPlan.creditCards(observer.context.store, reader: reader))
+      bank: bank, last4: row.last4, accounts: CardAccounts(try reader.accounts()), current: current,
+      creditCards: CardLinkPlan.creditCards([card], store: observer.context.store, reader: reader))
   }
 
   static func confirming(
@@ -575,9 +579,40 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   static func unlinking(_ link: [CardLinkStep]) -> [Inverse] {
     link.compactMap { s in
-      guard case .mine = s.link else { return nil }
-      return .cardLinked(bank: s.bank, last4: s.last4)
+      guard case .mine(let account, let create) = s.link else { return nil }
+      return .cardLinked(bank: s.bank, last4: s.last4, account: account, created: create)
     }
+  }
+
+  struct CardUndo: Equatable {
+    var account: String
+    var close: OpAuthor.AccountDraft?
+  }
+
+  func cardUndos(_ inverses: [Inverse], today: CivilDate?) throws -> [CardKey: CardUndo] {
+    var wanted: [(bank: String?, last4: String, account: String, created: OpAuthor.AccountDraft?)] = []
+    for inv in inverses {
+      if case .cardLinked(let bank, let last4, let account, let created) = inv { wanted.append((bank, last4, account, created)) }
+    }
+    guard !wanted.isEmpty else { return [:] }
+    var links: [CardKey: CardLink] = [:]
+    for c in try reader.cards() { links[CardKey(bank: c.bank ?? "", last4: c.last4)] = c }
+    var accounts: [String: CoreReplay.Account] = [:]
+    for a in try reader.accounts() { accounts[a.id] = a }
+    var out: [CardKey: CardUndo] = [:]
+    for w in wanted {
+      let key = CardKey(bank: w.bank ?? "", last4: w.last4)
+      guard let link = links[key], link.state == CardState.mine.rawValue, link.account == w.account else { continue }
+      var close: OpAuthor.AccountDraft?
+      if let created = w.created, let today, let live = accounts[w.account], live.active,
+        CardLinkPlan.draft(live) == created,
+        try !reader.accountInUse(w.account, besidesCard: w.bank, last4: w.last4)
+      {
+        close = CardLinkPlan.closing(created, on: today)
+      }
+      out[key] = CardUndo(account: w.account, close: close)
+    }
+    return out
   }
 
   // MARK: Building

@@ -102,12 +102,12 @@ nonisolated enum LedgerStateMapper {
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)
-    markRepeats(&txns, rows: rows, texts: try liveTextRows(r))
+    let unreadable = try r.review(lanes: [.unreadable], limit: 1_000_000)
+    markRepeats(&txns, rows: rows, unreadable: unreadable)
     let picks = LastPick.picks(pickRows)
     for i in txns.indices where txns[i].inReview {
       txns[i].lastPick = pickRows[i].key.flatMap { picks[$0] }
     }
-    let unreadable = try r.review(lanes: [.unreadable], limit: 1_000_000)
     let unreadMail = unreadable.filter { !$0.isText }.map {
       Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
@@ -352,16 +352,25 @@ nonisolated enum LedgerStateMapper {
     return Provenance(title: textSource(row.bank), readAt: readAt, rawMerchant: row.merchantRaw, isText: true)
   }
 
-  static func liveTextRows(_ r: LedgerReader) throws -> [BankTextRow] {
-    try r.textRows(postedFromMs: .min, toMs: .max).map(BankTextRow.init)
+  static func mayBeRepeat(_ row: TxnRow) -> Bool {
+    guard row.needsReview, row.archived == nil, !row.unparsed else { return false }
+    if row.isText { return BankTextRow(row).transferRole != nil }
+    return row.entryMethod == "mailbox"
   }
 
-  static func markRepeats(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], texts live: [BankTextRow]) {
-    guard !live.isEmpty else { return }
-    let texts = BankTextTwin.sorted(live)
+  static func repeatTexts(rows: [TxnRow], unreadable: [TxnRow]) -> [BankTextRow]? {
+    guard rows.contains(where: mayBeRepeat) else { return nil }
+    var live = rows.filter { $0.isText && $0.archived == nil }.map(BankTextRow.init)
+    live += unreadable.filter(\.isText).map(BankTextRow.init)
+    guard !live.isEmpty else { return nil }
+    return BankTextTwin.sorted(live)
+  }
+
+  static func markRepeats(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], unreadable: [TxnRow]) {
+    guard let texts = repeatTexts(rows: rows, unreadable: unreadable) else { return }
     var byID: [String: BankTextRow] = [:]
     for t in texts { byID[t.id] = t }
-    for (i, row) in rows.enumerated() where row.needsReview && row.archived == nil && !row.unparsed {
+    for (i, row) in rows.enumerated() where mayBeRepeat(row) {
       guard i < txns.count, txns[i].id == row.id else { continue }
       txns[i].mayRepeat = mayRepeat(row, texts: texts, byID: byID)
     }

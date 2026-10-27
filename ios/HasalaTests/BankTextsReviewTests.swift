@@ -246,15 +246,93 @@ struct BankTextsReviewTests {
     #expect(try l.cards()[Self.card] == nil)
   }
 
-  @Test func undoingTheSortForgetsTheCardItLinked() async throws {
+  static let account = OpAuthor.cardAccountID(bank: "dib", last4: "1234")
+
+  func account(_ l: Live) throws -> CoreReplay.Account? { try l.reader.accounts().first { $0.id == Self.account } }
+
+  @Test func undoingTheSortForgetsTheCardItLinkedAndClosesTheAccountItMade() async throws {
     let l = try await Self.live("texts.review.undo")
+    let row = try await l.add(Self.purchase)
+    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
+    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
+    #expect(try l.cards()[Self.card] == .mine)
+    let before = try l.ops().count
+    l.store.undo(token)
+    try await Mapper.eventually { try l.cards()[Self.card] == nil }
+    #expect(try l.reader.txn(row.txnID)?.needsReview == true)
+    let closed = try #require(try account(l))
+    #expect(!closed.active && closed.closedOn != nil && closed.name == "DIB ···1234")
+    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized, .cardLinked, .accountSet])
+    try await Mapper.eventually { !l.store.state.accounts.contains { $0.id == Self.account } }
+    #expect(!l.store.state.accounts.contains { $0.id == Self.account })
+  }
+
+  @Test func sortingAgainAfterTheUndoOpensTheSameAccountAgain() async throws {
+    let l = try await Self.live("texts.review.undoAgain")
     let row = try await l.add(Self.purchase)
     let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
     try await Mapper.eventually { try l.cards()[Self.card] == .mine }
     l.store.undo(token)
+    try await Mapper.eventually { try account(l)?.active == false }
+    _ = try l.store.apply(.categorize(row.txnID, "shopping", learnRule: false, project: nil))
+    try await Mapper.eventually { try l.cards()[Self.card] == .mine }
+    let open = try #require(try account(l))
+    #expect(open.active && open.closedOn == nil && open.name == "DIB ···1234" && open.kind == "credit_card")
+    #expect(try l.reader.cards().first { $0.last4 == "1234" }?.account == Self.account)
+    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
+    #expect(l.store.state.accounts.contains { $0.id == Self.account })
+  }
+
+  @Test func undoKeepsALinkThePersonChangedSinceTheSort() async throws {
+    let l = try await Self.live("texts.review.undoChanged")
+    let row = try await l.add(Self.purchase)
+    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
+    try await Mapper.eventually { try l.cards()[Self.card] == .mine }
+    try await l.ledger.authorCards([CardDecision(card: Self.card, state: .notMine)])
+    #expect(try l.cards()[Self.card] == .notMine)
+    let before = try l.ops().count
+    l.store.undo(token)
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == true }
+    #expect(try l.cards()[Self.card] == .notMine)
+    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized])
+    #expect(try account(l)?.active == true)
+  }
+
+  @Test func undoKeepsTheAccountOpenWhenARowUsesIt() async throws {
+    let l = try await Self.live("texts.review.undoUsed")
+    let row = try await l.add(Self.purchase)
+    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
+    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
+    let entry = ManualEntryDraft(
+      amount: .aed(20_00), merchant: "Synthetic cafe", categoryID: nil, postedAt: LocalDateTime(2026, 6, 5, 9, 0),
+      accountID: Self.account)
+    _ = try l.store.apply(.addTransaction(entry))
+    try await Mapper.eventually {
+      try l.reader.activity(limit: 1_000).contains { $0.merchantRaw == "Synthetic cafe" && $0.effectiveAccountID == Self.account }
+    }
+    l.store.undo(token)
     try await Mapper.eventually { try l.cards()[Self.card] == nil }
-    #expect(try l.cards()[Self.card] == nil)
-    #expect(try l.reader.txn(row.txnID)?.needsReview == true)
+    #expect(try account(l)?.active == true)
+  }
+
+  @Test func repeatsAreLookedForOnlyWhenAReviewRowCanRepeatAText() async throws {
+    let l = try await Self.live("texts.review.repeatRows")
+    _ = try await l.add(Self.purchase)
+    _ = try await l.add(Self.noAmount)
+    let rows = try LedgerStateMapper.allRows(l.reader).filter(\.isText)
+    let unreadable = try l.reader.review(lanes: [.unreadable], limit: 1_000)
+    #expect(rows.count == 1 && rows.first?.needsReview == true && unreadable.count == 1)
+    #expect(!rows.contains(where: LedgerStateMapper.mayBeRepeat))
+    #expect(LedgerStateMapper.repeatTexts(rows: rows, unreadable: unreadable) == nil)
+    try await l.ingestMail(
+      [("amount_minor", .string("12345")), ("posted_at", .string("2026-06-05T06:20:00.000Z"))], id: "m-repeat-rows")
+    let after = try LedgerStateMapper.allRows(l.reader)
+    let mail = try #require(after.first { !$0.isText && $0.amountMinor == 12345 && $0.postedMs == Self.june5 - 100 * 60_000 })
+    #expect(LedgerStateMapper.mayBeRepeat(mail))
+    let live = BankTextTwin.sorted(try l.reader.textRows(postedFromMs: .min, toMs: .max).map(BankTextRow.init))
+    #expect(live.count == 2)
+    #expect(LedgerStateMapper.repeatTexts(rows: rows + [mail], unreadable: unreadable) == live)
+    #expect(LedgerStateMapper.repeatTexts(rows: after, unreadable: unreadable) == live)
   }
 
   @Test func aTextRowShowsBankTextAsItsSource() async throws {

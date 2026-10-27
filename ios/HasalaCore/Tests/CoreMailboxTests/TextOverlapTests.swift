@@ -3,6 +3,7 @@ import CoreJSON
 import CoreMail
 import CoreProjection
 import CoreReplay
+import CoreStore
 import CoreTestSupport
 import CoreTime
 import CoreWire
@@ -288,11 +289,12 @@ struct CardLinkOnConfirmTests {
   static func confirm(_ rig: TextRig, _ id: String, inject: Bool = false) async throws -> AuthoredBlob? {
     let row = try #require(try rig.row(id))
     let ledger = rig.ledger
-    let accounts = Set(try rig.observer.reader.accounts().map(\.id))
+    let accounts = CardAccounts(try rig.observer.reader.accounts())
     let current = await ledger.knownCards()
+    let card = CardKey(bank: row.bank ?? "", last4: row.last4)
     let link = CardLinkPlan.confirming(
       bank: row.bank, last4: row.last4, accounts: accounts, current: current,
-      creditCards: CardLinkPlan.creditCards(rig.store, reader: rig.observer.reader))
+      creditCards: CardLinkPlan.creditCards([card], store: rig.store, reader: rig.observer.reader))
     let ctx = try await rig.observer.authorContext()
     let blob = try rig.observer.stamps.build(ctx) { a throws(AuthorError) in
       try CardLinkPlan.apply(link, to: &a)
@@ -381,7 +383,7 @@ struct CardLinkOnConfirmTests {
 
   @Test("a card already linked mine or not_mine keeps its link; a row with no bank or no card links nothing")
   func keepsLinks() {
-    let accounts: Set<String> = []
+    let accounts = CardAccounts()
     #expect(CardLinkPlan.confirming(bank: "dib", last4: "1234", accounts: accounts, current: [Self.card: .notMine], creditCards: []).isEmpty)
     #expect(CardLinkPlan.confirming(bank: "dib", last4: "1234", accounts: accounts, current: [Self.card: .mine], creditCards: []).isEmpty)
     #expect(CardLinkPlan.confirming(bank: nil, last4: "1234", accounts: accounts, current: [:], creditCards: []).isEmpty)
@@ -392,7 +394,8 @@ struct CardLinkOnConfirmTests {
       return
     }
     #expect(account == OpAuthor.cardAccountID(bank: "dib", last4: "1234") && create?.kind == .creditCard)
-    let existing = CardLinkPlan.confirming(bank: "dib", last4: "1234", accounts: [account], current: [:], creditCards: [])
+    let existing = CardLinkPlan.confirming(
+      bank: "dib", last4: "1234", accounts: CardAccounts(open: [account]), current: [:], creditCards: [])
     guard case .mine(_, let none)? = existing.first?.link else {
       Issue.record("no link")
       return
@@ -408,8 +411,109 @@ struct CardLinkOnConfirmTests {
         CardDecision(card: Self.card, state: .mine), CardDecision(card: other, state: .notMine),
         CardDecision(card: CardKey(bank: "dib", last4: "5555"), state: .mine),
         CardDecision(card: CardKey(bank: "dib", last4: "5555"), state: .mine),
-      ], accounts: [], current: [Self.card: .mine, other: .notMine], creditCards: [])
+      ], accounts: CardAccounts(), current: [Self.card: .mine, other: .notMine], creditCards: [])
     #expect(steps.count == 2)
     if case .mine(_, let create)? = steps.last?.link { #expect(create == nil) } else { Issue.record("no second step") }
+  }
+}
+
+@Suite("bank texts: a card's account, closed and opened again")
+struct CardAccountReopenTests {
+  static let card = CardKey(bank: "dib", last4: "1234")
+  static let account = OpAuthor.cardAccountID(bank: "dib", last4: "1234")
+
+  static func record(active: Bool) -> Account {
+    Account(
+      id: account, name: "DIB ···1234", institution: "dib", kind: "credit_card", inPlan: true, currency: "AED",
+      active: active, closedOn: active ? nil : "2026-06-05", color: "teal", firstSeq: 1)
+  }
+
+  @Test("open accounts are linked as they are; a closed one is opened again with its own record, not made again")
+  func planReopens() throws {
+    let open = CardAccounts([Self.record(active: true)])
+    #expect(open.open == [Self.account] && open.closed.isEmpty)
+    let closed = CardAccounts([Self.record(active: false)])
+    #expect(closed.open.isEmpty)
+    let reopen = try #require(closed.closed[Self.account])
+    #expect(reopen.active && reopen.closedOn == nil && reopen.name == "DIB ···1234" && reopen.color == "teal" && reopen.kind == .creditCard)
+    let steps = CardLinkPlan.confirming(bank: "dib", last4: "1234", accounts: closed, current: [:], creditCards: [])
+    guard case .mine(let id, let create)? = steps.first?.link else {
+      Issue.record("no link")
+      return
+    }
+    #expect(id == Self.account && create == reopen)
+    let none = CardLinkPlan.confirming(bank: "dib", last4: "1234", accounts: open, current: [:], creditCards: [])
+    if case .mine(_, let c)? = none.first?.link { #expect(c == nil) } else { Issue.record("no link") }
+    let shut = CardLinkPlan.closing(reopen, on: try #require(CivilDate(year: 2026, month: 6, day: 6)))
+    #expect(!shut.active && shut.closedOn?.wire == "2026-06-06" && shut.name == reopen.name)
+  }
+
+  @Test("authorCards opens a closed card account again, and the fold takes it with no anomaly")
+  func authorCardsReopens() async throws {
+    let rig = try TextRig()
+    try await rig.linkCard("dib", "1234", .mine)
+    let live = try #require(try rig.observer.reader.accounts().first { $0.id == Self.account })
+    let draft = try #require(CardLinkPlan.draft(live))
+    let day = try #require(CivilDate(year: 2026, month: 6, day: 5))
+    try await rig.ledger.author { a throws(AuthorError) in
+      a.linkCard(bank: "dib", last4: "1234", .forget)
+      try a.setAccount(id: Self.account, CardLinkPlan.closing(draft, on: day))
+    }
+    #expect(try rig.observer.reader.accounts().first { $0.id == Self.account }?.active == false)
+    try await rig.linkCard("dib", "1234", .mine)
+    let back = try #require(try rig.observer.reader.accounts().first { $0.id == Self.account })
+    #expect(back.active && back.closedOn == nil && back.name == live.name && back.kind == live.kind)
+    #expect(await rig.ledger.knownCards()[Self.card] == .mine)
+    #expect(try rig.fold().anomalies.isEmpty)
+  }
+
+  @Test("an account is in use when another card, a row or a check-in names it, not for its own card alone")
+  func inUse() async throws {
+    let rig = try TextRig()
+    let reader = rig.observer.reader
+    try await rig.linkCard("dib", "1234", .mine)
+    #expect(try !reader.accountInUse(Self.account, besidesCard: "dib", last4: "1234"))
+    #expect(try reader.accountInUse(Self.account, besidesCard: "dib", last4: "9999"))
+    let other = try TextRig()
+    try await other.linkCard("dib", "1234", .mine)
+    try await other.ledger.authorCards([CardDecision(card: CardKey(bank: "enbd", last4: "5555"), state: .mine, accountID: Self.account)])
+    #expect(try other.observer.reader.accountInUse(Self.account, besidesCard: "dib", last4: "1234"))
+    let entry = try TextRig()
+    try await entry.linkCard("dib", "1234", .mine)
+    try await entry.ledger.author { a throws(AuthorError) in
+      _ = try a.manualEntry(
+        amountMinor: 500, currency: "AED", direction: "debit", localWallMs: TextRig.t0, merchant: "Synthetic cafe", category: nil,
+        accountID: Self.account)
+    }
+    #expect(try entry.observer.reader.accountInUse(Self.account, besidesCard: "dib", last4: "1234"))
+    let checked = try TextRig()
+    try await checked.linkCard("dib", "1234", .mine)
+    try await checked.ledger.author { a throws(AuthorError) in
+      _ = try a.checkIn(account: Self.account, asOfMs: TextRig.t0, balanceMinor: 10_000, source: .update)
+    }
+    #expect(try checked.observer.reader.accountInUse(Self.account, besidesCard: "dib", last4: "1234"))
+  }
+
+  @Test("a card's kind is read from that card's staged mail and text rows only")
+  func creditCardOfOneCard() async throws {
+    let rig = try TextRig()
+    _ = try #require(await rig.add(try TextCase.named("dib-refund")).added)
+    func staged(_ id: String, last4: String, template: String) throws -> MailboxStagingRow {
+      let gates = try JSONEncoder().encode(MailGates(ar: "pass", senderTrusted: true, template: template, forwarded: false))
+      return MailboxStagingRow(
+        messageID: id, ingestID: String(repeating: "a", count: 63) + String(id.count), bank: "dib", last4: last4, gatesJSON: gates,
+        draftJSON: Data("{}".utf8), internalDate: TextRig.t0)
+    }
+    var w = MailboxWrite()
+    w.stage = [try staged("m1", last4: "1111", template: "dib.card.v1@1"), try staged("m22", last4: "2222", template: "dib.transfer.v1@1")]
+    try MailboxTableStore(writer: rig.store.db).commit(w)
+    let cards = [
+      CardKey(bank: "dib", last4: "1111"), CardKey(bank: "dib", last4: "2222"), Self.card, CardKey(bank: "enbd", last4: "1111"),
+    ]
+    #expect(CardLinkPlan.creditCards(cards, store: rig.store, reader: rig.observer.reader) == [CardKey(bank: "dib", last4: "1111")])
+    _ = try #require(await rig.add(try TextCase.named("dib-purchase-credit-card")).added)
+    #expect(CardLinkPlan.creditCards([Self.card], store: rig.store, reader: rig.observer.reader) == [Self.card])
+    #expect(try rig.observer.reader.textRows(bank: "dib", last4: "1234").count == 2)
+    #expect(try rig.observer.reader.textRows(bank: "dib", last4: "1111").isEmpty)
   }
 }

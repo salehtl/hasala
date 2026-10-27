@@ -2,6 +2,7 @@ import CoreDomain
 import CoreProjection
 import CoreReplay
 import CoreStore
+import CoreTime
 import Foundation
 
 public struct CardLinkStep: Sendable, Equatable {
@@ -15,9 +16,30 @@ public struct CardLinkStep: Sendable, Equatable {
   public var link: Link
 }
 
+public struct CardAccounts: Sendable, Equatable {
+  public var open: Set<String>
+  public var closed: [String: OpAuthor.AccountDraft]
+
+  public init(open: Set<String> = [], closed: [String: OpAuthor.AccountDraft] = [:]) {
+    self.open = open
+    self.closed = closed
+  }
+
+  public init(_ accounts: [Account]) {
+    self.init()
+    for a in accounts {
+      if a.active {
+        open.insert(a.id)
+      } else if let d = CardLinkPlan.reopening(a) {
+        closed[a.id] = d
+      }
+    }
+  }
+}
+
 public enum CardLinkPlan {
   public static func plan(
-    _ decisions: [CardDecision], accounts: Set<String>, current: [CardKey: CardState], creditCards: Set<CardKey>
+    _ decisions: [CardDecision], accounts: CardAccounts, current: [CardKey: CardState], creditCards: Set<CardKey>
   ) -> [CardLinkStep] {
     var created: Set<String> = []
     var steps: [CardLinkStep] = []
@@ -28,9 +50,13 @@ public enum CardLinkPlan {
         if current[d.card] == .mine, d.accountID == nil { continue }
         let account = d.accountID ?? OpAuthor.cardAccountID(bank: bank, last4: d.card.last4)
         var create: OpAuthor.AccountDraft?
-        if !accounts.contains(account), !created.contains(account) {
-          let kind: OpAuthor.AccountKind = creditCards.contains(d.card) ? .creditCard : .current
-          create = OpAuthor.AccountDraft(name: accountName(bank: bank, last4: d.card.last4), institution: bank, kind: kind)
+        if !accounts.open.contains(account), !created.contains(account) {
+          if let reopen = accounts.closed[account] {
+            create = reopen
+          } else {
+            let kind: OpAuthor.AccountKind = creditCards.contains(d.card) ? .creditCard : .current
+            create = OpAuthor.AccountDraft(name: accountName(bank: bank, last4: d.card.last4), institution: bank, kind: kind)
+          }
           created.insert(account)
         }
         steps.append(CardLinkStep(bank: bank, last4: d.card.last4, link: .mine(account: account, create: create)))
@@ -43,7 +69,7 @@ public enum CardLinkPlan {
   }
 
   public static func confirming(
-    bank: String?, last4: String, accounts: Set<String>, current: [CardKey: CardState], creditCards: Set<CardKey>
+    bank: String?, last4: String, accounts: CardAccounts, current: [CardKey: CardState], creditCards: Set<CardKey>
   ) -> [CardLinkStep] {
     guard let bank, !bank.isEmpty, !last4.isEmpty else { return [] }
     let card = CardKey(bank: bank, last4: last4)
@@ -72,6 +98,28 @@ public enum CardLinkPlan {
     return out
   }
 
+  public static func draft(_ a: Account) -> OpAuthor.AccountDraft? {
+    guard let kind = OpAuthor.AccountKind(rawValue: a.kind) else { return nil }
+    return OpAuthor.AccountDraft(
+      name: a.name, institution: a.institution, kind: kind, inPlan: a.inPlan, currency: a.currency,
+      statementDueDay: kind == .creditCard ? a.statementDueDay : nil, active: a.active,
+      closedOn: a.active ? nil : a.closedOn.flatMap(CivilDate.init(wire:)), color: a.color)
+  }
+
+  public static func reopening(_ a: Account) -> OpAuthor.AccountDraft? {
+    guard var d = draft(a) else { return nil }
+    d.active = true
+    d.closedOn = nil
+    return d
+  }
+
+  public static func closing(_ d: OpAuthor.AccountDraft, on day: CivilDate) -> OpAuthor.AccountDraft {
+    var c = d
+    c.active = false
+    c.closedOn = day
+    return c
+  }
+
   public static func accountName(bank: String?, last4: String) -> String {
     "\(bank.map(RuntimeMailboxLedger.bankName) ?? "Card") ···\(last4)"
   }
@@ -82,19 +130,19 @@ public enum CardLinkPlan {
     !bank.isEmpty && cardFamilies.contains { ref.hasPrefix("\(bank).\($0)") }
   }
 
-  public static func creditCards(_ store: LedgerStore, reader: LedgerReader) -> Set<CardKey> {
-    let rows = (try? MailboxTableStore(writer: store.db).staged(limit: 10_000)) ?? []
-    var out: Set<CardKey> = []
-    for r in rows {
-      guard let g = try? JSONDecoder().decode(MailGates.self, from: r.gatesJSON), let t = g.template,
-        isCardTemplate(t, bank: r.bank)
-      else { continue }
-      out.insert(CardKey(bank: r.bank, last4: r.last4))
+  public static func creditCards(_ cards: some Sequence<CardKey>, store: LedgerStore, reader: LedgerReader) -> Set<CardKey> {
+    Set(cards.filter { isCreditCard($0, store: store, reader: reader) })
+  }
+
+  public static func isCreditCard(_ card: CardKey, store: LedgerStore, reader: LedgerReader) -> Bool {
+    let gates = (try? MailboxTableStore(writer: store.db).stagedGates(bank: card.bank, last4: card.last4)) ?? []
+    let dec = JSONDecoder()
+    for json in gates {
+      guard let g = try? dec.decode(MailGates.self, from: json), let t = g.template else { continue }
+      if isCardTemplate(t, bank: card.bank) { return true }
     }
-    for t in (try? reader.textRows(postedFromMs: .min, toMs: .max)) ?? [] {
-      guard let bank = t.bank, !t.last4.isEmpty, let ref = t.templateRef, isCardTemplate(ref, bank: bank) else { continue }
-      out.insert(CardKey(bank: bank, last4: t.last4))
-    }
-    return out
+    guard !card.bank.isEmpty, !card.last4.isEmpty else { return false }
+    let texts = (try? reader.textRows(bank: card.bank, last4: card.last4)) ?? []
+    return texts.contains { t in t.templateRef.map { isCardTemplate($0, bank: card.bank) } ?? false }
   }
 }

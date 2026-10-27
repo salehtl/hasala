@@ -70,9 +70,10 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError) {
     guard !decisions.isEmpty else { return }
-    let accounts = Set(((try? reader.accounts()) ?? []).map(\.id))
+    let mine = decisions.filter { $0.state == .mine }.map(\.card)
     let steps = CardLinkPlan.plan(
-      decisions, accounts: accounts, current: await knownCards(), creditCards: stagedCardTemplates())
+      decisions, accounts: CardAccounts((try? reader.accounts()) ?? []), current: await knownCards(),
+      creditCards: CardLinkPlan.creditCards(mine, store: observer.context.store, reader: reader))
     try await author { a throws(AuthorError) in try CardLinkPlan.apply(steps, to: &a) }
   }
 
@@ -104,8 +105,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     guard out.stop == nil else { return .failed }
     return (try? observer.context.store.pendingCount()) == 0 ? .flushed : .failed
   }
-
-  func stagedCardTemplates() -> Set<CardKey> { CardLinkPlan.creditCards(observer.context.store, reader: reader) }
 
   /// Builds one blob with `body` (under the account's shared stamps),
   /// enqueues it and re-projects.
