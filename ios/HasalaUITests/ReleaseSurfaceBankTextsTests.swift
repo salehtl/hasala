@@ -13,7 +13,7 @@ final class ReleaseSurfaceBankTextsTests: ReleaseSurfaceTestCase {
 
   @MainActor
   func testAnEmailAccountShowsIgnoredTextsAndNoPaste() throws {
-    let app = launchRelease("gmailTexts", waitForHome: false, screen: "bankAlerts.emailOrTexts")
+    let app = launchRelease("gmailTexts", waitForHome: false, screen: "bankAlerts.emailIgnored")
     XCTAssertTrue(el(app, "bankAlerts.useTexts").waitForExistence(timeout: 15), "Use bank texts instead is missing")
     XCTAssertTrue(el(app, "bankAlerts.useTexts.ignored").exists, "the ignored count is missing")
     XCTAssertFalse(el(app, "bankAlerts.useTexts.paste").exists, "paste is offered while the account reads email")
