@@ -17,7 +17,7 @@ struct TextGateTests {
 
   static let paymentLine = "تم خصم مبلغ 20.00 في 05-06-2026 SYNTHETIC SHOP رصيدك 100.00"
 
-  @Test("each DIB whole-body wording drops its synthetic fixture as its kind, and never one with one more payment line")
+  @Test("each DIB whole-body wording drops its synthetic fixture as its kind; with one more payment line it is no drop, and a code or decline goes on marked")
   func wholeBody() {
     #expect(DIBTexts.wholeBody.count >= 30)
     for w in TextGate.wholeBody {
@@ -28,7 +28,8 @@ struct TextGateTests {
       switch w.kind {
       case .oneTimeCode, .declined:
         #expect(TextGate.neverAPayment(text) == .drop(w.kind), "\(w.pattern)")
-        #expect(TextGate.neverAPayment(text + "\n" + Self.paymentLine) == .pass(marked: w.kind == .oneTimeCode || w.kind == .declined ? TextGate.neverAPayment(text + "\n" + Self.paymentLine) == .pass(marked: true) : false), "\(w.pattern)")
+        #expect(TextGate.neverAPayment(text + "\n" + Self.paymentLine) == .pass(marked: true), "\(w.pattern)")
+        #expect(TextGate.neverAPayment(Self.paymentLine + "\n" + text) == .pass(marked: true), "\(w.pattern)")
       case .notice, .promotion:
         #expect(TextGate.neverAPayment(text) == .pass(marked: false), "\(w.pattern)")
         #expect(TextGate.notice(text) == w.kind, "\(w.pattern)")
@@ -46,6 +47,35 @@ struct TextGateTests {
     }
     for text in ["Never share your OTP with anyone", "Auth code 482913 for AED 20.00 at SHOP", "Card ending 1234 code", "OTP 12 is short"] {
       #expect(TextGate.neverAPayment(text) == .pass(marked: false), "\(text)")
+    }
+  }
+
+  @Test("a code after its code word and a few words, quoted or in Arabic word order, is a one-time-code marker")
+  func codeMarkerWordOrders() {
+    for text in [
+      "The One Time Password (OTP) for SAMPLE APP login is 482913, valid for 5 minutes", "The OTP for SAMPLE SHOP is \"482913\" valid for 5 minutes",
+      "Your OTP for example.com purchase is 482913", "Passcode to sign in to SAMPLE APP: 482913", "482913 كلمة المرور الخاصة بك لمرة واحدة",
+      "482913 كلمة السر لمرة واحدة", "إن كلمة السر لمرة واحدة الخاصة بك هي 482913", "رمز التحقق الخاص بك هو 482913", "482913 رمز التحقق الخاص بك",
+    ] {
+      #expect(TextGate.neverAPayment(text) == .drop(.oneTimeCode), "\(text)")
+      #expect(TextGate.neverAPayment(text + "\n" + Self.paymentLine) == .pass(marked: true), "\(text)")
+    }
+    for text in [
+      "Purchase of AED 20.00 at SAMPLE SHOP. Do not share your OTP for any reason. Available balance is 1234.56",
+      "Never share your OTP for any reason. Your balance is 1,234.00", "رمز المتجر لدى SAMPLE SHOP هو 1234.56",
+    ] {
+      #expect(TextGate.neverAPayment(text) == .pass(marked: false), "\(text)")
+    }
+  }
+
+  @Test("a wrong PIN or a wrong card verification code is a declined marker")
+  func wrongPinMarker() {
+    for text in [
+      "تم ادخال رقم سري خاطئ لبطاقتك المنتهية بالرقم XX1234", "تم إدخال رمز تحقق غير صحيح لبطاقتك XX1234", "الرقم السري غير صحيح للبطاقة XX1234",
+      "Incorrect PIN entered on your card ending 1234", "Wrong CVV entered for your card ending 1234",
+    ] {
+      #expect(TextGate.neverAPayment(text) == .drop(.declined), "\(text)")
+      #expect(TextGate.neverAPayment(text + "\n" + Self.paymentLine) == .pass(marked: true), "\(text)")
     }
   }
 
@@ -113,6 +143,8 @@ struct TextGateTests {
       "Transfer of AED 300.00 to SAMPLE PERSON completed. Confirmation code 482913", "Your order payment of AED 99.00 is confirmed. Code 482913",
       "Payment of AED 20.00 to SAMPLE.SHOP has been processed. OTP 482913", "Purchase of AED 45.00 at SAMPLE SHOP has been approved. PIN 1234",
       "Your transfer of AED 300.00 to SAMPLE PERSON was successful. Security code 482913",
+      "Your transfer of AED 300.00 to SAMPLE PERSON is complete. Code 482913", "Transfer of AED 300.00 to SAMPLE PERSON done. OTP 482913",
+      "Payment of AED 20.00 to SAMPLE SHOP has been done. PIN 1234", "Your transfer of AED 300.00 is now complete. Code 482913",
     ] {
       #expect(TextGate.hasTransactionClause(text), "\(text)")
       #expect(TextGate.neverAPayment(text) == .pass(marked: true), "\(text)")
@@ -122,6 +154,9 @@ struct TextGateTests {
       "OTP 482913: your payment of AED 20.00 to SAMPLE SHOP will be completed after you enter it",
       "Your transfer of AED 300.00 to SAMPLE PERSON has not been completed. Code 482913", "Your payment of AED 20.00 wasn't successful. OTP 482913",
       "Purchase of AED 50.00 at SAMPLE SHOP. OTP 482913", "مشتريات بمبلغ 123.45 من بطاقة XX1234 رمز التحقق 482913",
+      "Your transfer of AED 300.00 to SAMPLE PERSON is not complete. Code 482913",
+      "OTP 482913 for your payment of AED 20.00 to SAMPLE SHOP, enter it to complete",
+      "OTP 482913 for your transfer of AED 300.00 to SAMPLE PERSON, enter it and you are done", "Your transfer of AED 300.00 will be done after you enter OTP 482913",
     ] {
       #expect(!TextGate.hasTransactionClause(text), "\(text)")
       #expect(TextGate.neverAPayment(text) == .drop(.oneTimeCode), "\(text)")
@@ -131,7 +166,27 @@ struct TextGateTests {
     }
   }
 
-  @Test("a payment stated at the start of a sentence or line keeps a text that has a notice or promotion marker; mid-sentence it is none")
+  static let leadInStatements = [
+    "Your purchase of AED 89.50 at SYNTHETIC SHOP with card XX1234 on 05-06-2026. T&C apply",
+    "Dear Customer, Purchase of AED 89.50 at SYNTHETIC SHOP with card XX1234. T&C apply", "Card XX1234: Purchase of AED 89.50 at SYNTHETIC SHOP. T&C apply",
+    "Thank you for your purchase of AED 89.50 at SYNTHETIC SHOP. Earn 5x points. T&C apply",
+    "Dear Customer, your transfer of AED 300.00 to SAMPLE PERSON is complete. T&C apply", "AED 89.50 purchase at SYNTHETIC SHOP on card XX1234. T&C apply",
+    "Purchase: AED 89.50 at SYNTHETIC SHOP card XX1234. T&C apply", "عزيزي العميل، شراء بمبلغ 89.50 لدى متجر. عرض خاص",
+    "عزيزي العميل، مشتريات بمبلغ 89.50 لدى متجر عرض خاص", "Dear Customer your payment of AED 20.00 to SAMPLE SHOP. Offer valid till 30-06-2026",
+    "عزيزي العميل شراء بمبلغ 89.50 لدى متجر. عرض خاص",
+  ]
+
+  @Test("a payment stated after a comma, a colon or a short lead-in keeps a text that has a promotion marker")
+  func leadInStatements() {
+    for text in Self.leadInStatements {
+      #expect(TextGate.hasPaymentStatement(text), "\(text)")
+      #expect(TextGate.notice(text) == nil, "\(text)")
+      #expect(TextGate.neverAPayment(text) == .pass(marked: false), "\(text)")
+      #expect(TextGate.hasPaymentShape(text, lenient: true), "\(text)")
+    }
+  }
+
+  @Test("a payment stated at the start of a sentence or line keeps a text that has a notice or promotion marker; after other words, or of an amount or more, it is none")
   func statements() {
     for text in [
       "Purchase of AED 89.50 at SYNTHETIC GROCER with Credit Card ending 4321 on 05-JUN-2026 12:30. T&C apply",
@@ -148,10 +203,14 @@ struct TextGateTests {
       "OTP 482913 for your purchase of USD 20.00 at SYNTHETIC SHOP", "Get 5% cashback on every purchase above AED 100 with your card. T&C apply.",
       "Purchase of AED 100 or more earns 5% cashback. T&C apply.", "Spend AED 500 and earn points. T&C apply", "عرض خاص: خصم 20% على مشترياتك",
       "خصم 20% على مشترياتك. عرض لفترة محدودة", "شراء 2 واحصل على 1 مجانا. عرض لفترة محدودة",
-      "Your purchase of AED 120.00 at SYNTHETIC STORE was declined.",
+      "Make a purchase of AED 100 to win a SAMPLE PRIZE. T&C apply", "Get AED 50 back, AED 500 purchase minimum. T&C apply",
+      "Dear Customer, your purchase of AED 100 or more earns 5% cashback. T&C apply", "Get 5% cashback when you shop with your card for AED 100. T&C apply",
     ] {
       #expect(!TextGate.hasPaymentStatement(text), "\(text)")
     }
+    #expect(TextGate.neverAPayment("Your purchase of AED 120.00 at SYNTHETIC STORE was declined. T&C apply") == .drop(.declined))
+    #expect(TextGate.notice("Dear Customer, your purchase of AED 100 or more earns 5% cashback. T&C apply") == .promotion)
+    #expect(TextGate.notice("Make a purchase of AED 100 to win a SAMPLE PRIZE. T&C apply") == .promotion)
     #expect(TextGate.notice("Purchase of AED 100 or more earns 5% cashback. T&C apply.") == .promotion)
     #expect(TextGate.notice("شراء 2 واحصل على 1 مجانا. عرض لفترة محدودة") == .promotion)
   }

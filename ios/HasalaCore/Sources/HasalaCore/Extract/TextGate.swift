@@ -187,15 +187,22 @@ public enum TextGate {
       "(?<![a-z])(?<!(?:auth|authori[sz]ation|approval|appr|ref|reference|transaction|txn|trx|promo|promotion|promotional|voucher|coupon|discount|referral|gift)[\\s.:#-]{1,3})(?:otp|one[- ]time password|passcode|password|verification code|security code|code|pin)(?![a-z])\\s{0,2}(?:is|:|-|=|هو|هي)?\\s{0,2}[\"']?[0-9]{4,8}(?![0-9])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}(?:is\\s+(?:your\\s+)?|هو\\s+|هي\\s+)?(?:otp|one[- ]time password|passcode|verification code)(?![a-z])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}is\\s+(?:your\\s+)?(?:code|password|pin)(?![a-z])"
+        + "|(?<![a-z])(?:otp|one[- ]time password|passcode|verification code)(?![a-z])\\s{0,2}(?:\\([a-z ]{2,30}\\)\\s{0,2})?(?:for|to)\\s(?:[^\\n.!?]|\\.(?=\\S)){1,80}?(?:\\sis|:)\\s{0,2}[\"']?[0-9]{4,8}(?![0-9]|[.,][0-9])"
         + "|(?:رمز|كلمه المرور|كلمه السر)(?:\\s+(?:التحقق|التفعيل|الدخول|المرور))?\\s{0,2}(?:هو|هي|:)?\\s{0,2}[0-9]{4,8}(?![0-9])"
-        + "|(?<![0-9.,])[0-9]{4,8}\\s{0,2}(?:هو|هي)\\s+(?:رمز|كلمه المرور|كلمه السر)")
+        + "|(?:رمز|كلمه\\s+المرور|كلمه\\s+السر)(?:\\s+[^\\s0-9]+){1,5}?\\s+(?:هو|هي|:)\\s{0,2}[0-9]{4,8}(?![0-9]|[.,][0-9])"
+        + "|(?<![0-9.,])[0-9]{4,8}\\s{0,2}(?:هو|هي)\\s+(?:رمز|كلمه المرور|كلمه السر)"
+        + "|(?<![0-9.,])[0-9]{4,8}\\s{0,2}(?:كلمه\\s+(?:المرور|السر)|رمز\\s+(?:التحقق|التفعيل|الدخول|المرور))")
 
     static let declined = RuleText.words(
       [
         "declined", "was not approved", "not approved", "unsuccessful", "could not be processed", "was not processed",
-        "insufficient funds", "insufficient balance",
+        "insufficient funds", "insufficient balance", "incorrect pin", "wrong pin", "invalid pin", "incorrect cvv", "wrong cvv",
+        "invalid cvv",
       ],
-      ["تم رفض", "مرفوضه", "لم تتم", "غير ناجحه", "رصيد غير كاف"])
+      [
+        "تم رفض", "مرفوضه", "لم تتم", "غير ناجحه", "رصيد غير كاف", "رقم سري خاطئ", "الرقم السري خاطئ", "رقم سري غير صحيح",
+        "الرقم السري غير صحيح", "رمز تحقق غير صحيح", "رمز التحقق غير صحيح", "رمز تحقق خاطئ", "رمز التحقق خاطئ",
+      ])
 
     static let notice = RuleText.re(
       RuleText.words(
@@ -219,20 +226,32 @@ public enum TextGate {
     static let statedAmount =
       "(?:(?:\(Shape.currencies))(?![a-z])\\s{0,2}\(number)|\(number)\\s{0,2}(?:\(Shape.currencies))(?![a-z])|[0-9][0-9,]*+\\.[0-9]{2}(?![0-9]))"
 
-    static let sentenceStart = "(?:^|\\n|[.!?\u{061F}]\\s)\\s{0,2}"
+    static let lead =
+      "(?:^|\\n|[.!?\u{061F}]\\s|[,:;\u{060C}])\\s{0,2}"
+        + "(?:(?:dear\\s+(?:valued\\s+)?(?:customer|client|cardholder|member)|عزيزي\\s+(?:العميل|المتعامل)|عميلنا\\s+العزيز)[,:\u{060C}]?\\s{1,2})?"
+        + "(?:(?:thank\\s+you|thanks)\\s+for\\s+)?(?:(?:your|the)\\s+)?"
+
+    static let notMore = "(?!\\s+(?:or|and)\\s+(?:more|above|over))"
+
+    static let paymentNoun = "(?:purchase|transfer|payment|withdrawal|refund|deposit|transaction|txn)"
 
     static let paymentStatement = RuleText.re(
-      sentenceStart
-        + "(?:(?:purchase|transfer|payment|withdrawal|refund|deposit|transaction|txn)\\s+of|paid|spent|charged|sent|received|purchased|withdrew)\\s+"
-        + "(?:an?\\s+amount\\s+of\\s+)?" + statedAmount + "(?!\\s+(?:or|and)\\s+(?:more|above|over))"
-        + "|" + sentenceStart
+      lead
+        + "(?:\(paymentNoun)\\s+of|paid|spent|charged|sent|received|purchased|withdrew)\\s+(?:an?\\s+amount\\s+of\\s+)?"
+        + statedAmount + notMore
+        + "|" + lead + "(?:\(paymentNoun)|debit|credit)\\s{0,2}(?::|-)\\s{0,2}" + statedAmount + notMore
+        + "|" + lead + statedAmount + "\\s{1,2}(?:\(paymentNoun)|debit|credit)(?![a-z])" + notMore + "(?!\\s+(?:minimum|min)(?![a-z]))"
+        + "|" + lead
         + "(?:عمليه\\s+)?(?:شراء|مشتريات|سحب(?:\\s+نقدي)?|ايداع(?:\\s+راتب)?|تحويل|سداد|دفع|خصم(?=\\s+(?:بمبلغ|مبلغ)))(?:\\s+[^\\s0-9]+){0,4}?\\s+"
         + "(?:(?:بمبلغ|مبلغ|بقيمه|قيمه)\\s+(?:(?:aed|درهم)\\s{0,2})?[0-9]|(?:aed|درهم)\\s{0,2}[0-9]|[0-9][0-9,]*+\\.[0-9]{2}(?![0-9])|\(number)\\s{0,2}(?:درهم|aed))")
 
     static let completed =
       "(?<![a-z])(?:purchase|transfer|payment|withdrawal|transaction|order)\\s+of\\s+" + statedAmount
       + "(?:(?!\\s(?:will|shall|once|pending|upon|after|until|unless|if|when|not|never|cannot)\\s|\\sto\\s+be\\s|n['\u{2019}]t\\s)(?:[^\\n.!?]|\\.(?=\\S))){0,100}?"
-      + "(?<!\\sbe|\\snot|\\sbeing)\\s(?:(?:was|is|has\\s+been|have\\s+been)\\s+)?(?:completed|confirmed|successful|approved|processed)(?![a-z])"
+      + "(?<!\\sbe|\\snot|\\sbeing)\\s"
+      + "(?:(?:(?:was|is|has\\s+been|have\\s+been)\\s+)?(?:completed|confirmed|successful|approved|processed)(?![a-z])"
+      + "|(?:was|is|has\\s+been|have\\s+been|now)\\s+(?:complete|done)(?![a-z])"
+      + "|(?<!\\sto\\s|\\sand\\s|\\sor\\s|\\sare\\s|\\syou\\s|\\splease\\s)(?:complete|done)(?![a-z]))"
 
     static let transactionClause = RuleText.re(
       completed

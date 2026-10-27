@@ -96,6 +96,17 @@ struct SMSExtractGoldenTests {
     try TextGolden.check(TextCase.file, .object(doc))
   }
 
+  @Test("a payment text that ends with a promotion line is kept, from a bank sender and with no sender, after any lead-in")
+  func promotionLinesKept() throws {
+    let cases = try TextCase.all().filter { $0.name.contains("promotion-line") }
+    #expect(cases.count >= 24)
+    #expect(cases.contains { $0.sender == nil } && cases.contains { $0.sender != nil })
+    for c in cases {
+      let k = try #require(BankTextReader.read(c.arrival).reading.kept, "\(c.name)")
+      #expect(!k.marked && k.countsAsPayment, "\(c.name)")
+    }
+  }
+
   @Test("every file in conformance/sms-extract is synthetic or the README")
   func onlySynthetic() throws {
     let dir = TextGolden.conformanceRoot.appendingPathComponent("sms-extract")

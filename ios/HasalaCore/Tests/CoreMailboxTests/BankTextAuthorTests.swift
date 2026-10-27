@@ -725,7 +725,7 @@ struct BankTextFallbackTests {
     #expect(await all.attempts.count == 2)
   }
 
-  @Test("an automation text with only a date that is not the arrival's day is authored with time: the last minute of its day")
+  @Test("an automation text with only a date that is not the arrival's day is authored with time inside its day, also on each fallback")
   func dayPrecision() async throws {
     let text = "خصم بمبلغ 234.56 في 03-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
     let c = TextCase(name: "day", sender: "DIB-SMS", text: text, receivedAtMs: TextRig.t0)
@@ -736,13 +736,13 @@ struct BankTextFallbackTests {
     let drafts = await ledger.attempts.map(\.draft)
     #expect(drafts.count == 4)
     for d in drafts.prefix(3) {
-      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-03T19:59:00.000Z")
+      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-03T07:59:00.000Z")
     }
     #expect(drafts[3].payload["posted_precision"]?.stringValue == "time" && drafts[3].payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
     for d in drafts { #expect(try Self.folds(d)) }
   }
 
-  @Test("the time of a date-only text: the arrival minute on its own day, else the nearest minute of the text's day; a paste keeps day")
+  @Test("the time of a date-only text: the arrival minute on its own day; after its day, as far before the day's end as the arrival is after it")
   func timedClamp() throws {
     let text = "خصم بمبلغ 234.56 في 05-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
     func kept(_ ms: Int64) throws -> BankTextKept {
@@ -753,20 +753,35 @@ struct BankTextFallbackTests {
     let late = try kept(TextRig.t0 + 86_400_000)
     #expect(late.fields?.precision == "day")
     let t = late.timed(arrivalMinuteMs: TextRig.t0 + 86_400_000)
-    #expect(t.fields?.postedAt == "2026-06-05T19:59:00.000Z" && t.fields?.precision == "time" && t.precision == "time" && t.postedAt == t.fields?.postedAt)
+    #expect(t.fields?.postedAt == "2026-06-05T07:59:00.000Z" && t.fields?.precision == "time" && t.precision == "time" && t.postedAt == t.fields?.postedAt)
+    let justAfter = try kept(TextRig.t0 + 12 * 3_600_000)
+    #expect(justAfter.timed(arrivalMinuteMs: TextRig.t0 + 12 * 3_600_000).postedAt == "2026-06-05T19:59:00.000Z")
+    #expect(justAfter.timed(arrivalMinuteMs: TextRig.t0 + 12 * 3_600_000 + 180_000).postedAt == "2026-06-05T19:56:00.000Z")
+    #expect(justAfter.timed(arrivalMinuteMs: TextRig.t0 + 36 * 3_600_000 - 60_000).postedAt == "2026-06-04T20:00:00.000Z")
+    #expect(justAfter.timed(arrivalMinuteMs: TextRig.t0 + 36 * 3_600_000).postedAt == "2026-06-05T19:59:00.000Z")
+    #expect(justAfter.timed(arrivalMinuteMs: TextRig.t0 + 40 * 3_600_000).postedAt == "2026-06-05T15:59:00.000Z")
     let early = try kept(TextRig.t0 - 86_400_000)
     let e = early.timed(arrivalMinuteMs: TextRig.t0 - 86_400_000)
     #expect(e.fields?.postedAt == "2026-06-04T20:00:00.000Z" && e.fields?.precision == "time")
   }
 
-  @Test("a pasted text with only a date keeps day precision and waits in Review")
-  func pasteKeepsDay() async throws {
+  @Test("a pasted text with only a date is authored with time inside its day, keeps that date on its fallback, and waits in Review")
+  func pasteTimesItsDay() async throws {
     let text = "خصم بمبلغ 234.56 في 03-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
-    let ledger = RefusingTextLedger(refusing: 0)
+    let ledger = RefusingTextLedger(refusing: 1)
     let out = await BankTextAuthor(ledger: ledger).paste(text, atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked)
-    #expect(out.added?.filed == false)
-    let d = try #require(await ledger.attempts.first?.draft)
-    #expect(d.payload["posted_precision"]?.stringValue == "day" && d.payload["posted_at"]?.stringValue == "2026-06-02T20:00:00.000Z")
+    #expect(out.added?.filed == false && out.added?.unparsed == true)
+    let drafts = await ledger.attempts.map(\.draft)
+    #expect(drafts.count == 2 && drafts.allSatisfy { $0.needsReview })
+    for d in drafts {
+      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-03T07:59:00.000Z")
+      #expect(try BankTextFallbackTests.folds(d))
+    }
+    let same = RefusingTextLedger(refusing: 0)
+    _ = await BankTextAuthor(ledger: same).paste(
+      text.replacingOccurrences(of: "03-06-2026", with: "05-06-2026"), atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked)
+    let d = try #require(await same.attempts.first?.draft)
+    #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
   }
 }
 
@@ -789,9 +804,26 @@ struct BankTextLateDayTests {
     let b = try #require(await rig.add(c, at: Self.at(5, 0, 2) + 30_000).added)
     #expect(a.txnID != b.txnID)
     let p = try rig.payload(a.txnID)
-    #expect(p["posted_precision"]?.stringValue == "time" && p["posted_at"]?.stringValue == "2026-06-04T19:59:00.000Z")
+    #expect(p["posted_precision"]?.stringValue == "time" && p["posted_at"]?.stringValue == "2026-06-04T19:58:00.000Z")
+    #expect(try rig.payload(b.txnID)["posted_at"]?.stringValue == "2026-06-04T19:57:00.000Z")
     let s = try rig.fold()
     #expect(s.anomalies.isEmpty && s.txns[b.txnID]?.copyOf == a.txnID && s.txns[b.txnID]?.isHeldCopy == true)
+  }
+
+  @Test("two equal date-only texts that arrive hours apart after their day are two rows with no hold, on the next day and later")
+  func equalTextsHoursApart() async throws {
+    for day in [5, 6, 9] {
+      let rig = try TextRig()
+      let a = try #require(await rig.add(TextCase(name: "a", sender: "DIB-SMS", text: Self.debit, receivedAtMs: Self.at(day, 8, 0))).added)
+      let b = try #require(await rig.add(TextCase(name: "b", sender: "DIB-SMS", text: Self.debit, receivedAtMs: Self.at(day, 14, 0))).added)
+      let pa = try parseInstantMs(try #require(try rig.payload(a.txnID)["posted_at"]?.stringValue))
+      let pb = try parseInstantMs(try #require(try rig.payload(b.txnID)["posted_at"]?.stringValue))
+      #expect(abs(pa - pb) == 6 * 3_600_000, "day \(day)")
+      for ms in [pa, pb] { #expect(ms >= Self.at(4, 0, 0) && ms < Self.at(5, 0, 0), "day \(day)") }
+      let s = try rig.fold()
+      #expect(s.anomalies.allSatisfy { $0.kind == "possible_duplicate" }, "day \(day)")
+      for id in [a.txnID, b.txnID] { #expect(s.txns[id]?.copyOf == nil && s.txns[id]?.isHeldCopy == false && s.txns[id]?.isLive == true, "day \(day)") }
+    }
   }
 
   @Test("a debit alert and its transfer notice that straddle midnight are a transfer pair")

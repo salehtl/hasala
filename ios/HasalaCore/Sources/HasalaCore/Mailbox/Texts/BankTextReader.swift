@@ -48,8 +48,10 @@ public struct BankTextKept: Sendable, Equatable {
   public func timed(arrivalMinuteMs: Int64) -> BankTextKept {
     let precise = fields?.precision ?? precision
     guard precise == "day", let start = try? parseInstantMs(fields?.postedAt ?? postedAt) else { return self }
-    let last = start + Civil.msPerDay - 60_000
-    guard let at = Instant.iso(min(max(arrivalMinuteMs, start), last)) else { return self }
+    let end = start + Civil.msPerDay
+    let ms =
+      arrivalMinuteMs < start ? start : arrivalMinuteMs < end ? arrivalMinuteMs : end - 60_000 - (arrivalMinuteMs - end) % Civil.msPerDay
+    guard let at = Instant.iso(ms) else { return self }
     var k = self
     k.postedAt = at
     k.precision = "time"

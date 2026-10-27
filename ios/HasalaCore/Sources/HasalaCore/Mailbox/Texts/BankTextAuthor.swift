@@ -89,7 +89,7 @@ public actor BankTextAuthor {
     switch read.reading {
     case .setUpTest: return .testPassed
     case .dropped(let k, let counted, let bank): return .dropped(k, counted: counted, bank: bank)
-    case .kept(let k): kept = origin == .automation ? k.timed(arrivalMinuteMs: arrival.arrivalMinuteMs) : k
+    case .kept(let k): kept = k.timed(arrivalMinuteMs: arrival.arrivalMinuteMs)
     }
     let state = await link()
     if state == .linked { return .ignored(counted: kept.countsAsPayment, bank: kept.bank) }
