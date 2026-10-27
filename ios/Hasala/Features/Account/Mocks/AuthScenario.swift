@@ -70,6 +70,7 @@
     case textsWorking
     case textsWaiting
     case gmailTexts
+    case mayaTexts
 
     static func fromLaunchArguments(_ arguments: [String]) -> AuthScenario? {
       guard let i = arguments.firstIndex(of: "-HasalaScenario"), i + 1 < arguments.count else { return nil }
@@ -120,7 +121,8 @@
       case .outlookSignIn: [MockMailbox.gmail, MockMailbox.needingSignIn(MockMailbox.outlook)]
       case .finishSetup, .noAlerts, .gmailTexts: [MockMailbox.gmail]
       case .gmailSkipped, .noMailbox, .noBanks, .newUser, .noPasscode, .signInPassword, .setupBank, .reviewAccount,
-        .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted, .setupTexts, .textsWorking, .textsWaiting:
+        .setupEmail, .outlookAdmin, .outlookCancelled, .relaunchInterrupted, .setupTexts, .textsWorking, .textsWaiting,
+        .mayaTexts:
         []
       }
     }
@@ -139,7 +141,7 @@
     static func bankTexts(for scenario: AuthScenario?, mailbox: MockMailbox? = nil) -> MockBankTexts? {
       switch scenario {
       case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
-      case .textsWorking: MockBankTexts.working(mailbox: mailbox)
+      case .textsWorking, .mayaTexts: MockBankTexts.working(mailbox: mailbox)
       case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
       default: nil
       }
@@ -174,7 +176,7 @@
       }
       switch scenario {
       case nil, .passkeyUser, .gmailSkipped, .gmailReconnect, .mailboxes2, .outlookSignIn, .noMailbox, .noBanks,
-        .outlookReconnect, .gmailLinked, .finishSetup, .noAlerts, .textsWorking, .textsWaiting, .gmailTexts:
+        .outlookReconnect, .gmailLinked, .finishSetup, .noAlerts, .textsWorking, .textsWaiting, .gmailTexts, .mayaTexts:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)), phase: .ready)
       case .mayaSample:
         let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),

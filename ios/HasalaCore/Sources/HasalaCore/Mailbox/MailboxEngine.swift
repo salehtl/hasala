@@ -737,6 +737,11 @@ public actor MailboxEngine {
       report.haltedOn = .offline
       return report
     }
+    let texts: TextOverlap?
+    do { texts = try await ledger.textOverlap() } catch {
+      report.haltedOn = .offline
+      return report
+    }
 
     // 3. Token.
     let token: AccessToken
@@ -762,9 +767,10 @@ public actor MailboxEngine {
 
     switch state.phase {
     case .scanning:
-      return await scan(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+      return await scan(source, &state, trusted: trusted, texts: texts, deadlineMs: deadlineMs, paged: paged, report)
     case .authoringBackfill:
-      return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+      return await authorBackfill(
+        source, &state, trusted: trusted, texts: texts, deadlineMs: deadlineMs, paged: paged, report)
     default: break
     }
 
@@ -787,13 +793,14 @@ public actor MailboxEngine {
       state.lastSuccessAtMs = now
       report.completed = true
       let unchanged = await finish(&state, report)
-      return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, unchanged).report
+      return await runImports(source, &state, texts: texts, deadlineMs: deadlineMs, paged: paged, unchanged).report
     }
     let t0 = now
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    var run = Run(
+      trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address, texts: texts)
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -823,7 +830,7 @@ public actor MailboxEngine {
     try? await store.commit(c)
     report.phase = state.phase
     if cut || state.phase != .active { return report }
-    return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, report).report
+    return await runImports(source, &state, texts: texts, deadlineMs: deadlineMs, paged: paged, report).report
   }
 
   func holderCheckDue(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
@@ -835,8 +842,8 @@ public actor MailboxEngine {
   // MARK: - First connect (§7.7)
 
   private func scan(
-    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
-    _ report: CycleReport
+    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], texts: TextOverlap?, deadlineMs: Int64?,
+    paged: Bool, _ report: CycleReport
   ) async -> CycleReport {
     var report = report
     // No trusted sender yet (the Setup bank step's sender_trust_set ops have not folded): list
@@ -852,7 +859,7 @@ public actor MailboxEngine {
       }
     }
     let since = windowSinceSec(state)
-    var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address)
+    var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address, texts: texts)
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
@@ -884,12 +891,13 @@ public actor MailboxEngine {
     // card the ledger doesn't know files like a known one (`MessageDisposer.finalize`).
     state.phase = .authoringBackfill
     try? await store.commit(commitState(state))
-    return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+    return await authorBackfill(
+      source, &state, trusted: trusted, texts: texts, deadlineMs: deadlineMs, paged: paged, report)
   }
 
   private func authorBackfill(
-    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
-    _ report: CycleReport
+    _ source: any MailSource, _ state: inout MailboxState, trusted: [String], texts: TextOverlap?, deadlineMs: Int64?,
+    paged: Bool, _ report: CycleReport
   ) async -> CycleReport {
     var report = report
     let cards = await ledger.knownCards()
@@ -902,7 +910,7 @@ public actor MailboxEngine {
     }
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
-      guard let n = await authorStagedBatch(cards: cards, grant: grant(state), report: &report) else {
+      guard let n = await authorStagedBatch(cards: cards, grant: grant(state), texts: texts, report: &report) else {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
@@ -917,7 +925,7 @@ public actor MailboxEngine {
       // again and authored directly. Run unconditionally (no state
       // column records the cap): ids only, and the accounted set skips everything already done.
       let since = windowSinceSec(state)
-      var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address)
+      var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address, texts: texts)
       do {
         let cut = try await listAndProcess(
           source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
@@ -951,7 +959,9 @@ public actor MailboxEngine {
 
   func grant(_ state: MailboxState) -> String { config.grantID(provider: provider.id, address: state.address) }
 
-  func authorStagedBatch(cards: [CardKey: CardState], grant: String, report: inout CycleReport) async -> Int? {
+  func authorStagedBatch(
+    cards: [CardKey: CardState], grant: String, texts: TextOverlap?, report: inout CycleReport
+  ) async -> Int? {
     guard let batch = try? await store.staged(limit: config.backfillBatch) else { return nil }
     if batch.isEmpty { return 0 }
     var c = MailboxCommit()
@@ -965,7 +975,7 @@ public actor MailboxEngine {
         continue
       }
       let draft = MessageDisposer.finalize(
-        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer)
+        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer, texts: texts)
       c.drafts.append(draft)
       c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
       if let u = Self.unparsedSender(m, at: at) { c.unparsedSenders.append(u) }
@@ -981,7 +991,7 @@ public actor MailboxEngine {
     let cards = await ledger.knownCards()
     var authored = 0
     while true {
-      guard let n = await authorStagedBatch(cards: cards, grant: run.grant, report: &report) else {
+      guard let n = await authorStagedBatch(cards: cards, grant: run.grant, texts: run.texts, report: &report) else {
         run.stop = .offline
         return false
       }
@@ -1127,7 +1137,13 @@ public actor MailboxEngine {
       report.haltedOn = .reconnectRequired
       return report
     }
-    let (out, done) = await runImports(await listingSource(token), &state, deadlineMs: nil, paged: false, report)
+    let texts: TextOverlap?
+    do { texts = try await ledger.textOverlap() } catch {
+      report.haltedOn = .offline
+      return report
+    }
+    let (out, done) = await runImports(
+      await listingSource(token), &state, texts: texts, deadlineMs: nil, paged: false, report)
     report = out
     report.completed = done && report.haltedOn == nil
     return report
@@ -1136,7 +1152,8 @@ public actor MailboxEngine {
   /// Lists and authors every pending import's window, sender group by sender group, and ends
   /// each one whose listing was exhausted. A sender the ledger no longer trusts is dropped.
   func runImports(
-    _ source: any MailSource, _ state: inout MailboxState, deadlineMs: Int64?, paged: Bool, _ report: CycleReport
+    _ source: any MailSource, _ state: inout MailboxState, texts: TextOverlap?, deadlineMs: Int64?, paged: Bool,
+    _ report: CycleReport
   ) async -> (report: CycleReport, done: Bool) {
     var report = report
     guard let pending = try? await store.pendingImports() else {
@@ -1149,7 +1166,8 @@ public actor MailboxEngine {
     let wanted = pending.filter { trust[$0.domain] != false && BankDomains.isQuerySafe($0.domain) }
     for p in wanted where !trusted.contains(p.domain) { trusted.append(p.domain) }
     var done = pending.filter { p in !wanted.contains(p) }.map(\.domain)
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    var run = Run(
+      trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address, texts: texts)
     var failure: MailAPIError?
     var offline = false
     for (sinceMs, group) in Dictionary(grouping: wanted, by: \.sinceMs).sorted(by: { $0.key < $1.key }) {
@@ -1328,6 +1346,7 @@ public actor MailboxEngine {
     var cards: [CardKey: CardState]
     var grant: String
     var address: String?
+    let texts: TextOverlap?
     var width = 6
     var stagingFull = false
     var saw429 = false
@@ -1688,7 +1707,7 @@ public actor MailboxEngine {
           c.stage.append(staged)
         case .author:
           let draft = MessageDisposer.finalize(
-            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer)
+            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer, texts: run.texts)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))

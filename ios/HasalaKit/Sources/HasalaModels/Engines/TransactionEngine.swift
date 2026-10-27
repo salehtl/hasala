@@ -57,6 +57,7 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var home: HomeAmount? = nil
   public var canAlwaysUse: Bool = false
   public var combined: Bool = false
+  public var reasonLine: String? = nil
 }
 
 extension TransactionDetail {
@@ -126,7 +127,8 @@ public enum TransactionEngine {
       needsReview: t.inReview, reviewReason: t.activeReviewReason, project: s.project(t.projectID)?.name, isSample: t.isSample,
       suggestion: t.inReview ? ReviewEngine.suggestion(t, s).map(CategoryOption.init) : nil,
       sortedByRule: { if case .rule = t.categorySource { true } else { false } }(),
-      home: t.homeAmount, canAlwaysUse: t.canAlwaysUse, combined: t.combinedCopy != nil
+      home: t.homeAmount, canAlwaysUse: t.canAlwaysUse, combined: t.combinedCopy != nil,
+      reasonLine: t.activeReviewReason == .mayRepeat ? t.mayRepeat?.line : nil
     )
   }
 

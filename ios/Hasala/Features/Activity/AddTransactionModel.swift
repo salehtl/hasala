@@ -18,11 +18,13 @@ final class AddTransactionModel {
   init(app: AppModel, resolving mail: TxnID? = nil) {
     self.app = app
     let unread = mail.flatMap { id in app.store.state.unreadMail.first { $0.id == id } }
-    resolvedMail = unread?.id
+    let text = mail.flatMap { id in app.store.state.unreadTexts.first { $0.id == id } }
+    resolvedMail = unread?.id ?? text?.id
     postedAt = AddTransactionDates.date(
-      unread.map { LocalDateTime(date: $0.receivedOn, hour: 0, minute: 0) } ?? app.store.now)
+      unread.map { LocalDateTime(date: $0.receivedOn, hour: 0, minute: 0) } ?? text?.receivedAt ?? app.store.now)
     let accounts = app.store.state.accounts
-    accountID = unread?.accountID.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first { $0.inPlan }?.id
+    let named = unread?.accountID ?? text?.accountID
+    accountID = named.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first { $0.inPlan }?.id
   }
 
   var latest: Date { AddTransactionDates.date(app.store.now) }

@@ -346,14 +346,14 @@ enum ReviewReasonStyle {
   static func ink(_ reason: TxnReviewReason) -> Color {
     switch reason {
     case .senderUnverified: HColor.statusWarningForeground
-    case .probableCopy, .samePurchase: HColor.statusInfoForeground
+    case .probableCopy, .samePurchase, .mayRepeat: HColor.statusInfoForeground
     }
   }
 
   static func surface(_ reason: TxnReviewReason) -> Color {
     switch reason {
     case .senderUnverified: HColor.statusWarningSurface
-    case .probableCopy, .samePurchase: HColor.reviewSuggestionSurface
+    case .probableCopy, .samePurchase, .mayRepeat: HColor.reviewSuggestionSurface
     }
   }
 
@@ -362,13 +362,14 @@ enum ReviewReasonStyle {
     case .senderUnverified: .shield
     case .probableCopy: .envelope
     case .samePurchase: .globe
+    case .mayRepeat: .chat
     }
   }
 
   static func chip(_ reason: TxnReviewReason) -> InfoChip.Style {
     switch reason {
     case .senderUnverified: .warningReason
-    case .probableCopy, .samePurchase: .reason
+    case .probableCopy, .samePurchase, .mayRepeat: .reason
     }
   }
 }
@@ -471,6 +472,8 @@ struct ReviewReasonInfo: View {
       "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
     case .samePurchase:
       "Your bank sent an alert in another currency, then this one in AED a few days later on the same card. It's often the same purchase. Until you choose, both count in your totals."
+    case .mayRepeat:
+      "A bank text and a bank email, or two bank texts, can tell of one payment in different words, so Hasala couldn't be sure. Until you choose, both count in your totals."
     }
   }
 
@@ -488,6 +491,12 @@ struct ReviewReasonInfo: View {
       [
         "If it's the same purchase, the original keeps this AED amount and this alert moves to Archived.",
         "Keep both if they're two different purchases.",
+      ]
+    case .mayRepeat:
+      [
+        "Look for the payment in your bank app.",
+        "If it's the same payment, archive this one.",
+        "If you paid twice, sort it as usual.",
       ]
     }
   }
@@ -515,6 +524,13 @@ struct ReviewReasonInfo: View {
       Button("Keep both") { keepBoth() }
         .buttonStyle(.pill(.secondary, fill: true))
         .accessibilityIdentifier("reason.keepBoth")
+    case .mayRepeat:
+      Button("Same payment, archive it") { archive() }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("reason.archive")
+      Button("Keep both, sort it") { sort() }
+        .buttonStyle(.pill(.secondary, fill: true))
+        .accessibilityIdentifier("reason.sort")
     }
   }
 

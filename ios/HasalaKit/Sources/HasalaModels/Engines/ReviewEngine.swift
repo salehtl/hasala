@@ -189,6 +189,8 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var samePurchase: Bool = false
   public var month: YearMonth? = nil
   public var canAlwaysUse: Bool = false
+  public var reasonLine: String? = nil
+  public var fromText: Bool = false
 }
 
 public struct ReviewMonth: Sendable, Hashable, Identifiable {
@@ -367,6 +369,34 @@ public enum ReviewEngine {
     return "\(when) · in \(provider.appName)"
   }
 
+  public static func unreadTexts(_ s: LedgerState) -> [UnreadText] {
+    s.unreadTexts.sorted { $0.receivedAt == $1.receivedAt ? $0.id > $1.id : $0.receivedAt > $1.receivedAt }
+  }
+
+  public static func unreadTextLine(_ n: Int) -> String {
+    "\(n) bank text\(n == 1 ? "" : "s") we couldn't read"
+  }
+
+  public static func unreadTextTitle(_ m: UnreadText) -> String {
+    m.bank.map { "Text from \($0)" } ?? "Bank text"
+  }
+
+  public static func unreadTextWhen(_ m: UnreadText, today: LocalDate) -> String {
+    m.receivedAt.date == today ? m.receivedAt.time : "\(m.receivedAt.time) on \(m.receivedAt.date.short)"
+  }
+
+  public static func unreadTextDetail(_ m: UnreadText, today: LocalDate) -> String {
+    m.receivedAt.date == today ? "Received today, \(m.receivedAt.time)" : "Received \(m.receivedAt.date.short), \(m.receivedAt.time)"
+  }
+
+  public static func unreadTextBody(_ m: UnreadText, today: LocalDate, canPaste: Bool) -> String {
+    let from = m.bank.map { "the text from \($0)" } ?? "the text"
+    let find = "Find \(from) at \(unreadTextWhen(m, today: today)) in Messages"
+    return canPaste
+      ? "Hasala couldn't read this bank text. \(find), copy it and paste it here, or add the payment yourself."
+      : "Hasala couldn't read this bank text. \(find) and add the payment yourself."
+  }
+
   public static func months(_ cards: [ReviewCardModel], now: LocalDateTime) -> [ReviewMonth] {
     var out: [ReviewMonth] = []
     for card in cards {
@@ -405,7 +435,8 @@ public enum ReviewEngine {
     let when = "\(verb.lowercased()) \(spokenDay(d))"
     var card = ReviewCardModel(
       id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
-      isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason, rawMerchant: t.provenance?.rawMerchant, amount: t.amount,
+      isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason,
+      rawMerchant: t.provenance.flatMap { $0.rawMerchant.isEmpty ? nil : $0.rawMerchant }, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: suggestion(t, s).map(CategoryOption.init)
     )
@@ -414,6 +445,8 @@ public enum ReviewEngine {
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
     card.canAlwaysUse = t.canAlwaysUse
+    if t.activeReviewReason == .mayRepeat { card.reasonLine = t.mayRepeat?.line }
+    card.fromText = t.fromText
     return card
   }
 

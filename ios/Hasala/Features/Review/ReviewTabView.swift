@@ -44,6 +44,7 @@ struct ReviewTabView: View {
             startCard
           }
           if unread > 0 { unreadable(unread) }
+          if !app.store.state.unreadTexts.isEmpty { unreadTexts(app.store.state.unreadTexts.count) }
           if app.offersBankTextPaste { pasteTextRow }
           if !cards.isEmpty { list(cards) }
         }
@@ -52,6 +53,7 @@ struct ReviewTabView: View {
       .navigationDestination(for: ReviewRoute.self) { route in
         switch route {
         case .unreadMail: UnreadMailView(app: app)
+        case .unreadTexts: UnreadTextsView(app: app)
         }
       }
       .onChange(of: cards.count) {
@@ -375,7 +377,7 @@ struct ReviewTabView: View {
       Button {
         app.router.open(.addTransaction)
       } label: {
-        unreadableRow(n, detail: Self.unreadableDetail)
+        unreadableRow(Self.unreadableLine(n), detail: Self.unreadableDetail)
       }
       .buttonStyle(HRowPressStyle())
       .accessibilityHint("Opens Add a transaction")
@@ -384,7 +386,7 @@ struct ReviewTabView: View {
       Button {
         app.router.review.append(.unreadMail)
       } label: {
-        unreadableRow(n, detail: "Add each one by hand or dismiss it")
+        unreadableRow(Self.unreadableLine(n), detail: "Add each one by hand or dismiss it")
       }
       .buttonStyle(HRowPressStyle())
       .accessibilityIdentifier("review.tab.unreadable")
@@ -393,13 +395,27 @@ struct ReviewTabView: View {
 
   static let unreadableDetail = "Add it yourself from your bank app"
 
+  static let unreadTextsDetail = "Paste each one again, or add it yourself"
+
+  private func unreadTexts(_ n: Int) -> some View {
+    Button {
+      app.router.review.append(.unreadTexts)
+    } label: {
+      unreadableRow(
+        ReviewEngine.unreadTextLine(n), detail: app.offersBankTextPaste ? Self.unreadTextsDetail : "Add each one by hand or dismiss it",
+        icon: .chat)
+    }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityIdentifier("review.tab.unreadTexts")
+  }
+
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
-  private func unreadableRow(_ n: Int, detail: String) -> some View {
+  private func unreadableRow(_ title: String, detail: String, icon: HIcon = .envelope) -> some View {
     let disc = Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-      .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+      .overlay { HIconView(icon, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
     let text = VStack(alignment: .leading, spacing: 0) {
-      Text(Self.unreadableLine(n))
+      Text(title)
         .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
       Text(detail)

@@ -1,5 +1,6 @@
 import CoreCategorize
 import CoreDomain
+import CoreMailbox
 import CoreOutbox
 import CoreProjection
 import CoreReplay
@@ -103,6 +104,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case trust(category: String, modelTag: String?, corrections: Int)
+    case cardLinked(bank: String?, last4: String)
   }
 
   enum Failure: Error, Equatable {
@@ -128,15 +130,15 @@ nonisolated struct LedgerEditAuthor: Sendable {
       }
     case .categorize(let id, let c, let learnRule, let project):
       let row = try txn(id)
+      let link = try confirmLink(row)
       if learnRule, Self.reaches(row) {
-        let inverses = try await categorizeReaching(row, category: c, project: project)
-        return inverses + noteCorrection(row, to: c)
+        let inverses = try await categorizeReaching(row, category: c, project: project) { a throws(AuthorError) in
+          try CardLinkPlan.apply(link, to: &a)
+        }
+        return inverses + noteCorrection(row, to: c) + Self.unlinking(link)
       }
-      try await build { a throws(AuthorError) in
-        a.categorize(txnID: id, parentVersion: row.version, category: c, needsReview: false)
-        if let project { a.annotate(txnID: id, set: [("project_id", project)]) }
-      }
-      return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c)
+      try await build(Self.confirming(row, category: c, project: project, link: link))
+      return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c) + Self.unlinking(link)
     case .markTransfer(let id):
       let row = try txn(id)
       try await build { a throws(AuthorError) in
@@ -477,6 +479,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.rule(id: id, parentVersion: version, restore)
         case .trust, .prior:
           continue
+        case .cardLinked(let bank, let last4):
+          a.linkCard(bank: bank, last4: last4, .forget)
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }
           a.categorize(txnID: t, parentVersion: row.version, category: c, needsReview: review)
@@ -538,6 +542,32 @@ nonisolated struct LedgerEditAuthor: Sendable {
           try a.setBill(id: id, parentVersion: version, draft)
         }
       }
+    }
+  }
+
+  // MARK: Card links
+
+  func confirmLink(_ row: TxnRow) throws -> [CardLinkStep] {
+    guard row.isText, row.needsReview, !row.unparsed else { return [] }
+    return CardLinkPlan.confirming(
+      bank: row.bank, last4: row.last4, accounts: Set(try reader.accounts().map(\.id)),
+      current: CardLinkPlan.current(try reader.cards()), creditCards: CardLinkPlan.creditCards(observer.context.store))
+  }
+
+  static func confirming(
+    _ row: TxnRow, category c: String, project: ProjectID?, link: [CardLinkStep]
+  ) -> (inout OpAuthor) throws(AuthorError) -> Void {
+    { a throws(AuthorError) in
+      try CardLinkPlan.apply(link, to: &a)
+      a.categorize(txnID: row.id, parentVersion: row.version, category: c, needsReview: false)
+      if let project { a.annotate(txnID: row.id, set: [("project_id", project)]) }
+    }
+  }
+
+  static func unlinking(_ link: [CardLinkStep]) -> [Inverse] {
+    link.compactMap { s in
+      guard case .mine = s.link else { return nil }
+      return .cardLinked(bank: s.bank, last4: s.last4)
     }
   }
 

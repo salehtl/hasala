@@ -51,14 +51,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public func senderTrust() async -> [String: Bool] { (try? reader.senderTrust()) ?? [:] }
 
-  public func knownCards() async -> [CardKey: CardState] {
-    var out: [CardKey: CardState] = [:]
-    for c in (try? reader.cards()) ?? [] {
-      guard let s = CardState(rawValue: c.state) else { continue }
-      out[CardKey(bank: c.bank ?? "", last4: c.last4)] = s
-    }
-    return out
-  }
+  public func knownCards() async -> [CardKey: CardState] { CardLinkPlan.current((try? reader.cards()) ?? []) }
 
   public func projectedMessageIDs(among ids: [String]) async -> Set<String> {
     (try? reader.knownMailboxMessageIDs(ids)) ?? []
@@ -72,29 +65,9 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError) {
     guard !decisions.isEmpty else { return }
     let accounts = Set(((try? reader.accounts()) ?? []).map(\.id))
-    let current = await knownCards()
-    let cardTemplates = stagedCardTemplates()
-    try await author { a throws(AuthorError) in
-      var created: Set<String> = []
-      for d in decisions {
-        let bank: String? = d.card.bank.isEmpty ? nil : d.card.bank
-        switch d.state {
-        case .mine:
-          let account = d.accountID ?? OpAuthor.cardAccountID(bank: bank, last4: d.card.last4)
-          if current[d.card] == .mine, d.accountID == nil { continue }  // 03b `.cardAlreadyMine`
-          if !accounts.contains(account), !created.contains(account) {
-            let name = "\(bank.map { Self.bankNames[$0] ?? $0.uppercased() } ?? "Card") ···\(d.card.last4)"
-            let kind: OpAuthor.AccountKind = cardTemplates.contains(d.card) ? .creditCard : .current
-            try a.setAccount(id: account, OpAuthor.AccountDraft(name: name, institution: bank, kind: kind))
-            created.insert(account)
-          }
-          a.linkCard(bank: bank, last4: d.card.last4, .mine(account: account))
-        case .notMine:
-          if current[d.card] == .notMine { continue }
-          a.linkCard(bank: bank, last4: d.card.last4, .notMine)
-        }
-      }
-    }
+    let steps = CardLinkPlan.plan(
+      decisions, accounts: accounts, current: await knownCards(), creditCards: stagedCardTemplates())
+    try await author { a throws(AuthorError) in try CardLinkPlan.apply(steps, to: &a) }
   }
 
   public func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError) {
@@ -128,17 +101,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   /// The cards whose staged alerts a card template read (`<bank>.card.*`): their
   /// new account is a credit card, the others current accounts (03b §4.2).
-  func stagedCardTemplates() -> Set<CardKey> {
-    let rows = (try? MailboxTableStore(writer: observer.context.store.db).staged(limit: 10_000)) ?? []
-    var out: Set<CardKey> = []
-    for r in rows {
-      guard let g = try? JSONDecoder().decode(MailGates.self, from: r.gatesJSON), let t = g.template,
-        t.hasPrefix("\(r.bank).card.")
-      else { continue }
-      out.insert(CardKey(bank: r.bank, last4: r.last4))
-    }
-    return out
-  }
+  func stagedCardTemplates() -> Set<CardKey> { CardLinkPlan.creditCards(observer.context.store) }
 
   /// Builds one blob with `body` (under the account's shared stamps),
   /// enqueues it and re-projects.

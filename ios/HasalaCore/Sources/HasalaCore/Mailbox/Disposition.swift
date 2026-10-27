@@ -322,7 +322,7 @@ public enum MessageDisposer {
   /// `provider` is `provenance.provider` (the mailbox the message came from).
   public static func finalize(
     _ m: ParsedMail, provider: MailProviderID, grantID: String, cards: [CardKey: CardState],
-    categorizer: any IngestCategorizer
+    categorizer: any IngestCategorizer, texts: TextOverlap? = nil
   ) -> MailboxIngestDraft {
     let provenance = JSONValue.object(
       JSONObject([
@@ -359,6 +359,7 @@ public enum MessageDisposer {
       && card != "not_mine"
       && (m.gates.reader == nil || m.readerConfident == true)
       && m.held != true
+      && texts?.twin(of: m) == nil
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision = decided.category == nil ? refundDecision(m, f) ?? decided : decided
 

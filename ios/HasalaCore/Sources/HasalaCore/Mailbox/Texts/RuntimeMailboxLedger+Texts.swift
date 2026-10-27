@@ -7,6 +7,16 @@ extension RuntimeMailboxLedger: BankTextLedger {
     ((try? reader.textRows(postedFromMs: postedFromMs, toMs: toMs)) ?? []).map(BankTextRow.init)
   }
 
+  public func textOverlap() async throws(MailboxLedgerError) -> TextOverlap? {
+    do {
+      guard let span = try reader.textRowSpan() else { return nil }
+      let rows = try reader.textRows(postedFromMs: span.oldestPostedMs, toMs: span.newestPostedMs).map(BankTextRow.init)
+      return TextOverlap(span: span, rows: rows)
+    } catch {
+      throw MailboxLedgerError("texts")
+    }
+  }
+
   public func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
     var id: String?
     try await author { a throws(AuthorError) in
