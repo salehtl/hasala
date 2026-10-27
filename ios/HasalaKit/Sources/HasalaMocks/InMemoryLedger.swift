@@ -27,6 +27,7 @@ public final class InMemoryLedger: LedgerStore {
     var rules: (before: [Rule], after: [Rule])?
     var projects: (before: [Project], after: [Project])?
     var unread: (before: [UnreadMail], after: [UnreadMail])?
+    var unreadTexts: (before: [UnreadText], after: [UnreadText])?
     var sortOrder: [TxnID: (before: Int?, after: Int?)] = [:]
   }
 
@@ -265,9 +266,10 @@ public final class InMemoryLedger: LedgerStore {
       }
       title = lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories"
     case .archive(let id, let archived):
-      if archived, s.unreadMail.contains(where: { $0.id == id }) {
+      if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
         touchedUnread = true
         s.unreadMail.removeAll { $0.id == id }
+        s.unreadTexts.removeAll { $0.id == id }
         title = "Dismissed"
       } else {
         try editTxn(id) { $0.archived = archived }
@@ -564,7 +566,10 @@ public final class InMemoryLedger: LedgerStore {
     if touchedCandidates { record.candidates = (before.billCandidates, s.billCandidates) }
     if touchedRules { record.rules = (before.rules, s.rules) }
     if touchedProjects { record.projects = (before.projects, s.projects) }
-    if touchedUnread { record.unread = (before.unreadMail, s.unreadMail) }
+    if touchedUnread {
+      record.unread = (before.unreadMail, s.unreadMail)
+      record.unreadTexts = (before.unreadTexts, s.unreadTexts)
+    }
     let token = UndoToken(id: nextToken, title: title, batch: batch)
     nextToken += 1
     undoRecords[token.id] = record
@@ -600,6 +605,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.rules { Self.revertElements(&s.rules, before: old, after: new) }
     if let (old, new) = r.projects { Self.revertElements(&s.projects, before: old, after: new) }
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
+    if let (old, new) = r.unreadTexts { Self.revertElements(&s.unreadTexts, before: old, after: new) }
     for (id, o) in r.sortOrder where sortOrder[id] == o.after { sortOrder[id] = o.before }
     MockReach.refresh(&s, sortOrder: sortOrder)
     state = s

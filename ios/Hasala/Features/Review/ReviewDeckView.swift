@@ -182,7 +182,7 @@ struct ReviewDeckView: View {
     Menu {
       if let top = model.cards.first {
         Button("Skip for now") { skip(top) }
-        if BuildSurface.showsUnfinished {
+        if BuildSurface.showsUnfinished, !top.fromText {
           // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
           Button("View bank email") { app.say("The bank email opens in a later build", icon: .envelope) }
         }
@@ -422,7 +422,7 @@ struct ReviewDeckView: View {
       footerLink("Skip for now", id: "review.skip") {
         if let top { skip(top) }
       }
-      if BuildSurface.showsUnfinished {
+      if BuildSurface.showsUnfinished, top?.fromText != true {
         HColor.borderSubtle.frame(width: 1, height: 20)
         Button {
           // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
@@ -929,7 +929,7 @@ struct ReviewCardView<Actions: View>: View {
       HStack(spacing: 12) {
         Circle().fill(HColor.surfacePrimary).frame(width: 32, height: 32)
           .overlay { HIconView(ReviewReasonStyle.icon(r), size: 16, color: ink, strokeWidth: 2) }
-        Text(r.detail)
+        Text(card.reasonLine ?? r.detail)
           .hType(.footnote.weight(.medium))
           .foregroundStyle(ink)
           .fixedSize(horizontal: false, vertical: true)
@@ -946,7 +946,7 @@ struct ReviewCardView<Actions: View>: View {
     }
     .buttonStyle(.plain)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("\(r.title). \(r.detail)")
+    .accessibilityLabel("\(r.title). \(card.reasonLine ?? r.detail)")
     .accessibilityHint("Shows what this means and what to do")
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("review.reasonStrip.\(r.rawValue)")
@@ -1036,7 +1036,7 @@ struct ReviewCardView<Actions: View>: View {
     if let copy = card.copyLine {
       line += " \(copy)."
     } else if let r = card.reviewReason {
-      line += " \(r.title)."
+      line += " \(card.reasonLine ?? r.title)."
     }
     if card.isNewMerchant { line += " New merchant." }
     if let raw = card.rawMerchant { line += " Bank text: \(raw)." }

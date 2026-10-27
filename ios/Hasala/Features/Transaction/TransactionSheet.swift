@@ -102,7 +102,7 @@ struct TransactionSheet: View {
     ScrollView {
       VStack(spacing: 16) {
         summary(d)
-        if let reason = d.reviewReason { reasonCallout(reason) }
+        if let reason = d.reviewReason { reasonCallout(reason, line: d.reasonLine) }
         details(d)
         if d.isSample {
           sampleNote
@@ -186,7 +186,7 @@ struct TransactionSheet: View {
     return out
   }
 
-  private func reasonCallout(_ reason: TxnReviewReason) -> some View {
+  private func reasonCallout(_ reason: TxnReviewReason, line: String?) -> some View {
     let ink = ReviewReasonStyle.ink(reason)
     return Button { push(.reviewReason(reason)) } label: {
       HStack(alignment: .top, spacing: 12) {
@@ -196,7 +196,7 @@ struct TransactionSheet: View {
           Text(reason.title)
             .hType(.subheadline.weight(.semibold))
             .foregroundStyle(ink)
-          Text(reason.detail)
+          Text(line ?? reason.detail)
             .hType(.footnote)
             .foregroundStyle(ink)
         }
@@ -212,7 +212,7 @@ struct TransactionSheet: View {
     }
     .buttonStyle(.plain)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("\(reason.title). \(reason.detail)")
+    .accessibilityLabel("\(reason.title). \(line ?? reason.detail)")
     .accessibilityHint("Shows what this means and what to do")
     .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("txn.reviewReason.\(reason.rawValue)")
@@ -294,7 +294,7 @@ struct TransactionSheet: View {
         Text("From your bank").hType(.overline).foregroundStyle(HColor.textGroupedHeader)
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 8)
-        if BuildSurface.showsUnfinished {
+        if BuildSurface.showsUnfinished, !p.isText {
           // TODO(spec 04 §16.2 G7): re-fetch the message on the holder iPhone.
           Button {
             app.say("The bank email opens in a later build", icon: .envelope)
@@ -318,24 +318,27 @@ struct TransactionSheet: View {
 
       VStack(alignment: .leading, spacing: 0) {
         HStack(alignment: .top, spacing: 14) {
-          HIconView(.envelope, size: 22, color: HColor.iconPrimary)
+          HIconView(p.isText ? .chat : .envelope, size: 22, color: HColor.iconPrimary)
           VStack(alignment: .leading, spacing: 2) {
             Text(p.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+              .accessibilityIdentifier("txn.source")
             Text(p.readAt).hType(.footnote).foregroundStyle(HColor.textSecondary)
             if let check = p.senderCheck {
               Text("Sender check: \(check)").hType(.footnote).foregroundStyle(HColor.textSecondary)
                 .accessibilityIdentifier("txn.senderCheck")
             }
-            Text(verbatim: p.rawMerchant)
-              .font(.system(.footnote, design: .monospaced))
-              .foregroundStyle(HColor.textPrimary)
-              .padding(.horizontal, 12).padding(.vertical, 8)
-              // Paper 4I0-0 spans the text column, not the text.
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-              .padding(.top, 8)
-              .accessibilityLabel("Bank text: \(p.rawMerchant)")
-              .accessibilityIdentifier("txn.rawMerchant")
+            if !p.rawMerchant.isEmpty {
+              Text(verbatim: p.rawMerchant)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(HColor.textPrimary)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                // Paper 4I0-0 spans the text column, not the text.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.top, 8)
+                .accessibilityLabel("Bank text: \(p.rawMerchant)")
+                .accessibilityIdentifier("txn.rawMerchant")
+            }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         }

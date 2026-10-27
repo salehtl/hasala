@@ -23,6 +23,20 @@ extension LedgerReader {
     }
   }
 
+  public func accountInUse(_ id: String, besidesCard bank: String?, last4: String) throws -> Bool {
+    try db.read { db in
+      try Bool.fetchOne(
+        db,
+        sql: """
+          SELECT EXISTS (SELECT 1 FROM card WHERE account = :id AND NOT (IFNULL(bank, '') = :bank AND last4 = :last4))
+            OR EXISTS (SELECT 1 FROM checkin WHERE account = :id)
+            OR EXISTS (SELECT 1 FROM bill WHERE account = :id)
+            OR EXISTS (SELECT 1 FROM goal WHERE account_id = :id)
+            OR EXISTS (SELECT 1 FROM txn WHERE superseded_by IS NULL AND (account_id = :id OR counter_account_id = :id))
+          """, arguments: ["id": id, "bank": bank ?? "", "last4": last4]) ?? false
+    }
+  }
+
   /// Every card link (`mine` and `not_mine`; a forgotten card has no row).
   public func cards() throws -> [CardLink] {
     try db.read { db in

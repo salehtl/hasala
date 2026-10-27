@@ -46,7 +46,7 @@ public enum Glyph: String, Sendable, Hashable, Codable {
   case rent, groceries, transport, shopping, salary, transfer, flag
   // The rest of taxonomy v1 (03c §4.1) and the profile rows.
   case healthcare, entertainment, subscriptions, investments, debt, freelance, refunds
-  case bank, tag, bill, wallet, envelope, rule
+  case bank, tag, bill, wallet, envelope, rule, chat
 }
 
 /// The tone of a small status pill ("2 new today", "3 days late", "In 4 days").
