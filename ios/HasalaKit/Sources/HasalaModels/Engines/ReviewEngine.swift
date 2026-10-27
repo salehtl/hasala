@@ -509,4 +509,6 @@ public enum SamePurchaseText {
   public static func note(_ foreign: Money) -> String {
     "Settled the \(foreign.currency) \(MoneyFormat.string(foreign.minor)) purchase"
   }
+
+  public static let restoreRefused = "This alert is counted in the foreign purchase. Restoring it would count it twice."
 }

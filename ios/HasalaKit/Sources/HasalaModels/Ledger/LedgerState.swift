@@ -322,6 +322,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var ruleID: RuleID?
   public var lastPick: CategoryID?
   public var combinedCopy: TxnID?
+  public var mergedInto: TxnID?
   public var mayRepeat: MayRepeat?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }

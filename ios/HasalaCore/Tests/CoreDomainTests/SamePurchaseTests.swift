@@ -33,6 +33,23 @@ struct SamePurchaseTests {
     SamePurchase.pairs(rows, home: "AED").map { "\($0.foreign)>\($0.home)" }
   }
 
+  @Test("a merged AED alert names its foreign purchase; a plain archive does not")
+  func mergedForeign() {
+    var merged = Self.a()
+    merged.archived = true
+    let settled = Self.f(home: 9_300)
+    let note = SamePurchase.note(foreignMinor: 2_500, currency: "USD")
+    #expect(SamePurchase.mergedForeign(of: merged, note: note, among: [settled], home: "AED") == "f")
+    #expect(SamePurchase.mergedForeign(of: merged, note: "Lunch", among: [settled], home: "AED") == nil)
+    #expect(SamePurchase.mergedForeign(of: merged, note: nil, among: [settled], home: "AED") == nil)
+    #expect(SamePurchase.mergedForeign(of: merged, note: note, among: [Self.f()], home: "AED") == nil)
+    #expect(SamePurchase.mergedForeign(of: Self.a(), note: note, among: [settled], home: "AED") == nil)
+    var gone = settled
+    gone.archived = true
+    #expect(SamePurchase.mergedForeign(of: merged, note: note, among: [gone], home: "AED") == nil)
+    #expect(SamePurchase.mergedForeign(of: merged, note: note, among: [Self.f(home: 9_300, last4: "0001")], home: "AED") == nil)
+  }
+
   @Test("a USD alert and a later AED posting of the same purchase pair")
   func basic() {
     #expect(Self.pairs([Self.f(), Self.a()]) == ["f>a"])
