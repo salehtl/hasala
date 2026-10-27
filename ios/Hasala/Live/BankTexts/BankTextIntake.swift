@@ -1,9 +1,16 @@
 import CoreMailbox
+import CoreStore
 import Foundation
 
 nonisolated protocol BankTextAccount: AnyObject, Sendable {
   var author: any BankTextsAuthoring { get }
   func askLink() async -> Bool?
+}
+
+enum BankTextSignIn: Equatable, Sendable {
+  case signedIn
+  case signedOut
+  case locked
 }
 
 enum BankTextIntakeResult: Equatable, Sendable {
@@ -19,7 +26,7 @@ struct BankTextIntakeDeps {
   var facts: BankTextsFacts
   var marker: LockedTextsMarkerFile
   var secret: TextKeySecret
-  var hasAccount: () -> Bool
+  var signIn: () -> BankTextSignIn
   var account: () async -> (any BankTextAccount)?
   var linkBudget: Duration = .seconds(6)
 }
@@ -36,6 +43,17 @@ final class BankTextIntake {
     self.deps = deps
   }
 
+  static func signIn(_ secrets: Secrets) -> BankTextSignIn {
+    do {
+      guard try secrets.binding() != nil, let session = try secrets.session() else { return .signedOut }
+      return session.pending_logout ? .signedOut : .signedIn
+    } catch .notNow {
+      return .locked
+    } catch {
+      return .signedOut
+    }
+  }
+
   static func ms(_ date: Date) -> Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded(.down)) }
 
   static func sender(_ raw: String?) -> String? {
@@ -46,14 +64,15 @@ final class BankTextIntake {
   func run(_ text: String, sender rawSender: String?, at now: Date) async -> BankTextIntakeResult {
     let nowMs = Self.ms(now)
     let sender = Self.sender(rawSender)
-    if deps.secret.beforeFirstUnlock() {
+    let signIn = deps.secret.beforeFirstUnlock() ? .locked : deps.signIn()
+    if signIn == .locked {
       guard case .keep(let kept) = deps.reader.read(text, sender: sender, testWindowOpen: false) else {
         return .dropped(counted: false)
       }
       let marked = kept.mayBeBanks && deps.marker.add(arrivedAtMs: nowMs)
       return .failed(Self.lockedMessage, marked: marked)
     }
-    guard deps.hasAccount() else {
+    guard signIn == .signedIn else {
       guard case .keep = deps.reader.read(text, sender: sender, testWindowOpen: false) else {
         return .dropped(counted: false)
       }
@@ -87,7 +106,6 @@ final class BankTextIntake {
     guard let account = await deps.account() else { return .failed(Self.notOpenMessage) }
     var link: BankTextLinkState = copy == nil ? .unknownUnanswered : .notLinked
     if copy == nil, let answer = await Self.within(deps.linkBudget, { await account.askLink() }) {
-      BankTextsLinkCopy.note(linked: answer, facts: deps.facts, nowMs: Self.ms(.now))
       link = answer ? .linked : .notLinked
     }
     if link == .linked { return ignore(kept, nowMs: nowMs) }
@@ -168,6 +186,66 @@ enum BankTextsLinkCopy {
     case true?: .linked
     case false?: .notLinked
     case nil: .unknown
+    }
+  }
+}
+
+struct BankTextsLinkKeeper {
+  let facts: BankTextsFacts
+  let nowMs: () -> Int64
+
+  init(facts: BankTextsFacts = .shared, nowMs: @escaping () -> Int64) {
+    self.facts = facts
+    self.nowMs = nowMs
+  }
+
+  nonisolated static func holdsLink(_ phase: MailboxPhase) -> Bool {
+    switch phase {
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .halted: true
+    case .unlinked, .reconnectRequired, .otherDevice: false
+    }
+  }
+
+  nonisolated static func asksServer(_ phase: MailboxPhase?) -> Bool {
+    switch phase {
+    case .unlinked?, .otherDevice?, .reconnectRequired?: true
+    case nil, .scanning?, .awaitingCards?, .authoringBackfill?, .active?, .halted?: false
+    }
+  }
+
+  func ask<Provider>(_ server: () async throws -> (MailboxLinkStatus, Provider?)) async
+    -> (MailboxLinkStatus, Provider?)?
+  {
+    guard let answer = try? await server() else { return nil }
+    BankTextsLinkCopy.note(answer.0, facts: facts, nowMs: nowMs())
+    return answer
+  }
+
+  func ownLink(_ phase: MailboxPhase?) {
+    guard let phase, Self.holdsLink(phase) else { return }
+    let now = nowMs()
+    guard facts.read(nowMs: now).link?.linked != true else { return }
+    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: now)
+  }
+
+  func afterRun(_ phase: MailboxPhase?, ask: () async -> Void) async {
+    ownLink(phase)
+    if Self.asksServer(phase) { await ask() }
+  }
+
+  func connected() {
+    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: nowMs())
+  }
+
+  func disconnected(_ outcome: MailboxDisconnectOutcome) {
+    guard Self.unlinked(outcome) else { return }
+    BankTextsLinkCopy.disconnected(facts: facts, nowMs: nowMs())
+  }
+
+  nonisolated static func unlinked(_ outcome: MailboxDisconnectOutcome) -> Bool {
+    switch outcome {
+    case .disconnected, .removed, .disconnectedRemoveFailed: true
+    case .otherDevice, .failed: false
     }
   }
 }

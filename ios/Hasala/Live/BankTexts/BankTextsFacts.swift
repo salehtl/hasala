@@ -110,8 +110,10 @@ nonisolated final class BankTextsFacts: Sendable {
 
   func read(nowMs: Int64) -> BankTextsFactsData {
     lock.withLock {
-      var data = (try? loaded()) ?? BankTextsFactsData()
+      guard let held = try? loaded() else { return BankTextsFactsData() }
+      var data = held
       data.prune(nowMs: nowMs)
+      if data != held, (try? save(data)) != nil { cache.withLock { $0 = data } }
       return data
     }
   }

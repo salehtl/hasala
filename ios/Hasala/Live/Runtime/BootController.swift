@@ -98,7 +98,7 @@ final class BootController {
       setup: LiveSetupAuthoring(runtime: { holder.boot?.runtime }), notifications: SystemNotificationPermission(),
       hasPasscode: env.hasPasscode, cloudSort: LiveCloudSort(),
       unseenPhrase: unseenPhrase, manualEntry: ManualEntryChoice(defaults: .standard),
-      bankTexts: BuildSurface.showsBankTexts ? LiveBankTexts(runtime: { holder.boot?.runtime }) : nil)
+      bankTexts: LiveBankTexts(runtime: { holder.boot?.runtime }))
     let first = AccountSession(services: services, phase: .signedOut)
     session = first
     onboarding = OnboardingStore(services: services, session: { [weak holder] in holder?.boot?.session ?? first })
@@ -313,7 +313,6 @@ final class BootController {
   /// runtime closes and the gate goes back to Welcome, whichever screen asked.
   private func left() async {
     await closeRuntime()
-    BankTextsDeviceData.forget(secrets: env.account.secrets.store)
     wall = nil
     if session.phase != .signedOut { session.signedOut() }
   }

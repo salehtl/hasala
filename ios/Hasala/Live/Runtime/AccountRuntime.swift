@@ -38,6 +38,7 @@ final class AccountRuntime {
   @ObservationIgnored let backlog: BacklogSorter
   @ObservationIgnored let suggestions: ModelSuggestionStage
   @ObservationIgnored let bankTexts: CoreBankTextAuthoring
+  @ObservationIgnored let linkCopy: BankTextsLinkKeeper
   @ObservationIgnored private var switchOff: NSObjectProtocol?
   @ObservationIgnored private var switchOn: NSObjectProtocol?
   let store: LiveLedgerStore
@@ -69,7 +70,7 @@ final class AccountRuntime {
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
     lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
     mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage,
-    bankTexts: CoreBankTextAuthoring, store: LiveLedgerStore
+    bankTexts: CoreBankTextAuthoring, linkCopy: BankTextsLinkKeeper, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -87,6 +88,7 @@ final class AccountRuntime {
     self.backlog = backlog
     self.suggestions = suggestions
     self.bankTexts = bankTexts
+    self.linkCopy = linkCopy
     self.store = store
   }
 
@@ -164,30 +166,16 @@ final class AccountRuntime {
   /// move it to the other provider, whose lane then runs here. Offline, the last answer
   /// stays until the next run.
   func checkServerLink() async {
-    guard lane != nil, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice else { return }
-    _ = await askServerLink()
-  }
-
-  func noteOwnLink(facts: BankTextsFacts = .shared) {
-    guard let phase = store.mailboxPhase, Self.holdsLink(phase) else { return }
-    let nowMs = context.clock.nowMs()
-    guard facts.read(nowMs: nowMs).link?.linked != true else { return }
-    BankTextsLinkCopy.note(linked: true, facts: facts, nowMs: nowMs)
-  }
-
-  nonisolated static func holdsLink(_ phase: MailboxPhase) -> Bool {
-    switch phase {
-    case .unlinked: false
-    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted, .otherDevice: true
-    }
+    guard lane != nil else { return }
+    await linkCopy.afterRun(store.mailboxPhase) { _ = await askServerLink() }
   }
 
   /// `GET /mailbox/link` now: the answer (kept in `serverLink`), or nil when the server
   /// couldn't be asked.
   func askServerLink() async -> MailboxLinkStatus? {
-    guard let (link, provider) = try? await mailboxServer.linkStatusAndProvider() else { return nil }
+    let server = mailboxServer
+    guard let (link, provider) = await linkCopy.ask({ try await server.linkStatusAndProvider() }) else { return nil }
     if serverLink != link { serverLink = link }
-    BankTextsLinkCopy.note(link, nowMs: context.clock.nowMs())
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
     if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
@@ -317,13 +305,12 @@ final class AccountRuntime {
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
       mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions,
       bankTexts: CoreBankTextAuthoring(ledger: mailboxLedger, reader: projection.reader, categorizer: categorizer),
-      store: store)
+      linkCopy: BankTextsLinkKeeper(nowMs: { context.clock.nowMs() }), store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
-      await rt?.noteOwnLink()
       await rt?.checkServerLink()
     }
-    rt.noteOwnLink()
+    rt.linkCopy.ownLink(store.mailboxPhase)
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()

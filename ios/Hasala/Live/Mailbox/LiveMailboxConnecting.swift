@@ -400,7 +400,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       throw error
     }
     rt.activate(provider)
-    BankTextsLinkCopy.note(linked: true, nowMs: rt.context.clock.nowMs())
+    rt.linkCopy.connected()
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
     if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
@@ -467,21 +467,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     try Self.checkDisconnect(await lane.status().phase)
     let plan = removeTransactions ? await lane.retirePlan() : nil
     let outcome = await lane.disconnect(removing: plan)
-    await runtime()?.refreshMailbox()
-    if Self.unlinked(outcome) { BankTextsLinkCopy.disconnected(nowMs: SystemClock().nowMs()) }
+    let rt = runtime()
+    await rt?.refreshMailbox()
+    (rt?.linkCopy ?? BankTextsLinkKeeper(nowMs: { SystemClock().nowMs() })).disconnected(outcome)
     try Self.disconnected(outcome, provider: lane.provider)
   }
 
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
     guard let lane = try? lane(), let plan = await lane.retirePlan(), plan.total > 0 else { return nil }
     return MailboxDisconnectImpact(transactions: plan.total, edited: plan.edited)
-  }
-
-  static func unlinked(_ outcome: MailboxDisconnectOutcome) -> Bool {
-    switch outcome {
-    case .disconnected, .removed, .disconnectedRemoveFailed: true
-    case .otherDevice, .failed: false
-    }
   }
 
   static func disconnected(_ outcome: MailboxDisconnectOutcome, provider: MailProviderKind) throws(MailConnectFailure) {

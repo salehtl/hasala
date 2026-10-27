@@ -108,7 +108,7 @@ struct BankTextsCoreWiringTests {
     func intake() -> BankTextIntake {
       BankTextIntake(
         BankTextIntakeDeps(
-          reader: reader, facts: facts, marker: marker, secret: TextKeySecret(store: secrets), hasAccount: { true },
+          reader: reader, facts: facts, marker: marker, secret: TextKeySecret(store: secrets), signIn: { .signedIn },
           account: { [unowned self] in
             opened += 1
             return account

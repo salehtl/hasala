@@ -137,11 +137,9 @@
 
     @MainActor
     static func bankTexts(for scenario: AuthScenario?, mailbox: MockMailbox? = nil) -> MockBankTexts? {
-      guard BuildSurface.showsBankTexts else { return nil }
       let lane: MockBankTexts? =
         switch scenario {
-        case .setupTexts: MockBankTexts(mailbox: mailbox)
-        case .gmailTexts: MockBankTexts(mailbox: mailbox)
+        case .setupTexts, .gmailTexts: MockBankTexts(mailbox: mailbox)
         case .textsWorking: MockBankTexts.working(mailbox: mailbox)
         case .textsWaiting: MockBankTexts.waiting(mailbox: mailbox)
         default: nil

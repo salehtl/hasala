@@ -71,10 +71,7 @@ extension BankTextIntake {
     return BankTextIntake(
       BankTextIntakeDeps(
         reader: BankTextsWiring.reader, facts: .shared, marker: .shared, secret: TextKeySecret(store: secrets.store),
-        hasAccount: {
-          guard (try? secrets.binding()) != nil, let session = try? secrets.session() else { return false }
-          return !session.pending_logout
-        },
+        signIn: { BankTextIntake.signIn(secrets) },
         account: {
           guard let rt = await BackgroundEntry(boot).runtime() else { return nil }
           return RuntimeBankTextAccount(rt)
