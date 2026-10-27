@@ -476,6 +476,7 @@ public extension Glyph {
     case .wallet: .cash
     case .envelope: .envelope
     case .rule: .rule
+    case .chat: .chat
     }
   }
 }

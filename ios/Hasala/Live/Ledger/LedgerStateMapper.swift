@@ -102,13 +102,16 @@ nonisolated enum LedgerStateMapper {
       txns.append(t)
     }
     markSamePurchases(&txns, rows: rows, home: home)
+    let unreadable = try r.review(lanes: [.unreadable], limit: 1_000_000)
+    markRepeats(&txns, rows: rows, unreadable: unreadable)
     let picks = LastPick.picks(pickRows)
     for i in txns.indices where txns[i].inReview {
       txns[i].lastPick = pickRows[i].key.flatMap { picks[$0] }
     }
-    let unreadMail = try r.review(lanes: [.unreadable], limit: 1_000_000).map {
+    let unreadMail = unreadable.filter { !$0.isText }.map {
       Self.unreadMail($0, senders: c.unreadSenders, accounts: liveAccounts)
     }
+    let unreadTexts = unreadable.filter(\.isText).map { Self.unreadText($0, accounts: liveAccounts) }
 
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
@@ -160,7 +163,7 @@ nonisolated enum LedgerStateMapper {
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
-      unreadMail: unreadMail)
+      unreadMail: unreadMail, unreadTexts: unreadTexts)
     return Mapped(state: state, candidates: feed.derived.candidates)
   }
 
@@ -175,6 +178,13 @@ nonisolated enum LedgerStateMapper {
       id: row.id, provider: row.sourceProvider.flatMap(MailProviderKind.init(rawValue:)),
       receivedOn: CivilDate(wire: row.localDate).map(local) ?? LocalDate(1970, 1, 1),
       bank: bank.flatMap { bankNames[$0] }, accountID: (ofBank.first(where: \.inPlan) ?? ofBank.first)?.id)
+  }
+
+  static func unreadText(_ row: TxnRow, accounts: [CoreReplay.Account] = []) -> UnreadText {
+    let ofBank = accounts.filter { a in row.bank.map { a.institution == $0 } ?? false }
+    return UnreadText(
+      id: row.id, bank: textBankName(row.bank), receivedAt: localTime(row.receivedMs ?? row.postedMs),
+      accountID: (ofBank.first(where: \.inPlan) ?? ofBank.first)?.id)
   }
 
   /// The transactions whose digest is among the skipped cards'.
@@ -261,12 +271,17 @@ nonisolated enum LedgerStateMapper {
       }
     }
     let source = Self.source(kind: row.categorySource, ref: row.categorySourceRef, ruleByID: ruleByID)
-    let provenance = row.entryMethod == "mailbox"
-      ? Provenance(
+    let provenance: Provenance?
+    if row.isText {
+      provenance = textProvenance(row)
+    } else if row.entryMethod == "mailbox" {
+      provenance = Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
         readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw,
         senderCheck: row.senderCheck)
-      : nil
+    } else {
+      provenance = nil
+    }
     return HasalaModels.Txn(
       id: row.id, merchant: row.displayName, place: row.location, amount: Money(minor: row.amountMinor, currency: row.currency),
       homeMinor: .some(row.amountHomeMinor),
@@ -321,6 +336,72 @@ nonisolated enum LedgerStateMapper {
       guard let i = index[p.home], index[p.foreign] != nil else { continue }
       txns[i].samePurchase = SamePurchaseMatch(of: p.foreign, merchantMissing: p.merchantMissing)
     }
+  }
+
+  static func textBankName(_ bank: String?) -> String? {
+    guard let bank, !bank.isEmpty else { return nil }
+    return RuntimeMailboxLedger.bankName(bank)
+  }
+
+  static func textSource(_ bank: String?) -> String {
+    textBankName(bank).map { "Bank text from \($0)" } ?? "Bank text"
+  }
+
+  static func textProvenance(_ row: TxnRow) -> Provenance {
+    let readAt = row.receivedMs.map { "Received \(localTime($0).time) · read automatically" } ?? "Read automatically"
+    return Provenance(title: textSource(row.bank), readAt: readAt, rawMerchant: row.merchantRaw, isText: true)
+  }
+
+  static func mayBeRepeat(_ row: TxnRow) -> Bool {
+    guard row.needsReview, row.archived == nil, !row.unparsed else { return false }
+    if row.isText { return BankTextRow(row).transferRole != nil }
+    return row.entryMethod == "mailbox"
+  }
+
+  static func repeatTexts(rows: [TxnRow], unreadable: [TxnRow]) -> [BankTextRow]? {
+    guard rows.contains(where: mayBeRepeat) else { return nil }
+    var live = rows.filter { $0.isText && $0.archived == nil }.map(BankTextRow.init)
+    live += unreadable.filter(\.isText).map(BankTextRow.init)
+    guard !live.isEmpty else { return nil }
+    return BankTextTwin.sorted(live)
+  }
+
+  static func markRepeats(_ txns: inout [HasalaModels.Txn], rows: [TxnRow], unreadable: [TxnRow]) {
+    guard let texts = repeatTexts(rows: rows, unreadable: unreadable) else { return }
+    var byID: [String: BankTextRow] = [:]
+    for t in texts { byID[t.id] = t }
+    for (i, row) in rows.enumerated() where mayBeRepeat(row) {
+      guard i < txns.count, txns[i].id == row.id else { continue }
+      txns[i].mayRepeat = mayRepeat(row, texts: texts, byID: byID)
+    }
+  }
+
+  static func mayRepeat(_ row: TxnRow, texts: [BankTextRow], byID: [String: BankTextRow]) -> MayRepeat? {
+    if row.isText {
+      let me = byID[row.id] ?? BankTextRow(row)
+      guard me.transferRole != nil else { return nil }
+      let near = BankTextTwin.window(texts, around: row.postedMs, BankTextTransferPair.windowMs)
+      guard let other = BankTextTransferPair.partner(of: me, among: Array(near)) else { return nil }
+      return MayRepeat(of: other.id, line: transferLine(other))
+    }
+    guard row.entryMethod == "mailbox" else { return nil }
+    let mail = TextTwinMail(
+      bank: row.bank, last4: row.last4, amountMinor: row.amountMinor, currency: row.currency, direction: row.direction,
+      postedMs: row.postedMs)
+    let near = BankTextTwin.window(texts, around: row.postedMs, BankTextTwin.windowMs)
+    guard let twin = BankTextTwin.twin(of: mail, among: near) else { return nil }
+    return MayRepeat(of: twin.id, line: twinLine(twin))
+  }
+
+  static func transferLine(_ other: BankTextRow) -> String {
+    let from = textBankName(other.bank).map { " from \($0)" } ?? ""
+    return "This may be the same transfer as the bank text\(from) at \(localTime(other.postedMs).time)."
+  }
+
+  static func twinLine(_ twin: BankTextRow) -> String {
+    let from = textBankName(twin.bank).map { " from \($0)" } ?? ""
+    let d = localTime(twin.postedMs).date
+    return "This may be the same payment as a bank text\(from) on \(d.day) \(d.yearMonth.name)."
   }
 
   static func heldCopy(_ row: TxnRow, r: LedgerReader) throws -> HeldCopy? {

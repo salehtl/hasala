@@ -250,6 +250,7 @@ public actor MailboxEngine {
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
+  private var textsRead: TextOverlap??
   /// The server's push settings for this provider (`meta`): nil until read; `.none` when the
   /// server relays no wakes.
   private var push: MailboxPushConfig?
@@ -329,8 +330,19 @@ public actor MailboxEngine {
 
   private func exclusive<T: Sendable>(_ body: () async -> T) async -> T {
     await acquire()
-    defer { release() }
+    textsRead = nil
+    defer {
+      textsRead = nil
+      release()
+    }
     return await body()
+  }
+
+  func textOverlap() async throws(MailboxLedgerError) -> TextOverlap? {
+    if let read = textsRead { return read }
+    let read = try await ledger.textOverlap()
+    textsRead = .some(read)
+    return read
   }
 
   public func stop() async {
@@ -954,6 +966,8 @@ public actor MailboxEngine {
   func authorStagedBatch(cards: [CardKey: CardState], grant: String, report: inout CycleReport) async -> Int? {
     guard let batch = try? await store.staged(limit: config.backfillBatch) else { return nil }
     if batch.isEmpty { return 0 }
+    let texts: TextOverlap?
+    do { texts = try await textOverlap() } catch { return nil }
     var c = MailboxCommit()
     var counted = report
     let at = clock.nowMs()
@@ -965,7 +979,7 @@ public actor MailboxEngine {
         continue
       }
       let draft = MessageDisposer.finalize(
-        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer)
+        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer, texts: texts)
       c.drafts.append(draft)
       c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
       if let u = Self.unparsedSender(m, at: at) { c.unparsedSenders.append(u) }
@@ -1122,6 +1136,10 @@ public actor MailboxEngine {
       return report
     }
     guard state.phase == .active, !stopped else { return report }
+    do { try await ledger.syncToHead() } catch {
+      report.haltedOn = .offline
+      return report
+    }
     let token: AccessToken
     do { token = try await tokens.accessToken(forceRefresh: false) } catch {
       report.haltedOn = .reconnectRequired
@@ -1472,6 +1490,7 @@ public actor MailboxEngine {
     let base = run.pagedBase ?? 0
     defer { if run.pagedBase != nil { run.pagedBase = base + all.count } }
     if todo.isEmpty && mode == .author { return false }
+    if mode == .author { _ = try await textOverlap() }
     var shown = base + all.count
     if mode == .stage {
       if run.pagedBase != nil { shown = max(shown, scanTotal) }
@@ -1687,8 +1706,9 @@ public actor MailboxEngine {
           if staged.senderDomain == nil { staged.senderDomain = Self.unparsedSender(m, from: from, at: at)?.domain }
           c.stage.append(staged)
         case .author:
+          let texts = try await textOverlap()
           let draft = MessageDisposer.finalize(
-            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer)
+            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer, texts: texts)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))

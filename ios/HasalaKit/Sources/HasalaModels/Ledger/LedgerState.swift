@@ -142,12 +142,23 @@ public struct Provenance: Sendable, Hashable, Codable {
   /// The merchant exactly as the bank wrote it: "CARREFOUR MALL OF EMIRATES".
   public var rawMerchant: String
   public var senderCheck: String?
+  public var isText: Bool
 
-  public init(title: String, readAt: String, rawMerchant: String, senderCheck: String? = nil) {
+  public init(title: String, readAt: String, rawMerchant: String, senderCheck: String? = nil, isText: Bool = false) {
     self.title = title
     self.readAt = readAt
     self.rawMerchant = rawMerchant
     self.senderCheck = senderCheck
+    self.isText = isText
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    title = try c.decode(String.self, forKey: .title)
+    readAt = try c.decode(String.self, forKey: .readAt)
+    rawMerchant = try c.decode(String.self, forKey: .rawMerchant)
+    senderCheck = try c.decodeIfPresent(String.self, forKey: .senderCheck)
+    isText = try c.decodeIfPresent(Bool.self, forKey: .isText) ?? false
   }
 }
 
@@ -173,12 +184,14 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   case probableCopy = "probable_copy"
   case senderUnverified = "sender_unverified"
   case samePurchase = "same_purchase"
+  case mayRepeat = "may_repeat"
 
   public var label: String {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify sender"
     case .samePurchase: "Same purchase?"
+    case .mayRepeat: "Same payment?"
     }
   }
 
@@ -187,6 +200,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     case .probableCopy: "Looks like a copy"
     case .senderUnverified: "Couldn't verify the sender"
     case .samePurchase: "Same purchase?"
+    case .mayRepeat: "Maybe the same payment"
     }
   }
 
@@ -195,7 +209,18 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     case .probableCopy: "It matches one you already have. Merge it, or keep both."
     case .senderUnverified: "Check this matches your bank app before you sort it."
     case .samePurchase: "It may be the AED charge for a purchase you already have. Count it once, or keep both."
+    case .mayRepeat: "It may be the same payment as a bank text. Keep both, or archive this one."
     }
+  }
+}
+
+public struct MayRepeat: Sendable, Hashable, Codable {
+  public var of: TxnID
+  public var line: String
+
+  public init(of: TxnID, line: String) {
+    self.of = of
+    self.line = line
   }
 }
 
@@ -297,6 +322,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var ruleID: RuleID?
   public var lastPick: CategoryID?
   public var combinedCopy: TxnID?
+  public var mayRepeat: MayRepeat?
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -324,7 +350,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     categorizedAt: LocalDateTime? = nil,
     ruleID: RuleID? = nil,
     lastPick: CategoryID? = nil,
-    combinedCopy: TxnID? = nil
+    combinedCopy: TxnID? = nil,
+    mayRepeat: MayRepeat? = nil
   ) {
     self.id = id
     self.merchant = merchant
@@ -365,6 +392,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.ruleID = ruleID
     self.lastPick = lastPick
     self.combinedCopy = combinedCopy
+    self.mayRepeat = mayRepeat
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }
@@ -375,8 +403,11 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var activeReviewReason: TxnReviewReason? {
     if isHeldCopy { return .probableCopy }
     if samePurchase != nil { return .samePurchase }
-    return needsReview ? reviewReason : nil
+    guard needsReview else { return nil }
+    return reviewReason ?? (mayRepeat == nil ? nil : .mayRepeat)
   }
+
+  public var fromText: Bool { provenance?.isText == true }
 
   public var senderUnverified: Bool { activeReviewReason == .senderUnverified }
 
@@ -741,6 +772,20 @@ public struct UnreadMail: Sendable, Hashable, Codable, Identifiable {
   }
 }
 
+public struct UnreadText: Sendable, Hashable, Codable, Identifiable {
+  public var id: TxnID
+  public var bank: String?
+  public var receivedAt: LocalDateTime
+  public var accountID: AccountID?
+
+  public init(id: TxnID, bank: String?, receivedAt: LocalDateTime, accountID: AccountID? = nil) {
+    self.id = id
+    self.bank = bank
+    self.receivedAt = receivedAt
+    self.accountID = accountID
+  }
+}
+
 public enum SignInMethod: String, Sendable, Hashable, Codable { case passkey, password }
 
 public struct ProfileInfo: Sendable, Hashable, Codable {
@@ -824,6 +869,7 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var skippedReview: Set<TxnID>
   public var rates: [CurrencyRate]
   public var unreadMail: [UnreadMail]
+  public var unreadTexts: [UnreadText]
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
@@ -831,9 +877,10 @@ public struct LedgerState: Sendable, Hashable, Codable {
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
     netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
     rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)],
-    unreadMail: [UnreadMail] = []
+    unreadMail: [UnreadMail] = [], unreadTexts: [UnreadText] = []
   ) {
     self.unreadMail = unreadMail
+    self.unreadTexts = unreadTexts
     self.rates = rates
     self.netWorth = netWorth
     self.categories = categories

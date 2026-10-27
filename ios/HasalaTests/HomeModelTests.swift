@@ -227,6 +227,9 @@ struct HomeModelTests {
       case .unreadMail:
         #expect(router.tab == .review && router.review == [.unreadMail])
         #expect(!app.store.state.unreadMail.isEmpty)
+      case .unreadTexts:
+        #expect(router.tab == .review && router.review == [.unreadTexts])
+        #expect(!app.store.state.unreadTexts.isEmpty)
       case .bankAlerts:
         router.sheetDismissed()
         #expect(router.sheet == .profile && router.profile == [.bankAlerts])

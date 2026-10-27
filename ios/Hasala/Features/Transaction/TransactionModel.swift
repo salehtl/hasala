@@ -81,7 +81,7 @@ final class TransactionViewModel: TransactionModel {
     switch reason {
     case .probableCopy: edit = .resolveCopy(id, merge: merge)
     case .samePurchase: edit = .resolveSamePurchase(id, same: merge)
-    case .senderUnverified: return
+    case .senderUnverified, .mayRepeat: return
     }
     guard app.perform(edit) else { return }
     if merge { app.sheet = nil } else { app.router.transaction.removeAll() }

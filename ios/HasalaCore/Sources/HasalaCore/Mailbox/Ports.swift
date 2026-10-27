@@ -64,6 +64,7 @@ public protocol MailboxLedger: Sendable {
   func projectedMessageIDs(among ids: [String]) async -> Set<String>
   /// Whether an op with this ingest id has folded or is pending on this device.
   func isIngested(_ ingestID: String) async -> Bool
+  func textOverlap() async throws(MailboxLedgerError) -> TextOverlap?
   /// Authors `account_set` / `card_linked` for the given cards (03b §4.2-§4.3) and enqueues them.
   /// The engine no longer calls it (setup has no cards step); kept for marking a card later.
   func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError)

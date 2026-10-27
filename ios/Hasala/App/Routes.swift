@@ -44,6 +44,7 @@ enum ActivityRoute: Hashable {
 /// Pushed inside the Review tab.
 enum ReviewRoute: Hashable {
   case unreadMail
+  case unreadTexts
 }
 
 /// Pushed inside the transaction sheet (one sheet at a time: its editors push, never stack).

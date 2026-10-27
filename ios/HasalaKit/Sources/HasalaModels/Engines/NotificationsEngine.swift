@@ -19,6 +19,7 @@ public enum NotificationDestination: Sendable, Hashable {
   /// Profile › Bank alerts (connect, sign in again, a quiet bank).
   case bankAlerts
   case unreadMail
+  case unreadTexts
 }
 
 /// One row of the Notifications sheet (page 15 §15.2 NotificationRow): a 40 disc in the item's
@@ -95,6 +96,15 @@ public enum NotificationsEngine {
       dated.append((newest.receivedOn, NotificationItem(
         id: "unread", disc: .neutral(.envelope), title: ReviewEngine.unreadLine(unread.count),
         line: "Add each one by hand or dismiss it", when: when(newest.receivedOn, today: today), destination: .unreadMail
+      )))
+    }
+
+    let texts = ReviewEngine.unreadTexts(s)
+    if let newest = texts.first {
+      dated.append((newest.receivedAt.date, NotificationItem(
+        id: "unreadTexts", disc: .neutral(.chat), title: ReviewEngine.unreadTextLine(texts.count),
+        line: "Add each one by hand or dismiss it", when: when(newest.receivedAt.date, today: today),
+        destination: .unreadTexts
       )))
     }
 

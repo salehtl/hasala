@@ -392,8 +392,9 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       }
       return (lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories", [.split(txn: id, lines: t.splits)])
     case .archive(let id, let archived):
-      if archived, s.unreadMail.contains(where: { $0.id == id }) {
+      if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
         s.unreadMail.removeAll { $0.id == id }
+        s.unreadTexts.removeAll { $0.id == id }
         return ("Dismissed", [.archived(txn: id, archived: false)])
       }
       let i = try index(id)
