@@ -267,7 +267,7 @@ struct BankTextsTestScreen: View {
     switch test {
     case .received: Self.worksLine
     case .nothingYet: "Check these in the Shortcuts app, then send the test again."
-    case .idle, .waiting: "In Messages, send this to your own number. Hasala is watching for it."
+    case .idle, .waiting: "In Messages, send this to your own number, full stop included. Hasala is watching for it."
     }
   }
 

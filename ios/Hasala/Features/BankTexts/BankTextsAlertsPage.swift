@@ -155,7 +155,7 @@ struct BankTextsAlertsPage: View {
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             Text("Add bank text").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-            Text("Runs on every text you get").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+            Text("Runs on every text with a full stop").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
             TimelineView(.periodic(from: .now, by: 60)) { context in
               StatusPillView(
                 Self.automationPill(lane.status, test: lane.test, now: context.date), size: .s26, surface: .tinted)
