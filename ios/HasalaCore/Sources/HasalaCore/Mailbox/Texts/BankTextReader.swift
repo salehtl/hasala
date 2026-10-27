@@ -44,6 +44,19 @@ public struct BankTextKept: Sendable, Equatable {
 
   public var tier: String { template != nil ? "template" : fields != nil ? "heuristic" : "none" }
   public var unparsed: Bool { fields == nil }
+
+  public func timed(arrivalMinuteMs: Int64) -> BankTextKept {
+    let precise = fields?.precision ?? precision
+    guard precise == "day", let start = try? parseInstantMs(fields?.postedAt ?? postedAt) else { return self }
+    let last = start + Civil.msPerDay - 60_000
+    guard let at = Instant.iso(min(max(arrivalMinuteMs, start), last)) else { return self }
+    var k = self
+    k.postedAt = at
+    k.precision = "time"
+    k.fields?.postedAt = at
+    k.fields?.precision = "time"
+    return k
+  }
 }
 
 public enum BankTextReading: Sendable, Equatable {
@@ -107,12 +120,13 @@ public enum BankTextReader {
       return (.dropped(k, counted: counted, bank: counted ? sender.bank : nil), layouts)
     }
     guard text.utf8.count <= TextGate.maxTextBytes else { return drop(.noPaymentShape) }
-    if TextGate.isSetUpTest(text) {
+    let gate = TextGate.Prepared(text)
+    if TextGate.isSetUpTest(gate) {
       return (a.testWindowOpen ? .setUpTest : .dropped(.noPaymentShape, counted: false, bank: nil), layouts)
     }
 
     let marked: Bool
-    switch TextGate.neverAPayment(text) {
+    switch TextGate.neverAPayment(gate) {
     case .drop(let k): return drop(k)
     case .pass(let m): marked = m
     }
@@ -144,10 +158,10 @@ public enum BankTextReader {
       return (.kept(kept), memory)
     }
 
-    if let k = TextGate.notice(text) { return drop(k) }
+    if let k = TextGate.notice(gate) { return drop(k) }
 
     let lenient = sender.kind == .bank || sender.kind == .none
-    guard TextGate.hasPaymentShape(text, lenient: lenient) else { return drop(.noPaymentShape) }
+    guard TextGate.hasPaymentShape(gate, lenient: lenient) else { return drop(.noPaymentShape) }
     let (r, next) = CombinedReader.read(input, memory)
     if learn { memory = next }
     let stated = CombinedReader.statedDate(input)
@@ -161,7 +175,7 @@ public enum BankTextReader {
       fields = f
     }
     let last4 =
-      (r.last4 ?? TextGate.maskedLast4(text)).flatMap { $0.utf8.count == 4 && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } ? $0 : nil }
+      (r.last4 ?? TextGate.maskedLast4(gate)).flatMap { $0.utf8.count == 4 && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } ? $0 : nil }
       ?? ""
     let timed = MessageDisposer.readerPostedAt(stated, internalDateMs: a.arrivalMinuteMs).flatMap { $0.1 == "time" ? $0.0 : nil }
     let kept = BankTextKept(

@@ -152,10 +152,14 @@ enum BankTextPayload {
     plain.last4 = ""
     plain.bank = nil
     plain.postedAt = received
-    return [
+    var out: [BankTextDraft] = []
+    for f in [
       unparsed(k, ingestID: d.ingestID, received: received, card: card),
       unparsed(bare, ingestID: d.ingestID, received: received, card: card),
       unparsed(plain, ingestID: d.ingestID, received: received, card: "none"),
-    ]
+    ] where f != d && !out.contains(f) {
+      out.append(f)
+    }
+    return out
   }
 }

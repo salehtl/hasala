@@ -711,19 +711,97 @@ struct BankTextFallbackTests {
     #expect(attempts.count == 3 && attempts.allSatisfy { $0.archiving == "01JC0000000000000000000009" })
   }
 
-  @Test("a text with only a date is read with day precision; its unparsed fallbacks take the arrival minute as time")
+  @Test("an unparsed draft is not tried twice: its fallbacks start with the next variant")
+  func unparsedNotRetried() async throws {
+    let ledger = RefusingTextLedger(refusing: 1)
+    let added = try #require(await Self.add(ledger, try TextCase.named("dib-arabic-no-amount")).added)
+    #expect(added.unparsed)
+    let drafts = await ledger.attempts.map(\.draft)
+    #expect(drafts.count == 2 && drafts.allSatisfy { $0.payload["unparsed"]?.boolValue == true } && drafts[0] != drafts[1])
+    #expect(drafts[0].payload["bank"]?.stringValue == "dib" && drafts[0].payload["last4"]?.stringValue == "1234")
+    #expect(drafts[1].payload["bank"] == nil && drafts[1].payload["last4"]?.stringValue == "" && drafts[1].payload["gates"]?["card"]?.stringValue == "none")
+    let all = RefusingTextLedger(refusing: 9)
+    #expect(await Self.add(all, try TextCase.named("dib-arabic-no-amount")) == .failed("invalid_op"))
+    #expect(await all.attempts.count == 2)
+  }
+
+  @Test("an automation text with only a date that is not the arrival's day is authored with time: the last minute of its day")
   func dayPrecision() async throws {
     let text = "خصم بمبلغ 234.56 في 03-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
     let c = TextCase(name: "day", sender: "DIB-SMS", text: text, receivedAtMs: TextRig.t0)
     let k = try #require(BankTextReader.read(c.arrival).reading.kept)
-    #expect(k.fields?.precision == "day" && k.postedAt != "2026-06-05T08:00:00.000Z")
+    #expect(k.fields?.precision == "day" && k.postedAt == "2026-06-02T20:00:00.000Z")
     let ledger = RefusingTextLedger(refusing: 3)
     _ = try #require(await Self.add(ledger, c).added)
     let drafts = await ledger.attempts.map(\.draft)
-    #expect(drafts[0].payload["posted_precision"]?.stringValue == "day" && drafts[0].payload["posted_at"]?.stringValue == k.postedAt)
-    for d in drafts.dropFirst() {
-      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
-      #expect(try Self.folds(d))
+    #expect(drafts.count == 4)
+    for d in drafts.prefix(3) {
+      #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-03T19:59:00.000Z")
     }
+    #expect(drafts[3].payload["posted_precision"]?.stringValue == "time" && drafts[3].payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+    for d in drafts { #expect(try Self.folds(d)) }
+  }
+
+  @Test("the time of a date-only text: the arrival minute on its own day, else the nearest minute of the text's day; a paste keeps day")
+  func timedClamp() throws {
+    let text = "خصم بمبلغ 234.56 في 05-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
+    func kept(_ ms: Int64) throws -> BankTextKept {
+      try #require(BankTextReader.read(BankTextArrival(text: text, sender: "DIB-SMS", receivedAtMs: ms)).reading.kept)
+    }
+    let sameDay = try kept(TextRig.t0)
+    #expect(sameDay.fields?.precision == "time" && sameDay.timed(arrivalMinuteMs: TextRig.t0) == sameDay)
+    let late = try kept(TextRig.t0 + 86_400_000)
+    #expect(late.fields?.precision == "day")
+    let t = late.timed(arrivalMinuteMs: TextRig.t0 + 86_400_000)
+    #expect(t.fields?.postedAt == "2026-06-05T19:59:00.000Z" && t.fields?.precision == "time" && t.precision == "time" && t.postedAt == t.fields?.postedAt)
+    let early = try kept(TextRig.t0 - 86_400_000)
+    let e = early.timed(arrivalMinuteMs: TextRig.t0 - 86_400_000)
+    #expect(e.fields?.postedAt == "2026-06-04T20:00:00.000Z" && e.fields?.precision == "time")
+  }
+
+  @Test("a pasted text with only a date keeps day precision and waits in Review")
+  func pasteKeepsDay() async throws {
+    let text = "خصم بمبلغ 234.56 في 03-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
+    let ledger = RefusingTextLedger(refusing: 0)
+    let out = await BankTextAuthor(ledger: ledger).paste(text, atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked)
+    #expect(out.added?.filed == false)
+    let d = try #require(await ledger.attempts.first?.draft)
+    #expect(d.payload["posted_precision"]?.stringValue == "day" && d.payload["posted_at"]?.stringValue == "2026-06-02T20:00:00.000Z")
+  }
+}
+
+@Suite("bank texts: a date-only text that arrives after its day")
+struct BankTextLateDayTests {
+  static let local: Int64 = 4 * 3_600_000
+  static func at(_ day: Int, _ hour: Int, _ minute: Int) -> Int64 {
+    TextRig.t0 - 8 * 3_600_000 - local + Int64(day - 5) * 86_400_000 + Int64(hour) * 3_600_000 + Int64(minute) * 60_000
+  }
+
+  static let debit = "خصم بمبلغ 234.56 في 04-06-2026 OUTGOING DOMESTIC FUND TR رصيدك الحالى4,444.44"
+  static let ownTransfer =
+    "تحويل بين حساباتك بمبلغ AED 234.56 من حساب 001-000-123XXXX-01 الي حساب 001-000-456XXXX-01 في 04-06-2026 MB Fund Transfer رصيد حساب الخصم هو AED 9,876.54 وحساب الايداع هو AED 8,765.43"
+
+  @Test("an automation that runs twice for a text dated the day before, just after midnight, gives two rows, the second held")
+  func doubleRunAfterMidnight() async throws {
+    let rig = try TextRig()
+    let c = TextCase(name: "late", sender: "DIB-SMS", text: Self.debit, receivedAtMs: Self.at(5, 0, 1))
+    let a = try #require(await rig.add(c).added)
+    let b = try #require(await rig.add(c, at: Self.at(5, 0, 2) + 30_000).added)
+    #expect(a.txnID != b.txnID)
+    let p = try rig.payload(a.txnID)
+    #expect(p["posted_precision"]?.stringValue == "time" && p["posted_at"]?.stringValue == "2026-06-04T19:59:00.000Z")
+    let s = try rig.fold()
+    #expect(s.anomalies.isEmpty && s.txns[b.txnID]?.copyOf == a.txnID && s.txns[b.txnID]?.isHeldCopy == true)
+  }
+
+  @Test("a debit alert and its transfer notice that straddle midnight are a transfer pair")
+  func pairAcrossMidnight() async throws {
+    let rig = try TextRig()
+    let notice = try #require(
+      await rig.add(TextCase(name: "n", sender: "DIB-SMS", text: Self.ownTransfer, receivedAtMs: Self.at(4, 23, 58))).added)
+    let alert = try #require(await rig.add(TextCase(name: "a", sender: "DIB-SMS", text: Self.debit, receivedAtMs: Self.at(5, 0, 3))).added)
+    #expect(try rig.payload(notice.txnID)["posted_at"]?.stringValue == "2026-06-04T19:58:00.000Z")
+    #expect(alert.transferPartner == notice.txnID && !alert.filed)
+    #expect(try rig.fold().anomalies.isEmpty)
   }
 }

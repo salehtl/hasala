@@ -107,6 +107,62 @@ struct TextGateTests {
     #expect(TextGate.neverAPayment("AED 30.00 charged on your card ending 1234. Do not share OTP 482913.") == .pass(marked: true))
   }
 
+  @Test("a transfer, payment or purchase of an amount that completed is a transaction clause; a code beside it goes on marked")
+  func completedClauses() {
+    for text in [
+      "Transfer of AED 300.00 to SAMPLE PERSON completed. Confirmation code 482913", "Your order payment of AED 99.00 is confirmed. Code 482913",
+      "Payment of AED 20.00 to SAMPLE.SHOP has been processed. OTP 482913", "Purchase of AED 45.00 at SAMPLE SHOP has been approved. PIN 1234",
+      "Your transfer of AED 300.00 to SAMPLE PERSON was successful. Security code 482913",
+    ] {
+      #expect(TextGate.hasTransactionClause(text), "\(text)")
+      #expect(TextGate.neverAPayment(text) == .pass(marked: true), "\(text)")
+    }
+    for text in [
+      "Use OTP 482913 to confirm your transfer of AED 300.00 to SAMPLE PERSON. The transfer will be completed once confirmed.",
+      "OTP 482913: your payment of AED 20.00 to SAMPLE SHOP will be completed after you enter it",
+      "Your transfer of AED 300.00 to SAMPLE PERSON has not been completed. Code 482913", "Your payment of AED 20.00 wasn't successful. OTP 482913",
+      "Purchase of AED 50.00 at SAMPLE SHOP. OTP 482913", "مشتريات بمبلغ 123.45 من بطاقة XX1234 رمز التحقق 482913",
+    ] {
+      #expect(!TextGate.hasTransactionClause(text), "\(text)")
+      #expect(TextGate.neverAPayment(text) == .drop(.oneTimeCode), "\(text)")
+    }
+    for text in ["Transfer of AED 300.00 to SAMPLE PERSON could not be processed", "Purchase of AED 20.00 at SAMPLE SHOP was declined."] {
+      #expect(TextGate.neverAPayment(text) == .drop(.declined), "\(text)")
+    }
+  }
+
+  @Test("a payment stated at the start of a sentence or line keeps a text that has a notice or promotion marker; mid-sentence it is none")
+  func statements() {
+    for text in [
+      "Purchase of AED 89.50 at SYNTHETIC GROCER with Credit Card ending 4321 on 05-JUN-2026 12:30. T&C apply",
+      "Purchase of AED 50.00 at SAMPLE SHOP\nT&C apply", "Dear Customer. Payment of AED 20.00 to SAMPLE SHOP. Offer valid till 30-06-2026",
+      "Paid AED 20.00 at SAMPLE SHOP. T&C apply", "Transfer of 300.00 to SAMPLE PERSON\nSMS STOP to 1234",
+      "سحب نقدي 200.00 من صراف آلي في 05-06-2026 رصيدك 1,000.00\nعرض خاص على البطاقات",
+      "مشتريات بقيمة 123.45 من بطاقة XX1234 لدى SAMPLE SHOP\nعرض لفترة محدودة",
+      "تحويل بين حساباتك بمبلغ AED 4,321.09 في 05-06-2026. عروض البطاقات",
+    ] {
+      #expect(TextGate.hasPaymentStatement(text), "\(text)")
+      #expect(TextGate.notice(text) == nil, "\(text)")
+    }
+    for text in [
+      "OTP 482913 for your purchase of USD 20.00 at SYNTHETIC SHOP", "Get 5% cashback on every purchase above AED 100 with your card. T&C apply.",
+      "Purchase of AED 100 or more earns 5% cashback. T&C apply.", "Spend AED 500 and earn points. T&C apply", "عرض خاص: خصم 20% على مشترياتك",
+      "خصم 20% على مشترياتك. عرض لفترة محدودة", "شراء 2 واحصل على 1 مجانا. عرض لفترة محدودة",
+      "Your purchase of AED 120.00 at SYNTHETIC STORE was declined.",
+    ] {
+      #expect(!TextGate.hasPaymentStatement(text), "\(text)")
+    }
+    #expect(TextGate.notice("Purchase of AED 100 or more earns 5% cashback. T&C apply.") == .promotion)
+    #expect(TextGate.notice("شراء 2 واحصل على 1 مجانا. عرض لفترة محدودة") == .promotion)
+  }
+
+  @Test("a promo, voucher or coupon code is no one-time-code marker")
+  func promoCodes() {
+    for line in ["Promo code 1234", "Promo code: 123456", "Voucher code 98765", "Coupon code 4321", "Discount code 5555"] {
+      #expect(TextGate.neverAPayment("Paid AED 20.00 at SAMPLE SHOP. \(line) for 10% off") == .pass(marked: false), "\(line)")
+    }
+  }
+
   @Test("a marker drops a text only when it has no transaction clause; with one, the text goes on marked")
   func markersAndClauses() {
     #expect(TextGate.neverAPayment("Your purchase of AED 20.00 at SHOP was declined.") == .drop(.declined))

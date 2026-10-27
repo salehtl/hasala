@@ -19,22 +19,23 @@ public enum TextGate {
   public static let merchantWordLimit = 4
   public static let merchantByteLimit = 40
 
-  struct Prepared {
-    let folded: String
+  package struct Prepared: Sendable {
+    package let folded: String
 
-    init(_ normalized: String) {
+    package init(_ normalized: String) {
       folded = TextGate.trimEnd(RuleText.fold(RuleText.asciiDigits(normalized)))
     }
 
     func has(_ r: NSRegularExpression) -> Bool { RuleText.has(r, folded) }
   }
 
-  public static func isSetUpTest(_ normalized: String) -> Bool {
-    Prepared(normalized).folded == setUpPhrase
-  }
+  public static func isSetUpTest(_ normalized: String) -> Bool { isSetUpTest(Prepared(normalized)) }
 
-  public static func neverAPayment(_ normalized: String) -> TextGateStep {
-    let t = Prepared(normalized)
+  package static func isSetUpTest(_ t: Prepared) -> Bool { t.folded == setUpPhrase }
+
+  public static func neverAPayment(_ normalized: String) -> TextGateStep { neverAPayment(Prepared(normalized)) }
+
+  package static func neverAPayment(_ t: Prepared) -> TextGateStep {
     for w in wholeBody where w.kind == .oneTimeCode || w.kind == .declined {
       if w.matches(t) { return .drop(w.kind) }
     }
@@ -45,26 +46,31 @@ public enum TextGate {
     return .drop(code ? .oneTimeCode : .declined)
   }
 
-  public static func notice(_ normalized: String) -> TextDropKind? {
-    let t = Prepared(normalized)
+  public static func notice(_ normalized: String) -> TextDropKind? { notice(Prepared(normalized)) }
+
+  package static func notice(_ t: Prepared) -> TextDropKind? {
     for w in wholeBody where w.kind == .notice || w.kind == .promotion {
       if w.matches(t) { return w.kind }
     }
     let notice = t.has(Markers.notice)
     let promotion = t.has(Markers.promotion)
-    guard notice || promotion, !t.has(Markers.transactionClause) else { return nil }
+    guard notice || promotion, !t.has(Markers.transactionClause), !t.has(Markers.paymentStatement) else { return nil }
     return notice ? .notice : .promotion
   }
 
   public static func hasPaymentShape(_ normalized: String, lenient: Bool) -> Bool {
-    let t = Prepared(normalized)
+    hasPaymentShape(Prepared(normalized), lenient: lenient)
+  }
+
+  package static func hasPaymentShape(_ t: Prepared, lenient: Bool) -> Bool {
     guard t.has(Shape.paymentWord) else { return false }
     if lenient { return t.folded.unicodeScalars.contains { $0.value >= 0x30 && $0.value <= 0x39 } }
     return t.has(Shape.amount) || t.has(Shape.maskedCard)
   }
 
-  public static func maskedLast4(_ normalized: String) -> String? {
-    let t = Prepared(normalized)
+  public static func maskedLast4(_ normalized: String) -> String? { maskedLast4(Prepared(normalized)) }
+
+  package static func maskedLast4(_ t: Prepared) -> String? {
     let ns = t.folded as NSString
     guard let m = Shape.maskedCard.firstMatch(in: t.folded, range: NSRange(location: 0, length: ns.length)) else { return nil }
     let digits = ns.substring(with: m.range).unicodeScalars.filter { $0.value >= 0x30 && $0.value <= 0x39 }
@@ -73,6 +79,8 @@ public enum TextGate {
   }
 
   public static func hasTransactionClause(_ normalized: String) -> Bool { Prepared(normalized).has(Markers.transactionClause) }
+
+  static func hasPaymentStatement(_ normalized: String) -> Bool { Prepared(normalized).has(Markers.paymentStatement) }
 
   public static func cardPurchaseMerchant(_ normalized: String, merchant: String?) -> String {
     guard let m = merchant?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return "" }
@@ -176,7 +184,7 @@ public enum TextGate {
 
   enum Markers {
     static let oneTimeCode = RuleText.re(
-      "(?<![a-z])(?<!(?:auth|authori[sz]ation|approval|appr|ref|reference|transaction|txn|trx)[\\s.:#-]{1,3})(?:otp|one[- ]time password|passcode|password|verification code|security code|code|pin)(?![a-z])\\s{0,2}(?:is|:|-|=|هو|هي)?\\s{0,2}[\"']?[0-9]{4,8}(?![0-9])"
+      "(?<![a-z])(?<!(?:auth|authori[sz]ation|approval|appr|ref|reference|transaction|txn|trx|promo|promotion|promotional|voucher|coupon|discount|referral|gift)[\\s.:#-]{1,3})(?:otp|one[- ]time password|passcode|password|verification code|security code|code|pin)(?![a-z])\\s{0,2}(?:is|:|-|=|هو|هي)?\\s{0,2}[\"']?[0-9]{4,8}(?![0-9])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}(?:is\\s+(?:your\\s+)?|هو\\s+|هي\\s+)?(?:otp|one[- ]time password|passcode|verification code)(?![a-z])"
         + "|(?<![0-9.,])[0-9]{4,8}[\"']?\\s{0,2}is\\s+(?:your\\s+)?(?:code|password|pin)(?![a-z])"
         + "|(?:رمز|كلمه المرور|كلمه السر)(?:\\s+(?:التحقق|التفعيل|الدخول|المرور))?\\s{0,2}(?:هو|هي|:)?\\s{0,2}[0-9]{4,8}(?![0-9])"
@@ -206,8 +214,29 @@ public enum TextGate {
       "(?<![a-z])(?:t\\s?&\\s?c'?s?|terms\\s+(?:and|&)\\s+conditions)\\s+apply|(?<![a-z])sms\\s+stop\\s+to|(?<![a-z])send\\s+stop\\s+to|(?<![a-z])unsubscribe|offer\\s+valid\\s+(?:till|until|up\\s+to)"
         + "|تطبق\\s+الشروط|الشروط\\s+والاحكام|(?<!\\p{L})(?:وال|بال|فال|لل|ال|و|ب|ل|ف)?(?:عرض|عروض)(?!\\p{L})")
 
+    static let number = "[0-9](?:[0-9,]|\\.(?=[0-9]))*+"
+
+    static let statedAmount =
+      "(?:(?:\(Shape.currencies))(?![a-z])\\s{0,2}\(number)|\(number)\\s{0,2}(?:\(Shape.currencies))(?![a-z])|[0-9][0-9,]*+\\.[0-9]{2}(?![0-9]))"
+
+    static let sentenceStart = "(?:^|\\n|[.!?\u{061F}]\\s)\\s{0,2}"
+
+    static let paymentStatement = RuleText.re(
+      sentenceStart
+        + "(?:(?:purchase|transfer|payment|withdrawal|refund|deposit|transaction|txn)\\s+of|paid|spent|charged|sent|received|purchased|withdrew)\\s+"
+        + "(?:an?\\s+amount\\s+of\\s+)?" + statedAmount + "(?!\\s+(?:or|and)\\s+(?:more|above|over))"
+        + "|" + sentenceStart
+        + "(?:عمليه\\s+)?(?:شراء|مشتريات|سحب(?:\\s+نقدي)?|ايداع(?:\\s+راتب)?|تحويل|سداد|دفع|خصم(?=\\s+(?:بمبلغ|مبلغ)))(?:\\s+[^\\s0-9]+){0,4}?\\s+"
+        + "(?:(?:بمبلغ|مبلغ|بقيمه|قيمه)\\s+(?:(?:aed|درهم)\\s{0,2})?[0-9]|(?:aed|درهم)\\s{0,2}[0-9]|[0-9][0-9,]*+\\.[0-9]{2}(?![0-9])|\(number)\\s{0,2}(?:درهم|aed))")
+
+    static let completed =
+      "(?<![a-z])(?:purchase|transfer|payment|withdrawal|transaction|order)\\s+of\\s+" + statedAmount
+      + "(?:(?!\\s(?:will|shall|once|pending|upon|after|until|unless|if|when|not|never|cannot)\\s|\\sto\\s+be\\s|n['\u{2019}]t\\s)(?:[^\\n.!?]|\\.(?=\\S))){0,100}?"
+      + "(?<!\\sbe|\\snot|\\sbeing)\\s(?:(?:was|is|has\\s+been|have\\s+been)\\s+)?(?:completed|confirmed|successful|approved|processed)(?![a-z])"
+
     static let transactionClause = RuleText.re(
-      "(?<![a-z])(?<!will be )(?<!to be )(?:debited|credited|deducted|deposited|withdrawn|transferred|refunded|reversed)(?![a-z])"
+      completed
+        + "|(?<![a-z])(?<!will be )(?<!to be )(?:debited|credited|deducted|deposited|withdrawn|transferred|refunded|reversed)(?![a-z])"
         + "|(?<![a-z])(?:has been|have been|was|were) (?:charged|used|paid|spent|sent)(?![a-z])"
         + "|(?<![a-z])(?:you|you've|you have) (?:paid|spent|sent)(?![a-z])"
         + "|(?<![a-z])purchase of [^\\n]{1,80}? (?:was|is|has been) (?:successful|approved|completed)(?![a-z])"
