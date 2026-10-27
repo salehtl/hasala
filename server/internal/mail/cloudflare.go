@@ -49,12 +49,13 @@ func NewCloudflare(accountID, token, from string) (*Cloudflare, error) {
 }
 
 type cfRequest struct {
-	To      string `json:"to"`
-	From    any    `json:"from"` // the address, or cfAddress with a name
-	ReplyTo string `json:"reply_to,omitempty"`
-	Subject string `json:"subject"`
-	Text    string `json:"text"`
-	HTML    string `json:"html,omitempty"`
+	To      string            `json:"to"`
+	From    any               `json:"from"` // the address, or cfAddress with a name
+	ReplyTo string            `json:"reply_to,omitempty"`
+	Subject string            `json:"subject"`
+	Text    string            `json:"text"`
+	HTML    string            `json:"html,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // cfAddress is the API's named address: {"address": ..., "name": ...}.
@@ -84,11 +85,20 @@ func (c *Cloudflare) Send(ctx context.Context, m Message) (string, error) {
 	if m.To == "" || strings.ContainsAny(m.To, "\r\n,; ") || strings.ContainsAny(m.Subject, "\r\n") {
 		return "", fmt.Errorf("%w: a message has one plain recipient and a one-line subject", ErrPermanent)
 	}
+	var headers map[string]string
+	if m.Unsubscribe != "" {
+		if !strings.HasPrefix(m.Unsubscribe, "https://") || strings.ContainsAny(m.Unsubscribe, "\r\n\t <>,\"") {
+			return "", fmt.Errorf("%w: the unsubscribe link must be one plain https URL", ErrPermanent)
+		}
+		headers = map[string]string{"List-Unsubscribe": "<" + m.Unsubscribe + ">",
+			"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
+	}
 	var from any = c.from
 	if c.FromName != "" {
 		from = cfAddress{Address: c.from, Name: c.FromName}
 	}
-	body, err := json.Marshal(cfRequest{To: m.To, From: from, ReplyTo: c.ReplyTo, Subject: m.Subject, Text: m.Text, HTML: m.HTML})
+	body, err := json.Marshal(cfRequest{To: m.To, From: from, ReplyTo: c.ReplyTo, Subject: m.Subject, Text: m.Text, HTML: m.HTML,
+		Headers: headers})
 	if err != nil {
 		return "", fmt.Errorf("%w: encode", ErrPermanent)
 	}

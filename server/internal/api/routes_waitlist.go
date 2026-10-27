@@ -96,6 +96,7 @@ func (s *Server) mountWaitlist(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/waitlist", s.publicRoute(s.handleWaitlistSubmit))
 	mux.HandleFunc("/api/v1/waitlist/confirm", s.publicRoute(s.handleWaitlistConfirm))
 	mux.HandleFunc("/api/v1/waitlist/leave", s.publicRoute(s.handleWaitlistLeave))
+	mux.HandleFunc("/api/v1/waitlist/unsubscribe", s.handleWaitlistUnsubscribe)
 }
 
 // publicRoute is spec 07 §5.1–§5.2 and §5.7 around one POST handler: the
@@ -345,6 +346,37 @@ func (s *Server) handleWaitlistConfirm(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "internal", "")
 	default:
 		writeJSON(w, http.StatusOK, StatusResponse{Status: status})
+	}
+}
+
+func (s *Server) handleWaitlistUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "")
+		return
+	}
+	if !s.Web.LinkIP.Allow(clientKey(r)) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := r.ParseMultipartForm(4 << 10); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		writeErr(w, http.StatusBadRequest, "bad_request", "")
+		return
+	}
+	if r.PostForm.Get("List-Unsubscribe") != "One-Click" {
+		writeErr(w, http.StatusBadRequest, "bad_request", "the body must be List-Unsubscribe=One-Click")
+		return
+	}
+	err := s.Web.Waitlist.Leave(r.Context(), r.URL.Query().Get("token"))
+	switch {
+	case errors.Is(err, waitlist.ErrBadRequest):
+		writeErr(w, http.StatusBadRequest, "bad_request", "token must be 43 b64url characters")
+	case err != nil:
+		s.logf("api: waitlist unsubscribe: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal", "")
+	default:
+		writeJSON(w, http.StatusOK, StatusResponse{Status: "done"})
 	}
 }
 

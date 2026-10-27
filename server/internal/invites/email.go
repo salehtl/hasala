@@ -155,12 +155,13 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 	}
 	c := mailq.Content{Email: row.Recipient, Code: Display(code), InviteURL: Link(r.WebBase, code, linkKey),
 		FallbackText: FallbackText(r.WebBase, code), Until: mailq.Date(*expires), ManualTestFlight: r.ManualTestFlight}
+	var leave waitlist.Leave
 	if entry != nil {
-		leave, err := waitlist.LeaveURL(ctx, tx, r.WebBase, *entry)
-		if err != nil {
+		var err error
+		if leave, err = waitlist.LeaveLinks(ctx, tx, r.WebBase, *entry); err != nil {
 			return mail.Message{}, err
 		}
-		c.LeaveURL = leave
+		c.LeaveURL = leave.Page
 		c.Why = "You're getting this because " + row.Recipient + " is on the Hasala waitlist."
 	} else {
 		c.Why = "You're getting this because the Hasala team invited " + row.Recipient + "."
@@ -169,7 +170,8 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 	if err != nil {
 		return mail.Message{}, err
 	}
-	return mail.Message{To: row.Recipient, Subject: out.Subject, Text: out.Text, HTML: out.HTML}, nil
+	return mail.Message{To: row.Recipient, Subject: out.Subject, Text: out.Text, HTML: out.HTML,
+		Unsubscribe: leave.OneClick}, nil
 }
 
 func (r Renderer) secrets(inviteID uuid.UUID, mailID int64) (code, linkKey string, linkHash []byte, err error) {
