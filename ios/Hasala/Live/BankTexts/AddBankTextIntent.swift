@@ -71,7 +71,10 @@ extension BankTextIntake {
     return BankTextIntake(
       BankTextIntakeDeps(
         reader: BankTextsWiring.reader, facts: .shared, marker: .shared, secret: TextKeySecret(store: secrets.store),
-        signIn: { BankTextIntake.signIn(secrets) },
+        signIn: {
+          let checked = boot.env.retryInstallCheck() == .done
+          return BankTextIntake.signIn(secrets, installChecked: checked)
+        },
         account: {
           guard let rt = await BackgroundEntry(boot).runtime() else { return nil }
           return RuntimeBankTextAccount(rt)

@@ -116,6 +116,15 @@ final class AccountRuntime {
     LocalAccountData.setMailboxProvider(provider)
   }
 
+  func linkedHere(_ provider: MailboxProvider) {
+    activate(provider)
+    linkCopy.connected()
+  }
+
+  func unlinkedHere(_ outcome: MailboxDisconnectOutcome) {
+    linkCopy.disconnected(outcome)
+  }
+
   /// The lane to run when the account opens: the provider this iPhone ran last, else the one
   /// it keeps a grant for, else Gmail (else Outlook, in a build with only that client).
   nonisolated static func initialLane(_ lanes: [MailboxProvider: MailboxLane], remembered: MailboxProvider?) async
@@ -191,7 +200,7 @@ final class AccountRuntime {
   static func open(
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
-    stopped: @escaping @Sendable (SyncStop) async -> Void
+    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
@@ -305,7 +314,7 @@ final class AccountRuntime {
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
       mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions,
       bankTexts: CoreBankTextAuthoring(ledger: mailboxLedger, reader: projection.reader, categorizer: categorizer),
-      linkCopy: BankTextsLinkKeeper(nowMs: { context.clock.nowMs() }), store: store)
+      linkCopy: BankTextsLinkKeeper(facts: bankTextFacts, nowMs: { context.clock.nowMs() }), store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()

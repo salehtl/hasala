@@ -147,6 +147,7 @@ final class BootController {
     LocalAccountData.migrate(boundUserID: facts.binding?.user_id)
     MerchantSuggestionsSetting.migrateReviewAsk(setupFinished: LocalAccountData.setupFinished())
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
+    Self.dropLockedTextsMarker(phase)
     self.wall = wall
     session = AccountSession(services: services, phase: phase)
     state = .decided
@@ -176,6 +177,11 @@ final class BootController {
       self?.startRetry = nil
       self?.start()
     }
+  }
+
+  static func dropLockedTextsMarker(_ phase: AccountSession.Phase, marker: LockedTextsMarkerFile = .shared) {
+    guard phase == .signedOut else { return }
+    marker.remove()
   }
 
   /// The gate's first phase and wall from what is on this iPhone (§6.5, no network).

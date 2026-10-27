@@ -43,10 +43,10 @@ final class BankTextIntake {
     self.deps = deps
   }
 
-  static func signIn(_ secrets: Secrets) -> BankTextSignIn {
+  static func signIn(_ secrets: Secrets, installChecked: Bool = true) -> BankTextSignIn {
     do {
       guard try secrets.binding() != nil, let session = try secrets.session() else { return .signedOut }
-      return session.pending_logout ? .signedOut : .signedIn
+      return session.pending_logout || !installChecked ? .signedOut : .signedIn
     } catch .notNow {
       return .locked
     } catch {

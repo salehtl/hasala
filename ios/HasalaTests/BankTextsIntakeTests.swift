@@ -1,6 +1,7 @@
 import CoreMailbox
 import CorePrimitives
 import CoreStore
+import CoreSync
 import Foundation
 import HasalaKeychain
 import HasalaModels
@@ -148,7 +149,6 @@ struct BankTextsIntakeTests {
     BankTextsLinkCopy.note(linked: linked, facts: r.facts, nowMs: BankTextIntake.ms(Self.t0) - 60_000)
   }
 
-
   @Test func linkedCopyAuthorsNothingAndCountsTextsThatMayBeABanks() async {
     let r = rig()
     setCopy(r, linked: true)
@@ -251,6 +251,58 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.link?.linked == false)
   }
 
+  @Test func theRuntimeWritesTheCopyOnEachServerAnswerConnectAndDisconnect() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    let now = { rt.context.clock.nowMs() }
+    #expect(rt.store.mailboxPhase == .unlinked)
+    #expect(r.factsData.link == nil && server.mailboxLinkAsks == 0)
+
+    await rt.refreshMailbox()
+    #expect(server.mailboxLinkAsks == 1 && r.factsData.link?.linked == false)
+
+    server.mailboxLink = (thisDevice: false, provider: "gmail")
+    let status = await rt.askServerLink()
+    #expect(status == .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(server.mailboxLinkAsks == 2 && r.factsData.link?.linked == true)
+
+    server.mailboxLink = nil
+    #expect(await rt.askServerLink() == .noLink)
+    #expect(r.factsData.link?.linked == false)
+
+    server.offline = true
+    #expect(await rt.askServerLink() == nil)
+    #expect(r.factsData.link?.linked == false)
+    server.offline = false
+
+    rt.linkedHere(.gmail)
+    #expect(r.factsData.link?.linked == true && rt.activeProvider == .gmail)
+    try r.facts.update(nowMs: now()) { $0.lastRunMs = now() }
+    rt.unlinkedHere(.disconnected)
+    #expect(r.factsData.link?.linked == false && r.factsData.chosen)
+    rt.linkedHere(.gmail)
+    rt.unlinkedHere(.otherDevice)
+    #expect(r.factsData.link?.linked == true)
+    rt.unlinkedHere(.disconnected)
+
+    server.mailboxLink = (thisDevice: false, provider: "gmail")
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    await #expect(throws: MailConnectFailure.takenByOtherIPhone) {
+      try await mailbox.disconnect("gmail", removeTransactions: false)
+    }
+    #expect(rt.store.mailboxPhase == .otherDevice && r.factsData.link?.linked == true)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()
@@ -350,7 +402,6 @@ struct BankTextsIntakeTests {
     #expect(!r.facts.fileExists && r.author.calls.isEmpty)
   }
 
-
   @Test func beforeTheFirstUnlockOnlyTheMarkerIsWritten() async {
     let r = rig()
     r.secrets.locked = true
@@ -404,6 +455,23 @@ struct BankTextsIntakeTests {
     #expect(l.ignoredLast30Days == 3)
   }
 
+  @Test func aLinkedAccountKeepsTheMarkerWhenTheCountCannotBeSaved() throws {
+    let r = rig()
+    setCopy(r, linked: true)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    let factsDir = r.dir.appendingPathComponent("facts")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: factsDir.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path) }
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == nil && r.marker.read()?.count == 2)
+    #expect(l.ignoredLast30Days == 0)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path)
+    l.refresh()
+    #expect(l.lockedNotice == nil && r.marker.read() == nil)
+    #expect(l.ignoredLast30Days == 2)
+  }
 
   @Test func countsOlderThanThirtyDaysAreDeleted() throws {
     let r = rig()
@@ -513,7 +581,6 @@ struct BankTextsIntakeTests {
     #expect(try r.secrets.read(.textKeySecret) == nil)
   }
 
-
   @Test func aLockedKeychainWithNoSecretYetStillWritesTheMarker() async {
     let r = rig()
     let store = LockedNoSecretStore()
@@ -530,12 +597,78 @@ struct BankTextsIntakeTests {
     #expect(!r.facts.fileExists && r.author.calls.isEmpty)
   }
 
+  static func binding() -> AccountBinding {
+    AccountBinding(
+      userID: UserID("00000000-0000-4000-8000-000000000001")!,
+      writerID: WriterID("ios-00000000-0000-4000-8000-000000000002")!, apiBase: "https://api.hasala.app", keyEpoch: 1,
+      emailNorm: "maya@example.com", serverSalt: Data(repeating: 1, count: 32), displayName: nil)
+  }
+
+  static func session(pendingLogout: Bool = false) -> SessionRecord {
+    SessionRecord(
+      token: "synthetic-token", userID: "00000000-0000-4000-8000-000000000001", expiresAt: 4_000_000_000,
+      tag: "0011223344556677", pendingLogout: pendingLogout)
+  }
+
   @Test func theSignInIsReadFromTheBindingAndTheSession() throws {
     let store = MemorySecretStore()
     let secrets = Secrets(store: store, apiHost: "api.hasala.app")
     #expect(BankTextIntake.signIn(secrets) == .signedOut)
+    try secrets.writeBinding(Self.binding())
+    #expect(BankTextIntake.signIn(secrets) == .signedOut)
+    try secrets.writeSession(Self.session())
+    #expect(BankTextIntake.signIn(secrets) == .signedIn)
+    try secrets.writeSession(Self.session(pendingLogout: true))
+    #expect(BankTextIntake.signIn(secrets) == .signedOut)
+    try secrets.writeSession(Self.session())
+    #expect(BankTextIntake.signIn(secrets, installChecked: false) == .signedOut)
     store.locked = true
     #expect(BankTextIntake.signIn(secrets) == .locked)
+    #expect(BankTextIntake.signIn(secrets, installChecked: false) == .locked)
+  }
+
+  @Test func aReinstallWhoseInstallCheckHasNotRunStoresNothing() async throws {
+    let r = rig()
+    let secrets = Secrets(store: r.secrets, apiHost: "api.hasala.app")
+    try secrets.writeBinding(Self.binding())
+    try secrets.writeSession(Self.session())
+    let counter = Counter()
+    let account = r.account
+    let i = BankTextIntake(
+      BankTextIntakeDeps(
+        reader: r.reader, facts: r.facts, marker: r.marker, secret: TextKeySecret(store: r.secrets),
+        signIn: { BankTextIntake.signIn(secrets, installChecked: false) },
+        account: {
+          counter.n += 1
+          return account
+        }, linkBudget: .milliseconds(200)))
+    #expect(await i.run(Self.code, sender: "DIB", at: Self.t0) == .dropped(counted: false))
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.signedOutMessage))
+    #expect(!r.facts.fileExists && r.marker.read() == nil && counter.n == 0 && r.author.calls.isEmpty)
+  }
+
+  @Test func aSignedOutBoundIPhoneDropsTheMarkerItWroteBeforeTheFirstUnlock() async throws {
+    let r = rig()
+    let store = LockedNoSecretStore()
+    let secrets = Secrets(store: store, apiHost: "api.hasala.app")
+    let i = BankTextIntake(
+      BankTextIntakeDeps(
+        reader: r.reader, facts: r.facts, marker: r.marker, secret: TextKeySecret(store: store),
+        signIn: { BankTextIntake.signIn(secrets) }, account: { nil }, linkBudget: .milliseconds(200)))
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.lockedMessage, marked: true))
+    #expect(r.marker.read()?.count == 1)
+    for boot in [BootState.opening(Self.binding()), .onboardingKeys, .needsUnlock] {
+      BootController.dropLockedTextsMarker(BootController.initialPhase(boot, finished: true).0, marker: r.marker)
+      #expect(r.marker.read()?.count == 1)
+    }
+    BootController.dropLockedTextsMarker(BootController.initialPhase(.signedOutBound, finished: true).0, marker: r.marker)
+    #expect(r.marker.read() == nil)
+    let l = lane(r)
+    l.refresh()
+    #expect(l.lockedNotice == nil)
+    r.marker.add(arrivedAtMs: BankTextIntake.ms(Self.t0))
+    BootController.dropLockedTextsMarker(BootController.initialPhase(.signedOut, finished: false).0, marker: r.marker)
+    #expect(r.marker.read() == nil)
   }
 
   @Test func theSecretIsMadeOnFirstNeedAndKept() throws {
@@ -568,7 +701,6 @@ struct BankTextsIntakeTests {
     try Secrets(store: keychain, apiHost: "h").wipeAccount(userID: user, writerID: nil)
     #expect(try !secret.held())
   }
-
 
   static let mailRow = PasteRow(
     id: "mail-1", fromText: false, bank: "dib", cardEnding: nil, amount: .aed(1_200), direction: .out,
@@ -662,7 +794,6 @@ struct BankTextsIntakeTests {
     l.reload()
     #expect(l.offersPaste && !PasteBankTextModel(lane: l).refused)
   }
-
 
   @Test func theLaneShowsOnlyWhatItObserved() throws {
     let r = rig()

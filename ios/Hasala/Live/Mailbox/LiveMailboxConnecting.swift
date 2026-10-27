@@ -399,8 +399,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       await old?.resume()
       throw error
     }
-    rt.activate(provider)
-    rt.linkCopy.connected()
+    rt.linkedHere(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
     if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
@@ -469,7 +468,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let outcome = await lane.disconnect(removing: plan)
     let rt = runtime()
     await rt?.refreshMailbox()
-    (rt?.linkCopy ?? BankTextsLinkKeeper(nowMs: { SystemClock().nowMs() })).disconnected(outcome)
+    if let rt {
+      rt.unlinkedHere(outcome)
+    } else {
+      BankTextsLinkKeeper(nowMs: { SystemClock().nowMs() }).disconnected(outcome)
+    }
     try Self.disconnected(outcome, provider: lane.provider)
   }
 

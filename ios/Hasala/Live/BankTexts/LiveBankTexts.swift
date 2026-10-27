@@ -183,9 +183,9 @@ final class LiveBankTexts: BankTextsConnecting {
       lockedNotice = m.count
       return
     }
-    _ = try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }
-    marker.remove()
     lockedNotice = nil
+    guard (try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }) != nil else { return }
+    marker.remove()
     reload()
   }
 
