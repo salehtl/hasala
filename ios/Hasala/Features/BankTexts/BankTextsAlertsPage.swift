@@ -257,7 +257,7 @@ struct BankTextsAlertsPage: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      readsRow(.chat, "The automation hands Hasala each text you get, on this iPhone.")
+      readsRow(.chat, "The automation hands Hasala each text with a full stop, on this iPhone.")
       readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
       readsRow(.lock, BankTexts.keepsNoText)
     }

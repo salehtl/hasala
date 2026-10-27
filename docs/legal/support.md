@@ -142,7 +142,7 @@ The automation only sees texts that arrive after you make it. To bring in an old
 
 ### Why does the automation look for a full stop?
 
-Shortcuts runs a message automation only for a sender you choose or for texts that contain a phrase you type. Bank senders aren't contacts, and bank texts often don't share a word, so a word like "AED" would miss payments without any sign. But a bank payment text has a full stop in its amount (for example 12.50), so the automation runs for every text that contains a full stop and hands it to Hasala. A text with no full stop at all, such as a short reply from a friend, never reaches Hasala. Hasala looks at each text it gets on your iPhone. It keeps only texts that look like payments. Every other text, such as a one-time code, a declined payment, a promotion or a chat with a person, is dropped at once and never stored. A message that looks like a payment, even one from a person, waits in **Review**, where you can archive it. Archiving hides it; it stays in your Hasala data until you delete your account.
+Shortcuts runs a message automation only for a sender you choose or for texts that contain a phrase you type. Bank senders aren't contacts, and bank texts often don't share a word, so a word like "AED" would miss payments without any sign. But bank payment texts usually have a full stop in their amount (for example 12.50), and all of DIB's do, so the automation runs for every text that contains a full stop and hands it to Hasala. A text with no full stop at all, such as a short reply from a friend, never reaches Hasala. If a bank text has none, for example an amount with no decimals, paste it (see below). Hasala looks at each text it gets on your iPhone. It keeps only texts that look like payments. Every other text, such as a one-time code, a declined payment, a promotion or a chat with a person, is dropped at once and never stored. A message that looks like a payment, even one from a person, waits in **Review**, where you can archive it. Archiving hides it; it stays in your Hasala data until you delete your account.
 
 ### Why does a bank text wait in Review?
 
@@ -167,10 +167,11 @@ Go to **Profile › Bank alerts** and switch the source. Hasala asks you to conf
 ### Bank texts not showing up?
 
 1. In **Profile › Bank alerts**, check when the automation last ran.
-2. In Shortcuts, check that the automation is still there, that it runs for any message, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
-3. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. The next time you open Hasala after you unlock, it tells you how many texts that look like payments arrived while it couldn't store them. If iOS doesn't say who sent a text, a person's text that looks like a payment can be counted too. The texts stay in Messages, so paste the bank's ones.
-4. Look in **Review**. Only DIB texts are read fully at the time of writing. Payment texts from other banks, and the first payment on each card, wait there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).
-5. If you're still stuck, email us (see [Contact us](#contact-us)). Tell us which bank it is and what **Profile › Bank alerts** says. Please don't send the text itself or a screenshot of it.
+2. In Shortcuts, check that the automation is still there, that **Message Contains** is a full stop (**.**) with no sender, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
+3. If the bank's text has no full stop, the automation doesn't run for it. Paste it in **Review**.
+4. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. The next time you open Hasala after you unlock, it tells you how many texts that look like payments arrived while it couldn't store them. If iOS doesn't say who sent a text, a person's text that looks like a payment can be counted too. The texts stay in Messages, so paste the bank's ones.
+5. Look in **Review**. Only DIB texts are read fully at the time of writing. Payment texts from other banks, and the first payment on each card, wait there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).
+6. If you're still stuck, email us (see [Contact us](#contact-us)). Tell us which bank it is and what **Profile › Bank alerts** says. Please don't send the text itself or a screenshot of it.
 
 ## Missing transactions or alerts
 

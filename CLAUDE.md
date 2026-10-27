@@ -618,7 +618,7 @@ the approval of the owner for that deployment.
 - **Transactions also come from bank texts (2026-10-26). The phone reads
   them.** The person makes one Shortcuts automation (Message Contains ".", no
   sender, Run Immediately, Hasala › Add bank text); Shortcuts needs a sender or
-  a phrase, and every bank payment text has a full stop in its amount. It hands
+  a phrase, and every DIB payment text has a full stop in its amount. It hands
   each such incoming text to the app on the phone. An account uses bank email or bank texts, not both: texts work
   only while the account has no mailbox link, on every device. The phone keeps
   only payment texts and drops all other texts at once, with no storage; when
