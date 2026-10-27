@@ -93,7 +93,7 @@ func TestTemplatesAreContentFree(t *testing.T) {
 		r, err := RenderTemplate(kind, Content{Email: "a@example.com", BankName: "Emirates NBD",
 			ConfirmURL: "https://hasala.app/waitlist/confirm#x", LeaveURL: "https://hasala.app/waitlist/leave#y",
 			InviteURL: "https://hasala.app/i/X#y"})
-		if err != nil || r.Subject == "" || !strings.Contains(r.Text, "Hasala never asks for your recovery phrase") {
+		if err != nil || r.Subject == "" || !strings.Contains(r.Text, "We'll never ask you to share anything from the Hasala app") {
 			t.Errorf("%s: %+v %v", kind, r, err)
 		}
 		if strings.Contains(r.Subject, "\n") || strings.HasPrefix(r.Text, "\n") {

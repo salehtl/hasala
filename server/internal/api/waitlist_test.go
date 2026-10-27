@@ -155,6 +155,9 @@ func TestWaitlistDoubleOptInInviteAndJoin(t *testing.T) {
 	if code == "" || key == "" || !strings.Contains(sent[0].Text, invites.Display(code)) {
 		t.Fatalf("invite links %v in %q", il, sent[0].Text)
 	}
+	if !strings.HasPrefix(sent[0].Unsubscribe, waitlist.UnsubscribeURL+"?token="+il["waitlist/leave"]) || il["waitlist/leave"] == "" {
+		t.Fatalf("invite unsubscribe %q, leave %q", sent[0].Unsubscribe, il["waitlist/leave"])
+	}
 	if strings.Contains(sent[0].Subject, code) {
 		t.Fatal("the code is in the subject")
 	}
@@ -386,6 +389,63 @@ func TestWaitlistLeave(t *testing.T) {
 	}
 }
 
+func TestWaitlistOneClickUnsubscribe(t *testing.T) {
+	r := newWebRig(t)
+	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"clicker@example.com","bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
+	m := r.drain()[0]
+	tok := links(m)["waitlist/leave"]
+	if m.Unsubscribe != waitlist.UnsubscribeURL+"?token="+tok {
+		t.Fatalf("unsubscribe %q, leave token %q", m.Unsubscribe, tok)
+	}
+	u, err := url.Parse(m.Unsubscribe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := u.Path + "?" + u.RawQuery
+	send := func(method, body, contentType string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, target, strings.NewReader(body))
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		req.Header.Set("Origin", "https://mail.example.com")
+		w := httptest.NewRecorder()
+		r.h.h.ServeHTTP(w, req)
+		return w
+	}
+	entries := func() int {
+		var n int
+		_ = r.h.pool.QueryRow(bg, `SELECT count(*) FROM waitlist_entries`).Scan(&n)
+		return n
+	}
+	const form = "application/x-www-form-urlencoded"
+	wantStatus(t, send("GET", "", ""), http.StatusMethodNotAllowed)
+	wantStatus(t, send("POST", "", form), http.StatusBadRequest)
+	wantStatus(t, send("POST", "List-Unsubscribe=Yes", form), http.StatusBadRequest)
+	if entries() != 1 {
+		t.Fatal("a request without the one-click body left the list")
+	}
+	w := send("POST", "List-Unsubscribe=One-Click", form)
+	if w.Code != http.StatusOK || w.Body.String() != `{"status":"done"}` || w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("one-click %d %s %v", w.Code, w.Body, w.Header())
+	}
+	if entries() != 0 {
+		t.Fatal("the entry survived its one-click unsubscribe")
+	}
+	if w := send("POST", "List-Unsubscribe=One-Click", form); w.Code != http.StatusOK {
+		t.Fatalf("a repeat one-click %d", w.Code)
+	}
+
+	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"multi@example.com","bank":"enbd","source":"web"}`, nil), http.StatusAccepted)
+	u, _ = url.Parse(r.drain()[0].Unsubscribe)
+	target = u.Path + "?" + u.RawQuery
+	var b bytes.Buffer
+	b.WriteString("--x\r\nContent-Disposition: form-data; name=\"List-Unsubscribe\"\r\n\r\nOne-Click\r\n--x--\r\n")
+	wantStatus(t, send("POST", b.String(), "multipart/form-data; boundary=x"), http.StatusOK)
+	if entries() != 0 {
+		t.Fatal("a multipart one-click left the entry")
+	}
+}
+
 func TestBankRequests(t *testing.T) {
 	r := newWebRig(t)
 	h := r.h
@@ -459,5 +519,8 @@ func TestCLIEmailedInviteIsTaggedAndMintedByTheWorker(t *testing.T) {
 	}
 	if strings.Contains(sent[0].Text, "friend") {
 		t.Fatal("the operator's note reached the email")
+	}
+	if sent[0].Unsubscribe != "" {
+		t.Fatalf("an invite with no waitlist entry offers an unsubscribe: %q", sent[0].Unsubscribe)
 	}
 }
