@@ -1,4 +1,4 @@
 // The version testers see; spec 06 §8: 0.2.0 is the first external build.
 // archive.sh reads it from here for inspection I3. The app and the widget extension both
 // include this file, so their versions always agree.
-MARKETING_VERSION = 0.2.0
+MARKETING_VERSION = 0.3.0

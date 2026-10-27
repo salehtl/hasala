@@ -17,8 +17,7 @@ bad() {
 }
 
 # hasala_marketing_version
-v="$(hasala_marketing_version "$ios/Config")"
-if [[ "$v" == 0.2.0 ]]; then ok "ios/Config sets MARKETING_VERSION = $v"; else bad "ios/Config: MARKETING_VERSION is '$v', want 0.2.0"; fi
+if v="$(hasala_marketing_version "$ios/Config")"; then ok "ios/Config sets MARKETING_VERSION = $v"; else bad "ios/Config: MARKETING_VERSION is not set once as X.Y.Z"; fi
 version() { # version NAME WANT-OUTPUT-OR-REFUSED XCCONFIG-LINE...
 	local name="$1" want="$2" got
 	shift 2
