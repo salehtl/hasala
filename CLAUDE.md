@@ -626,9 +626,11 @@ the approval of the owner for that deployment.
   op log. The text key is an HMAC under a secret that stays on the device, and
   a key never drops a text (a repeat is a held probable copy). A text files
   with no review only on an SMS template hit with a matching sender and a
-  known card (`card_linked` mine, as for mail). The readers and Apple's
-  on-device model only fill Review. A text row uses `entry_method: mailbox`
-  with no `gates.ar`, `provenance` or `dedupe`. Refer to
+  known card (`card_linked` mine, as for mail). The readers only fill Review;
+  Apple's on-device model does not read texts. Learned text layouts stay in
+  memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
+  `provenance` or `dedupe`. A mail that may repeat a text row's payment waits
+  in Review and never files itself (D10). Refer to
   `docs/decisions/bank-texts.md`.
 - **Categorization occurs on the device**, in this sequence: user rules, then
   the UAE merchant dictionary in the app, then the person's last pick for
