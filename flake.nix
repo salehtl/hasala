@@ -153,14 +153,33 @@
           # 05 §4.2: the same PostgreSQL the devShell's test clusters use, so CI
           # and the QA host run one major and minor.
           postgresql = pkgs.postgresql_17;
-          # 05 §4.2, R-09: nixos-26.05's cloudflared source and version, compiled
-          # with the Go 1.27 above. It is the only internet-facing process on
-          # the QA host, and 26.05's Go has reachable standard-library advisories.
+          # 05 §4.2, R-09: nixos-26.05's cloudflared recipe, compiled with the
+          # Go 1.27 above. It is the only internet-facing process on the QA
+          # host, and 26.05's Go has reachable standard-library advisories.
           # The ingress lint (infra/qa/cloudflared/lint.sh) and the host run this
           # same binary.
+          #
+          # Source pinned to 2026.10.3 (nixpkgs 6ed958b, not yet in a channel):
+          # releases before 2026.10.2 trust eight eMudhra (emSign) intermediates
+          # with weak private keys (Cloudflare advisory, 2026-10-20). Drop the
+          # version, src and vendorHash below once nixos-26.05 ships >= 2026.10.2.
           cloudflared =
             (pkgs.cloudflared.override { buildGoModule = buildGoModuleFor system pkgs; }).overrideAttrs
-              (_: {
+              (_: rec {
+                version = "2026.10.3";
+                src = pkgs.fetchFromGitHub {
+                  owner = "cloudflare";
+                  repo = "cloudflared";
+                  tag = version;
+                  hash = "sha256-k1OMkHHItOT5VHhQqgC8ODm/RCJEtwtZi0Lxyf/esLg=";
+                };
+                vendorHash = "sha256-KqTLXEm0jxJ1TsyYzxAwYMe8niIgJxBHQPz/aZKmS40=";
+                ldflags = [
+                  "-s"
+                  "-w"
+                  "-X main.Version=${version}"
+                  "-X github.com/cloudflare/cloudflared/cmd/cloudflared/updater.BuiltForPackageManager=nixpkgs"
+                ];
                 doCheck = false;
               });
           server = self.packages.${system}.hasalad;
