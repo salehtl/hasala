@@ -113,11 +113,11 @@ final class BootController {
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
     // can launch the app cold, before the account has opened: it waits for the opening.
-    BackgroundScheduler.shared.install { kind, _ in
-      await AppGraph.boot?.start()
-      guard let rt = await AppGraph.boot?.openedRuntime() else { return false }
-      return await rt.backgroundWork(kind)
-    }
+    BackgroundScheduler.shared.install { kind, _ in await BootController.backgroundTask(kind) }
+  }
+
+  static func backgroundTask(_ kind: BackgroundScheduler.Kind) async -> Bool {
+    await BackgroundEntry.task(BackgroundEntry.live()) { await $0.backgroundWork(kind) }
   }
 
   /// Setup and the root view wait for the runtime: setup authors into it, and resumes
@@ -493,6 +493,29 @@ final class BootController {
 @MainActor
 private final class RuntimeHolder {
   weak var boot: BootController?
+}
+
+struct BackgroundEntry<Runtime> {
+  var start: () -> Void
+  var opened: () async -> Runtime?
+
+  func runtime() async -> Runtime? {
+    start()
+    return await opened()
+  }
+
+  static func task(_ entry: BackgroundEntry?, _ work: (Runtime) async -> Bool) async -> Bool {
+    guard let rt = await entry?.runtime() else { return false }
+    return await work(rt)
+  }
+}
+
+extension BackgroundEntry where Runtime == AccountRuntime {
+  init(_ boot: BootController) {
+    self.init(start: { boot.start() }, opened: { await boot.openedRuntime() })
+  }
+
+  static func live() -> BackgroundEntry? { AppGraph.boot.map(BackgroundEntry.init) }
 }
 
 /// The live graph, once per process, and its entry point for UIKit callbacks

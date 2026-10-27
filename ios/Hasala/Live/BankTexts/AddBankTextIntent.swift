@@ -59,9 +59,9 @@ final class RuntimeBankTextAccount: BankTextAccount {
 }
 
 enum BankTextsWiring {
-  static let reader: any BankTextsReading = UnwiredBankTextsCore()
+  static let reader: any BankTextsReading = CoreBankTextReader()
 
-  static func author(_ runtime: AccountRuntime) -> any BankTextsAuthoring { UnwiredBankTextsCore() }
+  static func author(_ runtime: AccountRuntime) -> any BankTextsAuthoring { runtime.bankTexts }
 }
 
 extension BankTextIntake {
@@ -76,8 +76,7 @@ extension BankTextIntake {
           return !session.pending_logout
         },
         account: {
-          boot.start()
-          guard let rt = await boot.openedRuntime() else { return nil }
+          guard let rt = await BackgroundEntry(boot).runtime() else { return nil }
           return RuntimeBankTextAccount(rt)
         }))
   }

@@ -99,6 +99,8 @@ final class BankTextIntake {
         text, sender: sender, reading: kept, arrivedAt: now, secret: secret, link: link, origin: .automation)
     } catch .unavailable {
       return .failed(Self.unavailableMessage)
+    } catch .notAPayment {
+      return .dropped(counted: false)
     } catch {
       return .failed(Self.notOpenMessage)
     }

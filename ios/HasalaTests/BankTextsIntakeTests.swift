@@ -32,16 +32,16 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
     var text: String
     var sender: String?
     var link: BankTextLinkState
-    var origin: BankTextOrigin
+    var origin: BankTextRoute
     var arrivedAt: Date
     var secretCount: Int
   }
 
-  private let state = Mutex<(calls: [Call], rows: [BankTextRow], ranges: [(Date, Date)])>(([], [], []))
+  private let state = Mutex<(calls: [Call], rows: [PasteRow], ranges: [(Date, Date)])>(([], [], []))
   let outcome: BankTextAuthored?
   let failure: BankTextsCoreFailure?
 
-  init(outcome: BankTextAuthored? = nil, failure: BankTextsCoreFailure? = nil, rows: [BankTextRow] = []) {
+  init(outcome: BankTextAuthored? = nil, failure: BankTextsCoreFailure? = nil, rows: [PasteRow] = []) {
     self.outcome = outcome
     self.failure = failure
     state.withLock { $0.rows = rows }
@@ -52,7 +52,7 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
 
   func author(
     _ text: String, sender: String?, reading: KeptBankText, arrivedAt: Date, secret: Data, link: BankTextLinkState,
-    origin: BankTextOrigin
+    origin: BankTextRoute
   ) async throws(BankTextsCoreFailure) -> BankTextAuthored {
     state.withLock {
       $0.calls.append(
@@ -62,7 +62,7 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
     return outcome ?? .authored(rowID: "row-1", filed: false, bank: reading.fields.bank, keptAt: arrivedAt)
   }
 
-  func liveRows(postedFrom: Date, through: Date) async -> [BankTextRow] {
+  func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] {
     state.withLock {
       $0.ranges.append((postedFrom, through))
       return $0.rows.filter { $0.postedAt >= postedFrom && $0.postedAt <= through }
@@ -409,7 +409,7 @@ struct BankTextsIntakeTests {
 
   // MARK: Paste
 
-  static let mailRow = BankTextRow(
+  static let mailRow = PasteRow(
     id: "mail-1", fromText: false, bank: "dib", cardEnding: nil, amount: .aed(1_200), direction: .out,
     merchant: "SAMPLE SHOP LLC", postedAt: t0.addingTimeInterval(-3600))
 
@@ -442,7 +442,7 @@ struct BankTextsIntakeTests {
   }
 
   @Test func aPasteOffersToReplaceAnUnparsedTextRow() {
-    let unread = BankTextRow(
+    let unread = PasteRow(
       id: "sms-1", fromText: true, unparsed: true, bank: "dib", cardEnding: "0000",
       postedAt: Self.t0.addingTimeInterval(-5 * 60))
     let dated = BankTextFields(bank: "dib", amount: .aed(1_200), direction: .out, postedAt: Self.t0, cardEnding: "0000")
@@ -465,7 +465,7 @@ struct BankTextsIntakeTests {
   }
 
   @Test func theLanePastesIntoReviewAndReplacesAnUnreadRow() async throws {
-    let unread = BankTextRow(
+    let unread = PasteRow(
       id: "sms-1", fromText: true, unparsed: true, bank: "dib", cardEnding: "0000",
       postedAt: Self.t0.addingTimeInterval(-2 * 86_400))
     let r = rig(author: FakeTextAuthor(rows: [unread]))

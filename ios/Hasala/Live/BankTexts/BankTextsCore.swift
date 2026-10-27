@@ -54,7 +54,7 @@ nonisolated enum BankTextLinkState: Equatable, Sendable {
   case unknownUnanswered
 }
 
-nonisolated enum BankTextOrigin: Equatable, Sendable {
+nonisolated enum BankTextRoute: Equatable, Sendable {
   case automation
   case paste(replacing: String?)
 }
@@ -70,7 +70,7 @@ nonisolated enum BankTextsCoreFailure: Error, Equatable, Sendable {
   case failed
 }
 
-nonisolated struct BankTextRow: Equatable, Sendable {
+nonisolated struct PasteRow: Equatable, Sendable {
   var id: String
   var fromText: Bool
   var unparsed: Bool
@@ -99,14 +99,21 @@ nonisolated struct BankTextRow: Equatable, Sendable {
 
 nonisolated protocol BankTextsReading: Sendable {
   func read(_ text: String, sender: String?, testWindowOpen: Bool) -> BankTextRead
+  func readPaste(_ text: String, pastedAt: Date) -> BankTextRead
+}
+
+nonisolated extension BankTextsReading {
+  func readPaste(_ text: String, pastedAt: Date) -> BankTextRead {
+    read(text, sender: nil, testWindowOpen: false)
+  }
 }
 
 nonisolated protocol BankTextsAuthoring: Sendable {
   func author(
     _ text: String, sender: String?, reading: KeptBankText, arrivedAt: Date, secret: Data, link: BankTextLinkState,
-    origin: BankTextOrigin
+    origin: BankTextRoute
   ) async throws(BankTextsCoreFailure) -> BankTextAuthored
-  func liveRows(postedFrom: Date, through: Date) async -> [BankTextRow]
+  func liveRows(postedFrom: Date, through: Date) async -> [PasteRow]
 }
 
 nonisolated struct UnwiredBankTextsCore: BankTextsReading, BankTextsAuthoring {
@@ -117,12 +124,12 @@ nonisolated struct UnwiredBankTextsCore: BankTextsReading, BankTextsAuthoring {
 
   func author(
     _ text: String, sender: String?, reading: KeptBankText, arrivedAt: Date, secret: Data, link: BankTextLinkState,
-    origin: BankTextOrigin
+    origin: BankTextRoute
   ) async throws(BankTextsCoreFailure) -> BankTextAuthored {
     throw .unavailable
   }
 
-  func liveRows(postedFrom: Date, through: Date) async -> [BankTextRow] { [] }
+  func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] { [] }
 }
 
 nonisolated enum BankTextsTestPhrase {

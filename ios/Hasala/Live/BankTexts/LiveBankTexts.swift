@@ -125,7 +125,7 @@ final class LiveBankTexts: BankTextsConnecting {
   }
 
   func read(_ text: String) async -> BankTextReading {
-    switch reader.read(text, sender: nil, testWindowOpen: false) {
+    switch reader.readPaste(text, pastedAt: now()) {
     case .setUpTest, .drop: .notAPayment
     case .keep(let kept): Self.reading(kept.fields)
     }
@@ -140,10 +140,10 @@ final class LiveBankTexts: BankTextsConnecting {
   }
 
   func match(_ text: String) async -> BankTextMatch? {
-    guard case .keep(let kept) = reader.read(text, sender: nil, testWindowOpen: false), let author = author() else {
+    let pastedAt = now()
+    guard case .keep(let kept) = reader.readPaste(text, pastedAt: pastedAt), let author = author() else {
       return nil
     }
-    let pastedAt = now()
     let range = PastePreCheck.range(kept.fields, pastedAt: pastedAt)
     let rows = await author.liveRows(postedFrom: range.from, through: range.through)
     return PastePreCheck.match(kept.fields, pastedAt: pastedAt, rows: rows)
@@ -151,13 +151,13 @@ final class LiveBankTexts: BankTextsConnecting {
 
   func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure) {
     guard link != .linked else { throw .failed(BankTexts.pasteRefused) }
-    guard case .keep(let kept) = reader.read(text, sender: nil, testWindowOpen: false) else {
+    let pastedAt = Date(timeIntervalSince1970: TimeInterval(LockedTextsMarkerFile.minute(nowMs)) / 1000)
+    guard case .keep(let kept) = reader.readPaste(text, pastedAt: pastedAt) else {
       throw .failed(Self.notAPayment)
     }
     guard let author = author(), let secret = secret() else { throw .failed(Self.notOpen) }
     let key: Data
     do { key = try secret.current() } catch { throw .failed(Self.saveFailed) }
-    let pastedAt = Date(timeIntervalSince1970: TimeInterval(LockedTextsMarkerFile.minute(nowMs)) / 1000)
     let replaced = replacing?.kind == .unreadText ? replacing?.rowID : nil
     let state: BankTextLinkState = link == .notLinked ? .notLinked : .unknownUnanswered
     do {

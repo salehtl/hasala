@@ -26,7 +26,7 @@ enum PastePreCheck {
     return a == b
   }
 
-  static func payment(_ f: BankTextFields, pastedAt: Date, row: BankTextRow) -> Bool {
+  static func payment(_ f: BankTextFields, pastedAt: Date, row: PasteRow) -> Bool {
     guard !row.unparsed, let amount = f.amount, let rowAmount = row.amount, rowAmount == amount,
       row.direction == (f.direction ?? .out), sameBank(f.bank, row.bank), sameCard(f.cardEnding, row.cardEnding)
     else { return false }
@@ -36,7 +36,7 @@ enum PastePreCheck {
     return rowMs <= pasteMs && pasteMs - rowMs <= undatedWindowMs
   }
 
-  static func unreadText(_ f: BankTextFields, pastedAt: Date, row: BankTextRow) -> Bool {
+  static func unreadText(_ f: BankTextFields, pastedAt: Date, row: PasteRow) -> Bool {
     guard row.unparsed, row.fromText, f.amount != nil, let bank = f.bank, let rowBank = row.bank,
       bank.lowercased() == rowBank.lowercased(), sameCard(f.cardEnding, row.cardEnding)
     else { return false }
@@ -46,9 +46,9 @@ enum PastePreCheck {
     return rowMs <= pasteMs && pasteMs - rowMs <= undatedWindowMs
   }
 
-  static func match(_ f: BankTextFields, pastedAt: Date, rows: [BankTextRow]) -> BankTextMatch? {
+  static func match(_ f: BankTextFields, pastedAt: Date, rows: [PasteRow]) -> BankTextMatch? {
     let anchor = ms(f.postedAt ?? pastedAt)
-    let nearest: ([BankTextRow]) -> BankTextRow? = { rows in
+    let nearest: ([PasteRow]) -> PasteRow? = { rows in
       rows.min { abs(ms($0.postedAt) - anchor) < abs(ms($1.postedAt) - anchor) }
     }
     if let row = nearest(rows.filter { payment(f, pastedAt: pastedAt, row: $0) }) {

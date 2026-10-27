@@ -37,6 +37,7 @@ final class AccountRuntime {
   @ObservationIgnored let mailboxServer: HTTPMailboxServer
   @ObservationIgnored let backlog: BacklogSorter
   @ObservationIgnored let suggestions: ModelSuggestionStage
+  @ObservationIgnored let bankTexts: CoreBankTextAuthoring
   @ObservationIgnored private var switchOff: NSObjectProtocol?
   @ObservationIgnored private var switchOn: NSObjectProtocol?
   let store: LiveLedgerStore
@@ -67,7 +68,8 @@ final class AccountRuntime {
     env: AccountEnvironment, binding: AccountBinding, context: SyncContext, projection: ProjectionStore,
     observer: LedgerPageObserver, engine: SyncEngine, outbox: Outbox, coordinator: WorkCoordinator,
     lanes: [MailboxProvider: MailboxLane], active: ActiveLane, mailboxLedger: RuntimeMailboxLedger,
-    mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage, store: LiveLedgerStore
+    mailboxServer: HTTPMailboxServer, backlog: BacklogSorter, suggestions: ModelSuggestionStage,
+    bankTexts: CoreBankTextAuthoring, store: LiveLedgerStore
   ) {
     self.env = env
     self.binding = binding
@@ -84,6 +86,7 @@ final class AccountRuntime {
     self.mailboxServer = mailboxServer
     self.backlog = backlog
     self.suggestions = suggestions
+    self.bankTexts = bankTexts
     self.store = store
   }
 
@@ -312,7 +315,9 @@ final class AccountRuntime {
     let rt = AccountRuntime(
       env: env, binding: binding, context: context, projection: projection, observer: observer, engine: engine,
       outbox: outbox, coordinator: coordinator, lanes: lanes, active: active, mailboxLedger: mailboxLedger,
-      mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions, store: store)
+      mailboxServer: mailboxServer, backlog: backlog, suggestions: suggestions,
+      bankTexts: CoreBankTextAuthoring(ledger: mailboxLedger, reader: projection.reader, categorizer: categorizer),
+      store: store)
     afterRun.set { [weak rt] in
       await rt?.refreshAccountIfUnknown()
       await rt?.noteOwnLink()
