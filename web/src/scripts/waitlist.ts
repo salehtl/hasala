@@ -27,8 +27,16 @@ const MSG = {
   emailBad: 'We couldn’t use that email. Check it and try again.',
   bankEmpty: 'Pick your bank so we know which alerts to expect.',
   bankBad: 'Pick your bank from the list.',
-  otherBad: 'Use letters, numbers and spaces for the bank name, up to 64 characters.',
+  otherBad: "Bank names can use letters, numbers, spaces and & . ' - ( ) /",
+  otherLong: (n: number) => `Use up to 64 characters for the bank name. This one has ${n}.`,
+  emailLatin: 'Use an address with Latin letters only, for now.',
+  emailOneAt: 'Use only one @ in the address.',
+  emailLocalLong: 'The part before the @ can be up to 64 characters.',
 };
+
+function breakableEmail(el: Element, addr: string): void {
+  el.replaceChildren(...addr.split(/(?<=@)|(?=\.)/).flatMap((part, i) => (i ? [document.createElement('wbr'), part] : [part])));
+}
 
 /** The status line for answers that are not about one field. */
 function answerText(a: ApiAnswer): { text: string; retry: boolean } {
@@ -111,12 +119,19 @@ function setup(signal: AbortSignal): void {
     const value = v.trim();
     if (!value) return MSG.emailEmpty;
     if (!value.includes('@') || /\s/.test(value)) return 'That doesn’t look like an email address. Check for an @.';
+    if (/[^\x21-\x7e]/.test(value)) return MSG.emailLatin;
+    if (value.indexOf('@') !== value.lastIndexOf('@')) return MSG.emailOneAt;
     const [local, domain = ''] = value.split(/@(?=[^@]*$)/);
     if (!local) return 'Add the part before the @.';
+    if (local.length > 64) return MSG.emailLocalLong;
     if (!/^[^.\s]+(\.[^.\s]+)+$/.test(domain) || /\.$/.test(domain)) return 'That email looks unfinished. Check the part after the @.';
     return null;
   };
-  const otherProblem = (): string | null => (bank.value === 'other' && bankText(other.value) === null ? MSG.otherBad : null);
+  const otherProblem = (): string | null => {
+    if (bank.value !== 'other' || bankText(other.value) !== null) return null;
+    const n = [...other.value.trim().replace(/\s+/g, ' ')].length;
+    return n > 64 ? MSG.otherLong(n) : MSG.otherBad;
+  };
   const validate = (): boolean => {
     const e = emailProblem(email.value);
     const b = bank.value ? null : MSG.bankEmpty;
@@ -182,7 +197,7 @@ function setup(signal: AbortSignal): void {
 
   const showDone = (bankShown = BANK_NAMES[bank.value] ?? '') => {
     const addr = email.value.trim();
-    done.querySelectorAll('[data-done-email]').forEach((el) => (el.textContent = addr));
+    done.querySelectorAll('[data-done-email]').forEach((el) => breakableEmail(el, addr));
     // "api": the catalog name only, as in the confirmation email. "email": what the email says.
     done.querySelector('[data-done-bank]')!.textContent = bankShown;
     form.hidden = true;

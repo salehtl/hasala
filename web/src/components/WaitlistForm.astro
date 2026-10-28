@@ -86,7 +86,7 @@ const named = (name: string) => (byEmail ? undefined : name);
         type="text"
         list="wl-other-banks"
         autocomplete="off"
-        maxlength="64"
+        dir="auto"
         placeholder="For example, ADCB"
         aria-describedby="wl-other-error"
       />
@@ -226,6 +226,9 @@ const named = (name: string) => (byEmail ? undefined : name);
   }
   .field[hidden] {
     display: none;
+  }
+  :global(html:not(.js)) .field--other[hidden] {
+    display: flex;
   }
   .field label {
     font-size: 14px;
@@ -436,6 +439,15 @@ const named = (name: string) => (byEmail ? undefined : name);
     font-weight: 600;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+  @media (max-width: 399px) {
+    .wl-summary div {
+      flex-direction: column;
+      gap: 2px;
+    }
+    .wl-summary dd {
+      text-align: left;
+    }
   }
   .wl-from {
     display: flex;
