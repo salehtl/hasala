@@ -1,5 +1,6 @@
 import Foundation
 import HasalaDesign
+import HasalaModels
 import Observation
 import SwiftUI
 
@@ -71,14 +72,14 @@ final class MerchantSuggestionsConsent {
 
 nonisolated enum CloudSendBack {
   static func title(_ n: Int) -> String {
-    "Send \(n) \(n == 1 ? "payment" : "payments") back to Review?"
+    "Send \(MoneyFormat.count(n)) \(n == 1 ? "payment" : "payments") back to Review?"
   }
 
   static let message =
     "They keep Cloudflare's suggestion, and you confirm each one. Payments you've changed since stay as they are."
 
   static func done(_ n: Int) -> String {
-    n == 0 ? "Nothing to send back" : "Sent \(n) \(n == 1 ? "payment" : "payments") back to Review"
+    n == 0 ? "Nothing to send back" : "Sent \(MoneyFormat.count(n)) \(n == 1 ? "payment" : "payments") back to Review"
   }
 }
 
@@ -117,7 +118,12 @@ struct CloudSuggestionsSection: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
     }
-    .task { await app.cloudSort?.refresh() }
+    .task {
+      #if HASALA_MOCKS
+        await ScreenLaunch.applyCloudConsentLaunch(consent)
+      #endif
+      await app.cloudSort?.refresh()
+    }
     .sheet(item: Bindable(consent).asking) { ask in
       CloudConsentSheet(content: ask.content, turnOn: { consent.turnOn(ask) }, notNow: { consent.notNow() })
     }
