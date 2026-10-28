@@ -188,6 +188,7 @@ public struct ReviewCardModel: Sendable, Hashable, Identifiable {
   public var copyLine: String? = nil
   public var samePurchase: Bool = false
   public var month: YearMonth? = nil
+  public var posted: LocalDate? = nil
   public var canAlwaysUse: Bool = false
   public var reasonLine: String? = nil
   public var fromText: Bool = false
@@ -220,7 +221,7 @@ public struct ReviewElsewhere: Sendable, Hashable {
     case .later: one ? "a later month" : "later months"
     case .other: one ? "another month" : "other months"
     }
-    return "\(count) more in \(months)"
+    return "\(MoneyFormat.count(count)) more in \(months)"
   }
 }
 
@@ -352,11 +353,11 @@ public enum ReviewEngine {
   public static func unreadCount(_ s: LedgerState) -> Int { s.unreadMail.count + notDownloaded(s) }
 
   public static func unreadLine(_ n: Int) -> String {
-    "\(n) bank email\(n == 1 ? "" : "s") we couldn't read"
+    "\(MoneyFormat.count(n)) bank email\(n == 1 ? "" : "s") we couldn't read"
   }
 
   public static func notDownloadedLine(_ n: Int) -> String {
-    "\(n) more email\(n == 1 ? "" : "s") couldn't be downloaded."
+    "\(MoneyFormat.count(n)) more email\(n == 1 ? "" : "s") couldn't be downloaded."
   }
 
   public static func unreadTitle(_ m: UnreadMail) -> String {
@@ -364,7 +365,7 @@ public enum ReviewEngine {
   }
 
   public static func unreadDetail(_ m: UnreadMail, today: LocalDate) -> String {
-    let when = m.receivedOn == today ? "Received today" : "Received \(m.receivedOn.short)"
+    let when = m.receivedOn == today ? "Received today" : "Received \(m.receivedOn.short(today: today))"
     guard let provider = m.provider else { return when }
     return "\(when) · in \(provider.appName)"
   }
@@ -374,7 +375,7 @@ public enum ReviewEngine {
   }
 
   public static func unreadTextLine(_ n: Int) -> String {
-    "\(n) bank text\(n == 1 ? "" : "s") we couldn't read"
+    "\(MoneyFormat.count(n)) bank text\(n == 1 ? "" : "s") we couldn't read"
   }
 
   public static func unreadTextTitle(_ m: UnreadText) -> String {
@@ -382,11 +383,11 @@ public enum ReviewEngine {
   }
 
   public static func unreadTextWhen(_ m: UnreadText, today: LocalDate) -> String {
-    m.receivedAt.date == today ? m.receivedAt.time : "\(m.receivedAt.time) on \(m.receivedAt.date.short)"
+    m.receivedAt.date == today ? m.receivedAt.time : "\(m.receivedAt.time) on \(m.receivedAt.date.short(today: today))"
   }
 
   public static func unreadTextDetail(_ m: UnreadText, today: LocalDate) -> String {
-    m.receivedAt.date == today ? "Received today, \(m.receivedAt.time)" : "Received \(m.receivedAt.date.short), \(m.receivedAt.time)"
+    m.receivedAt.date == today ? "Received today, \(m.receivedAt.time)" : "Received \(m.receivedAt.date.short(today: today)), \(m.receivedAt.time)"
   }
 
   public static func unreadTextBody(_ m: UnreadText, today: LocalDate, canPaste: Bool) -> String {
@@ -434,7 +435,7 @@ public enum ReviewEngine {
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(spokenDay(d))"
     var card = ReviewCardModel(
-      id: t.id, merchant: t.title, monogram: String(t.merchant.prefix(1)).uppercased(),
+      id: t.id, merchant: merchantName(t.title), monogram: monogram(t.merchant.isEmpty ? t.title : t.merchant),
       isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason,
       rawMerchant: t.provenance.flatMap { $0.rawMerchant.isEmpty ? nil : $0.rawMerchant }, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
@@ -444,10 +445,21 @@ public enum ReviewEngine {
     if card.suggestion != nil { card.suggestedBy = t.reviewSuggestionLabel }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
+    card.posted = d
     card.canAlwaysUse = t.canAlwaysUse
     if t.activeReviewReason == .mayRepeat { card.reasonLine = t.mayRepeat?.line }
     card.fromText = t.fromText
     return card
+  }
+
+  public static let unknownMerchant = "Unknown merchant"
+
+  public static func merchantName(_ title: String) -> String {
+    title.allSatisfy(\.isWhitespace) ? unknownMerchant : title
+  }
+
+  public static func monogram(_ merchant: String) -> String {
+    merchant.first(where: \.isLetter).map { String($0).uppercased() } ?? ""
   }
 
   public static func suggestion(_ t: Txn, _ s: LedgerState) -> Category? {
@@ -457,17 +469,18 @@ public enum ReviewEngine {
   public static func copyLine(_ t: Txn, _ s: LedgerState) -> String? {
     guard let held = t.heldCopy else { return nil }
     let other = s.txn(held.of) ?? t
-    let amount = "\(other.amount.currency) \(MoneyFormat.string(other.amount.minor))"
+    let amount = "\(other.amount.currency) \(MoneyFormat.string(other.amount))"
+    let name = merchantName(other.title)
     return held.fromOtherInbox
-      ? "Looks like a copy of \(other.title) \(amount) from your other inbox"
-      : "Looks like a copy of \(other.title) \(amount) you already have"
+      ? "Looks like a copy of \(name) \(amount) from your other inbox"
+      : "Looks like a copy of \(name) \(amount) you already have"
   }
 
   public static func samePurchaseLine(_ t: Txn, _ s: LedgerState) -> String? {
     guard let match = t.samePurchase, let f = s.txn(match.of) else { return nil }
-    var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount.minor))"
+    var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount))"
     if let home = f.homeMinor { amount += " (about \(Money.home) \(MoneyFormat.string(home)))" }
-    var line = "Same purchase as \(amount) at \(f.title) on \(f.postedAt.date.short)?"
+    var line = "Same purchase as \(amount) at \(merchantName(f.title)) on \(f.postedAt.date.short)?"
     if match.merchantMissing { line += " This alert has no merchant." }
     return line
   }
