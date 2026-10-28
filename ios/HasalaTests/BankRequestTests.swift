@@ -45,6 +45,32 @@ struct BankRequestTests {
     #expect(BankInitials.of("First Abu Dhabi Bank") == "FAD")
     #expect(BankInitials.of("Wio") == "WIO")
     #expect(BankInitials.of("Emirates Islamic") == "EI")
+    #expect(BankInitials.of("Commercial Bank of Dubai") == "CBD")
+    #expect(BankInitials.of("Al Hilal Bank") == "AHB")
+    #expect(BankInitials.of("بنك المشرق") == nil)
+    #expect(BankInitials.of("مَصْرِف عجمان الإسلامي") == nil)
+    #expect(BankInitials.of("bank") == nil)
+    #expect(BankInitials.of("Société Générale") == "SG")
+  }
+
+  @Test func bankNamesFollowTheServerRule() {
+    #expect(BankName.normalized("  Al   Hilal\tBank ") == "Al Hilal Bank")
+    #expect(BankName.valid("Al Hilal Bank"))
+    #expect(BankName.valid("Bank (UAE) & Co. - O'Neil / 2"))
+    #expect(BankName.valid("مَصْرِف عجمان الإسلامي"))
+    #expect(BankName.valid("بنك ٢"))
+    #expect(!BankName.valid("Al Hilal Bank, Abu Dhabi"))
+    #expect(!BankName.valid(""))
+    #expect(!BankName.valid("Bank #1"))
+    #expect(BankName.valid(String(repeating: "a", count: 64)))
+    #expect(!BankName.valid(String(repeating: "a", count: 65)))
+    #expect(!BankName.valid(String(repeating: "مَ", count: 33)))
+  }
+
+  @Test func theMockRefusesWhatTheServerRefuses() async {
+    let setup = MockSetupAuthoring()
+    await #expect(throws: SetupFailure.failed(BankName.hint)) { try await setup.requestBank("Al Hilal Bank, Abu Dhabi") }
+    #expect(setup.requestedBanks.isEmpty)
   }
 
   @Test func theMockRecordsSlugAndDomain() async throws {

@@ -14,6 +14,11 @@ struct RequestBankSheet: View {
   @State private var probing = false
   @State private var failure: SetupFailure?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var typedName: String { BankName.normalized(typed) }
+  private var typedValid: Bool { BankName.valid(typedName) }
+  private var showsNameHint: Bool { (!typedName.isEmpty && !typedValid) || failure == .failed(BankName.hint) }
 
   private func requested(_ slug: String) -> Bool { snapshot.requests.contains { $0.bank == slug } }
 
@@ -30,7 +35,7 @@ struct RequestBankSheet: View {
           catalogSection
           typedSection
           if !snapshot.requests.isEmpty { RequestedBanksCard(requests: snapshot.requests) }
-          if let message = failure?.message { FailureBanner(failure: .badPhrase(message)) }
+          if failure != .failed(BankName.hint), let message = failure?.message { FailureBanner(failure: .badPhrase(message)) }
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)
@@ -70,7 +75,7 @@ struct RequestBankSheet: View {
   private var typedSection: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Another bank")
-      HStack(spacing: 12) {
+      fieldLayout {
         TextField("Bank name", text: $typed)
           .textInputAutocapitalization(.words)
           .autocorrectionDisabled()
@@ -79,14 +84,25 @@ struct RequestBankSheet: View {
           .accessibilityIdentifier("requestBank.name")
         Button("Send") { Task { await askTyped() } }
           .buttonStyle(.pill(.secondary, size: .small, loading: busy == "other"))
-          .disabled(typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy != nil || setup == nil)
+          .disabled(!typedValid || busy != nil || setup == nil)
           .accessibilityIdentifier("requestBank.send")
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 10)
       .frame(minHeight: 56)
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+      .onChange(of: typed) { _, _ in if failure == .failed(BankName.hint) { failure = nil } }
+      if showsNameHint {
+        InlineStatus(tone: .warning, text: BankName.hint, size: .regular)
+          .accessibilityIdentifier("requestBank.nameHint")
+      }
     }
+  }
+
+  private var fieldLayout: AnyLayout {
+    typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+      : AnyLayout(HStackLayout(spacing: 12))
   }
 
   @ViewBuilder private func lookInMail(_ prober: OtherBankProbing) -> some View {
@@ -144,12 +160,12 @@ struct RequestBankSheet: View {
   }
 
   private func askTyped() async {
-    let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty, let setup, busy == nil else { return }
+    let name = typedName
+    guard BankName.valid(name), let setup, busy == nil else { return }
     busy = "other"
     defer { busy = nil }
     do {
-      try await setup.requestBank(String(name.prefix(64)))
+      try await setup.requestBank(name)
       typed = ""
       failure = nil
       await load()
@@ -184,11 +200,15 @@ private struct AskBankRow: View {
   let busy: Bool
   let identifier: String
   var ask: () -> Void
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: 12) {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+      : AnyLayout(HStackLayout(spacing: 12))
+    layout {
       HStack(spacing: 12) {
-        BankPlate(initials: BankInitials.of(name), hue: .sand)
+        RequestBankPlate(name: name, hue: .sand)
         VStack(alignment: .leading, spacing: 0) {
           Text(name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
           if let detail { Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary) }
@@ -224,7 +244,7 @@ struct RequestedBanksCard: View {
         ForEach(Array(requests.enumerated()), id: \.element) { i, request in
           if i > 0 { HDivider(inset: .disc68) }
           HStack(spacing: 12) {
-            BankPlate(initials: BankInitials.of(request.name), hue: request.state == .supported ? .mint : .sand)
+            RequestBankPlate(name: request.name, hue: request.state == .supported ? .mint : .sand)
             VStack(alignment: .leading, spacing: 0) {
               Text(request.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
               Text(request.detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -244,13 +264,77 @@ struct RequestedBanksCard: View {
   }
 }
 
-enum BankInitials {
-  static func of(_ name: String) -> String {
-    let words = name.split(whereSeparator: { $0 == " " || $0 == "-" })
-    if words.count == 1 {
-      let w = String(words[0])
-      return w.count <= 4 && w == w.uppercased() ? w : String(w.prefix(3)).uppercased()
+private struct RequestBankPlate: View {
+  let name: String
+  let hue: Hue
+
+  var body: some View {
+    if let initials = BankInitials.of(name) {
+      BankPlate(initials: initials, hue: hue)
+    } else {
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(hue.perceptualGradient)
+        .frame(width: 40, height: 40)
+        .overlay { HIconView(.bank, size: 20, color: hue.ink) }
+        .accessibilityHidden(true)
     }
-    return String(words.prefix(3).compactMap(\.first)).uppercased()
+  }
+}
+
+enum BankInitials {
+  static let particles: Set<String> = ["of", "the", "and", "for", "de", "al", "el"]
+  static let generic: Set<String> = ["bank", "banks"]
+
+  static func of(_ name: String) -> String? {
+    let words = name.split(whereSeparator: { $0 == " " || $0 == "-" }).map(String.init)
+    guard let first = words.first, words.allSatisfy(latin) else { return nil }
+    if words.count == 1, generic.contains(first.lowercased()) { return nil }
+    if words.count == 1 {
+      return first.count <= 4 && first == first.uppercased() ? first : String(first.prefix(3)).uppercased()
+    }
+    let kept = words.filter { !particles.contains($0) }
+    return String((kept.isEmpty ? words : kept).prefix(3).compactMap(\.first)).uppercased()
+  }
+
+  private static func latin(_ word: String) -> Bool {
+    word.unicodeScalars.allSatisfy { s in
+      !s.properties.isAlphabetic || s.value < 0x0250 || (0x1E00...0x1EFF).contains(s.value)
+    }
+  }
+}
+
+enum BankName {
+  static let hint = "Use only letters, numbers, spaces and & . ' - ( ) /, up to 64 characters."
+
+  static func normalized(_ typed: String) -> String {
+    var out = String.UnicodeScalarView()
+    var space = false
+    for s in typed.unicodeScalars {
+      if s.properties.isWhitespace {
+        space = !out.isEmpty
+        continue
+      }
+      if space {
+        out.append(" ")
+        space = false
+      }
+      out.append(s)
+    }
+    return String(out)
+  }
+
+  static func valid(_ name: String) -> Bool {
+    let scalars = name.unicodeScalars
+    return (1...64).contains(scalars.count) && scalars.allSatisfy(allowed)
+  }
+
+  private static func allowed(_ s: Unicode.Scalar) -> Bool {
+    switch s.properties.generalCategory {
+    case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+      .nonspacingMark, .spacingMark, .enclosingMark, .decimalNumber:
+      true
+    default:
+      s == " " || "&.'-()/".unicodeScalars.contains(s)
+    }
   }
 }
