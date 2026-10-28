@@ -135,7 +135,7 @@ public struct AskAnswer: Sendable, Hashable {
 }
 
 public enum AskEngine {
-  public static func answer(_ s: LedgerState, filter f: AskFilter) -> AskAnswer {
+  public static func answer(_ s: LedgerState, filter f: AskFilter, today: LocalDate? = nil) -> AskAnswer {
     let found = s.txns.filter { matches($0, f, s) }.sorted { $0.postedAt > $1.postedAt }
     let isIncome = f.direction == .in || (f.direction == nil && !found.isEmpty && found.allSatisfy { $0.direction == .in })
     func counted(_ t: Txn) -> Bool {
@@ -150,7 +150,8 @@ public enum AskEngine {
     for t in found where counted(t) && t.homeMinor == nil { leftOut[t.amount.currency, default: 0] += 1 }
     let rows = found.map { t in
       var r = ActivityEngine.row(t, s)
-      r.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(t.postedAt.date.short)"
+      let day = today.map { t.postedAt.date.short(today: $0) } ?? t.postedAt.date.short
+      r.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(day)"
       return r
     }
     let activity: TxnFilter? =
@@ -159,7 +160,7 @@ public enum AskEngine {
       else { nil }
     return AskAnswer(
       filter: f, headline: headline(f, s, isIncome: isIncome), scope: scope(f, s), rows: rows, total: .aed(total),
-      isIncome: isIncome, countLine: "\(found.count) transaction\(found.count == 1 ? "" : "s")", activity: activity,
+      isIncome: isIncome, countLine: "\(MoneyFormat.count(found.count)) transaction\(found.count == 1 ? "" : "s")", activity: activity,
       mark: leftOut.isEmpty ? nil : TotalMark(leftOut: leftOut))
   }
 
@@ -171,8 +172,8 @@ public enum AskEngine {
     if let hi = f.maximumFils, (t.homeMinor ?? .max) > hi { return false }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) { return false }
     if !f.merchants.isEmpty {
-      let hay = [t.title, t.provenance?.rawMerchant ?? ""].joined(separator: "\n").lowercased()
-      if !f.merchants.contains(where: { hay.contains($0.lowercased()) }) { return false }
+      let hay = [t.title, t.provenance?.rawMerchant ?? ""].joined(separator: "\n")
+      if !f.merchants.contains(where: { SearchText.contains(hay, $0) }) { return false }
     }
     return true
   }

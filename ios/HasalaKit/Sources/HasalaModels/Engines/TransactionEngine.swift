@@ -76,7 +76,7 @@ public enum TransactionEngine {
     guard let t = s.txn(id) else { return nil }
     let rejected = t.modelGuessRejected
     let c = rejected ? nil : s.category(t.categoryID)
-    var meta = t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
+    var meta = t.joined(t.postedAt.date.short(today: now.date), t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
 
     var pace: EmbeddedPace?
