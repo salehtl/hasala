@@ -122,8 +122,10 @@ public struct ComingUpWidgetView: View {
       if host == .system {
         ViewThatFits(in: .vertical) {
           content(model.rows.prefix(3))
+          content(model.rows.prefix(3), compact: true)
           content(model.rows.prefix(2))
           content(model.rows.prefix(1))
+          content(model.rows.prefix(0))
         }
       } else {
         content(model.rows[...])
@@ -134,8 +136,8 @@ public struct ComingUpWidgetView: View {
     .accessibilityElement(children: .contain)
   }
 
-  private func content(_ rows: ArraySlice<ComingUpRow>) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
+  private func content(_ rows: ArraySlice<ComingUpRow>, compact: Bool = false) -> some View {
+    VStack(alignment: .leading, spacing: compact ? 4 : 2) {
       HStack(alignment: .firstTextBaseline) {
         Text(model.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .singleLineAtDefaultTextSize()
@@ -152,7 +154,7 @@ public struct ComingUpWidgetView: View {
           .padding(.bottom, 6)
       }
       ForEach(rows) { row in
-        ComingUpRowView(row: row, hidden: hidden)
+        ComingUpRowView(row: row, hidden: hidden, compact: compact)
       }
       Spacer(minLength: 0)
     }
@@ -162,6 +164,7 @@ public struct ComingUpWidgetView: View {
 struct ComingUpRowView: View {
   let row: ComingUpRow
   let hidden: Bool
+  var compact = false
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
@@ -179,10 +182,10 @@ struct ComingUpRowView: View {
         HStack(spacing: 10) {
           disc
           name.frame(maxWidth: .infinity, alignment: .leading)
-          note
+          note.layoutPriority(compact ? 1 : 0)
           amount
         }
-        .frame(minHeight: 36)
+        .frame(minHeight: compact ? 28 : 36)
       }
     }
     .accessibilityElement(children: .combine)
@@ -196,7 +199,7 @@ struct ComingUpRowView: View {
 
   private var name: some View {
     Text(row.name).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-      .lineLimitAtDefaultTextSize(2)
+      .lineLimitAtDefaultTextSize(compact ? 1 : 2)
   }
 
   @ViewBuilder private var note: some View {
@@ -204,7 +207,7 @@ struct ComingUpRowView: View {
       HStack(spacing: 5) {
         Circle().fill(HColor.statusErrorForeground).frame(width: 6, height: 6)
         Text(row.note).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.statusErrorForeground)
-          .lineLimitAtDefaultTextSize(2)
+          .lineLimitAtDefaultTextSize(compact ? 1 : 2)
       }
     } else {
       Text(row.note).hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
@@ -239,13 +242,19 @@ public struct ToReviewWidgetView: View {
       .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
-        VStack(alignment: .leading, spacing: 0) {
-          Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
-            .lineLimit(1).minimumScaleFactor(0.6)
-          Text(captionLead + model.caption.rendered(hidden: hidden)).privacySensitive()
-            .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-            .singleLineAtDefaultTextSize()
-            .accessibilityLabel(captionLead + model.caption.spoken(hidden: hidden))
+        ViewThatFits(in: .horizontal) {
+          VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+              Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink).lineLimit(1)
+              Text("to sort").hFigure(.widgetUnit).foregroundStyle(Hue.sky.ink).lineLimit(1)
+            }
+            caption("")
+          }
+          VStack(alignment: .leading, spacing: 0) {
+            Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
+              .lineLimit(1).minimumScaleFactor(0.6)
+            caption(model.count > 0 ? "to sort · " : "")
+          }
         }
         if model.count > 0 {
           Text("Start").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textOnAccent)
@@ -261,7 +270,12 @@ public struct ToReviewWidgetView: View {
     .accessibilityElement(children: .combine)
   }
 
-  private var captionLead: String { model.count > 0 ? "to sort · " : "" }
+  private func caption(_ lead: String) -> some View {
+    Text(lead + model.caption.rendered(hidden: hidden)).privacySensitive()
+      .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      .singleLineAtDefaultTextSize()
+      .accessibilityLabel(lead + model.caption.spoken(hidden: hidden))
+  }
 }
 
 public struct WaitingWidgetView: View {
