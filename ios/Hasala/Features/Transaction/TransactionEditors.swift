@@ -1,3 +1,4 @@
+import CoreDomain
 import HasalaDesign
 import HasalaModels
 import HasalaText
@@ -241,7 +242,7 @@ struct TextLimit: Equatable {
   static let note = TextLimit(scalars: TextRules.noteMaxScalars, bytes: TextRules.noteMaxBytes)
 
   static func stored(_ typed: String) -> String {
-    typed.precomposedStringWithCanonicalMapping.trimmingCharacters(in: .whitespacesAndNewlines)
+    UserText.normalize(typed)
   }
 
   func count(_ typed: String) -> Int { Self.stored(typed).unicodeScalars.count }
