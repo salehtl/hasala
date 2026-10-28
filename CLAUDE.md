@@ -18,13 +18,43 @@ At this time, Hasala goes to a small TestFlight beta. All deployments are
 | --- | --- |
 | `server/` | The Go server `hasalad` (module `github.com/salehtl/hasala/server`). It uses Postgres. It is a fork of ledgerd at commit `4b01e36`. |
 | `server/oracle/` | A different Go module. It contains the frozen ledgerd v1 reference packages (`v1ref`), the corpus reader and the corpus gates. Use it only as a test oracle. The server build graph cannot get access to it. |
-| `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models and the Maya mock. |
+| `ios/` | The native SwiftUI app and its Swift packages. `HasalaCore` is the client core (the port from TypeScript). `HasalaKit` is the design system, the read models, the widget data and the Maya mock. `Hasala/` is the app (`App/`, `Features/`, and `Live/`, which connects the screens to the core). `HasalaWidgets/` is the widget extension, with its own `PrivacyInfo.xcprivacy`. Refer to "How the code fits together" below. |
 | `conformance/` | Shared fixtures. Go and Swift must give output that is the same, byte for byte. Nine sets are golden files that the Swift tests own (`conformance/README.md`). The ledgerd TypeScript client core and PWA that wrote some of them were removed after commit `9b4aae2`. |
 | `web/` | The hasala.app website: Astro and Bun, static output. Refer to "Website" below. |
 | `design/` | The logo and exported assets. They are not in this tree yet. The UI source of truth is a private Paper design file. |
 | `infra/qa/` | The QA deployment as code. `nix/module.nix` is `nixosModules.hasala` (`services.hasala`). It contains: a PostgreSQL 17 for Hasala only, on a unix socket; the migrations; `hasalad serve` and `hasalad console` on loopback; the tunnel; and encrypted backups. `cloudflared/` contains the ingress golden file, the lint and the fixtures. `nix/tests/` contains the eval check and the VM check. `HOST-PR.md` is the change on the host side (placeholders only). Do not put host names, addresses, accounts or credentials here. |
 | `infra/assist/` | The `hasala-assist` Cloudflare Worker (TypeScript, Bun). The app sends it one merchant name and gets a Clef category suggestion (opt-in cloud suggestions). It stores nothing and logs nothing. Its fence test fails on a storage binding, a `console.` call or AI Gateway. `scripts/check.sh` runs its typecheck and tests. Refer to `infra/assist/README.md`. |
-| `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. The Hasala architecture and decisions will also go in `docs/`. They are not in this tree yet. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Code comments that refer to it say "ledgerd design archive". |
+| `docs/` | `docs/legal/` contains the privacy policy, the terms, the security page and the support page. The website shows them (`status: "final"`). If a page has an `[[OWNER: ...]]` note, set it to `status: "draft"` again. `docs/decisions/` contains the decisions of record (refer to "Decisions" below). Read the decision of an area before you change it. `docs/runbooks/` contains the restore and the beta review runbooks. `docs/ci.md` contains the CI concurrency and cache details. The ledgerd design history (plans, specs, task reports, reviews) is in a private archive. It is not part of this repository. Code comments that refer to it say "ledgerd design archive". |
+
+## How the code fits together
+
+The phone does all reading and all writing of money data. The server keeps
+an encrypted op log for each account and relays wakes.
+
+On the phone (`ios/HasalaCore/Sources/HasalaCore/`):
+
+1. `Mailbox/` runs the mail lanes (`MailboxEngine`, `GmailProvider`,
+   `Outlook/OutlookProvider`). `Mailbox/Texts/` reads bank texts. `Mail/`
+   decides if a message comes from the bank (`GmailTrustProbe`,
+   `OutlookTrustProbe`).
+2. `Norm/` normalizes the raw MIME. `Template/` (the bundled templates) and
+   `Extract/` (the general and learned readers) read the fields.
+3. `Categorize/` and `Cloud/` give the category (the sequence is in
+   "Decisions").
+4. `Domain/Author/` writes the ops. They wait in `Store/` (`LedgerStore`) and
+   `Outbox/`.
+5. `Sync/Pusher` seals the ops into frames (`Wire/`, `Crypto/`) and uploads
+   them. `Sync/Puller` downloads and opens frames. `Replay/` folds the ops,
+   and `Projection/` makes the read model that the screens use (through
+   `HasalaKit/Sources/HasalaModels`).
+
+On the server (`server/internal/`): `api` has the routes. `oplog` stores the
+sealed frames and examines only the framing, the position and the hash chain.
+`gmailpush` and `outlookpush` turn provider notices into content-free APNs
+wakes (`pushv2`). `auth`, `authkeys`, `keyproto` and `accounts` are the
+accounts, passkeys and keys. `mail` and `mailq` send outbound mail.
+`cmd/hasalad/fence_test.go` makes sure that the server cannot reach Gmail,
+Graph or the provider token endpoints.
 
 ## Build and test
 
@@ -172,18 +202,13 @@ it is not sure, it runs the job.
   the same code, because a branch must be up to date before it merges. If CI
   cannot get that commit (a new branch, a force push), all jobs run.
 
-### Concurrency
+### Concurrency and caches
 
-- A new push to a pull request cancels the older run of that pull request.
-- A push to `main` does not cancel an older run as a whole. But a newer push
-  to `main` cancels the Mac jobs (`swift`, `ios-build`, `ios-tools` and each
-  `ios` shard) of an older push, if they are in the queue or running. Each of
-  these jobs has a job-level `concurrency` group for this. The reason: each
-  push to `main` asks for six Mac jobs, and the account runs only five at the
-  same time. Without the groups, the runs of `main` waited for hours.
-- The newest push to `main` still runs its Mac jobs, because some pull
-  requests merge before their Mac jobs finish.
-- A manual run is not cancelled.
+A new push to a pull request cancels its older run. A newer push to `main`
+cancels the Mac jobs of an older push (the account runs at most five Mac jobs
+at the same time). Only a push to `main` saves a Nix cache entry. Do not use
+`magic-nix-cache-action`. `vuln-weekly.yml` and `ci-weekly.yml` run on a
+schedule and are not required. The details are in `docs/ci.md`.
 
 Rules for a change to the CI:
 
@@ -193,41 +218,6 @@ Rules for a change to the CI:
    in the pending state permanently.
 3. If a job starts to read a path on its list of paths that it does not read,
    remove that path from the list in `changes`.
-
-### Caches in CI
-
-The repository has 10 GB of Actions cache. Above it, GitHub deletes the
-entries that were used least recently.
-
-- `actions/cache` keeps the Go caches (`gate`, `vuln` only reads them), the
-  Bun caches (`gate`, `web`) and the SwiftPM caches (`swift`, `ios-build`).
-- `nix-community/cache-nix-action` keeps the Nix store in `gate`, `vuln`,
-  `nixos-vm`, `web` and `ios-tools`. Each job has one entry, with the key
-  `nix-<runner OS>-<job>-<hash of flake.lock>`.
-- Only a push to `main` saves a Nix entry. Pull requests and manual runs only
-  restore it. When `flake.lock` changes, a run restores the newest entry with
-  the same prefix.
-- Before a save, the job collects garbage until the store is at most
-  `gc-max-store-size`. After a save, it deletes the older entries of the same
-  prefix on `main` (`purge`). For this, these jobs have `actions: write`.
-- Do not use `magic-nix-cache-action` again. It saved one entry for each
-  store path, with a random suffix, also in the scopes of pull requests. On
-  2026-10-20 it had 5300 entries (9.5 GB) for 974 different paths (1.5 GB).
-
-`.github/workflows/vuln-weekly.yml` runs the same govulncheck on `main` each
-Monday (job `vuln-weekly`, not required). This is necessary because new Go
-advisories occur without new commits. It is a different workflow, thus it
-does not record checks on the head of `main` with the required names.
-
-`.github/workflows/ci-weekly.yml` runs each Sunday (not required):
-
-- Job `ci` calls `ci.yml` (`workflow_call`). The event is `schedule`, thus
-  `changes` starts all jobs and the path rules do not apply. This finds jobs
-  that the path rules skipped for weeks. Its checks have the names
-  `ci / <job>`, thus they are not the required names.
-- Job `cache-usage` fails when the Actions cache of the repository is more
-  than 8 GB (`gh api repos/{repo}/actions/cache/usage`).
-- A pull request that changes `ci-weekly.yml` runs only `cache-usage`.
 
 ### Secrets and real mail
 
@@ -615,6 +605,17 @@ the approval of the owner for that deployment.
   no data. Do not put raw bank email in the op log. Keep only the Gmail
   message id and the parsed fields. Email forwarding and SMTP ingest are not
   used in this version.
+- **Transactions also come from Outlook (2026-10-20). The phone reads it.**
+  Only personal Microsoft accounts (`consumers`), Microsoft Graph v1.0, no
+  MSAL. The phone lists the Inbox with a `$filter` on the known bank sender
+  addresses (`OutlookSenders.known`), with immutable ids. A message is the
+  bank's only when its `From` is a known sender, it is in the Inbox and its
+  domain publishes DMARC `p=reject`; else it goes to Review. Junk waits for
+  review, and Deleted Items is left out. The server holds no Microsoft token
+  and does not call Graph. It relays Graph notices as content-free wakes and
+  keeps only the SHA-256 of each link's `clientState`. Refer to
+  `docs/decisions/outlook-mailbox.md` and
+  `docs/decisions/outlook-trust-runbook.md`.
 - **Transactions also come from bank texts (2026-10-26). The phone reads
   them.** The person makes one Shortcuts automation (Message Contains ".", no
   sender, Run Immediately, Hasala › Add bank text); Shortcuts needs a sender or
@@ -687,6 +688,15 @@ the approval of the owner for that deployment.
 - **Auth**: passkeys (RP ID `hasala.app`) and a 12-word recovery phrase;
   invite codes; a WebAuthn step-up for each operation that changes auth,
   keys or mailboxes.
+- **Recovery phrase (2026-10-15, amended 2026-10-22)**: no word check. The
+  invariant is "nothing is published before the words were shown to the
+  person". A passkey signup with PRF and a synced passkey may publish first
+  and show the 12 words later; their first view goes in the restore ledger
+  (`phrase-seen`). Refer to `docs/decisions/recovery-phrase-no-quiz.md`.
+- **Recurring items (2026-10-21)**: a recurring item is a `bill` in the code.
+  There is no new op type: `bill_set` gains optional keys that older builds
+  ignore. Matching and detection are computed from the log on each device and
+  are not written as ops. Refer to `docs/decisions/recurring-items.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.
