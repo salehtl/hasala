@@ -106,6 +106,7 @@ public struct ReviewSummary: Sendable, Hashable {
 public struct ActivitySnapshot: Sendable, Hashable {
   public var period: Period
   public var isThisMonth: Bool
+  public var allTime: Bool
   /// "26 transactions this month", or "105 transactions · Aug – Oct 2026".
   public var countLine: String
   public var chips: [ActivityChip]
@@ -133,6 +134,8 @@ public enum ActivityEngine {
     let inPeriod = s.txns.filter { !$0.archived && window.contains($0.postedAt.date) }
     let reviewQueue = inPeriod.filter(\.inReview)
     let billCount = inPeriod.filter { isBill($0, s) && !$0.inReview }.count
+    let archivedCount = s.txns.filter(\.archived).count
+    let allTime = filter.kind == .archived && filter.category == nil
 
     let chips = [
       ActivityChip(kind: .all, count: nil, accentCount: false),
@@ -140,7 +143,7 @@ public enum ActivityEngine {
       ActivityChip(kind: .bills, count: billCount, accentCount: false),
       ActivityChip(kind: .transfers, count: nil, accentCount: false),
       ActivityChip(kind: .income, count: nil, accentCount: false),
-      ActivityChip(kind: .archived, count: nil, accentCount: false),
+      ActivityChip(kind: .archived, count: archivedCount, accentCount: false),
     ]
 
     let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
@@ -149,11 +152,14 @@ public enum ActivityEngine {
     let review = showsOverview ? reviewSummary(s, now: now) : nil
     let n = inPeriod.count
     let noun = "\(n) transaction\(n == 1 ? "" : "s")"
+    let countLine =
+      allTime ? "\(archivedCount) archived · all time" : isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)"
 
     return ActivitySnapshot(
       period: period,
       isThisMonth: isThisMonth,
-      countLine: isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)",
+      allTime: allTime,
+      countLine: countLine,
       chips: chips,
       filter: filter,
       review: review.flatMap { $0.count > 0 ? $0 : nil },
@@ -182,7 +188,7 @@ public enum ActivityEngine {
       let hay = [t.title, t.provenance?.rawMerchant ?? "", t.note, s.category(t.categoryID)?.name ?? ""]
         .joined(separator: "\n").lowercased()
       if !hay.contains(q) { return false }
-    } else if !window.contains(t.postedAt.date) {
+    } else if f.kind != .archived, !window.contains(t.postedAt.date) {
       return false
     }
     if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }

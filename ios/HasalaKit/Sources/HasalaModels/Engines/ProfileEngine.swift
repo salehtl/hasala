@@ -24,6 +24,7 @@ public struct ProfileSnapshot: Sendable, Hashable {
   public var swipeSummary: String
   /// What VoiceOver reads for it: "Swipe left for Want, right for Need" (arrows aren't speech).
   public var swipeSpoken: String
+  public var archivedTxns: Int
 }
 
 public struct RuleRowModel: Sendable, Hashable, Identifiable {
@@ -68,7 +69,8 @@ public enum ProfileEngine {
       signIn: s.profile.signIn,
       prefs: s.prefs,
       swipeSummary: right ? "← Want · Need →" : "← Need · Want →",
-      swipeSpoken: right ? "Swipe left for Want, right for Need" : "Swipe left for Need, right for Want"
+      swipeSpoken: right ? "Swipe left for Want, right for Need" : "Swipe left for Need, right for Want",
+      archivedTxns: s.txns.filter(\.archived).count
     )
   }
 
