@@ -69,6 +69,8 @@ public struct LocalDate: Sendable, Hashable, Comparable, Codable {
   /// "Fri 9 Oct".
   public var short: String { "\(weekdayShort) \(dayMonth)" }
 
+  public func short(today: LocalDate) -> String { year == today.year ? short : "\(short) \(year)" }
+
   /// "9 Oct".
   public var dayMonth: String { "\(day) \(yearMonth.shortName)" }
 

@@ -45,7 +45,7 @@ public enum CSVExport {
       let cells: [String] = [
         date(r.date),
         text(r.description),
-        decimal(r.amount.minor),
+        decimal(r.amount),
         r.amount.currency,
         r.homeMinor.map(decimal) ?? "",
         r.direction == .out ? "Spending" : "Income",
@@ -90,6 +90,10 @@ public enum CSVExport {
   /// `-123.45`: no grouping, a leading minus.
   public static func decimal(_ minor: Int64) -> String {
     (minor < 0 ? "-" : "") + MoneyFormat.string(minor, style: .exact).replacingCommas()
+  }
+
+  public static func decimal(_ money: Money) -> String {
+    (money.minor < 0 ? "-" : "") + MoneyFormat.string(money, style: .exact).replacingCommas()
   }
 
   /// `2026-10-09`.
