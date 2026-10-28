@@ -42,9 +42,15 @@ struct ReviewPickSheet: View {
             form(formOffer)
           } else {
             header
-            if showsProjects { projects }
-            if canAlwaysUse { ruleRow }
-            list
+            if typeSize.isAccessibilitySize {
+              list
+              if showsProjects { projects }
+              if canAlwaysUse { ruleRow }
+            } else {
+              if showsProjects { projects }
+              if canAlwaysUse { ruleRow }
+              list
+            }
             if let newCategory { newCategoryRow(newCategory) }
           }
         }
@@ -75,6 +81,7 @@ struct ReviewPickSheet: View {
   }
 
   private static let top = "pick.top"
+  private static let chipsInView = 2
 
   private var creating: Bool { formOffer != nil }
 
@@ -175,25 +182,33 @@ struct ReviewPickSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)
         .accessibilityAddTraits(.isHeader)
-      ScrollView(.horizontal) {
-        HStack(spacing: 8) {
-          ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
-            .fixedSize()
-            .accessibilityIdentifier("pick.project.none")
-          ForEach(projectChoices) { p in
-            HStack(spacing: 6) {
-              ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
-                .fixedSize()
-                .accessibilityLabel(p.suggested ? "\(p.name), suggested" : p.name)
-                .accessibilityIdentifier("pick.project.\(p.id)")
-              if p.suggested {
-                InfoChip("Suggested", style: .suggested).fixedSize().accessibilityHidden(true)
+      ScrollViewReader { proxy in
+        ScrollView(.horizontal) {
+          HStack(spacing: 8) {
+            ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
+              .fixedSize()
+              .accessibilityIdentifier("pick.project.none")
+            ForEach(projectChoices) { p in
+              HStack(spacing: 6) {
+                ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
+                  .fixedSize()
+                  .accessibilityLabel(p.suggested ? "\(p.name), suggested" : p.name)
+                  .accessibilityIdentifier("pick.project.\(p.id)")
+                if p.suggested {
+                  InfoChip("Suggested", style: .suggested).fixedSize().accessibilityHidden(true)
+                }
               }
+              .id(p.id)
             }
           }
+          .padding(.horizontal, HSpacing.insetPage)
+          .padding(.vertical, 2)
         }
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.vertical, 2)
+        .onAppear {
+          if let i = projectChoices.firstIndex(where: \.suggested), i >= Self.chipsInView {
+            proxy.scrollTo(projectChoices[i].id, anchor: .center)
+          }
+        }
       }
       .scrollIndicators(.hidden)
       .scrollBounceBehavior(.basedOnSize, axes: .horizontal)

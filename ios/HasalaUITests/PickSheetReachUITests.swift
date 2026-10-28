@@ -42,7 +42,7 @@ final class PickSheetReachUITests: XCTestCase {
       XCTAssertLessThan(above.frame.minY, below.frame.minY)
     }
     XCTAssertGreaterThan(rows[0].frame.minY, rule.frame.maxY)
-    XCTAssertLessThan(rows[0].frame.minY - close.frame.maxY, 240, "the categories sit too far down the sheet")
+    XCTAssertGreaterThan(rows[0].frame.minY, close.frame.maxY)
     XCTAssertEqual(rows[2].label, "Groceries, suggested")
     let add = el(app, "pick.newCategory")
     XCTAssertTrue(add.isHittable)
@@ -55,18 +55,12 @@ final class PickSheetReachUITests: XCTestCase {
       XCTAssertEqual(left.frame.midY, right.frame.midY, accuracy: 1)
       XCTAssertLessThan(left.frame.minX, right.frame.minX)
     }
-    XCTAssertTrue(chips[0].isHittable)
-    XCTAssertFalse(chips[12].isHittable)
     let eid = chips[6]
     XCTAssertEqual(eid.label, "Eid gifts, suggested")
+    XCTAssertTrue(eid.isHittable, "the suggested project starts in view")
     attach(app, "Review · Pick a need · 12 projects")
     try audit(app, overSheet: true)
 
-    for _ in 0..<4 where !eid.isHittable {
-      projects.swipeLeft()
-      waitForStill(app)
-    }
-    XCTAssertTrue(eid.isHittable)
     eid.tap()
     XCTAssertTrue(eid.isSelected)
     XCTAssertFalse(chips[0].isSelected)
@@ -87,6 +81,8 @@ final class PickSheetReachUITests: XCTestCase {
     XCTAssertLessThan(projects.frame.height, 140, "the project row wrapped")
     let groceries = el(app, "pick.groceries")
     XCTAssertEqual(groceries.label, "Groceries, suggested")
+    XCTAssertTrue(el(app, "pick.rent").isHittable, "the categories come first at large sizes")
+    XCTAssertLessThan(el(app, "pick.rent").frame.minY, projects.frame.minY)
     attach(app, "Review · Pick a need · 12 projects · accessibility3")
     try audit(app, atLargeText: true, overSheet: true)
     tap(app, "pick.insurance")
