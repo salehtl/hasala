@@ -439,7 +439,7 @@ public enum HomeEngine {
       figure = m.spent
     }
     return ProjectWidget(
-      name: p.name, glyph: p.glyph, left: figure, unit: unit,
+      id: p.id, name: p.name, glyph: p.glyph, left: figure, unit: unit,
       caption: MoneyPhrase(caption),
       progress: m.budget == nil ? nil : m.progress
     )
@@ -447,7 +447,7 @@ public enum HomeEngine {
 
   static func goalWidget(_ g: Goal) -> GoalWidget {
     GoalWidget(
-      name: g.name, glyph: g.glyph, progress: Permille.ratio(g.saved.minor, of: g.target.minor),
+      id: g.id, name: g.name, glyph: g.glyph, progress: Permille.ratio(g.saved.minor, of: g.target.minor),
       caption: MoneyPhrase([
         .amount(g.saved, .rounded), .text(" of "), .amount(g.target, .rounded), .text(" · \(g.by.shortName)"),
       ])

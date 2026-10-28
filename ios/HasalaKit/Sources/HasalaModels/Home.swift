@@ -279,6 +279,7 @@ public struct ProjectWidget: Sendable, Hashable, Codable {
     case left, over, spent
   }
 
+  public var id: ProjectID?
   public var name: String
   public var glyph: Glyph
   public var left: Money
@@ -287,7 +288,11 @@ public struct ProjectWidget: Sendable, Hashable, Codable {
   public var caption: MoneyPhrase
   public var progress: Permille?
 
-  public init(name: String, glyph: Glyph, left: Money, unit: Unit = .left, caption: MoneyPhrase, progress: Permille?) {
+  public init(
+    id: ProjectID? = nil, name: String, glyph: Glyph, left: Money, unit: Unit = .left, caption: MoneyPhrase,
+    progress: Permille?
+  ) {
+    self.id = id
     self.name = name
     self.glyph = glyph
     self.left = left
@@ -298,13 +303,15 @@ public struct ProjectWidget: Sendable, Hashable, Codable {
 }
 
 public struct GoalWidget: Sendable, Hashable, Codable {
+  public var id: GoalID?
   public var name: String
   public var glyph: Glyph
   public var progress: Permille
   /// "38,500 of 50,000 · Jan".
   public var caption: MoneyPhrase
 
-  public init(name: String, glyph: Glyph, progress: Permille, caption: MoneyPhrase) {
+  public init(id: GoalID? = nil, name: String, glyph: Glyph, progress: Permille, caption: MoneyPhrase) {
+    self.id = id
     self.name = name
     self.glyph = glyph
     self.progress = progress

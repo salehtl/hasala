@@ -117,7 +117,7 @@ public struct ToReviewWidget: Sendable, Hashable, Codable {
 }
 
 public struct WidgetSnapshot: Sendable, Hashable, Codable {
-  public static let currentVersion = 2
+  public static let currentVersion = 3
 
   public var version: Int
   public var asOf: LocalDate
@@ -163,14 +163,14 @@ public struct WidgetSnapshot: Sendable, Hashable, Codable {
     return categories.first { $0.verdict == .overPace || $0.verdict == .overBudget } ?? categories.first
   }
 
-  public func project(_ name: String?) -> ProjectWidget? {
-    if let name, let p = projects.first(where: { $0.name == name }) { return p }
-    return projects.first
+  public func project(_ id: ProjectID?) -> ProjectWidget? {
+    guard let id else { return projects.first }
+    return projects.first { $0.id == id }
   }
 
-  public func goal(_ name: String?) -> GoalWidget? {
-    if let name, let g = goals.first(where: { $0.name == name }) { return g }
-    return goals.first
+  public func goal(_ id: GoalID?) -> GoalWidget? {
+    guard let id else { return goals.first }
+    return goals.first { $0.id == id }
   }
 }
 

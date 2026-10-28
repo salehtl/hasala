@@ -40,6 +40,26 @@ struct GlanceEngineTests {
     #expect(w.lockShowsAmounts == false)
   }
 
+  @Test func projectsAndGoalsAreChosenByID() throws {
+    var w = snapshot()
+    let p = try #require(w.projects.first)
+    let g = try #require(w.goals.first)
+    #expect(p.id != nil && g.id != nil)
+    #expect(w.project(p.id) == p)
+    #expect(w.goal(g.id) == g)
+    #expect(w.project(nil) == p)
+    #expect(w.goal(nil) == g)
+    #expect(w.project(p.name) == nil)
+    #expect(w.goal(g.name) == nil)
+    #expect(w.project("gone") == nil)
+    #expect(w.goal("gone") == nil)
+    var twin = p
+    twin.id = "twin"
+    w.projects.append(twin)
+    #expect(w.project("twin")?.id == "twin")
+    #expect(w.project(p.id)?.id == p.id)
+  }
+
   @Test func diningIsWatchedOverPace() throws {
     let dining = try #require(snapshot().categories.first { $0.name == "Dining" })
     #expect(MoneyFormat.string(dining.left.minor, style: .rounded) == "957")
@@ -135,6 +155,12 @@ struct WidgetSnapshotStoreTests {
     snap.version = WidgetSnapshot.currentVersion + 1
     #expect(WidgetSnapshotStore.decode(try WidgetSnapshotStore.encode(snap)) == nil)
     #expect(WidgetSnapshotStore.decode(Data("not json".utf8)) == nil)
+  }
+
+  @Test func aVersionTwoSnapshotReadsAsNothing() throws {
+    var snap = sample()
+    snap.version = 2
+    #expect(WidgetSnapshotStore.decode(try WidgetSnapshotStore.encode(snap)) == nil)
   }
 
   @Test func theFileHoldsFilsNotFloats() throws {

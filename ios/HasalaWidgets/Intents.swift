@@ -46,8 +46,9 @@ struct ProjectEntity: AppEntity {
   static let defaultQuery = ProjectEntityQuery()
 
   let id: String
+  let name: String
 
-  var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(id)") }
+  var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
 }
 
 struct ProjectEntityQuery: EntityQuery {
@@ -60,7 +61,7 @@ struct ProjectEntityQuery: EntityQuery {
   func defaultResult() async -> ProjectEntity? { all().first }
 
   private func all() -> [ProjectEntity] {
-    (storedSnapshot()?.projects ?? []).map { ProjectEntity(id: $0.name) }
+    (storedSnapshot()?.projects ?? []).compactMap { w in w.id.map { ProjectEntity(id: $0, name: w.name) } }
   }
 }
 
@@ -77,8 +78,9 @@ struct GoalEntity: AppEntity {
   static let defaultQuery = GoalEntityQuery()
 
   let id: String
+  let name: String
 
-  var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(id)") }
+  var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
 }
 
 struct GoalEntityQuery: EntityQuery {
@@ -91,7 +93,7 @@ struct GoalEntityQuery: EntityQuery {
   func defaultResult() async -> GoalEntity? { all().first }
 
   private func all() -> [GoalEntity] {
-    (storedSnapshot()?.goals ?? []).map { GoalEntity(id: $0.name) }
+    (storedSnapshot()?.goals ?? []).compactMap { w in w.id.map { GoalEntity(id: $0, name: w.name) } }
   }
 }
 
