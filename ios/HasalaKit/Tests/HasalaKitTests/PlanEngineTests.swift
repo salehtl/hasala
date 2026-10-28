@@ -105,7 +105,7 @@ struct PlanDetailParityTests {
     #expect(chart.days.filter { $0.spent.minor > 0 }.map(\.day) == [3, 6, 7, 10])
     #expect(chart.days.map(\.spent.minor) == [0, 0, 58_25, 0, 0, 81_00, 412_00, 0, 0, 91_50])
     #expect(chart.peak?.day == 7 && chart.peak?.label == "Zuma" && chart.peak?.total == .aed(412_00))
-    #expect(chart.caption == "Zuma on Wed 7 Oct was 64% of this month's dining.")
+    #expect(chart.caption == "\u{2068}Zuma\u{2069} on Wed 7 Oct was 64% of this month's dining.")
     #expect(chart.scaleTop == .aed(412_00))
 
     #expect(d.transactions.map(\.merchant) == ["Talabat", "Starbucks DIFC", "Zuma", "Common Grounds", "Talabat"])
@@ -183,5 +183,79 @@ struct PlanDetailParityTests {
     state.projects[i].countInPlan = true
     let counted = try #require(PlanEngine.project("japan", state, now: now))
     #expect(counted.explainer.rendered(hidden: false) == "Project spending counts in October's budgets.")
+  }
+}
+
+@Suite("Plan · worst cases")
+struct PlanWorstCaseTests {
+  let s = MayaLedger.state
+  let now = MayaLedger.now
+
+  @Test func splitPercentsAlwaysAddUpToAHundred() {
+    #expect(PlanEngine.largestRemainderPercents([1, 1, 1]) == [34, 33, 33])
+    #expect(PlanEngine.largestRemainderPercents([12_350, 6_650, 5_000]) == [51, 28, 21])
+    #expect(PlanEngine.largestRemainderPercents([98, 2, 0]) == [98, 2, 0])
+    #expect(PlanEngine.largestRemainderPercents([0, 0, 0]) == [0, 0, 0])
+    #expect(PlanEngine.largestRemainderPercents([1, 1, 1, 1, 1, 1]).reduce(0, +) == 100)
+    var state = s
+    for c in ["rent", "utilities", "groceries", "transport", "healthcare", "insurance", "dining", "entertainment",
+              "shopping", "travel", "subscriptions", "savings", "investments"]
+    {
+      state.plan.budgets[PlanState.key(c, MayaLedger.october)] = .aed(0)
+    }
+    state.plan.budgets[PlanState.key("groceries", MayaLedger.october)] = .aed(100_00)
+    state.plan.budgets[PlanState.key("dining", MayaLedger.october)] = .aed(100_00)
+    state.plan.budgets[PlanState.key("savings", MayaLedger.october)] = .aed(100_00)
+    let plan = PlanEngine.snapshot(state, now: now)
+    #expect(plan.split.map(\.label) == ["34%", "33%", "33%"])
+  }
+
+  @Test func aZeroBudgetWithSpendingIsAFullOverBudgetBar() throws {
+    var state = s
+    state.plan.budgets[PlanState.key("dining", MayaLedger.october)] = .aed(0)
+    let row = try #require(PlanEngine.snapshot(state, now: now).row("dining"))
+    #expect(row.progress == Permille(1000))
+    #expect(row.verdict == .overBudget)
+    guard case .text(let first) = row.detail.first else { Issue.record("no text first"); return }
+    #expect(first.rendered(hidden: false) == "No budget · 642.75 spent")
+    #expect(row.detail.contains(.status("Over budget", .error)))
+    let detail = try #require(PlanEngine.category("dining", state, now: now))
+    #expect(detail.progress == Permille(1000))
+  }
+
+  @Test func aLongPaidListIsCapped() {
+    #expect(PlanEngine.paidList(["Netflix"]) == "Netflix")
+    #expect(PlanEngine.paidList(["Netflix", "Spotify"]) == "Netflix and Spotify")
+    #expect(PlanEngine.paidList(["Netflix", "Spotify", "OSN+", "Anghami", "Shahid"]) == "Netflix and 4 more")
+  }
+
+  @Test func theChartCaptionKeepsACustomNameAsTyped() throws {
+    var state = s
+    let i = try #require(state.categories.firstIndex { $0.id == "dining" })
+    state.categories[i].name = "DEWA & du"
+    state.categories[i].builtin = false
+    let d = try #require(PlanEngine.category("dining", state, now: now))
+    #expect(d.chart.caption == "\u{2068}Zuma\u{2069} on Wed 7 Oct was 64% of this month's \u{2068}DEWA & du\u{2069}.")
+  }
+
+  @Test func nothingPlannedOffersLastMonth() {
+    let plan = PlanEngine.snapshot(s, now: now)
+    #expect(!plan.nothingPlanned)
+    #expect(plan.planned == .aed(24_000_00))
+    #expect(plan.lastMonthBudgets["dining"] == .aed(1_600_00))
+    let empty = PlanEngine.snapshot(MayaWorst.empty, now: now)
+    #expect(empty.nothingPlanned)
+    #expect(empty.lastMonthBudgets.isEmpty)
+    #expect(empty.split.map(\.label) == ["0%", "0%", "0%"])
+  }
+
+  @Test func aProjectNameKeepsToTheOpLimit() {
+    let ok = String(repeating: "a", count: 64)
+    #expect(ProjectDraft(name: ok).refusal == nil)
+    #expect(ProjectDraft(name: ok + "a").refusal == "Use 64 characters or fewer for the name")
+    #expect(ProjectDraft(name: "  " + ok + "  ").refusal == nil)
+    #expect(ProjectDraft.capped(ok + "bc") == ok)
+    let flags = String(repeating: "\u{1F1E6}\u{1F1EA}", count: 33)
+    #expect(ProjectDraft.capped(flags).unicodeScalars.count == 64)
   }
 }
