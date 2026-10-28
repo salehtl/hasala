@@ -107,8 +107,8 @@ struct ActivityReviewModelTests {
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
     #expect(ReviewTabView.emptyLine == "New transactions Hasala can't sort on its own show up here.")
-    #expect(ReviewTabView.orderLine(.newestFirst) == "Newest first")
-    #expect(ReviewTabView.orderLine(.oldestFirst) == "Oldest first")
+    #expect(ReviewOrder.newestFirst.title == "Newest first")
+    #expect(ReviewOrder.oldestFirst.title == "Oldest first")
     #expect(ReviewTabView.orderSpoken(.oldestFirst) == "Order, Oldest first")
   }
 

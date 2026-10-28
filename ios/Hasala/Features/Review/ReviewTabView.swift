@@ -140,8 +140,6 @@ struct ReviewTabView: View {
 
   static let emptyLine = "New transactions Hasala can't sort on its own show up here."
 
-  static func orderLine(_ order: ReviewOrder) -> String { order.title }
-
   static func orderSpoken(_ order: ReviewOrder) -> String { "Order, \(order.title)" }
 
   @ViewBuilder private func slotCard(_ slot: SortSlot?) -> some View {
@@ -312,7 +310,7 @@ struct ReviewTabView: View {
       }
     } label: {
       HStack(spacing: 4) {
-        Text(Self.orderLine(app.reviewOrder))
+        Text(app.reviewOrder.title)
           .hType(.footnote.weight(.medium))
           .foregroundStyle(HColor.textLink)
         HIconView(.chevronDown, size: 12, color: HColor.textLink)
