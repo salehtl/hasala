@@ -119,9 +119,7 @@ private struct ReadyToAssignCard: View {
     }
     .padding(EdgeInsets(top: 14, leading: 16, bottom: 16, trailing: 16))
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background {
-      if overPlanned { HColor.statusWarningSurface } else { Hue.mint.perceptualGradient }
-    }
+    .background(overPlanned ? AnyShapeStyle(HColor.statusWarningSurface) : AnyShapeStyle(Hue.mint.perceptualGradient))
   }
 
   private var ink: Color { overPlanned ? HColor.statusWarningForeground : Hue.mint.ink }
@@ -175,17 +173,20 @@ private struct NothingPlannedCard: View {
       }
       let layout = typeSize.isAccessibilitySize
         ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-      layout {
-        Button("Assign") { model.moveMoney(to: nil) }
-          .buttonStyle(.pill(.primary, size: .medium, fill: true))
-          .fixedSize(horizontal: false, vertical: true)
-          .disabled(snap.readyToAssign.minor <= 0)
-          .accessibilityIdentifier("plan.assign")
-        if !snap.lastMonthBudgets.isEmpty {
-          Button("Copy last month") { model.copyLastMonth() }
-            .buttonStyle(.pill(.secondary, size: .medium, fill: true))
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityIdentifier("plan.copyLastMonth")
+      if snap.readyToAssign.minor > 0 || !snap.lastMonthBudgets.isEmpty {
+        layout {
+          if snap.readyToAssign.minor > 0 {
+            Button("Assign") { model.moveMoney(to: nil) }
+              .buttonStyle(.pill(.primary, size: .medium, fill: true))
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("plan.assign")
+          }
+          if !snap.lastMonthBudgets.isEmpty {
+            Button("Copy last month") { model.copyLastMonth() }
+              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("plan.copyLastMonth")
+          }
         }
       }
     }
@@ -247,7 +248,7 @@ private struct SplitSection: View {
 
   private var fractions: [Double] { snap.split.map(\.share.fraction) }
 
-  static func partWidths(_ total: CGFloat, fractions: [Double], gap: CGFloat, floor: CGFloat = 12) -> [CGFloat] {
+  nonisolated static func partWidths(_ total: CGFloat, fractions: [Double], gap: CGFloat, floor: CGFloat = 12) -> [CGFloat] {
     let n = fractions.count
     guard n > 0 else { return [] }
     let room = max(0, total - gap * CGFloat(n - 1))

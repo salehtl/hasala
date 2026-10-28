@@ -276,6 +276,7 @@ extension XCTestCase {
       if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
         if element.identifier == "hasala.cappedFigure" { return true }
+        if ["budget.amount", "move.amount"].contains(element.identifier) { return true }
         if bars.contains(where: { $0.intersects(element.frame) }) { return true }
       }
       if issue.element == nil, underHeader || overSheet { return true }

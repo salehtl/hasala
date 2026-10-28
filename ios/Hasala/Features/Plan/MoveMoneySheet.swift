@@ -277,19 +277,25 @@ private struct BeforeAfterRow: View {
   let before: Int64
   let after: Int64
   let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     ReflowingRow(spacing: 12) {
       Text(name).hType(.callout.weight(.medium)).foregroundStyle(HColor.textPrimary)
     } trailing: {
-      HStack(spacing: 6) {
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
+      layout {
         MoneyText(.aed(before), figure: HFigure.row.weight(.medium), style: .compact, hidden: hidden, hiddenGlyphs: 3,
                   color: HColor.textSecondary)
-        PlanGlyph(kind: .arrowRight, size: 14, color: HColor.textSecondary, stroke: 2.2)
-        MoneyText(.aed(abs(after)), figure: .row, style: .compact, hidden: hidden, hiddenGlyphs: 3,
-                  color: after < 0 ? HColor.statusErrorForeground : HColor.textPrimary, sign: after < 0 ? .debt : .none)
+          .fixedSize()
+        HStack(spacing: 6) {
+          PlanGlyph(kind: .arrowRight, size: 14, color: HColor.textSecondary, stroke: 2.2)
+          MoneyText(.aed(abs(after)), figure: .row, style: .compact, hidden: hidden, hiddenGlyphs: 3,
+                    color: after < 0 ? HColor.statusErrorForeground : HColor.textPrimary, sign: after < 0 ? .debt : .none)
+        }
+        .fixedSize()
       }
-      .fixedSize()
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 8)
