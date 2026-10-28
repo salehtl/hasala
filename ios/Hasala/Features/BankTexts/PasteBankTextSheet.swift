@@ -95,14 +95,17 @@ final class PasteBankTextModel {
     return p.direction == .out ? "\(money) out" : "\(money) in"
   }
 
+  static let paymentWords: Set<String> = [
+    "spent", "paid", "purchase", "purchased", "debited", "credited", "withdrawn", "withdrawal", "refunded",
+    "transferred", "reversed",
+    "مشتريات", "خصم", "شراء", "دفع", "سحب", "تحويل", "إيداع", "ايداع", "سداد", "إرجاع", "ارجاع",
+  ]
+
   static func paymentCount(_ text: String) -> Int {
-    let verbs = [
-      "spent", "paid", "purchase", "debited", "credited", "withdrawn", "withdrawal", "refunded", "transferred",
-      "خصم", "شراء", "دفع", "سحب", "تحويل", "إيداع",
-    ]
-    return text.split(whereSeparator: \.isNewline).filter { line in
-      let lower = line.lowercased()
-      return line.contains(/[A-Z]{3} ?[0-9]/) && verbs.contains { lower.contains($0) }
+    text.split(whereSeparator: \.isNewline).filter { line in
+      let hasAmount = line.contains(/[0-9]\.[0-9]{2}(?![0-9]{2})/) || line.contains(/(?:^|[^A-Za-z])(?!XXX)[A-Z]{3} [0-9]/)
+      guard hasAmount else { return false }
+      return line.lowercased().split(whereSeparator: { !$0.isLetter }).contains { paymentWords.contains(String($0)) }
     }.count
   }
 

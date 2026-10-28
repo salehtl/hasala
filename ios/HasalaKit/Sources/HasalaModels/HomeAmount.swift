@@ -127,7 +127,7 @@ extension Money {
   static func converted(_ m: Money, rates: [CurrencyRate]) -> Int64? {
     guard let rate = rates.first(where: { $0.currency == m.currency })?.rateMicro,
       let magnitude = Int64(exactly: m.minor.magnitude),
-      let home = ExchangeRates.convert(magnitude, rate, currency: m.currency)
+      let home = ExchangeRates.convert(magnitude, rate)
     else { return nil }
     return m.isNegative ? home.negated : home
   }

@@ -25,17 +25,10 @@ public enum ExchangeRates {
 
   public static let maxRateMicro: Int64 = 1_000_000_000_000
 
-  public static func convert(_ amountMinor: Int64, _ rateMicro: Int64, currency: String = Money.home) -> Int64? {
+  public static func convert(_ amountMinor: Int64, _ rateMicro: Int64) -> Int64? {
     guard amountMinor >= 0, rateMicro >= 0 else { return nil }
-    let digits = MoneyFormat.minorDigits(currency)
-    var numerator = Int128(amountMinor) * Int128(rateMicro)
-    var denominator = Int128(1_000_000)
-    if digits < 2 {
-      for _ in digits..<2 { numerator *= 10 }
-    } else {
-      for _ in 2..<digits { denominator *= 10 }
-    }
-    return Int64(exactly: (numerator + denominator / 2) / denominator)
+    let wide = Int128(amountMinor) * Int128(rateMicro) + 500_000
+    return Int64(exactly: wide / 1_000_000)
   }
 
   public static func isCurrencyCode(_ code: String) -> Bool {
@@ -123,12 +116,12 @@ public extension LedgerState {
   mutating func setRate(_ currency: String, micro: Int64) {
     storeRate(currency, micro)
     for i in txns.indices where txns[i].amount.currency == currency && txns[i].homeMinor == nil {
-      guard let home = ExchangeRates.convert(txns[i].amount.minor, micro, currency: currency) else { continue }
+      guard let home = ExchangeRates.convert(txns[i].amount.minor, micro) else { continue }
       txns[i].homeMinor = home
       txns[i].homeSource = .rate
       txns[i].homeRateMicro = micro
       for k in txns[i].splits.indices where txns[i].splits[k].homeMinor == nil {
-        txns[i].splits[k].homeMinor = ExchangeRates.convert(txns[i].splits[k].amount.minor, micro, currency: currency)
+        txns[i].splits[k].homeMinor = ExchangeRates.convert(txns[i].splits[k].amount.minor, micro)
       }
     }
   }

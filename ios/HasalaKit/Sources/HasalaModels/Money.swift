@@ -56,37 +56,7 @@ public enum MoneyFormat {
   }
 
   public static func string(_ money: Money, style: MoneyStyle = .exact) -> String {
-    let digits = minorDigits(money.currency)
-    guard digits != 2 else { return string(money.minor, style: style) }
-    let magnitude = money.minor.magnitude
-    guard digits > 0 else { return grouped(magnitude) }
-    var scale: UInt64 = 1
-    for _ in 0..<digits { scale *= 10 }
-    let whole = magnitude / scale
-    let fraction = magnitude % scale
-    switch style {
-    case .exact:
-      return grouped(whole) + "." + padded(fraction, digits)
-    case .compact:
-      return fraction == 0 ? grouped(whole) : grouped(whole) + "." + padded(fraction, digits)
-    case .rounded:
-      return grouped(whole + (fraction >= scale / 2 ? 1 : 0))
-    }
-  }
-
-  public static func minorDigits(_ currency: String) -> Int {
-    switch currency {
-    case "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND": 3
-    case "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF",
-      "XOF", "XPF":
-      0
-    default: 2
-    }
-  }
-
-  private static func padded(_ value: UInt64, _ digits: Int) -> String {
-    let s = String(value)
-    return String(repeating: "0", count: max(0, digits - s.count)) + s
+    string(money.minor, style: style)
   }
 
   /// A run of hidden-figure glyphs, as Paper draws them (four in tiles and rows).
