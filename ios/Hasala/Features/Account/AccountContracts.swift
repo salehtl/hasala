@@ -199,9 +199,8 @@ struct AccountProfile: Equatable, Sendable {
   var email: String
   var method: SignInMethod
 
-  /// "You're set, Maya." uses the first word of the name.
-  var firstName: String {
-    displayName.split(separator: " ").first.map(String.init) ?? displayName
+  var greetingName: String {
+    displayName.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }
 

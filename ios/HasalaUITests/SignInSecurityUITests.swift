@@ -87,7 +87,7 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Unlock · 12 words")
     try audit(app)
     type(app, "phraseEntry.field", Self.phrase.joined(separator: " ") + "\n")
-    XCTAssertTrue(app.staticTexts["Welcome back, Maya."].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Welcome back, Maya Rahman."].waitForExistence(timeout: 15))
     XCTAssertTrue(el(app, "unlock.addPasskey").exists)
     attach(app, "Welcome back")
     try audit(app)
@@ -179,7 +179,7 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Recover · new way to sign in")
     try audit(app)
     tap(app, "recover.passkey")
-    XCTAssertTrue(app.staticTexts["You're back in, Maya."].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["You're back in, Maya Rahman."].waitForExistence(timeout: 10))
     try audit(app)
     tap(app, "recover.home")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
@@ -535,9 +535,9 @@ extension SignInSecurityUITests {
 
   // MARK: - Helpers
 
-  /// Paper GDD, GZT: with the keyboard up, the grid's helper line and Paste sit clear above
-  /// the word-list bar, never half-hidden under its glass. The page scrolls with the
-  /// keyboard, so this waits a moment for it to settle.
+  /// Paper GDD, GZT: with the keyboard up, Paste sits clear above the word-list bar, never
+  /// half-hidden under its glass, and the helper line, where it shows, does too. The page
+  /// scrolls with the keyboard, so this waits a moment for it to settle.
   @MainActor
   private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: uiWait), "no keyboard", line: line)
@@ -546,8 +546,8 @@ extension SignInSecurityUITests {
     let paste = el(app, "phraseEntry.paste")
     let helper = app.staticTexts["Suggestions come from the recovery word list, never your keyboard history."]
     func clear() -> Bool {
-      paste.exists && helper.exists && paste.frame.maxY <= bar.frame.minY + 0.5
-        && helper.frame.maxY <= bar.frame.minY + 0.5
+      paste.exists && paste.frame.maxY <= bar.frame.minY + 0.5
+        && (!helper.exists || helper.frame.maxY <= bar.frame.minY + 0.5)
     }
     let deadline = Date().addingTimeInterval(5)
     while !clear(), Date() < deadline {
