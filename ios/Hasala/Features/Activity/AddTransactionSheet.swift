@@ -88,6 +88,7 @@ struct AddTransactionSheet: View {
       Button(model.saveTitle) { model.save() }
         .buttonStyle(.pill(.primary, fill: true))
         .disabled(!model.canSave)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityIdentifier("add.save")
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 12)
