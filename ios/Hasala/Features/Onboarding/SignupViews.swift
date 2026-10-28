@@ -111,6 +111,20 @@ struct AboutYouView: View {
   var onSignIn: () -> Void
 
   @Environment(\.dynamicTypeSize) private var typeSize
+  @State private var chipInline = true
+
+  private var nameError: String? {
+    model.nameError ?? (AccountFields.nameTooLong(model.displayName) ? AuthFailure.badName.message : nil)
+  }
+
+  private var emailError: String? {
+    model.emailError
+      ?? (AccountFields.emailTooLong(model.email)
+        ? "Use an address of \(AccountFields.emailMaxBytes) characters or fewer." : nil)
+  }
+
+  private var chipBeside: Bool { model.emailConfirmed && !typeSize.isAccessibilitySize && chipInline }
+  private var chipUnder: Bool { model.emailConfirmed && !chipBeside }
 
   var body: some View {
     AccountScreen(
@@ -121,14 +135,14 @@ struct AboutYouView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         VStack(alignment: .leading, spacing: 12) {
-          AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: model.nameError) {
+          AccountField("Your name", help: "What Hasala calls you, in the app and in emails.", error: nameError) {
             WrappingTextField(placeholder: "", text: $model.displayName)
               .textContentType(.name)
               .textInputAutocapitalization(.words)
               .autocorrectionDisabled()
               .accessibilityIdentifier("about.name")
           }
-          AccountField("Email", help: model.emailHelp, error: model.emailError) {
+          AccountField("Email", help: model.emailHelp, error: emailError) {
             WrappingTextField(placeholder: "you@example.com", text: $model.email)
               .textContentType(.username)
               .keyboardType(.emailAddress)
@@ -136,10 +150,11 @@ struct AboutYouView: View {
               .autocorrectionDisabled()
               .accessibilityIdentifier("about.email")
           } trailing: {
-            if model.emailConfirmed, !typeSize.isAccessibilitySize { ConfirmedChip() }
+            if chipBeside { ConfirmedChip() }
           }
-          // At the accessibility sizes the address needs the box's width: the chip goes under it.
-          if model.emailConfirmed, typeSize.isAccessibilitySize { ConfirmedChip() }
+          .background { chipProbe }
+          .onPreferenceChange(ChipFitsKey.self) { chipInline = $0 }
+          if chipUnder { ConfirmedChip() }
         }
         .id(Self.fieldsID)
         FailureBanner(failure: model.failure)
@@ -156,6 +171,29 @@ struct AboutYouView: View {
   }
 
   private static let fieldsID = "about.fields"
+
+  private var chipProbe: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 8) {
+        Text(model.email.isEmpty ? " " : model.email)
+          .hType(FieldFrame<EmptyView, EmptyView>.valueType)
+          .lineLimit(1)
+          .fixedSize()
+        ConfirmedChip()
+      }
+      .padding(.leading, HSpacing.fieldInsetInline)
+      .padding(.trailing, 8)
+      .preference(key: ChipFitsKey.self, value: true)
+      Color.clear.preference(key: ChipFitsKey.self, value: false)
+    }
+    .hidden()
+    .accessibilityHidden(true)
+  }
+}
+
+private struct ChipFitsKey: PreferenceKey {
+  static let defaultValue = true
+  static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value && nextValue() }
 }
 
 struct SignInMethodView: View {

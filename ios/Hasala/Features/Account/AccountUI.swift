@@ -36,6 +36,7 @@ let accountScreenBodyID = "account.screenBody"
 struct AccountScreen<Content: View, Footer: View>: View {
   var title: String
   var subtitle: String?
+  var email: EmailAside?
   var steps: (current: Int, of: Int)?
   var back: AccountBack
   var trailing: (title: String, action: () -> Void)?
@@ -44,12 +45,13 @@ struct AccountScreen<Content: View, Footer: View>: View {
   @ViewBuilder var footer: () -> Footer
 
   init(
-    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
-    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
+    title: String, subtitle: String? = nil, email: EmailAside? = nil, steps: (current: Int, of: Int)? = nil,
+    back: AccountBack = .none, trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
     @ViewBuilder content: @escaping () -> Content, @ViewBuilder footer: @escaping () -> Footer
   ) {
     self.title = title
     self.subtitle = subtitle
+    self.email = email
     self.steps = steps
     self.back = back
     self.trailing = trailing
@@ -64,7 +66,7 @@ struct AccountScreen<Content: View, Footer: View>: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
-        QuestionBlock(title: title, subtitle: subtitle, top: hasHeader ? 16 : 24 + 16)
+        QuestionBlock(title: title, subtitle: subtitle, email: email, top: hasHeader ? 16 : 24 + 16)
         content()
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 24)
@@ -74,7 +76,8 @@ struct AccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .scrollDismissesKeyboard(.interactively)
     .safeAreaBar(edge: .bottom) {
       ActionDock(keyboardUp: keyboardUp, content: footer)
@@ -97,12 +100,12 @@ struct AccountScreen<Content: View, Footer: View>: View {
 
 extension AccountScreen where Footer == EmptyView {
   init(
-    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
-    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
+    title: String, subtitle: String? = nil, email: EmailAside? = nil, steps: (current: Int, of: Int)? = nil,
+    back: AccountBack = .none, trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
     @ViewBuilder content: @escaping () -> Content
   ) {
-    self.init(title: title, subtitle: subtitle, steps: steps, back: back, trailing: trailing, wash: wash,
-              content: content, footer: { EmptyView() })
+    self.init(title: title, subtitle: subtitle, email: email, steps: steps, back: back, trailing: trailing,
+              wash: wash, content: content, footer: { EmptyView() })
   }
 }
 
@@ -178,6 +181,7 @@ private struct AccountHeader: ViewModifier {
 private struct QuestionBlock: View {
   let title: String
   let subtitle: String?
+  var email: EmailAside?
   /// 16 under the header; 40 under the status bar when there is no header.
   let top: CGFloat
 
@@ -188,10 +192,8 @@ private struct QuestionBlock: View {
         .foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
-      if let subtitle {
-        Text(subtitle)
-          .hType(.body)
-          .foregroundStyle(HColor.textOnWashSecondary)
+      if subtitle != nil || email != nil {
+        SubtitleProse(text: subtitle, email: email)
           .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -200,9 +202,45 @@ private struct QuestionBlock: View {
   }
 }
 
+struct EmailAside: Equatable {
+  var address: String
+  var after: String?
+}
+
+struct SubtitleProse: View {
+  var text: String?
+  var email: EmailAside?
+  var alignment: HorizontalAlignment = .leading
+
+  var body: some View {
+    VStack(alignment: alignment, spacing: 4) {
+      if let text {
+        Text(text)
+          .hType(.body)
+          .foregroundStyle(HColor.textOnWashSecondary)
+      }
+      if let email {
+        Text(email.address)
+          .hType(.body.weight(.semibold))
+          .foregroundStyle(HColor.textPrimary)
+          .lineLimit(2)
+          .truncationMode(.middle)
+        if let after = email.after {
+          Text(after)
+            .hType(.body)
+            .foregroundStyle(HColor.textOnWashSecondary)
+        }
+      }
+    }
+    .accessibilityElement(children: .combine)
+  }
+}
+
 /// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
 /// apart, 20 from the sides, on the home indicator's safe area. A soft scroll edge sits
 /// under it when content scrolls behind (`safeAreaBar`).
+let accountDockClearance: CGFloat = 12
+
 struct ActionDock<Content: View>: View {
   let keyboardUp: Bool
   @ViewBuilder let content: () -> Content
@@ -268,12 +306,12 @@ extension AccountScreen {
   /// screen whose dock must stay over the keyboard at every size (unlock's word list) keeps
   /// `footer:`.
   init<Main: View, Actions: View>(
-    title: String, subtitle: String? = nil, steps: (current: Int, of: Int)? = nil, back: AccountBack = .none,
-    trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
+    title: String, subtitle: String? = nil, email: EmailAside? = nil, steps: (current: Int, of: Int)? = nil,
+    back: AccountBack = .none, trailing: (title: String, action: () -> Void)? = nil, wash: HWash = .setup,
     @ViewBuilder content: @escaping () -> Main, @ViewBuilder actions: @escaping () -> Actions
   ) where Content == ActionsAfterContent<Main, Actions>, Footer == DockedActions<Actions> {
     self.init(
-      title: title, subtitle: subtitle, steps: steps, back: back, trailing: trailing, wash: wash,
+      title: title, subtitle: subtitle, email: email, steps: steps, back: back, trailing: trailing, wash: wash,
       content: { ActionsAfterContent(content: content(), actions: actions) },
       footer: { DockedActions(actions: actions) })
   }
@@ -324,6 +362,7 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
   var badge: SuccessBadge.Content?
   var title: String
   var subtitle: String?
+  var email: EmailAside?
   var wash: HWash
   var successHaptic: Bool
   /// The badge under the status bar, and the cards under the copy: 76 and 36 on the account
@@ -333,13 +372,14 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
   @ViewBuilder var footer: () -> Footer
 
   init(
-    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
-    successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
+    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, email: EmailAside? = nil,
+    wash: HWash = .ready, successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
     @ViewBuilder cards: @escaping () -> Cards, @ViewBuilder footer: @escaping () -> Footer
   ) {
     self.badge = badge
     self.title = title
     self.subtitle = subtitle
+    self.email = email
     self.wash = wash
     self.successHaptic = successHaptic
     self.spacing = spacing
@@ -349,6 +389,7 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
 
   @State private var keyboardUp = false
   @State private var landed = false
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     ScrollView {
@@ -360,10 +401,8 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
               .hType(.largeTitle)
               .foregroundStyle(HColor.textPrimary)
               .accessibilityAddTraits(.isHeader)
-            if let subtitle {
-              Text(subtitle)
-                .hType(.body)
-                .foregroundStyle(HColor.textOnWashSecondary)
+            if subtitle != nil || email != nil {
+              SubtitleProse(text: subtitle, email: email, alignment: .center)
                 .frame(maxWidth: 300)
             }
           }
@@ -377,13 +416,23 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, HSpacing.insetPage)
           .padding(.top, spacing.cards)
+        if typeSize.isAccessibilitySize {
+          VStack(spacing: 4) { footer() }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, HSpacing.insetPage)
+            .padding(.top, 32)
+            .environment(\.pillDisabledBase, HColor.surfaceSecondary)
+        }
       }
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .safeAreaBar(edge: .bottom) {
-      ActionDock(keyboardUp: keyboardUp, content: footer)
+      if !typeSize.isAccessibilitySize {
+        ActionDock(keyboardUp: keyboardUp, content: footer)
+      }
     }
     .background(alignment: .top) {
       AmbientWash(wash).ignoresSafeArea(edges: .top)
@@ -403,12 +452,12 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
 
 extension CelebrationScreen where Footer == EmptyView {
   init(
-    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, wash: HWash = .ready,
-    successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
+    badge: SuccessBadge.Content? = .check, title: String, subtitle: String? = nil, email: EmailAside? = nil,
+    wash: HWash = .ready, successHaptic: Bool = false, spacing: (top: CGFloat, cards: CGFloat) = (76, 36),
     @ViewBuilder cards: @escaping () -> Cards
   ) {
-    self.init(badge: badge, title: title, subtitle: subtitle, wash: wash, successHaptic: successHaptic,
-              spacing: spacing, cards: cards, footer: { EmptyView() })
+    self.init(badge: badge, title: title, subtitle: subtitle, email: email, wash: wash,
+              successHaptic: successHaptic, spacing: spacing, cards: cards, footer: { EmptyView() })
   }
 }
 
@@ -434,6 +483,8 @@ struct HueChip: View {
     Text(text)
       .hType(HType(size: 13, leading: 18, weight: .semibold, textStyle: .footnote))
       .foregroundStyle(hue.ink)
+      .lineLimit(1)
+      .minimumScaleFactor(0.5)
       .padding(.horizontal, 9)
       .frame(minHeight: 24)
       .background(hue.perceptualGradient, in: Capsule())
