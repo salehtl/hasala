@@ -134,8 +134,8 @@ public enum ActivityEngine {
     let inPeriod = s.txns.filter { !$0.archived && window.contains($0.postedAt.date) }
     let reviewQueue = inPeriod.filter(\.inReview)
     let billCount = inPeriod.filter { isBill($0, s) && !$0.inReview }.count
-    let archivedCount = s.txns.filter(\.archived).count
-    let allTime = filter.kind == .archived && filter.category == nil
+    let archivedCount = s.txns.count(where: \.archived)
+    let allTime = filter.kind == .archived
 
     let chips = [
       ActivityChip(kind: .all, count: nil, accentCount: false),
@@ -153,7 +153,7 @@ public enum ActivityEngine {
     let n = inPeriod.count
     let noun = "\(n) transaction\(n == 1 ? "" : "s")"
     let countLine =
-      allTime ? "\(archivedCount) archived · all time" : isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)"
+      allTime ? "\(listed.count) archived · all time" : isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)"
 
     return ActivitySnapshot(
       period: period,
@@ -166,7 +166,7 @@ public enum ActivityEngine {
       comingUp: showsOverview && period.contains(today) ? comingUp(s, today: now.date, within: 7) : [],
       days: days,
       rows: filter.category == nil ? [] : listed.map { dated($0, s) },
-      summary: filter.category.flatMap { summary($0, listed, s, now: now, period: period) }
+      summary: allTime ? nil : filter.category.flatMap { summary($0, listed, s, now: now, period: period) }
     )
   }
 

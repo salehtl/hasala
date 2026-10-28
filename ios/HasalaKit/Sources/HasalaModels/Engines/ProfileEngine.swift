@@ -70,7 +70,7 @@ public enum ProfileEngine {
       prefs: s.prefs,
       swipeSummary: right ? "← Want · Need →" : "← Need · Want →",
       swipeSpoken: right ? "Swipe left for Want, right for Need" : "Swipe left for Need, right for Want",
-      archivedTxns: s.txns.filter(\.archived).count
+      archivedTxns: s.txns.count(where: \.archived)
     )
   }
 

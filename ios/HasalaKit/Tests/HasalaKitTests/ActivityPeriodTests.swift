@@ -132,6 +132,7 @@ struct ActivityPeriodTests {
     #expect(!ids(all).contains { picks.contains($0) })
     let found = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .archived, text: "pierchic"))
     #expect(ids(found) == ["h-pierchic-8"])
+    #expect(found.countLine == "1 archived · all time")
   }
 
   @Test func archivedIsEmptyWithNothingArchived() {
