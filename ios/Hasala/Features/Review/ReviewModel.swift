@@ -157,12 +157,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption] {
     let s = app.store.state
-    let t = s.txn(card)
-    var options = ReviewEngine.options(for: choice, s, txn: t)
-    if let sug = t.flatMap({ ReviewEngine.suggestion($0, s) })?.id, let i = options.firstIndex(where: { $0.id == sug }) {
-      options.insert(options.remove(at: i), at: 0)
-    }
-    return options
+    return ReviewEngine.options(for: choice, s, txn: s.txn(card))
   }
 
   func pick(_ card: TxnID, _ choice: ReviewChoice) {
