@@ -79,7 +79,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let start = ReviewEntry.take(for: app)
     let window = app.reviewWindow
     self.window = window
-    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    let queue = ReviewEngine.queue(app.store.state, in: window, order: app.reviewOrder).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: start)
     #if HASALA_MOCKS
@@ -130,7 +130,7 @@ final class ReviewViewModel: ReviewDeckModel {
   private func restart() {
     let top = cards.first?.id
     window = app.reviewWindow
-    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    let queue = ReviewEngine.queue(app.store.state, in: window, order: app.reviewOrder).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: top)
     shown = nil
