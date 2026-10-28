@@ -46,7 +46,34 @@ struct InviteCode: Equatable, Hashable, Sendable {
   /// breaks, hyphens and other dashes, and invisible format and control characters
   /// dropped. Anything else stays, so a character no code holds (`1`, `0`, `#`) is shown
   /// and `SignupModel.inviteHint` says so.
+  static let entryLimit = length + 8
+
   static func entryCharacters(_ raw: String) -> String {
+    let kept = keptCharacters(raw)
+    guard kept.count > entryLimit else { return kept }
+    if let code = inviteLinkCode(in: raw) ?? codeRun(in: raw) { return code }
+    return String(kept.prefix(entryLimit))
+  }
+
+  static func inviteLinkCode(in text: String) -> String? {
+    for token in text.split(whereSeparator: { $0.isWhitespace || $0 == "<" || $0 == ">" || $0 == "\"" }) {
+      guard token.hasPrefix("https://hasala.app/i") else { continue }
+      if let link = InviteLink.parse(pasted: String(token)) { return link.code.value }
+    }
+    return nil
+  }
+
+  static func codeRun(in text: String) -> String? {
+    let pattern = "(?<![A-Za-z0-9])[A-Za-z2-7]{4}(?:[- ]?[A-Za-z2-7]{4}){5}(?![A-Za-z0-9])"
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let ns = text as NSString
+    for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+      if let code = InviteCode(ns.substring(with: match.range)) { return code.value }
+    }
+    return nil
+  }
+
+  private static func keptCharacters(_ raw: String) -> String {
     var out = String.UnicodeScalarView()
     for s in raw.uppercased().unicodeScalars {
       switch s.properties.generalCategory {
@@ -157,6 +184,18 @@ enum AccountFields {
   /// The normalized address, or nil when `EmailNorm` refuses it.
   static func email(_ raw: String) -> String? { try? EmailNorm.normalize(raw) }
 
+  static let emailMaxBytes = 254
+
+  static func nameTooLong(_ raw: String) -> Bool {
+    guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+    if case .failure(.length) = DisplayName.validate(raw) { return true }
+    return false
+  }
+
+  static func emailTooLong(_ raw: String) -> Bool {
+    raw.trimmingCharacters(in: .whitespaces).utf8.count > emailMaxBytes
+  }
+
   /// The name to send, or nil (the field shows `AuthFailure.badName`'s copy).
   static func displayName(_ raw: String) -> String? {
     if case .success(let name) = DisplayName.validate(raw) { return name }
@@ -205,8 +244,11 @@ enum PasswordRules {
     case .tooShort:
       // Paper EQ6: how far there is to go, counted as the rule counts (scalars after NFC).
       let typed = password.precomposedStringWithCanonicalMapping.unicodeScalars.count
+      let message = typed == password.count
+        ? "Too short. \(typed) of \(PasswordPolicy.minScalars) characters."
+        : "Too short. Use \(PasswordPolicy.minScalars) characters or more."
       return PasswordAssessment(strength: .tooShort, longEnough: false, notPersonal: notPersonal, notCommon: true,
-                                message: "Too short. \(typed) of \(PasswordPolicy.minScalars) characters.")
+                                message: message)
     case .tooLong:
       return PasswordAssessment(strength: .weak, longEnough: false, notPersonal: notPersonal, notCommon: true,
                                 message: "Use 128 characters or fewer.")
