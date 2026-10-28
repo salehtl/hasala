@@ -58,13 +58,11 @@ struct TransactionSheet: View {
         case .category: CategoryPickerView(model: model) { app.router.transaction.removeAll() }
         case .note:
           NoteEditorView(note: model.detail?.note ?? "") {
-            model.setNote($0)
-            app.router.transaction.removeAll()
+            if model.setNote($0) { app.router.transaction.removeAll() }
           }
         case .rename:
           RenameMerchantView(name: model.merchantName) {
-            model.rename($0)
-            app.router.transaction.removeAll()
+            if model.rename($0) { app.router.transaction.removeAll() }
           }
         case .split: SplitEditorView(model: model) { app.router.transaction.removeAll() }
         case .project:

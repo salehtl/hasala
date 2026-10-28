@@ -173,6 +173,9 @@ struct SplitEditorView: View {
             .foregroundStyle(HColor.textPrimary)
             .focused($noteFocus, equals: draft.id)
             .accessibilityIdentifier("split.note.\(draft.id)")
+          if TextLimit.note.nearsLimit(draft.note) {
+            TextLimitCounter(limit: .note, text: draft.note, id: "split.noteCount.\(draft.id)").fixedSize()
+          }
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 48)
@@ -252,7 +255,7 @@ struct SplitEditorView: View {
       }
       Button("Save split", action: save)
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(verdict != .addsUp)
+        .disabled(verdict != .addsUp || lines.contains { TextLimit.note.isOver($0.note) })
         .accessibilityIdentifier("split.save")
     }
     .padding(.horizontal, HSpacing.insetPage)
