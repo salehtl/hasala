@@ -23,7 +23,7 @@ struct GlanceEngineTests {
     #expect(w.caption.rendered(hidden: false) == "On track · 7,884 left")
     #expect(w.caption.rendered(hidden: true) == "On track · ••• left")
     #expect(w.billWords == "1 bill due Wed")
-    #expect(w.billNamed == "DEWA on Wed")
+    #expect(w.billNamed == "Wed · DEWA")
     #expect(MoneyFormat.short(w.spent.minor) == "11.1K")
   }
 
