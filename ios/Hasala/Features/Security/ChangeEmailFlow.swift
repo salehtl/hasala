@@ -147,10 +147,10 @@ private struct CodesStep: View {
       steps: (2, 2), back: .system
     ) {
       VStack(alignment: .leading, spacing: 22) {
-        CodeGroup(label: "From \(model.ticket.currentEmail) ·\u{00A0}current", code: $model.currentCode,
+        CodeGroup(label: "From \(model.ticket.currentEmail)\u{00A0}·\u{00A0}current", code: $model.currentCode,
                   sentAt: model.ticket.sentAt, wrong: wrong, focused: $focus, field: .current,
                   identifier: "changeEmail.currentCode") { resend() }
-        CodeGroup(label: "From \(model.ticket.newEmail ?? "") ·\u{00A0}new", code: $model.newCode,
+        CodeGroup(label: "From \(model.ticket.newEmail ?? "")\u{00A0}·\u{00A0}new", code: $model.newCode,
                   sentAt: model.ticket.sentAt, wrong: wrong, focused: $focus, field: .new,
                   identifier: "changeEmail.newCode") { resend() }
         if model.failedOnCodes, let message = model.failure?.message {

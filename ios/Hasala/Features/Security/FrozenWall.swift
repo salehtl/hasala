@@ -205,7 +205,10 @@ struct FrozenBanner: View {
       if typeSize.isAccessibilitySize {
         VStack(alignment: .leading, spacing: 0) {
           title.padding(.top, 10)
-          HStack(spacing: 16) { links }
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) { links }
+            VStack(alignment: .leading, spacing: 0) { links }
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
       } else {
