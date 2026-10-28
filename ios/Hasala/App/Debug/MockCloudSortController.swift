@@ -6,6 +6,7 @@
   @Observable
   final class MockCloudSortController: CloudSortControlling {
     static let argument = "-HasalaCloudSortPhase"
+    static let countArgument = "-HasalaCloudSortCount"
 
     var status: CloudSortStatus
     private(set) var sentBack = 0
@@ -16,7 +17,9 @@
 
     static func fromLaunchArguments(_ arguments: [String]) -> MockCloudSortController? {
       guard let code = arguments.launchValue(after: argument), let phase = phase(code) else { return nil }
-      return MockCloudSortController(sample(phase))
+      var status = sample(phase)
+      if let n = arguments.launchValue(after: countArgument).flatMap({ Int($0) }) { status.cloudSortedCount = n }
+      return MockCloudSortController(status)
     }
 
     static func phase(_ code: String) -> CloudSortStatus.Phase? {

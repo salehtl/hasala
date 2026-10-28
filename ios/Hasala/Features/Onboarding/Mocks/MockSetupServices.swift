@@ -51,7 +51,15 @@
       }
     }
 
-    private(set) var requests: [RequestedBank] = []
+    var requests: [RequestedBank] = []
+
+    static let worstRequests = [
+      RequestedBank(bank: "other", name: "Commercial Bank of Dubai", state: .templateInProgress),
+      RequestedBank(bank: "other", name: "بنك المشرق", state: .declined),
+      RequestedBank(bank: "other", name: "bank", state: .supported),
+      RequestedBank(bank: "other", name: "Commercial Bank International – Ras Al Khaimah Branch Accounts", state: .requested),
+      RequestedBank(bank: "other", name: "مَصْرِف عجمان الإسلامي", state: .collectingSamples),
+    ]
     private(set) var senderDomains: [String: String] = [:]
 
     func requestBank(slug: String, senderDomain: String?) async throws(SetupFailure) {

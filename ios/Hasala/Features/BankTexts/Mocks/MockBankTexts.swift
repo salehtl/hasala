@@ -65,6 +65,31 @@
       return lane
     }
 
+    static let worstPasted = [
+      "AED 1,284,507.25 spent on card ending 0000 at مطعم ومقهى الشرفة الذهبية on 09/10 23:47. Available balance AED 0.01.",
+      "AED 0.01 spent on card ending 0000 at AMAZON.AE*MARKETPLACE-PAYMENTS-AE7Q2LX on 10/10 00:01. Available balance AED 2,940.00.",
+      "BHD 32.500 spent on card ending 0000 at Bahrain City Centre on 10/10 09:12. Available balance AED 412.75.",
+      "Get 10% cashback on Etisalat by e& bills paid with your card this weekend. T&Cs apply. To opt out send STOP to 0000.",
+      "Your one-time code is 000000. Do not share it with anyone, including bank staff.",
+    ].joined(separator: "\n")
+
+    static func worst(now: Date = .now, mailbox: MockMailbox? = nil) -> MockBankTexts {
+      let lane = MockBankTexts(
+        setUp: true, mailbox: mailbox, lastRan: now.addingTimeInterval(-400 * 86_400),
+        lastTexts: [.dib: now, .enbd: now.addingTimeInterval(-400 * 86_400)], ignored: 1_284)
+      lane.setAside = [
+        BankTextsSetAside(
+          sender: "AD-ENBD", bank: nil,
+          counts: [.oneTimeCode: 128, .promotion: 41, .notice: 9, .declined: 3, .noPaymentShape: 1_103]),
+        BankTextsSetAside(sender: "+971500000000", bank: nil, counts: [.noPaymentShape: 1]),
+        BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.promotion: 0]),
+      ]
+      lane.nextMatch = BankTextMatch(
+        rowID: "steam", kind: .payment, merchant: "مطعم ومقهى الشرفة الذهبية",
+        amount: Money(minor: 3_250, currency: "BHD"), postedAt: now.addingTimeInterval(-400 * 86_400), fromText: true)
+      return lane
+    }
+
     static func waiting(mailbox: MockMailbox? = nil) -> MockBankTexts {
       let lane = MockBankTexts(setUp: true, mailbox: mailbox)
       lane.test = .received(at: .now.addingTimeInterval(-3600))
