@@ -353,7 +353,10 @@ struct LiveAccountServiceTests {
     #expect(
       LiveAccountService.freeze(fields(frozen: true, by: "holder", at: "2026-10-11T17:20:05.123456Z"))?.when
         == "on Sun 11 Oct at 21:20")
-    #expect(LiveAccountService.freezeTime("2026-10-11T22:30:00Z") == "on Mon 12 Oct at 02:30")
+    let inOct2026 = Date(timeIntervalSince1970: 1_792_000_000)
+    #expect(LiveAccountService.freezeTime("2026-10-11T22:30:00Z", now: inOct2026) == "on Mon 12 Oct at 02:30")
+    #expect(LiveAccountService.freezeTime("2025-12-14T04:05:00Z", now: inOct2026) == "on Sun 14 Dec 2025 at 08:05")
+    #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", now: inOct2026) == "on Fri 1 Jan 2027 at 01:00")
     #expect(LiveAccountService.freezeTime("not a time") == nil)
     #expect(LiveAccountService.freezeTime(nil) == nil)
   }

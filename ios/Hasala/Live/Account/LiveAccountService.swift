@@ -582,13 +582,18 @@ final class LiveAccountService: AccountService {
   }
 
   /// "on Sun 11 Oct at 21:20", in the app's fixed local clock (UTC+04:00, 03c §1.5).
-  static func freezeTime(_ instant: String?) -> String? {
+  static func freezeTime(_ instant: String?, now: Date = Date()) -> String? {
     guard let instant, let ms = try? parseInstantMs(instant) else { return nil }
+    let zone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60)!
+    let when = Date(timeIntervalSince1970: Double(ms) / 1000)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = zone
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60)
-    f.dateFormat = "EEE d MMM 'at' HH:mm"
-    return "on " + f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
+    f.timeZone = zone
+    f.dateFormat = calendar.component(.year, from: when) == calendar.component(.year, from: now)
+      ? "EEE d MMM 'at' HH:mm" : "EEE d MMM yyyy 'at' HH:mm"
+    return "on " + f.string(from: when)
   }
 
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
