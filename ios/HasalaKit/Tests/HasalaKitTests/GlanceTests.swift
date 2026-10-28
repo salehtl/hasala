@@ -30,7 +30,7 @@ struct GlanceEngineTests {
   @Test func theLaunchSetIsFilled() {
     let w = snapshot()
     #expect(w.budgetPace?.rows.count == 3)
-    #expect(w.nextBill?.caption == "DEWA · expected Wed")
+    #expect(w.nextBill?.caption == "Expected Wed · DEWA")
     #expect(w.netWorth != nil)
     #expect(w.projects.first?.name == "Japan trip")
     #expect(w.goals.first?.name == "Emergency fund")

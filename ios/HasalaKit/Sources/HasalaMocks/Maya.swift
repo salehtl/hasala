@@ -149,7 +149,8 @@ public enum Maya {
       HeroTile("Wants", .aed(1_247_54)),
       HeroTile("Savings", .aed(5_000_00)),
     ],
-    wash: .sky
+    wash: .sky,
+    unsorted: .aed(827_28)
   )
 
   /// Home · Notifications (11Y9-0), "Needs a look", newest first: four items, the bell's 4.
@@ -157,15 +158,15 @@ public enum Maya {
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
       line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
-      when: "Today", destination: .review(.allTime)),
+      when: "Today", destination: .review(.allTime), count: 6),
     NotificationItem(
-      id: "bill.axa", disc: .hue(.sand, .insurance), title: "AXA Insurance may be late",
+      id: "bill.axa", disc: .hue(.sand, .insurance), title: "\(Bidi.isolate("AXA Insurance")) may be late",
       line: "Usually on the 7th · no email yet", status: .error, when: "Thu", destination: .bill("axa")),
     NotificationItem(
-      id: "found.apple-bill", disc: .hue(.lilac, .subscriptions), title: "Found a bill: Apple.com/bill",
+      id: "found.apple-bill", disc: .hue(.lilac, .subscriptions), title: "Found a bill: \(Bidi.isolate("Apple.com/bill"))",
       line: "Seen 5× · every ~30 days", when: "Thu", destination: .bills),
     NotificationItem(
-      id: "price.du", disc: .hue(.sand, .utilities), title: "du has a new price",
+      id: "price.du", disc: .hue(.sand, .utilities), title: "\(Bidi.isolate("du")) has a new price",
       line: MoneyPhrase([
         .amount(.aed(427_90), hidden: 3), .text(" from "), .amount(.aed(389_00), hidden: 3), .text(" · accept or check"),
       ]),
@@ -186,7 +187,7 @@ public enum Maya {
       hue: .sand,
       due: StatusPill("In 4 days", tone: .warning, showsDot: false),
       amount: .aed(489_15),
-      caption: "DEWA · expected Wed"
+      caption: "Expected Wed · DEWA"
     )),
     .netWorth(NetWorthWidget(
       total: .aed(227_568_00),

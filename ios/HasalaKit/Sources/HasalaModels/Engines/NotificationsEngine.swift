@@ -43,11 +43,13 @@ public struct NotificationItem: Sendable, Hashable, Identifiable {
   /// "Today", "Thu", "28 Sep", "9:12"; nil when the item has no moment of its own.
   public var when: String?
   public var destination: NotificationDestination
+  public var count: Int
 
   public init(
     id: String, disc: Disc, title: String, line: MoneyPhrase, status: StatusTone? = nil, when: String?,
-    destination: NotificationDestination
+    destination: NotificationDestination, count: Int = 0
   ) {
+    self.count = count
     self.id = id
     self.disc = disc
     self.title = title
@@ -85,9 +87,9 @@ public enum NotificationsEngine {
       let unplanned = Fils.sum(queue.filter { $0.direction == .out && !$0.isHeldCopy }) { $0.homeMinor ?? 0 }
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
-        title: "\(queue.count) transaction\(queue.count == 1 ? "" : "s") to sort",
+        title: "\(MoneyFormat.count(queue.count)) transaction\(queue.count == 1 ? "" : "s") to sort",
         line: MoneyPhrase([.text("AED "), .amount(.aed(unplanned), hidden: 3), .text(" still to check")]),
-        when: when(newest, today: today), destination: .review(window == .all ? .allTime : nil)
+        when: when(newest, today: today), destination: .review(window == .all ? .allTime : nil), count: queue.count
       )))
     }
 
@@ -95,7 +97,8 @@ public enum NotificationsEngine {
     if let newest = unread.first {
       dated.append((newest.receivedOn, NotificationItem(
         id: "unread", disc: .neutral(.envelope), title: ReviewEngine.unreadLine(unread.count),
-        line: "Add each one by hand or dismiss it", when: when(newest.receivedOn, today: today), destination: .unreadMail
+        line: "Add each one by hand or dismiss it", when: when(newest.receivedOn, today: today), destination: .unreadMail,
+        count: unread.count
       )))
     }
 
@@ -104,7 +107,7 @@ public enum NotificationsEngine {
       dated.append((newest.receivedAt.date, NotificationItem(
         id: "unreadTexts", disc: .neutral(.chat), title: ReviewEngine.unreadTextLine(texts.count),
         line: "Add each one by hand or dismiss it", when: when(newest.receivedAt.date, today: today),
-        destination: .unreadTexts
+        destination: .unreadTexts, count: texts.count
       )))
     }
 
@@ -117,7 +120,7 @@ public enum NotificationsEngine {
       let c = s.category(b.categoryID)
       dated.append((since, NotificationItem(
         id: "bill.\(b.id)", disc: .hue(c?.hue ?? .sand, c?.glyph ?? .bill),
-        title: "\(b.name) may be late",
+        title: "\(Bidi.isolate(b.name)) may be late",
         line: MoneyPhrase(stringLiteral: "Usually on the \(PlanEngine.ordinal(b.usualDay)) · no email yet"),
         status: .error, when: when(since, today: today), destination: .bill(b.id)
       )))
@@ -130,7 +133,7 @@ public enum NotificationsEngine {
       let c = s.category(b.categoryID)
       dated.append((charged, NotificationItem(
         id: "price.\(b.id)", disc: .hue(c?.hue ?? .sand, c?.glyph ?? .bill),
-        title: "\(b.name) has a new price",
+        title: "\(Bidi.isolate(b.name)) has a new price",
         line: MoneyPhrase([
           .amount(b.amount, hidden: 3), .text(" from "), .amount(usual, hidden: 3), .text(" · accept or check"),
         ]),
@@ -143,7 +146,7 @@ public enum NotificationsEngine {
       let cat = s.category(c.categoryID)
       dated.append((c.last, NotificationItem(
         id: "found.\(c.id)", disc: .hue(cat?.hue ?? .lilac, .subscriptions),
-        title: "Found a bill: \(c.name)",
+        title: "Found a bill: \(Bidi.isolate(c.name))",
         line: MoneyPhrase(stringLiteral: "Seen \(c.seenCount)× · every ~\(c.everyDays) days"),
         when: when(c.last, today: today), destination: .bills
       )))
@@ -157,14 +160,14 @@ public enum NotificationsEngine {
   }
 
   /// When something happened, as the sheet writes it (page 06 §6.6): "Today", "Yesterday", the
-  /// weekday within the week ("Thu"), then the day and month ("28 Sep").
+  /// weekday within the week ("Thu"), then the date ("Mon 28 Sep", with the year when it is not this year).
   public static func when(_ date: LocalDate, today: LocalDate) -> String {
     let days = date.days(until: today)
     switch days {
     case ...0: return "Today"
     case 1: return "Yesterday"
     case 2...6: return date.weekdayShort
-    default: return date.dayMonth
+    default: return date.short(today: today)
     }
   }
 }

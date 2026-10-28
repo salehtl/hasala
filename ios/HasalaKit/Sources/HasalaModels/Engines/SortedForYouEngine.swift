@@ -49,7 +49,7 @@ public struct SortedForYouSnapshot: Sendable, Hashable {
 
   public var homeLine: String? {
     guard payments > 0 else { return nil }
-    return "\(payments) sorted for you this week"
+    return "\(MoneyFormat.count(payments)) sorted for you this week"
   }
 }
 
@@ -94,7 +94,7 @@ extension SortedForYouSnapshot {
 
   public var homeSpoken: String? {
     guard payments > 0 else { return nil }
-    return "\(payments) payment\(payments == 1 ? "" : "s") sorted for you this week. Look."
+    return "\(MoneyFormat.count(payments)) payment\(payments == 1 ? "" : "s") sorted for you this week. Look."
   }
 }
 
