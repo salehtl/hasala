@@ -69,14 +69,15 @@ struct HomeModelTests {
   }
 
   @Test func aReadItemComesBackOnlyWhenItGrowsOrChanges() {
-    func item(_ id: String, _ title: String) -> NotificationItem {
-      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(.allTime))
+    func item(_ id: String, _ title: String, count: Int = 0) -> NotificationItem {
+      NotificationItem(id: id, disc: .neutral(.flag), title: title, line: "", when: nil, destination: .review(.allTime),
+                       count: count)
     }
     let reads = NotificationReads()
-    reads.markAllRead([item("review", "9 transactions to sort"), item("bill.axa", "AXA Insurance may be late")])
-    #expect(reads.isRead(item("review", "9 transactions to sort")))
-    #expect(reads.isRead(item("review", "8 transactions to sort")))
-    #expect(!reads.isRead(item("review", "10 transactions to sort")))
+    reads.markAllRead([item("review", "1,284 transactions to sort", count: 1_284), item("bill.axa", "AXA Insurance may be late")])
+    #expect(reads.isRead(item("review", "1,284 transactions to sort", count: 1_284)))
+    #expect(reads.isRead(item("review", "999 transactions to sort", count: 999)))
+    #expect(!reads.isRead(item("review", "1,285 transactions to sort", count: 1_285)))
     #expect(reads.isRead(item("bill.axa", "AXA Insurance may be late")))
     #expect(!reads.isRead(item("bill.axa", "AXA Insurance is late")))
     #expect(!reads.isRead(item("bill.du", "du may be late")))

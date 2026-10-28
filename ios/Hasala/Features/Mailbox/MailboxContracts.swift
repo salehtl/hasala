@@ -222,7 +222,7 @@ struct MailImport: Equatable, Sendable {
   var count: String? {
     guard state != .offline, total > 0 else { return nil }
     if case .stopped = state { return nil }
-    return "\(min(read, total)) of \(total)"
+    return "\(MoneyFormat.count(min(read, total))) of \(MoneyFormat.count(total))"
   }
 
   var busy: Bool { state == .reading }
