@@ -255,6 +255,7 @@ private struct NetWorthChartCard: View {
               .lineLimit(1)
               .minimumScaleFactor(0.5)
               .frame(maxWidth: .infinity)
+              .accessibilityIdentifier(hasalaCappedFigureIdentifier)
           }
         }
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
