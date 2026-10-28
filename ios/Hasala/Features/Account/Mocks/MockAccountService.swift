@@ -14,7 +14,9 @@
   @MainActor
   final class MockAccountService: AccountService {
     static let emailCode = "123456"
-    static let existingEmail = "maya@example.com"
+    static var identity: MockIdentity = .maya
+    static var existingEmail: String { identity.person.email }
+    static var displayName: String { identity.person.displayName }
     static let existingPassword = "copper lantern quietly 42"
     /// A valid phrase from fixed entropy 01…10 (synthetic).
     static let phraseWords: [String] = (try? Phrase.words(entropy: Data((1...16).map { UInt8($0) }))) ?? []
@@ -48,7 +50,7 @@
       security = Self.securityState(for: existing)
       password = existing == .none ? nil : Self.existingPassword
       if signedIn, existing != .none {
-        profile = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail,
+        profile = AccountProfile(displayName: Self.displayName, email: Self.existingEmail,
                                  method: existing == .passkey ? .passkey : .password)
       }
     }
@@ -56,25 +58,16 @@
     /// Paper's Sign-in & security boards (HB9, HNJ), synthetic: this iPhone and Maya's iPad;
     /// a passkey account also has a passkey from another Apple Account ("Work iPad").
     static func securityState(for account: Account) -> SecurityState {
-      let thisPhone = DeviceRow(id: "ios-this", title: "This iPhone", detail: "iPhone 16 Pro · Dubai · Active now",
-                                isThisDevice: true)
-      let other = DeviceRow(id: "ios-other", title: "Maya\u{2019}s iPad", detail: "iPad Air · Dubai · 2 days ago",
-                            isThisDevice: false, isTablet: true)
+      let id = identity
       switch account {
       case .passkey, .none:
         return SecurityState(
-          email: existingEmail, emailVerified: true,
-          passkeys: [
-            PasskeyRow(id: "pk-1", provider: "iCloud Keychain", detail: "Added 11 Sep · Used today", isThisCredential: true),
-            PasskeyRow(id: "pk-2", provider: "Work iPad", detail: "Other Apple Account · 2 Oct", isThisCredential: false),
-          ],
-          passwordChanged: nil, devices: [thisPhone, other], lastSignIn: "today at 09:12, here",
-          phraseConfirmed: "Confirmed 11 Sep", frozen: nil)
+          email: existingEmail, emailVerified: true, passkeys: id.passkeys, passwordChanged: nil, devices: id.devices,
+          lastSignIn: id.lastSignIn, phraseConfirmed: id.phraseConfirmed, frozen: nil)
       case .passwordOnly:
         return SecurityState(
-          email: existingEmail, emailVerified: true, passkeys: [], passwordChanged: "Changed 3 Oct",
-          devices: [thisPhone, other], lastSignIn: "today at 09:12, here", phraseConfirmed: "Confirmed 11 Sep",
-          frozen: nil)
+          email: existingEmail, emailVerified: true, passkeys: [], passwordChanged: id.passwordChanged,
+          devices: id.devices, lastSignIn: id.lastSignIn, phraseConfirmed: id.phraseConfirmed, frozen: nil)
       }
     }
 
@@ -162,7 +155,7 @@
     func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome {
       await pause()
       guard existing == .passkey else { throw existing == .none ? .orphanedPasskey : .noCredential }
-      profile = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail, method: .passkey)
+      profile = AccountProfile(displayName: Self.displayName, email: Self.existingEmail, method: .passkey)
       return signInOutcome
     }
 
@@ -171,7 +164,7 @@
       guard existing != .none, AccountFields.email(email) == Self.existingEmail, pw == password else {
         throw .wrongCredentials
       }
-      profile = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail,
+      profile = AccountProfile(displayName: Self.displayName, email: Self.existingEmail,
                                method: existing == .passkey ? .passkey : .password)
       if case .needsUnlock = signInOutcome {
         return .needsUnlock(passkeyCanUnlock: existing == .passkey)
@@ -223,7 +216,7 @@
       await pause()
       resetPolls += 1
       if resetPolls >= 2 {
-        profile = AccountProfile(displayName: "Maya Rahman", email: ticket.email,
+        profile = AccountProfile(displayName: Self.displayName, email: ticket.email,
                                  method: existing == .passkey ? .passkey : .password)
         return true
       }
@@ -244,7 +237,7 @@
     func finishInterruptedSetup(phrase: RecoveryPhrase) async throws(AuthFailure) -> AccountProfile {
       await pause()
       existing = .passkey
-      let p = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail, method: .passkey)
+      let p = AccountProfile(displayName: Self.displayName, email: Self.existingEmail, method: .passkey)
       profile = p
       return p
     }
@@ -256,7 +249,7 @@
       try injected()
       guard words == Self.phraseWords else { throw .noAccountForPhrase }
       codeTries = 5
-      return RecoveryTicket(id: "recover-1", emailHint: "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com")
+      return RecoveryTicket(id: "recover-1", emailHint: Self.identity.person.emailHint)
     }
 
     /// The kind the ceremony was verified with (`02` #48).
@@ -291,7 +284,7 @@
       }
       security.email = email
       security.devices = devices
-      profile = AccountProfile(displayName: "Maya Rahman", email: Self.existingEmail, method: credential.method)
+      profile = AccountProfile(displayName: Self.displayName, email: Self.existingEmail, method: credential.method)
     }
 
     // MARK: Signed in
@@ -447,7 +440,7 @@
 
     /// Scenario hook: start frozen.
     func freezeForScenario(by: FreezeInfo.By) {
-      security.frozen = FreezeInfo(by: by, when: "on Sun 11 Oct at 21:20")
+      security.frozen = FreezeInfo(by: by, when: Self.identity.freezeWhen)
     }
 
     var frozenInfo: FreezeInfo? { security.frozen }
