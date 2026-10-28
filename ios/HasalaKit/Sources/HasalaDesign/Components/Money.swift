@@ -80,7 +80,7 @@ public struct MoneyText: View {
   private var digits: String {
     hidden
       ? MoneyFormat.hidden(count: hiddenGlyphs)
-      : (unit == nil ? shownSign : "") + MoneyFormat.string(money.minor, style: style)
+      : (unit == nil ? shownSign : "") + MoneyFormat.string(money, style: style)
   }
 
   public var body: some View {
@@ -99,7 +99,7 @@ public struct MoneyText: View {
   {
     hidden
       ? "Amount hidden"
-      : "\(approx ? "about " : "")\(sign.spoken)\(money.currency) \(MoneyFormat.string(money.minor, style: style))"
+      : "\(approx ? "about " : "")\(sign.spoken)\(money.currency) \(MoneyFormat.string(money, style: style))"
   }
 }
 
