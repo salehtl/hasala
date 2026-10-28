@@ -22,8 +22,24 @@ final class ResetApprovalModel {
 
   /// 16 characters of `A-Z2-7` once spaces and hyphens are dropped.
   var codeReady: Bool {
-    let n = InviteCode.normalize(code)
+    let n = normalizedCode
     return n.count == 16 && InviteCode.isAlphabet(n)
+  }
+
+  var normalizedCode: String { Self.normalize(code) }
+
+  var codeHasStrayCharacters: Bool { !InviteCode.isAlphabet(normalizedCode) }
+
+  static func normalize(_ raw: String) -> String {
+    let mapped = String(raw.map { $0 == "l" ? "I" : $0 })
+    return String(InviteCode.normalize(mapped).map { c -> Character in
+      switch c {
+      case "0": "O"
+      case "1": "I"
+      case "8": "B"
+      default: c
+      }
+    })
   }
 
   func approve() async {
@@ -31,7 +47,7 @@ final class ResetApprovalModel {
     busy = true
     defer { busy = false }
     do {
-      try await account.approveReset(request, code: code)
+      try await account.approveReset(request, code: normalizedCode)
       approved = true
       failure = nil
     } catch {
@@ -79,10 +95,12 @@ struct ResetApprovalSheet: View {
       Text("Password reset")
         .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
         .foregroundStyle(HColor.textPrimary)
+        .accessibilityIdentifier(hasalaCappedFigureIdentifier)
       Spacer(minLength: 8)
       Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
     }
     .padding(.top, 21)
+    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
   }
 
   private var ask: some View {
@@ -93,9 +111,16 @@ struct ResetApprovalSheet: View {
           .hType(.section)
           .foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
-        Text("An iPhone asked \(model.request.askedAgo). It typed a code we sent to \(model.request.email).")
-          .hType(.subheadline)
-          .foregroundStyle(HColor.textSecondary)
+        VStack(spacing: 2) {
+          Text("An iPhone asked \(model.request.askedAgo). It typed a code we sent to")
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textSecondary)
+          Text(model.request.email)
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textPrimary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("approval.email")
       }
       .multilineTextAlignment(.center)
       .fixedSize(horizontal: false, vertical: true)
@@ -144,6 +169,10 @@ struct ResetApprovalSheet: View {
           .environment(\.layoutDirection, .leftToRight)
           .accessibilityLabel("The code on your new iPhone")
           .accessibilityIdentifier("approval.code")
+        if model.codeHasStrayCharacters {
+          FieldErrorLine(text: "Codes use only letters and the digits 2-7", warning: true)
+            .accessibilityIdentifier("approval.codeHint")
+        }
       }
       .padding(16)
       .frame(maxWidth: .infinity, alignment: .leading)

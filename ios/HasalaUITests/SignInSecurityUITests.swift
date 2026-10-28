@@ -525,6 +525,7 @@ extension SignInSecurityUITests {
       issue in
       guard let e = issue.element else { return true }
       if e.elementType == .key || e.elementType == .keyboard { return true }
+      if issue.auditType == .dynamicType, e.identifier == "hasala.cappedFigure" { return true }
       issues.append("\(issue.compactDescription): '\(e.label)' [\(e.identifier)] — \(issue.detailedDescription)")
       return true
     }

@@ -483,6 +483,28 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(account.approvedResets == ["reset-1"])
   }
 
+  @Test func theResetCodeReadsLookAlikeCharacters() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.pendingReset = PendingReset(id: "reset-1", askedAgo: "now", email: MockAccountService.existingEmail)
+    let request = try #require(await account.pendingResetRequest())
+    let m = ResetApprovalModel(account: account, request: request)
+    #expect(ResetApprovalModel.normalize("WM06 C7lD 7TYM 2M5S") == "WMO6C7ID7TYM2M5S")
+    #expect(ResetApprovalModel.normalize("a1b8-L0") == "AIBBLO")
+    m.code = "WM06 C7lD 7TYM 2M5S"
+    #expect(m.codeReady)
+    #expect(!m.codeHasStrayCharacters)
+    m.code = "WMO6 C7ID 7TYM 2M5?"
+    #expect(!m.codeReady)
+    #expect(m.codeHasStrayCharacters)
+    m.code = "WMO6 C7ID 9TYM 2M5S"
+    #expect(m.codeHasStrayCharacters)
+    m.code = "wm06-c71d-7tym-2m5s"
+    await m.approve()
+    #expect(m.approved)
+    #expect(account.approvedResets == ["reset-1"])
+  }
+
   @Test func maskedTheEntryGridDrawsDotsForEachWord() {
     let state = PhraseEntryState("absurd avoid sci")
     #expect(state.drawn(masked: false) == ["absurd", "avoid", "sci"])
