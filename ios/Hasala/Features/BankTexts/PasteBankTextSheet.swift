@@ -8,6 +8,7 @@ final class PasteBankTextModel {
   let lane: any BankTextsConnecting
   let hidden: Bool
   private(set) var text: String?
+  private(set) var payments = 0
   private(set) var reading: BankTextReading?
   private(set) var match: BankTextMatch?
   private(set) var isReading = false
@@ -41,6 +42,7 @@ final class PasteBankTextModel {
     generation += 1
     let mine = generation
     text = trimmed
+    payments = Self.paymentCount(trimmed)
     reading = nil
     match = nil
     failure = nil
@@ -72,7 +74,7 @@ final class PasteBankTextModel {
   }
 
   static func matchDetail(_ m: BankTextMatch, hidden: Bool) -> String {
-    let money = m.amount.map { hidden ? "Amount hidden" : "\($0.currency) \(MoneyFormat.string($0.minor))" }
+    let money = m.amount.map { hidden ? "Amount hidden" : "\($0.currency) \(MoneyFormat.string($0))" }
     let from = m.fromText ? "From a bank text" : "From email"
     return [money, BankTexts.dayAndTime(m.postedAt), from].compactMap { $0 }.joined(separator: " \u{00B7} ")
   }
@@ -87,9 +89,25 @@ final class PasteBankTextModel {
   static let undatedNote =
     "This text has no date, so Hasala dates it when you paste it. Change the date in Review if the payment was earlier."
 
-  static func amountLine(_ p: BankTextPreview) -> String {
-    let money = "\(p.amount.currency) \(MoneyFormat.string(p.amount.minor))"
+  static func amountLine(_ p: BankTextPreview, hidden: Bool = false) -> String {
+    if hidden { return "Amount hidden" }
+    let money = "\(p.amount.currency) \(MoneyFormat.string(p.amount))"
     return p.direction == .out ? "\(money) out" : "\(money) in"
+  }
+
+  static func paymentCount(_ text: String) -> Int {
+    let verbs = [
+      "spent", "paid", "purchase", "debited", "credited", "withdrawn", "withdrawal", "refunded", "transferred",
+      "خصم", "شراء", "دفع", "سحب", "تحويل", "إيداع",
+    ]
+    return text.split(whereSeparator: \.isNewline).filter { line in
+      let lower = line.lowercased()
+      return line.contains(/[A-Z]{3} ?[0-9]/) && verbs.contains { lower.contains($0) }
+    }.count
+  }
+
+  static func severalNote(_ n: Int) -> String {
+    "This paste has \(MoneyFormat.count(n)) payments. Paste them one at a time."
   }
 
   static func cardLine(_ p: BankTextPreview) -> String? {
@@ -101,6 +119,9 @@ final class PasteBankTextModel {
 
 struct PasteBankTextSheet: View {
   @State private var model: PasteBankTextModel
+  @State private var showAllText = false
+  @State private var fullTextHeight: CGFloat = 0
+  @State private var shownTextHeight: CGFloat = 0
   var added: () -> Void
   @Environment(\.dismiss) private var dismiss
 
@@ -132,9 +153,13 @@ struct PasteBankTextSheet: View {
             .accessibilityIdentifier("pasteText.paste")
           }
           if let text = model.text {
-            pasted(text)
             result
+            if model.payments > 1 {
+              InlineStatus(tone: .warning, text: PasteBankTextModel.severalNote(model.payments), size: .regular)
+                .accessibilityIdentifier("pasteText.several")
+            }
             if let match = model.match, model.reading != nil { matchCard(match) }
+            pasted(text)
           }
           if let failure = model.failure {
             InlineStatus(tone: .warning, text: failure, size: .regular)
@@ -175,6 +200,7 @@ struct PasteBankTextSheet: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("pasteText")
+    .onChange(of: model.text) { showAllText = false }
     .task {
       #if HASALA_MOCKS
         if let text = BankTextsLaunch.takePasted() { await model.paste(text) }
@@ -215,14 +241,38 @@ struct PasteBankTextSheet: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Pasted").hType(.overline).foregroundStyle(HColor.textGroupedHeader)
         .accessibilityAddTraits(.isHeader)
-      Text(text)
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textPrimary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-        .accessibilityIdentifier("pasteText.text")
+      VStack(alignment: .leading, spacing: 8) {
+        Text(text)
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textPrimary)
+          .lineLimit(showAllText ? nil : 6)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background {
+            Text(text)
+              .hType(.subheadline)
+              .fixedSize(horizontal: false, vertical: true)
+              .hidden()
+              .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullTextHeight = $0 }
+          }
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { shownTextHeight = $0 }
+          .accessibilityIdentifier("pasteText.text")
+        if showAllText || fullTextHeight > shownTextHeight + 1 {
+          Button { showAllText.toggle() } label: {
+            Text(showAllText ? "Show less" : "Show all")
+              .hType(.footnote.weight(.semibold))
+              .foregroundStyle(HColor.textLink)
+              .padding(.vertical, 13)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .padding(.vertical, -13)
+          .accessibilityIdentifier("pasteText.showAll")
+        }
+      }
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     }
   }
 
@@ -241,7 +291,7 @@ struct PasteBankTextSheet: View {
       case .read(let preview)?:
         HListCard(alignment: .leading) {
           VStack(spacing: 0) {
-            KeyValueRow("Amount", value: PasteBankTextModel.amountLine(preview))
+            KeyValueRow("Amount", value: PasteBankTextModel.amountLine(preview, hidden: model.hidden))
             HDivider(inset: .none)
             KeyValueRow("Merchant", value: preview.merchant ?? "Not in the text", placeholder: preview.merchant == nil)
             HDivider(inset: .none)
