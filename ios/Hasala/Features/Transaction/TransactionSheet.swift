@@ -146,7 +146,7 @@ struct TransactionSheet: View {
           Text("Not counted").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textSecondary)
             .accessibilityIdentifier("txn.notCounted")
         } else if let o = home.original, !model.hidden {
-          Text("\(o.currency) \(MoneyFormat.string(o.minor))").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          Text("\(o.currency) \(MoneyFormat.string(o))").hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .accessibilityIdentifier("txn.original")
         }
         Text(d.meta).hType(.subheadline).foregroundStyle(HColor.textSecondary)

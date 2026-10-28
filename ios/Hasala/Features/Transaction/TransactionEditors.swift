@@ -66,9 +66,12 @@ struct CategoryPickerView: View {
 
   /// The row being sorted, as Activity lists it.
   private func transaction(_ d: TransactionDetail) -> some View {
-    HListCard {
+    let home = d.home ?? HomeAmount(shown: d.amount)
+    return HListCard {
       HListRow(leading: d.monogram.map { .monogram($0) } ?? .disc(d.hue, d.glyph.icon), title: d.merchant,
-               supporting: .text(d.meta), trailing: .amount(d.amount, in: d.isIncome), hidden: model.hidden)
+               supporting: .wrapping(d.meta),
+               trailing: home.notCounted ? .value("Not counted") : .amount(home.shown, in: d.isIncome, approx: home.estimate),
+               hidden: model.hidden)
     }
   }
 
