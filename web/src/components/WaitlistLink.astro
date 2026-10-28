@@ -86,6 +86,7 @@ const COPY = {
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-wlink]');
     if (!root) return;
+    window.addEventListener('hashchange', () => location.hash.length > 1 && location.reload(), { signal });
     const kind = root.dataset.wlink as 'confirm' | 'leave';
     const button = root.querySelector<HTMLButtonElement>('[data-wlink-button]')!;
     const label = button.querySelector<HTMLElement>('[data-label]')!;

@@ -164,6 +164,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   // Through onPage, like every page script, though the router always loads this page in full.
   onPage((signal) => {
     if (!document.querySelector('[data-code]')) return;
+    window.addEventListener('hashchange', () => location.hash.length > 1 && location.reload(), { signal });
     const fragment = location.hash.slice(1);
     const match = /^\/i\/([^/?#]+)/.exec(location.pathname);
     // The code and the link key leave the address bar and the history entry
@@ -321,6 +322,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   }
   .invite__badge {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 14px;
   }
@@ -352,6 +354,10 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     font-family: inherit;
     font-size: 14px;
     font-weight: 600;
+  }
+  .invite__code-chip code:not([hidden]) {
+    display: block;
+    white-space: nowrap;
   }
   .invite__title {
     padding-top: 8px;
@@ -392,6 +398,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
   }
   .isteps li + li {
     border-top: 1px solid var(--neutral-200);
+  }
+  :global(html:not(.has-code)) .isteps li.for-code + li {
+    border-top: none;
   }
   .isteps .coin-badge {
     width: 28px;
@@ -519,6 +528,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       border-radius: 50%;
       background: var(--coin);
       box-shadow: var(--gold-edge) 0 1px 0;
+    }
+    .invite__code-chip code:not([hidden]) {
+      display: inline;
     }
     .invite__code-chip code {
       color: var(--text-body);
