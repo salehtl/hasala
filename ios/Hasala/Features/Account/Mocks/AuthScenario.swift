@@ -163,7 +163,8 @@
 
     @MainActor
     private static func makeSession(for scenario: AuthScenario?, releaseSurface: Bool) -> AccountSession {
-      MockAccountService.identity = MockIdentity.resolve(scenario, ProcessInfo.processInfo.arguments)
+      let launch = ProcessInfo.processInfo.arguments
+      MockAccountService.identity = ScreenLaunch.isMockLaunch(launch) ? MockIdentity.resolve(scenario, launch) : .maya
       let mailbox = MockMailbox(offersSampleData: scenario == .reviewAccount, mailboxes: mailboxes(for: scenario))
       mailbox.sortsWithModel = !releaseSurface
       mailbox.outlookAdmin = scenario == .outlookAdmin
@@ -399,10 +400,7 @@
         default: .maya
         }
       if let name = arguments.launchValue(after: "-HasalaDisplayName") { id.person.displayName = name }
-      if let email = arguments.launchValue(after: "-HasalaEmail") {
-        id.person.email = email
-        id.person.gmailAddress = email
-      }
+      if let email = arguments.launchValue(after: "-HasalaEmail") { id.person = id.person.withEmail(email) }
       return id
     }
 

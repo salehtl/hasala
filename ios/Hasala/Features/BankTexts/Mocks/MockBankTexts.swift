@@ -86,7 +86,7 @@
       ]
       lane.nextMatch = BankTextMatch(
         rowID: "steam", kind: .payment, merchant: "مطعم ومقهى الشرفة الذهبية",
-        amount: Money(minor: 3_250, currency: "BHD"), postedAt: now.addingTimeInterval(-400 * 86_400), fromText: true)
+        amount: Money(minor: 32_500, currency: "BHD"), postedAt: now.addingTimeInterval(-400 * 86_400), fromText: true)
       return lane
     }
 

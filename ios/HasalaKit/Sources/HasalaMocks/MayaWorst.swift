@@ -54,6 +54,30 @@ public struct MockPerson: Sendable, Hashable {
     }
   }
 
+  public func withEmail(_ address: String) -> MockPerson {
+    var p = self
+    p.email = address
+    p.gmailAddress = address
+    p.emailHint = Self.hint(address)
+    if let at = address.firstIndex(of: "@") {
+      p.outlookAddress = address[..<at] + ".k" + address[at...]
+    } else {
+      p.outlookAddress = address
+    }
+    return p
+  }
+
+  public static func hint(_ address: String) -> String {
+    func masked(_ s: Substring) -> String {
+      guard let first = s.first else { return "" }
+      return String(first) + String(repeating: "\u{2022}", count: max(1, s.count - 1))
+    }
+    guard let at = address.firstIndex(of: "@") else { return masked(Substring(address)) }
+    let domain = address[address.index(after: at)...]
+    let dot = domain.firstIndex(of: ".") ?? domain.endIndex
+    return masked(address[..<at]) + "@" + masked(domain[..<dot]) + domain[dot...]
+  }
+
   public var profile: ProfileInfo {
     ProfileInfo(displayName: displayName, email: email, emailVerified: emailVerified, signIn: .passkey)
   }
@@ -195,7 +219,7 @@ public enum MayaWorst {
         let (m, h) = usd(minor * 100 / 367)
         estimate(&t, m, home: h, rateMicro: MayaBacklog.usdRateMicro)
       } else if foreign == 1 {
-        estimate(&t, Money(minor: minor * 40, currency: "JPY"), home: nil)
+        estimate(&t, Money(minor: minor * 2 / 5, currency: "JPY"), home: nil)
       } else if foreign == 2 {
         estimate(&t, Money(minor: minor * 10 / 12, currency: "KWD"), home: nil)
       }
@@ -203,8 +227,6 @@ public enum MayaWorst {
       return t
     }
   }
-
-  // MARK: - Worst
 
   public static var worst: LedgerState {
     var s = MayaHistory.state
@@ -450,8 +472,6 @@ public enum MayaWorst {
     return s
   }
 
-  // MARK: - Empty
-
   public static var empty: LedgerState {
     var s = MayaLedger.state
     s.categories = s.categories.filter(\.builtin)
@@ -467,8 +487,6 @@ public enum MayaWorst {
     s.netWorth = NetWorthHistory()
     return s
   }
-
-  // MARK: - One
 
   public static var one: LedgerState {
     var s = empty
@@ -506,8 +524,6 @@ public enum MayaWorst {
     MockReach.refresh(&s)
     return s
   }
-
-  // MARK: - Huge
 
   public static let hugeTxnCount = 2_500
   public static let hugeReviewCount = 300

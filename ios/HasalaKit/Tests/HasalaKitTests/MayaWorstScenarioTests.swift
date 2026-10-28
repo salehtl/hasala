@@ -29,6 +29,22 @@ struct MayaWorstScenarioTests {
     #expect(MockPerson.of(.maya) == .maya)
   }
 
+  @Test func anEmailOverrideKeepsTheIdentityConsistent() {
+    let p = MockPerson.maya.withEmail("ab@cd.co")
+    #expect(p.email == "ab@cd.co" && p.gmailAddress == "ab@cd.co")
+    #expect(p.outlookAddress == "ab.k@cd.co")
+    #expect(p.emailHint == "a\u{2022}@c\u{2022}.co")
+    #expect(MockPerson.hint("a@b.co") == "a\u{2022}@b\u{2022}.co")
+    #expect(MockPerson.hint("maya@example.com") == "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}.com")
+  }
+
+  @Test func foreignReviewAmountsUseTheirMinorDigits() {
+    for s in [Scenario.mayaWorst, .mayaHuge] {
+      let jpy = s.state.txns.filter { $0.needsReview && $0.amount.currency == "JPY" }
+      #expect(jpy.allSatisfy { $0.amount.minor < 1_000_000 })
+    }
+  }
+
   @Test func worstHitsTheCatalog() {
     let s = Scenario.mayaWorst.state
     #expect(s.txns.filter(\.needsReview).count == MayaWorst.reviewCount)
