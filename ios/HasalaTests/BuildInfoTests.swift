@@ -73,7 +73,7 @@ struct BuildInfoTests {
   /// `BuildInfo` is not main-actor isolated: background work can read it.
   @Test nonisolated func isReadableOffTheMainActor() async {
     let footer = await Task.detached { BuildInfo.current.footer }.value
-    #expect(footer.hasPrefix("Hasala QA · 0.3.0 ("))
+    #expect(footer.hasPrefix("Hasala QA · \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") ("))
   }
 
   /// The app's own Info.plist carries every key (spec 06 §4.2) and the export
@@ -84,7 +84,7 @@ struct BuildInfoTests {
     // The exact origin, as inspect-ipa.sh's endpoint guard checks it: https, no port or path.
     #expect(Bundle.main.object(forInfoDictionaryKey: "HasalaAPIBaseURL") as? String == "https://api.hasala.app")
     #expect(info.apiBaseURL.absoluteString == "https://api.hasala.app")
-    #expect(info.marketingVersion == "0.3.0")
+    #expect(info.marketingVersion.wholeMatch(of: /\d+\.\d+\.\d+/) != nil)
     #expect(Bundle.main.object(forInfoDictionaryKey: "ITSAppUsesNonExemptEncryption") as? Bool == false)
     #expect(Bundle.main.bundleIdentifier == "app.hasala.ios")
     #expect(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == "Hasala")

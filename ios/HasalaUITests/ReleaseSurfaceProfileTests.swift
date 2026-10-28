@@ -86,7 +86,7 @@ final class ReleaseSurfaceProfileTests: ReleaseSurfaceTestCase {
 
     let footer = el(app, "profile.buildFooter")
     XCTAssertTrue(reveal(app, footer))
-    XCTAssertTrue(footer.label.hasPrefix("Hasala QA · 0.3.0 ("), footer.label)
+    XCTAssertNotNil(footer.label.prefixMatch(of: /Hasala QA · \d+\.\d+\.\d+ \(/), footer.label)
     XCTAssertTrue(footer.label.hasSuffix("never sold"), footer.label)
 
     tap(app, "profile.delete")
