@@ -699,6 +699,8 @@ struct BankTextsTests {
     let prepaid = "Your prepaid card XXX1234 is ready. Unpaid fees: none."
     #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, prepaid].joined(separator: "\n")) == 1)
     #expect(PasteBankTextModel.paymentCount("Your prepaid card XXX1234 has AED 50 to spend.") == 0)
+    let promo = "Get AED 20 back when bills are paid with your card"
+    #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, promo].joined(separator: "\n")) == 1)
     #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Paste them one at a time.")
     let lane = MockBankTexts(setUp: true)
     lane.readDelay = .zero

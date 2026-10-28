@@ -101,11 +101,17 @@ final class PasteBankTextModel {
     "مشتريات", "خصم", "شراء", "دفع", "سحب", "تحويل", "إيداع", "ايداع", "سداد", "إرجاع", "ارجاع",
   ]
 
+  static let promoWords: Set<String> = [
+    "get", "earn", "win", "enjoy", "cashback", "offer", "offers", "when", "if", "save", "reward", "rewards",
+    "احصل", "اربح", "استمتع", "عرض", "عروض", "استرداد", "عند",
+  ]
+
   static func paymentCount(_ text: String) -> Int {
     text.split(whereSeparator: \.isNewline).filter { line in
       let hasAmount = line.contains(/[0-9]\.[0-9]{2}(?![0-9]{2})/) || line.contains(/(?:^|[^A-Za-z])(?!XXX)[A-Z]{3} [0-9]/)
       guard hasAmount else { return false }
-      return line.lowercased().split(whereSeparator: { !$0.isLetter }).contains { paymentWords.contains(String($0)) }
+      let words = Set(line.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init))
+      return !words.isDisjoint(with: paymentWords) && words.isDisjoint(with: promoWords)
     }.count
   }
 
