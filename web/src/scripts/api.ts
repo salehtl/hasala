@@ -23,7 +23,7 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
       /* an empty body is fine */
     }
     const retryAfter = Number.parseInt(res.headers.get('Retry-After') ?? '', 10);
-    return { status: res.status, error: typeof data.error === 'string' ? data.error : '', data, retryAfter: Number.isFinite(retryAfter) ? retryAfter : 0 };
+    return { status: res.status, error: typeof data.error === 'string' ? data.error : '', data, retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 0 };
   } catch {
     return { status: 0, error: 'network', data: {}, retryAfter: 0 };
   }
@@ -31,6 +31,7 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
 
 /** "a minute", "3 minutes", "an hour": for a Retry-After in seconds. */
 export function waitText(seconds: number): string {
+  if (!(seconds > 0)) return 'a few minutes';
   if (seconds <= 90) return 'a minute';
   const min = Math.ceil(seconds / 60);
   if (min < 60) return `${min} minutes`;
