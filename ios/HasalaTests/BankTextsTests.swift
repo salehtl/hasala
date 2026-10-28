@@ -220,7 +220,14 @@ struct BankTextsTests {
     #expect(RelativeTime.ago(now.addingTimeInterval(-2 * 3600), now: now) == "2 h ago")
     #expect(RelativeTime.ago(now.addingTimeInterval(-3 * 86_400), now: now) == "3 days ago")
     #expect(RelativeTime.ago(now.addingTimeInterval(60), now: now) == "just now")
-    #expect(RelativeTime.ago(now.addingTimeInterval(-240), now: now) == RelativeTime.ago(ms: 240_000))
+    #expect(RelativeTime.ago(now.addingTimeInterval(-240), now: now) == RelativeTime.ago(ms: 240_000, nowMs: 0))
+    #expect(RelativeTime.ago(now.addingTimeInterval(-7 * 86_400), now: now) == "7 days ago")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-8 * 86_400), now: now) == "on 6 Oct")
+    #expect(RelativeTime.ago(now.addingTimeInterval(-412 * 86_400), now: now) == "on 28 Aug 2025")
+    #expect(RelativeTime.ago(ms: 86_400_000 * 30, nowMs: Int64(1_792_000_000) * 1000) == "on 14 Sep")
+    #expect(RelativeTime.localDate(Int64(1_792_000_000) * 1000) == LocalDate(2026, 10, 14))
+    #expect(RelativeTime.localDate(-1) == LocalDate(1970, 1, 1))
+    #expect(RelativeTime.localDate(-4 * 3_600_000 - 1) == LocalDate(1969, 12, 31))
   }
 
   @Test func onlyDIBIsReadAutomatically() {

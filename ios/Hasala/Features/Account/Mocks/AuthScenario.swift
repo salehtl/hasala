@@ -313,13 +313,13 @@
       id.passwordChanged = "Changed 3 Oct 2025"
       id.freezeWhen = "on Thu 12 Dec at 08:05"
       id.resetAskedAgo = "14 minutes ago"
-      id.gmailMeta = "Checked 412 days ago"
-      id.outlookMeta = "Checked 412 days ago"
+      id.gmailMeta = "Checked on 12 Sep 2025"
+      id.outlookMeta = "Checked on 12 Sep 2025"
       id.outlookKind = "Work or school"
       id.outlookNote = "Microsoft says this account has no mailbox Hasala can read. Sign in with another account."
       id.outlookConnectedOn = nil
       id.gmailLastChecked = nil
-      id.lastEmails = [.enbd: "412 days ago", .dib: "just now"]
+      id.lastEmails = [.enbd: "on 12 Sep 2025", .dib: "just now"]
       id.monthRead = MonthRead(count: 1_284, month: "September")
       id.unreadable = Array(
         repeating: UnreadableMail(kind: "Credit card statement ready", provider: .outlook, day: "Wed 30 Sep"), count: 12)
