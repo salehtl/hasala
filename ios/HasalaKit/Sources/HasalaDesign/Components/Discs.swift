@@ -207,7 +207,7 @@ public struct AvatarDisc: View {
       .frame(width: size, height: size)
       .overlay {
         Text(initial)
-          .font(.custom(HWeight.bold.interFace, size: size <= 48 ? size * 16 / 36 : size * 40 / 96))
+          .font(.custom(HWeight.bold.interFace, fixedSize: size <= 48 ? size * 16 / 36 : size * 40 / 96))
           .foregroundStyle(Color(HRGBA(42, 31, 61, 1)))
       }
       .overlay {
