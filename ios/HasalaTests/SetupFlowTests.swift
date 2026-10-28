@@ -325,6 +325,25 @@ struct SetupFlowTests: AccountSuite {
     }
   }
 
+  @Test func theSplitLabelsStayApartInsideTheTrack() {
+    let gap: CGFloat = 8
+    let width: CGFloat = 342
+    let track = width - 40
+    let seventyThirty = SplitLabelLayout.positions(
+      ideal: [0, track * 0.70 + 40], widths: [40, 40], width: width, gap: gap)
+    #expect(seventyThirty == [0, track * 0.70 + 40])
+    let crowded = SplitLabelLayout.positions(
+      ideal: [0, track * 0.95 + 20], widths: [40, 30], width: width, gap: gap)
+    #expect(crowded[1] + 30 <= width)
+    #expect(crowded[1] >= crowded[0] + 40 + gap)
+    let squeezed = SplitLabelLayout.positions(
+      ideal: [0, track * 0.90 + 20, track + 40], widths: [40, 40, 30], width: width, gap: gap)
+    #expect(squeezed[2] == width - 30)
+    #expect(squeezed[1] + 40 + gap <= squeezed[2])
+    #expect(squeezed[0] + 40 + gap <= squeezed[1])
+    #expect(squeezed[0] >= 0)
+  }
+
   @Test func anAccountPastTheEmailStepResumesOnHome() {
     for mailbox in [OnboardingStep.Facts.Mailbox.scanning, .linked, .otherDevice] {
       var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
