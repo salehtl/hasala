@@ -220,7 +220,20 @@ struct PlanFactsLine: View {
     case status(String, StatusTone)
   }
 
-  private var runs: [Run] {
+  private var runs: [Run] { Self.runs(parts, hidden: hidden) }
+
+  private static func hasMoney(_ part: PlanDetailPart) -> Bool {
+    switch part {
+    case .status: true
+    case .text(let p):
+      p.parts.contains {
+        if case .text = $0 { return false }
+        return true
+      }
+    }
+  }
+
+  private static func runs(_ parts: [PlanDetailPart], hidden: Bool) -> [Run] {
     var out: [Run] = []
     for part in parts {
       switch part {
@@ -253,19 +266,30 @@ struct PlanFactsLine: View {
   /// Paper's drawing: runs 6 apart, " ·" closing the words before a status and "· " opening
   /// the words after one.
   private var line: some View {
-    let runs = self.runs
-    return HStack(spacing: 6) {
+    let kept = parts.filter(Self.hasMoney)
+    let drops = !kept.isEmpty && kept.count < parts.count
+    return ViewThatFits(in: .horizontal) {
+      line(runs, squeeze: false)
+      if drops { line(Self.runs(kept, hidden: hidden), squeeze: false) }
+      line(drops ? Self.runs(kept, hidden: hidden) : runs, squeeze: true)
+    }
+  }
+
+  private func line(_ runs: [Run], squeeze: Bool) -> some View {
+    HStack(spacing: 6) {
       ForEach(Array(runs.enumerated()), id: \.offset) { i, run in
         switch run {
         case .words(let s):
           let lead = i > 0 ? "· " : ""
           let tail = i + 1 < runs.count ? " ·" : ""
           Text(verbatim: lead + s + tail).hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .layoutPriority(squeeze ? 1 : 0)
         case .status(let words, let tone):
           HStack(spacing: 6) {
             Circle().fill(Self.dot(tone)).frame(width: 7, height: 7)
             Text(words).hType(.footnote.weight(.semibold)).foregroundStyle(Self.words(tone))
           }
+          .layoutPriority(squeeze ? 2 : 0)
         }
       }
     }

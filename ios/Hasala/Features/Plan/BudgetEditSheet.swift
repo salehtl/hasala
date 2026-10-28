@@ -73,7 +73,7 @@ struct BudgetEditSheet: View {
 
   private func content(_ row: PlanRowModel) -> some View {
     VStack(spacing: 20) {
-      PlanSheetHeader(title: "\(row.name) budget", closeID: "budget.close") { dismiss() }
+      PlanSheetHeader(title: "\(Bidi.isolate(row.name)) budget", closeID: "budget.close") { dismiss() }
       mathRow(row)
       VStack(alignment: .leading, spacing: 12) {
         PlanOverline("New budget")
@@ -253,7 +253,7 @@ struct BudgetEditSheet: View {
           .frame(maxWidth: .infinity)
           .accessibilityIdentifier("budget.consequence")
       }
-      Button(amount.map { "Set \(row.name) to AED \(MoneyFormat.string($0, style: .compact))" } ?? "Enter a budget") {
+      Button(amount.map { "Set to AED \(MoneyFormat.string($0, style: .compact))" } ?? "Enter a budget") {
         guard let amount else { return }
         typing = false
         _ = model.setBudget(.aed(amount), takingFrom: chosen?.id)

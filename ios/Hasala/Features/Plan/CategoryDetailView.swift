@@ -184,11 +184,14 @@ private struct ThisMonth: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       CountedTitle(title: "This month", count: detail.transactions.count)
-      PlanListCard {
-        ForEach(detail.transactions) { row in
-          Button { model.open(row.id) } label: { TransactionRow(row, hidden: model.hidden) }
-            .buttonStyle(HRowPressStyle())
-            .accessibilityIdentifier("plan.txn.\(row.id)")
+      HListCard {
+        LazyVStack(spacing: 0) {
+          ForEach(Array(detail.transactions.enumerated()), id: \.element.id) { i, row in
+            if i > 0 { HDivider(inset: .disc68) }
+            Button { model.open(row.id) } label: { TransactionRow(row, hidden: model.hidden) }
+              .buttonStyle(HRowPressStyle())
+              .accessibilityIdentifier("plan.txn.\(row.id)")
+          }
         }
       }
     }
