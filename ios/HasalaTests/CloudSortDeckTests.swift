@@ -8,12 +8,18 @@ import Testing
 @MainActor
 @Suite("Deck while Cloudflare sorts in the background")
 struct CloudSortDeckTests {
+  static func oldestFirst() -> AppModel {
+    let app = AppModel(store: InMemoryLedger())
+    app.reviewOrder = .oldestFirst
+    return app
+  }
+
   static func file(_ app: AppModel, _ id: TxnID, _ category: CategoryID = "shopping") throws {
     _ = try app.store.apply(.categorize(id, category, learnRule: false, project: nil))
   }
 
   @Test func aCardFiledElsewhereIsSkippedWhenItsTurnComes() throws {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let deck = ReviewViewModel(app: app)
     #expect(deck.cards.map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
     try Self.file(app, "lulu", "groceries")
@@ -28,7 +34,7 @@ struct CloudSortDeckTests {
   }
 
   @Test func theTopCardStaysUntilThePersonMovesOn() throws {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let deck = ReviewViewModel(app: app)
     #expect(deck.cards.first?.id == "atm")
     try Self.file(app, "atm", "transfer")
@@ -38,7 +44,7 @@ struct CloudSortDeckTests {
   }
 
   @Test func theTopCardStaysWhileItIsTouchedOrItsPickSheetIsUp() throws {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let deck = ReviewViewModel(app: app)
     deck.holding = "atm"
     try Self.file(app, "atm", "transfer")
@@ -58,7 +64,7 @@ struct CloudSortDeckTests {
   }
 
   @Test func aCardThatArrivesMidSessionWaitsForTheNextSession() throws {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let deck = ReviewViewModel(app: app)
     _ = try app.store.apply(.addTransaction(ManualEntryDraft(
       amount: .aed(12_50), merchant: "Corner Shop", categoryID: nil, postedAt: LocalDateTime(2026, 10, 9, 18, 0))))
@@ -68,7 +74,7 @@ struct CloudSortDeckTests {
   }
 
   @Test func undoBringsTheCardBackToItsPlace() throws {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let deck = ReviewViewModel(app: app)
     deck.sort("atm", into: "transfer", alwaysUse: false, project: nil)
     #expect(deck.cards.first?.id == "transfer-in" && deck.position == 2)
@@ -81,7 +87,7 @@ struct CloudSortDeckTests {
   }
 
   @Test func aRunningCloudSortHoldsNothingBack() {
-    let app = AppModel(store: InMemoryLedger())
+    let app = Self.oldestFirst()
     let first = ReviewViewModel(app: app).cards.map(\.id)
     app.cloudSort = MockCloudSortController(MockCloudSortController.sample(.running))
     #expect(ReviewViewModel(app: app).cards.map(\.id) == first)
