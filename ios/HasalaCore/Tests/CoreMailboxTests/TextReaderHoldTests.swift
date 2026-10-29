@@ -93,6 +93,13 @@ struct TextReaderHoldTests {
     #expect(verdict.holds.contains(.readersDisagree))
   }
 
+  @Test("a plain debit word beside the word transfers is no ambiguous debit")
+  func transfersBesideAPlainDebit() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) was debited with card XXX4321 for transfers to SAMPLE WALLET on 05-06-2026." }
+    #expect(s.allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields?.direction == "debit" })
+    #expect(s.contains { Self.files($0.0) })
+  }
+
   @Test("a transfer from your own account is no ambiguous debit")
   func transferFromYourAccountIsADebit() throws {
     let s = Self.stream { "AED \(Self.amount($0)) transferred from your account XXX4321 to SAMPLE PERSON on 05-06-2026." }

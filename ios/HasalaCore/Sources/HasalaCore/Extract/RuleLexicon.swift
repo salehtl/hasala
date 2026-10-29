@@ -63,7 +63,7 @@ enum RuleLexicon {
     ],
     ["ايداع", "استرداد", "ارجاع", "اضافه", "دائن", "وارد", "وارده", "استلام", "راتب", "عكس", "استرجاع", "اعاده"])
 
-  static let ambiguousDebit = RuleText.words(["transfer", "transferred", "transfers", "sent"], ["تحويل"])
+  static let ambiguousDebit = RuleText.words(["transfer", "transferred", "sent"], ["تحويل"])
 
   static let intoOwnAccount = RuleText.re(
     "(?<![a-z])(?:transferred|credited|deposited|added|received)\\s+(?:in|into|to)\\s+(?:your|ur)\\s+(?:[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])")

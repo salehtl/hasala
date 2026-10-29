@@ -116,13 +116,15 @@ public actor BankTextAuthor {
       let row = BankTextRow(
         id: "", bank: kept.bank, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction, last4: f.last4,
         postedMs: posted, templateRef: kept.template?.ref, unparsed: false)
+      var nearby: [BankTextRow]?
       if row.transferRole != nil || (row.readerOnly && row.direction == "debit") {
         let rows = await ledger.textRows(
           postedFromMs: posted - BankTextTransferPair.windowMs, toMs: posted + BankTextTransferPair.windowMs)
+        nearby = rows
         partner = BankTextTransferPair.partner(of: row, among: rows)
         if partner == nil, BankTextTransferPair.readerOverlap(of: row, among: rows) { repeats = true }
       }
-      if origin == .automation, !repeats { repeats = await mayRepeat(row, n: key.n) }
+      if origin == .automation, !repeats { repeats = await mayRepeat(row, n: key.n, nearby: nearby) }
     }
     let draft = BankTextPayload.build(
       kept, ingestID: key.id, receivedMinuteMs: minute, link: state, origin: origin, transferPartner: partner != nil,
@@ -148,13 +150,14 @@ public actor BankTextAuthor {
         unparsed: authored.payload["unparsed"]?.boolValue == true, repeatNumber: key.n, transferPartner: partner?.id))
   }
 
-  private func mayRepeat(_ row: BankTextRow, n: Int) async -> Bool {
+  private func mayRepeat(_ row: BankTextRow, n: Int, nearby: [BankTextRow]?) async -> Bool {
     let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
     if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
     guard (row.bank ?? "").isEmpty else { return false }
     if n > 0 { return true }
     let w = DuplicateRules.probableCopyWindowMs
-    let texts = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w)
+    let texts: [BankTextRow]
+    if let nearby { texts = nearby } else { texts = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w) }
     return texts.contains { BankTextPayload.sameBanklessPayment(row, $0) }
   }
 
