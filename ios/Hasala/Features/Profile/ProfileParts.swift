@@ -17,8 +17,9 @@ struct ProfileIdentity: View {
   let name: String
   let initial: String
   var email: String?
-  /// "maya@example.com · Verified".
-  let emailLine: String
+  let address: String
+  let status: String
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     VStack(spacing: 10) {
@@ -32,25 +33,50 @@ struct ProfileIdentity: View {
           .multilineTextAlignment(.center)
           .accessibilityAddTraits(.isHeader)
           .accessibilityIdentifier("profile.name")
-        HStack(spacing: 6) {
-          Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7)
-          Text(emailLine)
-            .hType(.footnote.weight(.semibold))
-            .foregroundStyle(HColor.statusSuccessForeground)
-            .multilineTextAlignment(.center)
-            .singleLineAtDefaultTextSize()
+        Group {
+          if typeSize <= .large {
+            HStack(spacing: 6) {
+              dot
+              HStack(spacing: 0) {
+                chipText(address).lineLimit(1).truncationMode(.middle)
+                chipText(" · \(status)").fixedSize().layoutPriority(1)
+              }
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 12)
+            .padding(.vertical, 5)
+            .frame(minHeight: 28)
+            .background(HColor.statusSuccessSurface, in: Capsule())
+          } else {
+            VStack(spacing: 4) {
+              chipText(address).fixedSize(horizontal: false, vertical: true)
+              HStack(spacing: 6) {
+                dot
+                chipText(status).fixedSize(horizontal: false, vertical: true)
+              }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(HColor.statusSuccessSurface, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+          }
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 12)
-        .padding(.vertical, 5)
-        .frame(minHeight: 28)
-        .background(HColor.statusSuccessSurface, in: Capsule())
         .accessibilityElement(children: .combine)
       }
       .padding(.top, 4)
     }
     .frame(maxWidth: .infinity)
     .padding(.top, 4)
+  }
+
+  private var dot: some View {
+    Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7)
+  }
+
+  private func chipText(_ words: String) -> some View {
+    Text(words)
+      .hType(.footnote.weight(.semibold))
+      .foregroundStyle(HColor.statusSuccessForeground)
+      .multilineTextAlignment(.center)
   }
 }
 
@@ -223,7 +249,7 @@ struct SettingRow: View {
               iconView
               Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
             }
-            trailingView
+            trailingView(oneLine: false)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           if chevron { chevronView }
@@ -236,7 +262,7 @@ struct SettingRow: View {
             Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
               .singleLineAtDefaultTextSize()
               .frame(maxWidth: .infinity, alignment: .leading)
-            trailingView
+            trailingView(oneLine: true)
             if chevron { chevronView }
           }
           .frame(minHeight: HSpacing.listRowMinHeight)
@@ -245,7 +271,7 @@ struct SettingRow: View {
             VStack(alignment: .leading, spacing: 2) {
               Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
                 .fixedSize(horizontal: false, vertical: true)
-              trailingView
+              trailingView(oneLine: false)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if chevron { chevronView }
@@ -266,18 +292,19 @@ struct SettingRow: View {
     HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
   }
 
-  @ViewBuilder private var trailingView: some View {
+  @ViewBuilder private func trailingView(oneLine: Bool) -> some View {
     switch trailing {
     case .none:
       EmptyView()
     case .value(let words, _):
-      Text(words).hType(.subheadline).foregroundStyle(HColor.listRowSupporting).fixedSize()
+      Text(words).hType(.subheadline).foregroundStyle(HColor.listRowSupporting)
+        .fixedSize(horizontal: oneLine, vertical: true)
     case .status(let words, let tone):
       HStack(spacing: 6) {
         Circle().fill(tone.foreground).frame(width: 7, height: 7)
         Text(words).hType(.subheadline).foregroundStyle(HColor.listRowSupporting)
       }
-      .fixedSize()
+      .fixedSize(horizontal: oneLine, vertical: true)
     }
   }
 

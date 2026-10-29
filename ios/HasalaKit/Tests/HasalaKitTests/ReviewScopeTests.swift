@@ -156,20 +156,43 @@ struct ReviewScopeTests {
     #expect(ActivityEngine.reviewSummary(s, now: MayaLedger.now).count == 7)
   }
 
-  @Test func theQueueRunsNewestMonthFirstAndOldestFirstInAMonth() {
+  @Test func newestFirstRunsTheNewestMonthAndCardFirst() {
     let s = ledger([
       unsorted("dec-shop", LocalDateTime(2025, 12, 20, 9, 0)),
       unsorted("sep-late", LocalDateTime(2026, 9, 28, 9, 0)),
       unsorted("sep-early", LocalDateTime(2026, 9, 2, 9, 0)),
     ])
-    let ids = ReviewEngine.queue(s).map(\.id)
+    let ids = ReviewEngine.queue(s, order: .newestFirst).map(\.id)
     #expect(ids.count == 9)
     #expect(ids.prefix(6).allSatisfy { s.txn($0)?.postedAt.date.yearMonth == MayaLedger.october })
-    #expect(ids.suffix(3) == ["sep-early", "sep-late", "dec-shop"])
-    let months = ReviewEngine.months(ReviewEngine.cards(s), now: MayaLedger.now)
+    #expect(ids.suffix(3) == ["sep-late", "sep-early", "dec-shop"])
+    let months = ReviewEngine.months(ReviewEngine.cards(s, order: .newestFirst), now: MayaLedger.now)
     #expect(months.map(\.title) == ["This month", "September", "December 2025"])
     #expect(months.map(\.cards.count) == [6, 2, 1])
     #expect(months.flatMap(\.cards).map(\.id) == ids)
+  }
+
+  @Test func oldestFirstRunsTheOldestMonthAndCardFirst() {
+    let s = ledger([
+      unsorted("dec-shop", LocalDateTime(2025, 12, 20, 9, 0)),
+      unsorted("sep-late", LocalDateTime(2026, 9, 28, 9, 0)),
+      unsorted("sep-early", LocalDateTime(2026, 9, 2, 9, 0)),
+    ])
+    let ids = ReviewEngine.queue(s, order: .oldestFirst).map(\.id)
+    #expect(ids == ReviewEngine.queue(s, order: .newestFirst).map(\.id).reversed())
+    #expect(ids.prefix(3) == ["dec-shop", "sep-early", "sep-late"])
+    let months = ReviewEngine.months(ReviewEngine.cards(s, order: .oldestFirst), now: MayaLedger.now)
+    #expect(months.map(\.title) == ["December 2025", "September", "This month"])
+    #expect(months.map(\.cards.count) == [1, 2, 6])
+    #expect(months.flatMap(\.cards).map(\.id) == ids)
+  }
+
+  @Test func cardsAtTheSameTimeKeepOneOrderEitherWay() {
+    let at = LocalDateTime(2026, 9, 12, 9, 0)
+    let s = ledger([unsorted("tie-b", at), unsorted("tie-a", at)])
+    let window = ReviewWindow.month(YearMonth(2026, 9))
+    #expect(ReviewEngine.queue(s, in: window, order: .oldestFirst).map(\.id) == ["tie-a", "tie-b"])
+    #expect(ReviewEngine.queue(s, in: window, order: .newestFirst).map(\.id) == ["tie-b", "tie-a"])
   }
 
   @Test func everyCountOfWhatIsLeftToSortIsTheWholeQueueInAnyPeriod() {
@@ -190,7 +213,7 @@ struct ReviewScopeTests {
       let home = HomeEngine.snapshot(s, now: now, period: period)
       #expect(home.aboutNow.first { $0.id == "review" }?.detail.rendered(hidden: false) == "7 waiting")
       #expect(home.notifications.needsALook.first { $0.id == "review" }?.title == "7 transactions to sort")
-      #expect(ActivityEngine.snapshot(s, now: now, filter: .all, period: period).review?.count == 7)
+      #expect(ActivityEngine.snapshot(s, now: now, filter: .all, period: period).review?.count ?? 0 == ReviewEngine.queue(s, in: ReviewWindow(period)).count)
     }
     s.skippedReview = Set(queue.map(\.id) + ["atm"])
     #expect(NotificationsEngine.snapshot(s, now: now).needsALook.first { $0.id == "review" } == nil)

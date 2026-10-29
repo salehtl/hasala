@@ -102,14 +102,15 @@ nonisolated enum BillPatch {
       guard let c = s.billCandidates.first(where: { $0.id == id }) else { throw .notFound }
       s.billCandidates.removeAll { $0.id == id }
       let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
+      let name = BillDraft.fittedName(c.name)
       var b = Bill(
-        id: id, name: c.name, kind: categoryName(c.categoryID), categoryID: c.categoryID, amount: c.amount,
+        id: id, name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID, amount: c.amount,
         usualDay: c.last.day, nextDue: c.last, source: .detected, cadence: cadence,
         every: cadence == .weekly ? max(1, c.everyDays / 7) : 1, trackingSince: today)
       b.nextDue = shift(b, from: c.last, by: 1)
       s.bills.removeAll { $0.id == id }
       s.bills.append(b)
-      return "Tracking \(c.name)"
+      return "Tracking \(name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
       s.billCandidates.removeAll { $0.id == id }

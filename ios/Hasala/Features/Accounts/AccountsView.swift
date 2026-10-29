@@ -14,6 +14,7 @@ struct AccountsView: View {
   @Bindable var app: AppModel
   @State private var model: AccountsViewModel
   @Environment(\.inProfileSheet) private var inProfileSheet
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   init(app: AppModel) {
     self.app = app
@@ -75,10 +76,18 @@ struct AccountsView: View {
         let color = up ? HColor.moneyIn : HColor.moneyOut
         let figure = MoneyText(change, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3, color: color,
                                sign: up ? .income : .debt)
-        HStack(spacing: 6) {
-          StrokeGlyph(d: up ? "M12 19V5M5.5 11.5 12 5l6.5 6.5" : "M12 5v14M5.5 12.5 12 19l6.5-6.5", color: color)
-          figure
-          Text("this month").hType(.subheadline).foregroundStyle(color)
+        let glyph = StrokeGlyph(d: up ? "M12 19V5M5.5 11.5 12 5l6.5 6.5" : "M12 5v14M5.5 12.5 12 19l6.5-6.5",
+                                color: color)
+        let words = Text("this month").hType(.subheadline).foregroundStyle(color)
+        Group {
+          if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 2) {
+              HStack(spacing: 6) { glyph; figure.fixedSize().layoutPriority(1) }
+              words
+            }
+          } else {
+            HStack(spacing: 6) { glyph; figure.fixedSize().layoutPriority(1); words }
+          }
         }
         .padding(.top, 4)
         // One line of text to VoiceOver, so the audit doesn't take it for a small control.
@@ -161,7 +170,7 @@ private struct AccountRow: View {
             .fixedSize()
         }
         if !row.detail.isEmpty {
-          Text(row.detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting).singleLineAtDefaultTextSize()
+          Text(row.detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting).lineLimitAtDefaultTextSize(2)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,8 +255,10 @@ private struct NetWorthChartCard: View {
               .lineLimit(1)
               .minimumScaleFactor(0.5)
               .frame(maxWidth: .infinity)
+              .accessibilityIdentifier(hasalaCappedFigureIdentifier)
           }
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
       }
     }
     .padding(.top, 18)

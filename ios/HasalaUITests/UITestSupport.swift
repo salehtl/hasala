@@ -15,11 +15,12 @@ extension XCTestCase {
   /// The Debug app on a mock: `-HasalaScenario <scenario>`, and optionally straight to a
   /// screen (`-HasalaScreen <screen>`, which picks its own scenario unless one is given),
   /// on the Release surface (`-HasalaReleaseSurface`), with motion settled or reduced
-  /// (`-HasalaMotion off|reduce`), and any further launch arguments.
+  /// (`-HasalaMotion off|reduce`), with the Review order (`-HasalaReviewOrder newest|oldest`;
+  /// the scripted deck flows read oldest first), and any further launch arguments.
   @MainActor
   func launch(
     scenario: String? = "maya", screen: String? = nil, release: Bool = false, motion: String? = nil,
-    arguments: [String] = [], pasteboard: String? = nil
+    reviewOrder: String? = "oldest", arguments: [String] = [], pasteboard: String? = nil
   ) -> XCUIApplication {
     if let pasteboard {
       UIPasteboard.general.string = pasteboard
@@ -32,6 +33,7 @@ extension XCTestCase {
     if let screen { args += ["-HasalaScreen", screen] }
     if release { args.append("-HasalaReleaseSurface") }
     if let motion { args += ["-HasalaMotion", motion] }
+    if let reviewOrder { args += ["-HasalaReviewOrder", reviewOrder] }
     app.launchArguments = args + arguments
     app.launch()
     return app

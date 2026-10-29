@@ -247,26 +247,46 @@ public struct BackgroundWorkPill: View {
     self.busy = busy
   }
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   public var body: some View {
+    let large = typeSize.isAccessibilitySize
     HStack(spacing: 8) {
       if busy {
         Spinner(size: 16)
       } else {
         Circle().fill(HColor.iconTertiary).frame(width: 8, height: 8)
       }
-      Text(label).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-      if let count {
-        Text(count).hFigure(HFigure.badge.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+      if large {
+        VStack(alignment: .leading, spacing: 2) {
+          labelText.lineLimit(2)
+          countText.lineLimit(1)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+      } else {
+        labelText
+        countText
       }
     }
     .padding(.leading, 10)
     .padding(.trailing, 14)
+    .padding(.vertical, large ? 8 : 0)
     .frame(minHeight: 36)
-    .background(HColor.surfacePrimary, in: Capsule())
+    .background(HColor.surfacePrimary, in: large ? AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) : AnyShape(Capsule()))
     .shadow(color: HColor.elevationNear, radius: 1, x: 0, y: 1)
     .shadow(color: Color(HRGBA(30, 42, 94, 0.08)), radius: 8, x: 0, y: 6)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel([label, count].compactMap { $0 }.joined(separator: ", "))
+  }
+
+  private var labelText: some View {
+    Text(label).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+  }
+
+  @ViewBuilder private var countText: some View {
+    if let count {
+      Text(count).hFigure(HFigure.badge.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+    }
   }
 }
 

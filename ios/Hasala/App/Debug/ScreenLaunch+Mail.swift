@@ -38,6 +38,10 @@
         MailLaunch.disconnectAlert = "gmail-1"
         profile([.bankAlerts, .mailbox("gmail-1")])(graph)
       }),
+      Screen("bankAlerts.unlisted", scenario: "mailboxes2", prepare: { graph in
+        mock(graph)?.unlistedSenders = ["alerts.notifications.emiratesnbd-mail.example.com", "e.example.ae"]
+        profile([.bankAlerts])(graph)
+      }),
       Screen("bankAlerts.none", scenario: "noMailbox", prepare: profile([.bankAlerts])),
       Screen("bankAlerts.refused", scenario: "noMailbox", prepare: { graph in
         mock(graph)?.connectRefusal = .sampleData

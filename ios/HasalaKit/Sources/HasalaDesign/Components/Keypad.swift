@@ -135,12 +135,14 @@ public struct AmountKeypad: View {
 
   @Binding var entry: AmountEntry
   let layout: Layout
+  let compact: Bool
   /// Counts key presses, so the haptic plays once per key.
   @State private var presses = 0
 
-  public init(entry: Binding<AmountEntry>, layout: Layout = .docked) {
+  public init(entry: Binding<AmountEntry>, layout: Layout = .docked, compact: Bool = false) {
     _entry = entry
     self.layout = layout
+    self.compact = compact
   }
 
   private static let rows: [[AmountKey]] = [
@@ -151,11 +153,11 @@ public struct AmountKeypad: View {
   ]
 
   public var body: some View {
-    VStack(spacing: layout == .docked ? 8 : 6) {
+    VStack(spacing: layout == .docked && !compact ? 8 : 6) {
       ForEach(Array(Self.rows.enumerated()), id: \.offset) { _, row in
         HStack(spacing: 6) {
           ForEach(row, id: \.self) { key in
-            KeypadKey(key: key, layout: layout) {
+            KeypadKey(key: key, layout: layout, compact: compact) {
               entry.type(key)
               presses += 1
             } onClear: {
@@ -185,6 +187,7 @@ public struct AmountKeypad: View {
 struct KeypadKey: View {
   let key: AmountKey
   let layout: AmountKeypad.Layout
+  var compact = false
   let action: () -> Void
   let onClear: () -> Void
 
@@ -203,7 +206,7 @@ struct KeypadKey: View {
   }
 
   private var height: CGFloat {
-    layout == .docked ? HSpacing.keypadKeyHeight : HSpacing.keypadKeyHeightInline
+    layout == .docked && !compact ? HSpacing.keypadKeyHeight : HSpacing.keypadKeyHeightInline
   }
 
   private var hasTile: Bool {

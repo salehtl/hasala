@@ -816,7 +816,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   static func candidateDraft(_ c: BillCandidateCore) -> OpAuthor.BillDraft {
     OpAuthor.BillDraft(
-      name: c.name, keys: [c.key], direction: "debit", currency: c.currency,
+      name: HasalaModels.BillDraft.fittedName(c.name), keys: [c.key], direction: "debit", currency: c.currency,
       mode: c.variable ? .variable : .fixed(toleranceBp: BillEdits.defaultToleranceBp), amountMinor: c.amountMinor,
       cadenceUnit: OpAuthor.CadenceUnit(rawValue: c.unit) ?? .month, cadenceEvery: c.every, anchor: c.anchor, start: c.start,
       category: c.category, account: nil, source: .detected, status: .active)

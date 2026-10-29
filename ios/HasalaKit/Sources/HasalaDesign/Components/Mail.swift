@@ -148,8 +148,20 @@ public struct MailboxRow: View {
 
   private var mark: some View { ProviderMark(mailbox.provider, size: .tile40, faded: off) }
 
+  public static func displayAddress(_ address: String) -> String {
+    var out = ""
+    for c in address {
+      switch c {
+      case "-": out.append("\u{2011}")
+      case "@", ".": out.append(c); out.append("\u{200B}")
+      default: out.append(c)
+      }
+    }
+    return out
+  }
+
   private var address: some View {
-    Text(mailbox.address)
+    Text(Self.displayAddress(mailbox.address))
       .hType(.rowTitle)
       .foregroundStyle(off ? HColor.textSecondary : HColor.textPrimary)
   }
