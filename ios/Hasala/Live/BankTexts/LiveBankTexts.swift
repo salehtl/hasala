@@ -79,7 +79,7 @@ final class LiveBankTexts: BankTextsConnecting {
     return .idle
   }
 
-  var lastTextAt: Date? { data.lastKeptAtMs.map(Self.date) }
+  var lastTextAt: Date? { data.lastTextMs.map(Self.date) }
 
   var setAside: [BankTextsSetAside] {
     var bySender: [String: BankTextsSetAside] = [:]

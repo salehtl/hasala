@@ -45,6 +45,8 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   }
 
   mutating func prune(nowMs: Int64) {
+    if let older = lastKeptMs.values.max() { lastTextMs = max(lastTextMs ?? older, older) }
+    lastKeptMs = [:]
     let today = Self.day(nowMs)
     let fresh: (Int64) -> Bool = { today - $0 < Self.keptDays }
     setAside.removeAll { !fresh($0.day) || $0.count <= 0 }
@@ -62,11 +64,8 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     }
   }
 
-  var lastKeptAtMs: Int64? { ([lastTextMs].compactMap { $0 } + lastKeptMs.values).max() }
-
   mutating func noteKept(atMs ms: Int64) {
-    lastTextMs = max(lastKeptAtMs ?? ms, ms)
-    lastKeptMs = [:]
+    lastTextMs = max(lastTextMs ?? ms, ms)
   }
 
   mutating func addIgnored(_ n: Int = 1, atMs: Int64) {

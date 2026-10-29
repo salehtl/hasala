@@ -399,8 +399,13 @@ struct BankTextsIntakeTests {
   @Test func anOlderPerBankLastTextCollapsesIntoOneValue() {
     var d = BankTextsFactsData()
     d.lastKeptMs = ["dib": 5_000, "enbd": 9_000]
+    d.prune(nowMs: 10_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 9_000)
     d.noteKept(atMs: 7_000)
-    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 9_000 && d.lastKeptAtMs == 9_000)
+    #expect(d.lastTextMs == 9_000)
+    d.lastKeptMs = ["dib": 11_000]
+    d.prune(nowMs: 12_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 11_000)
     d.noteKept(atMs: 12_000)
     #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 12_000)
   }
@@ -792,7 +797,7 @@ struct BankTextsIntakeTests {
     #expect(r.author.calls.map(\.origin) == [.paste(replacing: "sms-1"), .paste(replacing: nil)])
     #expect(r.author.calls.allSatisfy { $0.sender == nil && $0.link == .unknownUnanswered })
     #expect(r.author.calls.first?.arrivedAt == Date(timeIntervalSince1970: 1_791_999_960))
-    #expect(r.factsData.lastKeptAtMs == nil && r.factsData.lastRunMs == nil)
+    #expect(r.factsData.lastTextMs == nil && r.factsData.lastRunMs == nil)
   }
 
   @Test func pasteIsRefusedWhileTheCopySaysLinked() async {
@@ -831,6 +836,7 @@ struct BankTextsIntakeTests {
     l.reload()
     #expect(l.status == .working(lastRan: Self.t0.addingTimeInterval(-240)))
     #expect(l.lastTextAt == Self.t0.addingTimeInterval(-600))
+    #expect(r.facts.read(nowMs: now).lastKeptMs.isEmpty)
     #expect(l.setAside == [BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.oneTimeCode: 1, .promotion: 1])])
     #expect(BankTexts.setAsideDetail(l.setAside[0]) == "2 texts set aside in the last 30 days\n1 one-time code, 1 promotion")
     #expect(BankTexts.setAsideDetail(BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.promotion: 1_284]))

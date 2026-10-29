@@ -194,7 +194,7 @@ struct BankTextsCoreWiringTests {
     let data = r.facts.read(nowMs: BankTextIntake.ms(Self.t0))
     #expect(data.setAsideRecent(nowMs: BankTextIntake.ms(Self.t0)).map(\.count) == [1])
     #expect(data.setAsideRecent(nowMs: BankTextIntake.ms(Self.t0)).first?.kind == .oneTimeCode)
-    #expect(data.link == nil && data.lastKeptAtMs == nil)
+    #expect(data.link == nil && data.lastTextMs == nil)
     #expect(try r.secrets.read(.textKeySecret) == nil)
   }
 
