@@ -421,6 +421,16 @@ const jsonLd = {
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
+  @media (max-width: 359px) {
+    .toc-mobile__label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
   .toc-mobile__current {
     flex: 1;
     min-width: 0;
