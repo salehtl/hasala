@@ -116,16 +116,21 @@ struct SplitHandles: View {
   /// "50%" under its segment, in its ink (Paper "Labels": the same growth as the
   /// segments, 20 apart).
   private var labels: some View {
-    GeometryReader { geo in
-      let track = max(0, geo.size.width - 2 * Self.slot)
-      ZStack(alignment: .leading) {
-        label(.needs, plan.needsPercent).offset(x: 0)
-        label(.wants, plan.wantsPercent).offset(x: x(of: 0, track) + Self.slot / 2)
-        label(.savings, plan.savingsPercent).offset(x: x(of: 1, track) + Self.slot / 2)
+    SplitLabelLayout(slot: Self.slot) {
+      if plan.needsPercent > 0 {
+        label(.needs, plan.needsPercent).layoutValue(key: SplitLabelStart.self, value: .init(percent: 0, knobs: 0))
+      }
+      if plan.wantsPercent > 0 {
+        label(.wants, plan.wantsPercent)
+          .layoutValue(key: SplitLabelStart.self, value: .init(percent: plan.needsPercent, knobs: 1))
+      }
+      if plan.savingsPercent > 0 {
+        label(.savings, plan.savingsPercent)
+          .layoutValue(key: SplitLabelStart.self,
+                       value: .init(percent: plan.needsPercent + plan.wantsPercent, knobs: 2))
       }
     }
-    .frame(height: 20)
-    // One line of text for VoiceOver, not a control (the handles are).
+    .frame(minHeight: 20)
     .accessibilityElement(children: .ignore)
     .accessibilityAddTraits(.isStaticText)
     .accessibilityLabel(
@@ -138,6 +143,52 @@ struct SplitHandles: View {
                        maxDynamicTypeSize: .accessibility1))
       .foregroundStyle(bucket.hue.ink)
       .fixedSize()
+  }
+}
+
+nonisolated struct SplitLabelStart: LayoutValueKey {
+  static let defaultValue = SplitLabelStart.Value(percent: 0, knobs: 0)
+
+  struct Value: Equatable {
+    var percent: Int
+    var knobs: Int
+  }
+}
+
+struct SplitLabelLayout: Layout {
+  var slot: CGFloat
+  var gap: CGFloat = 8
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let height = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+    return CGSize(width: proposal.width ?? 0, height: height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let widths = subviews.map { $0.sizeThatFits(.unspecified).width }
+    let track = max(0, bounds.width - 2 * slot)
+    let ideal = subviews.map { view -> CGFloat in
+      let start = view[SplitLabelStart.self]
+      return track * CGFloat(start.percent) / 100 + slot * CGFloat(start.knobs)
+    }
+    let xs = Self.positions(ideal: ideal, widths: widths, width: bounds.width, gap: gap)
+    for (i, view) in subviews.enumerated() {
+      view.place(at: CGPoint(x: bounds.minX + xs[i], y: bounds.minY), anchor: .topLeading, proposal: .unspecified)
+    }
+  }
+
+  static func positions(ideal: [CGFloat], widths: [CGFloat], width: CGFloat, gap: CGFloat) -> [CGFloat] {
+    var xs = ideal
+    for i in xs.indices {
+      let lower = i == 0 ? 0 : xs[i - 1] + widths[i - 1] + gap
+      xs[i] = max(xs[i], lower)
+    }
+    for i in xs.indices.reversed() {
+      let upper = i == xs.count - 1 ? width - widths[i] : xs[i + 1] - gap - widths[i]
+      xs[i] = min(xs[i], upper)
+    }
+    if let first = xs.first, first < 0 { xs[0] = 0 }
+    return xs
   }
 }
 
