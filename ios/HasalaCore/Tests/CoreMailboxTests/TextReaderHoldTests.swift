@@ -1,0 +1,112 @@
+import CoreExtract
+import Foundation
+import Testing
+
+@testable import CoreMailbox
+
+@Suite("bank texts: reader agreement holds and payment shapes")
+struct TextReaderHoldTests {
+  static func stream(_ make: (Int) -> String) -> [(BankTextReading, ExtractReading)] {
+    var layouts = LearnedLayouts()
+    var out: [(BankTextReading, ExtractReading)] = []
+    for n in 0..<8 {
+      let at = TextRig.t0 + Int64(n) * 3_600_000
+      let text = make(n)
+      let input = ExtractInput(
+        sender: "sms:", subject: "", text: BankTextReader.normalized(text), receivedAtMs: at, listUnsubscribe: false)
+      let (reading, _) = CombinedReader.read(input, layouts)
+      let (r, next) = BankTextReader.read(BankTextArrival(text: text, sender: nil, receivedAtMs: at), templates: [], layouts: layouts)
+      layouts = next
+      out.append((r, reading))
+    }
+    return out
+  }
+
+  static func amount(_ n: Int) -> String { "\(40 + n * 11).\(String(format: "%02d", (n * 17) % 100))" }
+
+  static func files(_ r: BankTextReading) -> Bool {
+    guard let k = r.kept else { return false }
+    return BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false)
+  }
+
+  @Test("a plain debit from the account files once the readers agree, so the holds below are not vacuous")
+  func controlFiles() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) has been debited from your account XXX4321 at SAMPLE SHOP on 05-06-2026." }
+    #expect(s.allSatisfy { $0.0.kept?.fields?.direction == "debit" })
+    #expect(s.contains { Self.files($0.0) })
+  }
+
+  @Test("money transferred, credited or deposited to your account reads as a credit, never a debit")
+  func transferredToYourAccountIsCredit() throws {
+    let wordings = [
+      { (n: Int) in "AED \(Self.amount(n)) has been transferred to your account XXX4321. The available balance is AED 9,876.00." },
+      { (n: Int) in "AED \(Self.amount(n)) has been credited to your account XXX4321. Available balance AED 9,876.00." },
+      { (n: Int) in "AED \(Self.amount(n)) has been deposited into your savings account XXX4321 on 05-06-2026." },
+    ]
+    for w in wordings {
+      let s = Self.stream(w)
+      for (r, reading) in s {
+        let f = try #require(r.kept?.fields, "\(w(0))")
+        #expect(f.direction == "credit", "\(w(0))")
+        #expect(!reading.directionAmbiguous, "\(w(0))")
+      }
+    }
+  }
+
+  @Test("a debit that rests only on transfer, transferred or sent never files through reader agreement")
+  func ambiguousDirectionHolds() throws {
+    let wordings = [
+      { (n: Int) in "AED \(Self.amount(n)) transferred to SAMPLE PERSON on 05-06-2026 10:15. Ref SYN\(3000 + n)." },
+      { (n: Int) in "You sent AED \(Self.amount(n)) to SAMPLE PERSON on 05-06-2026. Ref SYN\(3100 + n)." },
+      { (n: Int) in "Transfer of AED \(Self.amount(n)) to SAMPLE PERSON on 05-06-2026 done. Ref SYN\(3200 + n)." },
+    ]
+    for w in wordings {
+      let s = Self.stream(w)
+      #expect(s.contains { $0.1.directionAmbiguous && $0.1.direction == .debit }, "\(w(0))")
+      for (r, reading) in s {
+        #expect(!reading.meetsFilingBar && !reading.readersConfirm, "\(w(0))")
+        #expect(r.kept != nil && r.kept?.readerConfident == false && !Self.files(r), "\(w(0))")
+      }
+    }
+  }
+
+  @Test("a transfer from your own account is no ambiguous debit")
+  func transferFromYourAccountIsADebit() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) transferred from your account XXX4321 to SAMPLE PERSON on 05-06-2026." }
+    #expect(s.allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields?.direction == "debit" })
+  }
+
+  @Test("standing instructions, uncleared deposits and investment account moves never file through reader agreement")
+  func notSettledHolds() throws {
+    let wordings = [
+      { (n: Int) in "Standing instruction of AED \(Self.amount(n)) has been debited from your account XXX4321 to SAMPLE PERSON." },
+      { (n: Int) in "AED \(Self.amount(n)) has been deposited to your account XXX4321, to be confirmed after clearing." },
+      { (n: Int) in "AED \(Self.amount(n)) has been withdrawn from your account XXX4321 to your Global Equities trading account." },
+    ]
+    for w in wordings {
+      #expect(TextGate.holdsReaderFiling(w(0)), "\(w(0))")
+      for (r, _) in Self.stream(w) {
+        #expect(r.kept != nil && r.kept?.readerConfident == false && !Self.files(r), "\(w(0))")
+      }
+    }
+    #expect(!TextGate.holdsReaderFiling("AED 40.00 has been debited from your account XXX4321 at SAMPLE SHOP."))
+  }
+
+  @Test("a bill pymt made using a card and an amount deducted for an issuance have the payment shape and reach Review")
+  func pymtAndDeductedKept() throws {
+    let texts = [
+      "Bill Pymt for SAMPLE TELECOM of AED 120.00 has been made using Credit Card XXX1234 on 05-06-2026.",
+      "AED 25.00 has been deducted from your account XXX1234 for issuance of SAMPLE CERTIFICATE.",
+      "Payment for SAMPLE UTILITY of AED 80.00 made using card XXX1234.",
+    ]
+    for t in texts {
+      #expect(TextGate.hasPaymentShape(t, lenient: true) && TextGate.hasPaymentShape(t, lenient: false), "\(t)")
+      for sender in [nil, "EmiratesNBD", "+971500000000"] as [String?] {
+        let (r, _) = BankTextReader.read(BankTextArrival(text: t, sender: sender, receivedAtMs: TextRig.t0), templates: [])
+        let k = try #require(r.kept, "\(t) \(sender ?? "none")")
+        #expect(!Self.files(r), "\(t)")
+        if let f = k.fields { #expect(f.direction == "debit", "\(t)") }
+      }
+    }
+  }
+}

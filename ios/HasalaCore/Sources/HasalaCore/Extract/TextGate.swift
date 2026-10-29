@@ -68,6 +68,10 @@ public enum TextGate {
     return t.has(Shape.amount) || t.has(Shape.maskedCard)
   }
 
+  public static func holdsReaderFiling(_ normalized: String) -> Bool { holdsReaderFiling(Prepared(normalized)) }
+
+  package static func holdsReaderFiling(_ t: Prepared) -> Bool { t.has(Markers.notSettled) }
+
   public static func maskedLast4(_ normalized: String) -> String? { maskedLast4(Prepared(normalized)) }
 
   package static func maskedLast4(_ t: Prepared) -> String? {
@@ -221,6 +225,16 @@ public enum TextGate {
       "(?<![a-z])(?:t\\s?&\\s?c'?s?|terms\\s+(?:and|&)\\s+conditions)\\s+apply|(?<![a-z])sms\\s+stop\\s+to|(?<![a-z])send\\s+stop\\s+to|(?<![a-z])unsubscribe|offer\\s+valid\\s+(?:till|until|up\\s+to)"
         + "|تطبق\\s+الشروط|الشروط\\s+والاحكام|(?<!\\p{L})(?:وال|بال|فال|لل|ال|و|ب|ل|ف)?(?:عرض|عروض)(?!\\p{L})")
 
+    static let notSettled = RuleText.re(
+      RuleText.words(
+        [
+          "standing instruction", "standing instructions", "standing order", "standing orders", "after clearing",
+          "subject to clearing", "upon clearing", "on clearing", "to be confirmed", "pending clearance", "under clearing",
+          "equities", "brokerage", "securities account", "investment account", "trading account",
+        ],
+        ["تعليمات دائمه", "امر دائم", "بعد التحصيل", "قيد التحصيل"]
+      ).pattern)
+
     static let number = "[0-9](?:[0-9,]|\\.(?=[0-9]))*+"
 
     static let statedAmount =
@@ -290,7 +304,8 @@ public enum TextGate {
 
   enum Shape {
     static let paymentWord = RuleText.re(
-      "(?<![a-z])(?:purchase|purchased|purchases|debited|credited|refund|refunded|refunds|reversal|reversed|transfer|transferred|transfers|withdrawal|withdrawn|withdrew|deposit|deposited|payment|paid|spent|charged|sent|received|used|transaction|txn)(?![a-z])"
+      "(?<![a-z])(?:purchase|purchased|purchases|debited|credited|refund|refunded|refunds|reversal|reversed|transfer|transferred|transfers|withdrawal|withdrawn|withdrew|deposit|deposited|deducted|payment|pymt|paid|spent|charged|sent|received|used|transaction|txn)(?![a-z])"
+        + "|(?<![a-z])made\\s+using(?![a-z])"
         + "|شراء|مشتريات|بمبلغ|خصم|ايداع|تحويل|سحب|سداد|ارجاع|استرداد|دفع|راتب|حواله")
 
     static let currencies =

@@ -185,7 +185,7 @@ public enum BankTextReader {
       sender: sender.kind, bank: sender.bank, template: nil, fields: fields, merchant: fields?.merchant ?? limit(r.merchant),
       last4: fields?.last4 ?? last4, postedAt: fields?.postedAt ?? timed ?? Instant.iso(a.arrivalMinuteMs) ?? "",
       precision: fields?.precision ?? "time", marked: marked, held: false, countsAsPayment: lenient,
-      readerConfident: fields != nil && r.meetsFilingBar && r.kind != .transferNotice)
+      readerConfident: fields != nil && r.meetsFilingBar && r.kind != .transferNotice && !TextGate.holdsReaderFiling(gate))
     return (.kept(kept), memory)
   }
 }

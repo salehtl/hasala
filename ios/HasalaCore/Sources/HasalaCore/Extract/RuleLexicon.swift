@@ -22,7 +22,7 @@ enum RuleLexicon {
     [
       "debited", "credited", "withdrawn", "withdrawal", "deducted", "deposited", "deposit", "spent", "paid", "purchase",
       "purchased", "transaction", "transferred", "transfer", "received", "refunded", "refund", "reversed", "reversal", "charged",
-      "used", "payment", "sent", "cash", "remittance", "settled", "posted",
+      "used", "payment", "pymt", "sent", "cash", "remittance", "settled", "posted",
     ],
     [
       "خصم", "ايداع", "سحب", "شراء", "مشتريات", "تحويل", "ارجاع", "استرداد", "دفع", "اضافه", "عمليه", "معامله", "المعامله",
@@ -52,7 +52,7 @@ enum RuleLexicon {
   static let debit = RuleText.words(
     [
       "debited", "debit", "withdrawn", "withdrawal", "deducted", "purchase", "purchased", "spent", "paid", "payment", "sent",
-      "transferred", "transfer", "outgoing", "outward", "charged", "used", "pos", "atm", "bill payment",
+      "transferred", "transfer", "outgoing", "outward", "charged", "used", "pos", "atm", "bill payment", "pymt",
     ],
     ["خصم", "سحب", "شراء", "مشتريات", "دفع", "مدين", "تحويل", "صادر", "صادره", "استخدام", "سداد"])
 
@@ -62,6 +62,14 @@ enum RuleLexicon {
       "cashback", "incoming", "inward", "salary", "added",
     ],
     ["ايداع", "استرداد", "ارجاع", "اضافه", "دائن", "وارد", "وارده", "استلام", "راتب", "عكس", "استرجاع", "اعاده"])
+
+  static let ambiguousDebit = RuleText.words(["transfer", "transferred", "transfers", "sent"], ["تحويل"])
+
+  static let intoOwnAccount = RuleText.re(
+    "(?<![a-z])(?:transferred|credited|deposited|added|received)\\s+(?:in|into|to)\\s+(?:your|ur)\\s+(?:[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])")
+
+  static let fromOwnAccount = RuleText.re(
+    "(?<![a-z])(?:from|out\\s+of)\\s+(?:your|ur)\\s+(?:[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])|من\\s+حسابك|من\\s+بطاقتك")
 
   static let directionNoise = RuleText.re(
     "(?<![a-z])(?:credit|debit)\\s+cards?(?![a-z])|(?<![a-z])(?:credit|debit)\\s+card\\s+(?:number|ending)|available\\s+credit|credit\\s+limit|(?:credited|transferred|paid)\\s+to\\s+(?:the\\s+)?beneficiary|بطاقه\\s+الائتمان|بطاقه\\s+الخصم|بطاقتك\\s+الائتمانيه|بطاقه\\s+ائتمان")

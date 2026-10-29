@@ -344,7 +344,7 @@ Then, in this order:
      `TextGate.Shape.paymentWord`: in English "purchase", "purchased", "debited",
      "credited", "refund", "reversal", "reversed", "transfer", "withdrawal", "deposit",
      "payment", "paid", "spent", "charged", "sent", "received", "used", "transaction",
-     "txn" and their forms; in Arabic "شراء", "مشتريات", "بمبلغ", "خصم", "ايداع", "تحويل",
+     "txn", "deducted", "pymt" ("Bill Pymt") and "made using" and their forms; in Arabic "شراء", "مشتريات", "بمبلغ", "خصم", "ايداع", "تحويل",
      "سحب", "سداد", "ارجاع", "استرداد", "دفع", "راتب", "حواله", matched after the gate's
      fold (`RuleText.fold`: "أ", "إ" and "آ" to "ا", "ة" to "ه", "ى" to "ي", no diacritics); "credit" and "debit" alone are left out, because DIB card
      notices are full of them; "sent" is needed for "I sent you AED 50" and "used" for "card
@@ -453,7 +453,12 @@ no review (`needs_review: false`) only when all of these hold:
 - its fields were read, and either an SMS template read it with no reader hold (step 2),
   or, with no template, the two template-free readers agree on amount, currency and
   direction, each at 0.8 or more (`ExtractReading.meetsFilingBar`, the rule mail uses;
-  `BankTextKept.readerConfident`);
+  `BankTextKept.readerConfident`). A debit whose only direction words are "transfer",
+  "transferred", "sent" or "تحويل" is ambiguous and never files this way (money
+  "transferred to your account" is a credit; "from your account" makes it a debit). A text
+  that names a standing instruction or order, a deposit still to clear, or an equities,
+  brokerage, securities, investment or trading account never files this way either
+  (`TextGate.holdsReaderFiling`);
 - and nothing else holds it: the text has no one-time-code or declined marker (step 1 of the
   reading order), no text of the other transfer role matches it (see
   [The transfer pair on texts](#the-transfer-pair-on-texts)), and the link state is not

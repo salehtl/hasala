@@ -1950,6 +1950,206 @@
           "meets_filing_bar": false
         }
       ]
+    },
+    {
+      "name": "transfer-to-your-account-credit",
+      "note": "A text that says money was transferred to your account, read four times by one memory: every reading is a credit.",
+      "mails": [
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 40.00 has been transferred to your account XXX4821. The available balance is AED 9,876.00.",
+          "received_at_ms": 1900000060000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 51.17 has been transferred to your account XXX4821. The available balance is AED 9,876.00.",
+          "received_at_ms": 1900000120000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 62.34 has been transferred to your account XXX4821. The available balance is AED 9,876.00.",
+          "received_at_ms": 1900000180000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 73.51 has been transferred to your account XXX4821. The available balance is AED 9,876.00.",
+          "received_at_ms": 1900000240000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 4000,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": null,
+          "last4": "4821",
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 5117,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": null,
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 6234,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": null,
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 7351,
+          "currency": "AED",
+          "direction": "credit",
+          "merchant": null,
+          "last4": "4821",
+          "confidence_percent": 95,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 90,
+          "learned_confidence_percent": 85,
+          "readers_agree": true,
+          "meets_filing_bar": true
+        }
+      ]
+    },
+    {
+      "name": "transfer-sent-ambiguous",
+      "note": "A debit that rests only on the word transferred, read four times by one memory: it never meets the filing bar.",
+      "mails": [
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 40.00 transferred to SAMPLE PERSON on 01-02-2030 10:15. Ref SYN5000.",
+          "received_at_ms": 1900000060000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 51.17 transferred to SAMPLE PERSON on 01-02-2030 10:15. Ref SYN5001.",
+          "received_at_ms": 1900000120000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 62.34 transferred to SAMPLE PERSON on 01-02-2030 10:15. Ref SYN5002.",
+          "received_at_ms": 1900000180000,
+          "list_unsubscribe": false
+        },
+        {
+          "sender": "sms:",
+          "subject": "",
+          "text": "AED 73.51 transferred to SAMPLE PERSON on 01-02-2030 10:15. Ref SYN5003.",
+          "received_at_ms": 1900000240000,
+          "list_unsubscribe": false
+        }
+      ],
+      "expect": [
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 4000,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PERSON",
+          "last4": null,
+          "confidence_percent": 60,
+          "agreed": false,
+          "meets_agreement_bar": false,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 40,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 5117,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PERSON",
+          "last4": null,
+          "confidence_percent": 85,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 72,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 6234,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PERSON",
+          "last4": null,
+          "confidence_percent": 85,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 80,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        },
+        {
+          "outcome": "transaction",
+          "kind": "transfer_notice",
+          "amount_minor": 7351,
+          "currency": "AED",
+          "direction": "debit",
+          "merchant": "SAMPLE PERSON",
+          "last4": null,
+          "confidence_percent": 90,
+          "agreed": true,
+          "meets_agreement_bar": true,
+          "rules_confidence_percent": 80,
+          "learned_confidence_percent": 85,
+          "readers_agree": true,
+          "meets_filing_bar": false
+        }
+      ]
     }
   ]
 }
