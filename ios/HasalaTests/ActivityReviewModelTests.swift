@@ -49,20 +49,24 @@ struct ActivityReviewModelTests {
     #expect(ReviewViewModel(app: app).cards.first?.id == "atm")
   }
 
-  /// A swipe or a pill asks which category; the bucket's list leads with the suggestion; the
-  /// sheet's sort files it and VoiceOver hears where the deck stands.
-  @Test func aPickLeadsWithTheSuggestionAndAnnouncesTheFiling() {
+  /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
+  /// suggestion in its place, and so do the projects; the sheet's sort files it and VoiceOver
+  /// hears where the deck stands.
+  @Test func aPickKeepsTheSuggestionInPlaceAndAnnouncesTheFiling() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.request(app, at: "lulu")
     let deck = ReviewViewModel(app: app)
     deck.pick("lulu", .need)
     #expect(deck.picking?.choice == .need && deck.picking?.card.id == "lulu")
-    #expect(deck.options(for: .need, card: "lulu").first?.id == "groceries")
+    #expect(deck.picking?.card.suggestion?.id == "groceries")
+    let options = deck.options(for: .need, card: "lulu").map(\.id)
+    #expect(options == ReviewEngine.options(for: .need, app.store.state).map(\.id))
+    #expect(options.firstIndex(of: "groceries") == 2)
     #expect(deck.projects(for: "lulu").map(\.name) == ["Japan trip"])
     #expect(deck.projects(for: "lulu").map(\.suggested) == [false])
     app.perform(.saveProject("eid", ProjectDraft(name: "Eid", starts: LocalDate(2026, 10, 1), ends: LocalDate(2026, 10, 9))))
-    #expect(deck.projects(for: "lulu").map(\.name) == ["Eid", "Japan trip"])
-    #expect(deck.projects(for: "lulu").map(\.suggested) == [true, false])
+    #expect(deck.projects(for: "lulu").map(\.name) == ["Japan trip", "Eid"])
+    #expect(deck.projects(for: "lulu").map(\.suggested) == [false, true])
     deck.picking = nil
     #expect(deck.sort("lulu", into: "groceries", alwaysUse: true, project: nil))
     #expect(deck.filedAnnouncement("Need") == "Filed as Need. 2 of 6.")

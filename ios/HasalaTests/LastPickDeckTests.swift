@@ -24,7 +24,7 @@ struct LastPickDeckTests {
     let top = try #require(deck.cards.first)
     #expect(top.id == "bl-alnoor-t-3" && deck.position == 2)
     #expect(top.suggestion?.id == "groceries" && top.suggestedBy == "Your last pick")
-    #expect(deck.options(for: .need, card: top.id).first?.id == "groceries")
+    #expect(deck.options(for: .need, card: top.id).map(\.id).prefix(3) == ["rent", "utilities", "groceries"])
     #expect(deck.useSuggestion(top.id))
     let filed = try #require(app.store.state.txn("bl-alnoor-t-3"))
     #expect(filed.categoryID == top.suggestion?.id && filed.categorySource == .user && !filed.inReview)
