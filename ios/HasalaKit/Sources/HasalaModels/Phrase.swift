@@ -24,11 +24,11 @@ public struct MoneyPhrase: Sendable, Hashable, Codable, ExpressibleByStringLiter
       case .text(let s):
         return s
       case .money(let m, let style, let glyphs):
-        return hidden ? MoneyFormat.hidden(count: glyphs) : MoneyFormat.string(m.minor, style: style)
+        return hidden ? MoneyFormat.hidden(count: glyphs) : MoneyFormat.string(m, style: style)
       case .signedMoney(let m, let style, let glyphs):
         if hidden { return MoneyFormat.hidden(count: glyphs) }
         let sign = m.minor < 0 ? "\u{2212}" : "+"
-        return sign + MoneyFormat.string(m.minor, style: style)
+        return sign + MoneyFormat.string(m, style: style)
       }
     }.joined()
   }

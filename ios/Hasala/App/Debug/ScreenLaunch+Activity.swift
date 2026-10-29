@@ -50,6 +50,11 @@
         BankTextsLaunch.openPaste = true
         shell(.review)(graph)
       }),
+      Screen("review.pasteText.worst", scenario: "mayaWorstTexts", prepare: { graph in
+        BankTextsLaunch.pasted = MockBankTexts.worstPasted
+        BankTextsLaunch.openPaste = true
+        shell(.review)(graph)
+      }),
       Screen("review.cloudSort", scenario: "maya", prepare: { graph in
         (graph.session.services.cloudSort as? MockCloudSort)?.isOffered = true
         shell(.review)(graph)

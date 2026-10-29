@@ -15,7 +15,9 @@
   /// also has the one alert Paper shows it couldn't read ("Needs a look", Debug).
   @MainActor
   @Observable
-  final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting, OtherBankProbing {
+  final class MockMailbox: MailboxConnecting, UnreadableMailReporting, BankAlertsReporting, OtherBankProbing,
+    SenderAddressAdding
+  {
     /// A mailbox of a provider this build can't connect can't exist either, so the
     /// scenario's go. The Release surface keeps both, as the live build's client ids do.
     var connectable: [MailProviderKind] = MailProviderKind.allCases {
@@ -42,7 +44,7 @@
     var outlookNoMailbox = false
     var gmailNoMailbox = false
     var gmailPermissionMissing = false
-    var signInAgainReads: String?
+    var signInAgainReads: String? = MockAccountService.identity.signInAgainReads
     var switchRemoveFails = false
     var disconnectFails = false
     var disconnectFailsFor: Set<String> = []
@@ -69,7 +71,7 @@
     init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
       self.offersSampleData = offersSampleData
       self.mailboxes = mailboxes
-      if mailboxes.contains(where: { $0.id == Self.gmail.id }) { unreadableMail = [Self.unreadable] }
+      if mailboxes.contains(where: { $0.id == Self.gmail.id }) { unreadableMail = MockAccountService.identity.unreadable }
     }
 
     /// The Release surface's narrowing (`AuthScenario.session`), the live lane's shape: one
@@ -86,17 +88,23 @@
 
     // MARK: Fixtures
 
-    static let gmailAddress = "maya@example.com"
-    static let outlookAddress = "maya.k@example.com"
+    static var gmailAddress: String { MockAccountService.identity.person.gmailAddress }
+    static var outlookAddress: String { MockAccountService.identity.person.outlookAddress }
     static let workAddress = "maya@contoso.com"
 
-    static let gmail = MailboxSnapshot(
-      id: "gmail-1", provider: .gmail, address: gmailAddress, state: .connected, meta: "Checked 4 min ago",
-      banks: ["Emirates NBD", "Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 13:36", connectedOn: "11 Sep")
-    static let outlook = MailboxSnapshot(
-      id: "outlook-1", provider: .outlook, address: outlookAddress, state: .connected, meta: "Checked 1 h ago",
-      accountKind: "Personal Microsoft", banks: ["Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 12:40",
-      connectedOn: "2 Oct")
+    static var gmail: MailboxSnapshot {
+      let id = MockAccountService.identity
+      return MailboxSnapshot(
+        id: "gmail-1", provider: .gmail, address: gmailAddress, state: .connected, meta: id.gmailMeta,
+        banks: ["Emirates NBD", "Dubai Islamic Bank"], lastChecked: id.gmailLastChecked, connectedOn: "11 Sep")
+    }
+    static var outlook: MailboxSnapshot {
+      let id = MockAccountService.identity
+      return MailboxSnapshot(
+        id: "outlook-1", provider: .outlook, address: outlookAddress, state: .connected, meta: id.outlookMeta,
+        accountKind: id.outlookKind, banks: ["Dubai Islamic Bank"], lastChecked: "Sat 10 Oct, 12:40",
+        connectedOn: id.outlookConnectedOn, note: id.outlookNote)
+    }
 
     /// The debit card alert Maya's Gmail fetched on Thu 8 Oct and couldn't read (Paper 64L).
     static let unreadable = UnreadableMail(kind: "Debit card alert", provider: .gmail, day: "Thu 8 Oct")
@@ -260,10 +268,7 @@
       return try await readAgain(mailboxID, ask: ask)
     }
 
-    var imported: [String: MailboxDisconnectImpact] = [
-      gmail.id: MailboxDisconnectImpact(transactions: 42, edited: 3),
-      "outlook-1": MailboxDisconnectImpact(transactions: 12, edited: 0),
-    ]
+    var imported: [String: MailboxDisconnectImpact] = MockAccountService.identity.impacts
     private(set) var removed: [String] = []
 
     func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? {
@@ -335,7 +340,8 @@
     // MARK: BankAlertsReporting (Paper 1NS8's numbers)
 
     /// When each bank's newest alert arrived, once a mailbox has read it.
-    static let lastEmails: [SupportedBank: String] = [.enbd: "4 min ago", .dib: "2 h ago"]
+    var lastEmails: [SupportedBank: String] = MockAccountService.identity.lastEmails
+    var monthRead = MockAccountService.identity.monthRead
 
     /// A bank's last alert, when a mailbox that has already read (not one on its first
     /// import) reads its alerts.
@@ -343,12 +349,20 @@
       let read = mailboxes.contains { m in
         (m.state == .connected || m.state == .needsSignIn) && m.reads(bank)
       }
-      return read ? Self.lastEmails[bank] : nil
+      return read ? lastEmails[bank] : nil
     }
 
     /// "214 read in October", once a mailbox has read.
     var readThisMonth: MonthRead? {
-      mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? MonthRead(count: 214, month: "October") : nil
+      mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? monthRead : nil
+    }
+
+    var unlistedSenders: [String] = MockAccountService.identity.unlistedSenders
+
+    func addSenderAddress(_ typed: String, for domain: String) async -> SenderAddressOutcome {
+      if offline { return .offline }
+      unlistedSenders.removeAll { $0 == domain }
+      return .added(typed)
     }
   }
 #endif
