@@ -35,7 +35,7 @@ const MSG = {
 };
 
 function breakableEmail(el: Element, addr: string): void {
-  el.replaceChildren(...addr.split(/(?<=@)|(?=\.)/).flatMap((part, i) => (i ? [document.createElement('wbr'), part] : [part])));
+  el.replaceChildren(...addr.replace(/@/g, '@\0').split(/\0|(?=\.)/).flatMap((part, i) => (i ? [document.createElement('wbr'), part] : [part])));
 }
 
 /** The status line for answers that are not about one field. */
