@@ -26,6 +26,7 @@ struct HomeHero: View {
   var reading = false
   let openNotCounted: (SpendHero.NotCounted) -> Void
   let openRates: (TotalMark) -> Void
+  var openUnsorted: () -> Void = {}
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -62,7 +63,7 @@ struct HomeHero: View {
           } else {
             MonthPaceBar(
               spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
-              verdict: hero.verdict ?? .onTrack, overflow: 18, hidden: hidden, live: isLive, phase: phase)
+              verdict: hero.verdict ?? .onTrack, overflow: 8, hidden: hidden, live: isLive, phase: phase)
           }
           verdictLine
             .opacity(phase.verdictVisible ? 1 : 0)
@@ -70,6 +71,10 @@ struct HomeHero: View {
       }
       VStack(alignment: .leading, spacing: typeSize.isAccessibilitySize ? 8 : 2) {
         if !noPlan { tiles }
+        if let line = hero.unsortedLine {
+          NotCountedLine(text: line.rendered(hidden: hidden), spoken: line.spoken(hidden: hidden), icon: .tag,
+                         id: "home.hero.unsorted", action: openUnsorted)
+        }
         if let line = hero.notCounted {
           NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden), icon: .project,
                          id: "home.hero.notCounted") { openNotCounted(line) }
@@ -145,12 +150,14 @@ struct HomeHero: View {
                       link: insights.map { .init("Insights", identifier: "home.insights", action: $0) })
     case .range:
       ReflowingRow(spacing: 12) {
-        Text("\(Text(hero.word.rendered(hidden: hidden)).font(HType.subheadline.weight(.semibold).font).foregroundStyle(HColor.textPrimary))\(Text(verbatim: hero.fact.map { " · " + $0.rendered(hidden: hidden) } ?? ""))")
-          .hType(.subheadline)
-          .foregroundStyle(HColor.textOnWashSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityLabel([hero.word.spoken(hidden: hidden), hero.fact?.spoken(hidden: hidden)].compactMap { $0 }
-            .joined(separator: ", "))
+        if !hero.word.rendered(hidden: true).isEmpty {
+          Text("\(Text(hero.word.rendered(hidden: hidden)).font(HType.subheadline.weight(.semibold).font).foregroundStyle(HColor.textPrimary))\(Text(verbatim: hero.fact.map { " · " + $0.rendered(hidden: hidden) } ?? ""))")
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textOnWashSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel([hero.word.spoken(hidden: hidden), hero.fact?.spoken(hidden: hidden)].compactMap { $0 }
+              .joined(separator: ", "))
+        }
       } trailing: {
         if let insights {
           Button(action: insights) {
@@ -219,20 +226,39 @@ private struct HeroFigureLine: View {
 private struct HeroMonthBars: View {
   let bars: [HeroMonthBar]
   let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
   @ScaledMetric(relativeTo: .subheadline) private var labelWidth: CGFloat = 36
 
   var body: some View {
-    Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-      ForEach(bars) { bar in
-        GridRow {
-          Text(bar.label).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-            .frame(width: labelWidth, alignment: .leading)
-          MonthPaceBar(spent: bar.spent, plan: bar.plan, tick: nil, verdict: bar.verdict, overflow: 10,
-                       hidden: hidden, live: false)
-            .padding(.trailing, 10)
-            .frame(maxWidth: .infinity)
-          MoneyText(bar.spent, figure: HFigure.compact, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary)
-            .gridColumnAlignment(.trailing)
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 16) {
+          ForEach(bars) { bar in
+            VStack(alignment: .leading, spacing: 8) {
+              ReflowingRow(spacing: 12) { label(bar) } trailing: { amount(bar) }
+              MonthPaceBar(spent: bar.spent, plan: bar.plan, tick: nil, verdict: bar.verdict, overflow: 8,
+                           hidden: hidden, live: false)
+                .padding(.trailing, 8)
+            }
+          }
+        }
+      } else {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+          ForEach(bars) { bar in
+            GridRow {
+              label(bar)
+                .fixedSize()
+                .frame(minWidth: labelWidth, alignment: .leading)
+              MonthPaceBar(spent: bar.spent, plan: bar.plan, tick: nil, verdict: bar.verdict, overflow: 10,
+                           hidden: hidden, live: false)
+                .padding(.trailing, 10)
+                .frame(maxWidth: .infinity)
+              amount(bar)
+                .fixedSize()
+                .layoutPriority(1)
+                .gridColumnAlignment(.trailing)
+            }
+          }
         }
       }
     }
@@ -242,5 +268,13 @@ private struct HeroMonthBars: View {
       "\(bar.month.title), " + (hidden ? "Amount hidden" : "\(bar.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(bar.spent.minor))")
     }.joined(separator: "; "))
     .accessibilityIdentifier("home.hero.months")
+  }
+
+  private func label(_ bar: HeroMonthBar) -> some View {
+    Text(bar.label).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+  }
+
+  private func amount(_ bar: HeroMonthBar) -> some View {
+    MoneyText(bar.spent, figure: HFigure.compact, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary)
   }
 }

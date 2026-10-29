@@ -337,7 +337,7 @@ struct HomePeriodTests {
     let september = Spending.total(older, in: .month(YearMonth(2026, 9)))
     #expect(h.word.rendered(hidden: false) == MoneyPhrase([.text("Average "), .amount(.aed(september), hidden: 3)]).rendered(hidden: false))
     let new = HomeEngine.snapshot(older, now: now, period: .allTime(since: YearMonth(2026, 9), today: MayaLedger.october)).hero
-    #expect(new.word.rendered(hidden: false) == "" && new.fact == nil)
+    #expect(new.word.rendered(hidden: false) == "No full month yet" && new.fact == nil)
   }
 
   @Test func aCategoryUnderAllTimeHasNoBudget() {

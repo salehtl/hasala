@@ -54,6 +54,7 @@ struct WidgetCanvas: View {
         Text("Drag a widget to move it. Tap − to take it off Home.")
           .hType(.footnote).foregroundStyle(HColor.textSecondary)
           .padding(.top, -4)
+          .padding(.bottom, 18)
           .hTransition(.fade)
           .accessibilityIdentifier("home.editHint")
       }

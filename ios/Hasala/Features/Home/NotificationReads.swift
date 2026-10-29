@@ -33,10 +33,6 @@ final class NotificationReads {
     defaults.removeObject(forKey: key)
   }
 
-  static func count(in title: String) -> Int {
-    title.firstMatch(of: /\d+/).flatMap { Int($0.output) } ?? 0
-  }
-
   private static func decode(_ stored: [String]) -> [String: Int] {
     var reads: [String: Int] = [:]
     for line in stored {
@@ -48,8 +44,8 @@ final class NotificationReads {
   }
 
   private func entry(_ item: NotificationItem) -> (String, Int) {
-    let shape = item.title.replacing(/\d+/, with: "#")
+    let shape = item.title.replacing(/[\u{2066}-\u{2069}]/, with: "").replacing(/\d+(,\d{3})*/, with: "#")
     let value = "\(item.id)|\(shape)"
-    return (defaults == nil ? value : LocalAccountData.digest(value, salt: salt), Self.count(in: item.title))
+    return (defaults == nil ? value : LocalAccountData.digest(value, salt: salt), item.count)
   }
 }
