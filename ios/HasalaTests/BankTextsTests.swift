@@ -676,6 +676,41 @@ struct BankTextsTests {
     #expect(PasteBankTextModel(lane: MockBankTexts(), hidden: true).hidden)
   }
 
+  @Test func pastedForeignAmountsShowInHundredthsAndHide() {
+    let bhd = BankTextPreview(
+      amount: Money(minor: 3_250, currency: "BHD"), direction: .out, merchant: nil, date: nil, bank: nil, cardEnding: nil)
+    #expect(PasteBankTextModel.amountLine(bhd) == "BHD 32.50 out")
+    #expect(PasteBankTextModel.amountLine(bhd, hidden: true) == "Amount hidden")
+    let jpy = BankTextPreview(
+      amount: Money(minor: 150_000, currency: "JPY"), direction: .incoming, merchant: nil, date: nil, bank: nil, cardEnding: nil)
+    #expect(PasteBankTextModel.amountLine(jpy) == "JPY 1,500.00 in")
+    let match = BankTextMatch(
+      rowID: "r1", kind: .payment, merchant: nil, amount: Money(minor: 1_234, currency: "KWD"), postedAt: now, fromText: true)
+    #expect(PasteBankTextModel.matchDetail(match, hidden: false).hasPrefix("KWD 12.34 \u{00B7}"))
+  }
+
+  @Test func aPasteWithSeveralPaymentsSaysSo() async {
+    #expect(PasteBankTextModel.paymentCount(MockBankTexts.sampleText) == 1)
+    #expect(PasteBankTextModel.paymentCount(MockBankTexts.worstPasted) == 3)
+    #expect(PasteBankTextModel.paymentCount(MockBankTexts.codeText) == 0)
+    let dib = "مشتريات بمبلغ 123.45 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE SHOP. الحد الائتماني المتاح 1,234.56"
+    #expect(PasteBankTextModel.paymentCount([dib, dib, dib].joined(separator: "\n")) == 3)
+    #expect(PasteBankTextModel.paymentCount("خصم 1,234.56 في 05-06-2026 MB FUND TRANSFER DEBIT رصيدك 3,333.33") == 1)
+    let prepaid = "Your prepaid card XXX1234 is ready. Unpaid fees: none."
+    #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, prepaid].joined(separator: "\n")) == 1)
+    #expect(PasteBankTextModel.paymentCount("Your prepaid card XXX1234 has AED 50 to spend.") == 0)
+    let promo = "Get AED 20 back when bills are paid with your card"
+    #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, promo].joined(separator: "\n")) == 1)
+    #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Paste them one at a time.")
+    let lane = MockBankTexts(setUp: true)
+    lane.readDelay = .zero
+    let m = PasteBankTextModel(lane: lane)
+    await m.paste(MockBankTexts.worstPasted)
+    #expect(m.payments == 3 && m.text == MockBankTexts.worstPasted)
+    await m.paste(MockBankTexts.sampleText)
+    #expect(m.payments == 1)
+  }
+
   @Test func theHeroStateDoesNotDependOnTheTime() {
     let status = BankTextsStatus.working(lastRan: now)
     #expect(BankTextsAlertsPage.Hero.state(status) == BankTextsAlertsPage.Hero(status, lastText: nil, now: now).state)

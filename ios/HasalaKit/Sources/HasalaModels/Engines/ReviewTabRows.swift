@@ -26,7 +26,10 @@ extension ReviewEngine {
     let date = s.txn(c.id)?.postedAt.date
     return ReviewTabRow(
       id: c.id, identifier: "review.tab.row.\(c.id)", monogram: c.monogram, title: c.merchant,
-      subtitle: rowSupporting(c), tone: tone, amount: MoneyPhrase([.amount(c.amount)]), isIncome: c.isIncome,
+      subtitle: rowSupporting(c), tone: tone,
+      amount: c.amount.currency == Money.home
+        ? MoneyPhrase([.amount(c.amount)]) : MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
+      isIncome: c.isIncome,
       detail: date?.short ?? "", spokenAmount: MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
       spokenDetail: c.spokenWhen, reason: c.reviewReason)
   }
