@@ -10,13 +10,8 @@
         setupModel(graph).chooseEmail()
       },
       Screen("setup.source", scenario: "setupTexts") { _ = setupModel($0) },
-      Screen("setup.texts.banks", scenario: "setupTexts") { graph in
-        setupModel(graph).chooseSource(.texts)
-      },
       Screen("setup.texts", scenario: "setupTexts") { graph in
-        let model = setupModel(graph)
-        model.chooseSource(.texts)
-        await model.continueWithTextBanks()
+        setupModel(graph).chooseSource(.texts)
       },
       Screen("setup.texts.waiting", scenario: "setupTexts") { graph in
         await textsTest(graph, outcome: .received, after: .seconds(3600))
@@ -38,7 +33,6 @@
       bankTexts(graph)?.testDelay = delay
       let model = setupModel(graph)
       model.chooseSource(.texts)
-      await model.continueWithTextBanks()
       model.sendTestText()
     }
 

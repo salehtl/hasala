@@ -7,6 +7,8 @@ final class ReleaseSurfaceBankTextsTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bankAlerts.texts.automation").waitForExistence(timeout: 15), "the texts page is missing")
     XCTAssertTrue(el(app, "bankAlerts.texts.paste").exists, "Paste a bank text is missing")
     XCTAssertTrue(el(app, "bankAlerts.texts.setAside").exists, "the set-aside counts are missing")
+    XCTAssertFalse(el(app, "bankAlerts.texts.bank.dib").exists, "texts still show a bank list")
+    XCTAssertFalse(el(app, "bankAlerts.requestBank").exists, "texts still ask for a bank")
     assertNoPlaceholders(app, "Bank alerts · Texts")
     assertPersonalAccountsOnly(app, "Bank alerts · Texts")
   }

@@ -51,22 +51,19 @@ struct BankTextsTests {
     let lane = MockBankTexts()
     let before = model(services(texts: lane))
     before.chooseSource(.texts)
-    await before.continueWithTextBanks()
-    #expect(!lane.isSetUp && before.step == .mail)
+    #expect(!lane.isSetUp && before.step == .bank && before.path == [.textsSetUp])
     var finished = 0
     let relaunched = model(services(texts: lane)) { finished += 1 }
-    var facts = AuthScenario.setupFacts(for: .setupTexts, texts: lane)
-    facts.banksChosen = true
-    relaunched.reconcile(facts: facts, banks: [.dib])
+    let facts = AuthScenario.setupFacts(for: .setupTexts, texts: lane)
+    relaunched.reconcile(facts: facts, banks: [])
     relaunched.resume()
-    #expect(!relaunched.facts.textsChosen && relaunched.step == .mail && relaunched.asksSource && finished == 0)
+    #expect(!relaunched.facts.textsChosen && relaunched.step == .bank && relaunched.asksSource && finished == 0)
   }
 
   @Test func aRelaunchAfterFinishingTheTextsSetUpGoesHome() async {
     let lane = MockBankTexts()
     let before = model(services(texts: lane))
     before.chooseSource(.texts)
-    await before.continueWithTextBanks()
     await before.finishTexts()
     #expect(lane.isSetUp && lane.finishCalls == 1)
     var finished = 0
@@ -89,7 +86,7 @@ struct BankTextsTests {
     #expect(!lane.usesTexts && lane.finishCalls == 0 && finished == 1 && m.facts.bankSkipped && !m.facts.textsChosen)
   }
 
-  @Test func skippingTheBanksLeavesSetUp() {
+  @Test func skippingTheTextsSetUpLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()
     let m = model(services(texts: lane)) { finished += 1 }
@@ -104,9 +101,8 @@ struct BankTextsTests {
     var finished = 0
     let m = model(services(texts: lane)) { finished += 1 }
     m.chooseSource(.texts)
-    await m.continueWithTextBanks()
     await m.finishTexts()
-    #expect(!lane.isSetUp && finished == 0 && m.failure != nil && !m.facts.textsChosen && m.path == [.textsBanks, .textsSetUp])
+    #expect(!lane.isSetUp && finished == 0 && m.failure != nil && !m.facts.textsChosen && m.path == [.textsSetUp])
   }
 
   @Test func theChoiceIsOfferedOnlyWithALane() {
@@ -123,7 +119,7 @@ struct BankTextsTests {
     #expect(!model(s).offersBankTexts)
   }
 
-  @Test func textsLeadToTheBanksThenTheSetUpThenTheTestThenHome() async {
+  @Test func textsLeadToTheSetUpThenTheTestThenHomeWithNoBankList() async {
     let lane = MockBankTexts()
     let setup = MockSetupAuthoring()
     let s = AccountServices(
@@ -132,23 +128,13 @@ struct BankTextsTests {
     var finished = 0
     let m = model(s) { finished += 1 }
     m.chooseSource(.texts)
-    #expect(m.path == [.textsBanks] && m.asksSource && m.step == .bank && finished == 0 && !lane.isSetUp)
-    m.toggle(.adib)
-    await m.continueWithTextBanks()
-    #expect(m.path == [.textsBanks, .textsSetUp] && setup.banks == [.enbd, .dib] && m.facts.banksChosen)
+    #expect(m.path == [.textsSetUp] && m.asksSource && m.step == .bank && finished == 0 && !lane.isSetUp)
     m.sendTestText()
     m.sendTestText()
-    #expect(m.path == [.textsBanks, .textsSetUp, .textsTest] && lane.testsStarted == 1 && lane.test.isWaiting)
+    #expect(m.path == [.textsSetUp, .textsTest] && lane.testsStarted == 1 && lane.test.isWaiting)
     await m.finishTexts()
     #expect(finished == 1 && m.facts.textsChosen && m.step == .finished && lane.isSetUp && lane.usesTexts)
-  }
-
-  @Test func noBankPickedDoesNotGoOn() async {
-    let m = model(services(texts: MockBankTexts()))
-    m.chooseSource(.texts)
-    for bank in SupportedBank.allCases { m.toggle(bank) }
-    await m.continueWithTextBanks()
-    #expect(m.path == [.textsBanks] && !m.facts.banksChosen)
+    #expect(setup.banks.isEmpty && !m.facts.banksChosen)
   }
 
   @Test func theAutomationStepCanBeSkipped() async {
@@ -156,20 +142,21 @@ struct BankTextsTests {
     var finished = 0
     let m = model(services(texts: lane)) { finished += 1 }
     m.chooseSource(.texts)
-    await m.continueWithTextBanks()
     await m.finishTexts()
     #expect(finished == 1 && lane.testsStarted == 0 && lane.isSetUp)
   }
 
-  @Test func theTextsBanksSayHowEachIsRead() {
-    #expect(BankTexts.readNote(.dib) == "Hasala reads them; some wait in Review")
-    #expect(BankTexts.readNote(.enbd) == "You check each one in Review")
-    for line in SupportedBank.allCases.map(BankTexts.readNote) + [BankTexts.banksLine] {
-      #expect(!line.lowercased().contains("automatically"))
-    }
-    #expect(BankTexts.banksLine.contains("some still wait in Review"))
-    for bank in SupportedBank.allCases {
-      #expect(BankTexts.bankDetail(BankTextsBank(bank: bank, lastText: nil), now: now).hasSuffix("\n\(BankTexts.readNote(bank))"))
+  @Test func theTextsCopyNamesNoBank() {
+    #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("wait in Review"))
+    #expect(!BankTexts.anyBankLine.lowercased().contains("automatically"))
+    let lines = [
+      BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsNoText,
+      BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine,
+    ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.checklist.map(\.detail)
+    for line in lines {
+      for bank in SupportedBank.allCases {
+        #expect(!line.contains(bank.shortName) && !line.contains(bank.name), "\(line)")
+      }
     }
   }
 
@@ -230,28 +217,19 @@ struct BankTextsTests {
     #expect(RelativeTime.localDate(-4 * 3_600_000 - 1) == LocalDate(1969, 12, 31))
   }
 
-  @Test func onlyDIBIsReadAutomatically() {
-    let dib = BankTextsBank(bank: .dib, lastText: now.addingTimeInterval(-7200))
-    let enbd = BankTextsBank(bank: .enbd, lastText: nil)
-    #expect(dib.readsAutomatically && !enbd.readsAutomatically)
-    #expect(BankTexts.bankDetail(dib, now: now) == "Last text 2 h ago\nHasala reads them; some wait in Review")
-    #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nYou check each one in Review")
-  }
-
   @Test func sendingTheTestAgainStartsANewTest() async throws {
     let lane = MockBankTexts()
     lane.testOutcome = .nothing
     lane.testDelay = .zero
     let m = model(services(texts: lane))
     m.chooseSource(.texts)
-    await m.continueWithTextBanks()
     m.sendTestText()
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     #expect(lane.test == .nothingYet)
-    m.navigationPath = [.textsBanks, .textsSetUp]
+    m.navigationPath = [.textsSetUp]
     lane.testDelay = .seconds(60)
     m.sendTestText()
-    #expect(lane.testsStarted == 2 && lane.test.isWaiting && m.path == [.textsBanks, .textsSetUp, .textsTest])
+    #expect(lane.testsStarted == 2 && lane.test.isWaiting && m.path == [.textsSetUp, .textsTest])
   }
 
   @Test func theWorksLineDoesNotPromiseEveryTextFiles() {
@@ -277,7 +255,7 @@ struct BankTextsTests {
 
   @Test func thePrivacyLineSaysPaymentShapedTextsFromAnySenderAreKept() {
     for line in [BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts] {
-      #expect(line.contains("from any sender") && line.contains("Review") && line.contains("dropped at once"))
+      #expect(line.contains("from any sender") && line.contains("dropped at once"))
       #expect(!line.contains("only your banks"))
     }
   }
@@ -761,16 +739,16 @@ struct BankTextsTests {
   }
 
   @Test func theKeepingCopyCoversUnreadPaymentTexts() {
-    for line in [BankTexts.keepsOnlyFields, BankTexts.keepsNoText] {
+    for line in [BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts] {
       #expect(!line.contains("payments it reads") && !line.contains("payment Hasala read"))
     }
     let keepsTexts = #/\bkeeps\b[^.]*?\btexts?\b/#
-    for line in [BankTexts.keepsOnlyFields, BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsPayments] {
+    for line in [BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsPayments] {
       for sentence in line.split(separator: ".") where sentence.contains(keepsTexts) {
         #expect(sentence.contains("details"), "\(sentence)")
       }
     }
-    #expect(BankTexts.keepsOnlyFields.contains("texts that look like payments"))
+    #expect(BankTexts.keepsPaymentShapedTexts.contains("texts that look like payments"))
     #expect(BankTexts.keepsNoText.contains("never the text itself"))
   }
 

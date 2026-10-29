@@ -114,9 +114,10 @@ payment cannot arrive through two channels, and no merge is needed.
   person who uses only texts never needs the email sheet. The question is the first screen
   of setup's bank step (step 4), with **Skip** as today. Choosing email goes on to the bank
   step and the mailbox connect as they are now, so an email user gains this one choice and
-  nothing else. Choosing texts leads to two screens: the banks ("Which banks text you?"),
-  and a short automation guide ("Make the automation") that ends with **I made it, send a
-  test** or **Skip, confirm with my next bank text**. The test and the illustrated guide
+  nothing else. Choosing texts leads to one screen, a short automation guide ("Make the
+  automation") that ends with **I made it, send a test** or **Skip, confirm with my next
+  bank text**. Texts have no bank list, in setup or in Profile › Bank alerts (owner
+  decision, 2026-10-29); email keeps its bank list. The test and the illustrated guide
   ("Show me how, step by step") are optional in setup and stay in Profile › Bank alerts
   ("Test it again", "Show me how"), where a person who skipped them can finish them later.
   Finishing the texts path sets a content-free flag on this iPhone that texts were chosen
@@ -435,9 +436,9 @@ way. Real
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only. On the
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
-and texts with no payment shape. Until the open check on the sender is answered, the app
-says of DIB "Hasala reads them; some wait in Review" and "Hasala reads DIB texts for you,
-though some still wait in Review", and of other banks "You check each one in Review".
+and texts with no payment shape. The app makes no claim about a specific bank: it says
+"Hasala reads payment texts from any bank. It files the ones it reads with confidence, and
+the rest wait in Review for you to check."
 
 ### Filing with no review
 

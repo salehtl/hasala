@@ -814,7 +814,7 @@ struct BankTextsIntakeTests {
     }
     l.reload()
     #expect(l.status == .working(lastRan: Self.t0.addingTimeInterval(-240)))
-    #expect(l.banks.first { $0.bank == .dib }?.lastText == Self.t0.addingTimeInterval(-600))
+    #expect(l.lastTextAt == Self.t0.addingTimeInterval(-600))
     #expect(l.setAside == [BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.oneTimeCode: 1, .promotion: 1])])
     #expect(BankTexts.setAsideDetail(l.setAside[0]) == "2 texts set aside in the last 30 days\n1 one-time code, 1 promotion")
     #expect(BankTexts.setAsideDetail(BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.promotion: 1_284]))

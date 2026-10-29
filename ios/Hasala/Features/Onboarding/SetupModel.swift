@@ -231,7 +231,7 @@ final class SetupModel {
       path = []
     case .texts:
       path = []
-      go(.textsBanks)
+      go(.textsSetUp)
     }
   }
 
@@ -245,11 +245,6 @@ final class SetupModel {
     guard !busy else { return }
     draft.source = nil
     skipBanks()
-  }
-
-  func continueWithTextBanks() async {
-    guard path.last == .textsBanks, await saveBanks() else { return }
-    go(.textsSetUp)
   }
 
   func sendTestText() {

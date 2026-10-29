@@ -115,44 +115,6 @@ private struct SourceCard: View {
   }
 }
 
-struct TextsBanksStep: View {
-  @Bindable var model: SetupModel
-  @State private var telling = false
-
-  var body: some View {
-    AccountScreen(
-      title: "Which banks text you?",
-      subtitle: "Pick the banks that send you payment texts.",
-      back: .system,
-      trailing: ("Skip", model.skipSource)
-    ) {
-      VStack(alignment: .leading, spacing: 12) {
-        Text("Your banks")
-          .hType(.overline)
-          .foregroundStyle(HColor.textGroupedHeader)
-          .padding(.horizontal, 16)
-          .padding(.top, 4)
-          .accessibilityAddTraits(.isHeader)
-        BankList(chosen: model.chosenBanks, note: { BankTexts.readNote($0) }, toggle: model.toggle)
-        AnotherBankCard(sent: model.bankRequestSent, sample: false) { telling = true }
-        SetupFailureBanner(failure: model.failure)
-        DockNote(text: BankTexts.keepsOnlyFields).padding(.top, 4)
-      }
-      .padding(.top, -8)
-    } footer: {
-      BusyButton(
-        title: "Continue", busy: model.busy, enabled: !model.chosenBanks.isEmpty, identifier: "textsBanks.continue"
-      ) { Task { await model.continueWithTextBanks() } }
-        .dockPill()
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("texts.banks")
-    .sheet(isPresented: $telling) {
-      RequestBankSheet(setup: model.bankRequests, prober: nil) { _ in model.noteBankRequestSent() }
-    }
-  }
-}
-
 struct TextsSetUpStep: View {
   @Bindable var model: SetupModel
   @State private var guiding = false
@@ -169,8 +131,8 @@ struct TextsSetUpStep: View {
         TextsLinkRow(title: "Show me how, step by step", identifier: "texts.showMeHow") { guiding = true }
         TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
-        TextsNote(icon: .bank, text: BankTexts.banksLine)
-          .accessibilityIdentifier("texts.banksLine")
+        TextsNote(icon: .bank, text: BankTexts.anyBankLine)
+          .accessibilityIdentifier("texts.anyBank")
         SetupFailureBanner(failure: model.failure)
       }
       .padding(.top, -8)

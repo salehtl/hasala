@@ -296,14 +296,13 @@ private struct NumberedLine: View {
 /// inset to the text.
 struct BankList: View {
   let chosen: Set<SupportedBank>
-  var note: (SupportedBank) -> String? = { $0.note }
   var toggle: (SupportedBank) -> Void
 
   var body: some View {
     VStack(spacing: 0) {
       ForEach(Array(SupportedBank.allCases.enumerated()), id: \.element) { i, bank in
         if i > 0 { HDivider(inset: .disc68) }
-        BankChoiceRow(bank: bank, note: note(bank), on: chosen.contains(bank)) { toggle(bank) }
+        BankChoiceRow(bank: bank, on: chosen.contains(bank)) { toggle(bank) }
       }
     }
     .padding(.vertical, 4)

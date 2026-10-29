@@ -25,7 +25,6 @@ struct SetupFlowView: View {
       .navigationDestination(for: SetupRoute.self) { route in
         switch route {
         case .connectError(let provider): EmailErrorStep(model: model, provider: provider)
-        case .textsBanks: TextsBanksStep(model: model)
         case .textsSetUp: TextsSetUpStep(model: model)
         case .textsTest: TextsTestStep(model: model)
         }

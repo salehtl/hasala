@@ -72,12 +72,6 @@ final class LiveBankTexts: BankTextsConnecting {
     return .waitingForFirstText
   }
 
-  var banks: [BankTextsBank] {
-    SupportedBank.allCases.map { bank in
-      BankTextsBank(bank: bank, lastText: data.lastKeptMs[bank.rawValue].map(Self.date))
-    }
-  }
-
   var test: BankTextsTest {
     if let opened = data.testOpenedMs, data.testWindowOpen(nowMs: nowMs) { return .waiting(since: Self.date(opened)) }
     if testMissed { return .nothingYet }

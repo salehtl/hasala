@@ -108,10 +108,6 @@
       return .waitingForFirstText
     }
 
-    var banks: [BankTextsBank] {
-      SupportedBank.allCases.map { BankTextsBank(bank: $0, lastText: lastTexts[$0]) }
-    }
-
     var lastTextAt: Date? { lastTexts.values.max() }
 
     var lastRanAt: Date? { lastRan }
