@@ -815,6 +815,7 @@ final class LiveAccountService: AccountService {
 
   static func map(_ e: CeremonyError) -> AuthFailure {
     if case .api(.refused(let f)) = e, f.code == "phrase_unseen" { return .wordsBeforeRemovingPasskey }
+    if case .api(.refused(let f)) = e, f.status == 426 { return .updateRequired }
     switch e {
     case .notThisAccountsPhrase: return .phraseMismatch
     case .badPhrase: return .badPhrase("Every word is real, but together they aren't a Hasala phrase. Two words may be swapped.")

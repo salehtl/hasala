@@ -55,6 +55,7 @@ enum AuthFailure: Error, Equatable, Sendable {
   /// The server's keys or address differ from this iPhone's after setup (E-04), or a
   /// server value failed the client's own check: stop, never retry blind.
   case integrity
+  case updateRequired
 
   /// The copy shown for this failure; nil when nothing is shown. Two short sentences: what
   /// happened, then what to do (spec 01 §7.4; the codes and sign-in copy verbatim from spec
@@ -103,6 +104,8 @@ enum AuthFailure: Error, Equatable, Sendable {
     case .notInThisBuild: "This isn't in this beta build yet. If you need it now, talk to us at hasala.app/support."
     case .integrity:
       "Something didn't match what this iPhone expected, so Hasala stopped to keep your data safe. Nothing was changed. Talk to us at hasala.app/support."
+    case .updateRequired:
+      "This version of Hasala is too old. Install the newest build from TestFlight, then try again."
     case .noPasscode:
       "Set a passcode on your iPhone to use Hasala. It protects your data and lets this iPhone confirm it's you."
     }

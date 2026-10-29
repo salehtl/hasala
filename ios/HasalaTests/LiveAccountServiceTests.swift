@@ -317,6 +317,7 @@ struct LiveAccountServiceTests {
     (429, "rate_limited", .rateLimited),
     (503, "unavailable", .offline),
     (403, "passkey_rejected", .refused),
+    (426, "upgrade_required", .updateRequired),
   ])
   func refusalsMapToTheirCopy(_ status: Int, _ code: String, _ want: AuthFailure) {
     #expect(LiveAccountService.map(Self.refused(status, code)) == want)

@@ -439,7 +439,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	// The box-level fuse wraps EVERYTHING, including the unauthenticated
 	// ceremonies, because a sign-in is a durable write too.
-	return securityHeaders(s.withClientKey(s.headroomGate(mux)))
+	return securityHeaders(s.withClientKey(s.clientGate(s.headroomGate(mux))))
 }
 
 // securityHeaders sets spec 02 §6.2's headers on every response. No HSTS
