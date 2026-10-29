@@ -93,9 +93,11 @@ public struct InsightsDelta: Sendable, Hashable {
       : InsightsDelta(kind: .down(percent: percent), tone: marked ? .success : .neutral)
   }
 
+  public static let textCap = 999
+
   public var text: String {
     switch kind {
-    case .up(let p): "\u{2191} " + (p == 0 ? "<1%" : "\(p)%")
+    case .up(let p): "\u{2191} " + (p == 0 ? "<1%" : p > Self.textCap ? "\(Self.textCap)%+" : "\(p)%")
     case .down(let p): "\u{2193} " + (p == 0 ? "<1%" : "\(p)%")
     case .new: "new"
     case .gone: "gone"
