@@ -20,6 +20,13 @@ struct TextTemplateGateTests {
     #expect(matching.allSatisfy { !$0.definition.isSMS })
   }
 
+  @Test("an ENBD refund text is a refund, as DIB's are")
+  func enbdRefundIsARefund() {
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.refund.v1@1", direction: "credit")?.category == "refunds")
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.refund.v1@1", direction: "debit") == nil)
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.credit.v1@1", direction: "credit") == nil)
+  }
+
   @Test("every template the app names by id is a bundled template")
   func namedTemplatesAreBundled() {
     let bundled = Set((BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition.id))

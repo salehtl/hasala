@@ -426,20 +426,21 @@ queued rows count: a text row that is not in the queue (already categorized, a c
 with a last pick) does not hold back its subject, so a queued mail row with that subject can
 still be asked of Apple's model. Nothing leaves the device, and the text row is not changed.
 
-**Templates tonight: DIB only.** DIB has SMS templates for each payment family in the
+**Templates: DIB, then ENBD.** DIB has SMS templates for each payment family in the
 owner's DIB export (purchases, debits, credits, salary, refunds, reversals, own transfers
 and card payments), in the wordings that export holds: Arabic, and English for reversals.
 There is no English template for the other families, because the export has no real
 English wording to copy, and a template written from a guess could file wrong rows under
 D1. A DIB text in a wording that no template reads, such as an English purchase text, goes
-to Review, prefilled when a reader reads it. Texts from other banks go to Review the same
-way. Real
+to Review, prefilled when a reader reads it. Texts from banks other than DIB and ENBD go to
+Review the same way. Real
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only. On the
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. Until the open check on the sender is answered, the app
-says of DIB "Hasala reads them; some wait in Review" and "Hasala reads DIB texts for you,
-though some still wait in Review", and of other banks "You check each one in Review".
+says of DIB and ENBD "Hasala reads them; some wait in Review" and "Hasala reads DIB and ENBD
+texts for you, though some still wait in Review", and of other banks "You check each one in
+Review".
 
 **ENBD (2026-10-29).** ENBD (`EmiratesNBD`, `ENBD`) has SMS templates for the English
 payment wordings in the owner's ENBD export: debit card purchases
@@ -458,7 +459,10 @@ read 314 of the 315 payment texts with no misread amount, currency, direction or
 read no text that is not a payment. The one left is a credit card purchase whose amount has
 no decimals, which the amount type refuses; it goes to Review, prefilled by the readers.
 Instalment offers, beneficiary notices, standing instructions and brokerage notices are
-not payments, and no template reads them.
+not payments, and no template reads them. The account debit, account credit and transfer in
+wordings are plain English that another bank may also send. The templates do not check
+the sender (the Shortcuts automation passes none), so a text from another bank in the same
+wording is read by an ENBD template and carries `bank: enbd`.
 
 ### Filing with no review
 
