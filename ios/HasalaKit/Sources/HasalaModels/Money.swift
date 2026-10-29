@@ -55,6 +55,10 @@ public enum MoneyFormat {
     }
   }
 
+  public static func string(_ money: Money, style: MoneyStyle = .exact) -> String {
+    string(money.minor, style: style)
+  }
+
   /// A run of hidden-figure glyphs, as Paper draws them (four in tiles and rows).
   public static func hidden(count: Int = 4) -> String {
     String(repeating: hiddenGlyph, count: max(1, count))

@@ -190,6 +190,7 @@ struct LaunchView: View {
       let auth = AuthScenario.fromLaunchArguments(arguments)
       let session = AuthScenario.session(for: auth)
       var state = scenario.state
+      if MockIdentity.overridesLedger(arguments) { state.profile = MockAccountService.identity.person.profile }
       if auth == .finishSetup || auth == .noAlerts {
         for key in state.plan.budgets.keys { state.plan.budgets[key] = .aed(0) }
       }
