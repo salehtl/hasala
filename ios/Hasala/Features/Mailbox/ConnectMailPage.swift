@@ -12,10 +12,9 @@ import SwiftUI
 /// alerts with a toast, where the new mailbox lands syncing; its first scan starts here and
 /// goes on in the background.
 ///
-/// An account that reads no bank yet (setup's bank step was skipped for manual entry, or
-/// the account chose bank texts, which have no bank list) picks its banks first, as setup does before its email step: the lane reads only the
-/// banks' alert senders, so without them it would read nothing, and the provider's screen
-/// would list no bank.
+/// An account that reads no bank yet (manual entry, or bank texts) picks its banks first, as
+/// setup does before its email step: the lane reads only the banks' alert senders, so
+/// without them it would read nothing, and the provider's screen would list no bank.
 struct ConnectMailPage: View {
   @Bindable var app: AppModel
   let provider: MailProviderKind

@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-27
+lastUpdated: 2026-10-29
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -22,7 +22,7 @@ To leave the waitlist, open the **Leave the list** link in any email we sent you
 
 ### Which banks work?
 
-At the time of writing, Hasala reads alert emails from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB), and bank texts from DIB. Payment texts from other banks wait for you in **Review**, where you can check the details. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
+At the time of writing, Hasala reads alert emails from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB), and payment texts from any bank. A payment Hasala isn't sure of waits for you in **Review**, where you can check the details. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
 
 ### Does Hasala need my bank password?
 
@@ -129,7 +129,7 @@ Instead of connecting an email account, Hasala can read the texts (SMS) your ban
 
 ### How do I set up bank texts?
 
-During setup, at **How do your banks reach you?**, choose texts, then pick your banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
+During setup, at **How do your banks reach you?**, choose texts. Texts need no list of banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
 
 1. Tap **Automation** at the bottom, then **+**, then choose **Message**.
 2. Leave **Sender** empty. Tap **Message Contains** and type just a full stop (**.**), so it runs for every text that has one. Choose **Run Immediately**, then tap **Next**.
@@ -142,7 +142,7 @@ The automation only sees texts that arrive after you make it. To bring in an old
 
 ### Why does the automation look for a full stop?
 
-Shortcuts runs a message automation only for a sender you choose or for texts that contain a phrase you type. Bank senders aren't contacts, and bank texts often don't share a word, so a word like "AED" would miss payments without any sign. But bank payment texts usually have a full stop in their amount (for example 12.50), and all of DIB's do, so the automation runs for every text that contains a full stop and hands it to Hasala. A text with no full stop at all, such as a short reply from a friend, never reaches Hasala. If a bank text has none, for example an amount with no decimals, paste it (see below). Hasala looks at each text it gets on your iPhone. It keeps only texts that look like payments. Every other text, such as a one-time code, a declined payment, a promotion or a chat with a person, is dropped at once and never stored. A message that looks like a payment, even one from a person, waits in **Review**, where you can archive it. Archiving hides it; it stays in your Hasala data until you delete your account.
+Shortcuts runs a message automation only for a sender you choose or for texts that contain a phrase you type. Bank senders aren't contacts, and bank texts often don't share a word, so a word like "AED" would miss payments without any sign. But bank payment texts usually have a full stop in their amount (for example 12.50), so the automation runs for every text that contains a full stop and hands it to Hasala. A text with no full stop at all, such as a short reply from a friend, never reaches Hasala. If a bank text has none, for example an amount with no decimals, paste it (see below). Hasala looks at each text it gets on your iPhone. It keeps only texts that look like payments. Every other text, such as a one-time code, a declined payment, a promotion or a chat with a person, is dropped at once and never stored. A message that looks like a payment, even one from a person, waits in **Review**, where you can archive it. Archiving hides it; it stays in your Hasala data until you delete your account.
 
 ### Why does a bank text wait in Review?
 
