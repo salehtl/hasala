@@ -25,6 +25,11 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaSuggestions
   case mayaBacklog
   case mayaTexts
+  case mayaWorst
+  case mayaWorstTexts
+  case mayaEmpty
+  case mayaOne
+  case mayaHuge
 
   /// Reads `-HasalaScenario <name>` from launch arguments; `maya` when absent or unknown.
   public static func fromLaunchArguments(_ arguments: [String]) -> Scenario {
@@ -41,6 +46,18 @@ public enum Scenario: String, Sendable, CaseIterable {
   /// The ledger the scenario starts from.
   public var state: LedgerState {
     if self == .firstDays { return MayaHistory.firstDays }
+    switch self {
+    case .mayaWorst: return MayaWorst.worst
+    case .mayaWorstTexts:
+      var s = MayaWorst.worst
+      MayaTexts.apply(to: &s)
+      MockReach.refresh(&s)
+      return s
+    case .mayaEmpty: return MayaWorst.empty
+    case .mayaOne: return MayaWorst.one
+    case .mayaHuge: return MayaWorst.huge
+    default: break
+    }
     var s = self == .mayaSample ? MayaLedger.state : MayaHistory.state
     if self == .mayaCaughtUp {
       for i in s.txns.indices where s.txns[i].needsReview {
