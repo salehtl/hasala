@@ -225,15 +225,13 @@ public enum TextGate {
       "(?<![a-z])(?:t\\s?&\\s?c'?s?|terms\\s+(?:and|&)\\s+conditions)\\s+apply|(?<![a-z])sms\\s+stop\\s+to|(?<![a-z])send\\s+stop\\s+to|(?<![a-z])unsubscribe|offer\\s+valid\\s+(?:till|until|up\\s+to)"
         + "|تطبق\\s+الشروط|الشروط\\s+والاحكام|(?<!\\p{L})(?:وال|بال|فال|لل|ال|و|ب|ل|ف)?(?:عرض|عروض)(?!\\p{L})")
 
-    static let notSettled = RuleText.re(
-      RuleText.words(
-        [
-          "standing instruction", "standing instructions", "standing order", "standing orders", "after clearing",
-          "subject to clearing", "upon clearing", "on clearing", "to be confirmed", "pending clearance", "under clearing",
-          "equities", "brokerage", "securities account", "investment account", "trading account",
-        ],
-        ["تعليمات دائمه", "امر دائم", "بعد التحصيل", "قيد التحصيل"]
-      ).pattern)
+    static let notSettled = RuleText.words(
+      [
+        "standing instruction", "standing instructions", "standing order", "standing orders", "after clearing",
+        "subject to clearing", "upon clearing", "on clearing", "to be confirmed", "pending clearance", "under clearing",
+        "equities", "brokerage", "securities account", "investment account", "trading account",
+      ],
+      ["تعليمات دائمه", "امر دائم", "بعد التحصيل", "قيد التحصيل"])
 
     static let number = "[0-9](?:[0-9,]|\\.(?=[0-9]))*+"
 

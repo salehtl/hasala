@@ -65,8 +65,16 @@ enum RuleLexicon {
 
   static let ambiguousDebit = RuleText.words(["transfer", "transferred", "sent"], ["تحويل"])
 
+  static let movedAmount: String = {
+    let cur = "(?:" + (ExtractCurrency.isoCodes.map { $0.lowercased() } + ["dhs"]).sorted().joined(separator: "|") + ")"
+    return "(?:(?:\(cur)\\s*[0-9][0-9,.]*|[0-9][0-9,.]*(?:\\s*\(cur))?|\(cur))\\s+)?"
+  }()
+
   static let intoOwnAccount = RuleText.re(
-    "(?<![a-z])(?:transferred|credited|deposited|added|received)\\s+(?:in|into|to)\\s+(?:your|ur)\\s+(?:(?!beneficiar|payee)[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])")
+    "(?<![a-z])(?:transferred|credited|deposited|added|received)\\s+\(movedAmount)(?:in|into|to)\\s+(?:your|ur)\\s+(?:(?!beneficiar|payee)[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])")
+
+  static let toOwnAccount = RuleText.re(
+    "(?<![a-z])(?:to|into)\\s+(?:your|ur)\\s+(?:(?!beneficiar|payee)[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])")
 
   static let fromOwnAccount = RuleText.re(
     "(?<![a-z])(?:from|out\\s+of)\\s+(?:your|ur)\\s+(?:[a-z]+\\s+){0,2}?(?:account|a/c|acct|card)(?![a-z])|من\\s+حسابك|من\\s+بطاقتك")

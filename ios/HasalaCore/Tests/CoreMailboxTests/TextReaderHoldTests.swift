@@ -122,6 +122,26 @@ struct TextReaderHoldTests {
     }
   }
 
+  @Test("money transferred with the amount before to your account is a credit for both readers")
+  func amountBeforeIntoYourAccountIsACredit() throws {
+    let wordings = [
+      { (n: Int) in "Transferred AED \(Self.amount(n)) to your account XXX4321 on 05-06-2026." },
+      { (n: Int) in "Credited \(Self.amount(n)) AED to your account XXX4321 on 05-06-2026." },
+    ]
+    for w in wordings {
+      let input = ExtractInput(sender: "sms:", subject: "", text: w(0), receivedAtMs: TextRig.t0, listUnsubscribe: false)
+      #expect(CombinedReader.readRules(input).direction == .credit, "\(w(0))")
+      #expect(CombinedReader.readLearned(input, LearnedLayouts()).0.direction == .credit, "\(w(0))")
+      #expect(Self.stream(w).allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields.map { $0.direction == "credit" } ?? true })
+    }
+  }
+
+  @Test("money from your account to your own card never files through reader agreement")
+  func fromYourAccountToYourCardHolds() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) transferred from your account XXX1111 to your card XXX2222 on 05-06-2026." }
+    #expect(s.allSatisfy { $0.1.directionAmbiguous && !$0.1.meetsFilingBar && !Self.files($0.0) })
+  }
+
   @Test("money transferred to your beneficiary's account is no credit")
   func beneficiaryAccountIsNoCredit() throws {
     let s = Self.stream { "AED \(Self.amount($0)) has been transferred to your beneficiary account XXX2222 on 05-06-2026." }

@@ -334,8 +334,9 @@ Then, in this order:
    only when a whole-body pattern covers it, or when it has a marker and neither a
    transaction clause nor a payment statement; a payment text that misses its template and
    carries a promotion line has one of the two and goes on to step 4.
-4. **The payment shape.** A text with a payment shape goes to Review: the template-free
-   readers (`template-free-reading.md`) prefill it, and they never file a row. When the
+4. **The payment shape.** A text with a payment shape is read by the template-free
+   readers (`template-free-reading.md`). It goes to Review, prefilled, unless they agree on
+   it as [Filing with no review](#filing-with-no-review) says (since 2026-10-29). When the
    readers do not read a transaction (their outcome is `pending` or `not_transaction`, or no
    amount), the text becomes an unparsed text row in Review, not a drop and not a prefilled
    amount. Apple's on-device model does not read texts in v1 (see [Cut from v1](#cut-from-v1)).
@@ -374,7 +375,7 @@ The gate leans to Review: a text from a bank sender, or with no sender, is dropp
 an explicit drop pattern says it is not a payment, or when it has no payment word or no
 number at all. The cost is that a text from a person that looks like a payment ("I sent you
 AED 50"), and, with no sender, any text with a payment word and a number ("the transfer is
-200"), reaches Review as a synced row with the fields of any text row (see
+200"), becomes a synced row (in Review, or filed when the readers agree on it) with the fields of any text row (see
 [The op log](#the-op-log)), such as `merchant_raw`, the amount and `last4`, until the account is
 deleted. The app has no delete for a transaction: Review's **Dismiss** and the transaction
 sheet's **Archive** author `txn_annotated` with `field: archived`, which **Restore** undoes,
@@ -455,7 +456,9 @@ no review (`needs_review: false`) only when all of these hold:
   direction, each at 0.8 or more (`ExtractReading.meetsFilingBar`, the rule mail uses;
   `BankTextKept.readerConfident`). A debit whose only direction words are "transfer",
   "transferred", "sent" or "تحويل" is ambiguous and never files this way (money
-  "transferred to your account" is a credit; "from your account" makes it a debit). A text
+  "transferred to your account", with the amount before or after "transferred", is a
+  credit; "from your account" makes it a debit, and money from your account to your own
+  account or card is a move between your accounts that waits in Review). A text
   that names a standing instruction or order, a deposit still to clear, or an equities,
   brokerage, securities, investment or trading account never files this way either
   (`TextGate.holdsReaderFiling`);
@@ -600,8 +603,8 @@ person can still find the payment, it keeps what the decoder allows and what the
 `merchant_raw` when a reader read one (else empty, with the limits for a person's text),
 `posted_at` with `posted_precision: time` (the date and time in the text when the text
 gives a time, else the arrival minute), `received_at`, `channel: "sms"`, `gates.template:
-none`, `gates.sender: untrusted`, and `gates.card` from the last4 when a masked card was
-read (`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
+none` and `gates.sender: untrusted` (since 2026-10-29 no `gates.card`; older builds wrote
+`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
 this bank text. Find the text from \<bank\> at \<time\> in Messages, copy it and paste it
 here, or add the payment yourself." \<time\> is the text's `received_at`, because Messages
 lists texts by arrival, with the date added when it is not today ("at 12:00 on Fri 5 Jun");
@@ -861,7 +864,7 @@ need:
 - The locked-phone inbox (see D6).
 - The Wallet transaction trigger (D7).
 - Apple's on-device model for texts. It reads only Latin script, and most DIB texts are
-  Arabic. A text that no template reads is prefilled by the template-free readers only, and
+  Arabic. A text that no template reads is read by the template-free readers only, and
   the on-device stage is not asked about a merchant that any text row carries.
 - Learned layouts that persist across launches (see
   [Learned layouts](#reading-happens-inside-hasala-on-the-phone)).

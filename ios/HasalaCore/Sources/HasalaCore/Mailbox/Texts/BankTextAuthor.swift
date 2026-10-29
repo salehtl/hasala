@@ -124,7 +124,9 @@ public actor BankTextAuthor {
         partner = BankTextTransferPair.partner(of: row, among: rows)
         if partner == nil, BankTextTransferPair.readerOverlap(of: row, among: rows) { repeats = true }
       }
-      if origin == .automation, !repeats { repeats = await mayRepeat(row, n: key.n, nearby: nearby) }
+      if !repeats, BankTextPayload.filesItself(kept, link: state, origin: origin, transferPartner: partner != nil) {
+        repeats = await mayRepeat(row, n: key.n, nearby: nearby)
+      }
     }
     let draft = BankTextPayload.build(
       kept, ingestID: key.id, receivedMinuteMs: minute, link: state, origin: origin, transferPartner: partner != nil,
