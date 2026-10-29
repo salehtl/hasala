@@ -362,13 +362,21 @@ public enum InsightsEngine {
       let main = a.byCategory.max { x, y in x.value != y.value ? x.value < y.value : x.key > y.key }?.key
       let c = s.category(main)
       return InsightsRow(
-        id: "merchant.\(name)", target: .merchant(name), title: name, glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
-        bucket: c?.bucket ?? .other, monogram: name.first.map { String($0).uppercased() }, amount: .aed(a.amount),
+        id: "merchant.\(name)", target: .merchant(name), title: merchantTitle(name), glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other,
+        bucket: c?.bucket ?? .other, monogram: monogram(name), amount: .aed(a.amount),
         sharePercent: percent(a.amount, of: spent), bar: Permille(0), count: a.count, delta: nil)
     }
     .sorted { a, b in a.amount.minor != b.amount.minor ? a.amount.minor > b.amount.minor : a.title < b.title }
     .prefix(merchantLimit)
     .map { $0 }
+  }
+
+  static func merchantTitle(_ name: String) -> String {
+    name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown merchant" : name
+  }
+
+  static func monogram(_ name: String) -> String? {
+    name.first(where: \.isLetter).map { String($0).uppercased() }
   }
 
   static func flow(_ ctx: Context, now: LocalDateTime) -> (InsightsFlow, String?) {
@@ -502,7 +510,7 @@ public enum InsightsEngine {
     case .bucket: name = "Other spending"
     case .unsorted: name = "Not yet sorted"
     case .category(let c): name = s.category(c)?.name ?? "Category"
-    case .merchant(let m): name = m
+    case .merchant(let m): name = merchantTitle(m)
     }
 
     var line: [MoneyPhrase.Part] = [.text("\(count) transaction\(count == 1 ? "" : "s")")]
