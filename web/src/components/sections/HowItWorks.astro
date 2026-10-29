@@ -133,6 +133,7 @@
   }
   .steps {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     margin: 0;
     padding: 0;
@@ -322,6 +323,11 @@
     font-size: 12px;
     font-weight: 500;
     line-height: 16px;
+  }
+  @media (max-width: 359px) {
+    .stored code {
+      white-space: normal;
+    }
   }
 
   @media (min-width: 768px) {
