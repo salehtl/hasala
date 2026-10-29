@@ -22,6 +22,7 @@ struct SignInView: View {
 
   @State private var passwordVisible = false
   @FocusState private var focus: Field?
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   enum Field: Hashable { case email, password }
 
@@ -123,7 +124,7 @@ struct SignInView: View {
         if capabilities.contains(.resetPassword) {
           // A 44 target that keeps the label row at Paper's 20.
           InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot", action: onForgot)
-            .padding(.vertical, -12)
+            .padding(.vertical, typeSize.isAccessibilitySize ? 0 : -12)
         }
       }
       HStack(spacing: 8) {
@@ -352,6 +353,32 @@ struct ForgotWaitingView: View {
     .task { await model.waitForApproval() }
   }
 
+  private var resetCodeRows: [String] {
+    let groups = model.resetCodeGroups.split(separator: " ").map(String.init)
+    let half = (groups.count + 1) / 2
+    return [groups.prefix(half), groups.dropFirst(half)].map { $0.joined(separator: " ") }.filter { !$0.isEmpty }
+  }
+
+  private var resetCodeGroupRows: [String] {
+    model.resetCodeGroups.split(separator: " ").map(String.init)
+  }
+
+  private func resetCodeLine(_ text: String) -> some View {
+    Text(text)
+      .font(.system(.title, design: .monospaced).weight(.bold))
+      .foregroundStyle(HColor.textPrimary)
+      .lineLimit(1)
+      .fixedSize()
+  }
+
+  private func resetCodeShrinkingLine(_ text: String) -> some View {
+    Text(text)
+      .font(.system(.title, design: .monospaced).weight(.bold))
+      .foregroundStyle(HColor.textPrimary)
+      .lineLimit(1)
+      .minimumScaleFactor(0.5)
+  }
+
   /// Paper "MatchNumberCard": the overline, the code large, and the waiting pill with the
   /// time left.
   private var matchCard: some View {
@@ -359,15 +386,20 @@ struct ForgotWaitingView: View {
       Text("Type this on your other iPhone")
         .hType(.overline)
         .foregroundStyle(HColor.textSecondary)
-      Text(model.resetCodeGroups)
-        .font(.system(.title, design: .monospaced).weight(.bold))
-        .foregroundStyle(HColor.textPrimary)
-        .minimumScaleFactor(0.6)
-        .lineLimit(1)
-        .environment(\.layoutDirection, .leftToRight)
-        .accessibilityLabel(model.resetCodeGroups.map { String($0) }.joined(separator: " "))
-        .accessibilityIdentifier("forgot.resetCode")
-        .padding(.vertical, 6)
+      ViewThatFits(in: .horizontal) {
+        resetCodeLine(model.resetCodeGroups)
+        VStack(spacing: 2) {
+          ForEach(Array(resetCodeRows.enumerated()), id: \.offset) { _, row in resetCodeLine(row) }
+        }
+        VStack(spacing: 2) {
+          ForEach(Array(resetCodeGroupRows.enumerated()), id: \.offset) { _, row in resetCodeShrinkingLine(row) }
+        }
+      }
+      .environment(\.layoutDirection, .leftToRight)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(model.resetCodeGroups.map { String($0) }.joined(separator: " "))
+      .accessibilityIdentifier("forgot.resetCode")
+      .padding(.vertical, 6)
       TimelineView(.periodic(from: .now, by: 1)) { context in
         let left = model.approvalDeadline.map { max(0, $0.timeIntervalSince(context.date)) } ?? 0
         HStack(spacing: 8) {
@@ -542,12 +574,15 @@ private struct BackInView: View {
   let method: SignInMethod
 
   var body: some View {
-    let name = model.firstName
+    let name = model.greetingName
     let email = model.accountEmail
     CelebrationScreen(
       badge: .check,
       title: name.isEmpty ? "You're back in." : "You're back in, \(name).",
-      subtitle: "Your data is unlocked on this iPhone. We've emailed \(email.isEmpty ? "you" : email) that your words were used."
+      subtitle: email.isEmpty
+        ? "Your data is unlocked on this iPhone. We've emailed you that your words were used."
+        : "Your data is unlocked on this iPhone. We've emailed this address that your words were used:",
+      email: email.isEmpty ? nil : EmailAside(address: email)
     ) {
       StatusListCard(rows: [
         method == .passkey

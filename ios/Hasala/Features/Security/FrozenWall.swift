@@ -180,9 +180,9 @@ private struct ReadOnlyEmail: View {
       Text(email)
         .hType(HType(size: 17, leading: 22, weight: .regular, textStyle: .body))
         .foregroundStyle(HColor.fieldText)
-        .lineLimit(1)
-        .truncationMode(.middle)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, HSpacing.fieldInsetInline)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, minHeight: HSpacing.fieldMinHeight, alignment: .leading)
         .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     }
@@ -198,17 +198,25 @@ struct FrozenBanner: View {
   var onShowWall: () -> Void
   var onSignOut: () -> Void
   @State private var confirmSignOut = false
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: 10) {
-      HIconView(.lockKeyhole, size: 18, color: Hue.rose.ink)
-      Text("Account frozen").hType(.rowTitle).foregroundStyle(Hue.rose.ink)
-      Spacer()
-      link("Sign out", id: "frozenBanner.signOut") { confirmSignOut = true }
-      if by == .holder {
-        link("Unfreeze", id: "frozenBanner.unfreeze", action: onShowWall)
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 0) {
+          title.padding(.top, 10)
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) { links }
+            VStack(alignment: .leading, spacing: 0) { links }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       } else {
-        link("Details", id: "frozenBanner.details", action: onShowWall)
+        HStack(spacing: 10) {
+          title
+          Spacer()
+          links
+        }
       }
     }
     .padding(.horizontal, 16)
@@ -219,6 +227,23 @@ struct FrozenBanner: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text(AccountCopy.signOutMessage)
+    }
+  }
+
+  private var title: some View {
+    HStack(spacing: 10) {
+      HIconView(.lockKeyhole, size: 18, color: Hue.rose.ink)
+      Text("Account frozen").hType(.rowTitle).foregroundStyle(Hue.rose.ink)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  @ViewBuilder private var links: some View {
+    link("Sign out", id: "frozenBanner.signOut") { confirmSignOut = true }
+    if by == .holder {
+      link("Unfreeze", id: "frozenBanner.unfreeze", action: onShowWall)
+    } else {
+      link("Details", id: "frozenBanner.details", action: onShowWall)
     }
   }
 
