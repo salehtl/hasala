@@ -13,14 +13,14 @@ struct FlowLayout: Layout {
   var spacing: CGFloat = 8
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let rows = Self.rows(subviews.map { $0.sizeThatFits(.unspecified) }, width: proposal.width, spacing: spacing)
+    let rows = Self.rows(Self.sizes(subviews, width: proposal.width), width: proposal.width, spacing: spacing)
     let height = rows.reduce(CGFloat(0)) { $0 + $1.height } + spacing * CGFloat(max(0, rows.count - 1))
     let widest = rows.map(\.width).max() ?? 0
     return CGSize(width: proposal.width.map { min(widest, $0) } ?? widest, height: height)
   }
 
   func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    let sizes = Self.sizes(subviews, width: bounds.width)
     var y = bounds.minY
     for row in Self.rows(sizes, width: bounds.width, spacing: spacing) {
       var x = bounds.minX
@@ -29,6 +29,15 @@ struct FlowLayout: Layout {
         x += sizes[i].width + spacing
       }
       y += row.height + spacing
+    }
+  }
+
+  static func sizes(_ subviews: Subviews, width: CGFloat?) -> [CGSize] {
+    subviews.map { subview in
+      let ideal = subview.sizeThatFits(.unspecified)
+      guard let width, ideal.width > width + 0.5 else { return ideal }
+      let fitted = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+      return CGSize(width: min(fitted.width, width), height: fitted.height)
     }
   }
 

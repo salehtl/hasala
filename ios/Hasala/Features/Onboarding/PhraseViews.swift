@@ -152,6 +152,7 @@ struct PhraseShowView: View {
 /// opens "Who can see what". No way back: the account exists.
 struct AccountReadyView: View {
   var profile: AccountProfile?
+  var signupEmail = ""
   /// Outlook can be connected in this build ("Who can see what" names Microsoft only then).
   var outlook: Bool
   /// What this build can do for the account (`AccountService.capabilities`): whether the
@@ -160,7 +161,6 @@ struct AccountReadyView: View {
   var onContinue: () -> Void
 
   @State private var whoSeesOpen = false
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   private var passkey: Bool { profile?.method != .password }
 
@@ -181,20 +181,10 @@ struct AccountReadyView: View {
       title: "Your account is ready.",
       subtitle: subtitle
     ) {
-      VStack(spacing: 16) {
-        summary
-        // At the largest sizes the hand-off and the actions scroll with the rest rather
-        // than fill the dock.
-        if typeSize.isAccessibilitySize {
-          handOff
-          VStack(spacing: 4) { actions }.padding(.top, 16)
-        }
-      }
+      summary
     } footer: {
-      if !typeSize.isAccessibilitySize {
-        handOff.padding(.bottom, 12)
-        actions
-      }
+      handOff.padding(.bottom, 12)
+      actions
     }
     .sheet(isPresented: $whoSeesOpen) { WhoCanSeeSheet(outlook: outlook) }
   }
@@ -212,7 +202,7 @@ struct AccountReadyView: View {
   /// Paper "ListCard · Account summary": a green dot, what, and where it is.
   private var summary: some View {
     VStack(spacing: 0) {
-      row(profile?.email ?? "", "Verified")
+      row(profile?.email.isEmpty == false ? profile?.email ?? "" : signupEmail, "Verified")
       divider
       row(passkey ? "Face ID passkey" : "Password", passkey ? "In iCloud Keychain" : "Set")
       divider

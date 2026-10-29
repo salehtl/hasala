@@ -38,6 +38,7 @@ struct HeroAccountScreen<Content: View, Footer: View>: View {
   var hero: HeroDisc
   var title: String
   var subtitle: String?
+  var email: EmailAside?
   var back: AccountBack = .none
   @ViewBuilder var content: () -> Content
   @ViewBuilder var footer: () -> Footer
@@ -52,10 +53,8 @@ struct HeroAccountScreen<Content: View, Footer: View>: View {
             .hType(.title1)
             .foregroundStyle(HColor.textPrimary)
             .accessibilityAddTraits(.isHeader)
-          if let subtitle {
-            Text(subtitle)
-              .hType(.body)
-              .foregroundStyle(HColor.textOnWashSecondary)
+          if subtitle != nil || email != nil {
+            SubtitleProse(text: subtitle, email: email)
           }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -69,7 +68,8 @@ struct HeroAccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .safeAreaBar(edge: .bottom) {
       AccountDock(content: footer)
     }
@@ -303,22 +303,23 @@ struct ResendRow: View {
   var body: some View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
       let left = sentAt.map { max(0, wait - context.date.timeIntervalSince($0)) } ?? 0
-      HStack {
+      ReflowingRow {
         if left > 0 {
           Text("Resend code in \(Self.clock(left))")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minHeight: 44)
             .accessibilityIdentifier("code.resendWait")
         } else {
           InlineTextButton(title: "Resend code", identifier: "code.resend", action: onResend)
             .disabled(busy)
         }
-        Spacer(minLength: 8)
+      } trailing: {
         if let trailing {
           InlineTextButton(title: trailing.title, identifier: trailing.identifier, action: trailing.action)
         }
       }
-      .frame(minHeight: 44)
     }
   }
 
@@ -344,6 +345,8 @@ struct CodeStepScreen: View {
   var onSubmit: () -> Void
   var onResend: () -> Void
 
+  private static let revealID = "code.step.reveal"
+
   private var state: CodeCells.State {
     switch failure {
     case .codeExpired: .expired
@@ -355,15 +358,18 @@ struct CodeStepScreen: View {
   var body: some View {
     AccountScreen(title: title, subtitle: subtitle, steps: steps, back: .system) {
       VStack(alignment: .leading, spacing: 12) {
-        CodeCells(code: $code, state: state)
-          .onChange(of: code) { _, new in
-            // Checked on the sixth digit (page 11 §02); typing again clears a wrong code.
-            if new.count == 6, !busy { onSubmit() }
+        VStack(alignment: .leading, spacing: 12) {
+          CodeCells(code: $code, state: state, revealTarget: Self.revealID)
+            .onChange(of: code) { _, new in
+              // Checked on the sixth digit (page 11 §02); typing again clears a wrong code.
+              if new.count == 6, !busy { onSubmit() }
+            }
+          if let message = failure?.message {
+            FieldErrorLine(text: message, warning: failure == .codeExpired)
+              .accessibilityIdentifier("code.failure")
           }
-        if let message = failure?.message {
-          FieldErrorLine(text: message, warning: failure == .codeExpired)
-            .accessibilityIdentifier("code.failure")
         }
+        .id(Self.revealID)
         if state != .expired {
           ResendRow(sentAt: sentAt, busy: busy, trailing: trailing, onResend: onResend)
         }

@@ -26,12 +26,17 @@ struct VerifyEmailView: View {
     let state = model.codeState(now: now)
     AccountScreen(
       title: "Check your email",
-      subtitle: "We sent a 6-digit code to \(model.email). It works for 10 minutes.",
+      subtitle: model.email.isEmpty ? "We sent you a 6-digit code. It works for 10 minutes." : "We sent a 6-digit code to",
+      email: model.email.isEmpty ? nil : EmailAside(address: model.email, after: "It works for 10 minutes."),
       steps: (1, 3),
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        cells(model, state: state)
+        VStack(alignment: .leading, spacing: 12) {
+          cells(model, state: state)
+          statusLine(model, state: state)
+        }
+        .id(Self.revealID)
         lines(model, state: state)
       }
       .hAnimation(.stateSwap, value: state)
@@ -43,6 +48,7 @@ struct VerifyEmailView: View {
         LinkButton(title: "Change email", identifier: "code.changeEmail") { model.back() }
       }
     }
+    .revealsOnKeyboard(Self.revealID)
     .onChange(of: model.code) { _, code in
       if code.count == 6 { Task { await model.submitCode() } }
     }
@@ -56,7 +62,7 @@ struct VerifyEmailView: View {
   }
 
   @ViewBuilder private func cells(_ model: SignupModel, state: CodeCells.State) -> some View {
-    CodeCells(code: Bindable(model).code, state: state, identifier: "code.field")
+    CodeCells(code: Bindable(model).code, state: state, identifier: "code.field", revealTarget: Self.revealID)
       // A fresh code starts a fresh field, with the keyboard up again.
       .id(model.codeSentAt)
       .overlay {
@@ -68,15 +74,26 @@ struct VerifyEmailView: View {
       }
   }
 
-  @ViewBuilder private func lines(_ model: SignupModel, state: CodeCells.State) -> some View {
+  private static let revealID = "code.reveal"
+
+  @ViewBuilder private func statusLine(_ model: SignupModel, state: CodeCells.State) -> some View {
     switch state {
     case .expired:
       JoinStatusLine(text: AuthFailure.codeExpired.message ?? "", tone: .warning)
-      FailureBanner(failure: otherFailure(model))
-    case .wrong, .typing:
-      if state == .wrong, let message = model.failure?.message {
+    case .wrong:
+      if let message = model.failure?.message {
         JoinStatusLine(text: message, tone: .error)
       }
+    case .typing:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder private func lines(_ model: SignupModel, state: CodeCells.State) -> some View {
+    switch state {
+    case .expired:
+      FailureBanner(failure: otherFailure(model))
+    case .wrong, .typing:
       FailureBanner(failure: otherFailure(model))
       resendRow(model)
       HintCard(icon: .envelope, text: "Not there? Check Spam or Promotions for an email from no-reply@hasala.app.")
@@ -93,7 +110,7 @@ struct VerifyEmailView: View {
 
   /// "Resend code in 0:42" counting down, then "Resend code"; "Change email" on the right.
   private func resendRow(_ model: SignupModel) -> some View {
-    HStack {
+    ReflowingRow {
       TimelineView(.periodic(from: .now, by: 1)) { context in
         let left = max(0, 60 - Int(context.date.timeIntervalSince(model.codeSentAt ?? .distantPast)))
         if model.busy {
@@ -112,10 +129,10 @@ struct VerifyEmailView: View {
           }
         }
       }
-      Spacer(minLength: 8)
+      .frame(minHeight: 44)
+    } trailing: {
       InlineTextButton(title: "Change email", identifier: "code.changeEmail") { model.back() }
     }
-    .frame(minHeight: 44)
   }
 }
 
@@ -127,7 +144,7 @@ private struct WrongCodeCells: View {
   var body: some View {
     HStack(spacing: 0) {
       group(0..<3)
-      Spacer(minLength: 18)
+      Spacer(minLength: CodeCells.groupGap)
       group(3..<6)
     }
     .allowsHitTesting(false)
@@ -135,12 +152,13 @@ private struct WrongCodeCells: View {
   }
 
   private func group(_ range: Range<Int>) -> some View {
-    HStack(spacing: 8) {
+    HStack(spacing: CodeCells.cellGap) {
       ForEach(range, id: \.self) { i in
         Text(i < digits.count ? String(digits[digits.index(digits.startIndex, offsetBy: i)]) : "")
           .font(.system(size: 28, weight: .semibold, design: .rounded))
           .foregroundStyle(HColor.textPrimary)
-          .frame(width: HSpacing.codeCellWidth, height: HSpacing.codeCellHeight)
+          .frame(minWidth: CodeCells.cellMinWidth, maxWidth: HSpacing.codeCellWidth)
+          .frame(height: HSpacing.codeCellHeight)
           .background(HColor.fieldSurfaceOnGrouped,
                       in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .overlay { FieldRing(color: HColor.fieldError) }

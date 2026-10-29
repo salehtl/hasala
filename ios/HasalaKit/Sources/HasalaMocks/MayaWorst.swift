@@ -232,7 +232,7 @@ public enum MayaWorst {
     var s = MayaHistory.state
     s.profile = MockPerson.worst.profile
     s.mailbox = MailboxHealth(
-      status: .working, lastEmail: "412 days ago", banks: "Emirates NBD, DIB, ADCB, FAB, Mashreq and RAKBANK",
+      status: .working, lastEmail: "on 12 Sep 2025", banks: "Emirates NBD, DIB, ADCB, FAB, Mashreq and RAKBANK",
       unreadable: 1_284)
     s.unreadMail = [
       UnreadMail(id: "unread-adcb-old", provider: .gmail, receivedOn: LocalDate(2025, 12, 14), bank: "Abu Dhabi Commercial Bank"),
@@ -257,7 +257,7 @@ public enum MayaWorst {
     s.accounts = [
       Account(id: "enbd", name: "Emirates NBD Platinum Credit Card Supplementary", shortName: "Emirates NBD Visa Infinite Credit",
               last4: "4412", kind: .current, balance: .aed(1_284_507_25),
-              detail: "checked in 412 days ago · 1,284 since"),
+              detail: "checked on 12 Sep 2025 · 1,284 since"),
       Account(id: "dib", name: "Dubai Islamic Bank Credit Card", shortName: "RAKBANK", last4: "0042", kind: .credit,
               balance: .aed(-1_234_567_89), detail: "statement due Sun 18 Oct"),
       Account(id: "cash", name: "wio Personal", shortName: "wio", kind: .cash, balance: .aed(1), detail: ""),
