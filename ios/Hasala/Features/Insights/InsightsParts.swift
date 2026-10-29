@@ -286,22 +286,29 @@ struct InsightsChangeRow: View {
   let change: InsightsChange
   let comparison: InsightsComparison
   let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: HSpacing.listRowGap) {
+    HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: HSpacing.listRowGap) {
       CategoryDisc(hue: change.hue, glyph: change.glyph)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(change.title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-        Text(change.before.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 6) {
+          titles
+          HStack(alignment: .center, spacing: 8) {
+            amount
+            InsightsDeltaBadge(delta: change.delta)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        titles
+        Spacer(minLength: 8)
+        VStack(alignment: .trailing, spacing: 4) {
+          amount
+          InsightsDeltaBadge(delta: change.delta)
+        }
+        .fixedSize()
       }
-      Spacer(minLength: 8)
-      VStack(alignment: .trailing, spacing: 4) {
-        MoneyText(change.change, figure: .row, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary,
-                  sign: change.change.minor < 0 ? .debt : .income)
-        InsightsDeltaBadge(delta: change.delta)
-      }
-      .fixedSize()
     }
     .padding(.horizontal, HSpacing.listRowInsetInline)
     .padding(.vertical, HSpacing.listRowInsetBlock)
@@ -313,6 +320,20 @@ struct InsightsChangeRow: View {
     ].joined(separator: ", "))
     .accessibilityIdentifier("insights.change.\(change.categoryID)")
   }
+
+  private var titles: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(change.title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(change.before.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var amount: some View {
+    MoneyText(change.change, figure: .row, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary,
+              sign: change.change.minor < 0 ? .debt : .income)
+  }
 }
 
 // MARK: - Money in vs out
@@ -323,6 +344,7 @@ struct InsightsFlowCard: View {
   let focus: YearMonth
   let hidden: Bool
   @Binding var showsTable: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -451,18 +473,29 @@ struct InsightsFlowCard: View {
 
   private var table: some View {
     VStack(spacing: 0) {
-      tableRow(Text("Month"), Text("In"), Text("Out"), header: true)
-      ForEach(flow.months) { m in
-        InsightsSeparator(inset: 0)
-        HStack {
-          Text(Self.monthName(m))
-            .hType(m.isFocus ? .subheadline.weight(.semibold) : .subheadline)
-            .foregroundStyle(HColor.textPrimary)
-          Spacer(minLength: 8)
-          MoneyText(m.income, figure: .compact, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
-            .frame(minWidth: 96, alignment: .trailing)
-          MoneyText(m.out, figure: .compact, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
-            .frame(minWidth: 96, alignment: .trailing)
+      if !typeSize.isAccessibilitySize {
+        tableRow(Text("Month"), Text("In"), Text("Out"), header: true)
+      }
+      ForEach(Array(flow.months.enumerated()), id: \.element.id) { i, m in
+        if i > 0 || !typeSize.isAccessibilitySize { InsightsSeparator(inset: 0) }
+        Group {
+          if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+              monthLabel(m)
+              stackedFigure("In", m.income)
+              stackedFigure("Out", m.out)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          } else {
+            HStack {
+              monthLabel(m)
+              Spacer(minLength: 8)
+              MoneyText(m.income, figure: .compact, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
+                .frame(minWidth: 96, alignment: .trailing)
+              MoneyText(m.out, figure: .compact, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
+                .frame(minWidth: 96, alignment: .trailing)
+            }
+          }
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
@@ -472,6 +505,21 @@ struct InsightsFlowCard: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("insights.flow.table")
+  }
+
+  private func monthLabel(_ m: InsightsFlowMonth) -> some View {
+    Text(Self.monthName(m))
+      .hType(m.isFocus ? .subheadline.weight(.semibold) : .subheadline)
+      .foregroundStyle(HColor.textPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func stackedFigure(_ label: String, _ money: Money) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text(label).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+      Spacer(minLength: 8)
+      MoneyText(money, figure: .compact, hidden: hidden, hiddenGlyphs: 4, color: HColor.textPrimary)
+    }
   }
 
   private static func monthName(_ m: InsightsFlowMonth) -> String {

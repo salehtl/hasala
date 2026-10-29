@@ -63,7 +63,7 @@ struct MainView: View {
         ReviewTabView(app: app)
       }
       // Transactions to sort, whatever the period; hidden at zero.
-      .badge(app.reviewCount)
+      .badge(app.reviewCount > 99 ? Text("99+") : app.reviewCount > 0 ? Text("\(app.reviewCount)") : nil)
       Tab("Activity", image: "TabActivity", value: AppTab.activity) {
         ActivityView(app: app, model: activity)
       }

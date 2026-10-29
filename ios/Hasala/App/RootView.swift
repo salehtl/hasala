@@ -1,4 +1,5 @@
 import HasalaDesign
+import HasalaModels
 import SwiftUI
 
 #if HASALA_MOCKS
@@ -205,6 +206,9 @@ struct LaunchView: View {
         graph.app.refreshWork = { try? await Task.sleep(for: delay) }
       }
       if let hold = milliseconds(after: pullHoldArgument, in: arguments) { graph.app.sync.hold = hold }
+      if let order = arguments.launchValue(after: reviewOrderArgument).flatMap(ReviewOrder.init(rawValue:)) {
+        graph.app.reviewOrder = order
+      }
       graph.app.cloudSort = MockCloudSortController.fromLaunchArguments(arguments)
       launch?.open(graph)
       return graph
@@ -212,6 +216,7 @@ struct LaunchView: View {
 
     static let refreshDelayArgument = "-HasalaRefreshDelay"
     static let pullHoldArgument = "-HasalaPullHold"
+    static let reviewOrderArgument = "-HasalaReviewOrder"
 
     static func milliseconds(after argument: String, in arguments: [String]) -> Duration? {
       guard let ms = arguments.launchValue(after: argument).flatMap({ Int($0) }), ms > 0 else { return nil }
