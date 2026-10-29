@@ -201,7 +201,7 @@ public struct HListRow: View {
 
   private var text: some View {
     VStack(alignment: .leading, spacing: 2) {
-      Text(title).hType(.rowTitle).foregroundStyle(titleColor).singleLineAtDefaultTextSize()
+      Text(title).hType(.rowTitle).foregroundStyle(titleColor).lineLimitAtDefaultTextSize(2)
       if let supporting {
         if let project {
           ProjectChipFlow(project) { SupportingLine(supporting, hidden: hidden, id: supportingID) }
@@ -733,6 +733,7 @@ public struct ReflowingRow<Leading: View, Trailing: View>: View {
           Spacer(minLength: spacing)
           trailing
         }
+        .environment(\.reflowingRowStacked, false)
         stacked
       }
     }
@@ -744,6 +745,11 @@ public struct ReflowingRow<Leading: View, Trailing: View>: View {
       trailing
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .environment(\.reflowingRowStacked, true)
   }
+}
+
+public extension EnvironmentValues {
+  @Entry var reflowingRowStacked = false
 }
 

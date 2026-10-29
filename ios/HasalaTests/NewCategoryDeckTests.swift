@@ -92,7 +92,8 @@ struct NewCategoryDeckTests {
     let next = try #require(deck.cards.first)
     #expect(next.id == "bl-alnoor-t-3" && deck.position == 2)
     #expect(next.suggestion?.id == c.id && next.suggestedBy == "Your last pick")
-    #expect(deck.options(for: .need, card: next.id).first?.id == c.id)
+    #expect(deck.options(for: .need, card: next.id).map(\.id) == ReviewEngine.options(for: .need, s).map(\.id))
+    #expect(deck.options(for: .need, card: next.id).first?.id != c.id)
     #expect(deck.sorted.map(\.id) == ["bl-alnoor-t-2"] && deck.sorted.first?.detail == "Corner shop")
 
     app.toastAction()

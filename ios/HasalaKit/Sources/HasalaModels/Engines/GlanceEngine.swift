@@ -60,7 +60,7 @@ public enum GlanceEngine {
     if let first = due.first {
       let when = first.nextDue == now.date ? "today" : first.nextDue.weekdayShort
       words = due.count == 1 ? "1 bill due \(when)" : "\(due.count) bills this week"
-      named = first.nextDue == now.date ? "\(first.name) today" : "\(first.name) on \(when)"
+      named = "\(first.nextDue == now.date ? "Today" : when) · \(first.name)"
     }
     return SpentSoFarWidget(
       spent: hero.spent, plan: hero.plan, verdict: hero.verdict,

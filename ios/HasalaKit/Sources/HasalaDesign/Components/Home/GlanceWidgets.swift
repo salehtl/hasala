@@ -110,6 +110,7 @@ public struct CategoryWatchWidgetView: View {
 public struct ComingUpWidgetView: View {
   let model: ComingUpWidget
   let hidden: Bool
+  @Environment(\.widgetHost) private var host
 
   public init(_ model: ComingUpWidget, hidden: Bool) {
     self.model = model
@@ -117,7 +118,26 @@ public struct ComingUpWidgetView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
+    Group {
+      if host == .system {
+        ViewThatFits(in: .vertical) {
+          content(model.rows.prefix(3))
+          content(model.rows.prefix(3), compact: true)
+          content(model.rows.prefix(2))
+          content(model.rows.prefix(1))
+          content(model.rows.prefix(0))
+        }
+      } else {
+        content(model.rows[...])
+      }
+    }
+    .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 14, leading: 16, bottom: 10, trailing: 16),
+                  minHeight: HContainer.widgetUnit)
+    .accessibilityElement(children: .contain)
+  }
+
+  private func content(_ rows: ArraySlice<ComingUpRow>, compact: Bool = false) -> some View {
+    VStack(alignment: .leading, spacing: compact ? 4 : 2) {
       HStack(alignment: .firstTextBaseline) {
         Text(model.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .singleLineAtDefaultTextSize()
@@ -133,44 +153,71 @@ public struct ComingUpWidgetView: View {
           .frame(maxWidth: .infinity, alignment: .trailing)
           .padding(.bottom, 6)
       }
-      ForEach(model.rows) { row in
-        ComingUpRowView(row: row, hidden: hidden)
+      ForEach(rows) { row in
+        ComingUpRowView(row: row, hidden: hidden, compact: compact)
       }
       Spacer(minLength: 0)
     }
-    .widgetChrome(HColor.widgetSurface, padding: EdgeInsets(top: 14, leading: 16, bottom: 10, trailing: 16),
-                  minHeight: HContainer.widgetUnit)
-    .accessibilityElement(children: .contain)
   }
 }
 
 struct ComingUpRowView: View {
   let row: ComingUpRow
   let hidden: Bool
+  var compact = false
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: 10) {
-      Circle().fill(row.hue.perceptualGradient).frame(width: 28, height: 28)
-        .overlay { HIconView(row.glyph.icon, size: 14, color: row.hue.ink, strokeWidth: 2.2) }
-        .accessibilityHidden(true)
-      Text(row.name).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-        .lineLimit(2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      if row.late {
-        HStack(spacing: 5) {
-          Circle().fill(HColor.statusErrorForeground).frame(width: 6, height: 6)
-          Text(row.note).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.statusErrorForeground)
-            .lineLimit(2)
+    Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 6) {
+          disc
+          name
+          note
+          amount
         }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
       } else {
-        Text(row.note).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimit(1)
+        HStack(spacing: 10) {
+          disc
+          name.frame(maxWidth: .infinity, alignment: .leading)
+          note.layoutPriority(compact ? 1 : 0)
+          amount
+        }
+        .frame(minHeight: compact ? 28 : 36)
       }
-      MoneyText(row.amount, figure: .compact, style: .rounded, hidden: hidden, hiddenGlyphs: 3,
-                color: row.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: row.isIncome ? .income : .none)
-        .frame(width: 76, alignment: .trailing)
     }
-    .frame(minHeight: 36, maxHeight: 42)
     .accessibilityElement(children: .combine)
+  }
+
+  private var disc: some View {
+    Circle().fill(row.hue.perceptualGradient).frame(width: 28, height: 28)
+      .overlay { HIconView(row.glyph.icon, size: 14, color: row.hue.ink, strokeWidth: 2.2) }
+      .accessibilityHidden(true)
+  }
+
+  private var name: some View {
+    Text(row.name).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      .lineLimitAtDefaultTextSize(compact ? 1 : 2)
+  }
+
+  @ViewBuilder private var note: some View {
+    if row.late {
+      HStack(spacing: 5) {
+        Circle().fill(HColor.statusErrorForeground).frame(width: 6, height: 6)
+        Text(row.note).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.statusErrorForeground)
+          .lineLimitAtDefaultTextSize(compact ? 1 : 2)
+      }
+    } else {
+      Text(row.note).hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
+    }
+  }
+
+  private var amount: some View {
+    MoneyText(row.amount, figure: .compact, style: .rounded, hidden: hidden, hiddenGlyphs: 3,
+              color: row.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: row.isIncome ? .income : .none)
+      .fixedSize()
   }
 }
 
@@ -195,15 +242,20 @@ public struct ToReviewWidgetView: View {
       .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
-        VStack(alignment: .leading, spacing: 0) {
-          HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
-            Text("to sort").hFigure(.widgetUnit).foregroundStyle(Hue.sky.ink)
+        ViewThatFits(in: .horizontal) {
+          VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+              Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink).lineLimit(1)
+              Text("to sort").hFigure(.widgetUnit).foregroundStyle(Hue.sky.ink).lineLimit(1)
+            }
+            caption("")
+              .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
           }
-          Text(model.caption.rendered(hidden: hidden)).privacySensitive()
-            .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
-            .singleLineAtDefaultTextSize()
-            .accessibilityLabel(model.caption.spoken(hidden: hidden))
+          VStack(alignment: .leading, spacing: 0) {
+            Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
+              .lineLimit(1).minimumScaleFactor(0.6)
+            caption(model.count > 0 ? "to sort · " : "")
+          }
         }
         if model.count > 0 {
           Text("Start").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textOnAccent)
@@ -217,6 +269,13 @@ public struct ToReviewWidgetView: View {
     .widgetChrome(Hue.sky.perceptualGradient, padding: EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 12),
                   minHeight: HContainer.widgetUnit)
     .accessibilityElement(children: .combine)
+  }
+
+  private func caption(_ lead: String) -> some View {
+    Text(lead + model.caption.rendered(hidden: hidden)).privacySensitive()
+      .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      .singleLineAtDefaultTextSize()
+      .accessibilityLabel(lead + model.caption.spoken(hidden: hidden))
   }
 }
 

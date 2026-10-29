@@ -41,7 +41,7 @@ struct MailboxDisconnectChoiceTests {
       == "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone. It brought in 42 transactions. Keep them, or remove them from your totals. Removing also takes the 3 you changed. To check on Google's side, visit myaccount.google.com/permissions.")
     #expect(MailCopy.disconnectChoiceMessage(.outlook, MailboxDisconnectImpact(transactions: 12, edited: 0))
       == "Hasala stops reading this mailbox and forgets its sign-in. It brought in 12 transactions. Keep them, or remove them from your totals. To remove the permission on Microsoft's side too, visit account.live.com/consent/Manage.")
-    #expect(MailCopy.disconnectChoiceMessage(.outlook, one).contains("It brought in 1 transaction. Keep them") )
+    #expect(MailCopy.disconnectChoiceMessage(.outlook, one).contains("It brought in 1 transaction. Keep it, or remove it from your totals."))
     #expect(MailCopy.disconnectChoiceMessage(.outlook, one).contains("Removing also takes the 1 you changed."))
     #expect(MailCopy.disconnected(.gmail, removed: nil) == "Gmail disconnected. Past transactions stay.")
     #expect(MailCopy.disconnected(.gmail, removed: 42) == "Gmail disconnected. 42 transactions removed.")

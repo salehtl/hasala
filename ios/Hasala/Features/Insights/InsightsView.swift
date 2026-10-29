@@ -52,13 +52,10 @@ struct InsightsView: View {
   }
 
   private func periodRow(_ snap: InsightsSnapshot) -> some View {
-    let layout = typeSize.isAccessibilitySize
-      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-      : AnyLayout(HStackLayout(spacing: 8))
-    return layout {
+    ReflowingRow {
       PeriodPill(snap.title) { model.choosePeriod() }
         .accessibilityIdentifier("insights.period")
-      if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
+    } trailing: {
       status(snap)
     }
   }

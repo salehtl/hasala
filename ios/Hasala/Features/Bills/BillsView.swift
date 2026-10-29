@@ -175,17 +175,21 @@ struct BillsView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) { figure; toPay }
       }
       if let income = snap.income {
-        let line = HStack(alignment: .firstTextBaseline, spacing: 6) {
-          Text(income.label).hType(.subheadline.weight(.semibold))
-          MoneyText(income.amount, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3, color: HColor.moneyIn,
-                    sign: .income)
-          Text(income.expected).hType(.subheadline)
-        }
+        let label = Text(income.label).hType(.subheadline.weight(.semibold))
+        let amount = MoneyText(income.amount, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3,
+                               color: HColor.moneyIn, sign: .income)
+        let expected = Text(income.expected).hType(.subheadline)
         Group {
           if typeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 2) { line }
+            VStack(alignment: .leading, spacing: 2) {
+              ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) { label; amount.fixedSize() }
+                VStack(alignment: .leading, spacing: 2) { label; amount }
+              }
+              expected
+            }
           } else {
-            line
+            HStack(alignment: .firstTextBaseline, spacing: 6) { label; amount; expected }
           }
         }
         .foregroundStyle(HColor.moneyIn)

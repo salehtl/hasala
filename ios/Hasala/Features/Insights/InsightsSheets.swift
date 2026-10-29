@@ -75,7 +75,9 @@ struct InsightsDrillPage: View {
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .principal) {
-        Text(drill.title).hType(.headline).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
+        Text(drill.title).hType(.headline).foregroundStyle(HColor.textPrimary)
+          .lineLimit(1).truncationMode(.middle)
+          .accessibilityAddTraits(.isHeader)
       }
     }
   }

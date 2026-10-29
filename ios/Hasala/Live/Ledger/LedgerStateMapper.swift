@@ -457,7 +457,7 @@ nonisolated enum LedgerStateMapper {
     let newest = st.health.compactMap(\.lastEmailAtMs).max() ?? st.lastSuccessAtMs
     let names = Set(st.health.compactMap { bankName(domain: $0.domain) }).sorted()
     return MailboxHealth(
-      status: status, lastEmail: newest.map { RelativeTime.ago(ms: nowMs - $0) } ?? "", banks: names.joined(separator: " and "),
+      status: status, lastEmail: newest.map { RelativeTime.ago(ms: nowMs - $0, nowMs: nowMs) } ?? "", banks: names.joined(separator: " and "),
       unreadable: st.unreadable)
   }
 

@@ -137,4 +137,54 @@ struct AccountRulesTests {
     #expect(PhraseRules.suggestions(for: "orb") == ["orbit"])
     #expect(PhraseRules.suggestions(for: "a").isEmpty)
   }
+
+  @Test(arguments: ["\u{0661}\u{0662}\u{0663}\u{0664}\u{0665}\u{0666}", "\u{06F1}\u{06F2}\u{06F3}\u{06F4}\u{06F5}\u{06F6}", "123456"])
+  func codeCellsKeepASCIIDigits(_ typed: String) {
+    #expect(CodeCells.digits(typed) == "123456")
+  }
+
+  @Test func codeCellsDropEverythingElse() {
+    #expect(CodeCells.digits("12-34 5a6") == "123456")
+    #expect(CodeCells.digits("1234567890") == "123456")
+    #expect(CodeCells.digits("\u{2167}12") == "12")
+    #expect(CodeCells.digits("") == "")
+  }
+
+  @Test func pastedInviteEmailsKeepTheCode() {
+    let key = String(repeating: "k", count: 43)
+    let mail = String(repeating: "Hello from Hasala, your invite is below. ", count: 10)
+    #expect(InviteCode.entryCharacters(mail + "Your code: ABCD-EFGH-IJKL-MNOP-QRST-UVWX. Thanks") == "ABCDEFGHIJKLMNOPQRSTUVWX")
+    #expect(InviteCode.entryCharacters(mail + "Open https://hasala.app/i/ABCDEFGHIJKLMNOPQRSTUVWX#\(key) on your iPhone")
+      == "ABCDEFGHIJKLMNOPQRSTUVWX")
+    #expect(InviteCode.entryCharacters(mail).count == InviteCode.length + 8)
+    #expect(InviteCode.entryCharacters("abcd efgh ijkl mnop qrst uvwx") == "ABCDEFGHIJKLMNOPQRSTUVWX")
+    #expect(InviteCode.entryCharacters("ABCD1") == "ABCD1")
+    #expect(InviteCode.entryCharacters("this text will help when your code is ABCD-EFGH-IJKL-MNOP-QRST-UVWX")
+      == "ABCDEFGHIJKLMNOPQRSTUVWX")
+    #expect(InviteCode.entryCharacters("this text will help when your code is ABCD EFGH IJKL MNOP QRST UVWX")
+      == "ABCDEFGHIJKLMNOPQRSTUVWX")
+    let e = InviteCodeEntry.edit("", range: NSRange(location: 0, length: 0), replacement: mail)
+    #expect(e.characters.count == InviteCode.length + 8)
+    #expect(e.caret == e.characters.count)
+  }
+
+  @Test func passwordCountsOnlyWhenCharactersAndScalarsAgree() {
+    #expect(PasswordRules.assess("\u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}").message == "Too short. Use 12 characters or more.")
+    #expect(PasswordRules.assess("short pw").message == "Too short. 8 of 12 characters.")
+  }
+
+  @Test func greetingsUseTheWholeName() {
+    let arabic = AccountProfile(displayName: "\u{0639}\u{0628}\u{062F} \u{0627}\u{0644}\u{0631}\u{062D}\u{0645}\u{0646}", email: "a@b.co", method: .passkey)
+    #expect(arabic.greetingName == "\u{0639}\u{0628}\u{062F} \u{0627}\u{0644}\u{0631}\u{062D}\u{0645}\u{0646}")
+    #expect(AccountProfile(displayName: " Dr. Aisha Al-Suwaidi ", email: "a@b.co", method: .password).greetingName
+      == "Dr. Aisha Al-Suwaidi")
+  }
+
+  @Test func signupFieldsSayWhenTheyAreTooLong() {
+    #expect(AccountFields.nameTooLong(String(repeating: "a", count: 65)))
+    #expect(!AccountFields.nameTooLong(String(repeating: "a", count: 64)))
+    #expect(!AccountFields.nameTooLong("   "))
+    #expect(AccountFields.emailTooLong(String(repeating: "a", count: 245) + "@example.c"))
+    #expect(!AccountFields.emailTooLong(String(repeating: "a", count: 244) + "@example.c"))
+  }
 }

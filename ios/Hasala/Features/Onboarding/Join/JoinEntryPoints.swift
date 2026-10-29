@@ -69,7 +69,7 @@ extension AccountReadyView {
   }
 
   init(store: OnboardingStore, signup m: SignupModel) {
-    self.init(profile: m.profile, outlook: store.services.mailbox.connectable.contains(.outlook),
+    self.init(profile: m.profile, signupEmail: m.email, outlook: store.services.mailbox.connectable.contains(.outlook),
               capabilities: m.capabilities) {
       store.session().accountCreated()
     }

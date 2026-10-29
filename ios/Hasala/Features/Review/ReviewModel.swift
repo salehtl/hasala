@@ -80,7 +80,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let start = ReviewEntry.take(for: app)
     let window = app.reviewWindow
     self.window = window
-    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    let queue = ReviewEngine.queue(app.store.state, in: window, order: app.reviewOrder).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: start)
     #if HASALA_MOCKS
@@ -131,7 +131,7 @@ final class ReviewViewModel: ReviewDeckModel {
   private func restart() {
     let top = cards.first?.id
     window = app.reviewWindow
-    let queue = ReviewEngine.queue(app.store.state, in: window).map(\.id)
+    let queue = ReviewEngine.queue(app.store.state, in: window, order: app.reviewOrder).map(\.id)
     total = queue.count
     order = ReviewEngine.order(queue, startingAt: top)
     shown = nil
@@ -158,12 +158,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption] {
     let s = app.store.state
-    let t = s.txn(card)
-    var options = ReviewEngine.options(for: choice, s, txn: t)
-    if let sug = t.flatMap({ ReviewEngine.suggestion($0, s) })?.id, let i = options.firstIndex(where: { $0.id == sug }) {
-      options.insert(options.remove(at: i), at: 0)
-    }
-    return options
+    return ReviewEngine.options(for: choice, s, txn: s.txn(card))
   }
 
   func pick(_ card: TxnID, _ choice: ReviewChoice) {

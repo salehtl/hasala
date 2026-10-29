@@ -51,7 +51,7 @@ struct ExchangeRatesPage: View {
     "AED for 1 unit of each currency. A rate counts that currency's transactions that aren't counted yet, and new ones, as estimates. Transactions already counted keep their rate."
 
   static func notCountedLine(_ n: Int) -> String {
-    n == 1 ? "1 transaction not counted" : "\(n) transactions not counted"
+    n == 1 ? "1 transaction not counted" : "\(MoneyFormat.count(n)) transactions not counted"
   }
 
   private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
