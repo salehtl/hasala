@@ -489,9 +489,10 @@ struct SignInSecurityFlowTests: AccountSuite {
     account.pendingReset = PendingReset(id: "reset-1", askedAgo: "now", email: MockAccountService.existingEmail)
     let request = try #require(await account.pendingResetRequest())
     let m = ResetApprovalModel(account: account, request: request)
-    #expect(ResetApprovalModel.normalize("WM06 C7lD 7TYM 2M5S") == "WMO6C7ID7TYM2M5S")
+    #expect(ResetApprovalModel.normalize("WM06 C71D 7TYM 2M5S") == "WMO6C7ID7TYM2M5S")
+    #expect(ResetApprovalModel.normalize("wmo6 c7ld 7tym 2m5s") == "WMO6C7LD7TYM2M5S")
     #expect(ResetApprovalModel.normalize("a1b8-L0") == "AIBBLO")
-    m.code = "WM06 C7lD 7TYM 2M5S"
+    m.code = "WM06 C71D 7TYM 2M5S"
     #expect(m.codeReady)
     #expect(!m.codeHasStrayCharacters)
     m.code = "WMO6 C7ID 7TYM 2M5?"

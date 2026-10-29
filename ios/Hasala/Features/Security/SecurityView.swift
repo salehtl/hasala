@@ -408,7 +408,7 @@ struct SecurityRow<Trailing: View>: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(alignment: .top, spacing: 12) {
+    HStack(alignment: typeSize.isAccessibilitySize || detail != nil ? .top : .center, spacing: 12) {
       tileView
       if typeSize.isAccessibilitySize {
         VStack(alignment: .leading, spacing: 4) {

@@ -342,22 +342,25 @@ struct LiveAccountServiceTests {
 
   /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
   @Test func theFreezeIsReadFromTheAccount() {
+    let inOct2026: Int64 = 1_792_000_000_000
     func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> LiveAccountFields {
       LiveAccountFields(frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
     }
-    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil)) == nil)
-    #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator")) == FreezeInfo(by: .operator, when: nil))
-    #expect(LiveAccountService.freeze(fields(frozen: true, by: "holder")) == FreezeInfo(by: .holder, when: nil))
+    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil), nowMs: inOct2026) == nil)
+    #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator"), nowMs: inOct2026) == FreezeInfo(by: .operator, when: nil))
+    #expect(LiveAccountService.freeze(fields(frozen: true, by: "holder"), nowMs: inOct2026) == FreezeInfo(by: .holder, when: nil))
     // A restricted session reads as frozen even before `frozen` says so; unknown is the holder's.
-    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil, restricted: true))?.by == .holder)
+    #expect(LiveAccountService.freeze(fields(frozen: false, by: nil, restricted: true), nowMs: inOct2026)?.by == .holder)
     #expect(
-      LiveAccountService.freeze(fields(frozen: true, by: "holder", at: "2026-10-11T17:20:05.123456Z"))?.when
+      LiveAccountService.freeze(fields(frozen: true, by: "holder", at: "2026-10-11T17:20:05.123456Z"), nowMs: inOct2026)?.when
         == "on Sun 11 Oct at 21:20")
-    let inOct2026 = Date(timeIntervalSince1970: 1_792_000_000)
-    #expect(LiveAccountService.freezeTime("2026-10-11T22:30:00Z", now: inOct2026) == "on Mon 12 Oct at 02:30")
-    #expect(LiveAccountService.freezeTime("2025-12-14T04:05:00Z", now: inOct2026) == "on Sun 14 Dec 2025 at 08:05")
-    #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", now: inOct2026) == "on Fri 1 Jan 2027 at 01:00")
-    #expect(LiveAccountService.freezeTime("not a time") == nil)
-    #expect(LiveAccountService.freezeTime(nil) == nil)
+    #expect(LiveAccountService.freezeTime("2026-10-11T22:30:00Z", nowMs: inOct2026) == "on Mon 12 Oct at 02:30")
+    #expect(LiveAccountService.freezeTime("2025-12-14T04:05:00Z", nowMs: inOct2026) == "on Sun 14 Dec 2025 at 08:05")
+    #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: inOct2026) == "on Fri 1 Jan 2027 at 01:00")
+    #expect(LiveAccountService.freezeTime("not a time", nowMs: inOct2026) == nil)
+    #expect(LiveAccountService.freezeTime(nil, nowMs: inOct2026) == nil)
+    let newYearInDubai: Int64 = 1_798_747_200_000
+    #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: newYearInDubai) == "on Fri 1 Jan at 01:00")
+    #expect(LiveAccountService.freezeTime("2026-12-31T19:00:00Z", nowMs: newYearInDubai) == "on Thu 31 Dec 2026 at 23:00")
   }
 }

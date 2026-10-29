@@ -31,8 +31,7 @@ final class ResetApprovalModel {
   var codeHasStrayCharacters: Bool { !InviteCode.isAlphabet(normalizedCode) }
 
   static func normalize(_ raw: String) -> String {
-    let mapped = String(raw.map { $0 == "l" ? "I" : $0 })
-    return String(InviteCode.normalize(mapped).map { c -> Character in
+    String(InviteCode.normalize(raw).map { c -> Character in
       switch c {
       case "0": "O"
       case "1": "I"

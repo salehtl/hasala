@@ -377,7 +377,7 @@ final class LiveAccountService: AccountService {
       displayName: a.display_name ?? binding?.display_name ?? "", email: a.email ?? binding?.email_norm ?? "",
       method: a.has_passkey == true ? .passkey : .password)
     methodConfirmed = a.has_passkey != nil
-    if let freeze = Self.freeze(a) { return .frozen(freeze) }
+    if let freeze = Self.freeze(a, nowMs: env.clock.nowMs()) { return .frozen(freeze) }
     guard a.has_keys == true else { return .needsKeys }
     let wraps = (try? await env.client.keyWraps(bearer: s.token).wraps.count) ?? 0
     return .needsUnlock(passkeyCanUnlock: wraps > 0)
@@ -547,7 +547,7 @@ final class LiveAccountService: AccountService {
     if let a = fetched {
       hasPassword = a.has_password ?? hasPassword
       hasPasskey = a.has_passkey ?? hasPasskey
-      frozen = Self.freeze(a)
+      frozen = Self.freeze(a, nowMs: env.clock.nowMs())
     }
     return SecurityState(
       email: b.email_norm, emailVerified: true,
@@ -562,7 +562,7 @@ final class LiveAccountService: AccountService {
   /// session); the holder's, with no time, when the server can't be asked.
   private func freezeInfo(token: String) async -> FreezeInfo {
     let a = try? await accountFields(token)
-    return a.flatMap(Self.freeze) ?? FreezeInfo(by: .holder, when: nil)
+    return a.flatMap { Self.freeze($0, nowMs: env.clock.nowMs()) } ?? FreezeInfo(by: .holder, when: nil)
   }
 
   /// Who froze the account and when, from `GET /account` (#40, which a frozen account may
@@ -571,29 +571,26 @@ final class LiveAccountService: AccountService {
     guard let token = try? env.secrets.session()?.token,
       let a = try? await accountFields(token)
     else { return nil }
-    return Self.freeze(a)
+    return Self.freeze(a, nowMs: env.clock.nowMs())
   }
 
   /// The freeze `GET /account` reports: `frozen_by` names the operator or the holder, and
   /// `freeze_trigger_at` is shown on the holder's wall.
-  static func freeze(_ a: LiveAccountFields) -> FreezeInfo? {
+  static func freeze(_ a: LiveAccountFields, nowMs: Int64) -> FreezeInfo? {
     guard a.frozen == true || a.restricted == true else { return nil }
-    return FreezeInfo(by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at))
+    return FreezeInfo(
+      by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at, nowMs: nowMs))
   }
 
   /// "on Sun 11 Oct at 21:20", in the app's fixed local clock (UTC+04:00, 03c §1.5).
-  static func freezeTime(_ instant: String?, now: Date = Date()) -> String? {
+  static func freezeTime(_ instant: String?, nowMs: Int64) -> String? {
     guard let instant, let ms = try? parseInstantMs(instant) else { return nil }
-    let zone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60)!
-    let when = Date(timeIntervalSince1970: Double(ms) / 1000)
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = zone
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = zone
-    f.dateFormat = calendar.component(.year, from: when) == calendar.component(.year, from: now)
+    f.timeZone = TimeZone(secondsFromGMT: Int(LocalClock.offsetMinutes) * 60)!
+    f.dateFormat = LocalClock.localDate(ms)?.year == LocalClock.localDate(nowMs)?.year
       ? "EEE d MMM 'at' HH:mm" : "EEE d MMM yyyy 'at' HH:mm"
-    return "on " + f.string(from: when)
+    return "on " + f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
   }
 
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {

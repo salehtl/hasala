@@ -28,6 +28,10 @@ struct LiveAccountFlowTests {
   static let invite = "ABCDEFGHIJKLMNOPQRSTUVWX"
   static let password = "copper lantern quietly 42"
 
+  nonisolated struct InOctober2026: CoreTime.Clock {
+    func nowMs() -> Int64 { 1_792_000_000_000 }
+  }
+
   struct Phone {
     let env: AccountEnvironment
     var binding: AccountBinding? { try? env.secrets.binding() }
@@ -35,7 +39,7 @@ struct LiveAccountFlowTests {
     init(_ server: MiniHasalad, store: MemorySecretStore = MemorySecretStore(), passkeys: (any PasskeyProvider)? = nil) {
       env = AccountEnvironment(
         client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
-        approvalKeys: SoftDAK(), passkeys: passkeys, clock: SystemClock(), random: SystemRandom(),
+        approvalKeys: SoftDAK(), passkeys: passkeys, clock: InOctober2026(), random: SystemRandom(),
         apiBase: "https://api.hasala.app", accountsDirectory: nil)
     }
 
