@@ -22,7 +22,7 @@
         NotificationItem(
           id: "earlier.rent", disc: .hue(.sand, .rent), title: "Rent is due Thu",
           line: MoneyPhrase([.amount(.aed(7_500_00), hidden: 3), .text(" from Emirates NBD. Paid 1 Oct.")]),
-          when: "28 Sep", destination: .bill("rent")),
+          when: NotificationsEngine.when(LocalDate(2026, 9, 28), today: now.date), destination: .bill("rent")),
       ]
     }
   }

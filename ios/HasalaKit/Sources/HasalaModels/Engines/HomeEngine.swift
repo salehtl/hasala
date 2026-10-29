@@ -119,7 +119,7 @@ public enum HomeEngine {
   }
 
   public static func unsorted(_ s: LedgerState, in period: Period) -> Money? {
-    let total = Fils.sum(s.txns.filter { period.contains($0.postedAt.date) }) { t in
+    let total = Fils.sum(ReviewEngine.queue(s).filter { period.contains($0.postedAt.date) }) { t in
       Fils.sum(Spending.parts(t, in: s).filter { $0.category == nil }.map(\.minor))
     }
     return total > 0 ? .aed(total) : nil

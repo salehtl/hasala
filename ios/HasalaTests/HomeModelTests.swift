@@ -79,6 +79,7 @@ struct HomeModelTests {
     #expect(reads.isRead(item("review", "999 transactions to sort", count: 999)))
     #expect(!reads.isRead(item("review", "1,285 transactions to sort", count: 1_285)))
     #expect(reads.isRead(item("bill.axa", "AXA Insurance may be late")))
+    #expect(reads.isRead(item("bill.axa", "\u{2068}AXA Insurance\u{2069} may be late")))
     #expect(!reads.isRead(item("bill.axa", "AXA Insurance is late")))
     #expect(!reads.isRead(item("bill.du", "du may be late")))
   }

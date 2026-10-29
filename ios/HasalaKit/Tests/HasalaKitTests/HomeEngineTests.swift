@@ -195,6 +195,16 @@ struct HomeHeroTests {
       for i in s.txns.indices where s.txns[i].categoryID == nil { s.txns[i].categoryID = "groceries" }
     }
     #expect(hero(sorted).unsorted == nil)
+    let open = Set(ReviewEngine.queue(MayaLedger.state).map(\.id))
+    let skipped = Self.maya { s in s.skippedReview = open }
+    #expect(hero(skipped).unsorted == nil)
+    let gone = Self.maya { s in
+      for i in s.txns.indices where s.txns[i].categoryID == nil {
+        s.txns[i].categoryID = "deleted"
+        s.txns[i].needsReview = false
+      }
+    }
+    #expect(hero(gone).unsorted == nil)
   }
 
   @Test func aSixFigureTileRoundsEveryTile() {

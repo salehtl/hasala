@@ -44,7 +44,7 @@ final class NotificationReads {
   }
 
   private func entry(_ item: NotificationItem) -> (String, Int) {
-    let shape = item.title.replacing(/\d+(,\d{3})*/, with: "#")
+    let shape = item.title.replacing(/[\u{2066}-\u{2069}]/, with: "").replacing(/\d+(,\d{3})*/, with: "#")
     let value = "\(item.id)|\(shape)"
     return (defaults == nil ? value : LocalAccountData.digest(value, salt: salt), item.count)
   }

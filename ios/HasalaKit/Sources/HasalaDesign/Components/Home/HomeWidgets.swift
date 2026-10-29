@@ -209,7 +209,7 @@ public struct BudgetPaceWidgetView: View {
   /// The right of a row that is not done: "770 over", "5,000 to save" or "3,309 left".
   private func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
     if row.verdict == .overBudget { return wholeDirhams(Money(minor: row.left.minor.negated), "over") }
-    if row.bucket == .savings { return row.left.minor < 0 ? wholeDirhams(row.spent, "saved") : wholeDirhams(row.left, "to save") }
+    if row.bucket == .savings { return wholeDirhams(row.left, "to save") }
     return wholeDirhams(row.left, "left")
   }
 
