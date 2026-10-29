@@ -12,7 +12,7 @@
 //   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
 //      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
 //      the trusted set T, a template hit with a usable amount (or a template-free reading that both
-//      readers agree on at 0.8 or more), not forwarded, not in Spam, and a recipient check that is
+//      readers agree on at 0.8 or more, direction included, with no ambiguous direction word), not forwarded, not in Spam, and a recipient check that is
 //      not a mismatch. Anything less is `needs_review: true`.
 import CoreCategorize
 import CoreExtract

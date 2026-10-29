@@ -147,7 +147,7 @@ struct BankTextFilingTests {
     #expect(!added.filed && added.bank == nil && !f.last4.isEmpty)
   }
 
-  @Test("a template hit waits in Review beside a text row with no bank of the same payment; beside a bank's row or another amount it files")
+  @Test("a template hit waits in Review beside a text row with no bank, or a bank's row read another way, of the same payment; beside a row of its template or another amount it files")
   func templateHitBesideBanklessRowWaits() async throws {
     let c = try TextCase.named("dib-purchase-credit-card")
     let k = try #require(BankTextReader.read(c.arrival).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
@@ -158,14 +158,18 @@ struct BankTextFilingTests {
       last4: f.last4, postedMs: posted - 120_000, templateRef: nil, unparsed: false)
     var bankRow = bankless
     bankRow.bank = "dib"
-    bankRow.templateRef = "dib.sms.purchase.v1@1"
+    bankRow.templateRef = k.template?.ref
+    var readerRow = bankRow
+    readerRow.templateRef = "none"
+    var otherTemplate = bankRow
+    otherTemplate.templateRef = "dib.sms.other.v1@1"
     var other = bankless
     other.amountMinor += 1
-    for (row, files) in [(bankless, false), (bankRow, true), (other, true)] {
+    for (row, files) in [(bankless, false), (readerRow, false), (otherTemplate, false), (bankRow, true), (other, true)] {
       let ledger = FakeTextLedger()
       await ledger.setRows([row])
       let added = try #require(await BankTextAuthor(ledger: ledger).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
-      #expect(added.filed == files && added.bank == "dib", "\(row.bank ?? "none") \(row.amountMinor)")
+      #expect(added.filed == files && added.bank == "dib", "\(row.bank ?? "none") \(row.templateRef ?? "nil") \(row.amountMinor)")
     }
   }
 

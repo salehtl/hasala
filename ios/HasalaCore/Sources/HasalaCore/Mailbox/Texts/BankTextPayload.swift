@@ -98,6 +98,10 @@ enum BankTextPayload {
       && abs(o.postedMs - row.postedMs) <= DuplicateRules.probableCopyWindowMs
   }
 
+  static func readDifferently(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
+    (row.readerOnly ? nil : row.templateRef) != (o.readerOnly ? nil : o.templateRef)
+  }
+
   static func gates(_ k: BankTextKept) -> JSONValue {
     .object(
       JSONObject([

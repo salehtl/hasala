@@ -165,7 +165,9 @@ public actor BankTextAuthor {
     let read: [BankTextRow]?
     if let nearby { read = nearby } else { read = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w) }
     guard let texts = read else { return true }
-    return texts.contains { (bankless || ($0.bank ?? "").isEmpty) && BankTextPayload.samePayment(row, $0) }
+    return texts.contains {
+      (bankless || ($0.bank ?? "").isEmpty || BankTextPayload.readDifferently(row, $0)) && BankTextPayload.samePayment(row, $0)
+    }
   }
 
   static func refusal(_ e: MailboxLedgerError) -> Bool {

@@ -57,7 +57,9 @@ because they are strong and cost nothing.
      A text with no bank, which the fold cannot hold, also waits in Review when it repeats
      a text row of the last 10 minutes (same amount, currency and direction, and the same
      card when both show one). A text with
-     a bank waits in Review the same way beside a text row with no bank. A text that a live mail row of the last 24
+     a bank waits in Review the same way beside a text row with no bank, and beside a row of
+     its bank that another template or the readers read (the fold's key needs the same
+     merchant, which two readings may not share). A text that a live mail row of the last 24
      hours may already hold (the D10 twin rule, read from the text's side) waits in Review
      too, so a payment that came in both ways around a switch from email to texts does not
      file twice.
