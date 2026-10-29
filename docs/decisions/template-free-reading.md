@@ -116,7 +116,8 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    a template read it, or the rule reader and the learned reader **each** have
    confidence 0.8 or more on their own and agree on amount, currency **and** direction
    (a direction that either reader only guessed does not count as agreement, nor does a
-   debit that rests only on "transfer", "transferred", "sent" or "تحويل"). The
+   debit that rests only on "transfer", "transferred", "sent" or "تحويل", nor a move that names
+   money into one of your accounts and out of another). The
    combined confidence that `CombinedReader` reports is not the filing gate. The learned
    reader stays below 0.8 until it has seen a layout three times, so the first mail of an
    unlearned layout never files on its own. Otherwise the row goes to Review, prefilled

@@ -182,8 +182,10 @@ enum LearnedReader {
     guard intoVerbs.contains(toks[idx].key) else { return false }
     let words = toks[(idx + 1)...].lazy.filter { $0.cls == .word }.prefix(5).map(\.key)
     let w = Array(words)
-    guard w.count >= 3, ["to", "into", "in"].contains(w[0]), w[1] == "your" || w[1] == "ur" else { return false }
-    return w[2...].contains(where: ownAccountWords.contains)
+    guard w.count >= 3, ["to", "into", "in"].contains(w[0]), w[1] == "your" || w[1] == "ur",
+      let k = w[2...].firstIndex(where: ownAccountWords.contains)
+    else { return false }
+    return !w[2..<k].contains { $0.hasPrefix("beneficiar") || $0 == "payee" }
   }
 
   static func excluded(_ toks: [IToken], amountAt idx: Int) -> Bool {

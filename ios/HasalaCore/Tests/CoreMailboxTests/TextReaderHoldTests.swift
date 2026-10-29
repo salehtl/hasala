@@ -106,6 +106,29 @@ struct TextReaderHoldTests {
     #expect(s.allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields?.direction == "debit" })
   }
 
+  @Test("a move between two of your own accounts never files through reader agreement")
+  func ownAccountMoveHolds() throws {
+    let wordings = [
+      { (n: Int) in "AED \(Self.amount(n)) has been credited to your loan account XXX2222 from your account XXX1111 on 05-06-2026." },
+      { (n: Int) in "AED \(Self.amount(n)) has been transferred to your savings account XXX2222 from your current account XXX1111." },
+    ]
+    for w in wordings {
+      let s = Self.stream(w)
+      #expect(s.contains { $0.1.directionAmbiguous }, "\(w(0))")
+      for (r, reading) in s {
+        #expect(!reading.meetsFilingBar, "\(w(0))")
+        #expect(r.kept != nil && !Self.files(r), "\(w(0))")
+      }
+    }
+  }
+
+  @Test("money transferred to your beneficiary's account is no credit")
+  func beneficiaryAccountIsNoCredit() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) has been transferred to your beneficiary account XXX2222 on 05-06-2026." }
+    #expect(s.allSatisfy { $0.0.kept?.fields.map { $0.direction == "debit" } ?? true && $0.1.direction != .credit })
+    #expect(s.allSatisfy { !Self.files($0.0) })
+  }
+
   @Test("standing instructions, uncleared deposits and investment account moves never file through reader agreement")
   func notSettledHolds() throws {
     let wordings = [

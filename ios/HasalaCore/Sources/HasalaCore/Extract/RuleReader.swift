@@ -273,7 +273,8 @@ enum RuleReader {
     let dir = c > d ? "credit" : "debit"
     let strong = dir == "credit" ? (cc > 0 && cd == 0) : (cd > 0 && cc == 0)
     let ownAccount = parts.contains { RuleText.has(RuleLexicon.fromOwnAccount, $0.0) }
-    let ambiguous = dir == "debit" && d > 0 && plainDebit == 0 && !ownAccount
+    let intoOwn = [clause, subject, body].contains { RuleText.has(RuleLexicon.intoOwnAccount, $0) }
+    let ambiguous = (intoOwn && ownAccount) || (dir == "debit" && d > 0 && plainDebit == 0 && !ownAccount)
     return DirectionReading(direction: dir, strong: strong, margin: abs(c - d), ambiguous: ambiguous)
   }
 
