@@ -44,7 +44,7 @@ struct ProfileSheet: View {
     NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
+          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, address: snap.email, status: snap.emailStatus)
           if let texts = app.bankTexts, texts.usesTexts {
             TimelineView(.periodic(from: .now, by: 60)) { context in
               BankAlertsCard(summary: .texts(texts.status, now: context.date)) { push(.bankAlerts) }
@@ -327,6 +327,8 @@ private struct ProfilePage: View {
       CategoryDetailView(app: app, category: id)
     case .rules:
       RulesPage(app: app, model: model)
+    case .categories:
+      RulesPage(app: app, model: model, startOn: .categories)
     case .categoryEditor(let id):
       CategoryEditorPage(app: app, category: id)
     case .categoryMove(let id):

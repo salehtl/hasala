@@ -11,7 +11,13 @@ struct RulesPage: View {
 
   @Bindable var app: AppModel
   let model: any ProfileModel
-  @State private var segment: Segment = .rules
+  @State private var segment: Segment
+
+  init(app: AppModel, model: any ProfileModel, startOn segment: Segment = .rules) {
+    self.app = app
+    self.model = model
+    _segment = State(initialValue: segment)
+  }
 
   private var unfinished: Bool { BuildSurface.showsUnfinished }
 
@@ -55,32 +61,32 @@ struct RulesPage: View {
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 4)
-      VStack(alignment: .leading, spacing: 8) {
-        OverlineHeader("Most used")
-        HListCard {
-          ForEach(Array(model.rules.enumerated()), id: \.element.id) { index, rule in
-            if index > 0 { HDivider(inset: .disc68) }
-            RuleRow(rule: rule, enabled: Binding(get: { rule.enabled }, set: { model.setRule(rule.id, enabled: $0) }))
-          }
-          if unfinished {
-            HDivider(inset: .text16)
-            // TODO(spec 04 §16.2 P6): every rule, with its detail.
-            Button { app.say("Every rule comes in a later build", icon: .rule) } label: {
-              HStack(spacing: 8) {
-                Text("See all \(model.rules.count) rules").hType(.callout.weight(.medium))
-                  .foregroundStyle(HColor.listRowTitle)
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
-              }
-              .padding(.horizontal, HSpacing.listRowInsetInline)
-              .frame(minHeight: HSpacing.listRowMinHeight)
-              .contentShape(Rectangle())
-            }
-            .buttonStyle(HRowPressStyle())
-            .accessibilityIdentifier("rules.seeAll")
+      let rules = model.rules
+      if rules.isEmpty {
+        EmptyNote(systemImage: "list.bullet", message: "No rules yet. Turn on Always use it when you sort.")
+          .accessibilityIdentifier("rules.empty")
+      } else {
+        VStack(alignment: .leading, spacing: 8) {
+          OverlineHeader("Most used")
+          if rules.count > Self.lazyFrom {
+            LazyVStack(spacing: 0) { ruleRows(rules) }
+              .frame(maxWidth: .infinity)
+              .background(HColor.listRowSurface)
+              .clipShape(RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+          } else {
+            HListCard { ruleRows(rules) }
           }
         }
       }
+    }
+  }
+
+  private static let lazyFrom = 40
+
+  private func ruleRows(_ rules: [RuleRowModel]) -> some View {
+    ForEach(Array(rules.enumerated()), id: \.element.id) { index, rule in
+      if index > 0 { HDivider(inset: .disc68) }
+      RuleRow(rule: rule, enabled: Binding(get: { rule.enabled }, set: { model.setRule(rule.id, enabled: $0) }))
     }
   }
 }
@@ -93,6 +99,9 @@ private struct RuleRow: View {
   let rule: RuleRowModel
   @Binding var enabled: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
+  @ScaledMetric(relativeTo: HType.rowTitle.textStyle) private var titleSize = HType.rowTitle.size
+  @Environment(\.legibilityWeight) private var legibilityWeight
+  @State private var width = CGFloat.infinity
 
   var body: some View {
     Toggle(isOn: $enabled) {
@@ -105,6 +114,7 @@ private struct RuleRow: View {
           title
           MatchLine(rule: rule)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
       }
     }
     .tint(HColor.controlSwitchTrackOn)
@@ -116,7 +126,8 @@ private struct RuleRow: View {
   }
 
   @ViewBuilder private var title: some View {
-    let pattern = Text(rule.pattern).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+    let pattern = Text(patternLine).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+      .lineLimit(2)
     if rule.learnedToday {
       let chip = StatusPillView(StatusPill("Learned today", tone: .accent, showsDot: false), size: .s22,
                                 surface: .tinted)
@@ -134,6 +145,25 @@ private struct RuleRow: View {
     } else {
       pattern
     }
+  }
+
+  private var patternLine: String {
+    let count = rule.patterns.count
+    guard count > 1, width.isFinite, width > 0 else { return rule.pattern }
+    let type = HType.rowTitle
+    let weight = legibilityWeight == .bold ? type.weight.bolder : type.weight
+    let font = UIFont(name: weight.interFace, size: titleSize) ?? .systemFont(ofSize: titleSize)
+    let attributes: [NSAttributedString.Key: Any] = [.font: font, .kern: type.resolvedTracking * titleSize / type.size]
+    let bounds = CGSize(width: width, height: .greatestFiniteMagnitude)
+    func height(_ s: String) -> CGFloat {
+      (s as NSString).boundingRect(with: bounds, options: .usesLineFragmentOrigin, attributes: attributes, context: nil)
+        .height.rounded(.up)
+    }
+    let limit = height("A\nA")
+    for shown in stride(from: count, to: 1, by: -1) where height(rule.patternLine(showing: shown)) <= limit {
+      return rule.patternLine(showing: shown)
+    }
+    return rule.patternLine(showing: 1)
   }
 
   /// "carrefour, learned today, Contains · Groceries · 41 matches": the quotes are drawn,
