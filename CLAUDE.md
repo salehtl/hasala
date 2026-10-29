@@ -706,7 +706,8 @@ the approval of the owner for that deployment.
   on the phone will read it, with promo lines removed. Every mail of a sender, template
   hits included, trains its layouts, and they persist on the phone. A row will file with
   no review only with today's trust gates and a template hit or the two readers'
-  agreement on amount and currency (each reader's confidence 0.8 or more); otherwise
+  agreement on amount, currency and direction (each reader's confidence 0.8 or more,
+  and no direction that rests only on transfer or sent words); otherwise
   Review is prefilled. Pending transfer notices are to be disregarded. When a mail shows
   AED and a foreign amount, the AED amount is to count. The app is to merge DIB's
   transfer notice and debit alert for one movement without the person; today it still
