@@ -159,6 +159,10 @@ public struct BillDraft: Sendable, Hashable {
 
   public static let maxNameLength = 80
 
+  public static func fittedName(_ name: String) -> String {
+    String(name.trimmedSpaces.prefix(maxNameLength)).trimmedSpaces
+  }
+
   public var trimmedName: String { name.trimmedSpaces }
 
   public var refusal: ActionError? {

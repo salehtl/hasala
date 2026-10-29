@@ -106,6 +106,17 @@ struct BillsProfileEngineParityTests {
     #expect(a.hasBalances)
   }
 
+  @Test func platesKeepShortCapsWordsAndTakeWordInitials() {
+    var state = s
+    let names = ["RAKBANK", "First Abu Dhabi Bank", "Bank of the Arab Emirates", "FAB", "Emirates NBD Visa Infinite",
+                 "wio", "مصرف الشارقة الإسلامي", "HSBC card"]
+    state.accounts = names.enumerated().map { i, name in
+      Account(id: "a\(i)", name: name, shortName: name, kind: .current, balance: .aed(1), detail: "")
+    }
+    let plates = AccountsEngine.snapshot(state, now: now).everyday.map(\.plate)
+    #expect(plates == ["R", "FADB", "BAE", "FAB", "ENBD", "W", "م", "HSBC"].map { .initials($0) })
+  }
+
   /// Live has no net worth history yet: no chart, no change line; no check-in, no balances.
   @Test func accountsWithoutHistoryDrawNoChart() {
     var live = s
