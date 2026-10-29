@@ -11,6 +11,9 @@ struct BootWallView: View {
   let boot: BootController
   let wall: BootController.Wall
   @State private var confirmingErase = false
+  @Environment(\.openURL) private var openURL
+
+  static let testFlightURL = URL(string: "itms-beta://")!
 
   var body: some View {
     NavigationStack {
@@ -19,8 +22,16 @@ struct BootWallView: View {
           NoteRow(icon: .phone, text: note)
         }
       } footer: {
+        if wall == .updateRequired {
+          BusyButton(title: "Open TestFlight", busy: false, identifier: "wall.testFlight") {
+            openURL(Self.testFlightURL)
+          }
+        }
         if offersTryAgain {
-          BusyButton(title: "Try again", busy: false, identifier: "wall.tryAgain") { boot.tryAgain() }
+          BusyButton(
+            title: "Try again", busy: false, kind: wall == .updateRequired ? .onGrouped : .primary,
+            identifier: "wall.tryAgain"
+          ) { boot.tryAgain() }
         }
         if offersErase {
           BusyButton(

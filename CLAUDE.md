@@ -385,6 +385,14 @@ CI for iOS:
 console of spec 07. It is minimal: waitlist approval, invites and the email
 log.
 
+`HASALA_MIN_IOS_BUILD` (Nix: `services.hasala.minIosBuild`) is the oldest iOS
+build that hasalad serves: the `CFBundleVersion` with the dot removed
+(`261029.11530` is `26102911530`). `0` serves every build. `/meta` reports it,
+and the app shows the "Update Hasala" wall at launch. Every other route answers
+`426 upgrade_required` to an older `Hasala-Client` build, so an open app and
+sign-in stop too. Raise it when a server change breaks older builds. Local builds
+have build `1`, so a raised minimum also stops them against QA.
+
 The configuration is in `HASALA_*` environment variables. These have
 priority over an optional TOML file (`server/config.example.toml`).
 

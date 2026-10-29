@@ -160,6 +160,7 @@ let
     HASALA_RP_DISPLAY_NAME = "Hasala";
     HASALA_HEADROOM_PATH = "/var/lib/hasala";
     HASALA_HEADROOM_FLOOR_BYTES = toString cfg.headroomFloorBytes;
+    HASALA_MIN_IOS_BUILD = toString cfg.minIosBuild;
     HASALA_HEADROOM_INTERVAL = "30s";
     HASALA_PASSWORD_HASH_CONCURRENCY = toString cfg.passwordHashConcurrency;
     HASALA_PURGE_LEDGER_PATH = "${ledgerDir}/purged";
@@ -815,6 +816,12 @@ in
       type = types.ints.positive;
       default = 17179869184;
       description = "Free bytes below which the server refuses durable writes.";
+    };
+    minIosBuild = mkOption {
+      type = types.ints.unsigned;
+      default = 0;
+      example = 26102911530;
+      description = "Oldest iOS CFBundleVersion, dots removed, that the server serves; older builds get 426 and the app asks for an update. 0 serves every build.";
     };
     extraEnvironment = mkOption {
       type = types.attrsOf types.str;
