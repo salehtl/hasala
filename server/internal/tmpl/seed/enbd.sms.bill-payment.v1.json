@@ -1,0 +1,55 @@
+{
+  "id": "enbd.sms.bill-payment.v1",
+  "version": 1,
+  "bank": "enbd",
+  "channel": "sms",
+  "normalizer_version": 1,
+  "match": {
+    "sms_sender": [
+      "EmiratesNBD",
+      "ENBD"
+    ],
+    "body_contains": [
+      "Bill Pymt for ",
+      " has been made using Credit Card "
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "received",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "patterns": [
+        " of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been made using Credit Card "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "text",
+      "source": "body",
+      "patterns": [
+        "^Bill Pymt for (?P<v>[^\\n]+?) of [A-Z]{3} [0-9]"
+      ]
+    },
+    {
+      "field": "last4",
+      "type": "last4",
+      "source": "body",
+      "patterns": [
+        " has been made using Credit Card [X*]{0,12}(?P<v>[0-9]{4})"
+      ]
+    },
+    {
+      "field": "direction",
+      "type": "const",
+      "source": "body",
+      "value": "debit"
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}

@@ -22,7 +22,7 @@ struct SMSCorpusTests {
   func syntheticTextsHaveOneReader() throws {
     let texts = BundledTemplates.load(channel: .sms).templates
     let ids = texts.map(\.definition.id)
-    #expect(ids.count == SMSCorpus.families.count - 1)
+    #expect(texts.filter { $0.definition.bank == "dib" }.count == SMSCorpus.families.count - 1)
     #expect(ids == ids.sorted())
     let files = TemplateFixtures.synthetic().filter(TemplateFixtures.inSMSDir)
     #expect(files.count >= ids.count)
@@ -53,7 +53,7 @@ struct SMSCorpusTests {
     let dir = try #require(SMSCorpus.dir)
     #expect(TemplateFixtures.jsonNames(dir) == SMSCorpus.families.map(SMSCorpus.fileName).sorted())
     let texts = BundledTemplates.load(channel: .sms).templates
-    #expect(texts.count == SMSCorpus.families.count - 1)
+    #expect(texts.filter { $0.definition.bank == "dib" }.count == SMSCorpus.families.count - 1)
     #expect(texts.map(\.definition.id) == texts.map(\.definition.id).sorted())
     var total = 0
     var matched = 0

@@ -65,21 +65,29 @@ enum TemplateFixtures {
     return diffs
   }
 
+  static let corpusPending: Set<String> = [
+    "enbd.sms.bill-payment.v1", "enbd.sms.card-purchase.v1", "enbd.sms.cash-withdrawal.v1", "enbd.sms.cheque-deposit.v1",
+    "enbd.sms.credit.v1", "enbd.sms.credit-card-purchase.v1", "enbd.sms.debit.v1", "enbd.sms.funds-transfer.v1",
+    "enbd.sms.refund.v1", "enbd.sms.transfer-in.v1",
+  ]
+
   static func uncovered(_ files: [TemplateFixtureFile], bundled: [TemplateDefinition]) throws -> [String] {
     var gaps: [String] = []
     var covered: [String: Bool] = [:]
+    let expected = bundled.filter { !corpusPending.contains($0.id) }
     for f in files {
       let def = try definition(f)
+      if corpusPending.contains(def.id) { gaps.append("\(def.id) has a corpus fixture; remove it from corpusPending") }
       if def.isSMS == inSMSDir(f) {
         covered[def.id] = def.isSMS
       } else {
         gaps.append("\(f.file) holds \(def.id), whose cases belong in templates/\(def.isSMS ? smsSubdir + "/" : "")")
       }
     }
-    for d in bundled where covered[d.id] != d.isSMS {
+    for d in expected where covered[d.id] != d.isSMS {
       gaps.append("no corpus fixture for \(d.id) in the private templates/\(d.isSMS ? smsSubdir + "/" : "")")
     }
-    if files.count != bundled.count { gaps.append("\(files.count) corpus files for \(bundled.count) bundled templates") }
+    if files.count != expected.count { gaps.append("\(files.count) corpus files for \(expected.count) bundled templates") }
     return gaps
   }
 

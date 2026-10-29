@@ -332,8 +332,14 @@ func loadSMSTemplates(t *testing.T) smsTemplates {
 		s.defs = append(s.defs, d)
 		s.compiled = append(s.compiled, c)
 	}
-	if len(s.defs) != len(smsFamilies)-1 {
-		t.Fatalf("%d sms seeds, want one per family %v", len(s.defs), smsFamilies[:len(smsFamilies)-1])
+	dib := 0
+	for _, d := range s.defs {
+		if d.Bank == "dib" {
+			dib++
+		}
+	}
+	if dib != len(smsFamilies)-1 {
+		t.Fatalf("%d DIB sms seeds, want one per family %v", dib, smsFamilies[:len(smsFamilies)-1])
 	}
 	for _, fam := range smsFamilies[:len(smsFamilies)-1] {
 		if s.byID(smsTemplateID(fam)) == nil {

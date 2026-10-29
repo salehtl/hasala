@@ -129,7 +129,7 @@ extension BankTextsConnecting {
 }
 
 enum BankTexts {
-  static let readAutomatically: Set<SupportedBank> = [.dib]
+  static let readAutomatically: Set<SupportedBank> = [.dib, .enbd]
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
@@ -232,7 +232,7 @@ enum BankTexts {
   static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
   static let banksLine =
-    "Hasala reads DIB texts for you, though some still wait in Review. Texts from your other banks wait in Review until Hasala learns their wording."
+    "Hasala reads DIB and ENBD texts for you, though some still wait in Review. Texts from your other banks wait in Review until Hasala learns their wording."
 
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1

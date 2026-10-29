@@ -413,8 +413,10 @@ Nothing is sent off the phone to read a text. A merchant name read from a text c
 Clef only under the Cloud suggestions opt-in (`cloud-suggestions.md`), and with the same
 limit as mail: only a row read by a card-purchase template whose ID is in
 `ModelSuggestionSweep.cloudTemplates`. For texts, only the SMS card-purchase templates (for
-DIB, `dib.sms.purchase.v1`) may join that list. The DIB SMS templates
-for transfers, salary, credits, refunds, reversals and card payments never do, because the
+DIB, `dib.sms.purchase.v1`; for ENBD, `enbd.sms.card-purchase.v1` and
+`enbd.sms.credit-card-purchase.v1`) may join that list. The DIB and ENBD SMS templates
+for transfers, salary, credits, debits, refunds, reversals, bill payments, cash withdrawals,
+cheque deposits and card payments never do, because the
 merchant of a transfer or a salary can be a person's name. The list stays fail-closed: a
 text row from the readers, or with `tier: none`, has no template in the list and is never
 sent. The text itself, its sender and its other fields never leave the
@@ -427,23 +429,56 @@ queued rows count: a text row that is not in the queue (already categorized, a c
 with a last pick) does not hold back its subject, so a queued mail row with that subject can
 still be asked of Apple's model. Nothing leaves the device, and the text row is not changed.
 
-**Templates tonight: DIB only.** DIB has SMS templates for each payment family in the
+**Templates: DIB, then ENBD.** DIB has SMS templates for each payment family in the
 owner's DIB export (purchases, debits, credits, salary, refunds, reversals, own transfers
 and card payments), in the wordings that export holds: Arabic, and English for reversals.
 There is no English template for the other families, because the export has no real
 English wording to copy, and a template written from a guess could file wrong rows under
 D1. A DIB text in a wording that no template reads, such as an English purchase text, goes
-to Review, prefilled when a reader reads it. Texts from other banks go to Review the same
-way. Real
+to the template-free readers: it files when they agree (see
+[Filing with no review](#filing-with-no-review)), else it waits in Review, prefilled when a
+reader reads it. Texts from banks other than DIB and ENBD are read the same way. Real
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only. On the
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. Until the open check on the sender is answered, the app
-says of DIB "Hasala reads them; some wait in Review" and "Hasala reads DIB texts for you,
-though some still wait in Review", and of other banks "Hasala learns their wording; the first wait in Review" and
-"Texts from your other banks wait in Review until Hasala learns their wording". A text that
-looks like a payment, from any sender, is added when Hasala can read it, else it waits in
-Review.
+says of DIB and ENBD "Hasala reads them; some wait in Review" and "Hasala reads DIB and ENBD
+texts for you, though some still wait in Review", and of other banks "Hasala learns their
+wording; the first wait in Review" and "Texts from your other banks wait in Review until
+Hasala learns their wording". A text that looks like a payment, from any sender, is added
+when Hasala can read it, else it waits in Review.
+
+**ENBD (2026-10-29).** ENBD (`EmiratesNBD`, `ENBD`) has SMS templates for the English
+payment wordings in the owner's ENBD export: debit card purchases
+(`enbd.sms.card-purchase.v1`), credit card purchases (`enbd.sms.credit-card-purchase.v1`),
+credit card bill payments, cash withdrawals, account debits (telegraphic, online and mobile
+transfers, transfer charges and branch withdrawals), account credits, transfers in, debit
+card funds transfers, card refunds and cheque deposits. A move to or from the person's own
+brokerage or between their own accounts (`MOBILE TRF`, `MOBILE WTH GL EQ`, a transfer in, a
+card funds transfer) is a transfer; a telegraphic or online transfer to a beneficiary is not.
+The ENBD templates have no transfer role: the export has no notice and alert pair for one
+movement. The real texts are not in either repository yet, so the private corpus check lists
+these templates as pending (`corpusPending` in Go's `internal/tmpl/seed` and in Swift's
+`TemplateFixtures`); the synthetic cases are in `conformance/templates/sms/` and
+`conformance/sms-extract/`. On the owner's export (aggregate counts only), the templates
+read every payment text but one with no misread amount, currency, direction or card, and
+read no text that is not a payment. The one left is a credit card purchase whose amount has
+no decimals, which the amount type refuses; it goes to the template-free readers, and
+files only when they agree (see [Filing with no review](#filing-with-no-review)), else it
+waits in Review, prefilled.
+An account credit or debit with no description that the templates name reads the constant
+`ENBD ACCOUNT CREDIT` or `ENBD ACCOUNT DEBIT`, so no ENBD template row has an empty merchant.
+Instalment offers, beneficiary notices, standing instructions and brokerage notices are
+not payments, and no template reads them. ENBD's non-payment wordings in the export that
+still have a payment shape (instalment offers, a card transaction that "could not be
+completed", brokerage withdrawal notices, standing instruction set-ups, Apple Pay and
+account notices, and deposit machine notices) are whole-body wordings in `ENBDTexts`, beside
+`DIBTexts`, so the reading drops them as a decline, a notice or a promotion and they never
+reach Review. With them, every text in the owner's export that is not a payment is dropped.
+"could not be completed" is also a declined marker. The account debit, account credit and transfer in
+wordings are plain English that another bank may also send. The templates do not check
+the sender (the Shortcuts automation passes none), so a text from another bank in the same
+wording is read by an ENBD template and carries `bank: enbd`.
 
 ### Filing with no review
 
@@ -891,7 +926,7 @@ need:
 | D1 | Can a text file with no review? | **Decided (amended 2026-10-29, [filing-without-cards.md](filing-without-cards.md)):** yes, when the automation handed it, the account has no mailbox link, and an SMS template read it or the two template-free readers agree on its amount, currency and direction, each at 0.8 or more, with nothing else holding it (see [Filing with no review](#filing-with-no-review)). There is no sender check and no card check: a sender name can be faked, and a faked text costs one archive. A pasted text always goes to Review, because the person chose the text, not the bank. Apple's on-device model does not read texts in v1. |
 | D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
-| D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. |
+| D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. **Amended (2026-10-29):** ENBD follows, from the owner's ENBD export, with its private corpus pending (see [Reading happens inside Hasala, on the phone](#reading-happens-inside-hasala-on-the-phone)). |
 | D5 | Before or after the template-free readers ship in the app? | **Decided:** with them. Texts use templates first and the readers for Review. |
 | D6 | What happens to a text before the first unlock after a restart? | **Decided:** no text and no field of it is stored, and there is no locked-phone inbox. The action still runs steps 1 to 4 of the reading order (the drop patterns, the templates and the payment shape), which need only bundled data. Only for a text that would be kept and that may be a bank's (a template hit, or a payment shape from a bank sender or with no sender), it writes a content-free marker (a count and the arrival minute of the latest) to a file with no data protection. Every text that the reading keeps then fails with "Hasala can't save bank texts until you unlock your iPhone. Paste this text later.", a payment-shaped text from a person's number too (it adds no marker, but the failure lets the person paste it), so that no payment is lost without a sign. A text that the reading order drops leaves no marker and succeeds silently. When the app next becomes active after the unlock, it reads the mailbox link copy. When it says not linked or unknown, the app shows a system alert, "Bank texts while locked", with "N texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages." and the buttons **Paste a text** (Review's paste sheet) and **OK**; the marker is removed when the alert is answered. (Paper's C5 Home pill shows the cut inbox design.) When the copy says linked, the app shows no notice, adds N to the ignored count of the day of the marker's latest arrival minute (see [One source for each person](#one-source-for-each-person)), so an email account is never told to paste, and removes the marker. When the app opens signed out, it removes the marker and keeps the device facts (an expired session is not a sign-out by the person). Signed out, the action stores nothing: a kept text fails with "Sign in to Hasala to add bank texts." and a dropped text succeeds silently. An install whose fresh-install check has not completed counts as signed out; a Keychain that is locked before the first unlock counts as locked. When the account cannot open for a kept text, the action fails with "Hasala couldn't add this text. Open Hasala, then paste the text from Messages." The privacy policy and the support page use the same words: the marker counts texts that look like payments, which, with no sender, can include a person's text. This replaces the earlier proposal to keep raw text in an inbox until the next unlock. |
 | D7 | Build the Wallet transaction trigger (Apple Pay) too? | **Decided:** not in v1. |

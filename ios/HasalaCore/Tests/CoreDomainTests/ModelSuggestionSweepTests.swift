@@ -313,12 +313,17 @@ struct ModelSuggestionSweepTests {
         id: "x", merchantRaw: "SHOP", direction: .debit, category: nil, sourceKind: .none, sourceRef: nil, needsReview: true, candidate: true,
         version: 1, template: t)
     }
-    for t in ["adib.alert.v1@1", "dib.card.v1@3", "dib.sms.purchase.v1@1", "enbd.alert.v1@2", "enbd.alert.v1"] {
+    for t in [
+      "adib.alert.v1@1", "dib.card.v1@3", "dib.sms.purchase.v1@1", "enbd.alert.v1@2", "enbd.alert.v1", "enbd.sms.card-purchase.v1@1",
+      "enbd.sms.credit-card-purchase.v1@1",
+    ] {
       #expect(ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)")
     }
     for t in [
       "dib.sms.own-transfer.v1@1", "dib.sms.salary.v1@1", "dib.sms.credit.v1@1", "dib.sms.refund.v1@1", "dib.sms.reversal.v1@1",
-      "dib.sms.card-payment.v1@1", "dib.sms.debit.v1@1",
+      "dib.sms.card-payment.v1@1", "dib.sms.debit.v1@1", "enbd.sms.bill-payment.v1@1", "enbd.sms.cash-withdrawal.v1@1",
+      "enbd.sms.cheque-deposit.v1@1", "enbd.sms.credit.v1@1", "enbd.sms.debit.v1@1", "enbd.sms.funds-transfer.v1@1",
+      "enbd.sms.refund.v1@1", "enbd.sms.transfer-in.v1@1",
     ] {
       #expect(!ModelSuggestionSweep.mayLeaveDevice(row(t)), "\(t)")
     }

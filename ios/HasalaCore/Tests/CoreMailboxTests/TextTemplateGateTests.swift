@@ -20,6 +20,13 @@ struct TextTemplateGateTests {
     #expect(matching.allSatisfy { !$0.definition.isSMS })
   }
 
+  @Test("an ENBD refund text is a refund, as DIB's are")
+  func enbdRefundIsARefund() {
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.refund.v1@1", direction: "credit")?.category == "refunds")
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.refund.v1@1", direction: "debit") == nil)
+    #expect(MessageDisposer.refundDecision(template: "enbd.sms.credit.v1@1", direction: "credit") == nil)
+  }
+
   @Test("every template the app names by id is a bundled template")
   func namedTemplatesAreBundled() {
     let bundled = Set((BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition.id))
@@ -35,7 +42,7 @@ struct TextTemplateGateTests {
   @Test("mail halts templates_unavailable when no mail template loads, even when every text template does")
   func onlyTextTemplatesHaltTheMailbox() async throws {
     let textIDs = Set(BundledTemplates.load(channel: .sms).templates.map(\.definition.id))
-    #expect(textIDs.count == 8)
+    #expect(textIDs.count == 18)
     let entries = TemplatesManifest.entries.map { e in
       textIDs.contains(e.id)
         ? e : TemplatesManifest.Entry(file: e.file, id: e.id, version: e.version, sha256: String(repeating: "0", count: 64))
