@@ -14,6 +14,7 @@ struct BootWallView: View {
   @Environment(\.openURL) private var openURL
 
   static let testFlightURL = URL(string: "itms-beta://")!
+  static let testFlightWebURL = URL(string: "https://testflight.apple.com")!
 
   var body: some View {
     NavigationStack {
@@ -24,7 +25,9 @@ struct BootWallView: View {
       } footer: {
         if wall == .updateRequired {
           BusyButton(title: "Open TestFlight", busy: false, identifier: "wall.testFlight") {
-            openURL(Self.testFlightURL)
+            openURL(Self.testFlightURL) { opened in
+              if !opened { openURL(Self.testFlightWebURL) }
+            }
           }
         }
         if offersTryAgain {

@@ -25,11 +25,15 @@ func clientGateExempt(path string) bool {
 }
 
 func iosBuild(h string) (int64, bool) {
-	parts := strings.Split(h, "/")
-	if len(parts) != 3 || parts[0] != "ios" {
+	rest, ok := strings.CutPrefix(h, "ios/")
+	if !ok {
 		return 0, false
 	}
-	digits := strings.ReplaceAll(parts[2], ".", "")
+	_, build, ok := strings.Cut(rest, "/")
+	if !ok || strings.Contains(build, "/") {
+		return 0, false
+	}
+	digits := strings.ReplaceAll(build, ".", "")
 	if digits == "" || len(digits) > 18 {
 		return 0, false
 	}
