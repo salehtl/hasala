@@ -131,11 +131,19 @@ private struct ReadyToAssignCard: View {
         ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
       layout {
         // Each pill takes the height its label needs (two lines at the largest sizes).
-        Button(overPlanned ? "Move money" : "Assign") { model.moveMoney(to: nil) }
-          .buttonStyle(.pill(.primary, size: .medium, fill: true))
-          .fixedSize(horizontal: false, vertical: true)
-          .disabled(snap.readyToAssign.minor == 0)
-          .accessibilityIdentifier("plan.assign")
+        if overPlanned {
+          Text("Lower a budget below to bring the plan back within your income.")
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("plan.overPlannedHint")
+        } else {
+          Button("Assign") { model.moveMoney(to: nil) }
+            .buttonStyle(.pill(.primary, size: .medium, fill: true))
+            .fixedSize(horizontal: false, vertical: true)
+            .disabled(snap.readyToAssign.minor == 0)
+            .accessibilityIdentifier("plan.assign")
+        }
         // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
         if BuildSurface.showsUnfinished {
           Button("Auto-assign") { model.autoAssign() }
@@ -152,8 +160,6 @@ private struct ReadyToAssignCard: View {
     .padding(16)
   }
 }
-
-// MARK: - Nothing planned
 
 private struct NothingPlannedCard: View {
   let model: any PlanModel

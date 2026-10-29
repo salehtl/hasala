@@ -48,7 +48,7 @@ final class PlanViewModel: PlanModel {
     let snap = snapshot
     let edits = snap.lastMonthBudgets.sorted { $0.key < $1.key }.map { LedgerEdit.setBudget($0.key, snap.month, $0.value) }
     guard !edits.isEmpty else { return }
-    app.perform(edits)
+    app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets copied from last month")
   }
 
   func newProject() { app.editProject(nil) }

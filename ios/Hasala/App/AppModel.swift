@@ -262,7 +262,7 @@ final class AppModel {
   }
 
   @discardableResult
-  func perform(_ edits: [LedgerEdit]) -> Bool {
+  func perform(_ edits: [LedgerEdit], title: String? = nil) -> Bool {
     var tokens: [UndoToken] = []
     for edit in edits {
       do {
@@ -276,10 +276,10 @@ final class AppModel {
     if let last = tokens.popLast() {
       let check = store as? UndoAvailability
       if check?.canUndo(last) == false {
-        show(Toast(disc: .done, title: last.title))
+        show(Toast(disc: .done, title: title ?? last.title))
       } else {
         let earlier = tokens.reversed().filter { check?.canUndo($0) != false }
-        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
+        show(Toast(disc: .done, title: title ?? last.title, actionTitle: "Undo", undo: last, earlier: earlier))
       }
     }
     return true

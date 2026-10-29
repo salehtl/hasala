@@ -23,7 +23,8 @@ struct MoveMoneySheet: View {
   init(model: any BudgetSheetModel) {
     self.model = model
     // To and the amount are there from the first frame: the shortfall when the pace runs
-    // past the budget, all of Ready to assign for Assign, else 100.00.
+    // past the budget, capped at what the first source has, all of Ready to assign for
+    // Assign, else 100.00.
     _destination = State(initialValue: model.row?.id)
     let start: Int64
     if let gap = model.shortfall?.minor {
