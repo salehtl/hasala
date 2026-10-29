@@ -455,7 +455,7 @@ movement. The real texts are not in either repository yet, so the private corpus
 these templates as pending (`corpusPending` in Go's `internal/tmpl/seed` and in Swift's
 `TemplateFixtures`); the synthetic cases are in `conformance/templates/sms/` and
 `conformance/sms-extract/`. On the owner's export (aggregate counts only), the templates
-read 314 of the 315 payment texts with no misread amount, currency, direction or card, and
+read every payment text but one with no misread amount, currency, direction or card, and
 read no text that is not a payment. The one left is a credit card purchase whose amount has
 no decimals, which the amount type refuses; it goes to Review, prefilled by the readers.
 Instalment offers, beneficiary notices, standing instructions and brokerage notices are
