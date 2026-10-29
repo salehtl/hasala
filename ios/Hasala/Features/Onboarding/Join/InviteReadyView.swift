@@ -13,6 +13,8 @@ import SwiftUI
 struct InviteReadyView: View {
   let store: OnboardingStore
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   init(store: OnboardingStore) {
     self.store = store
   }
@@ -41,17 +43,17 @@ struct InviteReadyView: View {
   }
 
   private func inviteCard(_ model: SignupModel) -> some View {
-    HStack(spacing: 14) {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
+    return layout {
       AppIconTile(size: 56, radius: 13, detailed: false)
         .shadow(color: HColor.blue950.opacity(0.26), radius: 11, y: 10)
       VStack(alignment: .leading, spacing: 2) {
         Text("Your invite")
           .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
           .foregroundStyle(HColor.textPrimary)
-        Text(model.inviteCode?.grouped ?? InviteCode.group(model.normalizedInvite))
-          .font(.system(.subheadline, design: .monospaced))
-          .foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
+        codeText(model.inviteCode?.grouped ?? InviteCode.group(model.normalizedInvite))
+          .accessibilityElement(children: .ignore)
           .accessibilityLabel("Code \(model.normalizedInvite.map(String.init).joined(separator: " "))")
         HStack(spacing: 6) {
           Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7)
@@ -67,6 +69,41 @@ struct InviteReadyView: View {
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("inviteReady.card")
+  }
+
+  private func codeText(_ grouped: String) -> some View {
+    let groups = grouped.split(separator: "-").map(String.init)
+    func rows(_ size: Int) -> [String] {
+      stride(from: 0, to: groups.count, by: size).map { groups[$0..<min($0 + size, groups.count)].joined(separator: "-") }
+    }
+    return ViewThatFits(in: .horizontal) {
+      codeLine(grouped)
+      codeRows(rows(3))
+      codeRows(rows(2))
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+          Text(group)
+            .font(.system(.subheadline, design: .monospaced))
+            .foregroundStyle(HColor.textSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+        }
+      }
+    }
+  }
+
+  private func codeRows(_ rows: [String]) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(rows.enumerated()), id: \.offset) { _, row in codeLine(row) }
+    }
+  }
+
+  private func codeLine(_ text: String) -> some View {
+    Text(text)
+      .font(.system(.subheadline, design: .monospaced))
+      .foregroundStyle(HColor.textSecondary)
+      .lineLimit(1)
+      .fixedSize()
   }
 
   /// Paper "Card · What happens next": the three steps of creating the account.
