@@ -222,7 +222,7 @@ public struct GraphClient: Sendable {
     if body != nil { headers.append(("Content-Type", "application/json")) }
     let req = HTTPRequest(method: method, url: url, headers: headers, body: body.map { Data(JSONWriter().bytes($0)) })
     let res: HTTPResponse
-    do { res = try await http.send(req) } catch { throw .offline }
+    do { res = try await http.send(req) } catch .tooLarge { throw .tooLarge(op: op) } catch { throw .offline }
     guard res.ok else { throw Self.failure(res, op: op) }
     return res
   }

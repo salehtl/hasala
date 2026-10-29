@@ -11,6 +11,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/config"
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/purge"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/waitlist"
@@ -150,16 +151,21 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 	if err != nil {
 		return fmt.Errorf("purge-user --replay-ledger: %w", err)
 	}
+	revoked, err := invites.ReapplyRevocations(ctx, pool, entries)
+	if err != nil {
+		return fmt.Errorf("purge-user --replay-ledger: %w", err)
+	}
 	dropped, err := purgeledger.Prune(path, time.Now().Add(-purgeledger.Retention))
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(env.stdout, "purge ledger: %d entries, %d account(s) purged again (%d rows), %d freeze(s), %d unfreeze(s), "+
 		"%d device removal(s), %d password change(s), %d passkey removal(s), %d first view(s) of the 12 words, %d waitlist leave(s) and %d bounced-invite waitlist "+
-		"deletion(s) applied again, %d freeze(s) lifted because the replay left the account no passkey and no password, "+
+		"deletion(s) applied again, %d sign-out(s) of all sessions, %d email change(s) and %d invite revocation(s) applied again, "+
+		"%d freeze(s) lifted because the replay left the account no passkey and no password, "+
 		"%d device removal(s) whose signer is not in the database (signed out only), %d entries past retention removed\n",
 		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Unfreezes, again.Devices, again.Passwords, again.Passkeys,
-		again.PhrasesSeen, left, bounced, again.Lifted, again.Unsigned, dropped)
+		again.PhrasesSeen, left, bounced, again.Sessions, again.Emails, revoked, again.Lifted, again.Unsigned, dropped)
 	return nil
 }
 

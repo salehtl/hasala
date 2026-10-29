@@ -229,8 +229,9 @@ type Server struct {
 	// PasskeyPerIP and PasskeyGlobal bound all the passkey routes, including
 	// the ones that require a session — the limiter runs before the session is
 	// resolved, so omitting the credential is not a way around it.
-	PasskeyPerIP  *Limiter
-	PasskeyGlobal *Limiter
+	PasskeyPerIP     *Limiter
+	PasskeyPerPrefix *Limiter
+	PasskeyGlobal    *Limiter
 	// SyncPerUser and SyncUploadBytes are POST /api/v1/sync's pair.
 	SyncPerUser     *Limiter
 	SyncUploadBytes *Limiter
@@ -239,14 +240,16 @@ type Server struct {
 	MetaPerIP *Limiter
 	// The account routes' limiters (spec 02 §16.2). Sign-in uses PasskeyPerIP
 	// and PasskeyGlobal, which are signin-ip and signin-global.
-	RecoverPerIP    *Limiter
-	CodePerIP       *Limiter
-	ResetPerIP      *Limiter
-	FreezePerIP     *Limiter
-	FreezeGlobal    *Limiter
-	DevFreezeIP     *Limiter
-	DevFreezeWriter *Limiter
-	DevFreezeGlobal *Limiter
+	RecoverPerIP       *Limiter
+	CodePerIP          *Limiter
+	ResetPerIP         *Limiter
+	FreezePerIP        *Limiter
+	FreezePerPrefix    *Limiter
+	FreezeGlobal       *Limiter
+	DevFreezeIP        *Limiter
+	DevFreezePerPrefix *Limiter
+	DevFreezeWriter    *Limiter
+	DevFreezeGlobal    *Limiter
 
 	// Meta is what GET /api/v1/meta reports (meta.go).
 	Meta Meta
@@ -371,6 +374,7 @@ func (s *Server) Handler() http.Handler {
 	s.ensureLimiter(&s.SyncPerUser, syncRate, syncBurst, syncMaxKeys)
 	s.ensureLimiter(&s.SyncUploadBytes, syncByteRate, syncByteBurst, syncByteMaxKeys)
 	s.ensureLimiter(&s.PasskeyPerIP, passkeyPerIPRate, passkeyPerIPBurst, passkeyMaxKeys)
+	s.ensureLimiter(&s.PasskeyPerPrefix, passkeyPrefixRate, passkeyPrefixBurst, passkeyMaxKeys)
 	s.ensureLimiter(&s.PasskeyGlobal, passkeyGlobalRate, passkeyGlobalBurst, 1)
 	s.ensureLimiter(&s.MetaPerIP, metaRate, metaBurst, metaMaxKeys)
 	s.ensureLimiter(&s.StepUpPerUser, stepUpRate, stepUpBurst, stepUpMaxKeys)

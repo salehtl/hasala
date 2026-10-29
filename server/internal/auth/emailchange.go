@@ -201,7 +201,7 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		return fmt.Errorf("%w: the password changed meanwhile", ErrCodeRejected)
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE users SET email_norm = $2, email_verified_at = $3, email_undeliverable_at = NULL,
+		`UPDATE users SET email_norm = $2, email_verified_at = $3, email_undeliverable_at = NULL, reverify_requested_at = NULL,
 		        password_hash = coalesce($4, password_hash), password_salt = coalesce($5, password_salt)
 		  WHERE id = $1`, st.ID, newAddr, now, hash, salt); err != nil {
 		if uniqueViolation(err) != nil {
@@ -213,6 +213,9 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_version = $2 WHERE id = $1`, st.ID, a.Keys.Current()); err != nil {
 			return err
 		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, st.ID, now); err != nil {
+		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE email_change_ceremonies SET consumed_at = $2 WHERE id = $1`, changeID, now); err != nil {
 		return err
@@ -229,6 +232,7 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+	a.recordEmail(st.ID, now)
 	a.Mail.Kick()
 	return nil
 }

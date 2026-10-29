@@ -72,7 +72,7 @@ enum KindLexicon {
 
 enum MailRules {
   static let maskedLast4 = RuleText.re(
-    "(?:x{2,}|\\*{2,}|ending(?:\\s+with|\\s+in)?\\s+(?:x+|\\*+)?|المنتهيه\\s+(?:ب|في)?\\s*(?:x+|\\*+)?|منتهيه\\s+ب\\s*(?:x+|\\*+)?)\\s?-?\\s?(\\d{4})(?!\\d)")
+    "(?:(?<!x)x{2,}+|(?<!\\*)\\*{2,}+|ending(?:\\s+with|\\s+in)?\\s++(?:x++|\\*++)?|المنتهيه\\s++(?:ب|في)?\\s*+(?:x++|\\*++)?|منتهيه\\s+ب\\s*+(?:x++|\\*++)?)\\s?-?\\s?(\\d{4})(?!\\d)")
 
   static func foldedLines(_ text: String) -> [String] {
     RuleText.cleanLines(text).map(RuleText.fold)

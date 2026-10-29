@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 )
 
 // cfConnectingIP is the one forwarded header hasalad reads.
@@ -49,6 +50,13 @@ func ClientKeyFor(r *http.Request, trustCloudflare bool) string {
 		return "local"
 	}
 	return "peer:" + peer
+}
+
+func prefixKey(key string) (string, bool) {
+	if len(key) != 18 || !strings.HasPrefix(key, "6:") {
+		return "", false
+	}
+	return "6p:" + key[2:14], true
 }
 
 func isLoopbackHost(host string) bool {

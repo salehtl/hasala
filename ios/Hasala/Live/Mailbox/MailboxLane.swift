@@ -36,7 +36,7 @@ nonisolated final class MailboxLane: Sendable {
     ledger: any MailboxLedger, server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
     presenter: any MailAuthSessionPresenter
   ) {
-    let http = URLSessionHTTPExchange.ephemeral()
+    let http = URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes)
     let clock = SystemClock()
     let mail: any MailProvider
     switch provider {

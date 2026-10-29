@@ -9,7 +9,7 @@
       "writer_id": "dev-a",
       "stream": "hot",
       "writer_counter": "1",
-      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":99,\"type\":\"txn_ingested\"}]}"
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":5,\"type\":\"txn_ingested\"}]}"
     }
   ],
   "expect": {

@@ -139,6 +139,7 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	gone, frozen, removed, changed, left := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	thawed, keyless, bounced, wrote := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	signedOut, moved, revoked := uuid.New(), uuid.New(), uuid.New()
 	cred := bytes.Repeat([]byte{0xc4}, 16)
 	long := bytes.Repeat([]byte{0x5e}, 1023)
 	d := testDevice()
@@ -153,6 +154,9 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 		{ID: keyless, At: at, Kind: KindPasskey, Credential: long},
 		{ID: bounced, At: at, Kind: KindWaitlistUnsent},
 		{ID: wrote, At: at, Kind: KindPhraseSeen},
+		{ID: signedOut, At: at, Kind: KindSessions},
+		{ID: moved, At: at, Kind: KindEmail},
+		{ID: revoked, At: at, Kind: KindInviteRevoked},
 	}
 	if err := AppendEntries(path, want...); err != nil {
 		t.Fatal(err)
@@ -237,6 +241,9 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 		"unsent with field":    id + at + "waitlist-unsent x",
 		"password with field":  id + at + "password x",
 		"leave with field":     id + at + "waitlist-leave x",
+		"sessions with field":  id + at + "sessions x",
+		"email with field":     id + at + "email x",
+		"invite with field":    id + at + "invite-revoked x",
 		"freeze without time":  id + at + "freeze",
 		"freeze bad time":      id + at + "freeze soon",
 		"freeze after":         id + at + "freeze 2026-10-20T05:30:00Z extra",
@@ -279,6 +286,9 @@ func TestAppendEntriesRefusesWhatItCannotReadBack(t *testing.T) {
 		"password with id":       {ID: uuid.New(), At: at, Kind: KindPassword, Credential: make([]byte, 16)},
 		"unsent with trigger":    {ID: uuid.New(), At: at, Kind: KindWaitlistUnsent, Trigger: at},
 		"phrase seen with id":    {ID: uuid.New(), At: at, Kind: KindPhraseSeen, Credential: make([]byte, 16)},
+		"sessions with trigger":  {ID: uuid.New(), At: at, Kind: KindSessions, Trigger: at},
+		"email with id":          {ID: uuid.New(), At: at, Kind: KindEmail, Credential: make([]byte, 16)},
+		"invite with device":     {ID: uuid.New(), At: at, Kind: KindInviteRevoked, Device: testDevice()},
 		"freeze without trigger": {ID: uuid.New(), At: at, Kind: KindFreeze},
 		"device without device":  {ID: uuid.New(), At: at, Kind: KindDevice},
 		"device short sig":       {ID: uuid.New(), At: at, Kind: KindDevice, Device: bad},
@@ -360,5 +370,23 @@ func TestAKindThisBuildDoesNotKnowIsSkippedAndKept(t *testing.T) {
 	}
 	if err := AppendEntries(path, Entry{ID: uuid.New(), At: now, Kind: "phrase-shown-again"}); err == nil {
 		t.Fatal("an unknown kind was written")
+	}
+}
+
+func TestTheLedgerAndItsLockAreGroupWritableUnderAStrictUmask(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := AppendEntries(path, Entry{ID: uuid.New(), At: time.Now(), Kind: KindInviteRevoked}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{path, path + ".lock"} {
+		st, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm() != 0o660 {
+			t.Fatalf("%s mode %v, want 0660 so the console's group can append", p, st.Mode().Perm())
+		}
 	}
 }

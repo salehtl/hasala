@@ -67,6 +67,8 @@ const (
 	passkeyPerIPRate   = 0.2 // 12/minute sustained
 	passkeyPerIPBurst  = 12
 	passkeyMaxKeys     = 4096
+	passkeyPrefixRate  = 1
+	passkeyPrefixBurst = 24
 	passkeyGlobalRate  = 20
 	passkeyGlobalBurst = 100
 )
@@ -138,7 +140,7 @@ type PasskeyAddResponse struct {
 // other client at 429 indefinitely.
 func (s *Server) passkeyLimited(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.PasskeyPerIP.Allow(clientKey(r)) || !s.PasskeyGlobal.Allow("") {
+		if !s.PasskeyPerIP.Allow(clientKey(r)) || !s.globalAllow(r, s.PasskeyPerPrefix, s.PasskeyGlobal) {
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many passkey attempts")
 			return
 		}

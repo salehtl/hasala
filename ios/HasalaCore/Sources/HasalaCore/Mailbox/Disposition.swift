@@ -31,6 +31,7 @@ import Foundation
 /// The per-message size cap (fetch.ts MAILBOX_MAX_MESSAGE_BYTES): at or over it, unreadable.
 public enum MailboxLimits {
   public static let maxMessageBytes = 1_000_000
+  public static let maxResponseBytes = maxMessageBytes / 3 * 4 + 65_536
   public static let maxAmountMinor: Int64 = ExtractReading.maxAmountMinor
 }
 

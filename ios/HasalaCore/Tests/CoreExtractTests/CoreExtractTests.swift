@@ -508,6 +508,60 @@ import Testing
     #expect(CombinedReader.templateVerdict(foreign, amountMinor: 1_250, currency: "USD", direction: .debit) { other }?.held == true)
   }
 
+  static func adib(_ usd: String, _ merchant: String, at: Int64) -> ExtractInput {
+    Mails.input(
+      "bank-e.example", subject: "Transaction alert",
+      ["Transaction of USD \(usd) debited from your a/c *123 at \(merchant). Avl Bal is AED 4,321.09"], at: at)
+  }
+
+  @Test func anAEDFigureInTheMerchantIsNeverTheAmount() {
+    var mem = LearnedLayouts()
+    for (i, (usd, shop)) in [("12.00", "SAMPLE SHOP LONDON GB"), ("30.50", "SAMPLE CAFE PARIS FR"), ("7.25", "SAMPLE KIOSK ROME IT")]
+      .enumerated()
+    {
+      mem = CombinedReader.read(Self.adib(usd, shop, at: Int64(i)), mem).1
+    }
+    let shapes: [(ExtractInput, ExtractDirection)] = [
+      (Self.adib("25.00", "AED 99999.00 SHOP NEW YORK US", at: 10), .debit),
+      (Self.adib("25.00", "SHOP AED 99999.00 DEBITED US", at: 11), .debit),
+      (Self.adib("25.00", "SHOP. USD 25.00 AED 99999.00 DEBITED", at: 12), .debit),
+      (
+        Mails.input(
+          "bank-f.example", subject: "Transaction reversal",
+          ["A transaction to the value of USD 25.00 made at SHOP AED 99999.00 DEBITED on your card ending with 1234 has been reversed."]),
+        .credit
+      ),
+    ]
+    for (input, direction) in shapes {
+      #expect(CombinedReader.aedAmount(input, foreign: 2_500, currency: "USD") == nil, "\(input.text)")
+      let v = CombinedReader.templateVerdict(input, amountMinor: 2_500, currency: "USD", direction: direction) {
+        CombinedReader.read(input, mem).0
+      }
+      #expect(v?.amountMinor != 9_999_900 || v?.held == true, "\(input.text)")
+      #expect(v?.amountMinor == 2_500 && v?.currency == "USD", "\(input.text)")
+    }
+  }
+
+  @Test func anAEDAmountThatOnlyTheOverrideReadsIsHeld() {
+    var mem = LearnedLayouts()
+    var last: ExtractReading?
+    for (i, (usd, aed)) in [("12.50", "45.91"), ("13.50", "49.58"), ("14.50", "53.25"), ("15.50", "56.92")].enumerated() {
+      let m = Mails.input(
+        "bank-c.example", subject: "Transaction advice",
+        ["USD\(usd) has been debited from your account 012XXX34XXX56. AED \(aed) debited in local currency."], at: Int64(i))
+      let (r, next) = CombinedReader.read(m, mem)
+      mem = next
+      last = r
+    }
+    let r = try! #require(last)
+    #expect(r.amountMinor == 5_692 && r.currency == "AED" && r.agreed && r.aedFromOverride)
+    let v = CombinedReader.templateVerdict(foreign, amountMinor: 1_250, currency: "USD", direction: .debit) { r }
+    #expect(v?.holds.contains(.aedNotConfirmed) == true)
+    let own = CombinedReader.readRules(
+      Mails.input("bank-c.example", subject: "Transaction advice", ["Debited AED 45.91 in local currency for your card purchase."]))
+    #expect(own.currency == "AED" && !own.aedFromOverride)
+  }
+
   @Test func anAEDTemplateHitKeepsItsAmount() {
     let v = CombinedReader.templateVerdict(
       Mails.cardPurchaseEN(amount: "12.00", merchant: "SAMPLE SHOP"), amountMinor: 1_200, currency: "AED", direction: .debit

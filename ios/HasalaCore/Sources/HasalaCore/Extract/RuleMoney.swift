@@ -83,13 +83,17 @@ enum RuleMoneyParser {
     return nil
   }
 
+  static let window = 64
+
   static func scan(_ text: String, line: Int, labelCurrency: String?) -> [RuleMoney] {
     let ns = text as NSString
     var out: [RuleMoney] = []
     for m in number.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
       let r = m.range(at: 1)
-      let before = ns.substring(to: r.location)
-      let after = ns.substring(from: r.location + r.length)
+      let back = min(r.location, window)
+      let before = ns.substring(with: NSRange(location: r.location - back, length: back))
+      let end = r.location + r.length
+      let after = ns.substring(with: NSRange(location: end, length: min(ns.length - end, window)))
       var cur = currencyBefore(before)
       if cur == nil { cur = currencyAfter(after) }
       if cur == nil {

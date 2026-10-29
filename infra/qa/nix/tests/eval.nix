@@ -943,9 +943,11 @@ let
     ) "AT-E3 hasalad and the console must start after the purge ledger replay"
     ++ check (lib.elem "hasala-migrate.service" (svc fullSys "hasala-purge-replay").after) "AT-E3 the replay must run after the migrations"
     ++ check (
-      ledgerTmpfiles."/var/lib/hasala-ledger/purged".f.mode == "0640"
+      ledgerTmpfiles."/var/lib/hasala-ledger/purged".f.mode == "0660"
       && ledgerTmpfiles."/var/lib/hasala-ledger/purged".f.group == "hasala-ledger"
-    ) "AT-E3 the purge ledger file is not created 0640 hasala-ledger"
+      && ledgerTmpfiles."/var/lib/hasala-ledger/purged.lock".f.mode == "0660"
+      && ledgerTmpfiles."/var/lib/hasala-ledger/purged.lock".f.group == "hasala-ledger"
+    ) "AT-E3 the purge ledger file and its lock are not created 0660 hasala-ledger"
     ++
       check
         (

@@ -367,6 +367,35 @@ struct SyncTests {
     #expect(try b.store.syncState().cursorHot == 1)
   }
 
+  @Test("a peer row far above the schema is set aside and the cursor moves on; the next version still halts")
+  func implausibleVersionSetAside() async throws {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1)])
+    _ = await SyncEngine(context: a).run(.authored)
+    _ = await SyncEngine(context: b).run(.launch)
+    let k1 = try EpochKey(epoch: 1, key: try #require(try a.secrets.epochKey(userID: a.userID, epoch: 1)))
+    let seedA = try #require(try a.secrets.writerSeed(userID: a.userID, writerID: a.writerID))
+    var prev = try #require(try a.store.chainHeads()[a.writerID]).hash
+    func inject(_ counter: Int64, _ plaintext: String) throws {
+      let frame = try Sealer(epoch: 1, key: k1).seal(
+        plaintextOps: Data(plaintext.utf8), envelope: try Envelope(userID: a.userID, writerID: a.writerID, counter: counter),
+        prevHash: prev, random: SeededRandom(seed: "v\(counter)"))
+      let msg = SigningMessage.head(userID: a.userID, counter: counter, blobHash: frame.blobHash, writerID: a.writerID)
+      w.server.injectRow(
+        user: a.userID, writerID: a.writerID.string, counter: counter, prevHash: prev.bytes, blob: frame.bytes,
+        headSig: try DWK.sign(seed: seedA, message: msg))
+      prev = frame.blobHash
+    }
+    try inject(2, #"{"v":9007199254740991,"kind":"ops","ops":[]}"#)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().cursorHot == 2)
+    let kept = try #require(try b.store.wireRows().last)
+    #expect(kept.seq == 2 && kept.disposition == .setAside)
+    try inject(3, #"{"v":5,"kind":"ops","ops":[]}"#)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .halted(.updateRequired))
+    #expect(try b.store.syncState().cursorHot == 2)
+  }
+
   @Test("R2b: after A removes itself at counter 1, a row of A above it is afterRevocation, even signed by A")
   func afterRevocation() async throws {
     let w = World()

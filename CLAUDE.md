@@ -381,7 +381,11 @@ CI for iOS:
 
 `hasalad <mode>` has these modes: `serve`, `migrate`, `verify`,
 `purge-user`, `invite` (`mint [--review | --email]`, `list`, `revoke`),
-`waitlist`, `email test`, `console` and `version`. `console` is the operator
+`account` (`review`, `unfreeze`), `waitlist`, `email test`, `console` and
+`version`. `account unfreeze <uuid> --confirm <uuid>` lifts any freeze. It is
+the out-of-band path for a holder who cannot lift their own freeze (for
+example a freeze dated to a phrase recovery). Refer to
+`docs/runbooks/restore.md`. `console` is the operator
 console of spec 07. It is minimal: waitlist approval, invites and the email
 log.
 
@@ -407,11 +411,14 @@ restore must not undo. `hasala-purge-replay` applies them again before
 
 - The ledger records account deletions, freezes and unfreezes, device
   removals, password changes, passkey removals, waitlist leaves, waitlist
-  entries deleted after a bounced invite, and the first view of the 12 words
-  after a signup that skipped them. It records only internal IDs and
+  entries deleted after a bounced invite, the first view of the 12 words
+  after a signup that skipped them, sign-outs of all sessions (`sessions`),
+  email changes (`email`) and the operator's invite revocations
+  (`invite-revoked`). It records only internal IDs and
   times. Do not add an email address or a name.
-- No command freezes an account as the operator yet. When you add one, record
-  the freeze and the unfreeze in the ledger.
+- `hasalad account unfreeze` records its unfreeze in the ledger, with the
+  same kind as the holder's. No command freezes an account as the operator
+  yet. When you add one, record the freeze in the ledger.
 - A line with only two fields is an account deletion. Each other event has a
   third field (its kind). Do not change the format of an existing kind. Old
   lines must stay readable.
@@ -432,8 +439,11 @@ restore must not undo. `hasala-purge-replay` applies them again before
 > `hasala-purge-replay` fails and `hasalad` does not start. A build from before
 > the event kinds (before branch `legal/accuracy-fixes`) fails on each line
 > with a third field. A build from before `onboarding/w5-review-fixes` fails on
-> each kind newer than itself (for example `phrase-seen`). Before you deploy
-> one of these, copy the ledger file. Then remove each line it cannot read.
+> each kind newer than itself (for example `phrase-seen`, `sessions`, `email`
+> and `invite-revoked`). A build from before `hardening/ledger-and-limits`
+> skips `sessions`, `email` and `invite-revoked`, so its replay does not apply
+> them again. Before you deploy one of these, copy the ledger file. Then
+> remove each line it cannot read.
 
 ### Rules for agents on this Mac
 
