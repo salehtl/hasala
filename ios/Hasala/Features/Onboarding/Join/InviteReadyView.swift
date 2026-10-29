@@ -73,12 +73,28 @@ struct InviteReadyView: View {
 
   private func codeText(_ grouped: String) -> some View {
     let groups = grouped.split(separator: "-").map(String.init)
-    let rows = stride(from: 0, to: groups.count, by: 3).map { groups[$0..<min($0 + 3, groups.count)].joined(separator: "-") }
+    func rows(_ size: Int) -> [String] {
+      stride(from: 0, to: groups.count, by: size).map { groups[$0..<min($0 + size, groups.count)].joined(separator: "-") }
+    }
     return ViewThatFits(in: .horizontal) {
       codeLine(grouped)
+      codeRows(rows(3))
+      codeRows(rows(2))
       VStack(alignment: .leading, spacing: 0) {
-        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in codeLine(row) }
+        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+          Text(group)
+            .font(.system(.subheadline, design: .monospaced))
+            .foregroundStyle(HColor.textSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+        }
       }
+    }
+  }
+
+  private func codeRows(_ rows: [String]) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(rows.enumerated()), id: \.offset) { _, row in codeLine(row) }
     }
   }
 

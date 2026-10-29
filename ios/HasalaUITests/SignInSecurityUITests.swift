@@ -535,9 +535,6 @@ extension SignInSecurityUITests {
 
   // MARK: - Helpers
 
-  /// Paper GDD, GZT: with the keyboard up, Paste sits clear above the word-list bar, never
-  /// half-hidden under its glass, and the helper line, where it shows, does too. The page
-  /// scrolls with the keyboard, so this waits a moment for it to settle.
   @MainActor
   private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: uiWait), "no keyboard", line: line)

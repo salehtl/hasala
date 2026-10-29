@@ -359,12 +359,24 @@ struct ForgotWaitingView: View {
     return [groups.prefix(half), groups.dropFirst(half)].map { $0.joined(separator: " ") }.filter { !$0.isEmpty }
   }
 
+  private var resetCodeGroupRows: [String] {
+    model.resetCodeGroups.split(separator: " ").map(String.init)
+  }
+
   private func resetCodeLine(_ text: String) -> some View {
     Text(text)
       .font(.system(.title, design: .monospaced).weight(.bold))
       .foregroundStyle(HColor.textPrimary)
       .lineLimit(1)
       .fixedSize()
+  }
+
+  private func resetCodeShrinkingLine(_ text: String) -> some View {
+    Text(text)
+      .font(.system(.title, design: .monospaced).weight(.bold))
+      .foregroundStyle(HColor.textPrimary)
+      .lineLimit(1)
+      .minimumScaleFactor(0.5)
   }
 
   /// Paper "MatchNumberCard": the overline, the code large, and the waiting pill with the
@@ -378,6 +390,9 @@ struct ForgotWaitingView: View {
         resetCodeLine(model.resetCodeGroups)
         VStack(spacing: 2) {
           ForEach(Array(resetCodeRows.enumerated()), id: \.offset) { _, row in resetCodeLine(row) }
+        }
+        VStack(spacing: 2) {
+          ForEach(Array(resetCodeGroupRows.enumerated()), id: \.offset) { _, row in resetCodeShrinkingLine(row) }
         }
       }
       .environment(\.layoutDirection, .leftToRight)

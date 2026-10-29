@@ -120,7 +120,7 @@ struct AboutYouView: View {
   private var emailError: String? {
     model.emailError
       ?? (AccountFields.emailTooLong(model.email)
-        ? "Use an address of \(AccountFields.emailMaxBytes) characters or fewer." : nil)
+        ? "This address is too long. Use a shorter one." : nil)
   }
 
   private var chipBeside: Bool { model.emailConfirmed && !typeSize.isAccessibilitySize && chipInline }

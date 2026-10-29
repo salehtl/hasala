@@ -42,11 +42,12 @@ struct InviteCode: Equatable, Hashable, Sendable {
     return out
   }
 
+  static let entryLimit = length + 8
+
   /// What the invite field keeps of typed or pasted text: upper-cased, with spaces, line
   /// breaks, hyphens and other dashes, and invisible format and control characters
   /// dropped. Anything else stays, so a character no code holds (`1`, `0`, `#`) is shown
   /// and `SignupModel.inviteHint` says so.
-  static let entryLimit = length + 8
 
   static func entryCharacters(_ raw: String) -> String {
     let kept = keptCharacters(raw)
@@ -73,7 +74,7 @@ struct InviteCode: Equatable, Hashable, Sendable {
     return nil
   }
 
-  private static func keptCharacters(_ raw: String) -> String {
+  static func keptCharacters(_ raw: String) -> String {
     var out = String.UnicodeScalarView()
     for s in raw.uppercased().unicodeScalars {
       switch s.properties.generalCategory {
@@ -122,10 +123,12 @@ struct InviteCodeEntry: Equatable, Sendable {
     // UIKit's range, held to the text rather than trusted.
     let lower = range.location == NSNotFound ? ns.length : min(max(range.location, 0), ns.length)
     let upper = min(lower + max(range.length, 0), ns.length)
-    var before = InviteCode.entryCharacters(ns.substring(to: lower))
-    var after = InviteCode.entryCharacters(ns.substring(from: upper))
-    let removed = InviteCode.entryCharacters(ns.substring(with: NSRange(location: lower, length: upper - lower)))
-    let inserted = InviteCode.entryCharacters(replacement)
+    var before = InviteCode.keptCharacters(ns.substring(to: lower))
+    var after = InviteCode.keptCharacters(ns.substring(from: upper))
+    let removed = InviteCode.keptCharacters(ns.substring(with: NSRange(location: lower, length: upper - lower)))
+    var inserted = InviteCode.entryCharacters(replacement)
+    let room = max(0, InviteCode.entryLimit - before.count - after.count)
+    if inserted.count > room { inserted = String(inserted.prefix(room)) }
     if inserted.isEmpty, upper > lower, removed.isEmpty {
       if forward {
         if !after.isEmpty { after.removeFirst() }

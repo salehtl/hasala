@@ -236,10 +236,11 @@ struct SubtitleProse: View {
   }
 }
 
+let accountDockClearance: CGFloat = 12
+
 /// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
 /// apart, 20 from the sides, on the home indicator's safe area. A soft scroll edge sits
 /// under it when content scrolls behind (`safeAreaBar`).
-let accountDockClearance: CGFloat = 12
 
 struct ActionDock<Content: View>: View {
   let keyboardUp: Bool
