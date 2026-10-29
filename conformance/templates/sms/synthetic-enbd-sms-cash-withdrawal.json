@@ -1,0 +1,117 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.cash-withdrawal.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.cash-withdrawal.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "Cash Withdrawal of ",
+        " with Debit Card ending "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^Cash Withdrawal of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) with Debit Card ending "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD CASH WITHDRAWAL"
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " with Debit Card ending (?P<v>[0-9]{4}) at "
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.cash-withdrawal.v1/atm",
+      "source": "SYNTHETIC: a cash withdrawal: a constant merchant and the card's last four",
+      "subject_base64": "",
+      "normalized_body_base64": "Q2FzaCBXaXRoZHJhd2FsIG9mIEFFRCA1MTcuMzYgd2l0aCBEZWJpdCBDYXJkIGVuZGluZyAxMjM0IGF0IFNBTVBMRSBNQUxMLCBEVUJBSS4gQXZsIEJhbCBpcyBBRUQgNiw3ODkuMDEu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "51736",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "ENBD CASH WITHDRAWAL",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.cash-withdrawal.v1/no-comma",
+      "source": "SYNTHETIC: an ATM location with no comma",
+      "subject_base64": "",
+      "normalized_body_base64": "Q2FzaCBXaXRoZHJhd2FsIG9mIEFFRCAxLDAxMy4yNyB3aXRoIERlYml0IENhcmQgZW5kaW5nIDEyMzQgYXQgU0FNUExFIFNUQVRJT04gMiBEVUJBSS4gQXZsIEJhbCBpcyBBRUQgNyw4OTAuMTIu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "101327",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "ENBD CASH WITHDRAWAL",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.cash-withdrawal.v1/purchase",
+      "source": "SYNTHETIC: a card purchase belongs to its own template",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDQ1LjY3IHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBTQU1QTEUgQ0FGRSwgRFVCQUkuIEF2bCBCYWxhbmNlIGlzIEFFRCAxLDIzNC41Ni4=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

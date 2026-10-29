@@ -28,7 +28,9 @@ public enum ModelSuggestionSweep {
     }
   }
 
-  public static let cloudTemplates: Set<String> = ["adib.alert.v1", "dib.card.v1", "dib.sms.purchase.v1", "enbd.alert.v1"]
+  public static let cloudTemplates: Set<String> = [
+    "adib.alert.v1", "dib.card.v1", "dib.sms.purchase.v1", "enbd.alert.v1", "enbd.sms.card-purchase.v1", "enbd.sms.credit-card-purchase.v1",
+  ]
 
   public static func mayStayOnDevice(_ r: SweepRow) -> Bool { !r.text }
 

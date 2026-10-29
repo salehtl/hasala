@@ -1,0 +1,101 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.refund.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.refund.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "Purchase amount of ",
+        " has been refunded to your card account"
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^Purchase amount of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) at "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "^Purchase amount of [A-Z]{3} [0-9][0-9,.]{0,27} at (?P<v>[^\\n]+?) on your Debit Card ending "
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " on your Debit Card ending (?P<v>[0-9]{4}) has been refunded"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.refund.v1/refund",
+      "source": "SYNTHETIC: a refunded card purchase: a credit with the merchant and the card's last four",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2UgYW1vdW50IG9mIEFFRCA0NS42NyBhdCBTQU1QTEUgQ0FGRSBvbiB5b3VyIERlYml0IENhcmQgZW5kaW5nIDEyMzQgaGFzIGJlZW4gcmVmdW5kZWQgdG8geW91ciBjYXJkIGFjY291bnQuIEF2bCBCYWwgaXMgQUVEIDEsMjM0LjU2Lg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4567",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "SAMPLE CAFE",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.refund.v1/foreign-currency",
+      "source": "SYNTHETIC: a currency code other than AED",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2UgYW1vdW50IG9mIFVTRCA5Ljk5IGF0IEVYQU1QTEUuQ09NIG9uIHlvdXIgRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBoYXMgYmVlbiByZWZ1bmRlZCB0byB5b3VyIGNhcmQgYWNjb3VudC4gQXZsIEJhbCBpcyBBRUQgMSwyNzEuMjUu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "999",
+        "currency": "USD",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "EXAMPLE.COM",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

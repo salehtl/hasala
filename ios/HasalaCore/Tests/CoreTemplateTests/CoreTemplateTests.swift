@@ -348,7 +348,9 @@ struct BundledTemplateTests {
     #expect(
       texts.templates.map(\.definition.id) == [
         "dib.sms.card-payment.v1", "dib.sms.credit.v1", "dib.sms.debit.v1", "dib.sms.own-transfer.v1", "dib.sms.purchase.v1",
-        "dib.sms.refund.v1", "dib.sms.reversal.v1", "dib.sms.salary.v1",
+        "dib.sms.refund.v1", "dib.sms.reversal.v1", "dib.sms.salary.v1", "enbd.sms.bill-payment.v1", "enbd.sms.card-purchase.v1",
+        "enbd.sms.cash-withdrawal.v1", "enbd.sms.cheque-deposit.v1", "enbd.sms.credit-card-purchase.v1", "enbd.sms.credit.v1",
+        "enbd.sms.debit.v1", "enbd.sms.funds-transfer.v1", "enbd.sms.refund.v1", "enbd.sms.transfer-in.v1",
       ])
     #expect(
       (mail.templates + texts.templates).map(\.definition.id).sorted() == TemplatesManifest.entries.map(\.id).sorted())

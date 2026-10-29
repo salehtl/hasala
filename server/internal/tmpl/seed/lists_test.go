@@ -49,6 +49,33 @@ func TestTheMailSeedFilesAreTheMailSeeds(t *testing.T) {
 	}
 }
 
+var corpusPending = map[string]bool{
+	"enbd.sms.bill-payment.v1":         true,
+	"enbd.sms.card-purchase.v1":        true,
+	"enbd.sms.cash-withdrawal.v1":      true,
+	"enbd.sms.cheque-deposit.v1":       true,
+	"enbd.sms.credit.v1":               true,
+	"enbd.sms.credit-card-purchase.v1": true,
+	"enbd.sms.debit.v1":                true,
+	"enbd.sms.funds-transfer.v1":       true,
+	"enbd.sms.refund.v1":               true,
+	"enbd.sms.transfer-in.v1":          true,
+}
+
+func TestTheCorpusPendingSeedsArePublishedTextSeeds(t *testing.T) {
+	published := map[string]bool{}
+	for _, d := range Seed() {
+		if d.IsSMS() {
+			published[d.ID] = true
+		}
+	}
+	for id := range corpusPending {
+		if !published[id] {
+			t.Errorf("%s waits for a private corpus but is not a published text seed", id)
+		}
+	}
+}
+
 func TestEverySeedTemplateHasACorpusFixture(t *testing.T) {
 	privatefixtures.Path(t, smsCorpusDir)
 	for _, gap := range corpusFixtureGaps(privatefixtures.Root(), Seed()) {
@@ -65,6 +92,12 @@ func corpusFixtureGaps(root string, defs []tmpl.Definition) []string {
 		}
 		rel := path.Join(dir, "corpus-"+d.ID+".json")
 		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if corpusPending[d.ID] {
+			if err == nil {
+				gaps = append(gaps, fmt.Sprintf("%s has a corpus fixture; remove it from corpusPending", d.ID))
+			}
+			continue
+		}
 		if err != nil {
 			gaps = append(gaps, fmt.Sprintf("no corpus fixture for %s: %v", d.ID, err))
 			continue
@@ -95,7 +128,7 @@ func standInCorpusRoot(t *testing.T, skip string) string {
 	root := t.TempDir()
 	raw := Raw()
 	for _, d := range Seed() {
-		if d.ID == skip {
+		if d.ID == skip || corpusPending[d.ID] {
 			continue
 		}
 		dir := tmpl.CorpusTemplateDir
@@ -163,8 +196,8 @@ func TestTheCorpusPerSeedCheckFailsOnThePrivateFixturesLessOneTextCorpus(t *test
 			linked++
 		}
 	}
-	if linked != len(Seed())-1 {
-		t.Fatalf("test setup: linked %d private corpus files, want %d", linked, len(Seed())-1)
+	if want := len(Seed()) - 1 - len(corpusPending); linked != want {
+		t.Fatalf("test setup: linked %d private corpus files, want %d", linked, want)
 	}
 	gaps := corpusFixtureGaps(root, Seed())
 	if len(gaps) != 1 || !strings.Contains(gaps[0], "no corpus fixture for "+debit) {

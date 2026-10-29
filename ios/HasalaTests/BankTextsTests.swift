@@ -163,11 +163,13 @@ struct BankTextsTests {
 
   @Test func theTextsBanksSayHowEachIsRead() {
     #expect(BankTexts.readNote(.dib) == "Hasala reads them; some wait in Review")
-    #expect(BankTexts.readNote(.enbd) == "You check each one in Review")
+    #expect(BankTexts.readNote(.enbd) == "Hasala reads them; some wait in Review")
+    #expect(BankTexts.readNote(.adib) == "You check each one in Review")
     for line in SupportedBank.allCases.map(BankTexts.readNote) + [BankTexts.banksLine] {
       #expect(!line.lowercased().contains("automatically"))
     }
     #expect(BankTexts.banksLine.contains("some still wait in Review"))
+    #expect(BankTexts.banksLine.contains("DIB and ENBD texts"))
     for bank in SupportedBank.allCases {
       #expect(BankTexts.bankDetail(BankTextsBank(bank: bank, lastText: nil), now: now).hasSuffix("\n\(BankTexts.readNote(bank))"))
     }
@@ -230,12 +232,14 @@ struct BankTextsTests {
     #expect(RelativeTime.localDate(-4 * 3_600_000 - 1) == LocalDate(1969, 12, 31))
   }
 
-  @Test func onlyDIBIsReadAutomatically() {
+  @Test func dibAndENBDAreReadAutomatically() {
     let dib = BankTextsBank(bank: .dib, lastText: now.addingTimeInterval(-7200))
     let enbd = BankTextsBank(bank: .enbd, lastText: nil)
-    #expect(dib.readsAutomatically && !enbd.readsAutomatically)
+    let adib = BankTextsBank(bank: .adib, lastText: nil)
+    #expect(dib.readsAutomatically && enbd.readsAutomatically && !adib.readsAutomatically)
     #expect(BankTexts.bankDetail(dib, now: now) == "Last text 2 h ago\nHasala reads them; some wait in Review")
-    #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nYou check each one in Review")
+    #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nHasala reads them; some wait in Review")
+    #expect(BankTexts.bankDetail(adib, now: now) == "No text yet\nYou check each one in Review")
   }
 
   @Test func sendingTheTestAgainStartsANewTest() async throws {

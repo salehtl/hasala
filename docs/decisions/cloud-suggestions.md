@@ -90,7 +90,9 @@ preference.
 - Nothing else: no amount, date, card, bank, direction, account id, device id, or other
   subjects.
 - Only rows read by a card-payment alert template go to Clef: `adib.alert.v1`,
-  `dib.card.v1` and `enbd.alert.v1` (`ModelSuggestionSweep.cloudTemplates`). A transfer
+  `dib.card.v1` and `enbd.alert.v1`, and for bank texts `dib.sms.purchase.v1`,
+  `enbd.sms.card-purchase.v1` and `enbd.sms.credit-card-purchase.v1`
+  (`ModelSuggestionSweep.cloudTemplates`). A transfer
   template's merchant is a beneficiary's name, so transfers (`enbd.transfer.v1`), account
   alerts (`adib.account.v1`, `dib.account.v1`) and manual entries stay on the device. A
   subject shared with any of those rows is not sent either. The check is fail-closed: a
