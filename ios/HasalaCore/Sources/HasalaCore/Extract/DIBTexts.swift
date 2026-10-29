@@ -1,8 +1,10 @@
+public struct TextWording: Sendable, Equatable {
+  public let kind: TextDropKind
+  public let wording: String
+}
+
 public enum DIBTexts {
-  public struct Wording: Sendable, Equatable {
-    public let kind: TextDropKind
-    public let wording: String
-  }
+  public typealias Wording = TextWording
 
   public static let wholeBody: [Wording] = [
     Wording(
