@@ -140,6 +140,10 @@ struct ProjectEditorView: View {
             .foregroundStyle(HColor.fieldText)
             .textInputAutocapitalization(.words)
             .focused($focused, equals: .name)
+            .onChange(of: model.name) { _, new in
+              let capped = ProjectDraft.capped(new)
+              if capped != new { model.name = capped }
+            }
             .padding(.horizontal, 16)
             .frame(minHeight: 52)
             .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))

@@ -142,6 +142,9 @@ private struct ProjectHero: View {
           }
         }
         VStack(alignment: .leading, spacing: 4) {
+          Text(detail.name).hType(.title2).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 4)
           MoneyText(figure, figure: .hero, unit: .unit, hidden: hidden, hiddenGlyphs: 6,
                     color: over ? HColor.statusErrorForeground : HColor.textPrimary, unitGap: 6)
           PhraseText(caption, hidden: hidden).hType(.body).foregroundStyle(HColor.textOnWashSecondary)

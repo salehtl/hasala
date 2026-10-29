@@ -84,6 +84,10 @@ public struct PlanSnapshot: Sendable, Hashable {
   public var split: [SplitShare]
   public var sections: [PlanSection]
   public var projects: [PlanProjectModel]
+  public var planned: Money = .aed(0)
+  public var lastMonthBudgets: [CategoryID: Money] = [:]
+
+  public var nothingPlanned: Bool { planned.minor == 0 }
 
   public func row(_ id: CategoryID) -> PlanRowModel? {
     sections.lazy.flatMap(\.rows).first { $0.id == id }
@@ -120,9 +124,17 @@ public enum PlanEngine {
                                   rows: rows))
     }
 
-    let split = sections.map { sec in
-      SplitShare(bucket: sec.bucket, share: Permille.ratio(sec.budget.minor, of: planned),
-                 label: "\(percentRounded(sec.budget.minor, of: planned))%")
+    let percents = largestRemainderPercents(sections.map(\.budget.minor))
+    let split = zip(sections, percents).map { sec, percent in
+      SplitShare(bucket: sec.bucket, share: Permille.ratio(sec.budget.minor, of: planned), label: "\(percent)%")
+    }
+    let previous = month.previous
+    var lastMonthBudgets: [CategoryID: Money] = [:]
+    for bucket in [Bucket.needs, .wants, .savings] {
+      for c in s.categories(in: bucket) {
+        let b = s.plan.budget(c.id, previous)
+        if b.minor > 0 { lastMonthBudgets[c.id] = b }
+      }
     }
     let income = s.plan.income(in: month)
     let rta = income.minor.minus(planned)
@@ -134,8 +146,24 @@ public enum PlanEngine {
       month: month, readyToAssign: .aed(rta), incomeLine: incomeLine,
       startedFrom: "Started from " + s.plan.startingSplit.map(String.init).joined(separator: " / "),
       splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
-      split: split, sections: sections, projects: projects
+      split: split, sections: sections, projects: projects, planned: .aed(planned),
+      lastMonthBudgets: lastMonthBudgets
     )
+  }
+
+  public static func largestRemainderPercents(_ parts: [Int64]) -> [Int64] {
+    let clamped = parts.map { max(0, $0) }
+    let whole = clamped.reduce(Int128(0)) { $0 + Int128($1) }
+    guard whole > 0 else { return parts.map { _ in 0 } }
+    let scaled = clamped.map { Int128($0) * 100 }
+    var floors = scaled.map { $0 / whole }
+    let remainders = scaled.map { $0 % whole }
+    var short = 100 - floors.reduce(0, +)
+    for i in remainders.indices.sorted(by: { (remainders[$0], -$0) > (remainders[$1], -$1) }) where short > 0 {
+      floors[i] += 1
+      short -= 1
+    }
+    return floors.map { Int64($0) }
   }
 
   /// Whole percent, rounded half up (Needs 12,350 of 24,000 → 51%).
@@ -150,7 +178,9 @@ public enum PlanEngine {
     let paced = c.role == .everyday
     let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
     // Row figures hide as three dots (spec 03 §16.16).
-    let ofBudget = spent < 0
+    let ofBudget = budget <= 0 && spent > 0
+      ? MoneyPhrase([.text("No budget · "), .amount(.aed(spent), hidden: 3), .text(" spent")])
+      : spent < 0
       ? MoneyPhrase([
         .signedMoney(.aed(spent.negated), style: .exact, hiddenGlyphs: 3), .text(" back · "),
         .amount(.aed(budget), .compact, hidden: 3), .text(" planned"),
@@ -164,7 +194,7 @@ public enum PlanEngine {
     switch c.role {
     case .bill:
       let bills = s.bills.filter { $0.categoryID == c.id && $0.state == .tracked && !$0.isIncome }
-      let paidNames = bills.filter { $0.nextDue.yearMonth > month }.map(\.name)
+      let paidNames = bills.filter { $0.nextDue.yearMonth > month }.map { shortName($0.name) }
       let late = bills.first { $0.nextDue < now.date && $0.nextDue.yearMonth == month }
       let due = bills.first { $0.nextDue >= now.date && $0.nextDue.yearMonth == month }
       if let late {
@@ -176,12 +206,12 @@ public enum PlanEngine {
         detail = [.status("Paid \(paid.dayMonth)", .success), .text("bill")]
       } else {
         if !paidNames.isEmpty, spent > 0, due == nil {
-          detail.append(.text(MoneyPhrase(stringLiteral: listed(paidNames) + " paid")))
+          detail.append(.text(MoneyPhrase(stringLiteral: paidList(paidNames) + " paid")))
         }
         detail.append(.text(ofBudget))
         if let due {
           detail.append(.text(MoneyPhrase([
-            .text("\(due.name) \(due.approximate ? "~" : "")"), .amount(due.amount, hidden: 3),
+            .text("\(shortName(due.name)) \(due.approximate ? "~" : "")"), .amount(due.amount, hidden: 3),
             .text(" due \(due.nextDue.weekdayShort)"),
           ])))
         }
@@ -209,9 +239,17 @@ public enum PlanEngine {
     }
     return PlanRowModel(
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, trailing: trailing, detail: detail,
-      progress: Permille.ratio(spent, of: budget), verdict: verdict, paced: paced,
+      progress: barProgress(spent: spent, budget: budget), verdict: verdict, paced: paced,
       budget: .aed(budget), spent: .aed(spent)
     )
+  }
+
+  static func barProgress(spent: Int64, budget: Int64) -> Permille {
+    budget <= 0 && spent > 0 ? Permille(1000) : Permille.ratio(spent, of: budget)
+  }
+
+  public static func paidList(_ names: [String]) -> String {
+    names.count <= 2 ? listed(names) : "\(names[0]) and \(names.count - 1) more"
   }
 
   static func goalRow(_ c: Category, _ g: Goal, budget: Int64, spent: Int64) -> PlanRowModel {
@@ -481,7 +519,7 @@ public extension PlanEngine {
 
     return CategoryDetail(
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, bucket: c.bucket, month: month,
-      budget: .aed(budget), spent: .aed(spent), left: .aed(left), progress: Permille.ratio(spent, of: budget),
+      budget: .aed(budget), spent: .aed(spent), left: .aed(left), progress: barProgress(spent: spent, budget: budget),
       tick: paced ? Pace.monthGone(day: day, days: days) : nil, verdict: verdict, verdictWord: word,
       verdictFact: fact, advice: advice, chart: dayByDay(c, s, now: now, budget: budget, spent: spent, paced: paced),
       transactions: monthRows(c, s, month: month), rules: rules(c, s)
@@ -518,8 +556,9 @@ public extension PlanEngine {
     {
       let share = percentRounded(big.minor, of: spent)
       if share < 100 {
-        caption = "\(big.txn.merchant) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
-          + "\(c.name.lowercased())."
+        let name = c.builtin ? c.name.lowercased() : Bidi.isolate(c.name)
+        caption = "\(Bidi.isolate(big.txn.merchant)) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
+          + "\(name)."
       }
     }
     let short = month.shortName

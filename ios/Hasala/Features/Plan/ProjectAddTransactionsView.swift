@@ -11,6 +11,7 @@ final class ProjectAddModel {
   var from: Date
   var to: Date
   var selected: Set<TxnID> = []
+  static let shownLimit = 200
 
   init(app: AppModel, project: ProjectID) {
     self.app = app
@@ -59,14 +60,15 @@ struct ProjectAddTransactionsView: View {
   }
 
   var body: some View {
-    let rows = model.shown
+    let matches = model.shown
+    let rows = Array(matches.prefix(ProjectAddModel.shownLimit))
     let chosen = rows.filter { model.selected.contains($0.id) }
     PlanDetailScreen(app: app, title: "Add transactions", wash: .hue(.peach)) {
       filters
         .padding(.horizontal, HSpacing.insetPage)
       VStack(alignment: .leading, spacing: 12) {
         ReflowingRow(alignment: .firstTextBaseline) {
-          CountedTitle(title: "Not in this project", count: model.narrowed ? rows.count : model.candidates.count)
+          CountedTitle(title: "Not in this project", count: model.narrowed ? matches.count : model.candidates.count)
         } trailing: {
           if model.narrowed, !rows.isEmpty, chosen.count < rows.count {
             Button { model.selectAll(rows) } label: {
@@ -90,8 +92,14 @@ struct ProjectAddTransactionsView: View {
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
         } else {
+          if matches.count > rows.count {
+            Text("Showing \(MoneyFormat.count(rows.count)) of \(MoneyFormat.count(matches.count)). Narrow the search to see the rest.")
+              .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("projectAdd.showing")
+          }
           PlanListCard {
-            ForEach(rows.prefix(200)) { row in
+            ForEach(rows) { row in
               Button { model.toggle(row.id) } label: {
                 HStack(spacing: 12) {
                   TransactionRow(row, hidden: model.hidden)

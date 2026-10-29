@@ -141,23 +141,30 @@ struct PlanAmountField: View {
   /// face's natural 52, which made the stepper row and Move money's amount 6 taller.
   @ScaledMetric(relativeTo: .largeTitle) private var line: CGFloat = 46
   @ScaledMetric(relativeTo: .body) private var unit: CGFloat = 17
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var shownFigure: CGFloat { min(figure, 50) }
+  private var shownLine: CGFloat { line * shownFigure / figure }
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 6))
+    layout {
       Text("AED")
         .font(.system(size: unit, weight: .semibold, design: .rounded))
         .foregroundStyle(HColor.textPrimary)
+        .fixedSize()
         .accessibilityHidden(true)
       TextField("0", text: $text)
-        .font(.system(size: figure, weight: .bold, design: .rounded))
-        .tracking(-0.8 * figure / 44)
+        .font(.system(size: shownFigure, weight: .bold, design: .rounded))
+        .tracking(-0.8 * shownFigure / 44)
         .foregroundStyle(HColor.textPrimary)
         .keyboardType(.decimalPad)
         .focused(focus)
         .fixedSize()
         // Laid out on Paper's line; the digits (no descenders, a comma's tail of 0.12 em)
         // stay inside it.
-        .frame(height: line)
+        .frame(height: shownLine)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
         .onChange(of: text) { old, new in

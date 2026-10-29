@@ -23,9 +23,15 @@ struct MoveMoneySheet: View {
   init(model: any BudgetSheetModel) {
     self.model = model
     // To and the amount are there from the first frame: the shortfall when the pace runs
-    // past the budget, all of Ready to assign for Assign, else 100.00.
+    // past the budget, capped at what the first source has, all of Ready to assign for
+    // Assign, else 100.00.
     _destination = State(initialValue: model.row?.id)
-    let start = model.shortfall?.minor ?? (model.row == nil ? max(0, model.plan.readyToAssign.minor) : 100_00)
+    let start: Int64
+    if let gap = model.shortfall?.minor {
+      start = model.sources(to: model.row?.id).first.map { min(gap, $0.available.minor) } ?? gap
+    } else {
+      start = model.row == nil ? max(0, model.plan.readyToAssign.minor) : 100_00
+    }
     _draft = State(initialValue: PlanAmountField.text(for: start, style: .exact))
   }
 
@@ -43,7 +49,8 @@ struct MoveMoneySheet: View {
     NavigationStack {
       ScrollView {
         VStack(spacing: HSpacing.sheetGap) {
-          PlanSheetHeader(title: assigning ? "Assign" : "Move money", closeID: "move.close") { dismiss() }
+          PlanSheetHeader(title: assigning && model.plan.readyToAssign.minor > 0 ? "Assign" : "Move money",
+                          closeID: "move.close") { dismiss() }
           VStack(spacing: 16) {
             toBlock
             amountBlock
@@ -157,10 +164,12 @@ struct MoveMoneySheet: View {
         InlineStatus(tone: .error, text: refusal, size: .regular)
           .accessibilityIdentifier("move.refusal")
       } else if let gap = model.shortfall, destination == model.row?.id {
-        let covers = (amount ?? 0) >= gap.minor
-        PhraseText(covers ? "Covers the projected gap"
-                     : MoneyPhrase([.text("The projected gap is AED "), .amount(gap, hidden: 3)]),
-                   hidden: model.hidden)
+        let moving = amount ?? 0
+        let words: MoneyPhrase = moving >= gap.minor ? "Covers the projected gap"
+          : moving > 0 ? MoneyPhrase([.text("Covers "), .amount(.aed(moving), hidden: 3), .text(" of the "),
+                                      .amount(gap, hidden: 3), .text(" gap")])
+          : MoneyPhrase([.text("The projected gap is AED "), .amount(gap, hidden: 3)])
+        PhraseText(words, hidden: model.hidden)
           .hType(.subheadline).foregroundStyle(HColor.textSecondary)
           .multilineTextAlignment(.center)
       }
@@ -269,19 +278,25 @@ private struct BeforeAfterRow: View {
   let before: Int64
   let after: Int64
   let hidden: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     ReflowingRow(spacing: 12) {
       Text(name).hType(.callout.weight(.medium)).foregroundStyle(HColor.textPrimary)
     } trailing: {
-      HStack(spacing: 6) {
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
+      layout {
         MoneyText(.aed(before), figure: HFigure.row.weight(.medium), style: .compact, hidden: hidden, hiddenGlyphs: 3,
                   color: HColor.textSecondary)
-        PlanGlyph(kind: .arrowRight, size: 14, color: HColor.textSecondary, stroke: 2.2)
-        MoneyText(.aed(abs(after)), figure: .row, style: .compact, hidden: hidden, hiddenGlyphs: 3,
-                  color: after < 0 ? HColor.statusErrorForeground : HColor.textPrimary, sign: after < 0 ? .debt : .none)
+          .fixedSize()
+        HStack(spacing: 6) {
+          PlanGlyph(kind: .arrowRight, size: 14, color: HColor.textSecondary, stroke: 2.2)
+          MoneyText(.aed(abs(after)), figure: .row, style: .compact, hidden: hidden, hiddenGlyphs: 3,
+                    color: after < 0 ? HColor.statusErrorForeground : HColor.textPrimary, sign: after < 0 ? .debt : .none)
+        }
+        .fixedSize()
       }
-      .fixedSize()
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 8)
