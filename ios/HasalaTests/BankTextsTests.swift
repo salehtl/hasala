@@ -789,6 +789,13 @@ struct BankTextsTests {
     #expect(ready.state != a.state && !ready.working)
   }
 
+  @Test func theHeroNamesTheLastTextWithNoBank() {
+    let hero = BankTextsAlertsPage.Hero(
+      .working(lastRan: now.addingTimeInterval(-60)), lastText: now.addingTimeInterval(-7200), now: now)
+    #expect(hero.detail.hasSuffix("\nLast text added 2 h ago"))
+    #expect(!hero.detail.contains("Last bank text"))
+  }
+
   @Test func bankTextTimesUseTheLedgerClock() {
     #expect(BankTexts.clock.secondsFromGMT() == 4 * 3600)
   }

@@ -39,7 +39,7 @@ struct BankTextsAlertsPage: View {
         state = .working
         title = "Working"
         detail = ["Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))",
-                  lastText.map { "Last bank text \(RelativeTime.ago($0, now: now))" }]
+                  lastText.map { "Last text added \(RelativeTime.ago($0, now: now))" }]
           .compactMap { $0 }.joined(separator: "\n")
         hue = .mint
       case .waitingForFirstText:

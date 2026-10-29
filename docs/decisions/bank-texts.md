@@ -85,7 +85,7 @@ What iOS allows, as the owner tested on a real iPhone:
 - An automation sees only texts that arrive after it is made. Older texts can be pasted.
 
 The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
-ago", the last bank text it added as a row). What the phone keeps for this, and nothing more, is in
+ago", the last text it added as a row). What the phone keeps for this, and nothing more, is in
 [What the phone keeps about texts](#what-the-phone-keeps-about-texts).
 
 The set-up test: when the person taps **I made it, send a test** in setup, or **Test it
