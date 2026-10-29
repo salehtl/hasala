@@ -577,7 +577,9 @@ drop a text:
 - Equal texts at different times (for example two equal reversals) stay two rows, which the
   owner's DIB texts showed is needed.
 - A repeat that the fold cannot hold (no bank, or nothing read) is a second row in Review
-  beside the first, never a row that files itself.
+  beside the first, never a row that files itself. A repeat in the same minute (its key's
+  `n` above 0) always waits in Review, with or without a bank, because the readers may read
+  its merchant differently from the first copy's, and then the fold's key does not match.
 
 A pasted text has no sender and no arrival time, so its key uses the empty sender and the
 paste minute (its `received_at` is the paste minute too), and cannot match the automation's

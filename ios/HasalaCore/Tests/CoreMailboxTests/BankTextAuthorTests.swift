@@ -422,13 +422,14 @@ struct BankTextKeyTests {
     #expect(BankTextKey.ingestID(secret: Data(count: 33), sender: nil, normalizedText: "x", arrivalMinuteMs: 0, n: 0) == nil)
   }
 
-  @Test("equal texts in the same minute get n 0 and 1; the fold holds the second as a probable copy; the same key again is duplicate_ingest")
+  @Test("equal texts in the same minute get n 0 and 1; the second waits in Review and the fold holds it as a probable copy; the same key again is duplicate_ingest")
   func sameMinute() async throws {
     let rig = try TextRig()
     let c = try TextCase.named("dib-purchase-credit-card")
     let a = try #require(await rig.add(c, at: TextRig.t0 + 5_000).added)
     let b = try #require(await rig.add(c, at: TextRig.t0 + 50_000).added)
     #expect(a.repeatNumber == 0 && b.repeatNumber == 1 && a.txnID != b.txnID)
+    #expect(a.filed && !b.filed)
     let s = try rig.fold()
     #expect(s.anomalies.isEmpty)
     #expect(s.txns[b.txnID]?.copyOf == a.txnID && s.txns[b.txnID]?.isHeldCopy == true && s.txns[a.txnID]?.copyOf == nil)

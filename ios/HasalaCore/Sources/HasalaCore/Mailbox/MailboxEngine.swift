@@ -24,9 +24,9 @@
 //     listing the next, so a short run always makes progress;
 //   - an interruption of the first-connect setup (reconnect, takeover, halt) resumes the phase it
 //     cut short (`halted_detail` "resume:<phase>"), so a backfill is never restarted as a scan;
-//   - there is no cards step: a finished scan authors what it staged in the same run, and a card
-//     the ledger doesn't know files like a known one (`awaiting_cards` survives only as a state
-//     an older build may have stored; the next cycle authors it).
+//   - there is no cards step and no card gate: a finished scan authors what it staged in the
+//     same run (`awaiting_cards` survives only as a state an older build may have stored; the
+//     next cycle authors it).
 import CoreJSON
 import CoreMail
 import CoreNorm
@@ -892,8 +892,8 @@ public actor MailboxEngine {
       cut = false  // the cap ends the listing; the backfill lists and authors the remainder
     }
     guard !cut else { return await finish(&state, report) }
-    // The scan is complete: author what it staged in the same run. There is no cards step; a
-    // card the ledger doesn't know files like a known one (`MessageDisposer.finalize`).
+    // The scan is complete: author what it staged in the same run. There is no cards step and
+    // no card gate (`MessageDisposer.finalize`).
     state.phase = .authoringBackfill
     try? await store.commit(commitState(state))
     return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)

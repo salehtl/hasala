@@ -159,8 +159,8 @@ public actor BankTextAuthor {
     guard let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
     else { return true }
     if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
+    if n > 0 { return true }
     let bankless = (row.bank ?? "").isEmpty
-    if bankless && n > 0 { return true }
     let w = DuplicateRules.probableCopyWindowMs
     let read: [BankTextRow]?
     if let nearby { read = nearby } else { read = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w) }
