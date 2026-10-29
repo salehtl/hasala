@@ -1,12 +1,12 @@
 // `OpAuthor`'s bills-and-accounts authors (03b §1.4, §3.2-§4.4): `account_set`,
-// `card_linked`, `bill_set`, `bill_occurrence_set` and `account_checkin`. Each
-// payload is exactly what `Replay/V4/BillsAccounts.swift` decodes, key for key,
-// and passes that decoder in `build()` like every other op.
+// `bill_set`, `bill_occurrence_set` and `account_checkin`. Each payload is
+// exactly what `Replay/V4/BillsAccounts.swift` decodes, key for key, and passes
+// that decoder in `build()` like every other op. No path writes `card_linked`
+// since 2026-10-29; the fold still reads it.
 //
-// Ids follow 03b §1.4's author grammar: an account created from a card is
-// derived from (bank, last4), so two iPhones that confirm the same card
-// converge on one account; cash is `ac_cash`; every other account, manual bill
-// and check-in id is 128 random bits.
+// Ids follow 03b §1.4's author grammar: an account that older builds created
+// from a card is derived from (bank, last4); cash is `ac_cash`; every other
+// account, manual bill and check-in id is 128 random bits.
 import CoreJSON
 import CorePrimitives
 import CoreTime
@@ -120,29 +120,6 @@ extension OpAuthor {
         ("statement_due_day", d.statementDueDay.map { .number(JSONNumber($0)) } ?? .null), ("active", .bool(d.active)),
         ("closed_on", d.closedOn.map { .string($0.wire) } ?? .null), ("color", d.color.map(JSONValue.string) ?? .null),
       ])
-  }
-
-  public enum CardLinkState: Sendable, Equatable {
-    /// The card is this person's, paid from `account`.
-    case mine(account: String)
-    case notMine
-    /// Drop the link (the card is unknown again).
-    case forget
-  }
-
-  /// `card_linked {bank, last4, state, account}` (03b §4.3).
-  public mutating func linkCard(bank: String?, last4: String, _ state: CardLinkState) {
-    var p: [(String, JSONValue)] = [("bank", bank.map(JSONValue.string) ?? .null), ("last4", .string(last4))]
-    switch state {
-    case .mine(let account):
-      p.append(("state", .string("mine")))
-      p.append(("account", .string(account)))
-    case .notMine:
-      p.append(("state", .string("not_mine")))
-    case .forget:
-      p.append(("state", .string("forget")))
-    }
-    add(.cardLinked, p)
   }
 
   // MARK: Bills (03b §3.2-§3.3)

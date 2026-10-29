@@ -1,9 +1,10 @@
 import CoreExtract
 import CoreJSON
-import CoreMailbox
 import CoreTime
 import Foundation
 import Testing
+
+@testable import CoreMailbox
 
 struct TextCase: Sendable {
   var name: String
@@ -55,7 +56,8 @@ enum ReadingJSON {
         ("reading", .string("kept")), ("sender_kind", .string(k.sender.rawValue)), ("bank", text(k.bank)), ("tier", .string(k.tier)),
         ("template", text(k.template?.ref)), ("sender_matches", .bool(k.template?.senderMatches ?? false)),
         ("transfer_role", text(k.template?.transferRole?.rawValue)), ("marked", .bool(k.marked)), ("held", .bool(k.held)),
-        ("counts_as_payment", .bool(k.countsAsPayment)),
+        ("counts_as_payment", .bool(k.countsAsPayment)), ("reader_confident", .bool(k.readerConfident)),
+        ("files", .bool(BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false))),
       ]
       if let f = k.fields {
         p += [

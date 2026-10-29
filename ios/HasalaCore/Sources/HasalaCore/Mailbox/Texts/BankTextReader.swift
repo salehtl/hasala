@@ -41,6 +41,7 @@ public struct BankTextKept: Sendable, Equatable {
   public var marked: Bool
   public var held: Bool
   public var countsAsPayment: Bool
+  public var readerConfident = false
 
   public var tier: String { template != nil ? "template" : fields != nil ? "heuristic" : "none" }
   public var unparsed: Bool { fields == nil }
@@ -133,7 +134,7 @@ public enum BankTextReader {
     case .pass(let m): marked = m
     }
 
-    let learn = sender.kind == .bank
+    let learn = sender.learns
     var memory = layouts
     let input = ExtractInput(sender: sender.layoutKey, subject: "", text: text, receivedAtMs: a.receivedAtMs, listUnsubscribe: false)
     for t in templates where t.definition.isSMS {
@@ -183,7 +184,8 @@ public enum BankTextReader {
     let kept = BankTextKept(
       sender: sender.kind, bank: sender.bank, template: nil, fields: fields, merchant: fields?.merchant ?? limit(r.merchant),
       last4: fields?.last4 ?? last4, postedAt: fields?.postedAt ?? timed ?? Instant.iso(a.arrivalMinuteMs) ?? "",
-      precision: fields?.precision ?? "time", marked: marked, held: false, countsAsPayment: lenient)
+      precision: fields?.precision ?? "time", marked: marked, held: false, countsAsPayment: lenient,
+      readerConfident: fields != nil && r.meetsFilingBar)
     return (.kept(kept), memory)
   }
 }

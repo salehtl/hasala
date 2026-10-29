@@ -265,14 +265,6 @@ public final class MailboxTableStore: Sendable {
     }
   }
 
-  public func stagedGates(bank: String, last4: String) throws -> [Data] {
-    try db.read { db in
-      try Data.fetchAll(
-        db, sql: "SELECT gates_json FROM mailbox_staging WHERE bank = ? AND last4 = ? ORDER BY internal_date, message_id",
-        arguments: [bank, last4])
-    }
-  }
-
   public func stagedCount() throws -> Int {
     try db.read { db in try Int.fetchOne(db, sql: "SELECT count(*) FROM mailbox_staging") ?? 0 }
   }

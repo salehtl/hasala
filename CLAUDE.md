@@ -644,14 +644,22 @@ the approval of the owner for that deployment.
   it is not sure, a text with a payment shape goes to Review. Nothing sends a
   text off the phone, and hasalad never sees one. Do not put a raw text in the
   op log. The text key is an HMAC under a secret that stays on the device, and
-  a key never drops a text (a repeat is a held probable copy). A text files
-  with no review only on an SMS template hit with a matching sender and a
-  known card (`card_linked` mine, as for mail). The readers only fill Review;
-  Apple's on-device model does not read texts. Learned text layouts stay in
-  memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
+  a key never drops a text (a repeat is a held probable copy). A text from the
+  automation files with no review when the account has no mailbox link, its
+  fields were read, and an SMS template read it or the two readers agree on
+  amount, currency and direction (each at 0.8 or more, as for mail). There is
+  no sender check and no card check (2026-10-29). Held hits, transfer partners
+  and marked texts wait in Review, and a paste always does. Apple's on-device
+  model does not read texts. Learned text layouts (from bank senders and from
+  texts with no sender) stay in memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
   `provenance` or `dedupe`. A mail that may repeat a text row's payment waits
   in Review and never files itself (D10). Refer to
   `docs/decisions/bank-texts.md`.
+- **No card or account linking (2026-10-29).** No code path writes
+  `card_linked` or makes an account from a card (texts, Gmail, Outlook). Mail
+  files with a confirmed or unconfirmed recipient (a mismatch never files) and
+  has no card gate. The fold still reads the `card_linked` and `account_set`
+  ops of older builds. Refer to `docs/decisions/filing-without-cards.md`.
 - **Categorization occurs on the device**, in this sequence: user rules, then
   the UAE merchant dictionary in the app, then the person's last pick for
   that merchant group and direction (`LastPick`: the newest filed row they
@@ -670,7 +678,7 @@ the approval of the owner for that deployment.
   stores and logs nothing. hasalad never sees these requests. A suggestion
   does not file a row (`needs_review` stays true). There is one exception:
   "Sort automatically", a second opt-in. With it, a Clef answer at or above
-  the auto-file threshold (0.8, margin 0.4) files the row with
+  the auto-file threshold (0.7, margin 0.4; 2026-10-29) files the row with
   `needs_review: false`. Apple's model never files a row
   (`ModelTier.autoConfirm = false`). With the switch on, Hasala works
   through what waits in Review by itself while the app is open

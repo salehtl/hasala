@@ -455,7 +455,10 @@ struct CloudAutoFileTests {
     arguments: [
       (reply(choice: "dining", ["dining": 0.97, "groceries": 0.01]), true, ModelAnswer.category("dining"), true),
       (reply(choice: "dining", ["dining": 0.97, "groceries": 0.01]), false, ModelAnswer.category("dining"), false),
-      (reply(choice: "dining", ["dining": 0.75, "groceries": 0.05]), true, ModelAnswer.category("dining"), false),
+      (reply(choice: "dining", ["dining": 0.75, "groceries": 0.05]), true, ModelAnswer.category("dining"), true),
+      (reply(choice: "dining", ["dining": 0.69, "groceries": 0.05]), true, ModelAnswer.category("dining"), false),
+      (reply(choice: "dining", ["dining": 0.7, "groceries": 0.3]), true, ModelAnswer.category("dining"), true),
+      (reply(choice: "dining", ["dining": 0.7, "groceries": 0.31]), true, ModelAnswer.category("dining"), false),
       (reply(choice: "dining", ["dining": 0.85, "groceries": 0.5]), true, ModelAnswer.category("dining"), false),
       (reply(choice: "dining", ["dining": 0.8, "groceries": 0.4]), true, ModelAnswer.category("dining"), true),
       (reply(choice: "unknown", ["unknown": 0.97, "dining": 0.01]), true, ModelAnswer.unknown, false),
@@ -479,7 +482,7 @@ struct CloudAutoFileTests {
   @Test("the thresholds")
   func thresholds() {
     #expect(CloudCategoryModel.suggestThreshold == (minimum: 0.6, margin: 0.2))
-    #expect(CloudCategoryModel.autoFileThreshold == (minimum: 0.8, margin: 0.4))
+    #expect(CloudCategoryModel.autoFileThreshold == (minimum: 0.7, margin: 0.4))
   }
 }
 

@@ -307,32 +307,28 @@ import Testing
 
   @Test func filedOnlyWithEveryGate() throws {
     let p = try mail(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0))
-    let known = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: GroceryCategorizer())
-    #expect(!known.needsReview)
-    #expect(known.payload["needs_review"] == .bool(false))
-    #expect(known.payload["category"] == .string("groceries"))
-    #expect(known.payload["gates"]?["card"] == .string("known"))
-    #expect(known.payload.keys == [
+    let filed = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: GroceryCategorizer())
+    #expect(!filed.needsReview)
+    #expect(filed.payload["needs_review"] == .bool(false))
+    #expect(filed.payload["category"] == .string("groceries"))
+    #expect(filed.payload["gates"]?["card"] == nil)
+    #expect(filed.payload["gates"]?.objectValue?.keys == ["ar", "sender", "template", "forwarded"])
+    #expect(filed.payload.keys == [
       "amount_minor", "currency", "direction", "posted_at", "posted_precision", "merchant_raw", "last4", "category",
       "category_source", "needs_review", "unparsed", "tier", "entry_method", "provenance", "bank", "gates", "dedupe",
     ])
-    #expect(known.payload["amount_minor"] == .string("25000"))
-    #expect(known.payload["provenance"] == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g")), ("message_id", .string("m1"))])))
+    #expect(filed.payload["amount_minor"] == .string("25000"))
+    #expect(filed.payload["provenance"] == .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g")), ("message_id", .string("m1"))])))
 
-    // A card the ledger doesn't know files like a known one (there is no cards step).
-    let unknown = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
-    #expect(!unknown.needsReview && unknown.payload["gates"]?["card"] == .string("unknown"))
-    #expect(unknown.payload["category"] == nil)
-
-    let notMine = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .notMine], categorizer: NoCategorizer())
-    #expect(notMine.needsReview && notMine.payload["gates"]?["card"] == .string("not_mine"))
+    let uncategorized = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
+    #expect(!uncategorized.needsReview && uncategorized.payload["category"] == nil)
   }
 
   @Test func untrustedOrForeignVerdictStaysInReview() throws {
     // A foreign A-R above Gmail's: not_topmost, so the sender is not verified.
     let p = try mail(SyntheticMail.dibCard(id: "m1", dateMs: Rig.t0, arTopmost: false))
     #expect(p.gates.ar == "not_topmost" && !p.gates.senderTrusted)
-    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview)
     #expect(d.payload["gates"]?["sender"] == .string("untrusted"))
     #expect(d.payload["amount_minor"] == .string("25000"))  // prefilled
@@ -342,12 +338,11 @@ import Testing
   }
 
   @Test func mailAddressedToAnotherMailboxStaysInReview() throws {
-    let cards = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
     let other = try mail(SyntheticMail.dibCard(id: "r1", dateMs: Rig.t0, to: "Someone Else <someone.else@example.net>"))
     #expect(other.gates.ar == "pass" && other.gates.senderTrusted && other.recipient == .mismatch)
-    let d = MessageDisposer.finalize(other, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(other, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview && d.payload["amount_minor"] == .string("25000"))
-    let base = MessageDisposer.finalize(try mail(SyntheticMail.dibCard(id: "r0", dateMs: Rig.t0)), provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer())
+    let base = MessageDisposer.finalize(try mail(SyntheticMail.dibCard(id: "r0", dateMs: Rig.t0)), provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(!base.needsReview && d.payload["gates"] == base.payload["gates"])
 
     let named = "\"\(SyntheticMail.defaultTo)\" <someone.else@example.net>, (\(SyntheticMail.defaultTo)) x@example.net"
@@ -363,22 +358,21 @@ import Testing
       provider: .gmail, linkedAddress: nil, spam: false, analyze: AuthResults.analyze)
     else { throw CancellationError() }
     #expect(unlinked.recipient == .mismatch)
-    #expect(MessageDisposer.finalize(unlinked, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
+    #expect(MessageDisposer.finalize(unlinked, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
   }
 
-  @Test func anUnsignedRecipientFilesOnlyAKnownCard() throws {
-    let known = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
-    func review(_ p: ParsedMail, _ cards: [CardKey: CardState]) -> Bool {
-      MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview
+  @Test func anUnconfirmedRecipientFilesAnyCard() throws {
+    func review(_ p: ParsedMail) -> Bool {
+      MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview
     }
     let signed = try mail(SyntheticMail.dibCard(id: "u0", dateMs: Rig.t0))
-    #expect(signed.recipient == .confirmed && !review(signed, [:]) && !review(signed, known))
+    #expect(signed.recipient == .confirmed && !review(signed))
 
-    let unsigned = try mail(SyntheticMail.dibCard(id: "u1", dateMs: Rig.t0, signedHeaders: "From:Subject"))
-    #expect(unsigned.recipient == .unconfirmed && review(unsigned, [:]) && !review(unsigned, known))
+    let unsigned = try mail(SyntheticMail.dibCard(id: "u1", last4: "7777", dateMs: Rig.t0, signedHeaders: "From:Subject"))
+    #expect(unsigned.recipient == .unconfirmed && unsigned.last4 == "7777" && !review(unsigned))
 
     let noTo = try mail(SyntheticMail.dibCard(id: "u2", dateMs: Rig.t0, to: nil))
-    #expect(noTo.recipient == .unconfirmed && review(noTo, [:]) && !review(noTo, known))
+    #expect(noTo.recipient == .unconfirmed && !review(noTo))
 
     let twice = try mail(SyntheticMail.dibCard(
       id: "u3", dateMs: Rig.t0, to: "\(SyntheticMail.defaultTo)\r\nTo: \(SyntheticMail.defaultTo)"))
@@ -394,7 +388,7 @@ import Testing
       templates: templates, bankDomains: trusted, trusted: trusted, provider: .gmail,
       linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
     else { throw CancellationError() }
-    #expect(otherSig.recipient == .unconfirmed && review(otherSig, [:]))
+    #expect(otherSig.recipient == .unconfirmed && !review(otherSig))
   }
 
   @Test func spamStaysInReview() throws {
@@ -404,28 +398,27 @@ import Testing
       bankDomains: trusted, trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: true,
       analyze: AuthResults.analyze)
     else { throw CancellationError() }
-    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [CardKey(bank: "dib", last4: "1234"): .mine], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview && d.payload["amount_minor"] == .string("25000"))
   }
 
   @Test func stagedMailWithoutRecipientFactsStaysInReview() throws {
     let p = try mail(SyntheticMail.dibCard(id: "o1", dateMs: Rig.t0))
-    let cards = [CardKey(bank: "dib", last4: "1234"): CardState.mine]
-    #expect(!MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
+    #expect(!MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
     var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
     json.removeValue(forKey: "recipient")
     json.removeValue(forKey: "spam")
     let old = try JSONDecoder().decode(ParsedMail.self, from: JSONSerialization.data(withJSONObject: json))
-    #expect(MessageDisposer.finalize(old, provider: .gmail, grantID: "g", cards: cards, categorizer: NoCategorizer()).needsReview)
+    #expect(MessageDisposer.finalize(old, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
   }
 
   @Test func unparsedBankMailIsTheEmptyReviewShape() throws {
     let p = try mail(SyntheticMail.bankNotice(id: "m4", dateMs: Rig.t0))
     #expect(p.fields == nil)
-    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: GroceryCategorizer())
     #expect(d.needsReview)
     let mid = MessageIDEvidence.hash(headers: "Message-ID: <\(Rig.t0).synthetic@example.invalid>") ?? ""
-    #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","card":"none","forwarded":false},"dedupe":{"message_id":"\#(mid)"}}"#)
+    #expect(d.payload.canonical == #"{"unparsed":true,"needs_review":true,"posted_at":"2026-05-28T20:00:00.000Z","posted_precision":"day","merchant_raw":"","last4":"","category":null,"entry_method":"mailbox","provenance":{"provider":"gmail","grant_id":"g","message_id":"m4"},"gates":{"ar":"pass","sender":"trusted","template":"none","forwarded":false},"dedupe":{"message_id":"\#(mid)"}}"#)
   }
 
   @Test func dibTransferNoticesFileAsDebits() throws {
@@ -434,7 +427,7 @@ import Testing
     let f = try #require(arabic.fields)
     #expect(f.amountMinor == 314_159 && f.currency == "AED" && f.direction == "debit" && f.merchant == "DIB TRANSFER")
     #expect(f.postedAt == "2026-05-28T20:26:40.000Z" && f.precision == "time" && f.isTransfer)
-    let d = MessageDisposer.finalize(arabic, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(arabic, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(!d.needsReview && d.payload["unparsed"] == .bool(false) && d.payload["direction"] == .string("debit"))
     #expect(d.payload["amount_minor"] == .string("314159") && d.payload["is_transfer"] == nil)
 
@@ -454,12 +447,12 @@ import Testing
 
     let forwarded = try mail(SyntheticMail.dibTransferNotice(id: "n2", day: "29-05-2026", dateMs: Rig.t0, to: "someone.else@example.net"))
     #expect(forwarded.recipient == .mismatch && forwarded.fields?.direction == "debit")
-    #expect(MessageDisposer.finalize(forwarded, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer()).needsReview)
+    #expect(MessageDisposer.finalize(forwarded, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
 
     for status in ["قيد التنفيذ", "قيد الأنتظار"] {
       let pending = try mail(SyntheticMail.dibTransferNotice(id: "n3", day: "29-05-2026", status: status, dateMs: Rig.t0))
       #expect(pending.fields == nil && pending.gates.template == nil)
-      let empty = MessageDisposer.finalize(pending, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      let empty = MessageDisposer.finalize(pending, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
       #expect(empty.needsReview && empty.payload["unparsed"] == .bool(true))
     }
   }
@@ -486,7 +479,7 @@ import Testing
     let rf = try #require(refund.fields)
     #expect(rf.amountMinor == 123_450 && rf.currency == "AED" && rf.direction == "credit" && rf.merchant == "DIB CARD REFUND")
     #expect(rf.postedAt == "2026-05-28T20:26:40.000Z" && rf.precision == "time")
-    let d = MessageDisposer.finalize(refund, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(refund, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.payload["unparsed"] == .bool(false) && d.payload["direction"] == .string("credit"))
     #expect(d.payload["category"] == .string("refunds"))
     let source = try #require(d.payload["category_source"]?.objectValue)
@@ -497,20 +490,20 @@ import Testing
       "عزيزي المتعامل,\nA transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with XX1234 has been reversed.")
     #expect(reversal.gates.template == "dib.card-reversal.v1@1" && reversal.last4 == "1234")
     #expect(reversal.fields?.amountMinor == 5_200 && reversal.fields?.direction == "credit" && reversal.fields?.merchant == "SAMPLE SHOP LLC")
-    let rd = MessageDisposer.finalize(reversal, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    let rd = MessageDisposer.finalize(reversal, provider: .gmail, grantID: "g", categorizer: GroceryCategorizer())
     #expect(rd.payload["category"] == .string("refunds"))
 
     let grocer = try dib(
       "r4",
       "A transaction to the value of AED 9.00 made at SAMPLE GROCER on your DIB card ending with XX1234 has been reversed.")
-    let gd = MessageDisposer.finalize(grocer, provider: .gmail, grantID: "g", cards: [:], categorizer: GroceryCategorizer())
+    let gd = MessageDisposer.finalize(grocer, provider: .gmail, grantID: "g", categorizer: GroceryCategorizer())
     #expect(gd.payload["category"] == .string("groceries"))
 
     let approved = try dib(
       "r3",
       "عزيزي المتعامل,\nA transaction to the value of AED 52.00 made at SAMPLE SHOP LLC on your DIB card ending with XX1234 has been approved.")
     #expect(approved.fields == nil && approved.gates.template == nil)
-    let ad = MessageDisposer.finalize(approved, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let ad = MessageDisposer.finalize(approved, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(ad.needsReview && ad.payload["unparsed"] == .bool(true))
 
     let dollars = try dib("r2", "تم إرجاع مبلغ 12.50 دولار على بطاقة بنك دبي الإسلامي الخاصة بك والمنتهية بالرقم XX1234.")
@@ -530,7 +523,7 @@ import Testing
   @Test func anAmountOverTheMailBoundIsTheEmptyReviewShape() throws {
     let over = try mail(SyntheticMail.dibCard(id: "m1", amount: "100,000,000,000.00", dateMs: Rig.t0))
     #expect(over.fields == nil && over.gates.template == nil)
-    let d = MessageDisposer.finalize(over, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(over, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview && d.payload["unparsed"] == .bool(true) && d.payload["amount_minor"] == nil)
     let atBound = try mail(SyntheticMail.dibCard(id: "m1", amount: "99,999,999,999.99", dateMs: Rig.t0))
     #expect(atBound.fields?.amountMinor == MailboxLimits.maxAmountMinor)
@@ -585,7 +578,7 @@ import Testing
   @Test func overDeepMailGoesToReview() throws {
     let p = try mail(nestedDIB(depth: 3000))
     #expect(p.fields == nil)
-    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    let d = MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
     #expect(d.needsReview)
   }
 

@@ -6,7 +6,6 @@ import Foundation
 
 public protocol BankTextLedger: Sendable {
   var textWrites: WriteSerial { get }
-  func knownCards() async -> [CardKey: CardState]
   func isIngested(_ ingestID: String) async -> Bool
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String
@@ -120,15 +119,13 @@ public actor BankTextAuthor {
         partner = BankTextTransferPair.partner(of: row, among: rows)
       }
     }
-    let cards = await ledger.knownCards()
     let draft = BankTextPayload.build(
-      kept, ingestID: key.id, receivedMinuteMs: minute, cards: cards, link: state, origin: origin,
-      transferPartner: partner != nil, categorizer: categorizer)
-    let card = BankTextPayload.card(kept, cards: cards)
+      kept, ingestID: key.id, receivedMinuteMs: minute, link: state, origin: origin, transferPartner: partner != nil,
+      categorizer: categorizer)
     var txnID: String?
     var authored = draft
     var lastError = "author"
-    for d in [draft] + BankTextPayload.fallbacks(draft, kept, card: card, receivedMinuteMs: minute) {
+    for d in [draft] + BankTextPayload.fallbacks(draft, kept, receivedMinuteMs: minute) {
       do throws(MailboxLedgerError) {
         txnID = try await ledger.authorText(d, archiving: archiving)
         authored = d
@@ -139,7 +136,7 @@ public actor BankTextAuthor {
       }
     }
     guard let txnID else { return .failed(lastError) }
-    if sender.kind == .bank { layouts = read.layouts }
+    if sender.learns { layouts = read.layouts }
     return .added(
       BankTextAdded(
         txnID: txnID, bank: kept.bank, keptAtMs: arrival.receivedAtMs, filed: !authored.needsReview,

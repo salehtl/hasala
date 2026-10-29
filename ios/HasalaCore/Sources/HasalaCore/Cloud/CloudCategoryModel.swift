@@ -6,7 +6,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
   public static let defaultTag = "cf-clef/1"
   public static let subjectLimit = 128
   public static let suggestThreshold = (minimum: 0.6, margin: 0.2)
-  public static let autoFileThreshold = (minimum: 0.8, margin: 0.4)
+  public static let autoFileThreshold = (minimum: 0.7, margin: 0.4)
 
   public let modelTag: String
   let endpoint: URL

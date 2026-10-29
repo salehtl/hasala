@@ -11,6 +11,24 @@ import Testing
 
 @testable import CoreDomain
 
+enum OlderCardLink { case mine(account: String), notMine, forget }
+
+extension OpAuthor {
+  mutating func olderBuildLinkCard(bank: String?, last4: String, _ state: OlderCardLink) {
+    var p: [(String, JSONValue)] = [("bank", bank.map(JSONValue.string) ?? .null), ("last4", .string(last4))]
+    switch state {
+    case .mine(let account):
+      p.append(("state", .string("mine")))
+      p.append(("account", .string(account)))
+    case .notMine:
+      p.append(("state", .string("not_mine")))
+    case .forget:
+      p.append(("state", .string("forget")))
+    }
+    add(.cardLinked, p)
+  }
+}
+
 @Suite("OpAuthor: bills and accounts (03b)")
 struct OpAuthorBillsAccountsTests {
   static func d(_ s: String) -> CivilDate { CivilDate(wire: s)! }
@@ -43,7 +61,7 @@ struct OpAuthorBillsAccountsTests {
   func canaryPayloads() throws {
     var a = OpAuthor(ctx())
     try a.setAccount(id: OpAuthor.cashAccountID, OpAuthor.AccountDraft(name: "Cash", kind: .cash))
-    a.linkCard(bank: "enbd", last4: "4412", .mine(account: "ac_cash"))
+    a.olderBuildLinkCard(bank: "enbd", last4: "4412", .mine(account: "ac_cash"))
     try a.checkIn(
       id: "ck_1", account: "ac_cash", asOfMs: try parseInstantMs("2026-10-10T09:31:20.000Z"), balanceMinor: 50_000,
       source: .checkin, resolution: .kept)
@@ -93,9 +111,9 @@ struct OpAuthorBillsAccountsTests {
       OpAuthor.AccountDraft(name: "DIB card", institution: "dib", kind: .creditCard, statementDueDay: 18))
     let sarwa = try a.newAccountID()
     try a.setAccount(id: sarwa, OpAuthor.AccountDraft(name: "Sarwa", kind: .investment, inPlan: false))
-    a.linkCard(bank: "enbd", last4: "4412", .mine(account: enbd))
-    a.linkCard(bank: "adcb", last4: "1111", .notMine)
-    a.linkCard(bank: nil, last4: "2222", .notMine)
+    a.olderBuildLinkCard(bank: "enbd", last4: "4412", .mine(account: enbd))
+    a.olderBuildLinkCard(bank: "adcb", last4: "1111", .notMine)
+    a.olderBuildLinkCard(bank: nil, last4: "2222", .notMine)
     let bill = try a.newManualBillID()
     try a.setBill(
       id: bill,
@@ -125,7 +143,7 @@ struct OpAuthorBillsAccountsTests {
         name: "DEWA", keys: ["dewa", "dewa bill"], mode: .variable, amountMinor: 50_000, anchor: Self.d("2026-10-14"),
         start: Self.d("2026-04-14"), end: Self.d("2026-12-14"), category: "utilities", account: enbd, status: .cancelled))
     b.setBillOccurrence(bill: bill, due: Self.d("2026-08-14"), .clear)
-    b.linkCard(bank: "adcb", last4: "1111", .forget)
+    b.olderBuildLinkCard(bank: "adcb", last4: "1111", .forget)
     try b.checkIn(id: ck, account: sarwa, asOfMs: now, balanceMinor: 18_940_500, source: .update, void: true)
     try b.setAccount(id: sarwa, OpAuthor.AccountDraft(name: "Sarwa", kind: .investment, inPlan: false, active: false, closedOn: Self.d("2026-10-10")))
     try Self.fold(try b.build().ops, into: &s, seq: 2)
@@ -186,7 +204,7 @@ struct OpAuthorBillsAccountsTests {
   @Test("payloads outside 03b's grammar are author bugs, refused by build() before anything is enqueued")
   func invalid() throws {
     var a = OpAuthor(ctx())
-    a.linkCard(bank: "ENBD", last4: "4412", .notMine)  // a Bank is lower-case
+    a.olderBuildLinkCard(bank: "ENBD", last4: "4412", .notMine)  // a Bank is lower-case
     #expect(throws: AuthorError.self) { try a.build() }
     var b = OpAuthor(ctx())
     try b.setBill(

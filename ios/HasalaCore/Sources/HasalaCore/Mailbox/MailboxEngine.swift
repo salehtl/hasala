@@ -805,7 +805,7 @@ public actor MailboxEngine {
 
     // 7. List and account.
     let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    var run = Run(trusted: trusted, grant: grant(state), address: state.address)
     let cut: Bool
     do {
       cut = try await listAndProcess(
@@ -864,7 +864,7 @@ public actor MailboxEngine {
       }
     }
     let since = windowSinceSec(state)
-    var run = Run(trusted: trusted, cards: [:], grant: grant(state), address: state.address)
+    var run = Run(trusted: trusted, grant: grant(state), address: state.address)
     run.commitEvery = max(1, config.firstScanCommitEvery)
     var cut: Bool
     do {
@@ -904,7 +904,6 @@ public actor MailboxEngine {
     _ report: CycleReport
   ) async -> CycleReport {
     var report = report
-    let cards = await ledger.knownCards()
     let total = (try? await store.stagedCount()) ?? 0
     var authored = 0
     if total > 0 {
@@ -914,7 +913,7 @@ public actor MailboxEngine {
     }
     while !Task.isCancelled {
       if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { break }
-      guard let n = await authorStagedBatch(cards: cards, grant: grant(state), report: &report) else {
+      guard let n = await authorStagedBatch(grant: grant(state), report: &report) else {
         report.haltedOn = .offline
         return await finish(&state, report)
       }
@@ -929,7 +928,7 @@ public actor MailboxEngine {
       // again and authored directly. Run unconditionally (no state
       // column records the cap): ids only, and the accounted set skips everything already done.
       let since = windowSinceSec(state)
-      var run = Run(trusted: trusted, cards: cards, grant: grant(state), address: state.address)
+      var run = Run(trusted: trusted, grant: grant(state), address: state.address)
       do {
         let cut = try await listAndProcess(
           source, domains: trusted, sinceSec: since, maxPages: config.maxListPages, mode: .author, paged: paged,
@@ -963,7 +962,7 @@ public actor MailboxEngine {
 
   func grant(_ state: MailboxState) -> String { config.grantID(provider: provider.id, address: state.address) }
 
-  func authorStagedBatch(cards: [CardKey: CardState], grant: String, report: inout CycleReport) async -> Int? {
+  func authorStagedBatch(grant: String, report: inout CycleReport) async -> Int? {
     guard let batch = try? await store.staged(limit: config.backfillBatch) else { return nil }
     if batch.isEmpty { return 0 }
     let texts: TextOverlap?
@@ -979,7 +978,7 @@ public actor MailboxEngine {
         continue
       }
       let draft = MessageDisposer.finalize(
-        m, provider: provider.id, grantID: grant, cards: cards, categorizer: categorizer, texts: texts)
+        m, provider: provider.id, grantID: grant, categorizer: categorizer, texts: texts)
       c.drafts.append(draft)
       c.accounted.append(AccountedRecord(messageID: m.messageID, outcome: .op, internalDateMs: m.internalDateMs, atMs: at))
       if let u = Self.unparsedSender(m, at: at) { c.unparsedSenders.append(u) }
@@ -992,10 +991,9 @@ public actor MailboxEngine {
 
   func commitStaged(_ run: inout Run, _ report: inout CycleReport) async -> Bool {
     run.sinceCommit = 0
-    let cards = await ledger.knownCards()
     var authored = 0
     while true {
-      guard let n = await authorStagedBatch(cards: cards, grant: run.grant, report: &report) else {
+      guard let n = await authorStagedBatch(grant: run.grant, report: &report) else {
         run.stop = .offline
         return false
       }
@@ -1167,7 +1165,7 @@ public actor MailboxEngine {
     let wanted = pending.filter { trust[$0.domain] != false && BankDomains.isQuerySafe($0.domain) }
     for p in wanted where !trusted.contains(p.domain) { trusted.append(p.domain) }
     var done = pending.filter { p in !wanted.contains(p) }.map(\.domain)
-    var run = Run(trusted: trusted, cards: await ledger.knownCards(), grant: grant(state), address: state.address)
+    var run = Run(trusted: trusted, grant: grant(state), address: state.address)
     var failure: MailAPIError?
     var offline = false
     for (sinceMs, group) in Dictionary(grouping: wanted, by: \.sinceMs).sorted(by: { $0.key < $1.key }) {
@@ -1343,7 +1341,6 @@ public actor MailboxEngine {
 
   struct Run {
     var trusted: [String]
-    var cards: [CardKey: CardState]
     var grant: String
     var address: String?
     var width = 6
@@ -1723,7 +1720,7 @@ public actor MailboxEngine {
         case .author:
           let texts = try await textOverlap()
           let draft = MessageDisposer.finalize(
-            m, provider: provider.id, grantID: run.grant, cards: run.cards, categorizer: categorizer, texts: texts)
+            m, provider: provider.id, grantID: run.grant, categorizer: categorizer, texts: texts)
           report.count(draft)
           c.drafts.append(draft)
           c.accounted.append(AccountedRecord(messageID: id, outcome: .op, internalDateMs: date, atMs: at))

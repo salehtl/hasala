@@ -27,18 +27,6 @@ extension LedgerReader {
     }
   }
 
-  public func textRows(bank: String, last4: String) throws -> [TxnRow] {
-    try db.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM txn WHERE superseded_by IS NULL AND archived IS NULL AND channel = ? AND bank = ? AND last4 = ?
-          ORDER BY posted_ms, id
-          """, arguments: [TxnChannel.sms, bank, last4]
-      ).map(TxnRow.init)
-    }
-  }
-
   public func textRowSpan() throws -> TextRowSpan? {
     try db.read { db in
       guard

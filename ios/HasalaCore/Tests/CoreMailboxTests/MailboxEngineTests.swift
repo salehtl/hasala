@@ -104,12 +104,10 @@ let day: Int64 = 86_400_000
     #expect(done.ops == 5 && done.review == 1 && done.toReview == 2)
     #expect(done.sortedBy == ["dictionary": 3, "none": 1, "unparsed": 1])
     #expect(done.phase == .active && done.completed)
-    #expect(await rig.ledger.authoredCards.isEmpty)
     let drafts = await rig.enqueued()
     let byID = Dictionary(uniqueKeysWithValues: drafts.map { ($0.messageID, $0) })
     #expect(byID["d1"]?.needsReview == false && byID["d1"]?.payload["category"] == .string("groceries"))
-    // A card the ledger doesn't know files like a known one, and the gate still records it.
-    #expect(byID["d3"]?.needsReview == false && byID["d3"]?.payload["gates"]?["card"] == .string("unknown"))
+    #expect(byID["d3"]?.needsReview == false && byID["d3"]?.payload["gates"]?["card"] == nil)
     #expect(byID["d3"]?.payload["last4"] == .string("9999"))
     #expect(byID["n1"]?.payload["unparsed"] == .bool(true) && byID["n1"]?.needsReview == true)
     #expect(byID["e1"]?.needsReview == false)
@@ -122,15 +120,14 @@ let day: Int64 = 86_400_000
     #expect(rig.listRequests.allSatisfy { r in r.query.contains { $0.0 == "q" && $0.1.hasPrefix("{from:") } })
   }
 
-  @Test func aCardMarkedNotMineStillWaitsForReview() async throws {
+  @Test func everyCardFilesWithNoCardGate() async throws {
     let rig = Rig()
-    await rig.ledger.setCards([CardKey(bank: "dib", last4: "9999"): .notMine])
     rig.gmail.add(SyntheticMail.dibCard(id: "d1", dateMs: Rig.t0 - 2 * day))
     rig.gmail.add(SyntheticMail.dibCard(id: "d3", last4: "9999", dateMs: Rig.t0 - day))
     await rig.connectAndActivate()
     let byID = Dictionary(uniqueKeysWithValues: (await rig.enqueued()).map { ($0.messageID, $0) })
     #expect(byID["d1"]?.needsReview == false)
-    #expect(byID["d3"]?.needsReview == true && byID["d3"]?.payload["gates"]?["card"] == .string("not_mine"))
+    #expect(byID["d3"]?.needsReview == false && byID["d3"]?.payload["gates"]?["card"] == nil)
   }
 
   @Test func aScanLeftAtTheRetiredCardsStepIsAuthoredOnTheNextCycle() async throws {
@@ -699,7 +696,6 @@ let day: Int64 = 86_400_000
     #expect(s.phase == .authoringBackfill && s.scanStartedMs == Rig.t0 && s.backfillDays == 90)
     let done = await rig.engine.runCycle(trigger: .launch)
     #expect(done.phase == .active && done.completed && done.ops == 2 && done.review == 0)
-    #expect(await rig.ledger.authoredCards.isEmpty)
     #expect(Set(await rig.enqueued().map(\.messageID)) == ["d1", "e1"])
   }
 

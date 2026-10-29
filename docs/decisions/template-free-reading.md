@@ -119,7 +119,10 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    combined confidence that `CombinedReader` reports is not the filing gate. The learned
    reader stays below 0.8 until it has seen a layout three times, so the first mail of an
    unlearned layout never files on its own. Otherwise the row goes to Review, prefilled
-   with what was read. (2026-10-24, decided by the owner's delegate.)
+   with what was read. (2026-10-24, decided by the owner's delegate.) Since 2026-10-29 the
+   trust gates have no card term: a mail with an unconfirmed recipient files on any card
+   or none, and bank texts file on the same reader agreement, with no sender or card check
+   ([filing-without-cards.md](filing-without-cards.md)).
 3. **Pending transfers are not transactions.** A notice that a transfer is pending or in
    process is disregarded. Only completed transfers and actual debit and credit notices
    count. A pending notice is followed by a completed one for the same transfer, so

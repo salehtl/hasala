@@ -1,6 +1,5 @@
 import CoreCategorize
 import CoreDomain
-import CoreMailbox
 import CoreProjection
 import CoreReplay
 import CoreTime
@@ -85,23 +84,20 @@ extension LedgerEditAuthor {
     guard let row = try reader.txn(id) else { throw Failure.notFound }
     let view = try reader.taxonomy()
     let icon = Self.icon(d.glyph)
-    let link = try confirmLink(row)
     let inverses: [Inverse]
     if alwaysUse, Self.reaches(row) {
       inverses = try await categorizeReaching(row, category: category, project: project) {
         a throws(AuthorError) in
         _ = try a.createCategory(id: category, name: d.name, parent: parent, icon: icon, in: view)
-        try CardLinkPlan.apply(link, to: &a)
       }
     } else {
       try await build { a throws(AuthorError) in
-        try CardLinkPlan.apply(link, to: &a)
         try a.createCategoryAndFile(
           id: category, name: d.name, parent: parent, icon: icon, in: view, txnID: id, parentVersion: row.version, project: project)
       }
       inverses = row.split ? [] : [refile(row)]
     }
-    return inverses + noteCorrection(row, to: category) + Self.unlinking(link)
+    return inverses + noteCorrection(row, to: category)
   }
 
   nonisolated private func archiveCategory(_ id: String, moveTo: String?, view: TaxonomyView, today: LocalDate) async throws {

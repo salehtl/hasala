@@ -33,19 +33,22 @@ struct BankTextsReviewTests {
     let ledger: RuntimeMailboxLedger
     let texts: BankTextAuthor
     let store: LiveLedgerStore
+    let seeded: (cards: [CardLink], accounts: [CoreReplay.Account])
     var reader: LedgerReader { a.projection.reader }
 
-    func add(_ text: String, sender: String? = "DIB-SMS", at ms: Int64 = BankTextsReviewTests.june5) async throws -> BankTextAdded {
+    func cardsUnchanged() throws -> Bool { try reader.cards() == seeded.cards && reader.accounts() == seeded.accounts }
+
+    func add(
+      _ text: String, sender: String? = "DIB-SMS", at ms: Int64 = BankTextsReviewTests.june5, link: BankTextLink = .notLinked
+    ) async throws -> BankTextAdded {
       let outcome = await texts.add(
-        BankTextArrival(text: text, sender: sender, receivedAtMs: ms), secret: BankTextsReviewTests.secret, link: { .notLinked })
+        BankTextArrival(text: text, sender: sender, receivedAtMs: ms), secret: BankTextsReviewTests.secret, link: { link })
       guard case .added(let added) = outcome else { throw Failure.notAdded("\(outcome)") }
       await store.reload()
       return added
     }
 
     func ops() throws -> [Op] { try a.context.store.pendingOps().map(LiveSortingTests.decode) }
-
-    func cards() throws -> [CardKey: CardState] { CardLinkPlan.current(try reader.cards()) }
 
     func ingestMail(_ fields: [(String, JSONValue)], id: String) async throws {
       var p = JSONObject([
@@ -84,69 +87,38 @@ struct BankTextsReviewTests {
       reader: a.projection.reader, author: LedgerEditAuthor(observer: a.observer, outbox: a.outbox),
       profile: Mapper.context().profile, prefs: DevicePrefsStore(defaults: defaults), clock: { MayaLedger.now })
     await store.reload()
-    return Live(a: a, ledger: ledger, texts: BankTextAuthor(ledger: ledger), store: store)
+    let reader = a.projection.reader
+    return Live(
+      a: a, ledger: ledger, texts: BankTextAuthor(ledger: ledger), store: store,
+      seeded: (try reader.cards(), try reader.accounts()))
   }
 
-  static let card = CardKey(bank: "dib", last4: "1234")
-
-  @Test func sortingATextRowInReviewLinksItsCardInTheSameBlobAndTheNextTextFiles() async throws {
-    let l = try await Self.live("texts.review.confirm")
-    let first = try await l.add(Self.purchase)
-    #expect(!first.filed && l.store.state.txn(first.txnID)?.inReview == true)
+  @Test func aTemplateHitTextFilesWithNoCardLink() async throws {
+    let l = try await Self.live("texts.review.files")
     let before = try l.ops().count
-    _ = try #require(try l.store.apply(.categorize(first.txnID, "groceries", learnRule: false, project: nil)))
-    try await Mapper.eventually { try l.reader.txn(first.txnID)?.needsReview == false }
-    let added = try Array(l.ops().dropFirst(before))
-    #expect(added.map(\.type) == [.accountSet, .cardLinked, .txnCategorized])
-    let account = try #require(added.first?.payload.objectValue)
-    #expect(account["name"]?.stringValue == "DIB ···1234" && account["kind"]?.stringValue == "credit_card")
-    #expect(added[1].payload["account"] == account["id"] && added[1].payload["state"]?.stringValue == "mine")
-    #expect(try l.cards()[Self.card] == .mine)
-    let next = try await l.add(Self.nextPurchase, at: Self.june5 + 86_400_000)
+    let row = try await l.add(Self.purchase)
+    #expect(row.filed)
+    #expect(try l.reader.txn(row.txnID)?.needsReview == false)
+    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnIngested])
+    #expect(try l.cardsUnchanged())
+    let next = try await l.add(Self.nextPurchase, sender: nil, at: Self.june5 + 86_400_000)
     #expect(next.filed)
   }
 
-  @Test func theConfirmIsOneBlobAndAFailureAfterItsLastOpLeavesNone() async throws {
-    let l = try await Self.live("texts.review.blob")
-    let first = try await l.add(Self.purchase)
-    let row = try #require(try l.reader.txn(first.txnID))
-    let author = LedgerEditAuthor(observer: l.a.observer, outbox: l.a.outbox)
-    let link = try author.confirmLink(row)
-    #expect(link.count == 1)
-    let body = LedgerEditAuthor.confirming(row, category: "groceries", project: nil, link: link)
+  @Test func sortingATextRowInReviewWritesOnlyTheSort() async throws {
+    let l = try await Self.live("texts.review.confirm")
+    let first = try await l.add(Self.purchase, link: .unknownUnanswered)
+    #expect(!first.filed && l.store.state.txn(first.txnID)?.inReview == true)
     let before = try l.ops().count
-    let ctx = try await l.a.observer.authorContext()
-    #expect(throws: AuthorError.self) {
-      _ = try l.a.observer.stamps.build(ctx) { a throws(AuthorError) in
-        try body(&a)
-        throw AuthorError.random
-      }
-    }
-    #expect(try l.ops().count == before)
-    #expect(try l.cards()[Self.card] == nil && l.reader.txn(first.txnID)?.needsReview == true)
-    let blob = try #require(try l.a.observer.stamps.build(ctx, body))
-    #expect(blob.ops.map(\.type) == [.accountSet, .cardLinked, .txnCategorized])
-  }
-
-  @Test func aCardAlreadyNotMineStaysNotMineAndAFiledRowLinksNothing() async throws {
-    let l = try await Self.live("texts.review.keep")
-    try await l.ledger.authorCards([CardDecision(card: Self.card, state: .notMine)])
-    let row = try await l.add(Self.purchase)
-    #expect(!row.filed)
-    let before = try l.ops().count
-    _ = try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil))
-    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
+    let token = try #require(try l.store.apply(.categorize(first.txnID, "groceries", learnRule: false, project: nil)))
+    try await Mapper.eventually { try l.reader.txn(first.txnID)?.needsReview == false }
     #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized])
-    #expect(try l.cards()[Self.card] == .notMine)
-
-    let m = try await Self.live("texts.review.filed")
-    try await m.ledger.authorCards([CardDecision(card: Self.card, state: .mine)])
-    let filed = try await m.add(Self.purchase)
-    #expect(filed.filed)
-    let start = try m.ops().count
-    _ = try m.store.apply(.categorize(filed.txnID, "shopping", learnRule: false, project: nil))
-    try await Mapper.eventually { try m.reader.txn(filed.txnID)?.category == "shopping" }
-    #expect(try m.ops().dropFirst(start).map(\.type) == [.txnCategorized])
+    #expect(try l.cardsUnchanged())
+    let undoStart = try l.ops().count
+    l.store.undo(token)
+    try await Mapper.eventually { try l.reader.txn(first.txnID)?.needsReview == true }
+    #expect(try l.ops().dropFirst(undoStart).map(\.type) == [.txnCategorized])
+    #expect(try l.cardsUnchanged())
   }
 
   @Test func aReaderRowLeftUnconfirmedLinksNoCard() async throws {
@@ -155,16 +127,42 @@ struct BankTextsReviewTests {
     let row = try await l.add("Purchase of AED 75.00 on card XX4321 at SAMPLE MARKET was successful", sender: nil)
     #expect(!row.filed)
     #expect(try l.ops().dropFirst(before).map(\.type) == [.txnIngested])
-    #expect(try l.cards()[CardKey(bank: "", last4: "4321")] == nil)
+    #expect(try l.cardsUnchanged())
   }
 
-  @Test func addingACategoryAndSortingLinksTheCardToo() async throws {
+  @Test func addingACategoryAndSortingLinksNoCard() async throws {
     let l = try await Self.live("texts.review.addAndSort")
-    let row = try await l.add(Self.purchase)
+    let row = try await l.add(Self.purchase, link: .unknownUnanswered)
     let draft = CategoryDraft(id: l.store.newCategoryID(), name: "VPN", glyph: .subscriptions, parent: "subscriptions")
     _ = try l.store.apply(.addCategoryAndSort(draft, row.txnID, alwaysUse: false, project: nil))
     try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
-    #expect(try l.cards()[Self.card] == .mine)
+    #expect(try l.cardsUnchanged())
+  }
+
+  @Test func alwaysUseItOnATextRowLinksNoCard() async throws {
+    let l = try await Self.live("texts.review.alwaysUse")
+    let row = try await l.add(Self.purchase, link: .unknownUnanswered)
+    #expect(try l.reader.txn(row.txnID)?.merchantGroup != nil)
+    let before = try l.ops().count
+    _ = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: true, project: nil)))
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
+    let types = try l.ops().dropFirst(before).map(\.type)
+    #expect(types.first == .txnCategorized && types.contains(.ruleAdded))
+    #expect(!types.contains(.cardLinked) && !types.contains(.accountSet))
+    #expect(try l.cardsUnchanged())
+  }
+
+  @Test func addingACategoryWithAlwaysUseItLinksNoCard() async throws {
+    let l = try await Self.live("texts.review.addAlwaysUse")
+    let row = try await l.add(Self.purchase, link: .unknownUnanswered)
+    let before = try l.ops().count
+    let draft = CategoryDraft(id: l.store.newCategoryID(), name: "VPN", glyph: .subscriptions, parent: "subscriptions")
+    _ = try #require(try l.store.apply(.addCategoryAndSort(draft, row.txnID, alwaysUse: true, project: nil)))
+    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
+    let types = try l.ops().dropFirst(before).map(\.type)
+    #expect(Self.inOrder(types, [.categoryDefined, .txnCategorized, .ruleAdded]))
+    #expect(!types.contains(.cardLinked) && !types.contains(.accountSet))
+    #expect(try l.cardsUnchanged())
   }
 
   static func inOrder(_ types: [OpType], _ wanted: [OpType]) -> Bool {
@@ -176,37 +174,7 @@ struct BankTextsReviewTests {
     return true
   }
 
-  @Test func alwaysUseItOnATextRowLinksTheCardInTheFirstBlobAndUndoForgetsIt() async throws {
-    let l = try await Self.live("texts.review.alwaysUse")
-    let row = try await l.add(Self.purchase)
-    #expect(try l.reader.txn(row.txnID)?.merchantGroup != nil)
-    let before = try l.ops().count
-    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: true, project: nil)))
-    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
-    let types = try l.ops().dropFirst(before).map(\.type)
-    #expect(Array(types.prefix(3)) == [.accountSet, .cardLinked, .txnCategorized])
-    #expect(types.contains(.ruleAdded))
-    #expect(try l.cards()[Self.card] == .mine)
-    l.store.undo(token)
-    try await Mapper.eventually { try l.cards()[Self.card] == nil }
-  }
-
-  @Test func addingACategoryWithAlwaysUseItLinksTheCardInTheFirstBlobAndUndoForgetsIt() async throws {
-    let l = try await Self.live("texts.review.addAlwaysUse")
-    let row = try await l.add(Self.purchase)
-    let before = try l.ops().count
-    let draft = CategoryDraft(id: l.store.newCategoryID(), name: "VPN", glyph: .subscriptions, parent: "subscriptions")
-    let token = try #require(try l.store.apply(.addCategoryAndSort(draft, row.txnID, alwaysUse: true, project: nil)))
-    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == false }
-    let types = try l.ops().dropFirst(before).map(\.type)
-    #expect(Self.inOrder(types, [.accountSet, .cardLinked, .txnCategorized, .ruleAdded]))
-    #expect(types.firstIndex(of: .ruleAdded).map { r in !types[..<r].contains(.txnSplit) } == true)
-    #expect(try l.cards()[Self.card] == .mine)
-    l.store.undo(token)
-    try await Mapper.eventually { try l.cards()[Self.card] == nil }
-  }
-
-  @Test func markingATextRowATransferOrARefundOrSplittingItLinksTheCardAndUndoForgetsIt() async throws {
+  @Test func markingATextRowATransferOrARefundOrSplittingItLinksNoCard() async throws {
     let edits: [(String, (String) -> LedgerEdit, OpType)] = [
       ("transfer", { .markTransfer($0) }, .txnCategorized),
       ("refund", { .markRefund($0) }, .txnCategorized),
@@ -218,19 +186,18 @@ struct BankTextsReviewTests {
     ]
     for (name, edit, op) in edits {
       let l = try await Self.live("texts.review.mark.\(name)")
-      let row = try await l.add(Self.purchase)
+      let row = try await l.add(Self.purchase, link: .unknownUnanswered)
       let before = try l.ops().count
-      let token = try #require(try l.store.apply(edit(row.txnID)), "\(name)")
-      try await Mapper.eventually { try l.cards()[Self.card] == .mine }
-      #expect(try l.ops().dropFirst(before).map(\.type) == [.accountSet, .cardLinked, op], "\(name)")
-      l.store.undo(token)
-      try await Mapper.eventually { try l.cards()[Self.card] == nil }
+      _ = try #require(try l.store.apply(edit(row.txnID)), "\(name)")
+      try await Mapper.eventually { try l.ops().count > before }
+      #expect(try l.ops().dropFirst(before).map(\.type) == [op], "\(name)")
+      #expect(try l.cardsUnchanged(), "\(name)")
     }
   }
 
   @Test func takingARefundBackLinksNoCard() async throws {
     let l = try await Self.live("texts.review.refundBack")
-    let row = try await l.add(Self.purchase)
+    let row = try await l.add(Self.purchase, link: .unknownUnanswered)
     let version = try #require(try l.reader.txn(row.txnID)?.version)
     let blob = try l.a.observer.stamps.build(try await l.a.observer.authorContext()) { o throws(AuthorError) in
       o.categorize(txnID: row.txnID, parentVersion: version, category: "refunds", needsReview: true)
@@ -243,81 +210,12 @@ struct BankTextsReviewTests {
     _ = try l.store.apply(.markRefund(row.txnID))
     try await Mapper.eventually { try l.reader.txn(row.txnID)?.category == nil }
     #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized])
-    #expect(try l.cards()[Self.card] == nil)
-  }
-
-  static let account = OpAuthor.cardAccountID(bank: "dib", last4: "1234")
-
-  func account(_ l: Live) throws -> CoreReplay.Account? { try l.reader.accounts().first { $0.id == Self.account } }
-
-  @Test func undoingTheSortForgetsTheCardItLinkedAndClosesTheAccountItMade() async throws {
-    let l = try await Self.live("texts.review.undo")
-    let row = try await l.add(Self.purchase)
-    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
-    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
-    #expect(try l.cards()[Self.card] == .mine)
-    let before = try l.ops().count
-    l.store.undo(token)
-    try await Mapper.eventually { try l.cards()[Self.card] == nil }
-    #expect(try l.reader.txn(row.txnID)?.needsReview == true)
-    let closed = try #require(try account(l))
-    #expect(!closed.active && closed.closedOn != nil && closed.name == "DIB ···1234")
-    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized, .cardLinked, .accountSet])
-    try await Mapper.eventually { !l.store.state.accounts.contains { $0.id == Self.account } }
-    #expect(!l.store.state.accounts.contains { $0.id == Self.account })
-  }
-
-  @Test func sortingAgainAfterTheUndoOpensTheSameAccountAgain() async throws {
-    let l = try await Self.live("texts.review.undoAgain")
-    let row = try await l.add(Self.purchase)
-    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
-    try await Mapper.eventually { try l.cards()[Self.card] == .mine }
-    l.store.undo(token)
-    try await Mapper.eventually { try account(l)?.active == false }
-    _ = try l.store.apply(.categorize(row.txnID, "shopping", learnRule: false, project: nil))
-    try await Mapper.eventually { try l.cards()[Self.card] == .mine }
-    let open = try #require(try account(l))
-    #expect(open.active && open.closedOn == nil && open.name == "DIB ···1234" && open.kind == "credit_card")
-    #expect(try l.reader.cards().first { $0.last4 == "1234" }?.account == Self.account)
-    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
-    #expect(l.store.state.accounts.contains { $0.id == Self.account })
-  }
-
-  @Test func undoKeepsALinkThePersonChangedSinceTheSort() async throws {
-    let l = try await Self.live("texts.review.undoChanged")
-    let row = try await l.add(Self.purchase)
-    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
-    try await Mapper.eventually { try l.cards()[Self.card] == .mine }
-    try await l.ledger.authorCards([CardDecision(card: Self.card, state: .notMine)])
-    #expect(try l.cards()[Self.card] == .notMine)
-    let before = try l.ops().count
-    l.store.undo(token)
-    try await Mapper.eventually { try l.reader.txn(row.txnID)?.needsReview == true }
-    #expect(try l.cards()[Self.card] == .notMine)
-    #expect(try l.ops().dropFirst(before).map(\.type) == [.txnCategorized])
-    #expect(try account(l)?.active == true)
-  }
-
-  @Test func undoKeepsTheAccountOpenWhenARowUsesIt() async throws {
-    let l = try await Self.live("texts.review.undoUsed")
-    let row = try await l.add(Self.purchase)
-    let token = try #require(try l.store.apply(.categorize(row.txnID, "groceries", learnRule: false, project: nil)))
-    try await Mapper.eventually { l.store.state.accounts.contains { $0.id == Self.account } }
-    let entry = ManualEntryDraft(
-      amount: .aed(20_00), merchant: "Synthetic cafe", categoryID: nil, postedAt: LocalDateTime(2026, 6, 5, 9, 0),
-      accountID: Self.account)
-    _ = try l.store.apply(.addTransaction(entry))
-    try await Mapper.eventually {
-      try l.reader.activity(limit: 1_000).contains { $0.merchantRaw == "Synthetic cafe" && $0.effectiveAccountID == Self.account }
-    }
-    l.store.undo(token)
-    try await Mapper.eventually { try l.cards()[Self.card] == nil }
-    #expect(try account(l)?.active == true)
+    #expect(try l.cardsUnchanged())
   }
 
   @Test func repeatsAreLookedForOnlyWhenAReviewRowCanRepeatAText() async throws {
     let l = try await Self.live("texts.review.repeatRows")
-    _ = try await l.add(Self.purchase)
+    _ = try await l.add(Self.purchase, link: .unknownUnanswered)
     _ = try await l.add(Self.noAmount)
     let rows = try LedgerStateMapper.allRows(l.reader).filter(\.isText)
     let unreadable = try l.reader.review(lanes: [.unreadable], limit: 1_000)
