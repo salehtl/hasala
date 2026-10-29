@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, how bank texts are read, and your rights under UAE law."
-lastUpdated: 2026-10-27
+lastUpdated: 2026-10-29
 status: "final"
 plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts on your iPhone, from your Gmail or Outlook or from your bank's texts, and encrypts your transactions there before they sync. Bank texts never leave your iPhone. Texts that don't look like payments are dropped without being stored; a text that looks like a payment, even one from a person, waits in Review and stays in your Hasala data until you delete your account, even if you archive it. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
@@ -312,7 +312,7 @@ Instead of connecting an email account, you can have Hasala read your bank's tex
 So that it can show you that the automation works, Hasala keeps a few facts on this iPhone, outside your synced data. They never leave this iPhone:
 
 - the time the automation last ran, which is usually the time you last received any text (only the latest time is kept);
-- for each bank, the time of its last text that Hasala kept;
+- the time of the last text that Hasala kept (only the latest time is kept, for all banks together);
 - for each bank sender name that Hasala knows (the banks it has rules for, and the sender names of other UAE banks built into the app, whether or not you bank with them), how many of its texts each day weren't payments and were set aside, as a number for each kind (one-time code, declined payment, notice, promotion, or no payment in it), for the last 30 days. Every text from such a sender name that Hasala sets aside is counted, so that a payment set aside by mistake shows in Profile › Bank alerts, except a text that arrives before you first unlock your iPhone after a restart, which leaves no count, and a text that Shortcuts hands Hasala without its sender, which Hasala can't tell is from a bank;
 - whether your account had an email account connected the last time this iPhone heard from our server, and when, so that Hasala knows whether to add a text when your iPhone is offline;
 - while your account reads bank email, how many texts that look like payments Hasala ignored each day for that reason, as a number only, for the last 30 days, so that Profile › Bank alerts can tell you to delete the automation or switch to texts;

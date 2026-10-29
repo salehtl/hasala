@@ -60,7 +60,7 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
         Call(text: text, sender: sender, link: link, origin: origin, arrivedAt: arrivedAt, secretCount: secret.count))
     }
     if let failure { throw failure }
-    return outcome ?? .authored(rowID: "row-1", filed: false, bank: reading.fields.bank, keptAt: arrivedAt)
+    return outcome ?? .authored(rowID: "row-1", filed: false, keptAt: arrivedAt)
   }
 
   func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] {

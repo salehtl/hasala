@@ -123,7 +123,7 @@ final class BankTextIntake {
       return .failed(Self.notOpenMessage)
     }
     switch outcome {
-    case .authored(_, let filed, _, let keptAt):
+    case .authored(_, let filed, let keptAt):
       note(nowMs) { $0.noteKept(atMs: Self.ms(keptAt)) }
       return .authored(filed: filed)
     case .ignoredLinked(let counts):

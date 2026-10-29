@@ -66,7 +66,7 @@ nonisolated enum CoreBankTextMapping {
 
   static func authored(_ outcome: BankTextOutcome) throws(BankTextsCoreFailure) -> BankTextAuthored {
     switch outcome {
-    case .added(let a): return .authored(rowID: a.txnID, filed: a.filed, bank: a.bank, keptAt: date(a.keptAtMs))
+    case .added(let a): return .authored(rowID: a.txnID, filed: a.filed, keptAt: date(a.keptAtMs))
     case .ignored(let counted, _): return .ignoredLinked(counts: counted)
     case .testPassed, .dropped: throw .notAPayment
     case .pasteRefused, .failed: throw .failed

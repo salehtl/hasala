@@ -60,7 +60,7 @@ nonisolated enum BankTextRoute: Equatable, Sendable {
 }
 
 nonisolated enum BankTextAuthored: Equatable, Sendable {
-  case authored(rowID: String, filed: Bool, bank: String?, keptAt: Date)
+  case authored(rowID: String, filed: Bool, keptAt: Date)
   case ignoredLinked(counts: Bool)
 }
 
