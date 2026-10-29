@@ -209,7 +209,7 @@ enum BankTexts {
   static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
   static let anyBankLine =
-    "Hasala reads payment texts from any bank. A payment it isn't sure of waits in Review for you to check."
+    "Hasala reads payment texts from any bank and adds the ones it reads with confidence. Any other payment waits in Review for you to check."
 
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1

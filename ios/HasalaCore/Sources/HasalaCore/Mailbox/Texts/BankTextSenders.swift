@@ -20,6 +20,7 @@ public struct BankTextSender: Sendable, Equatable {
   }
 
   var layoutKey: String { kind == .bank ? "sms:" + id : "sms:" }
+  var learns: Bool { kind == .bank || kind == .none }
 }
 
 public enum BankTextSenders {

@@ -973,6 +973,7 @@ func syntheticGroups(t *testing.T) []syntheticGroup {
 	out = append(out, syntheticDIBCardRefund(t), syntheticDIBCardReversal(t), syntheticDIBAccountRefunds(t))
 	out = append(out, syntheticSMSDates())
 	out = append(out, syntheticDIBSMS(t)...)
+	out = append(out, syntheticENBDSMS(t)...)
 	return append(out, syntheticDIB(t)...)
 }
 

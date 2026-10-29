@@ -33,7 +33,6 @@ final class CountingRandom: RandomSource, @unchecked Sendable {
 
 actor FakeLedger: MailboxLedger {
   var trust: [String: Bool] = ["dib.ae": true, "emiratesnbd.com": true]
-  var cards: [CardKey: CardState] = [:]
   var projected: Set<String> = []
   var ingested: Set<String> = []
   var syncs = 0
@@ -41,11 +40,9 @@ actor FakeLedger: MailboxLedger {
   var flushes = 0
   var flushResult: FlushOutcome = .flushed
   var accountFullAfter: Int?
-  var authoredCards: [CardDecision] = []
   var authoredTrust: [(String, Bool)] = []
 
   func setTrust(_ t: [String: Bool]) { trust = t }
-  func setCards(_ c: [CardKey: CardState]) { cards = c }
   func setProjected(_ p: Set<String>) { projected = p }
   func setIngested(_ i: Set<String>) { ingested = i }
   func setFlush(_ r: FlushOutcome) { flushResult = r }
@@ -73,13 +70,8 @@ actor FakeLedger: MailboxLedger {
     }
   }
   func senderTrust() async -> [String: Bool] { trust }
-  func knownCards() async -> [CardKey: CardState] { cards }
   func projectedMessageIDs(among ids: [String]) async -> Set<String> { projected.intersection(ids) }
   func isIngested(_ ingestID: String) async -> Bool { ingested.contains(ingestID) }
-  func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError) {
-    authoredCards += decisions
-    for d in decisions { cards[d.card] = d.state }
-  }
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError) {
     authoredTrust.append((domain, trusted))
     trust[domain] = trusted

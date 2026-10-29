@@ -147,7 +147,7 @@ struct BankTextsTests {
   }
 
   @Test func theTextsCopyNamesNoBank() {
-    #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("waits in Review"))
+    #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("adds the ones it reads with confidence") && BankTexts.anyBankLine.contains("waits in Review"))
     #expect(!BankTexts.anyBankLine.lowercased().contains("automatically"))
     let lines = [
       BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsNoText,

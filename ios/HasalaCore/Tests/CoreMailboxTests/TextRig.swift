@@ -50,10 +50,6 @@ final class TextRig: Sendable {
     return await author.add(a, secret: Self.secret, link: { link })
   }
 
-  func linkCard(_ bank: String, _ last4: String, _ state: CardState) async throws {
-    try await ledger.authorCards([CardDecision(card: CardKey(bank: bank, last4: last4), state: state)])
-  }
-
   func pendingOps() throws -> [Op] {
     try store.pendingOps().map { p in
       var blob = Data(#"{"v":4,"kind":"ops","ops":["#.utf8)

@@ -1,0 +1,114 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.transfer-in.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.transfer-in.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "has been transferred to your account "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "(?:^|, )(?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been transferred to your account "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD TRANSFER"
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.transfer-in.v1/transfer-in",
+      "source": "SYNTHETIC: money transferred into the account: a credit and a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDUxNy4zNiBoYXMgYmVlbiB0cmFuc2ZlcnJlZCB0byB5b3VyIGFjY291bnQgMTAxWFhYMjNYWFgwMQ==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "51736",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.transfer-in.v1/with-balance",
+      "source": "SYNTHETIC: the balance is optional",
+      "subject_base64": "",
+      "normalized_body_base64": "VVNEIDI1My4xOCBoYXMgYmVlbiB0cmFuc2ZlcnJlZCB0byB5b3VyIGFjY291bnQgMTAxWFhYMjNYWFgwMi4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIFVTRCAzMDAuMDAu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "25318",
+        "currency": "USD",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.transfer-in.v1/credited",
+      "source": "SYNTHETIC: a credit belongs to the credit template",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDEuMDcgaGFzIGJlZW4gY3JlZGl0ZWQgdG8geW91ciBhY2NvdW50IDEwMVhYWDIzWFhYMDEgdG93YXJkcyBpbnN0YW50IHRyYW5zZmVyLiBUaGUgYXZhaWxhYmxlIGJhbGFuY2UgaXMgQUVEIDMsMDA0LjYyLg==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

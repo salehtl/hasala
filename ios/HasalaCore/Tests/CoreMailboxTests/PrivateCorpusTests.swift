@@ -89,7 +89,7 @@ struct PrivateGmailDeliveredTests {
         continue
       }
       #expect(m.gates.ar == "pass" && m.gates.senderTrusted, "\(f): \(m.gates.ar)")
-      let d = MessageDisposer.finalize(m, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+      let d = MessageDisposer.finalize(m, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
       #expect(d.needsReview, "\(f)")
     }
   }

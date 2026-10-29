@@ -388,8 +388,9 @@ The fold accepts the three new codes, but `txn_ingested` records them as `fail` 
 later release starts to record the codes, after every build in use accepts them.
 
 The other gates of `MessageDisposer.finalize` do not change: the domain must be in the
-trusted set T, a template must read an amount, the card must not be "not mine", the
-message must not be forwarded, and the recipient check must not be a mismatch.
+trusted set T, a template must read an amount (or both readers must agree), the
+message must not be forwarded, and the recipient check must not be a mismatch. Since
+2026-10-29 there is no card gate ([filing-without-cards.md](filing-without-cards.md)).
 
 The bundled list on 2026-10-20 (`dig TXT _dmarc.<domain>`):
 
@@ -431,7 +432,7 @@ fields, or the header order of `$value`. Those were the UNVERIFIED premises H1 a
 | R4 | Someone with access to the mailbox (password, a token with `Mail.ReadWrite`, IMAP) puts a message in the Inbox. §3 caught this (`no_eop`); §3a does not. | Low | Such a person can already read every bank alert. A wrong row is the smallest harm. |
 | R5 | A bank lowers its policy (for example to `p=none`), and the bundled list is not updated. | Low, slow | Spoofs could then reach the Inbox. Recheck the list before each release (`dig TXT _dmarc.<domain>`). |
 | R6 | The bank's own sending system is abused (a compromised mail platform, a real signed message with false content). | Very low | Every rule passes such mail, Gmail's too. |
-| R7 | The recipient check (`MailRecipients`) counts a `DKIM-Signature` header with `d=<bank>` that lists `To` without checking the signature (Outlook gives it no `header.b`). A spoof that already passed (R1–R4) can make an unknown card file. | Low | Only after R1–R4. Without it, an unknown card goes to review. |
+| R7 | The recipient check (`MailRecipients`) counts a `DKIM-Signature` header with `d=<bank>` that lists `To` without checking the signature (Outlook gives it no `header.b`). Since 2026-10-29 an unconfirmed recipient files too, and no card is checked ([filing-without-cards.md](filing-without-cards.md)), so this no longer changes what files. | Low | A spoof must still pass R1–R4 first. |
 
 **Failure modes, all fail-closed.** If the Inbox id cannot be read, the download fails and
 is tried again on the next cycle. If Graph's `parentFolderId` and the Inbox's `id` are in

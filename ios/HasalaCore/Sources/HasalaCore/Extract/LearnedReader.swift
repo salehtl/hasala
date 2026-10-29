@@ -159,7 +159,7 @@ enum LearnedReader {
       for i in ids {
         if let d = ILex.direction(toks[i].key) {
           let dist = abs(i - from)
-          if dist < bestD { bestD = dist; best = d }
+          if dist < bestD { bestD = dist; best = intoOwnAccount(toks, at: i) ? "credit" : d }
         }
       }
       return best
@@ -171,8 +171,21 @@ enum LearnedReader {
       if let d = nearest(lineTokens(toks, line: line + 1), from: idx) { return (d, 1) }
     }
     if let d = nearest(lineTokens(toks, line: 0), from: 0) { return (d, 1) }
-    for t in toks { if let d = ILex.direction(t.key) { return (d, 2) } }
+    for (i, t) in toks.enumerated() { if let d = ILex.direction(t.key) { return (intoOwnAccount(toks, at: i) ? "credit" : d, 2) } }
     return (nil, 3)
+  }
+
+  static let intoVerbs: Set<String> = ["transferred", "credited", "deposited", "added", "received"]
+  static let ownAccountWords: Set<String> = ["account", "a/c", "acct", "card"]
+
+  static func intoOwnAccount(_ toks: [IToken], at idx: Int) -> Bool {
+    guard intoVerbs.contains(toks[idx].key) else { return false }
+    let words = toks[(idx + 1)...].lazy.filter { $0.cls == .word }.prefix(5).map(\.key)
+    let w = Array(words)
+    guard w.count >= 3, ["to", "into", "in"].contains(w[0]), w[1] == "your" || w[1] == "ur",
+      let k = w[2...].firstIndex(where: ownAccountWords.contains)
+    else { return false }
+    return !w[2..<k].contains { $0.hasPrefix("beneficiar") || $0 == "payee" }
   }
 
   static func excluded(_ toks: [IToken], amountAt idx: Int) -> Bool {

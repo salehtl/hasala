@@ -74,6 +74,7 @@ public struct ExtractReading: Sendable, Equatable {
   public var learnedConfidencePercent: Int
   public var readersAgree: Bool
   public var aedFromOverride: Bool
+  public var directionAmbiguous = false
 
   public init(
     outcome: ExtractOutcome, amountMinor: Int64? = nil, currency: String? = nil, direction: ExtractDirection? = nil,
@@ -107,7 +108,7 @@ public struct ExtractReading: Sendable, Equatable {
       && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
   }
 
-  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm }
+  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm && !directionAmbiguous }
 
   public static let maxAmountMinor: Int64 = 9_999_999_999_999
 
@@ -153,6 +154,7 @@ struct Reading: Equatable {
   var merchant: String?
   var direction: String?
   var directionGuessed = false
+  var directionAmbiguous = false
   var fromLayout = false
   var confidence = 0
   var note = ""

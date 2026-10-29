@@ -75,7 +75,7 @@ extension NovelMail {
   }
 
   func finalize(_ p: ParsedMail) -> MailboxIngestDraft {
-    MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
   }
 
   func learned(_ count: Int) throws -> MailReaderState? {
@@ -113,7 +113,7 @@ extension NovelMail {
     #expect(p.readerConfident == true, "\(p)")
     let d = finalize(p)
     #expect(!d.needsReview && d.payload["amount_minor"] == .string("7770") && d.payload["tier"] == .string("heuristic"))
-    #expect(d.payload["gates"]?["card"] == .string("unknown"))
+    #expect(d.payload["gates"]?["card"] == nil)
     #expect(reader?.counts["dib"]?.readerOnly == 6)
   }
 
@@ -352,7 +352,7 @@ extension NovelMail {
   }
 
   func finalize(_ p: ParsedMail) -> MailboxIngestDraft {
-    MessageDisposer.finalize(p, provider: .gmail, grantID: "g", cards: [:], categorizer: NoCategorizer())
+    MessageDisposer.finalize(p, provider: .gmail, grantID: "g", categorizer: NoCategorizer())
   }
 
   func run(_ t: CompiledTemplate) throws -> (ParsedMail, ParsedMail, MailReaderState?) {

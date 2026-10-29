@@ -90,7 +90,9 @@ preference.
 - Nothing else: no amount, date, card, bank, direction, account id, device id, or other
   subjects.
 - Only rows read by a card-payment alert template go to Clef: `adib.alert.v1`,
-  `dib.card.v1` and `enbd.alert.v1` (`ModelSuggestionSweep.cloudTemplates`). A transfer
+  `dib.card.v1` and `enbd.alert.v1`, and for bank texts `dib.sms.purchase.v1`,
+  `enbd.sms.card-purchase.v1` and `enbd.sms.credit-card-purchase.v1`
+  (`ModelSuggestionSweep.cloudTemplates`). A transfer
   template's merchant is a beneficiary's name, so transfers (`enbd.transfer.v1`), account
   alerts (`adib.account.v1`, `dib.account.v1`) and manual entries stay on the device. A
   subject shared with any of those rows is not sent either. The check is fail-closed: a
@@ -293,8 +295,9 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 A second opt-in, under Merchant suggestions. With it on, a Clef answer that clears a
 stricter gate **files** the row instead of only suggesting it.
 
-- Gate: the chosen probability is ≥ 0.8 and leads the second by ≥ 0.4. In the spike
-  this answered 81 of 114 names (71%) with 81 right (100%). An answer that clears only
+- Gate (lowered 2026-10-29 from 0.8, [filing-without-cards.md](filing-without-cards.md)): the
+  chosen probability is ≥ 0.7 and leads the second by ≥ 0.4. At 0.8 / 0.4 the spike
+  answered 81 of 114 names (71%) with 81 right (100%). An answer that clears only
   the 0.6 / 0.2 gate stays a suggestion in review.
 - Clef only. Apple's model gives no probabilities to grade, so its answers stay
   suggestions (`ModelTier.autoConfirm = false` is unchanged). A cloud model declares that
@@ -451,7 +454,7 @@ ended, and the next `ensure()` starts a new one.
 the rows before it authors and authors only rows still eligible at the same version. A row
 the person edited meanwhile is left alone. The foreground sweep and the run share one
 gate. What files and what only suggests doesn't change: with Sort automatically on, an
-answer at or above 0.8 / 0.4 files the row when its mail gates passed; everything else at
+answer at or above 0.7 / 0.4 (0.8 / 0.4 before 2026-10-29) files the row when its mail gates passed; everything else at
 or above 0.6 / 0.2 is a suggestion.
 
 **What the screens show.** Review shows no sorting card. The status the app reads

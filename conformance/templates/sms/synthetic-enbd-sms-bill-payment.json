@@ -1,0 +1,155 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.bill-payment.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.bill-payment.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "Bill Pymt for ",
+        " has been made using Credit Card "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          " of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been made using Credit Card "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "^Bill Pymt for (?P<v>[^\\n]+?) of [A-Z]{3} [0-9]"
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " has been made using Credit Card [X*]{0,12}(?P<v>[0-9]{4})"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.bill-payment.v1/bill-payment",
+      "source": "SYNTHETIC: a credit card bill payment: the biller, the card's last four, the statement note glued to the card",
+      "subject_base64": "",
+      "normalized_body_base64": "QmlsbCBQeW10IGZvciBTQU1QTEUgU1RSRUFNSU5HIG9mIEFFRCA1Ni43OCBoYXMgYmVlbiBtYWRlIHVzaW5nIENyZWRpdCBDYXJkIDEyMzQuUmVmZXIgc3RtdCBmb3IgZXhhY3QgYW1vdW50Lg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "5678",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STREAMING",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.bill-payment.v1/no-statement-note",
+      "source": "SYNTHETIC: the statement note is optional",
+      "subject_base64": "",
+      "normalized_body_base64": "QmlsbCBQeW10IGZvciBTQU1QTEUgVEVMRUNPTS1FIG9mIEFFRCAxMjMuNDUgaGFzIGJlZW4gbWFkZSB1c2luZyBDcmVkaXQgQ2FyZCAxMjM0Lg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "12345",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE TELECOM-E",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.bill-payment.v1/foreign-currency",
+      "source": "SYNTHETIC: a currency code other than AED",
+      "subject_base64": "",
+      "normalized_body_base64": "QmlsbCBQeW10IGZvciBFWEFNUExFIEhPU1RJTkcgb2YgVVNEIDEyLjM0IGhhcyBiZWVuIG1hZGUgdXNpbmcgQ3JlZGl0IENhcmQgNTY3OC5SZWZlciBzdG10IGZvciBleGFjdCBhbW91bnQu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1234",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "EXAMPLE HOSTING",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.bill-payment.v1/biller-with-of",
+      "source": "SYNTHETIC: a biller whose name holds the word of keeps it",
+      "subject_base64": "",
+      "normalized_body_base64": "QmlsbCBQeW10IGZvciBIT1VTRSBvZiBTQU1QTEUgb2YgQUVEIDk5LjAwIGhhcyBiZWVuIG1hZGUgdXNpbmcgQ3JlZGl0IENhcmQgMTIzNC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "9900",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "HOUSE of SAMPLE",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.bill-payment.v1/whole-amount",
+      "source": "SYNTHETIC: an amount with no decimals is not an amount, so the text is missing its amount",
+      "subject_base64": "",
+      "normalized_body_base64": "QmlsbCBQeW10IGZvciBTQU1QTEUgVFYgb2YgVVNEIDEwMCBoYXMgYmVlbiBtYWRlIHVzaW5nIENyZWRpdCBDYXJkIDEyMzQu",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE TV",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

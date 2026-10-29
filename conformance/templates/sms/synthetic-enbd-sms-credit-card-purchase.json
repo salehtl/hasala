@@ -1,0 +1,192 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.credit-card-purchase.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.credit-card-purchase.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "You made a purchase of ",
+        " with your Credit Card ending "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^You made a purchase of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) at "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          "^You made a purchase of [A-Z]{3} [0-9][0-9,.]{0,27} at (?P<v>[^,\\n]+) with your Credit Card ending ",
+          "^You made a purchase of [A-Z]{3} [0-9][0-9,.]{0,27} at (?P<v>[^,\\n]+), "
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " with your Credit Card ending (?P<v>[0-9]{4})"
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/purchase",
+      "source": "SYNTHETIC: a credit card purchase: the merchant up to the first comma, the card's last four",
+      "subject_base64": "",
+      "normalized_body_base64": "WW91IG1hZGUgYSBwdXJjaGFzZSBvZiBBRUQgODkuNTAgYXQgU0FNUExFIEdST0NFUlksIERVQkFJIHdpdGggeW91ciBDcmVkaXQgQ2FyZCBlbmRpbmcgNTY3OC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "8950",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE GROCERY",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/no-comma",
+      "source": "SYNTHETIC: a merchant and city with no comma run up to the card",
+      "subject_base64": "",
+      "normalized_body_base64": "WW91IG1hZGUgYSBwdXJjaGFzZSBvZiBBRUQgNDIuMDAgYXQgU0FNUExFIEJBS0VSWSAxMiBTQU1QTEUgQ0lUWSB3aXRoIHlvdXIgQ3JlZGl0IENhcmQgZW5kaW5nIDU2Nzgu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4200",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE BAKERY 12 SAMPLE CITY",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/statement-note",
+      "source": "SYNTHETIC: the statement note after the card",
+      "subject_base64": "",
+      "normalized_body_base64": "WW91IG1hZGUgYSBwdXJjaGFzZSBvZiBBRUQgNjEwLjI1IGF0IFNBTVBMRSBSRU5UQUxTLCBTQU1QTEUgQ0lUWSB3aXRoIHlvdXIgQ3JlZGl0IENhcmQgZW5kaW5nIDU2NzguIFJlZmVyIHN0bXQgZm9yIGV4YWN0IGFtb3VudC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "61025",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE RENTALS",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/foreign-currency",
+      "source": "SYNTHETIC: a currency code other than AED",
+      "subject_base64": "",
+      "normalized_body_base64": "WW91IG1hZGUgYSBwdXJjaGFzZSBvZiBVU0QgMjUuOTkgYXQgRVhBTVBMRSBUViwgU0FNUExFIENJVFkgd2l0aCB5b3VyIENyZWRpdCBDYXJkIGVuZGluZyA1Njc4LiBSZWZlciBzdG10IGZvciBleGFjdCBhbW91bnQu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2599",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "EXAMPLE TV",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/whole-amount",
+      "source": "SYNTHETIC: an amount with no decimals is not an amount, so the text is missing its amount",
+      "subject_base64": "",
+      "normalized_body_base64": "WW91IG1hZGUgYSBwdXJjaGFzZSBvZiBVU0QgOTk5IGF0IEVYQU1QTEUgVFYsIFNBTVBMRSBDSVRZIHdpdGggeW91ciBDcmVkaXQgQ2FyZCBlbmRpbmcgNTY3OC4gUmVmZXIgc3RtdCBmb3IgZXhhY3QgYW1vdW50Lg==",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "EXAMPLE TV",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/instalment-offer",
+      "source": "SYNTHETIC: an instalment offer names a purchase and is not a payment",
+      "subject_base64": "",
+      "normalized_body_base64": "KkNvbnZlcnQgbm93KiBQYXkgYXMgbG93IGFzIEFFRCA1MC4wMCBwZXIgbW9udGggZm9yIHRoZSBwdXJjaGFzZSBvZiBBRUQgNjAwLjAwIGF0IFNBTVBMRSBBSVIgd2l0aCBjcmVkaXQgY2FyZCBlbmRpbmcgNTY3OCB2aWEgY2xpY2tpbmcgaHR0cHM6Ly9leGFtcGxlLmNvbS9pcHA=",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit-card-purchase.v1/auth-code",
+      "source": "SYNTHETIC: a purchase code names an amount and is not a payment",
+      "subject_base64": "",
+      "normalized_body_base64": "RE8gTk9UIFNIQVJFISBUaGUgQXV0aCBjb2RlIGlzIDEyMzQ1NiBmb3IgQUVEIDg5LjUwIGF0IFNBTVBMRSBBSVIgZm9yIGNhcmQgZW5kaW5nIDU2NzguIFVzZSBpbiA1IG1pbnMu",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

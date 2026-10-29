@@ -3,8 +3,8 @@
 //
 //   parse(...)    raw bytes -> set aside | ParsedMail   (trust analysis, normalizer, templates,
 //                                                       posted_at conversion; no fold state)
-//   finalize(...) ParsedMail + known cards + decide() -> MailboxIngestDraft (the txn_ingested
-//                                                       payload and its review flag)
+//   finalize(...) ParsedMail + decide() -> MailboxIngestDraft (the txn_ingested payload and its
+//                                                       review flag)
 //
 // This is op-authoring code. Its two disciplines, from fetch.ts:
 //   1. Nothing is silently dropped. A message is set aside (not a bank: no op, recorded and
@@ -12,11 +12,8 @@
 //   2. Filing without review needs every gate: the provider's verdict `pass` (Gmail's A-R; Outlook's
 //      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
 //      the trusted set T, a template hit with a usable amount (or a template-free reading that both
-//      readers agree on at 0.8 or more), a card not marked "not mine", not
-//      forwarded, not in Spam, and a recipient check that is not a mismatch. Anything less is
-//      `needs_review: true`. When a DKIM-signed To or Cc names the linked mailbox, a card the
-//      ledger doesn't know (`unknown`) files like a known one: setup has no cards step. When the
-//      To or Cc naming it is unsigned, or there is none, only a known card files.
+//      readers agree on at 0.8 or more, direction included, with no ambiguous direction word), not forwarded, not in Spam, and a recipient check that is
+//      not a mismatch. Anything less is `needs_review: true`.
 import CoreCategorize
 import CoreExtract
 import CoreJSON
@@ -62,8 +59,8 @@ public struct ParsedFields: Sendable, Equatable, Codable {
   public var isTransfer: Bool
 }
 
-/// A downloaded bank message, read as far as the device can, before the fold-dependent gates
-/// (known cards) and categorization. This is what the first-connect scan stages.
+/// A downloaded bank message, read as far as the device can, before categorization. This is
+/// what the first-connect scan stages.
 public struct ParsedMail: Sendable, Equatable, Codable {
   public var messageID: String
   /// hex(SHA-256(raw)), lower case.
@@ -73,7 +70,6 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var bank: String
   /// "" when the template has no card field or none was extracted.
   public var last4: String
-  public var templateHasCardField: Bool
   public var gates: MailGates
   /// nil: the empty review shape (no template hit with a usable amount).
   public var fields: ParsedFields?
@@ -86,22 +82,6 @@ public struct ParsedMail: Sendable, Equatable, Codable {
   public var readerConfident: Bool? = nil
   public var held: Bool? = nil
 }
-
-public struct CardKey: Sendable, Hashable, Codable, Comparable {
-  public var bank: String
-  public var last4: String
-  public init(bank: String, last4: String) {
-    self.bank = bank
-    self.last4 = last4
-  }
-  public static func < (a: CardKey, b: CardKey) -> Bool {
-    let (x, y) = (Array(a.bank.utf8), Array(b.bank.utf8))
-    if x != y { return x.lexicographicallyPrecedes(y) }
-    return Array(a.last4.utf8).lexicographicallyPrecedes(Array(b.last4.utf8))
-  }
-}
-
-public enum CardState: String, Sendable, Codable { case mine, notMine = "not_mine" }
 
 /// The at-ingest categorization decision (03c §8.2, `decide`), supplied by CoreCategorize's
 /// owner. `source` is the `CategorySource` JSON (03c §3.2.1).
@@ -184,7 +164,6 @@ public enum MessageDisposer {
     let day = dayInstant(internalDateMs)
     var mail = ParsedMail(
       messageID: messageID, ingestID: "", internalDateMs: internalDateMs, bank: "", last4: "",
-      templateHasCardField: false,
       gates: MailGates(ar: analysis.verdict.reason.recorded, senderTrusted: senderTrusted, template: nil, forwarded: forwarded),
       fields: nil, dayPostedAt: day)
     mail.ingestID = ingestID(raw)
@@ -234,7 +213,6 @@ public enum MessageDisposer {
       f.amountMinor = verdict.amountMinor
       f.currency = verdict.currency
       if verdict.held { mail.held = true }
-      mail.templateHasCardField = t.definition.extract.contains { $0.field == "last4" }
       mail.last4 = x.last4
       mail.gates.template = "\(t.definition.id)@\(t.definition.version)"
       mail.fields = f
@@ -261,7 +239,6 @@ public enum MessageDisposer {
       else { break }
       mail.bank = bank
       mail.last4 = f.last4
-      mail.templateHasCardField = !f.last4.isEmpty
       mail.gates.reader = MailReaderState.marker
       mail.gates.kind = reading.kind == .other ? nil : reading.kind.rawValue
       mail.fields = f
@@ -312,18 +289,17 @@ public enum MessageDisposer {
   public static func unparsed(raw: [UInt8], messageID: String, internalDateMs: Int64, spam: Bool) -> ParsedMail {
     var mail = ParsedMail(
       messageID: messageID, ingestID: ingestID(raw), internalDateMs: internalDateMs, bank: "", last4: "",
-      templateHasCardField: false,
       gates: MailGates(ar: AuthResults.Reason.parseError.rawValue, senderTrusted: false, template: nil, forwarded: false),
       fields: nil, dayPostedAt: dayInstant(internalDateMs))
     mail.spam = spam
     return mail
   }
 
-  /// The payload for a parsed message, with the card gate and the categorization applied.
+  /// The payload for a parsed message, with the filing gates and the categorization applied.
   /// `provider` is `provenance.provider` (the mailbox the message came from).
   public static func finalize(
-    _ m: ParsedMail, provider: MailProviderID, grantID: String, cards: [CardKey: CardState],
-    categorizer: any IngestCategorizer, texts: TextOverlap? = nil
+    _ m: ParsedMail, provider: MailProviderID, grantID: String, categorizer: any IngestCategorizer,
+    texts: TextOverlap? = nil
   ) -> MailboxIngestDraft {
     let provenance = JSONValue.object(
       JSONObject([
@@ -332,7 +308,7 @@ public enum MessageDisposer {
     guard let f = m.fields else {
       // The empty needs-review shape (spec 04 §7.6 row 2): no amount, no currency, no direction,
       // no body text; dated at local midnight of the email's local day.
-      let gates = gatesJSON(m.gates, template: "none", card: "none")
+      let gates = gatesJSON(m.gates, template: "none")
       var p = JSONObject([
         ("unparsed", .bool(true)), ("needs_review", .bool(true)), ("posted_at", .string(m.dayPostedAt)),
         ("posted_precision", .string("day")), ("merchant_raw", .string("")), ("last4", .string("")),
@@ -343,21 +319,10 @@ public enum MessageDisposer {
         messageID: m.messageID, ingestID: m.ingestID, internalDateMs: m.internalDateMs, payload: p, needsReview: true)
     }
 
-    let card: String
-    if !m.templateHasCardField {
-      card = "none"
-    } else {
-      switch cards[CardKey(bank: m.bank, last4: m.last4)] {
-      case .mine?: card = "known"
-      case .notMine?: card = "not_mine"
-      case nil: card = "unknown"
-      }
-    }
     let filesItself =
       m.gates.ar == AuthResults.Reason.pass.rawValue && m.gates.senderTrusted && !m.gates.forwarded
       && m.spam == false
-      && (m.recipient == .confirmed || (m.recipient == .unconfirmed && card == "known"))
-      && card != "not_mine"
+      && m.recipient != nil && m.recipient != .mismatch
       && (m.gates.reader == nil || m.readerConfident == true)
       && m.held != true
       && texts?.twin(of: m) == nil
@@ -379,7 +344,7 @@ public enum MessageDisposer {
     p["entry_method"] = .string("mailbox")
     p["provenance"] = provenance
     if !m.bank.isEmpty { p["bank"] = .string(m.bank) }
-    p["gates"] = gatesJSON(m.gates, template: m.gates.template ?? "none", card: card)
+    p["gates"] = gatesJSON(m.gates, template: m.gates.template ?? "none")
     if let h = m.headerIDHash { p["dedupe"] = .object(JSONObject([("message_id", .string(h))])) }
     return MailboxIngestDraft(
       messageID: m.messageID, ingestID: m.ingestID, internalDateMs: m.internalDateMs, payload: p,
@@ -423,7 +388,9 @@ public enum MessageDisposer {
     return .object(JSONObject(fields))
   }
 
-  public static let refundTemplates = ["dib.card-refund.v1", "dib.card-reversal.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1"]
+  public static let refundTemplates = [
+    "dib.card-refund.v1", "dib.card-reversal.v1", "dib.sms.refund.v1", "dib.sms.reversal.v1", "enbd.sms.refund.v1",
+  ]
 
   static func refundDecision(_ m: ParsedMail, _ f: ParsedFields) -> IngestDecision? {
     refundDecision(template: m.gates.template, direction: f.direction)
@@ -441,10 +408,10 @@ public enum MessageDisposer {
         ])))
   }
 
-  static func gatesJSON(_ g: MailGates, template: String, card: String) -> JSONValue {
+  static func gatesJSON(_ g: MailGates, template: String) -> JSONValue {
     var o = JSONObject([
       ("ar", .string(g.ar)), ("sender", .string(g.senderTrusted ? "trusted" : "untrusted")),
-      ("template", .string(template)), ("card", .string(card)), ("forwarded", .bool(g.forwarded)),
+      ("template", .string(template)), ("forwarded", .bool(g.forwarded)),
     ])
     if let k = g.kind { o["kind"] = .string(k) }
     if let r = g.reader { o["reader"] = .string(r) }

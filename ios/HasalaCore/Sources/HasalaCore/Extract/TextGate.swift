@@ -68,6 +68,10 @@ public enum TextGate {
     return t.has(Shape.amount) || t.has(Shape.maskedCard)
   }
 
+  package static func holdsFiling(_ normalized: String) -> Bool { holdsFiling(Prepared(normalized)) }
+
+  package static func holdsFiling(_ t: Prepared) -> Bool { t.has(Markers.notSettled) }
+
   public static func maskedLast4(_ normalized: String) -> String? { maskedLast4(Prepared(normalized)) }
 
   package static func maskedLast4(_ t: Prepared) -> String? {
@@ -180,7 +184,7 @@ public enum TextGate {
     }
   }
 
-  static let wholeBody: [WholeBody] = DIBTexts.wholeBody.map { WholeBody($0.kind, $0.wording) }
+  static let wholeBody: [WholeBody] = (DIBTexts.wholeBody + ENBDTexts.wholeBody).map { WholeBody($0.kind, $0.wording) }
 
   enum Markers {
     static let oneTimeCode = RuleText.re(
@@ -196,8 +200,8 @@ public enum TextGate {
     static let declined = RuleText.words(
       [
         "declined", "was not approved", "not approved", "unsuccessful", "could not be processed", "was not processed",
-        "insufficient funds", "insufficient balance", "incorrect pin", "wrong pin", "invalid pin", "incorrect cvv", "wrong cvv",
-        "invalid cvv",
+        "could not be completed", "insufficient funds", "insufficient balance", "incorrect pin", "wrong pin", "invalid pin", "incorrect cvv",
+        "wrong cvv", "invalid cvv",
       ],
       [
         "تم رفض", "مرفوضه", "لم تتم", "غير ناجحه", "رصيد غير كاف", "رقم سري خاطئ", "الرقم السري خاطئ", "رقم سري غير صحيح",
@@ -220,6 +224,14 @@ public enum TextGate {
     static let promotion = RuleText.re(
       "(?<![a-z])(?:t\\s?&\\s?c'?s?|terms\\s+(?:and|&)\\s+conditions)\\s+apply|(?<![a-z])sms\\s+stop\\s+to|(?<![a-z])send\\s+stop\\s+to|(?<![a-z])unsubscribe|offer\\s+valid\\s+(?:till|until|up\\s+to)"
         + "|تطبق\\s+الشروط|الشروط\\s+والاحكام|(?<!\\p{L})(?:وال|بال|فال|لل|ال|و|ب|ل|ف)?(?:عرض|عروض)(?!\\p{L})")
+
+    static let notSettled = RuleText.words(
+      [
+        "standing instruction", "standing instructions", "standing order", "standing orders", "after clearing",
+        "subject to clearing", "upon clearing", "on clearing", "to be confirmed", "pending clearance", "under clearing",
+        "equities", "brokerage", "securities account", "investment account", "trading account",
+      ],
+      ["تعليمات دائمه", "امر دائم", "بعد التحصيل", "قيد التحصيل"])
 
     static let number = "[0-9](?:[0-9,]|\\.(?=[0-9]))*+"
 
@@ -290,7 +302,8 @@ public enum TextGate {
 
   enum Shape {
     static let paymentWord = RuleText.re(
-      "(?<![a-z])(?:purchase|purchased|purchases|debited|credited|refund|refunded|refunds|reversal|reversed|transfer|transferred|transfers|withdrawal|withdrawn|withdrew|deposit|deposited|payment|paid|spent|charged|sent|received|used|transaction|txn)(?![a-z])"
+      "(?<![a-z])(?:purchase|purchased|purchases|debited|credited|refund|refunded|refunds|reversal|reversed|transfer|transferred|transfers|withdrawal|withdrawn|withdrew|deposit|deposited|deducted|payment|pymt|paid|spent|charged|sent|received|used|transaction|txn)(?![a-z])"
+        + "|(?<![a-z])made\\s+using(?![a-z])"
         + "|شراء|مشتريات|بمبلغ|خصم|ايداع|تحويل|سحب|سداد|ارجاع|استرداد|دفع|راتب|حواله")
 
     static let currencies =

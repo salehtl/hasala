@@ -101,8 +101,9 @@ enum RuleReader {
     if best.verb { notes.append("verb by amount") }
     if best.fromSubject { notes.append("subject amount") }
 
-    let (dir, dirStrong, dirMargin) = direction(clause: best.clause, subject: fSubject, body: fBody)
-    notes.append("dir \(dir)\(dirStrong ? "" : " weak")")
+    let dr = directionReading(clause: best.clause, subject: fSubject, body: fBody)
+    let (dir, dirStrong, dirMargin) = (dr.direction, dr.strong, dr.margin)
+    notes.append("dir \(dir)\(dirStrong ? "" : " weak")\(dr.ambiguous ? " ambiguous" : "")")
 
     let banks = ownBankNames(lines, folded)
     let (merchant, msource) = merchant(lines, folded, banks: banks)
@@ -131,7 +132,8 @@ enum RuleReader {
 
     return Reading(
       isTransaction: true, amountMinor: best.money.minor, currency: best.money.currency, currencyExplicit: best.money.explicit,
-      merchant: merchant, direction: dir, directionGuessed: dirMargin == 0, confidence: c, note: notes.joined(separator: "; "))
+      merchant: merchant, direction: dir, directionGuessed: dirMargin == 0, directionAmbiguous: dr.ambiguous, confidence: c,
+      note: notes.joined(separator: "; "))
   }
 
   static func prevLabel(_ lines: [String], _ i: Int) -> String {
@@ -242,21 +244,40 @@ enum RuleReader {
     RuleText.replace(moneyWords, s).trimmingCharacters(in: .whitespaces)
   }
 
-  static func direction(clause: String, subject: String, body: String) -> (String, Bool, Double) {
-    func scrub(_ s: String) -> String { RuleText.replace(RuleLexicon.directionNoise, s) }
+  struct DirectionReading {
+    var direction: String
+    var strong: Bool
+    var margin: Double
+    var ambiguous: Bool
+  }
+
+  static func directionReading(clause: String, subject: String, body: String) -> DirectionReading {
+    func scrub(_ s: String) -> String {
+      let into = RuleLexicon.intoOwnAccount.stringByReplacingMatches(
+        in: s, range: NSRange(location: 0, length: (s as NSString).length), withTemplate: " credited ")
+      return RuleText.replace(RuleLexicon.directionNoise, into)
+    }
     let parts: [(String, Double)] = [(scrub(clause), 3), (scrub(subject), 2), (scrub(body), 1)]
     var d = 0.0, c = 0.0
     var cd = 0, cc = 0
+    var plainDebit = 0
     for (k, (t, w)) in parts.enumerated() {
-      let nd = Double(min(3, RuleText.count(RuleLexicon.debit, t)))
+      let rawDebit = RuleText.count(RuleLexicon.debit, t)
+      let nd = Double(min(3, rawDebit))
       let nc = Double(min(3, RuleText.count(RuleLexicon.credit, t)) + 2 * min(1, RuleText.count(RuleLexicon.incomingTransfer, t)))
       d += nd * w
       c += nc * w
+      plainDebit += max(0, rawDebit - RuleText.count(RuleLexicon.ambiguousDebit, t))
       if k == 0 { cd = Int(nd); cc = Int(nc) }
     }
     let dir = c > d ? "credit" : "debit"
     let strong = dir == "credit" ? (cc > 0 && cd == 0) : (cd > 0 && cc == 0)
-    return (dir, strong, abs(c - d))
+    let ownAccount = [clause, subject, body].contains { RuleText.has(RuleLexicon.fromOwnAccount, $0) }
+    let intoOwn = [clause, subject, body].contains {
+      RuleText.has(RuleLexicon.intoOwnAccount, $0) || RuleText.has(RuleLexicon.toOwnAccount, $0)
+    }
+    let ambiguous = (intoOwn && ownAccount) || (dir == "debit" && d > 0 && plainDebit == 0 && !ownAccount)
+    return DirectionReading(direction: dir, strong: strong, margin: abs(c - d), ambiguous: ambiguous)
   }
 
   static func ownBankNames(_ lines: [String], _ folded: [String]) -> Set<String> {
