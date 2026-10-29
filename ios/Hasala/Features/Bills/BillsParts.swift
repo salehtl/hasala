@@ -148,22 +148,39 @@ struct BillCard<Extra: View>: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    let layout = typeSize.isAccessibilitySize || secondary == nil
-      ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-    layout {
-      Button(primary.title, action: primary.run)
-        .buttonStyle(.pill(.primary, size: .medium, fill: true))
-        .pillHeight()
-        .layoutPriority(1)
-        .accessibilityIdentifier(primary.id)
-      if let secondary {
-        Button(secondary.title, action: secondary.run)
-          .buttonStyle(.pill(.secondary, size: .medium, fill: true))
-          .pillHeight()
-          .frame(minWidth: typeSize.isAccessibilitySize ? nil : 128)
-          .accessibilityIdentifier(secondary.id)
+    if let secondary, !typeSize.isAccessibilitySize {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 8) {
+          primaryButton
+          secondaryButton(secondary)
+            .frame(minWidth: 128)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        VStack(spacing: 8) {
+          primaryButton
+          secondaryButton(secondary)
+        }
+      }
+    } else {
+      VStack(spacing: 8) {
+        primaryButton
+        if let secondary { secondaryButton(secondary) }
       }
     }
+  }
+
+  private var primaryButton: some View {
+    Button(primary.title, action: primary.run)
+      .buttonStyle(.pill(.primary, size: .medium, fill: true))
+      .pillHeight()
+      .accessibilityIdentifier(primary.id)
+  }
+
+  private func secondaryButton(_ secondary: Action) -> some View {
+    Button(secondary.title, action: secondary.run)
+      .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+      .pillHeight()
+      .accessibilityIdentifier(secondary.id)
   }
 
   /// "AXA Insurance, AED 550.00, 3 days past usual. Car insurance usually arrives on the 7th."
