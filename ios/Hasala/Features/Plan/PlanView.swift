@@ -482,7 +482,10 @@ struct BudgetRowView: View {
 }
 
 extension PlanRowModel {
-  var isUntouched: Bool { budget.isZero && spent.isZero }
+  var isUntouched: Bool {
+    if case .percent = trailing { return false }
+    return budget.isZero && spent.isZero
+  }
 }
 
 // MARK: - Projects
