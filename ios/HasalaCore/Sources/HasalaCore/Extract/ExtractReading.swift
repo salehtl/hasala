@@ -104,11 +104,11 @@ public struct ExtractReading: Sendable, Equatable {
   }
 
   public var readersConfirm: Bool {
-    outcome == .transaction && agreed && readersAgree && !directionAmbiguous && amountMinor != nil && currency != nil
-      && direction != nil && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
+    outcome == .transaction && agreed && readersAgree && amountMinor != nil && currency != nil && direction != nil
+      && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
   }
 
-  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm }
+  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm && !directionAmbiguous }
 
   public static let maxAmountMinor: Int64 = 9_999_999_999_999
 

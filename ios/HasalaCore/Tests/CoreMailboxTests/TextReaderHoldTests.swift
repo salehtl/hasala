@@ -64,10 +64,33 @@ struct TextReaderHoldTests {
       let s = Self.stream(w)
       #expect(s.contains { $0.1.directionAmbiguous && $0.1.direction == .debit }, "\(w(0))")
       for (r, reading) in s {
-        #expect(!reading.meetsFilingBar && !reading.readersConfirm, "\(w(0))")
+        #expect(!reading.meetsFilingBar, "\(w(0))")
         #expect(r.kept != nil && r.kept?.readerConfident == false && !Self.files(r), "\(w(0))")
       }
     }
+  }
+
+  @Test("a credit to your account elsewhere in the text does not turn a purchase into a credit")
+  func cashbackLineKeepsPurchaseADebit() throws {
+    let s = Self.stream {
+      "Purchase of AED \(Self.amount($0)) at SAMPLE SHOP with card XXX4321 on 05-06-2026. Cashback of AED 1.20 will be credited to your account."
+    }
+    #expect(s.allSatisfy { $0.0.kept?.fields?.direction == "debit" && $0.1.direction == .debit })
+  }
+
+  @Test("an ambiguous direction keeps the readers' check on a template's amount")
+  func ambiguousDirectionStillChecksTemplates() throws {
+    let input = ExtractInput(
+      sender: "sms:", subject: "", text: BankTextReader.normalized("AED 1,000.00 transferred to SAMPLE PERSON on 05-06-2026."),
+      receivedAtMs: TextRig.t0, listUnsubscribe: false)
+    var reading = ExtractReading(
+      outcome: .transaction, amountMinor: 100_000, currency: "AED", direction: .debit, confidencePercent: 90, agreed: true,
+      rulesConfidencePercent: 90, learnedConfidencePercent: 90, readersAgree: true)
+    reading.directionAmbiguous = true
+    #expect(reading.readersConfirm && !reading.meetsFilingBar)
+    let verdict = try #require(
+      CombinedReader.templateVerdict(input, amountMinor: 10_000, currency: "AED", direction: .debit) { reading })
+    #expect(verdict.holds.contains(.readersDisagree))
   }
 
   @Test("a transfer from your own account is no ambiguous debit")

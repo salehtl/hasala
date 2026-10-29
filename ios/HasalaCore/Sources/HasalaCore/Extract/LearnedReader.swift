@@ -159,12 +159,11 @@ enum LearnedReader {
       for i in ids {
         if let d = ILex.direction(toks[i].key) {
           let dist = abs(i - from)
-          if dist < bestD { bestD = dist; best = d }
+          if dist < bestD { bestD = dist; best = intoOwnAccount(toks, at: i) ? "credit" : d }
         }
       }
       return best
     }
-    if intoOwnAccount(toks) { return ("credit", 0) }
     if let idx = idx {
       let line = toks[idx].line
       if let d = nearest(lineTokens(toks, line: line), from: idx) { return (d, 0) }
@@ -172,21 +171,19 @@ enum LearnedReader {
       if let d = nearest(lineTokens(toks, line: line + 1), from: idx) { return (d, 1) }
     }
     if let d = nearest(lineTokens(toks, line: 0), from: 0) { return (d, 1) }
-    for t in toks { if let d = ILex.direction(t.key) { return (d, 2) } }
+    for (i, t) in toks.enumerated() { if let d = ILex.direction(t.key) { return (intoOwnAccount(toks, at: i) ? "credit" : d, 2) } }
     return (nil, 3)
   }
 
   static let intoVerbs: Set<String> = ["transferred", "credited", "deposited", "added", "received"]
   static let ownAccountWords: Set<String> = ["account", "a/c", "acct", "card"]
 
-  static func intoOwnAccount(_ toks: [IToken]) -> Bool {
-    let words = toks.filter { $0.cls == .word }.map(\.key)
-    guard words.count >= 4 else { return false }
-    for i in 0..<(words.count - 3) where intoVerbs.contains(words[i]) && ["to", "into", "in"].contains(words[i + 1]) {
-      guard words[i + 2] == "your" || words[i + 2] == "ur" else { continue }
-      if words[(i + 3)...].prefix(3).contains(where: ownAccountWords.contains) { return true }
-    }
-    return false
+  static func intoOwnAccount(_ toks: [IToken], at idx: Int) -> Bool {
+    guard intoVerbs.contains(toks[idx].key) else { return false }
+    let words = toks[(idx + 1)...].lazy.filter { $0.cls == .word }.prefix(5).map(\.key)
+    let w = Array(words)
+    guard w.count >= 3, ["to", "into", "in"].contains(w[0]), w[1] == "your" || w[1] == "ur" else { return false }
+    return w[2...].contains(where: ownAccountWords.contains)
   }
 
   static func excluded(_ toks: [IToken], amountAt idx: Int) -> Bool {
