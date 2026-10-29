@@ -41,6 +41,43 @@ struct ReviewCopyTests {
     #expect(ReviewEngine.tabRow(card, s).title == "Unknown merchant")
   }
 
+  @Test func anEmptyMerchantWithAPlaceReadsUnknown() throws {
+    let s = Scenario.maya.state
+    var t = try #require(s.txns.first { $0.needsReview })
+    t.merchant = " "
+    t.place = "Dubai"
+    let card = ReviewEngine.card(t, s)
+    #expect(card.merchant == "Unknown merchant")
+    #expect(card.monogram == "")
+  }
+
+  @Test func aSamePurchaseFromAnotherYearCarriesTheYear() throws {
+    var s = Scenario.mayaSamePurchase.state
+    let aed = try #require(s.txn("amazon-aed"))
+    let i = try #require(s.txns.firstIndex { $0.id == aed.samePurchase?.of })
+    s.txns[i].postedAt = LocalDateTime(2025, 12, 14, 10, 0)
+    let old = try #require(ReviewEngine.samePurchaseLine(aed, s, today: LocalDate(2026, 10, 10)))
+    #expect(old.hasSuffix("on Sun 14 Dec 2025?"))
+    let card = ReviewEngine.card(aed, s, today: LocalDate(2026, 10, 10))
+    #expect(card.copyLine == old)
+    let same = try #require(ReviewEngine.samePurchaseLine(aed, s, today: LocalDate(2025, 12, 20)))
+    #expect(same.hasSuffix("on Sun 14 Dec?"))
+  }
+
+  @Test func copyLinesShortenALongMerchant() throws {
+    var s = Scenario.mayaSamePurchase.state
+    let aed = try #require(s.txn("amazon-aed"))
+    let i = try #require(s.txns.firstIndex { $0.id == aed.samePurchase?.of })
+    s.txns[i].merchant = "International Duty Free Shopping Centre Terminal 3"
+    s.txns[i].place = "Dubai"
+    let line = try #require(ReviewEngine.samePurchaseLine(aed, s))
+    #expect(line.contains(" at International Duty Free… on "))
+    #expect(ReviewEngine.copyName(s.txns[i]).count == ReviewEngine.copyNameLimit)
+    var copy = aed
+    copy.heldCopy = HeldCopy(of: s.txns[i].id, fromOtherInbox: false)
+    #expect(ReviewEngine.copyLine(copy, s)?.hasPrefix("Looks like a copy of International Duty Free… ") == true)
+  }
+
   @Test func theCardCarriesItsPostedDay() throws {
     let s = Scenario.maya.state
     let t = try #require(s.txns.first { $0.needsReview })

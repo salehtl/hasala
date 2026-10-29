@@ -417,8 +417,8 @@ public enum ReviewEngine {
     return m.year == today.year ? m.name : m.title
   }
 
-  public static func cards(_ s: LedgerState, in window: ReviewWindow = .all) -> [ReviewCardModel] {
-    queue(s, in: window).map { card($0, s) }
+  public static func cards(_ s: LedgerState, in window: ReviewWindow = .all, today: LocalDate? = nil) -> [ReviewCardModel] {
+    queue(s, in: window).map { card($0, s, today: today) }
   }
 
   /// A session's order when it starts at one card (a To sort row): that card, the ones
@@ -428,20 +428,20 @@ public enum ReviewEngine {
     return Array(ids[i...] + ids[..<i])
   }
 
-  public static func card(_ t: Txn, _ s: LedgerState) -> ReviewCardModel {
+  public static func card(_ t: Txn, _ s: LedgerState, today: LocalDate? = nil) -> ReviewCardModel {
     let verb = t.direction == .in ? "Received" : "Spent"
     var meta = "\(verb) · " + t.joined(t.postedAt.date.short, t.postedTime, separator: ", ")
     if let a = s.account(t.accountID) { meta += " · \(a.label)" }
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(spokenDay(d))"
     var card = ReviewCardModel(
-      id: t.id, merchant: merchantName(t.title), monogram: monogram(t.merchant.isEmpty ? t.title : t.merchant),
+      id: t.id, merchant: merchantName(t), monogram: monogram(t.merchant.allSatisfy(\.isWhitespace) ? "" : t.merchant),
       isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason,
       rawMerchant: t.provenance.flatMap { $0.rawMerchant.isEmpty ? nil : $0.rawMerchant }, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
       suggestion: suggestion(t, s).map(CategoryOption.init)
     )
-    card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s)
+    card.copyLine = copyLine(t, s) ?? samePurchaseLine(t, s, today: today)
     if card.suggestion != nil { card.suggestedBy = t.reviewSuggestionLabel }
     card.samePurchase = t.samePurchase != nil && !t.isHeldCopy
     card.month = d.yearMonth
@@ -458,6 +458,20 @@ public enum ReviewEngine {
     title.allSatisfy(\.isWhitespace) ? unknownMerchant : title
   }
 
+  public static func merchantName(_ t: Txn) -> String {
+    t.merchant.allSatisfy(\.isWhitespace) ? unknownMerchant : t.title
+  }
+
+  public static let copyNameLimit = 24
+
+  public static func copyName(_ t: Txn) -> String {
+    let name = merchantName(t)
+    guard name.count > copyNameLimit else { return name }
+    var cut = name.prefix(copyNameLimit - 1)
+    while cut.last?.isWhitespace == true { cut.removeLast() }
+    return cut + "…"
+  }
+
   public static func monogram(_ merchant: String) -> String {
     merchant.first(where: \.isLetter).map { String($0).uppercased() } ?? ""
   }
@@ -470,17 +484,17 @@ public enum ReviewEngine {
     guard let held = t.heldCopy else { return nil }
     let other = s.txn(held.of) ?? t
     let amount = "\(other.amount.currency) \(MoneyFormat.string(other.amount))"
-    let name = merchantName(other.title)
+    let name = copyName(other)
     return held.fromOtherInbox
       ? "Looks like a copy of \(name) \(amount) from your other inbox"
       : "Looks like a copy of \(name) \(amount) you already have"
   }
 
-  public static func samePurchaseLine(_ t: Txn, _ s: LedgerState) -> String? {
+  public static func samePurchaseLine(_ t: Txn, _ s: LedgerState, today: LocalDate? = nil) -> String? {
     guard let match = t.samePurchase, let f = s.txn(match.of) else { return nil }
     var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount))"
     if let home = f.homeMinor { amount += " (about \(Money.home) \(MoneyFormat.string(home)))" }
-    var line = "Same purchase as \(amount) at \(merchantName(f.title)) on \(f.postedAt.date.short)?"
+    var line = "Same purchase as \(amount) at \(copyName(f)) on \(today.map { f.postedAt.date.short(today: $0) } ?? f.postedAt.date.short)?"
     if match.merchantMissing { line += " This alert has no merchant." }
     return line
   }

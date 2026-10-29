@@ -91,20 +91,20 @@ final class ReviewViewModel: ReviewDeckModel {
     let held = picking?.card.id ?? holding
     return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
       let s = app.store.state
-      let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s)
+      let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s, today: app.store.now.date)
       if let top = out.first?.id { shown = top }
       return out
     }
   }
 
   nonisolated static func steady(
-    _ order: [TxnID], waiting: [Txn], held: TxnID?, shown: TxnID?, _ s: LedgerState
+    _ order: [TxnID], waiting: [Txn], held: TxnID?, shown: TxnID?, _ s: LedgerState, today: LocalDate? = nil
   ) -> [ReviewCardModel] {
     let open = Dictionary(waiting.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var out = order.compactMap { id in (open[id] ?? (id == shown ? s.txn(id) : nil)).map { ReviewEngine.card($0, s) } }
+    var out = order.compactMap { id in (open[id] ?? (id == shown ? s.txn(id) : nil)).map { ReviewEngine.card($0, s, today: today) } }
     guard let held, order.contains(held), let t = s.txn(held) else { return out }
     out.removeAll { $0.id == held }
-    out.insert(ReviewEngine.card(t, s), at: 0)
+    out.insert(ReviewEngine.card(t, s, today: today), at: 0)
     return out
   }
 
@@ -166,7 +166,7 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   func pick(_ card: TxnID, _ choice: ReviewChoice) {
-    guard let c = cards.first(where: { $0.id == card }) ?? app.store.state.txn(card).map({ ReviewEngine.card($0, app.store.state) })
+    guard let c = cards.first(where: { $0.id == card }) ?? app.store.state.txn(card).map({ ReviewEngine.card($0, app.store.state, today: app.store.now.date) })
     else { return }
     picking = ReviewPick(card: c, choice: choice)
   }

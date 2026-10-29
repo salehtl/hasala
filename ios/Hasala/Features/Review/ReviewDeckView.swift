@@ -881,7 +881,7 @@ struct ReviewCardView<Actions: View>: View {
           .hType(.section)
           .foregroundStyle(HColor.textPrimary)
           .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-          .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
+          .fixedSize(horizontal: false, vertical: true)
         if let raw = card.rawMerchant {
           InfoChip(raw, style: .rawText)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
@@ -909,7 +909,7 @@ struct ReviewCardView<Actions: View>: View {
         .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textPrimary)
         .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
-        .truncationMode(.middle)
+        .truncationMode(.tail)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("review.copy")

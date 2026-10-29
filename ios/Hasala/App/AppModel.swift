@@ -182,7 +182,7 @@ final class AppModel {
 
   var reviewCards: [ReviewCardModel] {
     reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
-      ReviewEngine.cards(store.state, in: reviewWindow)
+      ReviewEngine.cards(store.state, in: reviewWindow, today: store.now.date)
     }
   }
 
