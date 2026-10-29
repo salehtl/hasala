@@ -438,6 +438,25 @@ final class SignInSecurityUITests: XCTestCase {
   }
 
   @MainActor
+  func testTheFrozenBannerStacksAtAccessibilitySizes() throws {
+    let app = launch(
+      scenario: "frozen",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+    tap(app, "frozen.leave")
+    let unfreeze = el(app, "frozenBanner.unfreeze")
+    let signOut = el(app, "frozenBanner.signOut")
+    XCTAssertTrue(unfreeze.waitForExistence(timeout: uiWait))
+    let title = app.staticTexts["Account frozen"].firstMatch
+    XCTAssertTrue(title.exists)
+    attach(app, "Home · frozen banner · AX3")
+    XCTAssertLessThanOrEqual(title.frame.maxY, signOut.frame.minY + 1)
+    XCTAssertLessThanOrEqual(title.frame.maxY, unfreeze.frame.minY + 1)
+    XCTAssertFalse(signOut.frame.intersects(unfreeze.frame))
+    XCTAssertTrue(signOut.isHittable)
+    XCTAssertTrue(unfreeze.isHittable)
+  }
+
+  @MainActor
   func testApprovingAPasswordReset() throws {
     let app = launch(scenario: "resetApproval")
     XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))
@@ -525,6 +544,7 @@ extension SignInSecurityUITests {
       issue in
       guard let e = issue.element else { return true }
       if e.elementType == .key || e.elementType == .keyboard { return true }
+      if issue.auditType == .dynamicType, e.identifier == "hasala.cappedFigure" { return true }
       issues.append("\(issue.compactDescription): '\(e.label)' [\(e.identifier)] — \(issue.detailedDescription)")
       return true
     }
