@@ -12,6 +12,7 @@ import Testing
 struct ActivityReviewModelTests {
   @Test func aReviewSessionCountsAndTallies() {
     let app = AppModel(store: InMemoryLedger())
+    app.reviewOrder = .oldestFirst
     let deck = ReviewViewModel(app: app)
     #expect(deck.total == 6)
     #expect(deck.position == 1)
@@ -33,36 +34,40 @@ struct ActivityReviewModelTests {
   }
 
   /// A To sort row opens the deck at its own card, then reads on down the list; Start opens
-  /// it at the oldest.
+  /// it at the top of the list.
   @Test func aRowStartsTheSessionAtItsCard() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.open(app, at: "lulu")
     #expect(app.cover == .review)
     let deck = ReviewViewModel(app: app)
-    #expect(deck.cards.map(\.id) == ["lulu", "dubai-taxi", "steam", "atm", "transfer-in", "apple"])
+    #expect(deck.cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
     #expect(deck.position == 1 && deck.total == 6)
-    // The request is used once: the next session starts at the oldest again.
-    #expect(ReviewViewModel(app: app).cards.first?.id == "atm")
+    // The request is used once: the next session starts at the top again.
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
     // A request for another account's model is not taken by this one.
     let other = AppModel(store: InMemoryLedger())
-    ReviewEntry.request(other, at: "steam")
-    #expect(ReviewViewModel(app: app).cards.first?.id == "atm")
+    ReviewEntry.request(other, at: "atm")
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
   }
 
-  /// A swipe or a pill asks which category; the bucket's list leads with the suggestion; the
-  /// sheet's sort files it and VoiceOver hears where the deck stands.
-  @Test func aPickLeadsWithTheSuggestionAndAnnouncesTheFiling() {
+  /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
+  /// suggestion in its place, and so do the projects; the sheet's sort files it and VoiceOver
+  /// hears where the deck stands.
+  @Test func aPickKeepsTheSuggestionInPlaceAndAnnouncesTheFiling() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.request(app, at: "lulu")
     let deck = ReviewViewModel(app: app)
     deck.pick("lulu", .need)
     #expect(deck.picking?.choice == .need && deck.picking?.card.id == "lulu")
-    #expect(deck.options(for: .need, card: "lulu").first?.id == "groceries")
+    #expect(deck.picking?.card.suggestion?.id == "groceries")
+    let options = deck.options(for: .need, card: "lulu").map(\.id)
+    #expect(options == ReviewEngine.options(for: .need, app.store.state).map(\.id))
+    #expect(options.firstIndex(of: "groceries") == 2)
     #expect(deck.projects(for: "lulu").map(\.name) == ["Japan trip"])
     #expect(deck.projects(for: "lulu").map(\.suggested) == [false])
     app.perform(.saveProject("eid", ProjectDraft(name: "Eid", starts: LocalDate(2026, 10, 1), ends: LocalDate(2026, 10, 9))))
-    #expect(deck.projects(for: "lulu").map(\.name) == ["Eid", "Japan trip"])
-    #expect(deck.projects(for: "lulu").map(\.suggested) == [true, false])
+    #expect(deck.projects(for: "lulu").map(\.name) == ["Japan trip", "Eid"])
+    #expect(deck.projects(for: "lulu").map(\.suggested) == [false, true])
     deck.picking = nil
     #expect(deck.sort("lulu", into: "groceries", alwaysUse: true, project: nil))
     #expect(deck.filedAnnouncement("Need") == "Filed as Need. 2 of 6.")
@@ -106,8 +111,9 @@ struct ActivityReviewModelTests {
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
     #expect(ReviewTabView.emptyLine == "New transactions Hasala can't sort on its own show up here.")
-    #expect(ReviewTabView.orderLine(months: 1) == "Oldest first")
-    #expect(ReviewTabView.orderLine(months: 2) == "Newest month first")
+    #expect(ReviewOrder.newestFirst.title == "Newest first")
+    #expect(ReviewOrder.oldestFirst.title == "Oldest first")
+    #expect(ReviewTabView.orderSpoken(.oldestFirst) == "Order, Oldest first")
   }
 
   @Test func theReviewTabFollowsThePeriodAndNamesTheRest() {
@@ -215,8 +221,8 @@ struct ActivityReviewModelTests {
     #expect(deck.periodTitle == "All time" && !deck.isThisMonth && deck.elsewhere == nil)
     #expect(app.reviewCards.count == 11 && app.reviewElsewhere == nil)
     #expect(deck.total == 11 && deck.position == 1)
-    #expect(deck.cards.prefix(6).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
-    #expect(deck.cards.suffix(5).map(\.id) == (0..<5).map { "jun-\($0)" })
+    #expect(deck.cards.prefix(6).map(\.id) == ["steam", "dubai-taxi", "lulu", "apple", "transfer-in", "atm"])
+    #expect(deck.cards.suffix(5).map(\.id) == (0..<5).reversed().map { "jun-\($0)" })
     let months = ReviewEngine.months(deck.cards, now: app.store.now)
     #expect(months.map(\.title) == ["This month", "June"])
   }
@@ -250,9 +256,15 @@ struct ActivityReviewModelTests {
   @Test func theReviewTabSaysHowLongItTakes() {
     #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
     #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
+    #expect(ReviewTabView.countLine(360) == "360 to sort · about 60 minutes")
+    #expect(ReviewTabView.countLine(400) == "400 to sort · about an hour")
+    #expect(ReviewTabView.countLine(1_284) == "1,284 to sort · about 4 hours")
     #expect(ReviewTabView.countLine(0) == "All caught up")
     #expect(ActivityContent.minutes(6) == "about 1 minute")
     #expect(ActivityContent.minutes(7) == "about 2 minutes")
+    #expect(ActivityContent.minutes(360) == "about 60 minutes")
+    #expect(ActivityContent.minutes(366) == "about 1 hour")
+    #expect(ActivityContent.minutes(1_284) == "about 4 hours")
   }
 
   @Test func theReviewTabCountsUnreadableMail() {

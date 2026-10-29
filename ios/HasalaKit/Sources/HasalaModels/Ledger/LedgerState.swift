@@ -629,8 +629,18 @@ public struct ProjectDraft: Sendable, Hashable, Codable {
   public static let glyphs: [Glyph] = [.flag, .travel, .rent, .shopping, .savingsJar, .entertainment, .healthcare,
                                        .transport]
 
+  public static let maxName = 64
+
+  public static func capped(_ name: String) -> String {
+    var out = name
+    while out.unicodeScalars.count > maxName { out.removeLast() }
+    return out
+  }
+
   public var refusal: String? {
-    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Give the project a name" }
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return "Give the project a name" }
+    if trimmed.unicodeScalars.count > Self.maxName { return "Use \(Self.maxName) characters or fewer for the name" }
     if let b = budget, b.minor <= 0 { return "The money set aside must be more than 0" }
     if let s = starts, let e = ends, e < s { return "The end date is before the start date" }
     return nil

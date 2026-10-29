@@ -44,10 +44,15 @@ struct PlanContent: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
-      ReadyToAssignCard(model: model)
-      SplitSection(snap: snap)
+      if snap.nothingPlanned {
+        NothingPlannedCard(model: model)
+      } else {
+        ReadyToAssignCard(model: model)
+        SplitSection(snap: snap)
+      }
       ForEach(snap.sections) { section in
-        BucketSection(section: section, month: snap.month, hidden: model.hidden, reveal: reveal.fill) {
+        BucketSection(section: section, month: snap.month, hidden: model.hidden, reveal: reveal.fill,
+                      nothingPlanned: snap.nothingPlanned) {
           model.open($0)
         }
       }
@@ -67,6 +72,7 @@ private struct ReadyToAssignCard: View {
   @Environment(\.dynamicTypeSize) private var typeSize
 
   private var snap: PlanSnapshot { model.snapshot }
+  private var overPlanned: Bool { snap.readyToAssign.isNegative }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -89,25 +95,34 @@ private struct ReadyToAssignCard: View {
         : AnyLayout(HStackLayout(spacing: 8))
       header {
         Circle().fill(HColor.posterGlyph).frame(width: 32, height: 32)
-          .overlay { PlanGlyph(kind: .wallet, size: 18, color: Hue.mint.ink, stroke: 2) }
-        Text("Ready to assign").hType(.overline).foregroundStyle(Hue.mint.ink)
+          .overlay { PlanGlyph(kind: .wallet, size: 18, color: ink, stroke: 2) }
+        Text(overPlanned ? "Over-planned" : "Ready to assign").hType(.overline).foregroundStyle(ink)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityAddTraits(.isHeader)
       }
       VStack(alignment: .leading, spacing: 2) {
         let rta = snap.readyToAssign
         MoneyText(rta, figure: .large, unit: .unit, hidden: model.hidden, hiddenGlyphs: 4,
-                  color: rta.isNegative ? HColor.statusErrorForeground : HColor.textPrimary,
-                  unitGap: 6, sign: rta.isNegative ? .debt : .none)
+                  color: overPlanned ? HColor.statusWarningForeground : HColor.textPrimary,
+                  unitGap: 6, sign: overPlanned ? .debt : .none)
           .accessibilityIdentifier("plan.readyToAssign")
+        if overPlanned {
+          PhraseText(MoneyPhrase([.text("Planned "), .amount(.aed(rta.minor.negated), .compact, hidden: 3),
+                                  .text(" more than income")]), hidden: model.hidden)
+            .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusWarningForeground)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("plan.overPlanned")
+        }
         PhraseText(snap.incomeLine, hidden: model.hidden).hType(.subheadline)
-          .foregroundStyle(HColor.textOnHueSecondary)
+          .foregroundStyle(overPlanned ? HColor.textSecondary : HColor.textOnHueSecondary)
       }
     }
     .padding(EdgeInsets(top: 14, leading: 16, bottom: 16, trailing: 16))
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Hue.mint.perceptualGradient)
+    .background(overPlanned ? AnyShapeStyle(HColor.statusWarningSurface) : AnyShapeStyle(Hue.mint.perceptualGradient))
   }
+
+  private var ink: Color { overPlanned ? HColor.statusWarningForeground : Hue.mint.ink }
 
   private var actions: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -116,11 +131,19 @@ private struct ReadyToAssignCard: View {
         ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
       layout {
         // Each pill takes the height its label needs (two lines at the largest sizes).
-        Button("Assign") { model.moveMoney(to: nil) }
-          .buttonStyle(.pill(.primary, size: .medium, fill: true))
-          .fixedSize(horizontal: false, vertical: true)
-          .disabled(snap.readyToAssign.minor <= 0)
-          .accessibilityIdentifier("plan.assign")
+        if overPlanned {
+          Text("Lower a budget below to bring the plan back within your income.")
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("plan.overPlannedHint")
+        } else {
+          Button("Assign") { model.moveMoney(to: nil) }
+            .buttonStyle(.pill(.primary, size: .medium, fill: true))
+            .fixedSize(horizontal: false, vertical: true)
+            .disabled(snap.readyToAssign.minor == 0)
+            .accessibilityIdentifier("plan.assign")
+        }
         // TODO(03a §6.11, spec 04 §16.2 P2): Auto-assign; a Release build offers Assign alone.
         if BuildSurface.showsUnfinished {
           Button("Auto-assign") { model.autoAssign() }
@@ -135,6 +158,60 @@ private struct ReadyToAssignCard: View {
       }
     }
     .padding(16)
+  }
+}
+
+private struct NothingPlannedCard: View {
+  let model: any PlanModel
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var snap: PlanSnapshot { model.snapshot }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Nothing planned for \(snap.month.name) yet").hType(.headline).foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
+          .accessibilityIdentifier("plan.nothingPlanned")
+        Text(message).hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      let layout = typeSize.isAccessibilitySize
+        ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+      if snap.readyToAssign.minor > 0 || !snap.lastMonthBudgets.isEmpty {
+        layout {
+          if snap.readyToAssign.minor > 0 {
+            Button("Assign") { model.moveMoney(to: nil) }
+              .buttonStyle(.pill(.primary, size: .medium, fill: true))
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("plan.assign")
+          }
+          if !snap.lastMonthBudgets.isEmpty {
+            Button("Copy last month") { model.copyLastMonth() }
+              .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("plan.copyLastMonth")
+          }
+        }
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary)
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .hElevation(.nearFar)
+    .padding(.horizontal, HSpacing.insetPage)
+  }
+
+  private var message: String {
+    if !snap.lastMonthBudgets.isEmpty {
+      return "Give each category a budget, or start from \(snap.month.previous.name)'s plan."
+    }
+    if snap.readyToAssign.minor > 0 {
+      return "Assign your income to your categories, or tap a category to set its budget."
+    }
+    return "Tap a category to set its budget, and Hasala keeps track of your month against it."
   }
 }
 
@@ -156,7 +233,7 @@ private struct SplitSection: View {
       }
       .padding(.horizontal, 4)
       GeometryReader { geo in
-        let widths = partWidths(geo.size.width, gap: 2)
+        let widths = Self.partWidths(geo.size.width, fractions: fractions, gap: 2)
         HStack(spacing: 2) {
           ForEach(Array(snap.split.enumerated()), id: \.element.id) { i, share in
             UnevenRoundedRectangle(
@@ -175,30 +252,32 @@ private struct SplitSection: View {
     .padding(.horizontal, HSpacing.insetPage)
   }
 
-  /// Each part's width: its share of the bar after the gaps, at least 12 so a small bucket
-  /// still shows (geometry only).
-  private func partWidths(_ total: CGFloat, gap: CGFloat) -> [CGFloat] {
-    let room = max(0, total - gap * CGFloat(max(0, snap.split.count - 1)))
-    return snap.split.map { max(12, room * $0.share.fraction) }
+  private var fractions: [Double] { snap.split.map(\.share.fraction) }
+
+  nonisolated static func partWidths(_ total: CGFloat, fractions: [Double], gap: CGFloat, floor: CGFloat = 12) -> [CGFloat] {
+    let n = fractions.count
+    guard n > 0 else { return [] }
+    let room = max(0, total - gap * CGFloat(n - 1))
+    guard room > floor * CGFloat(n) else { return Array(repeating: room / CGFloat(n), count: n) }
+    var floored = Set<Int>()
+    while true {
+      let free = room - floor * CGFloat(floored.count)
+      let open = fractions.indices.filter { !floored.contains($0) }
+      let weight = open.map { fractions[$0] }.reduce(0, +)
+      let widths = fractions.indices.map { i -> CGFloat in
+        if floored.contains(i) { return floor }
+        return weight > 0 ? free * fractions[i] / weight : free / CGFloat(open.count)
+      }
+      let more = open.filter { widths[$0] < floor }
+      if more.isEmpty { return widths }
+      floored.formUnion(more)
+    }
   }
 
-  @ViewBuilder private var labels: some View {
-    if typeSize.isAccessibilitySize {
-      VStack(alignment: .leading, spacing: 6) {
-        ForEach(snap.split) { share in label(share) }
-      }
-    } else {
-      // Under their parts, as Paper lines them up; a part too narrow for its label still
-      // shows it whole.
-      GeometryReader { geo in
-        let widths = partWidths(geo.size.width, gap: 2)
-        HStack(alignment: .top, spacing: 2) {
-          ForEach(Array(snap.split.enumerated()), id: \.element.id) { i, share in
-            label(share).frame(width: widths[i], alignment: .leading)
-          }
-        }
-      }
-      .frame(height: 40)
+  private var labels: some View {
+    SplitLegendLayout(fractions: fractions, gap: 2,
+                      stacked: typeSize.isAccessibilitySize || snap.split.contains { $0.share.value < 100 }) {
+      ForEach(snap.split) { share in label(share) }
     }
   }
 
@@ -215,6 +294,49 @@ private struct SplitSection: View {
   }
 }
 
+private struct SplitLegendLayout: Layout {
+  let fractions: [Double]
+  let gap: CGFloat
+  let stacked: Bool
+  var lineSpacing: CGFloat = 6
+
+  private func underParts(_ subviews: Subviews, width: CGFloat) -> [CGFloat]? {
+    guard !stacked, subviews.count == fractions.count else { return nil }
+    let widths = SplitSection.partWidths(width, fractions: fractions, gap: gap)
+    for (i, view) in subviews.enumerated() where view.sizeThatFits(.unspecified).width > widths[i] {
+      return nil
+    }
+    return widths
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    let width = proposal.width ?? sizes.map(\.width).reduce(0, +)
+    if underParts(subviews, width: width) != nil {
+      return CGSize(width: width, height: sizes.map(\.height).max() ?? 0)
+    }
+    let height = sizes.map(\.height).reduce(0, +) + lineSpacing * CGFloat(max(0, sizes.count - 1))
+    return CGSize(width: width, height: height)
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    if let widths = underParts(subviews, width: bounds.width) {
+      var x = bounds.minX
+      for (i, view) in subviews.enumerated() {
+        view.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading, proposal: .unspecified)
+        x += widths[i] + gap
+      }
+      return
+    }
+    var y = bounds.minY
+    for view in subviews {
+      let height = view.sizeThatFits(.unspecified).height
+      view.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading, proposal: .unspecified)
+      y += height + lineSpacing
+    }
+  }
+}
+
 // MARK: - Buckets
 
 /// One bucket: the dot, its name in Title 2, "3,309.20 left of 12,350" (Savings: "✓ Done for
@@ -224,6 +346,7 @@ private struct BucketSection: View {
   let month: YearMonth
   let hidden: Bool
   let reveal: Double
+  var nothingPlanned = false
   let open: (CategoryID) -> Void
 
   var body: some View {
@@ -240,7 +363,9 @@ private struct BucketSection: View {
       }
       PlanListCard {
         ForEach(section.rows) { row in
-          Button { open(row.id) } label: { BudgetRowView(row: row, hidden: hidden, reveal: reveal) }
+          Button { open(row.id) } label: {
+            BudgetRowView(row: row, hidden: hidden, reveal: reveal, unplanned: nothingPlanned && row.isUntouched)
+          }
             .buttonStyle(HRowPressStyle())
             .accessibilityIdentifier("plan.row.\(row.id)")
         }
@@ -250,7 +375,9 @@ private struct BucketSection: View {
   }
 
   @ViewBuilder private var summary: some View {
-    if section.done {
+    if nothingPlanned && section.budget.isZero && section.left.isZero {
+      EmptyView()
+    } else if section.done {
       DoneMark("Done for \(month.name)")
     } else {
       // "3,309.20 left of 12,350": what is left first, then the bucket's plan, whole.
@@ -279,7 +406,10 @@ struct BudgetRowView: View {
   let hidden: Bool
   /// How much of its fill the bar shows (Plan's first reveal); 1 at rest.
   var reveal: Double = 1
+  var unplanned = false
   @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var parts: [PlanDetailPart] { unplanned ? [.text("No budget yet")] : row.detail }
 
   var body: some View {
     let layout = typeSize.isAccessibilitySize
@@ -298,7 +428,7 @@ struct BudgetRowView: View {
             trailing
           }
         }
-        PlanFactsLine(parts: row.detail, hidden: hidden)
+        PlanFactsLine(parts: parts, hidden: hidden)
         SlimProgressBar(Permille(Int(Double(min(1000, row.progress.value)) * reveal)), fill: row.verdict.fill)
           .padding(.top, 6)
           .hAnimation(.fillUpdate, value: row.progress)
@@ -319,6 +449,8 @@ struct BudgetRowView: View {
 
   @ViewBuilder private var trailing: some View {
     switch row.trailing {
+    case .left where unplanned:
+      EmptyView()
     case .left(let m):
       HStack(alignment: .firstTextBaseline, spacing: 4) {
         MoneyText(.aed(abs(m.minor)), figure: .row, hidden: hidden, hiddenGlyphs: 3,
@@ -336,6 +468,8 @@ struct BudgetRowView: View {
   private var spoken: String {
     let figure: String
     switch row.trailing {
+    case .left where unplanned:
+      return "\(row.name), No budget yet."
     case .left(let m):
       let amount = hidden ? "Amount hidden" : "\(m.currency) \(MoneyFormat.string(m.minor))"
       figure = "\(amount) \(m.isNegative ? "over" : "left")"
@@ -344,6 +478,13 @@ struct BudgetRowView: View {
     }
     let facts = BillDetailParts.spoken(row.detail, hidden: hidden)
     return "\(row.name), \(figure). \(facts)."
+  }
+}
+
+extension PlanRowModel {
+  var isUntouched: Bool {
+    if case .percent = trailing { return false }
+    return budget.isZero && spent.isZero
   }
 }
 
@@ -416,7 +557,7 @@ struct ProjectCard: View {
       }
       SideBySideOrStacked(spacing: 6, spreads: false) {
         MoneyText(figure, figure: HFigure.medium.weight(.bold), hidden: hidden, hiddenGlyphs: 4,
-                  color: over ? HColor.statusErrorForeground : HColor.textPrimary)
+                  color: figureColor, sign: refunded ? .income : .none)
           .fixedSize()
         PhraseText(caption, hidden: hidden)
           .hType(.subheadline).foregroundStyle(HColor.textOnHueSecondary)
@@ -452,19 +593,25 @@ struct ProjectCard: View {
   }
 
   private var over: Bool { project.left?.isNegative == true }
+  private var refunded: Bool { project.left == nil && project.spent.isNegative }
 
   private var figure: Money {
-    guard let left = project.left else { return project.spent }
+    guard let left = project.left else { return .aed(abs(project.spent.minor)) }
     return .aed(abs(left.minor))
   }
 
+  private var figureColor: Color {
+    if over { return HColor.statusErrorForeground }
+    return refunded ? HColor.moneyIn : HColor.textPrimary
+  }
+
   private var caption: MoneyPhrase {
-    guard let budget = project.budget else { return "spent · no budget" }
+    guard let budget = project.budget else { return refunded ? "refunded · no budget" : "spent · no budget" }
     return MoneyPhrase([.text(over ? "over " : "left of "), .amount(budget, .compact, hidden: 3)])
   }
 
   private var spoken: String {
-    let amount = hidden ? "Amount hidden" : "AED \(MoneyFormat.string(figure.minor))"
+    let amount = hidden ? "Amount hidden" : (refunded ? "plus " : "") + "AED \(MoneyFormat.string(figure.minor))"
     let when = [project.range, project.when].compactMap { $0 }.joined(separator: ", ")
     var out = project.name + (when.isEmpty ? "." : ", \(when).")
     out += " \(amount) \(caption.spoken(hidden: hidden))."

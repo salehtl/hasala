@@ -11,6 +11,7 @@ protocol PlanModel: AnyObject, Observable {
   func editBudget(_ category: CategoryID)
   func moveMoney(to category: CategoryID?)
   func autoAssign()
+  func copyLastMonth()
   /// Pushes the category's month (Plan · Dining).
   func open(_ category: CategoryID)
   /// Pushes the project (Plan · Japan trip).
@@ -42,6 +43,13 @@ final class PlanViewModel: PlanModel {
   // split, as one `budget_moved` batch with a preview sheet.
   // Debug only: a Release build doesn't show the button (`BuildSurface`).
   func autoAssign() { app.say("Auto-assign isn't in this build yet", icon: .wand) }
+
+  func copyLastMonth() {
+    let snap = snapshot
+    let edits = snap.lastMonthBudgets.sorted { $0.key < $1.key }.map { LedgerEdit.setBudget($0.key, snap.month, $0.value) }
+    guard !edits.isEmpty else { return }
+    app.perform(edits, title: edits.count == 1 ? nil : "\(edits.count) budgets copied from last month")
+  }
 
   func newProject() { app.editProject(nil) }
   func openProjects() { app.pushPlanProjects() }

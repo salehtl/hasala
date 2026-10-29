@@ -72,17 +72,25 @@ struct ActivityFilterBar: View {
       .accessibilityIdentifier("activity.period")
   }
 
+  private var countLine: some View {
+    Text(snap.countLine)
+      .hType(.subheadline)
+      .foregroundStyle(HColor.textSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityIdentifier("activity.count")
+  }
+
   @ViewBuilder private var periodRow: some View {
-    if snap.isThisMonth {
-      HStack(spacing: 12) {
+    if snap.allTime {
+      countLine
+        .frame(minHeight: HSpacing.targetMinimum, alignment: .leading)
+    } else if snap.isThisMonth, snap.summary != nil {
+      pill
+    } else if snap.isThisMonth {
+      ReflowingRow(spacing: 12) {
         pill
-        if snap.summary == nil {
-          Text(snap.countLine)
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityIdentifier("activity.count")
-        }
+      } trailing: {
+        countLine
       }
     } else {
       ReflowingRow(spacing: 12) {
@@ -226,6 +234,10 @@ struct ActivityContent: View {
   /// "about 1 minute": about ten seconds a card.
   static func minutes(_ n: Int) -> String {
     let m = max(1, (n + 5) / 6)
+    if m > 60 {
+      let h = (m + 30) / 60
+      return "about \(MoneyFormat.count(h)) hour\(h == 1 ? "" : "s")"
+    }
     return "about \(m) minute\(m == 1 ? "" : "s")"
   }
 
@@ -397,7 +409,7 @@ struct FilterSummaryCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       VStack(alignment: .leading, spacing: 2) {
-        Text("\(summary.count) transaction\(summary.count == 1 ? "" : "s")").hType(.subheadline)
+        Text("\(MoneyFormat.count(summary.count)) transaction\(summary.count == 1 ? "" : "s")").hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
         MoneyText(summary.total, figure: .large, unit: .unit, hidden: hidden, color: HColor.moneyOut,
                   unitColor: HColor.textPrimary, unitGap: 5)

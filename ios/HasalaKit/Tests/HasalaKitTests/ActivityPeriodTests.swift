@@ -23,7 +23,7 @@ struct ActivityPeriodTests {
     #expect(!a.isThisMonth)
     #expect(a.days.allSatisfy { $0.date.yearMonth == YearMonth(2026, 9) })
     #expect(ids(a).contains("h-rent-9") && !ids(a).contains("h-rent-8"))
-    #expect(a.review?.count == 6 && a.comingUp.isEmpty)
+    #expect(a.review == nil && a.comingUp.isEmpty)
     #expect(a.chips.first { $0.kind == .toReview }?.count == 0)
     let n = history.txns.filter { $0.postedAt.date.yearMonth == YearMonth(2026, 9) && !$0.archived }.count
     #expect(a.countLine == "\(n) transactions · September 2026")
@@ -111,6 +111,42 @@ struct ActivityPeriodTests {
     let toReview = ActivityEngine.snapshot(s, now: today, filter: TxnFilter(kind: .toReview), period: range)
     #expect(ids(toReview) == ["dec-31"])
     #expect(ActivityEngine.elapsed(range, today: today.date) == (62, 62))
+  }
+
+  @Test func archivedListsEveryMonthNewestFirst() {
+    var s = history
+    let picks: Set<TxnID> = ["h-rent-8", "h-rent-9", "h-pierchic-8"]
+    for i in s.txns.indices where picks.contains(s.txns[i].id) { s.txns[i].archived = true }
+    let october = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .archived))
+    let september = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .archived), period: .month(YearMonth(2026, 9)))
+    for a in [october, september] {
+      #expect(Set(ids(a)) == picks)
+      #expect(zip(a.days, a.days.dropFirst()).allSatisfy { $0.date > $1.date })
+      #expect(a.allTime)
+      #expect(a.countLine == "3 archived · all time")
+      #expect(a.chips.first { $0.kind == .archived }?.count == 3)
+    }
+    let all = ActivityEngine.snapshot(s, now: now, filter: .all)
+    #expect(!all.allTime && all.countLine == "26 transactions this month")
+    #expect(all.chips.first { $0.kind == .archived }?.count == 3)
+    #expect(!ids(all).contains { picks.contains($0) })
+    let found = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(kind: .archived, text: "pierchic"))
+    #expect(ids(found) == ["h-pierchic-8"])
+    #expect(found.countLine == "1 archived · all time")
+  }
+
+  @Test func archivedIsEmptyWithNothingArchived() {
+    let a = ActivityEngine.snapshot(history, now: now, filter: TxnFilter(kind: .archived))
+    #expect(a.days.isEmpty && a.allTime)
+    #expect(a.countLine == "0 archived · all time")
+    #expect(a.chips.first { $0.kind == .archived }?.count == 0)
+    #expect(ProfileEngine.snapshot(history, now: now).archivedTxns == 0)
+  }
+
+  @Test func profileCountsArchivedTransactions() {
+    var s = history
+    for i in s.txns.indices where ["h-rent-8", "h-rent-9"].contains(s.txns[i].id) { s.txns[i].archived = true }
+    #expect(ProfileEngine.snapshot(s, now: now).archivedTxns == 2)
   }
 
   @Test func aFutureMonthIsClampedToToday() {

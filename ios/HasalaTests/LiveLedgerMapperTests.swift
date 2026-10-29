@@ -173,8 +173,16 @@ struct LiveLedgerMapperTests {
     #expect(gotToday.rows.map(\.merchant) == wantToday.rows.map(\.merchant))
     #expect(gotToday.rows.map(\.detail) == wantToday.rows.map(\.detail))
     #expect(gotToday.rows.map(\.amount) == wantToday.rows.map(\.amount))
-    #expect(widget(got, "project.Japan trip") == widget(want, "project.Japan trip"))
-    #expect(widget(got, "goal.Emergency fund") == widget(want, "goal.Emergency fund"))
+    func sansID(_ w: HomeWidget?) -> HomeWidget? {
+      switch w {
+      case .project(var p)?: p.id = nil; return .project(p)
+      case .goal(var g)?: g.id = nil; return .goal(g)
+      default: return w
+      }
+    }
+    #expect(sansID(widget(got, "project.Japan trip")) == sansID(widget(want, "project.Japan trip")))
+    #expect(sansID(widget(got, "goal.Emergency fund")) == sansID(widget(want, "goal.Emergency fund")))
+    if case .project(let p)? = widget(got, "project.Japan trip") { #expect(p.id != nil) }
     guard case .netWorth(let nw)? = widget(got, "netWorth") else {
       Issue.record("no net worth widget")
       return

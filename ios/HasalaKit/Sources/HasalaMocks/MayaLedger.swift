@@ -246,6 +246,23 @@ public enum MayaLedger {
             starts: LocalDate(2026, 12, 14), ends: LocalDate(2026, 12, 28), startVerb: "flies"),
   ]
 
+  static let moreProjects: [Project] = [
+    ("kitchen", "Kitchen refit", LocalDate(2026, 11, 1)),
+    ("wedding", "Wedding gifts", LocalDate(2026, 11, 7)),
+    ("car", "Car service", LocalDate(2027, 1, 5)),
+    ("diving", "Diving course", LocalDate(2027, 2, 1)),
+    ("eid", "Eid gifts", LocalDate(2026, 10, 1)),
+    ("hatta", "Hatta weekend", LocalDate(2026, 11, 20)),
+    ("sofa", "New sofa", LocalDate(2027, 3, 1)),
+    ("laptop", "Laptop", LocalDate(2027, 4, 1)),
+    ("dentist", "Dentist", LocalDate(2026, 11, 15)),
+    ("garden", "Balcony garden", LocalDate(2027, 5, 1)),
+    ("birthday", "Birthday", LocalDate(2027, 6, 1)),
+  ].map { id, name, starts in
+    Project(id: id, name: name, glyph: .flag, budget: nil, starts: starts,
+            ends: id == "eid" ? LocalDate(2026, 10, 15) : nil)
+  }
+
   static let goals: [Goal] = [
     Goal(id: "emergency", name: "Emergency fund", glyph: .savingsJar, categoryID: "emergency-fund",
          target: .aed(50_000_00), saved: .aed(38_500_00), by: YearMonth(2027, 1)),

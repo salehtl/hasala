@@ -142,8 +142,12 @@ private struct ProjectHero: View {
           }
         }
         VStack(alignment: .leading, spacing: 4) {
+          Text(detail.name).hType(.title2).foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 4)
           MoneyText(figure, figure: .hero, unit: .unit, hidden: hidden, hiddenGlyphs: 6,
-                    color: over ? HColor.statusErrorForeground : HColor.textPrimary, unitGap: 6)
+                    color: over ? HColor.statusErrorForeground : (refunded ? HColor.moneyIn : HColor.textPrimary),
+                    unitGap: 6, sign: refunded ? .income : .none)
           PhraseText(caption, hidden: hidden).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
           if !detail.pending.isZero {
             PhraseText(MoneyPhrase([.text("+ "), .amount(detail.pending, .compact, hidden: 3), .text(" waiting for review")]),
@@ -175,9 +179,10 @@ private struct ProjectHero: View {
   }
 
   private var over: Bool { detail.left?.isNegative == true }
+  private var refunded: Bool { detail.left == nil && detail.spent.isNegative }
 
   private var figure: Money {
-    guard let left = detail.left else { return detail.spent }
+    guard let left = detail.left else { return refunded ? .aed(abs(detail.spent.minor)) : detail.spent }
     return .aed(abs(left.minor))
   }
 
@@ -197,12 +202,12 @@ private struct ProjectHero: View {
   }
 
   private var caption: MoneyPhrase {
-    guard let budget = detail.budget else { return "spent · no budget set" }
+    guard let budget = detail.budget else { return refunded ? "refunded · no budget set" : "spent · no budget set" }
     return MoneyPhrase([.text(over ? "over " : "left of "), .amount(budget, .compact, hidden: 3)])
   }
 
   private var spoken: String {
-    let amount = hidden ? "Amount hidden" : "AED \(MoneyFormat.string(figure.minor))"
+    let amount = hidden ? "Amount hidden" : (refunded ? "plus " : "") + "AED \(MoneyFormat.string(figure.minor))"
     var out = "\(detail.name), \(amount) \(caption.spoken(hidden: hidden))."
     if !detail.pending.isZero {
       out += " " + MoneyPhrase([.amount(detail.pending, .compact), .text(" waiting for review.")]).spoken(hidden: hidden)

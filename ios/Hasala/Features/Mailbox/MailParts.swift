@@ -62,14 +62,18 @@ enum MailCopy {
   }
 
   static func removed(_ n: Int) -> String {
-    n == 1 ? "1 transaction removed." : "\(n) transactions removed."
+    n == 1 ? "1 transaction removed." : "\(MoneyFormat.count(n)) transactions removed."
   }
 
   static func impactLines(_ impact: MailboxDisconnectImpact, from source: String = "It") -> [String] {
-    let count = impact.transactions == 1 ? "1 transaction" : "\(impact.transactions) transactions"
-    var lines = ["\(source) brought in \(count). Keep them, or remove them from your totals."]
+    let one = impact.transactions == 1
+    let count = one ? "1 transaction" : "\(MoneyFormat.count(impact.transactions)) transactions"
+    let choice = one ? "Keep it, or remove it from your totals." : "Keep them, or remove them from your totals."
+    var lines = ["\(source) brought in \(count). \(choice)"]
     if impact.edited > 0 {
-      lines.append(impact.edited == 1 ? "Removing also takes the 1 you changed." : "Removing also takes the \(impact.edited) you changed.")
+      lines.append(
+        impact.edited == 1
+          ? "Removing also takes the 1 you changed." : "Removing also takes the \(MoneyFormat.count(impact.edited)) you changed.")
     }
     return lines
   }
@@ -93,7 +97,12 @@ enum MailCopy {
 
   static func keepOnSwitch(_ lead: String, _ impact: MailboxDisconnectImpact) -> String {
     impact.transactions == 1
-      ? "\(lead), keep the 1 transaction" : "\(lead), keep the \(impact.transactions) transactions"
+      ? "\(lead), keep the 1 transaction" : "\(lead), keep the \(MoneyFormat.count(impact.transactions)) transactions"
+  }
+
+  static func removeTitle(_ impact: MailboxDisconnectImpact?, lead: String? = nil) -> String {
+    let them = impact?.transactions == 1 ? "it" : "them"
+    return lead.map { "\($0), remove \(them)" } ?? "Remove \(them)"
   }
 
   /// Where to take Hasala's permission away on the provider's side (Paper 1O9X names
@@ -138,7 +147,7 @@ enum MailCopy {
   /// (and where to check). Microsoft has no revoke, so its permission is removed there.
   static func keepTransactions(_ impact: MailboxDisconnectImpact) -> String {
     impact.transactions == 1
-      ? "Keep the 1 transaction from this inbox" : "Keep the \(impact.transactions) transactions from this inbox"
+      ? "Keep the 1 transaction from this inbox" : "Keep the \(MoneyFormat.count(impact.transactions)) transactions from this inbox"
   }
 
   static func disconnectChoiceMessage(_ provider: MailProviderKind, _ impact: MailboxDisconnectImpact) -> String {
@@ -680,10 +689,10 @@ private struct MailSwitchQuestionAlert: ViewModifier {
           }
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("mail.switch.keep")
-          Button("Switch, remove them", role: .destructive) { coordinator?.answer(.remove) }
+          Button(MailCopy.removeTitle(q.impact, lead: "Switch"), role: .destructive) { coordinator?.answer(.remove) }
             .accessibilityIdentifier("mail.switch.remove")
         } else {
-          Button("Switch to \(q.newAddress)") { coordinator?.answer(.keep) }
+          Button("Switch to this address") { coordinator?.answer(.keep) }
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("mail.switch.keep")
         }

@@ -101,13 +101,13 @@ final class PlanUITests: XCTestCase {
     attach(app, "Plan · Dining budget")
     app.buttons["Add 200"].tap()
     XCTAssertEqual(close.frame.minY, top, accuracy: 1)
-    XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
+    XCTAssertEqual(el(app, "budget.save").label, "Set to AED 1,800")
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes AED 482.00")
     // Over-assigning shows the shortfall with its minus sign.
     for _ in 0..<4 { app.buttons["Add 200"].tap() }
     XCTAssertEqual(el(app, "budget.consequence").label, "Ready to assign becomes \u{2212}AED 318.00")
     for _ in 0..<8 { app.buttons["Less"].tap() }
-    XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
+    XCTAssertEqual(el(app, "budget.save").label, "Set to AED 1,800")
     el(app, "budget.save").tap()
     XCTAssertTrue(app.staticTexts["Dining budget changed"].waitForExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "category.hero").label.contains("AED 1,157.25 left of 1,800 this month"))
@@ -146,7 +146,7 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(el(app, "budget.refusal").waitForExistence(timeout: uiWait))
     XCTAssertFalse(el(app, "budget.save").isEnabled)
     for _ in 0..<24 { app.buttons["Less"].tap() }
-    XCTAssertEqual(el(app, "budget.save").label, "Set Dining to AED 1,800")
+    XCTAssertEqual(el(app, "budget.save").label, "Set to AED 1,800")
     el(app, "budget.save").tap()
     XCTAssertTrue(app.staticTexts["Moved to Dining"].waitForExistence(timeout: uiWait))
     back(app)

@@ -68,7 +68,7 @@ final class AppModel {
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
-  @ObservationIgnored private var reviewCardsMemo = Memo<HomeMemoKey, [ReviewCardModel]>()
+  @ObservationIgnored private var reviewCardsMemo = Memo<ReviewCardsMemoKey, [ReviewCardModel]>()
   @ObservationIgnored private var sortedForYouMemo = Memo<Int, SortedForYouSnapshot>()
   @ObservationIgnored private var elsewhereMemo = Memo<HomeMemoKey, ReviewElsewhere?>()
   @ObservationIgnored private var thisMonthMemo = Memo<Int, HomeSnapshot>()
@@ -80,13 +80,19 @@ final class AppModel {
   let notificationReads: NotificationReads
   private(set) var homeLayout: HomeLayout?
   var editingHome = false
+  @ObservationIgnored private let reviewOrderDefaults: UserDefaults?
+  var reviewOrder: ReviewOrder {
+    didSet { ReviewOrderSetting.save(reviewOrder, reviewOrderDefaults) }
+  }
 
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
     layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads(),
-    bankTexts: (any BankTextsConnecting)? = nil
+    bankTexts: (any BankTextsConnecting)? = nil, reviewOrderDefaults: UserDefaults? = nil
   ) {
     self.store = store
+    self.reviewOrderDefaults = reviewOrderDefaults
+    reviewOrder = ReviewOrderSetting.load(reviewOrderDefaults)
     self.notificationReads = notificationReads
     self.amountsHidden = amountsHidden
     self.mailbox = mailbox
@@ -181,8 +187,8 @@ final class AppModel {
   var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
 
   var reviewCards: [ReviewCardModel] {
-    reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
-      ReviewEngine.cards(store.state, in: reviewWindow)
+    reviewCardsMemo.value(for: ReviewCardsMemoKey(revision: store.revision, period: period, order: reviewOrder, today: store.now.date)) {
+      ReviewEngine.cards(store.state, in: reviewWindow, order: reviewOrder, today: store.now.date)
     }
   }
 
@@ -262,7 +268,7 @@ final class AppModel {
   }
 
   @discardableResult
-  func perform(_ edits: [LedgerEdit]) -> Bool {
+  func perform(_ edits: [LedgerEdit], title: String? = nil) -> Bool {
     var tokens: [UndoToken] = []
     for edit in edits {
       do {
@@ -276,10 +282,10 @@ final class AppModel {
     if let last = tokens.popLast() {
       let check = store as? UndoAvailability
       if check?.canUndo(last) == false {
-        show(Toast(disc: .done, title: last.title))
+        show(Toast(disc: .done, title: title ?? last.title))
       } else {
         let earlier = tokens.reversed().filter { check?.canUndo($0) != false }
-        show(Toast(disc: .done, title: last.title, actionTitle: "Undo", undo: last, earlier: earlier))
+        show(Toast(disc: .done, title: title ?? last.title, actionTitle: "Undo", undo: last, earlier: earlier))
       }
     }
     return true
@@ -389,6 +395,13 @@ struct CanvasMemoKey: Equatable {
 struct HomeMemoKey: Equatable {
   var revision: Int
   var period: Period?
+}
+
+struct ReviewCardsMemoKey: Equatable {
+  var revision: Int
+  var period: Period?
+  var order: ReviewOrder
+  var today: LocalDate? = nil
 }
 
 @MainActor

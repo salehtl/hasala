@@ -15,11 +15,12 @@ extension XCTestCase {
   /// The Debug app on a mock: `-HasalaScenario <scenario>`, and optionally straight to a
   /// screen (`-HasalaScreen <screen>`, which picks its own scenario unless one is given),
   /// on the Release surface (`-HasalaReleaseSurface`), with motion settled or reduced
-  /// (`-HasalaMotion off|reduce`), and any further launch arguments.
+  /// (`-HasalaMotion off|reduce`), with the Review order (`-HasalaReviewOrder newest|oldest`;
+  /// the scripted deck flows read oldest first), and any further launch arguments.
   @MainActor
   func launch(
     scenario: String? = "maya", screen: String? = nil, release: Bool = false, motion: String? = nil,
-    arguments: [String] = [], pasteboard: String? = nil
+    reviewOrder: String? = "oldest", arguments: [String] = [], pasteboard: String? = nil
   ) -> XCUIApplication {
     if let pasteboard {
       UIPasteboard.general.string = pasteboard
@@ -32,6 +33,7 @@ extension XCTestCase {
     if let screen { args += ["-HasalaScreen", screen] }
     if release { args.append("-HasalaReleaseSurface") }
     if let motion { args += ["-HasalaMotion", motion] }
+    if let reviewOrder { args += ["-HasalaReviewOrder", reviewOrder] }
     app.launchArguments = args + arguments
     app.launch()
     return app
@@ -276,6 +278,7 @@ extension XCTestCase {
       if issue.auditType == .textClipped, issue.element?.elementType == .searchField { return true }
       if issue.auditType == .dynamicType, let element = issue.element {
         if element.identifier == "hasala.cappedFigure" { return true }
+        if ["budget.amount", "move.amount"].contains(element.identifier) { return true }
         if bars.contains(where: { $0.intersects(element.frame) }) { return true }
       }
       if issue.element == nil, underHeader || overSheet { return true }

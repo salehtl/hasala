@@ -12,8 +12,20 @@ import SwiftUI
 struct IncomeStep: View {
   @Bindable var model: MonthlyPlanModel
   @FocusState private var figureFocused: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
+    ScrollViewReader { proxy in
+      screen.onAppear {
+        guard typeSize.isAccessibilitySize else { return }
+        proxy.scrollTo(Self.figureID, anchor: .top)
+      }
+    }
+  }
+
+  private static let figureID = "income.figure"
+
+  private var screen: some View {
     SetupScreen(
       title: "What lands in your account each month?",
       subtitle: "After tax. You can change it any time.",
@@ -29,7 +41,7 @@ struct IncomeStep: View {
                    identifier: "income.continue", action: model.continueWithIncome)
           .padding(.horizontal, HSpacing.insetPage)
           .padding(.bottom, 16)
-        AmountKeypad(entry: $model.incomeEntry, layout: .docked)
+        AmountKeypad(entry: $model.incomeEntry, layout: .docked, compact: typeSize.isAccessibilitySize)
       }
     }
     .onAppear { figureFocused = true }
@@ -41,7 +53,8 @@ struct IncomeStep: View {
     VStack(spacing: 16) {
       AmountFigure(entry: model.incomeEntry, layout: .docked)
         .padding(.horizontal, HSpacing.insetPage)
-        .accessibilityIdentifier("income.figure")
+        .accessibilityIdentifier(Self.figureID)
+        .id(Self.figureID)
         .focusable()
         .focused($figureFocused)
         .focusEffectDisabled()

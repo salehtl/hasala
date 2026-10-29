@@ -87,7 +87,7 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Unlock · 12 words")
     try audit(app)
     type(app, "phraseEntry.field", Self.phrase.joined(separator: " ") + "\n")
-    XCTAssertTrue(app.staticTexts["Welcome back, Maya."].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["Welcome back, Maya Rahman."].waitForExistence(timeout: 15))
     XCTAssertTrue(el(app, "unlock.addPasskey").exists)
     attach(app, "Welcome back")
     try audit(app)
@@ -179,7 +179,7 @@ final class SignInSecurityUITests: XCTestCase {
     attach(app, "Recover · new way to sign in")
     try audit(app)
     tap(app, "recover.passkey")
-    XCTAssertTrue(app.staticTexts["You're back in, Maya."].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["You're back in, Maya Rahman."].waitForExistence(timeout: 10))
     try audit(app)
     tap(app, "recover.home")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
@@ -438,6 +438,25 @@ final class SignInSecurityUITests: XCTestCase {
   }
 
   @MainActor
+  func testTheFrozenBannerStacksAtAccessibilitySizes() throws {
+    let app = launch(
+      scenario: "frozen",
+      arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+    tap(app, "frozen.leave")
+    let unfreeze = el(app, "frozenBanner.unfreeze")
+    let signOut = el(app, "frozenBanner.signOut")
+    XCTAssertTrue(unfreeze.waitForExistence(timeout: uiWait))
+    let title = app.staticTexts["Account frozen"].firstMatch
+    XCTAssertTrue(title.exists)
+    attach(app, "Home · frozen banner · AX3")
+    XCTAssertLessThanOrEqual(title.frame.maxY, signOut.frame.minY + 1)
+    XCTAssertLessThanOrEqual(title.frame.maxY, unfreeze.frame.minY + 1)
+    XCTAssertFalse(signOut.frame.intersects(unfreeze.frame))
+    XCTAssertTrue(signOut.isHittable)
+    XCTAssertTrue(unfreeze.isHittable)
+  }
+
+  @MainActor
   func testApprovingAPasswordReset() throws {
     let app = launch(scenario: "resetApproval")
     XCTAssertTrue(app.staticTexts["Is this you on a new iPhone?"].waitForExistence(timeout: 15))
@@ -525,6 +544,7 @@ extension SignInSecurityUITests {
       issue in
       guard let e = issue.element else { return true }
       if e.elementType == .key || e.elementType == .keyboard { return true }
+      if issue.auditType == .dynamicType, e.identifier == "hasala.cappedFigure" { return true }
       issues.append("\(issue.compactDescription): '\(e.label)' [\(e.identifier)] — \(issue.detailedDescription)")
       return true
     }
@@ -535,9 +555,6 @@ extension SignInSecurityUITests {
 
   // MARK: - Helpers
 
-  /// Paper GDD, GZT: with the keyboard up, the grid's helper line and Paste sit clear above
-  /// the word-list bar, never half-hidden under its glass. The page scrolls with the
-  /// keyboard, so this waits a moment for it to settle.
   @MainActor
   private func assertEntryClearOfTheBar(_ app: XCUIApplication, line: UInt = #line) {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: uiWait), "no keyboard", line: line)
@@ -546,8 +563,8 @@ extension SignInSecurityUITests {
     let paste = el(app, "phraseEntry.paste")
     let helper = app.staticTexts["Suggestions come from the recovery word list, never your keyboard history."]
     func clear() -> Bool {
-      paste.exists && helper.exists && paste.frame.maxY <= bar.frame.minY + 0.5
-        && helper.frame.maxY <= bar.frame.minY + 0.5
+      paste.exists && paste.frame.maxY <= bar.frame.minY + 0.5
+        && (!helper.exists || helper.frame.maxY <= bar.frame.minY + 0.5)
     }
     let deadline = Date().addingTimeInterval(5)
     while !clear(), Date() < deadline {

@@ -104,6 +104,19 @@ struct InMemoryLedgerTests {
     #expect(ledger.state.txn("lulu")?.categoryID == "shopping")
   }
 
+  @Test func trackingACandidateKeepsTheNameWithinTheBillLimit() throws {
+    var state = MayaLedger.state
+    state.billCandidates[0].name = "  " + String(repeating: "Merchant ", count: 22) + "  "
+    let ledger = InMemoryLedger(state: state)
+    let token = try #require(try ledger.apply(.trackCandidate(state.billCandidates[0].id)))
+    let bill = try #require(ledger.state.bills.last)
+    #expect(bill.name.count <= BillDraft.maxNameLength)
+    #expect(bill.name == bill.name.trimmedSpaces)
+    #expect(bill.name.hasPrefix("Merchant Merchant"))
+    #expect(token.title == "Tracking \(bill.name)")
+    #expect(BillDraft.fittedName("Netflix") == "Netflix")
+  }
+
   @Test func undoingADismissPutsTheCandidateBackInPlace() throws {
     let ledger = InMemoryLedger()
     let before = ledger.state.billCandidates

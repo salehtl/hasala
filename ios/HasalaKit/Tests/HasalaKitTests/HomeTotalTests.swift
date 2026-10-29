@@ -77,9 +77,9 @@ struct HomeTotalTests {
   @Test func profileAccountsLineLeavesTheSymbolOffNetWorth() {
     let s = Self.withAccounts(("us", Self.usd, true), ("eu", Self.eur, true))
     let line = ProfileEngine.snapshot(s, now: now).accounts.rendered(hidden: false)
-    #expect(line == "6 · net worth 231,241 · 1 not counted")
+    #expect(line == "6 accounts · net worth 231,241 · 1 not counted")
     #expect(ProfileEngine.snapshot(MayaLedger.state, now: now).accounts.rendered(hidden: false)
-      == "4 · net worth 227,568")
+      == "4 accounts · net worth 227,568")
   }
 
   @Test func insightsNetWorthMarksWhatItLeavesOut() {
