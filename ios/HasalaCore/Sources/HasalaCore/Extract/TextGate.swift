@@ -180,7 +180,7 @@ public enum TextGate {
     }
   }
 
-  static let wholeBody: [WholeBody] = DIBTexts.wholeBody.map { WholeBody($0.kind, $0.wording) }
+  static let wholeBody: [WholeBody] = (DIBTexts.wholeBody + ENBDTexts.wholeBody).map { WholeBody($0.kind, $0.wording) }
 
   enum Markers {
     static let oneTimeCode = RuleText.re(
@@ -196,8 +196,8 @@ public enum TextGate {
     static let declined = RuleText.words(
       [
         "declined", "was not approved", "not approved", "unsuccessful", "could not be processed", "was not processed",
-        "insufficient funds", "insufficient balance", "incorrect pin", "wrong pin", "invalid pin", "incorrect cvv", "wrong cvv",
-        "invalid cvv",
+        "could not be completed", "insufficient funds", "insufficient balance", "incorrect pin", "wrong pin", "invalid pin", "incorrect cvv",
+        "wrong cvv", "invalid cvv",
       ],
       [
         "تم رفض", "مرفوضه", "لم تتم", "غير ناجحه", "رصيد غير كاف", "رقم سري خاطئ", "الرقم السري خاطئ", "رقم سري غير صحيح",

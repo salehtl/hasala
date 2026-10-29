@@ -267,7 +267,7 @@ func syntheticENBDSMS(t *testing.T) []syntheticGroup {
 				"2 cheque(s) has been deposited to your account 101XXX23XXX01 through the deposit machine. Deposit to be confirmed after successful cheque clearing."},
 		}),
 		group("credit", []syntheticCase{
-			{"account-credit", "an account credit with no description: no merchant", "",
+			{"account-credit", "an account credit with no description: the constant account credit merchant", "",
 				"AED 1,517.29 has been credited to account 101XXX23XXX01. Current balance is AED 2,531.46. Credits post cut-offs will be available next day."},
 			{"instant-transfer", "an instant transfer received, after a greeting", "",
 				"Dear Customer, AED 253.18 has been credited to your account 101XXX23XXX01 towards instant transfer. The available balance is AED 3,000.00."},
@@ -323,6 +323,8 @@ func syntheticENBDSMS(t *testing.T) []syntheticGroup {
 				"AED 20,064.38 has been withdrawn from your account 101XXX23XXX01. The available balance is AED 5,019.84. Save queuing time by using our free ATMs 24 x 7."},
 			{"described", "another description is the merchant", "",
 				"AED 12.00 has been debited from your account no. 101XXX23XXX01 SAMPLE FEE. The available balance is AED 433.00."},
+			{"other-purpose", "a deduction for another purpose: the constant account debit merchant", "",
+				"AED 25.00 has been deducted from your account 101XXX23XXX01 for SAMPLE SERVICE."},
 			{"brokerage-notice", "a brokerage account notice is not an account debit", "",
 				"USD 1,013.2 has been withdrawn successfully from your USD Global Equities 12345/678901."},
 			{"standing-instruction", "setting up a standing instruction moves no money", "",

@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-27
+lastUpdated: 2026-10-29
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -22,7 +22,7 @@ To leave the waitlist, open the **Leave the list** link in any email we sent you
 
 ### Which banks work?
 
-At the time of writing, Hasala reads alert emails from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB), and bank texts from DIB. Payment texts from other banks wait for you in **Review**, where you can check the details. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
+At the time of writing, Hasala reads alert emails from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB), and bank texts from DIB and Emirates NBD. Payment texts from other banks wait for you in **Review**, where you can check the details. If your bank isn't listed, tell us which one you use: on [hasala.app](/#banks), in the app during setup, or by email. We use those requests to decide which bank to add next.
 
 ### Does Hasala need my bank password?
 
@@ -170,7 +170,7 @@ Go to **Profile › Bank alerts** and switch the source. Hasala asks you to conf
 2. In Shortcuts, check that the automation is still there, that **Message Contains** is a full stop (**.**) with no sender, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
 3. If the bank's text has no full stop, the automation doesn't run for it. Paste it in **Review**.
 4. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. The next time you open Hasala after you unlock, it tells you how many texts that look like payments arrived while it couldn't store them. If iOS doesn't say who sent a text, a person's text that looks like a payment can be counted too. The texts stay in Messages, so paste the bank's ones.
-5. Look in **Review**. Only DIB texts are read fully at the time of writing. Payment texts from other banks, and the first payment on each card, wait there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).
+5. Look in **Review**. Only DIB and Emirates NBD texts are read fully at the time of writing. Payment texts from other banks, and the first payment on each card, wait there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).
 6. If you're still stuck, email us (see [Contact us](#contact-us)). Tell us which bank it is and what **Profile › Bank alerts** says. Please don't send the text itself or a screenshot of it.
 
 ## Missing transactions or alerts

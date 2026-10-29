@@ -2608,7 +2608,7 @@
         "amount_minor": "151729",
         "currency": "AED",
         "direction": "credit",
-        "merchant": "",
+        "merchant": "ENBD ACCOUNT CREDIT",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
@@ -2774,6 +2774,123 @@
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
         "is_transfer": false
+      }
+    },
+    {
+      "name": "enbd-sms-instalment-offer",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "*Convert now* Pay as low as AED 50.00 per month for the purchase of AED 600.00 at SAMPLE AIR with credit card ending 5678 via clicking https://example.com/ipp?ipp=1",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "promotion",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-not-completed",
+      "sender": "EmiratesNBD",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Transaction of AED 89.50 on your Card ending 5678 could not be completed. For Details, Please call 600000000",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "declined",
+        "counted": true,
+        "bank": "enbd"
+      }
+    },
+    {
+      "name": "enbd-sms-not-completed-no-sender",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Transaction of AED 89.50 on your Card ending 5678 could not be completed. For Details, Please call 600000000",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "declined",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-brokerage-notice",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "USD 1,013.20 has been withdrawn successfully from your USD Global Equities 12345/678901.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-standing-instruction",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Dear Customer, You have set up a Standing Instruction through Online/Mobile Banking for Local UAEFTS transfer to SAMPLE PAYEE from your Account 101***23***01 with amount of AED 517.36. Your Reference number is 123.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-apple-pay-disabled",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Dear Customer, your card ending 1234 has been disabled from Apple Pay. If you did not initiate this transaction, please call +971 4 000 0000.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-deposit-machine",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "2 cheque(s) has been deposited to your account 101XXX23XXX01 through the deposit machine. Deposit to be confirmed after successful cheque clearing.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-inactive-notice",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Your account number XXXXXXXXX2301 will become INACTIVE. Kindly initiate a debit transaction to avoid any inconvenience.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
+      }
+    },
+    {
+      "name": "enbd-sms-alerts-notice",
+      "sender": null,
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Dear Customer, from 1 November 2026, SMS alerts will be replaced by push notification on SAMPLE APP for your account transactions and transfers of AED 100 or less, and for your online transactions authentication.",
+      "expect": {
+        "reading": "dropped",
+        "drop_kind": "notice",
+        "counted": false,
+        "bank": null
       }
     }
   ]

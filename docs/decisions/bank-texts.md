@@ -458,8 +458,16 @@ these templates as pending (`corpusPending` in Go's `internal/tmpl/seed` and in 
 read every payment text but one with no misread amount, currency, direction or card, and
 read no text that is not a payment. The one left is a credit card purchase whose amount has
 no decimals, which the amount type refuses; it goes to Review, prefilled by the readers.
+An account credit or debit with no description that the templates name reads the constant
+`ENBD ACCOUNT CREDIT` or `ENBD ACCOUNT DEBIT`, so no ENBD template row has an empty merchant.
 Instalment offers, beneficiary notices, standing instructions and brokerage notices are
-not payments, and no template reads them. The account debit, account credit and transfer in
+not payments, and no template reads them. ENBD's non-payment wordings in the export that
+still have a payment shape (instalment offers, a card transaction that "could not be
+completed", brokerage withdrawal notices, standing instruction set-ups, Apple Pay and
+account notices, and deposit machine notices) are whole-body wordings in `ENBDTexts`, beside
+`DIBTexts`, so the reading drops them as a decline, a notice or a promotion and they never
+reach Review. With them, every text in the owner's export that is not a payment is dropped.
+"could not be completed" is also a declined marker. The account debit, account credit and transfer in
 wordings are plain English that another bank may also send. The templates do not check
 the sender (the Shortcuts automation passes none), so a text from another bank in the same
 wording is read by an ENBD template and carries `bank: enbd`.

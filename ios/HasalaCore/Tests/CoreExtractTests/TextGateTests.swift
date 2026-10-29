@@ -17,9 +17,11 @@ struct TextGateTests {
 
   static let paymentLine = "تم خصم مبلغ 20.00 في 05-06-2026 SYNTHETIC SHOP رصيدك 100.00"
 
-  @Test("each DIB whole-body wording drops its synthetic fixture as its kind; with one more payment line it is no drop, and a code or decline goes on marked")
+  @Test("each DIB and ENBD whole-body wording drops its synthetic fixture as its kind; with one more payment line it is no drop, and a code or decline goes on marked")
   func wholeBody() {
     #expect(DIBTexts.wholeBody.count >= 30)
+    #expect(ENBDTexts.wholeBody.count == 8)
+    #expect(TextGate.wholeBody.count == DIBTexts.wholeBody.count + ENBDTexts.wholeBody.count)
     for w in TextGate.wholeBody {
       let text = Self.synthetic(w.pattern)
       #expect(w.matches(TextGate.Prepared(text)), "\(w.pattern)")

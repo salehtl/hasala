@@ -86,6 +86,12 @@
         ]
       },
       {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD ACCOUNT CREDIT"
+      },
+      {
         "field": "direction",
         "type": "const",
         "source": "body",
@@ -110,7 +116,7 @@
   "cases": [
     {
       "name": "enbd.sms.credit.v1/account-credit",
-      "source": "SYNTHETIC: an account credit with no description: no merchant",
+      "source": "SYNTHETIC: an account credit with no description: the constant account credit merchant",
       "subject_base64": "",
       "normalized_body_base64": "QUVEIDEsNTE3LjI5IGhhcyBiZWVuIGNyZWRpdGVkIHRvIGFjY291bnQgMTAxWFhYMjNYWFgwMS4gQ3VycmVudCBiYWxhbmNlIGlzIEFFRCAyLDUzMS40Ni4gQ3JlZGl0cyBwb3N0IGN1dC1vZmZzIHdpbGwgYmUgYXZhaWxhYmxlIG5leHQgZGF5Lg==",
       "expect": {
@@ -120,7 +126,7 @@
         "currency": "AED",
         "direction": "credit",
         "posted_at": "",
-        "merchant": "",
+        "merchant": "ENBD ACCOUNT CREDIT",
         "last4": "",
         "is_transfer": false,
         "empty_groups": []

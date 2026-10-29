@@ -96,6 +96,12 @@
       ]
     },
     {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD ACCOUNT DEBIT"
+    },
+    {
       "field": "direction",
       "type": "const",
       "source": "body",

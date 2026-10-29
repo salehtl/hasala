@@ -103,6 +103,12 @@
         ]
       },
       {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD ACCOUNT DEBIT"
+      },
+      {
         "field": "direction",
         "type": "const",
         "source": "body",
@@ -299,6 +305,24 @@
         "direction": "debit",
         "posted_at": "",
         "merchant": "SAMPLE FEE",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.debit.v1/other-purpose",
+      "source": "SYNTHETIC: a deduction for another purpose: the constant account debit merchant",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDI1LjAwIGhhcyBiZWVuIGRlZHVjdGVkIGZyb20geW91ciBhY2NvdW50IDEwMVhYWDIzWFhYMDEgZm9yIFNBTVBMRSBTRVJWSUNFLg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "ENBD ACCOUNT DEBIT",
         "last4": "",
         "is_transfer": false,
         "empty_groups": []
