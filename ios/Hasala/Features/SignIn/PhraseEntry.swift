@@ -134,6 +134,7 @@ struct PhraseEntryGrid: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
+      if compact { compactHeader }
       ZStack {
         field
         cells
@@ -157,7 +158,7 @@ struct PhraseEntryGrid: View {
         FieldErrorLine(text: "Word \(unknown + 1) isn't on the recovery list. Check the spelling on your paper.")
           .accessibilityIdentifier("phraseEntry.unknown")
       }
-      helper
+      if !compact { helper }
     }
     .privacySensitive()
     .onAppear {
@@ -248,6 +249,7 @@ struct PhraseEntryGrid: View {
           .foregroundStyle(HColor.textPrimary)
           .lineLimit(1)
           .minimumScaleFactor(0.8)
+          .truncationMode(.middle)
         if active {
           RoundedRectangle(cornerRadius: 1).fill(HColor.actionAccent).frame(width: 2, height: caretHeight)
         }
@@ -273,15 +275,30 @@ struct PhraseEntryGrid: View {
         .foregroundStyle(HColor.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-      PasteButton(payloadType: String.self) { pasted in
-        Task { @MainActor in paste(pasted.first ?? "") }
-      }
-      .labelStyle(.titleOnly)
-      .buttonBorderShape(.capsule)
-      .tint(HColor.surfacePrimary)
-      .accessibilityIdentifier("phraseEntry.paste")
+      pasteButton
     }
     .padding(.horizontal, 4)
+  }
+
+  private var compactHeader: some View {
+    HStack(alignment: .center, spacing: 12) {
+      Text("\(state.finished) of \(PhraseEntryState.wordCount) words")
+        .hType(.footnote.weight(.semibold))
+        .foregroundStyle(HColor.textSecondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      pasteButton
+    }
+    .padding(.horizontal, 4)
+  }
+
+  private var pasteButton: some View {
+    PasteButton(payloadType: String.self) { pasted in
+      Task { @MainActor in paste(pasted.first ?? "") }
+    }
+    .labelStyle(.titleOnly)
+    .buttonBorderShape(.capsule)
+    .tint(HColor.surfacePrimary)
+    .accessibilityIdentifier("phraseEntry.paste")
   }
 
   /// "Paste": fills from the first cell (page 11 §05).

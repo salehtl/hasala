@@ -407,6 +407,8 @@ struct AnotherBankCard: View {
   let sample: Bool
   var tellUs: () -> Void
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   private var line: String {
     if sent { return "Thanks. We'll email you when it's ready." }
     return sample
@@ -415,12 +417,12 @@ struct AnotherBankCard: View {
   }
 
   var body: some View {
-    HStack(spacing: 12) {
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .strokeBorder(HColor.neutral300, lineWidth: 1.5)
-        .frame(width: 40, height: 40)
-        .overlay { HIconView(.add, size: 18, color: HColor.neutral500, strokeWidth: 2) }
-        .accessibilityHidden(true)
+    let stacked = typeSize.isAccessibilitySize
+    let layout = stacked
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+      : AnyLayout(HStackLayout(spacing: 12))
+    layout {
+      if !stacked { plate }
       VStack(alignment: .leading, spacing: 0) {
         Text("Bank not listed?").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
         Text(line).hType(.footnote).foregroundStyle(HColor.textSecondary)
@@ -436,5 +438,13 @@ struct AnotherBankCard: View {
     .padding(.vertical, 12)
     .frame(minHeight: 64)
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+  }
+
+  private var plate: some View {
+    RoundedRectangle(cornerRadius: 12, style: .continuous)
+      .strokeBorder(HColor.neutral300, lineWidth: 1.5)
+      .frame(width: 40, height: 40)
+      .overlay { HIconView(.add, size: 18, color: HColor.neutral500, strokeWidth: 2) }
+      .accessibilityHidden(true)
   }
 }

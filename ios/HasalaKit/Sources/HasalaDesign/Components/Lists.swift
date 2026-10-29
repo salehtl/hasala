@@ -201,7 +201,7 @@ public struct HListRow: View {
 
   private var text: some View {
     VStack(alignment: .leading, spacing: 2) {
-      Text(title).hType(.rowTitle).foregroundStyle(titleColor).singleLineAtDefaultTextSize()
+      Text(title).hType(.rowTitle).foregroundStyle(titleColor).lineLimitAtDefaultTextSize(2)
       if let supporting {
         if let project {
           ProjectChipFlow(project) { SupportingLine(supporting, hidden: hidden, id: supportingID) }
