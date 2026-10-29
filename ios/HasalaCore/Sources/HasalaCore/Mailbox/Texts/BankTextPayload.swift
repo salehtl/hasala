@@ -86,14 +86,14 @@ public struct BankTextDraft: Sendable, Equatable {
 
 enum BankTextPayload {
   static func filesItself(
-    _ k: BankTextKept, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool, mayRepeat: Bool = false
+    _ k: BankTextKept, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool
   ) -> Bool {
     origin == .automation && link == .notLinked && k.fields != nil && (k.template != nil || k.readerConfident)
-      && !k.marked && !k.held && !transferPartner && !mayRepeat
+      && !k.marked && !k.held && !transferPartner
   }
 
-  static func sameBanklessPayment(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
-    !o.unparsed && (o.bank ?? "").isEmpty && o.amountMinor == row.amountMinor && o.currency == row.currency
+  static func samePayment(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
+    !o.unparsed && o.amountMinor == row.amountMinor && o.currency == row.currency
       && o.direction == row.direction && o.last4 == row.last4
       && abs(o.postedMs - row.postedMs) <= DuplicateRules.probableCopyWindowMs
   }

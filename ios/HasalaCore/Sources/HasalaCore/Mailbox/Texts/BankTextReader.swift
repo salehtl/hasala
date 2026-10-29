@@ -157,7 +157,8 @@ public enum BankTextReader {
         id: t.definition.id, version: t.definition.version, senderMatches: a.sender.map { t.definition.matchesSMSSender($0) } ?? false)
       let kept = BankTextKept(
         sender: sender.kind, bank: t.definition.bank, template: hit, fields: f, merchant: f.merchant, last4: f.last4,
-        postedAt: f.postedAt, precision: f.precision, marked: marked, held: verdict?.held ?? true, countsAsPayment: true)
+        postedAt: f.postedAt, precision: f.precision, marked: marked, held: (verdict?.held ?? true) || TextGate.holdsFiling(gate),
+        countsAsPayment: true)
       return (.kept(kept), memory)
     }
 
@@ -185,7 +186,7 @@ public enum BankTextReader {
       sender: sender.kind, bank: sender.bank, template: nil, fields: fields, merchant: fields?.merchant ?? limit(r.merchant),
       last4: fields?.last4 ?? last4, postedAt: fields?.postedAt ?? timed ?? Instant.iso(a.arrivalMinuteMs) ?? "",
       precision: fields?.precision ?? "time", marked: marked, held: false, countsAsPayment: lenient,
-      readerConfident: fields != nil && r.meetsFilingBar && r.kind != .transferNotice && !TextGate.holdsReaderFiling(gate))
+      readerConfident: fields != nil && r.meetsFilingBar && r.kind != .transferNotice && !TextGate.holdsFiling(gate))
     return (.kept(kept), memory)
   }
 }

@@ -109,6 +109,40 @@ struct BankTextFilingTests {
     #expect(apart.filed)
   }
 
+  @Test("a text with no bank that the readers would file waits in Review when it repeats a bank's text row of the last 10 minutes")
+  func banklessRepeatOfBankRowWaits() async throws {
+    let c = Self.novel(8)
+    let k = try #require(BankTextReader.read(c.arrival, templates: []).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
+    let f = try #require(k.fields)
+    let posted = try parseInstantMs(f.postedAt)
+    let bankRow = BankTextRow(
+      id: "01JC0000000000000000000099", bank: "dib", amountMinor: f.amountMinor, currency: f.currency, direction: f.direction,
+      last4: f.last4, postedMs: posted - 120_000, templateRef: "dib.sms.purchase.v1@1", unparsed: false)
+    var other = bankRow
+    other.amountMinor += 1
+    for (row, files) in [(bankRow, false), (other, true)] {
+      let ledger = FakeTextLedger()
+      let author = BankTextAuthor(ledger: ledger)
+      for n in 0..<8 { _ = try #require(await author.add(Self.novel(n).arrival, secret: TextRig.secret, link: { .notLinked }).added) }
+      await ledger.setRows([row])
+      let added = try #require(await author.add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+      #expect(added.filed == files && added.bank == nil, "\(row.amountMinor)")
+    }
+  }
+
+  @Test("a template hit that names a standing instruction or a clearing is held in Review")
+  func templateHitNotSettledHolds() throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let plain = try #require(BankTextReader.read(c.arrival).reading.kept)
+    #expect(plain.template != nil && !plain.held)
+    for tail in [" Standing instruction.", " Subject to clearing."] {
+      let a = BankTextArrival(text: c.text + tail, sender: c.sender, receivedAtMs: c.receivedAtMs)
+      let k = try #require(BankTextReader.read(a).reading.kept, "\(tail)")
+      #expect(k.template != nil && k.held, "\(tail)")
+      #expect(!BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false), "\(tail)")
+    }
+  }
+
   @Test("a text that a mail row of the last 24 hours may already hold waits in Review; another amount files")
   func mailTwinWaits() async throws {
     let c = try TextCase.named("dib-purchase-credit-card")
@@ -244,7 +278,6 @@ struct BankTextFilingTests {
     #expect(!BankTextPayload.filesItself(k, link: .unknownUnanswered, origin: .automation, transferPartner: false))
     #expect(!BankTextPayload.filesItself(k, link: .linked, origin: .automation, transferPartner: false))
     #expect(!BankTextPayload.filesItself(k, link: .notLinked, origin: .paste, transferPartner: false))
-    #expect(!BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false, mayRepeat: true))
     var held = k
     held.held = true
     #expect(!BankTextPayload.filesItself(held, link: .notLinked, origin: .automation, transferPartner: false))
@@ -467,6 +500,7 @@ actor FakeTextLedger: BankTextLedger {
     self.unreadable = unreadable
   }
 
+  func setRows(_ r: [BankTextRow]) { rows = r }
   func isIngested(_ ingestID: String) async -> Bool { outbox.contains(ingestID) || authored.contains { $0.ingestID == ingestID } }
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]? { unreadable ? nil : rows }
   func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]? {

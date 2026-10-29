@@ -157,12 +157,12 @@ struct TextReaderHoldTests {
       { (n: Int) in "AED \(Self.amount(n)) has been withdrawn from your account XXX4321 to your Global Equities trading account." },
     ]
     for w in wordings {
-      #expect(TextGate.holdsReaderFiling(w(0)), "\(w(0))")
+      #expect(TextGate.holdsFiling(w(0)), "\(w(0))")
       for (r, _) in Self.stream(w) {
         #expect(r.kept != nil && r.kept?.readerConfident == false && !Self.files(r), "\(w(0))")
       }
     }
-    #expect(!TextGate.holdsReaderFiling("AED 40.00 has been debited from your account XXX4321 at SAMPLE SHOP."))
+    #expect(!TextGate.holdsFiling("AED 40.00 has been debited from your account XXX4321 at SAMPLE SHOP."))
   }
 
   @Test("a bill pymt made using a card and an amount deducted for an issuance have the payment shape and reach Review")

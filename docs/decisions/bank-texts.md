@@ -460,8 +460,8 @@ no review (`needs_review: false`) only when all of these hold:
   credit; "from your account" makes it a debit, and money from your account to your own
   account or card is a move between your accounts that waits in Review). A text
   that names a standing instruction or order, a deposit still to clear, or an equities,
-  brokerage, securities, investment or trading account never files this way either
-  (`TextGate.holdsReaderFiling`);
+  brokerage, securities, investment or trading account never files, whether a template or
+  the readers read it (`TextGate.holdsFiling`; a template hit is held);
 - and nothing else holds it: the text has no one-time-code or declined marker (step 1 of the
   reading order), no text of the other transfer role matches it (see
   [The transfer pair on texts](#the-transfer-pair-on-texts)), and the link state is not

@@ -68,9 +68,9 @@ public enum TextGate {
     return t.has(Shape.amount) || t.has(Shape.maskedCard)
   }
 
-  package static func holdsReaderFiling(_ normalized: String) -> Bool { holdsReaderFiling(Prepared(normalized)) }
+  package static func holdsFiling(_ normalized: String) -> Bool { holdsFiling(Prepared(normalized)) }
 
-  package static func holdsReaderFiling(_ t: Prepared) -> Bool { t.has(Markers.notSettled) }
+  package static func holdsFiling(_ t: Prepared) -> Bool { t.has(Markers.notSettled) }
 
   public static func maskedLast4(_ normalized: String) -> String? { maskedLast4(Prepared(normalized)) }
 
