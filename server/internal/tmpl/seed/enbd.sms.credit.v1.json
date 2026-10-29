@@ -63,6 +63,15 @@
     },
     {
       "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD ACCOUNT CREDIT",
+      "patterns": [
+        " SB REF\\. "
+      ]
+    },
+    {
+      "field": "merchant",
       "type": "text",
       "source": "body",
       "patterns": [

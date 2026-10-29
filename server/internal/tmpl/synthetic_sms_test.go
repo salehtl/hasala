@@ -281,6 +281,8 @@ func syntheticENBDSMS(t *testing.T) []syntheticGroup {
 				"USD 207.53 has been credited to your account no. 101XXX23XXX02 MOBILE TRF-1A2B3C4D. The available balance is USD 1,700.00."},
 			{"described", "another description is the merchant", "",
 				"AED 75.00 has been credited to your account no. 101XXX23XXX01 SAMPLE CREDIT REF. 1234. The available balance is AED 7,106.73."},
+			{"sb-reference", "a credit described only by an SB reference: a constant merchant in place of the reference", "",
+				"AED 1,250.00 has been credited to your account no. 101XXX23XXX01 SB REF. 12345678. The available balance is AED 8,356.73."},
 			{"transferred", "money transferred in belongs to its own template", "",
 				"AED 517.36 has been transferred to your account 101XXX23XXX01"},
 		}),

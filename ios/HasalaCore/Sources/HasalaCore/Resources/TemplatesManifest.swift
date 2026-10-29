@@ -45,7 +45,7 @@ public enum TemplatesManifest {
     Entry(file: "enbd.sms.cash-withdrawal.v1.json", id: "enbd.sms.cash-withdrawal.v1", version: 1, sha256: "746b630a793f851a5d0ca15b2faa3ce594774730be311de20060553be9891ddf"),
     Entry(file: "enbd.sms.cheque-deposit.v1.json", id: "enbd.sms.cheque-deposit.v1", version: 1, sha256: "7602e2732532438a4ddcae6d3ed4dc8f24313a701524afc8504b2443c68abad0"),
     Entry(file: "enbd.sms.credit-card-purchase.v1.json", id: "enbd.sms.credit-card-purchase.v1", version: 1, sha256: "9819e5ea90be7658b9adb887d86621b1a2974ed684e1cc509c87fdea6bcb1e4c"),
-    Entry(file: "enbd.sms.credit.v1.json", id: "enbd.sms.credit.v1", version: 1, sha256: "44d7e2bda8a24c771c8564555059ae09f8e34013eb6771c81fe7e579cc34725b"),
+    Entry(file: "enbd.sms.credit.v1.json", id: "enbd.sms.credit.v1", version: 1, sha256: "c179bacc73232745cd708ae8af82390c74a39633f490facda9d4262fc9a9bf22"),
     Entry(file: "enbd.sms.debit.v1.json", id: "enbd.sms.debit.v1", version: 1, sha256: "1939b289e49dcee1e27e519626e13662decf970d09d9303186fc3c751d85fe56"),
     Entry(file: "enbd.sms.funds-transfer.v1.json", id: "enbd.sms.funds-transfer.v1", version: 1, sha256: "7c8d416fe59816d4d9d00649a8a5d8e1f62e1728bea71051953a2f5bd6712b6d"),
     Entry(file: "enbd.sms.refund.v1.json", id: "enbd.sms.refund.v1", version: 1, sha256: "83998b80db82fcd4576fdfddae95601506328988dee7351ce00f6d4a42a6563a"),

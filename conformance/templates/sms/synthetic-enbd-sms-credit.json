@@ -70,6 +70,15 @@
       },
       {
         "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD ACCOUNT CREDIT",
+        "patterns": [
+          " SB REF\\. "
+        ]
+      },
+      {
+        "field": "merchant",
         "type": "text",
         "source": "body",
         "patterns": [
@@ -220,6 +229,24 @@
         "direction": "credit",
         "posted_at": "",
         "merchant": "SAMPLE CREDIT REF. 1234",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/sb-reference",
+      "source": "SYNTHETIC: a credit described only by an SB reference: a constant merchant in place of the reference",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDEsMjUwLjAwIGhhcyBiZWVuIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCBuby4gMTAxWFhYMjNYWFgwMSBTQiBSRUYuIDEyMzQ1Njc4LiBUaGUgYXZhaWxhYmxlIGJhbGFuY2UgaXMgQUVEIDgsMzU2LjczLg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "125000",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD ACCOUNT CREDIT",
         "last4": "",
         "is_transfer": false,
         "empty_groups": []

@@ -505,7 +505,7 @@ struct BankTextNoTextInOpTests {
     switch v {
     case .string(let s): out.append(s)
     case .array(let a): for x in a { strings(x, &out) }
-    case .object(let o): for m in o.members where m.key != "bank" && m.key != "template" { strings(m.value, &out) }
+    case .object(let o): for m in o.members where m.key != "bank" { strings(m.value, &out) }
     default: break
     }
   }
@@ -543,9 +543,10 @@ struct BankTextNoTextInOpTests {
         Self.strings(op.payload, &values)
         let body = BankTextReader.normalized(c.text)
         let merchant = op.payload["merchant_raw"]?.stringValue ?? ""
+        let template = op.payload["gates"]?["template"]?.stringValue
         for v in values {
           #expect(v != body || body.utf8.count < 12, "\(c.name): the whole body is in an op")
-          if let s = c.sender, !s.isEmpty { #expect(!v.localizedCaseInsensitiveContains(s), "\(c.name): the sender is in an op") }
+          if let s = c.sender, !s.isEmpty, v != template { #expect(!v.localizedCaseInsensitiveContains(s), "\(c.name): the sender is in an op") }
           for piece in Self.pieces(body) where v.contains(piece) {
             #expect(v == merchant && merchant.contains(piece), "\(c.name): a line of the text is in an op")
           }
