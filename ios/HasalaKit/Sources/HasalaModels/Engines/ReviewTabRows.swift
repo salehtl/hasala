@@ -23,14 +23,13 @@ public struct ReviewTabRow: Sendable, Hashable, Identifiable {
 extension ReviewEngine {
   public static func tabRow(_ c: ReviewCardModel, _ s: LedgerState) -> ReviewTabRow {
     let tone: ReviewTabRow.Tone = c.reviewReason != nil ? .reason : c.suggestion == nil ? .decide : .suggestion
-    let date = s.txn(c.id)?.postedAt.date
     return ReviewTabRow(
       id: c.id, identifier: "review.tab.row.\(c.id)", monogram: c.monogram, title: c.merchant,
       subtitle: rowSupporting(c), tone: tone,
       amount: c.amount.currency == Money.home
         ? MoneyPhrase([.amount(c.amount)]) : MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
       isIncome: c.isIncome,
-      detail: date?.short ?? "", spokenAmount: MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
+      detail: c.posted?.short ?? "", spokenAmount: MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
       spokenDetail: c.spokenWhen, reason: c.reviewReason)
   }
 

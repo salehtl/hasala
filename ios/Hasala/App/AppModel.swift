@@ -187,8 +187,8 @@ final class AppModel {
   var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
 
   var reviewCards: [ReviewCardModel] {
-    reviewCardsMemo.value(for: ReviewCardsMemoKey(revision: store.revision, period: period, order: reviewOrder)) {
-      ReviewEngine.cards(store.state, in: reviewWindow, order: reviewOrder)
+    reviewCardsMemo.value(for: ReviewCardsMemoKey(revision: store.revision, period: period, order: reviewOrder, today: store.now.date)) {
+      ReviewEngine.cards(store.state, in: reviewWindow, order: reviewOrder, today: store.now.date)
     }
   }
 
@@ -401,6 +401,7 @@ struct ReviewCardsMemoKey: Equatable {
   var revision: Int
   var period: Period?
   var order: ReviewOrder
+  var today: LocalDate? = nil
 }
 
 @MainActor
