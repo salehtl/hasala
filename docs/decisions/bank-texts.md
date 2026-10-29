@@ -437,8 +437,8 @@ texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts onl
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. The app makes no claim about a specific bank: it says
-"Hasala reads payment texts from any bank, on this iPhone. A payment it isn't sure of waits
-in Review for you to check."
+"Hasala reads payment texts from any bank. A payment it isn't sure of waits in Review for
+you to check."
 
 ### Filing with no review
 
