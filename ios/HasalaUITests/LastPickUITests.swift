@@ -41,9 +41,10 @@ final class LastPickUITests: XCTestCase {
     try audit(app)
 
     tap(app, "review.pill.need", opening: "pick.close")
-    let first = el(app, "pick.groceries")
-    XCTAssertEqual(first.label, "Groceries, suggested")
-    XCTAssertLessThan(first.frame.minY, el(app, "pick.rent").frame.minY)
+    let suggested = el(app, "pick.groceries")
+    XCTAssertEqual(suggested.label, "Groceries, suggested")
+    XCTAssertGreaterThan(suggested.frame.minY, el(app, "pick.utilities").frame.minY)
+    XCTAssertGreaterThan(el(app, "pick.utilities").frame.minY, el(app, "pick.rent").frame.minY)
     tap(app, "pick.close")
     XCTAssertTrue(el(app, "pick.close").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(el(app, "toast").waitForNonExistence(timeout: 12))

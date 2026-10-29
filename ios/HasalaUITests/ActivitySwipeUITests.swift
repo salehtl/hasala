@@ -37,6 +37,68 @@ final class ActivitySwipeUITests: XCTestCase {
   }
 
   @MainActor
+  func testArchivedListsEveryMonthAndProfileOpensIt() throws {
+    let app = launch()
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    let row = el(app, "txn.carrefour")
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, row))
+    row.swipeLeft(velocity: .fast)
+    XCTAssertTrue(el(app, "toast").staticTexts["Archived"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(row.waitForNonExistence(timeout: uiWait))
+
+    app.tabBars.firstMatch.buttons["Home"].tap()
+    tap(app, "home.period", opening: "period.sheet")
+    tap(app, "period.preset.lastMonth")
+    tap(app, "period.show")
+    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, September 2026"))
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+
+    let chip = app.buttons["activity.chip.archived"]
+    XCTAssertTrue(chip.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(chip.label.contains("1"), chip.label)
+    chip.tap()
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(el(app, "activity.count").label, "1 archived · all time")
+    XCTAssertFalse(app.buttons["activity.period"].exists)
+    XCTAssertFalse(el(app, "activity.backToThisMonth").exists)
+    try audit(app)
+    attach(app, "Activity · Archived, all time")
+
+    let all = app.buttons["activity.chip.all"]
+    for _ in 0..<3 where all.frame.minX < 0 { app.buttons["activity.chip.archived"].swipeRight() }
+    all.tap()
+    XCTAssertTrue(app.buttons["activity.period"].waitForExistence(timeout: uiWait))
+    XCTAssertEqual(app.buttons["activity.period"].label, "Period, September 2026")
+    XCTAssertTrue(row.waitForNonExistence(timeout: uiWait))
+
+    app.buttons["header.profile"].firstMatch.tap()
+    let entry = app.buttons["profile.archived"]
+    XCTAssertTrue(entry.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(entry.label.contains("Archived transactions"), entry.label)
+    XCTAssertTrue(entry.label.contains("1 kept out of your plan"), entry.label)
+    attach(app, "Profile · Archived transactions")
+    tap(app, "profile.archived")
+    XCTAssertTrue(el(app, "profile.name").waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(app.tabBars.firstMatch.buttons["Activity"].isSelected)
+    XCTAssertTrue(app.buttons["activity.chip.archived"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.buttons["activity.chip.archived"].isSelected)
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertEqual(el(app, "activity.count").label, "1 archived · all time")
+
+    XCTAssertTrue(reveal(app, row))
+    row.swipeLeft(velocity: .fast)
+    XCTAssertTrue(el(app, "toast").staticTexts["Restored"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(row.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "activity.empty").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(el(app, "activity.count").label, "0 archived · all time")
+
+    app.buttons["header.profile"].firstMatch.tap()
+    XCTAssertTrue(el(app, "profile.name").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(app.buttons["profile.archived"].exists)
+  }
+
+  @MainActor
   func testShortSwipeSpringsBackAndKeepsTheRow() throws {
     let app = launch()
     app.tabBars.firstMatch.buttons["Activity"].tap()

@@ -500,8 +500,7 @@ public enum ReviewEngine {
   }
 
   public static func projectChoices(_ s: LedgerState, on date: LocalDate) -> [ProjectChoice] {
-    let ranked = s.projects.filter(\.isOpen).map { ProjectChoice($0, suggested: $0.covers(date)) }
-    return ranked.filter(\.suggested) + ranked.filter { !$0.suggested }
+    s.projects.filter(\.isOpen).map { ProjectChoice($0, suggested: $0.covers(date)) }
   }
 
   /// The line for All caught up once `txn` is sorted into `category`.

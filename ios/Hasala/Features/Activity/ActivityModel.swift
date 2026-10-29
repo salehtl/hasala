@@ -90,7 +90,7 @@ final class ActivityRequests {
     pending = (ObjectIdentifier(app), filter)
     app.router.activity = []
     app.tab = .activity
-    if app.router.sheet == .search { app.router.sheet = nil }
+    if app.router.sheet == .search || app.router.sheet == .profile { app.router.sheet = nil }
   }
 
   /// The filter waiting for `app`'s Activity screen; the request is used up.

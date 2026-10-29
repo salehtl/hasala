@@ -141,6 +141,15 @@ struct ProfileSheet: View {
           MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
+        if snap.archivedTxns > 0 {
+          Button { ActivityRequests.shared.show(TxnFilter(kind: .archived), in: app) } label: {
+            MoneyThingRow(plate: HuePlate(hue: .other, icon: .archive), title: "Archived transactions",
+                          detail: MoneyPhrase(stringLiteral: Self.archivedLine(snap.archivedTxns)), hidden: model.hidden)
+          }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityHint("Opens Activity on Archived")
+          .accessibilityIdentifier("profile.archived")
+        }
         if BuildSurface.showsPlanTab {
           row(.projects, id: "profile.projects") {
             MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
@@ -231,6 +240,10 @@ struct ProfileSheet: View {
     if live.isEmpty { return ("Not connected", nil) }
     if live.contains(where: { $0.state == .needsSignIn }) { return ("Sign in again", .warning) }
     return (live.map(\.provider.appName).formatted(.list(type: .and)), nil)
+  }
+
+  static func archivedLine(_ n: Int) -> String {
+    "\(n) kept out of your plan"
   }
 
   static func currencyTrailing(_ s: LedgerState) -> SettingRow.Trailing {
