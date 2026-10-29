@@ -93,6 +93,66 @@ struct BankTextFilingTests {
     #expect(try rig.fold().anomalies.isEmpty)
   }
 
+  @Test("a text with no bank that the readers would file waits in Review when it repeats a text row of the last 10 minutes")
+  func banklessRepeatWaits() async throws {
+    let rig = try TextRig()
+    for n in 0..<8 { _ = try #require(await rig.add(Self.novel(n)).added, "\(n)") }
+    let c = Self.novel(8)
+    let first = try #require(await rig.add(c).added)
+    #expect(first.filed && first.bank == nil)
+    let same = try #require(await rig.add(c).added)
+    #expect(!same.filed && same.repeatNumber == 1)
+    let later = try #require(await rig.add(c, at: c.receivedAtMs + 120_000).added)
+    #expect(!later.filed && later.repeatNumber == 0)
+    #expect(try rig.payload(later.txnID)["needs_review"]?.boolValue == true)
+    let apart = try #require(await rig.add(c, at: c.receivedAtMs + 86_400_000).added)
+    #expect(apart.filed)
+  }
+
+  @Test("a text that a mail row of the last 24 hours may already hold waits in Review; another amount files")
+  func mailTwinWaits() async throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let k = try #require(BankTextReader.read(c.arrival).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
+    let f = try #require(k.fields)
+    let posted = try parseInstantMs(f.postedAt)
+    let twin = TextTwinMail(
+      bank: "dib", last4: "", amountMinor: f.amountMinor, currency: f.currency, direction: f.direction, postedMs: posted - 3_600_000)
+    let held = try #require(await BankTextAuthor(ledger: FakeTextLedger(mail: [twin])).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(!held.filed)
+    var other = twin
+    other.amountMinor += 1
+    let filed = try #require(await BankTextAuthor(ledger: FakeTextLedger(mail: [other])).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(filed.filed)
+  }
+
+  @Test("the ledger's mail rows are the live, parsed mailbox rows that are no text, in the window")
+  func ledgerMailRows() async throws {
+    let rig = try TextRig()
+    let text = try #require(await rig.add(try TextCase.named("dib-purchase-credit-card")).added)
+    let mail = JSONObject([
+      ("amount_minor", .string("4200")), ("currency", .string("AED")), ("direction", .string("debit")),
+      ("posted_at", .string("2026-06-05T07:00:00.000Z")), ("posted_precision", .string("time")),
+      ("merchant_raw", .string("SYNTHETIC SHOP")), ("last4", .string("")), ("category", .null), ("needs_review", .bool(false)),
+      ("tier", .string("template")), ("entry_method", .string("mailbox")), ("bank", .string("dib")),
+      ("gates", .object(JSONObject([("ar", .string("pass")), ("sender", .string("trusted")), ("template", .string("none")), ("forwarded", .bool(false))]))),
+      ("provenance", .object(JSONObject([("provider", .string("gmail")), ("grant_id", .string("g1")), ("message_id", .string("m1"))]))),
+    ])
+    let manual = JSONObject([
+      ("amount_minor", .string("4200")), ("currency", .string("AED")), ("direction", .string("debit")),
+      ("posted_at", .string("2026-06-05T07:00:00.000Z")), ("merchant_raw", .string("SYNTHETIC SHOP")), ("last4", .string("")),
+      ("category", .null), ("needs_review", .bool(false)), ("entry_method", .string("manual")),
+    ])
+    try await rig.ledger.author { a throws(AuthorError) in
+      _ = try a.ingest(payload: mail, ingestID: String(repeating: "a", count: 64))
+      _ = try a.ingest(payload: manual, ingestID: String(repeating: "b", count: 64))
+    }
+    let posted = try parseInstantMs("2026-06-05T07:00:00.000Z")
+    let rows = await rig.ledger.mailRows(postedFromMs: posted - 86_400_000, toMs: posted + 86_400_000)
+    #expect(rows == [TextTwinMail(bank: "dib", last4: "", amountMinor: 4200, currency: "AED", direction: "debit", postedMs: posted)])
+    #expect(await rig.ledger.mailRows(postedFromMs: posted + 1, toMs: posted + 86_400_000).isEmpty)
+    #expect(try rig.row(text.txnID)?.isText == true)
+  }
+
   static func novelTransfer(_ n: Int) -> TextCase {
     let amount = "\(200 + n * 11).\(String(format: "%02d", (n * 17) % 100))"
     let payee = ["SYNTHETIC PAYEE", "SAMPLE LANDLORD", "EXAMPLE TRADING", "SYNTHETIC SCHOOL", "SAMPLE CLINIC"][n % 5]
@@ -174,6 +234,7 @@ struct BankTextFilingTests {
     #expect(!BankTextPayload.filesItself(k, link: .unknownUnanswered, origin: .automation, transferPartner: false))
     #expect(!BankTextPayload.filesItself(k, link: .linked, origin: .automation, transferPartner: false))
     #expect(!BankTextPayload.filesItself(k, link: .notLinked, origin: .paste, transferPartner: false))
+    #expect(!BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false, mayRepeat: true))
     var held = k
     held.held = true
     #expect(!BankTextPayload.filesItself(held, link: .notLinked, origin: .automation, transferPartner: false))
@@ -386,12 +447,17 @@ actor FakeTextLedger: BankTextLedger {
   nonisolated let textWrites = WriteSerial()
   var outbox: Set<String>
   var rows: [BankTextRow] = []
+  var mail: [TextTwinMail]
   var authored: [BankTextDraft] = []
 
-  init(outbox: Set<String> = []) { self.outbox = outbox }
+  init(outbox: Set<String> = [], mail: [TextTwinMail] = []) {
+    self.outbox = outbox
+    self.mail = mail
+  }
 
   func isIngested(_ ingestID: String) async -> Bool { outbox.contains(ingestID) || authored.contains { $0.ingestID == ingestID } }
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { rows }
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail] { mail.filter { $0.postedMs >= postedFromMs && $0.postedMs <= toMs } }
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
     authored.append(draft)
     return "01JC00000000000000000000\(authored.count < 10 ? "0" : "")\(authored.count)"
@@ -694,6 +760,7 @@ actor RefusingTextLedger: BankTextLedger {
 
   func isIngested(_ ingestID: String) async -> Bool { false }
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { [] }
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail] { [] }
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
     attempts.append((draft, archiving))
     if attempts.count <= refusals { throw MailboxLedgerError(error) }

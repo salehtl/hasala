@@ -648,8 +648,9 @@ the approval of the owner for that deployment.
   automation files with no review when the account has no mailbox link, its
   fields were read, and an SMS template read it or the two readers agree on
   amount, currency and direction (each at 0.8 or more, as for mail). There is
-  no sender check and no card check (2026-10-29). Held hits, transfer partners
-  and marked texts wait in Review, and a paste always does. Apple's on-device
+  no sender check and no card check (2026-10-29). Held hits, transfer partners,
+  marked texts, a repeat of a text with no bank and a text with a mail twin
+  wait in Review, and a paste always does. Apple's on-device
   model does not read texts. Learned text layouts (from bank senders and from
   texts with no sender) stay in memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
   `provenance` or `dedupe`. A mail that may repeat a text row's payment waits

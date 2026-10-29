@@ -69,9 +69,17 @@ public struct BankTextDraft: Sendable, Equatable {
 }
 
 enum BankTextPayload {
-  static func filesItself(_ k: BankTextKept, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool) -> Bool {
+  static func filesItself(
+    _ k: BankTextKept, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool, mayRepeat: Bool = false
+  ) -> Bool {
     origin == .automation && link == .notLinked && k.fields != nil && (k.template != nil || k.readerConfident)
-      && !k.marked && !k.held && !transferPartner
+      && !k.marked && !k.held && !transferPartner && !mayRepeat
+  }
+
+  static func sameBanklessPayment(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
+    !o.unparsed && (o.bank ?? "").isEmpty && o.amountMinor == row.amountMinor && o.currency == row.currency
+      && o.direction == row.direction && o.last4 == row.last4
+      && abs(o.postedMs - row.postedMs) <= DuplicateRules.probableCopyWindowMs
   }
 
   static func gates(_ k: BankTextKept) -> JSONValue {
@@ -84,11 +92,11 @@ enum BankTextPayload {
 
   static func build(
     _ k: BankTextKept, ingestID: String, receivedMinuteMs: Int64, link: BankTextLink, origin: BankTextOrigin,
-    transferPartner: Bool, categorizer: any IngestCategorizer
+    transferPartner: Bool, mayRepeat: Bool = false, categorizer: any IngestCategorizer
   ) -> BankTextDraft {
     let received = Instant.iso(receivedMinuteMs) ?? ""
     guard let f = k.fields else { return unparsed(k, ingestID: ingestID, received: received) }
-    let files = filesItself(k, link: link, origin: origin, transferPartner: transferPartner)
+    let files = filesItself(k, link: link, origin: origin, transferPartner: transferPartner, mayRepeat: mayRepeat)
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision =
       decided.category == nil

@@ -1,5 +1,6 @@
 import CoreDomain
 import CoreExtract
+import CoreReplay
 import CoreTemplate
 import CoreTime
 import Foundation
@@ -8,6 +9,7 @@ public protocol BankTextLedger: Sendable {
   var textWrites: WriteSerial { get }
   func isIngested(_ ingestID: String) async -> Bool
   func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String
 }
 
@@ -109,6 +111,7 @@ public actor BankTextAuthor {
     guard let key else { return .failed("repeats") }
 
     var partner: BankTextRow?
+    var repeats = false
     if let f = kept.fields, let posted = try? parseInstantMs(f.postedAt) {
       let row = BankTextRow(
         id: "", bank: kept.bank, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction, last4: f.last4,
@@ -118,10 +121,11 @@ public actor BankTextAuthor {
           postedFromMs: posted - BankTextTransferPair.windowMs, toMs: posted + BankTextTransferPair.windowMs)
         partner = BankTextTransferPair.partner(of: row, among: rows)
       }
+      if origin == .automation { repeats = await mayRepeat(row, n: key.n) }
     }
     let draft = BankTextPayload.build(
       kept, ingestID: key.id, receivedMinuteMs: minute, link: state, origin: origin, transferPartner: partner != nil,
-      categorizer: categorizer)
+      mayRepeat: repeats, categorizer: categorizer)
     var txnID: String?
     var authored = draft
     var lastError = "author"
@@ -141,6 +145,16 @@ public actor BankTextAuthor {
       BankTextAdded(
         txnID: txnID, bank: kept.bank, keptAtMs: arrival.receivedAtMs, filed: !authored.needsReview,
         unparsed: authored.payload["unparsed"]?.boolValue == true, repeatNumber: key.n, transferPartner: partner?.id))
+  }
+
+  private func mayRepeat(_ row: BankTextRow, n: Int) async -> Bool {
+    let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
+    if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
+    guard (row.bank ?? "").isEmpty else { return false }
+    if n > 0 { return true }
+    let w = DuplicateRules.probableCopyWindowMs
+    let texts = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w)
+    return texts.contains { BankTextPayload.sameBanklessPayment(row, $0) }
   }
 
   static func refusal(_ e: MailboxLedgerError) -> Bool {

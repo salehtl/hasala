@@ -50,6 +50,12 @@ because they are strong and cost nothing.
      one-time-code or declined marker. A text that only the readers read as a transfer
      notice waits in Review, because the transfer pairing reads only template rows and
      the fold pairs only verified mail. The fold still holds a repeat as a probable copy.
+     A text with no bank, which the fold cannot hold, waits in Review when it repeats a
+     text row of the last 10 minutes (same amount, currency, direction and card) or when
+     its key is a repeat in the same minute. A text that a live mail row of the last 24
+     hours may already hold (the D10 twin rule, read from the text's side) waits in Review
+     too, so a payment that came in both ways around a switch from email to texts does not
+     file twice.
      The drop patterns for codes, declines and promotions, and the text twin of a mail
      (D10), do not change.
 
