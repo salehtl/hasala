@@ -356,7 +356,8 @@ func genTamper(f Files, root string) error {
 	}
 	{
 		r := served(sealBase(opBlob(99, baseOp)), w, 2, h1[:], wSeed)
-		add("T24", `authenticated op blob "v": 99`, baseState(), one(r), "updateRequired", upload(r, accept), "")
+		add("T24", `authenticated op blob "v": 99`, baseState(), one(r), "setAside(opsUndecodable)", upload(r, accept),
+			"only the reader's schema + 1 stops sync; a larger version is set aside")
 	}
 	{
 		v1, err := os.ReadFile(filepath.Join(root, "conformance/blob/hot-dev-a-7.bin"))

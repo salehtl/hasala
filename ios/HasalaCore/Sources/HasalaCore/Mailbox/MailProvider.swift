@@ -184,6 +184,7 @@ public enum MailAPIError: Error, Sendable, Equatable {
   /// A listing page held a message from outside the requested senders: the provider ignored the
   /// filter. The page is dropped unread (PO G) and the run halts.
   case filterNotApplied
+  case tooLarge(op: String)
 
   public var status: Int? {
     switch self {

@@ -1366,6 +1366,7 @@ public actor MailboxEngine {
     case setAside(id: String, domain: String, internalDateMs: Int64)
     case raw(id: String, from: String, raw: MailRawMessage)
     case gone(id: String)
+    case overCap(id: String, from: String?, internalDateMs: Int64?)
     case failed(id: String, error: MailAPIError)
   }
 
@@ -1544,6 +1545,7 @@ public actor MailboxEngine {
   func fetchChunk(_ source: any MailSource, _ ids: [String], bank: [String]) async -> [FetchResult] {
     let backoff = config.retryBackoffMs
     let rateBackoff = config.rateLimitBackoffMs
+    let maxBytes = config.maxMessageBytes
     let sleep = self.sleep
     let provider = self.provider
     return await withTaskGroup(of: (Int, FetchResult).self) { group in
@@ -1552,7 +1554,8 @@ public actor MailboxEngine {
           (
             n,
             await Self.fetchOne(
-              source, provider, id, bank: bank, backoff: backoff, rateBackoff: rateBackoff, sleep: sleep)
+              source, provider, id, bank: bank, maxBytes: maxBytes, backoff: backoff, rateBackoff: rateBackoff,
+              sleep: sleep)
           )
         }
       }
@@ -1564,8 +1567,8 @@ public actor MailboxEngine {
 
   /// 7a-7c for one id, with the retry classes of fetch.ts; a 429 waits `rateBackoff` instead.
   static func fetchOne(
-    _ source: any MailSource, _ provider: any MailProvider, _ id: String, bank: [String], backoff: [Int64],
-    rateBackoff: [Int64], sleep: @Sendable (Int64) async -> Void
+    _ source: any MailSource, _ provider: any MailProvider, _ id: String, bank: [String], maxBytes: Int,
+    backoff: [Int64], rateBackoff: [Int64], sleep: @Sendable (Int64) async -> Void
   ) async -> FetchResult {
     var rateLimited = false
     func attempt<T: Sendable>(_ op: () async throws(MailAPIError) -> T) async -> Result<T, MailAPIError> {
@@ -1593,6 +1596,7 @@ public actor MailboxEngine {
     let meta: MailMessageMetadata
     switch await attempt({ () async throws(MailAPIError) in try await source.metadata(id: id) }) {
     case .success(let m): meta = m
+    case .failure(.tooLarge): return done(.overCap(id: id, from: nil, internalDateMs: nil))
     case .failure(let e): return done(gone(e) ? .gone(id: id) : .failed(id: id, error: e))
     }
     // 7b: neither the claimed nor the verified domain is a bank domain: set aside, no body.
@@ -1603,8 +1607,13 @@ public actor MailboxEngine {
       return done(
         .setAside(id: id, domain: verified.isEmpty ? claimed : verified, internalDateMs: Int64(meta.internalDate) ?? 0))
     }
+    let dateMs = Int64(meta.internalDate)
+    if let size = meta.sizeEstimate, size >= Int64(maxBytes) {
+      return done(.overCap(id: id, from: meta.from, internalDateMs: dateMs))
+    }
     switch await attempt({ () async throws(MailAPIError) in try await source.raw(id: id) }) {
     case .success(let raw): return done(.raw(id: id, from: meta.from, raw: raw))
+    case .failure(.tooLarge): return done(.overCap(id: id, from: meta.from, internalDateMs: dateMs))
     case .failure(let e): return done(gone(e) ? .gone(id: id) : .failed(id: id, error: e))
     }
   }
@@ -1630,6 +1639,12 @@ public actor MailboxEngine {
       report.unreadable += 1
       c.unreadable.append(UnreadableRecord(messageID: id, reason: .gone, domain: nil, internalDateMs: nil, atMs: at))
       c.accounted.append(AccountedRecord(messageID: id, outcome: .gone, internalDateMs: at, atMs: at))
+    case .overCap(let id, let from, let dateMs):
+      report.unreadable += 1
+      c.unreadable.append(
+        UnreadableRecord(
+          messageID: id, reason: .overCap, domain: from.map(BankDomains.domainOf), internalDateMs: dateMs, atMs: at))
+      c.accounted.append(AccountedRecord(messageID: id, outcome: .unreadable, internalDateMs: dateMs ?? at, atMs: at))
     case .setAside(let id, let domain, let date):
       report.setAside += 1
       c.setAside.append(SetAsideRecord(messageID: id, domain: domain, internalDateMs: date, atMs: at))
@@ -1778,6 +1793,7 @@ public actor MailboxEngine {
     case .throttled: "throttled"
     case .noMailbox: "no_mailbox"
     case .filterNotApplied: "filter_not_applied"
+    case .tooLarge: "too_large"
     }
   }
 

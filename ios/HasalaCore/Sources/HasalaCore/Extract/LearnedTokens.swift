@@ -213,15 +213,16 @@ enum ITokenizer {
       for w0 in words {
         var w = Substring(w0)
         var lead: [String] = []
-        while let f = w.first, leadPunct.contains(f), w.count > 1 {
+        while let f = w.first, leadPunct.contains(f), w.index(after: w.startIndex) < w.endIndex {
           lead.append(String(f))
-          w = w.dropFirst()
+          w = w[w.index(after: w.startIndex)...]
         }
         var trail: [String] = []
-        while let l = w.last, trailPunct.contains(l), w.count > 1 {
-          trail.insert(String(l), at: 0)
-          w = w.dropLast()
+        while let l = w.last, trailPunct.contains(l), w.index(after: w.startIndex) < w.endIndex {
+          trail.append(String(l))
+          w = w[..<w.index(before: w.endIndex)]
         }
+        trail.reverse()
         var first = true
         for p in lead {
           lineToks.append(IToken(raw: p, key: p, cls: .punct, line: lineNo, spaceBefore: first))

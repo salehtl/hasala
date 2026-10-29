@@ -12,6 +12,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/console"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // runConsole is the operator console's mode (spec 07 §8): a separate process
@@ -41,6 +42,9 @@ func runConsole(env *runEnv, args []string) error {
 	}
 	defer pool.Close()
 	c := console.New(pool, cfg.Console.Host, cfg.Console.Tailnet, cfg.Console.Logins, cfg.Auth.InviteTTL)
+	if p := cfg.Server.PurgeLedgerPath; p != "" {
+		c.Record = func(e purgeledger.Entry) error { return purgeledger.AppendEntries(p, e) }
+	}
 	servers := []struct {
 		addr, what string
 		h          http.Handler

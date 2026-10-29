@@ -145,6 +145,7 @@ public enum PageReader {
     // R3-R10, row by row.
     var out: [RowOutcome] = []
     for (i, c) in checked.enumerated() {
+      let revoked = state.roster[c.writerID]?.revokedAt != nil
       let envelope: Envelope
       do {
         envelope = try Envelope(userID: state.userID, writerID: c.writerID, counter: c.counter)
@@ -152,6 +153,7 @@ public enum PageReader {
         return stopped(i, .hardStop(.tampered(.rowShape)), out)
       }
       switch state.opener.open(c.blob, envelope: envelope, prevHash: c.prevHash, serverEpoch: state.serverEpoch) {
+      case .hardStop(.updateRequired) where revoked: out.append(.setAside(.opsUndecodable, alarm: false))
       case .hardStop(let h): return stopped(i, .hardStop(h), out)
       case .needsUnlock(let e): return stopped(i, .needsUnlock(epoch: e), out)
       case .refreshEpoch(let e): return stopped(i, .refreshEpoch(e), out)
@@ -159,6 +161,7 @@ public enum PageReader {
       case .opened(let plaintext):
         switch OpCodec.decodeR10(plaintext) {
         case .ops(let ops): out.append(.opened(plaintext: plaintext, ops: ops))
+        case .hardStop(.updateRequired) where revoked: out.append(.setAside(.opsUndecodable, alarm: false))
         case .hardStop(let h): return stopped(i, .hardStop(h), out)
         case .setAside(let reason, _): out.append(.setAside(reason, alarm: false))
         }

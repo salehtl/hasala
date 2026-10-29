@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/salehtl/hasala/server/internal/auth"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 )
 
@@ -19,7 +21,7 @@ func (s *Server) mountFreeze(mux *http.ServeMux) {
 	if s.Accounts == nil {
 		return
 	}
-	mux.HandleFunc("POST /api/v1/account/freeze", s.limited(s.handleFreezeLink, s.FreezePerIP, s.FreezeGlobal))
+	mux.HandleFunc("POST /api/v1/account/freeze", s.freezeOrigin(s.limited(s.handleFreezeLink, s.FreezePerIP)))
 	mux.HandleFunc("POST /api/v1/account/freeze/now", s.requireSession(s.userLimited(s.handleFreezeNow)))
 	mux.HandleFunc("POST /api/v1/account/unfreeze", s.requireSessionFrozenOK(s.userLimited(s.handleUnfreeze)))
 	mux.HandleFunc("POST /api/v1/auth/device-freeze/challenge", s.handleDeviceFreezeChallenge)
@@ -29,23 +31,61 @@ func (s *Server) mountFreeze(mux *http.ServeMux) {
 // freezeLinkMax is how much of #64's body is read.
 const freezeLinkMax = 256
 
+func (s *Server) freezeOrigin(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && s.Web != nil && slices.Contains(s.Web.Origins, origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		w.Header().Add("Vary", "Origin")
+		h(w, r)
+	}
+}
+
 // handleFreezeLink is #64: the static freeze page posts {"token"} as a
-// CORS-free text/plain request and never reads the answer, which is 204 with
-// an empty body whatever happened (D-13).
+// text/plain request. The answer is 204 with an empty body for any token,
+// known or not (D-13); a live token that could not be tried, or a lookup
+// that failed, is a 503. Only a live token spends freeze-global.
 func (s *Server) handleFreezeLink(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(io.LimitReader(r.Body, freezeLinkMax+1))
 	var body struct {
 		Token string `json:"token"`
 	}
-	if len(raw) <= freezeLinkMax && json.Unmarshal(raw, &body) == nil && body.Token != "" {
+	if len(raw) <= freezeLinkMax && json.Unmarshal(raw, &body) == nil && auth.WellFormedFreezeToken(body.Token) {
+		if k, ok := prefixKey(clientKey(r)); ok && !s.FreezePerPrefix.Allow(k) {
+			writeFreezeRetry(w)
+			return
+		}
+		live, err := s.Accounts.FreezeTokenLive(r.Context(), body.Token)
+		if err != nil {
+			s.logf("api: freeze link: %v", err)
+			writeFreezeRetry(w)
+			return
+		}
+		if !live {
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if !s.FreezeGlobal.Allow("") {
+			writeFreezeRetry(w)
+			return
+		}
 		wake, err := s.Accounts.FreezeByLink(r.Context(), body.Token)
 		if err != nil {
 			s.logf("api: freeze link: %v", err)
+			writeFreezeRetry(w)
+			return
 		}
 		s.securityWake(r.Context(), wake)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeFreezeRetry(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "60")
+	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 func (s *Server) handleFreezeNow(w http.ResponseWriter, r *http.Request, _ uuid.UUID) {
@@ -59,7 +99,7 @@ func (s *Server) handleUnfreeze(w http.ResponseWriter, r *http.Request, _ uuid.U
 // devFreezeLimited runs devfreeze-ip, then (for a well-formed writer id only)
 // devfreeze-global. It reports whether it answered.
 func (s *Server) devFreezeLimited(w http.ResponseWriter, r *http.Request, writerID string) bool {
-	if !s.DevFreezeIP.Allow(clientKey(r)) || (keyproto.ValidWriterID(writerID) && !s.DevFreezeGlobal.Allow("")) {
+	if !s.DevFreezeIP.Allow(clientKey(r)) || (keyproto.ValidWriterID(writerID) && !s.globalAllow(r, s.DevFreezePerPrefix, s.DevFreezeGlobal)) {
 		writeTooManyAttempts(w)
 		return true
 	}

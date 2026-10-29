@@ -180,6 +180,22 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 	    now() - interval '2 days')`, changed); err != nil {
 		t.Fatal(err)
 	}
+	signedOut := oplogtest.NewUser(t, pool)
+	moved := oplogtest.NewUser(t, pool)
+	if _, err := pool.Exec(ctx, `INSERT INTO sessions (token_hash, user_id, minted_by, created_at, last_used_at, expires_at)
+	    VALUES (decode(repeat('99', 32), 'hex'), $1, 'login', now() - interval '2 days', now() - interval '2 days',
+	    now() + interval '1 day')`, signedOut); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET email_verified_at = now() - interval '2 days' WHERE id = $1`, moved); err != nil {
+		t.Fatal(err)
+	}
+	var invite string
+	if err := pool.QueryRow(ctx, `INSERT INTO invite_codes (code_hash, origin, state, created_at, minted_at, expires_at, mint_count)
+	    VALUES (decode(repeat('aa', 32), 'hex'), 'cli', 'active', now(), now(), now() + interval '1 day', 1) RETURNING id::text`).
+		Scan(&invite); err != nil {
+		t.Fatal(err)
+	}
 	at := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	ledger := filepath.Join(t.TempDir(), "purged")
 	body := gone.String() + " " + at + "\n" +
@@ -190,19 +206,23 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 		entry + " " + at + " waitlist-leave\n" +
 		changed.String() + " " + at + " passkey " + strings.Repeat("55", 20) + "\n" +
 		bounced + " " + at + " waitlist-unsent\n" +
-		thawed.String() + " " + time.Now().Add(time.Minute).UTC().Format(time.RFC3339) + " phrase-seen\n"
+		thawed.String() + " " + time.Now().Add(time.Minute).UTC().Format(time.RFC3339) + " phrase-seen\n" +
+		signedOut.String() + " " + at + " sessions\n" +
+		moved.String() + " " + at + " email\n" +
+		invite + " " + at + " invite-revoked\n"
 	if err := os.WriteFile(ledger, []byte(body), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
 	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
-	if code != 0 || !strings.Contains(out, "9 entries, 1 account(s) purged again") ||
+	if code != 0 || !strings.Contains(out, "12 entries, 1 account(s) purged again") ||
 		!strings.Contains(out, "2 freeze(s), 1 unfreeze(s), 0 device removal(s), 1 password change(s), 1 passkey removal(s), "+
-			"1 first view(s) of the 12 words, 1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, 1 freeze(s) lifted because") {
+			"1 first view(s) of the 12 words, 1 waitlist leave(s) and 1 bounced-invite waitlist deletion(s) applied again, "+
+			"1 sign-out(s) of all sessions, 1 email change(s) and 1 invite revocation(s) applied again, 1 freeze(s) lifted because") {
 		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
 	}
 	for _, id := range []string{gone.String(), changed.String(), frozen.String(), thawed.String(), unfrozen.String(), entry, bounced,
-		strings.Repeat("55", 20)} {
+		strings.Repeat("55", 20), signedOut.String(), moved.String(), invite} {
 		if strings.Contains(out, id) {
 			t.Fatalf("the replay printed an id: %q", out)
 		}
@@ -219,6 +239,9 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 		`SELECT count(*) FROM webauthn_credentials WHERE user_id = '` + changed.String() + `'`:                       0,
 		`SELECT count(*) FROM account_keys WHERE user_id = '` + thawed.String() + `' AND phrase_seen_at IS NOT NULL`: 1,
 		`SELECT count(*) FROM users WHERE id IN ('` + changed.String() + `', '` + frozen.String() + `')`:             2,
+		`SELECT count(*) FROM sessions WHERE user_id = '` + signedOut.String() + `' AND revoked_reason = 'others'`:   1,
+		`SELECT count(*) FROM users WHERE id = '` + moved.String() + `' AND reverify_requested_at IS NOT NULL`:       1,
+		`SELECT count(*) FROM invite_codes WHERE id = '` + invite + `' AND state = 'revoked'`:                        1,
 	} {
 		if err := pool.QueryRow(ctx, q).Scan(&n); err != nil || n != want {
 			t.Fatalf("%s: %d (%v), want %d", q, n, err, want)
@@ -227,7 +250,8 @@ func TestReplayAppliesEveryRecordedEventAgain(t *testing.T) {
 	code, out, _ = hasalad(t, env, "purge-user", "--replay-ledger")
 	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
 		!strings.Contains(out, "0 freeze(s), 0 unfreeze(s), 0 device removal(s), 0 password change(s), 0 passkey removal(s), "+
-			"0 first view(s) of the 12 words, 0 waitlist leave(s) and 0 bounced-invite waitlist deletion(s) applied again, 0 freeze(s) lifted because") {
+			"0 first view(s) of the 12 words, 0 waitlist leave(s) and 0 bounced-invite waitlist deletion(s) applied again, "+
+			"0 sign-out(s) of all sessions, 0 email change(s) and 0 invite revocation(s) applied again, 0 freeze(s) lifted because") {
 		t.Fatalf("a second replay exited %d with %q", code, out)
 	}
 }

@@ -11,7 +11,12 @@ enum RuleReader {
     var fromSubject: Bool
     var balanceLike: Bool
     var conversion: Bool
+    var nearDebitLabel = false
+    var afterMerchant = false
   }
+
+  static let maxMoneyPerLine = 64
+  static let maxMoney = 256
 
   static let sentenceBreak = try! NSRegularExpression(pattern: "[.!?;؛](?=\\s|$)|\\s[-|•]\\s")
   static let justNumber = try! NSRegularExpression(pattern: "^[\\s(]*[A-Za-z]{0,3}\\.?\\s*[\\d.,]+\\s*[A-Za-z]{0,3}[\\s)]*$")
@@ -38,17 +43,32 @@ enum RuleReader {
     ["debit", "debited", "deducted", "charged", "billed", "billing", "withdrawn", "equivalent", "local"],
     ["خصم", "المخصوم", "مدين", "يعادل", "المعادل"])
 
+  static let merchantMarker = RuleText.re("(?<![a-z])at(?![a-z])|@|لدي|عند|متجر")
+
   static func aedAmount(_ m: ExtractInput, foreign: Int64, currency: String) -> Int64? {
     let lines = RuleText.cleanLines(m.text)
     var cands = candidates(lines, lines.map(RuleText.fold), fromSubject: false)
     for i in cands.indices { cands[i].score -= 0.25 * Double(i) }
-    let foreignLines = Set(cands.filter { $0.money.currency == currency && $0.money.minor == foreign }.map(\.money.line))
+    let foreignCands = cands.filter { $0.money.currency == currency && $0.money.minor == foreign }
+    let foreignLines = Set(foreignCands.map(\.money.line))
+    func plainGap(_ c: Scored) -> Bool {
+      foreignCands.contains { f in
+        guard f.money.line == c.money.line else { return false }
+        let ns = lines[c.money.line] as NSString
+        let a = min(f.money.end, c.money.end)
+        let b = max(f.money.start, c.money.start)
+        let gap = b > a ? ns.substring(with: NSRange(location: a, length: b - a)) : ""
+        return !RuleText.has(merchantMarker, RuleText.fold(gap))
+      }
+    }
     let eligible = cands.filter {
       $0.money.currency == "AED" && $0.money.explicit && $0.money.minor > 0 && !$0.money.badScale && !$0.balanceLike
         && !$0.fromSubject && !PromoFilter.isPromo($0.clause)
     }
     let tied = eligible.filter {
-      foreignLines.contains($0.money.line) || $0.conversion || ($0.labelled && RuleText.has(aedDebitLabel, $0.clause))
+      let onForeignLine = foreignLines.contains($0.money.line)
+      guard !$0.afterMerchant, !onForeignLine || plainGap($0) else { return false }
+      return (onForeignLine && $0.nearDebitLabel) || $0.conversion || ($0.labelled && RuleText.has(aedDebitLabel, $0.clause))
     }
     let sameLine = tied.filter { foreignLines.contains($0.money.line) }
     return (sameLine.isEmpty ? tied : sameLine).max { $0.score < $1.score }?.money.minor
@@ -135,10 +155,10 @@ enum RuleReader {
     return out.joined(separator: " ")
   }
 
-  static func clauseBounds(_ s: NSString, _ start: Int, _ end: Int) -> (String, String) {
+  static func clauseBounds(_ s: NSString, _ start: Int, _ end: Int, _ breaks: [NSTextCheckingResult]) -> (String, String) {
     var pStart = 0
     var sEnd = s.length
-    for b in Self.sentenceBreak.matches(in: s as String, range: NSRange(location: 0, length: s.length)) {
+    for b in breaks {
       if b.range.location + b.range.length <= start { pStart = b.range.location + b.range.length }
       if b.range.location >= end && b.range.location < sEnd { sEnd = b.range.location }
     }
@@ -153,8 +173,10 @@ enum RuleReader {
       let isJust = RuleText.has(Self.justNumber, line)
       let label = fromSubject ? "" : prevLabel(lines, i)
       let labelCur = isJust ? RuleMoneyParser.labelCurrency(label) : nil
-      for mo in RuleMoneyParser.scan(line, line: i, labelCurrency: labelCur) {
-        let (pre, suf) = clauseBounds(ns, mo.start, mo.end)
+      let breaks = Self.sentenceBreak.matches(in: line, range: NSRange(location: 0, length: ns.length))
+      for mo in RuleMoneyParser.scan(line, line: i, labelCurrency: labelCur).prefix(Self.maxMoneyPerLine) {
+        if out.count >= Self.maxMoney { return out }
+        let (pre, suf) = clauseBounds(ns, mo.start, mo.end, breaks)
         let preStrip = Self.stripMoneyWords(pre)
         let sufStrip = Self.stripMoneyWords(suf)
         let useLabel = !fromSubject && !preStrip.contains(where: { $0.isLetter })
@@ -189,10 +211,13 @@ enum RuleReader {
         if mo.minor == 0 { s -= 4 }
         if !isJust && !labelled && !verb && !mo.explicit { s -= 1 }
         let clause = [fPre, fSuf, fLabel, fNext].joined(separator: " ")
+        let nearDebitLabel =
+          RuleText.has(Self.aedDebitLabel, String(fPre.suffix(24))) || RuleText.has(Self.aedDebitLabel, String(fSuf.prefix(25)))
         out.append(
           Scored(
             money: mo, score: s, labelled: labelled, verb: verb, clause: clause, fromSubject: fromSubject,
-            balanceLike: balanceLike, conversion: conversion))
+            balanceLike: balanceLike, conversion: conversion, nearDebitLabel: nearDebitLabel,
+            afterMerchant: RuleText.has(Self.merchantMarker, RuleText.fold(ns.substring(to: mo.start)))))
       }
     }
     return out

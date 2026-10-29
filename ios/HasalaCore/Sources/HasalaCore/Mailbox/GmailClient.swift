@@ -50,7 +50,7 @@ public struct GmailClient: Sendable {
       method: method, url: URL.build(base, path, query), headers: headers,
       body: body.map { Data(JSONWriter().bytes($0)) })
     let res: HTTPResponse
-    do { res = try await http.send(req) } catch { throw .offline }
+    do { res = try await http.send(req) } catch .tooLarge { throw .tooLarge(op: op) } catch { throw .offline }
     guard res.ok else {
       // Gmail answers per-user and per-project quota with 403 as well as 429. Those are a
       // back-off, not a lost grant: report them as 429 so the engine retries and narrows instead

@@ -1306,7 +1306,12 @@ in
         "${ledgerDir}/purged".f = {
           user = "hasala";
           group = "hasala-ledger";
-          mode = "0640";
+          mode = "0660";
+        };
+        "${ledgerDir}/purged.lock".f = {
+          user = "hasala";
+          group = "hasala-ledger";
+          mode = "0660";
         };
       };
       systemd.tmpfiles.settings.hasala-maintenance.${maintenanceLock}.f = {

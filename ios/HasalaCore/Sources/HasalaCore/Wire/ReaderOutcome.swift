@@ -36,7 +36,7 @@ public enum OpsDecodeOutcome: Sendable, Hashable {
 
 extension OpCodec {
   /// R10: an opened blob's plaintext → its ops, the blob being the unit. A `v`
-  /// above the schema stops sync; any other decode failure sets the WHOLE blob
+  /// one above the schema stops sync; any other decode failure sets the WHOLE blob
   /// aside, valid siblings included (review 2 F-24).
   public static func decodeR10(_ plaintext: some Collection<UInt8>) -> OpsDecodeOutcome {
     do {

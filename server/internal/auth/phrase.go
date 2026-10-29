@@ -88,7 +88,8 @@ func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepU
 	if err != nil {
 		return err
 	}
-	return a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
+	var at time.Time
+	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
 		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, nil, now); err != nil {
 			return err
@@ -96,7 +97,13 @@ func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepU
 		if err := forgetPushTokens(ctx, tx, `user_id = $1`, session.UserID); err != nil {
 			return err
 		}
+		at = now
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: p.WriterID,
 			CredentialID: p.CredentialID}, now)
 	})
+	if err != nil {
+		return err
+	}
+	a.recordSessions(session.UserID, at)
+	return nil
 }

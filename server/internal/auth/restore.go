@@ -36,10 +36,26 @@ func (a *Accounts) recordPhraseSeen(userID uuid.UUID, at time.Time) {
 	}
 }
 
+func (a *Accounts) recordSessions(userID uuid.UUID, at time.Time) {
+	if a.Record != nil {
+		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindSessions})
+	}
+}
+
+func (a *Accounts) recordEmail(userID uuid.UUID, at time.Time) {
+	if a.Record != nil {
+		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindEmail})
+	}
+}
+
 func (a *Accounts) recordUnfreeze(userID uuid.UUID, at time.Time) {
 	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindUnfreeze})
+		a.Record(UnfreezeEntry(userID, at))
 	}
+}
+
+func UnfreezeEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindUnfreeze}
 }
 
 func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, credentials [][]byte, at time.Time) {
@@ -58,6 +74,8 @@ type ReapplyReport struct {
 	Passwords   int
 	Passkeys    int
 	PhrasesSeen int
+	Sessions    int
+	Emails      int
 	Unsigned    int
 	Lifted      int
 }
@@ -154,6 +172,10 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
 		case purgeledger.KindPhraseSeen:
 			step, count = reapplyPhraseSeenTx, &rep.PhrasesSeen
+		case purgeledger.KindSessions:
+			step, count = reapplySessionsTx, &rep.Sessions
+		case purgeledger.KindEmail:
+			step, count = reapplyEmailTx, &rep.Emails
 		default:
 			continue
 		}
@@ -400,6 +422,52 @@ func reapplyPhraseSeenTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ 
 		`UPDATE account_keys SET phrase_seen_at = greatest(created_at, $2)
 		  WHERE user_id = $1 AND phrase_seen_at IS NULL AND date_trunc('second', created_at) <= $2`, e.ID, e.At)
 	if err != nil || tag.RowsAffected() != 1 {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplySessionsTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	if err := forgetPushTokens(ctx, tx,
+		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
+		    WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2)`, e.ID, e.At); err != nil {
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx,
+		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
+		  WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2`, e.ID, e.At, now)
+	if err != nil || tag.RowsAffected() == 0 {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyEmailTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var verified, reverify *time.Time
+	err := tx.QueryRow(ctx, `SELECT email_verified_at, reverify_requested_at FROM users WHERE id = $1 FOR UPDATE`, e.ID).
+		Scan(&verified, &reverify)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if verified != nil && !verified.Truncate(time.Second).Before(e.At) {
+		return reappliedNothing, nil
+	}
+	if reverify != nil && !reverify.Truncate(time.Second).Before(e.At) {
+		return reappliedNothing, nil
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET reverify_requested_at = $2, email_undeliverable_at = coalesce(email_undeliverable_at, $2)
+		  WHERE id = $1`, e.ID, e.At); err != nil {
+		return reappliedNothing, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, e.ID, now); err != nil {
+		return reappliedNothing, err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE email_codes SET burned_at = $2 WHERE user_id = $1 AND used_at IS NULL AND burned_at IS NULL`, e.ID, now); err != nil {
 		return reappliedNothing, err
 	}
 	return reappliedDone, nil

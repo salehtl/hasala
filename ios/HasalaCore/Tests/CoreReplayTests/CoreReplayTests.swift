@@ -359,6 +359,15 @@ struct SnapshotTests {
     #expect(FoldCanary.foldPrint.utf8.count == 32)
   }
 
+  @Test("a new schema version changes the fold print, so an update refolds and reads set-aside rows again")
+  func foldPrintFollowsSchema() {
+    let folded = FoldCanary.state()
+    #expect(FoldCanary.fingerprint(schema: SchemaVersion.current, state: folded) == FoldCanary.foldPrint)
+    #expect(FoldCanary.fingerprint(schema: SchemaVersion.current + 1, state: folded) != FoldCanary.foldPrint)
+    #expect(FoldCanary.fingerprint(schema: SchemaVersion.current + 2, state: folded).utf8.count == 32)
+    #expect(FoldCanary.foldPrint != String(folded.serializedSHA256().prefix(32)))
+  }
+
   @Test("the canary folds every v4 op type, so a new type changes the fold print and an update refolds")
   func canaryCoversEveryV4Type() {
     let types = Set(FoldCanary.log().flatMap { $0.ops.map(\.type) })

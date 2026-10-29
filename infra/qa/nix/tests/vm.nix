@@ -422,7 +422,7 @@ in
           machine.succeed(insert)
           machine.succeed(f"hasala-admin purge-user {gone} --confirm {gone}")
           machine.succeed(f"grep '^{gone} ' /var/lib/hasala-ledger/purged")
-          assert machine.succeed("stat -c '%a %G' /var/lib/hasala-ledger/purged").strip() == "640 hasala-ledger"
+          assert machine.succeed("stat -c '%a %G' /var/lib/hasala-ledger/purged").strip() == "660 hasala-ledger"
           machine.succeed("systemctl start hasala-backup.service")
           ledger = machine.succeed(f"ls -t {BACKUP_DIR}/hasala-ledger-daily-*.tar.age | head -1").strip()
           machine.succeed(f"age -d -i /root/test-identity.txt {ledger} | tar -xOf - purged | grep '^{gone} '")
@@ -623,6 +623,34 @@ in
           machine.succeed("systemctl stop console-standin6.service")
           for line in machine.succeed("ss -ltnH").splitlines():
               assert line.split()[3].rsplit(":", 1)[0] in ("127.0.0.1", "[::1]"), line
+
+      with subtest("AT-V10e: an invite revoked in the console reaches the ledger"):
+          machine.wait_for_unit("hasala-console.service")
+          machine.succeed("hasala-admin invite mint --note vm-revoke-note >/dev/null 2>&1")
+          inv = machine.succeed(
+              as_user(
+                  "hasala-migrate",
+                  f"{PSQL} \"SELECT id FROM invite_codes WHERE note = 'vm-revoke-note'\" -U hasala_migrate",
+              )
+          ).strip()
+          assert re.fullmatch(r"[0-9a-f-]{36}", inv), inv
+          hdrs = (
+              "-H 'Host: ${consoleHost}' -H 'X-Forwarded-Proto: https'"
+              " -H 'X-Webauth-User: ${consoleLogin}' -H 'X-Webauth-Tailnet: ${consoleTailnet}'"
+          )
+          page = machine.succeed(as_user("nginx", f"curl -sf --max-time 5 {hdrs} http://127.0.0.1:{CONSOLE_PORT}/invites"))
+          m = re.search(f'action="/invites/{inv}/revoke"><input type="hidden" name="csrf" value="([^"]+)"', page)
+          assert m, page
+          post = as_user(
+              "nginx",
+              f"curl --max-time 5 {hdrs} -H 'Sec-Fetch-Site: same-origin' -H 'Origin: https://${consoleHost}'"
+              f" --data-urlencode csrf={m.group(1)} http://127.0.0.1:{CONSOLE_PORT}/invites/{inv}/revoke",
+          )
+          assert http_code(post) == "303"
+          machine.succeed(f"grep -E '^{inv} [^ ]+ invite-revoked$' /var/lib/hasala-ledger/purged")
+          for f in ["purged", "purged.lock"]:
+              assert machine.succeed(f"stat -c '%a %G' /var/lib/hasala-ledger/{f}").strip() == "660 hasala-ledger", f
+          machine.fail("journalctl -u hasala-console -o cat | grep 'console: after the action' >/dev/null")
 
       with subtest("AT-V12: a cluster of another major version stops the start"):
           machine.succeed("systemctl stop hasala.target")

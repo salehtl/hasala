@@ -22,7 +22,8 @@
 // # The blob is the unit of decode (01 §6.6 R10, review 2 F-24)
 //
 // Any envelope failure of any op fails the whole blob (`.setAside`), and an op
-// or blob `v` above `SchemaVersion.current` stops sync (`.unknownNewerVersion`).
+// or blob `v` of exactly `SchemaVersion.current + 1` stops sync
+// (`.unknownNewerVersion`); a larger `v` sets the blob aside.
 // The two are never conflated.
 import CoreJSON
 import CorePrimitives
@@ -132,6 +133,7 @@ public enum OpCodec {
 
   static func readVersion(_ doc: JSONObject, what: String) throws(WireDecodeError) -> Int64 {
     guard let v = integer(doc["v"]) else { throw .setAside("\(what): version is \(showValue(doc["v"]))") }
+    if v > Int64(SchemaVersion.current) + 1 { throw .setAside("\(what): version \(v) is not valid") }
     if v > Int64(SchemaVersion.current) {
       throw .unknownNewerVersion("\(what) is v\(v), this build supports v\(SchemaVersion.current)")
     }
@@ -144,6 +146,7 @@ public enum OpCodec {
     try requireIntegerLiteral(o, "v", what: "op \(i)")
     try requireIntegerLiteral(o, "parent_version", what: "op \(i)")
     guard let v = integer(o["v"]) else { throw .setAside("op \(i): version is \(showValue(o["v"]))") }
+    if v > Int64(SchemaVersion.current) + 1 { throw .setAside("op \(i): version \(v) is not valid") }
     if v > Int64(SchemaVersion.current) {
       throw .unknownNewerVersion("op \(i) is v\(v), this build supports v\(SchemaVersion.current)")
     }
@@ -196,6 +199,7 @@ public enum OpCodec {
   /// wire/op.ts `validateOp`, over raw fields, in the oracle's order.
   static func validate(_ f: RawFields) throws(OpValidationError) -> Op {
     let opIDText = f.opID?.stringValue ?? showValue(f.opID)
+    if f.v > Int64(SchemaVersion.current) + 1 { throw .invalid("version \(f.v) is not valid") }
     if f.v > Int64(SchemaVersion.current) { throw .unknownNewerVersion("op \(opIDText) is v\(f.v)") }
     if f.v < 1 { throw .invalid("version \(f.v) is not valid") }
     guard let typeString = f.type?.stringValue, let type = OpType(rawValue: typeString) else {

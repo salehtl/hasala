@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/authtest"
@@ -869,4 +870,194 @@ func TestAReplayOnTheLiveDatabaseAppliesNothing(t *testing.T) {
 			t.Fatalf("the replay revoked the live session: %v", err)
 		}
 	})
+}
+
+func TestALogoutAllIsRecordedAndSurvivesARestore(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	stolen, err := m.loginPassword(m.s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour + 300*time.Millisecond)
+	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindSessions || entries[0].ID != m.user.UserID {
+		t.Fatalf("ledger %+v, want one sign-out of all sessions", entries)
+	}
+	f.clock.advance(time.Hour + 600*time.Millisecond)
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, in.Session.Token); err != nil {
+		t.Fatalf("the replay ended a session newer than the sign-out: %v", err)
+	}
+
+	if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE token_hash = $1`,
+		SessionHash(stolen.Session.Token)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, stolen.Session.Token); err != nil {
+		t.Fatalf("the simulated restore did not bring the session back: %v", err)
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Sessions != 1 {
+		t.Fatalf("reapply %+v %v, want one sign-out of all sessions", rep, err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, stolen.Session.Token); !errors.Is(err, ErrSessionRevoked) {
+		t.Fatalf("a session the sign-out ended is live again: %v", err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, in.Session.Token); err != nil {
+		t.Fatalf("the replay ended a session newer than the sign-out: %v", err)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
+}
+
+func queueSignInAlert(t *testing.T, f *acctFixture, user uuid.UUID) {
+	t.Helper()
+	if err := pgx.BeginFunc(bgctx, f.pool, func(tx pgx.Tx) error {
+		return f.mailer.enqueueAlertTx(bgctx, tx, user, "new_sign_in_password", "", f.clock.now())
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func changeEmail(t *testing.T, f *acctFixture, m *member) string {
+	t.Helper()
+	next := newAddr()
+	sNew := f.stretch(next, m.pw)
+	su := m.deviceStepUp(keyproto.ActionEmailChange, m.s, sha([]byte(next)), sumBytes(sNew))
+	begun, err := f.acct.EmailChangeBegin(bgctx, m.info(), next, sNew, su)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldCode, newCode := f.lastCode(m.addr), f.lastCode(next)
+	if err := f.acct.EmailChangeFinish(bgctx, m.info(), begun.ChangeID, newCode, &oldCode, nil); err != nil {
+		t.Fatal(err)
+	}
+	return next
+}
+
+func freezeLinkTo(f *acctFixture, addr string) bool {
+	for _, msg := range f.fake.To(addr) {
+		if freezeLinkRe.MatchString(msg.Text) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestAnEmailChangeEndsTheFreezeLinksOfTheOldAddress(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	tok := f.freezeToken(m.addr)
+	queueSignInAlert(t, f, m.user.UserID)
+	f.clock.advance(time.Minute)
+	changeEmail(t, f, m)
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1 AND used_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d freeze tokens of the old address are still unused", n)
+	}
+	tokens := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1`, m.user.UserID)
+	f.fake.Reset()
+	f.sendQueued()
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1`, m.user.UserID); n != tokens {
+		t.Fatal("an alert queued before the change minted a freeze link for the old address")
+	}
+	if freezeLinkTo(f, m.addr) {
+		t.Fatal("the old address got a freeze link after the change")
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a freeze link sent to the old address froze the account")
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("a freeze link sent to the old address ended the owner's session: %v", err)
+	}
+}
+
+func TestAnEmailChangeIsRecordedAndARestoredOldAddressGetsNoFreezeLink(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	tok := f.freezeToken(m.addr)
+	var (
+		oldAddr          string
+		oldVerified      time.Time
+		oldHash, oldSalt []byte
+	)
+	if err := f.pool.QueryRow(bgctx, `SELECT email_norm, email_verified_at, password_hash, password_salt FROM users WHERE id = $1`,
+		m.user.UserID).Scan(&oldAddr, &oldVerified, &oldHash, &oldSalt); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour + 400*time.Millisecond)
+	changeEmail(t, f, m)
+	entries := readLedger(t, path)
+	if len(entries) != 1 || entries[0].Kind != purgeledger.KindEmail || entries[0].ID != m.user.UserID {
+		t.Fatalf("ledger %+v, want one email change", entries)
+	}
+	f.sendQueued()
+	live := saveRow(t, f.pool, "users", "id = $1", m.user.UserID)
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
+	}
+	if after := saveRow(t, f.pool, "users", "id = $1", m.user.UserID); after != live {
+		t.Fatalf("a replay on the live database changed the account:\n%s\n%s", live, after)
+	}
+
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET email_norm = $2, email_verified_at = $3, password_hash = $4, password_salt = $5
+	    WHERE id = $1`, m.user.UserID, oldAddr, oldVerified, oldHash, oldSalt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE freeze_tokens SET used_at = NULL WHERE user_id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep.Emails != 1 {
+		t.Fatalf("reapply %+v %v, want one email change", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND reverify_requested_at IS NOT NULL
+	    AND email_undeliverable_at IS NOT NULL`, m.user.UserID); n != 1 {
+		t.Fatal("the replay did not mark the restored address for re-verification")
+	}
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1 AND used_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d freeze tokens of the restored address are still unused", n)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a freeze link of the restored address froze the account")
+	}
+	tokens := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1`, m.user.UserID)
+	f.fake.Reset()
+	queueSignInAlert(t, f, m.user.UserID)
+	f.sendQueued()
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1`, m.user.UserID); n != tokens || freezeLinkTo(f, oldAddr) {
+		t.Fatal("the restored address got a new freeze link before it was verified again")
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v", rep, err)
+	}
 }
