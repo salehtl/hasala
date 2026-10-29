@@ -13,7 +13,7 @@
 //      known sender in the Inbox at a DMARC p=reject domain), the VERIFIED domain in
 //      the trusted set T, a template hit with a usable amount (or a template-free reading that both
 //      readers agree on at 0.8 or more), not forwarded, not in Spam, and a recipient check that is
-//      not a mismatch. Anything less is `needs_review: true`. Cards play no part (2026-10-29).
+//      not a mismatch. Anything less is `needs_review: true`.
 import CoreCategorize
 import CoreExtract
 import CoreJSON

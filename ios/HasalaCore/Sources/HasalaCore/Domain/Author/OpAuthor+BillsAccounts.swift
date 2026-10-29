@@ -1,8 +1,7 @@
 // `OpAuthor`'s bills-and-accounts authors (03b §1.4, §3.2-§4.4): `account_set`,
 // `bill_set`, `bill_occurrence_set` and `account_checkin`. Each payload is
 // exactly what `Replay/V4/BillsAccounts.swift` decodes, key for key, and passes
-// that decoder in `build()` like every other op. No path writes `card_linked`
-// since 2026-10-29; the fold still reads it.
+// that decoder in `build()` like every other op.
 //
 // Ids follow 03b §1.4's author grammar: an account that older builds created
 // from a card is derived from (bank, last4); cash is `ac_cash`; every other

@@ -93,6 +93,37 @@ struct BankTextFilingTests {
     #expect(try rig.fold().anomalies.isEmpty)
   }
 
+  static func novelTransfer(_ n: Int) -> TextCase {
+    let amount = "\(200 + n * 11).\(String(format: "%02d", (n * 17) % 100))"
+    let payee = ["SYNTHETIC PAYEE", "SAMPLE LANDLORD", "EXAMPLE TRADING", "SYNTHETIC SCHOOL", "SAMPLE CLINIC"][n % 5]
+    return TextCase(
+      name: "novel-transfer-\(n)", sender: nil,
+      text: "Fund transfer of AED \(amount) to \(payee) from your account ending 4321 on 05-06-2026 was completed. Ref SYN\(2000 + n).",
+      receivedAtMs: TextRig.t0 + Int64(n) * 3_600_000)
+  }
+
+  @Test("with no template, a text the readers agree is a transfer notice never files: pairing reads only template rows")
+  func readerTransferNoticeWaits() async throws {
+    let rig = try TextRig()
+    var layouts = LearnedLayouts()
+    var agreed = false
+    for n in 0..<8 {
+      let c = Self.novelTransfer(n)
+      let (r, next) = BankTextReader.read(c.arrival, templates: BankTextReader.templates, layouts: layouts)
+      layouts = next
+      let k = try #require(r.kept, "\(n)")
+      #expect(k.template == nil && !k.readerConfident, "\(n)")
+      let input = ExtractInput(
+        sender: "sms:", subject: "", text: BankTextReader.normalized(c.text), receivedAtMs: c.receivedAtMs, listUnsubscribe: false)
+      let (reading, _) = CombinedReader.read(input, layouts)
+      if reading.kind == .transferNotice && reading.meetsFilingBar { agreed = true }
+      let added = try #require(await rig.add(c).added, "\(n)")
+      #expect(!added.filed, "\(n)")
+      #expect(try rig.payload(added.txnID)["needs_review"]?.boolValue == true, "\(n)")
+    }
+    #expect(agreed)
+  }
+
   @Test("a template-free reading the readers do not both confirm goes to Review")
   func readersDisagreeGoesToReview() throws {
     let (r, _) = BankTextReader.read(Self.novel(0).arrival)

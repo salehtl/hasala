@@ -163,7 +163,7 @@ struct BankTextsTests {
 
   @Test func theTextsBanksSayHowEachIsRead() {
     #expect(BankTexts.readNote(.dib) == "Hasala reads them; some wait in Review")
-    #expect(BankTexts.readNote(.enbd) == "You check each one in Review")
+    #expect(BankTexts.readNote(.enbd) == "Hasala learns their wording; the first wait in Review")
     for line in SupportedBank.allCases.map(BankTexts.readNote) + [BankTexts.banksLine] {
       #expect(!line.lowercased().contains("automatically"))
     }
@@ -235,7 +235,7 @@ struct BankTextsTests {
     let enbd = BankTextsBank(bank: .enbd, lastText: nil)
     #expect(dib.readsAutomatically && !enbd.readsAutomatically)
     #expect(BankTexts.bankDetail(dib, now: now) == "Last text 2 h ago\nHasala reads them; some wait in Review")
-    #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nYou check each one in Review")
+    #expect(BankTexts.bankDetail(enbd, now: now) == "No text yet\nHasala learns their wording; the first wait in Review")
   }
 
   @Test func sendingTheTestAgainStartsANewTest() async throws {

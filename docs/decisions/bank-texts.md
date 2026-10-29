@@ -439,7 +439,10 @@ owner's private DIB export (aggregate counts only), every payment text is kept b
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. Until the open check on the sender is answered, the app
 says of DIB "Hasala reads them; some wait in Review" and "Hasala reads DIB texts for you,
-though some still wait in Review", and of other banks "You check each one in Review".
+though some still wait in Review", and of other banks "Hasala learns their wording; the first wait in Review" and
+"Texts from your other banks wait in Review until Hasala learns their wording". A text that
+looks like a payment, from any sender, is added when Hasala can read it, else it waits in
+Review.
 
 ### Filing with no review
 

@@ -23,7 +23,7 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "source.continue", opening: "textsBanks.continue")
     XCTAssertTrue(app.staticTexts["Which banks text you?"].exists)
     XCTAssertTrue(el(app, "bank.dib").label.contains("Hasala reads them"))
-    XCTAssertTrue(el(app, "bank.enbd").label.contains("You check each one in Review"))
+    XCTAssertTrue(el(app, "bank.enbd").label.contains("Hasala learns their wording; the first wait in Review"))
     attach(app, "Which banks text you")
     try audit(app)
     tap(app, "textsBanks.continue", opening: "texts.steps")

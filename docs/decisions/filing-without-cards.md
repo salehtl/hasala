@@ -47,7 +47,9 @@ because they are strong and cost nothing.
      on amount, currency and direction, each at 0.8 or more. This is the rule that mail
      uses (`CombinedReader`, `ExtractReading.meetsFilingBar`);
    - nothing else holds it: no reader hold on a template hit, no transfer partner, no
-     one-time-code or declined marker. The fold still holds a repeat as a probable copy.
+     one-time-code or declined marker. A text that only the readers read as a transfer
+     notice waits in Review, because the transfer pairing reads only template rows and
+     the fold pairs only verified mail. The fold still holds a repeat as a probable copy.
      The drop patterns for codes, declines and promotions, and the text twin of a mail
      (D10), do not change.
 
