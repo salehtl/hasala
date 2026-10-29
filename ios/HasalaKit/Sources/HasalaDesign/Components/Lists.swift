@@ -733,6 +733,7 @@ public struct ReflowingRow<Leading: View, Trailing: View>: View {
           Spacer(minLength: spacing)
           trailing
         }
+        .environment(\.reflowingRowStacked, false)
         stacked
       }
     }
@@ -744,6 +745,11 @@ public struct ReflowingRow<Leading: View, Trailing: View>: View {
       trailing
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .environment(\.reflowingRowStacked, true)
   }
+}
+
+public extension EnvironmentValues {
+  @Entry var reflowingRowStacked = false
 }
 
