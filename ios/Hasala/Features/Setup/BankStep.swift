@@ -317,7 +317,6 @@ struct BankList: View {
 /// from the profile when the account reads none (`ConnectMailPage`).
 struct BankChoiceRow: View {
   let bank: SupportedBank
-  var note: String?
   let on: Bool
   var toggle: () -> Void
 
@@ -327,7 +326,7 @@ struct BankChoiceRow: View {
         BankMonogram(bank: bank)
         VStack(alignment: .leading, spacing: 0) {
           Text(bank.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          if let note = note ?? bank.note { Text(note).hType(.footnote).foregroundStyle(HColor.textSecondary) }
+          if let note = bank.note { Text(note).hType(.footnote).foregroundStyle(HColor.textSecondary) }
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -382,18 +382,27 @@ struct BankTextsIntakeTests {
     #expect(data.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
-  @Test func anAuthoredTextNotesItsBankAndTheRun() async {
+  @Test func anAuthoredTextNotesTheLastTextAndTheRun() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
-    #expect(r.factsData.lastKeptMs["dib"] == BankTextIntake.ms(Self.t0))
+    #expect(r.factsData.lastKeptMs == ["": BankTextIntake.ms(Self.t0)])
     #expect(r.factsData.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
   @Test func anAuthoredTextWithNoBankStillNotesTheLastText() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.personal, sender: nil, at: Self.t0) == .authored(filed: false))
-    #expect(r.factsData.lastKeptMs[""] == BankTextIntake.ms(Self.t0))
+    #expect(r.factsData.lastKeptMs == ["": BankTextIntake.ms(Self.t0)])
     #expect(lane(r).lastTextAt == Self.t0)
+  }
+
+  @Test func anOlderPerBankLastTextCollapsesIntoOneValue() {
+    var d = BankTextsFactsData()
+    d.lastKeptMs = ["dib": 5_000, "enbd": 9_000]
+    d.noteKept(atMs: 7_000)
+    #expect(d.lastKeptMs == ["": 9_000] && d.lastKeptAtMs == 9_000)
+    d.noteKept(atMs: 12_000)
+    #expect(d.lastKeptMs == ["": 12_000])
   }
 
   @Test func aCoreThatIsNotWiredFailsLoudly() async {

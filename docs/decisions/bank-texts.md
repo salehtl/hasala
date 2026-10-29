@@ -437,8 +437,8 @@ texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts onl
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. The app makes no claim about a specific bank: it says
-"Hasala reads payment texts from any bank. It files the ones it reads with confidence, and
-the rest wait in Review for you to check."
+"Hasala reads payment texts from any bank, on this iPhone. A payment it isn't sure of waits
+in Review for you to check."
 
 ### Filing with no review
 
@@ -511,8 +511,8 @@ On the device, outside the synced data, and never sent:
 - the time the automation last ran (one value, overwritten on each run, for every text
   handed to the action while the person is signed in and after the first unlock, because
   the app cannot see the automation any other way);
-- the time of the last text that Hasala added as a row (stored for each bank as read, with
-  texts of no known bank under one empty key; Profile › Bank alerts shows only the newest);
+- the time of the last text that Hasala added as a row (one value for all banks, overwritten
+  on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day
   and each kind of texts set aside as not payments (steps 1, 3 and 5; see
   [What a drop leaves](#reading-happens-inside-hasala-on-the-phone)), for the last 30 days

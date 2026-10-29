@@ -61,6 +61,12 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     }
   }
 
+  var lastKeptAtMs: Int64? { lastKeptMs.values.max() }
+
+  mutating func noteKept(atMs ms: Int64) {
+    lastKeptMs = ["": max(lastKeptAtMs ?? 0, ms)]
+  }
+
   mutating func addIgnored(_ n: Int = 1, atMs: Int64) {
     guard n > 0 else { return }
     let day = Self.day(atMs)

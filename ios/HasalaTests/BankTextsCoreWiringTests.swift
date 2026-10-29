@@ -159,7 +159,7 @@ struct BankTextsCoreWiringTests {
       #expect(!json.contains("الحد الائتماني") && !json.contains("DIB-SMS"))
     }
     let data = r.facts.read(nowMs: BankTextIntake.ms(Self.t0))
-    #expect(data.lastKeptMs["dib"] == BankTextIntake.ms(Self.t0) && data.lastRunMs == BankTextIntake.ms(Self.t0))
+    #expect(data.lastKeptMs == ["": BankTextIntake.ms(Self.t0)] && data.lastRunMs == BankTextIntake.ms(Self.t0))
     #expect(r.transport.requests == 0)
   }
 
