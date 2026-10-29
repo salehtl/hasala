@@ -249,6 +249,7 @@ public struct ToReviewWidgetView: View {
               Text("to sort").hFigure(.widgetUnit).foregroundStyle(Hue.sky.ink).lineLimit(1)
             }
             caption("")
+              .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
           }
           VStack(alignment: .leading, spacing: 0) {
             Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
