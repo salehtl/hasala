@@ -53,7 +53,8 @@ struct ProjectEntity: AppEntity {
 
 struct ProjectEntityQuery: EntityQuery {
   func entities(for identifiers: [ProjectEntity.ID]) async throws -> [ProjectEntity] {
-    all().filter { identifiers.contains($0.id) }
+    let known = all()
+    return identifiers.map { id in known.first { $0.id == id } ?? ProjectEntity(id: id, name: "Project removed") }
   }
 
   func suggestedEntities() async throws -> [ProjectEntity] { all() }
@@ -85,7 +86,8 @@ struct GoalEntity: AppEntity {
 
 struct GoalEntityQuery: EntityQuery {
   func entities(for identifiers: [GoalEntity.ID]) async throws -> [GoalEntity] {
-    all().filter { identifiers.contains($0.id) }
+    let known = all()
+    return identifiers.map { id in known.first { $0.id == id } ?? GoalEntity(id: id, name: "Goal removed") }
   }
 
   func suggestedEntities() async throws -> [GoalEntity] { all() }
