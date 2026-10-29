@@ -1,5 +1,5 @@
 import HasalaMocks
-import HasalaModels
+@testable import HasalaModels
 import Testing
 
 /// Bills, one bill, Accounts and Profile over MayaLedger reproduce their boards. Owned by P8
@@ -131,14 +131,15 @@ struct BillsProfileEngineParityTests {
 
   @Test func profileCounts() {
     let p = ProfileEngine.snapshot(s, now: now)
-    #expect(p.accounts.rendered(hidden: false) == "4 · net worth 227,568")
-    #expect(p.accounts.rendered(hidden: true) == "4 · net worth ••••")
+    #expect(p.accounts.rendered(hidden: false) == "4 accounts · net worth 227,568")
+    #expect(p.accounts.rendered(hidden: true) == "4 accounts · net worth ••••")
     #expect(p.accountsKnown)
     #expect(p.bills == "9 tracked · 1 new found")
     #expect(p.newBills == 1)
     #expect(p.categoriesAndRules == "18 categories · 6 rules")
     #expect(p.projects.rendered(hidden: false) == "1 active")
-    #expect(p.emailLine == "maya@example.com · Verified")
+    #expect(p.email == "maya@example.com")
+    #expect(p.emailStatus == "Verified")
     #expect(p.swipeSummary == "← Want · Need →")
     #expect(p.swipeSpoken == "Swipe left for Want, right for Need")
   }
@@ -154,5 +155,43 @@ struct BillsProfileEngineParityTests {
     #expect(careem?.match == "Starts with · Transport")
     #expect(careem?.detail == "Starts with · Transport · \(careem?.matchesLabel ?? "")")
     #expect(rules.first { $0.id == "r-netflix" }?.match == "Exact match · Subscriptions")
+  }
+
+  @Test func emailStatusIsItsOwnField() {
+    var unverified = s
+    unverified.profile.emailVerified = false
+    let p = ProfileEngine.snapshot(unverified, now: now)
+    #expect(p.email == "maya@example.com")
+    #expect(p.emailStatus == "Not verified")
+  }
+
+  @Test func accountsLineCountsInWords() {
+    var none = s
+    none.accounts = []
+    #expect(ProfileEngine.snapshot(none, now: now).accounts.rendered(hidden: false) == "No accounts yet")
+    var one = s
+    one.accounts = [s.accounts[0]]
+    one.accounts[0].balance = .aed(1)
+    #expect(ProfileEngine.snapshot(one, now: now).accounts.rendered(hidden: false) == "1 account · net worth 0.01")
+    one.accounts[0].balance = .aed(0)
+    #expect(ProfileEngine.snapshot(one, now: now).accounts.rendered(hidden: false) == "1 account · net worth 0")
+  }
+
+  @Test func ruleMatchCountsAgreeWithOneRuleAtATime() {
+    let counts = ProfileEngine.matchCounts(s)
+    for r in s.rules {
+      #expect(counts[r.id] == ProfileEngine.matchCount(r, s))
+    }
+  }
+
+  @Test func patternLineShowsTheRestAsMore() throws {
+    var many = s
+    many.rules = [Rule(id: "r-many", patterns: ["A", "B", "C", "D"], categoryID: s.rules[0].categoryID)]
+    let rule = try #require(ProfileEngine.rules(many).first)
+    #expect(rule.patterns.count == 4)
+    #expect(rule.patternLine(showing: 4) == "\u{201C}A\u{201D} or \u{201C}B\u{201D} or \u{201C}C\u{201D} or \u{201C}D\u{201D}")
+    #expect(rule.patternLine(showing: 2) == "\u{201C}A\u{201D} or \u{201C}B\u{201D} +2 more")
+    #expect(rule.patternLine(showing: 0) == "\u{201C}A\u{201D} +3 more")
+    #expect(rule.patternLine(showing: 9) == rule.pattern)
   }
 }

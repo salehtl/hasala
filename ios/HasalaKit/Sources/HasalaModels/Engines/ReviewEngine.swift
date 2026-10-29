@@ -316,15 +316,26 @@ extension ReviewCardModel {
   public var senderUnverified: Bool { reviewReason == .senderUnverified }
 }
 
+public enum ReviewOrder: String, CaseIterable, Identifiable, Sendable {
+  case newestFirst = "newest"
+  case oldestFirst = "oldest"
+
+  public var id: String { rawValue }
+
+  public var title: String {
+    switch self {
+    case .newestFirst: "Newest first"
+    case .oldestFirst: "Oldest first"
+    }
+  }
+}
+
 public enum ReviewEngine {
-  /// The queue without today's skips, whatever the period: the newest month first, oldest
-  /// first within a month.
-  public static func queue(_ s: LedgerState, in window: ReviewWindow = .all) -> [Txn] {
-    s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && !s.skippedReview.contains($0.id) }
-      .sorted {
-        let a = $0.postedAt.date.yearMonth, b = $1.postedAt.date.yearMonth
-        return a == b ? $0.postedAt < $1.postedAt : b < a
-      }
+  /// The queue without today's skips, whatever the period, strictly by posted time.
+  public static func queue(_ s: LedgerState, in window: ReviewWindow = .all, order: ReviewOrder = .newestFirst) -> [Txn] {
+    let open = s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && !s.skippedReview.contains($0.id) }
+    let oldest = open.sorted { $0.postedAt == $1.postedAt ? $0.id < $1.id : $0.postedAt < $1.postedAt }
+    return order == .oldestFirst ? oldest : oldest.reversed()
   }
 
   public static func window(_ period: Period, today: YearMonth) -> ReviewWindow {
@@ -416,8 +427,8 @@ public enum ReviewEngine {
     return m.year == today.year ? m.name : m.title
   }
 
-  public static func cards(_ s: LedgerState, in window: ReviewWindow = .all) -> [ReviewCardModel] {
-    queue(s, in: window).map { card($0, s) }
+  public static func cards(_ s: LedgerState, in window: ReviewWindow = .all, order: ReviewOrder = .newestFirst) -> [ReviewCardModel] {
+    queue(s, in: window, order: order).map { card($0, s) }
   }
 
   /// A session's order when it starts at one card (a To sort row): that card, the ones
@@ -489,8 +500,7 @@ public enum ReviewEngine {
   }
 
   public static func projectChoices(_ s: LedgerState, on date: LocalDate) -> [ProjectChoice] {
-    let ranked = s.projects.filter(\.isOpen).map { ProjectChoice($0, suggested: $0.covers(date)) }
-    return ranked.filter(\.suggested) + ranked.filter { !$0.suggested }
+    s.projects.filter(\.isOpen).map { ProjectChoice($0, suggested: $0.covers(date)) }
   }
 
   /// The line for All caught up once `txn` is sorted into `category`.

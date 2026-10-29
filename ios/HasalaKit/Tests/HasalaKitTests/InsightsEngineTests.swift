@@ -91,6 +91,15 @@ struct InsightsDeltaTests {
     #expect(InsightsDelta.between(77_99, 100_00)?.kind == .down(percent: 22))
   }
 
+  @Test func aHugeIncreaseIsCappedInTheBadgeButSpokenInFull() {
+    let d = InsightsDelta.between(16_990, 1000)!
+    #expect(d.kind == .up(percent: 1599))
+    #expect(d.text == "\u{2191} 999%+")
+    #expect(d.spoken(against: "August") == "up 1599 percent from August")
+    #expect(InsightsDelta.between(10_990, 1000)?.text == "\u{2191} 999%")
+    #expect(InsightsDelta.between(11_000, 1000)?.text == "\u{2191} 999%+")
+  }
+
   @Test func noBadgeWhenNothingWasSpentEitherTime() {
     #expect(InsightsDelta.between(-500, 0) == nil)
   }
@@ -322,6 +331,20 @@ struct InsightsLensTests {
     #expect(rows[0].sharePercent == 67)
     #expect(rows.allSatisfy { $0.delta == nil })
     #expect(rows[1].target == .merchant("Deliveroo"))
+  }
+
+  @Test func aMerchantMonogramIsItsFirstLetterOrNone() {
+    let s = F.ledger([
+      F.txn("2", 600, F.july, merchant: "7-Eleven"), F.txn("2", 500, F.july, merchant: "(Rakuten) Viki"),
+      F.txn("2", 400, F.july, merchant: "*talabat"), F.txn("2", 300, F.july, merchant: "1234"),
+      F.txn("2", 200, F.july, merchant: ""),
+    ])
+    let rows = InsightsEngine.snapshot(s, months: F.july...F.july, now: F.afterJune).merchants
+    #expect(rows.map(\.monogram) == ["E", "R", "T", nil, nil])
+    #expect(rows.map(\.title) == ["7-Eleven", "(Rakuten) Viki", "*talabat", "1234", "Unknown merchant"])
+    #expect(rows[4].target == .merchant(""))
+    let d = InsightsEngine.drill(s, target: .merchant(""), months: F.july...F.july, now: F.afterJune)
+    #expect(d.title == "Unknown merchant · July")
   }
 
   @Test func merchantsAreCappedAtTwenty() {

@@ -207,9 +207,15 @@ struct UnlockView: View {
 
   // MARK: Choose (G80, K34, GUM)
 
-  private var signedInAs: String {
-    guard let email = model.profile?.email, !email.isEmpty else { return "You're signed in." }
-    return "You're signed in as \(email)."
+  private var signedInEmail: String? {
+    guard let email = model.profile?.email, !email.isEmpty else { return nil }
+    return email
+  }
+
+  private var sealedLine: String {
+    model.passkeyCanUnlock
+      ? "Your budget is still sealed. Open it on this iPhone with one of these."
+      : "Your budget is still sealed. Your 12 words open it on this iPhone."
   }
 
   private var choose: some View {
@@ -218,9 +224,8 @@ struct UnlockView: View {
       title: afterReset ? "You're in. Your data is still locked." : "Unlock your data",
       subtitle: afterReset
         ? "Your other iPhone let you in, but it can't hand over your data. Your 12 words open it on this iPhone. A new password never can."
-        : model.passkeyCanUnlock
-          ? "\(signedInAs) Your budget is still sealed. Open it on this iPhone with one of these."
-          : "\(signedInAs) Your budget is still sealed. Your 12 words open it on this iPhone."
+        : signedInEmail == nil ? "You're signed in. \(sealedLine)" : "You're signed in as",
+      email: afterReset ? nil : signedInEmail.map { EmailAside(address: $0, after: sealedLine) }
     ) {
       VStack(alignment: .leading, spacing: 12) {
         if model.passkeyCanUnlock && !afterReset {
@@ -312,7 +317,7 @@ struct UnlockView: View {
   // MARK: Welcome back (GL7)
 
   private var welcomeBack: some View {
-    let name = model.profile?.firstName ?? ""
+    let name = model.profile?.greetingName ?? ""
     return CelebrationScreen(
       badge: .check,
       title: name.isEmpty ? "Welcome back." : "Welcome back, \(name).",

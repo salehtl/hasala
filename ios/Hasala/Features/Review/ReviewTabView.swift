@@ -3,11 +3,11 @@ import HasalaModels
 import SwiftUI
 
 /// Review · Tab · To sort (Paper NPV-0): the root of the Review tab, the queue Hasala
-/// couldn't sort and the card that starts the swipe deck. With more than one month waiting, the
-/// list runs the newest month first, each under its month.
+/// couldn't sort and the card that starts the swipe deck. The list runs newest or oldest first,
+/// as the person chose on this iPhone, each card under its month.
 ///
-/// Start opens the deck at the top of the list, the newest month's oldest card, and reads on
-/// in the list's order; a row opens it at that row's card and reads on down the list. The
+/// Start opens the deck at the top of the list and reads on in the list's order; a row opens
+/// it at that row's card and reads on down the list. The
 /// "couldn't read" line counts the bank emails Hasala kept as empty rows and the ones it could
 /// not download; when there are rows, it opens the list where each is added by hand or dismissed,
 /// and with none it opens Add a transaction.
@@ -140,9 +140,7 @@ struct ReviewTabView: View {
 
   static let emptyLine = "New transactions Hasala can't sort on its own show up here."
 
-  static func orderLine(months: Int) -> String {
-    months > 1 ? "Newest month first" : "Oldest first"
-  }
+  static func orderSpoken(_ order: ReviewOrder) -> String { "Order, \(order.title)" }
 
   @ViewBuilder private func slotCard(_ slot: SortSlot?) -> some View {
     switch slot {
@@ -266,18 +264,16 @@ struct ReviewTabView: View {
 
   // MARK: To sort
 
-  /// "To sort", oldest first within a month (Paper writes "Newest first"): each row opens the
-  /// deck at its own card.
+  /// "To sort", in the order the person chose: each row opens the deck at its own card.
   private func list(_ cards: [ReviewCardModel]) -> some View {
     let months = ReviewEngine.months(cards, now: app.store.now)
     return VStack(alignment: .leading, spacing: 4) {
-      HStack(alignment: .firstTextBaseline) {
+      ReflowingRow(spacing: 12) {
         Text("To sort").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           .accessibilityAddTraits(.isHeader)
-        Spacer()
-        Text(Self.orderLine(months: months.count)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      } trailing: {
+        orderMenu
       }
-      .padding(.bottom, 4)
       ForEach(months) { month in
         if months.count > 1 {
           Text(month.title)
@@ -303,6 +299,30 @@ struct ReviewTabView: View {
     .padding(.horizontal, 16)
     .padding(.bottom, 8)
     .background(cardSurface)
+  }
+
+  private var orderMenu: some View {
+    Menu {
+      Picker("Order", selection: $app.reviewOrder) {
+        ForEach(ReviewOrder.allCases) { order in
+          Text(order.title).tag(order)
+        }
+      }
+    } label: {
+      HStack(spacing: 4) {
+        Text(app.reviewOrder.title)
+          .hType(.footnote.weight(.medium))
+          .foregroundStyle(HColor.textLink)
+        HIconView(.chevronDown, size: 12, color: HColor.textLink)
+      }
+      .frame(minHeight: HSpacing.targetMinimum)
+      .contentShape(Rectangle())
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .accessibilityLabel(Self.orderSpoken(app.reviewOrder))
+    .accessibilityHint("Changes the order of the list and the deck")
+    .accessibilityIdentifier("review.sort")
   }
 
   private func row(_ r: ReviewTabRow) -> some View {

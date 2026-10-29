@@ -348,8 +348,7 @@ final class SignInModel {
     }
   }
 
-  /// The first name for "You're back in, Maya." (empty when the service doesn't know it).
-  var firstName: String { account.profile?.firstName ?? "" }
+  var greetingName: String { account.profile?.greetingName ?? "" }
   /// The account's address for the done screens.
   var accountEmail: String { account.profile?.email ?? "" }
 

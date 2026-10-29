@@ -106,10 +106,12 @@ struct ConfirmItsYouSheet: View {
         .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
         .foregroundStyle(HColor.textPrimary)
         .lineLimit(1)
+        .accessibilityIdentifier(hasalaCappedFigureIdentifier)
       Spacer(minLength: 8)
       Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
     }
     .padding(.top, 21)
+    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
   }
 
   private var hero: (icon: HIcon, hue: Hue) {

@@ -1,5 +1,7 @@
+import CoreDomain
 import HasalaDesign
 import HasalaModels
+import HasalaText
 import SwiftUI
 
 // The pages that push inside the transaction sheet (Paper "Activity · Choose a category"
@@ -66,9 +68,12 @@ struct CategoryPickerView: View {
 
   /// The row being sorted, as Activity lists it.
   private func transaction(_ d: TransactionDetail) -> some View {
-    HListCard {
+    let home = d.home ?? HomeAmount(shown: d.amount)
+    return HListCard {
       HListRow(leading: d.monogram.map { .monogram($0) } ?? .disc(d.hue, d.glyph.icon), title: d.merchant,
-               supporting: .text(d.meta), trailing: .amount(d.amount, in: d.isIncome), hidden: model.hidden)
+               supporting: .wrapping(d.meta),
+               trailing: home.notCounted ? .value("Not counted") : .amount(home.shown, in: d.isIncome, approx: home.estimate),
+               hidden: model.hidden)
     }
   }
 
@@ -178,13 +183,12 @@ struct NoteEditorView: View {
         .padding(16)
         .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
         .accessibilityIdentifier("note.field")
-      Text("Notes stay with the transaction and are encrypted like everything else.")
-        .hType(.footnote).foregroundStyle(HColor.textSecondary)
-        .padding(.horizontal, 4)
+      TextLimitLine("Notes stay with the transaction and are encrypted like everything else.",
+                    limit: .note, text: note, id: "note.count")
       Spacer()
       Button("Save note") { save(note) }
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(note == original)
+        .disabled(note == original || TextLimit.note.isOver(note))
         .accessibilityIdentifier("note.save")
     }
     .padding(HSpacing.insetPage)
@@ -215,18 +219,82 @@ struct RenameMerchantView: View {
         .frame(minHeight: 52)
         .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
         .accessibilityIdentifier("rename.field")
-      Text("Every transaction from \(original) shows the new name. The bank email keeps its own.")
-        .hType(.footnote).foregroundStyle(HColor.textSecondary)
-        .padding(.horizontal, 4)
+      TextLimitLine("Every transaction from \(original) shows the new name. The bank email keeps its own.",
+                    limit: .label, text: name, id: "rename.count")
       Spacer()
       Button("Rename") { save(name) }
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(name.trimmedSpaces.isEmpty || name == original)
+        .disabled(name.trimmedSpaces.isEmpty || name == original || TextLimit.label.isOver(name))
         .accessibilityIdentifier("rename.save")
     }
     .padding(HSpacing.insetPage)
     .background(HColor.sheetSurfaceLarge)
     .navigationTitle("Rename merchant")
     .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+struct TextLimit: Equatable {
+  let scalars: Int
+  let bytes: Int
+
+  static let label = TextLimit(scalars: TextRules.labelMaxScalars, bytes: TextRules.labelMaxBytes)
+  static let note = TextLimit(scalars: TextRules.noteMaxScalars, bytes: TextRules.noteMaxBytes)
+
+  static func stored(_ typed: String) -> String {
+    UserText.normalize(typed)
+  }
+
+  func count(_ typed: String) -> Int { Self.stored(typed).unicodeScalars.count }
+
+  func isOver(_ typed: String) -> Bool {
+    let s = Self.stored(typed)
+    return s.unicodeScalars.count > scalars || s.utf8.count > bytes
+  }
+
+  func nearsLimit(_ typed: String) -> Bool { isOver(typed) || count(typed) * 5 >= scalars * 4 }
+}
+
+struct TextLimitCounter: View {
+  let limit: TextLimit
+  let text: String
+  let id: String
+
+  var body: some View {
+    let over = limit.isOver(text)
+    Text("\(limit.count(text)) of \(limit.scalars)")
+      .hType(.footnote.weight(over ? .semibold : .regular))
+      .monospacedDigit()
+      .foregroundStyle(over ? HColor.statusErrorForeground : HColor.textSecondary)
+      .accessibilityLabel(over ? "Too long. \(limit.count(text)) of \(limit.scalars) characters" : "\(limit.count(text)) of \(limit.scalars) characters")
+      .accessibilityIdentifier(id)
+  }
+}
+
+private struct TextLimitLine: View {
+  let hint: String
+  let limit: TextLimit
+  let text: String
+  let id: String
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  init(_ hint: String, limit: TextLimit, text: String, id: String) {
+    self.hint = hint
+    self.limit = limit
+    self.text = text
+    self.id = id
+  }
+
+  var body: some View {
+    let layout = typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+      : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+    layout {
+      Text(hint).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      TextLimitCounter(limit: limit, text: text, id: id).fixedSize()
+    }
+    .padding(.horizontal, 4)
   }
 }
