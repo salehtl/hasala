@@ -250,6 +250,9 @@ struct ActivityReviewModelTests {
   @Test func theReviewTabSaysHowLongItTakes() {
     #expect(ReviewTabView.countLine(6) == "6 to sort · about a minute")
     #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
+    #expect(ReviewTabView.countLine(360) == "360 to sort · about 60 minutes")
+    #expect(ReviewTabView.countLine(400) == "400 to sort · about an hour")
+    #expect(ReviewTabView.countLine(1_284) == "1,284 to sort · about 4 hours")
     #expect(ReviewTabView.countLine(0) == "All caught up")
     #expect(ActivityContent.minutes(6) == "about 1 minute")
     #expect(ActivityContent.minutes(7) == "about 2 minutes")
