@@ -42,6 +42,7 @@ public struct BankTextRow: Sendable, Equatable {
   }
 
   public var transferRole: TextTransferRole? { templateRef.flatMap { TextTransferRole.of(templateRef: $0) } }
+  public var readerOnly: Bool { templateRef == nil || templateRef == "none" }
 }
 
 public enum BankTextTransferPair {
@@ -59,6 +60,21 @@ public enum BankTextTransferPair {
       if best.map({ gap < $0.gap || (gap == $0.gap && o.id < $0.row.id) }) ?? true { best = (o, gap) }
     }
     return best?.row
+  }
+
+  public static func readerOverlap(of row: BankTextRow, among rows: [BankTextRow]) -> Bool {
+    guard !row.unparsed, row.direction == "debit" else { return false }
+    let role = row.transferRole
+    guard role == .notice || row.readerOnly else { return false }
+    return rows.contains { o in
+      guard o.id != row.id, !o.unparsed, o.direction == row.direction, o.amountMinor == row.amountMinor,
+        o.currency == row.currency, abs(o.postedMs - row.postedMs) <= windowMs
+      else { return false }
+      let ob = o.bank ?? ""
+      let rb = row.bank ?? ""
+      if role == .notice { return o.readerOnly && (ob.isEmpty || ob == rb) }
+      return o.transferRole == .notice && (rb.isEmpty || rb == ob)
+    }
   }
 }
 

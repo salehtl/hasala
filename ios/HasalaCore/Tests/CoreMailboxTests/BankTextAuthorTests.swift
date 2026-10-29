@@ -533,6 +533,42 @@ struct BankTextTransferPairTests {
     #expect(BankTextTransferPair.partner(of: row("y", "dib.sms.purchase.v1@1", 0), among: rows) == nil)
     #expect(BankTextTransferPair.partner(of: alert, among: [row("z", "dib.sms.own-transfer.v1@1", 31 * 60_000)]) == nil)
   }
+
+  @Test("a reader-only debit and a template transfer notice for one amount within 30 minutes overlap, in either direction")
+  func readerOverlapCheck() {
+    func row(_ id: String, _ t: String?, _ ms: Int64, amount: Int64 = 100, bank: String? = nil, direction: String = "debit") -> BankTextRow {
+      BankTextRow(id: id, bank: bank, amountMinor: amount, currency: "AED", direction: direction, last4: "", postedMs: ms, templateRef: t, unparsed: false)
+    }
+    let notice = row("n", "dib.sms.own-transfer.v1@1", 0, bank: "dib")
+    #expect(BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000), among: [notice]))
+    #expect(BankTextTransferPair.readerOverlap(of: notice, among: [row("r", "none", 60_000)]))
+    #expect(BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, bank: "dib"), among: [notice]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, bank: "enbd"), among: [notice]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 31 * 60_000), among: [notice]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, amount: 101), among: [notice]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, direction: "credit"), among: [notice]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000), among: [row("a", "dib.sms.debit.v1@1", 0, bank: "dib")]))
+    #expect(!BankTextTransferPair.readerOverlap(of: row("p", "dib.sms.purchase.v1@1", 0, bank: "dib"), among: [row("r", "none", 0)]))
+    #expect(!BankTextTransferPair.readerOverlap(of: notice, among: [row("m", "dib.sms.own-transfer.v1@1", 0, bank: "dib")]))
+  }
+
+  @Test("a template transfer notice and a reader-filed debit for one amount: the second waits in Review, in either order")
+  func readerDebitBesideTemplateNotice() async throws {
+    let c = BankTextFilingTests.novel(8)
+    let k = try #require(BankTextReader.read(c.arrival).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
+    let f = try #require(k.fields)
+    let amount = String(format: "%d.%02d", f.amountMinor / 100, f.amountMinor % 100)
+    let notice = TextCase(name: "notice", sender: nil, text: Self.ownTransfer(amount), receivedAtMs: c.receivedAtMs - 5 * 60_000)
+    for noticeFirst in [true, false] {
+      let rig = try TextRig()
+      for n in 0..<8 { _ = try #require(await rig.add(BankTextFilingTests.novel(n)).added, "\(n)") }
+      let first = try #require(await rig.add(noticeFirst ? notice : c).added)
+      let second = try #require(await rig.add(noticeFirst ? c : notice).added)
+      #expect(first.filed, "\(noticeFirst)")
+      #expect(!second.filed, "\(noticeFirst)")
+      #expect(try rig.payload(second.txnID)["needs_review"]?.boolValue == true)
+    }
+  }
 }
 
 @Suite("bank texts: the unparsed text row, paste and categorization")

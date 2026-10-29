@@ -116,12 +116,13 @@ public actor BankTextAuthor {
       let row = BankTextRow(
         id: "", bank: kept.bank, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction, last4: f.last4,
         postedMs: posted, templateRef: kept.template?.ref, unparsed: false)
-      if row.transferRole != nil {
+      if row.transferRole != nil || (row.readerOnly && row.direction == "debit") {
         let rows = await ledger.textRows(
           postedFromMs: posted - BankTextTransferPair.windowMs, toMs: posted + BankTextTransferPair.windowMs)
         partner = BankTextTransferPair.partner(of: row, among: rows)
+        if partner == nil, BankTextTransferPair.readerOverlap(of: row, among: rows) { repeats = true }
       }
-      if origin == .automation { repeats = await mayRepeat(row, n: key.n) }
+      if origin == .automation, !repeats { repeats = await mayRepeat(row, n: key.n) }
     }
     let draft = BankTextPayload.build(
       kept, ingestID: key.id, receivedMinuteMs: minute, link: state, origin: origin, transferPartner: partner != nil,
