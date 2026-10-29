@@ -322,7 +322,7 @@ public enum MessageDisposer {
     let filesItself =
       m.gates.ar == AuthResults.Reason.pass.rawValue && m.gates.senderTrusted && !m.gates.forwarded
       && m.spam == false
-      && (m.recipient == .confirmed || m.recipient == .unconfirmed)
+      && m.recipient != nil && m.recipient != .mismatch
       && (m.gates.reader == nil || m.readerConfident == true)
       && m.held != true
       && texts?.twin(of: m) == nil

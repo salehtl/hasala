@@ -41,6 +41,19 @@ extension LedgerReader {
 
   public func hasTextRows() throws -> Bool { try textRowSpan() != nil }
 
+  public func mailRows(postedFromMs: Int64, toMs: Int64) throws -> [TxnRow] {
+    try db.read { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+          SELECT * FROM txn WHERE superseded_by IS NULL AND archived IS NULL AND unparsed = 0 AND entry_method = 'mailbox'
+            AND (channel IS NULL OR channel != ?) AND posted_ms >= ? AND posted_ms <= ?
+          ORDER BY posted_ms, id
+          """, arguments: [TxnChannel.sms, postedFromMs, toMs]
+      ).map(TxnRow.init)
+    }
+  }
+
   public func liveRows(postedFromMs: Int64, toMs: Int64) throws -> [TxnRow] {
     try db.read { db in
       try Row.fetchAll(

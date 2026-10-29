@@ -125,6 +125,16 @@ struct BankTextFilingTests {
     #expect(filed.filed)
   }
 
+  @Test("a text that would file waits in Review when the ledger cannot read its mail and text rows")
+  func unreadableRowsWait() async throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let filed = try #require(await BankTextAuthor(ledger: FakeTextLedger()).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(filed.filed)
+    let held = try #require(
+      await BankTextAuthor(ledger: FakeTextLedger(unreadable: true)).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(!held.filed)
+  }
+
   @Test("the ledger's mail rows are the live, parsed mailbox rows that are no text, in the window")
   func ledgerMailRows() async throws {
     let rig = try TextRig()
@@ -149,7 +159,7 @@ struct BankTextFilingTests {
     let posted = try parseInstantMs("2026-06-05T07:00:00.000Z")
     let rows = await rig.ledger.mailRows(postedFromMs: posted - 86_400_000, toMs: posted + 86_400_000)
     #expect(rows == [TextTwinMail(bank: "dib", last4: "", amountMinor: 4200, currency: "AED", direction: "debit", postedMs: posted)])
-    #expect(await rig.ledger.mailRows(postedFromMs: posted + 1, toMs: posted + 86_400_000).isEmpty)
+    #expect(await rig.ledger.mailRows(postedFromMs: posted + 1, toMs: posted + 86_400_000)?.isEmpty == true)
     #expect(try rig.row(text.txnID)?.isText == true)
   }
 
@@ -448,16 +458,20 @@ actor FakeTextLedger: BankTextLedger {
   var outbox: Set<String>
   var rows: [BankTextRow] = []
   var mail: [TextTwinMail]
+  var unreadable: Bool
   var authored: [BankTextDraft] = []
 
-  init(outbox: Set<String> = [], mail: [TextTwinMail] = []) {
+  init(outbox: Set<String> = [], mail: [TextTwinMail] = [], unreadable: Bool = false) {
     self.outbox = outbox
     self.mail = mail
+    self.unreadable = unreadable
   }
 
   func isIngested(_ ingestID: String) async -> Bool { outbox.contains(ingestID) || authored.contains { $0.ingestID == ingestID } }
-  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { rows }
-  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail] { mail.filter { $0.postedMs >= postedFromMs && $0.postedMs <= toMs } }
+  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]? { unreadable ? nil : rows }
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]? {
+    unreadable ? nil : mail.filter { $0.postedMs >= postedFromMs && $0.postedMs <= toMs }
+  }
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
     authored.append(draft)
     return "01JC00000000000000000000\(authored.count < 10 ? "0" : "")\(authored.count)"
@@ -795,8 +809,8 @@ actor RefusingTextLedger: BankTextLedger {
   }
 
   func isIngested(_ ingestID: String) async -> Bool { false }
-  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] { [] }
-  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail] { [] }
+  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]? { [] }
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]? { [] }
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String {
     attempts.append((draft, archiving))
     if attempts.count <= refusals { throw MailboxLedgerError(error) }

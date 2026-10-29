@@ -107,12 +107,10 @@ enum BankTextPayload {
   }
 
   static func build(
-    _ k: BankTextKept, ingestID: String, receivedMinuteMs: Int64, link: BankTextLink, origin: BankTextOrigin,
-    transferPartner: Bool, mayRepeat: Bool = false, categorizer: any IngestCategorizer
+    _ k: BankTextKept, ingestID: String, receivedMinuteMs: Int64, files: Bool, categorizer: any IngestCategorizer
   ) -> BankTextDraft {
     let received = Instant.iso(receivedMinuteMs) ?? ""
     guard let f = k.fields else { return unparsed(k, ingestID: ingestID, received: received) }
-    let files = filesItself(k, link: link, origin: origin, transferPartner: transferPartner, mayRepeat: mayRepeat)
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision =
       decided.category == nil

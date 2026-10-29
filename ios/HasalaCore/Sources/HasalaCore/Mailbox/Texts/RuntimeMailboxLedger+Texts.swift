@@ -3,14 +3,13 @@ import CoreProjection
 import Foundation
 
 extension RuntimeMailboxLedger: BankTextLedger {
-  public func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow] {
-    ((try? reader.textRows(postedFromMs: postedFromMs, toMs: toMs)) ?? []).map(BankTextRow.init)
+  public func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]? {
+    (try? reader.textRows(postedFromMs: postedFromMs, toMs: toMs))?.map(BankTextRow.init)
   }
 
-  public func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail] {
-    ((try? reader.liveRows(postedFromMs: postedFromMs, toMs: toMs)) ?? []).compactMap { t in
-      guard !t.isText, !t.unparsed, t.entryMethod == "mailbox" else { return nil }
-      return TextTwinMail(
+  public func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]? {
+    (try? reader.mailRows(postedFromMs: postedFromMs, toMs: toMs))?.map { t in
+      TextTwinMail(
         bank: t.bank, last4: t.last4, amountMinor: t.amountMinor, currency: t.currency, direction: t.direction, postedMs: t.postedMs)
     }
   }
