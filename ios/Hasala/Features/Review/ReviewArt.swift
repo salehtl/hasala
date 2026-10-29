@@ -73,14 +73,18 @@ struct MerchantMonogram: View {
       .overlay { if ring { Circle().strokeBorder(HColor.borderSubtle, lineWidth: 1) } }
       .frame(width: size, height: size)
       .overlay {
-        Text(verbatim: letter)
-          .font(.custom(HWeight.semibold.interFace, size: size >= 56 ? 24 : (size >= 32 ? 14 : 11),
-                        relativeTo: size >= 56 ? .title2 : .subheadline))
-          .foregroundStyle(HColor.textPrimary)
-          .lineLimit(1)
-          .minimumScaleFactor(0.3)
-          .padding(size * 0.12)
-          .frame(width: size, height: size)
+        if letter.isEmpty {
+          HIconView(.shopping, size: size * 0.45, color: HColor.iconSecondary)
+        } else {
+          Text(verbatim: letter)
+            .font(.custom(HWeight.semibold.interFace, size: size >= 56 ? 24 : (size >= 32 ? 14 : 11),
+                          relativeTo: size >= 56 ? .title2 : .subheadline))
+            .foregroundStyle(HColor.textPrimary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.3)
+            .padding(size * 0.12)
+            .frame(width: size, height: size)
+        }
       }
       .accessibilityHidden(true)
   }

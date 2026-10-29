@@ -134,8 +134,14 @@ struct ReviewTabView: View {
 
   static func countLine(_ n: Int, elsewhere: ReviewElsewhere? = nil, period: String = "") -> String {
     guard n > 0 else { return elsewhere == nil ? "All caught up" : "Nothing to sort in \(period)" }
-    let minutes = (n + 5) / 6
-    return "\(n) to sort · " + (minutes == 1 ? "about a minute" : "about \(minutes) minutes")
+    return "\(MoneyFormat.count(n)) to sort · " + timeLine(minutes: (n + 5) / 6)
+  }
+
+  static func timeLine(minutes: Int) -> String {
+    if minutes == 1 { return "about a minute" }
+    if minutes <= 60 { return "about \(minutes) minutes" }
+    let hours = (minutes + 30) / 60
+    return hours == 1 ? "about an hour" : "about \(MoneyFormat.count(hours)) hours"
   }
 
   static let emptyLine = "New transactions Hasala can't sort on its own show up here."
