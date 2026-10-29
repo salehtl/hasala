@@ -25,6 +25,7 @@ struct SplitEditorView: View {
   /// The line whose amount the keypad types into.
   @State private var editing: Int?
   @FocusState private var noteFocus: Int?
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   private var total: Int64 { model.detail?.amount.minor ?? 0 }
   private var currency: String { model.detail?.amount.currency ?? Money.home }
@@ -122,8 +123,11 @@ struct SplitEditorView: View {
   private func lineCard(_ line: Binding<Draft>) -> some View {
     let draft = line.wrappedValue
     let option = options.first { $0.id == draft.category }
+    let stacked = typeSize.isAccessibilitySize
+    let layout = stacked
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
     return VStack(spacing: 0) {
-      HStack(spacing: 12) {
+      layout {
         Menu {
           Picker("Category", selection: line.category) {
             ForEach(options) { Text($0.name).tag($0.id) }
@@ -154,9 +158,10 @@ struct SplitEditorView: View {
         .accessibilityLabel("\(option?.name ?? "Category"), \(option?.bucket.label ?? "")")
         .accessibilityHint("Changes this line's category")
         .accessibilityIdentifier("split.category.\(draft.id)")
-        amountField(draft, name: option?.name ?? "Line")
+        amountField(draft, name: option?.name ?? "Line", fullWidth: stacked)
       }
       .padding(.horizontal, 16)
+      .padding(.vertical, stacked ? 14 : 0)
       .frame(minHeight: 72)
       if draft.showsNote {
         HDivider(inset: .disc68)
@@ -168,6 +173,9 @@ struct SplitEditorView: View {
             .foregroundStyle(HColor.textPrimary)
             .focused($noteFocus, equals: draft.id)
             .accessibilityIdentifier("split.note.\(draft.id)")
+          if TextLimit.note.nearsLimit(draft.note) {
+            TextLimitCounter(limit: .note, text: draft.note, id: "split.noteCount.\(draft.id)").fixedSize()
+          }
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 48)
@@ -178,7 +186,7 @@ struct SplitEditorView: View {
 
   /// 112 × 44, radius 12, the field grey, the figure 17/22 600 on the right. Focused, it
   /// takes the 2 pt ring and shows a caret; the keypad types into it.
-  private func amountField(_ line: Draft, name: String) -> some View {
+  private func amountField(_ line: Draft, name: String, fullWidth: Bool) -> some View {
     let focused = editing == line.id
     let shown = focused ? line.entry.display : (line.entry.minor.map { MoneyFormat.string($0) } ?? "")
     return Button {
@@ -198,8 +206,8 @@ struct SplitEditorView: View {
         }
       }
       .padding(.horizontal, 14)
-      .frame(width: 112)
-      .frame(minHeight: 44)
+      .frame(width: fullWidth ? nil : 112)
+      .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
       .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
       .overlay {
         if focused {
@@ -247,7 +255,7 @@ struct SplitEditorView: View {
       }
       Button("Save split", action: save)
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(verdict != .addsUp)
+        .disabled(verdict != .addsUp || lines.contains { TextLimit.note.isOver($0.note) })
         .accessibilityIdentifier("split.save")
     }
     .padding(.horizontal, HSpacing.insetPage)
