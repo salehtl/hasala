@@ -832,13 +832,16 @@ struct ReviewCardView<Actions: View>: View {
       .accessibilityLabel(spoken)
       .accessibilityActions { actions() }
       .accessibilityIdentifier("review.merchant")
-      if let line = card.copyLine {
-        copyStrip(line)
-      } else if let r = card.reviewReason {
-        reasonStrip(r)
-      } else if let s = card.suggestion {
-        strip(s)
+      Group {
+        if let line = card.copyLine {
+          copyStrip(line)
+        } else if let r = card.reviewReason {
+          reasonStrip(r)
+        } else if let s = card.suggestion {
+          strip(s)
+        }
       }
+      .layoutPriority(1)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(HColor.surfacePrimary)
@@ -877,9 +880,11 @@ struct ReviewCardView<Actions: View>: View {
         Text(card.merchant)
           .hType(.section)
           .foregroundStyle(HColor.textPrimary)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
           .fixedSize(horizontal: false, vertical: true)
         if let raw = card.rawMerchant {
           InfoChip(raw, style: .rawText)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
         }
       }
       .padding(.top, 16)
@@ -893,7 +898,8 @@ struct ReviewCardView<Actions: View>: View {
                 unitColor: card.isIncome ? HColor.moneyIn : HColor.textPrimary, unitGap: 6,
                 sign: card.isIncome ? .income : .none)
       Text(card.meta).hType(.footnote).foregroundStyle(HColor.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+        .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+        .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
     }
   }
 
@@ -902,6 +908,8 @@ struct ReviewCardView<Actions: View>: View {
       Text(line)
         .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textPrimary)
+        .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
+        .truncationMode(.middle)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("review.copy")
