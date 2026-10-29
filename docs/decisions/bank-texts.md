@@ -511,7 +511,7 @@ On the device, outside the synced data, and never sent:
 - the time the automation last ran (one value, overwritten on each run, for every text
   handed to the action while the person is signed in and after the first unlock, because
   the app cannot see the automation any other way);
-- the time of the last text that Hasala added as a row (one value for all banks, overwritten
+- the time of the last text that Hasala added as a row (one value for every sender, overwritten
   on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day
   and each kind of texts set aside as not payments (steps 1, 3 and 5; see
