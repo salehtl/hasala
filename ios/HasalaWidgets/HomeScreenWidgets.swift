@@ -12,6 +12,8 @@ enum WaitingCopy {
   static let project = "Start a project in Plan to see it here."
   static let goal = "Add a savings goal in Plan to see it here."
   static let category = "Set a budget in Plan to watch a category."
+  static let projectGone = "Touch and hold to choose a project."
+  static let goalGone = "Touch and hold to choose a goal."
 }
 
 struct GlanceCard<Content: View>: View {
@@ -201,8 +203,13 @@ struct ProjectEntryView: View {
     if let model = entry.snapshot?.project(entry.selection) {
       GlanceCard(link: .plan, fill: light) { ProjectWidgetView(model, hidden: entry.hidden) }
     } else {
-      Waiting(title: "Project", sentence: entry.stale ? WaitingCopy.stale : WaitingCopy.project, link: .plan)
+      Waiting(title: "Project", sentence: sentence, link: .plan)
     }
+  }
+
+  private var sentence: String {
+    if entry.stale { return WaitingCopy.stale }
+    return entry.snapshot?.projects.isEmpty == false ? WaitingCopy.projectGone : WaitingCopy.project
   }
 }
 
@@ -227,8 +234,13 @@ struct GoalEntryView: View {
         GoalWidgetView(model, hidden: entry.hidden)
       }
     } else {
-      Waiting(title: "Goal", sentence: entry.stale ? WaitingCopy.stale : WaitingCopy.goal, link: .plan)
+      Waiting(title: "Goal", sentence: sentence, link: .plan)
     }
+  }
+
+  private var sentence: String {
+    if entry.stale { return WaitingCopy.stale }
+    return entry.snapshot?.goals.isEmpty == false ? WaitingCopy.goalGone : WaitingCopy.goal
   }
 }
 

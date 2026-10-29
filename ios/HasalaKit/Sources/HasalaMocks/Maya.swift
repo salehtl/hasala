@@ -200,6 +200,7 @@ public enum Maya {
       spark: [171, 229, 200, 329, 300, 429, 400, 557, 529, 686, 743].map(Permille.init)
     )),
     .project(ProjectWidget(
+      id: "japan",
       name: "Japan trip",
       glyph: .travel,
       left: .aed(7_140_00),
@@ -207,6 +208,7 @@ public enum Maya {
       progress: Permille.ratio(4_860_00, of: 12_000_00)
     )),
     .goal(GoalWidget(
+      id: "emergency",
       name: "Emergency fund",
       glyph: .savingsJar,
       progress: Permille.ratio(38_500_00, of: 50_000_00),
