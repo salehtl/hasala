@@ -159,7 +159,7 @@ struct BankTextsCoreWiringTests {
       #expect(!json.contains("الحد الائتماني") && !json.contains("DIB-SMS"))
     }
     let data = r.facts.read(nowMs: BankTextIntake.ms(Self.t0))
-    #expect(data.lastKeptMs == ["": BankTextIntake.ms(Self.t0)] && data.lastRunMs == BankTextIntake.ms(Self.t0))
+    #expect(data.lastTextMs == BankTextIntake.ms(Self.t0) && data.lastKeptMs.isEmpty && data.lastRunMs == BankTextIntake.ms(Self.t0))
     #expect(r.transport.requests == 0)
   }
 
@@ -195,7 +195,7 @@ struct BankTextsCoreWiringTests {
     let data = r.facts.read(nowMs: BankTextIntake.ms(Self.t0))
     #expect(data.setAsideRecent(nowMs: BankTextIntake.ms(Self.t0)).map(\.count) == [1])
     #expect(data.setAsideRecent(nowMs: BankTextIntake.ms(Self.t0)).first?.kind == .oneTimeCode)
-    #expect(data.link == nil && data.lastKeptMs.isEmpty)
+    #expect(data.link == nil && data.lastKeptAtMs == nil)
     #expect(try r.secrets.read(.textKeySecret) == nil)
   }
 

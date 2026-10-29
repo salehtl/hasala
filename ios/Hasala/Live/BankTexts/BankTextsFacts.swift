@@ -25,6 +25,7 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   var chosen = false
   var lastRunMs: Int64?
   var lastKeptMs: [String: Int64] = [:]
+  var lastTextMs: Int64?
   var setAside: [SetAside] = []
   var ignored: [DayCount] = []
   var testPassedMs: Int64?
@@ -61,10 +62,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     }
   }
 
-  var lastKeptAtMs: Int64? { lastKeptMs.values.max() }
+  var lastKeptAtMs: Int64? { ([lastTextMs].compactMap { $0 } + lastKeptMs.values).max() }
 
   mutating func noteKept(atMs ms: Int64) {
-    lastKeptMs = ["": max(lastKeptAtMs ?? 0, ms)]
+    lastTextMs = max(lastKeptAtMs ?? ms, ms)
+    lastKeptMs = [:]
   }
 
   mutating func addIgnored(_ n: Int = 1, atMs: Int64) {

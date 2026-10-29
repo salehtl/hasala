@@ -3,6 +3,9 @@ import HasalaModels
 import SwiftUI
 
 enum BankTextsGuide {
+  static let intro =
+    "One automation hands Hasala each text you get that has a full stop. \(BankTexts.keepsPayments) \(BankTexts.anyBankLine)"
+
   static let runImmediately = "Choose Run Immediately, then tap Next."
   static let newBlank = "Tap New Blank Automation, then Add Action."
   static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")

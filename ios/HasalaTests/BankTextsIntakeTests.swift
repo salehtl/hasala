@@ -385,14 +385,14 @@ struct BankTextsIntakeTests {
   @Test func anAuthoredTextNotesTheLastTextAndTheRun() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
-    #expect(r.factsData.lastKeptMs == ["": BankTextIntake.ms(Self.t0)])
+    #expect(r.factsData.lastTextMs == BankTextIntake.ms(Self.t0) && r.factsData.lastKeptMs.isEmpty)
     #expect(r.factsData.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
   @Test func anAuthoredTextWithNoBankStillNotesTheLastText() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.personal, sender: nil, at: Self.t0) == .authored(filed: false))
-    #expect(r.factsData.lastKeptMs == ["": BankTextIntake.ms(Self.t0)])
+    #expect(r.factsData.lastTextMs == BankTextIntake.ms(Self.t0) && r.factsData.lastKeptMs.isEmpty)
     #expect(lane(r).lastTextAt == Self.t0)
   }
 
@@ -400,9 +400,9 @@ struct BankTextsIntakeTests {
     var d = BankTextsFactsData()
     d.lastKeptMs = ["dib": 5_000, "enbd": 9_000]
     d.noteKept(atMs: 7_000)
-    #expect(d.lastKeptMs == ["": 9_000] && d.lastKeptAtMs == 9_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 9_000 && d.lastKeptAtMs == 9_000)
     d.noteKept(atMs: 12_000)
-    #expect(d.lastKeptMs == ["": 12_000])
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 12_000)
   }
 
   @Test func aCoreThatIsNotWiredFailsLoudly() async {
@@ -792,7 +792,7 @@ struct BankTextsIntakeTests {
     #expect(r.author.calls.map(\.origin) == [.paste(replacing: "sms-1"), .paste(replacing: nil)])
     #expect(r.author.calls.allSatisfy { $0.sender == nil && $0.link == .unknownUnanswered })
     #expect(r.author.calls.first?.arrivedAt == Date(timeIntervalSince1970: 1_791_999_960))
-    #expect(r.factsData.lastKeptMs.isEmpty && r.factsData.lastRunMs == nil)
+    #expect(r.factsData.lastKeptAtMs == nil && r.factsData.lastRunMs == nil)
   }
 
   @Test func pasteIsRefusedWhileTheCopySaysLinked() async {

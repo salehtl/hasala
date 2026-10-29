@@ -151,7 +151,7 @@ struct BankTextsTests {
     #expect(!BankTexts.anyBankLine.lowercased().contains("automatically"))
     let lines = [
       BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsNoText,
-      BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine,
+      BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine, BankTextsGuide.intro,
     ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.checklist.map(\.detail)
     for line in lines {
       for bank in SupportedBank.allCases {
@@ -257,6 +257,9 @@ struct BankTextsTests {
     for line in [BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts] {
       #expect(line.contains("from any sender") && line.contains("dropped at once"))
       #expect(!line.contains("only your banks"))
+    }
+    for surface in [BankTextsGuide.intro, BankTexts.keepsPayments + " " + BankTexts.anyBankLine] {
+      #expect(surface.contains("from any sender") && surface.contains("waits in Review"), "\(surface)")
     }
   }
 
