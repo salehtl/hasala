@@ -45,6 +45,7 @@
     }
 
     func requestBank(_ name: String) async throws(SetupFailure) {
+      guard BankName.valid(BankName.normalized(name)) else { throw .failed(BankName.hint) }
       requestedBanks.append(name)
       if !requests.contains(where: { $0.name == name }) {
         requests.append(RequestedBank(bank: "other", name: name, state: .requested))

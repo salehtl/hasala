@@ -76,7 +76,7 @@ struct BankTextsAlertsPage: View {
         }
         automation
         TimelineView(.periodic(from: .now, by: 60)) { context in banks(context.date) }
-        if !lane.setAside.isEmpty { setAsideSection }
+        if !BankTexts.setAsideRows(lane.setAside).isEmpty { setAsideSection }
         howItReads
         switchSection
       }
@@ -217,7 +217,7 @@ struct BankTextsAlertsPage: View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Set aside")
       HListCard {
-        ForEach(Array(lane.setAside.enumerated()), id: \.element.id) { i, row in
+        ForEach(Array(BankTexts.setAsideRows(lane.setAside).enumerated()), id: \.element.id) { i, row in
           if i > 0 { HDivider(inset: .disc68) }
           setAsideRow(row)
         }

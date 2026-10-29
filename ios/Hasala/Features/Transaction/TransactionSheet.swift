@@ -58,13 +58,11 @@ struct TransactionSheet: View {
         case .category: CategoryPickerView(model: model) { app.router.transaction.removeAll() }
         case .note:
           NoteEditorView(note: model.detail?.note ?? "") {
-            model.setNote($0)
-            app.router.transaction.removeAll()
+            if model.setNote($0) { app.router.transaction.removeAll() }
           }
         case .rename:
           RenameMerchantView(name: model.merchantName) {
-            model.rename($0)
-            app.router.transaction.removeAll()
+            if model.rename($0) { app.router.transaction.removeAll() }
           }
         case .split: SplitEditorView(model: model) { app.router.transaction.removeAll() }
         case .project:
@@ -146,7 +144,7 @@ struct TransactionSheet: View {
           Text("Not counted").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textSecondary)
             .accessibilityIdentifier("txn.notCounted")
         } else if let o = home.original, !model.hidden {
-          Text("\(o.currency) \(MoneyFormat.string(o.minor))").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          Text("\(o.currency) \(MoneyFormat.string(o))").hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .accessibilityIdentifier("txn.original")
         }
         Text(d.meta).hType(.subheadline).foregroundStyle(HColor.textSecondary)

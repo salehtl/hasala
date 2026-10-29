@@ -22,6 +22,13 @@ struct AddSenderAddressSheet: View {
   @State private var busy = false
   @State private var failure: String?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var fieldLayout: AnyLayout {
+    typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+      : AnyLayout(HStackLayout(spacing: 12))
+  }
 
   static func note(_ domain: String) -> String {
     "Outlook finds bank alerts only by the exact address they come from. Open an alert from \(domain) and type the address it was sent from."
@@ -36,7 +43,7 @@ struct AddSenderAddressSheet: View {
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
-          HStack(spacing: 12) {
+          fieldLayout {
             TextField("alerts@\(domain)", text: $typed)
               .keyboardType(.emailAddress)
               .textContentType(.emailAddress)

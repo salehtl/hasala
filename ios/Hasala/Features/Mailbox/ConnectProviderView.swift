@@ -245,7 +245,7 @@ private struct ProviderConnectQuestions: ViewModifier {
           Button(MailCopy.keepOnSwitch("Use \(provider.appName)", impact)) { run(true, false) }
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("mail.confirmSwitch")
-          Button("Use \(provider.appName), remove them", role: .destructive) { run(true, true) }
+          Button(MailCopy.removeTitle(impact, lead: "Use \(provider.appName)"), role: .destructive) { run(true, true) }
             .accessibilityIdentifier("mail.confirmSwitch.remove")
           Button("Cancel", role: .cancel) {}
         } else {

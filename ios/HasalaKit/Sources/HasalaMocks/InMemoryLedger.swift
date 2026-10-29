@@ -336,13 +336,14 @@ public final class InMemoryLedger: LedgerStore {
       s.billCandidates.removeAll { $0.id == id }
       let next = c.last.adding(days: c.everyDays)
       let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
-      s.bills.append(Bill(id: "bill-\(id)", name: c.name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
+      let name = BillDraft.fittedName(c.name)
+      s.bills.append(Bill(id: "bill-\(id)", name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
                           amount: c.amount, usualDay: c.last.day, nextDue: next, history: [c.last],
                           source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
                           trackingSince: today,
                           payments: [BillPayment(due: c.last, amount: c.amount, link: .matched)],
                           keys: [c.key ?? c.name.lowercased()]))
-      title = "Tracking \(c.name)"
+      title = "Tracking \(name)"
     case .dismissCandidate(let id):
       guard s.billCandidates.contains(where: { $0.id == id }) else { throw .notFound }
       touchedCandidates = true

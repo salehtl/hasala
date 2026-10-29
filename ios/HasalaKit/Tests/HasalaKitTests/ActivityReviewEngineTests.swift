@@ -105,24 +105,43 @@ struct ActivityReviewEngineParityTests {
   }
 }
 
-/// The queue is oldest first, so nothing waits longest; a To sort row starts the deck at its
-/// own card and reads on down the list.
 @Suite("Review queue order")
 struct ReviewQueueOrderTests {
   let s = MayaLedger.state
+  let oldest: [TxnID] = ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"]
 
-  @Test func theQueueIsOldestFirst() {
-    #expect(ReviewEngine.queue(s).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
+  @Test func theQueueIsNewestFirstByDefault() {
+    #expect(ReviewEngine.queue(s).map(\.id) == oldest.reversed())
+    #expect(ReviewEngine.queue(s, order: .newestFirst).map(\.id) == oldest.reversed())
+  }
+
+  @Test func theQueueCanRunOldestFirst() {
+    #expect(ReviewEngine.queue(s, order: .oldestFirst).map(\.id) == oldest)
+    #expect(ReviewEngine.cards(s, order: .oldestFirst).map(\.id) == oldest)
+  }
+
+  @Test func theTwoOrdersAreStrictlyByPostedTime() {
+    for order in ReviewOrder.allCases {
+      let times = ReviewEngine.queue(s, order: order).map(\.postedAt)
+      let sorted = order == .newestFirst ? times.sorted(by: >) : times.sorted()
+      #expect(times == sorted)
+    }
+  }
+
+  @Test func theOrdersHaveTheirTitles() {
+    #expect(ReviewOrder.allCases.map(\.title) == ["Newest first", "Oldest first"])
+    #expect(ReviewOrder(rawValue: ReviewOrder.oldestFirst.rawValue) == .oldestFirst)
   }
 
   @Test func skippedCardsLeaveTheQueueForToday() {
     var skipped = s
     skipped.skippedReview = ["transfer-in"]
-    #expect(ReviewEngine.queue(skipped).map(\.id) == ["atm", "apple", "lulu", "dubai-taxi", "steam"])
+    #expect(ReviewEngine.queue(skipped, order: .oldestFirst).map(\.id) == ["atm", "apple", "lulu", "dubai-taxi", "steam"])
+    #expect(ReviewEngine.queue(skipped).map(\.id) == ["steam", "dubai-taxi", "lulu", "apple", "atm"])
   }
 
   @Test func aSessionStartsAtTheRowTapped() {
-    let ids = ReviewEngine.queue(s).map(\.id)
+    let ids = ReviewEngine.queue(s, order: .oldestFirst).map(\.id)
     #expect(ReviewEngine.order(ids, startingAt: "apple") == ["apple", "lulu", "dubai-taxi", "steam", "atm", "transfer-in"])
     #expect(ReviewEngine.order(ids, startingAt: nil) == ids)
     #expect(ReviewEngine.order(ids, startingAt: "gone") == ids)

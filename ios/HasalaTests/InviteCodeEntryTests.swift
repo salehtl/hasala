@@ -86,11 +86,22 @@ struct InviteCodeEntryTests {
       e = type(keys, into: e)
 
       let ns = shown as NSString
-      let expected = InviteCode.entryCharacters(ns.substring(to: offset)) + InviteCode.entryCharacters(keys)
-        + InviteCode.entryCharacters(ns.substring(from: offset))
+      let head = InviteCode.entryCharacters(ns.substring(to: offset))
+      let tail = InviteCode.entryCharacters(ns.substring(from: offset))
+      let room = InviteCode.entryLimit - head.count - tail.count
+      let expected = head + InviteCode.entryCharacters(keys).prefix(room) + tail
       #expect(e.characters == expected, "\(keys) at \(offset) of \(shown)")
       #expect(e.text == InviteCode.group(expected))
     }
+  }
+
+  @Test func typingPastTheLimitKeepsWhatIsThere() {
+    let pasted = InviteCodeEntry.edit("", range: NSRange(location: 0, length: 0), replacement: Self.grouped)
+    let e = type("ABCDEFGHIJKLMNOPQRST", into: pasted)
+    #expect(e.characters == Self.code + "ABCDEFGH")
+    #expect(e.characters.count == InviteCode.entryLimit)
+    let mid = type("XY", into: InviteCodeEntry.edit(e.text, range: NSRange(location: 2, length: 0), replacement: ""))
+    #expect(mid.characters == e.characters)
   }
 
   // MARK: Pasting

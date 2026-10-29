@@ -80,11 +80,17 @@ public enum AccountsEngine {
     return AccountRowModel(id: a.id, name: a.name, plate: plate, hue: hue(a.kind), balance: a.balance, detail: detail)
   }
 
-  /// A bank's initials from its short name, as the plates draw them: its capitals ("Emirates
-  /// NBD" → "ENBD", "DIB card" → "DIB", "Sarwa" → "S"), at most four.
+  /// A bank's initials from its short name, as the plates draw them: an all-caps word of four
+  /// letters or fewer as it is, the initial of each other capitalised word ("Emirates NBD" →
+  /// "ENBD", "DIB card" → "DIB", "RAKBANK" → "R", "Sarwa" → "S"), at most four.
   static func initials(_ name: String) -> String {
-    let capitals = name.filter(\.isUppercase)
-    return String((capitals.isEmpty ? String(name.prefix(1)).uppercased() : capitals).prefix(4))
+    let marks = name.split(whereSeparator: \.isWhitespace).compactMap { word -> String? in
+      let letters = word.filter(\.isLetter)
+      guard let first = letters.first, first.isUppercase else { return nil }
+      return letters.count <= 4 && letters.allSatisfy(\.isUppercase) ? String(letters) : String(first)
+    }.joined()
+    let fallback = name.first(where: \.isLetter).map { String($0).uppercased() } ?? String(name.prefix(1))
+    return String((marks.isEmpty ? fallback : marks).prefix(4))
   }
 
   /// The plate's hue says what kind of account it is: a current account sky, a card sand,

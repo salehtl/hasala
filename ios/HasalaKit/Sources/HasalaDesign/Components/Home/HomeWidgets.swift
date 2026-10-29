@@ -110,9 +110,13 @@ public struct BudgetPaceWidgetView: View {
     self.hidden = hidden
   }
 
+  private var nothingPlanned: Bool { model.rows.allSatisfy { $0.budget.minor == 0 } }
+
   public var body: some View {
     Group {
-      if host == .system {
+      if nothingPlanned {
+        empty
+      } else if host == .system {
         ViewThatFits(in: .vertical) {
           content(model.rows, spacing: 6, rowSpacing: 4)
           content(model.rows.filter { $0.bucket != .savings }, spacing: 8, rowSpacing: 6)
@@ -128,18 +132,33 @@ public struct BudgetPaceWidgetView: View {
     .accessibilityLabel("Budget pace, \(model.monthGone)")
   }
 
+  private var empty: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      header
+      Text("Nothing planned yet. Set a budget in Plan to see your pace here.")
+        .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("budgetPace.empty")
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var header: some View {
+    ReflowingRow {
+      HStack(spacing: 8) {
+        Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
+          .overlay { HIconView(.tabPlan, size: 16, color: HColor.actionAccent) }
+          .accessibilityHidden(true)
+        Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      }
+    } trailing: {
+      Text(model.monthGone).hType(.footnote).foregroundStyle(HColor.textSecondary)
+    }
+  }
+
   private func content(_ rows: [BucketPaceRow], spacing: CGFloat, rowSpacing: CGFloat) -> some View {
     VStack(alignment: .leading, spacing: spacing) {
-      ReflowingRow {
-        HStack(spacing: 8) {
-          Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
-            .overlay { HIconView(.tabPlan, size: 16, color: HColor.actionAccent) }
-            .accessibilityHidden(true)
-          Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-        }
-      } trailing: {
-        Text(model.monthGone).hType(.footnote).foregroundStyle(HColor.textSecondary)
-      }
+      header
       ForEach(rows) { row in
         VStack(spacing: rowSpacing) {
           ReflowingRow(spacing: 12) {
@@ -189,9 +208,9 @@ public struct BudgetPaceWidgetView: View {
 
   /// The right of a row that is not done: "770 over", "5,000 to save" or "3,309 left".
   private func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
-    row.verdict == .overBudget
-      ? wholeDirhams(Money(minor: row.left.minor.negated), "over")
-      : wholeDirhams(row.left, row.bucket == .savings ? "to save" : "left")
+    if row.verdict == .overBudget { return wholeDirhams(Money(minor: row.left.minor.negated), "over") }
+    if row.bucket == .savings { return wholeDirhams(row.left, "to save") }
+    return wholeDirhams(row.left, "left")
   }
 
   private func fill(_ row: BucketPaceRow) -> Color {
@@ -488,8 +507,8 @@ struct TodayRow: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(row.merchant), \(row.detail)")
-    .accessibilityValue(MoneyText.spoken(row.amount, style: .rounded, sign: row.isIncome ? .income : .none,
-                                         hidden: hidden))
+    .accessibilityValue(MoneyText.spoken(row.amount, style: foreign ? .exact : .rounded, sign: row.isIncome ? .income : .none,
+                                         approx: row.estimate, hidden: hidden) + (row.notCounted ? ", not counted" : ""))
   }
 
   @ViewBuilder private var disc: some View {
@@ -508,10 +527,18 @@ struct TodayRow: View {
     }
   }
 
+  private var foreign: Bool { row.amount.currency != Money.home }
+
   private var amount: some View {
-    MoneyText(row.amount, figure: .compact, style: .rounded, hidden: hidden, hiddenGlyphs: 3,
-              color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: row.isIncome ? .income : .none)
-      .fixedSize()
+    VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
+      MoneyText(row.amount, figure: .compact, unit: foreign ? .compact : nil, style: foreign ? .exact : .rounded,
+                hidden: hidden, hiddenGlyphs: 3, color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, unitGap: 4,
+                sign: row.isIncome ? .income : .none, approx: row.estimate)
+        .fixedSize()
+      if row.notCounted {
+        Text("Not counted").hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize()
+      }
+    }
   }
 }
 

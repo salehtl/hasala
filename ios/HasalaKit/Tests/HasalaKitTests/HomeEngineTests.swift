@@ -184,6 +184,41 @@ struct HomeHeroTests {
     #expect(hero(arrived).state == .live)
   }
 
+  @Test func unsortedSpendingIsItsOwnLine() throws {
+    let h = hero(MayaLedger.state)
+    let unsorted = try #require(h.unsorted)
+    #expect(unsorted == .aed(827_28))
+    #expect(h.spent.minor == Fils.sum(h.tiles.prefix(2).map(\.value.minor)) + unsorted.minor)
+    #expect(h.unsortedLine?.rendered(hidden: false) == "Not sorted: AED 827.28")
+    #expect(h.unsortedLine?.rendered(hidden: true) == "Not sorted: AED •••")
+    let sorted = Self.maya { s in
+      for i in s.txns.indices where s.txns[i].categoryID == nil { s.txns[i].categoryID = "groceries" }
+    }
+    #expect(hero(sorted).unsorted == nil)
+    let open = Set(ReviewEngine.queue(MayaLedger.state).map(\.id))
+    let skipped = Self.maya { s in s.skippedReview = open }
+    #expect(hero(skipped).unsorted == nil)
+    let gone = Self.maya { s in
+      for i in s.txns.indices where s.txns[i].categoryID == nil {
+        s.txns[i].categoryID = "deleted"
+        s.txns[i].needsReview = false
+      }
+    }
+    #expect(hero(gone).unsorted == nil)
+  }
+
+  @Test func aSixFigureTileRoundsEveryTile() {
+    let s = Self.maya { s in
+      var big = s.txns.first { $0.categoryID == "groceries" && $0.postedAt.date.yearMonth == MayaLedger.october }!
+      big.id = "big"
+      big.amount = .aed(150_000_00)
+      s.txns.append(big)
+    }
+    let h = hero(s)
+    #expect(h.tiles.allSatisfy { $0.style == .rounded })
+    #expect(hero(MayaLedger.state).tiles.allSatisfy { $0.style == .exact })
+  }
+
   /// Savings part way shows only what was saved, so the tile never truncates.
   @Test func savingsPartWayShowsWhatWasSaved() {
     let s = Self.maya { s in s.txns.removeAll { $0.id == "standing-order" } }
@@ -202,8 +237,10 @@ struct NotificationsEngineTests {
     #expect(n.count == 4)
     #expect(n.needsALook.map(\.id) == ["review", "bill.axa", "found.apple-bill", "price.du"])
     #expect(n.needsALook.map(\.title) == [
-      "6 transactions to sort", "AXA Insurance may be late", "Found a bill: Apple.com/bill", "du has a new price",
+      "6 transactions to sort", "\u{2068}AXA Insurance\u{2069} may be late", "Found a bill: \u{2068}Apple.com/bill\u{2069}",
+      "\u{2068}du\u{2069} has a new price",
     ])
+    #expect(n.needsALook.map(\.count) == [6, 0, 0, 0])
     #expect(n.needsALook.map { $0.line.rendered(hidden: false) } == [
       "AED 827.28 still to check", "Usually on the 7th · no email yet", "Seen 5× · every ~30 days",
       "427.90 from 389.00 · accept or check",
@@ -271,8 +308,31 @@ struct NotificationsEngineTests {
     #expect(NotificationsEngine.when(LocalDate(2026, 10, 9), today: today) == "Yesterday")
     #expect(NotificationsEngine.when(LocalDate(2026, 10, 8), today: today) == "Thu")
     #expect(NotificationsEngine.when(LocalDate(2026, 10, 4), today: today) == "Sun")
-    #expect(NotificationsEngine.when(LocalDate(2026, 10, 3), today: today) == "3 Oct")
-    #expect(NotificationsEngine.when(LocalDate(2026, 9, 28), today: today) == "28 Sep")
+    #expect(NotificationsEngine.when(LocalDate(2026, 10, 3), today: today) == "Sat 3 Oct")
+    #expect(NotificationsEngine.when(LocalDate(2026, 9, 28), today: today) == "Mon 28 Sep")
+    #expect(NotificationsEngine.when(LocalDate(2025, 12, 14), today: today) == "Sun 14 Dec 2025")
+  }
+
+  @Test func countsAreGroupedAndCarried() {
+    var s = MayaLedger.state
+    let template = s.txns.first { $0.needsReview }!
+    for i in 0..<1_300 {
+      var t = template
+      t.id = "bulk-\(i)"
+      s.txns.append(t)
+    }
+    let item = NotificationsEngine.snapshot(s, now: now).needsALook[0]
+    #expect(item.count == ReviewEngine.queue(s).count)
+    #expect(item.title == "\(MoneyFormat.count(item.count)) transactions to sort")
+    #expect(item.title.hasPrefix("1,3"))
+  }
+
+  @Test func anArabicBillNameIsIsolated() {
+    var s = MayaLedger.state
+    let i = s.bills.firstIndex { $0.id == "axa" }!
+    s.bills[i].name = "مطعم الأمير"
+    let item = NotificationsEngine.snapshot(s, now: now).needsALook.first { $0.id == "bill.axa" }
+    #expect(item?.title == "\u{2068}مطعم الأمير\u{2069} may be late")
   }
 }
 
@@ -298,10 +358,34 @@ struct HomeWidgetEngineTests {
     #expect(goal.caption.rendered(hidden: false) == "38,500 of 50,000 · Jan")
     #expect(goal.percentLabel == "77%")
     #expect(MoneyFormat.string(bill.amount.minor, style: .rounded) == "489")
-    #expect(bill.caption == "DEWA · expected Wed")
+    #expect(bill.caption == "Expected Wed · DEWA")
     #expect(pace.monthGone == "32% of October gone")
     #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["3,309", "5,402", "0"])
     #expect(pace.rows.map(\.verdict) == [.onTrack, .onTrack, .done])
+  }
+
+    @Test func savingsWithNoPlanIsDone() {
+    var s = MayaLedger.state
+    for c in s.categories(in: .savings) { s.plan.budgets[PlanState.key(c.id, MayaLedger.october)] = .aed(0) }
+    guard case .budgetPace(let pace) = HomeEngine.snapshot(s, now: MayaLedger.now).widgets[0] else {
+      Issue.record("no Budget pace")
+      return
+    }
+    let savings = pace.rows.first { $0.bucket == .savings }
+    #expect(savings?.verdict == .done)
+    #expect(savings?.budget == .aed(0))
+  }
+
+  @Test func nothingSavedOfNothingPlannedIsNotDone() {
+    var s = MayaLedger.state
+    for c in s.categories(in: .savings) { s.plan.budgets[PlanState.key(c.id, MayaLedger.october)] = .aed(0) }
+    let savings = Set(s.categories(in: .savings).map(\.id))
+    s.txns.removeAll { t in t.categoryID.map(savings.contains) ?? false }
+    guard case .budgetPace(let pace) = HomeEngine.snapshot(s, now: MayaLedger.now).widgets[0] else {
+      Issue.record("no Budget pace")
+      return
+    }
+    #expect(pace.rows.first { $0.bucket == .savings }?.verdict == .onTrack)
   }
 
   /// A bucket past its plan is over budget on the widget (full rose, "x over").
@@ -377,6 +461,22 @@ struct HomeNotCountedTests {
     #expect(line.amount == .aed(342_15))
     #expect(line.projectID == "move")
     #expect(live(carved).spent.minor + 342_15 == live(counted).spent.minor)
+  }
+
+  @Test func rangeLabelsNameTheYearOnlyAcrossYears() {
+    let across = HomeEngine.rangeHero(MayaLedger.state, period: Period(YearMonth(2025, 11), YearMonth(2026, 10)), now: now)
+    #expect(across.bars.first?.label == "Nov '25")
+    #expect(across.bars.last?.label == "Oct '26")
+    let within = HomeEngine.rangeHero(MayaLedger.state, period: Period(YearMonth(2026, 8), YearMonth(2026, 10)), now: now)
+    #expect(within.bars.map(\.label) == ["Aug", "Sep", "Oct"])
+  }
+
+  @Test func noFullMonthSaysSo() {
+    let month = Period(MayaLedger.october, MayaLedger.october)
+    #expect(HomeEngine.rangeHero(MayaLedger.state, period: month, now: now).word.rendered(hidden: false) == "No full month yet")
+    let all = HomeEngine.allTimeHero(MayaLedger.state, period: month, now: now)
+    #expect(all.word.rendered(hidden: false) == "No full month yet")
+    #expect(all.fact == nil)
   }
 
   @Test func aRangeAddsUpEveryMonth() throws {

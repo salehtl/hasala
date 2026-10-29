@@ -97,15 +97,20 @@ public struct HeroMonthBar: Sendable, Hashable, Identifiable {
   public var spent: Money
   public var plan: Money
   public var verdict: Verdict
+  public var showsYear: Bool
 
-  public init(month: YearMonth, spent: Money, plan: Money, verdict: Verdict) {
+  public init(month: YearMonth, spent: Money, plan: Money, verdict: Verdict, showsYear: Bool = false) {
     self.month = month
     self.spent = spent
     self.plan = plan
     self.verdict = verdict
+    self.showsYear = showsYear
   }
 
-  public var label: String { month.shortName }
+  public var label: String {
+    let yy = month.year % 100
+    return showsYear ? "\(month.shortName) '\(yy < 10 ? "0" : "")\(yy)" : month.shortName
+  }
 }
 
 public struct AboutNowRow: Sendable, Hashable, Identifiable {
@@ -163,6 +168,11 @@ public struct SpendHero: Sendable, Hashable {
   public var note: MoneyPhrase?
   public var notCounted: NotCounted?
   public var unrated: TotalMark?
+  public var unsorted: Money?
+
+  public var unsortedLine: MoneyPhrase? {
+    unsorted.map { MoneyPhrase([.text("Not sorted: AED "), .amount($0, hidden: 3)]) }
+  }
 
   public struct NotCounted: Sendable, Hashable {
     public var amount: Money
@@ -181,8 +191,9 @@ public struct SpendHero: Sendable, Hashable {
   public init(
     state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
     word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue,
-    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil
+    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil, unsorted: Money? = nil
   ) {
+    self.unsorted = unsorted
     self.bars = bars
     self.note = note
     self.notCounted = notCounted

@@ -70,7 +70,7 @@ public enum HomeEngine {
       return SpendHero(
         state: .noPlan, overline: overline, spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
         word: "No plan yet", fact: nil, caption: "spent so far", tiles: tiles, wash: .sky,
-        notCounted: notCounted(s, in: .month(month)))
+        notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month)))
     }
 
     let tick = Self.tick(s, month: month, plan: budget, day: day, days: days)
@@ -96,7 +96,7 @@ public enum HomeEngine {
       caption: planned(budget),
       tiles: tiles,
       wash: verdict == .overBudget ? .rose : (verdict == .overPace ? .sand : .sky),
-      notCounted: notCounted(s, in: .month(month))
+      notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month))
     )
   }
 
@@ -118,6 +118,13 @@ public enum HomeEngine {
       ]))
   }
 
+  public static func unsorted(_ s: LedgerState, in period: Period) -> Money? {
+    let total = Fils.sum(ReviewEngine.queue(s).filter { period.contains($0.postedAt.date) }) { t in
+      Fils.sum(Spending.parts(t, in: s).filter { $0.category == nil }.map(\.minor))
+    }
+    return total > 0 ? .aed(total) : nil
+  }
+
   static func spendingBudget(_ plan: PlanSnapshot) -> Int64 {
     func budget(_ b: Bucket) -> Int64 { plan.sections.first { $0.bucket == b }?.budget.minor ?? 0 }
     return budget(.needs).plus(budget(.wants))
@@ -133,12 +140,13 @@ public enum HomeEngine {
     let tiles = heroTiles(s, month: month)
     let note = topWant(s, month: month)
     let notCounted = notCounted(s, in: .month(month))
+    let unsorted = unsorted(s, in: .month(month))
     guard budget > 0 else {
       return SpendHero(
         state: .ended, overline: "Month ended", spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
         word: MoneyPhrase([.text("No plan for \(month.name)")]), fact: nil,
         caption: MoneyPhrase([.text("spent in \(month.name)")]), tiles: tiles, wash: .sky,
-        note: note, notCounted: notCounted)
+        note: note, notCounted: notCounted, unsorted: unsorted)
     }
     let over = total > budget
     return SpendHero(
@@ -146,7 +154,7 @@ public enum HomeEngine {
       verdict: over ? .overBudget : .onTrack,
       word: MoneyPhrase([.text("Ended "), .amount(.aed(Int64(clamping: budget.minus(total).magnitude)), hidden: 3), .text(over ? " over" : " under")]),
       fact: nil, caption: planned(budget), tiles: tiles, wash: over ? .rose : .sky, note: note,
-      notCounted: notCounted)
+      notCounted: notCounted, unsorted: unsorted)
   }
 
   public static func rangeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
@@ -155,11 +163,12 @@ public enum HomeEngine {
     var needs: Int64 = 0
     var wants: Int64 = 0
     var saved: Int64 = 0
+    let showsYear = period.first.year != period.last.year
     for m in period.months {
       let spent = Spending.total(s, in: m)
       let budget = bucketBudget(s, .needs, m).plus(bucketBudget(s, .wants, m))
       bars.append(HeroMonthBar(month: m, spent: .aed(spent), plan: .aed(budget),
-                               verdict: budget > 0 && spent > budget ? .overBudget : .onTrack))
+                               verdict: budget > 0 && spent > budget ? .overBudget : .onTrack, showsYear: showsYear))
       needs.add(bucketSpent(s, .needs, m))
       wants.add(bucketSpent(s, .wants, m))
       saved.add(bucketSpent(s, .savings, m))
@@ -172,11 +181,11 @@ public enum HomeEngine {
     let overline = "\(period.count) months" + (period.contains(today) ? " · \(today.shortName) to day \(now.date.day)" : "")
     return SpendHero(
       state: .range, overline: overline, spent: .aed(total), plan: .aed(budget), tick: nil, verdict: nil,
-      word: n > 0 ? MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]) : "",
+      word: n > 0 ? MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]) : "No full month yet",
       fact: n > 0 ? "full months only" : nil,
       caption: budget > 0 ? planned(budget) : "spent",
       tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
-      wash: .sky, bars: bars, notCounted: notCounted(s, in: period))
+      wash: .sky, bars: bars, notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period))
   }
 
   public static func allTimeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
@@ -198,11 +207,11 @@ public enum HomeEngine {
     let since = "Since \(period.first.shortName) \(period.first.year)"
     return SpendHero(
       state: .range, overline: "All time · \(since)", spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
-      word: full.isEmpty ? "" : MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]),
+      word: full.isEmpty ? "No full month yet" : MoneyPhrase([.text("Average "), .amount(.aed(average), hidden: 3)]),
       fact: full.isEmpty ? nil : "full months only",
       caption: "spent, all time",
       tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
-      wash: .sky, bars: [], notCounted: notCounted(s, in: period))
+      wash: .sky, bars: [], notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period))
   }
 
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
@@ -231,7 +240,7 @@ public enum HomeEngine {
     }
     let waiting = ReviewEngine.queue(s).count
     if waiting > 0 {
-      rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(waiting) waiting")]), destination: .review(nil)))
+      rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(MoneyFormat.count(waiting)) waiting")]), destination: .review(nil)))
     }
     return rows
   }
@@ -275,7 +284,8 @@ public enum HomeEngine {
   }
 
   static func heroTiles(needs: Int64, wants: Int64, saved: Int64, style: MoneyStyle = .exact) -> [HeroTile] {
-    [
+    let style = [needs, wants, saved].contains { $0.magnitude >= 100_000_00 } ? .rounded : style
+    return [
       HeroTile("Needs", .aed(needs), style: style), HeroTile("Wants", .aed(wants), style: style),
       HeroTile("Savings", .aed(saved), style: style),
     ]
@@ -290,7 +300,7 @@ public enum HomeEngine {
         let spent = sec.budget.minor.minus(sec.left.minor)
         let verdict: Verdict
         if sec.bucket == .savings {
-          verdict = sec.budget.minor > 0 && spent >= sec.budget.minor ? .done : .onTrack
+          verdict = spent > 0 && spent >= sec.budget.minor ? .done : .onTrack
         } else {
           verdict = spent > sec.budget.minor ? .overBudget : .onTrack
         }
@@ -406,7 +416,7 @@ public enum HomeEngine {
       glyph: c?.glyph ?? .utilities, hue: c?.hue ?? .sand,
       due: StatusPill(n == 0 ? "Today" : (n == 1 ? "Tomorrow" : "In \(n) days"), tone: .warning, showsDot: false),
       amount: next.amount,
-      caption: "\(next.name) · expected \(next.nextDue.weekdayShort)"
+      caption: "Expected \(next.nextDue.weekdayShort) · \(next.name)"
     )
   }
 
@@ -462,7 +472,7 @@ public enum HomeEngine {
       ? .signedMoney(.aed(todayTotal), style: .rounded, hiddenGlyphs: 3) : .amount(.aed(todayTotal), .rounded, hidden: 3)
     return TodayWidget(
       summary: MoneyPhrase([
-        .text("\(today.count) transaction\(today.count == 1 ? "" : "s") · "), figure,
+        .text("\(MoneyFormat.count(today.count)) transaction\(today.count == 1 ? "" : "s") · "), figure,
       ]),
       rows: today.prefix(3).map { t in
         let c = s.category(t.categoryID)

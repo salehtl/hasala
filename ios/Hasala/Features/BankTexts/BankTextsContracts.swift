@@ -192,7 +192,8 @@ enum BankTexts {
 
   static func ignoredLine(_ count: Int) -> String? {
     guard count > 0 else { return nil }
-    let texts = count == 1 ? "1 text that looks like a payment was" : "\(count) texts that look like payments were"
+    let texts =
+      count == 1 ? "1 text that looks like a payment was" : "\(MoneyFormat.count(count)) texts that look like payments were"
     return "\(texts) ignored in the last 30 days because this account reads bank email."
   }
 
@@ -236,24 +237,30 @@ enum BankTexts {
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1
       ? "1 text that looks like a payment arrived while your iPhone was locked after a restart. Paste it from Messages."
-      : "\(n) texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages."
+      : "\(MoneyFormat.count(n)) texts that look like payments arrived while your iPhone was locked after a restart. Paste them from Messages."
   }
 
   static func kindName(_ kind: BankTextDropKind, count n: Int) -> String {
     let one = n == 1
     return switch kind {
-    case .oneTimeCode: one ? "1 one-time code" : "\(n) one-time codes"
-    case .declined: one ? "1 declined payment" : "\(n) declined payments"
-    case .notice: one ? "1 notice" : "\(n) notices"
-    case .promotion: one ? "1 promotion" : "\(n) promotions"
-    case .noPaymentShape: one ? "1 other text" : "\(n) other texts"
+    case .oneTimeCode: one ? "1 one-time code" : "\(MoneyFormat.count(n)) one-time codes"
+    case .declined: one ? "1 declined payment" : "\(MoneyFormat.count(n)) declined payments"
+    case .notice: one ? "1 notice" : "\(MoneyFormat.count(n)) notices"
+    case .promotion: one ? "1 promotion" : "\(MoneyFormat.count(n)) promotions"
+    case .noPaymentShape: one ? "1 other text" : "\(MoneyFormat.count(n)) other texts"
     }
   }
 
   static func setAsideDetail(_ s: BankTextsSetAside) -> String {
-    let head = s.total == 1 ? "1 text set aside in the last 30 days" : "\(s.total) texts set aside in the last 30 days"
+    let head =
+      s.total == 1
+      ? "1 text set aside in the last 30 days" : "\(MoneyFormat.count(s.total)) texts set aside in the last 30 days"
     let kinds = BankTextDropKind.allCases.compactMap { k in s.counts[k].flatMap { $0 > 0 ? kindName(k, count: $0) : nil } }
-    return "\(head)\n\(kinds.joined(separator: ", "))"
+    return kinds.isEmpty ? head : "\(head)\n\(kinds.joined(separator: ", "))"
+  }
+
+  static func setAsideRows(_ rows: [BankTextsSetAside]) -> [BankTextsSetAside] {
+    rows.filter { $0.total > 0 }
   }
 
   static let setAsideFootnote =

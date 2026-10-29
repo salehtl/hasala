@@ -68,7 +68,8 @@ struct HomeView: View {
           openNotCounted: { model.openNotCounted($0) },
           openRates: { mark in
             app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))
-          })
+          },
+          openUnsorted: { app.router.tab = .review })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)

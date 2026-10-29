@@ -242,9 +242,11 @@ struct StoriesView: View {
       Text("Hasala")
         .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textPrimary)
-      Text("Welcome")
-        .hType(.subheadline)
-        .foregroundStyle(HColor.textOnWashSecondary)
+      if !typeSize.isAccessibilitySize {
+        Text("Welcome")
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textOnWashSecondary)
+      }
       Spacer(minLength: 0)
     }
     .frame(minHeight: 36)

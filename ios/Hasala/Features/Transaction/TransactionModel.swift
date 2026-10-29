@@ -26,8 +26,8 @@ protocol TransactionModel: AnyObject, Observable {
   /// The merchant as it is now ("Lulu Hypermarket"), for "Always use X for M".
   var merchantName: String { get }
   func choose(_ category: CategoryID, alwaysUse: Bool)
-  func setNote(_ note: String)
-  func rename(_ name: String)
+  @discardableResult func setNote(_ note: String) -> Bool
+  @discardableResult func rename(_ name: String) -> Bool
   @discardableResult func saveSplit(_ lines: [SplitLine]) -> Bool
   func removeSplit()
   func toggleRefund()
@@ -65,8 +65,8 @@ final class TransactionViewModel: TransactionModel {
     app.perform(.categorize(id, category, learnRule: alwaysUse, project: nil))
   }
 
-  func setNote(_ note: String) { app.perform(.setNote(id, note)) }
-  func rename(_ name: String) { app.perform(.renameMerchant(id, name)) }
+  @discardableResult func setNote(_ note: String) -> Bool { app.perform(.setNote(id, note)) }
+  @discardableResult func rename(_ name: String) -> Bool { app.perform(.renameMerchant(id, name)) }
   @discardableResult func saveSplit(_ lines: [SplitLine]) -> Bool { app.perform(.split(id, lines)) }
   func removeSplit() { app.perform(.split(id, [])) }
   func toggleRefund() { app.perform(.markRefund(id)) }
