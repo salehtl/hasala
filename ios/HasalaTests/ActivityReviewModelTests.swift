@@ -262,6 +262,9 @@ struct ActivityReviewModelTests {
     #expect(ReviewTabView.countLine(0) == "All caught up")
     #expect(ActivityContent.minutes(6) == "about 1 minute")
     #expect(ActivityContent.minutes(7) == "about 2 minutes")
+    #expect(ActivityContent.minutes(360) == "about 60 minutes")
+    #expect(ActivityContent.minutes(366) == "about 1 hour")
+    #expect(ActivityContent.minutes(1_284) == "about 4 hours")
   }
 
   @Test func theReviewTabCountsUnreadableMail() {

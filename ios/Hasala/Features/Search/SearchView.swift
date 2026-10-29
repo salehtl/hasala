@@ -16,6 +16,7 @@ struct SearchView: View {
   @State private var ask = AskSearchModel()
   @State private var opened: OpenedTransaction?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
   /// questions (the fourth row, "Compare October with September", needs an answer card).
@@ -305,7 +306,7 @@ struct SearchView: View {
         if !a.scope.isEmpty {
           FlowLayout(spacing: 6) {
             ForEach(a.scope) { chip in
-              Button { ask.remove(chip.part, app.store.state) } label: {
+              Button { ask.remove(chip.part, app.store.state, now: app.store.now) } label: {
                 HStack(spacing: 4) {
                   Text(chip.label).hType(.caption1).foregroundStyle(HColor.textPrimary)
                   HIconView(.close, size: 10, color: HColor.textSecondary, strokeWidth: 2.4)
@@ -382,19 +383,32 @@ struct SearchView: View {
   /// The best match: disc, the merchant with the typed part bold, its last amount and day,
   /// and "See all" (Activity searching the same words).
   private func topResult(_ row: MiniTxnRow, _ q: String) -> some View {
-    HStack(spacing: 12) {
+    let summary = HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
       CategoryDisc(hue: row.hue, icon: row.glyph.icon)
       VStack(alignment: .leading, spacing: 1) {
         highlighted(row.merchant, q).hType(.body).foregroundStyle(HColor.textPrimary)
         topResultLine(row)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      Button("See all") {
-        SearchHistory.shared.add(q)
-        ActivityRequests.shared.show(TxnFilter(text: q), in: app)
+    }
+    let seeAll = Button("See all") {
+      SearchHistory.shared.add(q)
+      ActivityRequests.shared.show(TxnFilter(text: q), in: app)
+    }
+    .buttonStyle(.pill(.secondary, size: .small))
+    .accessibilityIdentifier("search.seeAll")
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          summary
+          seeAll
+        }
+      } else {
+        HStack(spacing: 12) {
+          summary
+          seeAll
+        }
       }
-      .buttonStyle(.pill(.secondary, size: .small))
-      .accessibilityIdentifier("search.seeAll")
     }
     .padding(.vertical, 14)
     .padding(.leading, 14)
@@ -470,7 +484,7 @@ struct SearchView: View {
         .accessibilityHidden(true)
       Text("No matches for “\(q)”").hType(HType.title3.weight(.bold)).foregroundStyle(HColor.textPrimary)
         .multilineTextAlignment(.center)
-      Text("Try a merchant name or a category.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+      Text("Try a merchant name or a category. Bank alerts usually spell merchant names in English.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
     }
     .padding(.vertical, 32)
@@ -503,19 +517,19 @@ struct SearchResults {
   init(_ q: String, _ s: LedgerState, now: LocalDateTime) {
     let found = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(text: q)).days.flatMap(\.rows)
     // A transaction found by its merchant leads; one found by its category or note follows.
-    let ordered = found.filter { $0.merchant.localizedCaseInsensitiveContains(q) }
-      + found.filter { !$0.merchant.localizedCaseInsensitiveContains(q) }
+    let ordered = found.filter { SearchText.contains($0.merchant, q) }
+      + found.filter { !SearchText.contains($0.merchant, q) }
     rows = ordered.compactMap { r in
       guard let t = s.txn(r.id) else { return nil }
       var row = r
       // "Groceries · Fri 9 Oct": what it was, and when.
-      row.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(t.postedAt.date.short)"
+      row.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(t.postedAt.date.short(today: now.date))"
       return row
     }
-    categories = s.categories.filter { !$0.archived && $0.name.localizedCaseInsensitiveContains(q) }
+    categories = s.categories.filter { !$0.archived && $0.kind == .spending && SearchText.contains($0.name, q) }
       .map(CategoryOption.init)
     rules = s.rules.compactMap { r in
-      guard let p = r.patterns.first(where: { $0.localizedCaseInsensitiveContains(q) }),
+      guard let p = r.patterns.first(where: { SearchText.contains($0, q) }),
             let c = s.category(r.categoryID) else { return nil }
       return RuleMatch(id: r.id, pattern: p.lowercased(), category: c.name,
                        matches: s.txns.count { r.matches($0.merchant) })

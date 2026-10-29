@@ -149,11 +149,13 @@ public enum ActivityEngine {
     let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
     let days = group(listed, s, today: now.date)
     let showsOverview = filter.kind == .all && filter.category == nil && !filter.isSearching
-    let review = showsOverview ? reviewSummary(s, now: now) : nil
+    let review = showsOverview ? reviewSummary(s, now: now, in: window) : nil
     let n = inPeriod.count
-    let noun = "\(n) transaction\(n == 1 ? "" : "s")"
+    let noun = "\(MoneyFormat.count(n)) transaction\(n == 1 ? "" : "s")"
     let countLine =
-      allTime ? "\(listed.count) archived · all time" : isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)"
+      allTime
+      ? "\(MoneyFormat.count(listed.count)) archived · all time"
+      : isThisMonth ? "\(noun) this month" : "\(noun) · \(period.title)"
 
     return ActivitySnapshot(
       period: period,
@@ -184,10 +186,9 @@ public enum ActivityEngine {
 
   static func matches(_ t: Txn, _ f: TxnFilter, _ s: LedgerState, in window: ReviewWindow) -> Bool {
     if f.isSearching {
-      let q = f.text.trimmedSpaces.lowercased()
       let hay = [t.title, t.provenance?.rawMerchant ?? "", t.note, s.category(t.categoryID)?.name ?? ""]
-        .joined(separator: "\n").lowercased()
-      if !hay.contains(q) { return false }
+        .joined(separator: "\n")
+      if !SearchText.contains(hay, f.text.trimmedSpaces) { return false }
     } else if f.kind != .archived, !window.contains(t.postedAt.date) {
       return false
     }
@@ -248,9 +249,9 @@ public enum ActivityEngine {
     }
     let glyph = t.isTransfer ? Glyph.transfer : (c?.glyph ?? .review)
     var r = MiniTxnRow(
-      id: t.id, merchant: t.title, glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
+      id: t.id, merchant: MerchantName.display(t.title), glyph: glyph, hue: t.inReview ? .other : (c?.hue ?? .other), detail: detail,
       amount: t.amount, isIncome: t.direction == .in,
-      monogram: (t.inReview || c == nil) ? String(t.merchant.prefix(1)).uppercased() : nil,
+      monogram: (t.inReview || c == nil) ? MerchantName.monogram(t.merchant) : nil,
       toReview: t.inReview, reviewReason: t.activeReviewReason,
       project: s.project(t.projectID).map { MiniTxnRow.Project(id: $0.id, name: $0.name) }
     )
@@ -274,7 +275,8 @@ public enum ActivityEngine {
     let horizon = today.adding(days: days)
     let bills = s.bills.filter { $0.state == .tracked && !$0.isIncome && $0.nextDue <= horizon }
     let upcoming = bills.filter { $0.nextDue >= today }.sorted { $0.nextDue < $1.nextDue }
-    let late = bills.filter { $0.nextDue < today }.sorted { $0.nextDue < $1.nextDue }
+    let oldest = today.adding(days: -31)
+    let late = bills.filter { $0.nextDue < today && $0.nextDue >= oldest }.sorted { $0.nextDue < $1.nextDue }
     return upcoming.map { b in
       let n = today.days(until: b.nextDue)
       return BillRowModel(
@@ -329,6 +331,12 @@ public enum ActivityEngine {
     let budget = Fils.sum(period.months) { s.plan.budget(c, $0).minor }
     let (day, days) = elapsed(period, today: now.date)
     let verdict = Pace.verdict(spent: total, budget: budget, day: day, days: days, paced: cat.role == .everyday)
+    guard budget > 0 else {
+      return FilterSummary(
+        title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille(0),
+        today: Pace.monthGone(day: day, days: days), verdict: verdict, caption: MoneyPhrase([.text("No budget set")]),
+        budgeted: false)
+    }
     let pct = Fils.mulDiv(total, 100, budget)
     return FilterSummary(
       title: cat.name, hue: cat.hue, count: txns.count, total: .aed(total), progress: Permille.ratio(total, of: budget),
@@ -351,5 +359,31 @@ public enum ActivityEngine {
       }
     }
     return (day, days)
+  }
+}
+
+public enum SearchText {
+  static let alefs: [Character: Character] = ["\u{0623}": "\u{0627}", "\u{0625}": "\u{0627}", "\u{0622}": "\u{0627}"]
+
+  public static func fold(_ s: String) -> String {
+    String(s.map { alefs[$0] ?? $0 })
+  }
+
+  public static func contains(_ hay: String, _ query: String) -> Bool {
+    let q = fold(query)
+    guard !q.isEmpty else { return true }
+    return fold(hay).range(of: q, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) != nil
+  }
+}
+
+public enum MerchantName {
+  public static let unknown = "Unknown merchant"
+
+  public static func display(_ title: String) -> String {
+    title.trimmedSpaces.isEmpty ? unknown : title
+  }
+
+  public static func monogram(_ name: String) -> String? {
+    name.first(where: \.isLetter).map { String($0).uppercased() }
   }
 }

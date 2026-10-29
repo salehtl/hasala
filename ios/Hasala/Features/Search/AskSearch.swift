@@ -52,7 +52,7 @@ enum AskSearch {
   }
 
   static func answer(_ i: SearchIntent, _ s: LedgerState, now: LocalDateTime) -> AskAnswer {
-    AskEngine.answer(s, filter: filter(i, now: now))
+    AskEngine.answer(s, filter: filter(i, now: now), today: now.date)
   }
 
   static func isQuestion(_ q: String) -> Bool {
@@ -126,10 +126,10 @@ final class AskSearchModel {
     }
   }
 
-  func remove(_ part: AskScope.Part, _ s: LedgerState) {
+  func remove(_ part: AskScope.Part, _ s: LedgerState, now: LocalDateTime? = nil) {
     guard case .answered(let q, let a) = phase else { return }
     let f = a.filter.removing(part)
-    phase = f.isEmpty ? .keywords(q, .nothingUnderstood) : .answered(q, AskEngine.answer(s, filter: f))
+    phase = f.isEmpty ? .keywords(q, .nothingUnderstood) : .answered(q, AskEngine.answer(s, filter: f, today: now?.date))
   }
 
   func clearScope() {

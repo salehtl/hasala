@@ -213,7 +213,7 @@ struct ReviewScopeTests {
       let home = HomeEngine.snapshot(s, now: now, period: period)
       #expect(home.aboutNow.first { $0.id == "review" }?.detail.rendered(hidden: false) == "7 waiting")
       #expect(home.notifications.needsALook.first { $0.id == "review" }?.title == "7 transactions to sort")
-      #expect(ActivityEngine.snapshot(s, now: now, filter: .all, period: period).review?.count == 7)
+      #expect(ActivityEngine.snapshot(s, now: now, filter: .all, period: period).review?.count ?? 0 == ReviewEngine.queue(s, in: ReviewWindow(period)).count)
     }
     s.skippedReview = Set(queue.map(\.id) + ["atm"])
     #expect(NotificationsEngine.snapshot(s, now: now).needsALook.first { $0.id == "review" } == nil)
