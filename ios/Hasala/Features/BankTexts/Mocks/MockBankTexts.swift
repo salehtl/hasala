@@ -16,7 +16,7 @@
     private(set) var isSetUp: Bool
     var lastRan: Date?
     var ignoredLast30Days: Int
-    var lastTexts: [SupportedBank: Date] = [:]
+    var lastTextAt: Date?
     var test: BankTextsTest = .idle
     var testOutcome: TestOutcome = .received
     var testDelay: Duration = .seconds(2)
@@ -36,13 +36,13 @@
 
     init(
       setUp: Bool = false, mailbox: MockMailbox? = nil, link: MailboxLinkCopy? = nil, lastRan: Date? = nil,
-      lastTexts: [SupportedBank: Date] = [:], ignored: Int = 0
+      lastText: Date? = nil, ignored: Int = 0
     ) {
       isSetUp = setUp
       self.mailbox = mailbox
       linkOverride = link
       self.lastRan = lastRan
-      self.lastTexts = lastTexts
+      lastTextAt = lastText
       ignoredLast30Days = ignored
     }
 
@@ -55,10 +55,7 @@
     static func working(now: Date = .now, mailbox: MockMailbox? = nil) -> MockBankTexts {
       let lane = MockBankTexts(
         setUp: true, mailbox: mailbox, lastRan: now.addingTimeInterval(-4 * 60),
-        lastTexts: [
-          .dib: now.addingTimeInterval(-4 * 60),
-          .enbd: now.addingTimeInterval(-2 * 3600),
-        ])
+        lastText: now.addingTimeInterval(-4 * 60))
       lane.setAside = [
         BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.oneTimeCode: 8, .promotion: 2, .declined: 1])
       ]
@@ -76,7 +73,7 @@
     static func worst(now: Date = .now, mailbox: MockMailbox? = nil) -> MockBankTexts {
       let lane = MockBankTexts(
         setUp: true, mailbox: mailbox, lastRan: now.addingTimeInterval(-400 * 86_400),
-        lastTexts: [.dib: now, .enbd: now.addingTimeInterval(-400 * 86_400)], ignored: 1_284)
+        lastText: now, ignored: 1_284)
       lane.setAside = [
         BankTextsSetAside(
           sender: "AD-ENBD", bank: nil,
@@ -107,8 +104,6 @@
       if let lastRan { return .working(lastRan: lastRan) }
       return .waitingForFirstText
     }
-
-    var lastTextAt: Date? { lastTexts.values.max() }
 
     var lastRanAt: Date? { lastRan }
 

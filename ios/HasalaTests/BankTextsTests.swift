@@ -86,13 +86,13 @@ struct BankTextsTests {
     #expect(!lane.usesTexts && lane.finishCalls == 0 && finished == 1 && m.facts.bankSkipped && !m.facts.textsChosen)
   }
 
-  @Test func skippingTheTextsSetUpLeavesSetUp() {
+  @Test func skippingTheSourceChoiceLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()
     let m = model(services(texts: lane)) { finished += 1 }
-    m.chooseSource(.texts)
+    #expect(m.asksSource && m.path.isEmpty)
     m.skipSource()
-    #expect(finished == 1 && m.facts.bankSkipped && !lane.isSetUp)
+    #expect(finished == 1 && m.facts.bankSkipped && !lane.isSetUp && !m.facts.textsChosen && lane.finishCalls == 0)
   }
 
   @Test func aFinishThatCannotBeSavedStaysOnTheStep() async {
@@ -245,7 +245,7 @@ struct BankTextsTests {
     let mailbox = MockMailbox()
     mailbox.connectDelay = .zero
     let last = now.addingTimeInterval(-3600)
-    let lane = MockBankTexts(setUp: true, mailbox: mailbox, lastRan: last, lastTexts: [.dib: last])
+    let lane = MockBankTexts(setUp: true, mailbox: mailbox, lastRan: last, lastText: last)
     #expect(lane.usesTexts)
     _ = try await mailbox.connect(.gmail, replacing: false, removingOld: false) { _ in .keep }
     #expect(lane.source == .email && lane.status == .notSetUp && lane.readsEmail)

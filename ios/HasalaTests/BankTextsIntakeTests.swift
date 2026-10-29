@@ -389,6 +389,13 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
+  @Test func anAuthoredTextWithNoBankStillNotesTheLastText() async {
+    let r = rig(answer: false)
+    #expect(await intake(r).run(Self.personal, sender: nil, at: Self.t0) == .authored(filed: false))
+    #expect(r.factsData.lastKeptMs[""] == BankTextIntake.ms(Self.t0))
+    #expect(lane(r).lastTextAt == Self.t0)
+  }
+
   @Test func aCoreThatIsNotWiredFailsLoudly() async {
     let r = rig(author: FakeTextAuthor(failure: .unavailable), answer: false)
     #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.unavailableMessage))
