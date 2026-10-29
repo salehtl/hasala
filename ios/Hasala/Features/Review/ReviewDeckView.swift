@@ -909,7 +909,7 @@ struct ReviewCardView<Actions: View>: View {
         .hType(.subheadline.weight(.semibold))
         .foregroundStyle(HColor.textPrimary)
         .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
-        .truncationMode(.tail)
+        .truncationMode(.middle)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("review.copy")

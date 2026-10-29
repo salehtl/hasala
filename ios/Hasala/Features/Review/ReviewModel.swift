@@ -72,6 +72,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let revision: Int
     let window: ReviewWindow
     let held: TxnID?
+    let today: LocalDate
   }
 
   init(app: AppModel) {
@@ -89,7 +90,7 @@ final class ReviewViewModel: ReviewDeckModel {
 
   var cards: [ReviewCardModel] {
     let held = picking?.card.id ?? holding
-    return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held)) {
+    return memo.value(for: CardsKey(revision: app.store.revision, window: window, held: held, today: app.store.now.date)) {
       let s = app.store.state
       let out = Self.steady(order, waiting: ReviewEngine.queue(s, in: window), held: held, shown: shown, s, today: app.store.now.date)
       if let top = out.first?.id { shown = top }

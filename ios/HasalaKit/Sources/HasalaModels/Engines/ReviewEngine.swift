@@ -435,7 +435,7 @@ public enum ReviewEngine {
     let d = t.postedAt.date
     let when = "\(verb.lowercased()) \(spokenDay(d))"
     var card = ReviewCardModel(
-      id: t.id, merchant: merchantName(t), monogram: monogram(t.merchant.allSatisfy(\.isWhitespace) ? "" : t.merchant),
+      id: t.id, merchant: merchantName(t), monogram: monogram(t.merchant),
       isNewMerchant: t.isNewMerchant && t.lastPick == nil, reviewReason: t.activeReviewReason,
       rawMerchant: t.provenance.flatMap { $0.rawMerchant.isEmpty ? nil : $0.rawMerchant }, amount: t.amount,
       isIncome: t.direction == .in, meta: meta, spokenWhen: when,
@@ -453,10 +453,6 @@ public enum ReviewEngine {
   }
 
   public static let unknownMerchant = "Unknown merchant"
-
-  public static func merchantName(_ title: String) -> String {
-    title.allSatisfy(\.isWhitespace) ? unknownMerchant : title
-  }
 
   public static func merchantName(_ t: Txn) -> String {
     t.merchant.allSatisfy(\.isWhitespace) ? unknownMerchant : t.title

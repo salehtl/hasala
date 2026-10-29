@@ -181,7 +181,7 @@ final class AppModel {
   var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
 
   var reviewCards: [ReviewCardModel] {
-    reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period)) {
+    reviewCardsMemo.value(for: HomeMemoKey(revision: store.revision, period: period, today: store.now.date)) {
       ReviewEngine.cards(store.state, in: reviewWindow, today: store.now.date)
     }
   }
@@ -389,6 +389,7 @@ struct CanvasMemoKey: Equatable {
 struct HomeMemoKey: Equatable {
   var revision: Int
   var period: Period?
+  var today: LocalDate? = nil
 }
 
 @MainActor
