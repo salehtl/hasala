@@ -12,6 +12,7 @@
       Screen("profile.hidden", scenario: "mayaHidden", prepare: profile([])),
       // Categories and rules (68S-0).
       Screen("profile.rules", scenario: "maya", prepare: profile([.rules])),
+      Screen("profile.categories", scenario: "maya", prepare: profile([.categories])),
       // A rule learned today: Lulu's card sorted into Groceries with "Always use", as the
       // review deck files it, then the rules (68S-0's "Learned today" chip).
       Screen("profile.rulesLearned", scenario: "maya", drive: { graph in
@@ -26,6 +27,9 @@
       Screen("profile.bills", scenario: "maya", prepare: profile([.bills])),
       Screen("profile.accounts", scenario: "maya", prepare: profile([.accounts])),
       Screen("profile.cloudSort", scenario: "maya", prepare: cloudSort(.done, then: profile([]))),
+      Screen("profile.cloudConsent", scenario: "maya", prepare: profile([])),
+      Screen("profile.exchangeRates", scenario: "maya", prepare: profile([.exchangeRates])),
+      Screen("profile.editName", scenario: "passkeyUser", prepare: profile([.editName])),
       // Bills · Coming up and found (1K9-0), pushed from Home.
       Screen("bills", scenario: "maya", prepare: shell(.home, home: [.bills])),
       // Bills · AXA Insurance (late) (1UD-0), and the other states one bill can be in.
@@ -35,5 +39,15 @@
       // Accounts · Net worth (1W6-0), pushed from Home.
       Screen("accounts", scenario: "maya", prepare: shell(.home, home: [.accounts])),
     ]
+
+    @MainActor private static var cloudConsentPending =
+      ProcessInfo.processInfo.arguments.launchValue(after: argument) == "profile.cloudConsent"
+
+    @MainActor static func applyCloudConsentLaunch(_ consent: MerchantSuggestionsConsent) async {
+      guard cloudConsentPending else { return }
+      cloudConsentPending = false
+      try? await Task.sleep(for: .milliseconds(700))
+      consent.request(true)
+    }
   }
 #endif

@@ -191,6 +191,10 @@ struct BillDetailView: View {
         CategoryDisc(hue: d.hue, glyph: d.glyph, size: .s56, ring: true)
         StatusPillView(d.pill, size: .s32, surface: .white)
       }
+      Text(d.name).hType(.title3).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("bills.detail.name")
       VStack(alignment: .leading, spacing: 4) {
         Text(d.kind).hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
         HStack(alignment: .firstTextBaseline, spacing: 0) {

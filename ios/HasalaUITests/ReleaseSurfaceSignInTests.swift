@@ -55,7 +55,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(app.staticTexts["Your old passkeys and password stop working, and other devices are signed out."].exists)
     try audit(app)
     tap(app, "recover.passkey")
-    XCTAssertTrue(app.staticTexts["You're back in, Maya."].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["You're back in, Maya Rahman."].waitForExistence(timeout: 10))
     attach(app, "Release · You're back in")
     assertNoPlaceholders(app, "You're back in")
     XCTAssertTrue(app.staticTexts["Old passkeys, password"].exists)

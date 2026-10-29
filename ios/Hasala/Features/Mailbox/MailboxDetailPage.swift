@@ -68,7 +68,7 @@ struct MailboxDetailPage: View {
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirming, presenting: impact) { impact in
       Button(MailCopy.keepTransactions(impact)) { Task { await disconnect(removing: false) } }
         .accessibilityIdentifier("mailbox.disconnect.keep")
-      Button("Remove them", role: .destructive) { Task { await disconnect(removing: true) } }
+      Button(MailCopy.removeTitle(impact), role: .destructive) { Task { await disconnect(removing: true) } }
         .accessibilityIdentifier("mailbox.disconnect.remove")
       Button("Cancel", role: .cancel) {}
     } message: { impact in
@@ -348,22 +348,40 @@ private struct MailboxFactRow: View {
   let fact: MailboxDetailPage.Fact
   var style = Style.mailbox
 
-  var body: some View {
+  private var key: some View {
+    Text(fact.key)
+      .hType(style == .details ? .callout : .subheadline)
+      .foregroundStyle(style == .details ? HColor.textPrimary : HColor.textSecondary)
+  }
+
+  private var row: some View {
     ReflowingRow(spacing: 12) {
-      Text(fact.key)
-        .hType(style == .details ? .callout : .subheadline)
-        .foregroundStyle(style == .details ? HColor.textPrimary : HColor.textSecondary)
+      key
     } trailing: {
-      Text(fact.value).hType(.subheadline)
-        .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
-        .multilineTextAlignment(.trailing)
+      FactValue(text: fact.value, style: style)
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, style == .details ? 10 : 14)
-    .frame(minHeight: style == .details ? 52 : nil)
-    // One line of text for VoiceOver ("Account, Personal Microsoft"), not a control: a
-    // label with a value reads as one to the accessibility audit, which then finds its
-    // 20 pt text too small to tap.
-    .accessibilityElement(children: .combine)
+  }
+
+  var body: some View {
+    row
+      .padding(.horizontal, 16)
+      .padding(.vertical, style == .details ? 10 : 14)
+      .frame(minHeight: style == .details ? 52 : nil)
+      // One line of text for VoiceOver ("Account, Personal Microsoft"), not a control: a
+      // label with a value reads as one to the accessibility audit, which then finds its
+      // 20 pt text too small to tap.
+      .accessibilityElement(children: .combine)
+  }
+}
+
+private struct FactValue: View {
+  let text: String
+  let style: MailboxFactRow.Style
+  @Environment(\.reflowingRowStacked) private var stacked
+
+  var body: some View {
+    Text(text).hType(.subheadline)
+      .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
+      .multilineTextAlignment(stacked ? .leading : .trailing)
   }
 }

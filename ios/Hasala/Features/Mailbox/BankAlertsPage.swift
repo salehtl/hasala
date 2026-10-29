@@ -334,6 +334,16 @@ struct BankAlertsPage: View {
       } else if let refusal = lane?.connectRefusal {
         InlineStatus(tone: .warning, text: refusal.message, size: .regular)
           .accessibilityIdentifier("bankAlerts.connectRefused")
+      } else {
+        HListCard {
+          Text("No mailbox connected")
+            .hType(.rowTitle).foregroundStyle(HColor.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, HSpacing.listRowInsetInline)
+            .padding(.vertical, HSpacing.listRowInsetBlock)
+            .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+            .accessibilityIdentifier("bankAlerts.mailboxes.none")
+        }
       }
       Text(MailCopy.mailboxesFootnote)
         .hType(.footnote)
@@ -549,7 +559,7 @@ struct BankAlertsPage: View {
   static let unreadableDetail = "Kept for you to sort by hand"
 
   static func unreadableLine(_ n: Int) -> String {
-    n == 1 ? "1 email we couldn't read" : "\(n) emails we couldn't read"
+    n == 1 ? "1 email we couldn't read" : "\(MoneyFormat.count(n)) emails we couldn't read"
   }
 
   private func unreadableRow(_ count: Int, detail: String, chevron: Bool) -> some View {
@@ -628,7 +638,7 @@ struct MonthRead: Hashable, Sendable {
   /// "October".
   var month: String
 
-  var line: String { "\(count) read in \(month)" }
+  var line: String { "\(MoneyFormat.count(count)) read in \(month)" }
 }
 
 /// One alert a mailbox fetched but couldn't read: "Debit card alert · Gmail · Thu 8 Oct".

@@ -44,7 +44,7 @@ struct ProfileSheet: View {
     NavigationStack(path: Bindable(app.router).profile) {
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, emailLine: snap.emailLine)
+          ProfileIdentity(name: snap.displayName, initial: snap.initial, email: app.avatarEmail, address: snap.email, status: snap.emailStatus)
           if let texts = app.bankTexts, texts.usesTexts {
             TimelineView(.periodic(from: .now, by: 60)) { context in
               BankAlertsCard(summary: .texts(texts.status, now: context.date)) { push(.bankAlerts) }
@@ -141,6 +141,15 @@ struct ProfileSheet: View {
           MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
+        if snap.archivedTxns > 0 {
+          Button { ActivityRequests.shared.show(TxnFilter(kind: .archived), in: app) } label: {
+            MoneyThingRow(plate: HuePlate(hue: .other, icon: .archive), title: "Archived transactions",
+                          detail: MoneyPhrase(stringLiteral: Self.archivedLine(snap.archivedTxns)), hidden: model.hidden)
+          }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityHint("Opens Activity on Archived")
+          .accessibilityIdentifier("profile.archived")
+        }
         if BuildSurface.showsPlanTab {
           row(.projects, id: "profile.projects") {
             MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
@@ -233,6 +242,10 @@ struct ProfileSheet: View {
     return (live.map(\.provider.appName).formatted(.list(type: .and)), nil)
   }
 
+  static func archivedLine(_ n: Int) -> String {
+    "\(n) kept out of your plan"
+  }
+
   static func currencyTrailing(_ s: LedgerState) -> SettingRow.Trailing {
     let missing = ExchangeRates.page(s).missing.reduce(0) { $0 + $1.notCounted }
     return missing > 0 ? .status(ExchangeRatesPage.notCountedLine(missing), .warning) : .value(Money.home)
@@ -314,6 +327,8 @@ private struct ProfilePage: View {
       CategoryDetailView(app: app, category: id)
     case .rules:
       RulesPage(app: app, model: model)
+    case .categories:
+      RulesPage(app: app, model: model, startOn: .categories)
     case .categoryEditor(let id):
       CategoryEditorPage(app: app, category: id)
     case .categoryMove(let id):

@@ -160,7 +160,7 @@ struct SecurityView: View {
   private func emailCard(_ s: SecurityState) -> some View {
     SecurityRow(tile: .plate(.envelope, .sky), title: s.email,
                 detail: s.emailVerified ? "Verified · codes and alerts" : "Not verified yet",
-                titleLabel: "Email address \(s.email)") {
+                titleLabel: "Email address \(s.email)", titleLines: 2) {
       // The email change has no live ceremony yet (C6): Debug only, with the capability.
       if can(.changeEmail), BuildSurface.showsUnfinished {
         Button("Change") { model.requestEmailChange() }
@@ -175,7 +175,7 @@ struct SecurityView: View {
       ForEach(Array(s.passkeys.enumerated()), id: \.element.id) { i, p in
         if i > 0 { HDivider() }
         SecurityRow(tile: p.isThisCredential ? .plate(.faceID, .sky) : .plate(.passkey, .other), title: p.provider,
-                    detail: p.detail) {
+                    detail: p.detail, titleLines: 2, titleTruncation: .tail) {
           // The passkey in hand isn't removed from here; another way in must remain.
           if can(.removePasskey), s.canRemove(p) {
             InlineDestructive(title: "Remove", identifier: "security.removePasskey.\(p.id)") {
@@ -239,11 +239,15 @@ struct SecurityView: View {
     }
   }
 
-  private func devices(_ s: SecurityState) -> some View {
+  @ViewBuilder private func devices(_ s: SecurityState) -> some View {
+    if s.devices.isEmpty {
+      SecurityRow(tile: .plate(.phone, .mint), title: "Only this iPhone", detail: nil) { EmptyView() }
+        .accessibilityIdentifier("security.devices.empty")
+    }
     ForEach(Array(s.devices.enumerated()), id: \.element.id) { i, d in
       if i > 0 { HDivider() }
       SecurityRow(tile: d.isThisDevice ? .plate(.phone, .mint) : .plate(d.isTablet ? .iPad : .phone, .other),
-                  title: d.title, detail: d.detail) {
+                  title: d.title, detail: d.detail, titleLines: 2, titleTruncation: .tail) {
         if d.isThisDevice {
           HStack(spacing: 6) {
             Circle().fill(HColor.statusSuccessForeground).frame(width: 7, height: 7)
@@ -397,12 +401,14 @@ struct SecurityRow<Trailing: View>: View {
   var title: String
   var detail: String?
   var titleLabel: String?
+  var titleLines = 1
+  var titleTruncation: Text.TruncationMode = .middle
   @ViewBuilder var trailing: () -> Trailing
 
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(alignment: .center, spacing: 12) {
+    HStack(alignment: typeSize.isAccessibilitySize || detail != nil ? .top : .center, spacing: 12) {
       tileView
       if typeSize.isAccessibilitySize {
         VStack(alignment: .leading, spacing: 4) {
@@ -427,8 +433,9 @@ struct SecurityRow<Trailing: View>: View {
       Text(title)
         .hType(.rowTitle)
         .foregroundStyle(HColor.textPrimary)
-        .lineLimitAtDefaultTextSize(1)
-        .truncationMode(.middle)
+        .lineLimitAtDefaultTextSize(titleLines)
+        .truncationMode(titleTruncation)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(titleLabel ?? title)
       if let detail {
         Text(detail)

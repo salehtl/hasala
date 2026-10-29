@@ -25,6 +25,7 @@ public enum Scenario: String, Sendable, CaseIterable {
   case mayaSuggestions
   case mayaBacklog
   case mayaTexts
+  case mayaProjects
   case mayaWorst
   case mayaWorstTexts
   case mayaEmpty
@@ -106,6 +107,9 @@ public enum Scenario: String, Sendable, CaseIterable {
     }
     if self == .mayaTexts {
       MayaTexts.apply(to: &s)
+    }
+    if self == .mayaProjects {
+      s.projects += MayaLedger.moreProjects
     }
     if self == .mayaSample {
       var n = 0
