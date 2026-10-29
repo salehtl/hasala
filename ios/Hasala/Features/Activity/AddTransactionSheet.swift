@@ -18,6 +18,7 @@ struct AddTransactionSheet: View {
   @Bindable var model: AddTransactionModel
   @State private var choosingCategory = false
   @FocusState private var merchantFocused: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     NavigationStack {
@@ -56,6 +57,9 @@ struct AddTransactionSheet: View {
               .padding(.horizontal, 4)
               .accessibilityIdentifier("add.missing")
           }
+          if typeSize.isAccessibilitySize {
+            saveButton
+          }
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 8)
@@ -83,16 +87,21 @@ struct AddTransactionSheet: View {
     .planLargeSheet()
   }
 
+  private var saveButton: some View {
+    Button(model.saveTitle) { model.save() }
+      .buttonStyle(.pill(.primary, fill: true))
+      .disabled(!model.canSave)
+      .accessibilityIdentifier("add.save")
+  }
+
   private var dock: some View {
     VStack(spacing: 0) {
-      Button(model.saveTitle) { model.save() }
-        .buttonStyle(.pill(.primary, fill: true))
-        .disabled(!model.canSave)
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-        .accessibilityIdentifier("add.save")
-        .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
+      if !typeSize.isAccessibilitySize {
+        saveButton
+          .padding(.horizontal, HSpacing.insetPage)
+          .padding(.top, 12)
+          .padding(.bottom, 16)
+      }
       if !merchantFocused {
         AmountKeypad(entry: $model.entry, layout: .docked)
       }
