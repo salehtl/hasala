@@ -60,7 +60,7 @@ nonisolated final class FakeTextAuthor: BankTextsAuthoring {
         Call(text: text, sender: sender, link: link, origin: origin, arrivedAt: arrivedAt, secretCount: secret.count))
     }
     if let failure { throw failure }
-    return outcome ?? .authored(rowID: "row-1", filed: false, bank: reading.fields.bank, keptAt: arrivedAt)
+    return outcome ?? .authored(rowID: "row-1", filed: false, keptAt: arrivedAt)
   }
 
   func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] {
@@ -382,11 +382,32 @@ struct BankTextsIntakeTests {
     #expect(data.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
-  @Test func anAuthoredTextNotesItsBankAndTheRun() async {
+  @Test func anAuthoredTextNotesTheLastTextAndTheRun() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
-    #expect(r.factsData.lastKeptMs["dib"] == BankTextIntake.ms(Self.t0))
+    #expect(r.factsData.lastTextMs == BankTextIntake.ms(Self.t0) && r.factsData.lastKeptMs.isEmpty)
     #expect(r.factsData.lastRunMs == BankTextIntake.ms(Self.t0))
+  }
+
+  @Test func anAuthoredTextWithNoBankStillNotesTheLastText() async {
+    let r = rig(answer: false)
+    #expect(await intake(r).run(Self.personal, sender: nil, at: Self.t0) == .authored(filed: false))
+    #expect(r.factsData.lastTextMs == BankTextIntake.ms(Self.t0) && r.factsData.lastKeptMs.isEmpty)
+    #expect(lane(r).lastTextAt == Self.t0)
+  }
+
+  @Test func anOlderPerBankLastTextCollapsesIntoOneValue() {
+    var d = BankTextsFactsData()
+    d.lastKeptMs = ["dib": 5_000, "enbd": 9_000]
+    d.prune(nowMs: 10_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 9_000)
+    d.noteKept(atMs: 7_000)
+    #expect(d.lastTextMs == 9_000)
+    d.lastKeptMs = ["dib": 11_000]
+    d.prune(nowMs: 12_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 11_000)
+    d.noteKept(atMs: 12_000)
+    #expect(d.lastKeptMs.isEmpty && d.lastTextMs == 12_000)
   }
 
   @Test func aCoreThatIsNotWiredFailsLoudly() async {
@@ -776,7 +797,7 @@ struct BankTextsIntakeTests {
     #expect(r.author.calls.map(\.origin) == [.paste(replacing: "sms-1"), .paste(replacing: nil)])
     #expect(r.author.calls.allSatisfy { $0.sender == nil && $0.link == .unknownUnanswered })
     #expect(r.author.calls.first?.arrivedAt == Date(timeIntervalSince1970: 1_791_999_960))
-    #expect(r.factsData.lastKeptMs.isEmpty && r.factsData.lastRunMs == nil)
+    #expect(r.factsData.lastTextMs == nil && r.factsData.lastRunMs == nil)
   }
 
   @Test func pasteIsRefusedWhileTheCopySaysLinked() async {
@@ -814,7 +835,8 @@ struct BankTextsIntakeTests {
     }
     l.reload()
     #expect(l.status == .working(lastRan: Self.t0.addingTimeInterval(-240)))
-    #expect(l.banks.first { $0.bank == .dib }?.lastText == Self.t0.addingTimeInterval(-600))
+    #expect(l.lastTextAt == Self.t0.addingTimeInterval(-600))
+    #expect(r.facts.read(nowMs: now).lastKeptMs.isEmpty)
     #expect(l.setAside == [BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.oneTimeCode: 1, .promotion: 1])])
     #expect(BankTexts.setAsideDetail(l.setAside[0]) == "2 texts set aside in the last 30 days\n1 one-time code, 1 promotion")
     #expect(BankTexts.setAsideDetail(BankTextsSetAside(sender: "DIB", bank: .dib, counts: [.promotion: 1_284]))

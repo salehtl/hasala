@@ -22,15 +22,6 @@ struct BankTextsSetAside: Equatable, Identifiable, Sendable {
   var name: String { bank?.shortName ?? sender }
 }
 
-struct BankTextsBank: Equatable, Identifiable, Sendable {
-  var bank: SupportedBank
-  var lastText: Date?
-
-  var id: SupportedBank { bank }
-  var readsAutomatically: Bool { BankTexts.readAutomatically.contains(bank) }
-  var readNote: String { BankTexts.readNote(bank) }
-}
-
 enum BankTextsTest: Equatable, Sendable {
   case idle
   case waiting(since: Date)
@@ -98,7 +89,6 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var link: MailboxLinkCopy { get }
   var isSetUp: Bool { get }
   var status: BankTextsStatus { get }
-  var banks: [BankTextsBank] { get }
   var test: BankTextsTest { get }
   var lastTextAt: Date? { get }
   var lastRanAt: Date? { get }
@@ -129,7 +119,6 @@ extension BankTextsConnecting {
 }
 
 enum BankTexts {
-  static let readAutomatically: Set<SupportedBank> = [.dib, .enbd]
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
@@ -159,15 +148,6 @@ enum BankTexts {
     case .waitingForFirstText: "Waiting for your first bank text"
     case .working(let lastRan): "Ran \(RelativeTime.ago(lastRan, now: now))"
     }
-  }
-
-  static func bankDetail(_ bank: BankTextsBank, now: Date) -> String {
-    let when = bank.lastText.map { "Last text \(RelativeTime.ago($0, now: now))" } ?? "No text yet"
-    return "\(when)\n\(bank.readNote)"
-  }
-
-  static func readNote(_ bank: SupportedBank) -> String {
-    readAutomatically.contains(bank) ? "Hasala reads them; some wait in Review" : "Hasala learns their wording; the first wait in Review"
   }
 
   static let switchToEmailMessage =
@@ -217,9 +197,6 @@ enum BankTexts {
     return usesTexts ? "For a text from before your automation. \(how)" : "For a payment text from your bank. \(how)"
   }
 
-  static let keepsOnlyFields =
-    "Texts stay on this iPhone. Hasala keeps only the details it needs from texts that look like payments, never the texts."
-
   static let keepsNoText =
     "Hasala keeps only the details it needs from a text that looks like a payment, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
 
@@ -227,12 +204,12 @@ enum BankTexts {
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
 
   static let keepsPaymentShapedTexts =
-    "Hasala keeps the payment details of bank texts. A text that looks like a payment, from any sender, is added for you when Hasala can read it, or waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
+    "Hasala keeps the payment details of texts that look like payments, from any sender. Every other text is dropped at once, never saved or sent anywhere."
 
   static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
-  static let banksLine =
-    "Hasala reads DIB and ENBD texts for you, though some still wait in Review. Texts from your other banks wait in Review until Hasala learns their wording."
+  static let anyBankLine =
+    "Hasala reads payment texts from any bank and adds the ones it reads with confidence. Any other payment waits in Review for you to check."
 
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1
@@ -264,7 +241,7 @@ enum BankTexts {
   }
 
   static let setAsideFootnote =
-    "Texts from your banks that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
+    "Texts from bank senders that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
 
   static let automationFootnote =
     "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."

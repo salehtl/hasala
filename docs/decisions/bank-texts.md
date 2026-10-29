@@ -86,7 +86,7 @@ What iOS allows, as the owner tested on a real iPhone:
 - An automation sees only texts that arrive after it is made. Older texts can be pasted.
 
 The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
-ago", the last text for each bank). What the phone keeps for this, and nothing more, is in
+ago", the last text it added as a row). What the phone keeps for this, and nothing more, is in
 [What the phone keeps about texts](#what-the-phone-keeps-about-texts).
 
 The set-up test: when the person taps **I made it, send a test** in setup, or **Test it
@@ -115,9 +115,10 @@ payment cannot arrive through two channels, and no merge is needed.
   person who uses only texts never needs the email sheet. The question is the first screen
   of setup's bank step (step 4), with **Skip** as today. Choosing email goes on to the bank
   step and the mailbox connect as they are now, so an email user gains this one choice and
-  nothing else. Choosing texts leads to two screens: the banks ("Which banks text you?"),
-  and a short automation guide ("Make the automation") that ends with **I made it, send a
-  test** or **Skip, confirm with my next bank text**. The test and the illustrated guide
+  nothing else. Choosing texts leads to one screen, a short automation guide ("Make the
+  automation") that ends with **I made it, send a test** or **Skip, confirm with my next
+  bank text**. Texts have no bank list, in setup or in Profile › Bank alerts (owner
+  decision, 2026-10-29); email keeps its bank list. The test and the illustrated guide
   ("Show me how, step by step") are optional in setup and stay in Profile › Bank alerts
   ("Test it again", "Show me how"), where a person who skipped them can finish them later.
   Finishing the texts path sets a content-free flag on this iPhone that texts were chosen
@@ -441,12 +442,11 @@ reader reads it. Texts from banks other than DIB and ENBD are read the same way.
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only. On the
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
-and texts with no payment shape. Until the open check on the sender is answered, the app
-says of DIB and ENBD "Hasala reads them; some wait in Review" and "Hasala reads DIB and ENBD
-texts for you, though some still wait in Review", and of other banks "Hasala learns their
-wording; the first wait in Review" and "Texts from your other banks wait in Review until
-Hasala learns their wording". A text that looks like a payment, from any sender, is added
-when Hasala can read it, else it waits in Review.
+and texts with no payment shape. The app makes no claim about a specific bank and has no
+bank list for texts: it says "Hasala reads payment texts from any bank and adds the ones it
+reads with confidence. Any other payment waits in Review for you to check." A text that looks
+like a payment, from any sender, is added when a template reads it or the two readers agree
+on it (see [Filing with no review](#filing-with-no-review)), else it waits in Review.
 
 **ENBD (2026-10-29).** ENBD (`EmiratesNBD`, `ENBD`) has SMS templates for the English
 payment wordings in the owner's ENBD export: debit card purchases
@@ -530,13 +530,14 @@ On the device, outside the synced data, and never sent:
 - the time the automation last ran (one value, overwritten on each run, for every text
   handed to the action while the person is signed in and after the first unlock, because
   the app cannot see the automation any other way);
-- for each bank, the time of its last text that Hasala added as a row;
+- the time of the last text that Hasala added as a row (one value for every sender, overwritten
+  on each new row; a time kept for each bank by an older build is folded into it);
 - for each bank sender ID (the sender as iOS gave it, with its bank), a count for each day
   and each kind of texts set aside as not payments (steps 1, 3 and 5; see
   [What a drop leaves](#reading-happens-inside-hasala-on-the-phone)), for the last 30 days
   only; an older day's count is deleted. Profile › Bank alerts shows them in a "Set aside"
   section, one row for each bank sender ("11 texts set aside in the last 30 days" and a list
-  by kind), with the footnote "Texts from your banks that aren't payments. Hasala drops them
+  by kind), with the footnote "Texts from bank senders that aren't payments. Hasala drops them
   at once and keeps only these counts, on this iPhone. If a payment is counted here, paste
   it.";
 - the copy of the server's last answer about the account's mailbox link, linked or not, and

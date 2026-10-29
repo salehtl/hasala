@@ -9,8 +9,6 @@ struct BankTextsAlertsPage: View {
   @State private var pasting = false
   @State private var testing = false
   @State private var askingEmail = false
-  @State private var requestingBank = false
-  @Environment(AccountSession.self) private var session: AccountSession?
   @Environment(\.dynamicTypeSize) private var typeSize
 
   struct Hero: Equatable {
@@ -41,7 +39,7 @@ struct BankTextsAlertsPage: View {
         state = .working
         title = "Working"
         detail = ["Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))",
-                  lastText.map { "Last bank text \(RelativeTime.ago($0, now: now))" }]
+                  lastText.map { "Last text added \(RelativeTime.ago($0, now: now))" }]
           .compactMap { $0 }.joined(separator: "\n")
         hue = .mint
       case .waitingForFirstText:
@@ -75,7 +73,6 @@ struct BankTextsAlertsPage: View {
           heroCard(Hero(lane.status, lastText: lane.lastTextAt, now: context.date))
         }
         automation
-        TimelineView(.periodic(from: .now, by: 60)) { context in banks(context.date) }
         if !BankTexts.setAsideRows(lane.setAside).isEmpty { setAsideSection }
         howItReads
         switchSection
@@ -98,9 +95,6 @@ struct BankTextsAlertsPage: View {
       }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("textsTest")
-    }
-    .sheet(isPresented: $requestingBank) {
-      RequestBankSheet(setup: session?.services.setup, prober: nil) { _ in app.say("Request sent") }
     }
     .alert("Switch to bank email?", isPresented: $askingEmail) {
       Button("Cancel", role: .cancel) {}
@@ -191,28 +185,6 @@ struct BankTextsAlertsPage: View {
     }
   }
 
-  private func banks(_ now: Date) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HSectionHeader("Banks")
-      HListCard {
-        ForEach(Array(lane.banks.enumerated()), id: \.element.id) { i, bank in
-          if i > 0 { HDivider(inset: .disc68) }
-          BankAlertsBankRow(bank: bank.bank, detail: BankTexts.bankDetail(bank, now: now))
-            .accessibilityIdentifier("bankAlerts.texts.bank.\(bank.bank.rawValue)")
-        }
-        if session != nil {
-          HDivider(inset: .disc68)
-          MailActionRow(title: "My bank isn't listed", identifier: "bankAlerts.requestBank") { requestingBank = true }
-        }
-      }
-      Text(BankTexts.banksLine)
-        .hType(.footnote)
-        .foregroundStyle(HColor.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 16)
-    }
-  }
-
   private var setAsideSection: some View {
     VStack(alignment: .leading, spacing: 12) {
       HSectionHeader("Set aside")
@@ -258,6 +230,7 @@ struct BankTextsAlertsPage: View {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
       readsRow(.chat, "The automation hands Hasala each text with a full stop, on this iPhone.")
+      readsRow(.bank, BankTexts.anyBankLine)
       readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
       readsRow(.lock, BankTexts.keepsNoText)
     }

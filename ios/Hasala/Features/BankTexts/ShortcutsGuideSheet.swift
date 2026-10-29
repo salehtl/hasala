@@ -23,7 +23,7 @@ struct ShortcutsGuideSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          Text("One automation hands Hasala each text you get that has a full stop. \(BankTexts.keepsPayments)")
+          Text(BankTextsGuide.intro)
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)

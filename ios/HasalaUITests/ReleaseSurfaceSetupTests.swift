@@ -142,8 +142,8 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(setup, "source.texts").waitForExistence(timeout: 15), "the source choice is missing")
     XCTAssertTrue(el(setup, "source.email").exists)
     tap(setup, "source.texts")
-    tap(setup, "source.continue", opening: "textsBanks.continue")
-    tap(setup, "textsBanks.continue", opening: "texts.steps")
+    tap(setup, "source.continue", opening: "texts.steps")
+    XCTAssertFalse(el(setup, "bank.dib").exists, "texts still show a bank list")
     setup.terminate()
 
     let review = launchRelease("textsWorking", waitForHome: false, screen: "review.texts")

@@ -3,6 +3,9 @@ import HasalaModels
 import SwiftUI
 
 enum BankTextsGuide {
+  static let intro =
+    "One automation hands Hasala each text you get that has a full stop. \(BankTexts.keepsPayments) \(BankTexts.anyBankLine)"
+
   static let runImmediately = "Choose Run Immediately, then tap Next."
   static let newBlank = "Tap New Blank Automation, then Add Action."
   static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")
@@ -18,7 +21,7 @@ enum BankTextsGuide {
   static let fullSteps = [
     "Open the Shortcuts app and tap Automation at the bottom. Then tap + at the top.",
     "Choose Message as what starts it.",
-    "Leave Sender empty. Tap Message Contains and type just a full stop (.). Bank payment texts usually have one in their amount, as all of DIB\u{2019}s do. A text with no full stop doesn\u{2019}t reach Hasala, so paste it instead.",
+    "Leave Sender empty. Tap Message Contains and type just a full stop (.). Bank payment texts usually have one in their amount. A text with no full stop doesn\u{2019}t reach Hasala, so paste it instead.",
     runImmediately,
     newBlank,
     "Search \u{201C}Hasala\u{201D} and pick Add bank text. Check that it shows Message in blue. If it doesn\u{2019}t, tap the blue word and pick Message. Tap Done.",
