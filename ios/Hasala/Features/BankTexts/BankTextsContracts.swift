@@ -241,7 +241,7 @@ enum BankTexts {
   }
 
   static let setAsideFootnote =
-    "Texts from your banks that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
+    "Texts from bank senders that aren't payments. Hasala drops them at once and keeps only these counts, on this iPhone. If a payment is counted here, paste it."
 
   static let automationFootnote =
     "The automation lives in the Shortcuts app. Hasala can't see or change it; it only gets the texts it is handed."

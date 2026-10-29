@@ -518,7 +518,7 @@ On the device, outside the synced data, and never sent:
   [What a drop leaves](#reading-happens-inside-hasala-on-the-phone)), for the last 30 days
   only; an older day's count is deleted. Profile › Bank alerts shows them in a "Set aside"
   section, one row for each bank sender ("11 texts set aside in the last 30 days" and a list
-  by kind), with the footnote "Texts from your banks that aren't payments. Hasala drops them
+  by kind), with the footnote "Texts from bank senders that aren't payments. Hasala drops them
   at once and keeps only these counts, on this iPhone. If a payment is counted here, paste
   it.";
 - the copy of the server's last answer about the account's mailbox link, linked or not, and

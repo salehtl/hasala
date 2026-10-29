@@ -158,6 +158,7 @@ struct BankTextsTests {
         #expect(!line.contains(bank.shortName) && !line.contains(bank.name), "\(line)")
       }
     }
+    #expect(!BankTexts.setAsideFootnote.contains("your banks"))
   }
 
   @Test func emailShowsTheBankStepAndBackReturnsToTheChoice() {
