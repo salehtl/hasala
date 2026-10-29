@@ -49,7 +49,9 @@ because they are strong and cost nothing.
    - nothing else holds it: no reader hold on a template hit, no transfer partner, no
      one-time-code or declined marker. A text that only the readers read as a transfer
      notice waits in Review, because the transfer pairing reads only template rows and
-     the fold pairs only verified mail. A text whose key is a repeat in the same minute
+     the fold pairs only verified mail. A debit text that only the readers read waits in Review
+     beside a template transfer notice or debit alert of the same amount within 30 minutes,
+     in either order, as does the template hit that comes second. A text whose key is a repeat in the same minute
      waits in Review, with or without a bank: the fold's probable-copy key holds the
      merchant, which the readers may read differently once the first copy taught a layout.
      A text with no bank, which the fold cannot hold, also waits in Review when it repeats

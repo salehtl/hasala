@@ -156,10 +156,10 @@ public actor BankTextAuthor {
   }
 
   private func mayRepeat(_ row: BankTextRow, n: Int, nearby: [BankTextRow]?) async -> Bool {
+    if n > 0 { return true }
     guard let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
     else { return true }
     if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
-    if n > 0 { return true }
     let bankless = (row.bank ?? "").isEmpty
     let w = DuplicateRules.probableCopyWindowMs
     let read: [BankTextRow]?

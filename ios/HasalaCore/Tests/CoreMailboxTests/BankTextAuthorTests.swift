@@ -622,7 +622,7 @@ struct BankTextTransferPairTests {
     #expect(BankTextTransferPair.partner(of: alert, among: [row("z", "dib.sms.own-transfer.v1@1", 31 * 60_000)]) == nil)
   }
 
-  @Test("a reader-only debit and a template transfer notice for one amount within 30 minutes overlap, in either direction")
+  @Test("a reader-only debit and a template transfer notice or alert for one amount within 30 minutes overlap, in either direction")
   func readerOverlapCheck() {
     func row(_ id: String, _ t: String?, _ ms: Int64, amount: Int64 = 100, bank: String? = nil, direction: String = "debit") -> BankTextRow {
       BankTextRow(id: id, bank: bank, amountMinor: amount, currency: "AED", direction: direction, last4: "", postedMs: ms, templateRef: t, unparsed: false)
@@ -635,7 +635,11 @@ struct BankTextTransferPairTests {
     #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 31 * 60_000), among: [notice]))
     #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, amount: 101), among: [notice]))
     #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000, direction: "credit"), among: [notice]))
-    #expect(!BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000), among: [row("a", "dib.sms.debit.v1@1", 0, bank: "dib")]))
+    let alert = row("a", "dib.sms.debit.v1@1", 0, bank: "dib")
+    #expect(BankTextTransferPair.readerOverlap(of: row("r", nil, 60_000), among: [alert]))
+    #expect(BankTextTransferPair.readerOverlap(of: alert, among: [row("r", "none", 60_000)]))
+    #expect(!BankTextTransferPair.readerOverlap(of: alert, among: [row("r", "none", 60_000, bank: "enbd")]))
+    #expect(!BankTextTransferPair.readerOverlap(of: alert, among: [notice]))
     #expect(!BankTextTransferPair.readerOverlap(of: row("p", "dib.sms.purchase.v1@1", 0, bank: "dib"), among: [row("r", "none", 0)]))
     #expect(!BankTextTransferPair.readerOverlap(of: notice, among: [row("m", "dib.sms.own-transfer.v1@1", 0, bank: "dib")]))
   }
