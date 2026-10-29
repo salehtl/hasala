@@ -243,7 +243,17 @@ struct MailboxFlowTests: AccountSuite {
     halted.oldHasNoMailbox = true
     halted.impact = MailboxDisconnectImpact(transactions: 1, edited: 0)
     #expect(MailCopy.switchAddressMessage(halted)
-      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? maya@example.com brought in 1 transaction. Keep them, or remove them from your totals.")
+      == "maya@example.com has no mailbox Hasala can read. Switch to maya.home@example.com? maya@example.com brought in 1 transaction. Keep it, or remove it from your totals.")
+    #expect(MailCopy.removeTitle(MailboxDisconnectImpact(transactions: 1, edited: 0)) == "Remove it")
+    #expect(MailCopy.removeTitle(impact) == "Remove them")
+    #expect(MailCopy.removeTitle(nil, lead: "Switch") == "Switch, remove them")
+    #expect(MailCopy.removeTitle(MailboxDisconnectImpact(transactions: 1, edited: 0), lead: "Use Outlook") == "Use Outlook, remove it")
+    let big = MailboxDisconnectImpact(transactions: 12_840, edited: 1_284)
+    #expect(MailCopy.impactLines(big)
+      == ["It brought in 12,840 transactions. Keep them, or remove them from your totals.", "Removing also takes the 1,284 you changed."])
+    #expect(MailCopy.keepOnSwitch("Switch", big) == "Switch, keep the 12,840 transactions")
+    #expect(MailCopy.keepTransactions(big) == "Keep the 12,840 transactions from this inbox")
+    #expect(MailCopy.removed(1_284) == "1,284 transactions removed.")
     #expect(MailCopy.keepOnSwitch("Switch", impact) == "Switch, keep the 12 transactions")
     #expect(MailCopy.keepOnSwitch("Use Outlook", MailboxDisconnectImpact(transactions: 1, edited: 0))
       == "Use Outlook, keep the 1 transaction")
@@ -621,6 +631,8 @@ struct MailboxFlowTests: AccountSuite {
   @Test func bankAlertsCountsUnreadableMail() {
     #expect(BankAlertsPage.unreadableLine(1) == "1 email we couldn't read")
     #expect(BankAlertsPage.unreadableLine(4) == "4 emails we couldn't read")
+    #expect(BankAlertsPage.unreadableLine(1_284) == "1,284 emails we couldn't read")
+    #expect(MonthRead(count: 1_284, month: "September").line == "1,284 read in September")
     #expect(BankAlertsPage.unreadableDetail == "Kept for you to sort by hand")
     #expect(!mailbox().connectRefused)
   }

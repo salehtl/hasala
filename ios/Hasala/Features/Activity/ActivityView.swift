@@ -72,18 +72,25 @@ struct ActivityFilterBar: View {
       .accessibilityIdentifier("activity.period")
   }
 
+  private var countLine: some View {
+    Text(snap.countLine)
+      .hType(.subheadline)
+      .foregroundStyle(HColor.textSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityIdentifier("activity.count")
+  }
+
   @ViewBuilder private var periodRow: some View {
-    if snap.isThisMonth, snap.summary != nil {
+    if snap.allTime {
+      countLine
+        .frame(minHeight: HSpacing.targetMinimum, alignment: .leading)
+    } else if snap.isThisMonth, snap.summary != nil {
       pill
     } else if snap.isThisMonth {
       ReflowingRow(spacing: 12) {
         pill
       } trailing: {
-        Text(snap.countLine)
-          .hType(.subheadline)
-          .foregroundStyle(HColor.textSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("activity.count")
+        countLine
       }
     } else {
       ReflowingRow(spacing: 12) {

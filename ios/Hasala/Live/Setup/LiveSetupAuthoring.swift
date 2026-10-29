@@ -112,6 +112,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
       try await rt.env.client.bankRequest(bank: "other", otherBank: name, bearer: token)
     } catch {
       if case .transport = error { throw .offline }
+      if error.is(400, "bad_bank") { throw .failed(BankName.hint) }
       throw .failed("Couldn't send that just now. Try again later.")
     }
   }

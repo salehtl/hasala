@@ -447,12 +447,49 @@ struct CodeCells: View {
   var identifier = "code.field"
   /// What VoiceOver calls the group ("Email code, 3 of 6 digits").
   var label = "Email code"
+  var revealTarget: String?
 
   @FocusState private var focused: Bool
+  @Environment(\.hMotion) private var motion
+
+  static func digits(_ raw: String, length: Int = 6) -> String {
+    String(raw.compactMap { ch -> Character? in
+      guard ch.unicodeScalars.count == 1, ch.unicodeScalars.first?.properties.numericType == .decimal,
+        let n = ch.wholeNumberValue, (0...9).contains(n)
+      else { return nil }
+      return Character(String(n))
+    }.prefix(length))
+  }
 
   var body: some View {
+    ScrollViewReader { proxy in
+      field
+        .id(revealID)
+        .onChange(of: focused) { _, now in if now { reveal(proxy) } }
+        .onChange(of: state) { _, _ in reveal(proxy) }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+          reveal(proxy)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+          if focused { reveal(proxy) }
+        }
+    }
+  }
+
+  private var revealID: String { "\(identifier).reveal" }
+
+  private func reveal(_ proxy: ScrollViewProxy) {
+    Task {
+      for delay in [50, 400] {
+        try? await Task.sleep(for: .milliseconds(delay))
+        withAnimation(motion.animation(.fade)) { proxy.scrollTo(revealTarget ?? revealID, anchor: .bottom) }
+      }
+    }
+  }
+
+  private var field: some View {
     ZStack {
-      TextField("", text: Binding(get: { code }, set: { code = String($0.filter(\.isNumber).prefix(length)) }))
+      TextField("", text: Binding(get: { code }, set: { code = Self.digits($0, length: length) }))
         .textContentType(.oneTimeCode)
         .keyboardType(.numberPad)
         .focused($focused)
@@ -476,13 +513,17 @@ struct CodeCells: View {
     let half = length / 2
     return HStack(spacing: 0) {
       group(0..<half)
-      Spacer(minLength: 18)
+      Spacer(minLength: Self.groupGap)
       group(half..<length)
     }
   }
 
+  static let cellMinWidth: CGFloat = 40
+  static let cellGap: CGFloat = 8
+  static let groupGap: CGFloat = 12
+
   private func group(_ range: Range<Int>) -> some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Self.cellGap) {
       ForEach(range, id: \.self) { i in cell(i) }
     }
   }
@@ -498,7 +539,8 @@ struct CodeCells: View {
         RoundedRectangle(cornerRadius: 1).fill(HColor.actionAccent).frame(width: 2, height: 30)
       }
     }
-    .frame(width: HSpacing.codeCellWidth, height: HSpacing.codeCellHeight)
+    .frame(minWidth: Self.cellMinWidth, maxWidth: HSpacing.codeCellWidth)
+    .frame(height: HSpacing.codeCellHeight)
     .background(state == .expired ? HColor.surfaceOnWash : HColor.fieldSurfaceOnGrouped,
                 in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     .overlay { FieldRing(color: ring(isNext: isNext)) }

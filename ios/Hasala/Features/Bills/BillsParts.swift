@@ -111,7 +111,7 @@ struct BillCard<Extra: View>: View {
         HStack(spacing: 8) {
           plate
           Text(name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-            .singleLineAtDefaultTextSize()
+            .lineLimitAtDefaultTextSize(2)
         }
       } trailing: {
         StatusPillView(pill)
@@ -148,22 +148,39 @@ struct BillCard<Extra: View>: View {
   }
 
   @ViewBuilder private var buttons: some View {
-    let layout = typeSize.isAccessibilitySize || secondary == nil
-      ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-    layout {
-      Button(primary.title, action: primary.run)
-        .buttonStyle(.pill(.primary, size: .medium, fill: true))
-        .pillHeight()
-        .layoutPriority(1)
-        .accessibilityIdentifier(primary.id)
-      if let secondary {
-        Button(secondary.title, action: secondary.run)
-          .buttonStyle(.pill(.secondary, size: .medium, fill: true))
-          .pillHeight()
-          .frame(width: typeSize.isAccessibilitySize ? nil : 128)
-          .accessibilityIdentifier(secondary.id)
+    if let secondary, !typeSize.isAccessibilitySize {
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 8) {
+          primaryButton
+          secondaryButton(secondary)
+            .frame(minWidth: 128)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        VStack(spacing: 8) {
+          primaryButton
+          secondaryButton(secondary)
+        }
+      }
+    } else {
+      VStack(spacing: 8) {
+        primaryButton
+        if let secondary { secondaryButton(secondary) }
       }
     }
+  }
+
+  private var primaryButton: some View {
+    Button(primary.title, action: primary.run)
+      .buttonStyle(.pill(.primary, size: .medium, fill: true))
+      .pillHeight()
+      .accessibilityIdentifier(primary.id)
+  }
+
+  private func secondaryButton(_ secondary: Action) -> some View {
+    Button(secondary.title, action: secondary.run)
+      .buttonStyle(.pill(.secondary, size: .medium, fill: true))
+      .pillHeight()
+      .accessibilityIdentifier(secondary.id)
   }
 
   /// "AXA Insurance, AED 550.00, 3 days past usual. Car insurance usually arrives on the 7th."
@@ -215,7 +232,7 @@ struct BillsListRow: View {
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 8) {
           Text(row.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle).singleLineAtDefaultTextSize()
-          if let tag { StatusPillView(tag, size: .s22, surface: .tinted) }
+          if let tag { StatusPillView(tag, size: .s22, surface: .tinted).fixedSize() }
         }
         BillDetailParts(parts: row.detail, hidden: hidden)
       }
@@ -254,23 +271,25 @@ struct BillDetailParts: View {
   let hidden: Bool
 
   var body: some View {
-    HStack(spacing: 0) {
-      ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
-        if index > 0 {
-          Text(verbatim: " · ").hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-        }
-        switch part {
-        case .text(let p):
-          Text(p.rendered(hidden: hidden)).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
-        case .status(let words, let tone):
-          HStack(spacing: 6) {
-            Circle().fill(tone.foreground).frame(width: 7, height: 7)
-            Text(words).hType(.footnote.weight(.semibold)).foregroundStyle(tone.foreground)
-          }
-        }
+    line.hType(.footnote).lineLimitAtDefaultTextSize(1)
+  }
+
+  private var line: Text {
+    var text = Text(verbatim: "")
+    for (index, part) in parts.enumerated() {
+      if index > 0 {
+        text = Text("\(text)\(Text(verbatim: " · ").foregroundStyle(HColor.listRowSupporting))")
+      }
+      switch part {
+      case .text(let p):
+        text = Text("\(text)\(Text(p.rendered(hidden: hidden)).foregroundStyle(HColor.listRowSupporting))")
+      case .status(let words, let tone):
+        let dot = Text(verbatim: "\u{25CF}\u{2002}").font(.system(size: 9)).foregroundStyle(tone.foreground)
+        let said = Text(words).fontWeight(.semibold).foregroundStyle(tone.foreground)
+        text = Text("\(text)\(dot)\(said)")
       }
     }
-    .lineLimitAtDefaultTextSize(1)
+    return text
   }
 
   static func spoken(_ parts: [PlanDetailPart], hidden: Bool) -> String {

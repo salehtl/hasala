@@ -4,10 +4,11 @@ import SwiftUI
 
 /// Review · Pick a need (Paper 3SH-0), and its Want, Save and Transfer equivalents: a white
 /// medium sheet floating 8 from the edges (radius 40), one detent that fits its content. The
-/// bucket's categories with the suggestion marked "Suggested", the project chips and "Always
-/// use it for M". A tap on a category files the card at once. Close, a swipe down or the
-/// scrim cancel: nothing is sorted and the card goes back to the deck. At large text sizes it grows to large and
-/// scrolls (page 14).
+/// project chips (one row that scrolls sideways) and "Always use it for M" come first, then the
+/// bucket's categories in their own order, the suggestion marked "Suggested" in place, then New
+/// category, so the categories sit lowest, in reach of the thumb. A tap on a category files the
+/// card at once. Close, a swipe down or the scrim cancel: nothing is sorted and the card goes
+/// back to the deck. At large text sizes it grows to large and scrolls (page 14).
 struct ReviewPickSheet: View {
   let model: any ReviewDeckModel
   let pick: ReviewPick
@@ -41,9 +42,15 @@ struct ReviewPickSheet: View {
             form(formOffer)
           } else {
             header
-            list
-            if showsProjects { projects }
-            if canAlwaysUse { ruleRow }
+            if typeSize.isAccessibilitySize {
+              list
+              if showsProjects { projects }
+              if canAlwaysUse { ruleRow }
+            } else {
+              if showsProjects { projects }
+              if canAlwaysUse { ruleRow }
+              list
+            }
             if let newCategory { newCategoryRow(newCategory) }
           }
         }
@@ -74,6 +81,7 @@ struct ReviewPickSheet: View {
   }
 
   private static let top = "pick.top"
+  private static let chipsInView = 2
 
   private var creating: Bool { formOffer != nil }
 
@@ -82,11 +90,12 @@ struct ReviewPickSheet: View {
   private var canAlwaysUse: Bool { pick.card.canAlwaysUse }
 
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
-  /// 56 with 1 dividers, the project block 66, the rule row 44, gaps 20, and the 8 / 28
-  /// insets), so it opens at its size instead of growing into it.
+  /// 56 with 1 dividers, the one-row project block 70 whatever the number of projects, the
+  /// rule row 44, gaps 20, and the 8 / 28 insets), so it opens at its size instead of growing
+  /// into it.
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
-    let projects: CGFloat = showsProjects ? 66 + 20 : 0
+    let projects: CGFloat = showsProjects ? 70 + 20 : 0
     let rule: CGFloat = canAlwaysUse ? 20 + 44 : 0
     let add: CGFloat = newCategory != nil ? 20 + 56 : 0
     return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + add + 28
@@ -119,12 +128,15 @@ struct ReviewPickSheet: View {
     }
   }
 
-  /// The bucket's categories, straight on the sheet: disc 40, name, "Suggested".
+  /// The bucket's categories, straight on the sheet, in the bucket's order: disc 40, name. The
+  /// suggestion keeps its place, on the review suggestion surface with "Suggested".
   private var list: some View {
     VStack(spacing: 0) {
       ForEach(Array(options.enumerated()), id: \.element.id) { i, o in
         if i > 0 {
-          HColor.borderSubtle.frame(height: 1).padding(.leading, 52).accessibilityHidden(true)
+          HColor.borderSubtle.frame(height: 1).padding(.leading, 52)
+            .opacity(suggested == o.id || suggested == options[i - 1].id ? 0 : 1)
+            .accessibilityHidden(true)
         }
         Button {
           sort(o.id, alwaysUse, project)
@@ -147,6 +159,13 @@ struct ReviewPickSheet: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(HRowPressStyle())
+        .background {
+          if suggested == o.id {
+            RoundedRectangle(cornerRadius: HRadius.control, style: .continuous)
+              .fill(HColor.reviewSuggestionSurface)
+              .padding(.horizontal, -8)
+          }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(suggested == o.id ? "\(o.name), suggested" : o.name)
         .accessibilityHint("Sorts it now")
@@ -156,25 +175,45 @@ struct ReviewPickSheet: View {
     }
   }
 
-  /// "PROJECT": None or one of the open projects, as choice chips on the white sheet.
+  /// "PROJECT": None, then the open projects in their own order with the suggested one marked
+  /// in place, as choice chips on one row that scrolls sideways to the sheet's edges, so the
+  /// block is one chip tall however many projects there are.
   private var projects: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Project").hType(.overline).foregroundStyle(HColor.textSecondary)
         .accessibilityAddTraits(.isHeader)
-      FlowLayout(spacing: 8) {
-        ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
-          .accessibilityIdentifier("pick.project.none")
-        ForEach(projectChoices) { p in
-          HStack(spacing: 6) {
-            ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
-              .accessibilityLabel(p.suggested ? "\(p.name), suggested" : p.name)
-              .accessibilityIdentifier("pick.project.\(p.id)")
-            if p.suggested {
-              InfoChip("Suggested", style: .suggested).accessibilityHidden(true)
+      ScrollViewReader { proxy in
+        ScrollView(.horizontal) {
+          HStack(spacing: 8) {
+            ChoiceChip("None", selected: project == nil, onCard: true) { project = nil }
+              .fixedSize()
+              .accessibilityIdentifier("pick.project.none")
+            ForEach(projectChoices) { p in
+              HStack(spacing: 6) {
+                ChoiceChip(p.name, dot: .peach, selected: project == p.id, onCard: true) { project = p.id }
+                  .fixedSize()
+                  .accessibilityLabel(p.suggested ? "\(p.name), suggested" : p.name)
+                  .accessibilityIdentifier("pick.project.\(p.id)")
+                if p.suggested {
+                  InfoChip("Suggested", style: .suggested).fixedSize().accessibilityHidden(true)
+                }
+              }
+              .id(p.id)
             }
+          }
+          .padding(.horizontal, HSpacing.insetPage)
+          .padding(.vertical, 2)
+        }
+        .onAppear {
+          if let i = projectChoices.firstIndex(where: \.suggested), i >= Self.chipsInView {
+            proxy.scrollTo(projectChoices[i].id, anchor: .center)
           }
         }
       }
+      .scrollIndicators(.hidden)
+      .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+      .padding(.horizontal, -HSpacing.insetPage)
+      .accessibilityIdentifier("pick.projects")
     }
   }
 
