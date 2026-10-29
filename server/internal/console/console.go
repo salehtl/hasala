@@ -36,6 +36,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 //go:embed templates/*.html static/console.css
@@ -54,6 +55,7 @@ type Console struct {
 	Logins  []string // HASALA_CONSOLE_LOGINS
 	TTL     time.Duration
 	Now     func() time.Time
+	Record  func(purgeledger.Entry) error
 
 	queue  *mailq.Queue
 	kCSRF  []byte
@@ -95,7 +97,7 @@ func (c *Console) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /waitlist/{id}/approve", c.action("waitlist.approve", "waitlist_entry", c.approve))
 	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.mint))
-	mux.HandleFunc("POST /invites/{id}/revoke", c.action("invite.revoke", "invite", c.revoke))
+	mux.HandleFunc("POST /invites/{id}/revoke", c.actionThen("invite.revoke", "invite", c.revoke, c.recordRevoked))
 	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.resend))
 	mux.HandleFunc("POST /banks/{id}/status", c.action("bank.status", "bank", c.bankStatus))
 	mux.HandleFunc("POST /banks/add", c.action("bank.add", "bank", c.bankAdd))
@@ -368,6 +370,10 @@ type actionFunc func(ctx context.Context, tx pgx.Tx, r *http.Request) (target, b
 // CSRF token, the action and its audit row in one transaction (a refusal or
 // error is audited in its own).
 func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
+	return c.actionThen(name, kind, f, nil)
+}
+
+func (c *Console) actionThen(name, kind string, f actionFunc, then func(target string) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		login := loginOf(r)
 		target := r.PathValue("id")
@@ -416,6 +422,16 @@ func (c *Console) action(name, kind string, f actionFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusConflict)
 			_, _ = w.Write([]byte(say))
 			return
+		}
+		if then != nil {
+			if err := then(target); err != nil {
+				slog.Error("console: after the action", "action", name, "err", err.Error())
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte("Done, but the restore ledger did not record it, so restoring a backup would undo it. " +
+					"Tell the owner.\n"))
+				return
+			}
 		}
 		if show != "" {
 			// A printed code is shown once, never stored, never in a URL.
@@ -490,6 +506,14 @@ func (c *Console) revoke(ctx context.Context, tx pgx.Tx, r *http.Request) (strin
 		return id.String(), "/invites", "", errRefused
 	}
 	return id.String(), "/invites", "", err
+}
+
+func (c *Console) recordRevoked(target string) error {
+	id, err := uuid.Parse(target)
+	if err != nil || c.Record == nil {
+		return err
+	}
+	return c.Record(purgeledger.Entry{ID: id, At: c.now(), Kind: purgeledger.KindInviteRevoked})
 }
 
 func (c *Console) resend(ctx context.Context, tx pgx.Tx, r *http.Request) (string, string, string, error) {

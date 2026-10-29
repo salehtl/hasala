@@ -11502,15 +11502,14 @@
         }
       ],
       "reader": {
-        "rows": [],
-        "hard_stop": {
-          "row": 0,
-          "outcome": {
-            "kind": "updateRequired"
+        "rows": [
+          {
+            "kind": "setAside",
+            "reason": "opsUndecodable"
           }
-        }
+        ]
       },
-      "reader_expected": "updateRequired",
+      "reader_expected": "setAside(opsUndecodable)",
       "upload": {
         "server_epoch": 1,
         "writer_revoked": false,
@@ -11530,7 +11529,8 @@
         "verdict": {
           "status": 200
         }
-      }
+      },
+      "note": "only the reader's schema + 1 stops sync; a larger version is set aside"
     },
     {
       "id": "T25",

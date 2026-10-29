@@ -28,6 +28,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
     public var internalDateMs: Int64
     public var trashed = false
     public var spam = false
+    public var sizeEstimate: Int64?
     /// The From header value (for listing); parsed from `raw` when built with `SyntheticMail`.
     public var from: String
 
@@ -183,7 +184,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
           200,
           [
             "id": .string(id), "internalDate": .string(String(m.internalDateMs)),
-            "sizeEstimate": .number(JSONNumber(Int64(m.raw.count))),
+            "sizeEstimate": .number(JSONNumber(m.sizeEstimate ?? Int64(m.raw.count))),
             "payload": .object(JSONObject([("headers", .array(headers))])),
           ])
       default:
@@ -445,7 +446,7 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
   nonisolated(unsafe) private static var next = 0
 
   /// An ephemeral-configured exchange whose every request is answered by `fake`.
-  public static func exchange(for fake: any HTTPExchange) -> URLSessionHTTPExchange {
+  public static func exchange(for fake: any HTTPExchange, maxResponseBytes: Int? = nil) -> URLSessionHTTPExchange {
     let id = registry.withLock { () -> String in
       next += 1
       let id = "fake-\(next)"
@@ -455,7 +456,7 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
     let c = URLSessionConfiguration.ephemeral
     c.protocolClasses = [FakeGmailURLProtocol.self]
     c.httpAdditionalHeaders = [header: id]
-    return URLSessionHTTPExchange(configuration: c)
+    return URLSessionHTTPExchange(configuration: c, maxResponseBytes: maxResponseBytes)
   }
 
   public override class func canInit(with request: URLRequest) -> Bool { request.value(forHTTPHeaderField: header) != nil }

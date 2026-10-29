@@ -185,7 +185,7 @@ extension NovelMail {
     #expect(p.held == true && finalize(p).needsReview)
   }
 
-  @Test func theAEDAmountOfATemplateHitFilesItselfOnlyWhenTheReadersAgree() throws {
+  @Test func theAEDAmountOfATemplateHitIsHeldWhenOnlyTheOverrideReadsIt() throws {
     var reader: MailReaderState? = MailReaderState()
     var fresh: MailReaderState? = MailReaderState()
     var last: ParsedMail?
@@ -196,7 +196,7 @@ extension NovelMail {
     #expect(first.held == true && finalize(first).needsReview)
     let p = try #require(last)
     #expect(p.fields?.amountMinor == 6_591 && p.fields?.currency == "AED")
-    #expect(p.held == nil && !finalize(p).needsReview, "\(p)")
+    #expect(p.held == true && finalize(p).needsReview, "\(p)")
   }
 
   @Test func aPendingPhraseCannotSetATemplateHitAside() throws {

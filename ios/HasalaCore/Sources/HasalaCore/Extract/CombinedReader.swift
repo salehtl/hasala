@@ -1,5 +1,9 @@
 public enum CombinedReader {
+  public static let maxTextUTF16 = 65_536
+  public static let maxSubjectUTF16 = 1_024
+
   public static func read(_ input: ExtractInput, _ memory: LearnedLayouts) -> (ExtractReading, LearnedLayouts) {
+    let input = bounded(input)
     let stripped = strip(input)
     let (l, next) = LearnedReader.read(stripped, memory)
     let r = RuleReader.read(stripped)
@@ -11,17 +15,20 @@ public enum CombinedReader {
       result.rulesConfidencePercent = ro.isTransaction ? ro.confidence : 0
       result.learnedConfidencePercent = lo.isTransaction ? lo.confidence : 0
       result.readersAgree = readersAgree(lo, ro)
+      result.aedFromOverride = out.aedOverride && !readsItself(l, out) && !readsItself(r, out)
     }
     return (result, result.outcome == .notTransaction ? memory : next)
   }
 
   public static func readRules(_ input: ExtractInput) -> ExtractReading {
+    let input = bounded(input)
     let stripped = strip(input)
     let r = aedOverride(dateless(RuleReader.read(stripped), stripped.text), stripped)
     return reading(r, input, agreed: false, negative: r.negative)
   }
 
   public static func readLearned(_ input: ExtractInput, _ memory: LearnedLayouts) -> (ExtractReading, LearnedLayouts) {
+    let input = bounded(input)
     let stripped = strip(input)
     let (l, next) = LearnedReader.read(stripped, memory)
     let result = reading(aedOverride(dateless(l, stripped.text), stripped), input, agreed: false, negative: l.negative)
@@ -34,6 +41,7 @@ public enum CombinedReader {
   }
 
   public static func pending(_ input: ExtractInput, direction: ExtractDirection?) -> ExtractPending {
+    let input = bounded(input)
     if MailRules.kind(input, direction: direction?.rawValue).isCard { return .none }
     return MailRules.pendingSignal(input)
   }
@@ -53,7 +61,9 @@ public enum CombinedReader {
         out.currency = "AED"
         out.aedOver = iso
         let confirmed =
-          reading.map { $0.outcome == .transaction && $0.agreed && $0.amountMinor == aed && $0.currency == "AED" } ?? false
+          reading.map {
+            $0.outcome == .transaction && $0.agreed && !$0.aedFromOverride && $0.amountMinor == aed && $0.currency == "AED"
+          } ?? false
         if !confirmed { out.holds.append(.aedNotConfirmed) }
       }
       if let reading, reading.readersConfirm,
@@ -78,9 +88,20 @@ public enum CombinedReader {
     RuleDate.stated(strip(input))
   }
 
+  static func readsItself(_ r: Reading, _ out: Reading) -> Bool {
+    r.isTransaction && !r.aedOverride && r.currency == out.currency && r.amountMinor == out.amountMinor
+  }
+
+  static func bounded(_ input: ExtractInput) -> ExtractInput {
+    var out = input
+    out.text = RuleText.prefix(input.text, utf16: maxTextUTF16)
+    out.subject = RuleText.prefix(input.subject, utf16: maxSubjectUTF16)
+    return out
+  }
+
   static func strip(_ input: ExtractInput) -> ExtractInput {
-    var stripped = input
-    stripped.text = PromoFilter.strip(input.text)
+    var stripped = bounded(input)
+    stripped.text = PromoFilter.strip(stripped.text)
     return stripped
   }
 
@@ -91,6 +112,7 @@ public enum CombinedReader {
     var out = r
     out.amountMinor = aed
     out.currency = "AED"
+    out.aedOverride = true
     out.note += "; aed over \(cur)"
     return out
   }
@@ -181,6 +203,7 @@ public enum CombinedReader {
     }
     return ExtractReading(
       outcome: outcome, amountMinor: amountMinor, currency: r.currency, direction: direction, merchant: r.merchant,
-      last4: MailRules.last4(input), kind: kind, confidencePercent: r.confidence, agreed: agreed, notes: notes)
+      last4: MailRules.last4(input), kind: kind, confidencePercent: r.confidence, agreed: agreed, notes: notes,
+      aedFromOverride: r.aedOverride)
   }
 }

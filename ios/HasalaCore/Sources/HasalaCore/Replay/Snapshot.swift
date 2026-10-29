@@ -3,9 +3,10 @@
 // The fold fingerprint canary (replay/snapshot.ts `CANARY`, extended for v4 as
 // spec 03c §11 asks) and the Codable fold snapshot (spec 04 §5.3).
 //
-// `foldPrint` is the first 32 lower-case hex digits of
-// SHA-256(serializeState(fold(canary))). Any change to fold semantics changes
-// it, which invalidates every saved snapshot (a cold fold rebuilds). The v3
+// `foldPrint` is the first 32 lower-case hex digits of SHA-256 of
+// "schema <SchemaVersion.current>\n" and serializeState(fold(canary)). Any
+// change to fold semantics or to the schema changes it, which invalidates
+// every saved snapshot (a cold fold rebuilds and reads set-aside rows again). The v3
 // half of the canary is conformance/replay's `canary-canary-v3` log, byte for
 // byte (a conformance test pins the copy); the v4 half has one op of every v4
 // type, a keyed overwrite whose later position carries an older
@@ -107,8 +108,12 @@ public enum FoldCanary {
     return s
   }
 
-  /// First 32 hex digits of SHA-256(serializeState(fold(canary))), computed once per process.
-  public static let foldPrint: String = String(state().serializedSHA256().prefix(32))
+  /// First 32 hex digits of SHA-256(schema line + serializeState(fold(canary))), computed once per process.
+  public static let foldPrint: String = fingerprint(schema: SchemaVersion.current)
+
+  static func fingerprint(schema: Int, state folded: State = state()) -> String {
+    String(Hex.encode(sha256(Array("schema \(schema)\n".utf8) + folded.serialized())).prefix(32))
+  }
 }
 
 /// The fold snapshot (spec 04 §5.3): the whole state, delivery bookkeeping and

@@ -697,6 +697,12 @@
       "note": "An op with no parent_version key decodes as a create."
     },
     {
+      "file": "blobs-implausible-version-is-set-aside.json",
+      "name": "implausible-version-is-set-aside",
+      "group": "blobs",
+      "note": "Only the next schema version stops the fold: a blob or an op stamped far above it is set aside, and the rest of the log folds."
+    },
+    {
       "file": "hard_stops-newer-blob-version.json",
       "name": "newer-blob-version",
       "group": "hard_stops",

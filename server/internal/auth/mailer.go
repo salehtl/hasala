@@ -137,8 +137,12 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 	if row.UserID == nil {
 		return mail.Message{}, errors.New("auth: an alert row has no account")
 	}
-	var name string
-	if err := tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id = $1`, *row.UserID).Scan(&name); err != nil {
+	var (
+		name, addr string
+		inDoubt    bool
+	)
+	if err := tx.QueryRow(ctx, `SELECT display_name, email_norm, reverify_requested_at IS NOT NULL FROM users WHERE id = $1`,
+		*row.UserID).Scan(&name, &addr, &inDoubt); err != nil {
 		return mail.Message{}, fmt.Errorf("auth: alert greeting: %w", err)
 	}
 	at := row.CreatedAt
@@ -149,6 +153,9 @@ func (m *Mailer) renderAlert(ctx context.Context, tx pgx.Tx, row mailq.Row) (mai
 	}
 	link := ""
 	if mail.AlertCarriesFreezeLink(row.Subkind) {
+		if addr != row.Recipient || inDoubt {
+			return mail.Message{}, errors.New("auth: no freeze link to an address that is not the account's verified one")
+		}
 		trigger := "new_sign_in"
 		if row.Subkind == "recovery_used_passkey" || row.Subkind == "recovery_used_password" {
 			trigger = "recovery_used"

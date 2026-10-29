@@ -8,6 +8,7 @@
 //	purge-user <uuid> --confirm <uuid> [--dry-run] | --replay-ledger
 //	invite mint [--note T] [--ttl D] [--review | --email A] | list | revoke <id>
 //	account review <uuid> on|off --confirm <uuid>
+//	account unfreeze <uuid> --confirm <uuid> lift any freeze (the out-of-band recovery path)
 //	waitlist                                counts by state and bank
 //	email test <address>                    queue one test email
 //	console                                 the operator console (spec 07 §8; not built yet)

@@ -80,9 +80,23 @@ enum RuleText {
     return out
   }
 
+  static let maxLineUTF16 = 4_096
+
   static func cleanLines(_ text: String) -> [String] {
     asciiDigits(text).replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false)
-      .map { clean(String($0)) }
+      .map { prefix(clean(String($0)), utf16: maxLineUTF16) }
+  }
+
+  static func prefix(_ s: String, utf16 limit: Int) -> String {
+    guard s.utf16.count > limit else { return s }
+    var out = String.UnicodeScalarView()
+    var n = 0
+    for u in s.unicodeScalars {
+      n += UTF16.width(u)
+      if n > limit { break }
+      out.append(u)
+    }
+    return String(out)
   }
 }
 

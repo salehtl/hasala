@@ -26,7 +26,7 @@
       "writer_id": "dev-a",
       "stream": "hot",
       "writer_counter": "2",
-      "body": "{\"v\":99,\"kind\":\"ops\",\"ops\":[{\"v\":99,\"type\":\"bank_declared\",\"op_id\":\"b4\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"dib\",\"active\":true}}]}"
+      "body": "{\"v\":5,\"kind\":\"ops\",\"ops\":[{\"v\":5,\"type\":\"bank_declared\",\"op_id\":\"b4\",\"authored_at\":\"2026-06-05T10:00:00.000Z\",\"parent_version\":null,\"payload\":{\"bank\":\"dib\",\"active\":true}}]}"
     }
   ],
   "expect": {

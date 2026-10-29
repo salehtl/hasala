@@ -215,14 +215,19 @@ struct TamperSuiteTests {
     }
   }
 
-  @Test("T24 an op blob of v 99: opened, then the hard stop; T36 a reserved type: the whole blob aside")
+  @Test("T24 an op blob of v 5: opened, then the hard stop; of v 99: set aside; T36 a reserved type: the whole blob aside")
   func t24t36() throws {
     let sealer = Sealer(epoch: 1, key: base.k1)
+    let v5 = try sealer.seal(
+      plaintextOps: Data(#"{"v":5,"kind":"ops","ops":[]}"#.utf8), envelope: base.env2, prevHash: base.frame1.blobHash,
+      random: StreamRandom(seed: "v5"))
+    guard case .opened(let p5) = base.open(v5.bytes) else { Issue.record("not opened"); return }
+    #expect(OpCodec.decodeR10(p5) == .hardStop(.updateRequired))
     let v99 = try sealer.seal(
       plaintextOps: Data(#"{"v":99,"kind":"ops","ops":[]}"#.utf8), envelope: base.env2, prevHash: base.frame1.blobHash,
       random: StreamRandom(seed: "v99"))
     guard case .opened(let p) = base.open(v99.bytes) else { Issue.record("not opened"); return }
-    #expect(OpCodec.decodeR10(p) == .hardStop(.updateRequired))
+    #expect(OpCodec.decodeR10(p) == .setAside(.opsUndecodable, message: "op blob: version 99 is not valid"))
     let reserved = base.plaintext2 + Data()
     let text = String(decoding: reserved, as: UTF8.self).replacingOccurrences(
       of: "]}", with: #",{"v":4,"type":"profile_set","op_id":"x","authored_at":"2026-06-05T10:00:00Z","payload":{}}]}"#)
@@ -355,6 +360,55 @@ struct TamperSuiteTests {
     let ownConflict = PageReader.read(
       [row(base.frame1, 1, sig: nil), row(base.frame2, 2, sig: sig)], state: state(roster: roster, refreshed: true, own: (testWriter, 0)))
     #expect(ownConflict.stop == .hardStop(.tampered(.ownChainConflict)) && ownConflict.stopRow == 0)
+  }
+
+  @Test("PageReader: a version far above the schema, or any newer version from a revoked writer, is set aside")
+  func pageReaderVersionBounds() throws {
+    let dwk = Ed25519.generate()
+    let sealer = Sealer(epoch: 1, key: base.k1)
+    func page(_ plaintext: String) throws -> (rows: [PageReader.Row], head: Chain.Head) {
+      let f = try sealer.seal(
+        plaintextOps: Data(plaintext.utf8), envelope: base.env2, prevHash: base.frame1.blobHash,
+        random: StreamRandom(seed: plaintext))
+      let sig = try Ed25519.sign(
+        seed: dwk.seed, message: SigningMessage.head(userID: testUser, counter: 2, blobHash: f.blobHash, writerID: testWriter))
+      let rows = [base.frame1, f].enumerated().map { i, fr in
+        PageReader.Row(
+          stream: "hot", writerID: testWriter.string, counter: String(i + 1), sizeBucket: fr.bytes.count,
+          prevHash: fr.prevHash.bytes, blobHash: fr.blobHash.bytes, headSig: i == 1 ? sig : nil, blob: fr.bytes)
+      }
+      return (rows, Chain.Head(counter: 2, hash: f.blobHash))
+    }
+    func read(_ p: (rows: [PageReader.Row], head: Chain.Head), revoked: Bool) -> PageReader.Result {
+      let roster = [testWriter: HeadCheck.RosterWriter(dwkPublicKey: dwk.publicKey, revokedAt: revoked ? p.head : nil)]
+      return PageReader.read(
+        p.rows, state: PageReader.State(userID: testUser, opener: base.opener, serverEpoch: nil, pinnedHeads: [:], roster: roster, own: nil))
+    }
+    let huge = try page(#"{"v":9007199254740991,"kind":"ops","ops":[]}"#)
+    for revoked in [false, true] {
+      let r = read(huge, revoked: revoked)
+      #expect(r.stop == nil && r.rows.count == 2, "\(revoked)")
+      #expect(r.rows.last == .setAside(.opsUndecodable, alarm: false), "\(revoked)")
+    }
+    let next = try page(#"{"v":5,"kind":"ops","ops":[]}"#)
+    let live = read(next, revoked: false)
+    #expect(live.stop == .hardStop(.updateRequired) && live.stopRow == 1 && live.rows.count == 1)
+    let gone = read(next, revoked: true)
+    #expect(gone.stop == nil && gone.rows.count == 2)
+    #expect(gone.rows.last == .setAside(.opsUndecodable, alarm: false))
+    let newerFrame = [UInt8](next.rows[1].blob)
+    var bumped = next
+    var b = newerFrame
+    b[0] = 0x04
+    let h = Chain.hash(prev: base.frame1.blobHash, frame: Data(b))
+    let sig = try Ed25519.sign(
+      seed: dwk.seed, message: SigningMessage.head(userID: testUser, counter: 2, blobHash: h, writerID: testWriter))
+    bumped.rows[1] = PageReader.Row(
+      stream: "hot", writerID: testWriter.string, counter: "2", sizeBucket: b.count, prevHash: base.frame1.blobHash.bytes,
+      blobHash: h.bytes, headSig: sig, blob: Data(b))
+    bumped.head = Chain.Head(counter: 2, hash: h)
+    #expect(read(bumped, revoked: false).stop == .hardStop(.updateRequired))
+    #expect(read(bumped, revoked: true).rows.last == .setAside(.opsUndecodable, alarm: false))
   }
 
   @Test("the sealer: bucket sizing, a fresh nonce per seal, an epoch mismatch is a programming error")

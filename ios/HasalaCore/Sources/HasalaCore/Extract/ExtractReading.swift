@@ -73,12 +73,13 @@ public struct ExtractReading: Sendable, Equatable {
   public var rulesConfidencePercent: Int
   public var learnedConfidencePercent: Int
   public var readersAgree: Bool
+  public var aedFromOverride: Bool
 
   public init(
     outcome: ExtractOutcome, amountMinor: Int64? = nil, currency: String? = nil, direction: ExtractDirection? = nil,
     merchant: String? = nil, last4: String? = nil, kind: ExtractMailKind = .other, confidencePercent: Int = 0,
     agreed: Bool = false, notes: [String] = [], rulesConfidencePercent: Int = 0, learnedConfidencePercent: Int = 0,
-    readersAgree: Bool = false
+    readersAgree: Bool = false, aedFromOverride: Bool = false
   ) {
     self.outcome = outcome
     self.amountMinor = amountMinor
@@ -93,6 +94,7 @@ public struct ExtractReading: Sendable, Equatable {
     self.rulesConfidencePercent = rulesConfidencePercent
     self.learnedConfidencePercent = learnedConfidencePercent
     self.readersAgree = readersAgree
+    self.aedFromOverride = aedFromOverride
   }
 
   public var meetsAgreementBar: Bool {
@@ -156,6 +158,7 @@ struct Reading: Equatable {
   var note = ""
   var negative = false
   var merchantTrimmed = false
+  var aedOverride = false
 
   static let none = Reading()
 }

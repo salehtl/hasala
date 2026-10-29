@@ -604,7 +604,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
       guard !groups.isEmpty, let token = try? await lane.tokens.accessToken(forceRefresh: false)
       else { return nil }
       let graph = GraphClient(
-        http: URLSessionHTTPExchange.ephemeral(), accessToken: token.value, link: MemoryOutlookLinkStore(),
+        http: URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes), accessToken: token.value,
+        link: MemoryOutlookLinkStore(),
         knownSenders: OutlookSenders.known + (await lane.engine.senderAddresses()), nowMs: { SystemClock().nowMs() })
       return OutlookTrustSource(graph: graph, groups: groups)
     }

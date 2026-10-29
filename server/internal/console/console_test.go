@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -181,5 +183,49 @@ func TestHealthzTurnsOnATunnelLeak(t *testing.T) {
 		if w.Code != http.StatusNotFound {
 			t.Errorf("%s on the health listener: %d", p, w.Code)
 		}
+	}
+}
+
+func TestARevokedInviteIsRecordedInTheRestoreLedger(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	var got []purgeledger.Entry
+	c.Record = func(e purgeledger.Entry) error {
+		got = append(got, e)
+		return nil
+	}
+	id, _, err := invites.MintPrinted(bg, pool, "", invites.DefaultTTL, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke: %d %s", w.Code, w.Body)
+	}
+	if len(got) != 1 || got[0].Kind != purgeledger.KindInviteRevoked || got[0].ID != id {
+		t.Fatalf("ledger %+v, want one invite revocation", got)
+	}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("second revoke: %d", w.Code)
+	}
+	if len(got) != 1 {
+		t.Fatalf("a refused revocation was recorded: %+v", got)
+	}
+}
+
+func TestARevocationTheLedgerDidNotRecordIsNotReportedAsDone(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	c.Record = func(purgeledger.Entry) error { return os.ErrPermission }
+	id, _, err := invites.MintPrinted(bg, pool, "", invites.DefaultTTL, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	w := req(c, "POST", path, form, nil)
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "restore ledger") {
+		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
 	}
 }

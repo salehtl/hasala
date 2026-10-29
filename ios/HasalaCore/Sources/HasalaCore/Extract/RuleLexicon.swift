@@ -71,7 +71,7 @@ enum RuleLexicon {
     ["تحويل وارد", "حواله وارده", "تحويل الي حسابك"])
 
   static let maskedRef = RuleText.re(
-    "(?:x{2,}|\\*{1,})[\\s-]?\\d{2,4}(?!\\d)|ending\\s+(?:with\\s+|in\\s+)?\\d{3,4}|\\d{3,4}\\s*(?:x{2,}|\\*{2,})|المنتهيه|منتهيه\\s+ب|a/c|acct|account|card|بطاقه|بطاقتك|حساب|حسابك")
+    "(?:(?<!x)x{2,}+|(?<!\\*)\\*++)[\\s-]?\\d{2,4}(?!\\d)|ending\\s++(?:with\\s+|in\\s+)?\\d{3,4}|\\d{3,4}\\s*+(?:x{2,}|\\*{2,})|المنتهيه|منتهيه\\s+ب|a/c|acct|account|card|بطاقه|بطاقتك|حساب|حسابك")
 
   static let strongMerchantLabels: Set<String> = [
     "merchant", "merchant name", "merchant details", "merchant location", "at", "payee", "payee name", "beneficiary",

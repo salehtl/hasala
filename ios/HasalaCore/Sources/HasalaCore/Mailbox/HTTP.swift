@@ -59,6 +59,7 @@ public enum HTTPExchangeError: Error, Sendable, Equatable {
   /// No route to the host, timed out, TLS refused: retried by the next trigger.
   case offline
   case cancelled
+  case tooLarge
 }
 
 public protocol HTTPExchange: Sendable {
@@ -69,13 +70,15 @@ public protocol HTTPExchange: Sendable {
 /// credential storage (spec 04 §7.2).
 public final class URLSessionHTTPExchange: HTTPExchange {
   let session: URLSession
+  let maxResponseBytes: Int?
 
-  public init(configuration: URLSessionConfiguration) {
+  public init(configuration: URLSessionConfiguration, maxResponseBytes: Int? = nil) {
     session = URLSession(configuration: configuration)
+    self.maxResponseBytes = maxResponseBytes
   }
 
   /// The configuration every Google request uses.
-  public static func ephemeral(timeout: TimeInterval = 30) -> URLSessionHTTPExchange {
+  public static func ephemeral(timeout: TimeInterval = 30, maxResponseBytes: Int? = nil) -> URLSessionHTTPExchange {
     let c = URLSessionConfiguration.ephemeral
     c.httpCookieStorage = nil
     c.httpShouldSetCookies = false
@@ -84,7 +87,7 @@ public final class URLSessionHTTPExchange: HTTPExchange {
     c.requestCachePolicy = .reloadIgnoringLocalCacheData
     c.timeoutIntervalForRequest = timeout
     c.waitsForConnectivity = false
-    return URLSessionHTTPExchange(configuration: c)
+    return URLSessionHTTPExchange(configuration: c, maxResponseBytes: maxResponseBytes)
   }
 
   public func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
@@ -93,7 +96,7 @@ public final class URLSessionHTTPExchange: HTTPExchange {
     for (k, v) in request.headers { r.addValue(v, forHTTPHeaderField: k) }
     r.httpBody = request.body
     do {
-      let (data, response) = try await session.data(for: r)
+      let (data, response) = try await load(r)
       guard let http = response as? HTTPURLResponse else { throw HTTPExchangeError.offline }
       var headers: [(String, String)] = []
       if let retry = http.value(forHTTPHeaderField: "Retry-After") { headers.append(("Retry-After", retry)) }
@@ -107,6 +110,25 @@ public final class URLSessionHTTPExchange: HTTPExchange {
     } catch {
       throw .offline
     }
+  }
+
+  func load(_ r: URLRequest) async throws -> (Data, URLResponse) {
+    guard let cap = maxResponseBytes else { return try await session.data(for: r) }
+    let (stream, response) = try await session.bytes(for: r)
+    if response.expectedContentLength > Int64(cap) {
+      stream.task.cancel()
+      throw HTTPExchangeError.tooLarge
+    }
+    var bytes: [UInt8] = []
+    bytes.reserveCapacity(min(cap, max(0, Int(clamping: response.expectedContentLength))))
+    for try await b in stream {
+      if bytes.count >= cap {
+        stream.task.cancel()
+        throw HTTPExchangeError.tooLarge
+      }
+      bytes.append(b)
+    }
+    return (Data(bytes), response)
   }
 }
 

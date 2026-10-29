@@ -79,14 +79,32 @@ func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by st
 	return revoked, recordEventTx(ctx, tx, m, userID, AuthEvent{Kind: EventAccountFrozen, WriterID: writer}, now)
 }
 
-// FreezeByLink is #64. The route always answers 204, and an invalid, used or
-// expired token changes nothing (and wakes nobody); a freeze wakes every
-// device of the account (spec 02 §12.5).
-func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error) {
+func WellFormedFreezeToken(token string) bool {
 	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != 32 || len(token) != 43 {
+	return err == nil && len(raw) == 32 && len(token) == 43
+}
+
+func (a *Accounts) FreezeTokenLive(ctx context.Context, token string) (bool, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || !WellFormedFreezeToken(token) {
+		return false, nil
+	}
+	h := sha256.Sum256(raw)
+	var live bool
+	err = a.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM freeze_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2)`,
+		h[:], a.now()).Scan(&live)
+	return live, err
+}
+
+// FreezeByLink is #64. An invalid, used or expired token changes nothing (and
+// wakes nobody), and the route answers it as it answers a freeze; a freeze
+// wakes every device of the account (spec 02 §12.5).
+func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error) {
+	if !WellFormedFreezeToken(token) {
 		return Wake{}, nil
 	}
+	raw, _ := base64.RawURLEncoding.DecodeString(token)
 	h := sha256.Sum256(raw)
 	now := a.now()
 	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)

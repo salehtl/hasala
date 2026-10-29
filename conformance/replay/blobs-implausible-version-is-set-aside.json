@@ -1,0 +1,153 @@
+{
+  "name": "implausible-version-is-set-aside",
+  "group": "blobs",
+  "note": "Only the next schema version stops the fold: a blob or an op stamped far above it is set aside, and the rest of the log folds.",
+  "schema_version": 1,
+  "log": [
+    {
+      "seq": "1",
+      "writer_id": "ingest",
+      "ops": [
+        {
+          "v": 1,
+          "type": "txn_ingested",
+          "op_id": "implausible-version-is-set-aside-1",
+          "authored_at": "2026-06-05T10:00:00.000Z",
+          "entity": {
+            "kind": "txn",
+            "id": "t1"
+          },
+          "parent_version": null,
+          "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "payload": {
+            "amount_minor": "25000",
+            "currency": "AED",
+            "direction": "debit",
+            "posted_at": "2026-06-05T09:00:00Z",
+            "merchant_raw": "CARREFOUR",
+            "last4": "8642"
+          }
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "1",
+      "body": "{\"v\":99,\"kind\":\"ops\",\"ops\":[]}"
+    },
+    {
+      "seq": "3",
+      "writer_id": "dev-a",
+      "stream": "hot",
+      "writer_counter": "2",
+      "body": "{\"v\":1,\"kind\":\"ops\",\"ops\":[{\"v\":9007199254740991,\"type\":\"txn_ingested\"}]}"
+    }
+  ],
+  "expect": {
+    "error": null,
+    "state": {
+      "anomalies": [],
+      "banks": [],
+      "budgetMonthlyTotal": null,
+      "budgetSplit": null,
+      "byFingerprint": [
+        [
+          "8642|25000|debit|CARREFOUR|2026-06-05",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "categories": [],
+      "checkpoints": [],
+      "cursors": {
+        "cold": "0",
+        "hot": "3"
+      },
+      "forks": [],
+      "heads": [
+        [
+          "txn\u0000t1",
+          {
+            "authored_at_ms": 1780653600000,
+            "id": "t1",
+            "kind": "txn",
+            "op_id": "implausible-version-is-set-aside-1",
+            "version": 1,
+            "writer_id": "ingest"
+          }
+        ]
+      ],
+      "homeCurrency": null,
+      "liveByIngestID": [
+        [
+          "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+          "t1"
+        ]
+      ],
+      "pendingByCurrency": [
+        [
+          "AED",
+          [
+            "t1"
+          ]
+        ]
+      ],
+      "rateUpdatedAt": [],
+      "rates": [],
+      "rules": [],
+      "txns": [
+        [
+          "t1",
+          {
+            "amount_home_minor": null,
+            "amount_minor": "25000",
+            "category": null,
+            "currency": "AED",
+            "direction": "debit",
+            "duplicate_disposition": null,
+            "id": "t1",
+            "ingest_id": "4cd9b7672d7fbee8fb51fb1e049f690342035f543a8efe734b7b5ffb0c154a45",
+            "last4": "8642",
+            "mailbox_message_id": null,
+            "merchant_raw": "CARREFOUR",
+            "needs_review": true,
+            "parse_error": null,
+            "possible_duplicate_of": null,
+            "posted_at": "2026-06-05T09:00:00.000Z",
+            "provenance": "ingest",
+            "splits": [],
+            "superseded_by": null,
+            "tier": "none",
+            "unparsed": false,
+            "verified_origin_domain": null,
+            "version": 1
+          }
+        ]
+      ],
+      "unreadable": [
+        {
+          "reason": "",
+          "seq": "2",
+          "stream": "hot",
+          "writer_counter": "1",
+          "writer_id": "dev-a"
+        },
+        {
+          "reason": "",
+          "seq": "3",
+          "stream": "hot",
+          "writer_counter": "2",
+          "writer_id": "dev-a"
+        }
+      ]
+    },
+    "state_sha256": "a9d69d8bbebe86642009ef6d91cd74aac34dcd2db6e5602705e50d0f1eb94aa3",
+    "order": {
+      "banks": [],
+      "categories": []
+    }
+  }
+}

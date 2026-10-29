@@ -98,6 +98,20 @@ struct OpCodecTests {
     #expect(decodeError(blob(4, [rateSet, v5op])) == .unknownNewerVersion("op 1 is v5, this build supports v4"))
   }
 
+  @Test("only the next schema version is the hard stop: a larger v sets the blob aside")
+  func implausibleVersion() {
+    #expect(decodeError(blob(6, [])) == .setAside("op blob: version 6 is not valid"))
+    #expect(
+      OpCodec.decodeR10(Array(#"{"v":9007199254740991,"kind":"ops","ops":[]}"#.utf8))
+        == .setAside(.opsUndecodable, message: "op blob: version 9007199254740991 is not valid"))
+    let huge = rateSet.replacingOccurrences(of: #"{"v":4"#, with: #"{"v":9007199254740991"#)
+    #expect(decodeError(blob(4, [rateSet, huge])) == .setAside("op 1: version 9007199254740991 is not valid"))
+    #expect(OpCodec.decodeR10(blob(4, [huge])) == .setAside(.opsUndecodable, message: "op 0: version 9007199254740991 is not valid"))
+    let v5op = rateSet.replacingOccurrences(of: #"{"v":4"#, with: #"{"v":5"#)
+    #expect(OpCodec.decodeR10(blob(5, [v5op])) == .hardStop(.updateRequired))
+    #expect(OpCodec.decodeR10(blob(4, [v5op])) == .hardStop(.updateRequired))
+  }
+
   @Test("the blob is the unit: a reserved profile_set beside a valid op sets the whole blob aside (T36)")
   func reserved() {
     let profile = rateSet.replacingOccurrences(of: "rate_set", with: "profile_set")

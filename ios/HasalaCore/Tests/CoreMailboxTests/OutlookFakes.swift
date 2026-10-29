@@ -77,7 +77,7 @@ struct OutlookRig {
 
   /// `viaURLSession` serves FakeGraph through a real URLSession (`URLSessionHTTPExchange`).
   init(
-    viaURLSession: Bool = false, categorizer: any IngestCategorizer = NoCategorizer(),
+    viaURLSession: Bool = false, maxResponseBytes: Int? = nil, categorizer: any IngestCategorizer = NoCategorizer(),
     ledgerStore: LedgerStore? = nil, author real: MailboxOpAuthor? = nil
   ) {
     tables = ledgerStore.map { MailboxTableStore(writer: $0.db) } ?? (try! MailboxTableStore.inMemory())
@@ -98,7 +98,7 @@ struct OutlookRig {
             entityKind: "txn", entityID: "e-\($0.messageID)", enqueuedAt: at)
         }
       }, nowMs: { clock.nowMs() })
-    let http: any HTTPExchange = viaURLSession ? FakeGmailURLProtocol.exchange(for: graph) : graph
+    let http: any HTTPExchange = viaURLSession ? FakeGmailURLProtocol.exchange(for: graph, maxResponseBytes: maxResponseBytes) : graph
     let oauth = MicrosoftOAuthClient(config: Self.config, http: http)
     provider = OutlookProvider(oauth: oauth, http: http, link: link, clock: clock)
     tokens = RefreshingMailTokenProvider(oauth: oauth, store: keychain, clock: clock)

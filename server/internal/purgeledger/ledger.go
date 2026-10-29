@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	FileMode  fs.FileMode = 0o640
+	FileMode  fs.FileMode = 0o660
 	Retention             = 60 * 24 * time.Hour
 )
 
@@ -37,6 +37,9 @@ const (
 	KindPasskey        Kind = "passkey"
 	KindWaitlistUnsent Kind = "waitlist-unsent"
 	KindPhraseSeen     Kind = "phrase-seen"
+	KindSessions       Kind = "sessions"
+	KindEmail          Kind = "email"
+	KindInviteRevoked  Kind = "invite-revoked"
 )
 
 type Entry struct {
@@ -221,7 +224,8 @@ func check(e Entry) error {
 		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
 	}
 	switch e.Kind {
-	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
+	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
+		KindSessions, KindEmail, KindInviteRevoked:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
@@ -258,7 +262,8 @@ func formatEntry(e Entry) string {
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
 	case KindPasskey:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
+		KindSessions, KindEmail, KindInviteRevoked:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -280,7 +285,7 @@ func parseHex(s string, n int) ([]byte, bool) {
 func unknownKind(k Kind) bool {
 	switch k {
 	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
-		KindPhraseSeen:
+		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked:
 		return false
 	}
 	for _, r := range string(k) {
@@ -338,7 +343,8 @@ func parseLine(text string) (Entry, bool) {
 	}
 	e.Kind = Kind(f[2])
 	switch e.Kind {
-	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen:
+	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
+		KindSessions, KindEmail, KindInviteRevoked:
 		if len(f) != 3 {
 			return Entry{}, false
 		}
@@ -405,7 +411,11 @@ func parse(path string, raw []byte) ([]line, error) {
 }
 
 func openAppend(path string) (*os.File, bool, error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE|os.O_EXCL, FileMode)
+	return openShared(path, os.O_WRONLY|os.O_APPEND)
+}
+
+func openShared(path string, flag int) (*os.File, bool, error) {
+	f, err := os.OpenFile(path, flag|os.O_CREATE|os.O_EXCL, FileMode)
 	if err == nil {
 		if err := f.Chmod(FileMode); err != nil {
 			_ = f.Close()
@@ -416,12 +426,12 @@ func openAppend(path string) (*os.File, bool, error) {
 	if !errors.Is(err, fs.ErrExist) {
 		return nil, false, err
 	}
-	f, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	f, err = os.OpenFile(path, flag, 0)
 	return f, false, err
 }
 
 func lock(path string) (func(), error) {
-	f, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, FileMode)
+	f, _, err := openShared(path+".lock", os.O_RDWR)
 	if err != nil {
 		return nil, fmt.Errorf("purgeledger: lock %s: %w", path, err)
 	}

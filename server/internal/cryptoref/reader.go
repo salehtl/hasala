@@ -175,6 +175,9 @@ func ReadPage(st ReaderState, rows []Row) PageResult {
 	out := PageResult{Rows: []Outcome{}}
 	for i, r := range rows {
 		o := st.open(r)
+		if o.Kind == "updateRequired" && !st.Roster[r.WriterID].Live {
+			o = setAside("opsUndecodable", false)
+		}
 		if o.HardStop() {
 			out.Stop = &Stop{Row: i, Outcome: o}
 			return out
@@ -254,6 +257,9 @@ func (st ReaderState) decode(pt []byte) Outcome {
 	if err := json.Unmarshal(pt, &env); err != nil || env.V == nil || env.Kind != "ops" {
 		return setAside("opsUndecodable", false)
 	}
+	if *env.V > st.Schema+1 {
+		return setAside("opsUndecodable", false)
+	}
 	if *env.V > st.Schema {
 		return Outcome{Kind: "updateRequired"}
 	}
@@ -263,6 +269,9 @@ func (st ReaderState) decode(pt []byte) Outcome {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(raw, &op); err != nil || op.V == nil {
+			return setAside("opsUndecodable", false)
+		}
+		if *op.V > st.Schema+1 {
 			return setAside("opsUndecodable", false)
 		}
 		if *op.V > st.Schema {

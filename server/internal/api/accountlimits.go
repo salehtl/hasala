@@ -22,12 +22,16 @@ const (
 	resetIPBurst   = 30
 	freezeIPRate   = 10.0 / 60
 	freezeIPBurst  = 10
+	freezePrefix   = 1.0
+	freezePrefixB  = 20
 	freezeGlobal   = 20.0
 	freezeGlobalB  = 100
 	devFreezeIP    = 10.0 / 60
 	devFreezeIPB   = 10
 	devFreezeWr    = 6.0 / 3600
 	devFreezeWrB   = 3
+	devFreezePfx   = 0.5
+	devFreezePfxB  = 20
 	devFreezeGl    = 10.0
 	devFreezeGlB   = 50
 )
@@ -37,8 +41,10 @@ func (s *Server) defaultAccountLimiters() {
 	s.ensureLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.ResetPerIP, resetIPRate, resetIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezePerIP, freezeIPRate, freezeIPBurst, accountLimiterKeys)
+	s.ensureLimiter(&s.FreezePerPrefix, freezePrefix, freezePrefixB, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezeGlobal, freezeGlobal, freezeGlobalB, 1)
 	s.ensureLimiter(&s.DevFreezeIP, devFreezeIP, devFreezeIPB, accountLimiterKeys)
+	s.ensureLimiter(&s.DevFreezePerPrefix, devFreezePfx, devFreezePfxB, accountLimiterKeys)
 	s.ensureLimiter(&s.DevFreezeWriter, devFreezeWr, devFreezeWrB, accountLimiterKeys)
 	s.ensureLimiter(&s.DevFreezeGlobal, devFreezeGl, devFreezeGlB, 1)
 }
@@ -79,17 +85,31 @@ func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := clientKey(r)
 		for _, l := range ls {
-			k := key
-			if l == s.PasskeyGlobal || l == s.FreezeGlobal || l == s.DevFreezeGlobal {
-				k = ""
+			var ok bool
+			switch l {
+			case s.PasskeyGlobal:
+				ok = s.globalAllow(r, s.PasskeyPerPrefix, l)
+			case s.FreezeGlobal:
+				ok = s.globalAllow(r, s.FreezePerPrefix, l)
+			case s.DevFreezeGlobal:
+				ok = s.globalAllow(r, s.DevFreezePerPrefix, l)
+			default:
+				ok = l.Allow(key)
 			}
-			if !l.Allow(k) {
+			if !ok {
 				writeTooManyAttempts(w)
 				return
 			}
 		}
 		h(w, r)
 	}
+}
+
+func (s *Server) globalAllow(r *http.Request, prefix, global *Limiter) bool {
+	if k, ok := prefixKey(clientKey(r)); ok && !prefix.Allow(k) {
+		return false
+	}
+	return global.Allow("")
 }
 
 // userLimited is account-user (spec 02 §16.2) on a session route.

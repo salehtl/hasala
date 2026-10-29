@@ -9,12 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // runInvite is spec 07 §14.3's invite CLI:
@@ -92,7 +94,8 @@ func runInvite(env *runEnv, args []string) error {
 	case "list":
 		return listInvites(ctx, env, pool)
 	case "revoke":
-		return withTx(ctx, pool, func(tx pgx.Tx) error {
+		var revoked uuid.UUID
+		if err := withTx(ctx, pool, func(tx pgx.Tx) error {
 			id, err := invites.Revoke(ctx, tx, positional[1], time.Now())
 			if err != nil {
 				if errors.Is(err, invites.ErrNoSuchInvite) || errors.Is(err, invites.ErrAmbiguous) {
@@ -103,9 +106,23 @@ func runInvite(env *runEnv, args []string) error {
 			if err := audit(ctx, tx, actor, "cli.invite_revoke", "invite", id.String(), nil); err != nil {
 				return err
 			}
-			fmt.Fprintf(env.stdout, "revoked invite %s\n", invites.ShortID(id))
+			revoked = id
 			return nil
-		})
+		}); err != nil {
+			return err
+		}
+		fmt.Fprintf(env.stdout, "revoked invite %s\n", invites.ShortID(revoked))
+		p := cfg.Server.PurgeLedgerPath
+		if p == "" {
+			fmt.Fprintln(env.stderr, "invite revoke: warning: HASALA_PURGE_LEDGER_PATH is not set, "+
+				"so restoring a backup would bring this invite back")
+			return nil
+		}
+		e := purgeledger.Entry{ID: revoked, At: time.Now(), Kind: purgeledger.KindInviteRevoked}
+		if err := purgeledger.AppendEntries(p, e); err != nil {
+			return fmt.Errorf("invite revoke: the invite is revoked, but the restore ledger did not record it: %w", err)
+		}
+		return nil
 	}
 	if email != "" {
 		// The CLI has no auth key and no mail token: the row is queued without a
