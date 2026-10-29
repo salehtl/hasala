@@ -345,6 +345,8 @@ struct CodeStepScreen: View {
   var onSubmit: () -> Void
   var onResend: () -> Void
 
+  private static let revealID = "code.step.reveal"
+
   private var state: CodeCells.State {
     switch failure {
     case .codeExpired: .expired
@@ -356,15 +358,18 @@ struct CodeStepScreen: View {
   var body: some View {
     AccountScreen(title: title, subtitle: subtitle, steps: steps, back: .system) {
       VStack(alignment: .leading, spacing: 12) {
-        CodeCells(code: $code, state: state)
-          .onChange(of: code) { _, new in
-            // Checked on the sixth digit (page 11 §02); typing again clears a wrong code.
-            if new.count == 6, !busy { onSubmit() }
+        VStack(alignment: .leading, spacing: 12) {
+          CodeCells(code: $code, state: state, revealTarget: Self.revealID)
+            .onChange(of: code) { _, new in
+              // Checked on the sixth digit (page 11 §02); typing again clears a wrong code.
+              if new.count == 6, !busy { onSubmit() }
+            }
+          if let message = failure?.message {
+            FieldErrorLine(text: message, warning: failure == .codeExpired)
+              .accessibilityIdentifier("code.failure")
           }
-        if let message = failure?.message {
-          FieldErrorLine(text: message, warning: failure == .codeExpired)
-            .accessibilityIdentifier("code.failure")
         }
+        .id(Self.revealID)
         if state != .expired {
           ResendRow(sentAt: sentAt, busy: busy, trailing: trailing, onResend: onResend)
         }

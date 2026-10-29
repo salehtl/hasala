@@ -68,10 +68,14 @@ struct InviteCode: Equatable, Hashable, Sendable {
     let pattern = "(?<![A-Za-z0-9])[A-Za-z2-7]{4}(?:[- ]?[A-Za-z2-7]{4}){5}(?![A-Za-z0-9])"
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
     let ns = text as NSString
+    var best: (rank: Int, value: String)?
     for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-      if let code = InviteCode(ns.substring(with: match.range)) { return code.value }
+      let run = ns.substring(with: match.range)
+      guard let code = InviteCode(run) else { continue }
+      let rank = (run.contains("-") ? 2 : 0) + (run.contains(where: \.isLowercase) ? 0 : 1)
+      if best.map({ rank > $0.rank }) ?? true { best = (rank, code.value) }
     }
-    return nil
+    return best?.value
   }
 
   static func keptCharacters(_ raw: String) -> String {
