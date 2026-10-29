@@ -347,7 +347,6 @@ private struct MailboxFactRow: View {
 
   let fact: MailboxDetailPage.Fact
   var style = Style.mailbox
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   private var key: some View {
     Text(fact.key)
@@ -355,32 +354,11 @@ private struct MailboxFactRow: View {
       .foregroundStyle(style == .details ? HColor.textPrimary : HColor.textSecondary)
   }
 
-  private func value(_ alignment: TextAlignment) -> some View {
-    Text(fact.value).hType(.subheadline)
-      .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
-      .multilineTextAlignment(alignment)
-  }
-
-  private var stacked: some View {
-    VStack(alignment: .leading, spacing: 4) {
+  private var row: some View {
+    ReflowingRow(spacing: 12) {
       key
-      value(.leading)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  @ViewBuilder private var row: some View {
-    if typeSize.isAccessibilitySize {
-      stacked
-    } else {
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 0) {
-          key
-          Spacer(minLength: 12)
-          value(.trailing)
-        }
-        stacked
-      }
+    } trailing: {
+      FactValue(text: fact.value, style: style)
     }
   }
 
@@ -393,5 +371,17 @@ private struct MailboxFactRow: View {
       // label with a value reads as one to the accessibility audit, which then finds its
       // 20 pt text too small to tap.
       .accessibilityElement(children: .combine)
+  }
+}
+
+private struct FactValue: View {
+  let text: String
+  let style: MailboxFactRow.Style
+  @Environment(\.reflowingRowStacked) private var stacked
+
+  var body: some View {
+    Text(text).hType(.subheadline)
+      .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
+      .multilineTextAlignment(stacked ? .leading : .trailing)
   }
 }

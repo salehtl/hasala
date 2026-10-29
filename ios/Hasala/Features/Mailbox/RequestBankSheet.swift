@@ -18,7 +18,7 @@ struct RequestBankSheet: View {
 
   private var typedName: String { BankName.normalized(typed) }
   private var typedValid: Bool { BankName.valid(typedName) }
-  private var showsNameHint: Bool { (!typedName.isEmpty && !typedValid) || failure == .failed(BankName.hint) }
+  private var nameHint: String? { BankName.problem(typedName) ?? (failure == .failed(BankName.hint) ? BankName.hint : nil) }
 
   private func requested(_ slug: String) -> Bool { snapshot.requests.contains { $0.bank == slug } }
 
@@ -92,8 +92,8 @@ struct RequestBankSheet: View {
       .frame(minHeight: 56)
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
       .onChange(of: typed) { _, _ in if failure == .failed(BankName.hint) { failure = nil } }
-      if showsNameHint {
-        InlineStatus(tone: .warning, text: BankName.hint, size: .regular)
+      if let nameHint {
+        InlineStatus(tone: .warning, text: nameHint, size: .regular)
           .accessibilityIdentifier("requestBank.nameHint")
       }
     }
@@ -282,7 +282,8 @@ private struct RequestBankPlate: View {
 }
 
 enum BankInitials {
-  static let particles: Set<String> = ["of", "the", "and", "for", "de", "al", "el"]
+  static let particles: Set<String> = ["of", "the", "and", "for", "de"]
+  static let articles: Set<String> = ["al", "el"]
   static let generic: Set<String> = ["bank", "banks"]
 
   static func of(_ name: String) -> String? {
@@ -292,7 +293,7 @@ enum BankInitials {
     if words.count == 1 {
       return first.count <= 4 && first == first.uppercased() ? first : String(first.prefix(3)).uppercased()
     }
-    let kept = words.filter { !particles.contains($0) }
+    let kept = words.filter { !particles.contains($0.lowercased()) && !articles.contains($0) }
     return String((kept.isEmpty ? words : kept).prefix(3).compactMap(\.first)).uppercased()
   }
 
@@ -304,7 +305,14 @@ enum BankInitials {
 }
 
 enum BankName {
-  static let hint = "Use only letters, numbers, spaces and & . ' - ( ) /, up to 64 characters."
+  static let hint = "Use letters or numbers. Spaces and & . ' - ( ) / are fine between them."
+  static let tooLong = "That name is too long. Try a shorter form of it."
+
+  static func problem(_ name: String) -> String? {
+    if name.isEmpty { return nil }
+    if name.unicodeScalars.count > 64, name.unicodeScalars.allSatisfy(allowed) { return tooLong }
+    return valid(name) ? nil : hint
+  }
 
   static func normalized(_ typed: String) -> String {
     var out = String.UnicodeScalarView()
@@ -325,7 +333,11 @@ enum BankName {
 
   static func valid(_ name: String) -> Bool {
     let scalars = name.unicodeScalars
-    return (1...64).contains(scalars.count) && scalars.allSatisfy(allowed)
+    return (1...64).contains(scalars.count) && scalars.allSatisfy(allowed) && scalars.contains(where: keyed)
+  }
+
+  private static func keyed(_ s: Unicode.Scalar) -> Bool {
+    allowed(s) && s != " " && !".'-()/".unicodeScalars.contains(s)
   }
 
   private static func allowed(_ s: Unicode.Scalar) -> Bool {

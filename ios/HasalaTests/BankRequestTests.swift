@@ -47,6 +47,9 @@ struct BankRequestTests {
     #expect(BankInitials.of("Emirates Islamic") == "EI")
     #expect(BankInitials.of("Commercial Bank of Dubai") == "CBD")
     #expect(BankInitials.of("Al Hilal Bank") == "AHB")
+    #expect(BankInitials.of("Commercial Bank Of Dubai") == "CBD")
+    #expect(BankInitials.of("Bank Of The East") == "BE")
+    #expect(BankInitials.of("Bank al Etihad") == "BE")
     #expect(BankInitials.of("بنك المشرق") == nil)
     #expect(BankInitials.of("مَصْرِف عجمان الإسلامي") == nil)
     #expect(BankInitials.of("bank") == nil)
@@ -65,11 +68,23 @@ struct BankRequestTests {
     #expect(BankName.valid(String(repeating: "a", count: 64)))
     #expect(!BankName.valid(String(repeating: "a", count: 65)))
     #expect(!BankName.valid(String(repeating: "مَ", count: 33)))
+    #expect(!BankName.valid("..."))
+    #expect(!BankName.valid("-"))
+    #expect(!BankName.valid("( ) /"))
+    #expect(BankName.valid("&"))
+    #expect(BankName.valid("A."))
+    #expect(BankName.problem("") == nil)
+    #expect(BankName.problem("Al Hilal Bank") == nil)
+    #expect(BankName.problem("...") == BankName.hint)
+    #expect(BankName.problem("Bank #1") == BankName.hint)
+    #expect(BankName.problem(String(repeating: "مَ", count: 33)) == BankName.tooLong)
+    #expect(BankName.problem(String(repeating: "a", count: 65) + "#") == BankName.hint)
   }
 
   @Test func theMockRefusesWhatTheServerRefuses() async {
     let setup = MockSetupAuthoring()
     await #expect(throws: SetupFailure.failed(BankName.hint)) { try await setup.requestBank("Al Hilal Bank, Abu Dhabi") }
+    await #expect(throws: SetupFailure.failed(BankName.hint)) { try await setup.requestBank("...") }
     #expect(setup.requestedBanks.isEmpty)
   }
 
