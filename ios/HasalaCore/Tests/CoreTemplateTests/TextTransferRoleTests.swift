@@ -9,7 +9,7 @@ struct TextTransferRoleTests {
   @Test("the roles come from the bundled definitions: DIB's own transfer is the notice, its account debit the alert")
   func rolesComeFromTheBundle() {
     #expect(TextTransferRole.byTemplate == ["dib.sms.own-transfer.v1": .notice, "dib.sms.debit.v1": .alert])
-    #expect(Self.textTemplates.count == 8)
+    #expect(Self.textTemplates.count == 18)
     for t in Self.textTemplates {
       #expect(TextTransferRole.byTemplate[t.definition.id] == TextTransferRole(definition: t.definition), "\(t.definition.id)")
     }

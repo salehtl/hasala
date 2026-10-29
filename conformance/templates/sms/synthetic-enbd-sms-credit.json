@@ -1,0 +1,247 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.credit.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.credit.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "has been credited to "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "(?:^|, )(?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been credited to (?:your )?account "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD INSTANT TRANSFER",
+        "patterns": [
+          " towards instant transfer\\."
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD INWARD TRANSFER",
+        "patterns": [
+          " IPI TT REF",
+          " DTB TR REF "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD GLOBAL EQUITIES",
+        "patterns": [
+          " MOBILE WTH GL EQ "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD MOBILE TRANSFER",
+        "patterns": [
+          " MOBILE TRF"
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          " to your account no\\. [0-9X-]{4,24} (?P<v>[^\\n]+?)\\. The available balance is "
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true",
+        "patterns": [
+          " MOBILE WTH GL EQ ",
+          " MOBILE TRF"
+        ]
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.credit.v1/account-credit",
+      "source": "SYNTHETIC: an account credit with no description: no merchant",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDEsNTE3LjI5IGhhcyBiZWVuIGNyZWRpdGVkIHRvIGFjY291bnQgMTAxWFhYMjNYWFgwMS4gQ3VycmVudCBiYWxhbmNlIGlzIEFFRCAyLDUzMS40Ni4gQ3JlZGl0cyBwb3N0IGN1dC1vZmZzIHdpbGwgYmUgYXZhaWxhYmxlIG5leHQgZGF5Lg==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "151729",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/instant-transfer",
+      "source": "SYNTHETIC: an instant transfer received, after a greeting",
+      "subject_base64": "",
+      "normalized_body_base64": "RGVhciBDdXN0b21lciwgQUVEIDI1My4xOCBoYXMgYmVlbiBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgMTAxWFhYMjNYWFgwMSB0b3dhcmRzIGluc3RhbnQgdHJhbnNmZXIuIFRoZSBhdmFpbGFibGUgYmFsYW5jZSBpcyBBRUQgMywwMDAuMDAu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "25318",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD INSTANT TRANSFER",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/inward-transfer",
+      "source": "SYNTHETIC: an inward telegraphic transfer: a constant merchant in place of the sender",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDQsMDI4LjY3IGhhcyBiZWVuIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCBuby4gMTAxWFhYMjNYWFgwMSBJUEkgVFQgUkVGOiBTQU1QTEUgU0VOREVSIC9SRUYvTS4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIEFFRCA3LDAzMS41NS4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "402867",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD INWARD TRANSFER",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/dtb-transfer",
+      "source": "SYNTHETIC: the DTB transfer wording",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDMwMC4wMCBoYXMgYmVlbiBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgbm8uIDEwMVhYWDIzWFhYMDEgRFRCIFRSIFJFRiBTQU1QTEVSRUYwMDAxIDEyMzQgQlkgRC4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIEFFRCA3LDMwMC4wMC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "30000",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD INWARD TRANSFER",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/global-equities",
+      "source": "SYNTHETIC: money back from the person's own brokerage account is a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "VVNEIDEsMDEzLjI3IGhhcyBiZWVuIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCBuby4gMTAxWFhYMjNYWFgwMiBNT0JJTEUgV1RIIEdMIEVRIDEyMzQ1LzY3ODkwMSBSRUYuLTFBMkIzQy4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIFVTRCAxLDUxNy4yOS4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "101327",
+        "currency": "USD",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD GLOBAL EQUITIES",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/mobile-transfer",
+      "source": "SYNTHETIC: a mobile banking transfer between the person's accounts is a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "VVNEIDIwNy41MyBoYXMgYmVlbiBjcmVkaXRlZCB0byB5b3VyIGFjY291bnQgbm8uIDEwMVhYWDIzWFhYMDIgTU9CSUxFIFRSRi0xQTJCM0M0RC4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIFVTRCAxLDcwMC4wMC4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "20753",
+        "currency": "USD",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD MOBILE TRANSFER",
+        "last4": "",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/described",
+      "source": "SYNTHETIC: another description is the merchant",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDc1LjAwIGhhcyBiZWVuIGNyZWRpdGVkIHRvIHlvdXIgYWNjb3VudCBuby4gMTAxWFhYMjNYWFgwMSBTQU1QTEUgQ1JFRElUIFJFRi4gMTIzNC4gVGhlIGF2YWlsYWJsZSBiYWxhbmNlIGlzIEFFRCA3LDEwNi43My4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "7500",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "SAMPLE CREDIT REF. 1234",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.credit.v1/transferred",
+      "source": "SYNTHETIC: money transferred in belongs to its own template",
+      "subject_base64": "",
+      "normalized_body_base64": "QUVEIDUxNy4zNiBoYXMgYmVlbiB0cmFuc2ZlcnJlZCB0byB5b3VyIGFjY291bnQgMTAxWFhYMjNYWFgwMQ==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

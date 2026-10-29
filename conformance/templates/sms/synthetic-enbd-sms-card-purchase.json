@@ -1,0 +1,192 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.card-purchase.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.card-purchase.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "Purchase of ",
+        " with Debit Card ending "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^Purchase of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) with Debit Card ending "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          " with Debit Card ending [0-9]{4} at (?P<v>[^,\\n]+)\\. Avl Balance is ",
+          " with Debit Card ending [0-9]{4} at (?P<v>[^,\\n]+), "
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " with Debit Card ending (?P<v>[0-9]{4}) at "
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.card-purchase.v1/debit-card",
+      "source": "SYNTHETIC: a debit card purchase: the merchant up to the first comma, the card's last four",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDQ1LjY3IHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBTQU1QTEUgQ0FGRSwgRFVCQUkuIEF2bCBCYWxhbmNlIGlzIEFFRCAxLDIzNC41Ni4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "4567",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE CAFE",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/no-city",
+      "source": "SYNTHETIC: a merchant with no city runs up to the balance",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDEyLjMwIHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBTQU1QTEUgU1RPUkUuIEF2bCBCYWxhbmNlIGlzIEFFRCAyLDM0NS42Ny4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "1230",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE STORE",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/foreign-currency",
+      "source": "SYNTHETIC: a foreign currency purchase and the statement note",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgVVNEIDIwLjAwIHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBFWEFNUExFLkNPTSwgKzEyMzQ1Njc4LiBBdmwgQmFsYW5jZSBpcyBBRUQgMyw0NTYuNzguIFBscyByZWZlciBzdG10IGZvciBleGFjdCBhbXQu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2000",
+        "currency": "USD",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "EXAMPLE.COM",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/two-commas",
+      "source": "SYNTHETIC: the merchant stops at the first comma",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDEsMjM0LjUwIHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgNTY3OCBhdCBTQU1QTEUgTUFSVCwgU0FNUExFIENJVFksIEFSRUEuIEF2bCBCYWxhbmNlIGlzIEFFRCA0LDU2Ny44OS4=",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "123450",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE MART",
+        "last4": "5678",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/merchant-ending-in-a-dot",
+      "source": "SYNTHETIC: a merchant that ends in a dot keeps it",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDM0LjAwIHdpdGggRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBTQU1QTEUgU1QuLCBDSVRZLiBBdmwgQmFsYW5jZSBpcyBBRUQgNSw2NzguOTAu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "3400",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE ST.",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/three-decimals",
+      "source": "SYNTHETIC: a third decimal is not an amount",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2Ugb2YgQUVEIDEyLjM0NSB3aXRoIERlYml0IENhcmQgZW5kaW5nIDEyMzQgYXQgU0FNUExFIENBRkUsIERVQkFJLiBBdmwgQmFsYW5jZSBpcyBBRUQgMSwyMzQuNTYu",
+      "expect": {
+        "matched": false,
+        "error": "missing_field",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE CAFE",
+        "last4": "1234",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.card-purchase.v1/refund",
+      "source": "SYNTHETIC: a refunded purchase belongs to the refund template",
+      "subject_base64": "",
+      "normalized_body_base64": "UHVyY2hhc2UgYW1vdW50IG9mIEFFRCA0NS42NyBhdCBTQU1QTEUgQ0FGRSBvbiB5b3VyIERlYml0IENhcmQgZW5kaW5nIDEyMzQgaGFzIGJlZW4gcmVmdW5kZWQgdG8geW91ciBjYXJkIGFjY291bnQuIEF2bCBCYWwgaXMgQUVEIDEsMjM0LjU2Lg==",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

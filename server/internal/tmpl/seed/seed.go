@@ -83,6 +83,16 @@ var IDs = []string{
 	"dib.sms.reversal.v1",
 	"dib.sms.own-transfer.v1",
 	"dib.sms.card-payment.v1",
+	"enbd.sms.bill-payment.v1",
+	"enbd.sms.card-purchase.v1",
+	"enbd.sms.cash-withdrawal.v1",
+	"enbd.sms.cheque-deposit.v1",
+	"enbd.sms.credit.v1",
+	"enbd.sms.credit-card-purchase.v1",
+	"enbd.sms.debit.v1",
+	"enbd.sms.funds-transfer.v1",
+	"enbd.sms.refund.v1",
+	"enbd.sms.transfer-in.v1",
 }
 
 // Seed returns the published seed set.

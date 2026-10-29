@@ -1,0 +1,138 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.cheque-deposit.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.cheque-deposit.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "the cheque number ",
+        " has been deposited to account "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "(?:^|, )the cheque number [0-9]{1,16} for (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been deposited to account "
+        ]
+      },
+      {
+        "field": "date",
+        "type": "date",
+        "source": "body",
+        "layouts": [
+          "DD-MM-YYYY"
+        ],
+        "patterns": [
+          " has been deposited to account [0-9X-]{4,24} on (?P<d>[0-9]{2}-[0-9]{2}-[0-9]{4}) "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "const",
+        "source": "body",
+        "value": "ENBD CHEQUE DEPOSIT"
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "credit"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.cheque-deposit.v1/cheque",
+      "source": "SYNTHETIC: a cleared cheque: a credit dated by the text",
+      "subject_base64": "",
+      "normalized_body_base64": "RGVhciBDdXN0b21lciwgdGhlIGNoZXF1ZSBudW1iZXIgMDAwMTIzIGZvciBBRUQgMiw1MzEuNDYgaGFzIGJlZW4gZGVwb3NpdGVkIHRvIGFjY291bnQgMTAxLVhYWDIzWFhYLTAxIG9uIDA1LTA2LTIwMjYgMTA6MTE6MTIgQU0uQXZhaWxhYmxlIEJhbGFuY2UgQUVEIDksODc2LjU0",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "253146",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-06-05T00:00:00Z",
+        "merchant": "ENBD CHEQUE DEPOSIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.cheque-deposit.v1/no-greeting",
+      "source": "SYNTHETIC: the greeting is optional",
+      "subject_base64": "",
+      "normalized_body_base64": "dGhlIGNoZXF1ZSBudW1iZXIgMDAwMTI0IGZvciBBRUQgMjUzLjE4IGhhcyBiZWVuIGRlcG9zaXRlZCB0byBhY2NvdW50IDEwMS1YWFgyM1hYWC0wMSBvbiAwNy0wOC0yMDI2IDAzOjA0OjA1IFBNLkF2YWlsYWJsZSBCYWxhbmNlIEFFRCA5LDAwMC4wMA==",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "25318",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "2026-08-07T00:00:00Z",
+        "merchant": "ENBD CHEQUE DEPOSIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.cheque-deposit.v1/bad-day",
+      "source": "SYNTHETIC: a day out of range leaves the row undated",
+      "subject_base64": "",
+      "normalized_body_base64": "RGVhciBDdXN0b21lciwgdGhlIGNoZXF1ZSBudW1iZXIgMDAwMTI1IGZvciBBRUQgMjUuMDAgaGFzIGJlZW4gZGVwb3NpdGVkIHRvIGFjY291bnQgMTAxLVhYWDIzWFhYLTAxIG9uIDMxLTAyLTIwMjYgMTA6MTE6MTIgQU0uQXZhaWxhYmxlIEJhbGFuY2UgQUVEIDksMDI1LjAw",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "2500",
+        "currency": "AED",
+        "direction": "credit",
+        "posted_at": "",
+        "merchant": "ENBD CHEQUE DEPOSIT",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.cheque-deposit.v1/deposit-machine",
+      "source": "SYNTHETIC: cheques put in a deposit machine name no amount and are not a payment",
+      "subject_base64": "",
+      "normalized_body_base64": "MiBjaGVxdWUocykgaGFzIGJlZW4gZGVwb3NpdGVkIHRvIHlvdXIgYWNjb3VudCAxMDFYWFgyM1hYWDAxIHRocm91Z2ggdGhlIGRlcG9zaXQgbWFjaGluZS4gRGVwb3NpdCB0byBiZSBjb25maXJtZWQgYWZ0ZXIgc3VjY2Vzc2Z1bCBjaGVxdWUgY2xlYXJpbmcu",
+      "expect": {
+        "matched": false,
+        "error": "no_match",
+        "amount_minor": "0",
+        "currency": "",
+        "direction": "",
+        "posted_at": "",
+        "merchant": "",
+        "last4": "",
+        "is_transfer": false,
+        "empty_groups": []
+      }
+    }
+  ]
+}

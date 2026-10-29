@@ -100,17 +100,17 @@ struct TemplateRunnerTests {
     let bundled = (BundledTemplates.load(channel: .mail).templates + BundledTemplates.load(channel: .sms).templates).map(\.definition)
     let root = try TemplateRunnerProbe.root()
     defer { try? FileManager.default.removeItem(at: root) }
-    for d in bundled {
+    for d in bundled where !TemplateFixtures.corpusPending.contains(d.id) {
       let doc = Data("{\"kind\":\"corpus\",\"definition\":".utf8) + (try TemplateRunnerProbe.bundledBytes(d.id)) + Data(",\"cases\":[]}".utf8)
       try TemplateRunnerProbe.write(doc, root, "corpus-\(d.id).json", sub: d.isSMS ? TemplateFixtures.smsSubdir : "")
     }
     let all = TemplateFixtures.files(root, prefix: "corpus-")
-    #expect(all.count == bundled.count)
+    #expect(all.count == bundled.count - TemplateFixtures.corpusPending.count)
     #expect(try TemplateFixtures.uncovered(all, bundled: bundled).isEmpty)
 
     let debit = "dib.sms.debit.v1"
     let lessDebit = all.filter { $0.file != "\(TemplateFixtures.smsSubdir)/corpus-\(debit).json" }
-    #expect(lessDebit.count == bundled.count - 1)
+    #expect(lessDebit.count == all.count - 1)
     #expect(try TemplateFixtures.uncovered(lessDebit, bundled: bundled).contains { $0.hasPrefix("no corpus fixture for \(debit) ") })
 
     try FileManager.default.moveItem(

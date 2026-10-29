@@ -35,7 +35,7 @@ struct TextTemplateGateTests {
   @Test("mail halts templates_unavailable when no mail template loads, even when every text template does")
   func onlyTextTemplatesHaltTheMailbox() async throws {
     let textIDs = Set(BundledTemplates.load(channel: .sms).templates.map(\.definition.id))
-    #expect(textIDs.count == 8)
+    #expect(textIDs.count == 18)
     let entries = TemplatesManifest.entries.map { e in
       textIDs.contains(e.id)
         ? e : TemplatesManifest.Entry(file: e.file, id: e.id, version: e.version, sha256: String(repeating: "0", count: 64))

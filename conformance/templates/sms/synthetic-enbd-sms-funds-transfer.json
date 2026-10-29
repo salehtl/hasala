@@ -1,0 +1,107 @@
+{
+  "note": "Written by internal/tmpl TestWriteSyntheticTemplateFixtures. Regenerate with HASALA_WRITE_CONFORMANCE=1 go test ./internal/tmpl/ -run TestWriteSyntheticTemplateFixtures (no corpus needed); do not hand-edit. These are the input classes the real corpus contains NONE of — the ENBD alert format, empty capture groups, and malformed conversions. `expect` is LITERAL Go executor output: if a case's name says one thing and Go does another, the fixture records what Go does and the TypeScript executor must reproduce THAT.",
+  "spec": "server/internal/tmpl/v2-template-format.md",
+  "schema_version": 1,
+  "template": "enbd.sms.funds-transfer.v1",
+  "kind": "synthetic",
+  "normalizer_version": 1,
+  "definition": {
+    "id": "enbd.sms.funds-transfer.v1",
+    "version": 1,
+    "bank": "enbd",
+    "channel": "sms",
+    "normalizer_version": 1,
+    "match": {
+      "sms_sender": [
+        "EmiratesNBD",
+        "ENBD"
+      ],
+      "body_contains": [
+        "Funds Transfer of ",
+        " has been made using your Debit Card ending "
+      ]
+    },
+    "default_currency": "AED",
+    "date_from": "received",
+    "extract": [
+      {
+        "field": "amount",
+        "type": "amount",
+        "source": "body",
+        "patterns": [
+          "^Funds Transfer of (?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been made using your Debit Card ending "
+        ]
+      },
+      {
+        "field": "merchant",
+        "type": "text",
+        "source": "body",
+        "patterns": [
+          " using your Debit Card ending [0-9]{4} at (?P<v>[^\\n]+?)\\. Your current balance is "
+        ]
+      },
+      {
+        "field": "last4",
+        "type": "last4",
+        "source": "body",
+        "patterns": [
+          " using your Debit Card ending (?P<v>[0-9]{4}) at "
+        ]
+      },
+      {
+        "field": "direction",
+        "type": "const",
+        "source": "body",
+        "value": "debit"
+      },
+      {
+        "field": "is_transfer",
+        "type": "flag",
+        "source": "body",
+        "value": "true"
+      }
+    ],
+    "required": [
+      "amount",
+      "direction"
+    ]
+  },
+  "cases": [
+    {
+      "name": "enbd.sms.funds-transfer.v1/wallet",
+      "source": "SYNTHETIC: a transfer paid with the debit card to a wallet: the payee, the card's last four, a transfer",
+      "subject_base64": "",
+      "normalized_body_base64": "RnVuZHMgVHJhbnNmZXIgb2YgQUVEIDMwMC4wMCBoYXMgYmVlbiBtYWRlIHVzaW5nIHlvdXIgRGViaXQgQ2FyZCBlbmRpbmcgMTIzNCBhdCBTQU1QTEUgV0FMTEVULiBZb3VyIGN1cnJlbnQgYmFsYW5jZSBpcyBBRUQgMSwyMTYuNDMu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "30000",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE WALLET",
+        "last4": "1234",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    },
+    {
+      "name": "enbd.sms.funds-transfer.v1/thousands",
+      "source": "SYNTHETIC: the [0-9,]{0,24} run",
+      "subject_base64": "",
+      "normalized_body_base64": "RnVuZHMgVHJhbnNmZXIgb2YgQUVEIDEsMjYzLjgxIGhhcyBiZWVuIG1hZGUgdXNpbmcgeW91ciBEZWJpdCBDYXJkIGVuZGluZyAxMjM0IGF0IFNBTVBMRSBXQUxMRVQuIFlvdXIgY3VycmVudCBiYWxhbmNlIGlzIEFFRCA5NTAuMDAu",
+      "expect": {
+        "matched": true,
+        "error": "",
+        "amount_minor": "126381",
+        "currency": "AED",
+        "direction": "debit",
+        "posted_at": "",
+        "merchant": "SAMPLE WALLET",
+        "last4": "1234",
+        "is_transfer": true,
+        "empty_groups": []
+      }
+    }
+  ]
+}

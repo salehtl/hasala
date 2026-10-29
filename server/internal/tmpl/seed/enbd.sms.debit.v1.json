@@ -1,0 +1,118 @@
+{
+  "id": "enbd.sms.debit.v1",
+  "version": 1,
+  "bank": "enbd",
+  "channel": "sms",
+  "normalizer_version": 1,
+  "match": {
+    "sms_sender": [
+      "EmiratesNBD",
+      "ENBD"
+    ],
+    "body_contains": [
+      " from your account "
+    ]
+  },
+  "default_currency": "AED",
+  "date_from": "received",
+  "extract": [
+    {
+      "field": "amount",
+      "type": "amount",
+      "source": "body",
+      "patterns": [
+        "(?:^|, )(?P<ccy>[A-Z]{3}) (?P<amt>[0-9][0-9,]{0,24}\\.[0-9]{2}) has been (?:deducted|debited|withdrawn) from your account "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD TELEGRAPHIC TRANSFER",
+      "patterns": [
+        " for issuance of Telegraphic Transfer"
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD DIRECTREMIT",
+      "patterns": [
+        " for issuance of DirectRemit"
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD ONLINE TRANSFER",
+      "patterns": [
+        " for Fund Transfer through Online Banking"
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD GLOBAL EQUITIES",
+      "patterns": [
+        " MOBILE TRF TO GL EQ "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD MOBILE TRANSFER",
+      "patterns": [
+        " MOBILE TRF"
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD TT CHARGES",
+      "patterns": [
+        " TT CORR CHARGES "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "const",
+      "source": "body",
+      "value": "ENBD CASH WITHDRAWAL",
+      "patterns": [
+        " has been withdrawn from your account "
+      ]
+    },
+    {
+      "field": "merchant",
+      "type": "text",
+      "source": "body",
+      "patterns": [
+        " from your account no\\. [0-9X-]{4,24} (?P<v>[^\\n]+?)\\. The available balance is "
+      ]
+    },
+    {
+      "field": "direction",
+      "type": "const",
+      "source": "body",
+      "value": "debit"
+    },
+    {
+      "field": "is_transfer",
+      "type": "flag",
+      "source": "body",
+      "value": "true",
+      "patterns": [
+        " MOBILE TRF"
+      ]
+    }
+  ],
+  "required": [
+    "amount",
+    "direction"
+  ]
+}

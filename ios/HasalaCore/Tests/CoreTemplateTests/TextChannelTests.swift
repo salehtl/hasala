@@ -107,7 +107,7 @@ struct TextChannelTests {
     #expect(mail.skipped.isEmpty && texts.skipped.isEmpty)
     #expect(mail.templates.allSatisfy { !$0.definition.isSMS })
     #expect(texts.templates.allSatisfy { $0.definition.isSMS })
-    #expect(mail.templates.count == 10 && texts.templates.count == 8)
+    #expect(mail.templates.count == 10 && texts.templates.count == 18)
     #expect(
       (mail.templates + texts.templates).map(\.definition.id).sorted() == TemplatesManifest.entries.map(\.id).sorted())
 
@@ -142,14 +142,22 @@ struct TextChannelTests {
     #expect(!String(decoding: plain.canonicalJSON(), as: UTF8.self).contains("transfer_role"))
   }
 
-  @Test("the bundled sms templates read the DIB text families and never run as mail templates")
+  @Test("the bundled sms templates read the DIB and ENBD text families and never run as mail templates")
   func bundled() throws {
     let texts = BundledTemplates.load(channel: .sms).templates
-    #expect(texts.count == 8)
+    #expect(texts.count == 18)
+    #expect(texts.filter { $0.definition.bank == "dib" }.count == 8)
+    #expect(texts.filter { $0.definition.bank == "enbd" }.count == 10)
     for t in texts {
       #expect(t.definition.match.senderDomain.isEmpty)
-      #expect(t.definition.matchesSMSSender("DIB-SMS"))
-      #expect(t.definition.bank == "dib")
+      if t.definition.bank == "dib" {
+        #expect(t.definition.id.hasPrefix("dib.sms."))
+        #expect(t.definition.matchesSMSSender("DIB-SMS") && !t.definition.matchesSMSSender("EmiratesNBD"))
+      } else {
+        #expect(t.definition.bank == "enbd" && t.definition.id.hasPrefix("enbd.sms."))
+        #expect(t.definition.matchesSMSSender("EmiratesNBD") && t.definition.matchesSMSSender("ENBD"))
+        #expect(!t.definition.matchesSMSSender("DIB-SMS"))
+      }
     }
     let purchase = try #require(texts.first { $0.definition.id == "dib.sms.purchase.v1" })
     let body = "مشتريات بمبلغ 123.45 من بطاقة XX1234 في 05-06-2026 10:11 من SAMPLE SHOP. الحد الائتماني المتاح 1,234.56"

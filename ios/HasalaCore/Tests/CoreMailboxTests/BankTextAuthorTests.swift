@@ -505,7 +505,7 @@ struct BankTextNoTextInOpTests {
     switch v {
     case .string(let s): out.append(s)
     case .array(let a): for x in a { strings(x, &out) }
-    case .object(let o): for m in o.members where m.key != "bank" { strings(m.value, &out) }
+    case .object(let o): for m in o.members where m.key != "bank" && m.key != "template" { strings(m.value, &out) }
     default: break
     }
   }
