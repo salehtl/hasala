@@ -39,7 +39,7 @@ struct LastPickDeckTests {
     #expect(deck.useSuggestion(first.id))
     #expect(app.store.state.txn("bl-mirdif-1")?.categoryID == MayaBacklog.wrongGuess)
     let next = try #require(deck.cards.first)
-    #expect(next.id == "bl-mirdif-2")
+    #expect(next.id.hasPrefix("bl-mirdif-") && next.id != "bl-mirdif-1")
     #expect(next.suggestion?.id == MayaBacklog.wrongGuess && next.suggestedBy == "Your last pick")
   }
 

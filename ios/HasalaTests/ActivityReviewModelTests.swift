@@ -12,6 +12,7 @@ import Testing
 struct ActivityReviewModelTests {
   @Test func aReviewSessionCountsAndTallies() {
     let app = AppModel(store: InMemoryLedger())
+    app.reviewOrder = .oldestFirst
     let deck = ReviewViewModel(app: app)
     #expect(deck.total == 6)
     #expect(deck.position == 1)
@@ -33,20 +34,20 @@ struct ActivityReviewModelTests {
   }
 
   /// A To sort row opens the deck at its own card, then reads on down the list; Start opens
-  /// it at the oldest.
+  /// it at the top of the list.
   @Test func aRowStartsTheSessionAtItsCard() {
     let app = AppModel(store: InMemoryLedger())
     ReviewEntry.open(app, at: "lulu")
     #expect(app.cover == .review)
     let deck = ReviewViewModel(app: app)
-    #expect(deck.cards.map(\.id) == ["lulu", "dubai-taxi", "steam", "atm", "transfer-in", "apple"])
+    #expect(deck.cards.map(\.id) == ["lulu", "apple", "transfer-in", "atm", "steam", "dubai-taxi"])
     #expect(deck.position == 1 && deck.total == 6)
-    // The request is used once: the next session starts at the oldest again.
-    #expect(ReviewViewModel(app: app).cards.first?.id == "atm")
+    // The request is used once: the next session starts at the top again.
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
     // A request for another account's model is not taken by this one.
     let other = AppModel(store: InMemoryLedger())
-    ReviewEntry.request(other, at: "steam")
-    #expect(ReviewViewModel(app: app).cards.first?.id == "atm")
+    ReviewEntry.request(other, at: "atm")
+    #expect(ReviewViewModel(app: app).cards.first?.id == "steam")
   }
 
   /// A swipe or a pill asks which category; the bucket's list keeps its own order with the
@@ -110,8 +111,9 @@ struct ActivityReviewModelTests {
     app.period = Period(YearMonth(2026, 8), YearMonth(2026, 10))
     #expect(app.reviewCount == 6)
     #expect(ReviewTabView.emptyLine == "New transactions Hasala can't sort on its own show up here.")
-    #expect(ReviewTabView.orderLine(months: 1) == "Oldest first")
-    #expect(ReviewTabView.orderLine(months: 2) == "Newest month first")
+    #expect(ReviewOrder.newestFirst.title == "Newest first")
+    #expect(ReviewOrder.oldestFirst.title == "Oldest first")
+    #expect(ReviewTabView.orderSpoken(.oldestFirst) == "Order, Oldest first")
   }
 
   @Test func theReviewTabFollowsThePeriodAndNamesTheRest() {
@@ -219,8 +221,8 @@ struct ActivityReviewModelTests {
     #expect(deck.periodTitle == "All time" && !deck.isThisMonth && deck.elsewhere == nil)
     #expect(app.reviewCards.count == 11 && app.reviewElsewhere == nil)
     #expect(deck.total == 11 && deck.position == 1)
-    #expect(deck.cards.prefix(6).map(\.id) == ["atm", "transfer-in", "apple", "lulu", "dubai-taxi", "steam"])
-    #expect(deck.cards.suffix(5).map(\.id) == (0..<5).map { "jun-\($0)" })
+    #expect(deck.cards.prefix(6).map(\.id) == ["steam", "dubai-taxi", "lulu", "apple", "transfer-in", "atm"])
+    #expect(deck.cards.suffix(5).map(\.id) == (0..<5).reversed().map { "jun-\($0)" })
     let months = ReviewEngine.months(deck.cards, now: app.store.now)
     #expect(months.map(\.title) == ["This month", "June"])
   }
