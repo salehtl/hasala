@@ -20,7 +20,7 @@ struct UnreadMailFlowTests {
   static func unparsedPayload(provider: MailProviderID = .gmail, messageID: String = "m-unread-1") -> (JSONObject, String) {
     let mail = MessageDisposer.unparsed(raw: Array(messageID.utf8), messageID: messageID, internalDateMs: received, spam: false)
     let draft = MessageDisposer.finalize(
-      mail, provider: provider, grantID: "u/mbx-a", cards: [:], categorizer: NoCategorizer())
+      mail, provider: provider, grantID: "u/mbx-a", categorizer: NoCategorizer())
     return (draft.payload, draft.ingestID)
   }
 

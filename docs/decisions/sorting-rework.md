@@ -202,7 +202,7 @@ holds the details.
 The one-time ask stays. With Merchant suggestions off, Review asks once on each iPhone, and
 never again after Not now. Turn on sets both switches, and the background stage does the
 rest. The slot above the queue holds only the ask or the importing card. Sort automatically
-does not change: only Cloudflare (`cf-clef/`) files a payment, at 0.8 with a margin of 0.4.
+does not change: only Cloudflare (`cf-clef/`) files a payment, at 0.7 with a margin of 0.4 (0.8 before 2026-10-29).
 Profile › Cloud suggestions keeps **Send Cloudflare's sorting back to Review**.
 
 ### New category in the pick sheet
@@ -328,7 +328,7 @@ same evening. See [Proposals for the owner](#proposals-for-the-owner).
 ### Trust on this phone
 
 Auto-filing is unchanged (#182 D11): only Cloudflare (`cf-clef/`) with Sort automatically
-on, at 0.8 with a margin of 0.4. Apple's model never files. Trust on this phone can only
+on, at 0.7 with a margin of 0.4 (0.8 before 2026-10-29, [filing-without-cards.md](filing-without-cards.md)). Apple's model never files. Trust on this phone can only
 raise the bar: after the person corrects two Cloudflare filings of one built-in category,
 that category is suggested, not filed, on this iPhone (`Live/Runtime/TrustCounts.swift`). A
 correction is a person's re-file of a row whose source was a model with

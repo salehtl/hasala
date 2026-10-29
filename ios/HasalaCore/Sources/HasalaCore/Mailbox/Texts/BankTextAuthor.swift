@@ -1,14 +1,15 @@
 import CoreDomain
 import CoreExtract
+import CoreReplay
 import CoreTemplate
 import CoreTime
 import Foundation
 
 public protocol BankTextLedger: Sendable {
   var textWrites: WriteSerial { get }
-  func knownCards() async -> [CardKey: CardState]
   func isIngested(_ ingestID: String) async -> Bool
-  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]
+  func textRows(postedFromMs: Int64, toMs: Int64) async -> [BankTextRow]?
+  func mailRows(postedFromMs: Int64, toMs: Int64) async -> [TextTwinMail]?
   func authorText(_ draft: BankTextDraft, archiving: String?) async throws(MailboxLedgerError) -> String
 }
 
@@ -110,25 +111,33 @@ public actor BankTextAuthor {
     guard let key else { return .failed("repeats") }
 
     var partner: BankTextRow?
+    var files = false
     if let f = kept.fields, let posted = try? parseInstantMs(f.postedAt) {
       let row = BankTextRow(
         id: "", bank: kept.bank, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction, last4: f.last4,
         postedMs: posted, templateRef: kept.template?.ref, unparsed: false)
-      if row.transferRole != nil {
-        let rows = await ledger.textRows(
+      var nearby: [BankTextRow]?
+      var overlaps = false
+      if row.transferRole != nil || (row.readerOnly && row.direction == "debit") {
+        if let rows = await ledger.textRows(
           postedFromMs: posted - BankTextTransferPair.windowMs, toMs: posted + BankTextTransferPair.windowMs)
-        partner = BankTextTransferPair.partner(of: row, among: rows)
+        {
+          nearby = rows
+          partner = BankTextTransferPair.partner(of: row, among: rows)
+          overlaps = partner == nil && BankTextTransferPair.readerOverlap(of: row, among: rows)
+        } else {
+          overlaps = true
+        }
       }
+      files =
+        !overlaps && BankTextPayload.filesItself(kept, link: state, origin: origin, transferPartner: partner != nil)
+      if files { files = await !mayRepeat(row, n: key.n, nearby: nearby) }
     }
-    let cards = await ledger.knownCards()
-    let draft = BankTextPayload.build(
-      kept, ingestID: key.id, receivedMinuteMs: minute, cards: cards, link: state, origin: origin,
-      transferPartner: partner != nil, categorizer: categorizer)
-    let card = BankTextPayload.card(kept, cards: cards)
+    let draft = BankTextPayload.build(kept, ingestID: key.id, receivedMinuteMs: minute, files: files, categorizer: categorizer)
     var txnID: String?
     var authored = draft
     var lastError = "author"
-    for d in [draft] + BankTextPayload.fallbacks(draft, kept, card: card, receivedMinuteMs: minute) {
+    for d in [draft] + BankTextPayload.fallbacks(draft, kept, receivedMinuteMs: minute) {
       do throws(MailboxLedgerError) {
         txnID = try await ledger.authorText(d, archiving: archiving)
         authored = d
@@ -139,11 +148,26 @@ public actor BankTextAuthor {
       }
     }
     guard let txnID else { return .failed(lastError) }
-    if sender.kind == .bank { layouts = read.layouts }
+    if sender.learns { layouts = read.layouts }
     return .added(
       BankTextAdded(
         txnID: txnID, bank: kept.bank, keptAtMs: arrival.receivedAtMs, filed: !authored.needsReview,
         unparsed: authored.payload["unparsed"]?.boolValue == true, repeatNumber: key.n, transferPartner: partner?.id))
+  }
+
+  private func mayRepeat(_ row: BankTextRow, n: Int, nearby: [BankTextRow]?) async -> Bool {
+    if n > 0 { return true }
+    guard let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
+    else { return true }
+    if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
+    let bankless = (row.bank ?? "").isEmpty
+    let w = DuplicateRules.probableCopyWindowMs
+    let read: [BankTextRow]?
+    if let nearby { read = nearby } else { read = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w) }
+    guard let texts = read else { return true }
+    return texts.contains {
+      (bankless || ($0.bank ?? "").isEmpty || BankTextPayload.readDifferently(row, $0)) && BankTextPayload.samePayment(row, $0)
+    }
   }
 
   static func refusal(_ e: MailboxLedgerError) -> Bool {

@@ -15,6 +15,7 @@ public enum CombinedReader {
       result.rulesConfidencePercent = ro.isTransaction ? ro.confidence : 0
       result.learnedConfidencePercent = lo.isTransaction ? lo.confidence : 0
       result.readersAgree = readersAgree(lo, ro)
+      result.directionAmbiguous = ro.directionAmbiguous && result.direction?.rawValue == ro.direction
       result.aedFromOverride = out.aedOverride && !readsItself(l, out) && !readsItself(r, out)
     }
     return (result, result.outcome == .notTransaction ? memory : next)

@@ -4,7 +4,8 @@
 set-up and settings), #230 (HasalaCore reading and authoring), #232 (the action and the live
 lane) and #231 (the overlap check, card links and Review copy). Where the build chose a
 detail that the first draft of this record did not settle, the record now describes what
-the code does. Bank texts are a second way in
+the code does. **Amended 2026-10-29** by [filing-without-cards.md](filing-without-cards.md):
+a text files with no sender check and no card check, and no edit links a card. Bank texts are a second way in
 for transactions: the bank's SMS alerts, handed to Hasala on the phone by an automation
 that the person makes in Apple's Shortcuts app. A person uses bank email **or** bank texts,
 not both. The decisions are in [Decisions](#decisions). The questions that only the beta can
@@ -312,16 +313,16 @@ Then, in this order:
    template may keep it, let alone file it. A text is dropped here only when a whole-body
    pattern covers it, or when it has a marker and no transaction clause. A text that has a
    one-time-code or declined marker and goes on is **marked**: it never files
-   (`needs_review: true`), even on a template hit with a matching sender and a known card.
+   (`needs_review: true`), even on a template hit.
 2. **The SMS templates.** Templates gain a text channel: `channel: "sms"` (absent means
    mail), `match.sms_sender` in place of `match.sender_domain`, and `date_from: "received"`
    for texts that carry no date. A template is tried on the body whatever the sender;
-   `match.sms_sender` decides only whether the hit may file (D1). Go
+   `match.sms_sender` sets only `gates.sender` (since 2026-10-29 it does not decide filing). Go
    (`server/internal/tmpl`) and Swift (`HasalaCore/Template/Exec`) agree byte for byte,
    with the conformance sets. A template hit is a payment and is never dropped by a later
    step, whatever the sender, a person's number included: a bank text that a roaming
-   network or an international gateway delivers with a numeric sender is still kept (in
-   Review, because its sender does not match). On a template hit, the template-free readers
+   network or an international gateway delivers with a numeric sender is still kept, and
+   may file. On a template hit, the template-free readers
    check the template's amount, as for mail (`CombinedReader.templateVerdict`). A hit with a
    reader hold (the AED amount not confirmed, the readers disagree, a currency that is not
    ISO, a pending phrase) is **held**: it is kept and never files. A hit with a pending-status
@@ -333,8 +334,9 @@ Then, in this order:
    only when a whole-body pattern covers it, or when it has a marker and neither a
    transaction clause nor a payment statement; a payment text that misses its template and
    carries a promotion line has one of the two and goes on to step 4.
-4. **The payment shape.** A text with a payment shape goes to Review: the template-free
-   readers (`template-free-reading.md`) prefill it, and they never file a row. When the
+4. **The payment shape.** A text with a payment shape is read by the template-free
+   readers (`template-free-reading.md`). It goes to Review, prefilled, unless they agree on
+   it as [Filing with no review](#filing-with-no-review) says (since 2026-10-29). When the
    readers do not read a transaction (their outcome is `pending` or `not_transaction`, or no
    amount), the text becomes an unparsed text row in Review, not a drop and not a prefilled
    amount. Apple's on-device model does not read texts in v1 (see [Cut from v1](#cut-from-v1)).
@@ -343,7 +345,7 @@ Then, in this order:
      `TextGate.Shape.paymentWord`: in English "purchase", "purchased", "debited",
      "credited", "refund", "reversal", "reversed", "transfer", "withdrawal", "deposit",
      "payment", "paid", "spent", "charged", "sent", "received", "used", "transaction",
-     "txn" and their forms; in Arabic "شراء", "مشتريات", "بمبلغ", "خصم", "ايداع", "تحويل",
+     "txn", "deducted", "pymt" ("Bill Pymt") and "made using" and their forms; in Arabic "شراء", "مشتريات", "بمبلغ", "خصم", "ايداع", "تحويل",
      "سحب", "سداد", "ارجاع", "استرداد", "دفع", "راتب", "حواله", matched after the gate's
      fold (`RuleText.fold`: "أ", "إ" and "آ" to "ا", "ة" to "ه", "ى" to "ي", no diacritics); "credit" and "debit" alone are left out, because DIB card
      notices are full of them; "sent" is needed for "I sent you AED 50" and "used" for "card
@@ -373,7 +375,7 @@ The gate leans to Review: a text from a bank sender, or with no sender, is dropp
 an explicit drop pattern says it is not a payment, or when it has no payment word or no
 number at all. The cost is that a text from a person that looks like a payment ("I sent you
 AED 50"), and, with no sender, any text with a payment word and a number ("the transfer is
-200"), reaches Review as a synced row with the fields of any text row (see
+200"), becomes a synced row (in Review, or filed when the readers agree on it) with the fields of any text row (see
 [The op log](#the-op-log)), such as `merchant_raw`, the amount and `last4`, until the account is
 deleted. The app has no delete for a transaction: Review's **Dismiss** and the transaction
 sheet's **Archive** author `txn_annotated` with `field: archived`, which **Restore** undoes,
@@ -393,7 +395,8 @@ bank sender keeps the reader's merchant, cut to the readers' usual limit
 
 **Learned layouts.** The readers learn a sender's layouts as they do for mail
 (`template-free-reading.md`), but only from texts that Hasala keeps from a sender on the bank
-sender list (key `sms:<sender id>`), template hits included. Unlike mail's, text layouts are
+sender list (key `sms:<sender id>`) or with no sender (key `sms:`, since 2026-10-29), template
+hits included. Unlike mail's, text layouts are
 **not persisted**: they live only in the memory of the `BankTextAuthor` actor (one for each
 account runtime), are lost when the process ends, and never reach disk, because the list in
 [What the phone keeps about texts](#what-the-phone-keeps-about-texts) does not name them. To
@@ -432,15 +435,18 @@ and card payments), in the wordings that export holds: Arabic, and English for r
 There is no English template for the other families, because the export has no real
 English wording to copy, and a template written from a guess could file wrong rows under
 D1. A DIB text in a wording that no template reads, such as an English purchase text, goes
-to Review, prefilled when a reader reads it. Texts from banks other than DIB and ENBD go to
-Review the same way. Real
+to the template-free readers: it files when they agree (see
+[Filing with no review](#filing-with-no-review)), else it waits in Review, prefilled when a
+reader reads it. Texts from banks other than DIB and ENBD are read the same way. Real
 texts stay in `salehtl/hasala-fixtures`; this repository has synthetic texts only. On the
 owner's private DIB export (aggregate counts only), every payment text is kept by a
 template, and the texts dropped are one-time codes, notices, promotions, declined payments
 and texts with no payment shape. Until the open check on the sender is answered, the app
 says of DIB and ENBD "Hasala reads them; some wait in Review" and "Hasala reads DIB and ENBD
-texts for you, though some still wait in Review", and of other banks "You check each one in
-Review".
+texts for you, though some still wait in Review", and of other banks "Hasala learns their
+wording; the first wait in Review" and "Texts from your other banks wait in Review until
+Hasala learns their wording". A text that looks like a payment, from any sender, is added
+when Hasala can read it, else it waits in Review.
 
 **ENBD (2026-10-29).** ENBD (`EmiratesNBD`, `ENBD`) has SMS templates for the English
 payment wordings in the owner's ENBD export: debit card purchases
@@ -457,7 +463,9 @@ these templates as pending (`corpusPending` in Go's `internal/tmpl/seed` and in 
 `conformance/sms-extract/`. On the owner's export (aggregate counts only), the templates
 read every payment text but one with no misread amount, currency, direction or card, and
 read no text that is not a payment. The one left is a credit card purchase whose amount has
-no decimals, which the amount type refuses; it goes to Review, prefilled by the readers.
+no decimals, which the amount type refuses; it goes to the template-free readers, and
+files only when they agree (see [Filing with no review](#filing-with-no-review)), else it
+waits in Review, prefilled.
 An account credit or debit with no description that the templates name reads the constant
 `ENBD ACCOUNT CREDIT` or `ENBD ACCOUNT DEBIT`, so no ENBD template row has an empty merchant.
 Instalment offers, beneficiary notices, standing instructions and brokerage notices are
@@ -474,63 +482,42 @@ wording is read by an ENBD template and carries `bank: enbd`.
 
 ### Filing with no review
 
-A text files with no review (`needs_review: false`) only when all of these hold:
+Amended 2026-10-29 ([filing-without-cards.md](filing-without-cards.md)). A text files with
+no review (`needs_review: false`) only when all of these hold:
 
 - the automation handed it (a paste never files);
-- an SMS template read it, with no reader hold (step 2);
-- iOS gave the action a sender, and it is in that template's `match.sms_sender`;
-- the card in the text is **known**: the account has a `card_linked` for that bank and last
-  four digits with `state: mine`;
+- its fields were read, and either an SMS template read it with no reader hold (step 2),
+  or, with no template, the two template-free readers agree on amount, currency and
+  direction, each at 0.8 or more (`ExtractReading.meetsFilingBar`, the rule mail uses;
+  `BankTextKept.readerConfident`). A debit whose only direction words are "transfer",
+  "transferred", "sent" or "تحويل" is ambiguous and never files this way (money
+  "transferred to your account", with the amount before or after "transferred", is a
+  credit; "from your account" makes it a debit, and money from your account to your own
+  account or card is a move between your accounts that waits in Review). A text
+  that names a standing instruction or order, a deposit still to clear, or an equities,
+  brokerage, securities, investment or trading account never files, whether a template or
+  the readers read it (`TextGate.holdsFiling`; a template hit is held);
 - and nothing else holds it: the text has no one-time-code or declined marker (step 1 of the
   reading order), no text of the other transfer role matches it (see
   [The transfer pair on texts](#the-transfer-pair-on-texts)), and the link state is not
   linked (as the copy says, or as the server answered within the action's budget when there
   was no copy); an unknown state with no answer never files.
 
-The card gate is mail's, reused as it is: `RuntimeMailboxLedger.knownCards()` reads the
-projection's `card_linked` links, and `gates.card` maps them as `Disposition.finalize` does
-for mail: `mine` is `known`, `not_mine` is `not_mine`, no link is `unknown`, a text with no
-card is `none`. A `not_mine` card never files a text, as it never files mail; its texts go
-to Review with `gates.card: not_mine`. Thus `gates.card` means the same on a text row and a
-mail row.
+There is no sender check and no card check (`BankTextPayload.filesItself`). The Shortcuts
+automation passes no sender, so the sender check that this record first decided never
+passed, and every text waited in Review. `gates.sender` still records whether the sender
+matched the template's `sms_sender`, for display only. New text rows have no `gates.card`.
 
-How a text-only person's cards become `mine`: when the person confirms or sorts, in Review,
-a text row whose bank and card have no `card_linked` yet, the app authors `card_linked
-{bank, last4, state: mine, account}` (with `account_set` when the card's account is new)
-inside the confirm's own edit, as ops of the same `OpAuthor` closure, so they are one blob and
-one outbox write: a crash leaves both or neither. `RuntimeMailboxLedger.authorCards` makes
-its own `author {}` call, so the confirm does not call it. Instead, its plan (which account
-ID, whether `account_set` is needed, the account's name and kind, and the skip when the card
-is already `mine`) moves to a pure function that `authorCards` and the confirm both call, and
-each applies the plan with `OpAuthor.setAccount` and `OpAuthor.linkCard` in its own closure.
-A row that filed itself, and a row from the readers that the person did not
-confirm, links no card. A card that the person already linked, as `mine` or `not_mine`, from mail or
-otherwise, keeps its link; the confirm does not change it.
+No edit links a card. Sorting a text row in Review, Add category, marking a transfer or a
+refund and a split write only their own ops, and their undo writes back only what they
+changed. Older builds wrote `card_linked` and `account_set` for a confirmed text row; the
+fold still reads them.
 
-As built (`LedgerEditAuthor.confirmLink`, `CardLinkPlan`): the edits that link the card are
-`categorize` (Use, a pick from the sheet, Always use it), `addCategoryAndSort`, mark as
-transfer, mark as refund (not its undo) and a split with lines, from the Review deck or from
-the transaction sheet, on a text row that still needs review and is not unparsed. Only a row
-with both a bank and a last4 links; a card with no bank is never linked as mine. The plan
-function is `CardLinkPlan.plan`, which `authorCards` and the confirm share. The account kind
-follows mail's rule: credit card when a staged mail alert or a live text row on that card was
-read by a card template (`<bank>.card.*`, and for texts `<bank>.sms.purchase.*` and
-`<bank>.sms.card-payment.*`; `CardLinkPlan.isCardTemplate`), otherwise current. The DIB
-debit-card purchase wording has no card number, so it links no card; a card from a refund, a
-reversal or a reader row gets a current account. An account with that ID that was closed is
-reopened. **Undo** of the edit authors `card_linked state: forget` for the card it linked, so
-the next text on that card does not file, and closes the account that the edit created when
-nothing else uses it. A known gap that is not specific to texts: the fold's `txn_split` does
-not clear `needs_review` (the app's optimistic patch does), so a row split from Review links
-its card but stays in Review after the reload.
-
-Why the card: an alphanumeric sender ID can be faked, and iOS puts a faked "DIB" text in
-the real DIB thread. Mail has the DMARC gate for this (`gates.ar: pass`); texts have no
-equal. A faker must now also know a card that the person already uses with that bank. This
-raises the bar; it does not close it, and the security page says so. Everything else goes
-to Review, prefilled: no sender, another sender, an unknown or `not_mine` card, a text with
-no card (most credits, reversals and transfers), the readers, and every pasted text. A person who uses only texts thus confirms their first payment on each card in
-Review.
+The risk: an alphanumeric sender ID can be faked, and iOS puts a faked "DIB" text in the
+real DIB thread. Mail has the DMARC gate for this (`gates.ar: pass`); texts have no equal. A
+faked text that a template reads, or that the readers agree on, files a payment, and the
+person archives it. Everything else goes to Review, prefilled: a reader row that the readers
+do not both confirm, and every pasted text.
 
 ### What the phone keeps about texts
 
@@ -625,7 +612,9 @@ drop a text:
 - Equal texts at different times (for example two equal reversals) stay two rows, which the
   owner's DIB texts showed is needed.
 - A repeat that the fold cannot hold (no bank, or nothing read) is a second row in Review
-  beside the first, never a row that files itself.
+  beside the first, never a row that files itself. A repeat in the same minute (its key's
+  `n` above 0) always waits in Review, with or without a bank, because the readers may read
+  its merchant differently from the first copy's, and then the fold's key does not match.
 
 A pasted text has no sender and no arrival time, so its key uses the empty sender and the
 paste minute (its `received_at` is the paste minute too), and cannot match the automation's
@@ -651,8 +640,8 @@ person can still find the payment, it keeps what the decoder allows and what the
 `merchant_raw` when a reader read one (else empty, with the limits for a person's text),
 `posted_at` with `posted_precision: time` (the date and time in the text when the text
 gives a time, else the arrival minute), `received_at`, `channel: "sms"`, `gates.template:
-none`, `gates.sender: untrusted`, and `gates.card` from the last4 when a masked card was
-read (`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
+none` and `gates.sender: untrusted` (since 2026-10-29 no `gates.card`; older builds wrote
+`known`, `not_mine`, `unknown` or `none`). Its Review card says: "Hasala couldn't read
 this bank text. Find the text from \<bank\> at \<time\> in Messages, copy it and paste it
 here, or add the payment yourself." \<time\> is the text's `received_at`, because Messages
 lists texts by arrival, with the date added when it is not today ("at 12:00 on Fri 5 Jun");
@@ -699,10 +688,10 @@ twice with no hold. So the check is made when a text row is authored, not in the
   changed in the fold. The op log has no field that names the partner, so the read model
   finds it again from the live text rows for the Review card ("This may be the same transfer
   as the bank text from DIB at 12:31", with the other row's posted time). The person keeps
-  both or archives one. Nothing is merged by itself. Neither DIB template has a card field,
-  so neither files under D1 by itself today; the hold matters once one does.
-- The check uses the sender match, not DMARC: a row from a text whose sender did not match
-  is in Review already.
+  both or archives one. Nothing is merged by itself. Since 2026-10-29 the first row of the
+  pair files under D1 when nothing else holds it, so the hold is what keeps the pair from
+  counting twice.
+- The check does not use the sender or DMARC: texts have no sender check since 2026-10-29.
 
 Whether DIB texts both for one movement is an open check; the check above is built either
 way, because a missing hold doubles a payment silently and a needless one costs one Review
@@ -724,7 +713,7 @@ existing values in closed enums, and two keys that older clients ignore:
 | `gates.ar` | **absent** | It is a mail-only DMARC verdict. Absent, no client shows "Your mailbox couldn't confirm that this email came from your bank"; `no_ar` would. Thus `verifiedSender` is false for every text row: a text row never wins a certain-copy merge and never forms the fold's implicit DIB transfer pair. The fold does not change for texts, because a fold rule that new builds apply and old builds do not would give two builds different ledgers. The text-side pair is checked when the row is authored instead (see [The transfer pair on texts](#the-transfer-pair-on-texts)). |
 | `gates.sender` | `trusted` only when the sender matched the template's `sms_sender`, else `untrusted` | |
 | `gates.template` | `<id>@<version>` or `none` | |
-| `gates.card` | `known`, `not_mine`, `unknown`, or `none` when the text has no card | From `knownCards()`, mapped as for mail (see [Filing with no review](#filing-with-no-review)). |
+| `gates.card` | absent since 2026-10-29; older builds wrote `known`, `not_mine`, `unknown` or `none` | The fold still reads it. |
 | `gates.forwarded` | `false` | |
 | `gates.kind` | absent | |
 | `provenance` | **absent** | With a provider, a grant and a message ID, a client treats the row as mail that it can fetch again. A text cannot be fetched. |
@@ -798,16 +787,11 @@ need:
 4. **The bundled templates.** After a seed template is added or changed in
    `server/internal/tmpl/seed`, run `swift ios/tools/templates/sync.swift`.
 5. **Tests.**
-   - D1: a template hit with a matching sender and a `card_linked` mine card files; with
-     no sender, with another sender, with an unknown card, with a `not_mine` card (as
-     `gates.card: not_mine`), with no card and as a paste, it goes to Review. Confirming
-     a text row with an unlinked card in Review authors `card_linked` mine in the same
-     edit, and the next text on that card files; a row that filed itself, or a reader row
-     left unconfirmed, links no card; a card already linked `not_mine` stays `not_mine`.
-     The confirm, the `card_linked` and the `account_set` are one blob: a failure injected
-     after the closure's last op and before the outbox write leaves none of them, and the
-     shared plan function gives `authorCards` and the confirm the same account ID, name and
-     kind for the same card.
+   - D1 (amended 2026-10-29): a template hit files with no sender, another sender, a
+     numeric sender, any card or none; a text that no template reads files once the two
+     readers agree on it at 0.8 or more, and goes to Review before they do; a paste, a
+     marked text, a held hit, a transfer partner and an unknown or linked state go to
+     Review. No edit in Review writes `card_linked` or `account_set`.
    - D10: the overlap comes from the oldest and newest text rows in the account from any
      device; no listed mail is skipped; a mail in the overlap with a text twin (also with a
      merchant string that differs from the text's, and dated minutes after it) is authored
@@ -833,8 +817,7 @@ need:
      unknown, paste is offered.
    - The link copy: with no network, a copy that says linked authors nothing and counts;
      a copy that says not linked authors; with no copy and no network, a payment text is
-     authored with `needs_review: true` and never files, also on a template hit with a
-     matching sender and a known card; with no copy, a text that the reading order drops
+     authored with `needs_review: true` and never files, also on a template hit; with no copy, a text that the reading order drops
      sends no request to the server, and a kept text does; the copy is written on each
      server answer and on this device's connect, disconnect and switch, and is deleted on
      sign-out.
@@ -842,10 +825,10 @@ need:
      card activated, registration, promotion, service ticket), each dropped, and from the
      DIB sender, counted by kind; a declined DIB purchase and a one-time code for a DIB
      purchase, each worded so that a DIB purchase template would read it, dropped before
-     the templates and never filed, also from the DIB sender with a known card; a DIB
+     the templates and never filed, also from the DIB sender; a DIB
      template hit with a promotion line added, kept; a text from a person's number with no
      payment shape, dropped with no trace; a DIB template hit from a numeric sender, kept
-     (in Review); synthetic payment texts from other banks, in Review; a synthetic Arabic
+     (it may file); synthetic payment texts from other banks, in Review; a synthetic Arabic
      DIB payment text with no sender that no template reads and that has no currency word
      and no card, in Review; the same text from the DIB sender, in Review; a text with no
      sender and no payment word, dropped with no trace; a text from a bank sender with no
@@ -855,8 +838,7 @@ need:
      Review and not counted as set aside; a generic one-time code for a purchase ("OTP
      482913 for your purchase of USD 20 at a synthetic shop") and a generic declined
      purchase from another bank's sender, each dropped; a text with a one-time-code or
-     declined marker and a transaction clause, kept and never filed, also on a template hit
-     with a matching sender and a known card; a promotion with a payment word and a number
+     declined marker and a transaction clause, kept and never filed, also on a template hit; a promotion with a payment word and a number
      and no transaction clause, dropped as a promotion; each DIB whole-body pattern dropping
      its fixture, and not a fixture with one more payment line.
    - Cloud suggestions: a text row read by a DIB SMS purchase template may leave the
@@ -919,7 +901,7 @@ need:
 - The locked-phone inbox (see D6).
 - The Wallet transaction trigger (D7).
 - Apple's on-device model for texts. It reads only Latin script, and most DIB texts are
-  Arabic. A text that no template reads is prefilled by the template-free readers only, and
+  Arabic. A text that no template reads is read by the template-free readers only, and
   the on-device stage is not asked about a merchant that any text row carries.
 - Learned layouts that persist across launches (see
   [Learned layouts](#reading-happens-inside-hasala-on-the-phone)).
@@ -941,7 +923,7 @@ need:
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | Can a text file with no review? | **Decided:** only on an SMS template hit whose `sms_sender` matches the sender that iOS gave the action, **and** whose card is known (see [Filing with no review](#filing-with-no-review)). A sender name alone can be faked. Without a sender, every text goes to Review, prefilled when a reader reads it. A pasted text always goes to Review, because the person chose the text, not the bank. The readers only fill Review; Apple's on-device model does not read texts in v1. |
+| D1 | Can a text file with no review? | **Decided (amended 2026-10-29, [filing-without-cards.md](filing-without-cards.md)):** yes, when the automation handed it, the account has no mailbox link, and an SMS template read it or the two template-free readers agree on its amount, currency and direction, each at 0.8 or more, with nothing else holding it (see [Filing with no review](#filing-with-no-review)). There is no sender check and no card check: a sender name can be faked, and a faked text costs one archive. A pasted text always goes to Review, because the person chose the text, not the bank. Apple's on-device model does not read texts in v1. |
 | D2 | Can a person use Hasala with texts only, with no mailbox? | **Decided:** yes. Texts are an alternative to the mailbox, thus onboarding asks which one. |
 | D3 | One channel, or merge mail and texts? | **Decided (2026-10-26):** one source for each person, for the whole account (see [One source for each person](#one-source-for-each-person)). No merge. |
 | D4 | Which banks first? | **Decided:** DIB only, tonight. Other banks' payment texts go to Review. More banks follow as real texts reach `hasala-fixtures`. **Amended (2026-10-29):** ENBD follows, from the owner's ENBD export, with its private corpus pending (see [Reading happens inside Hasala, on the phone](#reading-happens-inside-hasala-on-the-phone)). |
@@ -961,9 +943,9 @@ avoids the claim.
 - Whether iOS gives the action the sender, or only the text. The support page's steps and
   the app's guide (`BankTextsGuide`) do not map **Sender** to Shortcut Input › Sender, so
   the action gets a sender only if Shortcuts binds the optional parameter by itself. The
-  privacy policy and the support page say so: without a sender, every text waits in Review
-  and no set-aside count is kept. Without a sender, D1 sends
-  every kept text to Review, and step 4 of the reading order uses the lenient shape (a
+  privacy policy and the support page say so: without a sender, no set-aside count is kept.
+  Since 2026-10-29 filing does not depend on the sender. Without a sender, step 4 of the
+  reading order uses the lenient shape (a
   payment word and any number) for every text, so a person's texts with a payment word and
   a number reach Review more often.
 - Whether the automation runs, and the action can write, while the iPhone is locked (after

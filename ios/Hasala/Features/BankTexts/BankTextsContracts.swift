@@ -167,7 +167,7 @@ enum BankTexts {
   }
 
   static func readNote(_ bank: SupportedBank) -> String {
-    readAutomatically.contains(bank) ? "Hasala reads them; some wait in Review" : "You check each one in Review"
+    readAutomatically.contains(bank) ? "Hasala reads them; some wait in Review" : "Hasala learns their wording; the first wait in Review"
   }
 
   static let switchToEmailMessage =
@@ -227,12 +227,12 @@ enum BankTexts {
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
 
   static let keepsPaymentShapedTexts =
-    "Hasala keeps the payment details of bank texts. A text that looks like a payment, from any sender, waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
+    "Hasala keeps the payment details of bank texts. A text that looks like a payment, from any sender, is added for you when Hasala can read it, or waits in Review for you to check. Every other text is dropped at once, never saved or sent anywhere."
 
   static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
 
   static let banksLine =
-    "Hasala reads DIB and ENBD texts for you, though some still wait in Review. Texts from your other banks come in to Review for you to check."
+    "Hasala reads DIB and ENBD texts for you, though some still wait in Review. Texts from your other banks wait in Review until Hasala learns their wording."
 
   static func lockedNoticeLine(_ n: Int) -> String {
     n == 1

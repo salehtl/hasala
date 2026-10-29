@@ -42,6 +42,7 @@ public struct BankTextRow: Sendable, Equatable {
   }
 
   public var transferRole: TextTransferRole? { templateRef.flatMap { TextTransferRole.of(templateRef: $0) } }
+  public var readerOnly: Bool { templateRef == nil || templateRef == "none" }
 }
 
 public enum BankTextTransferPair {
@@ -60,6 +61,21 @@ public enum BankTextTransferPair {
     }
     return best?.row
   }
+
+  public static func readerOverlap(of row: BankTextRow, among rows: [BankTextRow]) -> Bool {
+    guard !row.unparsed, row.direction == "debit" else { return false }
+    let role = row.transferRole
+    guard role != nil || row.readerOnly else { return false }
+    return rows.contains { o in
+      guard o.id != row.id, !o.unparsed, o.direction == row.direction, o.amountMinor == row.amountMinor,
+        o.currency == row.currency, abs(o.postedMs - row.postedMs) <= windowMs
+      else { return false }
+      let ob = o.bank ?? ""
+      let rb = row.bank ?? ""
+      if role != nil { return o.readerOnly && (ob.isEmpty || ob == rb) }
+      return o.transferRole != nil && (rb.isEmpty || rb == ob)
+    }
+  }
 }
 
 public struct BankTextDraft: Sendable, Equatable {
@@ -69,39 +85,36 @@ public struct BankTextDraft: Sendable, Equatable {
 }
 
 enum BankTextPayload {
-  static func card(_ k: BankTextKept, cards: [CardKey: CardState]) -> String {
-    let last4 = k.fields?.last4 ?? k.last4
-    guard !last4.isEmpty else { return "none" }
-    switch cards[CardKey(bank: k.bank ?? "", last4: last4)] {
-    case .mine?: return "known"
-    case .notMine?: return "not_mine"
-    case nil: return "unknown"
-    }
-  }
-
   static func filesItself(
-    _ k: BankTextKept, card: String, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool
+    _ k: BankTextKept, link: BankTextLink, origin: BankTextOrigin, transferPartner: Bool
   ) -> Bool {
-    origin == .automation && link == .notLinked && k.fields != nil && k.template?.senderMatches == true && card == "known"
+    origin == .automation && link == .notLinked && k.fields != nil && (k.template != nil || k.readerConfident)
       && !k.marked && !k.held && !transferPartner
   }
 
-  static func gates(_ k: BankTextKept, card: String) -> JSONValue {
+  static func samePayment(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
+    !o.unparsed && o.amountMinor == row.amountMinor && o.currency == row.currency
+      && o.direction == row.direction && (o.last4.isEmpty || row.last4.isEmpty || o.last4 == row.last4)
+      && abs(o.postedMs - row.postedMs) <= DuplicateRules.probableCopyWindowMs
+  }
+
+  static func readDifferently(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
+    (row.readerOnly ? nil : row.templateRef) != (o.readerOnly ? nil : o.templateRef)
+  }
+
+  static func gates(_ k: BankTextKept) -> JSONValue {
     .object(
       JSONObject([
         ("sender", .string(k.template?.senderMatches == true ? "trusted" : "untrusted")),
-        ("template", .string(k.template?.ref ?? "none")), ("card", .string(card)), ("forwarded", .bool(false)),
+        ("template", .string(k.template?.ref ?? "none")), ("forwarded", .bool(false)),
       ]))
   }
 
   static func build(
-    _ k: BankTextKept, ingestID: String, receivedMinuteMs: Int64, cards: [CardKey: CardState], link: BankTextLink,
-    origin: BankTextOrigin, transferPartner: Bool, categorizer: any IngestCategorizer
+    _ k: BankTextKept, ingestID: String, receivedMinuteMs: Int64, files: Bool, categorizer: any IngestCategorizer
   ) -> BankTextDraft {
-    let card = card(k, cards: cards)
     let received = Instant.iso(receivedMinuteMs) ?? ""
-    guard let f = k.fields else { return unparsed(k, ingestID: ingestID, received: received, card: card) }
-    let files = filesItself(k, card: card, link: link, origin: origin, transferPartner: transferPartner)
+    guard let f = k.fields else { return unparsed(k, ingestID: ingestID, received: received) }
     let decided = categorizer.decide(merchantRaw: f.merchant, direction: f.direction)
     let decision =
       decided.category == nil
@@ -120,13 +133,13 @@ enum BankTextPayload {
     p["tier"] = .string(k.tier)
     p["entry_method"] = .string("mailbox")
     if let b = k.bank, !b.isEmpty { p["bank"] = .string(b) }
-    p["gates"] = gates(k, card: card)
+    p["gates"] = gates(k)
     p["channel"] = .string(TxnChannel.sms)
     p["received_at"] = .string(received)
     return BankTextDraft(ingestID: ingestID, payload: p, needsReview: !files)
   }
 
-  static func unparsed(_ k: BankTextKept, ingestID: String, received: String, card: String) -> BankTextDraft {
+  static func unparsed(_ k: BankTextKept, ingestID: String, received: String) -> BankTextDraft {
     var u = k
     u.fields = nil
     u.template = nil
@@ -138,13 +151,13 @@ enum BankTextPayload {
       ("category", .null), ("entry_method", .string("mailbox")),
     ])
     if let b = k.bank, !b.isEmpty { p["bank"] = .string(b) }
-    p["gates"] = gates(u, card: card)
+    p["gates"] = gates(u)
     p["channel"] = .string(TxnChannel.sms)
     p["received_at"] = .string(received)
     return BankTextDraft(ingestID: ingestID, payload: p, needsReview: true)
   }
 
-  static func fallbacks(_ d: BankTextDraft, _ k: BankTextKept, card: String, receivedMinuteMs: Int64) -> [BankTextDraft] {
+  static func fallbacks(_ d: BankTextDraft, _ k: BankTextKept, receivedMinuteMs: Int64) -> [BankTextDraft] {
     let received = Instant.iso(receivedMinuteMs) ?? ""
     var bare = k
     bare.merchant = ""
@@ -154,9 +167,9 @@ enum BankTextPayload {
     plain.postedAt = received
     var out: [BankTextDraft] = []
     for f in [
-      unparsed(k, ingestID: d.ingestID, received: received, card: card),
-      unparsed(bare, ingestID: d.ingestID, received: received, card: card),
-      unparsed(plain, ingestID: d.ingestID, received: received, card: "none"),
+      unparsed(k, ingestID: d.ingestID, received: received),
+      unparsed(bare, ingestID: d.ingestID, received: received),
+      unparsed(plain, ingestID: d.ingestID, received: received),
     ] where f != d && !out.contains(f) {
       out.append(f)
     }

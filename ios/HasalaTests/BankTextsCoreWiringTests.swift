@@ -144,7 +144,7 @@ struct BankTextsCoreWiringTests {
   @Test func aDIBTextRunsThroughTheIntentIntoTheOutbox() async throws {
     let r = try Rig(answer: nil)
     r.note(linked: false)
-    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: false))
+    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: true))
     #expect(r.opened == 1 && r.account.asks == 0)
     let ops = try r.ingests()
     try #require(ops.count == 1)
@@ -152,8 +152,8 @@ struct BankTextsCoreWiringTests {
     #expect(p["channel"]?.stringValue == "sms" && p["bank"]?.stringValue == "dib")
     #expect(p["amount_minor"]?.stringValue == "12345" && p["currency"]?.stringValue == "AED")
     #expect(p["merchant_raw"]?.stringValue == "SAMPLE SHOP" && p["last4"]?.stringValue == "1234")
-    #expect(p["needs_review"]?.boolValue == true)
-    #expect(p["gates"]?.objectValue?["card"]?.stringValue == "unknown")
+    #expect(p["needs_review"]?.boolValue == false)
+    #expect(p["gates"]?.objectValue?["card"] == nil)
     #expect(ops[0].ingestID?.utf8.count == 64)
     for json in try r.pendingJSON() {
       #expect(!json.contains("الحد الائتماني") && !json.contains("DIB-SMS"))
@@ -163,18 +163,17 @@ struct BankTextsCoreWiringTests {
     #expect(r.transport.requests == 0)
   }
 
-  @Test func aDIBTextOnAKnownCardFiles() async throws {
+  @Test func aDIBTextWithNoSenderFiles() async throws {
     let r = try Rig(answer: nil)
     r.note(linked: false)
-    try await r.ledger.authorCards([CardDecision(card: CardKey(bank: "dib", last4: "1234"), state: .mine)])
-    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: true))
+    #expect(await r.intake().run(Self.purchase, sender: nil, at: Self.t0) == .authored(filed: true))
     let p = try #require(try r.ingests().first?.payload.objectValue)
-    #expect(p["needs_review"]?.boolValue == false && p["gates"]?.objectValue?["card"]?.stringValue == "known")
+    #expect(p["needs_review"]?.boolValue == false && p["gates"]?.objectValue?["card"] == nil)
+    #expect(p["gates"]?.objectValue?["sender"]?.stringValue == "untrusted")
   }
 
-  @Test func withNoCopyAndNoAnswerAKnownCardTextWaitsInReview() async throws {
+  @Test func withNoCopyAndNoAnswerATemplateHitWaitsInReview() async throws {
     let r = try Rig(answer: nil)
-    try await r.ledger.authorCards([CardDecision(card: CardKey(bank: "dib", last4: "1234"), state: .mine)])
     #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: false))
     #expect(r.account.asks == 1)
     let p = try #require(try r.ingests().first?.payload.objectValue)
@@ -236,7 +235,7 @@ struct BankTextsCoreWiringTests {
   @Test func pasteFindsTheTextRowAndAddsForReview() async throws {
     let r = try Rig(answer: nil)
     r.note(linked: false)
-    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: false))
+    #expect(await r.intake().run(Self.purchase, sender: "DIB-SMS", at: Self.t0) == .authored(filed: true))
     let first = try #require(try r.ingests().first?.entity?.id)
     let lane = r.lane()
     let match = try #require(await lane.match(Self.purchase))

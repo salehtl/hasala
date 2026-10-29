@@ -26,7 +26,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -53,7 +55,9 @@
         "last4": "",
         "posted_at": "2026-06-05T07:22:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -80,7 +84,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -108,7 +114,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -135,7 +143,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -162,7 +172,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -190,7 +202,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -217,7 +231,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -244,7 +260,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -271,7 +289,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -298,7 +318,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -325,7 +347,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -352,7 +376,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -379,7 +405,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -406,7 +434,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -434,7 +464,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T06:11:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -698,7 +730,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -725,7 +759,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -752,7 +788,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -779,7 +817,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -806,7 +846,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -833,7 +875,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -861,7 +905,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -888,7 +934,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -912,7 +960,9 @@
         "merchant": "",
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -939,7 +989,9 @@
         "last4": "4321",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -966,7 +1018,9 @@
         "last4": "5678",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1032,7 +1086,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1059,7 +1115,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1086,7 +1144,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1113,7 +1173,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1140,7 +1202,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1167,7 +1231,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1194,7 +1260,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1221,7 +1289,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1248,7 +1318,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1275,7 +1347,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1341,7 +1415,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1368,7 +1444,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1405,7 +1483,9 @@
         "merchant": "",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1432,7 +1512,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1459,7 +1541,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1486,7 +1570,9 @@
         "last4": "4321",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1513,7 +1599,9 @@
         "last4": "4321",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1540,7 +1628,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1567,7 +1657,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1594,7 +1686,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1621,7 +1715,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1648,7 +1744,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1675,7 +1773,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1702,7 +1802,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1729,7 +1831,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1756,7 +1860,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1783,7 +1889,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1810,7 +1918,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1837,7 +1947,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1864,7 +1976,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1891,7 +2005,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1918,7 +2034,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1945,7 +2063,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1972,7 +2092,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -1999,7 +2121,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2022,7 +2146,9 @@
         "merchant": "",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2045,7 +2171,9 @@
         "merchant": "",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2068,7 +2196,9 @@
         "merchant": "",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2091,7 +2221,9 @@
         "merchant": "",
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
-        "posted_precision": "time"
+        "posted_precision": "time",
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2118,7 +2250,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2315,7 +2449,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2342,7 +2478,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2369,7 +2507,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2396,7 +2536,9 @@
         "last4": "5678",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2423,7 +2565,9 @@
         "last4": "5678",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": false
       }
     },
     {
@@ -2450,7 +2594,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2477,7 +2623,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2504,7 +2652,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2531,7 +2681,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2558,7 +2710,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2585,7 +2739,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2612,7 +2768,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2639,7 +2797,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2666,7 +2826,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": true
+        "is_transfer": true,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2693,7 +2855,9 @@
         "last4": "1234",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2720,7 +2884,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2773,7 +2939,9 @@
         "last4": "",
         "posted_at": "2026-06-05T08:00:00.000Z",
         "posted_precision": "time",
-        "is_transfer": false
+        "is_transfer": false,
+        "reader_confident": false,
+        "files": true
       }
     },
     {
@@ -2891,6 +3059,205 @@
         "drop_kind": "notice",
         "counted": false,
         "bank": null
+      }
+    },
+    {
+      "name": "bill-pymt-made-using-card",
+      "sender": "EmiratesNBD",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Bill Pymt for SAMPLE TELECOM of AED 120.00 has been made using Credit Card XXX1234 on 05-06-2026.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "bank",
+        "bank": "enbd",
+        "tier": "template",
+        "template": "enbd.sms.bill-payment.v1@1",
+        "sender_matches": true,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": true,
+        "amount_minor": "12000",
+        "currency": "AED",
+        "direction": "debit",
+        "merchant": "SAMPLE TELECOM",
+        "last4": "1234",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": false
+      }
+    },
+    {
+      "name": "bill-pymt-made-using-card-no-sender",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Bill Pymt for SAMPLE TELECOM of AED 120.00 has been made using Credit Card XXX1234 on 05-06-2026.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "none",
+        "bank": "enbd",
+        "tier": "template",
+        "template": "enbd.sms.bill-payment.v1@1",
+        "sender_matches": false,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": true,
+        "amount_minor": "12000",
+        "currency": "AED",
+        "direction": "debit",
+        "merchant": "SAMPLE TELECOM",
+        "last4": "1234",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": false
+      }
+    },
+    {
+      "name": "deducted-for-issuance",
+      "sender": "EmiratesNBD",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "AED 25.00 has been deducted from your account XXX1234 for issuance of SAMPLE CERTIFICATE.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "bank",
+        "bank": "enbd",
+        "tier": "template",
+        "template": "enbd.sms.debit.v1@1",
+        "sender_matches": true,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": true,
+        "amount_minor": "2500",
+        "currency": "AED",
+        "direction": "debit",
+        "merchant": "ENBD ACCOUNT DEBIT",
+        "last4": "",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": false
+      }
+    },
+    {
+      "name": "transferred-to-your-account-credit",
+      "sender": "EmiratesNBD",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "AED 1,250.00 has been transferred to your account XXX1234. The available balance is AED 9,876.00.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "bank",
+        "bank": "enbd",
+        "tier": "template",
+        "template": "enbd.sms.transfer-in.v1@1",
+        "sender_matches": true,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": true,
+        "amount_minor": "125000",
+        "currency": "AED",
+        "direction": "credit",
+        "merchant": "ENBD TRANSFER",
+        "last4": "",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": true
+      }
+    },
+    {
+      "name": "transferred-to-person-ambiguous",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "AED 300.00 transferred to SAMPLE PERSON on 05-06-2026 10:15. Ref SYN4001.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "none",
+        "bank": null,
+        "tier": "heuristic",
+        "template": null,
+        "sender_matches": false,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": false,
+        "amount_minor": "30000",
+        "currency": "AED",
+        "direction": "debit",
+        "merchant": "",
+        "last4": "",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": true
+      }
+    },
+    {
+      "name": "standing-instruction-held",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "Standing instruction of AED 500.00 has been debited from your account XXX1234 to SAMPLE PERSON.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "none",
+        "bank": null,
+        "tier": "heuristic",
+        "template": null,
+        "sender_matches": false,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": false,
+        "amount_minor": "50000",
+        "currency": "AED",
+        "direction": "debit",
+        "merchant": "",
+        "last4": "1234",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": false
+      }
+    },
+    {
+      "name": "deposit-after-clearing-held",
+      "received_at": "2026-06-05T08:00:00.000Z",
+      "test_window_open": false,
+      "text": "AED 1,000.00 has been deposited to your account XXX1234, to be confirmed after clearing.",
+      "expect": {
+        "reading": "kept",
+        "sender_kind": "none",
+        "bank": null,
+        "tier": "heuristic",
+        "template": null,
+        "sender_matches": false,
+        "transfer_role": null,
+        "marked": false,
+        "held": false,
+        "counts_as_payment": true,
+        "reader_confident": false,
+        "files": false,
+        "amount_minor": "100000",
+        "currency": "AED",
+        "direction": "credit",
+        "merchant": "",
+        "last4": "1234",
+        "posted_at": "2026-06-05T08:00:00.000Z",
+        "posted_precision": "time",
+        "is_transfer": false
       }
     }
   ]

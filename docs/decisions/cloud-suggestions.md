@@ -295,8 +295,9 @@ or a digit run of 12+ survived), the phone doesn't offer the button.
 A second opt-in, under Merchant suggestions. With it on, a Clef answer that clears a
 stricter gate **files** the row instead of only suggesting it.
 
-- Gate: the chosen probability is ≥ 0.8 and leads the second by ≥ 0.4. In the spike
-  this answered 81 of 114 names (71%) with 81 right (100%). An answer that clears only
+- Gate (lowered 2026-10-29 from 0.8, [filing-without-cards.md](filing-without-cards.md)): the
+  chosen probability is ≥ 0.7 and leads the second by ≥ 0.4. At 0.8 / 0.4 the spike
+  answered 81 of 114 names (71%) with 81 right (100%). An answer that clears only
   the 0.6 / 0.2 gate stays a suggestion in review.
 - Clef only. Apple's model gives no probabilities to grade, so its answers stay
   suggestions (`ModelTier.autoConfirm = false` is unchanged). A cloud model declares that
@@ -453,7 +454,7 @@ ended, and the next `ensure()` starts a new one.
 the rows before it authors and authors only rows still eligible at the same version. A row
 the person edited meanwhile is left alone. The foreground sweep and the run share one
 gate. What files and what only suggests doesn't change: with Sort automatically on, an
-answer at or above 0.8 / 0.4 files the row when its mail gates passed; everything else at
+answer at or above 0.7 / 0.4 (0.8 / 0.4 before 2026-10-29) files the row when its mail gates passed; everything else at
 or above 0.6 / 0.2 is a suggestion.
 
 **What the screens show.** Review shows no sorting card. The status the app reads

@@ -4,9 +4,7 @@
 //
 //   syncToHead       a `refresh` run: reconcile, pull (fold + project), flush
 //   senderTrust      the projection's `sender_trust` (pending overlay included)
-//   knownCards       the projection's `card` links
 //   projectedMessageIDs / isIngested   the projection, plus pending ops for ingest ids
-//   authorCards      `account_set` (when the card's account is new) + `card_linked`, one blob
 //   authorSenderTrust `sender_trust_set` through OpAuthor's typed-input rules
 //   flush            an `authored` run, mapped onto `FlushOutcome`
 //
@@ -27,7 +25,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public let authoring: MailboxAuthoring
   public nonisolated let textWrites = WriteSerial()
 
-  /// Display names for accounts created from a card ("<Bank> ···<last4>", 03b §4.2 table).
+  /// Display names of the banks (03b §4.2 table).
   public static let bankNames: [String: String] = [
     "enbd": "Emirates NBD", "dib": "DIB", "adib": "ADIB", "adcb": "ADCB", "fab": "FAB", "mashreq": "Mashreq",
     "rakbank": "RAKBANK", "cbd": "CBD", "ei": "Emirates Islamic", "hsbc": "HSBC", "citi": "Citibank", "nbf": "NBF",
@@ -57,8 +55,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
 
   public func senderTrust() async -> [String: Bool] { (try? reader.senderTrust()) ?? [:] }
 
-  public func knownCards() async -> [CardKey: CardState] { CardLinkPlan.current((try? reader.cards()) ?? []) }
-
   public func projectedMessageIDs(among ids: [String]) async -> Set<String> {
     (try? reader.knownMailboxMessageIDs(ids)) ?? []
   }
@@ -66,15 +62,6 @@ public actor RuntimeMailboxLedger: MailboxLedger {
   public func isIngested(_ ingestID: String) async -> Bool {
     if (try? reader.hasIngest(ingestID)) == true { return true }
     return (try? observer.context.store.hasPendingIngest(ingestID)) == true
-  }
-
-  public func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError) {
-    guard !decisions.isEmpty else { return }
-    let mine = decisions.filter { $0.state == .mine }.map(\.card)
-    let steps = CardLinkPlan.plan(
-      decisions, accounts: CardAccounts((try? reader.accounts()) ?? []), current: await knownCards(),
-      creditCards: CardLinkPlan.creditCards(mine, store: observer.context.store, reader: reader))
-    try await author { a throws(AuthorError) in try CardLinkPlan.apply(steps, to: &a) }
   }
 
   public func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError) {

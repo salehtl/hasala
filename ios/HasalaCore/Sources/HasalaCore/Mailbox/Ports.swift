@@ -1,7 +1,7 @@
 // The engine's view of the rest of the app (spec 04 §3: the AccountRuntime wires these).
 //
-//   MailboxLedger      the fold and the outbox: pull to head, the trusted senders, known cards,
-//                      dedup, authoring the non-txn ops of the lane, flush (CoreSync/CoreOutbox/
+//   MailboxLedger      the fold and the outbox: pull to head, the trusted senders, dedup,
+//                      authoring the non-txn ops of the lane, flush (CoreSync/CoreOutbox/
 //                      CoreDomain; Live/ wires it)
 //   MailboxServer      hasalad's mailbox routes 34-38 and the push settings in `meta` (spec 02)
 //   MailboxStepUp      the WebAuthn / device step-up proof for mailbox.link and mailbox.unlink
@@ -15,18 +15,6 @@ public enum FlushOutcome: Sendable, Equatable {
   case accountFull
   /// Offline or any other failure: the watermark does not move; the next trigger retries.
   case failed
-}
-
-public struct CardDecision: Sendable, Equatable {
-  public var card: CardKey
-  public var state: CardState
-  /// An existing account to attach the card to; nil = a new account per bank+last4 (03b §4.2).
-  public var accountID: String?
-  public init(card: CardKey, state: CardState, accountID: String? = nil) {
-    self.card = card
-    self.state = state
-    self.accountID = accountID
-  }
 }
 
 public struct MailboxLedgerError: Error, Sendable, Equatable {
@@ -57,17 +45,12 @@ public protocol MailboxLedger: Sendable {
   func syncToHead() async throws(MailboxLedgerError)
   /// The `sender_trust_set` fold: domain -> trusted (03c §7.1).
   func senderTrust() async -> [String: Bool]
-  /// `card_linked` keys and states (03b §4.3).
-  func knownCards() async -> [CardKey: CardState]
   /// Which of these provider message ids a projected transaction already carries
   /// (`txn.mailbox_message_id`), so they are never downloaded again (§7.5).
   func projectedMessageIDs(among ids: [String]) async -> Set<String>
   /// Whether an op with this ingest id has folded or is pending on this device.
   func isIngested(_ ingestID: String) async -> Bool
   func textOverlap() async throws(MailboxLedgerError) -> TextOverlap?
-  /// Authors `account_set` / `card_linked` for the given cards (03b §4.2-§4.3) and enqueues them.
-  /// The engine no longer calls it (setup has no cards step); kept for marking a card later.
-  func authorCards(_ decisions: [CardDecision]) async throws(MailboxLedgerError)
   /// Authors `sender_trust_set {domain, trusted}` (03c §7.1; "Add a sender", "Trust <domain>").
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError)
   func retirePlan(grantID: String, provider: String) async -> MailboxRetirePlan

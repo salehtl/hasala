@@ -1,5 +1,5 @@
 {
-  "note": "Rows from bank texts (docs/decisions/bank-texts.md, The op log). A text row is a v4 txn_ingested with entry_method mailbox, no provenance, no dedupe and no gates.ar, gates.sender trusted only when the sender matched the template's sms_sender, and two keys that older builds ignore: channel \"sms\" and received_at (the arrival minute). Its ingest_id is an HMAC key (64 hex digits). The fold keeps channel and received_at on the row for the projection and leaves both out of the witness, so state_sha256 is what a build from before bank texts gives. A text row never forms the fold's implicit transfer pair (no gates.ar pass); the authoring side holds the second row of a DIB debit alert and transfer notice in Review instead, and the fold keeps both rows. A repeat with a new key inside ten minutes is a held probable copy; the same key again is duplicate_ingest; a repeat with no bank is a second row beside the first; an unparsed text row folds and accepts an archive. Every op is synthetic. Written by the Swift executor.",
+  "note": "Rows from bank texts (docs/decisions/bank-texts.md, The op log). A text row is a v4 txn_ingested with entry_method mailbox, no provenance, no dedupe and no gates.ar, gates.sender trusted only when the sender matched the template's sms_sender, no gates.card (2026-10-29: filing has no card or sender check), and two keys that older builds ignore: channel \"sms\" and received_at (the arrival minute). Its ingest_id is an HMAC key (64 hex digits). The fold keeps channel and received_at on the row for the projection and leaves both out of the witness, so state_sha256 is what a build from before bank texts gives. A text row never forms the fold's implicit transfer pair (no gates.ar pass); the authoring side holds the second row of a DIB debit alert and transfer notice in Review instead, and the fold keeps both rows. A repeat with a new key inside ten minutes is a held probable copy; the same key again is duplicate_ingest; a repeat with no bank is a second row beside the first; an unparsed text row folds and accepts an archive. Every op is synthetic. Written by the Swift executor.",
   "regenerate": "HASALA_WRITE_SWIFT_GOLDENS=1 swift test --filter SwiftFoldGoldenTests (in ios/HasalaCore)",
   "format": "Each case is a conformance/replay case (log items of ops, expect.state blanked as there, expect.state_sha256 the pass condition), folded by the v4 fold.",
   "cases": [
@@ -40,7 +40,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "known",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -119,7 +118,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "known",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1"
@@ -146,7 +144,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "f5784a06226417891792f4f5267e27583f86428d1500b6439a0fb3723016a350",
+        "state_sha256": "e5b2b23f2898f24152657775bf2104901e11f2ff182ae2dfbdd9985394a99047",
         "anomaly_kinds": []
       }
     },
@@ -187,7 +185,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "known",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -227,7 +224,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "known",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -323,7 +319,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "known",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1"
@@ -363,7 +358,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "known",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1"
@@ -390,7 +384,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "bb540b47b21b74fe46be5edc1b0a7aee1da38b721d146b598dbb8c04be9ee5b1",
+        "state_sha256": "51c689699912c38bf22e2a89a540ff30dbee19816667123c3fdbc4592002a3ce",
         "anomaly_kinds": []
       }
     },
@@ -431,7 +425,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "known",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -471,7 +464,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "known",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -556,7 +548,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "known",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.purchase.v1@1"
@@ -583,7 +574,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "f0e66d1843d5060a0ff8a76953818078ed8336c934b7741e9b00e7eaea0bfda8",
+        "state_sha256": "0f4a5679a4e10943f1edad60262133ce7ee059f12adfb181c38e201bd901493e",
         "anomaly_kinds": [
           "duplicate_ingest"
         ]
@@ -618,7 +609,7 @@
                 "posted_precision": "time",
                 "merchant_raw": "OUTGOING DOMESTIC FUND TR",
                 "last4": "",
-                "needs_review": true,
+                "needs_review": false,
                 "unparsed": false,
                 "tier": "template",
                 "entry_method": "mailbox",
@@ -626,7 +617,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.debit.v1@1",
-                  "card": "none",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -666,7 +656,6 @@
                 "gates": {
                   "sender": "trusted",
                   "template": "dib.sms.own-transfer.v1@1",
-                  "card": "none",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -767,7 +756,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "none",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.debit.v1@1"
@@ -777,7 +765,7 @@
                 "last4": "",
                 "mailbox_message_id": null,
                 "merchant_raw": "OUTGOING DOMESTIC FUND TR",
-                "needs_review": true,
+                "needs_review": false,
                 "parse_error": null,
                 "possible_duplicate_of": null,
                 "posted_at": "2026-06-05T08:00:00.000Z",
@@ -806,7 +794,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "none",
                   "forwarded": false,
                   "sender": "trusted",
                   "template": "dib.sms.own-transfer.v1@1"
@@ -833,7 +820,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "5b47c629d04e1c2b011a01112042581210b023422b0731e69d0fbfffa8755aef",
+        "state_sha256": "e99a8f18755abfb1bdd2489af833b40c97e2d2d01e60db69b697771922e6fe0f",
         "anomaly_kinds": []
       }
     },
@@ -873,7 +860,6 @@
                 "gates": {
                   "sender": "untrusted",
                   "template": "none",
-                  "card": "unknown",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -912,7 +898,6 @@
                 "gates": {
                   "sender": "untrusted",
                   "template": "none",
-                  "card": "unknown",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -1013,7 +998,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "unknown",
                   "forwarded": false,
                   "sender": "untrusted",
                   "template": "none"
@@ -1051,7 +1035,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "unknown",
                   "forwarded": false,
                   "sender": "untrusted",
                   "template": "none"
@@ -1078,7 +1061,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "2e0253e73eef5050ad747e4840271235492ca99b5a202b975ffa0a59728cfe2d",
+        "state_sha256": "e63e901d2f4f6a428e84302fb4dad6700b4291908b8056c6b9f6ff400fa24a62",
         "anomaly_kinds": [
           "possible_duplicate"
         ]
@@ -1119,7 +1102,6 @@
                 "gates": {
                   "sender": "untrusted",
                   "template": "none",
-                  "card": "unknown",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -1159,7 +1141,6 @@
                 "gates": {
                   "sender": "untrusted",
                   "template": "dib.sms.purchase.v1@1",
-                  "card": "unknown",
                   "forwarded": false
                 },
                 "channel": "sms",
@@ -1281,7 +1262,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "unknown",
                   "forwarded": false,
                   "sender": "untrusted",
                   "template": "none"
@@ -1320,7 +1300,6 @@
                 "duplicate_disposition": null,
                 "entry_method": "mailbox",
                 "gates": {
-                  "card": "unknown",
                   "forwarded": false,
                   "sender": "untrusted",
                   "template": "dib.sms.purchase.v1@1"
@@ -1347,7 +1326,7 @@
           ],
           "unreadable": []
         },
-        "state_sha256": "b6debde2c22ce297343368484a03365ada821e880a1f99dde1429458b716ec0b",
+        "state_sha256": "f8c0e467aea024849326a5fec0526880a25ff66f5af868a28d90a045642abdd0",
         "anomaly_kinds": []
       }
     }
