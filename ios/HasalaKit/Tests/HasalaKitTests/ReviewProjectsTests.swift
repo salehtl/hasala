@@ -14,7 +14,7 @@ struct ReviewProjectsTests {
     Project(id: id, name: id.capitalized, glyph: .flag, budget: nil, starts: starts, ends: ends, complete: complete)
   }
 
-  @Test func projectsWhoseDatesCoverTheDayComeFirstAndAreSuggested() {
+  @Test func projectsKeepTheirOrderAndThoseWhoseDatesCoverTheDayAreSuggested() {
     let s = state([
       project("later", LocalDate(2026, 12, 14), LocalDate(2026, 12, 28)),
       project("now", LocalDate(2026, 10, 1), LocalDate(2026, 10, 31)),
@@ -22,9 +22,9 @@ struct ReviewProjectsTests {
       project("also", LocalDate(2026, 10, 9), LocalDate(2026, 10, 9)),
     ])
     let choices = ReviewEngine.projectChoices(s, on: LocalDate(2026, 10, 9))
-    #expect(choices.map(\.id) == ["now", "also", "later", "before"])
-    #expect(choices.map(\.suggested) == [true, true, false, false])
-    #expect(choices[0].name == "Now" && choices[0].glyph == .flag)
+    #expect(choices.map(\.id) == ["later", "now", "before", "also"])
+    #expect(choices.map(\.suggested) == [false, true, false, true])
+    #expect(choices[1].name == "Now" && choices[1].glyph == .flag)
   }
 
   @Test func bothEndsAreInclusive() {
@@ -43,8 +43,8 @@ struct ReviewProjectsTests {
       project("from", LocalDate(2026, 10, 1), nil),
     ])
     let choices = ReviewEngine.projectChoices(s, on: LocalDate(2026, 10, 9))
-    #expect(choices.map(\.id) == ["open", "from", "until", "since"])
-    #expect(choices.map(\.suggested) == [true, true, false, false])
+    #expect(choices.map(\.id) == ["until", "since", "open", "from"])
+    #expect(choices.map(\.suggested) == [false, false, true, true])
   }
 
   @Test func completedProjectsAreLeftOut() {
