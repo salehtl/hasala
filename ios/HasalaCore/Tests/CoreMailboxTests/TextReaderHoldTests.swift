@@ -106,6 +106,14 @@ struct TextReaderHoldTests {
     #expect(s.allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields?.direction == "debit" })
   }
 
+  @Test("a transfer from your own debit or credit card is no ambiguous debit")
+  func transferFromYourCardIsADebit() throws {
+    for card in ["debit", "credit"] {
+      let s = Self.stream { "AED \(Self.amount($0)) transferred from your \(card) card XXX4321 to SAMPLE PERSON on 05-06-2026." }
+      #expect(s.allSatisfy { !$0.1.directionAmbiguous && $0.0.kept?.fields?.direction == "debit" }, "\(card)")
+    }
+  }
+
   @Test("a move between two of your own accounts never files through reader agreement")
   func ownAccountMoveHolds() throws {
     let wordings = [

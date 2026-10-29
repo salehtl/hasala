@@ -130,6 +130,45 @@ struct BankTextFilingTests {
     }
   }
 
+  @Test("a text with no bank and no card digits that the readers would file waits in Review beside a text row of that payment with a card")
+  func banklessRepeatWithoutCardWaits() async throws {
+    let c = Self.novel(8)
+    let k = try #require(BankTextReader.read(c.arrival, templates: []).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
+    let f = try #require(k.fields)
+    let posted = try parseInstantMs(f.postedAt)
+    let row = BankTextRow(
+      id: "01JC0000000000000000000099", bank: nil, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction,
+      last4: "", postedMs: posted - 120_000, templateRef: nil, unparsed: false)
+    let ledger = FakeTextLedger()
+    let author = BankTextAuthor(ledger: ledger)
+    for n in 0..<8 { _ = try #require(await author.add(Self.novel(n).arrival, secret: TextRig.secret, link: { .notLinked }).added) }
+    await ledger.setRows([row])
+    let added = try #require(await author.add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+    #expect(!added.filed && added.bank == nil && !f.last4.isEmpty)
+  }
+
+  @Test("a template hit waits in Review beside a text row with no bank of the same payment; beside a bank's row or another amount it files")
+  func templateHitBesideBanklessRowWaits() async throws {
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let k = try #require(BankTextReader.read(c.arrival).reading.kept?.timed(arrivalMinuteMs: c.arrival.arrivalMinuteMs))
+    let f = try #require(k.fields)
+    let posted = try parseInstantMs(f.postedAt)
+    let bankless = BankTextRow(
+      id: "01JC0000000000000000000099", bank: nil, amountMinor: f.amountMinor, currency: f.currency, direction: f.direction,
+      last4: f.last4, postedMs: posted - 120_000, templateRef: nil, unparsed: false)
+    var bankRow = bankless
+    bankRow.bank = "dib"
+    bankRow.templateRef = "dib.sms.purchase.v1@1"
+    var other = bankless
+    other.amountMinor += 1
+    for (row, files) in [(bankless, false), (bankRow, true), (other, true)] {
+      let ledger = FakeTextLedger()
+      await ledger.setRows([row])
+      let added = try #require(await BankTextAuthor(ledger: ledger).add(c.arrival, secret: TextRig.secret, link: { .notLinked }).added)
+      #expect(added.filed == files && added.bank == "dib", "\(row.bank ?? "none") \(row.amountMinor)")
+    }
+  }
+
   @Test("a template hit that names a standing instruction or a clearing is held in Review")
   func templateHitNotSettledHolds() throws {
     let c = try TextCase.named("dib-purchase-credit-card")

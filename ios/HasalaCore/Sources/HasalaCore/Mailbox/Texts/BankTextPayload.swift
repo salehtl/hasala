@@ -94,7 +94,7 @@ enum BankTextPayload {
 
   static func samePayment(_ row: BankTextRow, _ o: BankTextRow) -> Bool {
     !o.unparsed && o.amountMinor == row.amountMinor && o.currency == row.currency
-      && o.direction == row.direction && o.last4 == row.last4
+      && o.direction == row.direction && (o.last4.isEmpty || row.last4.isEmpty || o.last4 == row.last4)
       && abs(o.postedMs - row.postedMs) <= DuplicateRules.probableCopyWindowMs
   }
 

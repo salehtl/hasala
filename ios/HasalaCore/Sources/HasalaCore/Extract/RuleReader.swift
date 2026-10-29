@@ -272,7 +272,7 @@ enum RuleReader {
     }
     let dir = c > d ? "credit" : "debit"
     let strong = dir == "credit" ? (cc > 0 && cd == 0) : (cd > 0 && cc == 0)
-    let ownAccount = parts.contains { RuleText.has(RuleLexicon.fromOwnAccount, $0.0) }
+    let ownAccount = [clause, subject, body].contains { RuleText.has(RuleLexicon.fromOwnAccount, $0) }
     let intoOwn = [clause, subject, body].contains {
       RuleText.has(RuleLexicon.intoOwnAccount, $0) || RuleText.has(RuleLexicon.toOwnAccount, $0)
     }

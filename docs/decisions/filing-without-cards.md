@@ -51,8 +51,9 @@ because they are strong and cost nothing.
      notice waits in Review, because the transfer pairing reads only template rows and
      the fold pairs only verified mail. The fold still holds a repeat as a probable copy.
      A text with no bank, which the fold cannot hold, waits in Review when it repeats a
-     text row of the last 10 minutes (same amount, currency, direction and card) or when
-     its key is a repeat in the same minute. A text that a live mail row of the last 24
+     text row of the last 10 minutes (same amount, currency and direction, and the same
+     card when both show one) or when its key is a repeat in the same minute. A text with
+     a bank waits in Review the same way beside a text row with no bank. A text that a live mail row of the last 24
      hours may already hold (the D10 twin rule, read from the text's side) waits in Review
      too, so a payment that came in both ways around a switch from email to texts does not
      file twice.
@@ -67,7 +68,10 @@ because they are strong and cost nothing.
 3. **Mail filing drops its card terms** (`MessageDisposer.finalize`). A recipient check that
    is confirmed **or** unconfirmed may file; a mismatch may not. The `not_mine` card term is
    gone. Every other gate stays: A-R or DMARC pass, a trusted sender, not forwarded, not in
-   Spam, the reader confidence for a template-free reading, no hold and no text twin.
+   Spam, the reader confidence for a template-free reading, no hold and no text twin. The
+   reader confidence (`ExtractReading.meetsFilingBar`) is the one bar texts use, so a
+   template-free mail whose only debit words are "transfer", "transferred", "sent" or
+   "تحويل", or that moves money between your own accounts, now waits in Review too.
 4. **Clef "Sort automatically"** files at a probability of 0.7 or more with a margin of 0.4
    (`CloudCategoryModel.autoFileThreshold`; it was 0.8 / 0.4). The suggestion gate stays
    0.6 / 0.2. Apple's model still never files (`ModelTier.autoConfirm = false`). Trust on a

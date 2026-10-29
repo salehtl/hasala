@@ -159,13 +159,13 @@ public actor BankTextAuthor {
     guard let mail = await ledger.mailRows(postedFromMs: row.postedMs - BankTextTwin.windowMs, toMs: row.postedMs + BankTextTwin.windowMs)
     else { return true }
     if mail.contains(where: { BankTextTwin.matches(row, $0) }) { return true }
-    guard (row.bank ?? "").isEmpty else { return false }
-    if n > 0 { return true }
+    let bankless = (row.bank ?? "").isEmpty
+    if bankless && n > 0 { return true }
     let w = DuplicateRules.probableCopyWindowMs
     let read: [BankTextRow]?
     if let nearby { read = nearby } else { read = await ledger.textRows(postedFromMs: row.postedMs - w, toMs: row.postedMs + w) }
     guard let texts = read else { return true }
-    return texts.contains { BankTextPayload.samePayment(row, $0) }
+    return texts.contains { (bankless || ($0.bank ?? "").isEmpty) && BankTextPayload.samePayment(row, $0) }
   }
 
   static func refusal(_ e: MailboxLedgerError) -> Bool {
