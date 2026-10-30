@@ -16,7 +16,7 @@ func (s *Server) mountPassword(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("POST /api/v1/auth/password/login/begin", s.limited(s.handlePasswordLoginBegin, s.PasskeyPerIP, s.PasskeyGlobal))
-	mux.HandleFunc("POST /api/v1/auth/password/login/finish", s.limited(s.handlePasswordLoginFinish, s.PasskeyPerIP))
+	mux.HandleFunc("POST /api/v1/auth/password/login/finish", s.limited(s.handlePasswordLoginFinish, s.PasskeyPerIP, s.PasskeyGlobal))
 	mux.HandleFunc("POST /api/v1/account/password/reset", s.requireSession(s.userLimited(s.handlePasswordResetC8)))
 	mux.HandleFunc("POST /api/v1/account/password", s.requireSession(s.userLimited(s.handlePasswordSet)))
 	mux.HandleFunc("PUT /api/v1/account/password", s.requireSession(s.userLimited(s.handlePasswordChange)))

@@ -64,9 +64,8 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := s.Web
-	if !o.BankIP.Allow(clientKey(r)) || !o.BankGlobal.Allow("") {
-		w.Header().Set("Retry-After", "600")
-		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+	if !o.BankIP.Allow(clientKey(r)) || !prefixAllow(r, o.BankPrefix) {
+		writePublicRateLimited(w)
 		return
 	}
 	var (
@@ -93,6 +92,10 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.turnstileOK(r, form.TurnstileToken, "bank_request") {
 		s.answerPublic(w, r, isForm, http.StatusForbidden, nil, "turnstile_failed", "bank")
+		return
+	}
+	if !o.BankGlobal.Allow("") {
+		writePublicRateLimited(w)
 		return
 	}
 	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, "", nil)

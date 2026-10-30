@@ -373,10 +373,10 @@ func (s *Server) Handler() http.Handler {
 	s.ensureLimiter(&s.SessionPerUser, sessionRate, sessionBurst, sessionMaxKeys)
 	s.ensureLimiter(&s.SyncPerUser, syncRate, syncBurst, syncMaxKeys)
 	s.ensureLimiter(&s.SyncUploadBytes, syncByteRate, syncByteBurst, syncByteMaxKeys)
-	s.ensureLimiter(&s.PasskeyPerIP, passkeyPerIPRate, passkeyPerIPBurst, passkeyMaxKeys)
+	s.ensureClientLimiter(&s.PasskeyPerIP, passkeyPerIPRate, passkeyPerIPBurst, passkeyMaxKeys)
 	s.ensureLimiter(&s.PasskeyPerPrefix, passkeyPrefixRate, passkeyPrefixBurst, passkeyMaxKeys)
 	s.ensureLimiter(&s.PasskeyGlobal, passkeyGlobalRate, passkeyGlobalBurst, 1)
-	s.ensureLimiter(&s.MetaPerIP, metaRate, metaBurst, metaMaxKeys)
+	s.ensureClientLimiter(&s.MetaPerIP, metaRate, metaBurst, metaMaxKeys)
 	s.ensureLimiter(&s.StepUpPerUser, stepUpRate, stepUpBurst, stepUpMaxKeys)
 	s.ensureLimiter(&s.PullPerUser, pullRate, pullBurst, pullMaxKeys)
 	if s.StepUp == nil {
