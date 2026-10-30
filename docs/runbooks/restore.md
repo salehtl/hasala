@@ -78,6 +78,12 @@ coming back:
   skips `purge-cancelled`, so its replay purges an account whose deletion was
   cancelled. Before you roll back to one of these, keep a copy of the ledger and remove
   the lines it cannot read.
+- A freeze that a later unfreeze lifted is not applied again, but the sessions
+  it ended stay ended: every session of that account created before the second
+  of the freeze ends again with its push token, and the summary counts this
+  with the sign-outs of all sessions. A session created in the same second as
+  the freeze stays, because the ledger has whole seconds and the session that
+  the unfreeze kept can be from that second.
 - A single sign-out (`logout`) is not recorded: a session has no internal id
   for the ledger. A restore can bring back a session that was signed out
   alone. The holder can end it again with a sign-out of all sessions.

@@ -1254,3 +1254,75 @@ func TestARestoreDoesNotBringBackTheLinksOfALiftedFreeze(t *testing.T) {
 		t.Fatalf("a second replay left %d unfreeze events", n)
 	}
 }
+
+func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	stolen, err := m.loginPassword(m.s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := m.token
+	f.clock.advance(time.Hour + 300*time.Millisecond)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil || !in.Restricted {
+		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
+	}
+	m.token = in.Session.Token
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if len(entries) != 2 || entries[0].Kind != purgeledger.KindFreeze || entries[1].Kind != purgeledger.KindUnfreeze {
+		t.Fatalf("ledger %+v, want a freeze and an unfreeze", entries)
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("a replay on the live database ended the kept session: %v", err)
+	}
+
+	for _, tok := range []string{original, stolen.Session.Token} {
+		if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE token_hash = $1`,
+			SessionHash(tok)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.sessions.Resolve(bgctx, tok); err != nil {
+			t.Fatalf("the simulated restore did not bring the session back: %v", err)
+		}
+	}
+	registerPushToken(t, f.pool, m.user.UserID, m.user.WriterID, original, "restored")
+	if _, err := f.pool.Exec(bgctx, `DELETE FROM auth_events WHERE user_id = $1 AND kind IN ('account_frozen', 'account_unfrozen')`,
+		m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep != (ReapplyReport{Sessions: 1}) {
+		t.Fatalf("reapply %+v %v, want the sessions of the lifted freeze ended", rep, err)
+	}
+	for _, tok := range []string{original, stolen.Session.Token} {
+		if _, err := f.sessions.Resolve(bgctx, tok); !errors.Is(err, ErrSessionRevoked) {
+			t.Fatalf("a session the freeze ended is live again: %v", err)
+		}
+	}
+	if n := f.count(`SELECT count(*) FROM apns_tokens WHERE session_hash = $1`, SessionHash(original)); n != 0 {
+		t.Fatal("the restored session's push token survived")
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("the replay ended a session minted during the freeze: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("the lifted freeze came back")
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+	}
+}

@@ -156,7 +156,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 		switch e.Kind {
 		case purgeledger.KindFreeze:
 			if lifted[i] {
-				continue
+				step, count = reapplyLiftedFreezeTx, &rep.Sessions
+				break
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
 		case purgeledger.KindUnfreeze:
@@ -462,14 +463,22 @@ func reapplyPhraseSeenTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ 
 }
 
 func reapplySessionsTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return endSessionsTx(ctx, tx, e, now, `<=`)
+}
+
+func reapplyLiftedFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return endSessionsTx(ctx, tx, e, now, `<`)
+}
+
+func endSessionsTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time, older string) (reapplied, error) {
 	if err := forgetPushTokens(ctx, tx,
 		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
-		    WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2)`, e.ID, e.At); err != nil {
+		    WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) `+older+` $2)`, e.ID, e.At); err != nil {
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
-		  WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2`, e.ID, e.At, now)
+		  WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) `+older+` $2`, e.ID, e.At, now)
 	if err != nil || tag.RowsAffected() == 0 {
 		return reappliedNothing, err
 	}
