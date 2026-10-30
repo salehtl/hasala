@@ -30,19 +30,23 @@ import (
 // pressure would let an attacker with many source addresses lock every
 // legitimate caller out — trading an amplification nuisance for an outage,
 // which is the same trap internal/googlejwt avoids for negative caching of
-// JWKS kids.
+// JWKS kids. NewClientLimiter also holds one IPv6 /48 to 1/64 of the map: its
+// other /64s share one bucket on the /48.
 //
 // The zero rate is legal and means "burst only, never refills"; the tests use
 // it so the budget is exactly the burst.
 type Limiter struct {
-	rate    float64 // tokens per second
-	burst   float64
-	maxKeys int
-	now     func() time.Time
+	rate        float64 // tokens per second
+	burst       float64
+	maxKeys     int
+	prefixQuota int
+	now         func() time.Time
 
-	mu       sync.Mutex
-	buckets  map[string]*bucket
-	fallback bucket
+	mu         sync.Mutex
+	buckets    map[string]*bucket
+	prefixKeys map[string]int
+	nextSweep  time.Time
+	fallback   bucket
 }
 
 type bucket struct {
@@ -69,6 +73,15 @@ func NewLimiter(rate, burst float64, maxKeys int, now func() time.Time) *Limiter
 		now:     now,
 		buckets: make(map[string]*bucket),
 	}
+}
+
+const prefixQuotaShare = 64
+
+func NewClientLimiter(rate, burst float64, maxKeys int, now func() time.Time) *Limiter {
+	l := NewLimiter(rate, burst, maxKeys, now)
+	l.prefixQuota = max(l.maxKeys/prefixQuotaShare, 1)
+	l.prefixKeys = make(map[string]int)
+	return l
 }
 
 // Allow consumes one token for key and reports whether there was one to
@@ -107,6 +120,10 @@ func (l *Limiter) AllowN(key string, n float64) bool {
 	now := l.now()
 
 	b, ok := l.buckets[key]
+	if !ok && l.prefixQuota > 0 {
+		key = l.keyWithinQuota(key, now)
+		b, ok = l.buckets[key]
+	}
 	if !ok {
 		if len(l.buckets) >= l.maxKeys {
 			l.sweep(now)
@@ -118,8 +135,26 @@ func (l *Limiter) AllowN(key string, n float64) bool {
 		}
 		b = &bucket{tokens: l.burst, last: now}
 		l.buckets[key] = b
+		if p, ok := prefixKey(key); ok && l.prefixQuota > 0 {
+			l.prefixKeys[p]++
+		}
 	}
 	return take(b, l.rate, l.burst, now, n)
+}
+
+func (l *Limiter) keyWithinQuota(key string, now time.Time) string {
+	p, ok := prefixKey(key)
+	if !ok || l.prefixKeys[p] < l.prefixQuota {
+		return key
+	}
+	if l.rate > 0 && !now.Before(l.nextSweep) {
+		l.sweep(now)
+		l.nextSweep = now.Add(time.Duration(l.burst / l.rate * float64(time.Second)))
+	}
+	if l.prefixKeys[p] < l.prefixQuota {
+		return key
+	}
+	return p
 }
 
 func (l *Limiter) RefundN(key string, n float64) {
@@ -150,6 +185,12 @@ func (s *Server) ensureLimiter(l **Limiter, rate, burst float64, keys int) {
 	}
 }
 
+func (s *Server) ensureClientLimiter(l **Limiter, rate, burst float64, keys int) {
+	if *l == nil {
+		*l = NewClientLimiter(rate, burst, keys, s.now)
+	}
+}
+
 func take(b *bucket, rate, burst float64, now time.Time, n float64) bool {
 	if b.last.IsZero() {
 		b.tokens, b.last = burst, now
@@ -176,7 +217,22 @@ func (l *Limiter) sweep(now time.Time) {
 	for k, b := range l.buckets {
 		refilled := b.tokens + now.Sub(b.last).Seconds()*l.rate
 		if refilled >= l.burst {
-			delete(l.buckets, k)
+			l.forget(k)
 		}
+	}
+}
+
+func (l *Limiter) forget(key string) {
+	delete(l.buckets, key)
+	p, ok := prefixKey(key)
+	if !ok {
+		return
+	}
+	switch l.prefixKeys[p] {
+	case 0:
+	case 1:
+		delete(l.prefixKeys, p)
+	default:
+		l.prefixKeys[p]--
 	}
 }
