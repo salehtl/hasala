@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/authkeys"
+	"github.com/salehtl/hasala/server/internal/pgtx"
 )
 
 // Code rules.
@@ -170,44 +171,41 @@ func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (
 	return true, nil
 }
 
-// limitCodeVerify runs before every code check, each step committed in its
-// own statement: one of the code's five attempts, taken before the guess is
-// compared so that concurrent guesses cannot share one, then the
-// code-verify-email counter (20 per 15-minute window for the code's address,
-// purpose and ceremony kind). A code with no attempt left is refused with
-// ErrCodeRejected and counts nothing.
+// limitCodeVerify runs before every code check, in one transaction of its own:
+// one of the code's five attempts, taken before the guess is compared so that
+// concurrent guesses cannot share one, then the code-verify-email counter (20
+// per 15-minute window for the code's address, purpose and ceremony kind). A
+// code with no attempt left is refused with ErrCodeRejected and counts nothing.
+// A check over the budget rolls back: it counts nothing and keeps the attempt.
 func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, codeID uuid.UUID) error {
+	tx, err := pgtx.BeginReadCommitted(ctx, pool)
+	if err != nil {
+		return err
+	}
+	defer pgtx.Rollback(ctx, tx)
 	var (
 		purpose, kind string
 		tag           []byte
 	)
-	err := pool.QueryRow(ctx, `SELECT purpose, ceremony_kind, email_tag FROM email_codes WHERE code_id = $1`, codeID).
-		Scan(&purpose, &kind, &tag)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // nothing to count; the check itself refuses it
-	}
-	if err != nil {
-		return fmt.Errorf("auth: code tag: %w", err)
-	}
-	var attempts int
-	err = pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`UPDATE email_codes SET attempts = attempts + 1
-		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2 RETURNING attempts`,
-		codeID, codeMaxAttempts).Scan(&attempts)
+		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2
+		 RETURNING purpose, ceremony_kind, email_tag`,
+		codeID, codeMaxAttempts).Scan(&purpose, &kind, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: no attempts left", ErrCodeRejected)
 	}
 	if err != nil {
 		return fmt.Errorf("auth: count a code attempt: %w", err)
 	}
-	n, err := bumpCounter(ctx, pool, "code-verify-email", codeVerifyKey(purpose, kind, tag), codeVerifyWindow, now)
+	n, err := bumpCounter(ctx, tx, "code-verify-email", codeVerifyKey(purpose, kind, tag), codeVerifyWindow, now)
 	if err != nil {
 		return err
 	}
 	if n > codeVerifiesPerSpan {
 		return fmt.Errorf("%w: code checks for this address", ErrRateLimited)
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func codeVerifyKey(purpose, kind string, tag []byte) []byte {

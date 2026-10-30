@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/cryptoref"
 	"github.com/salehtl/hasala/server/internal/keyproto"
@@ -108,5 +109,44 @@ func TestTheResetBudgetIsNotSharedWithStepUpOrRecovery(t *testing.T) {
 	}
 	if _, err := f.acct.RecoverVerify(bgctx, b.CeremonyID, f.lastCode(m.addr), "password"); err != nil {
 		t.Fatalf("the right recovery code over the reset budget: %v", err)
+	}
+}
+
+func TestACheckOverTheBudgetKeepsTheAttempt(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(14 * time.Minute)
+	var id, code string
+	for n := 0; n < codeSendsPerHour; n++ {
+		var err error
+		if id, err = f.acct.ResetBegin(bgctx, m.addr); err != nil {
+			t.Fatal(err)
+		}
+		code = f.lastCode(m.addr)
+		wrong := wrongCodeFor(code)
+		for i := 0; i < codeMaxAttempts-1; i++ {
+			if _, err := f.acct.ResetVerify(bgctx, id, wrong); !errors.Is(err, ErrCodeRejected) {
+				t.Fatalf("ceremony %d, guess %d: %v", n, i, err)
+			}
+		}
+	}
+	counted := func() int {
+		return f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`)
+	}
+	before := counted()
+	for i := 0; i < 2*codeMaxAttempts; i++ {
+		if _, err := f.acct.ResetVerify(bgctx, id, code); !errors.Is(err, ErrRateLimited) {
+			t.Fatalf("check %d over the budget: %v", i, err)
+		}
+	}
+	if got := counted(); got != before {
+		t.Fatalf("checks over the budget counted %d", got-before)
+	}
+	if n := f.count(`SELECT count(*) FROM email_codes WHERE purpose = $1 AND attempts > $2`, PurposePasswordReset, codeMaxAttempts-1); n != 0 {
+		t.Fatalf("%d codes lost an attempt to the budget", n)
+	}
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.ResetVerify(bgctx, id, code); err != nil {
+		t.Fatalf("the right code in the next window: %v", err)
 	}
 }

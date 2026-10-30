@@ -30,7 +30,8 @@ import (
 // pressure would let an attacker with many source addresses lock every
 // legitimate caller out — trading an amplification nuisance for an outage,
 // which is the same trap internal/googlejwt avoids for negative caching of
-// JWKS kids.
+// JWKS kids. NewClientLimiter also holds one IPv6 /48 to 1/64 of the map: its
+// other /64s share one bucket on the /48.
 //
 // The zero rate is legal and means "burst only, never refills"; the tests use
 // it so the budget is exactly the burst.
@@ -43,7 +44,8 @@ type Limiter struct {
 
 	mu         sync.Mutex
 	buckets    map[string]*bucket
-	prefixKeys map[string]map[string]struct{}
+	prefixKeys map[string]int
+	nextSweep  time.Time
 	fallback   bucket
 }
 
@@ -78,7 +80,7 @@ const prefixQuotaShare = 64
 func NewClientLimiter(rate, burst float64, maxKeys int, now func() time.Time) *Limiter {
 	l := NewLimiter(rate, burst, maxKeys, now)
 	l.prefixQuota = max(l.maxKeys/prefixQuotaShare, 1)
-	l.prefixKeys = make(map[string]map[string]struct{})
+	l.prefixKeys = make(map[string]int)
 	return l
 }
 
@@ -134,10 +136,7 @@ func (l *Limiter) AllowN(key string, n float64) bool {
 		b = &bucket{tokens: l.burst, last: now}
 		l.buckets[key] = b
 		if p, ok := prefixKey(key); ok && l.prefixQuota > 0 {
-			if l.prefixKeys[p] == nil {
-				l.prefixKeys[p] = make(map[string]struct{})
-			}
-			l.prefixKeys[p][key] = struct{}{}
+			l.prefixKeys[p]++
 		}
 	}
 	return take(b, l.rate, l.burst, now, n)
@@ -145,15 +144,14 @@ func (l *Limiter) AllowN(key string, n float64) bool {
 
 func (l *Limiter) keyWithinQuota(key string, now time.Time) string {
 	p, ok := prefixKey(key)
-	if !ok || len(l.prefixKeys[p]) < l.prefixQuota {
+	if !ok || l.prefixKeys[p] < l.prefixQuota {
 		return key
 	}
-	for k := range l.prefixKeys[p] {
-		if l.refilled(l.buckets[k], now) {
-			l.forget(k)
-		}
+	if l.rate > 0 && !now.Before(l.nextSweep) {
+		l.sweep(now)
+		l.nextSweep = now.Add(time.Duration(l.burst / l.rate * float64(time.Second)))
 	}
-	if len(l.prefixKeys[p]) < l.prefixQuota {
+	if l.prefixKeys[p] < l.prefixQuota {
 		return key
 	}
 	return p
@@ -217,24 +215,24 @@ func take(b *bucket, rate, burst float64, now time.Time, n float64) bool {
 // bypass a bounded map must not create.
 func (l *Limiter) sweep(now time.Time) {
 	for k, b := range l.buckets {
-		if l.refilled(b, now) {
+		refilled := b.tokens + now.Sub(b.last).Seconds()*l.rate
+		if refilled >= l.burst {
 			l.forget(k)
 		}
 	}
 }
 
-func (l *Limiter) refilled(b *bucket, now time.Time) bool {
-	return b.tokens+now.Sub(b.last).Seconds()*l.rate >= l.burst
-}
-
 func (l *Limiter) forget(key string) {
 	delete(l.buckets, key)
 	p, ok := prefixKey(key)
-	if !ok || l.prefixKeys[p] == nil {
+	if !ok {
 		return
 	}
-	delete(l.prefixKeys[p], key)
-	if len(l.prefixKeys[p]) == 0 {
+	switch l.prefixKeys[p] {
+	case 0:
+	case 1:
 		delete(l.prefixKeys, p)
+	default:
+		l.prefixKeys[p]--
 	}
 }

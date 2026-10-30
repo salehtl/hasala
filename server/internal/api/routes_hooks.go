@@ -59,8 +59,8 @@ const (
 // mailbox link alone leaves it to the catch-all 404. The per-IP budget is one
 // across both providers' hooks and is spent by every request; each provider
 // has its own global budget, spent only by a request that proved itself (a
-// verified Google token, a clientState that names a link), so unauthenticated
-// traffic cannot delay a real wake.
+// verified Google token, a clientState that names a link inside its hook-link
+// budget), so unauthenticated traffic cannot delay a real wake.
 func (s *Server) mountHooks(mux *http.ServeMux) {
 	g, o := s.gmailPush(), s.outlookPush()
 	if g == nil && o == nil {

@@ -260,11 +260,6 @@ type waitlistJSON struct {
 	TurnstileToken string `json:"turnstileToken"`
 }
 
-func prefixAllow(r *http.Request, prefix *Limiter) bool {
-	k, ok := prefixKey(clientKey(r))
-	return !ok || prefix.Allow(k)
-}
-
 func writePublicRateLimited(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "600")
 	writeErr(w, http.StatusTooManyRequests, "rate_limited", "")

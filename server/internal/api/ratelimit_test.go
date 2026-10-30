@@ -177,8 +177,28 @@ func TestClientLimiterFreesAQuotaSlotOnlyAfterARefill(t *testing.T) {
 	if _, own := l.buckets[a]; own {
 		t.Fatal("the refilled /64 kept its quota slot")
 	}
-	if _, own := l.buckets[b]; !own || len(l.prefixKeys[p]) != 1 {
-		t.Fatalf("own %v, quota %d after a refill", own, len(l.prefixKeys[p]))
+	if _, own := l.buckets[b]; !own || l.prefixKeys[p] != 1 {
+		t.Fatalf("own %v, quota %d after a refill", own, l.prefixKeys[p])
+	}
+}
+
+func TestClientLimiterSweepsAtMostOncePerRefill(t *testing.T) {
+	now := time.Now()
+	l := NewClientLimiter(1, 2, 64, func() time.Time { return now })
+	a, b, p := "6:20010db800010001", "6:20010db800010002", "6p:20010db80001"
+	l.Allow(a)
+	l.Allow(b)
+	first := l.nextSweep
+	if !first.Equal(now.Add(2 * time.Second)) {
+		t.Fatalf("next sweep %v, want one refill after %v", first, now)
+	}
+	now = now.Add(time.Second)
+	l.Allow(b)
+	if !l.nextSweep.Equal(first) {
+		t.Fatal("a call inside the refill period swept again")
+	}
+	if l.prefixKeys[p] != 1 {
+		t.Fatalf("quota %d, want 1", l.prefixKeys[p])
 	}
 }
 
