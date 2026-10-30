@@ -117,6 +117,80 @@ func TestARetriedInviteEmailCarriesTheSameCode(t *testing.T) {
 	}
 }
 
+func TestARetryOfAReplacedInviteEmailLeavesTheNewerCodeLive(t *testing.T) {
+	pool := pgtest.New(t)
+	minter, err := authkeys.NewEmailTagger(bytes.Repeat([]byte{3}, authkeys.KeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attempts []mail.Message
+	fake := &mail.Fake{ErrFor: func(m mail.Message) error {
+		attempts = append(attempts, m)
+		if len(attempts) == 1 {
+			return errors.New("provider timeout")
+		}
+		return nil
+	}}
+	q := mailq.New(pool, fake, testTagger{})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Unsent = MailUnsent(nil)
+	const addr = "replaced@example.com"
+	_, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error { return Resend(bg, tx, q, invite) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("%d attempts before the retry, want 2", len(attempts))
+	}
+	olderCode, olderKey := linkOf(t, attempts[0])
+	newerCode, newerKey := linkOf(t, attempts[1])
+	if olderCode == newerCode {
+		t.Fatal("the resend kept the old code")
+	}
+	until := expiresAt(t, pool, invite)
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 {
+		t.Fatalf("%d attempts: the replaced email was sent again", len(attempts))
+	}
+	if n := mintCount(t, pool, invite); n != 2 {
+		t.Fatalf("mint_count %d, want 2", n)
+	}
+	if !expiresAt(t, pool, invite).Equal(until) {
+		t.Fatal("the replaced email moved the expiry")
+	}
+	var failed, sent int
+	if err := pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE status = 'failed'), count(*) FILTER (WHERE status = 'sent')
+		FROM mail_log WHERE invite_id = $1`, invite).Scan(&failed, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if failed != 1 || sent != 1 {
+		t.Fatalf("%d failed and %d sent, want one of each", failed, sent)
+	}
+	tag := testTagger{}.EmailTag(addr)
+	r, err := Resolve(bg, pool, newerCode, newerKey, tag, time.Now())
+	if err != nil || r.InviteID != invite || !r.Proven {
+		t.Fatalf("the newer email's code: %+v %v", r, err)
+	}
+	if _, err := Resolve(bg, pool, olderCode, olderKey, tag, time.Now()); !errors.Is(err, ErrNotInvited) {
+		t.Fatalf("the replaced email's code: %v", err)
+	}
+	if s := inviteState(t, pool, invite); s != "active" {
+		t.Fatalf("invite %s, want active", s)
+	}
+}
+
 func TestResendRefusesACLIInviteWhoseAddressIsGone(t *testing.T) {
 	pool := pgtest.New(t)
 	fake := &mail.Fake{}

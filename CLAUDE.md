@@ -424,6 +424,12 @@ restore must not undo. `hasala-purge-replay` applies them again before
   email changes (`email`) and the operator's invite revocations
   (`invite-revoked`). It records only internal IDs and
   times. Do not add an email address or a name.
+- A deletion's line is written before its commit. When the commit fails and
+  the account is still there, `purge-cancelled` cancels that line, and the
+  replay purges the account only if a later deletion line names it. Known
+  limit: a process stop between the append and the commit leaves the line, and
+  the next replay purges that account although the database was not restored. A
+  failed commit whose read-back cannot reach the database behaves the same way.
 - `hasalad account unfreeze` records its unfreeze in the ledger, with the
   same kind as the holder's. No command freezes an account as the operator
   yet. When you add one, record the freeze in the ledger.
@@ -450,8 +456,12 @@ restore must not undo. `hasala-purge-replay` applies them again before
 > each kind newer than itself (for example `phrase-seen`, `sessions`, `email`
 > and `invite-revoked`). A build from before `hardening/ledger-and-limits`
 > skips `sessions`, `email` and `invite-revoked`, so its replay does not apply
-> them again. Before you deploy one of these, copy the ledger file. Then
-> remove each line it cannot read.
+> them again. A build from before `security/server-lifecycle` skips
+> `purge-cancelled`, so its replay purges an account whose deletion was
+> cancelled. Before you deploy one of these, copy the ledger file. Then,
+> in this order: list the accounts whose latest deletion or `purge-cancelled`
+> line is `purge-cancelled`; remove every deletion line of those accounts; remove
+> all `purge-cancelled` lines; remove each other line the build cannot read.
 
 ### Rules for agents on this Mac
 
