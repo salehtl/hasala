@@ -283,8 +283,9 @@ extension NovelMail {
     for i in 0..<3 {
       _ = try mail(NovelMail.enbdForeign("e\(i)", usd: "\(12 + i).50", aed: "\(45 + i * 4).91", dateMs: Rig.t0 + Int64(i) * 60_000), &reader)
     }
-    let state = try #require(reader)
+    var state = try #require(reader)
     #expect(state.layouts.senders.count == 2)
+    state.layouts.wordTagger = try #require(MailReaderKey(secret: Data(repeating: 7, count: 32))).tagger
     let full = try #require(state.encoded())
     let trimmed = try #require(MailReaderState.decoded(state.encoded(limit: full.count - 1)))
     #expect(Array(trimmed.layouts.senders.keys) == ["emiratesnbd.com"])
@@ -333,6 +334,66 @@ extension NovelMail {
     #expect(!saved.layouts.isEmpty)
     let json = String(decoding: try #require(saved.encoded()), as: UTF8.self).lowercased()
     for marker in ["synthmarker99", "syntheticname", "bookshop", "10.50"] { #expect(!json.contains(marker), "\(marker)") }
+  }
+
+  static let secretA = Data(repeating: 7, count: 32)
+  static let secretB = Data(repeating: 8, count: 32)
+
+  @Test func aDeviceKeyDecidesTheTagsAndTheFormatRefusesAnUnkeyedRow() throws {
+    let a = try #require(MailReaderKey(secret: Self.secretA))
+    let b = try #require(MailReaderKey(secret: Self.secretB))
+    #expect(MailReaderKey(secret: Data(count: 16)) == nil)
+    let words = (0..<64).map { "word\($0)" }
+    #expect(words.map(a.tagger.tag) != words.map(b.tagger.tag))
+    #expect(words.map(a.tagger.tag) != words.map(WordTagger.memoryOnly.tag))
+    #expect(a.check != b.check && a.tagger.isDeviceKeyed && !WordTagger.memoryOnly.isDeviceKeyed)
+
+    var state = MailReaderState(address: "a@example.com")
+    let m = ExtractInput(sender: "bank.example", subject: "s", text: "AED 10.00 debited at SAMPLE", receivedAtMs: 1, listUnsubscribe: false)
+    state.layouts = CombinedReader.read(m, state.layouts).1
+    #expect(!state.layouts.isEmpty)
+    let unkeyed = try #require(MailReaderState.decoded(state.encoded()))
+    #expect(unkeyed.layouts.isEmpty && unkeyed.keyCheck == nil)
+
+    var keyed = MailReaderState(address: "a@example.com")
+    keyed.attach(a)
+    keyed.layouts = CombinedReader.read(m, keyed.layouts).1
+    var back = try #require(MailReaderState.decoded(keyed.encoded()))
+    #expect(!back.layouts.isEmpty && back.keyCheck == a.check)
+    back.attach(a)
+    #expect(!back.layouts.isEmpty)
+    back.attach(b)
+    #expect(back.layouts.isEmpty && back.keyCheck == b.check)
+  }
+
+  @Test func aLockedKeyTrainsNothingAndSavesNothingButStillReads() async throws {
+    let rig = Rig(backend: .memory)
+    await rig.ledger.setTrust(["dib.ae": true])
+    await rig.connectAndActivate()
+    #expect(try await rig.store.loadReader() == nil)
+    rig.readerKeys.locked = true
+    for i in 0..<5 {
+      rig.gmail.add(NovelMail.card(i, amount: "\(10 + i * 7).\(10 + i)", dateMs: rig.clock.nowMs() - 10_000 + Int64(i) * 1_000))
+    }
+    let cycle = await rig.engine.runCycle(trigger: .refresh)
+    #expect(cycle.ops == 5 && cycle.review == 5, "\(cycle)")
+    #expect(rig.readerKeys.held == nil)
+    #expect(try await rig.store.loadReader() == nil)
+    let row = try #require(await rig.enqueued().first { $0.messageID == "nv0" })
+    #expect(row.payload["needs_review"] == .bool(true) && row.payload["amount_minor"] != nil)
+  }
+
+  @Test func aSavedStateHoldsTheKeyCheckAndNoSecret() async throws {
+    let rig = Rig(backend: .sqlite)
+    await rig.ledger.setTrust(["dib.ae": true])
+    await rig.connectAndActivate()
+    rig.gmail.add(NovelMail.card(0, amount: "12.50", dateMs: rig.clock.nowMs() - 1_000))
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    let secret = try #require(rig.readerKeys.held)
+    let saved = try #require(try await rig.store.loadReader())
+    #expect(saved.keyCheck == MailReaderKey(secret: secret)?.check)
+    let json = try #require(saved.encoded())
+    #expect(!json.isEmpty)
   }
 
   @Test func layoutsSavedInTheOlderFormatAreNotRead() throws {

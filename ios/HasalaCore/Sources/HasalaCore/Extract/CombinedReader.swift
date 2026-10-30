@@ -183,7 +183,7 @@ public enum CombinedReader {
       let signal = card ? ExtractPending.none : MailRules.pendingSignal(input)
       let aside =
         signal == .phrase
-        ? MailRules.statesPendingTransfer(input, direction: r.direction, amountMinor: r.amountMinor)
+        ? MailRules.statesPendingTransfer(input, direction: r.direction, amountMinor: r.amountMinor, captured: r.merchant)
         : signal == .status && MailRules.setsAside(input, direction: r.direction, captured: r.merchant)
       if aside {
         outcome = .pending

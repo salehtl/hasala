@@ -126,17 +126,21 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    or none, and bank texts file on the same reader agreement, with no sender or card check
    ([filing-without-cards.md](filing-without-cards.md)). Since 2026-10-30 a row also waits in
    Review when either reader's amount came from the AED rule of decision 4, when any other
-   amount that does not read as a balance differs from the one read, and when pending
-   wording does not meet decision 3.
+   amount in the layout differs from the one read, unless its label is an account balance or
+   limit, and when pending wording does not meet decision 3.
 3. **Pending transfers are not transactions.** A notice that a transfer is pending or in
    process is disregarded. Only completed transfers and actual debit and credit notices
    count. A pending notice is followed by a completed one for the same transfer, so
    counting the pending one would count the money twice. Only a transfer notice is set
-   aside this way: all its status lines say pending, or one sentence names the transfer and
-   its amount with pending wording, and no wording says that money moved. A status line that
-   a reader took as the merchant, or that follows an empty remark or beneficiary label, does
-   not count. All other mail with pending wording goes to Review, with what was read.
-   (2026-10-30.)
+   aside this way: all its status lines say pending, or a sentence in the opening lines of
+   the mail, ahead of any field line, names "your transfer" and its amount with pending
+   wording. Any wording that says money moved stops it. A status line that a reader took as
+   the merchant, or that follows an empty remark or beneficiary label, does not count. All
+   other mail with pending wording goes to Review with what was read. So do some honest
+   pending notices: a pending sentence with its amount on a separate line, and a pending
+   status beside a label or a value that says money moved, such as "Transferred Amount:".
+   The completed notice then adds a second row, and the person sorts the two in Review.
+   (2026-10-31.)
 4. **Two currencies in one mail.** When one mail states both the AED amount debited and a
    foreign-currency amount, the transaction amount is the AED amount, because it is what
    left the account.
@@ -147,10 +151,12 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    not count the money twice.
 6. **Privacy.** Learned layouts stay on the phone. Nothing new leaves the phone; there is
    no network call and no machine-learning model. The privacy policy does not change. A
-   saved layout holds no mail text (2026-10-30): only the words the readers ship with and
-   the class of every other token. Other words, amounts and numbers are not kept in any
-   form, not even hashed. So a merchant slot counts as varying only when its shape varies.
-   Saved layouts are cleared when the link ends, and when this phone waits for a reconnect.
+   saved layout holds no mail text (2026-10-31): only the words the readers ship with, the
+   class of every other token, and for each other word a 16-bit HMAC under a secret kept in
+   this iPhone's Keychain (`readerWordKey`, this device only, never synced or sent). Amounts
+   and numbers are not kept in any form. With the Keychain locked the reader reads but
+   does not train or save. The saved layouts and the secret are cleared when the link ends,
+   when this phone waits for a reconnect, and at account wipe.
 7. **Template cross-check.** When a template hit's amount, currency or direction differs
    from a reading that the two readers agreed on (each at 0.8 or more, on the same amount,
    currency and stated direction, with a stated currency), the row keeps the template's

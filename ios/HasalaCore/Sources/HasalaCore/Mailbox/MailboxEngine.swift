@@ -241,6 +241,7 @@ public actor MailboxEngine {
   let templates: [CompiledTemplate]
   let clock: any Clock
   let random: any RandomSource
+  let readerKeys: any MailReaderKeyStore
   let sleep: @Sendable (Int64) async -> Void
 
   private var busy = false
@@ -271,6 +272,7 @@ public actor MailboxEngine {
     store: any MailboxPersistence, ledger: any MailboxLedger,
     server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
     templates: [CompiledTemplate], clock: any Clock, random: any RandomSource,
+    readerKeys: any MailReaderKeyStore = MemoryMailReaderKeyStore(),
     sleep: @escaping @Sendable (Int64) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
   ) {
     self.config = config
@@ -284,6 +286,7 @@ public actor MailboxEngine {
     self.templates = templates.filter { !$0.definition.isSMS }
     self.clock = clock
     self.random = random
+    self.readerKeys = readerKeys
     self.sleep = sleep
   }
 
@@ -293,12 +296,13 @@ public actor MailboxEngine {
     gmailHTTP: any HTTPExchange, store: any MailboxPersistence, ledger: any MailboxLedger,
     server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
     templates: [CompiledTemplate], clock: any Clock, random: any RandomSource,
+    readerKeys: any MailReaderKeyStore = MemoryMailReaderKeyStore(),
     sleep: @escaping @Sendable (Int64) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
   ) {
     self.init(
       config: config, provider: GmailProvider(oauth: oauth, http: gmailHTTP, base: config.gmailBase), tokens: tokens,
       store: store, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer, templates: templates,
-      clock: clock, random: random, sleep: sleep)
+      clock: clock, random: random, readerKeys: readerKeys, sleep: sleep)
   }
 
   /// Receives scan and backfill progress (called on the engine's executor; hop to the UI).
@@ -473,7 +477,7 @@ public actor MailboxEngine {
     if otherMailbox {
       var cleared = commitState(MailboxState())
       cleared.clearAll = true
-      do { try await store.commit(cleared) } catch { return .failed(.keychain) }
+      do { try await commitForgetting(cleared) } catch { return .failed(.keychain) }
       await stopPush()
       _ = await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
@@ -517,7 +521,7 @@ public actor MailboxEngine {
     }
     var c = commitState(s)
     c.clearAll = fresh
-    do { try await store.commit(c) } catch {
+    do { try await commitForgetting(c) } catch {
       if otherMailbox { await abandonSwitch() }
       return .failed(.keychain)
     }
@@ -611,7 +615,7 @@ public actor MailboxEngine {
       var c = MailboxCommit()
       c.clearAll = true
       c.state = MailboxState()
-      do { try await store.commit(c) } catch { return .failed }
+      do { try await commitForgetting(c) } catch { return .failed }
       return .disconnected
     }
   }
@@ -619,7 +623,35 @@ public actor MailboxEngine {
   private func forgetReader() async {
     var c = MailboxCommit()
     c.clearReader = true
-    try? await store.commit(c)
+    try? await commitForgetting(c)
+  }
+
+  private func commitForgetting(_ c: MailboxCommit) async throws(MailboxPersistenceError) {
+    try await store.commit(c)
+    if c.clearAll || c.clearReader { try? readerKeys.delete() }
+  }
+
+  private func readerKey() -> MailReaderKey? {
+    do {
+      if let held = try readerKeys.read(), let key = MailReaderKey(secret: held) { return key }
+      guard let made = try? random.bytes(MailReaderKey.secretBytes), let key = MailReaderKey(secret: made) else { return nil }
+      try readerKeys.write(made)
+      return key
+    } catch {
+      return nil
+    }
+  }
+
+  private func openReader(address: String?) async -> MailReaderState {
+    guard let key = readerKey() else {
+      var locked = MailReaderState(address: address)
+      locked.training = false
+      return locked
+    }
+    let loaded = (try? await store.loadReader()) ?? nil
+    var state = loaded.flatMap { $0.belongs(to: address) ? $0 : nil } ?? MailReaderState(address: address)
+    state.attach(key)
+    return state
   }
 
   private func leaveLink(_ state: inout MailboxState) async -> MailboxDisconnectOutcome {
@@ -676,7 +708,7 @@ public actor MailboxEngine {
           var c = MailboxCommit()
           c.clearAll = true
           c.state = MailboxState()
-          try? await store.commit(c)
+          try? await commitForgetting(c)
           report.phase = .unlinked
           return report
         case .holder(isThisDevice: false, _):
@@ -741,7 +773,7 @@ public actor MailboxEngine {
         elsewhere.lastHolderCheckAtMs = now
         var c = commitState(elsewhere)
         c.clearAll = true
-        try? await store.commit(c)
+        try? await commitForgetting(c)
         report.haltedOn = .notHolder
         report.phase = .otherDevice
         emit(.failed(.notHolder), 0, 0)
@@ -1476,7 +1508,7 @@ public actor MailboxEngine {
   }
 
   func saveReader(_ run: inout Run) async {
-    guard run.readerUnsaved > 0, let reader = run.reader else { return }
+    guard run.readerUnsaved > 0, let reader = run.reader, reader.training else { return }
     var c = MailboxCommit()
     c.reader = reader
     if (try? await store.commit(c)) != nil { run.readerUnsaved = 0 }
@@ -1685,8 +1717,7 @@ public actor MailboxEngine {
         if run.senderAddresses == nil { run.senderAddresses = (try? await store.senderAddresses()) ?? [] }
         let senders = run.senderAddresses ?? []
         if !run.readerLoaded {
-          let loaded = (try? await store.loadReader()) ?? nil
-          run.reader = loaded.flatMap { $0.belongs(to: run.address) ? $0 : nil } ?? MailReaderState(address: run.address)
+          run.reader = await openReader(address: run.address)
           run.readerLoaded = true
         }
         var reader = run.reader
@@ -1699,7 +1730,7 @@ public actor MailboxEngine {
         if parsed != .interrupted {
           run.readerUnsaved += 1
           if run.readerUnsaved >= max(1, config.readerSaveEvery) {
-            c.reader = reader
+            if reader?.training == true { c.reader = reader }
             run.readerUnsaved = 0
           }
         }
@@ -1880,7 +1911,7 @@ public actor MailboxEngine {
     if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && Self.passing(h)) { emit(.failed(h), 0, 0) }
     var c = commitState(state)
     c.clearReader = clearReader
-    try? await store.commit(c)
+    try? await commitForgetting(c)
     report.phase = state.phase
     return report
   }

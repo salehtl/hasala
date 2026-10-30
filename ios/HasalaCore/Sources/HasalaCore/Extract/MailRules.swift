@@ -120,10 +120,14 @@ enum MailRules {
     return RuleText.has(StatusLexicon.completedPhrase, body) || RuleText.has(TextGate.Markers.transactionClause, body)
   }
 
+  static func foldedField(_ captured: String?) -> String {
+    captured.map { RuleText.fold(RuleText.clean(RuleText.asciiDigits($0))).trimmingCharacters(in: .whitespaces) } ?? ""
+  }
+
   static func setsAside(_ input: ExtractInput, direction: String?, captured: String? = nil) -> Bool {
     guard kind(input, direction: direction) == .transferNotice else { return false }
     let lines = foldedLines(input.text)
-    let field = captured.map { RuleText.fold(RuleText.clean(RuleText.asciiDigits($0))).trimmingCharacters(in: .whitespaces) } ?? ""
+    let field = foldedField(captured)
     var bank: [String] = []
     var previous = ""
     for line in lines where !line.isEmpty {
@@ -134,19 +138,26 @@ enum MailRules {
     return !statuses.isEmpty && statuses.allSatisfy { RuleText.has(StatusLexicon.pendingValue, $0) } && !statesSettled(lines)
   }
 
-  static func statesPendingTransfer(_ input: ExtractInput, direction: String?, amountMinor: Int64?) -> Bool {
+  static let statementBreak = try! NSRegularExpression(pattern: "[.!?;؛](?=\\s|$)")
+  static let ownTransfer = RuleText.re(
+    "^\\s*(?:dear\\s+(?:valued\\s+)?customer[,:]?\\s+)?your\\s+(?:\\S+\\s+){0,3}?(?:transfer|remittance)(?![a-z])"
+      + "|^\\s*(?:تحويلك|حوالتك|طلب\\s+التحويل|طلب\\s+الحواله)")
+
+  static func statesPendingTransfer(_ input: ExtractInput, direction: String?, amountMinor: Int64?, captured: String? = nil) -> Bool {
     guard let amountMinor, kind(input, direction: direction) == .transferNotice else { return false }
     let lines = foldedLines(input.text)
     guard !statesSettled(lines) else { return false }
-    for line in lines {
-      if let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }), !line[..<colon].contains(where: { $0.isNumber }) { continue }
+    let field = foldedField(captured)
+    for line in lines.filter({ !$0.isEmpty }).prefix(3) {
+      if isField(line, field) || reflectedLabels.contains(RuleReader.labelKey(line)) { return false }
+      if let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }), !line[..<colon].contains(where: { $0.isNumber }) { return false }
       let ns = line as NSString
       var start = 0
-      let breaks = RuleReader.sentenceBreak.matches(in: line, range: NSRange(location: 0, length: ns.length)).map(\.range)
+      let breaks = statementBreak.matches(in: line, range: NSRange(location: 0, length: ns.length)).map(\.range)
       for r in breaks + [NSRange(location: ns.length, length: 0)] {
         let sentence = ns.substring(with: NSRange(location: start, length: r.location - start))
         start = r.location + r.length
-        if RuleText.has(StatusLexicon.pendingPhrase, sentence), RuleText.has(KindLexicon.transfer, sentence),
+        if RuleText.has(StatusLexicon.pendingPhrase, sentence), RuleText.has(ownTransfer, sentence),
           RuleMoneyParser.scan(sentence, line: 0, labelCurrency: nil).contains(where: { $0.minor == amountMinor })
         {
           return true

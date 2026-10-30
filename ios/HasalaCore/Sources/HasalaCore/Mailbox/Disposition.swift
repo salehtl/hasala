@@ -203,7 +203,7 @@ public enum MessageDisposer {
       ) {
         guard reader != nil else { return nil }
         let (r, next) = CombinedReader.read(input, reader!.layouts)
-        if learn { reader!.layouts = next }
+        if learn && reader!.training { reader!.layouts = next }
         reading = r
         return r
       }
@@ -229,7 +229,7 @@ public enum MessageDisposer {
     if Task.isCancelled { return .interrupted }
     guard reader != nil else { return .mail(mail) }
     let (reading, next) = CombinedReader.read(input, reader!.layouts)
-    if learn { reader!.layouts = next }
+    if learn && reader!.training { reader!.layouts = next }
     let bank = matching.first?.definition.bank ?? ""
     switch reading.outcome {
     case .pending:

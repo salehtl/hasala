@@ -129,8 +129,10 @@ import Testing
     let accounted = await rig.accountedCount()
     try await saveReader(rig)
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
     #expect(await rig.engine.disconnect(removing: nil) == .otherDevice)
     #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
     #expect(await rig.accountedCount() == accounted)
   }
 
@@ -154,8 +156,10 @@ import Testing
     await rig.connectAndActivate()
     try await saveReader(rig)
     await rig.server.setLink(.noLink)
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
     #expect(await rig.engine.runCycle(trigger: .launch).phase == .reconnectRequired)
     #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
   }
 
   @Test func aFailedWriteWhenTheLinkEndedLeavesTheLayoutsForTheNextCycle() async throws {
@@ -164,10 +168,21 @@ import Testing
     try await saveReader(rig)
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
     await (rig.store as? InMemoryMailboxPersistence)?.setFailNextReaderClear(true)
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
     #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
     #expect(try await rig.store.loadReader() != nil)
+    #expect(rig.readerKeys.held != nil)
     #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
     #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
+  }
+
+  @Test func aDisconnectAndAFreshConnectForgetTheKey() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
+    _ = await rig.engine.disconnect(removing: nil)
+    #expect(rig.readerKeys.held == nil)
   }
 
   @Test func aPhoneThatWaitsForAReconnectOrAnotherIPhoneForgetsTheLayouts() async throws {

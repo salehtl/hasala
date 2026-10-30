@@ -217,6 +217,7 @@ struct Rig {
   let server = FakeServer()
   let clock = ManualClock(Rig.t0)
   let keychain = MemoryGmailRefreshTokenStore()
+  let readerKeys = MemoryMailReaderKeyStore()
   let stepUps = StepUpLog()
   let engine: MailboxEngine
   let tokens: RefreshingGmailTokenProvider
@@ -255,7 +256,7 @@ struct Rig {
     engine = MailboxEngine(
       config: c, oauth: oauth, tokens: tokens, gmailHTTP: gmail, store: store, ledger: ledger, server: server,
       stepUp: FakeStepUp(fail: stepUpFails, log: stepUps), categorizer: categorizer, templates: templates,
-      clock: clock, random: CountingRandom(), sleep: { ms in clock.advance(ms) })
+      clock: clock, random: CountingRandom(), readerKeys: readerKeys, sleep: { ms in clock.advance(ms) })
     gmail.watchExpirationMs = Rig.t0 + 7 * 86_400_000
   }
 

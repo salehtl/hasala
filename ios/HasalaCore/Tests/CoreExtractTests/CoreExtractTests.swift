@@ -415,10 +415,12 @@ import Testing
     #expect(layout?.seen == LearnedLayouts.exampleLimitPerLayout + 4)
 
     var many = LearnedLayouts()
-    let shipped = ILex.layoutWords.sorted()
     for i in 0..<(LearnedLayouts.layoutLimitPerSender + 3) {
-      let words = shipped[(i * 3)..<(i * 3 + 3)]
-      let m = Mails.input("bank-z.example", subject: "", [words.joined(separator: " "), "AED \(i + 1).00"], at: Int64(i))
+      let letters = Array("abcdefghij")
+      let tag = String(String(i).map { letters[Int(String($0))!] })
+      let words = (0..<12).map { "w" + tag + String(letters[$0 % 10]) + String(repeating: "q", count: $0) }
+      let m = Mails.input(
+        "bank-z.example", subject: "s\(i)", [words.joined(separator: " "), "Amount AED \(i + 1).00 debited"], at: Int64(i))
       many = CombinedReader.read(m, many).1
     }
     #expect(many.senders["bank-z.example"]?.layouts.count == LearnedLayouts.layoutLimitPerSender)
@@ -774,28 +776,59 @@ import Testing
     }
   }
 
-  @Test func aLayoutKeepsOnlyShippedWordsAndClasses() throws {
+  @Test func aLayoutKeepsOnlyShippedWordsTagsAndClasses() throws {
     var mem = LearnedLayouts()
     for i in 0..<6 { mem = CombinedReader.read(Self.mail(i), mem).1 }
     let layouts = try #require(mem.senders["bank-p.example"]?.layouts)
     for l in layouts {
-      for slot in l.anchors where slot.kind == .const && slot.cls == .word {
-        #expect(slot.key == LayoutCodec.wordShape || slot.key == ILex.subjKey || ILex.layoutWords.contains(slot.key), "\(slot.key)")
-      }
+      for slot in l.anchors where slot.kind == .const && slot.cls == .word { #expect(LayoutCodec.isStoredWord(slot.key), "\(slot.key)") }
       for x in l.examples {
-        for case .free(let raw, let cls, _) in x.tokens where cls != .punct && cls != .nl {
-          #expect(raw == LayoutCodec.valueShape || raw == LayoutCodec.wordShape || raw == ILex.subjKey || ILex.layoutWords.contains(raw), "\(raw)")
-        }
+        for case .free(let raw, let cls, _) in x.tokens { #expect(LayoutCodec.isStoredShape(raw, cls), "\(raw)") }
       }
     }
   }
 
-  @Test func aStoredFormatWithTextIsNotRead() throws {
-    #expect(throws: DecodingError.self) { try JSONDecoder().decode(FillerToken.self, from: Data("[1, true, \"name\"]".utf8)) }
-    let free = try JSONDecoder().decode(FillerToken.self, from: Data("[\"syntheticname\", 0, true]".utf8))
-    #expect(free == .free(LayoutCodec.wordShape, cls: .word, spaceBefore: true))
+  @Test func aStoredFormatWithTextIsNotRead() {
+    for json in ["[1, true, \"name\"]", "[\"syntheticname\", 0, true]", "[\"12.50\", 3, true]", "[\"#zzzz\", 0, true]"] {
+      #expect(throws: DecodingError.self, "\(json)") { try JSONDecoder().decode(FillerToken.self, from: Data(json.utf8)) }
+    }
+    let slot = "{\"k\":0,\"v\":\"syntheticname\",\"c\":0}"
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(LayoutSlot.self, from: Data(slot.utf8)) }
   }
 
+  @Test func aTaggerDecidesTheStoredTag() {
+    let other = WordTagger(id: "other") { _ in 0xABCD }
+    #expect(LayoutCodec.shapeKey("bookshop", .word, other) == "#abcd")
+    #expect(LayoutCodec.shapeKey("amount", .word, other) == "amount")
+    #expect(LayoutCodec.shapeKey("#abcd", .word, .memoryOnly) == "#abcd")
+    #expect(LayoutCodec.shapeKey("12.50", .money, other) == LayoutCodec.valueShape)
+  }
+
+  @Test func wordingNeverSeenDoesNotFileOnATrainedLayout() {
+    var mem = LearnedLayouts()
+    for i in 0..<5 {
+      mem = CombinedReader.read(
+        Mails.input("bank-w.example", subject: "Account activity", ["Thank you for banking with us.", "Your payment of AED \(i + 10).50 was debited from your account."], at: Int64(i)), mem).1
+    }
+    for first in ["Advance advice before collection next month.", "Illustration only do nothing please."] {
+      let r = CombinedReader.read(
+        Mails.input("bank-w.example", subject: "Account activity", [first, "Your payment of AED 777.50 was debited from your account."], at: 9), mem).0
+      #expect(!r.meetsFilingBar, "\(r)")
+    }
+  }
+
+  @Test func distinctMerchantsOfOneLengthFileFromTheThirdMail() {
+    var mem = LearnedLayouts()
+    let names = ["OAK BOOKS", "RISING SUN", "NORTH MART", "BLUE LAMP", "GREEN GATE", "SILVER DOOR", "RED KITE", "PINE HALL"]
+    var filed: [Bool] = []
+    for (i, name) in names.enumerated() {
+      let (r, next) = CombinedReader.read(
+        Mails.input("bank-m.example", subject: "Account activity", ["Your account was debited with AED \(i + 10).50.", "Merchant", name, "Available balance AED 900.00"], at: Int64(i)), mem)
+      mem = next
+      filed.append(r.meetsFilingBar)
+    }
+    #expect(filed[3...].allSatisfy { $0 }, "\(filed)")
+  }
   @Test func aSavedLayoutReadsTheSameAsOneInMemory() throws {
     var live = LearnedLayouts()
     var saved = LearnedLayouts()
@@ -886,10 +919,21 @@ import Testing
     ["Credit alert", "AED %d.00", "Remarks: amount AED 5,000.00 debited"],
     ["Your account XXXX1234: AED %d.00 on hold released.", "Remarks: amount AED 5,000.00 debited"],
     ["Credit alert", "AED %d.00", "Fee AED 2.00"],
+    ["Credit alert", "Total AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Amount due AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Balance top-up AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Available funds increased AED %d.00", "Remarks: amount AED 5,000.00 debited"],
   ])
   func aSecondAmountWithNoWordingBesideItDoesNotFile(_ lines: [String]) {
     let readings = Self.thread { i in lines.map { $0.replacingOccurrences(of: "%d", with: "\(i + 1)") } }
     for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
+  }
+
+  @Test(arguments: ["Available balance AED 900.00", "Avl Bal: AED 900.00", "Available limit AED 900.00", "Balance is AED 900.00", "الرصيد المتاح AED 900.00"])
+  func anAccountBalanceBesideTheAmountStillFiles(_ line: String) throws {
+    let last = try #require(
+      Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", line] }.last)
+    #expect(last.amountMinor != nil && last.meetsFilingBar, "\(last)")
   }
 
   @Test func aBalanceBesideTheAmountStillFiles() throws {
@@ -947,6 +991,29 @@ import Testing
     let r = Self.read("Advice", lines)
     #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
     #expect(r.amountMinor != nil)
+  }
+
+  @Test(arguments: [
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Remarks", "Transfer of AED 500.00 will be processed"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Remarks - transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Ref 1: transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "SAMPLE transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Your transfer of AED 500.00 is pending"],
+    ["Remarks - your transfer of AED 500.00 is pending"],
+  ])
+  func aPhraseOnALineThatCouldBeReflectedIsHeld(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
+  }
+
+  @Test(arguments: [
+    ["Your transfer request has been received and will be processed.", "Transfer Amount: AED 500.00"],
+    ["Transferred Amount: AED 500.00", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: Funds credited Ltd", "Status: Pending"],
+  ])
+  func aPendingNoticeWeCannotProveGoesToReview(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
   }
 
   @Test func aSentenceThatStatesThePendingTransferStaysOut() {

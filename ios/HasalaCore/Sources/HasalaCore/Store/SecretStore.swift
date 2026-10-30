@@ -25,6 +25,7 @@ public enum SecretItem: Sendable, Hashable {
   /// The Outlook link's Graph subscription `clientState` (the `PUT /mailbox/link` answer).
   case outlookClientState(userID: UserID)
   case textKeySecret
+  case readerWordKey
 
   /// The Gmail refresh token: service `app.hasala.gmail.refresh`, unchanged from before the
   /// provider seam, so existing links need no migration.
@@ -42,6 +43,7 @@ public enum SecretItem: Sendable, Hashable {
     case .mailRefresh(.outlook, _): "app.hasala.outlook.refresh"
     case .outlookClientState: "app.hasala.outlook.clientstate"
     case .textKeySecret: "app.hasala.text-key"
+    case .readerWordKey: "app.hasala.reader-key"
     }
   }
 
@@ -53,7 +55,7 @@ public enum SecretItem: Sendable, Hashable {
     case .epochKey(let u, let e): "\(u.string):\(e)"
     case .writerKey(let u, let w), .approvalKey(let u, let w): "\(u.string):\(w.string)"
     case .mailRefresh(_, let u), .outlookClientState(let u): u.string
-    case .textKeySecret: "device"
+    case .textKeySecret, .readerWordKey: "device"
     }
   }
 
@@ -69,7 +71,7 @@ public enum SecretItem: Sendable, Hashable {
   public static let allServices = [
     "app.hasala.session", "app.hasala.account", "app.hasala.epoch-key", "app.hasala.writer-key",
     "app.hasala.approval-key", "app.hasala.gmail.refresh", "app.hasala.outlook.refresh",
-    "app.hasala.outlook.clientstate", "app.hasala.text-key",
+    "app.hasala.outlook.clientstate", "app.hasala.text-key", "app.hasala.reader-key",
   ]
 }
 

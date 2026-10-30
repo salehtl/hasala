@@ -15,6 +15,7 @@ struct IToken {
 
 struct IInterner {
   var map: [String: Int32] = [:]
+  var tagger = WordTagger.memoryOnly
   mutating func code(_ s: String) -> Int32 {
     if let c = map[s] { return c }
     let c = Int32(map.count + 1)
@@ -42,7 +43,7 @@ enum ILex {
   static func code(_ cls: IClass, _ key: String, _ interner: inout IInterner) -> Int32 {
     switch cls {
     case .money, .num, .cur: typedCode(cls)
-    default: interner.code(LayoutCodec.shapeKey(key, cls))
+    default: interner.code(LayoutCodec.shapeKey(key, cls, interner.tagger))
     }
   }
 
