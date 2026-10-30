@@ -108,7 +108,9 @@ public enum PageReader {
     public let stopRow: Int?
   }
 
-  public static func read(_ page: [Row], state: State) -> Result {
+  public static let maxPagePlaintext = 8 * 1024 * 1024
+
+  public static func read(_ page: [Row], state: State, plaintextBudget: Int = maxPagePlaintext) -> Result {
     func stopped(_ i: Int, _ s: Stop, _ rows: [RowOutcome] = []) -> Result { Result(rows: rows, stop: s, stopRow: i) }
 
     var checked: [RowShape.Checked] = []
@@ -144,6 +146,7 @@ public enum PageReader {
     }
     // R3-R10, row by row.
     var out: [RowOutcome] = []
+    var held = 0
     for (i, c) in checked.enumerated() {
       let revoked = state.roster[c.writerID]?.revokedAt != nil
       let envelope: Envelope
@@ -165,6 +168,8 @@ public enum PageReader {
         case .hardStop(let h): return stopped(i, .hardStop(h), out)
         case .setAside(let reason, _): out.append(.setAside(reason, alarm: false))
         }
+        held += plaintext.count
+        if held >= plaintextBudget { return Result(rows: out, stop: nil, stopRow: nil) }
       }
     }
     return Result(rows: out, stop: nil, stopRow: nil)

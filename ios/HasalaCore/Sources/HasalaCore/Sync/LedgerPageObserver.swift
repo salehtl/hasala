@@ -134,7 +134,7 @@ public actor LedgerPageObserver: PageObserver {
   /// falls back to (§5.3). The stored chain is checked first, as R2 comes
   /// before R3 in the reader; then each row is opened again and its outcome
   /// compared with its stored disposition before it is folded.
-  func coldFold(cursor: Int64) throws(SyncStop) -> State {
+  func coldFold(cursor: Int64, plaintextBudget: Int = PageReader.maxPagePlaintext) throws(SyncStop) -> State {
     let store = context.store
     let sync = try context.storeCall { () throws(StoreError) in try store.syncState() }
     try checkStoredChain(upTo: cursor)
@@ -144,6 +144,7 @@ public actor LedgerPageObserver: PageObserver {
     var reread = 0
     try storedPages(upTo: cursor) { (rows: [WireRowRecord]) throws(SyncStop) in
       var page: [FoldRow] = []
+      var held = 0
       for r in rows {
         let outcome = try reopen(r, opener, revoked: revoked.contains(r.writerID))
         let now = WireRowRecord.Disposition(outcome)
@@ -152,8 +153,14 @@ public actor LedgerPageObserver: PageObserver {
           reread += 1
         }
         page.append(FoldRow(seq: r.seq, writerID: r.writerID.string, counter: r.counter, outcome: outcome))
+        if case .opened(let plaintext, _) = outcome { held += plaintext.count }
+        if held >= plaintextBudget {
+          s = try Self.fold(page, onto: s)
+          page = []
+          held = 0
+        }
       }
-      s = try Self.fold(page, onto: s)
+      if !page.isEmpty { s = try Self.fold(page, onto: s) }
     }
     guard s.cursors.hot == cursor else { throw .halted(.inconsistent("cold_fold_cursor")) }
     if reread > 0 {
