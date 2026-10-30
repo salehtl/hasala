@@ -52,8 +52,9 @@ coming back:
   address, so the replay cannot put the new one back: when the restored
   address was verified before the change, the account is marked for
   re-verification and as undeliverable, its unused freeze links and email
-  codes are burned, and no alert with a freeze link goes to that address until
-  the holder verifies or changes it again), and an operator's invite
+  codes are burned, and no alert with a freeze link goes to that address and no
+  recovery can begin (the answer is the same 404 as a frozen account) until the
+  holder verifies or changes it again), and an operator's invite
   revocation (the invite is revoked again, and its waitlist entry goes back to
   the list when it has no other open invite). A replay never leaves an account frozen with no passkey and no
   password, because then nothing could lift the freeze: it lifts that holder
@@ -192,6 +193,26 @@ too, and the holder relies on later alerts, the in-app lockdown or the operator.
    that case.
 3. The factors that the recovery made work again. Tell the holder to sign in
    and remove each device, passkey or password that they do not know.
+
+## Let a holder recover after a restored email change
+
+The replay can put an account back on an address that the holder removed. That
+address cannot begin a recovery until a signed-in device verifies or changes
+it. A holder who has no signed-in device and still uses that address needs the
+operator.
+
+1. Make sure that the request comes from the holder, and that the holder still
+   controls this address, as in "Lift a freeze that the holder cannot lift".
+   Do not do this on the strength of one message: whoever controls the address
+   the holder removed can write from it.
+2. Clear the mark.
+
+   ```sh
+   sudo -u hasala-migrate psql --host=/run/hasala-postgresql --username=hasala_migrate --dbname=hasala \
+     -c "UPDATE users SET reverify_requested_at = NULL, email_undeliverable_at = NULL WHERE id = '<ACCOUNT_ID>'"
+   ```
+
+3. The holder recovers with the emailed code and the 12 words.
 
 ## Limit
 

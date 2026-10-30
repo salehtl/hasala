@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/authtest"
+	"github.com/salehtl/hasala/server/internal/cryptoref"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
@@ -1324,5 +1325,61 @@ func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) 
 	}
 	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
 		t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+	}
+}
+
+func TestARestoredOldAddressCannotBeginARecoveryUntilItIsVerified(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	var (
+		oldAddr          string
+		oldVerified      time.Time
+		oldHash, oldSalt []byte
+	)
+	if err := f.pool.QueryRow(bgctx, `SELECT email_norm, email_verified_at, password_hash, password_salt FROM users WHERE id = $1`,
+		m.user.UserID).Scan(&oldAddr, &oldVerified, &oldHash, &oldSalt); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour + 400*time.Millisecond)
+	changeEmail(t, f, m)
+	entries := readLedger(t, path)
+	if _, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E)); err != nil {
+		t.Fatalf("a recovery before the restore: %v", err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET email_norm = $2, email_verified_at = $3, password_hash = $4, password_salt = $5
+	    WHERE id = $1`, m.user.UserID, oldAddr, oldVerified, oldHash, oldSalt); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Emails != 1 {
+		t.Fatalf("reapply %+v %v, want one email change", rep, err)
+	}
+	codes := f.count(`SELECT count(*) FROM email_codes WHERE user_id = $1`, m.user.UserID)
+	ceremonies := f.count(`SELECT count(*) FROM recovery_ceremonies WHERE user_id = $1`, m.user.UserID)
+	f.fake.Reset()
+	if _, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E)); !errors.Is(err, ErrNoSuchAccount) {
+		t.Fatalf("a recovery through the restored address: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM email_codes WHERE user_id = $1`, m.user.UserID); n != codes {
+		t.Fatal("a code was issued for the restored address")
+	}
+	if n := f.count(`SELECT count(*) FROM recovery_ceremonies WHERE user_id = $1`, m.user.UserID); n != ceremonies {
+		t.Fatal("a recovery began for the restored address")
+	}
+	if n := len(f.fake.To(oldAddr)); n != 0 {
+		t.Fatalf("%d emails went to the restored address", n)
+	}
+
+	if err := f.acct.EmailVerifyBegin(bgctx, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.acct.EmailVerifyFinish(bgctx, m.user.UserID, f.lastCode(oldAddr)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E)); err != nil {
+		t.Fatalf("a recovery after the address was verified again: %v", err)
 	}
 }

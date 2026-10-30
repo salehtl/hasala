@@ -51,9 +51,9 @@ type RecoverBegun struct {
 	EmailHint  string
 }
 
-// RecoverBegin is #7: the account by its recovery key (unknown, suspended or
-// frozen: ErrNoSuchAccount, 404), a ceremony, and a recovery code to the
-// account's address.
+// RecoverBegin is #7: the account by its recovery key (unknown, suspended,
+// frozen, or with an address a replay put in doubt: ErrNoSuchAccount, 404), a
+// ceremony, and a recovery code to the account's address.
 func (a *Accounts) RecoverBegin(ctx context.Context, recoveryPub []byte) (RecoverBegun, error) {
 	if len(recoveryPub) != keyproto.Ed25519KeySize {
 		return RecoverBegun{}, fmt.Errorf("%w: recovery_pubkey is not 32 bytes", ErrBadRequest)
@@ -71,6 +71,13 @@ func (a *Accounts) RecoverBegin(ctx context.Context, recoveryPub []byte) (Recove
 	}
 	if err != nil {
 		return RecoverBegun{}, err
+	}
+	var inDoubt bool
+	if err := tx.QueryRow(ctx, `SELECT reverify_requested_at IS NOT NULL FROM users WHERE id = $1`, st.ID).Scan(&inDoubt); err != nil {
+		return RecoverBegun{}, err
+	}
+	if inDoubt {
+		return RecoverBegun{}, ErrNoSuchAccount
 	}
 	id, err := newCeremonyIDN(32)
 	if err != nil {
