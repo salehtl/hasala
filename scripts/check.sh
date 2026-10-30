@@ -117,6 +117,14 @@ ci_report() {
 # that on every push and pull request (job `secrets`), so the fence does not
 # depend on the rest of the gate building.
 step "real-mail fence"
+fence_scan() {
+	local path
+	while IFS= read -r -d '' path; do
+		if [[ -e "$path" || -L "$path" ]]; then
+			printf '%s\0' "$path"
+		fi
+	done | xargs -0 grep -lE -e "$1" -- /dev/null 2>&1 || true
+}
 leaked="$(
 	cd "$ROOT"
 	# A directory that does not exist (internal/origin and test/e2e were
@@ -129,17 +137,17 @@ leaked="$(
 		find conformance/templates/sms -type f ! -name 'synthetic-*' ! -name '.*' || true
 		find conformance -type f \( -ipath 'conformance/*sms*/*' -o -ipath 'conformance/*text*/*' \) \
 			! -name 'synthetic-*' ! -name README.md ! -name '.*' || true
-		find conformance/templates -path conformance/templates/sms -prune -o -type f ! -name '.*' \
-			-exec grep -lE '\\?"channel\\?"[[:space:]]*:[[:space:]]*\\?"sms\\?"' {} + || true
+		find conformance/templates -path conformance/templates/sms -prune -o -type f ! -name '.*' -print0 |
+			fence_scan '\\?"channel\\?"[[:space:]]*:[[:space:]]*\\?"sms\\?"' || true
 		{
-			find conformance -type f ! -name '.*' || true
-			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
-		} | sort -u | tr '\n' '\0' | xargs -0 grep -lE '\\?"note\\?"[[:space:]]*:[[:space:]]*\\?"PRIVATE:' /dev/null || true
+			find conformance -type f ! -name '.*' -print0 || true
+			git ls-files -z -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | fence_scan '\\?"note\\?"[[:space:]]*:[[:space:]]*\\?"PRIVATE:'
 		{
-			find conformance -type f ! -name 'synthetic-*' ! -name '.*' || true
-			git ls-files -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
-		} | grep -v '/synthetic-[^/]*$' | sort -u | tr '\n' '\0' |
-			xargs -0 grep -lE '\\?"read_by\\?"[[:space:]]*:|\\?"sender\\?"[[:space:]]*:[[:space:]]*\\?"DIB-SMS\\?"|^DIB-SMS,|,DIB-SMS(,|$)' /dev/null || true
+			find conformance -type f ! -name 'synthetic-*' ! -name '.*' -print0 || true
+			git ls-files -z -co --exclude-standard -- '*.json' '*.jsonl' '*.csv' '*.txt' || true
+		} | { grep -azv '/synthetic-[^/]*$' || true; } |
+			fence_scan '\\?"read_by\\?"[[:space:]]*:|\\?"sender\\?"[[:space:]]*:[[:space:]]*\\?"DIB-SMS\\?"|^DIB-SMS,|,DIB-SMS(,|$)'
 		find server/internal/origin/testdata -type f ! -name dns.json ! -name '.*' || true
 		find server/internal/tmpl/seed/testdata -type f ! -name '.*' || true
 		git ls-files -co --exclude-standard -- ':(icase)*.eml' || true

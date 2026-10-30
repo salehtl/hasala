@@ -111,7 +111,8 @@ type Minter interface {
 
 var ErrAddressGone = errors.New("invites: the invite's email address is no longer kept; revoke it and mint a new invite")
 
-// ErrStale is a queued invite email whose invite is no longer sendable.
+// ErrStale is a queued invite email whose invite is no longer sendable, or
+// that a newer email for the invite has replaced.
 var ErrStale = errors.New("invites: the invite is closed")
 
 // Render mints the code and link key, stores their hashes, and renders the
@@ -138,6 +139,14 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 	}
 	if len(tag) != 32 {
 		return mail.Message{}, errors.New("invites: the invite has no email_tag yet")
+	}
+	var superseded bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND id > $2)`,
+		*row.InviteID, row.ID).Scan(&superseded); err != nil {
+		return mail.Message{}, err
+	}
+	if superseded {
+		return mail.Message{}, ErrStale
 	}
 	code, linkKey, newLinkHash, err := r.secrets(*row.InviteID, row.ID)
 	if err != nil {

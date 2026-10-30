@@ -37,8 +37,8 @@ const (
 )
 
 func (s *Server) defaultAccountLimiters() {
-	s.ensureLimiter(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
-	s.ensureLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
+	s.ensureClientLimiter(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
+	s.ensureClientLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.ResetPerIP, resetIPRate, resetIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezePerIP, freezeIPRate, freezeIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezePerPrefix, freezePrefix, freezePrefixB, accountLimiterKeys)
@@ -106,10 +106,12 @@ func (s *Server) limited(h http.HandlerFunc, ls ...*Limiter) http.HandlerFunc {
 }
 
 func (s *Server) globalAllow(r *http.Request, prefix, global *Limiter) bool {
-	if k, ok := prefixKey(clientKey(r)); ok && !prefix.Allow(k) {
-		return false
-	}
-	return global.Allow("")
+	return prefixAllow(r, prefix) && global.Allow("")
+}
+
+func prefixAllow(r *http.Request, prefix *Limiter) bool {
+	k, ok := prefixKey(clientKey(r))
+	return !ok || prefix.Allow(k)
 }
 
 // userLimited is account-user (spec 02 §16.2) on a session route.

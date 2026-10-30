@@ -92,8 +92,9 @@ func (a *Accounts) FreezeTokenLive(ctx context.Context, token string) (bool, err
 	h := sha256.Sum256(raw)
 	var live bool
 	err = a.Pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM freeze_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2)`,
-		h[:], a.now()).Scan(&live)
+		`SELECT EXISTS (SELECT 1 FROM freeze_tokens t WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > $2
+		    AND NOT EXISTS (SELECT 1 FROM auth_events e WHERE e.user_id = t.user_id AND e.kind = $3 AND e.at > t.trigger_at))`,
+		h[:], a.now(), EventAccountUnfrozen).Scan(&live)
 	return live, err
 }
 
@@ -124,6 +125,14 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 	}
 	if err != nil {
 		return Wake{}, err
+	}
+	var lifted bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND at > $3)`,
+		userID, EventAccountUnfrozen, trigger).Scan(&lifted); err != nil {
+		return Wake{}, err
+	}
+	if lifted {
+		return Wake{}, tx.Commit(ctx)
 	}
 	revoked, err := freezeTx(ctx, tx, a.Mail, userID, FrozenByHolder, trigger, now, nil, "")
 	if err != nil {
@@ -235,7 +244,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		}
 		now := a.now()
 		unfrozenAt = now
-		if err := clearFreezeTx(ctx, tx, session.UserID); err != nil {
+		if err := clearFreezeTx(ctx, tx, session.UserID, now); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE sessions SET restricted = false WHERE token_hash = $1`, session.Hash); err != nil {
@@ -369,10 +378,13 @@ func OperatorFreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.T
 	return err
 }
 
-func clearFreezeTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
-	_, err := tx.Exec(ctx,
+func clearFreezeTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, now time.Time) error {
+	if _, err := tx.Exec(ctx,
 		`UPDATE users SET frozen_at = NULL, freeze_trigger_at = NULL, frozen_by = NULL, holder_also_froze = false WHERE id = $1`,
-		userID)
+		userID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL`, userID, now)
 	return err
 }
 
@@ -416,7 +428,7 @@ func OperatorUnfreeze(ctx context.Context, tx pgx.Tx, userID uuid.UUID, scope Un
 			return false, err
 		}
 	}
-	if err := clearFreezeTx(ctx, tx, userID); err != nil {
+	if err := clearFreezeTx(ctx, tx, userID, now); err != nil {
 		return false, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now); err != nil {

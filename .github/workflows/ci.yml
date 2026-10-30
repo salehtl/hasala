@@ -899,6 +899,9 @@ jobs:
       - name: astro check
         run: nix develop --command bash -c 'cd web && bun run check'
 
+      - name: Unit tests
+        run: nix develop --command bash -c 'cd web && bun run test'
+
       # `bun run build` is astro build followed by scripts/check-dist.ts: one
       # CSP covering every inline script and style, no style="" attributes,
       # and the JS budget on / (15 KB gzip).
