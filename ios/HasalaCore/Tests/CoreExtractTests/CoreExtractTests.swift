@@ -929,7 +929,12 @@ import Testing
     for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
   }
 
-  @Test(arguments: ["Available balance AED 900.00", "Avl Bal: AED 900.00", "Available limit AED 900.00", "Balance is AED 900.00", "الرصيد المتاح AED 900.00"])
+  @Test(arguments: [
+    "Available balance", "Avl Bal:", "Available limit", "Balance is", "Balance after transaction", "Balance amount", "Available credit",
+    "Outstanding", "Minimum due", "الرصيد المتاح", "الرصيد المتوفر", "الرصيد المتبقي", "الرصيد:", "رصيدك المتاح", "الحد المتاح", "الرصيد الحالي",
+    "رصيدك", "رصيدك الحالي", "رصيد الحساب", "رصيد حسابك", "الرصيد الجديد", "الرصيد الدفتري", "الرصيد بعد العملية",
+    "الرصيد المتاح في حسابك", "الحد الأقصى",
+  ].map { $0 + " AED 900.00" })
   func anAccountBalanceBesideTheAmountStillFiles(_ line: String) throws {
     let last = try #require(
       Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", line] }.last)
@@ -1000,6 +1005,10 @@ import Testing
     ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "SAMPLE transfer of AED 500.00 is pending"],
     ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Your transfer of AED 500.00 is pending"],
     ["Remarks - your transfer of AED 500.00 is pending"],
+    ["You received a transfer of AED 500.00 from SAMPLE. Your transfer of AED 500.00 is pending."],
+    ["Transfer from SAMPLE. Your transfer of AED 500.00 is pending."],
+    ["Incoming transfer from SAMPLE", "your transfer of AED 500.00 is pending", "Amount: AED 500.00"],
+    ["Your transfer of AED 500.00 is pending. You received AED 500.00 from SAMPLE."],
   ])
   func aPhraseOnALineThatCouldBeReflectedIsHeld(_ lines: [String]) {
     let r = Self.read("Money Transfer", lines)
@@ -1016,9 +1025,14 @@ import Testing
     #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
   }
 
-  @Test func aSentenceThatStatesThePendingTransferStaysOut() {
-    let r = Self.read("Advice", ["Your transfer of AED 300.00 to SAMPLE has been initiated and will be processed shortly."])
-    #expect(r.outcome == .pending)
+  @Test(arguments: [
+    ["Your transfer of AED 300.00 to SAMPLE has been initiated and will be processed shortly."],
+    ["Your transfer request of AED 300.00 has been received and will be processed."],
+    ["Dear Customer,", "Your transfer of AED 300.00 is being processed."],
+    ["Dear Customer, your transfer of AED 300.00 is being processed."],
+  ])
+  func aSentenceThatStatesThePendingTransferStaysOut(_ lines: [String]) {
+    #expect(Self.read("Money Transfer", lines).outcome == .pending, "\(lines)")
   }
 
   @Test(arguments: [

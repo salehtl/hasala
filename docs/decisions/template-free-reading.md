@@ -132,9 +132,8 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    process is disregarded. Only completed transfers and actual debit and credit notices
    count. A pending notice is followed by a completed one for the same transfer, so
    counting the pending one would count the money twice. Only a transfer notice is set
-   aside this way: all its status lines say pending, or a sentence in the opening lines of
-   the mail, ahead of any field line, names "your transfer" and its amount with pending
-   wording. Any wording that says money moved stops it. A status line that a reader took as
+   aside this way: all its status lines say pending, or the mail's first sentence, with only
+   a greeting before it, names "your transfer" and its amount with pending wording. Any wording that says money moved stops it. A status line that a reader took as
    the merchant, or that follows an empty remark or beneficiary label, does not count. All
    other mail with pending wording goes to Review with what was read. So do some honest
    pending notices: a pending sentence with its amount on a separate line, and a pending

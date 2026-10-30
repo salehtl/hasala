@@ -132,11 +132,18 @@ enum LearnedReader {
     return out
   }
 
-  static let accountBalanceLabels: Set<String> = ["balance", "bal", "available", "avl", "avail", "limit", "رصيد", "الرصيد", "المتاح", "متاح", "الحد", "المتوفر", "متوفر", "المتبقي"]
+  static let accountBalanceLabels: Set<String> = ILex.balanceWords.subtracting(["total", "due"]).union(["رصيدك", "المتوفر", "متوفر", "المتبقي"])
+  static let balanceQualifiers: Set<String> = [
+    "due", "amount", "after", "transaction", "credit", "current", "new", "ledger", "الحالي", "الجديد", "الدفتري", "الحساب", "حسابك", "بعد",
+    "العملية", "العمليه", "الأقصى", "الاقصى",
+  ]
 
   static func isAccountBalance(_ toks: [IToken], _ idx: Int) -> Bool {
-    guard let label = leftContext(toks, idx).first(where: { !ILex.functionWords.contains($0) }) else { return false }
-    return accountBalanceLabels.contains(label)
+    for word in leftContext(toks, idx) where !ILex.functionWords.contains(word) {
+      if accountBalanceLabels.contains(word) { return true }
+      if !balanceQualifiers.contains(word) { return false }
+    }
+    return false
   }
 
   static func amountScore(_ toks: [IToken], _ idx: Int) -> Int {

@@ -115,9 +115,14 @@ enum MailRules {
     return line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces) == field
   }
 
+  static let youReceived = RuleText.words(["you received", "you have received", "you've received"])
+  static let greetingLine = RuleText.re("^\\s*(?:dear|hello|hi|عزيزي|عزيزتي|عميلنا|مرحبا)(?:\\s+[^\\s.!?:]+){0,4}\\s*[,،!]?\\s*$")
+
   static func statesSettled(_ lines: [String]) -> Bool {
     let body = lines.joined(separator: "\n")
-    return RuleText.has(StatusLexicon.completedPhrase, body) || RuleText.has(TextGate.Markers.transactionClause, body)
+    let stated = RuleText.replace(StatusLexicon.pendingPhrase, body)
+    return RuleText.has(StatusLexicon.completedPhrase, stated) || RuleText.has(TextGate.Markers.transactionClause, stated)
+      || RuleText.has(youReceived, stated)
   }
 
   static func foldedField(_ captured: String?) -> String {
@@ -148,23 +153,14 @@ enum MailRules {
     let lines = foldedLines(input.text)
     guard !statesSettled(lines) else { return false }
     let field = foldedField(captured)
-    for line in lines.filter({ !$0.isEmpty }).prefix(3) {
-      if isField(line, field) || reflectedLabels.contains(RuleReader.labelKey(line)) { return false }
-      if let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }), !line[..<colon].contains(where: { $0.isNumber }) { return false }
-      let ns = line as NSString
-      var start = 0
-      let breaks = statementBreak.matches(in: line, range: NSRange(location: 0, length: ns.length)).map(\.range)
-      for r in breaks + [NSRange(location: ns.length, length: 0)] {
-        let sentence = ns.substring(with: NSRange(location: start, length: r.location - start))
-        start = r.location + r.length
-        if RuleText.has(StatusLexicon.pendingPhrase, sentence), RuleText.has(ownTransfer, sentence),
-          RuleMoneyParser.scan(sentence, line: 0, labelCurrency: nil).contains(where: { $0.minor == amountMinor })
-        {
-          return true
-        }
-      }
-    }
-    return false
+    guard let line = lines.filter({ !$0.isEmpty }).drop(while: { RuleText.has(greetingLine, $0) }).first else { return false }
+    if isField(line, field) || reflectedLabels.contains(RuleReader.labelKey(line)) { return false }
+    if let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }), !line[..<colon].contains(where: { $0.isNumber }) { return false }
+    let ns = line as NSString
+    let end = statementBreak.firstMatch(in: line, range: NSRange(location: 0, length: ns.length))?.range.location ?? ns.length
+    let sentence = ns.substring(to: end)
+    return RuleText.has(StatusLexicon.pendingPhrase, sentence) && RuleText.has(ownTransfer, sentence)
+      && RuleMoneyParser.scan(sentence, line: 0, labelCurrency: nil).contains(where: { $0.minor == amountMinor })
   }
 
   static func pendingSignal(_ input: ExtractInput) -> ExtractPending {
