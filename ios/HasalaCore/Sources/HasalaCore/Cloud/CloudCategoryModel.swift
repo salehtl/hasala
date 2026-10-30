@@ -4,7 +4,7 @@ import Synchronization
 
 public struct CloudCategoryModel: GradedCategoryModel {
   public static let defaultTag = "cf-clef/1"
-  public static let subjectLimit = 128
+  public static let subjectLimit = ModelStage.cloudSubjectLimit
   public static let suggestThreshold = (minimum: 0.6, margin: 0.2)
   public static let autoFileThreshold = (minimum: 0.7, margin: 0.4)
 
@@ -117,10 +117,7 @@ public struct CloudCategoryModel: GradedCategoryModel {
   }
 
   public static func requestSubject(_ subject: String) -> String {
-    let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-    var out = String.UnicodeScalarView()
-    out.append(contentsOf: trimmed.unicodeScalars.prefix(subjectLimit))
-    return String(out)
+    ModelStage.cloudSubject(subject)
   }
 
   static func encodeBody(subject: String, categories: [AllowedCategory]) throws -> Data {

@@ -102,7 +102,8 @@ public struct TxnGates: Sendable, Equatable, Codable {
     self.kind = kind
   }
 
-  public var senderUnverified: Bool { ar.map { $0 != "pass" } ?? false }
+  public var verified: Bool { ar == "pass" && sender == "trusted" }
+  public var senderUnverified: Bool { ar != nil && !verified }
 }
 
 /// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).
@@ -169,7 +170,7 @@ public struct Txn: Sendable, Equatable, Codable {
   public var countsTowardMoney: Bool { !unparsed }
   public var isLive: Bool { supersededBy == nil && retiredBy == nil && mergedInto == nil }
   public var isHeldCopy: Bool { copyOf != nil && copyDecision == nil && isLive }
-  public var verifiedSender: Bool { gates?.ar == "pass" && gates?.sender == "trusted" }
+  public var verifiedSender: Bool { gates?.verified ?? false }
   public var isText: Bool { channel.map { utf8Equal($0, TxnChannel.sms) } ?? false }
 }
 

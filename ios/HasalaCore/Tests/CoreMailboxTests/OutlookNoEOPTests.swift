@@ -86,7 +86,7 @@ import Testing
     #expect(TxnGates().senderUnverified == false)
     #expect(TxnGates(ar: "pass", sender: "trusted").senderUnverified == false)
     #expect(TxnGates(ar: "no_eop", sender: "untrusted").senderUnverified == true)
-    #expect(TxnGates(ar: "pass", sender: "untrusted").senderUnverified == false)
+    #expect(TxnGates(ar: "pass", sender: "untrusted").senderUnverified == true)
     #expect(TxnGates(sender: "untrusted").senderUnverified == false)
     #expect(TxnGates(ar: "no_ar", sender: "untrusted").senderUnverified == true)
     #expect(TxnGates(ar: "multiple_ar", sender: "untrusted").senderUnverified == true)
@@ -105,7 +105,8 @@ import Testing
       ["Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: a@bank.example", ""].joined(separator: "\r\n"),
       provider: .gmail)
     #expect(pass.verdict.reason == .pass)
-    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").senderUnverified == false)
+    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "trusted").senderUnverified == false)
+    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").senderUnverified == true)
   }
 
   @Test func aJunkAlertFoldsIntoReview() async throws {

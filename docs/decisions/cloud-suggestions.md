@@ -82,7 +82,9 @@ preference.
 **Merchant suggestions (Clef):**
 
 - The canonical subject (`Canon.subject(merchantRaw)`), the same string the dictionary
-  matches. Example: `CAFE EXAMPLE JBR`.
+  matches. Example: `CAFE EXAMPLE JBR`. Before the cut to 128 scalars, the phone removes what
+  the Worker removes (`ModelStage.cloudSubject`). A subject with no letter inside the cut is
+  not sent.
 - The ids, names and hints of the **built-in** categories (`Categorize/Taxonomy.swift`).
   Custom category names are not sent by default, because a person may name a category
   after a person or a place (see decision D2). A custom category can still be the answer

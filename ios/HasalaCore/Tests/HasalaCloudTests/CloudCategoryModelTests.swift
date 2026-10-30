@@ -308,6 +308,34 @@ struct CloudGuardTests {
     #expect(r.stoppedBy == .notEnabled)
   }
 
+  @Test("a subject is sent without the characters the Worker removes", arguments: ["\u{01}", "\u{7F}", "\u{FEFF}", " "])
+  func subjectMatchesTheWorkerCleaning(lead: String) async throws {
+    let subject = String(repeating: lead, count: 128) + "x"
+    #expect(ModelStage.cloud(model(StubExchange(status: 200, json: "{}"))).accepts(subject))
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.9, "shopping": 0.05]))
+    _ = await model(ex).suggest(subject: subject, allowed: builtinAllowed)
+    let r = try #require(ex.requests.first)
+    #expect(try bodyObject(r)["subject"] as? String == "x")
+  }
+
+  @Test("a subject with no letter inside the cut is not asked")
+  func noLetterInsideTheCut() {
+    let cloud = ModelStage.cloud(model(StubExchange(status: 200, json: "{}")))
+    #expect(!cloud.accepts(String(repeating: "7", count: 128) + "x"))
+    #expect(cloud.accepts(String(repeating: "7", count: 127) + "x"))
+    #expect(!cloud.accepts(String(repeating: "\u{01}", count: 200)))
+  }
+
+  @Test("a subject with no letter inside the cut does not reach the sweep's requests")
+  func stagedRunSkipsIt() async {
+    let ex = StubExchange(status: 200, json: reply(choice: "dining", ["dining": 0.9, "shopping": 0.05]))
+    let r = await ModelTier.run(
+      subjects: [String(repeating: "7", count: 128) + "x", "CAFE EXAMPLE JBR"], stages: [.cloud(model(ex))], allowed: builtinAllowed,
+      context: .foreground, now: { 0 })
+    #expect(ex.requests.count == 1)
+    #expect(r.suggestions.map(\.subject) == ["CAFE EXAMPLE JBR"])
+  }
+
   @Test("a refused request stops the stage for the run", arguments: [400, 403, 413])
   func refusedStops(code: Int) async {
     let ex = StubExchange(status: code, json: "{\"error\":\"x\"}")

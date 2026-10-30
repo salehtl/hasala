@@ -71,9 +71,12 @@ public enum BankDomains {
     max(0, (watermarkMs - overlapMs) / 1000)
   }
 
-  /// The domain of an address or a `From:` value, ASCII-lower-cased: the part after the last
-  /// `@`, cut at `>` or whitespace; "" when there is none.
+  /// The domain of an address or a `From:` value, ASCII-lower-cased: the addr-spec the A-R rule
+  /// reads (`AuthResults.fromDomain`). A value that rule cannot read never passes it; for those,
+  /// the part after the last `@`, cut at `>` or whitespace; "" when there is none.
   public static func domainOf(_ address: String) -> String {
+    let read = AuthResults.fromDomain(address)
+    if !read.isEmpty { return read }
     let u = Array(address.utf8)
     guard let at = u.lastIndex(of: 0x40) else { return "" }
     var out: [UInt8] = []

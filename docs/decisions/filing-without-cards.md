@@ -91,7 +91,12 @@ because they are strong and cost nothing.
    rows were real alerts (a forward, a bank's own DKIM set-up, Junk), the warning gave the
    person nothing to do that Review does not already ask, and a spoof can only add a wrong
    row. The check itself stays: a mail that fails its A-R or DMARC rule never files itself
-   and waits in Review as an ordinary card. Neither a rule (`RuleReach.Row.unverified`) nor
+   and waits in Review as an ordinary card. A pass for a domain outside the trusted set
+   counts the same (`TxnGates.senderUnverified`), and the lane reads a `From` value's domain
+   from the addr-spec the A-R rule reads (`BankDomains.domainOf`). Known limit: a sender
+   added as a child domain whose bank signs with the parent's DKIM reads as a pass from an
+   untrusted sender. Its mail never files itself, and neither a rule nor a sweep reaches it;
+   only the person sorts it. Neither a rule (`RuleReach.Row.unverified`) nor
    a sweep, so not Clef's "Sort automatically" either (`SweepRow.candidate`), reaches it;
    only the person sorts it. The op keeps the code in `gates.ar`, the core reads it as
    `TxnRow.senderUnverified`, and the app keeps `Txn.senderUnverified` for the rule reach
