@@ -276,42 +276,19 @@ import Testing
 
   static let cardBody = "إشعار مشتريات\nالمبلغ\nAED 250.00\nبتاريخ 05-06-2026\nالدفع الى\nSYNTHETIC GROCER DUBAI\nرقم البطاقة\nXXXX1234"
 
-  func parsed(from: String, authDomain: String, bankDomains: [String]? = nil) -> MessageDisposer.Parse {
+  func parsed(from: String, authDomain: String, bankDomains: [String]? = nil, trusted: [String]? = nil) -> MessageDisposer.Parse {
     let raw = SyntheticMail.rfc822(from: from, subject: "Card transaction", body: Self.cardBody, dateMs: Rig.t0, authDomain: authDomain)
     return MessageDisposer.parse(
-      raw: raw, messageID: "f1", internalDateMs: Rig.t0, topLevelFrom: from, templates: templates, bankDomains: bankDomains ?? trusted,
-      trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
+      raw: raw, messageID: "f1", internalDateMs: Rig.t0, topLevelFrom: from, templates: templates, bankDomains: bankDomains ?? self.trusted,
+      trusted: trusted ?? self.trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
   }
 
-  func parsed(from: String, authDomain: String, trustedSet: [String]) -> ParsedMail? {
-    let raw = SyntheticMail.rfc822(from: from, subject: "Card transaction", body: Self.cardBody, dateMs: Rig.t0, authDomain: authDomain)
-    guard case .mail(let m) = MessageDisposer.parse(
-      raw: raw, messageID: "f2", internalDateMs: Rig.t0, topLevelFrom: from, templates: templates, bankDomains: trustedSet,
-      trusted: trustedSet, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
-    else { return nil }
-    return m
-  }
-
-  @Test func aTypedChildDomainSignedByItsParentIsTrusted() throws {
-    let m = try #require(parsed(from: "Alerts <a@alerts.mybank.example>", authDomain: "mybank.example", trustedSet: ["alerts.mybank.example"]))
-    #expect(m.gates.ar == "pass" && m.gates.senderTrusted)
-  }
-
-  @Test func aSignerAboveTheBankDomainIsNotTrusted() throws {
-    let bare = try #require(parsed(from: "DIB Alerts <alerts@dib.ae>", authDomain: "ae", trustedSet: trusted))
-    #expect(bare.gates.ar == "fail" && !bare.gates.senderTrusted)
-    #expect(!BankDomains.trustsSigner("ae", from: "dib.ae", of: trusted))
-    let shared = try #require(parsed(from: "Alerts <a@bank.co.ae>", authDomain: "co.ae", trustedSet: ["bank.co.ae"]))
-    #expect(shared.gates.ar == "pass" && !shared.gates.senderTrusted)
-  }
-
-  @Test func trustInTheSignerStaysAsItWasForAMemberDomain() {
-    #expect(BankDomains.trustsSigner("dib.ae", from: "dib.ae", of: trusted))
-    #expect(BankDomains.trustsSigner("mail.dib.ae", from: "dib.ae", of: trusted))
-    #expect(BankDomains.trustsSigner("dib.ae", from: "alerts.dib.ae", of: trusted))
-    #expect(!BankDomains.trustsSigner("other.example", from: "other.example", of: trusted))
-    #expect(!BankDomains.trustsSigner("mybank.example", from: "other.mybank.example", of: ["alerts.mybank.example"]))
-    #expect(!BankDomains.trustsSigner("mybank.example", from: "", of: ["alerts.mybank.example"]))
+  @Test func aChildDomainSenderSignedByItsParentStaysUntrusted() throws {
+    let child = "alerts.mybank.example"
+    guard case .mail(let m) = parsed(from: "Alerts <a@\(child)>", authDomain: "mybank.example", bankDomains: [child], trusted: [child])
+    else { throw CancellationError() }
+    #expect(m.gates.ar == "pass" && !m.gates.senderTrusted)
+    #expect(MessageDisposer.finalize(m, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
   }
 
   @Test func aFromThatOnlyNamesABankDomainOutsideItsAddrSpecIsSetAside() {

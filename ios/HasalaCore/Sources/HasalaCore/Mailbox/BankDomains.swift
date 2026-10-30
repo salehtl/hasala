@@ -58,12 +58,6 @@ public enum BankDomains {
     return false
   }
 
-  public static func trustsSigner(_ signer: String, from: String, of set: [String]) -> Bool {
-    if isMember(signer, of: set) { return true }
-    guard signer.utf8.contains(0x2e), !sharedSuffixesV1.contains(signer), isMember(from, of: set) else { return false }
-    return isMember(from, of: [signer])
-  }
-
   /// The domains cut, in order, into groups of at most `size` (a source's `maxSendersPerList`).
   public static func groups(_ domains: [String], size: Int = maxTermsPerQuery) -> [[String]] {
     let size = max(1, size)

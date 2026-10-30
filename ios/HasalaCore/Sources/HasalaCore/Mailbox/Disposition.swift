@@ -159,7 +159,7 @@ public enum MessageDisposer {
       return .setAside(domain: domains.first ?? "")
     }
 
-    let senderTrusted = verified.map { BankDomains.trustsSigner($0, from: AuthResults.headerFromDomain(headers), of: trusted) } ?? false
+    let senderTrusted = verified.map { BankDomains.isMember($0, of: trusted) } ?? false
     let forwarded = norm?.forwarded ?? false
     let day = dayInstant(internalDateMs)
     var mail = ParsedMail(
