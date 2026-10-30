@@ -667,6 +667,12 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 
 	if opts.Record != nil && len(deleted) > 0 {
 		if err := opts.Record(deleted); err != nil {
+			if opts.Cancel == nil {
+				return rep, fmt.Errorf("%w: record the deletion: %w", ErrUnsettled, err)
+			}
+			if cerr := opts.Cancel(deleted); cerr != nil {
+				return rep, fmt.Errorf("%w: record the deletion: %w; cancel the line: %v", ErrUnsettled, err, cerr)
+			}
 			return rep, fmt.Errorf("purge: record the deletion: %w", err)
 		}
 	}
@@ -689,7 +695,12 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 func settleFailedCommit(ctx context.Context, pool *pgxpool.Pool, deleted []uuid.UUID, opts Options, cause error) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitWait)
 	defer cancel()
-	rows, err := pool.Query(ctx, `SELECT id FROM users WHERE id = ANY($1) FOR UPDATE`, deleted)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("%w: commit: %v; read back: %v", ErrUnsettled, cause, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT id FROM users WHERE id = ANY($1) FOR UPDATE`, deleted)
 	if err != nil {
 		return false, fmt.Errorf("%w: commit: %v; read back: %v", ErrUnsettled, cause, err)
 	}

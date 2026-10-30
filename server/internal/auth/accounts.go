@@ -109,6 +109,7 @@ type accountState struct {
 	FreezeTriggerAt *time.Time
 	FrozenBy        *string
 	HasKeys         bool
+	InDoubt         bool
 }
 
 func (s accountState) frozen() bool      { return s.FrozenAt != nil }
@@ -120,13 +121,14 @@ func (s accountState) operatorFrozen() bool {
 
 const accountColumns = `u.id, u.email_norm, u.display_name, u.status, u.password_hash, u.password_salt,
 	u.password_version, u.password_set_at, u.password_failures, u.password_paused_until, u.frozen_at,
-	u.freeze_trigger_at, u.frozen_by, EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = u.id)`
+	u.freeze_trigger_at, u.frozen_by, EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = u.id),
+	u.reverify_requested_at IS NOT NULL`
 
 func scanAccount(row pgx.Row) (accountState, error) {
 	var s accountState
 	err := row.Scan(&s.ID, &s.EmailNorm, &s.DisplayName, &s.Status, &s.PasswordHash, &s.PasswordSalt,
 		&s.PasswordVersion, &s.PasswordSetAt, &s.Failures, &s.PausedUntil, &s.FrozenAt, &s.FreezeTriggerAt,
-		&s.FrozenBy, &s.HasKeys)
+		&s.FrozenBy, &s.HasKeys, &s.InDoubt)
 	return s, err
 }
 

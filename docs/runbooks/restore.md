@@ -7,13 +7,15 @@ coming back:
 - Each account deletion (`DELETE /api/v1/account` and `hasala-admin
   purge-user`) appends one line to `/var/lib/hasala-ledger/purged`: the random
   account id and the time. The append is part of the deletion. If it fails,
-  nothing is deleted. If the database commit then fails and the account is
-  still there, a `purge-cancelled` line follows, and the replay does not purge
-  that account unless a later deletion line names it. If the line cannot be
-  cancelled (for example, the database cannot be read after the failed commit),
-  or the process stops between the append and the commit, the line stays and
-  the next replay purges the account. The holder asked for that deletion: the
-  answer in the first case says that it may still take effect.
+  nothing is deleted, and a `purge-cancelled` line follows, because the line can
+  already be in the file. If the database commit fails and the account is still
+  there, a `purge-cancelled` line follows too. The replay does not
+  purge that account unless a later deletion line names it. If the line cannot
+  be cancelled (for example, the database cannot be read after the failed
+  commit, or the ledger cannot be written), or the process stops between the
+  append and the commit, the line stays and the next replay purges the account
+  with no goodbye email. The holder asked for that deletion: the answer in the
+  first case says that it may still take effect.
 - Before `hasalad` and the console start, `hasala-purge-replay` runs
   `hasalad purge-user --replay-ledger`. It purges again each account in the
   ledger that the database still has, without a second goodbye email. It also
@@ -52,9 +54,10 @@ coming back:
   address, so the replay cannot put the new one back: when the restored
   address was verified before the change, the account is marked for
   re-verification and as undeliverable, its unused freeze links and email
-  codes are burned, and no alert with a freeze link goes to that address and no
-  recovery can begin (the answer is the same 404 as a frozen account) until the
-  holder verifies or changes it again), and an operator's invite
+  codes are burned, and no alert with a freeze link goes to that address, no
+  recovery can begin or finish (the answer is the same 404 as a frozen account)
+  and no password reset code goes to it, until the holder verifies or changes it
+  again), and an operator's invite
   revocation (the invite is revoked again, and its waitlist entry goes back to
   the list when it has no other open invite). A replay never leaves an account frozen with no passkey and no
   password, because then nothing could lift the freeze: it lifts that holder
@@ -78,7 +81,9 @@ coming back:
   not apply them again. A `hasalad` from before `security/server-lifecycle`
   skips `purge-cancelled`, so its replay purges an account whose deletion was
   cancelled. Before you roll back to one of these, keep a copy of the ledger and remove
-  the lines it cannot read.
+  the lines it cannot read. For each account whose latest deletion line is
+  followed by a `purge-cancelled` line, remove that deletion line as well as the
+  `purge-cancelled` line: a build that reads the deletion line purges the account.
 - A freeze that a later unfreeze lifted is not applied again, but the sessions
   it ended stay ended: every session of that account created before the second
   of the freeze ends again with its push token, and the summary counts this
@@ -167,7 +172,8 @@ new recovery and a password reset. Then only the operator can lift it.
 
 Lifting a freeze, by the holder or the operator, retires every unused freeze
 link of the account, and a link dated before the latest lift no longer freezes
-it. A link from a later alert still works. So an older link cannot freeze the
+it. A device freeze is dated no further back than the latest lift. A link from
+a later alert still works. So an older link cannot freeze the
 account again after the holder changed a password. A lift through any older
 factor retires the links, so after a lift the holder relies on later alerts, the
 in-app lockdown or the operator.
@@ -197,8 +203,8 @@ in-app lockdown or the operator.
 ## Let a holder recover after a restored email change
 
 The replay can put an account back on an address that the holder removed. That
-address cannot begin a recovery until a signed-in device verifies or changes
-it. A holder who has no signed-in device and still uses that address needs the
+address cannot begin a recovery or a password reset until a signed-in device
+verifies or changes it. A holder who has no signed-in device and still uses that address needs the
 operator.
 
 1. Make sure that the request comes from the holder, and that the holder still
@@ -208,8 +214,12 @@ operator.
 
    ```sh
    sudo -u hasala-migrate psql --host=/run/hasala-postgresql --username=hasala_migrate --dbname=hasala \
-     -c "UPDATE users SET reverify_requested_at = NULL, email_undeliverable_at = NULL WHERE id = '<ACCOUNT_ID>'"
+     -c "UPDATE users SET reverify_requested_at = NULL, email_undeliverable_at = NULL, email_verified_at = now() WHERE id = '<ACCOUNT_ID>'"
    ```
+
+   Set `email_verified_at` too. The replay runs before each start of `hasalad`
+   and marks the account again when the address was verified before the email
+   change in the ledger.
 
 3. The holder recovers with the emailed code and the 12 words.
 

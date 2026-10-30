@@ -161,9 +161,6 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
 		case purgeledger.KindUnfreeze:
-			if _, err := reapplyOne(ctx, pool, e, now, reapplyLiftedLinksTx); err != nil {
-				return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
-			}
 			if !unfreezes[i] {
 				continue
 			}
@@ -196,6 +193,14 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 		case reappliedUnsigned:
 			rep.Unsigned++
+		}
+	}
+	for _, e := range entries {
+		if e.Kind != purgeledger.KindUnfreeze {
+			continue
+		}
+		if _, err := reapplyOne(ctx, pool, e, now, reapplyLiftedLinksTx); err != nil {
+			return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
 		}
 	}
 	for _, id := range touched {

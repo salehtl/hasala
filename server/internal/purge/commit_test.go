@@ -135,3 +135,76 @@ func TestAnUnreadableOrUncancellableCommitIsUnsettled(t *testing.T) {
 		t.Fatalf("a read-back that failed: %v %v, cancelled %v", committed, err, called)
 	}
 }
+
+func rowIsLocked(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) bool {
+	t.Helper()
+	_, err := pool.Exec(bg, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE NOWAIT`, u)
+	return err != nil
+}
+
+func TestTheCancelLineIsWrittenWhileTheAccountIsLocked(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "settling")
+	locked := false
+	committed, err := settleFailedCommit(bg, pool, []uuid.UUID{u}, Options{Cancel: func([]uuid.UUID) error {
+		locked = rowIsLocked(t, pool, u)
+		return nil
+	}}, errors.New("connection lost"))
+	if committed || err == nil || errors.Is(err, ErrUnsettled) {
+		t.Fatalf("settled %v %v", committed, err)
+	}
+	if !locked {
+		t.Fatal("the account was not locked while its line was cancelled")
+	}
+	if rowIsLocked(t, pool, u) {
+		t.Fatal("the account stayed locked after the settlement")
+	}
+}
+
+func TestARecordThatFailsAfterItsWriteCancelsTheLine(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "record-fails")
+	path := filepath.Join(t.TempDir(), "purged")
+	refused := errors.New("sync failed")
+	locked := false
+	_, err := PurgeWith(bg, pool, u, Options{Goodbye: true,
+		Record: func(ids []uuid.UUID) error {
+			if err := purgeledger.Append(path, ids, time.Now()); err != nil {
+				t.Error(err)
+			}
+			return refused
+		},
+		Cancel: func(ids []uuid.UUID) error {
+			locked = rowIsLocked(t, pool, u)
+			return purgeledger.AppendCancelled(path, ids, time.Now())
+		},
+	})
+	if !errors.Is(err, refused) || errors.Is(err, ErrUnsettled) {
+		t.Fatalf("a record that failed: %v", err)
+	}
+	if !locked {
+		t.Fatal("the account was not locked while its line was cancelled")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
+		t.Fatal("the account went although its deletion was not recorded")
+	}
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := purgeledger.IDs(entries); len(ids) != 0 {
+		t.Fatalf("accounts to purge %v, want none", ids)
+	}
+
+	stuck := errors.New("disk full")
+	_, err = PurgeWith(bg, pool, u, Options{
+		Record: func([]uuid.UUID) error { return refused },
+		Cancel: func([]uuid.UUID) error { return stuck },
+	})
+	if !errors.Is(err, refused) || !errors.Is(err, ErrUnsettled) {
+		t.Fatalf("a record and a cancel that failed: %v", err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
+		t.Fatal("the account went although its deletion was not recorded")
+	}
+}

@@ -349,7 +349,12 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 		c.user, writerID).Scan(&signedOut); err != nil {
 		return Wake{}, err
 	}
-	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) {
+	var liftedAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT max(at) FROM auth_events WHERE user_id = $1 AND kind = $2`,
+		c.user, EventAccountUnfrozen).Scan(&liftedAt); err != nil {
+		return Wake{}, err
+	}
+	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) && (liftedAt == nil || signedOut.After(*liftedAt)) {
 		trigger = *signedOut
 	}
 	revoked, err := freezeTx(ctx, tx, a.Mail, c.user, FrozenByHolder, trigger, now, nil, writerID)

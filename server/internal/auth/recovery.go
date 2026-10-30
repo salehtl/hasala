@@ -66,18 +66,11 @@ func (a *Accounts) RecoverBegin(ctx context.Context, recoveryPub []byte) (Recove
 	defer pgtx.Rollback(ctx, tx)
 	st, err := scanAccount(tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM users u
 		JOIN account_keys ak ON ak.user_id = u.id WHERE ak.recovery_pubkey = $1`, recoveryPub))
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!st.active() || st.frozen())) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (!st.active() || st.frozen() || st.InDoubt)) {
 		return RecoverBegun{}, ErrNoSuchAccount
 	}
 	if err != nil {
 		return RecoverBegun{}, err
-	}
-	var inDoubt bool
-	if err := tx.QueryRow(ctx, `SELECT reverify_requested_at IS NOT NULL FROM users WHERE id = $1`, st.ID).Scan(&inDoubt); err != nil {
-		return RecoverBegun{}, err
-	}
-	if inDoubt {
-		return RecoverBegun{}, ErrNoSuchAccount
 	}
 	id, err := newCeremonyIDN(32)
 	if err != nil {
@@ -148,12 +141,18 @@ func (a *Accounts) RecoverVerify(ctx context.Context, ceremonyID, code, kind str
 	out := RecoverVerified{Nonce: nonce, UserID: userID}
 	err = a.consumeCode(ctx, codeCheck{CodeID: codeID, Purpose: PurposeRecovery, CeremonyKind: CeremonyRecovery,
 		CeremonyID: ceremonyID, Submitted: code}, func(ctx context.Context, tx pgx.Tx) error {
-		var email string
+		var (
+			email   string
+			inDoubt bool
+		)
 		if err := tx.QueryRow(ctx,
-			`SELECT u.email_norm, k.amk_commitment, k.authority_pubkey, k.recovery_wrap, k.current_epoch
+			`SELECT u.email_norm, u.reverify_requested_at IS NOT NULL, k.amk_commitment, k.authority_pubkey, k.recovery_wrap, k.current_epoch
 			   FROM users u JOIN account_keys k ON k.user_id = u.id WHERE u.id = $1`, userID).
-			Scan(&email, &out.AMKCommitment, &out.AuthorityPubkey, &out.RecoveryWrap, &out.CurrentEpoch); err != nil {
+			Scan(&email, &inDoubt, &out.AMKCommitment, &out.AuthorityPubkey, &out.RecoveryWrap, &out.CurrentEpoch); err != nil {
 			return fmt.Errorf("%w: the account has no keys", ErrCodeRejected)
+		}
+		if inDoubt {
+			return fmt.Errorf("%w: the address is in doubt", ErrCodeRejected)
 		}
 		var session any
 		if kind == MethodPasskey {
@@ -243,8 +242,8 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		return RecoverFinished{}, refuse("the kind is not the one verified (%s)", kind)
 	}
 	st, err := readAccount(ctx, a.Pool, userID, false)
-	if err != nil || !st.active() || !st.HasKeys || st.frozen() {
-		return RecoverFinished{}, refuse("the account is not active, keyed and unfrozen")
+	if err != nil || !st.active() || !st.HasKeys || st.frozen() || st.InDoubt {
+		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
 	}
 	var recoveryPub, authorityPub []byte
 	if err := a.Pool.QueryRow(ctx, `SELECT recovery_pubkey, authority_pubkey FROM account_keys WHERE user_id = $1`, userID).
@@ -338,8 +337,8 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	defer pgtx.Rollback(ctx, tx)
 	// The account's state again, under the lock: a freeze or a suspension
 	// that landed since the check above refuses.
-	if st, err = readAccount(ctx, tx, userID, true); err != nil || !st.active() || !st.HasKeys || st.frozen() {
-		return RecoverFinished{}, refuse("the account is not active, keyed and unfrozen")
+	if st, err = readAccount(ctx, tx, userID, true); err != nil || !st.active() || !st.HasKeys || st.frozen() || st.InDoubt {
+		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
 	}
 	var live int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM writers WHERE user_id = $1 AND revoked_at IS NULL`, userID).Scan(&live); err != nil {
