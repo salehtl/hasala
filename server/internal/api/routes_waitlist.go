@@ -28,12 +28,16 @@ const (
 	waitlistIPBurst     = 3
 	waitlistGlobalRate  = 120.0 / 3600
 	waitlistGlobalBurst = 30
+	waitlistPrefixRate  = 30.0 / 3600
+	waitlistPrefixBurst = 10
 	linkIPRate          = 30.0 / 3600
 	linkIPBurst         = 10
 	bankIPRate          = 10.0 / 3600
 	bankIPBurst         = 5
 	bankGlobalRate      = 300.0 / 3600
 	bankGlobalBurst     = 60
+	bankPrefixRate      = 60.0 / 3600
+	bankPrefixBurst     = 20
 	bankUserRate        = 10.0 / 86400
 	bankUserBurst       = 5
 	preflightRate       = 1.0
@@ -53,7 +57,7 @@ type WebOptions struct {
 	// form post.
 	DoneURL string
 
-	WaitlistIP, WaitlistGlobal, LinkIP, BankIP, BankGlobal, BankUser, PreflightIP *Limiter
+	WaitlistIP, WaitlistPrefix, WaitlistGlobal, LinkIP, BankIP, BankPrefix, BankGlobal, BankUser, PreflightIP *Limiter
 
 	Turnstile         TokenVerifier
 	TurnstileRequired bool
@@ -87,9 +91,11 @@ func (s *Server) mountWaitlist(mux *http.ServeMux) {
 	}
 	o := s.Web
 	s.ensureClientLimiter(&o.WaitlistIP, waitlistIPRate, waitlistIPBurst, publicMaxKeys)
+	s.ensureLimiter(&o.WaitlistPrefix, waitlistPrefixRate, waitlistPrefixBurst, publicMaxKeys)
 	s.ensureLimiter(&o.WaitlistGlobal, waitlistGlobalRate, waitlistGlobalBurst, 1)
 	s.ensureClientLimiter(&o.LinkIP, linkIPRate, linkIPBurst, publicMaxKeys)
 	s.ensureClientLimiter(&o.BankIP, bankIPRate, bankIPBurst, publicMaxKeys)
+	s.ensureLimiter(&o.BankPrefix, bankPrefixRate, bankPrefixBurst, publicMaxKeys)
 	s.ensureLimiter(&o.BankGlobal, bankGlobalRate, bankGlobalBurst, 1)
 	s.ensureLimiter(&o.BankUser, bankUserRate, bankUserBurst, publicMaxKeys)
 	s.ensureLimiter(&o.PreflightIP, preflightRate, preflightBurst, publicMaxKeys)
@@ -254,11 +260,20 @@ type waitlistJSON struct {
 	TurnstileToken string `json:"turnstileToken"`
 }
 
+func prefixAllow(r *http.Request, prefix *Limiter) bool {
+	k, ok := prefixKey(clientKey(r))
+	return !ok || prefix.Allow(k)
+}
+
+func writePublicRateLimited(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "600")
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+}
+
 func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 	o := s.Web
-	if !o.WaitlistIP.Allow(clientKey(r)) || !o.WaitlistGlobal.Allow("") {
-		w.Header().Set("Retry-After", "600")
-		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+	if !o.WaitlistIP.Allow(clientKey(r)) || !prefixAllow(r, o.WaitlistPrefix) {
+		writePublicRateLimited(w)
 		return
 	}
 	var (
@@ -292,6 +307,10 @@ func (s *Server) handleWaitlistSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.turnstileOK(r, form.TurnstileToken, "waitlist") {
 		s.answerPublic(w, r, isForm, http.StatusForbidden, nil, "turnstile_failed", "")
+		return
+	}
+	if !o.WaitlistGlobal.Allow("") {
+		writePublicRateLimited(w)
 		return
 	}
 	if _, err := o.Waitlist.Submit(r.Context(), email, choice); err != nil {
