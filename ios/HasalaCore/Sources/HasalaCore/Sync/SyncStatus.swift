@@ -19,6 +19,8 @@ public enum HaltKind: Sendable, Hashable {
   /// (01 §10.13; the integrity alarm, kept as a halt because the reader cannot
   /// run without a verified roster).
   case rosterInvalid
+  case unprovedRevocation
+  case unexpectedGone
 }
 
 public enum SyncPhase: Sendable, Hashable {
@@ -40,7 +42,7 @@ public enum SyncPhase: Sendable, Hashable {
   case needsUnlock(epoch: UInt32)
   /// `403 keys_required`: onboarding step `keys`.
   case keysRequired
-  /// `410 account_deleted` or `403 writer_revoked`: wipe (§4.7 row 3).
+  /// `410 account_deleted`, or a revocation the pinned key history shows: wipe (§4.7 row 3).
   case wiping
 }
 
@@ -101,7 +103,9 @@ extension SyncStop {
       case (401, _): return .needsSignIn
       case (403, "account_frozen"): return .frozen
       case (403, "account_suspended"): return .suspended
-      case (403, "writer_revoked"), (410, _): return .wipe
+      case (410, "account_deleted"): return .wipe
+      case (410, _): return .halted(.unexpectedGone)
+      case (403, "writer_revoked"): return .halted(.unprovedRevocation)
       case (403, "writer_unbound"), (403, "writer_mismatch"): return .needsRebind
       case (403, "keys_required"): return .keysRequired
       case (426, _): return .halted(.updateRequired)

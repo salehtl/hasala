@@ -94,7 +94,7 @@ struct WorkCoordinatorTests {
     #expect(all.count == 3 && all[1].hasPrefix("stopped.halted") && all[1].contains("updateRequired"))
   }
 
-  @Test(arguments: [HaltKind.tampered(.chainBreak), .serverRestored, .tamperedResend, .inconsistent("fold"), .rosterInvalid])
+  @Test(arguments: [HaltKind.tampered(.chainBreak), .serverRestored, .tamperedResend, .inconsistent("fold"), .rosterInvalid, .unprovedRevocation, .unexpectedGone])
   func everyHaltIsShownAndTheMailWaits(_ halt: HaltKind) async {
     let log = Log()
     log.syncStop.withLock { $0 = .halted(halt) }

@@ -41,7 +41,9 @@ struct SyncPieceTests {
     func f(_ s: Int, _ c: String) -> APIError { .refused(APIFailure(status: s, code: c)) }
     #expect(SyncStop.common(f(401, "unauthorized")) == .needsSignIn)
     #expect(SyncStop.common(f(410, "account_deleted")) == .wipe)
-    #expect(SyncStop.common(f(403, "writer_revoked")) == .wipe)
+    #expect(SyncStop.common(f(410, "link_expired")) == .halted(.unexpectedGone))
+    #expect(SyncStop.common(f(410, "")) == .halted(.unexpectedGone))
+    #expect(SyncStop.common(f(403, "writer_revoked")) == .halted(.unprovedRevocation))
     #expect(SyncStop.common(f(403, "writer_unbound")) == .needsRebind)
     #expect(SyncStop.common(f(403, "keys_required")) == .keysRequired)
     #expect(SyncStop.common(f(503, "unavailable")) == .offline)

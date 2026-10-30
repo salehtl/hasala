@@ -153,7 +153,7 @@ public actor SyncEngine {
       status.suspended = false
       status.phase = .idle
     } catch {
-      out.stop = await apply(error)
+      out.stop = await apply(await context.settled(error))
     }
     out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
