@@ -1061,3 +1061,196 @@ func TestAnEmailChangeIsRecordedAndARestoredOldAddressGetsNoFreezeLink(t *testin
 		t.Fatalf("a second replay %+v %v", rep, err)
 	}
 }
+
+func TestALiftedFreezeRetiresTheOlderFreezeLinks(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	older := f.freezeToken(m.addr)
+	f.clock.advance(time.Minute)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	newer := f.freezeToken(m.addr)
+	if older == newer {
+		t.Fatal("the second sign-in minted no new link")
+	}
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.FreezeByLink(bgctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil || !in.Restricted {
+		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
+	}
+	m.token = in.Session.Token
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	newS := f.stretch(m.addr, "an entirely new password")
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(newS))); err != nil {
+		t.Fatal(err)
+	}
+	if live, err := f.acct.FreezeTokenLive(bgctx, older); err != nil || live {
+		t.Fatalf("the older link after the lift: live %v, %v", live, err)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, older); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a link older than the lift froze the account again")
+	}
+	if _, err := f.sessions.Resolve(bgctx, m.token); err != nil {
+		t.Fatalf("a link older than the lift ended the session: %v", err)
+	}
+}
+
+func TestAnAlertQueuedBeforeALiftCarriesALinkThatDoesNotFreeze(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	queueSignInAlert(t, f, m.user.UserID)
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil || !in.Restricted {
+		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
+	}
+	m.token = in.Session.Token
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	late := f.freezeToken(m.addr)
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1 AND used_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatalf("%d unused links, want the late one", n)
+	}
+	if live, err := f.acct.FreezeTokenLive(bgctx, late); err != nil || live {
+		t.Fatalf("a link dated before the lift: live %v, %v", live, err)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, late); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a link dated before the lift froze the account")
+	}
+
+	f.clock.advance(time.Minute)
+	queueSignInAlert(t, f, m.user.UserID)
+	after := f.freezeToken(m.addr)
+	if live, err := f.acct.FreezeTokenLive(bgctx, after); err != nil || !live {
+		t.Fatalf("a link dated after the lift: live %v, %v", live, err)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, after); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_by = 'holder'`, m.user.UserID); n != 1 {
+		t.Fatal("a link dated after the lift did not freeze the account")
+	}
+}
+
+func TestAnOperatorsUnfreezeRetiresTheOlderFreezeLinks(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	tok := f.freezeToken(m.addr)
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	if err := pgx.BeginFunc(bgctx, f.pool, func(tx pgx.Tx) error {
+		unfrozen, err := OperatorUnfreeze(bgctx, tx, m.user.UserID, ScopeAny, f.clock.now(), f.mailer)
+		if err == nil && !unfrozen {
+			err = errors.New("still frozen")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1 AND used_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d links are still unused after the operator's unfreeze", n)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a link older than the operator's unfreeze froze the account")
+	}
+}
+
+func TestARestoreDoesNotBringBackTheLinksOfALiftedFreeze(t *testing.T) {
+	f := newAcctFixture(t)
+	path, rec := ledgerRecorder(t)
+	f.acct.Record = rec
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := m.loginPassword(m.s, nil); err != nil {
+		t.Fatal(err)
+	}
+	tok := f.freezeToken(m.addr)
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil || !in.Restricted {
+		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
+	}
+	m.token = in.Session.Token
+	f.clock.advance(time.Minute)
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	entries := readLedger(t, path)
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
+	}
+	var (
+		usedAt *time.Time
+		events = f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`, m.user.UserID)
+	)
+	if err := f.pool.QueryRow(bgctx, `SELECT used_at FROM freeze_tokens WHERE user_id = $1 AND trigger_kind = 'new_sign_in'`,
+		m.user.UserID).Scan(&usedAt); err != nil || usedAt == nil || events != 1 {
+		t.Fatalf("the live lift: link used %v (%v), %d events", usedAt, err, events)
+	}
+
+	if _, err := f.pool.Exec(bgctx, `UPDATE freeze_tokens SET used_at = NULL WHERE user_id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `DELETE FROM auth_events WHERE user_id = $1 AND kind IN ('account_frozen', 'account_unfrozen')`,
+		m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	if _, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM freeze_tokens WHERE user_id = $1 AND used_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d links of the restored account are unused", n)
+	}
+	if n := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`, m.user.UserID); n != 1 {
+		t.Fatalf("%d unfreeze events, want the restored lift", n)
+	}
+	if _, err := f.acct.FreezeByLink(bgctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_at IS NULL`, m.user.UserID); n != 1 {
+		t.Fatal("a link of the restored account froze it")
+	}
+	if _, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`, m.user.UserID); n != 1 {
+		t.Fatalf("a second replay left %d unfreeze events", n)
+	}
+}

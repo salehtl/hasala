@@ -160,6 +160,9 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
 		case purgeledger.KindUnfreeze:
+			if _, err := reapplyOne(ctx, pool, e, now, reapplyLiftedLinksTx); err != nil {
+				return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
+			}
 			if !unfreezes[i] {
 				continue
 			}
@@ -290,11 +293,42 @@ func reapplyUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 		}
 		return reappliedDone, nil
 	}
-	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID, now); err != nil {
 		return reappliedNothing, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, e.ID, nil, now); err != nil {
 		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyLiftedLinksTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, e.ID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $3 WHERE user_id = $1 AND used_at IS NULL AND trigger_at < $2`,
+		e.ID, e.At, now)
+	if err != nil {
+		return reappliedNothing, err
+	}
+	var known bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) >= $3)`,
+		e.ID, EventAccountUnfrozen, e.At).Scan(&known); err != nil {
+		return reappliedNothing, err
+	}
+	if known && tag.RowsAffected() == 0 {
+		return reappliedNothing, nil
+	}
+	if !known {
+		if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, e.At); err != nil {
+			return reappliedNothing, err
+		}
 	}
 	return reappliedDone, nil
 }
@@ -311,7 +345,7 @@ func liftLockoutTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time
 	if err != nil {
 		return reappliedNothing, err
 	}
-	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID, now); err != nil {
 		return reappliedNothing, err
 	}
 	if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, now); err != nil {

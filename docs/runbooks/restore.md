@@ -35,7 +35,9 @@ coming back:
   replay applies each one again: a freeze (unless an unfreeze came later), an
   unfreeze (when it is the account's latest freeze or unfreeze in the ledger
   and the restored freeze is not newer than it; it never lifts an operator's
-  freeze, and the restored sessions end), a removed device (only when the device that signed the removal is still in the
+  freeze, and the restored sessions end; every unfreeze line also retires the
+  restored freeze links dated before it and restores its `account_unfrozen`
+  event, whether or not the restored row is frozen), a removed device (only when the device that signed the removal is still in the
   database; otherwise it only signs that device out, and the summary counts
   it), a password change (the restored password is cleared and every session
   ends, so a password-only account gets back in with its 12 words), a removed
@@ -155,6 +157,13 @@ that is older than the event the freeze is dated to. A freeze from the link in
 a "Your recovery phrase was used" alert is dated to that recovery, and the
 recovery replaced or re-dated every factor. A frozen account also refuses a
 new recovery and a password reset. Then only the operator can lift it.
+
+Lifting a freeze, by the holder or the operator, retires every unused freeze
+link of the account, and a link dated before the latest lift no longer freezes
+it. A link from a later alert still works. So an older link cannot freeze the
+account again after the holder changed a password. The cost: when someone who
+holds an older factor lifts a freeze, the holder's older links stop working
+too, and the holder relies on later alerts, the in-app lockdown or the operator.
 
 1. Make sure that the request comes from the holder. Ask them to write to
    support from the account's address, and confirm it out of band. Do not
