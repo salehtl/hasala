@@ -479,7 +479,7 @@ From `web/`:
 
 1. Run `bun install --frozen-lockfile` one time.
 2. When you edit, run `bun run dev`.
-3. Run `bun run check` (this is `astro check`).
+3. Run `bun run check` (this is `astro check`) and `bun run test`.
 4. Run `bun run build`. It writes `dist/` and then runs
    `scripts/check-dist.ts`. The build fails if one of these conditions
    occurs:
