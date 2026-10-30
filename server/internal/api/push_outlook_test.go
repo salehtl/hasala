@@ -327,6 +327,47 @@ func TestOutlookHookLinkLimiter(t *testing.T) {
 	}
 }
 
+func TestOutlookHookLinkOverItsBudgetSpendsNoGlobalBudget(t *testing.T) {
+	h := newHarness(t)
+	wk, o, _ := withOutlook(h, outlookPushOn())
+	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
+	o.Push.HookGlobal = NewLimiter(0, 4, 1, time.Now)
+	o.Push.HookLink = NewLimiter(0, 3, 16, time.Now)
+	outlookLinkRow(h, o, "flood-a", "ios-64444444-4444-4444-8444-444444444444", testClientState)
+	b := outlookLinkRow(h, o, "flood-b", "ios-65555555-5555-4555-8555-555555555555", otherClientState)
+	for range 50 {
+		wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusAccepted)
+	}
+	if ws := wk.take(); len(ws) != 3 {
+		t.Fatalf("one link woke %d times, want its budget of 3", len(ws))
+	}
+	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(otherClientState))), http.StatusAccepted)
+	if ws := wk.take(); len(ws) != 1 || ws[0].user != b {
+		t.Fatalf("after another link's flood: %+v", ws)
+	}
+}
+
+func TestOutlookHookOverTheGlobalBudgetKeepsTheLinkBudget(t *testing.T) {
+	h := newHarness(t)
+	wk, o, _ := withOutlook(h, outlookPushOn())
+	o.Push.HookPerIP = NewLimiter(1e6, 1e6, 10, time.Now)
+	o.Push.HookGlobal = NewLimiter(0, 1, 1, time.Now)
+	o.Push.HookGlobal.Allow("")
+	o.Push.HookLink = NewLimiter(0, 2, 16, time.Now)
+	u := outlookLinkRow(h, o, "retry", "ios-64444444-4444-4444-8444-444444444444", testClientState)
+	for range 5 {
+		wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusTooManyRequests)
+	}
+	if len(wk.take()) != 0 {
+		t.Fatal("a request over the global budget woke someone")
+	}
+	o.Push.HookGlobal = NewLimiter(0, 1, 1, time.Now)
+	wantStatus(t, h.graph(outlookHookPath, "", graphBody(t, note(testClientState))), http.StatusAccepted)
+	if ws := wk.take(); len(ws) != 1 || ws[0].user != u {
+		t.Fatalf("the retry after the refusals: %+v", ws)
+	}
+}
+
 // Made-up clientStates never reach hook-link: a flood of them cannot fill the
 // limiter and push a real link into its shared fallback, so the real link is
 // still woken and nothing is counted as link-limited.
