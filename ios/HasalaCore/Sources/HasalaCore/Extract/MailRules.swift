@@ -102,8 +102,11 @@ enum MailRules {
     return out
   }
 
-  static func isPending(_ input: ExtractInput) -> Bool {
-    pendingSignal(input) != .none
+  static func setsAside(_ input: ExtractInput, direction: String?, captured: String? = nil) -> Bool {
+    guard kind(input, direction: direction) == .transferNotice else { return false }
+    let field = captured.map { RuleText.fold(RuleText.clean(RuleText.asciiDigits($0))) } ?? ""
+    let statuses = statusValues(foldedLines(input.text).filter { field.isEmpty || !$0.contains(field) })
+    return !statuses.isEmpty && statuses.allSatisfy { RuleText.has(StatusLexicon.pendingValue, $0) }
   }
 
   static func pendingSignal(_ input: ExtractInput) -> ExtractPending {

@@ -616,9 +616,16 @@ public actor MailboxEngine {
     }
   }
 
+  private func forgetReader() async {
+    var c = MailboxCommit()
+    c.clearReader = true
+    try? await store.commit(c)
+  }
+
   private func leaveLink(_ state: inout MailboxState) async -> MailboxDisconnectOutcome {
     await endLocalPush()
     await tokens.forget()
+    await forgetReader()
     state.lastHolderCheckAtMs = clock.nowMs()
     _ = await setPhase(&state, .otherDevice, halt: .notHolder, CycleReport())
     return .otherDevice
@@ -715,6 +722,7 @@ public actor MailboxEngine {
           // "revoke OWN refresh token"; to confirm with an AT-GMAIL run on a real account).
           await endLocalPush()
           await tokens.forget()
+          await forgetReader()
           return await setPhase(&state, .otherDevice, halt: .notHolder, report)
         case .holder(isThisDevice: true, let watch):
           state.lastHolderCheckAtMs = now

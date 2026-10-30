@@ -198,7 +198,8 @@ public enum MessageDisposer {
       mail.bank = t.definition.bank
       var reading: ExtractReading?
       let verdict = CombinedReader.templateVerdict(
-        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction)
+        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction),
+        captured: f.merchant
       ) {
         guard reader != nil else { return nil }
         let (r, next) = CombinedReader.read(input, reader!.layouts)

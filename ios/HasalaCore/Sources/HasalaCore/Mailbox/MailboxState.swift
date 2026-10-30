@@ -143,12 +143,13 @@ public struct MailboxCommit: Sendable {
   public var state: MailboxState?
   /// Clears every mailbox table (Disconnect).
   public var clearAll = false
+  public var clearReader = false
 
   public init() {}
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
       && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
-      && unparsedSenders.isEmpty && reader == nil && state == nil && !clearAll
+      && unparsedSenders.isEmpty && reader == nil && state == nil && !clearAll && !clearReader
   }
 }
 
@@ -253,6 +254,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       imports = [:]
       reader = nil
     }
+    if c.clearReader { reader = nil }
     enqueued.append(contentsOf: c.drafts)
     for a in c.accounted { accountedRows[a.messageID] = a }
     for s in c.setAside where !setAside.contains(where: { $0.messageID == s.messageID }) { setAside.append(s) }

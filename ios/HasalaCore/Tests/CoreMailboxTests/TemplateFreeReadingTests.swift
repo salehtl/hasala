@@ -210,6 +210,35 @@ extension NovelMail {
     #expect(plain.held == nil && !finalize(plain).needsReview)
   }
 
+  func held(_ m: FakeGmail.Message, amount: Int64) throws {
+    var reader: MailReaderState? = MailReaderState()
+    let p = try mail(m, &reader)
+    #expect(p.fields?.amountMinor == amount, "\(p)")
+    #expect(finalize(p).needsReview)
+    #expect((reader?.counts.values.reduce(0) { $0 + $1.pendingSetAside }) == 0)
+  }
+
+  @Test func aPendingPhraseCannotSetAReaderRowAside() throws {
+    let body = "AED 120.00 has been withdrawn from your account 012XXX34XXX56. Any remaining instalments will be processed as scheduled."
+    let m = FakeGmail.Message(
+      id: "r1", raw: SyntheticMail.rfc822(from: NovelMail.from, subject: "Account activity", body: body, dateMs: Rig.t0, authDomain: "dib.ae"),
+      internalDateMs: Rig.t0, from: NovelMail.from)
+    try held(m, amount: 12_000)
+  }
+
+  @Test func aStatusShapedDescriptionCannotSetATemplateHitAside() throws {
+    try held(SyntheticMail.dibDebitAlert(id: "d1", description: "Status: Pending", dateMs: Rig.t0), amount: 314_159)
+  }
+
+  @Test func aStatusShapedMerchantCannotSetATemplateHitAside() throws {
+    let body = "إشعار مشتريات\nالمبلغ\nAED 250.00\nبتاريخ 05-06-2026\nالدفع الى\nTRANSFER STATUS:QUEUED\nرقم البطاقة\nXXXX1234"
+    let from = "DIB Alerts <alerts@dib.ae>"
+    let m = FakeGmail.Message(
+      id: "d2", raw: SyntheticMail.rfc822(from: from, subject: "DIB Notification", body: body, dateMs: Rig.t0, authDomain: "dib.ae"),
+      internalDateMs: Rig.t0, from: from)
+    try held(m, amount: 25_000)
+  }
+
   @Test func aPendingStatusWithNoReadableAmountIsSetAside() throws {
     var reader: MailReaderState? = MailReaderState()
     let body = "Dear Customer,\nYour fund transfer request to SAMPLE BENEFICIARY was received.\nStatus: In process"
@@ -284,6 +313,39 @@ extension NovelMail {
     let row = try #require(await rig.enqueued().first { $0.messageID == "nv9" })
     #expect(row.payload["tier"] == .string("heuristic") && row.payload["needs_review"] == .bool(false))
     #expect(await rig.engine.readerCounts()["dib"]?.readerOnly == 6)
+  }
+
+  @Test(arguments: [Backend.sqlite, .memory])
+  func savedLayoutsHoldNoMailText(_ backend: Backend) async throws {
+    let rig = Rig(backend: backend)
+    await rig.ledger.setTrust(["dib.ae": true])
+    await rig.connectAndActivate()
+    for i in 0..<5 {
+      let body = "Dear Syntheticname,\nYour purchase of AED \(10 + i).50 at SAMPLE BOOKSHOP was charged to your card ending 4321.\nReference SYNTHMARKER99"
+      let at = rig.clock.nowMs() - 10_000 + Int64(i) * 1_000
+      rig.gmail.add(
+        FakeGmail.Message(
+          id: "m\(i)", raw: SyntheticMail.rfc822(from: NovelMail.from, subject: "Account activity", body: body, dateMs: at, authDomain: "dib.ae"),
+          internalDateMs: at, from: NovelMail.from))
+    }
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    let saved = try #require(try await rig.store.loadReader())
+    #expect(!saved.layouts.isEmpty)
+    let json = String(decoding: try #require(saved.encoded()), as: UTF8.self).lowercased()
+    for marker in ["synthmarker99", "syntheticname", "bookshop", "10.50"] { #expect(!json.contains(marker), "\(marker)") }
+  }
+
+  @Test func layoutsSavedInTheOlderFormatAreNotRead() throws {
+    var state = MailReaderState(address: "a@example.com")
+    var counts = ReaderCounts()
+    counts.readerOnly = 2
+    state.counts["dib"] = counts
+    let data = try #require(state.encoded())
+    var json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    json["version"] = 1
+    json["layouts"] = ["senders": ["dib.ae": ["layouts": [], "clock": 1, "lastRead": 1]], "clock": 1]
+    let old = try #require(MailReaderState.decoded(try JSONSerialization.data(withJSONObject: json)))
+    #expect(old.layouts.isEmpty && old.counts["dib"]?.readerOnly == 2)
   }
 
   @Test func aPendingNoticeIsSetAsideAndShown() async throws {

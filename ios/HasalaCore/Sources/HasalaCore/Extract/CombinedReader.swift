@@ -17,6 +17,7 @@ public enum CombinedReader {
       result.readersAgree = readersAgree(lo, ro)
       result.directionAmbiguous = ro.directionAmbiguous && result.direction?.rawValue == ro.direction
       result.aedFromOverride = out.aedOverride && !readsItself(l, out) && !readsItself(r, out)
+      result.aedOverrideUsed = lo.aedOverride || ro.aedOverride
     }
     return (result, result.outcome == .notTransaction ? memory : next)
   }
@@ -48,11 +49,11 @@ public enum CombinedReader {
   }
 
   public static func templateVerdict(
-    _ input: ExtractInput, amountMinor: Int64, currency: String, direction: ExtractDirection?,
+    _ input: ExtractInput, amountMinor: Int64, currency: String, direction: ExtractDirection?, captured: String? = nil,
     read: () -> ExtractReading?
   ) -> ExtractTemplateVerdict? {
     let signal = pending(input, direction: direction)
-    if signal == .status { return nil }
+    if signal == .status && MailRules.setsAside(bounded(input), direction: direction?.rawValue, captured: captured) { return nil }
     let reading = read()
     var out = ExtractTemplateVerdict(amountMinor: amountMinor, currency: currency)
     if let iso = ExtractCurrency.iso(currency) {
@@ -76,6 +77,7 @@ public enum CombinedReader {
       out.holds.append(.currencyNotISO)
     }
     if signal == .phrase { out.holds.append(.pendingPhrase) }
+    if signal == .status { out.holds.append(.pendingStatus) }
     return out
   }
 
@@ -176,12 +178,16 @@ public enum CombinedReader {
     var notes = [r.note]
     let outcome: ExtractOutcome
     let card = kind.isCard
+    var held = false
     if r.isTransaction {
-      if !card && MailRules.isPending(input) {
+      let signal = card ? ExtractPending.none : MailRules.pendingSignal(input)
+      if signal == .phrase ? kind == .transferNotice : signal == .status && MailRules.setsAside(input, direction: r.direction) {
         outcome = .pending
         notes.append("pending status")
       } else {
         outcome = .transaction
+        held = signal != .none
+        if held { notes.append("pending wording held") }
       }
     } else if negative {
       outcome = .notTransaction
@@ -202,9 +208,11 @@ public enum CombinedReader {
       amountMinor = nil
       notes.append("\(c) is not a two-decimal currency: no amount in hundredths")
     }
-    return ExtractReading(
+    var out = ExtractReading(
       outcome: outcome, amountMinor: amountMinor, currency: r.currency, direction: direction, merchant: r.merchant,
       last4: MailRules.last4(input), kind: kind, confidencePercent: r.confidence, agreed: agreed, notes: notes,
       aedFromOverride: r.aedOverride)
+    out.pendingWordingHeld = held
+    return out
   }
 }

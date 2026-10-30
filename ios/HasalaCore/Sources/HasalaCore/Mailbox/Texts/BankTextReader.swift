@@ -143,7 +143,8 @@ public enum BankTextReader {
         var f = MessageDisposer.usableFields(x, posted: posted)
       else { continue }
       let verdict = CombinedReader.templateVerdict(
-        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction)
+        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction),
+        captured: f.merchant
       ) {
         let (r, next) = CombinedReader.read(input, memory)
         if learn { memory = next }

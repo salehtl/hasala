@@ -124,11 +124,16 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    with what was read. (2026-10-24, decided by the owner's delegate.) Since 2026-10-29 the
    trust gates have no card term: a mail with an unconfirmed recipient files on any card
    or none, and bank texts file on the same reader agreement, with no sender or card check
-   ([filing-without-cards.md](filing-without-cards.md)).
+   ([filing-without-cards.md](filing-without-cards.md)). Since 2026-10-30 a row also waits in
+   Review when either reader's amount came from the AED rule of decision 4, when a second
+   amount with its own amount or movement wording differs from the one read, and when
+   pending wording appears outside a transfer notice.
 3. **Pending transfers are not transactions.** A notice that a transfer is pending or in
    process is disregarded. Only completed transfers and actual debit and credit notices
    count. A pending notice is followed by a completed one for the same transfer, so
-   counting the pending one would count the money twice.
+   counting the pending one would count the money twice. Only a transfer notice is set
+   aside this way, and only on its own status lines. Any other mail with pending wording,
+   and a status line that a template read as the merchant, goes to Review. (2026-10-30.)
 4. **Two currencies in one mail.** When one mail states both the AED amount debited and a
    foreign-currency amount, the transaction amount is the AED amount, because it is what
    left the account.
@@ -138,7 +143,10 @@ confidently wrong readings. The owner dropped it, and the bench no longer contai
    pair in Review. The app will resolve such a pair itself, without the person, and must
    not count the money twice.
 6. **Privacy.** Learned layouts stay on the phone. Nothing new leaves the phone; there is
-   no network call and no machine-learning model. The privacy policy does not change.
+   no network call and no machine-learning model. The privacy policy does not change. A
+   saved layout holds no mail text (2026-10-30): only the words the readers ship with,
+   a 16-bit tag in place of every other word, and token classes. Amounts and numbers are
+   not kept in any form. Every path that ends this phone's link clears the saved layouts.
 7. **Template cross-check.** When a template hit's amount, currency or direction differs
    from a reading that the two readers agreed on (each at 0.8 or more, on the same amount,
    currency and stated direction, with a stated currency), the row keeps the template's

@@ -153,7 +153,36 @@ enum LayoutCodec {
   }
 
   static func slots(_ t: [IElem]) -> [LayoutSlot] {
-    t.map { LayoutSlot(kind: $0.kind, key: $0.key, cls: $0.cls) }
+    t.map { LayoutSlot(kind: $0.kind, key: $0.kind == .const ? shapeKey($0.key, $0.cls) : $0.key, cls: $0.cls) }
+  }
+
+  static let valueShape = "0"
+
+  static func shapeKey(_ key: String, _ cls: IClass) -> String {
+    switch cls {
+    case .money, .num, .cur: return valueShape
+    case .nl, .punct: return key
+    case .word:
+      if key == ILex.subjKey || ILex.layoutWords.contains(key) || isWordTag(key) { return key }
+      return wordTag(key)
+    }
+  }
+
+  static func wordTag(_ key: String) -> String {
+    var h: UInt32 = 2_166_136_261
+    for b in key.utf8 { h = (h ^ UInt32(b)) &* 16_777_619 }
+    let folded = UInt16(truncatingIfNeeded: (h >> 16) ^ h)
+    let hex = String(folded, radix: 16)
+    return "#" + String(repeating: "0", count: 4 - hex.utf8.count) + hex
+  }
+
+  static func isWordTag(_ key: String) -> Bool {
+    let c = Array(key.utf8)
+    return c.count == 5 && c[0] == 35 && c[1...].allSatisfy { ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }
+  }
+
+  static func shape(_ toks: ArraySlice<IToken>) -> String {
+    toks.filter { $0.cls != .nl && $0.key != ILex.subjKey }.map { shapeKey($0.key, $0.cls) }.joined(separator: " ")
   }
 
   static func anchorKeys(_ slots: [LayoutSlot]) -> Set<String> {
@@ -190,11 +219,8 @@ enum LayoutCodec {
     }
     return SlotFillers(
       tokens: toks.enumerated().map { j, t in
-        if let e = anchorOf[j] {
-          let raw = t.raw == defaultRaw(t.key, t.cls) ? nil : t.raw
-          return .anchor(e, spaceBefore: t.spaceBefore, raw: raw)
-        }
-        return .free(t.raw, cls: t.cls, spaceBefore: t.spaceBefore)
+        if let e = anchorOf[j] { return .anchor(e, spaceBefore: t.spaceBefore, raw: nil) }
+        return .free(shapeKey(t.key, t.cls), cls: t.cls, spaceBefore: t.spaceBefore)
       })
   }
 }

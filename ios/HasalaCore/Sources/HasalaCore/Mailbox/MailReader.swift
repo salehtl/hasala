@@ -30,7 +30,7 @@ public struct ReaderCounts: Sendable, Equatable, Codable {
 }
 
 public struct MailReaderState: Sendable, Equatable, Codable {
-  public static let version = 1
+  public static let version = 2
   public static let marker = "extract@1"
   public static let bankLimit = 64
   public static let byteLimit = 4_000_000

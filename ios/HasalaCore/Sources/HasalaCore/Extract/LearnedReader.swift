@@ -27,7 +27,7 @@ enum LearnedReader {
     let clock = sender.clock
     var interner = IInterner()
     let toks = ITokenizer.tokenize(subject: m.subject, text: m.text, interner: &interner)
-    let keySet = Set(toks.filter { $0.code > 0 }.map(\.key))
+    let keySet = Set(toks.filter { $0.code > 0 }.map { LayoutCodec.shapeKey($0.key, $0.cls) })
 
     var best: (Int, IApplied, [IElem])?
     let ranked = sender.layouts.indices.map { i -> (Int, Double) in
@@ -364,7 +364,7 @@ enum LearnedReader {
         if !words.isEmpty && words.count >= nums.count { alpha += 1 }
         if nums.count > words.count { digit += 1 }
         if !words.isEmpty && words.allSatisfy({ ILex.direction($0.key) != nil || ILex.functionWords.contains($0.key) || ILex.fieldNames.contains($0.key) }) { dirOnly += 1 }
-        values.append(ITokenizer.join(toks))
+        values.append(LayoutCodec.shape(toks))
       }
       guard !values.isEmpty, alpha * 2 >= values.count else { continue }
       if dirOnly * 2 >= values.count { continue }
@@ -427,6 +427,14 @@ enum LearnedReader {
       let typedHits = Set(l.template.indices.filter { l.template[$0].kind == .typed && l.template[$0].cls == .money }.compactMap { a.elemTok[$0] })
       let extra = toks.indices.filter { toks[$0].cls == .money && !typedHits.contains($0) && $0 != i && amountScore(toks, $0) > -2 }
       if !extra.isEmpty { conf = min(conf, 60); notes.append("extra money in mail") }
+      let (cur, _) = currency(toks, i)
+      let picked = ITokenizer.minor(toks[i].raw, currency: cur)
+      let second = typedHits.contains {
+        guard $0 != i, amountScore(toks, $0) > 0 else { return false }
+        let (c, _) = currency(toks, $0)
+        return c != cur || ITokenizer.minor(toks[$0].raw, currency: c) != picked
+      }
+      if second { conf = min(conf, 60); notes.append("second amount in mail") }
     }
     guard let ai = idx else {
       return Reading(confidence: conf, note: notes.joined(separator: "; ") + "; no money slot")
