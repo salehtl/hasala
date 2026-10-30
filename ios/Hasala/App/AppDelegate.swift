@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     return true
   }
 
+  func application(
+    _ application: UIApplication, shouldAllowExtensionPointIdentifier extensionPointIdentifier: UIApplication.ExtensionPointIdentifier
+  ) -> Bool {
+    extensionPointIdentifier != .keyboard
+  }
+
   static func startsAtLaunch(_ state: UIApplication.State) -> Bool { state != .background }
 
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
