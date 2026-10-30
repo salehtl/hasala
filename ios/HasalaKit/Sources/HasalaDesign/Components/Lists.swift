@@ -528,7 +528,6 @@ public struct TransactionRow: View {
 
   static func tone(_ reason: TxnReviewReason?) -> StatusTone {
     switch reason {
-    case .senderUnverified: .warning
     case .probableCopy, .samePurchase, .mayRepeat: .accent
     case nil: .accent
     }

@@ -313,10 +313,6 @@ extension Txn {
   }
 }
 
-extension ReviewCardModel {
-  public var senderUnverified: Bool { reviewReason == .senderUnverified }
-}
-
 public enum ReviewOrder: String, CaseIterable, Identifiable, Sendable {
   case newestFirst = "newest"
   case oldestFirst = "oldest"

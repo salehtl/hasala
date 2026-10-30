@@ -3,7 +3,7 @@ import HasalaModels
 public enum MockReach {
   public static func ruled(_ t: Txn, pairs: Set<TxnID>) -> Bool {
     guard !t.archived, !t.isTransfer, !t.isHeldCopy, t.samePurchase == nil, !pairs.contains(t.id) else { return false }
-    guard t.reviewReason == nil, t.splits.isEmpty else { return false }
+    guard t.reviewReason == nil, !t.senderUnverified, t.splits.isEmpty else { return false }
     switch t.categorySource {
     case .user?, .manual?: return false
     default: return true

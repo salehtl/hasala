@@ -337,7 +337,7 @@ struct ReviewTabView: View {
         .fixedSize(horizontal: false, vertical: true)
       Text(r.subtitle)
         .hType(HType(size: 13, leading: 16, weight: r.tone == .reason ? .medium : .regular, textStyle: .footnote))
-        .foregroundStyle(r.reason.map(ReviewReasonStyle.ink) ?? tone(r.tone))
+        .foregroundStyle(r.reason == nil ? tone(r.tone) : ReviewReasonStyle.ink)
         .fixedSize(horizontal: false, vertical: true)
     }
     .frame(maxWidth: .infinity, alignment: .leading)

@@ -239,7 +239,7 @@ struct BankTextsReviewTests {
     let t = try #require(l.store.state.txn(row.txnID))
     let p = try #require(t.provenance)
     #expect(p.isText && t.fromText && p.title == "Bank text from DIB" && p.readAt == "Received 12:00 · read automatically")
-    #expect(p.senderCheck == nil && p.rawMerchant == "SAMPLE SHOP")
+    #expect(p.rawMerchant == "SAMPLE SHOP")
     let card = ReviewEngine.card(t, l.store.state)
     #expect(card.fromText && card.rawMerchant == "SAMPLE SHOP")
     #expect(LedgerStateMapper.textSource(nil) == "Bank text" && LedgerStateMapper.textSource("adcb") == "Bank text from ADCB")

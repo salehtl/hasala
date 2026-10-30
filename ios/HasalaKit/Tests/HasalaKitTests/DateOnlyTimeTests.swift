@@ -15,7 +15,7 @@ struct DateOnlyTimeTests {
 
     var steam = try #require(s.txn("steam"))
     steam.postedTimeKnown = false
-    #expect(ActivityEngine.row(steam, s).detail == "Couldn't verify sender")
+    #expect(ActivityEngine.row(steam, s).detail == "To review")
     steam.needsReview = false
     steam.categoryID = "entertainment"
     let name = try #require(s.category("entertainment")).name

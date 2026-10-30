@@ -868,7 +868,7 @@ struct ReviewCardView<Actions: View>: View {
         Spacer(minLength: 8)
         if let r = card.reviewReason {
           Button(action: reason) {
-            InfoChip(r.label, style: ReviewReasonStyle.chip(r))
+            InfoChip(r.label, style: ReviewReasonStyle.chip)
           }
           .buttonStyle(.plain)
           .accessibilityIdentifier("review.reason.\(r.rawValue)")
@@ -932,7 +932,7 @@ struct ReviewCardView<Actions: View>: View {
   }
 
   private func reasonStrip(_ r: TxnReviewReason) -> some View {
-    let ink = ReviewReasonStyle.ink(r)
+    let ink = ReviewReasonStyle.ink
     return Button(action: reason) {
       HStack(spacing: 12) {
         Circle().fill(HColor.surfacePrimary).frame(width: 32, height: 32)
@@ -948,7 +948,7 @@ struct ReviewCardView<Actions: View>: View {
       .padding(.leading, 24)
       .padding(.trailing, 16)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(ReviewReasonStyle.surface(r))
+      .background(ReviewReasonStyle.surface)
       .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
       .contentShape(Rectangle())
     }

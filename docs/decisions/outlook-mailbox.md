@@ -410,8 +410,9 @@ Conformance: `conformance/outlook-sender/` (synthetic). The private-corpus test
 
 **The threat model.** A spoof that passes makes a wrong row in the user's budget. It
 never moves money, and the app never acts on a row by itself. Anything that does not pass
-goes to review with its reason code (the transaction sheet shows "Sender check:
-<code>"). Nothing is dropped. The Gmail lane keeps its own rule (§3, "The Gmail rule"),
+goes to review, and the op keeps its reason code in `gates.ar`. Since 2026-10-30 the app
+shows no sender warning and no code: the row is an ordinary Review card
+([filing-without-cards.md](filing-without-cards.md)). Nothing is dropped. The Gmail lane keeps its own rule (§3, "The Gmail rule"),
 because it reads Gmail's own verdict.
 
 **What stops a spoof.** To pass, a forged alert must say `From: <a known bank address>`

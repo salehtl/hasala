@@ -185,7 +185,7 @@ struct TransactionSheet: View {
   }
 
   private func reasonCallout(_ reason: TxnReviewReason, line: String?) -> some View {
-    let ink = ReviewReasonStyle.ink(reason)
+    let ink = ReviewReasonStyle.ink
     return Button { push(.reviewReason(reason)) } label: {
       HStack(alignment: .top, spacing: 12) {
         HIconView(ReviewReasonStyle.icon(reason), size: 20, color: ink, strokeWidth: 1.9)
@@ -205,7 +205,7 @@ struct TransactionSheet: View {
       }
       .padding(.vertical, 14)
       .padding(.horizontal, 16)
-      .background(ReviewReasonStyle.surface(reason), in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+      .background(ReviewReasonStyle.surface, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -321,10 +321,6 @@ struct TransactionSheet: View {
             Text(p.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
               .accessibilityIdentifier("txn.source")
             Text(p.readAt).hType(.footnote).foregroundStyle(HColor.textSecondary)
-            if let check = p.senderCheck {
-              Text("Sender check: \(check)").hType(.footnote).foregroundStyle(HColor.textSecondary)
-                .accessibilityIdentifier("txn.senderCheck")
-            }
             if !p.rawMerchant.isEmpty {
               Text(verbatim: p.rawMerchant)
                 .font(.system(.footnote, design: .monospaced))

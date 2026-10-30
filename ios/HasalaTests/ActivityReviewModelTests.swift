@@ -245,7 +245,7 @@ struct ActivityReviewModelTests {
     #expect(review.detail.rendered(hidden: false) == "9 waiting")
     let deck = ReviewViewModel(app: app)
     #expect(Set(deck.cards.map(\.id)).isSuperset(of: ["aug-corner-shop", "sep-steam", "aug-talabat-copy"]))
-    #expect(deck.cards.first { $0.id == "sep-steam" }?.senderUnverified == true)
+    #expect(deck.cards.first { $0.id == "sep-steam" }?.reviewReason == nil)
     #expect(deck.cards.first { $0.id == "aug-talabat-copy" }?.reviewReason == .probableCopy)
     #expect(app.thisMonthSnapshot.isThisMonth)
     activity.backToThisMonth()

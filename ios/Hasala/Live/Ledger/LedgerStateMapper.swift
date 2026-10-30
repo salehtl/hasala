@@ -277,8 +277,7 @@ nonisolated enum LedgerStateMapper {
     } else if row.entryMethod == "mailbox" {
       provenance = Provenance(
         title: "\(row.bank.flatMap { bankNames[$0] } ?? "Bank") transaction alert",
-        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw,
-        senderCheck: row.senderCheck)
+        readAt: timeKnown ? "Read automatically at \(at.time)" : "Read automatically", rawMerchant: row.merchantRaw)
     } else {
       provenance = nil
     }
@@ -294,7 +293,7 @@ nonisolated enum LedgerStateMapper {
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
-      reviewReason: row.reviewReason.flatMap { TxnReviewReason(rawValue: $0.rawValue) }, merchantKey: row.merchantKey,
+      senderUnverified: row.senderUnverified, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
   }

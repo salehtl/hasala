@@ -22,7 +22,7 @@ struct MerchantGroupCardsTests {
   @Test func anUnverifiedRowAndARefundAreCardsLikeTheRest() throws {
     let cards = ReviewEngine.cards(s)
     let unverified = try #require(cards.first { $0.id == "bl-ts-unverified" })
-    #expect(unverified.reviewReason == .senderUnverified)
+    #expect(unverified.reviewReason == nil)
     #expect(s.txn(unverified.id)?.groupRef == MayaBacklog.tailscale)
     #expect(cards.contains { $0.id == "bl-ts-refund" } && s.txn("bl-ts-refund")?.groupRef == MayaBacklog.tailscaleRefunds)
     #expect(cards.contains { $0.id == "bl-saffron" } && s.txn("bl-saffron")?.groupRef == MayaBacklog.saffronGroup)
@@ -110,6 +110,6 @@ struct MerchantGroupCardsTests {
     let bright = try #require(rows.first { $0.id == "bl-bright-10" })
     #expect(bright.subtitle == "Looks like Shopping" && bright.tone == .suggestion)
     let unverified = try #require(rows.first { $0.id == "bl-ts-unverified" })
-    #expect(unverified.tone == .reason && unverified.reason == .senderUnverified)
+    #expect(unverified.tone != .reason && unverified.reason == nil)
   }
 }

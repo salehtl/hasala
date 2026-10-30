@@ -85,7 +85,17 @@ because they are strong and cost nothing.
 5. **Categorization does not change.** The order stays: user rules, the dictionary, the
    last pick (`LastPick`), Apple's model or Clef, then Review.
 6. **Texts set-up and Profile** show no bank list for texts. Email keeps its bank list.
-   (Another PR builds this.)
+7. **No sender warning (2026-10-30).** The app no longer shows "Couldn't verify sender",
+   for Gmail and Outlook alike: no badge in Review or Activity, no reason strip or "About
+   this alert" sheet, and no `Sender check: <code>` line on the transaction. Most of these
+   rows were real alerts (a forward, a bank's own DKIM set-up, Junk), the warning gave the
+   person nothing to do that Review does not already ask, and a spoof can only add a wrong
+   row. The check itself stays: a mail that fails its A-R or DMARC rule never files itself
+   and waits in Review as an ordinary card. Neither a rule (`RuleReach.Row.unverified`) nor
+   a sweep, so not Clef's "Sort automatically" either (`SweepRow.candidate`), reaches it;
+   only the person sorts it. The op keeps the code in `gates.ar`, the core reads it as
+   `TxnRow.senderUnverified`, and the app keeps `Txn.senderUnverified` for the rule reach
+   only. `TxnReviewReason` has no `sender_unverified` case.
 
 New payloads have no `gates.card`. The key was always optional in the fold, so older builds
 read the new rows.

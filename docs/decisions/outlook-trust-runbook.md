@@ -187,14 +187,15 @@ Follow CLAUDE.md "Secrets and real mail":
 The spoof probe is synthetic, but it carries your domain and test address. Treat it like
 the real ones.
 
-## 8. A Gmail alert that says "Couldn't verify sender"
+## 8. A Gmail alert that waits in Review when it should file
 
 The same checker reads the Gmail rule with `--provider gmail`. Use it when an alert in a
-Gmail mailbox still shows "Couldn't verify sender" on a build that reads `header.i` (Gmail
+Gmail mailbox waits in Review when its template reads it, on a build that reads `header.i` (Gmail
 writes `dkim=pass header.i=@<domain>`, never `header.d`; builds 261020.10759 to
 261020.11636 read only `header.d`, so every Gmail alert they read came out `fail`).
 
-1. In the app, open the transaction. The "From your bank" card shows `Sender check: <code>`:
+1. The app shows no sender warning and no code since 2026-10-30. The op keeps the code in
+   `gates.ar`, and the checker in step 3 prints it:
 
    | Code | What stopped it |
    |---|---|

@@ -82,16 +82,15 @@ import Testing
     #expect(throws: AuthorError.self) { try a.build() }
   }
 
-  @Test func reviewReasonNamesAnUnverifiedSender() {
-    #expect(TxnGates().reviewReason == nil)
-    #expect(TxnGates(ar: "pass", sender: "trusted").reviewReason == nil)
-    #expect(TxnGates(ar: "no_eop", sender: "untrusted").reviewReason == .senderUnverified)
-    #expect(TxnGates(ar: "pass", sender: "untrusted").reviewReason == nil)
-    #expect(TxnGates(sender: "untrusted").reviewReason == nil)
-    #expect(TxnGates(ar: "no_ar", sender: "untrusted").reviewReason == .senderUnverified)
-    #expect(TxnGates(ar: "multiple_ar", sender: "untrusted").reviewReason == .senderUnverified)
-    #expect(TxnGates(ar: "fail", sender: "trusted").reviewReason == .senderUnverified)
-    #expect(TxnGates.ReviewReason.senderUnverified.rawValue == "sender_unverified")
+  @Test func anyVerdictButPassIsAnUnverifiedSender() {
+    #expect(TxnGates().senderUnverified == false)
+    #expect(TxnGates(ar: "pass", sender: "trusted").senderUnverified == false)
+    #expect(TxnGates(ar: "no_eop", sender: "untrusted").senderUnverified == true)
+    #expect(TxnGates(ar: "pass", sender: "untrusted").senderUnverified == false)
+    #expect(TxnGates(sender: "untrusted").senderUnverified == false)
+    #expect(TxnGates(ar: "no_ar", sender: "untrusted").senderUnverified == true)
+    #expect(TxnGates(ar: "multiple_ar", sender: "untrusted").senderUnverified == true)
+    #expect(TxnGates(ar: "fail", sender: "trusted").senderUnverified == true)
   }
 
   @Test func aGmailDKIMAndDMARCFailIsSenderUnverified() {
@@ -101,12 +100,12 @@ import Testing
     ].joined(separator: "\r\n")
     let a = AuthResults.analyze(headers, provider: .gmail)
     #expect(a.verdict.reason == .fail)
-    #expect(TxnGates(ar: a.verdict.reason.rawValue, sender: "untrusted").reviewReason == .senderUnverified)
+    #expect(TxnGates(ar: a.verdict.reason.rawValue, sender: "untrusted").senderUnverified == true)
     let pass = AuthResults.analyze(
       ["Authentication-Results: mx.google.com; dkim=pass header.d=bank.example", "From: a@bank.example", ""].joined(separator: "\r\n"),
       provider: .gmail)
     #expect(pass.verdict.reason == .pass)
-    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").reviewReason == nil)
+    #expect(TxnGates(ar: pass.verdict.reason.rawValue, sender: "untrusted").senderUnverified == false)
   }
 
   @Test func aJunkAlertFoldsIntoReview() async throws {
@@ -122,7 +121,7 @@ import Testing
     let t = try #require(Self.row(s, message: "AAkALgAA-junk"))
     #expect(t.needsReview && !t.unparsed && t.amountMinor == 100)
     #expect(t.gates?.ar == "fail" && t.gates?.sender == "untrusted")
-    #expect(t.gates?.reviewReason == .senderUnverified)
+    #expect(t.gates?.senderUnverified == true)
     #expect(t.category == nil)
   }
 
@@ -135,7 +134,7 @@ import Testing
     let t = try #require(Self.row(s, message: "AAkALgAA-inbox"))
     #expect(!t.needsReview)
     #expect(t.gates?.ar == "pass" && t.gates?.sender == "trusted")
-    #expect(t.gates?.reviewReason == nil)
+    #expect(t.gates?.senderUnverified == false)
   }
 
   @Test func aBatchOf200WithOneJunkAlertImportsAll() async throws {
@@ -158,7 +157,7 @@ import Testing
     #expect(rows.filter { !$0.needsReview }.count == 199)
     let review = rows.filter(\.needsReview)
     #expect(review.count == 1 && review.first?.mailboxMessageID == "AAkALgAA-junk")
-    #expect(review.first?.gates?.reviewReason == .senderUnverified)
+    #expect(review.first?.gates?.senderUnverified == true)
   }
 
   @Test func oneRefusedDraftGoesToReviewAndTheBatchCommits() async throws {
@@ -181,7 +180,7 @@ import Testing
     #expect(s.anomalies.isEmpty && s.txns.count == 200)
     let refused = try #require(Self.row(s, message: "m150"))
     #expect(refused.unparsed && refused.needsReview && refused.parseError == "payload_refused")
-    #expect(refused.gates?.ar == "no_eop" && refused.gates?.reviewReason == .senderUnverified)
+    #expect(refused.gates?.ar == "no_eop" && refused.gates?.senderUnverified == true)
     #expect(s.txns.values.filter { !$0.unparsed }.count == 199)
   }
 

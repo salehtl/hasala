@@ -50,7 +50,7 @@ public enum MayaHistory {
       Txn(id: "aug-corner-shop", merchant: "Corner Shop", amount: .aed(18_75),
           postedAt: LocalDateTime(2026, 8, 24, 18, 30), accountID: "dib"),
       Txn(id: "sep-steam", merchant: "Steam", amount: .aed(42_00), postedAt: LocalDateTime(2026, 9, 18, 22, 15),
-          accountID: "dib", needsReview: true, suggestion: "entertainment", reviewReason: .senderUnverified),
+          accountID: "dib", needsReview: true, suggestion: "entertainment", senderUnverified: true),
       copy,
     ]
   }
