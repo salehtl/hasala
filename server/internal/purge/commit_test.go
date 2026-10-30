@@ -208,3 +208,20 @@ func TestARecordThatFailsAfterItsWriteCancelsTheLine(t *testing.T) {
 		t.Fatal("the account went although its deletion was not recorded")
 	}
 }
+
+func TestALedgerThatTookNoLineAnswersNotDeleted(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "no-ledger")
+	path := filepath.Join(t.TempDir(), "missing", "purged")
+	called := false
+	_, err := PurgeWith(bg, pool, u, Options{Goodbye: true,
+		Record: func(ids []uuid.UUID) error { return purgeledger.Append(path, ids, time.Now()) },
+		Cancel: func([]uuid.UUID) error { called = true; return nil },
+	})
+	if !errors.Is(err, purgeledger.ErrNotWritten) || errors.Is(err, ErrUnsettled) || called {
+		t.Fatalf("a ledger that took no line: %v, cancelled %v", err, called)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
+		t.Fatal("the account went although its deletion was not recorded")
+	}
+}

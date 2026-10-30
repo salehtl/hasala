@@ -110,8 +110,8 @@ func runPurgeUser(env *runEnv, args []string) error {
 	}
 	rep, err := purge.PurgeWith(ctx, pool, target, opts)
 	if errors.Is(err, purge.ErrUnsettled) {
-		fmt.Fprintln(env.stderr, "purge-user: the commit failed and the ledger still names this account: "+
-			"check whether it still exists, because the next replay deletes it")
+		fmt.Fprintln(env.stderr, "purge-user: the deletion did not finish and the ledger may still name this account: "+
+			"check whether it still exists, because a replay that reads such a line deletes it")
 		return fmt.Errorf("purge-user: %w", err)
 	}
 	if err != nil {

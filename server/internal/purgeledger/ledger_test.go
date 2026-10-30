@@ -2,6 +2,7 @@ package purgeledger
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,6 +223,20 @@ func TestACancelledPurgeIsNotAnAccountToPurgeUntilItIsAskedForAgain(t *testing.T
 	ids := IDs(got)
 	if len(ids) != 2 || ids[0] != again || ids[1] != gone {
 		t.Fatalf("accounts to purge %v, want %v and %v", ids, again, gone)
+	}
+}
+
+func TestAnAppendThatReachesNoFileSaysSo(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing", "purged")
+	if err := Append(missing, []uuid.UUID{uuid.New()}, time.Now()); !errors.Is(err, ErrNotWritten) {
+		t.Fatalf("an append to a missing directory: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := AppendEntries(path, Entry{ID: uuid.Nil, At: time.Now()}); !errors.Is(err, ErrNotWritten) {
+		t.Fatalf("an entry that cannot be recorded: %v", err)
+	}
+	if err := Append(path, []uuid.UUID{uuid.New()}, time.Now()); err != nil {
+		t.Fatal(err)
 	}
 }
 

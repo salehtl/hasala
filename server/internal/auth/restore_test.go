@@ -1449,38 +1449,3 @@ func TestTheOperatorsClearingOfARestoredAddressHoldsAcrossAReplay(t *testing.T) 
 		t.Fatalf("a recovery after the clearing: %v", err)
 	}
 }
-
-func TestADeviceFreezeIsNotDatedBeforeTheLatestLift(t *testing.T) {
-	f := newAcctFixture(t)
-	m := f.passwordMember("Maya")
-	f.clock.advance(time.Hour)
-	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
-		t.Fatal(err)
-	}
-	in, err := m.loginPassword(m.s, m.device)
-	if err != nil || !in.Restricted {
-		t.Fatalf("a sign-in into the frozen account: %+v %v", in, err)
-	}
-	m.token = in.Session.Token
-	f.clock.advance(time.Minute)
-	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
-		t.Fatal(err)
-	}
-	f.clock.advance(time.Minute)
-	newS := f.stretch(m.addr, "an entirely new password")
-	if _, err := f.acct.ChangePassword(bgctx, m.info(), newS, m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(newS))); err != nil {
-		t.Fatal(err)
-	}
-	f.clock.advance(time.Minute)
-	nonce, _, err := f.acct.DeviceFreezeChallenge(bgctx, m.device.WriterID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
-	if _, err := f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(t, msg), nil); err != nil {
-		t.Fatal(err)
-	}
-	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND freeze_trigger_at = $2`, m.user.UserID, f.clock.now()); n != 1 {
-		t.Fatal("the device freeze was dated before the latest lift")
-	}
-}

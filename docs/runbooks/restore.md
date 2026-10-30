@@ -7,13 +7,13 @@ coming back:
 - Each account deletion (`DELETE /api/v1/account` and `hasala-admin
   purge-user`) appends one line to `/var/lib/hasala-ledger/purged`: the random
   account id and the time. The append is part of the deletion. If it fails,
-  nothing is deleted, and a `purge-cancelled` line follows, because the line can
-  already be in the file. If the database commit fails and the account is still
+  nothing is deleted. When the failure comes after bytes may have reached the
+  file, a `purge-cancelled` line follows. If the database commit fails and the account is still
   there, a `purge-cancelled` line follows too. The replay does not
   purge that account unless a later deletion line names it. If the line cannot
   be cancelled (for example, the database cannot be read after the failed
-  commit, or the ledger cannot be written), or the process stops between the
-  append and the commit, the line stays and the next replay purges the account
+  commit, or the ledger stops taking writes after a part of the line), or the
+  process stops between the append and the commit, the line stays and the next replay purges the account
   with no goodbye email. The holder asked for that deletion: the answer in the
   first case says that it may still take effect.
 - Before `hasalad` and the console start, `hasala-purge-replay` runs
@@ -80,10 +80,12 @@ coming back:
   `hardening/ledger-and-limits` skips these three kinds, so its replay does
   not apply them again. A `hasalad` from before `security/server-lifecycle`
   skips `purge-cancelled`, so its replay purges an account whose deletion was
-  cancelled. Before you roll back to one of these, keep a copy of the ledger and remove
-  the lines it cannot read. For each account whose latest deletion line is
-  followed by a `purge-cancelled` line, remove that deletion line as well as the
-  `purge-cancelled` line: a build that reads the deletion line purges the account.
+  cancelled. Before you roll back to one of these, keep a copy of the ledger.
+  Then, in this order: list the accounts whose latest deletion or
+  `purge-cancelled` line is `purge-cancelled`; remove every deletion line of
+  those accounts, because the build purges an account for any deletion line;
+  remove all `purge-cancelled` lines; remove each other line the build cannot
+  read.
 - A freeze that a later unfreeze lifted is not applied again, but the sessions
   it ended stay ended: every session of that account created before the second
   of the freeze ends again with its push token, and the summary counts this
@@ -172,7 +174,7 @@ new recovery and a password reset. Then only the operator can lift it.
 
 Lifting a freeze, by the holder or the operator, retires every unused freeze
 link of the account, and a link dated before the latest lift no longer freezes
-it. A device freeze is dated no further back than the latest lift. A link from
+it. A link from
 a later alert still works. So an older link cannot freeze the
 account again after the holder changed a password. A lift through any older
 factor retires the links, so after a lift the holder relies on later alerts, the

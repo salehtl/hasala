@@ -25,6 +25,8 @@ const (
 	Retention             = 60 * 24 * time.Hour
 )
 
+var ErrNotWritten = errors.New("purgeledger: nothing was written")
+
 type Kind string
 
 const (
@@ -87,13 +89,13 @@ func AppendEntries(path string, entries ...Entry) error {
 	var buf bytes.Buffer
 	for _, e := range entries {
 		if err := check(e); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrNotWritten, err)
 		}
 		buf.WriteString(formatEntry(e))
 	}
 	unlock, err := lock(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrNotWritten, err)
 	}
 	defer unlock()
 	return appendLocked(path, buf.Bytes())
@@ -102,10 +104,13 @@ func AppendEntries(path string, entries ...Entry) error {
 func appendLocked(path string, line []byte) error {
 	f, created, err := openAppend(path)
 	if err != nil {
-		return fmt.Errorf("purgeledger: open %s: %w", path, err)
+		return fmt.Errorf("%w: open %s: %w", ErrNotWritten, path, err)
 	}
-	if _, err := f.Write(line); err != nil {
+	if n, err := f.Write(line); err != nil {
 		_ = f.Close()
+		if n == 0 {
+			return fmt.Errorf("%w: write %s: %w", ErrNotWritten, path, err)
+		}
 		return fmt.Errorf("purgeledger: write %s: %w", path, err)
 	}
 	if err := f.Sync(); err != nil {

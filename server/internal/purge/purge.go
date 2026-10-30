@@ -46,6 +46,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/mailq"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // handledWithoutUserID names the relations that hold per-user rows under some
@@ -510,7 +511,7 @@ type Options struct {
 	Cancel func(users []uuid.UUID) error
 }
 
-var ErrUnsettled = errors.New("purge: the commit failed and the ledger still names the accounts")
+var ErrUnsettled = errors.New("purge: the deletion did not finish and the ledger may still name the accounts")
 
 const commitWait = 30 * time.Second
 
@@ -667,6 +668,9 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 
 	if opts.Record != nil && len(deleted) > 0 {
 		if err := opts.Record(deleted); err != nil {
+			if errors.Is(err, purgeledger.ErrNotWritten) {
+				return rep, fmt.Errorf("purge: record the deletion: %w", err)
+			}
 			if opts.Cancel == nil {
 				return rep, fmt.Errorf("%w: record the deletion: %w", ErrUnsettled, err)
 			}
