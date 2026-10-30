@@ -94,37 +94,26 @@ public struct SlotFillers: Codable, Sendable, Equatable {
 }
 
 enum FillerToken: Codable, Sendable, Equatable {
-  case anchor(Int, spaceBefore: Bool, raw: String?)
+  case anchor(Int, spaceBefore: Bool)
   case free(String, cls: IClass, spaceBefore: Bool)
 
   init(from decoder: any Decoder) throws {
     if let packed = try? decoder.singleValueContainer().decode(Int.self) {
       guard packed >= 0 else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "anchor")) }
-      self = .anchor(packed >> 1, spaceBefore: packed & 1 == 1, raw: nil)
+      self = .anchor(packed >> 1, spaceBefore: packed & 1 == 1)
       return
     }
     var c = try decoder.unkeyedContainer()
-    if let raw = try? c.decode(String.self) {
-      let cls = try c.decode(IClass.self)
-      self = .free(raw, cls: cls, spaceBefore: try c.decode(Bool.self))
-    } else {
-      let e = try c.decode(Int.self)
-      guard e >= 0 else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "anchor")) }
-      let space = try c.decode(Bool.self)
-      self = .anchor(e, spaceBefore: space, raw: try c.decode(String.self))
-    }
+    let raw = try c.decode(String.self)
+    let cls = try c.decode(IClass.self)
+    self = .free(LayoutCodec.shapeKey(raw, cls), cls: cls, spaceBefore: try c.decode(Bool.self))
   }
 
   func encode(to encoder: any Encoder) throws {
     switch self {
-    case .anchor(let e, let space, nil):
+    case .anchor(let e, let space):
       var c = encoder.singleValueContainer()
       try c.encode(e << 1 | (space ? 1 : 0))
-    case .anchor(let e, let space, let raw?):
-      var c = encoder.unkeyedContainer()
-      try c.encode(e)
-      try c.encode(space)
-      try c.encode(raw)
     case .free(let raw, let cls, let space):
       var c = encoder.unkeyedContainer()
       try c.encode(raw)
@@ -157,28 +146,15 @@ enum LayoutCodec {
   }
 
   static let valueShape = "0"
+  static let wordShape = "\u{00A7}w"
 
   static func shapeKey(_ key: String, _ cls: IClass) -> String {
     switch cls {
     case .money, .num, .cur: return valueShape
     case .nl, .punct: return key
     case .word:
-      if key == ILex.subjKey || ILex.layoutWords.contains(key) || isWordTag(key) { return key }
-      return wordTag(key)
+      return key == ILex.subjKey || ILex.layoutWords.contains(key) ? key : wordShape
     }
-  }
-
-  static func wordTag(_ key: String) -> String {
-    var h: UInt32 = 2_166_136_261
-    for b in key.utf8 { h = (h ^ UInt32(b)) &* 16_777_619 }
-    let folded = UInt16(truncatingIfNeeded: (h >> 16) ^ h)
-    let hex = String(folded, radix: 16)
-    return "#" + String(repeating: "0", count: 4 - hex.utf8.count) + hex
-  }
-
-  static func isWordTag(_ key: String) -> Bool {
-    let c = Array(key.utf8)
-    return c.count == 5 && c[0] == 35 && c[1...].allSatisfy { ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }
   }
 
   static func shape(_ toks: ArraySlice<IToken>) -> String {
@@ -198,10 +174,10 @@ enum LayoutCodec {
     for t in f.tokens {
       var tok: IToken
       switch t {
-      case .anchor(let e, let space, let raw):
+      case .anchor(let e, let space):
         guard template.indices.contains(e) else { return nil }
         let el = template[e]
-        tok = IToken(raw: raw ?? defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
+        tok = IToken(raw: defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
       case .free(let raw, let cls, let space):
         let key = cls == .nl ? ILex.nlKey : raw.lowercased()
         tok = IToken(raw: raw, key: key, cls: cls, line: line, spaceBefore: space, code: ILex.code(cls, key, &interner))
@@ -219,7 +195,7 @@ enum LayoutCodec {
     }
     return SlotFillers(
       tokens: toks.enumerated().map { j, t in
-        if let e = anchorOf[j] { return .anchor(e, spaceBefore: t.spaceBefore, raw: nil) }
+        if let e = anchorOf[j] { return .anchor(e, spaceBefore: t.spaceBefore) }
         return .free(shapeKey(t.key, t.cls), cls: t.cls, spaceBefore: t.spaceBefore)
       })
   }

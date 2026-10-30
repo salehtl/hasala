@@ -181,7 +181,11 @@ public enum CombinedReader {
     var held = false
     if r.isTransaction {
       let signal = card ? ExtractPending.none : MailRules.pendingSignal(input)
-      if signal == .phrase ? kind == .transferNotice : signal == .status && MailRules.setsAside(input, direction: r.direction) {
+      let aside =
+        signal == .phrase
+        ? MailRules.statesPendingTransfer(input, direction: r.direction, amountMinor: r.amountMinor)
+        : signal == .status && MailRules.setsAside(input, direction: r.direction, captured: r.merchant)
+      if aside {
         outcome = .pending
         notes.append("pending status")
       } else {
@@ -192,8 +196,7 @@ public enum CombinedReader {
     } else if negative {
       outcome = .notTransaction
     } else {
-      let signal = card ? ExtractPending.none : MailRules.pendingSignal(input)
-      if signal == .status || (signal == .phrase && kind == .transferNotice) {
+      if !card && MailRules.setsAside(input, direction: nil) {
         outcome = .pending
         notes.append("pending status, no amount")
       } else {

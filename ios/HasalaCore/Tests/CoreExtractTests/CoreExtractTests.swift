@@ -415,12 +415,10 @@ import Testing
     #expect(layout?.seen == LearnedLayouts.exampleLimitPerLayout + 4)
 
     var many = LearnedLayouts()
+    let shipped = ILex.layoutWords.sorted()
     for i in 0..<(LearnedLayouts.layoutLimitPerSender + 3) {
-      let letters = Array("abcdefghij")
-      let tag = String(String(i).map { letters[Int(String($0))!] })
-      let words = (0..<12).map { "w" + tag + String(letters[$0 % 10]) + String(repeating: "q", count: $0) }
-      let m = Mails.input(
-        "bank-z.example", subject: "s\(i)", [words.joined(separator: " "), "Amount AED \(i + 1).00 debited"], at: Int64(i))
+      let words = shipped[(i * 3)..<(i * 3 + 3)]
+      let m = Mails.input("bank-z.example", subject: "", [words.joined(separator: " "), "AED \(i + 1).00"], at: Int64(i))
       many = CombinedReader.read(m, many).1
     }
     #expect(many.senders["bank-z.example"]?.layouts.count == LearnedLayouts.layoutLimitPerSender)
@@ -432,8 +430,8 @@ import Testing
       mem = CombinedReader.read(Mails.cardPurchaseEN(amount: "\(i + 1).00", merchant: "SAMPLE \(i)", at: Int64(i)), mem).1
     }
     var sender = try #require(mem.senders["bank-b.example"])
-    sender.layouts[0].examples[0].tokens[0] = .anchor(9_999, spaceBefore: false, raw: nil)
-    sender.layouts[0].examples[1].tokens[0] = .anchor(9_999, spaceBefore: true, raw: "x")
+    sender.layouts[0].examples[0].tokens[0] = .anchor(9_999, spaceBefore: false)
+    sender.layouts[0].examples[1].tokens[0] = .anchor(9_999, spaceBefore: true)
     mem.senders["bank-b.example"] = sender
     let trip = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(mem))
     let (r, _) = CombinedReader.read(Mails.cardPurchaseEN(amount: "9.00", merchant: "SAMPLE NEW", at: 9), trip)
@@ -776,6 +774,28 @@ import Testing
     }
   }
 
+  @Test func aLayoutKeepsOnlyShippedWordsAndClasses() throws {
+    var mem = LearnedLayouts()
+    for i in 0..<6 { mem = CombinedReader.read(Self.mail(i), mem).1 }
+    let layouts = try #require(mem.senders["bank-p.example"]?.layouts)
+    for l in layouts {
+      for slot in l.anchors where slot.kind == .const && slot.cls == .word {
+        #expect(slot.key == LayoutCodec.wordShape || slot.key == ILex.subjKey || ILex.layoutWords.contains(slot.key), "\(slot.key)")
+      }
+      for x in l.examples {
+        for case .free(let raw, let cls, _) in x.tokens where cls != .punct && cls != .nl {
+          #expect(raw == LayoutCodec.valueShape || raw == LayoutCodec.wordShape || raw == ILex.subjKey || ILex.layoutWords.contains(raw), "\(raw)")
+        }
+      }
+    }
+  }
+
+  @Test func aStoredFormatWithTextIsNotRead() throws {
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(FillerToken.self, from: Data("[1, true, \"name\"]".utf8)) }
+    let free = try JSONDecoder().decode(FillerToken.self, from: Data("[\"syntheticname\", 0, true]".utf8))
+    #expect(free == .free(LayoutCodec.wordShape, cls: .word, spaceBefore: true))
+  }
+
   @Test func aSavedLayoutReadsTheSameAsOneInMemory() throws {
     var live = LearnedLayouts()
     var saved = LearnedLayouts()
@@ -810,14 +830,6 @@ import Testing
     }
     let once = CombinedReader.read(Mails.cardPurchaseEN(amount: "9.00", merchant: "SAMPLE A", at: 9), mem).0
     #expect(once.learnedConfidencePercent == last?.learnedConfidencePercent)
-  }
-
-  @Test func aWordTagIsStableAndWideEnoughToAlign() {
-    #expect(LayoutCodec.shapeKey("bookshop", .word) == LayoutCodec.shapeKey(LayoutCodec.shapeKey("bookshop", .word), .word))
-    #expect(LayoutCodec.shapeKey("amount", .word) == "amount")
-    #expect(LayoutCodec.shapeKey("12.50", .money) == LayoutCodec.valueShape)
-    #expect(LayoutCodec.isWordTag(LayoutCodec.wordTag("bookshop")))
-    #expect(!LayoutCodec.isWordTag("#bookshop"))
   }
 }
 
@@ -870,9 +882,19 @@ import Testing
     for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
   }
 
-  @Test func aBalanceOrAFeeBesideTheAmountStillFiles() throws {
+  @Test(arguments: [
+    ["Credit alert", "AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Your account XXXX1234: AED %d.00 on hold released.", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "AED %d.00", "Fee AED 2.00"],
+  ])
+  func aSecondAmountWithNoWordingBesideItDoesNotFile(_ lines: [String]) {
+    let readings = Self.thread { i in lines.map { $0.replacingOccurrences(of: "%d", with: "\(i + 1)") } }
+    for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
+  }
+
+  @Test func aBalanceBesideTheAmountStillFiles() throws {
     let last = try #require(
-      Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", "Fee AED 2.00", "Available balance AED 900.00"] }.last)
+      Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", "Available balance AED 900.00"] }.last)
     #expect(last.amountMinor != nil && last.meetsFilingBar, "\(last)")
   }
 
@@ -910,6 +932,65 @@ import Testing
     let m = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 250.00", "Status: Pending"])
     #expect(CombinedReader.read(m, LearnedLayouts()).0.outcome == .pending)
     #expect(CombinedReader.templateVerdict(m, amountMinor: 25_000, currency: "AED", direction: .debit) { nil } == nil)
+  }
+
+  static func read(_ subject: String, _ lines: [String]) -> ExtractReading {
+    CombinedReader.read(Mails.input("bank-c.example", subject: subject, lines), LearnedLayouts()).0
+  }
+
+  @Test(arguments: [
+    ["AED 500.00 transferred to SAMPLE from your account 012XXX34XXX56.", "Transfers made after 2 PM will be processed the next working day."],
+    ["AED 120.00 has been withdrawn from your account 012XXX34XXX56. Any remaining instalments will be processed as scheduled.", "To transfer funds use the app."],
+    ["Your transfer of AED 500.00 to SAMPLE is complete.", "Remarks: transfer of AED 500.00 will be processed"],
+  ])
+  func aPhraseBesideACompletedMovementIsHeld(_ lines: [String]) {
+    let r = Self.read("Advice", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
+    #expect(r.amountMinor != nil)
+  }
+
+  @Test func aSentenceThatStatesThePendingTransferStaysOut() {
+    let r = Self.read("Advice", ["Your transfer of AED 300.00 to SAMPLE has been initiated and will be processed shortly."])
+    #expect(r.outcome == .pending)
+  }
+
+  @Test(arguments: [
+    ("Notice", ["A debit of USD on your account.", "Status: Completed", "Transaction Status: Pending"]),
+    ("Notice", ["Your request was received.", "Status: Pending"]),
+    ("Money Transfer", ["Your transfer was received.", "Status: Completed", "Transaction Status: Pending"]),
+    ("Money Transfer", ["Transfers made after 2 PM will be processed the next working day."]),
+  ])
+  func withNoAmountOnlyAPendingTransferStatusStaysOut(_ c: (String, [String])) {
+    #expect(Self.read(c.0, c.1).outcome == .unknown, "\(c.1)")
+  }
+
+  @Test func withNoAmountAPendingTransferStaysOut() {
+    #expect(Self.read("Money Transfer", ["Your transfer was received.", "Status: Pending"]).outcome == .pending)
+  }
+
+  @Test(arguments: [
+    ["AED 500.00 transferred to SAMPLE from your account 012XXX34XXX56.", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Remarks", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary", "Status: Pending"],
+  ])
+  func aReflectedOrContradictedStatusLineIsHeld(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld, "\(r)")
+  }
+
+  @Test func aMerchantTheReaderReadCannotSetAside() {
+    #expect(!MailRules.setsAside(
+      Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Status: Pending"]), direction: "debit",
+      captured: "Status: Pending"))
+  }
+
+  @Test func onlyTheLineThatHoldsTheFieldIsLeftOut() {
+    let m = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Beneficiary: ANS", "Transaction Status: Pending"])
+    #expect(MailRules.setsAside(m, direction: "debit", captured: "ANS"))
+    let done = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Status: Completed", "Payment Status: Pending"])
+    #expect(!MailRules.setsAside(done, direction: "debit", captured: "TED"))
+    #expect(MailRules.isField("status: pending", "status: pending") && MailRules.isField("beneficiary: ans", "ans"))
+    #expect(!MailRules.isField("transaction status: pending", "ans"))
   }
 
   @Test func aStatusLineTheTemplateCapturedIsHeldNotSetAside() {

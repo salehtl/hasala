@@ -430,7 +430,7 @@ enum LearnedReader {
       let (cur, _) = currency(toks, i)
       let picked = ITokenizer.minor(toks[i].raw, currency: cur)
       let second = typedHits.contains {
-        guard $0 != i, amountScore(toks, $0) > 0 else { return false }
+        guard $0 != i, amountScore(toks, $0) > -2 else { return false }
         let (c, _) = currency(toks, $0)
         return c != cur || ITokenizer.minor(toks[$0].raw, currency: c) != picked
       }

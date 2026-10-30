@@ -193,6 +193,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var enqueued: [MailboxIngestDraft] = []
   /// Fails the next commit (tests: a crash between steps).
   public var failNextCommit = false
+  private var failNextReaderClear = false
 
   public static let setAsideRing = 200
   public static let unreadableRing = 1_000
@@ -215,6 +216,8 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   }
 
   public func setFailNextCommit(_ v: Bool) { failNextCommit = v }
+
+  public func setFailNextReaderClear(_ v: Bool) { failNextReaderClear = v }
 
   public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool { parsing.contains(messageID) }
 
@@ -242,6 +245,10 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) {
     if failNextCommit {
       failNextCommit = false
+      throw MailboxPersistenceError("injected")
+    }
+    if failNextReaderClear && c.clearReader {
+      failNextReaderClear = false
       throw MailboxPersistenceError("injected")
     }
     if c.clearAll {

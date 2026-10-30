@@ -625,9 +625,8 @@ public actor MailboxEngine {
   private func leaveLink(_ state: inout MailboxState) async -> MailboxDisconnectOutcome {
     await endLocalPush()
     await tokens.forget()
-    await forgetReader()
     state.lastHolderCheckAtMs = clock.nowMs()
-    _ = await setPhase(&state, .otherDevice, halt: .notHolder, CycleReport())
+    _ = await setPhase(&state, .otherDevice, halt: .notHolder, CycleReport(), clearReader: true)
     return .otherDevice
   }
 
@@ -668,6 +667,7 @@ public actor MailboxEngine {
     case .unlinked:
       return report
     case .otherDevice:
+      await forgetReader()
       guard holderCheckDue(state, trigger) else { return report }
       let now = clock.nowMs()
       do {
@@ -699,6 +699,7 @@ public actor MailboxEngine {
       // finished scan does.
       state.phase = .authoringBackfill
     case .reconnectRequired:
+      await forgetReader()
       guard trigger == .retry else { return report }
       state.phase = resumePhase(state)
       state.haltedOn = nil
@@ -714,7 +715,7 @@ public actor MailboxEngine {
         switch try await server.linkStatus(provider: provider.id) {
         case .noLink:
           await endLocalPush()
-          return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
+          return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report, clearReader: true)
         case .holder(isThisDevice: false, _):
           // Delete this phone's refresh token but do NOT revoke it at the provider: both iPhones
           // share the iOS client id, and Google's revoke ends the whole grant for that client and
@@ -722,8 +723,7 @@ public actor MailboxEngine {
           // "revoke OWN refresh token"; to confirm with an AT-GMAIL run on a real account).
           await endLocalPush()
           await tokens.forget()
-          await forgetReader()
-          return await setPhase(&state, .otherDevice, halt: .notHolder, report)
+          return await setPhase(&state, .otherDevice, halt: .notHolder, report, clearReader: true)
         case .holder(isThisDevice: true, let watch):
           state.lastHolderCheckAtMs = now
           if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
@@ -1854,15 +1854,15 @@ public actor MailboxEngine {
     }
   }
 
-  func setPhase(_ state: inout MailboxState, _ phase: MailboxPhase, halt code: MailboxHaltCode, _ report: CycleReport)
-    async -> CycleReport
-  {
+  func setPhase(
+    _ state: inout MailboxState, _ phase: MailboxPhase, halt code: MailboxHaltCode, _ report: CycleReport, clearReader: Bool = false
+  ) async -> CycleReport {
     var report = report
     markResume(&state)
     state.phase = phase
     state.haltedOn = code
     report.haltedOn = code
-    return await finish(&state, report)
+    return await finish(&state, report, clearReader: clearReader)
   }
 
   func resumesAfterAccountFull(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
@@ -1875,10 +1875,12 @@ public actor MailboxEngine {
     await setPhase(&state, .halted, halt: code, report)
   }
 
-  func finish(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
+  func finish(_ state: inout MailboxState, _ report: CycleReport, clearReader: Bool = false) async -> CycleReport {
     var report = report
     if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && Self.passing(h)) { emit(.failed(h), 0, 0) }
-    try? await store.commit(commitState(state))
+    var c = commitState(state)
+    c.clearReader = clearReader
+    try? await store.commit(c)
     report.phase = state.phase
     return report
   }
