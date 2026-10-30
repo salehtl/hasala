@@ -126,7 +126,7 @@ public enum LaunchProbe: Sendable, Hashable {
       guard let w = s.writer_id else { return .unbound }
       return w == ctx.writerID.string ? .ok : .unbound
     } catch let e as APIError {
-      let stop = SyncStop.read(e)
+      let stop = await ctx.settled(SyncStop.read(e))
       return stop == .frozen ? .frozen : stop == .halted(.updateRequired) ? .updateRequired : .stop(stop)
     } catch let e as SyncStop {
       return .stop(e)

@@ -164,8 +164,16 @@ func (s *Server) purgeAccount(w http.ResponseWriter, r *http.Request, userID uui
 	}
 	if s.PurgeLedger != "" {
 		opts.Record = func(ids []uuid.UUID) error { return purgeledger.Append(s.PurgeLedger, ids, s.now()) }
+		opts.Cancel = func(ids []uuid.UUID) error { return purgeledger.AppendCancelled(s.PurgeLedger, ids, s.now()) }
 	}
 	rep, err := purge.PurgeWith(r.Context(), s.Pool, userID, opts)
+	if errors.Is(err, purge.ErrUnsettled) {
+		s.logf("api: delete account %s: PURGE UNSETTLED: %v", userID, err)
+		writeErr(w, http.StatusInternalServerError, "deletion_failed",
+			"the deletion did not finish and may still take effect; this is a server-side "+
+				"fault, not a problem with your request")
+		return
+	}
 	if err != nil {
 		// LOUD. The purge is all-or-nothing, so this means the account is still
 		// here — and a client that rendered "your account has been deleted"

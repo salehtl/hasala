@@ -104,10 +104,16 @@ func runPurgeUser(env *runEnv, args []string) error {
 	opts := purge.Options{Goodbye: true}
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
 		opts.Record = func(ids []uuid.UUID) error { return purgeledger.Append(p, ids, time.Now()) }
+		opts.Cancel = func(ids []uuid.UUID) error { return purgeledger.AppendCancelled(p, ids, time.Now()) }
 	} else {
 		fmt.Fprintln(env.stderr, "purge-user: warning: HASALA_PURGE_LEDGER_PATH is not set, so restoring a backup would bring this account back")
 	}
 	rep, err := purge.PurgeWith(ctx, pool, target, opts)
+	if errors.Is(err, purge.ErrUnsettled) {
+		fmt.Fprintln(env.stderr, "purge-user: the deletion did not finish and the ledger may still name this account: "+
+			"check whether it still exists, because a replay that reads such a line deletes it")
+		return fmt.Errorf("purge-user: %w", err)
+	}
 	if err != nil {
 		fmt.Fprintln(env.stderr, "purge-user: the purge did not complete: nothing was deleted and no email was queued")
 		return fmt.Errorf("purge-user: %w", err)

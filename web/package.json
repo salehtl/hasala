@@ -9,6 +9,7 @@
     "check:dist": "bun scripts/check-dist.ts",
     "preview": "astro preview --host 127.0.0.1",
     "check": "astro check",
+    "test": "bun test src",
     "icons": "bun scripts/icons.ts",
     "deploy": "bun run build && wrangler deploy"
   },

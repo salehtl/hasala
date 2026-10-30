@@ -1,5 +1,6 @@
 // Payload decoders of the versioned ops. Decoders switch on `op.v`: `v ≤ 3`
-// decodes exactly as the v3 oracle (replay.ts `decodePayload`); `v == 4` adds
+// decodes as the v3 oracle (replay.ts `decodePayload`) except for the cap of 16
+// split parts, which holds at every version; `v == 4` adds
 // 03c §3's deltas (Replay/V4/TxnV4.swift), 03c §5.1's rule shape and §6's
 // projects and goals, and 03b §3.2's bills.
 import CoreJSON
@@ -199,10 +200,8 @@ extension State {
   /// `CategoryId` and an optional `Note`.
   static func decodeParts(_ raw: JSONValue?, v: Int) throws(PayloadError) -> [Split] {
     guard let list = raw?.arrayValue else { throw PayloadError("parts is not an array") }
-    if v >= 4 {
-      if list.count == 1 { throw PayloadError("parts: a split has 0 or 2-16 parts, got 1") }
-      if list.count > 16 { throw PayloadError("parts: a split has at most 16 parts, got \(list.count)") }
-    }
+    if v >= 4, list.count == 1 { throw PayloadError("parts: a split has 0 or 2-16 parts, got 1") }
+    if list.count > 16 { throw PayloadError("parts: a split has at most 16 parts, got \(list.count)") }
     var out: [Split] = []
     for (i, x) in list.enumerated() {
       guard let o = x.objectValue else { throw PayloadError("part \(i) is not an object") }

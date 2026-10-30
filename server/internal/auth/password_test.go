@@ -399,21 +399,33 @@ func TestC8CodeChecksAreCountedLikeEveryOtherCode(t *testing.T) {
 	vh := sumBytes(newS)
 	i := m.info()
 	ph, _ := keyproto.ParamsHash(keyproto.ActionPasswordReset, vh)
-	b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionPasswordReset, ph[:], keyproto.ProofDeviceCode)
-	if err != nil {
-		t.Fatal(err)
+	begin := func() *StepUpObject {
+		b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionPasswordReset, ph[:], keyproto.ProofDeviceCode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg, _ := keyproto.DeviceStepUpMessage(b.Challenge, m.device.WriterID)
+		return &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "device_code", WriterID: m.device.WriterID,
+			Sig: m.device.SignDAK(t, msg), Code: f.lastCode(m.addr)}}
 	}
-	msg, _ := keyproto.DeviceStepUpMessage(b.Challenge, m.device.WriterID)
-	su := &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "device_code", WriterID: m.device.WriterID,
-		Sig: m.device.SignDAK(t, msg), Code: f.lastCode(m.addr)}}
-	before := f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`)
+	counted := func() int {
+		return f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`)
+	}
+	before := counted()
+	su := begin()
 	if _, err := f.pool.Exec(bgctx, `UPDATE email_codes SET attempts = $1 WHERE ceremony_kind = 'step_up'`, codeMaxAttempts); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, su); !errors.Is(err, ErrStepUpFailed) {
 		t.Fatalf("the right C8 code with no attempt left: %v", err)
 	}
-	if got := f.count(`SELECT coalesce(sum(count), 0) FROM rate_counters WHERE scope = 'code-verify-email'`); got != before+1 {
+	if got := counted(); got != before {
+		t.Fatalf("code-verify-email is %d after a C8 code with no attempt left, want %d", got, before)
+	}
+	if _, err := f.acct.ResetPasswordWithCode(bgctx, m.info(), newS, begin()); err != nil {
+		t.Fatalf("the right C8 code: %v", err)
+	}
+	if got := counted(); got != before+1 {
 		t.Fatalf("code-verify-email is %d after a C8 check, want %d", got, before+1)
 	}
 }

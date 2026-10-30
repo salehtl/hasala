@@ -239,4 +239,32 @@ struct SecretTests {
     try s.wipeAccount(userID: user, writerID: writer)
     #expect(m.count == 0)
   }
+
+  struct RefusesApprovalKey: SecretStore {
+    let inner: MemorySecretStore
+    func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { try inner.read(item) }
+    func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try inner.write(item, value) }
+    func delete(_ item: SecretItem) throws(SecretStoreError) {
+      if case .approvalKey = item { throw .notNow(status: -25308) }
+      try inner.delete(item)
+    }
+  }
+
+  @Test("a refused delete does not stop the wipe: every other item goes, and the refusal is reported")
+  func wipeContinuesPastARefusal() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: RefusesApprovalKey(inner: m), apiHost: "h")
+    try s.writeEpochKey(Data(count: 32), userID: user, epoch: 1)
+    try s.writeWriterSeed(Data(count: 32), userID: user, writerID: writer)
+    try m.write(.approvalKey(userID: user, writerID: writer), Data("k".utf8))
+    for p in MailSecretProvider.allCases { try m.write(.mailRefresh(provider: p, userID: user), Data("t".utf8)) }
+    try m.write(.outlookClientState(userID: user), Data("c".utf8))
+    try m.write(.textKeySecret, Data(repeating: 9, count: 32))
+    #expect(throws: SecretStoreError.notNow(status: -25308)) { try s.wipeAccount(userID: user, writerID: writer) }
+    for p in MailSecretProvider.allCases { #expect(try m.read(.mailRefresh(provider: p, userID: user)) == nil) }
+    #expect(try m.read(.outlookClientState(userID: user)) == nil)
+    #expect(try m.read(.textKeySecret) == nil)
+    #expect(try s.epochKey(userID: user, epoch: 1) == nil)
+    #expect(m.count == 1)
+  }
 }

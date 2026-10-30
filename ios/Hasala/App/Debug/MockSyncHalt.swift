@@ -26,7 +26,7 @@
     }
 
     static let kinds: [HaltKind] =
-      TamperReason.allCases.map(HaltKind.tampered) + [.tamperedResend, .serverRestored, .inconsistent("mock"), .rosterInvalid]
+      TamperReason.allCases.map(HaltKind.tampered) + [.tamperedResend, .serverRestored, .inconsistent("mock"), .rosterInvalid, .unprovedRevocation, .unexpectedGone]
 
     static func halt(_ code: String) -> HaltKind? {
       kinds.first { SyncHaltWall.code($0) == code }
