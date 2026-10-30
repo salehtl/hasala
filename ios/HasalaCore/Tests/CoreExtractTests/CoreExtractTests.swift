@@ -392,7 +392,7 @@ import Testing
     #expect(layout.examples.count == 5)
     let json = String(decoding: try JSONEncoder().encode(mem), as: UTF8.self)
     #expect(json.components(separatedBy: "purchase").count - 1 == 1)
-    #expect(json.contains("sample"))
+    #expect(!json.contains("sample"))
   }
 
   @Test func boundsHold() {
@@ -432,8 +432,8 @@ import Testing
       mem = CombinedReader.read(Mails.cardPurchaseEN(amount: "\(i + 1).00", merchant: "SAMPLE \(i)", at: Int64(i)), mem).1
     }
     var sender = try #require(mem.senders["bank-b.example"])
-    sender.layouts[0].examples[0].tokens[0] = .anchor(9_999, spaceBefore: false, raw: nil)
-    sender.layouts[0].examples[1].tokens[0] = .anchor(9_999, spaceBefore: true, raw: "x")
+    sender.layouts[0].examples[0].tokens[0] = .anchor(9_999, spaceBefore: false)
+    sender.layouts[0].examples[1].tokens[0] = .anchor(9_999, spaceBefore: true)
     mem.senders["bank-b.example"] = sender
     let trip = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(mem))
     let (r, _) = CombinedReader.read(Mails.cardPurchaseEN(amount: "9.00", merchant: "SAMPLE NEW", at: 9), trip)
@@ -645,6 +645,15 @@ import Testing
     #expect(low.readersConfirm && !low.meetsFilingBar)
   }
 
+  @Test func anOverriddenAmountOrAHeldPendingWordingNeverMeetsTheBar() {
+    var overridden = confirmed()
+    overridden.aedOverrideUsed = true
+    #expect(overridden.readersConfirm && !overridden.meetsFilingBar)
+    var held = confirmed()
+    held.pendingWordingHeld = true
+    #expect(held.readersConfirm && !held.meetsFilingBar)
+  }
+
   @Test func aFirstMailOfAnUnlearnedLayoutNeverFiles() {
     var mem = LearnedLayouts()
     var readings: [ExtractReading] = []
@@ -739,5 +748,336 @@ import Testing
     #expect(
       CombinedReader.templateVerdict(input, amountMinor: 1_200, currency: "XYZ", direction: .debit) { nil }
         == ExtractTemplateVerdict(amountMinor: 1_200, currency: "XYZ", holds: [.currencyNotISO]))
+  }
+}
+
+@Suite struct LayoutPrivacyTests {
+  static let markers = ["synthmarker99", "syntheticname", "4321987", "77.77", "sample bookshop", "bookshop"]
+
+  static func mail(_ i: Int) -> ExtractInput {
+    Mails.input(
+      "bank-p.example", subject: "Account activity",
+      [
+        "Dear Syntheticname,", "AED \(10 + i).50 was debited at SAMPLE BOOKSHOP \(i).", "Reference SYNTHMARKER99 4321987",
+        "Available balance AED 77.77",
+      ], at: Int64(i))
+  }
+
+  static func encoded(_ mem: LearnedLayouts) throws -> String {
+    String(decoding: try JSONEncoder().encode(mem), as: UTF8.self).lowercased()
+  }
+
+  @Test func aLayoutHoldsNoMailText() throws {
+    var mem = LearnedLayouts()
+    for i in 0..<6 {
+      mem = CombinedReader.read(Self.mail(i), mem).1
+      let json = try Self.encoded(mem)
+      for marker in Self.markers { #expect(!json.contains(marker), "\(marker) after \(i + 1)") }
+    }
+  }
+
+  @Test func aLayoutKeepsOnlyShippedWordsTagsAndClasses() throws {
+    var mem = LearnedLayouts()
+    for i in 0..<6 { mem = CombinedReader.read(Self.mail(i), mem).1 }
+    let layouts = try #require(mem.senders["bank-p.example"]?.layouts)
+    for l in layouts {
+      for slot in l.anchors where slot.kind == .const && slot.cls == .word { #expect(LayoutCodec.isStoredWord(slot.key), "\(slot.key)") }
+      for x in l.examples {
+        for case .free(let raw, let cls, _) in x.tokens { #expect(LayoutCodec.isStoredShape(raw, cls), "\(raw)") }
+      }
+    }
+  }
+
+  @Test func aStoredFormatWithTextIsNotRead() {
+    for json in ["[1, true, \"name\"]", "[\"syntheticname\", 0, true]", "[\"12.50\", 3, true]", "[\"#zzzz\", 0, true]"] {
+      #expect(throws: DecodingError.self, "\(json)") { try JSONDecoder().decode(FillerToken.self, from: Data(json.utf8)) }
+    }
+    let slot = "{\"k\":0,\"v\":\"syntheticname\",\"c\":0}"
+    #expect(throws: DecodingError.self) { try JSONDecoder().decode(LayoutSlot.self, from: Data(slot.utf8)) }
+  }
+
+  @Test func aTaggerDecidesTheStoredTag() {
+    let other = WordTagger(id: "other") { _ in 0xABCD }
+    #expect(LayoutCodec.shapeKey("bookshop", .word, other) == "#abcd")
+    #expect(LayoutCodec.shapeKey("amount", .word, other) == "amount")
+    #expect(LayoutCodec.shapeKey("#abcd", .word, .memoryOnly) == "#abcd")
+    #expect(LayoutCodec.shapeKey("12.50", .money, other) == LayoutCodec.valueShape)
+  }
+
+  @Test func wordingNeverSeenDoesNotFileOnATrainedLayout() {
+    var mem = LearnedLayouts()
+    for i in 0..<5 {
+      mem = CombinedReader.read(
+        Mails.input("bank-w.example", subject: "Account activity", ["Thank you for banking with us.", "Your payment of AED \(i + 10).50 was debited from your account."], at: Int64(i)), mem).1
+    }
+    for first in ["Advance advice before collection next month.", "Illustration only do nothing please."] {
+      let r = CombinedReader.read(
+        Mails.input("bank-w.example", subject: "Account activity", [first, "Your payment of AED 777.50 was debited from your account."], at: 9), mem).0
+      #expect(!r.meetsFilingBar, "\(r)")
+    }
+  }
+
+  @Test func distinctMerchantsOfOneLengthFileFromTheThirdMail() {
+    var mem = LearnedLayouts()
+    let names = ["OAK BOOKS", "RISING SUN", "NORTH MART", "BLUE LAMP", "GREEN GATE", "SILVER DOOR", "RED KITE", "PINE HALL"]
+    var filed: [Bool] = []
+    for (i, name) in names.enumerated() {
+      let (r, next) = CombinedReader.read(
+        Mails.input("bank-m.example", subject: "Account activity", ["Your account was debited with AED \(i + 10).50.", "Merchant", name, "Available balance AED 900.00"], at: Int64(i)), mem)
+      mem = next
+      filed.append(r.meetsFilingBar)
+    }
+    #expect(filed[3...].allSatisfy { $0 }, "\(filed)")
+  }
+  @Test func aSavedLayoutReadsTheSameAsOneInMemory() throws {
+    var live = LearnedLayouts()
+    var saved = LearnedLayouts()
+    for i in 0..<8 {
+      let m = Mails.cardPurchaseEN(amount: "\(i + 3).00", merchant: "SAMPLE \(["A", "B", "C", "D"][i % 4])", at: Int64(i))
+      let (a, nextLive) = CombinedReader.read(m, live)
+      let (b, nextSaved) = CombinedReader.read(m, saved)
+      #expect(a == b)
+      live = nextLive
+      saved = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(nextSaved))
+    }
+    #expect(live == saved)
+  }
+
+  @Test func aSavedLayoutStillFilesAndNamesTheMerchantOfTheNewMail() throws {
+    var mem = LearnedLayouts()
+    for i in 0..<5 {
+      mem = CombinedReader.read(Mails.cardPurchaseAR(amount: "\(i + 3).00", merchant: "SAMPLE \(["A", "B", "C", "D", "E"][i])", at: Int64(i)), mem).1
+      mem = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(mem))
+    }
+    let r = CombinedReader.read(Mails.cardPurchaseAR(amount: "9.00", merchant: "SAMPLE NEW", at: 9), mem).0
+    #expect(r.meetsFilingBar && r.amountMinor == 900 && r.merchant == "SAMPLE NEW", "\(r)")
+  }
+
+  @Test func aMerchantThatNeverChangesStaysCapped() throws {
+    var mem = LearnedLayouts()
+    var last: ExtractReading?
+    for i in 0..<6 {
+      let (r, next) = CombinedReader.read(Mails.cardPurchaseEN(amount: "\(i + 3).00", merchant: "SAMPLE A", at: Int64(i)), mem)
+      last = r
+      mem = try JSONDecoder().decode(LearnedLayouts.self, from: try JSONEncoder().encode(next))
+    }
+    let once = CombinedReader.read(Mails.cardPurchaseEN(amount: "9.00", merchant: "SAMPLE A", at: 9), mem).0
+    #expect(once.learnedConfidencePercent == last?.learnedConfidencePercent)
+  }
+}
+
+@Suite struct AmountBoundsTests {
+  @Test func aTokenTooLargeForTheIntegerIsUnreadable() {
+    #expect(ITokenizer.minor("92233720368547758.08", currency: "AED") == nil)
+    #expect(ITokenizer.minor("9223372036854775.808", currency: "BHD") == nil)
+    #expect(ITokenizer.minor("92233720368547758.07", currency: "AED") == Int64.max)
+    #expect(ITokenizer.minor("92233720368547759.00", currency: "AED") == nil)
+  }
+
+  @Test func aReadingOfATooLargeTokenDoesNotStop() {
+    let m = Mails.input("bank-t.example", subject: "", ["AED 92233720368547758.08 paid at SHOP."])
+    #expect(CombinedReader.read(m, LearnedLayouts()).0.amountMinor != Int64.max)
+  }
+}
+
+@Suite struct FilingAmountTests {
+  static func thread(_ lines: (Int) -> [String], count: Int = 6) -> [ExtractReading] {
+    var mem = LearnedLayouts()
+    return (0..<count).map { i in
+      let (r, next) = CombinedReader.read(Mails.input("bank-f.example", subject: "Account activity", lines(i), at: Int64(i)), mem)
+      mem = next
+      return r
+    }
+  }
+
+  @Test func anAEDAmountFromTheOverrideDoesNotFile() throws {
+    let last = try #require(
+      Self.thread { ["USD\($0 + 12).50 has been debited from your account 012XXX34XXX56. AED \($0 + 45).91 debited in local currency."] }.last)
+    #expect(last.currency == "AED" && last.aedOverrideUsed, "\(last)")
+    #expect(!last.meetsFilingBar)
+  }
+
+  @Test func anAEDAmountBothReadersReadThemselvesFiles() throws {
+    let last = try #require(Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", "Thank you."] }.last)
+    #expect(last.currency == "AED" && !last.aedOverrideUsed && last.meetsFilingBar, "\(last)")
+  }
+
+  @Test func aSecondLabelledAmountOnANewLayoutDoesNotFile() throws {
+    let readings = Self.thread {
+      ["AED \($0 + 1).00 has been credited to your account XXXX1234.", "Remarks: amount AED 5,000.00 debited"]
+    }
+    for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
+    #expect(try #require(readings.last).learnedConfidencePercent <= 60)
+  }
+
+  @Test func aDescriptorAmountBesideAForeignAmountDoesNotFile() {
+    let readings = Self.thread { ["USD \($0 + 10).50 has been debited from your account 012XXX34XXX56 at AMOUNT DEBITED AED 1.00 SHOP.", "Thank you"] }
+    for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
+  }
+
+  @Test(arguments: [
+    ["Credit alert", "AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Your account XXXX1234: AED %d.00 on hold released.", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "AED %d.00", "Fee AED 2.00"],
+    ["Credit alert", "Total AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Amount due AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Balance top-up AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+    ["Credit alert", "Available funds increased AED %d.00", "Remarks: amount AED 5,000.00 debited"],
+  ])
+  func aSecondAmountWithNoWordingBesideItDoesNotFile(_ lines: [String]) {
+    let readings = Self.thread { i in lines.map { $0.replacingOccurrences(of: "%d", with: "\(i + 1)") } }
+    for r in readings { #expect(!r.meetsFilingBar, "\(r)") }
+  }
+
+  @Test(arguments: [
+    "Available balance", "Avl Bal:", "Available limit", "Balance is", "Balance after transaction", "Balance amount", "Available credit",
+    "Outstanding", "Minimum due", "الرصيد المتاح", "الرصيد المتوفر", "الرصيد المتبقي", "الرصيد:", "رصيدك المتاح", "الحد المتاح", "الرصيد الحالي",
+    "رصيدك", "رصيدك الحالي", "رصيد الحساب", "رصيد حسابك", "الرصيد الجديد", "الرصيد الدفتري", "الرصيد بعد العملية",
+    "الرصيد المتاح في حسابك", "الحد الأقصى",
+  ].map { $0 + " AED 900.00" })
+  func anAccountBalanceBesideTheAmountStillFiles(_ line: String) throws {
+    let last = try #require(
+      Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", line] }.last)
+    #expect(last.amountMinor != nil && last.meetsFilingBar, "\(last)")
+  }
+
+  @Test func aBalanceBesideTheAmountStillFiles() throws {
+    let last = try #require(
+      Self.thread { ["Your purchase of AED \($0 + 45).91 was debited from your account 012XXX34XXX56.", "Available balance AED 900.00"] }.last)
+    #expect(last.amountMinor != nil && last.meetsFilingBar, "\(last)")
+  }
+
+  @Test func theSameAmountStatedTwiceStillFiles() throws {
+    let last = try #require(
+      Self.thread { ["Amount AED \($0 + 45).91 debited from your account 012XXX34XXX56.", "Total debited amount AED \($0 + 45).91"] }.last)
+    #expect(last.meetsFilingBar, "\(last)")
+  }
+}
+
+@Suite struct PendingHoldTests {
+  static let withdrawal = "AED 120.00 has been withdrawn from your account 012XXX34XXX56."
+
+  @Test func aPendingPhraseOutsideATransferHoldsTheReading() {
+    let m = Mails.input("bank-c.example", subject: "Advice", [Self.withdrawal + " Any remaining instalments will be processed as scheduled."])
+    let r = CombinedReader.read(m, LearnedLayouts()).0
+    #expect(r.outcome == .transaction && r.amountMinor == 12_000 && r.pendingWordingHeld && !r.meetsFilingBar)
+  }
+
+  @Test func aPendingStatusOutsideATransferHoldsTheReading() {
+    let m = Mails.input("bank-c.example", subject: "Debit alert", [Self.withdrawal, "Status: Pending"])
+    let r = CombinedReader.read(m, LearnedLayouts()).0
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar)
+  }
+
+  @Test func aTransferWithTwoStatusesIsHeldNotSetAside() {
+    let m = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 250.00", "Status: Pending", "Transaction Status: Completed"])
+    let r = CombinedReader.read(m, LearnedLayouts()).0
+    #expect(r.outcome == .transaction && r.pendingWordingHeld)
+    let v = CombinedReader.templateVerdict(m, amountMinor: 25_000, currency: "AED", direction: .debit) { nil }
+    #expect(v?.holds == [.pendingStatus])
+  }
+
+  @Test func aPendingTransferStaysOut() {
+    let m = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 250.00", "Status: Pending"])
+    #expect(CombinedReader.read(m, LearnedLayouts()).0.outcome == .pending)
+    #expect(CombinedReader.templateVerdict(m, amountMinor: 25_000, currency: "AED", direction: .debit) { nil } == nil)
+  }
+
+  static func read(_ subject: String, _ lines: [String]) -> ExtractReading {
+    CombinedReader.read(Mails.input("bank-c.example", subject: subject, lines), LearnedLayouts()).0
+  }
+
+  @Test(arguments: [
+    ["AED 500.00 transferred to SAMPLE from your account 012XXX34XXX56.", "Transfers made after 2 PM will be processed the next working day."],
+    ["AED 120.00 has been withdrawn from your account 012XXX34XXX56. Any remaining instalments will be processed as scheduled.", "To transfer funds use the app."],
+    ["Your transfer of AED 500.00 to SAMPLE is complete.", "Remarks: transfer of AED 500.00 will be processed"],
+  ])
+  func aPhraseBesideACompletedMovementIsHeld(_ lines: [String]) {
+    let r = Self.read("Advice", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
+    #expect(r.amountMinor != nil)
+  }
+
+  @Test(arguments: [
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Remarks", "Transfer of AED 500.00 will be processed"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Remarks - transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Ref 1: transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "SAMPLE transfer of AED 500.00 is pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: SAMPLE", "Your transfer of AED 500.00 is pending"],
+    ["Remarks - your transfer of AED 500.00 is pending"],
+    ["You received a transfer of AED 500.00 from SAMPLE. Your transfer of AED 500.00 is pending."],
+    ["Transfer from SAMPLE. Your transfer of AED 500.00 is pending."],
+    ["Incoming transfer from SAMPLE", "your transfer of AED 500.00 is pending", "Amount: AED 500.00"],
+    ["Your transfer of AED 500.00 is pending. You received AED 500.00 from SAMPLE."],
+  ])
+  func aPhraseOnALineThatCouldBeReflectedIsHeld(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
+  }
+
+  @Test(arguments: [
+    ["Your transfer request has been received and will be processed.", "Transfer Amount: AED 500.00"],
+    ["Transferred Amount: AED 500.00", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary: Funds credited Ltd", "Status: Pending"],
+  ])
+  func aPendingNoticeWeCannotProveGoesToReview(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld && !r.meetsFilingBar, "\(r)")
+  }
+
+  @Test(arguments: [
+    ["Your transfer of AED 300.00 to SAMPLE has been initiated and will be processed shortly."],
+    ["Your transfer request of AED 300.00 has been received and will be processed."],
+    ["Dear Customer,", "Your transfer of AED 300.00 is being processed."],
+    ["Dear Customer, your transfer of AED 300.00 is being processed."],
+  ])
+  func aSentenceThatStatesThePendingTransferStaysOut(_ lines: [String]) {
+    #expect(Self.read("Money Transfer", lines).outcome == .pending, "\(lines)")
+  }
+
+  @Test(arguments: [
+    ("Notice", ["A debit of USD on your account.", "Status: Completed", "Transaction Status: Pending"]),
+    ("Notice", ["Your request was received.", "Status: Pending"]),
+    ("Money Transfer", ["Your transfer was received.", "Status: Completed", "Transaction Status: Pending"]),
+    ("Money Transfer", ["Transfers made after 2 PM will be processed the next working day."]),
+  ])
+  func withNoAmountOnlyAPendingTransferStatusStaysOut(_ c: (String, [String])) {
+    #expect(Self.read(c.0, c.1).outcome == .unknown, "\(c.1)")
+  }
+
+  @Test func withNoAmountAPendingTransferStaysOut() {
+    #expect(Self.read("Money Transfer", ["Your transfer was received.", "Status: Pending"]).outcome == .pending)
+  }
+
+  @Test(arguments: [
+    ["AED 500.00 transferred to SAMPLE from your account 012XXX34XXX56.", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Remarks", "Status: Pending"],
+    ["Transfer Amount: AED 500.00", "Beneficiary", "Status: Pending"],
+  ])
+  func aReflectedOrContradictedStatusLineIsHeld(_ lines: [String]) {
+    let r = Self.read("Money Transfer", lines)
+    #expect(r.outcome == .transaction && r.pendingWordingHeld, "\(r)")
+  }
+
+  @Test func aMerchantTheReaderReadCannotSetAside() {
+    #expect(!MailRules.setsAside(
+      Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Status: Pending"]), direction: "debit",
+      captured: "Status: Pending"))
+  }
+
+  @Test func onlyTheLineThatHoldsTheFieldIsLeftOut() {
+    let m = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Beneficiary: ANS", "Transaction Status: Pending"])
+    #expect(MailRules.setsAside(m, direction: "debit", captured: "ANS"))
+    let done = Mails.input("bank-c.example", subject: "Money Transfer", ["Transfer Amount: AED 500.00", "Status: Completed", "Payment Status: Pending"])
+    #expect(!MailRules.setsAside(done, direction: "debit", captured: "TED"))
+    #expect(MailRules.isField("status: pending", "status: pending") && MailRules.isField("beneficiary: ans", "ans"))
+    #expect(!MailRules.isField("transaction status: pending", "ans"))
+  }
+
+  @Test func aStatusLineTheTemplateCapturedIsHeldNotSetAside() {
+    let m = Mails.input("bank-c.example", subject: "Notification", ["Purchase of AED 25.00", "TRANSFER STATUS:QUEUED"])
+    #expect(CombinedReader.templateVerdict(m, amountMinor: 2_500, currency: "AED", direction: .debit) { nil } == nil)
+    let v = CombinedReader.templateVerdict(m, amountMinor: 2_500, currency: "AED", direction: .debit, captured: "TRANSFER STATUS:QUEUED") { nil }
+    #expect(v?.holds == [.pendingStatus])
   }
 }

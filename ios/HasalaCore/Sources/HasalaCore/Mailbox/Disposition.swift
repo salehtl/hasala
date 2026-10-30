@@ -198,11 +198,12 @@ public enum MessageDisposer {
       mail.bank = t.definition.bank
       var reading: ExtractReading?
       let verdict = CombinedReader.templateVerdict(
-        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction)
+        input, amountMinor: f.amountMinor, currency: f.currency, direction: ExtractDirection(rawValue: f.direction),
+        captured: f.merchant
       ) {
         guard reader != nil else { return nil }
         let (r, next) = CombinedReader.read(input, reader!.layouts)
-        if learn { reader!.layouts = next }
+        if learn && reader!.training { reader!.layouts = next }
         reading = r
         return r
       }
@@ -228,7 +229,7 @@ public enum MessageDisposer {
     if Task.isCancelled { return .interrupted }
     guard reader != nil else { return .mail(mail) }
     let (reading, next) = CombinedReader.read(input, reader!.layouts)
-    if learn { reader!.layouts = next }
+    if learn && reader!.training { reader!.layouts = next }
     let bank = matching.first?.definition.bank ?? ""
     switch reading.outcome {
     case .pending:

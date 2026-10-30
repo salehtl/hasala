@@ -141,6 +141,7 @@ public struct MailboxWrite: Sendable {
   public var reader: Data?
   public var state: MailboxStateRow?
   public var clearAll = false
+  public var clearReader = false
   public init() {}
 }
 
@@ -320,6 +321,7 @@ public final class MailboxTableStore: Sendable {
           try db.execute(sql: "DELETE FROM \(t)")
         }
       }
+      if w.clearReader { try db.execute(sql: "DELETE FROM mailbox_reader") }
       for p in w.pending {
         try db.execute(
           sql: """

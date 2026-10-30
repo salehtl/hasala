@@ -115,6 +115,91 @@ import Testing
     #expect(s.phase == .otherDevice && s.haltedOn == .notHolder)
   }
 
+  func saveReader(_ rig: Rig) async throws {
+    var c = MailboxCommit()
+    c.reader = MailReaderState(address: SyntheticMail.defaultTo)
+    try await rig.store.commit(c)
+    #expect(try await rig.store.loadReader() != nil)
+  }
+
+  @Test(arguments: [Backend.sqlite, .memory])
+  func aDisconnectOnAnIPhoneThatLostTheLinkForgetsTheLayouts(_ backend: Backend) async throws {
+    let rig = Rig(backend: backend)
+    await rig.connectAndActivate()
+    let accounted = await rig.accountedCount()
+    try await saveReader(rig)
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
+    #expect(await rig.engine.disconnect(removing: nil) == .otherDevice)
+    #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
+    #expect(await rig.accountedCount() == accounted)
+  }
+
+  @Test(arguments: [Backend.sqlite, .memory])
+  func aCycleThatFindsTheLinkOnAnotherIPhoneForgetsTheLayouts(_ backend: Backend) async throws {
+    let rig = Rig(backend: backend)
+    rig.gmail.add(SyntheticMail.dibCard(id: "early", dateMs: Rig.t0 - 86_400_000))
+    await rig.connectAndActivate()
+    let accounted = await rig.accountedCount()
+    #expect(accounted > 0)
+    try await saveReader(rig)
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+    #expect(try await rig.store.loadReader() == nil)
+    #expect(await rig.accountedCount() == accounted)
+  }
+
+  @Test(arguments: [Backend.sqlite, .memory])
+  func aCycleThatFindsNoLinkForgetsTheLayouts(_ backend: Backend) async throws {
+    let rig = Rig(backend: backend)
+    await rig.connectAndActivate()
+    try await saveReader(rig)
+    await rig.server.setLink(.noLink)
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .reconnectRequired)
+    #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
+  }
+
+  @Test func aFailedWriteWhenTheLinkEndedLeavesTheLayoutsForTheNextCycle() async throws {
+    let rig = Rig(backend: .memory)
+    await rig.connectAndActivate()
+    try await saveReader(rig)
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    await (rig.store as? InMemoryMailboxPersistence)?.setFailNextReaderClear(true)
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+    #expect(try await rig.store.loadReader() != nil)
+    #expect(rig.readerKeys.held != nil)
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+    #expect(try await rig.store.loadReader() == nil)
+    #expect(rig.readerKeys.held == nil)
+  }
+
+  @Test func aDisconnectAndAFreshConnectForgetTheKey() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    try rig.readerKeys.write(Data(repeating: 7, count: 32))
+    _ = await rig.engine.disconnect(removing: nil)
+    #expect(rig.readerKeys.held == nil)
+  }
+
+  @Test func aPhoneThatWaitsForAReconnectOrAnotherIPhoneForgetsTheLayouts() async throws {
+    for phase in [MailboxPhase.reconnectRequired, .otherDevice] {
+      let rig = Rig()
+      await rig.connectAndActivate()
+      var c = MailboxCommit()
+      var s = await rig.state()
+      s.phase = phase
+      c.state = s
+      c.reader = MailReaderState(address: SyntheticMail.defaultTo)
+      try await rig.store.commit(c)
+      _ = await rig.engine.runCycle(trigger: .foreground)
+      #expect(try await rig.store.loadReader() == nil, "\(phase)")
+    }
+  }
+
   @Test func disconnectAfterTheLinkMovedToTheOtherProviderLeavesItAlone() async throws {
     let rig = Rig()
     await rig.connectAndActivate()

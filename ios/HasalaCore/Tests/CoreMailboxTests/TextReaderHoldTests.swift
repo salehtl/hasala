@@ -29,6 +29,22 @@ struct TextReaderHoldTests {
     return BankTextPayload.filesItself(k, link: .notLinked, origin: .automation, transferPartner: false)
   }
 
+  @Test("a text with an amount too large to hold is read without stopping", arguments: ["AED 92233720368547758.08 paid at SHOP.", "BHD 9223372036854775.808 paid at SHOP."])
+  func oversizedAmount(_ text: String) {
+    let (r, _) = BankTextReader.read(BankTextArrival(text: text, sender: nil, receivedAtMs: TextRig.t0), templates: [])
+    #expect(!Self.files(r))
+  }
+
+  @Test("a pending phrase outside a transfer holds a read text for Review with its fields")
+  func pendingPhraseHolds() throws {
+    let s = Self.stream { "AED \(Self.amount($0)) has been withdrawn from your account XXX4321. Any remaining instalments will be processed as scheduled." }
+    for (r, reading) in s {
+      #expect(reading.pendingWordingHeld && !reading.meetsFilingBar)
+      #expect(try #require(r.kept?.fields).direction == "debit")
+      #expect(!Self.files(r))
+    }
+  }
+
   @Test("a plain debit from the account files once the readers agree, so the holds below are not vacuous")
   func controlFiles() throws {
     let s = Self.stream { "AED \(Self.amount($0)) has been debited from your account XXX4321 at SAMPLE SHOP on 05-06-2026." }

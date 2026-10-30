@@ -249,6 +249,9 @@ enum LedgerSchema {
     m.registerMigration("mailbox_reader") { db in
       for sql in mailboxReader { try db.execute(sql: sql) }
     }
+    m.registerMigration("mailbox_reader_shapes") { db in
+      try db.execute(sql: "DELETE FROM mailbox_reader")
+    }
     return m
   }
 }

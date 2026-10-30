@@ -19,7 +19,7 @@ struct FMCacheTests {
     #expect(
       migrations == [
         "v1", "fm_cache", "mailbox_sender_address", "mailbox_parsing", "mailbox_pending_import", "mailbox_unparsed_sender",
-        "fm_cache_answers", "backlog_run", "sort_memory", "fm_kept", "mailbox_reader",
+        "fm_cache_answers", "backlog_run", "sort_memory", "fm_kept", "mailbox_reader", "mailbox_reader_shapes",
       ])
     let cache = FMCache(s)
     try cache.recordUnknown([(subject: "cafe example jbr", modelTag: "apple-fm/26.1")], taxonomyHash: Self.taxonomy, now: 0)

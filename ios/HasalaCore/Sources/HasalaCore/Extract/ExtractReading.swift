@@ -75,6 +75,8 @@ public struct ExtractReading: Sendable, Equatable {
   public var readersAgree: Bool
   public var aedFromOverride: Bool
   public var directionAmbiguous = false
+  public var aedOverrideUsed = false
+  public var pendingWordingHeld = false
 
   public init(
     outcome: ExtractOutcome, amountMinor: Int64? = nil, currency: String? = nil, direction: ExtractDirection? = nil,
@@ -108,7 +110,9 @@ public struct ExtractReading: Sendable, Equatable {
       && rulesConfidencePercent >= Self.agreementBarPercent && learnedConfidencePercent >= Self.agreementBarPercent
   }
 
-  public var meetsFilingBar: Bool { meetsAgreementBar && readersConfirm && !directionAmbiguous }
+  public var meetsFilingBar: Bool {
+    meetsAgreementBar && readersConfirm && !directionAmbiguous && !aedOverrideUsed && !pendingWordingHeld
+  }
 
   public static let maxAmountMinor: Int64 = 9_999_999_999_999
 
@@ -126,6 +130,7 @@ public struct ExtractReading: Sendable, Equatable {
 public enum ExtractHold: String, Sendable, Equatable {
   case aedNotConfirmed = "aed_not_confirmed"
   case pendingPhrase = "pending_phrase"
+  case pendingStatus = "pending_status"
   case readersDisagree = "readers_disagree"
   case currencyNotISO = "currency_not_iso"
 }

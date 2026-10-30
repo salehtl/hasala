@@ -102,8 +102,65 @@ enum MailRules {
     return out
   }
 
-  static func isPending(_ input: ExtractInput) -> Bool {
-    pendingSignal(input) != .none
+  static let reflectedLabels: Set<String> = [
+    "remark", "remarks", "narration", "description", "details", "purpose", "message", "note", "notes", "beneficiary",
+    "beneficiary name", "merchant", "payee", "sender", "from", "to", "reference", "الوصف", "البيان", "ملاحظات", "ملاحظه", "المعامله",
+    "المستفيد", "الي", "من",
+  ]
+
+  static func isField(_ line: String, _ field: String) -> Bool {
+    guard !field.isEmpty else { return false }
+    if line == field { return true }
+    guard let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }) else { return false }
+    return line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces) == field
+  }
+
+  static let youReceived = RuleText.words(["you received", "you have received", "you've received"])
+  static let greetingLine = RuleText.re("^\\s*(?:dear|hello|hi|عزيزي|عزيزتي|عميلنا|مرحبا)(?:\\s+[^\\s.!?:]+){0,4}\\s*[,،!]?\\s*$")
+
+  static func statesSettled(_ lines: [String]) -> Bool {
+    let body = lines.joined(separator: "\n")
+    let stated = RuleText.replace(StatusLexicon.pendingPhrase, body)
+    return RuleText.has(StatusLexicon.completedPhrase, stated) || RuleText.has(TextGate.Markers.transactionClause, stated)
+      || RuleText.has(youReceived, stated)
+  }
+
+  static func foldedField(_ captured: String?) -> String {
+    captured.map { RuleText.fold(RuleText.clean(RuleText.asciiDigits($0))).trimmingCharacters(in: .whitespaces) } ?? ""
+  }
+
+  static func setsAside(_ input: ExtractInput, direction: String?, captured: String? = nil) -> Bool {
+    guard kind(input, direction: direction) == .transferNotice else { return false }
+    let lines = foldedLines(input.text)
+    let field = foldedField(captured)
+    var bank: [String] = []
+    var previous = ""
+    for line in lines where !line.isEmpty {
+      if !isField(line, field) && !reflectedLabels.contains(RuleReader.labelKey(previous)) { bank.append(line) }
+      previous = line
+    }
+    let statuses = statusValues(bank)
+    return !statuses.isEmpty && statuses.allSatisfy { RuleText.has(StatusLexicon.pendingValue, $0) } && !statesSettled(lines)
+  }
+
+  static let statementBreak = try! NSRegularExpression(pattern: "[.!?;؛](?=\\s|$)")
+  static let ownTransfer = RuleText.re(
+    "^\\s*(?:dear\\s+(?:valued\\s+)?customer[,:]?\\s+)?your\\s+(?:\\S+\\s+){0,3}?(?:transfer|remittance)(?![a-z])"
+      + "|^\\s*(?:تحويلك|حوالتك|طلب\\s+التحويل|طلب\\s+الحواله)")
+
+  static func statesPendingTransfer(_ input: ExtractInput, direction: String?, amountMinor: Int64?, captured: String? = nil) -> Bool {
+    guard let amountMinor, kind(input, direction: direction) == .transferNotice else { return false }
+    let lines = foldedLines(input.text)
+    guard !statesSettled(lines) else { return false }
+    let field = foldedField(captured)
+    guard let line = lines.filter({ !$0.isEmpty }).drop(while: { RuleText.has(greetingLine, $0) }).first else { return false }
+    if isField(line, field) || reflectedLabels.contains(RuleReader.labelKey(line)) { return false }
+    if let colon = line.firstIndex(where: { $0 == ":" || $0 == "：" }), !line[..<colon].contains(where: { $0.isNumber }) { return false }
+    let ns = line as NSString
+    let end = statementBreak.firstMatch(in: line, range: NSRange(location: 0, length: ns.length))?.range.location ?? ns.length
+    let sentence = ns.substring(to: end)
+    return RuleText.has(StatusLexicon.pendingPhrase, sentence) && RuleText.has(ownTransfer, sentence)
+      && RuleMoneyParser.scan(sentence, line: 0, labelCurrency: nil).contains(where: { $0.minor == amountMinor })
   }
 
   static func pendingSignal(_ input: ExtractInput) -> ExtractPending {

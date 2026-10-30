@@ -62,6 +62,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
   public func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) {
     var w = MailboxWrite()
     w.clearAll = c.clearAll
+    w.clearReader = c.clearReader
     if !c.drafts.isEmpty {
       let at = nowMs()
       w.pending = try io { try author(c.drafts, at) }

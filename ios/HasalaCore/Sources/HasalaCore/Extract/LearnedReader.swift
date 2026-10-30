@@ -17,17 +17,17 @@ enum LearnedReader {
   static func read(_ m: ExtractInput, _ memory: LearnedLayouts) -> (Reading, LearnedLayouts) {
     var memory = memory
     var sender = memory.layouts(for: m.sender)
-    let r = read(m, &sender)
+    let r = read(m, &sender, tagger: memory.wordTagger)
     memory.store(sender, for: m.sender)
     return (r, memory)
   }
 
-  static func read(_ m: ExtractInput, _ sender: inout SenderLayouts) -> Reading {
+  static func read(_ m: ExtractInput, _ sender: inout SenderLayouts, tagger: WordTagger) -> Reading {
     sender.clock += 1
     let clock = sender.clock
-    var interner = IInterner()
+    var interner = IInterner(tagger: tagger)
     let toks = ITokenizer.tokenize(subject: m.subject, text: m.text, interner: &interner)
-    let keySet = Set(toks.filter { $0.code > 0 }.map(\.key))
+    let keySet = Set(toks.filter { $0.code > 0 }.map { LayoutCodec.shapeKey($0.key, $0.cls, tagger) })
 
     var best: (Int, IApplied, [IElem])?
     let ranked = sender.layouts.indices.map { i -> (Int, Double) in
@@ -59,27 +59,27 @@ enum LearnedReader {
         l.examples.removeFirst(l.examples.count - LearnedLayouts.exampleLimitPerLayout)
       }
       let applied = l.examples.map { IAlign.apply(newT, $0) }
-      let analysis = analyze(l, applied)
+      let analysis = analyze(l, applied, tagger)
       sender.layouts[i] = LearnedLayout(
-        anchors: LayoutCodec.slots(newT),
-        examples: zip(l.examples, applied).map { LayoutCodec.encode($0, template: newT, applied: $1) }, seen: l.seen,
+        anchors: LayoutCodec.slots(newT, tagger),
+        examples: zip(l.examples, applied).map { LayoutCodec.encode($0, template: newT, applied: $1, tagger) }, seen: l.seen,
         lastUsed: l.lastUsed)
-      if revised && preFit < spawnBelow { addLayout(toks, &interner, clock: clock, to: &sender) }
+      if revised && preFit < spawnBelow { addLayout(toks, clock: clock, to: &sender, tagger) }
       trim(&sender)
       return learned(l, analysis, applied, toks, m, preFit: preFit, revised: revised)
     }
-    addLayout(toks, &interner, clock: clock, to: &sender)
+    addLayout(toks, clock: clock, to: &sender, tagger)
     trim(&sender)
     var r = bare(toks, m)
     r.note = "unlearned layout (1 seen); " + r.note
     return r
   }
 
-  static func addLayout(_ toks: [IToken], _ interner: inout IInterner, clock: Int, to sender: inout SenderLayouts) {
+  static func addLayout(_ toks: [IToken], clock: Int, to sender: inout SenderLayouts, _ tagger: WordTagger) {
     let t = toks.map(IElem.from)
     sender.layouts.append(
       LearnedLayout(
-        anchors: LayoutCodec.slots(t), examples: [LayoutCodec.encode(toks, template: t, applied: IAlign.apply(t, toks))], seen: 1,
+        anchors: LayoutCodec.slots(t, tagger), examples: [LayoutCodec.encode(toks, template: t, applied: IAlign.apply(t, toks), tagger)], seen: 1,
         lastUsed: clock))
     if sender.layouts.count > LearnedLayouts.layoutLimitPerSender, let idx = sender.leastRecentlyUsedLayout {
       sender.layouts.remove(at: idx)
@@ -130,6 +130,20 @@ enum LearnedReader {
       i += 1
     }
     return out
+  }
+
+  static let accountBalanceLabels: Set<String> = ILex.balanceWords.subtracting(["total", "due"]).union(["رصيدك", "المتوفر", "متوفر", "المتبقي"])
+  static let balanceQualifiers: Set<String> = [
+    "due", "amount", "after", "transaction", "credit", "current", "new", "ledger", "الحالي", "الجديد", "الدفتري", "الحساب", "حسابك", "بعد",
+    "العملية", "العمليه", "الأقصى", "الاقصى",
+  ]
+
+  static func isAccountBalance(_ toks: [IToken], _ idx: Int) -> Bool {
+    for word in leftContext(toks, idx) where !ILex.functionWords.contains(word) {
+      if accountBalanceLabels.contains(word) { return true }
+      if !balanceQualifiers.contains(word) { return false }
+    }
+    return false
   }
 
   static func amountScore(_ toks: [IToken], _ idx: Int) -> Int {
@@ -317,7 +331,7 @@ enum LearnedReader {
     return (left, startsLine && endsLine, prevColon)
   }
 
-  static func analyze(_ l: RuntimeLayout, _ applied: [IApplied]) -> IAnalysis {
+  static func analyze(_ l: RuntimeLayout, _ applied: [IApplied], _ tagger: WordTagger) -> IAnalysis {
     let t = l.template
     let k = applied.count
     var bestAmt: (Int, Int, Double)?
@@ -364,7 +378,7 @@ enum LearnedReader {
         if !words.isEmpty && words.count >= nums.count { alpha += 1 }
         if nums.count > words.count { digit += 1 }
         if !words.isEmpty && words.allSatisfy({ ILex.direction($0.key) != nil || ILex.functionWords.contains($0.key) || ILex.fieldNames.contains($0.key) }) { dirOnly += 1 }
-        values.append(ITokenizer.join(toks))
+        values.append(LayoutCodec.shape(toks, tagger))
       }
       guard !values.isEmpty, alpha * 2 >= values.count else { continue }
       if dirOnly * 2 >= values.count { continue }
@@ -427,6 +441,14 @@ enum LearnedReader {
       let typedHits = Set(l.template.indices.filter { l.template[$0].kind == .typed && l.template[$0].cls == .money }.compactMap { a.elemTok[$0] })
       let extra = toks.indices.filter { toks[$0].cls == .money && !typedHits.contains($0) && $0 != i && amountScore(toks, $0) > -2 }
       if !extra.isEmpty { conf = min(conf, 60); notes.append("extra money in mail") }
+      let (cur, _) = currency(toks, i)
+      let picked = ITokenizer.minor(toks[i].raw, currency: cur)
+      let second = typedHits.contains {
+        guard $0 != i, !isAccountBalance(toks, $0) else { return false }
+        let (c, _) = currency(toks, $0)
+        return c != cur || ITokenizer.minor(toks[$0].raw, currency: c) != picked
+      }
+      if second { conf = min(conf, 60); notes.append("second amount in mail") }
     }
     guard let ai = idx else {
       return Reading(confidence: conf, note: notes.joined(separator: "; ") + "; no money slot")

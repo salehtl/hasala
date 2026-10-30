@@ -157,6 +157,7 @@ public struct Secrets: Sendable {
     for p in MailSecretProvider.allCases { delete(.mailRefresh(provider: p, userID: userID)) }
     delete(.outlookClientState(userID: userID))
     delete(.textKeySecret)
+    delete(.readerWordKey)
     if let first { throw first }
   }
 }

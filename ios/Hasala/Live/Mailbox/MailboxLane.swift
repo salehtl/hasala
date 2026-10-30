@@ -59,7 +59,7 @@ nonisolated final class MailboxLane: Sendable {
     engine = MailboxEngine(
       config: MailboxEngineConfig(grantID: userID.string, buildTopic: nil), provider: mail, tokens: tokens,
       store: persistence, ledger: ledger, server: server, stepUp: stepUp, categorizer: categorizer,
-      templates: Self.mailTemplates, clock: clock, random: SystemRandom())
+      templates: Self.mailTemplates, clock: clock, random: SystemRandom(), readerKeys: SecretsMailReaderKeyStore(secrets: secrets))
     self.presenter = presenter
   }
 

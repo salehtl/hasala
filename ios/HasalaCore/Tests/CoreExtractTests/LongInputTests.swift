@@ -64,6 +64,104 @@ struct LongInputTests {
     }
   }
 
+  static let wideSpaces: [Character] = ["\u{2003}", "\u{2000}", "\u{205F}", "\u{3000}", "\u{1680}", "\u{2028}", "\u{0085}"]
+
+  @Test("a run of wide spaces reads in bounded time", arguments: wideSpaces)
+  func wideSpaceRun(_ c: Character) {
+    let run = { (n: Int) in String(repeating: c, count: n) }
+    let line = run(1_360) + "1" + run(2_730) + "!"
+    let d = Self.timed { _ = RuleText.has(RuleReader.justNumber, line) }
+    #expect(d < Self.budget, "\(d)")
+    let at = "paid at x" + run(4_000) + "!"
+    let read = Self.mail("Amount: AED 10.00 debited\n" + Array(repeating: at, count: 15).joined(separator: "\n"))
+    let whole = Self.timed { _ = CombinedReader.read(read, LearnedLayouts()) }
+    #expect(whole < Self.budget, "\(whole)")
+  }
+
+  @Test("the bare-number check keeps its meaning")
+  func justNumber() {
+    let yes = ["1", "AED 1,200.50", " (  AED. 12.00 )  ", "12.00 AED", "(12)", ".5", "12.", "abc 1 xyz"]
+    let no = ["AED 12 paid", "abcd 1", "1 abcd", "!1", "1!", "letters", "( )"]
+    for l in yes { #expect(RuleText.has(RuleReader.justNumber, l), "\(l)") }
+    for l in no { #expect(!RuleText.has(RuleReader.justNumber, l), "\(l)") }
+  }
+
+  @Test("wide spaces read as plain spaces")
+  func wideSpacesAreSpaces() {
+    for c in Self.wideSpaces {
+      #expect(RuleText.cleanLines("AED\(c)\(c)10.00\(c)debited") == ["AED 10.00 debited"], "\(c.unicodeScalars.first!.value)")
+    }
+    let r = CombinedReader.readRules(Self.mail("Amount:\u{2003}AED\u{2003}10.00\u{2003}debited"))
+    #expect(r.amountMinor == 1_000 && r.currency == "AED")
+  }
+
+  static func repeatedLiterals(_ wording: String, bytes: Int) -> String {
+    var parts = wording.components(separatedBy: "{any}")
+    let tail = parts.removeLast()
+    let share = bytes / max(parts.count, 1)
+    var out = ""
+    for (i, p) in parts.enumerated() {
+      let literal = p.replacingOccurrences(of: "{ccy}", with: "abc").replacingOccurrences(of: "{amount}", with: "1.00")
+        .replacingOccurrences(of: "{n}", with: "1").replacingOccurrences(of: "{card}", with: "1234")
+      out += i == 0 ? literal : String(repeating: literal, count: max(1, share / max(literal.utf8.count, 1)))
+      out += "x"
+    }
+    return out + (tail.isEmpty ? "" : "!") + "."
+  }
+
+  @Test("a text that repeats a wording's literals is gated in bounded time at the size limit")
+  func wordingLiterals() {
+    let si =
+      "dear x.y" + String(repeating: ", you have set up a standing instruction through ", count: 82) + "x"
+      + String(repeating: " from your account ", count: 215) + "x" + String(repeating: " with amount of abc ", count: 410)
+    var cases = [si]
+    for w in TextGate.wholeBody where w.pattern.contains("{any}") { cases.append(Self.repeatedLiterals(w.pattern, bytes: TextGate.maxTextBytes)) }
+    for text in cases {
+      let bounded = String(text.utf8.prefix(TextGate.maxTextBytes)) ?? text
+      let t = TextGate.Prepared(bounded)
+      let d = Self.timed {
+        _ = TextGate.neverAPayment(t)
+        _ = TextGate.notice(t)
+      }
+      #expect(d < Self.budget, "\(d) \(text.prefix(40))")
+    }
+  }
+
+  @Test("a long text with no line breaks and an Arabic card prefix is gated in bounded time")
+  func maskedCardPrefix() {
+    for unit in ["المنتهيه ب", "المنتهيهب"] {
+      let t = TextGate.Prepared("paid " + String(repeating: unit, count: 900))
+      let d = Self.timed { _ = TextGate.hasPaymentShape(t, lenient: false) }
+      #expect(d < Self.budget, "\(d)")
+    }
+  }
+
+  @Test("each wording reads the same as a plain lazy pattern")
+  func wordingsKeepTheirMeaning() throws {
+    let fills = ["SAMPLE", "SAMPLE, x", "a b c 12.00", "SAMPLE from your Account SAMPLE", "..", "with amount of"]
+    for w in TextGate.wholeBody {
+      let lazy = try NSRegularExpression(
+        pattern: TextGate.WholeBody.compile(w.pattern).replacingOccurrences(of: "(?>", with: "(?:"), options: [.caseInsensitive])
+      for fill in fills {
+        for rest in [fill, "SAMPLE"] {
+          var text = w.pattern.replacingOccurrences(of: "{ccy}", with: "AED").replacingOccurrences(of: "{amount}", with: "1,200.50")
+            .replacingOccurrences(of: "{n}", with: "12345").replacingOccurrences(of: "{card}", with: "XX1234")
+            .replacingOccurrences(of: "{date}", with: "01/02/2026")
+          var first = true
+          while let r = text.range(of: "{any}") {
+            text.replaceSubrange(r, with: first ? fill : rest)
+            first = false
+          }
+          for candidate in [text, text + " tail", text.replacingOccurrences(of: " ", with: "  ")] {
+            let t = TextGate.Prepared(candidate)
+            #expect(RuleText.has(lazy, t.folded) == w.matches(t), "\(candidate)")
+          }
+          if fill == "SAMPLE" { #expect(w.matches(TextGate.Prepared(text)), "\(text)") }
+        }
+      }
+    }
+  }
+
   @Test("the amount and masked-card shapes keep their meaning")
   func shapes() {
     let yes = [

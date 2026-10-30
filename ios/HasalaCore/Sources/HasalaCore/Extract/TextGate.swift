@@ -154,13 +154,16 @@ public enum TextGate {
       "amount": "[.,]*+[0-9][0-9.,]*+",
       "ccy": "[a-z]{3}",
       "card": "[x*]{0,6}[0-9]{2,6}",
-      "any": "[^\\n]+?",
+      "any": lazyAny,
       "date": "[0-9]{1,4}[-./][0-9]{1,2}[-./][0-9]{1,4}",
     ]
+
+    static let lazyAny = "[^\\n]+?"
 
     static func compile(_ wording: String) -> String {
       var out = "^"
       var literal = ""
+      var open = false
       var i = wording.startIndex
       func flush() {
         guard !literal.isEmpty else { return }
@@ -172,6 +175,10 @@ public enum TextGate {
       while i < body.endIndex {
         if body[i] == "{", let close = body[i...].firstIndex(of: "}"), let w = wildcards[String(body[body.index(after: i)..<close])] {
           flush()
+          if w == lazyAny {
+            out += (open ? ")" : "") + "(?>"
+            open = true
+          }
           out += w
           i = body.index(after: close)
           continue
@@ -180,7 +187,7 @@ public enum TextGate {
         i = body.index(after: i)
       }
       flush()
-      return out + "$"
+      return out + "$" + (open ? ")" : "")
     }
   }
 

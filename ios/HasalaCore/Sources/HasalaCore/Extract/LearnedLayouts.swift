@@ -1,3 +1,23 @@
+public struct WordTagger: Sendable, Equatable {
+  public static let memoryOnly = WordTagger(id: "memory") { word in
+    var h: UInt32 = 2_166_136_261
+    for b in word.utf8 { h = (h ^ UInt32(b)) &* 16_777_619 }
+    return UInt16(truncatingIfNeeded: (h >> 16) ^ h)
+  }
+
+  let id: String
+  public let tag: @Sendable (String) -> UInt16
+
+  public init(id: String, tag: @escaping @Sendable (String) -> UInt16) {
+    self.id = id
+    self.tag = tag
+  }
+
+  public var isDeviceKeyed: Bool { id != Self.memoryOnly.id }
+
+  public static func == (a: WordTagger, b: WordTagger) -> Bool { a.id == b.id }
+}
+
 public struct LearnedLayouts: Codable, Sendable, Equatable {
   public static let senderLimit = 32
   public static let layoutLimitPerSender = 40
@@ -7,6 +27,12 @@ public struct LearnedLayouts: Codable, Sendable, Equatable {
 
   public internal(set) var senders: [String: SenderLayouts]
   var clock: Int64
+  public var wordTagger = WordTagger.memoryOnly
+
+  enum CodingKeys: String, CodingKey {
+    case senders
+    case clock
+  }
 
   public init() {
     senders = [:]
@@ -85,6 +111,19 @@ public struct LayoutSlot: Codable, Sendable, Equatable {
   }
 }
 
+extension LayoutSlot {
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let kind = try c.decode(IElemKind.self, forKey: .kind)
+    let key = try c.decode(String.self, forKey: .key)
+    let cls = try c.decode(IClass.self, forKey: .cls)
+    if kind == .const && cls == .word && !LayoutCodec.isStoredWord(key) {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "slot"))
+    }
+    self.init(kind: kind, key: key, cls: cls)
+  }
+}
+
 public struct SlotFillers: Codable, Sendable, Equatable {
   var tokens: [FillerToken]
 
@@ -94,37 +133,29 @@ public struct SlotFillers: Codable, Sendable, Equatable {
 }
 
 enum FillerToken: Codable, Sendable, Equatable {
-  case anchor(Int, spaceBefore: Bool, raw: String?)
+  case anchor(Int, spaceBefore: Bool)
   case free(String, cls: IClass, spaceBefore: Bool)
 
   init(from decoder: any Decoder) throws {
     if let packed = try? decoder.singleValueContainer().decode(Int.self) {
       guard packed >= 0 else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "anchor")) }
-      self = .anchor(packed >> 1, spaceBefore: packed & 1 == 1, raw: nil)
+      self = .anchor(packed >> 1, spaceBefore: packed & 1 == 1)
       return
     }
     var c = try decoder.unkeyedContainer()
-    if let raw = try? c.decode(String.self) {
-      let cls = try c.decode(IClass.self)
-      self = .free(raw, cls: cls, spaceBefore: try c.decode(Bool.self))
-    } else {
-      let e = try c.decode(Int.self)
-      guard e >= 0 else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "anchor")) }
-      let space = try c.decode(Bool.self)
-      self = .anchor(e, spaceBefore: space, raw: try c.decode(String.self))
+    let raw = try c.decode(String.self)
+    let cls = try c.decode(IClass.self)
+    guard LayoutCodec.isStoredShape(raw, cls) else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "free"))
     }
+    self = .free(raw, cls: cls, spaceBefore: try c.decode(Bool.self))
   }
 
   func encode(to encoder: any Encoder) throws {
     switch self {
-    case .anchor(let e, let space, nil):
+    case .anchor(let e, let space):
       var c = encoder.singleValueContainer()
       try c.encode(e << 1 | (space ? 1 : 0))
-    case .anchor(let e, let space, let raw?):
-      var c = encoder.unkeyedContainer()
-      try c.encode(e)
-      try c.encode(space)
-      try c.encode(raw)
     case .free(let raw, let cls, let space):
       var c = encoder.unkeyedContainer()
       try c.encode(raw)
@@ -152,8 +183,45 @@ enum LayoutCodec {
     }
   }
 
-  static func slots(_ t: [IElem]) -> [LayoutSlot] {
-    t.map { LayoutSlot(kind: $0.kind, key: $0.key, cls: $0.cls) }
+  static func slots(_ t: [IElem], _ tagger: WordTagger) -> [LayoutSlot] {
+    t.map { LayoutSlot(kind: $0.kind, key: $0.kind == .const ? shapeKey($0.key, $0.cls, tagger) : $0.key, cls: $0.cls) }
+  }
+
+  static let valueShape = "0"
+
+  static func shapeKey(_ key: String, _ cls: IClass, _ tagger: WordTagger) -> String {
+    switch cls {
+    case .money, .num, .cur: return valueShape
+    case .nl, .punct: return key
+    case .word: return isStoredWord(key) ? key : wordTag(key, tagger)
+    }
+  }
+
+  static func wordTag(_ key: String, _ tagger: WordTagger) -> String {
+    let hex = String(tagger.tag(key), radix: 16)
+    return "#" + String(repeating: "0", count: 4 - hex.utf8.count) + hex
+  }
+
+  static func isWordTag(_ key: String) -> Bool {
+    let c = Array(key.utf8)
+    return c.count == 5 && c[0] == 35 && c[1...].allSatisfy { ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) }
+  }
+
+  static func isStoredWord(_ key: String) -> Bool {
+    key == ILex.subjKey || ILex.layoutWords.contains(key) || isWordTag(key)
+  }
+
+  static func isStoredShape(_ raw: String, _ cls: IClass) -> Bool {
+    switch cls {
+    case .money, .num, .cur: return raw == valueShape
+    case .nl: return raw == ILex.nlKey
+    case .punct: return raw.allSatisfy { ITokenizer.trailPunct.contains($0) || ITokenizer.leadPunct.contains($0) }
+    case .word: return isStoredWord(raw)
+    }
+  }
+
+  static func shape(_ toks: ArraySlice<IToken>, _ tagger: WordTagger) -> String {
+    toks.filter { $0.cls != .nl && $0.key != ILex.subjKey }.map { shapeKey($0.key, $0.cls, tagger) }.joined(separator: " ")
   }
 
   static func anchorKeys(_ slots: [LayoutSlot]) -> Set<String> {
@@ -169,10 +237,10 @@ enum LayoutCodec {
     for t in f.tokens {
       var tok: IToken
       switch t {
-      case .anchor(let e, let space, let raw):
+      case .anchor(let e, let space):
         guard template.indices.contains(e) else { return nil }
         let el = template[e]
-        tok = IToken(raw: raw ?? defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
+        tok = IToken(raw: defaultRaw(el.key, el.cls), key: el.key, cls: el.cls, line: line, spaceBefore: space, code: el.code)
       case .free(let raw, let cls, let space):
         let key = cls == .nl ? ILex.nlKey : raw.lowercased()
         tok = IToken(raw: raw, key: key, cls: cls, line: line, spaceBefore: space, code: ILex.code(cls, key, &interner))
@@ -183,18 +251,15 @@ enum LayoutCodec {
     return out
   }
 
-  static func encode(_ toks: [IToken], template: [IElem], applied: IApplied) -> SlotFillers {
+  static func encode(_ toks: [IToken], template: [IElem], applied: IApplied, _ tagger: WordTagger) -> SlotFillers {
     var anchorOf: [Int: Int] = [:]
     for (e, j) in applied.elemTok.enumerated() {
       if let j = j, template[e].kind == .const { anchorOf[j] = e }
     }
     return SlotFillers(
       tokens: toks.enumerated().map { j, t in
-        if let e = anchorOf[j] {
-          let raw = t.raw == defaultRaw(t.key, t.cls) ? nil : t.raw
-          return .anchor(e, spaceBefore: t.spaceBefore, raw: raw)
-        }
-        return .free(t.raw, cls: t.cls, spaceBefore: t.spaceBefore)
+        if let e = anchorOf[j] { return .anchor(e, spaceBefore: t.spaceBefore) }
+        return .free(shapeKey(t.key, t.cls, tagger), cls: t.cls, spaceBefore: t.spaceBefore)
       })
   }
 }

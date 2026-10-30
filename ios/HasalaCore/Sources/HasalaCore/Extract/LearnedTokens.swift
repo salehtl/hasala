@@ -15,6 +15,7 @@ struct IToken {
 
 struct IInterner {
   var map: [String: Int32] = [:]
+  var tagger = WordTagger.memoryOnly
   mutating func code(_ s: String) -> Int32 {
     if let c = map[s] { return c }
     let c = Int32(map.count + 1)
@@ -42,7 +43,7 @@ enum ILex {
   static func code(_ cls: IClass, _ key: String, _ interner: inout IInterner) -> Int32 {
     switch cls {
     case .money, .num, .cur: typedCode(cls)
-    default: interner.code(key)
+    default: interner.code(LayoutCodec.shapeKey(key, cls, interner.tagger))
     }
   }
 
@@ -103,6 +104,9 @@ enum ILex {
     debitWords.contains(k) || creditWords.contains(k) || txWords.contains(k) || balanceWords.contains(k)
       || merchantLabels.contains(k) || functionWords.contains(k) || greetWords.contains(k)
   }
+
+  static let layoutWords: Set<String> = debitWords.union(creditWords).union(txWords).union(balanceWords).union(amountWords)
+    .union(merchantLabels).union(greetWords).union(functionWords).union(fieldNames).union(IAlign.strongLabels)
 
   static func direction(_ k: String) -> String? {
     if debitWords.contains(k) { return "debit" }
@@ -298,6 +302,7 @@ enum ITokenizer {
     for _ in 0..<exp { mult *= 10 }
     let (m, o) = whole.multipliedReportingOverflow(by: mult)
     if o { return nil }
-    return m + (Int64(frac.isEmpty ? "0" : frac) ?? 0)
+    let (total, overflow) = m.addingReportingOverflow(Int64(frac.isEmpty ? "0" : frac) ?? 0)
+    return overflow ? nil : total
   }
 }

@@ -177,7 +177,9 @@ struct SecretTests {
     #expect(SecretItem.writerKey(userID: user, writerID: writer).account == "\(user.string):\(writer.string)")
     #expect(SecretItem.approvalKey(userID: user, writerID: writer).accessibility == .whenPasscodeSetThisDeviceOnly)
     #expect(SecretItem.writerKey(userID: user, writerID: writer).accessibility == .afterFirstUnlockThisDeviceOnly)
-    #expect(SecretItem.allServices.count == 9)
+    #expect(SecretItem.allServices.count == 10)
+    #expect(SecretItem.readerWordKey.service == "app.hasala.reader-key")
+    #expect(SecretItem.readerWordKey.accessibility == .afterFirstUnlockThisDeviceOnly)
     #expect(SecretItem.textKeySecret.service == "app.hasala.text-key")
     #expect(SecretItem.textKeySecret.accessibility == .afterFirstUnlockThisDeviceOnly)
     // The Gmail item keeps its pre-provider service, so existing links need no migration.
@@ -187,7 +189,7 @@ struct SecretTests {
     #expect(SecretItem.outlookClientState(userID: user).service == "app.hasala.outlook.clientstate")
     #expect(SecretItem.outlookClientState(userID: user).account == user.string)
     let items: [SecretItem] =
-      MailSecretProvider.allCases.map { .mailRefresh(provider: $0, userID: user) } + [.outlookClientState(userID: user), .textKeySecret]
+      MailSecretProvider.allCases.map { .mailRefresh(provider: $0, userID: user) } + [.outlookClientState(userID: user), .textKeySecret, .readerWordKey]
     for item in items { #expect(SecretItem.allServices.contains(item.service)) }
   }
 
@@ -233,6 +235,7 @@ struct SecretTests {
     for p in MailSecretProvider.allCases { try m.write(.mailRefresh(provider: p, userID: user), Data("t".utf8)) }
     try m.write(.outlookClientState(userID: user), Data("c".utf8))
     try m.write(.textKeySecret, Data(repeating: 9, count: 32))
+    try m.write(.readerWordKey, Data(repeating: 8, count: 32))
     try s.wipeAccount(userID: user, writerID: writer)
     #expect(m.count == 0)
   }
