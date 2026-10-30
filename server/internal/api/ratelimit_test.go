@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -126,4 +127,107 @@ func TestRefundNGivesBackUpToTheBurst(t *testing.T) {
 	}
 	var none *Limiter
 	none.RefundN("a", 1)
+}
+
+func TestClientLimiterKeepsOnePrefixFromFillingTheTable(t *testing.T) {
+	now := time.Now()
+	l := NewClientLimiter(3.0/3600, 3, 640, func() time.Time { return now })
+	for i := range 640 {
+		l.Allow(fmt.Sprintf("6:20010db80001%04x", i))
+	}
+	if len(l.buckets) != 11 {
+		t.Fatalf("one /48 holds %d table entries, want its 10 and one shared", len(l.buckets))
+	}
+	if l.Allow("6:20010db80001ffff") {
+		t.Fatal("the /48's shared bucket did not apply its burst")
+	}
+	if !l.Allow("6:20010db800010000") {
+		t.Fatal("a /64 inside the quota lost its own bucket")
+	}
+	for i := range 3 {
+		if !l.Allow("6:20010db800020001") {
+			t.Fatalf("call %d from another /48 was refused", i)
+		}
+		if !l.Allow("4:192.0.2.7") {
+			t.Fatalf("call %d from an IPv4 client was refused", i)
+		}
+	}
+	if !l.fallback.last.IsZero() {
+		t.Fatal("a table with room used the shared bucket")
+	}
+}
+
+func TestClientLimiterFreesAQuotaSlotOnlyAfterARefill(t *testing.T) {
+	now := time.Now()
+	l := NewClientLimiter(1, 2, 64, func() time.Time { return now })
+	a, b, p := "6:20010db800010001", "6:20010db800010002", "6p:20010db80001"
+	if !l.Allow(a) || !l.Allow(b) {
+		t.Fatal("the first calls were refused")
+	}
+	if _, own := l.buckets[b]; own {
+		t.Fatal("a /64 over the quota got its own bucket")
+	}
+	if _, shared := l.buckets[p]; !shared {
+		t.Fatal("a /64 over the quota has no shared bucket")
+	}
+	now = now.Add(10 * time.Second)
+	if !l.Allow(b) {
+		t.Fatal("a refilled /48 refused a /64")
+	}
+	if _, own := l.buckets[a]; own {
+		t.Fatal("the refilled /64 kept its quota slot")
+	}
+	if _, own := l.buckets[b]; !own || l.prefixKeys[p] != 1 {
+		t.Fatalf("own %v, quota %d after a refill", own, l.prefixKeys[p])
+	}
+}
+
+func TestClientLimiterSweepsAtMostOncePerRefill(t *testing.T) {
+	now := time.Now()
+	l := NewClientLimiter(1, 2, 64, func() time.Time { return now })
+	a, b, p := "6:20010db800010001", "6:20010db800010002", "6p:20010db80001"
+	l.Allow(a)
+	l.Allow(b)
+	first := l.nextSweep
+	if !first.Equal(now.Add(2 * time.Second)) {
+		t.Fatalf("next sweep %v, want one refill after %v", first, now)
+	}
+	now = now.Add(time.Second)
+	l.Allow(b)
+	if !l.nextSweep.Equal(first) {
+		t.Fatal("a call inside the refill period swept again")
+	}
+	if l.prefixKeys[p] != 1 {
+		t.Fatalf("quota %d, want 1", l.prefixKeys[p])
+	}
+}
+
+func TestClientLimiterForgetsSweptPrefixes(t *testing.T) {
+	now := time.Now()
+	l := NewClientLimiter(1, 1, 2, func() time.Time { return now })
+	l.Allow("6:20010db800010001")
+	l.Allow("6:20010db800020001")
+	if l.Allow("6:20010db800030001") && l.Allow("6:20010db800040001") {
+		t.Fatal("the shared fallback did not apply its burst")
+	}
+	now = now.Add(5 * time.Second)
+	if !l.Allow("6:20010db800050001") {
+		t.Fatal("a sweep of refilled keys made no room")
+	}
+	if len(l.prefixKeys) != 1 {
+		t.Fatalf("%d prefixes tracked after the sweep, want 1", len(l.prefixKeys))
+	}
+}
+
+func TestLimiterWithoutAQuotaTreatsEveryKeyAlike(t *testing.T) {
+	now := time.Now()
+	l := NewLimiter(0, 1, 64, func() time.Time { return now })
+	for i := range 64 {
+		if !l.Allow(fmt.Sprintf("6:20010db80001%04x", i)) {
+			t.Fatalf("key %d was refused", i)
+		}
+	}
+	if len(l.buckets) != 64 {
+		t.Fatalf("%d keys, want 64", len(l.buckets))
+	}
 }

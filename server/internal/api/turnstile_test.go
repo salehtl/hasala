@@ -95,3 +95,100 @@ func TestTurnstileRequiredWithoutAVerifierRefuses(t *testing.T) {
 	wantStatus(t, r.post("/api/v1/waitlist", `{"email":"nov@example.com","bank":"enbd","source":"web","turnstileToken":"x"}`, nil),
 		http.StatusForbidden)
 }
+
+type publicForm struct {
+	name, path, good string
+	junk             []string
+	global, prefix   func(*WebOptions) **Limiter
+}
+
+func publicFormCases() []publicForm {
+	waitlist := publicForm{name: "waitlist", path: "/api/v1/waitlist"}
+	waitlist.good = `{"email":"form@example.com","bank":"enbd","source":"web","turnstileToken":"good"}`
+	waitlist.junk = []string{
+		"",
+		"garbage",
+		`{"email":"form@example.com","bank":"enbd","source":"web","website":"x"}`,
+		`{"email":"nope","bank":"enbd","source":"web","turnstileToken":"good"}`,
+		`{"email":"form@example.com","bank":"enbd","source":"web"}`,
+		`{"email":"form@example.com","bank":"enbd","source":"web","turnstileToken":"bad"}`,
+	}
+	waitlist.global = func(o *WebOptions) **Limiter { return &o.WaitlistGlobal }
+	waitlist.prefix = func(o *WebOptions) **Limiter { return &o.WaitlistPrefix }
+
+	bank := publicForm{name: "bank request", path: "/api/v1/bank-requests"}
+	bank.good = `{"bank":"other","otherBank":"Bank Of Nowhere","source":"web","turnstileToken":"good"}`
+	bank.junk = []string{
+		"",
+		"garbage",
+		`{"bank":"enbd","source":"web","website":"x"}`,
+		`{"bank":"enbd","source":"app","turnstileToken":"good"}`,
+		`{"bank":"other","otherBank":"Bank Of Nowhere","source":"web"}`,
+		`{"bank":"other","otherBank":"Bank Of Nowhere","source":"web","turnstileToken":"bad"}`,
+	}
+	bank.global = func(o *WebOptions) **Limiter { return &o.BankGlobal }
+	bank.prefix = func(o *WebOptions) **Limiter { return &o.BankPrefix }
+
+	return []publicForm{waitlist, bank}
+}
+
+func TestPublicGlobalBudgetIsSpentOnlyAfterTurnstile(t *testing.T) {
+	for _, c := range publicFormCases() {
+		t.Run(c.name, func(t *testing.T) {
+			r := newWebRig(t)
+			o := r.h.srv.Web
+			o.Turnstile, o.TurnstileRequired = &fakeTurnstile{}, true
+			*c.global(o) = NewLimiter(0, 1, 1, nil)
+			for range 3 {
+				for _, body := range c.junk {
+					if w := r.post(c.path, body, nil); w.Code == http.StatusTooManyRequests {
+						t.Fatalf("%q was refused by the global budget", body)
+					}
+				}
+			}
+			wantStatus(t, r.post(c.path, c.good, nil), http.StatusAccepted)
+			w := r.post(c.path, c.good, nil)
+			wantStatus(t, w, http.StatusTooManyRequests)
+			if w.Header().Get("Retry-After") != "600" {
+				t.Fatalf("Retry-After %q", w.Header().Get("Retry-After"))
+			}
+		})
+	}
+}
+
+func TestPublicFormsHaveAPrefixTierBeforeTurnstile(t *testing.T) {
+	for _, c := range publicFormCases() {
+		t.Run(c.name, func(t *testing.T) {
+			r := newWebRig(t)
+			r.h.srv.TrustCloudflare = true
+			o := r.h.srv.Web
+			f := &fakeTurnstile{}
+			o.Turnstile, o.TurnstileRequired = f, true
+			*c.prefix(o) = NewLimiter(0, 2, 16, nil)
+			body := strings.ReplaceAll(c.good, `"good"`, `"bad"`)
+			post := func(ip string) int {
+				req := httptest.NewRequest("POST", c.path, strings.NewReader(body))
+				req.RemoteAddr = "127.0.0.1:40000"
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Cf-Connecting-Ip", ip)
+				w := httptest.NewRecorder()
+				r.h.h.ServeHTTP(w, req)
+				return w.Code
+			}
+			for _, ip := range []string{"2001:db8:7:1::1", "2001:db8:7:2::1"} {
+				if got := post(ip); got != http.StatusForbidden {
+					t.Fatalf("%s inside the tier: %d", ip, got)
+				}
+			}
+			if got := post("2001:db8:7:3::1"); got != http.StatusTooManyRequests {
+				t.Fatalf("a /48 over its tier: %d", got)
+			}
+			if len(f.calls) != 2 {
+				t.Fatalf("%d verifier calls, want 2", len(f.calls))
+			}
+			if got := post("2001:db8:8::1"); got != http.StatusForbidden {
+				t.Fatalf("another /48: %d", got)
+			}
+		})
+	}
+}

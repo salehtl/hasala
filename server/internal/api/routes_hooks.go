@@ -59,8 +59,8 @@ const (
 // mailbox link alone leaves it to the catch-all 404. The per-IP budget is one
 // across both providers' hooks and is spent by every request; each provider
 // has its own global budget, spent only by a request that proved itself (a
-// verified Google token, a clientState that names a link), so unauthenticated
-// traffic cannot delay a real wake.
+// verified Google token, a clientState that names a link inside its hook-link
+// budget), so unauthenticated traffic cannot delay a real wake.
 func (s *Server) mountHooks(mux *http.ServeMux) {
 	g, o := s.gmailPush(), s.outlookPush()
 	if g == nil && o == nil {
@@ -216,11 +216,13 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 //     token with a body is no handshake: 204 and a counter.
 //  4. The notification collection; a malformed one is 204 and a counter.
 //  5. One route query by the unique client_state_hash for the distinct
-//     hashes. A request with a match spends hook-global once (429 when it is
-//     out); then per link that matched: hook-link, then the wake (an
-//     unmatched hash never touches hook-global or hook-link): ReasonMail on the main path,
-//     ReasonNudge for a lifecycle event (reauthorizationRequired,
-//     subscriptionRemoved, missed). An unknown clientState is a counter.
+//     hashes. Per link that matched: hook-link. A request with a link inside
+//     its hook-link budget spends hook-global once (429 when it is out, and
+//     the hook-link tokens go back); then each such link's wake (an unmatched
+//     hash never touches hook-global or hook-link, and a link over its budget
+//     spends no hook-global): ReasonMail on the main path, ReasonNudge for a
+//     lifecycle event (reauthorizationRequired, subscriptionRemoved, missed).
+//     An unknown clientState is a counter.
 //  6. 202, or 503 if the route could not be read (Graph retries).
 func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifecycle bool) {
 	o := s.Outlook.Push
@@ -311,18 +313,26 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		return
 	}
 	o.Counters.Unknown.Add(int64(len(hashes) - len(matched)))
-	if len(matched) > 0 && !o.HookGlobal.Allow("") {
-		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
-		return
-	}
-	var holders []gmailpush.Holder
+	var (
+		holders []gmailpush.Holder
+		spent   []string
+	)
 	for _, m := range matched {
 		// Per link, so one link's flood cannot spend another's budget.
-		if !o.HookLink.Allow(hex.EncodeToString(m.hash)) {
+		key := hex.EncodeToString(m.hash)
+		if !o.HookLink.Allow(key) {
 			o.Counters.LinkLimited.Add(1)
 			continue
 		}
 		holders = append(holders, m.h)
+		spent = append(spent, key)
+	}
+	if len(holders) > 0 && !o.HookGlobal.Allow("") {
+		for _, key := range spent {
+			o.HookLink.RefundN(key, 1)
+		}
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "")
+		return
 	}
 
 	reason := pushv2.ReasonMail

@@ -100,6 +100,35 @@ refuses ios/HasalaCore/Tests/Fixtures/texts.json '{"rows": [{"ts": "x", "sender"
 refuses server/internal/x/testdata/texts.json '{"read_by": "x"}'
 refuses web/x.csv '1,DIB-SMS,x'
 
+for name in 'web/café.json' 'web/مصرف.txt' 'web/a "b".json' 'web/a\b.csv' 'web/a b.jsonl' "web/a
+b.json" web/-x.json; do
+	refuses "$name" "$private_note"
+	refuses "$name" '{"read_by": "x"}'
+	allows "$name" '{}'
+done
+refuses conformance/templates/café.json "$sms_spaced"
+allows 'web/synthetic-café.json' '{"read_by": "x"}'
+refuses 'web/synthetic-café.json' "$private_note"
+
+cases=$((cases + 1))
+fresh
+mkdir -p "$work/t/web"
+ln -s missing.json "$work/t/web/x.json"
+if fence; then
+	echo "fence self-test: the fence let an unreadable web/x.json through" >&2
+	failures=$((failures + 1))
+fi
+
+cases=$((cases + 1))
+fresh
+plant web/x.json '{}'
+git -C "$work/t" add web/x.json
+rm "$work/t/web/x.json"
+if ! fence; then
+	echo "fence self-test: the fence refused a tracked file removed from the working tree" >&2
+	failures=$((failures + 1))
+fi
+
 refuses conformance/swift/fold-v4-sms-x.json '{"cases": [{"sender": "DIB-SMS", "text": "x"}]}'
 refuses conformance/swift/fold-v4-sms-x.json "$corpus_case"
 refuses conformance/sms-extract/synthetic-x/corpus-1.json "$corpus_case"
