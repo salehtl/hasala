@@ -7,7 +7,13 @@ coming back:
 - Each account deletion (`DELETE /api/v1/account` and `hasala-admin
   purge-user`) appends one line to `/var/lib/hasala-ledger/purged`: the random
   account id and the time. The append is part of the deletion. If it fails,
-  nothing is deleted.
+  nothing is deleted. If the database commit then fails and the account is
+  still there, a `purge-cancelled` line follows, and the replay does not purge
+  that account unless a later deletion line names it. If the line cannot be
+  cancelled (for example, the database cannot be read after the failed commit),
+  or the process stops between the append and the commit, the line stays and
+  the next replay purges the account. The holder asked for that deletion: the
+  answer in the first case says that it may still take effect.
 - Before `hasalad` and the console start, `hasala-purge-replay` runs
   `hasalad purge-user --replay-ledger`. It purges again each account in the
   ledger that the database still has, without a second goodbye email. It also
@@ -66,7 +72,9 @@ coming back:
   `phrase-seen`, and one from before `onboarding/w5-review-fixes` fails on
   `sessions`, `email` and `invite-revoked`. A `hasalad` from before
   `hardening/ledger-and-limits` skips these three kinds, so its replay does
-  not apply them again. Before you roll back to one of these, keep a copy of the ledger and remove
+  not apply them again. A `hasalad` from before `security/server-lifecycle`
+  skips `purge-cancelled`, so its replay purges an account whose deletion was
+  cancelled. Before you roll back to one of these, keep a copy of the ledger and remove
   the lines it cannot read.
 - A single sign-out (`logout`) is not recorded: a session has no internal id
   for the ledger. A restore can bring back a session that was signed out

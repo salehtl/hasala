@@ -199,6 +199,32 @@ func TestEveryKindRoundTripsAndOnlyPurgesAreAccountsToPurge(t *testing.T) {
 	}
 }
 
+func TestACancelledPurgeIsNotAnAccountToPurgeUntilItIsAskedForAgain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	at := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	kept, again, gone := uuid.New(), uuid.New(), uuid.New()
+	if err := Append(path, []uuid.UUID{kept, again, gone}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := AppendCancelled(path, []uuid.UUID{kept, again}, at.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Append(path, []uuid.UUID{again}, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 6 || got[3].Kind != KindPurgeCancelled || got[3].ID != kept {
+		t.Fatalf("ledger %+v", got)
+	}
+	ids := IDs(got)
+	if len(ids) != 2 || ids[0] != again || ids[1] != gone {
+		t.Fatalf("accounts to purge %v, want %v and %v", ids, again, gone)
+	}
+}
+
 func TestAFirstFormatLedgerStillReads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "purged")
 	a, b := uuid.New(), uuid.New()
@@ -244,6 +270,7 @@ func TestAMalformedEventIsAnError(t *testing.T) {
 		"sessions with field":  id + at + "sessions x",
 		"email with field":     id + at + "email x",
 		"invite with field":    id + at + "invite-revoked x",
+		"cancel with field":    id + at + "purge-cancelled x",
 		"freeze without time":  id + at + "freeze",
 		"freeze bad time":      id + at + "freeze soon",
 		"freeze after":         id + at + "freeze 2026-10-20T05:30:00Z extra",

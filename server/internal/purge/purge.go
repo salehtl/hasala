@@ -507,7 +507,12 @@ type Options struct {
 	// Now dates the goodbye; nil is time.Now.
 	Now    func() time.Time
 	Record func(users []uuid.UUID) error
+	Cancel func(users []uuid.UUID) error
 }
+
+var ErrUnsettled = errors.New("purge: the commit failed and the ledger still names the accounts")
+
+const commitWait = 30 * time.Second
 
 // PurgeWith is Purge with the steps that need more than the database.
 func PurgeWith(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, opts Options) (Report, error) {
@@ -666,11 +671,42 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return rep, fmt.Errorf("purge: commit: %w", err)
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitWait)
+	defer cancel()
+	if err := tx.Commit(commitCtx); err != nil {
+		if opts.Record == nil || len(deleted) == 0 {
+			return rep, fmt.Errorf("purge: commit: %w", err)
+		}
+		committed, serr := settleFailedCommit(ctx, pool, deleted, opts, err)
+		if !committed {
+			return rep, serr
+		}
 	}
 	rep.Users = deleted
 	return rep, nil
+}
+
+func settleFailedCommit(ctx context.Context, pool *pgxpool.Pool, deleted []uuid.UUID, opts Options, cause error) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitWait)
+	defer cancel()
+	rows, err := pool.Query(ctx, `SELECT id FROM users WHERE id = ANY($1) FOR UPDATE`, deleted)
+	if err != nil {
+		return false, fmt.Errorf("%w: commit: %v; read back: %v", ErrUnsettled, cause, err)
+	}
+	survived, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return false, fmt.Errorf("%w: commit: %v; read back: %v", ErrUnsettled, cause, err)
+	}
+	if len(survived) == 0 {
+		return true, nil
+	}
+	if opts.Cancel == nil {
+		return false, fmt.Errorf("%w: commit: %v", ErrUnsettled, cause)
+	}
+	if err := opts.Cancel(survived); err != nil {
+		return false, fmt.Errorf("%w: commit: %v; cancel the line: %v", ErrUnsettled, cause, err)
+	}
+	return false, fmt.Errorf("purge: commit: %w", cause)
 }
 
 func Replay(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID) (Report, error) {
