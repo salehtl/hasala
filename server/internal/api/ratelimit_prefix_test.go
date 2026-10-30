@@ -248,3 +248,48 @@ func TestClientAddressLimitersCarryAPrefixQuota(t *testing.T) {
 		}
 	}
 }
+
+func TestPasswordLoginFinishHasAPrefixAndAGlobalTier(t *testing.T) {
+	h := newHarness(t)
+	keys, _, _ := h.accounts()
+	h.srv.TrustCloudflare = true
+	h.srv.PasskeyPerPrefix = NewLimiter(0, 2, 16, nil)
+	h.srv.PasskeyGlobal = NewLimiter(0, 4, 1, nil)
+	h.h = h.srv.Handler()
+	post := func(ip string) int {
+		r := httptest.NewRequest("POST", "/api/v1/auth/password/login/finish",
+			strings.NewReader(`{"ceremony_id":"nope","verifier":"`+b64(make([]byte, 32))+`"}`))
+		r.RemoteAddr = "127.0.0.1:40000"
+		r.Header.Set("Cf-Connecting-Ip", ip)
+		w := httptest.NewRecorder()
+		h.h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := range 2 {
+		if got := post(fmt.Sprintf("2001:db8:7:%x::1", i)); got != http.StatusForbidden {
+			t.Fatalf("call %d inside the tier: %d", i, got)
+		}
+	}
+	hashes := keys.HashCount()
+	for i := 2; i < 6; i++ {
+		if got := post(fmt.Sprintf("2001:db8:7:%x::1", i)); got != http.StatusTooManyRequests {
+			t.Fatalf("call %d over the /48's tier: %d", i, got)
+		}
+	}
+	if keys.HashCount() != hashes {
+		t.Fatal("a call over the /48's tier ran a hash")
+	}
+	if got := post("2001:db8:8::1"); got != http.StatusForbidden {
+		t.Fatalf("another /48: %d", got)
+	}
+	if got := post("192.0.2.9"); got != http.StatusForbidden {
+		t.Fatalf("an IPv4 client: %d", got)
+	}
+	hashes = keys.HashCount()
+	if got := post("192.0.2.10"); got != http.StatusTooManyRequests {
+		t.Fatalf("over the global budget: %d", got)
+	}
+	if keys.HashCount() != hashes {
+		t.Fatal("a call over the global budget ran a hash")
+	}
+}
