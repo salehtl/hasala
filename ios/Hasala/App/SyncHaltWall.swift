@@ -39,6 +39,10 @@ struct SyncHaltWall: View {
       "Some changes in your account don't fit together, so Hasala stopped before anything got mixed up."
     case .rosterInvalid:
       "Hasala couldn't confirm which devices belong to your account, so it stopped before anything got mixed up."
+    case .unprovedRevocation:
+      "Our server said this iPhone was removed from your account, but your account's device list doesn't show that, so Hasala stopped before anything was removed."
+    case .unexpectedGone:
+      "Our server gave an answer Hasala doesn't expect, so it stopped before anything got mixed up."
     case .updateRequired:
       "This version of Hasala can't read the newest changes in your account."
     }
@@ -55,6 +59,8 @@ struct SyncHaltWall: View {
     case .serverRestored: "serverRestored"
     case .inconsistent: "inconsistent"
     case .rosterInvalid: "rosterInvalid"
+    case .unprovedRevocation: "unprovedRevocation"
+    case .unexpectedGone: "unexpectedGone"
     case .updateRequired: "updateRequired"
     }
   }

@@ -759,3 +759,68 @@ func TestSweepsDeleteOldAnonymousBankCounts(t *testing.T) {
 		t.Fatalf("anonymous bank_requests = %d, want 1", n)
 	}
 }
+
+func markAddressInDoubt(t *testing.T, f *acctFixture, m *member) {
+	t.Helper()
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET reverify_requested_at = now() WHERE id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestARecoveryInProgressStopsWhenTheAddressIsInDoubt(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	b, err := f.acct.RecoverBegin(bgctx, cryptoref.RKPub(m.acct.E))
+	if err != nil {
+		t.Fatal(err)
+	}
+	markAddressInDoubt(t, f, m)
+	if _, err := f.acct.RecoverVerify(bgctx, b.CeremonyID, f.lastCode(m.addr), "password"); !errors.Is(err, ErrCodeRejected) {
+		t.Fatalf("a verification on an address in doubt: %v", err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET reverify_requested_at = NULL WHERE id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+
+	f.clock.advance(time.Minute)
+	id, v := f.verifiedRecovery(m, "password")
+	markAddressInDoubt(t, f, m)
+	newS := f.stretch(m.addr, "a recovered password")
+	d := authtest.NewDevice(t)
+	msg, _ := keyproto.RecoverySigninPassword(v.Nonce, newS)
+	req := RecoverFinishRequest{CeremonyID: id, Kind: "password", Verifier: newS,
+		RKSig: ed25519.Sign(cryptoref.RK(m.acct.E), msg),
+		Writer: Registration{WriterID: d.WriterID, Alg: AlgEd25519, PubKey: d.DWKPub(), DAKPubkey: d.DAKPub(),
+			Sig: m.acct.Registration(t, d, v.Nonce)}}
+	if _, err := f.acct.RecoverFinish(bgctx, req); !errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a recovery finished on an address in doubt: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM writers WHERE user_id = $1 AND writer_id = $2`, m.user.UserID, d.WriterID); n != 0 {
+		t.Fatal("the refused recovery added a device")
+	}
+}
+
+func TestAPasswordResetSendsNoCodeToAnAddressInDoubt(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	markAddressInDoubt(t, f, m)
+	f.fake.Reset()
+	if _, err := f.acct.ResetBegin(bgctx, m.addr); err != nil {
+		t.Fatalf("a reset of an address in doubt must answer as any other: %v", err)
+	}
+	if n := len(f.fake.To(m.addr)); n != 0 {
+		t.Fatalf("%d emails went to the address in doubt", n)
+	}
+	if n := f.count(`SELECT count(*) FROM password_reset_ceremonies WHERE user_id = $1`, m.user.UserID); n != 0 {
+		t.Fatalf("%d reset ceremonies are bound to the account", n)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET reverify_requested_at = NULL WHERE id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.ResetBegin(bgctx, m.addr); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.fake.To(m.addr)); n != 1 {
+		t.Fatalf("%d emails after the address was cleared, want the code", n)
+	}
+}

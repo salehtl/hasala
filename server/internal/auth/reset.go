@@ -52,7 +52,7 @@ func (a *Accounts) ResetBegin(ctx context.Context, email string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	eligible := ok && st.hasPassword() && st.active() && !st.frozen()
+	eligible := ok && st.hasPassword() && st.active() && !st.frozen() && !st.InDoubt
 	var userID *uuid.UUID
 	if eligible {
 		userID = &st.ID

@@ -416,8 +416,8 @@ final class BootController {
   private func stopped(_ stop: SyncStop) async {
     switch stop {
     case .wipe:
-      // `410 account_deleted` or `403 writer_revoked`: the account was deleted, or this
-      // iPhone removed, on another device (§4.7 row 3). The Google grant is read before
+      // `410 account_deleted`, or a revocation the pinned key history shows: the account was
+      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is read before
       // the wipe and revoked after it.
       let binding = try? env.account.secrets.binding()
       let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: env.account.secrets, userID: $0) }

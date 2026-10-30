@@ -313,6 +313,10 @@ extension State {
       }
     }
 
+    if superseding, op.v < 4, let previous, txns.values.contains(where: { $0.successorID.map { utf8Equal($0, previous) } ?? false }) {
+      txns[previous]!.successorID = id
+    }
+
     txns[id] = t
     liveByIngestID[ingestID] = id
     freezeIfPossible(id, seq: seq)
@@ -499,6 +503,10 @@ extension State {
         anomaly(seq, "unsupported_edit_field", "\(e.op.opID): category use txn_categorized")
       } else {
         txns[id]!.category = c
+        if let kind = txns[id]!.categorySource?.kind {
+          if c != nil, kind == .none { txns[id]!.categorySource = .user }
+          if c == nil, kind != .none, kind != .user { txns[id]!.categorySource = CategorySource.none }
+        }
       }
     }
     if let nr = p.needsReview { setNeedsReview(id, nr, seq: seq) }

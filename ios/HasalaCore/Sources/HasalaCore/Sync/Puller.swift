@@ -58,9 +58,11 @@ public struct PullSummary: Sendable, Hashable {
 enum Puller {
   static let pageLimit = 500
 
-  static func pull(_ ctx: SyncContext, observer: (any PageObserver)?) async throws(SyncStop) -> PullSummary {
+  static func pull(
+    _ ctx: SyncContext, observer: (any PageObserver)?, plaintextBudget: Int = PageReader.maxPagePlaintext
+  ) async throws(SyncStop) -> PullSummary {
     do {
-      let summary = try await pages(ctx, observer: observer)
+      let summary = try await pages(ctx, observer: observer, plaintextBudget: plaintextBudget)
       await observer?.pullEnded()
       return summary
     } catch {
@@ -69,7 +71,9 @@ enum Puller {
     }
   }
 
-  static func pages(_ ctx: SyncContext, observer: (any PageObserver)?) async throws(SyncStop) -> PullSummary {
+  static func pages(
+    _ ctx: SyncContext, observer: (any PageObserver)?, plaintextBudget: Int
+  ) async throws(SyncStop) -> PullSummary {
     var summary = PullSummary()
     var emptyIncomplete = 0
     while true {
@@ -90,15 +94,16 @@ enum Puller {
       }
       emptyIncomplete = 0
       summary.pages += 1
-      try await readAndPersist(page, state: state, bearer: bearer, ctx: ctx, observer: observer, summary: &summary)
-      if page.complete { return summary }
+      let stored = try await readAndPersist(
+        page, state: state, bearer: bearer, ctx: ctx, observer: observer, plaintextBudget: plaintextBudget, summary: &summary)
+      if page.complete, stored == page.rows.count { return summary }
     }
   }
 
   static func readAndPersist(
     _ page: PullPage, state: SyncStateRow, bearer: String, ctx: SyncContext, observer: (any PageObserver)?,
-    summary: inout PullSummary
-  ) async throws(SyncStop) {
+    plaintextBudget: Int, summary: inout PullSummary
+  ) async throws(SyncStop) -> Int {
     // R0's page-level checks the row checker cannot see: seqs strictly
     // increasing above the cursor (I1), `next` = the last seq.
     var seqs: [Int64] = []
@@ -144,7 +149,7 @@ enum Puller {
       let readerState = PageReader.State(
         userID: ctx.userID, opener: opener, serverEpoch: serverEpoch, pinnedHeads: heads,
         roster: (roster ?? pinned).forReader(), rosterRefreshed: rosterRefreshed, own: own)
-      let result = PageReader.read(rows, state: readerState)
+      let result = PageReader.read(rows, state: readerState, plaintextBudget: plaintextBudget)
       switch result.stop {
       case .refreshRoster?:
         guard !rosterRefreshed else { throw .halted(.tampered(.unknownWriter)) }
@@ -207,7 +212,7 @@ enum Puller {
       let now = ctx.clock.nowMs()
       do {
         try ctx.storeCall { () throws(StoreError) in
-          try ctx.store.persistPage(rows: records, heads: newHeads, cursor: last, at: now, snapshot: snapshot)
+          try ctx.store.persistPage(rows: records, heads: newHeads, cursor: seqs[records.count - 1], at: now, snapshot: snapshot)
         }
       } catch {
         await observer?.pageAbandoned()
@@ -218,7 +223,7 @@ enum Puller {
         try? ctx.store.recordFoldEvent(kind: "integrity_alarm", detail: "aead_failed", at: now)
       }
       summary.rowsStored += records.count
-      return
+      return records.count
     }
   }
 }

@@ -156,7 +156,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 		switch e.Kind {
 		case purgeledger.KindFreeze:
 			if lifted[i] {
-				continue
+				step, count = reapplyLiftedFreezeTx, &rep.Sessions
+				break
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
 		case purgeledger.KindUnfreeze:
@@ -192,6 +193,14 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			}
 		case reappliedUnsigned:
 			rep.Unsigned++
+		}
+	}
+	for _, e := range entries {
+		if e.Kind != purgeledger.KindUnfreeze {
+			continue
+		}
+		if _, err := reapplyOne(ctx, pool, e, now, reapplyLiftedLinksTx); err != nil {
+			return rep, fmt.Errorf("auth: reapply %s of %s: %w", e.Kind, e.At.UTC().Format(time.RFC3339), err)
 		}
 	}
 	for _, id := range touched {
@@ -290,11 +299,42 @@ func reapplyUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 		}
 		return reappliedDone, nil
 	}
-	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID, now); err != nil {
 		return reappliedNothing, err
 	}
 	if _, err := RevokeOtherSessionsTx(ctx, tx, e.ID, nil, now); err != nil {
 		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyLiftedLinksTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, e.ID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return reappliedNothing, nil
+	}
+	if err != nil {
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE freeze_tokens SET used_at = $3 WHERE user_id = $1 AND used_at IS NULL AND trigger_at < $2`,
+		e.ID, e.At, now)
+	if err != nil {
+		return reappliedNothing, err
+	}
+	var known bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) >= $3)`,
+		e.ID, EventAccountUnfrozen, e.At).Scan(&known); err != nil {
+		return reappliedNothing, err
+	}
+	if known && tag.RowsAffected() == 0 {
+		return reappliedNothing, nil
+	}
+	if !known {
+		if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, e.At); err != nil {
+			return reappliedNothing, err
+		}
 	}
 	return reappliedDone, nil
 }
@@ -311,7 +351,7 @@ func liftLockoutTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time
 	if err != nil {
 		return reappliedNothing, err
 	}
-	if err := clearFreezeTx(ctx, tx, e.ID); err != nil {
+	if err := clearFreezeTx(ctx, tx, e.ID, now); err != nil {
 		return reappliedNothing, err
 	}
 	if err := recordEventTx(ctx, tx, nil, e.ID, AuthEvent{Kind: EventAccountUnfrozen}, now); err != nil {
@@ -428,14 +468,22 @@ func reapplyPhraseSeenTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ 
 }
 
 func reapplySessionsTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return endSessionsTx(ctx, tx, e, now, `<=`)
+}
+
+func reapplyLiftedFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return endSessionsTx(ctx, tx, e, now, `<`)
+}
+
+func endSessionsTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time, older string) (reapplied, error) {
 	if err := forgetPushTokens(ctx, tx,
 		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
-		    WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2)`, e.ID, e.At); err != nil {
+		    WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) `+older+` $2)`, e.ID, e.At); err != nil {
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
-		  WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) <= $2`, e.ID, e.At, now)
+		  WHERE user_id = $1 AND revoked_at IS NULL AND date_trunc('second', created_at) `+older+` $2`, e.ID, e.At, now)
 	if err != nil || tag.RowsAffected() == 0 {
 		return reappliedNothing, err
 	}

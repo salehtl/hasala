@@ -45,6 +45,65 @@ struct HardeningTests {
     #expect(after == pinned)
   }
 
+  @Test("a writer_revoked answer with the writer live in the verified key history halts, and keeps every op")
+  func revocationClaimOnALiveWriter() async throws {
+    let w = World()
+    let (_, ctxA, _, _) = try await twoPhones(w)
+    try enqueue(ctxA, [op(1)])
+    w.server.refuseNext("GET /api/v1/auth/session", status: 403, code: "writer_revoked")
+    #expect(await LaunchProbe.run(ctxA, build: 1) == .stop(.halted(.unprovedRevocation)))
+
+    let engine = SyncEngine(context: ctxA)
+    w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
+    #expect(await engine.run(.launch).stop == .halted(.unprovedRevocation))
+    #expect(await engine.status.phase == .halted(.unprovedRevocation))
+    #expect(try ctxA.store.pendingCount() == 1)
+    #expect(try ctxA.secrets.session() != nil)
+  }
+
+  @Test("a writer_revoked answer wipes only when the key history verified under the pinned key shows this writer revoked")
+  func revocationClaimProved() async throws {
+    let w = World()
+    let (a, ctxA, _, ctxB) = try await twoPhones(w)
+    #expect(await SyncEngine(context: ctxB).run(.launch).stop == nil)
+    try await AccountManagement.removeThisIPhone(
+      a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding))
+    let removed = SyncContext(
+      userID: ctxB.userID, writerID: ctxA.writerID, store: ctxB.store, secrets: ctxB.secrets, client: ctxB.client,
+      clock: ctxB.clock, random: ctxB.random)
+    w.server.refuseNext("GET /api/v1/auth/session", status: 403, code: "writer_revoked")
+    #expect(await LaunchProbe.run(removed, build: 1) == .stop(.wipe))
+    let engine = SyncEngine(context: removed)
+    w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
+    #expect(await engine.run(.launch).stop == .wipe)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
+    #expect(await SyncEngine(context: ctxB).run(.launch).stop == .halted(.unprovedRevocation))
+  }
+
+  @Test("a writer_revoked answer with the key history out of reach stops without a wipe")
+  func revocationClaimUnproved() async throws {
+    let w = World()
+    let (_, ctxA, _, _) = try await twoPhones(w)
+    let engine = SyncEngine(context: ctxA)
+    w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
+    w.server.refuseNext("GET /api/v1/key-history", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+  }
+
+  @Test("410 wipes only for account_deleted; any other 410 halts with the ops kept")
+  func goneCodes() async throws {
+    let w = World()
+    let (_, ctxA, _, _) = try await twoPhones(w)
+    try enqueue(ctxA, [op(1)])
+    let engine = SyncEngine(context: ctxA)
+    w.server.refuseNext("GET /api/v1/sync", status: 410, code: "link_expired")
+    #expect(await engine.run(.launch).stop == .halted(.unexpectedGone))
+    #expect(try ctxA.store.pendingCount() == 1)
+    w.server.refuseNext("GET /api/v1/sync", status: 410, code: "account_deleted")
+    #expect(await engine.run(.launch).stop == .wipe)
+  }
+
   @Test("PinnedRoster.extends: new writers and revocations pass; a lower entry id, a lost writer, a changed key or final fail")
   func extendsRules() throws {
     func roster(_ last: Int64?, _ writers: [String: (String, Int64?)]) throws -> PinnedRoster {

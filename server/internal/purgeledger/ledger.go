@@ -25,6 +25,8 @@ const (
 	Retention             = 60 * 24 * time.Hour
 )
 
+var ErrNotWritten = errors.New("purgeledger: nothing was written")
+
 type Kind string
 
 const (
@@ -40,6 +42,7 @@ const (
 	KindSessions       Kind = "sessions"
 	KindEmail          Kind = "email"
 	KindInviteRevoked  Kind = "invite-revoked"
+	KindPurgeCancelled Kind = "purge-cancelled"
 )
 
 type Entry struct {
@@ -68,6 +71,14 @@ func Append(path string, ids []uuid.UUID, at time.Time) error {
 	return AppendEntries(path, entries...)
 }
 
+func AppendCancelled(path string, ids []uuid.UUID, at time.Time) error {
+	entries := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, Entry{ID: id, At: at, Kind: KindPurgeCancelled})
+	}
+	return AppendEntries(path, entries...)
+}
+
 func AppendEntries(path string, entries ...Entry) error {
 	if path == "" {
 		return errors.New("purgeledger: no ledger path")
@@ -78,13 +89,13 @@ func AppendEntries(path string, entries ...Entry) error {
 	var buf bytes.Buffer
 	for _, e := range entries {
 		if err := check(e); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrNotWritten, err)
 		}
 		buf.WriteString(formatEntry(e))
 	}
 	unlock, err := lock(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrNotWritten, err)
 	}
 	defer unlock()
 	return appendLocked(path, buf.Bytes())
@@ -93,10 +104,13 @@ func AppendEntries(path string, entries ...Entry) error {
 func appendLocked(path string, line []byte) error {
 	f, created, err := openAppend(path)
 	if err != nil {
-		return fmt.Errorf("purgeledger: open %s: %w", path, err)
+		return fmt.Errorf("%w: open %s: %w", ErrNotWritten, path, err)
 	}
-	if _, err := f.Write(line); err != nil {
+	if n, err := f.Write(line); err != nil {
 		_ = f.Close()
+		if n == 0 {
+			return fmt.Errorf("%w: write %s: %w", ErrNotWritten, path, err)
+		}
 		return fmt.Errorf("purgeledger: write %s: %w", path, err)
 	}
 	if err := f.Sync(); err != nil {
@@ -205,11 +219,19 @@ func pruneLocked(path string, cutoff time.Time) (int, error) {
 }
 
 func IDs(entries []Entry) []uuid.UUID {
-	seen := make(map[uuid.UUID]bool, len(entries))
+	armed := make(map[uuid.UUID]bool, len(entries))
+	for _, e := range entries {
+		switch e.Kind {
+		case KindPurge:
+			armed[e.ID] = true
+		case KindPurgeCancelled:
+			armed[e.ID] = false
+		}
+	}
 	ids := make([]uuid.UUID, 0, len(entries))
 	for _, e := range entries {
-		if e.Kind == KindPurge && !seen[e.ID] {
-			seen[e.ID] = true
+		if e.Kind == KindPurge && armed[e.ID] {
+			armed[e.ID] = false
 			ids = append(ids, e.ID)
 		}
 	}
@@ -225,7 +247,7 @@ func check(e Entry) error {
 	}
 	switch e.Kind {
 	case KindPurge, KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
@@ -263,7 +285,7 @@ func formatEntry(e Entry) string {
 	case KindPasskey:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
 		line += " " + string(e.Kind)
 	}
 	return line + "\n"
@@ -285,7 +307,7 @@ func parseHex(s string, n int) ([]byte, bool) {
 func unknownKind(k Kind) bool {
 	switch k {
 	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
-		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked:
+		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
 		return false
 	}
 	for _, r := range string(k) {
@@ -344,7 +366,7 @@ func parseLine(text string) (Entry, bool) {
 	e.Kind = Kind(f[2])
 	switch e.Kind {
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
-		KindSessions, KindEmail, KindInviteRevoked:
+		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
 		if len(f) != 3 {
 			return Entry{}, false
 		}

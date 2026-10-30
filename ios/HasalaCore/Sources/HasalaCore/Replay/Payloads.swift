@@ -6,7 +6,8 @@
 //
 // `nil` from a `JSONObject` subscript is JavaScript's `undefined` (an absent
 // key); `.null` is `null`. The v3 readers keep the oracle's distinctions
-// exactly, so v1-v3 logs fold to the oracle's state.
+// exactly, so v1-v3 logs fold to the oracle's state, except where an op below
+// v4 would leave a state `Invariants.check` refuses (Causal.swift, `decodeParts`).
 import CoreJSON
 import CoreMoney
 import CoreTime

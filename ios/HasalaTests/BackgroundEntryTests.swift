@@ -24,6 +24,10 @@ struct BackgroundEntryTests {
     #expect(AppDelegate.startsAtLaunch(.active) && AppDelegate.startsAtLaunch(.inactive))
   }
 
+  @Test func thirdPartyKeyboardsAreRefusedForTheWholeApp() {
+    #expect(!AppDelegate().application(.shared, shouldAllowExtensionPointIdentifier: .keyboard))
+  }
+
   @Test func aSilentPushStartsTheGraphBeforeItWaitsForTheAccount() async {
     let log = Log()
     let result = await AppDelegate.silentPush(entry(log, runtime: 7)) { rt, budget in

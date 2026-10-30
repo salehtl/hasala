@@ -143,15 +143,20 @@ public struct Secrets: Sendable {
   public func wipeAccount(userID: UserID, writerID: WriterID?, epochs: ClosedRange<UInt32> = 1...1)
     throws(SecretStoreError)
   {
-    try store.delete(.session(apiHost: apiHost))
-    try store.delete(.accountBinding)
-    for e in epochs { try store.delete(.epochKey(userID: userID, epoch: e)) }
-    if let w = writerID {
-      try store.delete(.writerKey(userID: userID, writerID: w))
-      try store.delete(.approvalKey(userID: userID, writerID: w))
+    var first: SecretStoreError?
+    func delete(_ item: SecretItem) {
+      do { try store.delete(item) } catch { first = first ?? error }
     }
-    for p in MailSecretProvider.allCases { try store.delete(.mailRefresh(provider: p, userID: userID)) }
-    try store.delete(.outlookClientState(userID: userID))
-    try store.delete(.textKeySecret)
+    delete(.session(apiHost: apiHost))
+    delete(.accountBinding)
+    for e in epochs { delete(.epochKey(userID: userID, epoch: e)) }
+    if let w = writerID {
+      delete(.writerKey(userID: userID, writerID: w))
+      delete(.approvalKey(userID: userID, writerID: w))
+    }
+    for p in MailSecretProvider.allCases { delete(.mailRefresh(provider: p, userID: userID)) }
+    delete(.outlookClientState(userID: userID))
+    delete(.textKeySecret)
+    if let first { throw first }
   }
 }
