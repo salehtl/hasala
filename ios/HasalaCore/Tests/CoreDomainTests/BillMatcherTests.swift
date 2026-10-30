@@ -22,11 +22,39 @@ struct BillMatcherTests {
 
   static func row(
     _ id: String, _ day: String, _ amount: Int64 = 5_600, key: String = "netflix", direction: String = "debit", currency: String = "AED",
-    home: Int64? = nil, eligible: Bool = true
+    home: Int64? = nil, eligible: Bool = true, settles: Bool = true
   ) -> MatchRow {
     MatchRow(
       txnID: id, merchantKey: key, direction: direction, amountMinor: amount, currency: currency, homeMinor: home, day: d(day),
-      eligible: eligible)
+      eligible: eligible, settles: settles)
+  }
+
+  @Test("a row that does not settle leaves the due open and yields it to a row that does")
+  func aRowThatDoesNotSettle() {
+    let b = Self.bill(createdAt: "2026-08-20T10:00:00.000Z")
+    let waiting = Self.row("waiting", "2026-10-06", settles: false)
+    let alone = Self.run([("a", b)], [waiting], today: "2026-10-08")
+    #expect(alone.matches.isEmpty && alone.notices.isEmpty)
+    #expect(alone.status(bill: "a", due: Self.d("2026-10-06"), today: Self.d("2026-10-08")) == .late)
+    let beside = Self.run([("a", b)], [waiting, Self.row("filed", "2026-10-14")], today: "2026-10-20")
+    #expect(beside.status(bill: "a", due: Self.d("2026-10-06"), today: Self.d("2026-10-20")) == .paid(txnID: "filed", explicit: false))
+  }
+
+  @Test("the person's link settles a due with a row that does not settle by itself")
+  func anExplicitLinkStays() {
+    let b = Self.bill(createdAt: "2026-08-20T10:00:00.000Z")
+    let r = Self.run(
+      [("a", b)], [Self.row("waiting", "2026-10-06", settles: false)],
+      resolutions: [BillResolution(bill: "a", due: "2026-10-06", resolution: "paid", txn: "waiting", atSeq: 1)], today: "2026-10-08")
+    #expect(r.status(bill: "a", due: Self.d("2026-10-06"), today: Self.d("2026-10-08")) == .paid(txnID: "waiting", explicit: true))
+  }
+
+  @Test("a row that does not settle is still offered for the link")
+  func stillOffered() {
+    let terms = BillTerms(variable: false, amountMinor: 5_600, toleranceBp: 200)
+    let rows = BillMatcher.suggestions(
+      keys: ["netflix"], terms: terms, currency: "AED", rows: [Self.row("waiting", "2026-10-06", settles: false)], taken: [], limit: 5)
+    #expect(rows.map(\.txnID) == ["waiting"])
   }
 
   static func run(
@@ -285,7 +313,7 @@ struct BillMatcherTests {
       rows.append(
         MatchRow(
           txnID: "t\(i)", merchantKey: keys[next(keys.count)], direction: next(10) == 0 ? "credit" : "debit",
-          amountMinor: amounts[next(amounts.count)], currency: "AED", homeMinor: nil, day: day, eligible: next(12) != 0))
+          amountMinor: amounts[next(amounts.count)], currency: "AED", homeMinor: nil, day: day, eligible: next(12) != 0, settles: true))
     }
     let res = [
       BillResolution(bill: "a", due: "2026-08-06", resolution: "paid", txn: "t3", atSeq: 1),

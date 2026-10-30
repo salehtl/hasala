@@ -297,6 +297,37 @@ struct LiveRecurringTests {
     #expect(BillsEngine.snapshot(live, now: MayaLedger.now).next14 == .aed(719_15))
   }
 
+  static func gymRow(month: Int, verified: Bool = true, n: Int) -> JSONObject {
+    LiveSortingTests.payload(.init(raw: "Gym Club", minor: 200_00, currency: "AED", month: month, day: 16, verified: verified), n: n)
+  }
+
+  @Test func aRowInReviewLeavesTheDueOpenUntilThePersonSortsIt() async throws {
+    var ids: [String] = []
+    let live = try await Mapper.foldedState { o throws(AuthorError) in
+      try o.setBill(id: "bm_gym", Self.gym())
+      ids.append(try o.ingest(payload: Self.gymRow(month: 7, verified: false, n: 1), ingestID: String(repeating: "a", count: 64)))
+      o.categorize(txnID: ids[0], parentVersion: 1, category: "subscriptions", needsReview: false)
+      ids.append(try o.ingest(payload: Self.gymRow(month: 8, n: 2), ingestID: String(repeating: "b", count: 64)))
+      ids.append(try o.ingest(payload: Self.gymRow(month: 9, verified: false, n: 3), ingestID: String(repeating: "c", count: 64)))
+    }
+    let gym = try #require(live.bills.first { $0.id == "bm_gym" })
+    #expect(gym.payments.map(\.txnID) == [ids[0]])
+    #expect(gym.payments.map(\.due) == [LocalDate(2026, 7, 15)])
+    #expect(live.txn(ids[1])?.billID == nil && live.txn(ids[2])?.billID == nil)
+  }
+
+  @Test func aRowThatDoesNotSettleCanStillBeLinkedAndDetected() async throws {
+    var id = ""
+    let a = try await Self.folded { o throws(AuthorError) in
+      id = try o.ingest(payload: Self.gymRow(month: 8, n: 1), ingestID: String(repeating: "a", count: 64))
+    }
+    let row = try #require(try a.projection.reader.txn(id))
+    #expect(BillEdits.linkable(row, direction: "debit"))
+    let built = LedgerStateMapper.deriveRows([row])
+    #expect(built.match.first?.eligible == true && built.match.first?.settles == false)
+    #expect(built.detect.first?.eligible == true)
+  }
+
   static func folded(_ extra: (inout OpAuthor) throws(AuthorError) -> Void) async throws -> Mapper.Account {
     let a = try Mapper.account()
     var blobs = try await Mapper.seed(a)

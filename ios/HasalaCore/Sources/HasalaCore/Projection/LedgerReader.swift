@@ -138,7 +138,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   static func senderUnverified(gatesJSON: String?) -> Bool { senderUnverified(gates(gatesJSON)) }
 
   static func senderUnverified(_ gates: JSONValue?) -> Bool {
-    TxnGates(ar: gates?["ar"]?.stringValue).senderUnverified
+    TxnGates(ar: gates?["ar"]?.stringValue, sender: gates?["sender"]?.stringValue).senderUnverified
   }
 
   static func template(gatesJSON: String?) -> String? { gates(gatesJSON)?["template"]?.stringValue }
