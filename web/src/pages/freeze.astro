@@ -6,11 +6,11 @@
  * 43 base64url characters in the fragment, which no request carries, so the
  * token never reaches a server log.
  *
- * The page asks for nothing. The button POSTs {token} as a CORS-free simple
- * request (no-cors, text/plain, no referrer). The answer is
- * opaque, and the server answers 204 whether or not the token was valid, so
- * the page never claims more than "if this link was valid". Link scanners
- * only GET the page and never press the button.
+ * The page asks for nothing. The button POSTs {token} as a simple CORS
+ * request (text/plain, no referrer), so it can read the status. Only a 204
+ * shows the done state. The server answers 204 whether or not the token was
+ * valid, so the page never claims more than "if this link was valid". Link
+ * scanners only GET the page and never press the button.
  */
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
@@ -95,6 +95,7 @@ import { API_BASE } from '../lib/env';
   // status line and done state.
   // onPage: it runs again whenever the router brings this page back (Back).
   import { onPage } from '../scripts/page';
+  import { postFreeze } from '../lib/freeze';
 
   onPage((signal) => {
     const root = document.querySelector<HTMLElement>('[data-freeze]');
@@ -126,28 +127,23 @@ import { API_BASE } from '../lib/env';
         spinner.hidden = false;
         label.textContent = 'Freezing…';
         status.textContent = '';
-        try {
-          await fetch(`${root.dataset.api}/v1/account/freeze`, {
-            method: 'POST',
-            mode: 'no-cors',
-            credentials: 'omit',
-            referrerPolicy: 'no-referrer',
-            cache: 'no-store',
-            headers: { 'content-type': 'text/plain;charset=UTF-8' },
-            body: JSON.stringify({ token }),
-          });
-          // The same text whatever the server decided (it answers 204 either way).
+        const result = await postFreeze(root.dataset.api!, token);
+        if (result === 'done') {
           root.querySelector<HTMLElement>('[data-freeze-confirm]')!.hidden = true;
           const done = root.querySelector<HTMLElement>('[data-freeze-done]')!;
           done.hidden = false;
           done.querySelector<HTMLElement>('[data-frozen-title]')?.focus();
-        } catch {
-          button.disabled = false;
-          button.style.width = '';
-          spinner.hidden = true;
-          label.textContent = 'Freeze my account';
-          say('We couldn’t reach Hasala. Check your connection and try again.');
+          return;
         }
+        button.disabled = false;
+        button.style.width = '';
+        spinner.hidden = true;
+        label.textContent = 'Freeze my account';
+        say(
+          result === 'retry'
+            ? 'We couldn’t confirm the freeze. Wait a minute and try again.'
+            : 'We couldn’t reach Hasala. Check your connection and try again.',
+        );
       },
       { signal },
     );
