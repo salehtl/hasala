@@ -1,5 +1,6 @@
 // Payload decoders of the versioned ops. Decoders switch on `op.v`: `v ≤ 3`
-// decodes exactly as the v3 oracle (replay.ts `decodePayload`); `v == 4` adds
+// decodes as the v3 oracle (replay.ts `decodePayload`) except for the cap of 16
+// split parts, which holds at every version; `v == 4` adds
 // 03c §3's deltas (Replay/V4/TxnV4.swift), 03c §5.1's rule shape and §6's
 // projects and goals, and 03b §3.2's bills.
 import CoreJSON

@@ -141,6 +141,15 @@ struct CoreInvariantsTests {
     #expect(single.txns[Self.rowA]?.successorID == nil && single.txns[Self.rowA]?.supersededBy == "op-2")
   }
 
+  @Test("the canary exercises ops below v4 on current rows, so a change to them moves the fold print")
+  func canaryHoldsOldOpsOnCurrentRows() {
+    let s = FoldCanary.state()
+    let edited = s.txns["01JC0000000000000000000081"]
+    #expect(edited?.category == "dining" && edited?.categorySource?.kind == .user && edited?.splits.isEmpty == true)
+    #expect(s.anomalies.contains { $0.kind == "invalid_payload" && $0.atSeq == 54 })
+    #expect(s.txns["01JC0000000000000000000083"]?.successorID == "01JC0000000000000000000084")
+  }
+
   @Test("every old op on a current row folds to a state the invariants accept", arguments: [1, 2, 3])
   func legacyOpsOnCurrentRows(v: Int) throws {
     let dictionary = #"{"kind":"dictionary","bundle":"2026.10.11-1","entry":"contains:shop"}"#
