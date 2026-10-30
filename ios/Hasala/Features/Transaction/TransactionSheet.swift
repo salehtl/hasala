@@ -321,10 +321,6 @@ struct TransactionSheet: View {
             Text(p.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
               .accessibilityIdentifier("txn.source")
             Text(p.readAt).hType(.footnote).foregroundStyle(HColor.textSecondary)
-            if let check = p.senderCheck {
-              Text("Sender check: \(check)").hType(.footnote).foregroundStyle(HColor.textSecondary)
-                .accessibilityIdentifier("txn.senderCheck")
-            }
             if !p.rawMerchant.isEmpty {
               Text(verbatim: p.rawMerchant)
                 .font(.system(.footnote, design: .monospaced))

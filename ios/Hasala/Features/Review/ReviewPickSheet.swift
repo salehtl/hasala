@@ -382,35 +382,19 @@ private struct CheckboxRow: View {
 }
 
 enum ReviewReasonStyle {
-  static func ink(_ reason: TxnReviewReason) -> Color {
-    switch reason {
-    case .senderUnverified: HColor.statusWarningForeground
-    case .probableCopy, .samePurchase, .mayRepeat: HColor.statusInfoForeground
-    }
-  }
+  static func ink(_ reason: TxnReviewReason) -> Color { HColor.statusInfoForeground }
 
-  static func surface(_ reason: TxnReviewReason) -> Color {
-    switch reason {
-    case .senderUnverified: HColor.statusWarningSurface
-    case .probableCopy, .samePurchase, .mayRepeat: HColor.reviewSuggestionSurface
-    }
-  }
+  static func surface(_ reason: TxnReviewReason) -> Color { HColor.reviewSuggestionSurface }
 
   static func icon(_ reason: TxnReviewReason) -> HIcon {
     switch reason {
-    case .senderUnverified: .shield
     case .probableCopy: .envelope
     case .samePurchase: .globe
     case .mayRepeat: .chat
     }
   }
 
-  static func chip(_ reason: TxnReviewReason) -> InfoChip.Style {
-    switch reason {
-    case .senderUnverified: .warningReason
-    case .probableCopy, .samePurchase, .mayRepeat: .reason
-    }
-  }
+  static func chip(_ reason: TxnReviewReason) -> InfoChip.Style { .reason }
 }
 
 struct ReviewReasonSheet: View {
@@ -505,8 +489,6 @@ struct ReviewReasonInfo: View {
 
   private var explanation: String {
     switch reason {
-    case .senderUnverified:
-      "Your mailbox couldn't confirm that this email came from your bank. It may still be real, so check it before you sort it."
     case .probableCopy:
       "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
     case .samePurchase:
@@ -518,12 +500,6 @@ struct ReviewReasonInfo: View {
 
   private var steps: [String] {
     switch reason {
-    case .senderUnverified:
-      [
-        "Open your bank app and look for this payment.",
-        "If it's there, sort it as usual.",
-        "If it isn't, archive it so it stays out of your plan. Don't tap links in that email.",
-      ]
     case .probableCopy:
       ["Merge it if it's the same payment.", "Keep both if you really paid twice."]
     case .samePurchase:
@@ -542,13 +518,6 @@ struct ReviewReasonInfo: View {
 
   @ViewBuilder private var actions: some View {
     switch reason {
-    case .senderUnverified:
-      Button("It's real, sort it") { sort() }
-        .buttonStyle(.pill(.primary, fill: true))
-        .accessibilityIdentifier("reason.sort")
-      Button("Not mine, archive it") { archive() }
-        .buttonStyle(.pill(.destructiveText, fill: true))
-        .accessibilityIdentifier("reason.archive")
     case .probableCopy:
       Button("Merge") { merge() }
         .buttonStyle(.pill(.primary, fill: true))

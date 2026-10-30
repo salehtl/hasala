@@ -243,7 +243,7 @@ struct ReviewScopeReasonTests {
     #expect(ReviewEngine.queue(s, in: october).filter { $0.id == "starbucks-copy" }.count == 1)
     #expect(!ReviewEngine.queue(s, in: september).contains { $0.id == "starbucks-copy" })
     let card = try #require(ReviewEngine.cards(s, in: october).first { $0.id == "starbucks-copy" })
-    #expect(card.reviewReason == .probableCopy && !card.senderUnverified)
+    #expect(card.reviewReason == .probableCopy)
     let row = ActivityEngine.row(try #require(s.txn("starbucks-copy")), s)
     #expect(row.toReview && row.reviewReason == .probableCopy)
     #expect(row.detail == "Looks like a copy · 09:09")
@@ -259,26 +259,25 @@ struct ReviewScopeReasonTests {
     #expect(ReviewEngine.queue(ledger.state, in: october).count == ReviewEngine.queue(s, in: october).count - 1)
   }
 
-  @Test func theSenderReasonFollowsItsRowIntoThePeriod() throws {
+  @Test func anUnverifiedRowFollowsItsDateIntoThePeriod() throws {
     var s = MayaLedger.state
     var old = try #require(s.txn("steam"))
     old.id = "steam-sep"
     old.postedAt = LocalDateTime(2026, 9, 20, 11, 2)
     s.txns.append(old)
     let ledger = InMemoryLedger(state: s)
-    #expect(ReviewEngine.cards(s, in: september).filter(\.senderUnverified).map(\.id) == ["steam-sep"])
-    #expect(ReviewEngine.cards(s, in: october).filter(\.senderUnverified).map(\.id) == ["steam"])
+    #expect(ReviewEngine.cards(s, in: september).map(\.id) == ["steam-sep"])
+    #expect(ReviewEngine.cards(s, in: october).contains { $0.id == "steam" })
     try ledger.apply(.categorize("steam-sep", "entertainment", learnRule: false, project: nil))
     #expect(ReviewEngine.cards(ledger.state, in: september).isEmpty)
-    #expect(ledger.state.txn("steam-sep")?.activeReviewReason == nil)
-    #expect(ReviewEngine.cards(ledger.state, in: october).filter(\.senderUnverified).map(\.id) == ["steam"])
+    #expect(ReviewEngine.cards(ledger.state, in: october).contains { $0.id == "steam" })
   }
 
   @Test func aHeldCopyThatAlsoFailedTheSenderCheckShowsOnceAsACopy() throws {
     var s = Scenario.mayaCopy.state
     let i = try #require(s.txns.firstIndex { $0.id == "starbucks-copy" })
     s.txns[i].needsReview = true
-    s.txns[i].reviewReason = .senderUnverified
+    s.txns[i].senderUnverified = true
     let ids = ReviewEngine.queue(s, in: october).map(\.id)
     #expect(ids.filter { $0 == "starbucks-copy" }.count == 1)
     let card = try #require(ReviewEngine.cards(s, in: october).first { $0.id == "starbucks-copy" })

@@ -141,14 +141,12 @@ public struct Provenance: Sendable, Hashable, Codable {
   public var readAt: String
   /// The merchant exactly as the bank wrote it: "CARREFOUR MALL OF EMIRATES".
   public var rawMerchant: String
-  public var senderCheck: String?
   public var isText: Bool
 
-  public init(title: String, readAt: String, rawMerchant: String, senderCheck: String? = nil, isText: Bool = false) {
+  public init(title: String, readAt: String, rawMerchant: String, isText: Bool = false) {
     self.title = title
     self.readAt = readAt
     self.rawMerchant = rawMerchant
-    self.senderCheck = senderCheck
     self.isText = isText
   }
 
@@ -157,7 +155,6 @@ public struct Provenance: Sendable, Hashable, Codable {
     title = try c.decode(String.self, forKey: .title)
     readAt = try c.decode(String.self, forKey: .readAt)
     rawMerchant = try c.decode(String.self, forKey: .rawMerchant)
-    senderCheck = try c.decodeIfPresent(String.self, forKey: .senderCheck)
     isText = try c.decodeIfPresent(Bool.self, forKey: .isText) ?? false
   }
 }
@@ -182,14 +179,12 @@ public struct SplitLine: Sendable, Hashable, Codable, Identifiable {
 
 public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   case probableCopy = "probable_copy"
-  case senderUnverified = "sender_unverified"
   case samePurchase = "same_purchase"
   case mayRepeat = "may_repeat"
 
   public var label: String {
     switch self {
     case .probableCopy: "Looks like a copy"
-    case .senderUnverified: "Couldn't verify sender"
     case .samePurchase: "Same purchase?"
     case .mayRepeat: "Same payment?"
     }
@@ -198,7 +193,6 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   public var title: String {
     switch self {
     case .probableCopy: "Looks like a copy"
-    case .senderUnverified: "Couldn't verify the sender"
     case .samePurchase: "Same purchase?"
     case .mayRepeat: "Maybe the same payment"
     }
@@ -207,7 +201,6 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
   public var detail: String {
     switch self {
     case .probableCopy: "It matches one you already have. Merge it, or keep both."
-    case .senderUnverified: "Check this matches your bank app before you sort it."
     case .samePurchase: "It may be the AED charge for a purchase you already have. Count it once, or keep both."
     case .mayRepeat: "It may be the same payment as a bank text. Keep both, or archive this one."
     }
@@ -312,6 +305,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var heldCopy: HeldCopy?
   public var samePurchase: SamePurchaseMatch?
   public var reviewReason: TxnReviewReason?
+  public var senderUnverified: Bool
   public var merchantKey: String?
   public var merchantGroup: String?
   public var reachable: Bool
@@ -342,6 +336,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     heldCopy: HeldCopy? = nil,
     samePurchase: SamePurchaseMatch? = nil,
     reviewReason: TxnReviewReason? = nil,
+    senderUnverified: Bool = false,
     merchantKey: String? = nil,
     merchantGroup: String? = nil,
     reachable: Bool = false,
@@ -383,6 +378,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.heldCopy = heldCopy
     self.samePurchase = samePurchase
     self.reviewReason = reviewReason
+    self.senderUnverified = senderUnverified
     self.merchantKey = merchantKey
     self.merchantGroup = merchantGroup
     self.reachable = reachable
@@ -409,8 +405,6 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   }
 
   public var fromText: Bool { provenance?.isText == true }
-
-  public var senderUnverified: Bool { activeReviewReason == .senderUnverified }
 
   /// "Starbucks DIFC".
   public var title: String { place.map { "\(merchant) \($0)" } ?? merchant }

@@ -62,7 +62,6 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var copyDecision: String?
   public var heldCopy: Bool
   public var reviewReason: TxnGates.ReviewReason?
-  public var senderCheck: String?
   public var merchantGroup: String?
   public var categorizedMs: Int64?
   public var channel: String?
@@ -129,7 +128,6 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     receivedMs = r["received_ms"]
     templateRef = gates?["template"]?.stringValue
     reviewReason = Self.reviewReason(gates)
-    senderCheck = Self.senderCheck(gates)
   }
 
   static func gates(_ gatesJSON: String?) -> JSONValue? {
@@ -142,12 +140,6 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   static func reviewReason(_ gates: JSONValue?) -> TxnGates.ReviewReason? {
     guard let gates else { return nil }
     return TxnGates(ar: gates["ar"]?.stringValue, sender: gates["sender"]?.stringValue).reviewReason
-  }
-
-  static func senderCheck(gatesJSON: String?) -> String? { senderCheck(gates(gatesJSON)) }
-
-  static func senderCheck(_ gates: JSONValue?) -> String? {
-    reviewReason(gates) == .senderUnverified ? gates?["ar"]?.stringValue : nil
   }
 
   static func template(gatesJSON: String?) -> String? { gates(gatesJSON)?["template"]?.stringValue }

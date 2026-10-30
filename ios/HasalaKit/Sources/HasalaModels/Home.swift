@@ -381,10 +381,6 @@ public struct MiniTxnRow: Sendable, Hashable, Codable, Identifiable {
   }
 }
 
-extension MiniTxnRow {
-  public var senderUnverified: Bool { reviewReason == .senderUnverified }
-}
-
 public struct TodayWidget: Sendable, Hashable, Codable {
   /// "2 transactions · 91.50".
   public var summary: MoneyPhrase

@@ -118,9 +118,10 @@ struct MayaBacklogScenarioTests {
   @Test func aPaymentWithAReviewReasonIsNeverWaiting() {
     let s = Scenario.mayaBacklog.state
     #expect(MockReach.refreshed(s).txn("bl-ts-unverified")?.reachable == false)
-    for reason in [TxnReviewReason.senderUnverified, .probableCopy, .samePurchase] {
+    for reason in [TxnReviewReason.probableCopy, .samePurchase] {
       #expect(Self.waiting("bl-ts-01", in: s) { $0.reviewReason = reason } == false)
     }
+    #expect(Self.waiting("bl-ts-01", in: s) { $0.senderUnverified = true } == false)
     #expect(Self.waiting("bl-ts-01", in: s) { $0.archived = true } == false)
   }
 

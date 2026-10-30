@@ -76,7 +76,7 @@ public enum MayaBacklog {
   static func row(
     _ id: String, _ spelling: Spelling, _ amount: Money, _ at: LocalDateTime, account: AccountID = "dib",
     direction: Direction = .out, category: CategoryID? = nil, source: CategorySource? = nil, needsReview: Bool = true,
-    reason: TxnReviewReason? = nil, isNew: Bool = false
+    senderUnverified: Bool = false, isNew: Bool = false
   ) -> Txn {
     let rate: Int64? =
       switch amount.currency {
@@ -91,7 +91,7 @@ public enum MayaBacklog {
       homeSource: .some(home == nil ? nil : rate == nil ? .identity : .rate), homeRateMicro: rate,
       direction: direction, postedAt: at, accountID: account, categoryID: category, categorySource: source,
       needsReview: needsReview, isNewMerchant: isNew,
-      provenance: MayaLedger.alert(bank, at.time, spelling.raw), reviewReason: reason, merchantKey: spelling.merchantKey,
+      provenance: MayaLedger.alert(bank, at.time, spelling.raw), senderUnverified: senderUnverified, merchantKey: spelling.merchantKey,
       merchantGroup: spelling.group)
   }
 
@@ -111,7 +111,7 @@ public enum MayaBacklog {
         LocalDateTime(2026, d.month, d.day, 3, 10 + i))
     }
     rows.append(row("bl-ts-unverified", tailscaleCom, usd(6_00), LocalDateTime(2026, 10, 5, 3, 12),
-                    reason: .senderUnverified))
+                    senderUnverified: true))
     rows.append(row("bl-ts-refund", tailscaleCom, usd(6_00), LocalDateTime(2026, 10, 7, 20, 5), direction: .in))
     return rows
   }
@@ -149,7 +149,7 @@ public enum MayaBacklog {
       row("bl-mirdif-2", mirdif, usd(40_00), LocalDateTime(2026, 10, 4, 16, 20), category: wrongGuess, source: guess),
       row("bl-mirdif-3", mirdifLLC, .aed(312_50), LocalDateTime(2026, 10, 8, 16, 20), category: wrongGuess, source: guess),
       row("bl-mirdif-4", mirdif, .aed(349_21), LocalDateTime(2026, 10, 9, 16, 20), category: wrongGuess, source: guess),
-      row("bl-mirdif-unverified", mirdifLLC, .aed(95_00), LocalDateTime(2026, 10, 6, 16, 20), reason: .senderUnverified),
+      row("bl-mirdif-unverified", mirdifLLC, .aed(95_00), LocalDateTime(2026, 10, 6, 16, 20), senderUnverified: true),
     ]
   }
 

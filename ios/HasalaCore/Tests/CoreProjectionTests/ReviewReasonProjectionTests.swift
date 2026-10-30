@@ -21,15 +21,4 @@ import Testing
     #expect(TxnRow.reviewReason(gatesJSON: #"{"sender":"untrusted"}"#) == nil)
     #expect(TxnRow.reviewReason(gatesJSON: "not json") == nil)
   }
-
-  @Test func theSenderCheckIsTheCodeOfAnUnverifiedRow() {
-    for ar in ["fail", "no_ar", "multiple_ar", "not_topmost", "parse_error", "no_eop"] {
-      #expect(TxnRow.senderCheck(gatesJSON: #"{"ar":"\#(ar)","sender":"untrusted"}"#) == ar)
-    }
-    #expect(TxnRow.senderCheck(gatesJSON: #"{"ar":"pass","sender":"untrusted"}"#) == nil)
-    #expect(TxnRow.senderCheck(gatesJSON: #"{"ar":"pass","sender":"trusted"}"#) == nil)
-    #expect(TxnRow.senderCheck(gatesJSON: #"{"sender":"untrusted"}"#) == nil)
-    #expect(TxnRow.senderCheck(gatesJSON: nil) == nil)
-    #expect(TxnRow.senderCheck(gatesJSON: "not json") == nil)
-  }
 }

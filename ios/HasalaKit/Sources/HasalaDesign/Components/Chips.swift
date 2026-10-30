@@ -118,7 +118,6 @@ public struct InfoChip: View {
     case evidence
     /// "New merchant": why a card is in front of you (28 tall, info, with a 7 dot).
     case reason
-    case warningReason
     /// "LULU HYPERMARKET DXB MARINA": the bank's own words, as-is (26 tall, radius 8).
     case rawText
     /// "Suggested": which pick we suggest (24 tall, info, no dot).
@@ -137,9 +136,6 @@ public struct InfoChip: View {
     HStack(spacing: 6) {
       if style == .reason {
         Circle().fill(HColor.actionAccent).frame(width: 7, height: 7)
-      } else if style == .warningReason {
-        HIconView(.shield, size: 14, color: HColor.statusWarningForeground, strokeWidth: 2.2)
-          .accessibilityHidden(true)
       }
       Text(text)
         .hType(style == .rawText ? .footnote.weight(.medium) : .footnote.weight(.semibold))
@@ -148,7 +144,7 @@ public struct InfoChip: View {
     }
     .foregroundStyle(foreground)
     .padding(.leading, leading)
-    .padding(.trailing, style == .reason || style == .warningReason ? 12 : leading)
+    .padding(.trailing, style == .reason ? 12 : leading)
     .frame(minHeight: height)
     .background(background, in: shape)
     .accessibilityElement(children: .combine)
@@ -157,7 +153,6 @@ public struct InfoChip: View {
   private var leading: CGFloat {
     switch style {
     case .evidence, .reason: 10
-    case .warningReason: 9
     case .rawText: 8
     case .suggested: 9
     }
@@ -165,7 +160,7 @@ public struct InfoChip: View {
 
   private var height: CGFloat {
     switch style {
-    case .evidence, .reason, .warningReason: HSpacing.chipInfoHeight
+    case .evidence, .reason: HSpacing.chipInfoHeight
     case .rawText: 26
     case .suggested: 24
     }
@@ -176,7 +171,6 @@ public struct InfoChip: View {
     case .evidence: HColor.chipInfoText
     case .rawText: HColor.textSecondary
     case .reason, .suggested: HColor.statusInfoForeground
-    case .warningReason: HColor.statusWarningForeground
     }
   }
 
@@ -185,7 +179,6 @@ public struct InfoChip: View {
     case .evidence: HColor.chipInfoSurface
     case .rawText: HColor.surfaceSecondary
     case .reason, .suggested: HColor.statusInfoSurface
-    case .warningReason: HColor.statusWarningSurface
     }
   }
 

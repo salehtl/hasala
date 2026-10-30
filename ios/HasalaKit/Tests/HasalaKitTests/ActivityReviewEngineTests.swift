@@ -25,7 +25,7 @@ struct ActivityReviewEngineParityTests {
     #expect(days.map { MoneyFormat.string($0.total.minor) } == ["189.49", "602.45", "131.98", "649.00"])
     #expect(a.rowCount == 26)
     #expect(a.days[0].rows.map(\.merchant) == ["Talabat", "Steam", "Starbucks DIFC", "Dubai Taxi"])
-    #expect(a.days[0].rows.map(\.detail) == ["Dining · Your rule · 13:20", "Couldn't verify sender · 11:02", "Dining · 09:05", "To review · 08:10"])
+    #expect(a.days[0].rows.map(\.detail) == ["Dining · Your rule · 13:20", "To review · 11:02", "Dining · 09:05", "To review · 08:10"])
     #expect(a.days[0].rows.map(\.toReview) == [false, true, false, true])
     #expect(a.days[2].rows[1].detail == "Subscriptions · monthly bill")
   }

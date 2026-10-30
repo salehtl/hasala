@@ -26,9 +26,6 @@ struct BankTextReviewTests {
     t.needsReview = false
     t.categoryID = "groceries"
     #expect(t.activeReviewReason == nil && ReviewEngine.card(t, s).reasonLine == nil)
-    t.needsReview = true
-    t.reviewReason = .senderUnverified
-    #expect(t.activeReviewReason == .senderUnverified && ReviewEngine.card(t, s).reasonLine == nil)
   }
 
   @Test func aTextRowCardKnowsItCameFromATextAndHidesAnEmptyMerchant() throws {

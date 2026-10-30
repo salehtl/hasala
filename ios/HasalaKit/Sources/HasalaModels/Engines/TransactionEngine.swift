@@ -60,10 +60,6 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var reasonLine: String? = nil
 }
 
-extension TransactionDetail {
-  public var senderUnverified: Bool { reviewReason == .senderUnverified }
-}
-
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
   public var id: Int
   public var category: CategoryOption
