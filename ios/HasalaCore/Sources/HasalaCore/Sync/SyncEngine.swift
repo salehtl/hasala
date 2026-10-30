@@ -153,7 +153,7 @@ public actor SyncEngine {
       status.suspended = false
       status.phase = .idle
     } catch {
-      out.stop = await apply(error)
+      out.stop = await apply(await context.settled(error))
     }
     out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
@@ -229,6 +229,7 @@ public actor SyncEngine {
     case .needsUnlock(let e): status.phase = .needsUnlock(epoch: e)
     case .keysRequired: status.phase = .keysRequired
     case .wipe: status.phase = .wiping
+    case .revocationClaimed: status.phase = .halted(.rosterInvalid)
     case .suspended:
       status.suspended = true
       status.phase = .idle

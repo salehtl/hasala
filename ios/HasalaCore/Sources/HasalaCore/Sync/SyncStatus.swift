@@ -40,7 +40,7 @@ public enum SyncPhase: Sendable, Hashable {
   case needsUnlock(epoch: UInt32)
   /// `403 keys_required`: onboarding step `keys`.
   case keysRequired
-  /// `410 account_deleted` or `403 writer_revoked`: wipe (§4.7 row 3).
+  /// `410 account_deleted`, or a revocation the pinned key history shows: wipe (§4.7 row 3).
   case wiping
 }
 
@@ -77,6 +77,7 @@ public enum SyncStop: Error, Sendable, Hashable {
   case needsUnlock(epoch: UInt32)
   case keysRequired
   case wipe
+  case revocationClaimed
   case suspended
   /// A secret could not be read now (before first unlock): return `.noData`.
   case notNow
@@ -101,7 +102,9 @@ extension SyncStop {
       case (401, _): return .needsSignIn
       case (403, "account_frozen"): return .frozen
       case (403, "account_suspended"): return .suspended
-      case (403, "writer_revoked"), (410, _): return .wipe
+      case (410, "account_deleted"): return .wipe
+      case (410, _): return .halted(.rosterInvalid)
+      case (403, "writer_revoked"): return .revocationClaimed
       case (403, "writer_unbound"), (403, "writer_mismatch"): return .needsRebind
       case (403, "keys_required"): return .keysRequired
       case (426, _): return .halted(.updateRequired)

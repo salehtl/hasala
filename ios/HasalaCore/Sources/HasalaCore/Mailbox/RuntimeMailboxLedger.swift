@@ -126,6 +126,7 @@ public actor RuntimeMailboxLedger: MailboxLedger {
     case .needsUnlock: "needs_unlock"
     case .keysRequired: "keys_required"
     case .wipe: "wipe"
+    case .revocationClaimed: "revocation_claimed"
     case .suspended: "suspended"
     case .notNow: "not_now"
     case .store: "store"
