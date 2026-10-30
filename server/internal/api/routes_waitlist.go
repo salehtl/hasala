@@ -86,10 +86,10 @@ func (s *Server) mountWaitlist(mux *http.ServeMux) {
 		return
 	}
 	o := s.Web
-	s.ensureLimiter(&o.WaitlistIP, waitlistIPRate, waitlistIPBurst, publicMaxKeys)
+	s.ensureClientLimiter(&o.WaitlistIP, waitlistIPRate, waitlistIPBurst, publicMaxKeys)
 	s.ensureLimiter(&o.WaitlistGlobal, waitlistGlobalRate, waitlistGlobalBurst, 1)
-	s.ensureLimiter(&o.LinkIP, linkIPRate, linkIPBurst, publicMaxKeys)
-	s.ensureLimiter(&o.BankIP, bankIPRate, bankIPBurst, publicMaxKeys)
+	s.ensureClientLimiter(&o.LinkIP, linkIPRate, linkIPBurst, publicMaxKeys)
+	s.ensureClientLimiter(&o.BankIP, bankIPRate, bankIPBurst, publicMaxKeys)
 	s.ensureLimiter(&o.BankGlobal, bankGlobalRate, bankGlobalBurst, 1)
 	s.ensureLimiter(&o.BankUser, bankUserRate, bankUserBurst, publicMaxKeys)
 	s.ensureLimiter(&o.PreflightIP, preflightRate, preflightBurst, publicMaxKeys)

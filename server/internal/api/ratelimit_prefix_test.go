@@ -229,3 +229,22 @@ func TestFreezeLinkErrorIsNotASuccess(t *testing.T) {
 	wantStatus(t, postFreezeLink(h, bg, `{"token":"`+token+`"}`), http.StatusNoContent)
 	wantStatus(t, h.req("GET", "/api/v1/account", a.token, nil), http.StatusUnauthorized)
 }
+
+func TestClientAddressLimitersCarryAPrefixQuota(t *testing.T) {
+	h := newHarness(t)
+	h.srv.Web = &WebOptions{}
+	h.h = h.srv.Handler()
+	for name, l := range map[string]*Limiter{
+		"recover":  h.srv.RecoverPerIP,
+		"code":     h.srv.CodePerIP,
+		"passkey":  h.srv.PasskeyPerIP,
+		"meta":     h.srv.MetaPerIP,
+		"waitlist": h.srv.Web.WaitlistIP,
+		"link":     h.srv.Web.LinkIP,
+		"bank":     h.srv.Web.BankIP,
+	} {
+		if l.prefixQuota != l.maxKeys/prefixQuotaShare {
+			t.Errorf("%s: prefix quota %d of %d keys", name, l.prefixQuota, l.maxKeys)
+		}
+	}
+}

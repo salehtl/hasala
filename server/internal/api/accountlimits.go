@@ -37,8 +37,8 @@ const (
 )
 
 func (s *Server) defaultAccountLimiters() {
-	s.ensureLimiter(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
-	s.ensureLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
+	s.ensureClientLimiter(&s.RecoverPerIP, recoverIPRate, recoverIPBurst, accountLimiterKeys)
+	s.ensureClientLimiter(&s.CodePerIP, codeIPRate, codeIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.ResetPerIP, resetIPRate, resetIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezePerIP, freezeIPRate, freezeIPBurst, accountLimiterKeys)
 	s.ensureLimiter(&s.FreezePerPrefix, freezePrefix, freezePrefixB, accountLimiterKeys)
