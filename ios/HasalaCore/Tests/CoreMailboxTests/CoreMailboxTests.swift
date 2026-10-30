@@ -179,6 +179,20 @@ import Testing
     #expect(BankDomains.domainOf("plain@x.example") == "x.example")
     #expect(BankDomains.domainOf("no address") == "")
   }
+
+  @Test func domainOfReadsTheAddrSpecOfAFromValue() {
+    for from in ["<a@other.example> (x@dib.ae)", "<a@other.example> x@dib.ae", "(x@dib.ae) a@other.example", "\"x@dib.ae\" <a@other.example>"] {
+      #expect(BankDomains.domainOf(from) == "other.example", "\(from)")
+    }
+    #expect(BankDomains.domainOf("DIB Alerts (notices@other.example) <alerts@dib.ae>") == "dib.ae")
+    #expect(BankDomains.domainOf("\"DIB, Alerts\" <alerts@DIB.ae.>") == "dib.ae")
+  }
+
+  @Test func aFromValueTheRuleCannotReadKeepsItsLastDomain() {
+    #expect(BankDomains.domainOf("DIB, Alerts <alerts@dib.ae>") == "dib.ae")
+    #expect(BankDomains.domainOf("<a@other.example>, x@dib.ae") == "dib.ae")
+    #expect(BankDomains.domainOf("<a@other.example> (x@dib.ae") == "dib.ae")
+  }
 }
 
 @Suite struct GmailClientTests {
@@ -259,6 +273,43 @@ import Testing
 @Suite struct DispositionTests {
   let templates = BundledTemplates.load(channel: .mail).templates
   let trusted = ["dib.ae", "emiratesnbd.com"]
+
+  static let cardBody = "إشعار مشتريات\nالمبلغ\nAED 250.00\nبتاريخ 05-06-2026\nالدفع الى\nSYNTHETIC GROCER DUBAI\nرقم البطاقة\nXXXX1234"
+
+  func parsed(from: String, authDomain: String, bankDomains: [String]? = nil) -> MessageDisposer.Parse {
+    let raw = SyntheticMail.rfc822(from: from, subject: "Card transaction", body: Self.cardBody, dateMs: Rig.t0, authDomain: authDomain)
+    return MessageDisposer.parse(
+      raw: raw, messageID: "f1", internalDateMs: Rig.t0, topLevelFrom: from, templates: templates, bankDomains: bankDomains ?? trusted,
+      trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
+  }
+
+  @Test func aFromThatOnlyNamesABankDomainOutsideItsAddrSpecIsSetAside() {
+    for from in ["<a@other.example> (x@dib.ae)", "<a@other.example> x@dib.ae"] {
+      guard case .setAside(let domain) = parsed(from: from, authDomain: "other.example") else {
+        Issue.record("not set aside: \(from)")
+        continue
+      }
+      #expect(domain == "other.example")
+    }
+  }
+
+  @Test func aFromTheRuleCannotReadStillWaitsInReview() throws {
+    for from in ["<a@other.example>, x@dib.ae", "<a@other.example> (x@dib.ae"] {
+      guard case .mail(let m) = parsed(from: from, authDomain: "other.example") else {
+        Issue.record("not kept: \(from)")
+        continue
+      }
+      #expect(m.gates.ar == "fail" && !m.gates.senderTrusted, "\(from)")
+      #expect(MessageDisposer.finalize(m, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
+    }
+  }
+
+  @Test func aPassForADomainOutsideTheTrustSetWaitsInReview() throws {
+    guard case .mail(let m) = parsed(from: "Alerts <a@other.example>", authDomain: "other.example", bankDomains: trusted + ["other.example"])
+    else { throw CancellationError() }
+    #expect(m.gates.ar == "pass" && !m.gates.senderTrusted)
+    #expect(MessageDisposer.finalize(m, provider: .gmail, grantID: "g", categorizer: NoCategorizer()).needsReview)
+  }
 
   func parse(_ m: FakeGmail.Message) -> MessageDisposer.Parse {
     MessageDisposer.parse(

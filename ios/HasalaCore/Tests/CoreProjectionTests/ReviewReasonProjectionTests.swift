@@ -11,8 +11,9 @@ import Testing
     #expect(TxnRow.senderUnverified(gatesJSON: #"{"ar":"fail","sender":"trusted"}"#))
   }
 
-  @Test func aPassingVerdictIsVerified() {
-    #expect(!TxnRow.senderUnverified(gatesJSON: #"{"ar":"pass","sender":"untrusted"}"#))
+  @Test func aPassingVerdictIsVerifiedOnlyForATrustedSender() {
+    #expect(TxnRow.senderUnverified(gatesJSON: #"{"ar":"pass","sender":"untrusted"}"#))
+    #expect(TxnRow.senderUnverified(gatesJSON: #"{"ar":"pass"}"#))
     #expect(!TxnRow.senderUnverified(gatesJSON: #"{"ar":"pass","sender":"trusted"}"#))
   }
 
@@ -29,12 +30,15 @@ import Testing
       [
         MerchantGroupProjectionTests.txn(1, "TAILSCALE INC", posted: "2026-10-03T08:00:00.000Z", extra: #","needs_review":true,"gates":{"ar":"fail","sender":"untrusted"}"#),
         MerchantGroupProjectionTests.txn(2, "TAILSCALE INC", posted: "2026-10-04T08:00:00.000Z", extra: #","needs_review":true,"gates":{"ar":"pass","sender":"trusted"}"#),
+        MerchantGroupProjectionTests.txn(3, "TAILSCALE INC", posted: "2026-10-05T08:00:00.000Z", extra: #","needs_review":true,"gates":{"ar":"pass","sender":"untrusted"}"#),
       ], into: &s)
     #expect(s.anomalies.isEmpty)
     let (_, r) = try MerchantGroupProjectionTests.project(s)
     let rows = Dictionary(uniqueKeysWithValues: try r.sweepRows().map { ($0.id, $0) })
     #expect(rows[MerchantGroupProjectionTests.id(1)]?.candidate == false)
     #expect(rows[MerchantGroupProjectionTests.id(2)]?.candidate == true)
+    #expect(rows[MerchantGroupProjectionTests.id(3)]?.candidate == false)
+    #expect(try r.txn(MerchantGroupProjectionTests.id(3))?.reachRow.unverified == true)
     #expect(try r.txn(MerchantGroupProjectionTests.id(1))?.senderUnverified == true)
   }
 }

@@ -102,7 +102,7 @@ public struct TxnGates: Sendable, Equatable, Codable {
     self.kind = kind
   }
 
-  public var senderUnverified: Bool { ar.map { $0 != "pass" } ?? false }
+  public var senderUnverified: Bool { ar.map { $0 != "pass" || sender != "trusted" } ?? false }
 }
 
 /// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).

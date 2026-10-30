@@ -300,6 +300,8 @@ public enum AuthResults {
   /// string, spaces and tabs trimmed, ASCII lower-cased, trailing dots dropped. Empty when the
   /// value has an unreadable comment or quote, more than one `<` or `>`, a top-level `,`, no `@`,
   /// or a domain with anything but letters, digits, `.` and `-`.
+  public static func fromDomain(_ value: String) -> String { string(fromDomain(Array(value.unicodeScalars))) }
+
   static func fromDomain(_ value: Scalars) -> Scalars {
     let (clean, ok) = stripComments(value)
     guard ok else { return [] }
