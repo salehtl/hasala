@@ -199,10 +199,8 @@ extension State {
   /// `CategoryId` and an optional `Note`.
   static func decodeParts(_ raw: JSONValue?, v: Int) throws(PayloadError) -> [Split] {
     guard let list = raw?.arrayValue else { throw PayloadError("parts is not an array") }
-    if v >= 4 {
-      if list.count == 1 { throw PayloadError("parts: a split has 0 or 2-16 parts, got 1") }
-      if list.count > 16 { throw PayloadError("parts: a split has at most 16 parts, got \(list.count)") }
-    }
+    if v >= 4, list.count == 1 { throw PayloadError("parts: a split has 0 or 2-16 parts, got 1") }
+    if list.count > 16 { throw PayloadError("parts: a split has at most 16 parts, got \(list.count)") }
     var out: [Split] = []
     for (i, x) in list.enumerated() {
       guard let o = x.objectValue else { throw PayloadError("part \(i) is not an object") }
