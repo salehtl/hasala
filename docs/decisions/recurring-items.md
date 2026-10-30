@@ -96,7 +96,10 @@ payment). The matcher never writes it.
    payment.
 5. **Archived, transfer, held-copy, superseded and refund rows never match.** An explicit
    `paid{txn}` that points at a row later archived or superseded still counts as paid; the
-   history shows the date without an amount.
+   history shows the date without an amount. A row that waits in Review, or whose sender
+   was not verified (`TxnGates.senderUnverified`), does not pay a due by itself
+   (`MatchRow.settles`, 2026-10-30). The person can still link it, and the detector still
+   reads it.
 
 ### Price changes
 

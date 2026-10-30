@@ -20,10 +20,11 @@ public struct MatchRow: Sendable {
   public var homeMinor: Int64?
   public var day: CivilDate
   public var eligible: Bool
+  public var settles: Bool
 
   public init(
     txnID: String, merchantKey: String, direction: String, amountMinor: Int64, currency: String, homeMinor: Int64?, day: CivilDate,
-    eligible: Bool
+    eligible: Bool, settles: Bool = true
   ) {
     self.txnID = txnID
     self.merchantKey = merchantKey
@@ -33,6 +34,7 @@ public struct MatchRow: Sendable {
     self.homeMinor = homeMinor
     self.day = day
     self.eligible = eligible
+    self.settles = settles
   }
 }
 
@@ -176,7 +178,7 @@ public enum BillMatcher {
     var seenRows = Set<String>()
     let allRows = rows.sorted { ($0.day, $0.txnID) < ($1.day, $1.txnID) }.filter { seenRows.insert($0.txnID).inserted }
     let byTxn = Dictionary(allRows.map { ($0.txnID, $0) }, uniquingKeysWith: { a, _ in a })
-    let open = allRows.filter { $0.eligible && $0.amountMinor > 0 && !named.contains($0.txnID) }
+    let open = allRows.filter { $0.eligible && $0.settles && $0.amountMinor > 0 && !named.contains($0.txnID) }
 
     var candidates: [Candidate] = []
     for (ri, row) in open.enumerated() {
