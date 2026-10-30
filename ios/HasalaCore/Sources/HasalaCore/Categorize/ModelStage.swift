@@ -1,3 +1,5 @@
+import Foundation
+
 public struct ModelStage: Sendable {
   public let model: any CategoryModel
   public let accepts: @Sendable (String) -> Bool
@@ -14,7 +16,23 @@ public struct ModelStage: Sendable {
   }
 
   public static func cloud(_ model: any CategoryModel) -> ModelStage {
-    ModelStage(model: model, accepts: hasLetter, leavesDevice: true)
+    ModelStage(model: model, accepts: cloudAccepts, leavesDevice: true)
+  }
+
+  public static let cloudSubjectLimit = 128
+  static let cloudTrim = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FEFF}"))
+
+  public static func cloudSubject(_ subject: String) -> String {
+    var kept = String.UnicodeScalarView()
+    kept.append(contentsOf: subject.unicodeScalars.filter { $0.value > 0x1f && $0.value != 0x7f })
+    let trimmed = String(kept).trimmingCharacters(in: cloudTrim)
+    var out = String.UnicodeScalarView()
+    out.append(contentsOf: trimmed.unicodeScalars.prefix(cloudSubjectLimit))
+    return String(out)
+  }
+
+  public static func cloudAccepts(_ subject: String) -> Bool {
+    hasLetter(cloudSubject(subject))
   }
 
   public static func hasLetter(_ subject: String) -> Bool {

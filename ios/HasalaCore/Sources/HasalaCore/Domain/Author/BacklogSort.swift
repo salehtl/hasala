@@ -199,7 +199,7 @@ public enum BacklogSort {
     var stale: [String] = []
     for q in queued where seen.insert(q.subject).inserted {
       let s = q.subject
-      guard !blocked.contains(s), ModelStage.hasLetter(s), !memo.asked.contains(s), memo.answers[s] == nil else { continue }
+      guard !blocked.contains(s), ModelStage.cloudAccepts(s), !memo.asked.contains(s), memo.answers[s] == nil else { continue }
       if let k = try keptAnswer(s) {
         if rejected[s]?.contains(k) == true { continue }
         stale.append(s)
