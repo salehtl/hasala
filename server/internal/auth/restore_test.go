@@ -1216,10 +1216,8 @@ func TestARestoreDoesNotBringBackTheLinksOfALiftedFreeze(t *testing.T) {
 	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
 		t.Fatalf("a replay on the live database %+v %v, want nothing", rep, err)
 	}
-	var (
-		usedAt *time.Time
-		events = f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`, m.user.UserID)
-	)
+	events := f.count(`SELECT count(*) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`, m.user.UserID)
+	var usedAt *time.Time
 	if err := f.pool.QueryRow(bgctx, `SELECT used_at FROM freeze_tokens WHERE user_id = $1 AND trigger_kind = 'new_sign_in'`,
 		m.user.UserID).Scan(&usedAt); err != nil || usedAt == nil || events != 1 {
 		t.Fatalf("the live lift: link used %v (%v), %d events", usedAt, err, events)
@@ -1261,7 +1259,7 @@ func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) 
 	path, rec := ledgerRecorder(t)
 	f.acct.Record = rec
 	m := f.passwordMember("Maya")
-	stolen, err := m.loginPassword(m.s, nil)
+	other, err := m.loginPassword(m.s, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1290,7 +1288,7 @@ func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) 
 		t.Fatalf("a replay on the live database ended the kept session: %v", err)
 	}
 
-	for _, tok := range []string{original, stolen.Session.Token} {
+	for _, tok := range []string{original, other.Session.Token} {
 		if _, err := f.pool.Exec(bgctx, `UPDATE sessions SET revoked_at = NULL, revoked_reason = NULL WHERE token_hash = $1`,
 			SessionHash(tok)); err != nil {
 			t.Fatal(err)
@@ -1309,7 +1307,7 @@ func TestARestoreBeforeALiftedFreezeEndsTheSessionsTheFreezeEnded(t *testing.T) 
 	if err != nil || rep != (ReapplyReport{Sessions: 1}) {
 		t.Fatalf("reapply %+v %v, want the sessions of the lifted freeze ended", rep, err)
 	}
-	for _, tok := range []string{original, stolen.Session.Token} {
+	for _, tok := range []string{original, other.Session.Token} {
 		if _, err := f.sessions.Resolve(bgctx, tok); !errors.Is(err, ErrSessionRevoked) {
 			t.Fatalf("a session the freeze ended is live again: %v", err)
 		}

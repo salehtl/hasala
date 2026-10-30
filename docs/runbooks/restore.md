@@ -168,9 +168,9 @@ new recovery and a password reset. Then only the operator can lift it.
 Lifting a freeze, by the holder or the operator, retires every unused freeze
 link of the account, and a link dated before the latest lift no longer freezes
 it. A link from a later alert still works. So an older link cannot freeze the
-account again after the holder changed a password. The cost: when someone who
-holds an older factor lifts a freeze, the holder's older links stop working
-too, and the holder relies on later alerts, the in-app lockdown or the operator.
+account again after the holder changed a password. A lift through any older
+factor retires the links, so after a lift the holder relies on later alerts, the
+in-app lockdown or the operator.
 
 1. Make sure that the request comes from the holder. Ask them to write to
    support from the account's address, and confirm it out of band. Do not
@@ -203,8 +203,7 @@ operator.
 
 1. Make sure that the request comes from the holder, and that the holder still
    controls this address, as in "Lift a freeze that the holder cannot lift".
-   Do not do this on the strength of one message: whoever controls the address
-   the holder removed can write from it.
+   Do not do this on the strength of one message from that address.
 2. Clear the mark.
 
    ```sh
