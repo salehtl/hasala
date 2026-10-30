@@ -60,14 +60,14 @@ public final class SyncContext: Sendable {
   }
 
   func settled(_ stop: SyncStop) async -> SyncStop {
-    guard stop == .revocationClaimed else { return stop }
+    guard stop == .halted(.unprovedRevocation) else { return stop }
     do {
       let state = try storeCall { () throws(StoreError) in try store.syncState() }
       guard let pinned = PinnedRoster.decode(state.rosterJSON) else { return .halted(.rosterInvalid) }
       let fresh = try await RosterService.refetch(client: client, bearer: try bearer(), pinned: pinned)
-      return fresh.writers[writerID.string]?.final_counter != nil ? .wipe : .halted(.rosterInvalid)
+      return fresh.writers[writerID.string]?.final_counter != nil ? .wipe : stop
     } catch {
-      return error == .revocationClaimed ? .halted(.rosterInvalid) : error
+      return error
     }
   }
 

@@ -19,6 +19,8 @@ public enum HaltKind: Sendable, Hashable {
   /// (01 §10.13; the integrity alarm, kept as a halt because the reader cannot
   /// run without a verified roster).
   case rosterInvalid
+  case unprovedRevocation
+  case unexpectedGone
 }
 
 public enum SyncPhase: Sendable, Hashable {
@@ -77,7 +79,6 @@ public enum SyncStop: Error, Sendable, Hashable {
   case needsUnlock(epoch: UInt32)
   case keysRequired
   case wipe
-  case revocationClaimed
   case suspended
   /// A secret could not be read now (before first unlock): return `.noData`.
   case notNow
@@ -103,8 +104,8 @@ extension SyncStop {
       case (403, "account_frozen"): return .frozen
       case (403, "account_suspended"): return .suspended
       case (410, "account_deleted"): return .wipe
-      case (410, _): return .halted(.rosterInvalid)
-      case (403, "writer_revoked"): return .revocationClaimed
+      case (410, _): return .halted(.unexpectedGone)
+      case (403, "writer_revoked"): return .halted(.unprovedRevocation)
       case (403, "writer_unbound"), (403, "writer_mismatch"): return .needsRebind
       case (403, "keys_required"): return .keysRequired
       case (426, _): return .halted(.updateRequired)

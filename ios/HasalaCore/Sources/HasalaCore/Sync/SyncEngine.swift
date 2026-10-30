@@ -229,7 +229,6 @@ public actor SyncEngine {
     case .needsUnlock(let e): status.phase = .needsUnlock(epoch: e)
     case .keysRequired: status.phase = .keysRequired
     case .wipe: status.phase = .wiping
-    case .revocationClaimed: status.phase = .halted(.rosterInvalid)
     case .suspended:
       status.suspended = true
       status.phase = .idle

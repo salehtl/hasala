@@ -8,7 +8,7 @@ import Testing
 @Suite("Sync halts")
 struct SyncHaltTests {
   static let shown: [HaltKind] =
-    TamperReason.allCases.map(HaltKind.tampered) + [.tamperedResend, .serverRestored, .inconsistent("fold"), .rosterInvalid]
+    TamperReason.allCases.map(HaltKind.tampered) + [.tamperedResend, .serverRestored, .inconsistent("fold"), .rosterInvalid, .unprovedRevocation, .unexpectedGone]
 
   @Test func everyHaltButAnUpdatePutsUpTheHaltWall() {
     for halt in Self.shown {

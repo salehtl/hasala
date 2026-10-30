@@ -51,12 +51,12 @@ struct HardeningTests {
     let (_, ctxA, _, _) = try await twoPhones(w)
     try enqueue(ctxA, [op(1)])
     w.server.refuseNext("GET /api/v1/auth/session", status: 403, code: "writer_revoked")
-    #expect(await LaunchProbe.run(ctxA, build: 1) == .stop(.halted(.rosterInvalid)))
+    #expect(await LaunchProbe.run(ctxA, build: 1) == .stop(.halted(.unprovedRevocation)))
 
     let engine = SyncEngine(context: ctxA)
     w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
-    #expect(await engine.run(.launch).stop == .halted(.rosterInvalid))
-    #expect(await engine.status.phase == .halted(.rosterInvalid))
+    #expect(await engine.run(.launch).stop == .halted(.unprovedRevocation))
+    #expect(await engine.status.phase == .halted(.unprovedRevocation))
     #expect(try ctxA.store.pendingCount() == 1)
     #expect(try ctxA.secrets.session() != nil)
   }
@@ -78,7 +78,7 @@ struct HardeningTests {
     #expect(await engine.run(.launch).stop == .wipe)
 
     w.server.refuseNext("GET /api/v1/sync", status: 403, code: "writer_revoked")
-    #expect(await SyncEngine(context: ctxB).run(.launch).stop == .halted(.rosterInvalid))
+    #expect(await SyncEngine(context: ctxB).run(.launch).stop == .halted(.unprovedRevocation))
   }
 
   @Test("a writer_revoked answer with the key history out of reach stops without a wipe")
@@ -98,7 +98,7 @@ struct HardeningTests {
     try enqueue(ctxA, [op(1)])
     let engine = SyncEngine(context: ctxA)
     w.server.refuseNext("GET /api/v1/sync", status: 410, code: "link_expired")
-    #expect(await engine.run(.launch).stop == .halted(.rosterInvalid))
+    #expect(await engine.run(.launch).stop == .halted(.unexpectedGone))
     #expect(try ctxA.store.pendingCount() == 1)
     w.server.refuseNext("GET /api/v1/sync", status: 410, code: "account_deleted")
     #expect(await engine.run(.launch).stop == .wipe)
