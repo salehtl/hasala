@@ -297,20 +297,18 @@ struct LiveRecurringTests {
     #expect(BillsEngine.snapshot(live, now: MayaLedger.now).next14 == .aed(719_15))
   }
 
-  static func gymRow(month: Int, verified: Bool = true, needsReview: Bool = true, n: Int) -> JSONObject {
-    var p = LiveSortingTests.payload(.init(raw: "Gym Club", minor: 200_00, currency: "AED", month: month, day: 16, verified: verified), n: n)
-    p["needs_review"] = .bool(needsReview)
-    if !needsReview { p["category"] = .string("subscriptions") }
-    return p
+  static func gymRow(month: Int, verified: Bool = true, n: Int) -> JSONObject {
+    LiveSortingTests.payload(.init(raw: "Gym Club", minor: 200_00, currency: "AED", month: month, day: 16, verified: verified), n: n)
   }
 
-  @Test func aRowInReviewOrWithAnUnverifiedSenderLeavesTheDueOpen() async throws {
+  @Test func aRowInReviewLeavesTheDueOpenUntilThePersonSortsIt() async throws {
     var ids: [String] = []
     let live = try await Mapper.foldedState { o throws(AuthorError) in
       try o.setBill(id: "bm_gym", Self.gym())
-      ids.append(try o.ingest(payload: Self.gymRow(month: 7, needsReview: false, n: 1), ingestID: String(repeating: "a", count: 64)))
+      ids.append(try o.ingest(payload: Self.gymRow(month: 7, verified: false, n: 1), ingestID: String(repeating: "a", count: 64)))
+      o.categorize(txnID: ids[0], parentVersion: 1, category: "subscriptions", needsReview: false)
       ids.append(try o.ingest(payload: Self.gymRow(month: 8, n: 2), ingestID: String(repeating: "b", count: 64)))
-      ids.append(try o.ingest(payload: Self.gymRow(month: 9, verified: false, needsReview: false, n: 3), ingestID: String(repeating: "c", count: 64)))
+      ids.append(try o.ingest(payload: Self.gymRow(month: 9, verified: false, n: 3), ingestID: String(repeating: "c", count: 64)))
     }
     let gym = try #require(live.bills.first { $0.id == "bm_gym" })
     #expect(gym.payments.map(\.txnID) == [ids[0]])

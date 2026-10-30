@@ -93,7 +93,10 @@ because they are strong and cost nothing.
    row. The check itself stays: a mail that fails its A-R or DMARC rule never files itself
    and waits in Review as an ordinary card. A pass for a domain outside the trusted set
    counts the same (`TxnGates.senderUnverified`), and the lane reads a `From` value's domain
-   from the addr-spec the A-R rule reads (`BankDomains.domainOf`). Neither a rule (`RuleReach.Row.unverified`) nor
+   from the addr-spec the A-R rule reads (`BankDomains.domainOf`). A signer counts as trusted
+   when it is in the set, or when it is the parent of a `From` domain in the set, so a sender
+   added as a child domain with its parent's DKIM is trusted (`BankDomains.trustsSigner`; never
+   a bare suffix or a shared suffix, so bundled banks do not change). Neither a rule (`RuleReach.Row.unverified`) nor
    a sweep, so not Clef's "Sort automatically" either (`SweepRow.candidate`), reaches it;
    only the person sorts it. The op keeps the code in `gates.ar`, the core reads it as
    `TxnRow.senderUnverified`, and the app keeps `Txn.senderUnverified` for the rule reach

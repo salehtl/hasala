@@ -24,7 +24,7 @@ public struct MatchRow: Sendable {
 
   public init(
     txnID: String, merchantKey: String, direction: String, amountMinor: Int64, currency: String, homeMinor: Int64?, day: CivilDate,
-    eligible: Bool, settles: Bool = true
+    eligible: Bool, settles: Bool
   ) {
     self.txnID = txnID
     self.merchantKey = merchantKey

@@ -313,7 +313,7 @@ struct BillMatcherTests {
       rows.append(
         MatchRow(
           txnID: "t\(i)", merchantKey: keys[next(keys.count)], direction: next(10) == 0 ? "credit" : "debit",
-          amountMinor: amounts[next(amounts.count)], currency: "AED", homeMinor: nil, day: day, eligible: next(12) != 0))
+          amountMinor: amounts[next(amounts.count)], currency: "AED", homeMinor: nil, day: day, eligible: next(12) != 0, settles: true))
     }
     let res = [
       BillResolution(bill: "a", due: "2026-08-06", resolution: "paid", txn: "t3", atSeq: 1),

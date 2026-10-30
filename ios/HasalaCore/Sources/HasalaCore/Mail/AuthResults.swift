@@ -302,6 +302,12 @@ public enum AuthResults {
   /// or a domain with anything but letters, digits, `.` and `-`.
   public static func fromDomain(_ value: String) -> String { string(fromDomain(Array(value.unicodeScalars))) }
 
+  public static func headerFromDomain(_ rawHeaders: String) -> String {
+    guard let fields = readFields(rawHeaders) else { return "" }
+    let from = named(fields, "from")
+    return from.count == 1 ? string(fromDomain(from[0].value)) : ""
+  }
+
   static func fromDomain(_ value: Scalars) -> Scalars {
     let (clean, ok) = stripComments(value)
     guard ok else { return [] }

@@ -85,10 +85,6 @@ nonisolated extension LedgerStateMapper {
     row.direction == "debit" && BillEdits.linkable(row, direction: "debit")
   }
 
-  static func billSettles(_ row: TxnRow) -> Bool {
-    !row.needsReview && !row.senderUnverified
-  }
-
   struct DeriveRows {
     var match: [MatchRow] = []
     var detect: [DetectRow] = []
@@ -107,7 +103,7 @@ nonisolated extension LedgerStateMapper {
         out.match.append(
           MatchRow(
             txnID: row.id, merchantKey: row.merchantKey, direction: row.direction, amountMinor: row.amountMinor,
-            currency: row.currency, homeMinor: row.amountHomeMinor, day: day, eligible: eligible, settles: billSettles(row)))
+            currency: row.currency, homeMinor: row.amountHomeMinor, day: day, eligible: eligible, settles: !row.needsReview))
       }
       out.detect.append(
         DetectRow(

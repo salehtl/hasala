@@ -283,6 +283,37 @@ import Testing
       trusted: trusted, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
   }
 
+  func parsed(from: String, authDomain: String, trustedSet: [String]) -> ParsedMail? {
+    let raw = SyntheticMail.rfc822(from: from, subject: "Card transaction", body: Self.cardBody, dateMs: Rig.t0, authDomain: authDomain)
+    guard case .mail(let m) = MessageDisposer.parse(
+      raw: raw, messageID: "f2", internalDateMs: Rig.t0, topLevelFrom: from, templates: templates, bankDomains: trustedSet,
+      trusted: trustedSet, provider: .gmail, linkedAddress: SyntheticMail.defaultTo, spam: false, analyze: AuthResults.analyze)
+    else { return nil }
+    return m
+  }
+
+  @Test func aTypedChildDomainSignedByItsParentIsTrusted() throws {
+    let m = try #require(parsed(from: "Alerts <a@alerts.mybank.example>", authDomain: "mybank.example", trustedSet: ["alerts.mybank.example"]))
+    #expect(m.gates.ar == "pass" && m.gates.senderTrusted)
+  }
+
+  @Test func aSignerAboveTheBankDomainIsNotTrusted() throws {
+    let bare = try #require(parsed(from: "DIB Alerts <alerts@dib.ae>", authDomain: "ae", trustedSet: trusted))
+    #expect(bare.gates.ar == "fail" && !bare.gates.senderTrusted)
+    #expect(!BankDomains.trustsSigner("ae", from: "dib.ae", of: trusted))
+    let shared = try #require(parsed(from: "Alerts <a@bank.co.ae>", authDomain: "co.ae", trustedSet: ["bank.co.ae"]))
+    #expect(shared.gates.ar == "pass" && !shared.gates.senderTrusted)
+  }
+
+  @Test func trustInTheSignerStaysAsItWasForAMemberDomain() {
+    #expect(BankDomains.trustsSigner("dib.ae", from: "dib.ae", of: trusted))
+    #expect(BankDomains.trustsSigner("mail.dib.ae", from: "dib.ae", of: trusted))
+    #expect(BankDomains.trustsSigner("dib.ae", from: "alerts.dib.ae", of: trusted))
+    #expect(!BankDomains.trustsSigner("other.example", from: "other.example", of: trusted))
+    #expect(!BankDomains.trustsSigner("mybank.example", from: "other.mybank.example", of: ["alerts.mybank.example"]))
+    #expect(!BankDomains.trustsSigner("mybank.example", from: "", of: ["alerts.mybank.example"]))
+  }
+
   @Test func aFromThatOnlyNamesABankDomainOutsideItsAddrSpecIsSetAside() {
     for from in ["<a@other.example> (x@dib.ae)", "<a@other.example> x@dib.ae"] {
       guard case .setAside(let domain) = parsed(from: from, authDomain: "other.example") else {
