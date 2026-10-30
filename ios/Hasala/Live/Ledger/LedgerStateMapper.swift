@@ -293,7 +293,7 @@ nonisolated enum LedgerStateMapper {
       projectID: row.projectID, billID: billID, provenance: provenance,
       detailOverride: billID != nil ? "monthly bill" : nil, mailboxMessageID: row.mailboxMessageID,
       heldCopy: try heldCopy(row, r: r),
-      senderUnverified: row.reviewReason == .senderUnverified, merchantKey: row.merchantKey,
+      senderUnverified: row.senderUnverified, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
       ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
   }

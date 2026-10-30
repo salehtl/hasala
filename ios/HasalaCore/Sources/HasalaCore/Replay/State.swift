@@ -102,12 +102,7 @@ public struct TxnGates: Sendable, Equatable, Codable {
     self.kind = kind
   }
 
-  public enum ReviewReason: String, Sendable { case senderUnverified = "sender_unverified" }
-
-  public var reviewReason: ReviewReason? {
-    guard let ar, ar != "pass" else { return nil }
-    return .senderUnverified
-  }
+  public var senderUnverified: Bool { ar.map { $0 != "pass" } ?? false }
 }
 
 /// A transaction as the client shows it (state.ts `Txn`, plus 03c §11).

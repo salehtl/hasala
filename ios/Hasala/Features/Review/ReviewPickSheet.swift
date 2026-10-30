@@ -382,9 +382,9 @@ private struct CheckboxRow: View {
 }
 
 enum ReviewReasonStyle {
-  static func ink(_ reason: TxnReviewReason) -> Color { HColor.statusInfoForeground }
+  static let ink = HColor.statusInfoForeground
 
-  static func surface(_ reason: TxnReviewReason) -> Color { HColor.reviewSuggestionSurface }
+  static let surface = HColor.reviewSuggestionSurface
 
   static func icon(_ reason: TxnReviewReason) -> HIcon {
     switch reason {
@@ -394,7 +394,7 @@ enum ReviewReasonStyle {
     }
   }
 
-  static func chip(_ reason: TxnReviewReason) -> InfoChip.Style { .reason }
+  static let chip = InfoChip.Style.reason
 }
 
 struct ReviewReasonSheet: View {
@@ -544,9 +544,9 @@ struct ReviewReasonInfo: View {
 
   private var hero: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Circle().fill(ReviewReasonStyle.surface(reason)).frame(width: 56, height: 56)
+      Circle().fill(ReviewReasonStyle.surface).frame(width: 56, height: 56)
         .overlay {
-          HIconView(ReviewReasonStyle.icon(reason), size: 26, color: ReviewReasonStyle.ink(reason), strokeWidth: 1.9)
+          HIconView(ReviewReasonStyle.icon(reason), size: 26, color: ReviewReasonStyle.ink, strokeWidth: 1.9)
         }
         .accessibilityHidden(true)
       Text(reason.title)

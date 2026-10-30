@@ -145,6 +145,8 @@ struct LiveSortingTests {
       #expect(t.merchantGroup == "n:tailscale" && t.reachable)
     }
     #expect(s.txn(l.ids["unverified"]![0])?.reachable == false)
+    #expect(s.txn(l.ids["unverified"]![0])?.senderUnverified == true && s.txn(l.ids["unverified"]![0])?.reviewReason == nil)
+    #expect(s.txn(l.ids["com"]![0])?.senderUnverified == false)
     #expect(s.txn(l.ids["refund"]![0])?.groupRef == MerchantGroupRef(key: "n:tailscale", direction: .in))
     #expect(s.txn(l.ids["alnoorT"]![0])?.merchantGroup == "n:al noor trading")
     #expect(s.txn(l.ids["alnoorP"]![0])?.merchantGroup == "n:al noor pharmacy")

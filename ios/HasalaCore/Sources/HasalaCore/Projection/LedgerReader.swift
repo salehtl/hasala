@@ -61,7 +61,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
   public var copyOf: String?
   public var copyDecision: String?
   public var heldCopy: Bool
-  public var reviewReason: TxnGates.ReviewReason?
+  public var senderUnverified: Bool
   public var merchantGroup: String?
   public var categorizedMs: Int64?
   public var channel: String?
@@ -127,7 +127,7 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     receivedAt = r["received_at"]
     receivedMs = r["received_ms"]
     templateRef = gates?["template"]?.stringValue
-    reviewReason = Self.reviewReason(gates)
+    senderUnverified = Self.senderUnverified(gates)
   }
 
   static func gates(_ gatesJSON: String?) -> JSONValue? {
@@ -135,11 +135,10 @@ public struct TxnRow: Sendable, Equatable, Identifiable {
     return try? JSONParser.parse(text: gatesJSON)
   }
 
-  static func reviewReason(gatesJSON: String?) -> TxnGates.ReviewReason? { reviewReason(gates(gatesJSON)) }
+  static func senderUnverified(gatesJSON: String?) -> Bool { senderUnverified(gates(gatesJSON)) }
 
-  static func reviewReason(_ gates: JSONValue?) -> TxnGates.ReviewReason? {
-    guard let gates else { return nil }
-    return TxnGates(ar: gates["ar"]?.stringValue, sender: gates["sender"]?.stringValue).reviewReason
+  static func senderUnverified(_ gates: JSONValue?) -> Bool {
+    TxnGates(ar: gates?["ar"]?.stringValue).senderUnverified
   }
 
   static func template(gatesJSON: String?) -> String? { gates(gatesJSON)?["template"]?.stringValue }
@@ -361,7 +360,7 @@ public struct LedgerReader: Sendable {
         SweepRow(
           id: t.id, merchantRaw: t.merchantRaw, direction: Direction(rawValue: t.direction), category: t.category,
           sourceKind: SweepRow.SourceKind(rawValue: t.categorySource) ?? .none, sourceRef: t.categorySourceRef, needsReview: t.needsReview,
-          candidate: !t.unparsed && t.archived == nil && !t.split, version: t.version,
+          candidate: !t.unparsed && t.archived == nil && !t.split && !t.senderUnverified, version: t.version,
           template: gates?["template"]?.stringValue, merchantGroup: t.merchantGroup, categorizedMs: t.categorizedMs,
           rejected: t.merchantGroup.flatMap { rejected[$0] } ?? [], picked: t.pickRow.key.flatMap { picks[$0] }, text: t.isText)
       }
@@ -591,7 +590,7 @@ extension TxnRow {
     RuleReach.Row(
       id: id, version: version, merchantRaw: merchantRaw, merchantGroup: merchantGroup, direction: direction, category: category,
       sourceKind: SweepRow.SourceKind(rawValue: categorySource) ?? .none, sourceRef: categorySourceRef, needsReview: needsReview,
-      lane: reviewLane.flatMap(ReviewLane.init(rawValue:)), unverified: reviewReason != nil, heldCopy: heldCopy, copyOf: copyOf,
+      lane: reviewLane.flatMap(ReviewLane.init(rawValue:)), unverified: senderUnverified, heldCopy: heldCopy, copyOf: copyOf,
       possibleDuplicateOf: possibleDuplicateOf, archived: archived != nil, transfer: category == "transfer" || transferState != nil,
       split: split, unparsed: unparsed, postedMs: postedMs, categorizedMs: categorizedMs, purchase: samePurchaseRow)
   }

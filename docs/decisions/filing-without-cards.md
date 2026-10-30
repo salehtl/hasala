@@ -91,10 +91,11 @@ because they are strong and cost nothing.
    rows were real alerts (a forward, a bank's own DKIM set-up, Junk), the warning gave the
    person nothing to do that Review does not already ask, and a spoof can only add a wrong
    row. The check itself stays: a mail that fails its A-R or DMARC rule never files itself
-   and waits in Review as an ordinary card, and a rule never reaches it
-   (`RuleReach.Row.unverified`). The op keeps the code in `gates.ar`, and the app keeps
-   `Txn.senderUnverified` for the rule reach only. `TxnReviewReason` has no
-   `sender_unverified` case.
+   and waits in Review as an ordinary card. Neither a rule (`RuleReach.Row.unverified`) nor
+   a sweep, so not Clef's "Sort automatically" either (`SweepRow.candidate`), reaches it;
+   only the person sorts it. The op keeps the code in `gates.ar`, the core reads it as
+   `TxnRow.senderUnverified`, and the app keeps `Txn.senderUnverified` for the rule reach
+   only. `TxnReviewReason` has no `sender_unverified` case.
 
 New payloads have no `gates.card`. The key was always optional in the fold, so older builds
 read the new rows.

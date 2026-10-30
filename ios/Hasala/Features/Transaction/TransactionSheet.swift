@@ -185,7 +185,7 @@ struct TransactionSheet: View {
   }
 
   private func reasonCallout(_ reason: TxnReviewReason, line: String?) -> some View {
-    let ink = ReviewReasonStyle.ink(reason)
+    let ink = ReviewReasonStyle.ink
     return Button { push(.reviewReason(reason)) } label: {
       HStack(alignment: .top, spacing: 12) {
         HIconView(ReviewReasonStyle.icon(reason), size: 20, color: ink, strokeWidth: 1.9)
@@ -205,7 +205,7 @@ struct TransactionSheet: View {
       }
       .padding(.vertical, 14)
       .padding(.horizontal, 16)
-      .background(ReviewReasonStyle.surface(reason), in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
+      .background(ReviewReasonStyle.surface, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
