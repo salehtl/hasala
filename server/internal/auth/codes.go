@@ -10,6 +10,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/big"
@@ -170,25 +171,23 @@ func (f *codeFailure) apply(ctx context.Context, q queryExecer, now time.Time) (
 }
 
 // limitCodeVerify runs before every code check, each step committed in its
-// own statement: the code-verify-email counter (20 per 15-minute window for
-// the code's address), then one of the code's five attempts, taken before the
-// guess is compared so that concurrent guesses cannot share one. A code with
-// no attempt left is refused with ErrCodeRejected.
+// own statement: one of the code's five attempts, taken before the guess is
+// compared so that concurrent guesses cannot share one, then the
+// code-verify-email counter (20 per 15-minute window for the code's address,
+// purpose and ceremony kind). A code with no attempt left is refused with
+// ErrCodeRejected and counts nothing.
 func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, codeID uuid.UUID) error {
-	var tag []byte
-	err := pool.QueryRow(ctx, `SELECT email_tag FROM email_codes WHERE code_id = $1`, codeID).Scan(&tag)
+	var (
+		purpose, kind string
+		tag           []byte
+	)
+	err := pool.QueryRow(ctx, `SELECT purpose, ceremony_kind, email_tag FROM email_codes WHERE code_id = $1`, codeID).
+		Scan(&purpose, &kind, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil // nothing to count; the check itself refuses it
 	}
 	if err != nil {
 		return fmt.Errorf("auth: code tag: %w", err)
-	}
-	n, err := bumpCounter(ctx, pool, "code-verify-email", tag, codeVerifyWindow, now)
-	if err != nil {
-		return err
-	}
-	if n > codeVerifiesPerSpan {
-		return fmt.Errorf("%w: code checks for this address", ErrRateLimited)
 	}
 	var attempts int
 	err = pool.QueryRow(ctx,
@@ -201,7 +200,19 @@ func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, cod
 	if err != nil {
 		return fmt.Errorf("auth: count a code attempt: %w", err)
 	}
+	n, err := bumpCounter(ctx, pool, "code-verify-email", codeVerifyKey(purpose, kind, tag), codeVerifyWindow, now)
+	if err != nil {
+		return err
+	}
+	if n > codeVerifiesPerSpan {
+		return fmt.Errorf("%w: code checks for this address", ErrRateLimited)
+	}
 	return nil
+}
+
+func codeVerifyKey(purpose, kind string, tag []byte) []byte {
+	sum := sha256.Sum256(append([]byte(purpose+"\x00"+kind+"\x00"), tag...))
+	return sum[:]
 }
 
 // verifyCodeTx is spec 02 §10.11's verify inside the consuming route's
