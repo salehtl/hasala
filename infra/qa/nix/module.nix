@@ -432,58 +432,69 @@ let
       pkgs.coreutils
     ];
     text = ''
-      fail=0
-      note() { echo "hasala-health: $*"; fail=1; }
+      failed=" "
+      note() { echo "hasala-health: $1 $2"; failed="$failed$1 "; }
       code() { curl -s -o "$RUNTIME_DIRECTORY/body" -D "$RUNTIME_DIRECTORY/headers" -w '%{http_code}' --max-time 10 "$1" || true; }
 
       c=$(code ${lib.escapeShellArg "http://${loopback cfg.listen.port}/api/v1/healthz"})
-      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note "P1 local healthz answered $c"
+      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P1 "local healthz answered $c"
       ${optionalString cfg.tunnel.enable ''
         c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note "P2 public healthz answered $c"
+        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P2 "public healthz answered $c"
         for p in metrics admin/; do
           c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/"}"$p")
-          case "$c" in 403 | 404) ;; *) note "P3/P4 /$p answered $c (want 403 or 404)" ;; esac
+          case "$c" in 403 | 404) ;; *) note P3 "/$p answered $c (want 403 or 404)" ;; esac
         done
         c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/console"})
-        [ "$c" = 404 ] || note "P9 /api/v1/console answered $c (want 404)"
+        [ "$c" = 404 ] || note P9 "/api/v1/console answered $c (want 404)"
         c=$(code ${lib.escapeShellArg cfg.monitoring.healthCheck.aasaUrl})
         if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
           || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
-          note "P5 AASA answered $c"
+          note P5 "AASA answered $c"
         elif ! jq -e --arg app ${lib.escapeShellArg appId} \
           '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
           "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
-          note "P5 AASA body does not claim exactly webcredentials and /i/*"
+          note P5 "AASA body does not claim exactly webcredentials and /i/*"
         fi
       ''}
       ${optionalString cfg.console.enable ''
         c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note "P8 console healthz answered $c"
+        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P8 "console healthz answered $c"
         for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
           rc=0
           curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
-          [ "$rc" = 7 ] || note "P10 $u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
+          [ "$rc" = 7 ] || note P10 "$u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
         done
       ''}
       rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
 
-      # Alert on the second consecutive failing run only, then stay quiet until
-      # a passing run (which posts one recovery notice).
-      f="$STATE_DIRECTORY/failures"
-      n=$(cat "$f" 2>/dev/null || echo 0)
-      if [ "$fail" = 0 ]; then
-        ${optionalString (cfg.monitoring.ntfyUrl != null) ''
-          if [ "$n" -ge 2 ]; then
-            curl -s --max-time 10 -d "hasala: recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null || true
-          fi
-        ''}
-        echo 0 > "$f"
-        exit 0
-      fi
-      n=$((n + 1)); echo "$n" > "$f"
-      [ "$n" -eq 2 ] && exit 1
-      exit 0
+      # Each probe alerts on its second consecutive failing run only, then stays
+      # quiet until it passes (which posts one recovery notice), so one failing
+      # probe never mutes another.
+      rm -f "$STATE_DIRECTORY/failures"
+      alert=0
+      recovered=""
+      for p in P1 P2 P3 P5 P8 P9 P10; do
+        f="$STATE_DIRECTORY/failures.$p"
+        n=$(cat "$f" 2>/dev/null || echo 0)
+        case "$failed" in
+          *" $p "*)
+            n=$((n + 1))
+            echo "$n" > "$f"
+            if [ "$n" -eq 2 ]; then alert=1; fi
+            ;;
+          *)
+            if [ "$n" -ge 2 ]; then recovered="$recovered $p"; fi
+            echo 0 > "$f"
+            ;;
+        esac
+      done
+      ${optionalString (cfg.monitoring.ntfyUrl != null) ''
+        if [ -n "$recovered" ]; then
+          curl -s --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null || true
+        fi
+      ''}
+      exit "$alert"
     '';
   };
 

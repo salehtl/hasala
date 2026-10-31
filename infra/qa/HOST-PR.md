@@ -470,6 +470,13 @@ console that serves (spec 07 §8). Until then, enabling it leaves
     # to it. The Hasala API (8471) is public through its own tunnel and must
     # never be listed here.
     <console vhost name> = config.services.hasala.console.port;
+    # On that vhost's proxied location, so a tailnet peer cannot send the
+    # headers that the console's tunnel-leak alarm reads:
+    #   proxy_set_header Cf-Connecting-Ip "";
+    #   proxy_set_header Cf-Ray "";
+    #   proxy_set_header Cf-Visitor "";
+    #   proxy_set_header Cf-Ipcountry "";
+    #   proxy_set_header Cdn-Loop "";
 
   # modules/services/hasala.nix, inside services.hasala
     console = {

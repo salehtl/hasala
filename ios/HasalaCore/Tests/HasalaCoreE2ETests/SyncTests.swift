@@ -396,6 +396,40 @@ struct SyncTests {
     #expect(try b.store.syncState().cursorHot == 2)
   }
 
+  @Test("a live writer's next-version row is set aside when no shipped build writes it, and stays set aside")
+  func unshippedVersionSetAside() async throws {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1)])
+    _ = await SyncEngine(context: a).run(.authored)
+    _ = await SyncEngine(context: b).run(.launch)
+    let k1 = try EpochKey(epoch: 1, key: try #require(try a.secrets.epochKey(userID: a.userID, epoch: 1)))
+    let seedA = try #require(try a.secrets.writerSeed(userID: a.userID, writerID: a.writerID))
+    let prev = try #require(try a.store.chainHeads()[a.writerID]).hash
+    let frame = try Sealer(epoch: 1, key: k1).seal(
+      plaintextOps: Data(#"{"v":\#(SchemaVersion.current + 1),"kind":"ops","ops":[]}"#.utf8),
+      envelope: try Envelope(userID: a.userID, writerID: a.writerID, counter: 2),
+      prevHash: prev, random: SeededRandom(seed: "unshipped"))
+    let msg = SigningMessage.head(userID: a.userID, counter: 2, blobHash: frame.blobHash, writerID: a.writerID)
+    w.server.injectRow(
+      user: a.userID, writerID: a.writerID.string, counter: 2, prevHash: prev.bytes, blob: frame.bytes,
+      headSig: try DWK.sign(seed: seedA, message: msg))
+
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .halted(.updateRequired))
+    #expect(try b.store.syncState().cursorHot == 1)
+
+    w.server.setOpVersionCeiling(SchemaVersion.current + 1)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .halted(.updateRequired))
+    #expect(try b.store.syncState().cursorHot == 1)
+
+    w.server.setOpVersionCeiling(SchemaVersion.current)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().cursorHot == 2)
+    #expect(try #require(try b.store.wireRows().last).disposition == .setAside)
+
+    w.server.setOpVersionCeiling(SchemaVersion.current + 1)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+  }
+
   @Test("R2b: after A removes itself at counter 1, a row of A above it is afterRevocation, even signed by A")
   func afterRevocation() async throws {
     let w = World()

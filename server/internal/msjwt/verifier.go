@@ -64,9 +64,9 @@ type Verifier struct {
 // Claims are the authenticated claims a caller may use. Microsoft's v2.0
 // tokens carry neither email_verified nor azp.
 type Claims struct {
-	Tid, Oid, Email, PreferredUsername, Nonce string
-	Aud                                       []string
-	Iat                                       time.Time
+	Tid, Oid, Sub, Email, PreferredUsername, Nonce string
+	Aud                                            []string
+	Iat                                            time.Time
 }
 
 func (v *Verifier) init() {
@@ -108,7 +108,7 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 		return Claims{}, fmt.Errorf("%w: tid %q", ErrTenant, ms.Tid)
 	}
 	return Claims{
-		Tid: ms.Tid, Oid: ms.Oid, Email: g.Email, PreferredUsername: ms.PreferredUsername, Nonce: g.Nonce,
+		Tid: ms.Tid, Oid: ms.Oid, Sub: g.Sub, Email: g.Email, PreferredUsername: ms.PreferredUsername, Nonce: g.Nonce,
 		Aud: g.Aud, Iat: g.Iat,
 	}, nil
 }

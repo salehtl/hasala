@@ -30,8 +30,8 @@ type fakeMSVerifier struct {
 }
 
 type fakeMSClaims struct {
-	Aud, Tid, Email, PreferredUsername, Nonce string
-	Iat                                       time.Time
+	Aud, Tid, Sub, Email, PreferredUsername, Nonce string
+	Iat                                            time.Time
 }
 
 func (f fakeMSVerifier) Verify(_ context.Context, tok string) (msjwt.Claims, error) {
@@ -52,7 +52,7 @@ func (f fakeMSVerifier) Verify(_ context.Context, tok string) (msjwt.Claims, err
 	if f.audience != "" && c.Aud != f.audience {
 		return msjwt.Claims{}, msjwt.ErrTokenRejected
 	}
-	return msjwt.Claims{Aud: []string{c.Aud}, Tid: c.Tid, Email: c.Email, PreferredUsername: c.PreferredUsername,
+	return msjwt.Claims{Aud: []string{c.Aud}, Tid: c.Tid, Sub: c.Sub, Email: c.Email, PreferredUsername: c.PreferredUsername,
 		Nonce: c.Nonce, Iat: c.Iat}, nil
 }
 
@@ -64,12 +64,13 @@ func fakeMSToken(c fakeMSClaims) string {
 const (
 	testOutlookClient  = "00000000-1111-4222-8333-444444444444"
 	testOutlookMailbox = "Someone.Else@Outlook.example"
+	testOutlookSubject = "AAAAAAAAAAAAAAAAAAAAAMsynthetic"
 	testOutlookNotify  = "https://api.hasala.app/hooks/outlook/graph"
 	testOutlookLife    = "https://api.hasala.app/hooks/outlook/graph/lifecycle"
 )
 
 func goodMSClaims(nonce string) fakeMSClaims {
-	return fakeMSClaims{Aud: testOutlookClient, Tid: msjwt.ConsumersTenantID, Email: testOutlookMailbox, Nonce: nonce,
+	return fakeMSClaims{Aud: testOutlookClient, Tid: msjwt.ConsumersTenantID, Sub: testOutlookSubject, Email: testOutlookMailbox, Nonce: nonce,
 		Iat: time.Now().Add(-time.Minute)}
 }
 
@@ -198,8 +199,8 @@ func TestOutlookMailboxLink(t *testing.T) {
 	}
 	wantHash := sha256.Sum256([]byte(got.ClientState))
 	if provider != "outlook" || !bytes.Equal(csHash, wantHash[:]) ||
-		!bytes.Equal(addr, o.RouteKey.AddressHMACFor(gmailpush.ProviderOutlook, testOutlookMailbox)) ||
-		bytes.Equal(addr, o.RouteKey.AddressHMAC(testOutlookMailbox)) {
+		!bytes.Equal(addr, o.RouteKey.SubjectHMACFor(gmailpush.ProviderOutlook, testOutlookSubject)) ||
+		bytes.Equal(addr, o.RouteKey.AddressHMACFor(gmailpush.ProviderOutlook, testOutlookMailbox)) {
 		t.Fatalf("stored %s %x %x", provider, addr, csHash)
 	}
 	assertNoAddress(t, h, testOutlookMailbox)
@@ -376,5 +377,53 @@ func TestMailboxLinksSchemaRules(t *testing.T) {
 	}
 	if err := insert("outlook", hash[:]); err == nil {
 		t.Fatal("a second link for one account")
+	}
+}
+
+func TestOutlookMailboxIsKeyedOnTheSubject(t *testing.T) {
+	h := newHarness(t).passkeys()
+	_, o, _ := withOutlook(h, nil)
+	a, b, c := h.onboard(true), h.onboard(true), h.onboard(true)
+
+	wantStatus(t, linkAs(a, a.token, "outlook", fakeMSToken(goodMSClaims(linkChallenge(h, a.token)))), http.StatusOK)
+
+	same := goodMSClaims(linkChallenge(h, b.token))
+	same.Sub = "BBBBBBBBBBBBBBBBBBBBBBsynthetic"
+	wantStatus(t, linkAs(b, b.token, "outlook", fakeMSToken(same)), http.StatusOK)
+
+	moved := goodMSClaims(linkChallenge(h, c.token))
+	moved.Email = "another@outlook.example"
+	w := linkAs(c, c.token, "outlook", fakeMSToken(moved))
+	if w.Code != http.StatusConflict || decodeJSON[errorBody](t, w).Error != "mailbox_in_use" {
+		t.Fatalf("one subject on two accounts: %d %s", w.Code, w.Body)
+	}
+
+	noSub := goodMSClaims(linkChallenge(h, c.token))
+	noSub.Sub = ""
+	wantStatus(t, linkAs(c, c.token, "outlook", fakeMSToken(noSub)), http.StatusForbidden)
+
+	if _, err := h.pool.Exec(bg, `UPDATE mailbox_links SET address_hmac = $1 WHERE user_id = $2`,
+		o.RouteKey.AddressHMACFor(gmailpush.ProviderOutlook, "older@outlook.example"), a.user); err != nil {
+		t.Fatal(err)
+	}
+	older := goodMSClaims(linkChallenge(h, c.token))
+	older.Sub, older.Email = "CCCCCCCCCCCCCCCCCCCCCCsynthetic", "older@outlook.example"
+	w = linkAs(c, c.token, "outlook", fakeMSToken(older))
+	if w.Code != http.StatusConflict || decodeJSON[errorBody](t, w).Error != "mailbox_in_use" {
+		t.Fatalf("a link keyed before the subject: %d %s", w.Code, w.Body)
+	}
+	if linkCount(t, h, c) != 0 {
+		t.Fatal("a refused account holds a link")
+	}
+
+	relink := goodMSClaims(linkChallenge(h, a.token))
+	relink.Email = "older@outlook.example"
+	wantStatus(t, linkAs(a, a.token, "outlook", fakeMSToken(relink)), http.StatusOK)
+	var addr []byte
+	if err := h.pool.QueryRow(bg, `SELECT address_hmac FROM mailbox_links WHERE user_id = $1`, a.user).Scan(&addr); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(addr, o.RouteKey.SubjectHMACFor(gmailpush.ProviderOutlook, testOutlookSubject)) {
+		t.Fatalf("the relink kept the older key: %x", addr)
 	}
 }

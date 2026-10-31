@@ -14,6 +14,14 @@ Every example in this file is synthetic (`bank.example`, `alerts.bank.example`,
 does not exist yet. A claim that needs real mail to confirm is marked **UNVERIFIED** and
 has a numbered check in [Checks for the owner](#checks-for-the-owner-wp0).
 
+## One account per mailbox (2026-10-31)
+
+New links key the one-account rule on an HMAC of the token's `sub`, not on the `email`
+claim, because Microsoft's token has no `email_verified` and the claim can change. A link
+made before this keeps its address HMAC until its holder links again, and a new link is
+refused while another account holds that older key. Wakes route by `client_state_hash`, so
+they do not change.
+
 ## Summary of decisions
 
 | # | Decision | Status |

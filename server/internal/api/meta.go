@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// OpVersionCeiling is the op schema of the newest shipped build.
+const OpVersionCeiling = 4
+
 // meta-ip (spec 02 §16.2): 1/s per client IP, burst 20; the client IP is
 // clientip.go's key.
 const (
@@ -18,6 +21,10 @@ const (
 type MetaResponse struct {
 	RPID        string `json:"rp_id"`
 	MinIOSBuild int    `json:"min_ios_build"`
+	// OpVersionCeiling is the highest op schema any shipped build writes. A
+	// device that reads a row above it sets the row aside instead of stopping
+	// sync. Raise it, and deploy, before a build that writes the next schema.
+	OpVersionCeiling int `json:"op_version_ceiling"`
 	// GmailWatchTopic is the Pub/Sub topic a device watches its mailbox on,
 	// and null whenever the hook (§7 #39) is not mounted: with no topic the
 	// app skips users.watch, so it never makes a watch this server cannot
@@ -76,6 +83,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, MetaResponse{
 		RPID:                   s.Meta.RPID,
 		MinIOSBuild:            s.Meta.MinIOSBuild,
+		OpVersionCeiling:       OpVersionCeiling,
 		GmailWatchTopic:        topic,
 		OutlookNotificationURL: notify,
 		OutlookLifecycleURL:    life,

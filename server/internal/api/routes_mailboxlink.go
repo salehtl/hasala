@@ -283,7 +283,7 @@ type linkRejection string
 func (r linkRejection) Error() string { return string(r) }
 
 // linkIdentity is what a verified ID token proves: the mailbox and the nonce.
-type linkIdentity struct{ address, nonce string }
+type linkIdentity struct{ address, subject, nonce string }
 
 // iatFresh is the link's freshness window, the same for both providers.
 func iatFresh(iat, now time.Time) bool {
@@ -327,7 +327,10 @@ func (s *Server) verifyOutlookLink(ctx context.Context, token string, now time.T
 	case address == "" || len(address) > 320:
 		return linkIdentity{}, linkRejection("email")
 	}
-	return linkIdentity{address: address, nonce: claims.Nonce}, nil
+	if claims.Sub == "" || len(claims.Sub) > 320 {
+		return linkIdentity{}, linkRejection("sub")
+	}
+	return linkIdentity{address: address, subject: claims.Sub, nonce: claims.Nonce}, nil
 }
 
 func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
@@ -402,6 +405,11 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 	}
 	nonceHash := sha256.Sum256(nonce)
 	addrHMAC := routeKey.AddressHMACFor(provider, id.address)
+	taken := [][]byte{addrHMAC}
+	if id.subject != "" {
+		addrHMAC = routeKey.SubjectHMACFor(provider, id.subject)
+		taken = append(taken, addrHMAC)
+	}
 	id = linkIdentity{}
 
 	// Outlook's clientState: minted here, returned once, kept only as a hash,
@@ -435,13 +443,13 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 		if tag.RowsAffected() != 1 {
 			return errLinkRejected
 		}
-		var taken bool
+		var inUse bool
 		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM mailbox_links WHERE address_hmac = $1 AND user_id <> $2)`,
-			addrHMAC, userID).Scan(&taken); err != nil {
+			`SELECT EXISTS (SELECT 1 FROM mailbox_links WHERE address_hmac = ANY($1::bytea[]) AND user_id <> $2)`,
+			taken, userID).Scan(&inUse); err != nil {
 			return err
 		}
-		if taken {
+		if inUse {
 			return errMailboxInUse
 		}
 		if err := auth.RecordQuietEventTx(ctx, tx, userID, auth.AuthEvent{Kind: auth.EventMailboxLinked,

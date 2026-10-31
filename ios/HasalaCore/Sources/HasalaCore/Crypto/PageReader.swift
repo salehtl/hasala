@@ -61,6 +61,7 @@ public enum PageReader {
     /// While false, an unknown writer is `refreshRoster`; once true, it is
     /// `hardStop(.tampered(.unknownWriter))`.
     public let rosterRefreshed: Bool
+    public let newerVersionUnshipped: Bool
     /// The device's own writer and its authored head. `authoredHead` is the
     /// highest counter this device has SEALED for the writer, including the
     /// in-flight record's counters (R-OUT-2; `04` §5.5), not only those the
@@ -71,7 +72,7 @@ public enum PageReader {
     public init(
       userID: UserID, opener: Opener, serverEpoch: UInt32?, pinnedHeads: [WriterID: Chain.Head],
       roster: [WriterID: HeadCheck.RosterWriter], rosterRefreshed: Bool = false,
-      own: (writer: WriterID, authoredHead: Int64)?
+      own: (writer: WriterID, authoredHead: Int64)?, newerVersionUnshipped: Bool = false
     ) {
       self.userID = userID
       self.opener = opener
@@ -80,6 +81,7 @@ public enum PageReader {
       self.roster = roster
       self.rosterRefreshed = rosterRefreshed
       self.own = own
+      self.newerVersionUnshipped = newerVersionUnshipped
     }
   }
 
@@ -148,7 +150,7 @@ public enum PageReader {
     var out: [RowOutcome] = []
     var held = 0
     for (i, c) in checked.enumerated() {
-      let revoked = state.roster[c.writerID]?.revokedAt != nil
+      let setsAsideNewer = state.newerVersionUnshipped || state.roster[c.writerID]?.revokedAt != nil
       let envelope: Envelope
       do {
         envelope = try Envelope(userID: state.userID, writerID: c.writerID, counter: c.counter)
@@ -156,7 +158,7 @@ public enum PageReader {
         return stopped(i, .hardStop(.tampered(.rowShape)), out)
       }
       switch state.opener.open(c.blob, envelope: envelope, prevHash: c.prevHash, serverEpoch: state.serverEpoch) {
-      case .hardStop(.updateRequired) where revoked: out.append(.setAside(.opsUndecodable, alarm: false))
+      case .hardStop(.updateRequired) where setsAsideNewer: out.append(.setAside(.opsUndecodable, alarm: false))
       case .hardStop(let h): return stopped(i, .hardStop(h), out)
       case .needsUnlock(let e): return stopped(i, .needsUnlock(epoch: e), out)
       case .refreshEpoch(let e): return stopped(i, .refreshEpoch(e), out)
@@ -164,7 +166,7 @@ public enum PageReader {
       case .opened(let plaintext):
         switch OpCodec.decodeR10(plaintext) {
         case .ops(let ops): out.append(.opened(plaintext: plaintext, ops: ops))
-        case .hardStop(.updateRequired) where revoked: out.append(.setAside(.opsUndecodable, alarm: false))
+        case .hardStop(.updateRequired) where setsAsideNewer: out.append(.setAside(.opsUndecodable, alarm: false))
         case .hardStop(let h): return stopped(i, .hardStop(h), out)
         case .setAside(let reason, _): out.append(.setAside(reason, alarm: false))
         }

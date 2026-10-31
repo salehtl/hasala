@@ -50,6 +50,10 @@ func TestRouteKeyBytes(t *testing.T) {
 	if !bytes.Equal(rk.AddressHMACFor(ProviderOutlook, " User@Outlook.com"), outlook.Sum(nil)) {
 		t.Error("AddressHMACFor(outlook) differs from the definition")
 	}
+	if bytes.Equal(rk.SubjectHMACFor(ProviderOutlook, "user@outlook.com"), rk.AddressHMACFor(ProviderOutlook, "user@outlook.com")) ||
+		bytes.Equal(rk.SubjectHMACFor(ProviderOutlook, "AbC"), rk.SubjectHMACFor(ProviderOutlook, "abc")) {
+		t.Error("the subject key is not separated from the address key, or folds case")
+	}
 	if bytes.Equal(rk.AddressHMACFor(ProviderOutlook, "user@gmail.com"), rk.AddressHMAC("user@gmail.com")) {
 		t.Error("one address under two providers gives one value")
 	}

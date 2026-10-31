@@ -129,12 +129,12 @@ Your Gmail address reaches our server in two moments. The first is when you conn
 
 | What | Why |
 | --- | --- |
-| A keyed hash of your Outlook address (a code made from it with a secret key) | To record which mailbox is connected without keeping the address itself. |
+| A keyed hash (a code made with a secret key) of the identifier Microsoft gives Hasala for your account. A connection made before 31 October 2026 holds a keyed hash of your Outlook address instead, until you connect again. | To record which mailbox is connected without keeping the address itself. |
 | A hash of a random code made for your Outlook connection | So that when Microsoft tells us something new arrived in your Inbox, we know which iPhone to wake. |
 | The timing of new messages in your Outlook Inbox | To wake Hasala on your iPhone so it can check for new bank alerts. This happens for every new message, not only bank alerts. |
 | When your Outlook notification setup next needs renewing | To remind your iPhone to renew it so alerts keep arriving. |
 
-Your Outlook address reaches our server only once, when you connect Outlook: it is in the proof of sign-in from Microsoft that your iPhone sends us. Our server uses it to find the right account and to make the keyed hash, then discards it, and never writes it to its logs. If you also use that address as your Hasala email address, our server already has it, in plain text, as your account address.
+Your Outlook address reaches our server only once, when you connect Outlook: it is in the proof of sign-in from Microsoft that your iPhone sends us, with Microsoft's identifier for your account. Our server uses them to find the right account, to make the keyed hash and to check that the mailbox isn't connected to another account, then discards them, and never writes them to its logs. If you also use that address as your Hasala email address, our server already has it, in plain text, as your account address.
 
 When you connect Outlook, our server makes a random code and gives it to your iPhone, which keeps it in its Keychain and passes it to Microsoft. Our server keeps only a hash of the code and never writes the code to its logs. Each time a new message arrives in your Inbox, Microsoft sends our server a notice with that code, so it can tell which iPhone to wake. The notice doesn't contain your address. It does contain an ID for the new message; our server discards that part without reading, storing or logging it.
 
@@ -283,7 +283,7 @@ We treat data from your Outlook exactly as we treat data from your Gmail under [
 - **Your Outlook access tokens** are kept in your iPhone's Keychain, on that iPhone only, and are never sent to our server. The random code for Microsoft's notices is kept there too.
 - **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
 - **Those details** (amount, merchant, date, card and Outlook message ID) are kept in the same way as details from Gmail: in Hasala's encrypted database on your iPhone, and on our server only in sealed form that we can't open. They stay until you delete your account. Archiving a transaction hides it but doesn't delete it.
-- **Your Outlook address** is kept on our server only as a keyed hash, which is deleted when you disconnect Outlook or delete your account (see [Outlook connection](#outlook-connection)).
+- **Your Outlook address** isn't kept on our server, except as a keyed hash on a connection made before 31 October 2026. The keyed hash of a connection is deleted when you disconnect Outlook or delete your account (see [Outlook connection](#outlook-connection)).
 - **Disconnecting Outlook** stops Hasala reading your mail. Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.
 
 ### Stopping Outlook access
@@ -316,6 +316,7 @@ So that it can show you that the automation works, Hasala keeps a few facts on t
 - for each bank sender name that Hasala knows (the banks it has rules for, and the sender names of other UAE banks built into the app, whether or not you bank with them), how many of its texts each day weren't payments and were set aside, as a number for each kind (one-time code, declined payment, notice, promotion, or no payment in it), for the last 30 days. Every text from such a sender name that Hasala sets aside is counted, so that a payment set aside by mistake shows in Profile › Bank alerts, except a text that arrives before you first unlock your iPhone after a restart, which leaves no count, and a text that Shortcuts hands Hasala without its sender, which Hasala can't tell is from a bank;
 - whether your account had an email account connected the last time this iPhone heard from our server, and when, so that Hasala knows whether to add a text when your iPhone is offline;
 - while your account reads bank email, how many texts that look like payments Hasala ignored each day for that reason, as a number only, for the last 30 days, so that Profile › Bank alerts can tell you to delete the automation or switch to texts;
+- how many texts Hasala added today, as a number only, because it adds at most 200 a day from the automation. A text over that number isn't saved, and Hasala asks you to paste it;
 - whether you chose bank texts on this iPhone, so that Hasala knows which set-up and settings to show you;
 - when your last set-up test passed. When you start the test, Hasala notes the time and looks for a text that says "Hasala test." for the next 10 minutes. It notes when the test passed, shows you that it did, and drops the text. The time the test started is deleted the next time Hasala reads these facts after the 10 minutes end, for example when the next text arrives or when you open Hasala;
 - if texts that look like payments arrived before you first unlocked your iPhone after a restart, how many and when the latest arrived, until Hasala has told you about them or added them to the count above; and

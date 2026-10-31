@@ -145,7 +145,7 @@ func TestAConsumerTokenVerifies(t *testing.T) {
 		t.Fatalf("iat %s", c.Iat)
 	}
 	c.Iat = time.Time{}
-	want := Claims{Tid: ConsumersTenantID, Oid: testOid, Email: testEmail, PreferredUsername: testEmail,
+	want := Claims{Tid: ConsumersTenantID, Oid: testOid, Sub: "AAAAAAAAAAAAAAAAAAAAAL-synthetic", Email: testEmail, PreferredUsername: testEmail,
 		Nonce: "bm9uY2U", Aud: []string{testClientID}}
 	if !reflect.DeepEqual(c, want) {
 		t.Fatalf("claims %+v, want %+v", c, want)

@@ -3,6 +3,7 @@
 // overlay shows pending edits and drops them once acknowledged; a rejected
 // snapshot is rebuilt from the stored, sealed rows without the network; rows
 // stored before the observer existed are folded when it opens.
+import CoreCrypto
 import CoreDomain
 import CoreJSON
 import CoreProjection
@@ -127,6 +128,41 @@ struct ObserverSyncTests {
     #expect(try again.reader.activity().map(\.merchantRaw) == ["Talabat"])
     let events = try b.context.store.foldEvents().map { "\($0.kind):\($0.detail)" }
     #expect(events.contains { $0.hasPrefix("set_aside_reread:rows_") })
+    #expect(!events.contains { $0.hasPrefix("integrity_alarm") })
+  }
+
+  @Test("a next-version row set aside under the ceiling stays set aside through a cold fold")
+  func coldRefoldKeepsUnshippedSetAside() async throws {
+    let (w, a, b) = try await twoRuntimes()
+    try await a.bootstrap()
+    try await a.author { x in _ = try Self.manual(&x, "Talabat", 6_450, at: w.clock.nowMs() + LocalClock.offsetMs) }
+    #expect(await a.run(.authored).stop == nil)
+    #expect(await b.run(.launch).stop == nil)
+    let ctx = a.context
+    let k1 = try EpochKey(epoch: 1, key: try #require(try ctx.secrets.epochKey(userID: ctx.userID, epoch: 1)))
+    let seed = try #require(try ctx.secrets.writerSeed(userID: ctx.userID, writerID: ctx.writerID))
+    let head = try #require(try ctx.store.chainHeads()[ctx.writerID])
+    let counter = head.counter + 1
+    let frame = try Sealer(epoch: 1, key: k1).seal(
+      plaintextOps: Data(#"{"v":\#(SchemaVersion.current + 1),"kind":"ops","ops":[]}"#.utf8),
+      envelope: try Envelope(userID: ctx.userID, writerID: ctx.writerID, counter: counter),
+      prevHash: head.hash, random: SeededRandom(seed: "unshipped"))
+    let msg = SigningMessage.head(userID: ctx.userID, counter: counter, blobHash: frame.blobHash, writerID: ctx.writerID)
+    w.server.injectRow(
+      user: ctx.userID, writerID: ctx.writerID.string, counter: counter, prevHash: head.hash.bytes, blob: frame.bytes,
+      headSig: try DWK.sign(seed: seed, message: msg))
+    w.server.setOpVersionCeiling(SchemaVersion.current)
+    #expect(await b.run(.foreground).stop == nil)
+    #expect(try b.context.store.wireRows().last?.disposition == .setAside)
+
+    w.server.setOpVersionCeiling(nil)
+    try await b.context.store.db.write { db in
+      try db.execute(sql: "UPDATE fold_snapshot SET fold_print = 'older semantics'")
+    }
+    let again = try Runtime(b.context, projection: b.projection)
+    try await again.observer.open()
+    #expect(try again.reader.activity().map(\.merchantRaw) == ["Talabat"])
+    let events = try b.context.store.foldEvents().map { "\($0.kind):\($0.detail)" }
     #expect(!events.contains { $0.hasPrefix("integrity_alarm") })
   }
 

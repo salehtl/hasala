@@ -654,7 +654,9 @@ the approval of the owner for that deployment.
   it is not sure, a text with a payment shape goes to Review. Nothing sends a
   text off the phone, and hasalad never sees one. Do not put a raw text in the
   op log. The text key is an HMAC under a secret that stays on the device, and
-  a key never drops a text (a repeat is a held probable copy). A text from the
+  a key never drops a text (a repeat is a held probable copy). An iPhone authors
+  at most 200 automation texts a day; over that a text fails with a message and
+  needs a paste. A text from the
   automation files with no review when the account has no mailbox link, its
   fields were read, and an SMS template read it or the two readers agree on
   amount, currency and direction (each at 0.8 or more, as for mail). There is
@@ -740,6 +742,10 @@ the approval of the owner for that deployment.
   There is no new op type: `bill_set` gains optional keys that older builds
   ignore. Matching and detection are computed from the log on each device and
   are not written as ops. Refer to `docs/decisions/recurring-items.md`.
+- **Op version ceiling (2026-10-31)**: a next-version row stops sync only when
+  `/meta` reports that a shipped build writes that version. Raise
+  `OpVersionCeiling` and deploy `hasalad` before a build that writes a new
+  schema. Refer to `docs/decisions/op-version-ceiling.md`.
 - **Outbound mail**: Cloudflare Email Service.
 - **Hosting (QA)**: the QA host, behind Cloudflare Tunnel. hasalad listens
   only on loopback. It has no TLS code.
