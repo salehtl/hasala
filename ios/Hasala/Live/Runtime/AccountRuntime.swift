@@ -60,6 +60,7 @@ final class AccountRuntime {
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
   @ObservationIgnored var onAccount: (@MainActor (AccountInfo) async -> Void)?
+  @ObservationIgnored var onRunCommitted: (@MainActor () async -> Void)?
   @ObservationIgnored private var importFollower: ImportFollower?
 
   /// The bundled merchant dictionary (`.empty` when its tier is off).
@@ -316,6 +317,7 @@ final class AccountRuntime {
       bankTexts: CoreBankTextAuthoring(ledger: mailboxLedger, reader: projection.reader, categorizer: categorizer),
       linkCopy: BankTextsLinkKeeper(facts: bankTextFacts, nowMs: { context.clock.nowMs() }), store: store)
     afterRun.set { [weak rt] in
+      await rt?.onRunCommitted?()
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }

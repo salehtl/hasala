@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, how bank texts are read, and your rights under UAE law."
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 status: "final"
 plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts on your iPhone, from your Gmail or Outlook or from your bank's texts, and encrypts your transactions there before they sync. Bank texts never leave your iPhone. Texts that don't look like payments are dropped without being stored; a text that looks like a payment, even one from a person, is added for you when Hasala can read it or waits in Review, and stays in your Hasala data until you delete your account, even if you archive it. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
@@ -349,6 +349,8 @@ If you lose your recovery phrase and every passkey, your account can't be recove
 ## Notifications
 
 The beta doesn't show notifications yet. Hasala can ask for your permission now, from **Finish setting up** on Home, so that they work once they arrive. When they do, Hasala will write them on your iPhone. Our server only ever sends a silent signal through Apple to wake the app, and that signal carries no content.
+
+If you allow notifications, Hasala shows a number on its app icon: how many payments are waiting in Review. Your iPhone works out that number and sets it, and it never comes from or goes to our server. It shows no amounts or merchants, and it stays visible when Hasala is locked with Face ID. You can turn it off in iOS Settings, under Notifications › Hasala › Badges.
 
 When Hasala asks, you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and we plan for it to apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
 
