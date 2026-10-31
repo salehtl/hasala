@@ -62,6 +62,7 @@ final class BootController {
   /// The screens' app model over the runtime's ledger (one per opened runtime).
   private(set) var app: AppModel?
   @ObservationIgnored private var widgets: WidgetPublisher?
+  @ObservationIgnored private var badge: AppIconBadge?
   /// Bumped per opened runtime, so the tab shell is rebuilt for a new account.
   private(set) var generation = 0
   /// Where setup resumes after a relaunch mid-setup.
@@ -291,6 +292,9 @@ final class BootController {
       app.refreshWork = { [weak rt] in _ = await rt?.coordinator.run(.refresh, budget: .seconds(20)) }
       self.app = app
       self.widgets = WidgetPublisher(app: app, locked: { [weak app] in app?.store.state.prefs.faceIDLock ?? false })
+      let badge = AppIconBadge(app: app)
+      self.badge = badge
+      rt.onRunCommitted = { [weak badge] in await badge?.publish() }
       self.generation += 1
       self.setupFacts = facts
       rt.onAccount = { [weak self, weak rt] info in
@@ -333,6 +337,9 @@ final class BootController {
     widgets?.stop()
     widgets = nil
     WidgetPublisher.clear()
+    badge?.stop()
+    badge = nil
+    AppIconBadge.clear()
     openingID += 1
     opening?.cancel()
     opening = nil

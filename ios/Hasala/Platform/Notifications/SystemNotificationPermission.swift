@@ -28,7 +28,9 @@ final class SystemNotificationPermission: NotificationPermissionAsking {
   func requestAuthorization() async -> Bool {
     UserDefaults.standard.set(true, forKey: Self.askedKey)
     do {
-      return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+      let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+      NotificationCenter.default.post(name: AppIconBadge.permissionAnswered, object: nil)
+      return granted
     } catch {
       return false
     }
