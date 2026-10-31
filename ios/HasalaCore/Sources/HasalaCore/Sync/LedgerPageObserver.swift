@@ -146,7 +146,7 @@ public actor LedgerPageObserver: PageObserver {
       var page: [FoldRow] = []
       var held = 0
       for r in rows {
-        let outcome = try reopen(r, opener, revoked: revoked.contains(r.writerID))
+        let outcome = try reopen(r, opener, revoked: revoked.contains(r.writerID) || r.disposition == .setAside)
         let now = WireRowRecord.Disposition(outcome)
         if now != r.disposition {
           guard r.disposition == .setAside, now == .folded else { throw integrityHalt("cold_fold_disposition") }

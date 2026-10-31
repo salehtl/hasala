@@ -31,7 +31,9 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   var testPassedMs: Int64?
   var testOpenedMs: Int64?
   var link: LinkCopy?
+  var authoredToday: DayCount?
 
+  static let dailyTextLimit = 200
   static let keptDays: Int64 = 30
   static let testWindowMs: Int64 = 10 * 60 * 1000
 
@@ -52,6 +54,17 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     setAside.removeAll { !fresh($0.day) || $0.count <= 0 }
     ignored.removeAll { !fresh($0.day) || $0.count <= 0 }
     if let opened = testOpenedMs, nowMs >= opened + Self.testWindowMs || nowMs < opened { testOpenedMs = nil }
+    if let authored = authoredToday, authored.day != today { authoredToday = nil }
+  }
+
+  func atDailyTextLimit(nowMs: Int64) -> Bool {
+    guard let authored = authoredToday, authored.day == Self.day(nowMs) else { return false }
+    return authored.count >= Self.dailyTextLimit
+  }
+
+  mutating func noteAuthored(atMs ms: Int64) {
+    let day = Self.day(ms)
+    authoredToday = DayCount(day: day, count: authoredToday?.day == day ? (authoredToday?.count ?? 0) + 1 : 1)
   }
 
   mutating func addSetAside(sender: String, bank: String?, kind: BankTextDropKind, atMs: Int64) {

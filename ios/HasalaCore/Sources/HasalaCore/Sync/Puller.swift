@@ -143,12 +143,14 @@ enum Puller {
     var serverEpoch: UInt32?
     var rosterRefreshed = false
     var epochRefreshed = false
+    var newerVersionUnshipped = false
 
     while true {
       let opener = Opener(epochHWM: hwm, keys: try ctx.epochKeys(upTo: max(hwm, serverEpoch ?? 1)))
       let readerState = PageReader.State(
         userID: ctx.userID, opener: opener, serverEpoch: serverEpoch, pinnedHeads: heads,
-        roster: (roster ?? pinned).forReader(), rosterRefreshed: rosterRefreshed, own: own)
+        roster: (roster ?? pinned).forReader(), rosterRefreshed: rosterRefreshed, own: own,
+        newerVersionUnshipped: newerVersionUnshipped)
       let result = PageReader.read(rows, state: readerState, plaintextBudget: plaintextBudget)
       switch result.stop {
       case .refreshRoster?:
@@ -176,7 +178,12 @@ enum Puller {
         throw .needsUnlock(epoch: e)
       case .hardStop(let h)?:
         switch h {
-        case .updateRequired: throw .halted(.updateRequired)
+        case .updateRequired:
+          guard !newerVersionUnshipped, let ceiling = (try? await ctx.client.meta())?.op_version_ceiling,
+            ceiling <= SchemaVersion.current
+          else { throw .halted(.updateRequired) }
+          newerVersionUnshipped = true
+          continue
         case .tampered(let t): throw .halted(.tampered(t))
         }
       case nil:

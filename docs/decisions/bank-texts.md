@@ -981,3 +981,13 @@ the legal pages merge together with, or after, the last app PR for bank texts. T
 (#231) is on `main`, so the pages, checked against the code on `main`, are ready to merge.
 Do not cut a TestFlight build with bank texts before they merge. This record and the
 CLAUDE.md line change nothing on hasala.app.
+
+## Daily limit (2026-10-31)
+
+The automation has no sender, so anyone can send texts that reach the intake. An iPhone
+authors at most 200 automation texts per local day (`BankTextsFactsData.dailyTextLimit`).
+A kept text over the limit writes nothing and fails with "Hasala has saved many texts
+today. Paste this text later if it's a payment.", so a payment is not lost without a sign.
+Only the day's count is stored, in the device facts. A paste has no limit. A flood can
+therefore make genuine texts of that day need a paste. How Shortcuts handles a burst was
+not measured.

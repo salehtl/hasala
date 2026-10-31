@@ -93,6 +93,19 @@ func (r RouteKey) AddressHMACFor(provider, address string) []byte {
 	return m.Sum(nil)
 }
 
+// SubjectHMACFor is the exclusive key of a mailbox whose provider asserts a
+// stable subject but no verified address. It never equals an address's HMAC
+// and the subject is compared exactly.
+func (r RouteKey) SubjectHMACFor(provider, subject string) []byte {
+	m := hmac.New(sha256.New, r.k)
+	m.Write([]byte(keyproto.DomainMailboxRoute))
+	m.Write([]byte{0})
+	m.Write([]byte(provider + "-sub"))
+	m.Write([]byte{0})
+	m.Write([]byte(subject))
+	return m.Sum(nil)
+}
+
 // AddressHMAC is AddressHMACFor(ProviderGmail, address), the key the Gmail
 // hook routes by.
 func (r RouteKey) AddressHMAC(address string) []byte { return r.AddressHMACFor(ProviderGmail, address) }

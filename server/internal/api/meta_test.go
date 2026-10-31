@@ -25,6 +25,7 @@ func TestMetaReportsTheServersPublicFacts(t *testing.T) {
 	want := map[string]string{
 		"rp_id":                    `"hasala.app"`,
 		"min_ios_build":            `50`,
+		"op_version_ceiling":       `4`,
 		"gmail_watch_topic":        `null`,
 		"outlook_notification_url": `null`,
 		"outlook_lifecycle_url":    `null`,

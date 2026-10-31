@@ -35,6 +35,7 @@ final class BankTextIntake {
   static let lockedMessage = "Hasala can't save bank texts until you unlock your iPhone. Paste this text later."
   static let signedOutMessage = "Sign in to Hasala to add bank texts."
   static let notOpenMessage = "Hasala couldn't add this text. Open Hasala, then paste the text from Messages."
+  static let limitMessage = "Hasala has saved many texts today. Paste this text later if it's a payment."
   static let unavailableMessage = "This build of Hasala can't add bank texts yet. Paste the text into Hasala later."
 
   private let deps: BankTextIntakeDeps
@@ -93,14 +94,15 @@ final class BankTextIntake {
       }
       return .dropped(counted: setAsideSender != nil)
     case .keep(let kept):
-      return await keep(text, sender: sender, kept: kept, copy: facts.link, now: now)
+      return await keep(text, sender: sender, kept: kept, facts: facts, now: now)
     }
   }
 
   private func keep(
-    _ text: String, sender: String?, kept: KeptBankText, copy: BankTextsFactsData.LinkCopy?, now: Date
+    _ text: String, sender: String?, kept: KeptBankText, facts: BankTextsFactsData, now: Date
   ) async -> BankTextIntakeResult {
     let nowMs = Self.ms(now)
+    let copy = facts.link
     note(nowMs) { _ in }
     if copy?.linked == true { return ignore(kept, nowMs: nowMs) }
     guard let account = await deps.account() else { return .failed(Self.notOpenMessage) }
@@ -109,6 +111,9 @@ final class BankTextIntake {
       link = answer ? .linked : .notLinked
     }
     if link == .linked { return ignore(kept, nowMs: nowMs) }
+    if facts.atDailyTextLimit(nowMs: nowMs) {
+      return .failed(Self.limitMessage)
+    }
     let secret: Data
     do { secret = try deps.secret.current() } catch { return .failed(Self.notOpenMessage) }
     let outcome: BankTextAuthored
@@ -124,7 +129,10 @@ final class BankTextIntake {
     }
     switch outcome {
     case .authored(_, let filed, let keptAt):
-      note(nowMs) { $0.noteKept(atMs: Self.ms(keptAt)) }
+      note(nowMs) {
+        $0.noteKept(atMs: Self.ms(keptAt))
+        $0.noteAuthored(atMs: nowMs)
+      }
       return .authored(filed: filed)
     case .ignoredLinked(let counts):
       if counts { note(nowMs) { $0.addIgnored(atMs: nowMs) } }

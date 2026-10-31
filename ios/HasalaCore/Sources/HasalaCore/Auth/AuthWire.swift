@@ -529,6 +529,7 @@ public struct FlexibleDecimal: Codable, Sendable, Hashable {
 public struct MetaResponse: Codable, Sendable, Hashable {
   public let rp_id: String?
   public let min_ios_build: Int?
+  public let op_version_ceiling: Int?
   public let gmail_watch_topic: String?
   /// The Graph subscription's `notificationUrl` and `lifecycleNotificationUrl`; both null when
   /// the server relays no Outlook push.
@@ -540,10 +541,11 @@ public struct MetaResponse: Codable, Sendable, Hashable {
   public init(
     rp_id: String? = nil, min_ios_build: Int? = nil, gmail_watch_topic: String? = nil,
     outlook_notification_url: String? = nil, outlook_lifecycle_url: String? = nil, log_generation: Int64? = nil,
-    server_time: String? = nil
+    server_time: String? = nil, op_version_ceiling: Int? = nil
   ) {
     self.rp_id = rp_id
     self.min_ios_build = min_ios_build
+    self.op_version_ceiling = op_version_ceiling
     self.gmail_watch_topic = gmail_watch_topic
     self.outlook_notification_url = outlook_notification_url
     self.outlook_lifecycle_url = outlook_lifecycle_url

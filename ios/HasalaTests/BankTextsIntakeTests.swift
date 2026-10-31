@@ -389,6 +389,40 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.lastRunMs == BankTextIntake.ms(Self.t0))
   }
 
+  @Test func theDailyLimitStopsAuthoringUntilTheNextDay() async throws {
+    let r = rig(answer: false)
+    let nowMs = BankTextIntake.ms(Self.t0)
+    let today = BankTextsFactsData.day(nowMs)
+    try r.facts.update(nowMs: nowMs) {
+      $0.authoredToday = BankTextsFactsData.DayCount(day: today, count: BankTextsFactsData.dailyTextLimit - 1)
+    }
+    let i = intake(r)
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
+    #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit)
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.limitMessage))
+    #expect(r.author.calls.count == 1)
+    let tomorrow = Self.t0.addingTimeInterval(86_400)
+    #expect(await i.run(Self.payment, sender: "DIB", at: tomorrow) == .authored(filed: false))
+    #expect(r.author.calls.count == 2)
+  }
+
+  @Test func aLinkedAccountIgnoresTextsBeforeTheDailyLimit() async throws {
+    let r = rig()
+    setCopy(r, linked: true)
+    let nowMs = BankTextIntake.ms(Self.t0)
+    try r.facts.update(nowMs: nowMs) {
+      $0.authoredToday = BankTextsFactsData.DayCount(
+        day: BankTextsFactsData.day(nowMs), count: BankTextsFactsData.dailyTextLimit)
+    }
+    #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .ignored(counted: true))
+  }
+
+  @Test func factsWrittenBeforeTheLimitStillDecode() throws {
+    let data = try JSONDecoder().decode(BankTextsFactsData.self, from: Data(
+      #"{"chosen":true,"lastKeptMs":{},"setAside":[],"ignored":[]}"#.utf8))
+    #expect(data.authoredToday == nil && !data.atDailyTextLimit(nowMs: 0))
+  }
+
   @Test func anAuthoredTextWithNoBankStillNotesTheLastText() async {
     let r = rig(answer: false)
     #expect(await intake(r).run(Self.personal, sender: nil, at: Self.t0) == .authored(filed: false))

@@ -140,6 +140,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var flipBlobByteAtSeq: Int64?
     var logGeneration: Int64 = 1
     var minIOSBuild = 0
+    var opVersionCeiling: Int?
     var uploads = 0
     var pullLimitOverride: Int?
     /// `GET /account` answers this address instead of the stored one.
@@ -182,6 +183,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
   public func flipBlobByte(atSeq seq: Int64?) { state.withLock { $0.flipBlobByteAtSeq = seq } }
 
   public func setLogGeneration(_ g: Int64) { state.withLock { $0.logGeneration = g } }
+  public func setOpVersionCeiling(_ c: Int?) { state.withLock { $0.opVersionCeiling = c } }
 
   public func setPullLimit(_ n: Int?) { state.withLock { $0.pullLimitOverride = n } }
 
@@ -275,11 +277,11 @@ public final class FakeServer: Transport, @unchecked Sendable {
   func handle(_ r: APIRequest, route: String) -> APIResponse {
     switch route {
     case "GET /api/v1/meta":
-      let (g, m) = state.withLock { ($0.logGeneration, $0.minIOSBuild) }
+      let (g, m, c) = state.withLock { ($0.logGeneration, $0.minIOSBuild, $0.opVersionCeiling) }
       return Self.ok(
         MetaResponse(
           rp_id: Self.rpID, min_ios_build: m, gmail_watch_topic: nil, outlook_notification_url: nil,
-          outlook_lifecycle_url: nil, log_generation: g, server_time: nil))
+          outlook_lifecycle_url: nil, log_generation: g, server_time: nil, op_version_ceiling: c))
     case "POST /api/v1/auth/signup/begin": return signupBegin(r)
     case "POST /api/v1/auth/signup/verify": return signupVerify(r)
     case "POST /api/v1/auth/passkey/register/begin": return registerBegin(r)
