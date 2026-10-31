@@ -351,6 +351,8 @@ If you lose your recovery phrase and every passkey, your account can't be recove
 
 The beta doesn't show notifications yet. Hasala can ask for your permission now, from **Finish setting up** on Home, so that they work once they arrive. When they do, Hasala will write them on your iPhone. Our server only ever sends a silent signal through Apple to wake the app, and that signal carries no content.
 
+If you allow notifications, Hasala shows a number on its app icon: how many payments are waiting in Review. Your iPhone works out that number and sets it, and it never comes from or goes to our server. It shows no amounts or merchants, and it stays visible when Hasala is locked with Face ID. You can turn it off in iOS Settings, under Notifications › Hasala › Badges.
+
 When Hasala asks, you can turn on **Show amounts and merchants**. It's off by default. Today it applies to Hasala's Lock Screen widgets, and we plan for it to apply to notifications once they arrive. If you turn it on, amounts and merchants may appear on your Lock Screen.
 
 ## Your profile picture
