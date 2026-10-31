@@ -65,8 +65,8 @@ type Verifier struct {
 // tokens carry neither email_verified nor azp.
 type Claims struct {
 	Tid, Oid, Sub, Email, PreferredUsername, Nonce string
-	Aud                                       []string
-	Iat                                       time.Time
+	Aud                                            []string
+	Iat                                            time.Time
 }
 
 func (v *Verifier) init() {

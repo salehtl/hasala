@@ -1,7 +1,7 @@
 ---
 title: "Security"
 description: "How Hasala protects your data, what its design can and can't defend against, and how to report a security problem to security@hasala.app."
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 status: "final"
 plainWords: "Hasala reads your bank alerts and seals your money data on your iPhone, so our server stores only data it can't open. Your recovery phrase and passkey are what unlock it. If you find a security problem, email security@hasala.app. We won't take legal action against good-faith research that follows this policy."
 ---
@@ -79,7 +79,7 @@ The notices that tell our server about new mail carry no content either. If you 
 No design is perfect. These are the limits we know about and accept during the beta.
 
 - **Metadata.** Our server and Cloudflare can see when you sync, roughly how much data you store, your IP address, and when something changes in your Gmail or a new message arrives in your Outlook. Because your iPhone uploads soon after a bank alert or a bank text arrives, they can also tell roughly when, and how often, you get them. They can't see what the mail or text says or what your transactions are.
-- **Your mailbox address.** Google sends your Gmail address to our server each time something changes in your Gmail. With Outlook, our server sees your address only once, when you connect. In both cases we keep only a keyed hash of it, but the server sees it briefly.
+- **Your mailbox address.** Google sends your Gmail address to our server each time something changes in your Gmail. With Outlook, our server sees your address only once, when you connect. We keep only a keyed hash: of your Gmail address, and for Outlook of Microsoft's identifier for your account (of your address on a connection made before 31 October 2026). The server still sees your address briefly.
 - **Outlook access you've given us.** Microsoft doesn't let an app withdraw its own permission. When you disconnect Outlook, Hasala deletes its tokens from your iPhone, but the permission stays in your Microsoft account until you remove it at [account.live.com/consent/Manage](https://account.live.com/consent/Manage).
 - **Your recovery phrase is your account.** Anyone who has your 12 words and can sign in, or can get a code from your email, can read your data and add devices. Making a new phrase stops the old words from working with our server (our encrypted backups keep the old recovery data for up to 30 days), but it can't take back what someone already got with them. If you think someone has seen your words, the fix is to create a new account.
 - **Your Apple Account.** Your passkey syncs through iCloud Keychain. Someone who can sign in to your Apple Account and knows one of your device passcodes can get into Hasala as you. Keep two-factor authentication on.

@@ -31,7 +31,7 @@ type fakeMSVerifier struct {
 
 type fakeMSClaims struct {
 	Aud, Tid, Sub, Email, PreferredUsername, Nonce string
-	Iat                                       time.Time
+	Iat                                            time.Time
 }
 
 func (f fakeMSVerifier) Verify(_ context.Context, tok string) (msjwt.Claims, error) {

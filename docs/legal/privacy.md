@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, how bank texts are read, and your rights under UAE law."
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 status: "final"
 plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts on your iPhone, from your Gmail or Outlook or from your bank's texts, and encrypts your transactions there before they sync. Bank texts never leave your iPhone. Texts that don't look like payments are dropped without being stored; a text that looks like a payment, even one from a person, is added for you when Hasala can read it or waits in Review, and stays in your Hasala data until you delete your account, even if you archive it. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
@@ -129,12 +129,12 @@ Your Gmail address reaches our server in two moments. The first is when you conn
 
 | What | Why |
 | --- | --- |
-| A keyed hash of your Outlook address (a code made from it with a secret key) | To record which mailbox is connected without keeping the address itself. |
+| A keyed hash (a code made with a secret key) of the identifier Microsoft gives Hasala for your account. A connection made before 31 October 2026 holds a keyed hash of your Outlook address instead, until you connect again. | To record which mailbox is connected without keeping the address itself. |
 | A hash of a random code made for your Outlook connection | So that when Microsoft tells us something new arrived in your Inbox, we know which iPhone to wake. |
 | The timing of new messages in your Outlook Inbox | To wake Hasala on your iPhone so it can check for new bank alerts. This happens for every new message, not only bank alerts. |
 | When your Outlook notification setup next needs renewing | To remind your iPhone to renew it so alerts keep arriving. |
 
-Your Outlook address reaches our server only once, when you connect Outlook: it is in the proof of sign-in from Microsoft that your iPhone sends us. Our server uses it to find the right account and to make the keyed hash, then discards it, and never writes it to its logs. If you also use that address as your Hasala email address, our server already has it, in plain text, as your account address.
+Your Outlook address reaches our server only once, when you connect Outlook: it is in the proof of sign-in from Microsoft that your iPhone sends us, with Microsoft's identifier for your account. Our server uses them to find the right account, to make the keyed hash and to check that the mailbox isn't connected to another account, then discards them, and never writes them to its logs. If you also use that address as your Hasala email address, our server already has it, in plain text, as your account address.
 
 When you connect Outlook, our server makes a random code and gives it to your iPhone, which keeps it in its Keychain and passes it to Microsoft. Our server keeps only a hash of the code and never writes the code to its logs. Each time a new message arrives in your Inbox, Microsoft sends our server a notice with that code, so it can tell which iPhone to wake. The notice doesn't contain your address. It does contain an ID for the new message; our server discards that part without reading, storing or logging it.
 
@@ -283,7 +283,7 @@ We treat data from your Outlook exactly as we treat data from your Gmail under [
 - **Your Outlook access tokens** are kept in your iPhone's Keychain, on that iPhone only, and are never sent to our server. The random code for Microsoft's notices is kept there too.
 - **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
 - **Those details** (amount, merchant, date, card and Outlook message ID) are kept in the same way as details from Gmail: in Hasala's encrypted database on your iPhone, and on our server only in sealed form that we can't open. They stay until you delete your account. Archiving a transaction hides it but doesn't delete it.
-- **Your Outlook address** is kept on our server only as a keyed hash, which is deleted when you disconnect Outlook or delete your account (see [Outlook connection](#outlook-connection)).
+- **Your Outlook address** isn't kept on our server, except as a keyed hash on a connection made before 31 October 2026. The keyed hash of a connection is deleted when you disconnect Outlook or delete your account (see [Outlook connection](#outlook-connection)).
 - **Disconnecting Outlook** stops Hasala reading your mail. Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.
 
 ### Stopping Outlook access

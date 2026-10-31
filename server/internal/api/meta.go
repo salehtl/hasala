@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20; the client IP is
-// clientip.go's key.
 // OpVersionCeiling is the op schema of the newest shipped build.
 const OpVersionCeiling = 4
 
+// meta-ip (spec 02 §16.2): 1/s per client IP, burst 20; the client IP is
+// clientip.go's key.
 const (
 	metaRate    = 1.0
 	metaBurst   = 20
