@@ -20,6 +20,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Connect Gmail")
     try audit(app)
     connect.tap()
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
     XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait), "Home has no Finish setting up")
     attach(app, "Home after the connect")
@@ -45,6 +46,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Setup · Choose your email")
     try audit(app, overSheet: true)
     outlook.tap()
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "the pick did not connect Outlook")
     attach(app, "Home · Outlook connected")
   }
@@ -124,6 +126,7 @@ final class MailboxUITests: XCTestCase {
     attach(app, "Connect Outlook")
     try audit(app)
     connect.tap()
+    answerPastEmail(app)
     assertMailboxAdded(app, "outlook-1")
     attach(app, "Bank alerts · two mailboxes")
   }
@@ -155,7 +158,25 @@ final class MailboxUITests: XCTestCase {
     tap(app, "mail.error.chooseDifferent")
     tap(app, "mail.choose.gmail", timeout: uiWait)
     tap(app, "mail.connect.gmail", timeout: uiWait)
+    answerPastEmail(app)
     assertMailboxAdded(app, "gmail-2")
+  }
+
+  @MainActor
+  func testOnlyNewEmailThenImportPastEmailLater() throws {
+    let app = launch(scenario: nil, screen: "mail.profile.gmail")
+    tap(app, "mail.connect.gmail", timeout: uiWait)
+    let alert = app.alerts["Import your past email?"]
+    XCTAssertTrue(alert.waitForExistence(timeout: uiWait), "the connect did not ask about past email")
+    attach(app, "Past email question")
+    answerPastEmail(app, "mail.pastMail.newOnly")
+    tap(app, "bankAlerts.mailbox.gmail-1", timeout: uiWait)
+    let importPast = el(app, "mailbox.importPast")
+    XCTAssertTrue(importPast.waitForExistence(timeout: uiWait))
+    attach(app, "Past email not imported")
+    tap(app, "mailbox.importPast")
+    XCTAssertTrue(says(app, "past transactions added"))
+    XCTAssertTrue(importPast.waitForNonExistence(timeout: uiWait))
   }
 
   @MainActor

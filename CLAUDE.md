@@ -678,6 +678,12 @@ the approval of the owner for that deployment.
   files with a confirmed or unconfirmed recipient (a mismatch never files) and
   has no card gate. The fold still reads the `card_linked` and `account_set`
   ops of older builds. Refer to `docs/decisions/filing-without-cards.md`.
+- **Past email on connect (2026-10-31; proposed, the owner confirms in review).** A
+  connect asks: import past email (the default, the existing scan: 90 days, 365 after a long
+  gap) or only new email. Only new email keeps `read_from_ms` on the device, as the floor of
+  the listing, and Bank alerts offers the import later. A reconnect is not asked. A takeover
+  by a second iPhone is not asked: it reads only new email and catches up from the newest mail row. Refer
+  to `docs/decisions/past-mail-choice.md`.
 - **Categorization occurs on the device**, in this sequence: user rules, then
   the UAE merchant dictionary in the app, then the person's last pick for
   that merchant group and direction (`LastPick`: the newest filed row they

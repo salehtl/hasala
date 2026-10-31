@@ -33,6 +33,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     s.watermarkMs = r.watermarkMs
     s.profileHistoryID = r.profileHistoryID
     s.backfillDays = r.backfillDays
+    s.readFromMs = r.readFromMs
     s.scanStartedMs = r.scanStartedMs
     s.watchExpiresAtMs = r.watchExpiresAt
     s.haltedOn = r.haltedOn.flatMap(MailboxHaltCode.init(rawValue:))
@@ -103,6 +104,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
       r.watermarkMs = s.watermarkMs
       r.profileHistoryID = s.profileHistoryID
       r.backfillDays = s.backfillDays
+      r.readFromMs = s.readFromMs
       r.scanStartedMs = s.scanStartedMs
       r.watchExpiresAt = s.watchExpiresAtMs
       r.haltedOn = s.haltedOn?.rawValue

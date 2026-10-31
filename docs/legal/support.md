@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-30
+lastUpdated: 2026-10-31
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -91,6 +91,17 @@ Hasala is an experimental beta, so a new build can change how payments are sorte
 
 Gmail, and personal Microsoft accounts: outlook.com, hotmail.com and live.com addresses. Work and school Microsoft accounts (Microsoft 365 through an employer or a university) aren't supported. Hasala reads one mailbox at a time, so use the one your bank sends its alerts to.
 
+### Does Hasala read my old bank emails?
+
+Only if you choose it. When you connect Gmail or Outlook, Hasala asks **Import your past email?**
+
+- **Import past email:** your iPhone reads your banks' alert emails from the last 90 days, then new ones. If your last transaction from email is more than about three months old, it reads the last year instead, to fill the gap.
+- **Only new email:** your iPhone reads alerts from the moment you connect, and nothing older.
+
+If you picked **Only new email**, you can change your mind: go to **Profile › Bank alerts**, tap your mailbox, then tap **Import past email**. If you add a bank while Hasala reads only new email, it reads that bank's alerts from the same moment.
+
+Signing in again to a mailbox doesn't ask again. Hasala catches up on what it missed. If you disconnect and connect again, Hasala asks again, and **Only new email** then starts from that moment. To remove what an import brought in, disconnect the mailbox and choose to remove its transactions.
+
 ### How do I connect Outlook?
 
 During setup, at **Choose your email**, choose **Outlook**. Sign in with your Microsoft account and accept the permissions Microsoft shows you. Hasala asks only to read your mail, and keeps access without making you sign in each time. If you've already finished setup, go to **Profile › Bank alerts** and tap **Add a mailbox**.
@@ -160,7 +171,7 @@ Open the **Shortcuts** app, tap **Automation**, then swipe left on the Hasala au
 
 Go to **Profile › Bank alerts** and switch the source. Hasala asks you to confirm first. Transactions it has already brought in stay.
 
-- **From texts to email:** tap **Use bank email instead**, then **Connect email**. If Hasala asks, pick the banks that send you alert emails. Then connect Gmail or Outlook. Hasala brings in your bank emails as for any new mailbox, older ones included, so that a payment no text brought in isn't lost. An email that may be the same payment as one a text already brought in waits in **Review** beside that payment, so that you can archive the copy or keep both. Hasala treats them as possibly the same when they are within a day (24 hours) of each other, in the same direction, from the same bank (or the text names no bank), for the same card or with no card on one of them, and for the same amount or in two different currencies. A bank text whose amount Hasala couldn't read can match any email of that bank and card in that day. If the email and the text differ more than that, for example by a fee, the payment can still show twice; archive one. From then on, Hasala adds nothing from texts the automation hands it on any of your iPhones, so delete the automation in Shortcuts on each of them (see above). Until you do, **Profile › Bank alerts** shows how many texts that look like payments it ignored. If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
+- **From texts to email:** tap **Use bank email instead**, then **Connect email**. If Hasala asks, pick the banks that send you alert emails. Then connect Gmail or Outlook. Hasala asks about your past email as for any new mailbox (see [Does Hasala read my old bank emails?](#does-hasala-read-my-old-bank-emails)). **Import past email** brings in older emails too, so that a payment no text brought in isn't lost; with **Only new email**, it isn't added. An email that may be the same payment as one a text already brought in waits in **Review** beside that payment, so that you can archive the copy or keep both. Hasala treats them as possibly the same when they are within a day (24 hours) of each other, in the same direction, from the same bank (or the text names no bank), for the same card or with no card on one of them, and for the same amount or in two different currencies. A bank text whose amount Hasala couldn't read can match any email of that bank and card in that day. If the email and the text differ more than that, for example by a fee, the payment can still show twice; archive one. From then on, Hasala adds nothing from texts the automation hands it on any of your iPhones, so delete the automation in Shortcuts on each of them (see above). Until you do, **Profile › Bank alerts** shows how many texts that look like payments it ignored. If another iPhone of yours brought in a bank text before it heard about the switch, the payment may show twice; archive one.
 - **From email to texts:** tap **Use bank texts instead**. Hasala disconnects your mailbox and reads texts from then on, then shows you how to make the automation as above. Do this on the iPhone that reads your email; on another iPhone, Hasala asks you to disconnect the mailbox on the iPhone that reads it first (or to remove Hasala in your Google or Microsoft account's permissions), then switch.
 - **If you disconnect your email** in **Profile › Bank alerts** and connect none, your account uses bank texts again, and Hasala adds texts that your automation hands it, if it is still there. If this iPhone has seen the automation run, Hasala tells you so when you disconnect. If you connect an email account again later, Hasala checks the emails against the payments your texts brought in, as in a switch from texts to email.
 
@@ -226,7 +237,7 @@ Your sealed data is kept on our server, so you can move to a new iPhone without 
 1. Sign in to the same Apple Account on your new iPhone, with iCloud Keychain (Passwords) turned on.
 2. Install Hasala from TestFlight and open it.
 3. Sign in with Face ID. Your passkey unlocks your data.
-4. Connect your email again on this iPhone, or, if you use bank texts, make the automation again in Shortcuts on this iPhone (see [Bank texts](#bank-texts)). For email: during setup, at **Choose your email**, or later in **Profile › Bank alerts** with **Add a mailbox**, choose Gmail or Outlook and sign in. If your old iPhone is still reading your mailbox, Hasala asks **Read your email on this iPhone?** Tap **Read it here**. The old iPhone then stops reading, and your past transactions stay.
+4. Connect your email again on this iPhone, or, if you use bank texts, make the automation again in Shortcuts on this iPhone (see [Bank texts](#bank-texts)). For email: during setup, at **Choose your email**, or later in **Profile › Bank alerts** with **Add a mailbox**, choose Gmail or Outlook and sign in. If your old iPhone is still reading your mailbox, Hasala asks **Read your email on this iPhone?** Tap **Read it here**. The old iPhone then stops reading, and your past transactions stay. Hasala then reads only new email, picking up where your old iPhone stopped, because your past transactions are already in your account. If something older is missing, tap **Import past email** on your mailbox in **Profile › Bank alerts**.
 5. Your old iPhone stays on your list of devices. The beta app can't remove devices yet. If you lose or sell it, email us.
 
 Some passkey managers other than iCloud Keychain can't unlock Hasala on a new device. If yours can't, Hasala asks for your 12-word recovery phrase instead.

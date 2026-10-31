@@ -58,6 +58,11 @@ extension XCTestCase {
     e.tap()
   }
 
+  @MainActor
+  func answerPastEmail(_ app: XCUIApplication, _ id: String = "mail.pastMail.import") {
+    tap(app, id, timeout: uiWait)
+  }
+
   /// Taps `id` and waits for `next`, the element the tap brings up. A tap that a slow CI
   /// runner swallows (one that lands as the keyboard goes or the page settles) gets one
   /// more try, while `id` is still on screen; fails at the caller's line when `next`

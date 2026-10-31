@@ -77,6 +77,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow the passkey")
     XCTAssertFalse(el(app, "phrase.start").exists)
     tap(app, "mail.connect.gmail")
+    answerPastEmail(app)
     let card = el(app, "home.finish.phrase")
     XCTAssertTrue(card.waitForExistence(timeout: 15), "Home doesn't ask for the 12 words")
     assertNoPlaceholders(app, "Home · Finish setting up")

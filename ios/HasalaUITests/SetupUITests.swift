@@ -34,6 +34,7 @@ final class SetupUITests: XCTestCase {
     tap(app, "alertsHelp.done")
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     connect.tap()
+    answerPastEmail(app)
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
     XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait))
@@ -151,6 +152,7 @@ final class SetupUITests: XCTestCase {
     attach(app, "Bank · AX3")
     try audit(app, atLargeText: true)
     tap(app, "mail.connect.gmail")
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait))
     attach(app, "Home · Finish setting up · AX3")
     try audit(app, atLargeText: true)
@@ -169,6 +171,7 @@ final class SetupUITests: XCTestCase {
   func testSetupWithReduceMotion() throws {
     let app = launch(scenario: "setupBank", motion: "reduce")
     tap(app, "mail.connect.gmail", timeout: 15)
+    answerPastEmail(app)
     tap(app, "home.finish.plan")
     typeOnKeypad(app, "18000")
     XCTAssertTrue(incomeFigure(app).contains("18,000"))
@@ -186,6 +189,7 @@ final class SetupUITests: XCTestCase {
     attach(app, "Bank alerts · Gmail access not ticked")
     try audit(app)
     tap(app, "mail.connect.gmail")
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "trying again did not connect")
   }
 }
