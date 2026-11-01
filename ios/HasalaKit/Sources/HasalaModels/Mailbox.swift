@@ -81,11 +81,12 @@ public struct MailboxSnapshot: Identifiable, Hashable, Sendable {
   /// neither, so it can't disconnect or replace the mailbox (that would end the reading
   /// on the other iPhone).
   public var readElsewhere: Bool
+  public var pastMailSkipped: Bool
 
   public init(
     id: String, provider: MailProviderKind, address: String, state: MailboxState, meta: String,
     accountKind: String? = nil, banks: [String] = [], lastChecked: String? = nil, connectedOn: String? = nil,
-    note: String? = nil, readElsewhere: Bool = false
+    note: String? = nil, readElsewhere: Bool = false, pastMailSkipped: Bool = false
   ) {
     self.id = id
     self.provider = provider
@@ -98,5 +99,6 @@ public struct MailboxSnapshot: Identifiable, Hashable, Sendable {
     self.connectedOn = connectedOn
     self.note = note
     self.readElsewhere = readElsewhere
+    self.pastMailSkipped = pastMailSkipped
   }
 }

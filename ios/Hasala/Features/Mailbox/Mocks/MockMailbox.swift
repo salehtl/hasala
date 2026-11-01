@@ -65,7 +65,8 @@
     var importing: MailImport?
 
     var firstScanFinished: Bool {
-      !sampleLoaded && importing == nil && mailboxes.contains { $0.state == .connected }
+      !sampleLoaded && importing == nil && !mailboxes.contains(where: \.pastMailSkipped)
+        && mailboxes.contains { $0.state == .connected }
     }
 
     init(offersSampleData: Bool = false, mailboxes: [MailboxSnapshot] = []) {
@@ -145,11 +146,35 @@
       return mailboxes.contains { $0.state == .connected || $0.state == .needsSignIn } ? .linked : .unlinked
     }
 
-    func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
-      async throws(MailConnectFailure) -> MailLinked
-    {
+    private(set) var pastMailChoices: [MailPastChoice] = []
+    private(set) var pastImports = 0
+
+    func importPastMail(_ mailboxID: String) async -> MailPastImport {
+      pastImports += 1
+      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return .later }
+      mailboxes[i].pastMailSkipped = false
+      return .finished(total)
+    }
+
+    func connect(
+      _ provider: MailProviderKind, replacing: Bool, removingOld: Bool, pastMail: MailPastChoice,
+      ask: @escaping MailSwitchAsk
+    ) async throws(MailConnectFailure) -> MailLinked {
       connectCalls += 1
       replacingCalls.append(replacing)
+      pastMailChoices.append(pastMail)
+      let linked = try await link(provider, replacing: replacing, removingOld: removingOld, ask: ask)
+      if pastMail == .newOnly, let i = mailboxes.firstIndex(where: { $0.id == linked.mailboxID }) {
+        mailboxes[i].pastMailSkipped = true
+        mailboxes[i].state = .connected
+        mailboxes[i].meta = "Checked just now"
+      }
+      return linked
+    }
+
+    private func link(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+      async throws(MailConnectFailure) -> MailLinked
+    {
       var removal: MailSwitchRemoval?
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
@@ -289,6 +314,12 @@
     }
 
     func firstScan() -> AsyncStream<ScanProgress> {
+      if !mailboxes.contains(where: { $0.state == .syncing }), mailboxes.contains(where: \.pastMailSkipped) {
+        return AsyncStream { continuation in
+          continuation.yield(ScanProgress(phase: .finished, read: 0, total: 0))
+          continuation.finish()
+        }
+      }
       let total = total
       let step = step
       // One link held, as live: an Outlook import sends every alert to review while its

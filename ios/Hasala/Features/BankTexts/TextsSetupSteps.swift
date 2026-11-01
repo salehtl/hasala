@@ -47,7 +47,7 @@ private struct SourceCard: View {
   private var upsides: [String] {
     source == .texts
       ? ["No inbox access, no Google warning", "Works when your bank only texts"]
-      : ["Finds your older payments too", "Reads only your banks' alert emails"]
+      : ["Can find your older payments too", "Reads only your banks' alert emails"]
   }
   private var downside: String {
     source == .texts

@@ -49,6 +49,7 @@ public struct MailboxState: Sendable, Equatable, Codable {
   /// A change detector only (§7.5 step 6).
   public var profileHistoryID: String?
   public var backfillDays: Int?
+  public var readFromMs: Int64?
   public var scanStartedMs: Int64?
   public var watchExpiresAtMs: Int64?
   public var haltedOn: MailboxHaltCode?

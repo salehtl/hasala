@@ -174,6 +174,11 @@ public struct MailboxSwitchQuestion: Sendable, Equatable {
   }
 }
 
+public enum MailboxPastMail: Sendable, Equatable {
+  case read
+  case skip(catchUpFromMs: Int64? = nil)
+}
+
 public enum MailboxSwitchChoice: Sendable, Equatable {
   case keep, remove, cancel
 }
@@ -227,6 +232,8 @@ public struct MailboxStatus: Sendable, Equatable {
   public var watchActive: Bool
   public var unlisted: [String] = []
   public var unparsedSenders: [String: String] = [:]
+  public var readFromMs: Int64?
+  public var backfillDays: Int?
 }
 
 public actor MailboxEngine {
@@ -377,14 +384,15 @@ public actor MailboxEngine {
   }
 
   public func connect(
-    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool = false,
-    confirm: MailboxSwitchConfirm? = nil
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, pastMail: MailboxPastMail = .read,
+    replacing: Bool = false, confirm: MailboxSwitchConfirm? = nil
   ) async -> ConnectResult {
     stopped = false
     let (result, plan) = await exclusive { () -> (ConnectResult, MailboxRetirePlan?) in
       var plan: MailboxRetirePlan?
       let r = await connectLocked(
-        presenter: presenter, backfillDays: backfillDays, replacing: replacing, confirm: confirm, retiring: &plan)
+        presenter: presenter, backfillDays: backfillDays, pastMail: pastMail, replacing: replacing, confirm: confirm,
+        retiring: &plan)
       return (r, plan)
     }
     guard let plan, case .connected(let address, true, _) = result else { return result }
@@ -392,8 +400,8 @@ public actor MailboxEngine {
   }
 
   private func connectLocked(
-    presenter: any MailAuthSessionPresenter, backfillDays: Int, replacing: Bool, confirm: MailboxSwitchConfirm?,
-    retiring: inout MailboxRetirePlan?
+    presenter: any MailAuthSessionPresenter, backfillDays: Int, pastMail: MailboxPastMail, replacing: Bool,
+    confirm: MailboxSwitchConfirm?, retiring: inout MailboxRetirePlan?
   ) async -> ConnectResult {
     let oauth = provider.oauth
     guard oauth.isConfigured else { return .failed(.notConfigured) }
@@ -513,10 +521,17 @@ public actor MailboxEngine {
     if s.phase == .scanning && s.scanStartedMs == nil {
       // First connect. A resumed scan keeps its window: what it staged and accounted still counts.
       s.backfillDays = [30, 90, 365].contains(backfillDays) ? backfillDays : 90
-      s.scanStartedMs = clock.nowMs()
-      // h0 is captured before any listing (§7.7 step 2); best effort here, re-read by the scan.
-      if let token = try? await tokens.accessToken(forceRefresh: false) {
-        s.profileHistoryID = try? await source(token).changeToken()
+      let inherited = otherMailbox && stored?.readFromMs != nil
+      if let from = await readFrom(pastMail, inherited: inherited, address: claims.email) {
+        s.phase = .active
+        s.watermarkMs = from
+        s.readFromMs = from
+      } else {
+        s.scanStartedMs = clock.nowMs()
+        // h0 is captured before any listing (§7.7 step 2); best effort here, re-read by the scan.
+        if let token = try? await tokens.accessToken(forceRefresh: false) {
+          s.profileHistoryID = try? await source(token).changeToken()
+        }
       }
     }
     var c = commitState(s)
@@ -526,6 +541,19 @@ public actor MailboxEngine {
       return .failed(.keychain)
     }
     return .connected(address: claims.email, anotherAddress: otherMailbox)
+  }
+
+  private func readFrom(_ pastMail: MailboxPastMail, inherited: Bool, address: String?) async -> Int64? {
+    let now = clock.nowMs()
+    switch pastMail {
+    case .read:
+      return inherited ? now : nil
+    case .skip(let catchUp):
+      guard let catchUp, catchUp < now else { return now }
+      let plan = await ledger.retirePlan(
+        grantID: config.grantID(provider: provider.id, address: address), provider: provider.id.rawValue)
+      return plan.total > 0 ? max(0, catchUp - BankDomains.overlapMs) : now
+    }
   }
 
   private func abandonSwitch() async {
@@ -844,7 +872,8 @@ public actor MailboxEngine {
     let t0 = now
 
     // 7. List and account.
-    let since = BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000))
+    let since = max(
+      BankDomains.sinceSec(watermarkMs: state.watermarkMs ?? (now - 30 * 86_400_000)), (state.readFromMs ?? 0) / 1000)
     var run = Run(trusted: trusted, grant: grant(state), address: state.address)
     let cut: Bool
     do {
@@ -1166,13 +1195,39 @@ public actor MailboxEngine {
     var report = report
     guard state.watermarkMs != nil else { return report }
     let days = Int64(state.backfillDays ?? 90)
-    let sinceMs = max(0, clock.nowMs() - days * 86_400_000)
+    let sinceMs = max(0, clock.nowMs() - days * 86_400_000, state.readFromMs ?? 0)
     var c = MailboxCommit()
     c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
     do { try await store.commit(c) } catch {
       report.haltedOn = .offline
       return report
     }
+    return await runPendingImports(&state, report)
+  }
+
+  public func importPastMail() async -> CycleReport {
+    await exclusive {
+      var report = CycleReport()
+      guard !stopped, var state = try? await store.loadState() else { return report }
+      report.phase = state.phase
+      guard state.phase == .active, let from = state.readFromMs else { return report }
+      let domains = BankDomains.effectiveTrusted(await ledger.senderTrust()).filter(BankDomains.isQuerySafe)
+      guard !domains.isEmpty else { return report }
+      let days = Int64(state.backfillDays ?? 90)
+      let sinceMs = max(0, from - days * 86_400_000)
+      state.readFromMs = nil
+      var c = commitState(state)
+      c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+      do { try await store.commit(c) } catch {
+        report.haltedOn = .offline
+        return report
+      }
+      return await runPendingImports(&state, report)
+    }
+  }
+
+  private func runPendingImports(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
+    var report = report
     guard state.phase == .active, !stopped else { return report }
     do { try await ledger.syncToHead() } catch {
       report.haltedOn = .offline
@@ -1333,7 +1388,8 @@ public actor MailboxEngine {
         $0.newestMs > $1.newestMs
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
       health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil,
-      unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:])
+      unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
+      readFromMs: state.readFromMs, backfillDays: state.backfillDays)
   }
 
   public func readerCounts() async -> [String: ReaderCounts] {

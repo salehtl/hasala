@@ -7,6 +7,15 @@ import HasalaModels
 // `MailProviderID`; the live mapping to the mail lanes lives only in `Live/Mailbox/`. In
 // copy, lists and settings say "mailbox"; steps and buttons say "your email".
 
+enum MailPastChoice: Equatable, Sendable {
+  case importPast, newOnly
+}
+
+enum MailPastImport: Equatable, Sendable {
+  case finished(Int)
+  case later
+}
+
 /// What the bell, the Profile card and Bank alerts offer for mail.
 enum MailOffer: Hashable, Identifiable {
   /// No mailbox is read: setup's email step was skipped, or the last one went.
@@ -141,8 +150,12 @@ protocol MailboxConnecting: AnyObject, Observable {
   /// replaced only when `replacing` says the person confirmed it; otherwise that connect
   /// fails and the link stays. While the link is `heldElsewhere`, `replacing` says the
   /// person confirmed taking it over.
-  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
-    async throws(MailConnectFailure) -> MailLinked
+  func connect(
+    _ provider: MailProviderKind, replacing: Bool, removingOld: Bool, pastMail: MailPastChoice,
+    ask: @escaping MailSwitchAsk
+  ) async throws(MailConnectFailure) -> MailLinked
+  var pastMailDays: Int { get }
+  func importPastMail(_ mailboxID: String) async -> MailPastImport
   /// A new sign-in for a mailbox whose provider ended Hasala's access.
   func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked
   func tryAgain(_ mailboxID: String) async
@@ -234,6 +247,18 @@ struct MailImport: Equatable, Sendable {
 }
 
 extension MailboxConnecting {
+  var pastMailDays: Int { 90 }
+
+  func importPastMail(_ mailboxID: String) async -> MailPastImport { .later }
+
+  var defaultPastMail: MailPastChoice { heldElsewhere == nil ? .importPast : .newOnly }
+
+  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
+    async throws(MailConnectFailure) -> MailLinked
+  {
+    try await connect(provider, replacing: replacing, removingOld: removingOld, pastMail: defaultPastMail, ask: ask)
+  }
+
   var importing: MailImport? { nil }
 
   var firstScanFinished: Bool { false }
