@@ -94,5 +94,5 @@ An import cannot be turned into a skip: use **Disconnect** and remove its transa
 
 The alert is a system alert, so it needs no drawing, only the owner's approval of its words.
 The **Past email isn't imported** card on `MailboxDetailPage` is new and has no Paper design.
-It uses existing parts (the card and the tertiary pill). Paper is the source of truth, so the
-owner has to draw it or accept this.
+It uses existing parts (the card and the tertiary pill). The owner accepted it without a Paper
+design (2026-11-01).
