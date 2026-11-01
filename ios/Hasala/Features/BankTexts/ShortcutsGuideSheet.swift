@@ -28,6 +28,11 @@ struct ShortcutsGuideSheet: View {
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
+          if let install = BankTexts.automationInstall {
+            TextsLinkRow(title: "Add it ready-made instead", icon: .add, identifier: "textsGuide.addAutomation") {
+              openURL(install)
+            }
+          }
           ForEach(steps) { step in
             VStack(alignment: .leading, spacing: 10) {
               HStack(alignment: .firstTextBaseline, spacing: 12) {

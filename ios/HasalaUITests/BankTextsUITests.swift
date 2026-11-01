@@ -51,6 +51,24 @@ final class BankTextsUITests: XCTestCase {
   }
 
   @MainActor
+  func testReadyMadeAutomationLeadsTheSetUpAndTheHandStepsStay() throws {
+    let app = launch(scenario: "setupTexts", arguments: ["-HasalaAutomationLink", "https://www.icloud.com/shortcuts/test"])
+    tap(app, "source.texts")
+    tap(app, "source.continue", opening: "texts.steps")
+    XCTAssertTrue(app.staticTexts["Add the automation"].exists)
+    XCTAssertTrue(el(app, "texts.addAutomation").exists)
+    XCTAssertFalse(el(app, "texts.openShortcuts").exists, "the hand path leads while a ready-made one is offered")
+    attach(app, "Add the automation")
+    try audit(app)
+
+    tap(app, "texts.showMeHow", opening: "textsGuide.step6")
+    XCTAssertTrue(el(app, "textsGuide.addAutomation").exists)
+    tap(app, "textsGuide.done")
+    XCTAssertTrue(el(app, "texts.toTest").waitForExistence(timeout: uiWait))
+    tap(app, "texts.toTest", opening: "textsTest.phrase")
+  }
+
+  @MainActor
   func testNothingArrivedShowsTheChecklistAndSkipGoesHome() throws {
     let app = launch(scenario: nil, screen: "setup.texts.nothing")
     XCTAssertTrue(el(app, "textsTest.checklist").waitForExistence(timeout: 30), "the checklist is missing")

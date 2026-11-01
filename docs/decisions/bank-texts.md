@@ -82,8 +82,24 @@ What iOS allows, as the owner tested on a real iPhone:
 
 - The Message trigger fires on incoming texts and passes the message content.
 - A text sent to your own number fires it. This is the set-up test.
-- An app cannot make the automation for the person. Hasala can only guide them.
+- An app cannot make or turn on the automation for the person. See
+  [The ready-made automation on iOS 27](#the-ready-made-automation-on-ios-27).
 - An automation sees only texts that arrive after it is made. Older texts can be pasted.
+
+### The ready-made automation on iOS 27
+
+Decided 2026-11-01. iOS 27 treats a trigger as part of a shortcut, and an iCloud link to a
+shortcut carries its trigger. It arrives turned off, and the person turns it on. This does not
+change what Hasala reads or keeps. The person still chooses to add it and turn it on.
+
+`BankTexts.automationLink` holds one iCloud link, made once by the owner on an iPhone. While it
+is `nil`, or below iOS 27, the app shows only the steps above. With a link on iOS 27, setup leads
+with **Add to Shortcuts**, and the steps above stay one tap away, because Hasala supports iOS 26
+and an import can fail. The nothing-arrived checklist then asks first whether the automation is on.
+
+The link stays `nil` until the owner confirms on a real iPhone that the shared shortcut keeps the
+Message trigger with no sender and a full stop, keeps Run Immediately, and passes the message to
+**Add bank text**. Apple documents none of these for a shared shortcut.
 
 The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
 ago", the last text it added as a row). What the phone keeps for this, and nothing more, is in

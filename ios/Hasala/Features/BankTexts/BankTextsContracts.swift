@@ -122,6 +122,16 @@ enum BankTexts {
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
+  static let automationLink: URL? = nil
+
+  static func installLink(_ link: URL?, iOSMajor: Int) -> URL? { iOSMajor >= 27 ? link : nil }
+
+  static var automationInstall: URL? {
+    #if DEBUG
+    if let link = UserDefaults.standard.string(forKey: "HasalaAutomationLink") { return URL(string: link) }
+    #endif
+    return installLink(automationLink, iOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+  }
 
   static let clock = LiveMailboxConnecting.localTimeZone
 

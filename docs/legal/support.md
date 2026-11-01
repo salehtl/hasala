@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-10-30
+lastUpdated: 2026-11-01
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -129,14 +129,14 @@ Instead of connecting an email account, Hasala can read the texts (SMS) your ban
 
 ### How do I set up bank texts?
 
-During setup, at **How do your banks reach you?**, choose texts. Texts need no list of banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. Hasala can't make it for you. In Shortcuts:
+During setup, at **How do your banks reach you?**, choose texts. Texts need no list of banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. On iOS 27, Hasala may offer it ready-made: tap **Add to Shortcuts**, add it, and turn on its automation. It stays off until you do, because Hasala can't turn it on for you. To make it by hand, in Shortcuts:
 
 1. Tap **Automation** at the bottom, then **+**, then choose **Message**.
 2. Leave **Sender** empty. Tap **Message Contains** and type just a full stop (**.**), so it runs for every text that has one. Choose **Run Immediately**, then tap **Next**.
 3. Tap **New Blank Automation**, then **Add Action**.
 4. Search for **Hasala** and choose **Add bank text**. Check that it shows **Message** in blue (if it doesn't, tap the blue word and choose **Message**), then tap **Done**. If Hasala's action isn't in the list, open Hasala once, then search again.
 
-Back in Hasala, tap **I made it, send a test**, then, within 10 minutes, send a text that says "Hasala test." to your own number in Messages, with the full stop, so that the automation runs for it. Hasala tells you when it arrives, and doesn't keep the text. You can also tap **Skip, confirm with my next bank text**, and Hasala confirms the automation with your next bank text. The steps and the test stay in **Profile › Bank alerts** (**Show me how** and **Test it again**) if you want them later. **Show me how** shows the same steps with a sketch of the Shortcuts app.
+Back in Hasala, tap **I made it, send a test** (or **I turned it on, send a test**), then, within 10 minutes, send a text that says "Hasala test." to your own number in Messages, with the full stop, so that the automation runs for it. Hasala tells you when it arrives, and doesn't keep the text. You can also tap **Skip, confirm with my next bank text**, and Hasala confirms the automation with your next bank text. The steps and the test stay in **Profile › Bank alerts** (**Show me how** and **Test it again**) if you want them later. **Show me how** shows the same steps with a sketch of the Shortcuts app.
 
 The automation only sees texts that arrive after you make it. To bring in an older bank text, paste it (see below).
 
@@ -167,7 +167,7 @@ Go to **Profile › Bank alerts** and switch the source. Hasala asks you to conf
 ### Bank texts not showing up?
 
 1. In **Profile › Bank alerts**, check when the automation last ran.
-2. In Shortcuts, check that the automation is still there, that **Message Contains** is a full stop (**.**) with no sender, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
+2. In Shortcuts, check that the automation is still there and turned on, that **Message Contains** is a full stop (**.**) with no sender, that **Run Immediately** is on, and that its action is Hasala's **Add bank text**.
 3. If the bank's text has no full stop, the automation doesn't run for it. Paste it in **Review**.
 4. If your iPhone restarted, Hasala can't store anything from a text until you unlock it for the first time. The next time you open Hasala after you unlock, it tells you how many texts that look like payments arrived while it couldn't store them. If iOS doesn't say who sent a text, a person's text that looks like a payment can be counted too. The texts stay in Messages, so paste the bank's ones.
 5. Look in **Review**. Hasala reads payment texts from any bank and adds the ones it reads with confidence. Any other payment text waits there (see [Why does a bank text wait in Review?](#why-does-a-bank-text-wait-in-review)).

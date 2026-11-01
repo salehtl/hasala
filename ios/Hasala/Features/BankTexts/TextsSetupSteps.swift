@@ -119,16 +119,21 @@ struct TextsSetUpStep: View {
   @Bindable var model: SetupModel
   @State private var guiding = false
   @Environment(\.openURL) private var openURL
+  private var install: URL? { BankTexts.automationInstall }
 
   var body: some View {
     AccountScreen(
-      title: "Make the automation",
-      subtitle: "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Apple doesn't let apps make it for you.",
+      title: install == nil ? "Make the automation" : BankTextsGuide.installTitle,
+      subtitle: install == nil
+        ? "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Apple doesn't let apps make it for you."
+        : BankTextsGuide.installSubtitle,
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 16) {
-        NumberedStepsCard(steps: BankTextsGuide.shortSteps)
-        TextsLinkRow(title: "Show me how, step by step", identifier: "texts.showMeHow") { guiding = true }
+        NumberedStepsCard(steps: install == nil ? BankTextsGuide.shortSteps : BankTextsGuide.installSteps)
+        TextsLinkRow(
+          title: install == nil ? "Show me how, step by step" : "Make it by hand instead", identifier: "texts.showMeHow"
+        ) { guiding = true }
         TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
         TextsNote(icon: .bank, text: BankTexts.anyBankLine)
@@ -137,14 +142,15 @@ struct TextsSetUpStep: View {
       }
       .padding(.top, -8)
     } footer: {
-      Button { openURL(BankTexts.shortcutsURL) } label: {
-        Text("Open Shortcuts").fixedSize(horizontal: false, vertical: true)
+      Button { openURL(install ?? BankTexts.shortcutsURL) } label: {
+        Text(install == nil ? "Open Shortcuts" : "Add to Shortcuts").fixedSize(horizontal: false, vertical: true)
       }
       .buttonStyle(.pill(.primary, fill: true))
       .dockPill()
-      .accessibilityIdentifier("texts.openShortcuts")
+      .accessibilityIdentifier(install == nil ? "texts.openShortcuts" : "texts.addAutomation")
       Button { model.sendTestText() } label: {
-        Text("I made it, send a test").fixedSize(horizontal: false, vertical: true)
+        Text(install == nil ? "I made it, send a test" : "I turned it on, send a test")
+          .fixedSize(horizontal: false, vertical: true)
       }
       .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
       .dockPill()
@@ -334,9 +340,13 @@ struct BankTextsTestScreen: View {
     }
   }
 
+  static func checklistItems(offersInstall: Bool) -> [(title: String, detail: String)] {
+    (offersInstall ? [BankTextsGuide.turnedOn] : []) + BankTextsGuide.checklist
+  }
+
   private var checklist: some View {
     HListCard(alignment: .leading) {
-      ForEach(Array(BankTextsGuide.checklist.enumerated()), id: \.offset) { i, item in
+      ForEach(Array(Self.checklistItems(offersInstall: BankTexts.automationInstall != nil).enumerated()), id: \.offset) { i, item in
         if i > 0 { HDivider(inset: .disc68) }
         HStack(alignment: .firstTextBaseline, spacing: 14) {
           StepBadge(number: i + 1)

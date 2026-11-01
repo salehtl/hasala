@@ -10,6 +10,17 @@ enum BankTextsGuide {
   static let newBlank = "Tap New Blank Automation, then Add Action."
   static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")
 
+  static let installTitle = "Add the automation"
+  static let installSubtitle =
+    "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Hasala has it ready. You add it and turn it on."
+  static let installSteps = [
+    "Tap Add to Shortcuts. The Shortcuts app opens with the automation ready.",
+    "Tap Add Shortcut.",
+    "Turn on its automation switch. It stays off until you do, and Hasala can\u{2019}t turn it on for you.",
+    "Come back here and send a test.",
+  ]
+  static let turnedOn = (title: "The automation is on", detail: "In the Shortcuts app, open Hasala\u{2019}s automation and turn on the switch at the top.")
+
   static let shortSteps = [
     "In the Shortcuts app, open the Automation tab, tap +, then Message.",
     "Leave Sender empty. Tap Message Contains and type a full stop (.).",
