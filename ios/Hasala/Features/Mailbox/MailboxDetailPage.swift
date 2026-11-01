@@ -22,6 +22,7 @@ struct MailboxDetailPage: View {
   /// Each sign-in again that worked, counted once the page has turned (the success
   /// haptic's trigger).
   @State private var signedIn = 0
+  @State private var importingPast = false
   @Environment(\.hMotion) private var motion
 
   init(app: AppModel, mailboxID: String) {
@@ -112,6 +113,9 @@ struct MailboxDetailPage: View {
       }
       .padding(.horizontal, 16)
     }
+    if m.pastMailSkipped, !m.readElsewhere, m.state == .connected {
+      pastMailCard(m)
+    }
     banksCard(m)
     #if DEBUG
       if m.provider == .outlook, BuildSurface.showsUnfinished, let live = app.mailbox as? LiveMailboxConnecting {
@@ -132,6 +136,37 @@ struct MailboxDetailPage: View {
       Text("Hasala no longer reads this mailbox. Past transactions stay.")
         .hType(.footnote).foregroundStyle(HColor.textSecondary)
         .padding(.horizontal, 16)
+    }
+  }
+
+  private func pastMailCard(_ m: MailboxSnapshot) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Past email isn't imported")
+          .hType(.headline).foregroundStyle(HColor.textPrimary)
+          .accessibilityAddTraits(.isHeader)
+        Text(MailCopy.pastMailSkippedDetail(days: app.mailbox?.pastMailDays ?? 90))
+          .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Button("Import past email") { Task { await importPast(m) } }
+        .buttonStyle(.pill(.tertiary, size: .large, fill: true, loading: importingPast))
+        .disabled(importingPast)
+        .accessibilityIdentifier("mailbox.importPast")
+    }
+    .padding(20)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .accessibilityElement(children: .contain)
+  }
+
+  private func importPast(_ m: MailboxSnapshot) async {
+    guard let mailbox = app.mailbox, !importingPast else { return }
+    importingPast = true
+    defer { importingPast = false }
+    switch await mailbox.importPastMail(m.id) {
+    case .finished(let count): app.say(MailCopy.pastImported(count))
+    case .later: app.say(MailCopy.pastImportLater)
     }
   }
 

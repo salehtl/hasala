@@ -351,6 +351,7 @@ final class JoinUITests: XCTestCase {
     XCTAssertFalse(el(app, "ready.continue").exists)
     attach(app, "Setup · after the passkey")
     tap(app, "mail.connect.gmail")
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.finish.phrase").waitForExistence(timeout: 15), "Home doesn't ask for the 12 words")
     try audit(app)
   }

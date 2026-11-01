@@ -231,13 +231,27 @@ private struct ProviderConnectQuestions: ViewModifier {
   @State private var switchImpact: MailboxDisconnectImpact?
   @State private var askingImpact = false
   @State private var takingOver: MailProviderKind?
+  @State private var askingPastMail = false
 
   func body(content: Content) -> some View {
     content
       .onChange(of: request) { _, asked in
         guard asked != nil else { return }
         request = nil
-        start()
+        if coordinator.asksPastMail(provider) {
+          askingPastMail = true
+        } else {
+          start()
+        }
+      }
+      .alert(MailCopy.pastMailTitle, isPresented: $askingPastMail) {
+        Button("Import past email") { answerPastMail(.importPast) }
+          .accessibilityIdentifier("mail.pastMail.import")
+        Button("Only new email") { answerPastMail(.newOnly) }
+          .accessibilityIdentifier("mail.pastMail.newOnly")
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text(MailCopy.pastMailMessage(days: coordinator.mailbox.pastMailDays))
       }
       .alert(MailCopy.switchTitle, isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
              presenting: switching) { _ in
@@ -264,6 +278,11 @@ private struct ProviderConnectQuestions: ViewModifier {
       } message: { held in
         Text(MailCopy.takeoverMessage(from: held, to: provider))
       }
+  }
+
+  private func answerPastMail(_ choice: MailPastChoice) {
+    coordinator.pastMail = choice
+    start()
   }
 
   private func start() {

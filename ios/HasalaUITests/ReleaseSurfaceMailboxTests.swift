@@ -54,6 +54,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Connect your email")
     try audit(app)
     connect.tap()
+    answerPastEmail(app)
     assertMailboxAdded(app, "gmail-1")
     // Live reads one mailbox: no "Add a mailbox" beside it.
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
@@ -86,6 +87,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     assertNoText(app, ["Alerts from ,"], "Connect your email")
     attach(app, "Release · Connect your email · After the banks")
     connect.tap()
+    answerPastEmail(app)
     assertMailboxAdded(app, "gmail-1")
   }
 
@@ -175,6 +177,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Connect Outlook")
     try audit(app)
     connect.tap()
+    answerPastEmail(app)
     assertMailboxAdded(app, "outlook-1")
     assertAbsent(app, ["bankAlerts.addMailbox"], "Bank alerts")
   }
@@ -200,6 +203,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     try audit(app)
     connect.tap()
+    answerPastEmail(app)
     let alert = app.alerts["Change your email?"]
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait), "the switch was not confirmed first")
     XCTAssertTrue(alert.descendants(matching: .any)
@@ -209,6 +213,7 @@ final class ReleaseSurfaceMailboxTests: ReleaseSurfaceTestCase {
     XCTAssertTrue(alert.waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(connect.exists, "Cancel left the Outlook screen")
     connect.tap()
+    answerPastEmail(app)
     XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
     XCTAssertTrue(alert.buttons["Use Outlook, remove them"].firstMatch.exists)
     alert.buttons["Use Outlook, keep the 42 transactions"].firstMatch.tap()

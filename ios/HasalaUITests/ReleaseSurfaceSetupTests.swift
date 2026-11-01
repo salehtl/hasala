@@ -35,6 +35,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Choose your email")
     try audit(app, overSheet: true)
     tap(app, "mail.choose.gmail")
+    answerPastEmail(app)
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
     XCTAssertTrue(el(app, "home.finish.plan").waitForExistence(timeout: uiWait), "Release has no Finish setting up")
@@ -132,6 +133,7 @@ final class ReleaseSurfaceSetupTests: ReleaseSurfaceTestCase {
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
     outlook.tap()
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "the pick did not connect Outlook")
     assertPersonalAccountsOnly(app, "Home")
   }

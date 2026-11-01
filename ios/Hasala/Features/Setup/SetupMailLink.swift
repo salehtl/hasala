@@ -52,11 +52,16 @@ final class SetupMailLink: MailboxConnecting {
   func chosenBanks() -> [SupportedBank] { base.chosenBanks() }
   func linkState() async -> OnboardingStep.Facts.Mailbox { await base.linkState() }
 
-  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
-    async throws(MailConnectFailure) -> MailLinked
-  {
+  var pastMailDays: Int { base.pastMailDays }
+  func importPastMail(_ mailboxID: String) async -> MailPastImport { await base.importPastMail(mailboxID) }
+
+  func connect(
+    _ provider: MailProviderKind, replacing: Bool, removingOld: Bool, pastMail: MailPastChoice,
+    ask: @escaping MailSwitchAsk
+  ) async throws(MailConnectFailure) -> MailLinked {
     if let id = existing(provider) { return MailLinked(mailboxID: id) }
-    let linked = try await base.connect(provider, replacing: replacing, removingOld: removingOld, ask: ask)
+    let linked = try await base.connect(
+      provider, replacing: replacing, removingOld: removingOld, pastMail: pastMail, ask: ask)
     made[provider] = linked.mailboxID
     return linked
   }

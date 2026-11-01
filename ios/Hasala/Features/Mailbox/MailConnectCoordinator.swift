@@ -48,11 +48,14 @@ final class MailConnectCoordinator {
   private(set) var removingOld = false
   private(set) var linked: MailLinked?
   private(set) var question: MailSwitchQuestion?
+  var pastMail: MailPastChoice?
   @ObservationIgnored private var answering: CheckedContinuation<MailSwitchChoice, Never>?
   @ObservationIgnored private(set) var presenters = 0
   @ObservationIgnored private var resigning: NSObjectProtocol?
 
   var nowReading: String? { linked?.nowReading }
+
+  var pastMailChoice: MailPastChoice { pastMail ?? mailbox.defaultPastMail }
 
   init(mailbox: MailboxConnecting, context: Context) {
     self.mailbox = mailbox
@@ -100,7 +103,8 @@ final class MailConnectCoordinator {
         linked = made
         outcome = .connected(mailboxID: id)
       } else {
-        let made = try await mailbox.connect(provider, replacing: replacing, removingOld: self.removingOld, ask: ask)
+        let made = try await mailbox.connect(
+          provider, replacing: replacing, removingOld: self.removingOld, pastMail: pastMailChoice, ask: ask)
         linked = made
         outcome = .connected(mailboxID: made.mailboxID)
       }
@@ -170,6 +174,14 @@ final class MailConnectCoordinator {
   var takesOver: MailProviderKind? {
     if case .signInAgain = context { return nil }
     return mailbox.heldElsewhere
+  }
+
+  func asksPastMail(_ provider: MailProviderKind) -> Bool {
+    if case .signInAgain = context { return false }
+    if mailbox.heldElsewhere != nil { return false }
+    return !mailbox.mailboxes.contains {
+      $0.provider == provider && ($0.state == .needsSignIn || (mailbox.holdsOneLink && $0.state != .disconnected))
+    }
   }
 
   /// Back to before the attempt ("Try again", "Choose a different email").

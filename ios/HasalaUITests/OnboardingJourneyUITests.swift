@@ -37,6 +37,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(el(app, "mail.googleBriefing").exists, "Google's screens aren't explained")
     attach(app, "Setup · Bank alerts and Gmail")
     connect.tap()
+    answerPastEmail(app)
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open after the connect")
     XCTAssertTrue(el(app, "home.finish").waitForExistence(timeout: uiWait), "Home has no Finish setting up")
@@ -91,6 +92,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     let outlook = el(app, "mail.choose.outlook")
     XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
     outlook.tap()
+    answerPastEmail(app)
 
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open after the connect")
     app.buttons["header.profile"].firstMatch.tap()
@@ -113,6 +115,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     tap(app, "bank.adib")
     assertBanksAsLeft(app)
     tap(app, "mail.connect.gmail")
+    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
 
     tap(app, "home.finish.plan")

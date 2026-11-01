@@ -14,6 +14,7 @@ public struct MailboxStateRow: Sendable, Equatable {
   public var watermarkMs: Int64?
   public var profileHistoryID: String?
   public var backfillDays: Int?
+  public var readFromMs: Int64?
   public var scanStartedMs: Int64?
   public var watchExpiresAt: Int64?
   public var haltedOn: String?
@@ -166,7 +167,7 @@ public final class MailboxTableStore: Sendable {
     LedgerSchema.v1.filter { sql in
       ["pending_ops", "mailbox_", "bank_health"].contains { sql.hasPrefix("CREATE TABLE \($0)") }
     } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
-    + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader
+    + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader + LedgerSchema.mailboxReadFrom
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
@@ -227,6 +228,7 @@ public final class MailboxTableStore: Sendable {
       s.watermarkMs = r["watermark_ms"]
       s.profileHistoryID = r["profile_history_id"]
       s.backfillDays = r["backfill_days"]
+      s.readFromMs = r["read_from_ms"]
       s.scanStartedMs = r["scan_started_ms"]
       s.watchExpiresAt = r["watch_expires_at"]
       s.haltedOn = r["halted_on"]
@@ -418,12 +420,12 @@ public final class MailboxTableStore: Sendable {
             INSERT OR REPLACE INTO mailbox_state
               (id, phase, address, watermark_ms, profile_history_id, backfill_days, scan_started_ms,
                list_page_token, watch_expires_at, halted_on, halted_detail, last_cycle_at, last_success_at,
-               last_holder_check_at)
-            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+               last_holder_check_at, read_from_ms)
+            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             s.phase, s.address, s.watermarkMs, s.profileHistoryID, s.backfillDays, s.scanStartedMs, s.watchExpiresAt,
-            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt,
+            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt, s.readFromMs,
           ])
       }
     }

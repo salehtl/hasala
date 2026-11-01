@@ -30,6 +30,24 @@ enum MailCopy {
 
   static let confirmNote = "You'll confirm it's you before it connects."
 
+  static let pastMailTitle = "Import your past email?"
+
+  static func pastWindow(days: Int) -> String { days >= 365 ? "the last year" : "the last \(days) days" }
+
+  static func pastMailMessage(days: Int) -> String {
+    "Hasala can read your bank alerts from \(pastWindow(days: days)) on this iPhone, then new ones. Or it can read only new alerts from now on, and you can import past email later in Bank alerts."
+  }
+
+  static func pastMailSkippedDetail(days: Int) -> String {
+    "Hasala reads only new alerts here. Import reads your bank alerts from the \(days >= 365 ? "year" : "\(days) days") before you connected, on this iPhone."
+  }
+
+  static func pastImported(_ count: Int) -> String {
+    count == 1 ? "1 past transaction added." : "\(MoneyFormat.count(count)) past transactions added."
+  }
+
+  static let pastImportLater = "Hasala is reading your past email. It goes on in the background."
+
   /// Under the Mailboxes card (Paper 1NS8). The server's part of a new-mail wake is
   /// Debug's: a Release build relays none.
   static var mailboxesFootnote: String {

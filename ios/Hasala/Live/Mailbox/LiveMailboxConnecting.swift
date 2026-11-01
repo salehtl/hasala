@@ -113,7 +113,21 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
 
   var firstScanFinished: Bool {
     guard let rt = runtime(), !rt.store.holdsSample else { return false }
-    return rt.store.mailboxPhase == .active
+    return rt.store.mailboxPhase == .active && rt.store.mailboxStatus?.readFromMs == nil
+  }
+
+  var pastMailDays: Int {
+    guard let rt = runtime() else { return 90 }
+    if let status = rt.store.mailboxStatus, status.readFromMs != nil, let days = status.backfillDays { return days }
+    return MailboxEngine.backfillDays(
+      newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
+  }
+
+  func importPastMail(_ mailboxID: String) async -> MailPastImport {
+    guard let rt = runtime(), let lane = rt.lane else { return .later }
+    let report = await lane.importPastMail()
+    await rt.refreshMailbox()
+    return report.completed && report.haltedOn == nil ? .finished(report.ops) : .later
   }
 
   static func importing(phase: MailboxPhase?, seen: Bool, progress: MailboxProgress?) -> MailImport? {
@@ -220,7 +234,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// The lane's one mailbox as a row, or none while it is unlinked.
   static func mailboxes(_ s: MailboxStatus, provider: MailProviderKind = .gmail, nowMs: Int64) -> [MailboxSnapshot] {
     mailboxes(phase: s.phase, halt: s.haltedOn, address: s.address, lastSuccessAtMs: s.lastSuccessAtMs,
-              bankDomains: s.health.map(\.domain), provider: provider, nowMs: nowMs)
+              bankDomains: s.health.map(\.domain), provider: provider, nowMs: nowMs,
+              pastMailSkipped: s.readFromMs != nil)
   }
 
   /// The row from the status's parts (the table in plan B4.4). The mailbox page's "Last
@@ -228,14 +243,16 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// (`LocalClock`, as every transaction time is).
   static func mailboxes(
     phase: MailboxPhase, halt: MailboxHaltCode?, address: String?, lastSuccessAtMs: Int64?, bankDomains: [String],
-    provider: MailProviderKind = .gmail, nowMs: Int64, timeZone: TimeZone = localTimeZone
+    provider: MailProviderKind = .gmail, nowMs: Int64, timeZone: TimeZone = localTimeZone,
+    pastMailSkipped: Bool = false
   ) -> [MailboxSnapshot] {
     let checked = lastSuccessAtMs.map { "Checked \(RelativeTime.ago(ms: nowMs - $0, nowMs: nowMs))" } ?? "Not checked yet"
     var row = MailboxSnapshot(
       id: mailboxID(provider), provider: provider, address: address ?? provider.appName, state: .connected, meta: checked,
       accountKind: provider == .outlook ? "Personal Microsoft" : nil,
       banks: Set(bankDomains.compactMap { LedgerStateMapper.bankName(domain: $0) }).sorted(),
-      lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) })
+      lastChecked: lastSuccessAtMs.map { checkedAt($0, timeZone: timeZone) },
+      pastMailSkipped: pastMailSkipped && phase == .active)
     switch phase {
     case .unlinked:
       // None read here, even while the server names another iPhone as the link's holder (a
@@ -369,9 +386,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// another iPhone holds one; a confirmed switch replaces the other provider's link, and
   /// the new lane clears the shared tables only once its link is made; then the old lane
   /// ends its grant.
-  func connect(_ provider: MailProviderKind, replacing: Bool, removingOld: Bool, ask: @escaping MailSwitchAsk)
-    async throws(MailConnectFailure) -> MailLinked
-  {
+  func connect(
+    _ provider: MailProviderKind, replacing: Bool, removingOld: Bool, pastMail: MailPastChoice,
+    ask: @escaping MailSwitchAsk
+  ) async throws(MailConnectFailure) -> MailLinked {
     guard let rt = runtime() else { throw .failed("Hasala is still opening your account. Try again in a moment.") }
     guard let lane = rt.lanes[provider] else { throw .failed("\(provider.appName) isn't available in this build.") }
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
@@ -381,9 +399,11 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let status = await (current ?? lane).status()
     let replaces = try Self.admit(
       provider, current: current?.provider, phase: status.phase, address: status.address, replacing: replacing)
+    var takesOver = false
     if status.phase == .unlinked {
       let link = await rt.askServerLink()
       try Self.checkTakeover(link, confirmed: replacing)
+      if case .holder(false, _)? = link { takesOver = true }
     }
     let switching = current.map { $0.provider != provider } ?? false
     let days = MailboxEngine.backfillDays(
@@ -392,8 +412,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let oldName = status.address ?? current?.provider.appName ?? provider.appName
     let old = switching ? current : nil
     await old?.stop()
+    let newest = (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil
     let result = await lane.connect(
-      backfillDays: days, replacing: replaces, confirm: Self.confirm(ask, provider: provider))
+      backfillDays: days, pastMail: Self.pastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
+      replacing: replaces, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
       await old?.resume()
@@ -404,8 +426,20 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     var retired = Self.retired(result)
     if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
     await rt.refreshMailbox()
+    let reads = await lane.status()
+    if reads.phase == .active, reads.readFromMs != nil, reads.lastSuccessAtMs == nil {
+      let scan = firstScan()
+      Task { for await _ in scan {} }
+    }
     return MailLinked(
       mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
+  }
+
+  static func pastMail(_ choice: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
+    switch choice {
+    case .importPast: .read
+    case .newOnly: .skip(catchUpFromMs: takesOver ? newestImportMs : nil)
+    }
   }
 
   static func confirm(_ ask: @escaping MailSwitchAsk, provider: MailProviderKind) -> MailboxSwitchConfirm {
@@ -447,7 +481,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   func signInAgain(_ mailboxID: String, ask: @escaping MailSwitchAsk) async throws(MailConnectFailure) -> MailLinked {
     let fallback = try lane().provider
     let provider = MailProviderKind(rawValue: mailboxID) ?? fallback
-    let linked = try await connect(provider, replacing: false, removingOld: false, ask: ask)
+    let linked = try await connect(provider, replacing: false, removingOld: false, pastMail: .importPast, ask: ask)
     guard await linkState() == .scanning else { return linked }
     Task { for await _ in firstScan() {} }
     return linked
