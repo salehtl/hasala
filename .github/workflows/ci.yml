@@ -7,14 +7,13 @@
 # matrix): required status checks match `ci-ok` (and, until the ruleset drops
 # them, `gate`, `vuln` and `secrets`) by name, so renaming a job silently drops
 # it from the requirement. `swift` (the Swift
-# client core on a Mac), `ios-build` (the app built once for testing), `ios`
-# (three UI test shards on that build), `ios-tools` (HasalaKit, the iOS
+# client core on a Mac), `ios-tools` (HasalaKit, the iOS
 # project, token and release-script checks on a Mac), `web` (the website) and
 # `nixos-vm` (the QA module booted in a NixOS VM) are not required checks.
 #
 # Path-aware, failing closed: the first job, `changes`, lists the files the
 # pull request (or the push to main) changes, and `gate`, `vuln`, `swift`,
-# `ios-build`, `ios`, `ios-tools`, `web` and `nixos-vm` are skipped only when
+# `ios-tools`, `web` and `nixos-vm` are skipped only when
 # every one of them is on that job's list of paths it does not read. Any other
 # path runs the job, a path nobody anticipated included. `secrets` always runs.
 # Jobs are skipped with a job-level `if:`, never a workflow-level `paths:`
@@ -33,7 +32,7 @@
 #
 # Caches (actions/cache): Go's module and build caches in `gate` (`vuln` reads
 # them), Bun's package cache in `gate` and `web`, and SwiftPM's repository
-# cache in `swift` and `ios-build`. Each is keyed on the files that pin its
+# cache in `swift`. Each is keyed on the files that pin its
 # contents (flake.lock pins Go; go.sum, bun.lock and Package.resolved the
 # dependencies) and saved only when that exact key was missing. Scoping is
 # what keeps a cache trustworthy: a pull request's run saves only into its own
@@ -67,12 +66,10 @@ permissions:
 
 # One run per pull request (a new push cancels the superseded run); every other
 # run (a push to main, a manual run) is its own group, so no run is cancelled or
-# dropped as a whole. The Mac jobs (`swift`, `ios-build`, `ios-tools` and each
-# `ios` shard) also have a job-level group: on a push to main it is one group
-# per job (and shard) with cancel-in-progress, so a newer push to main cancels
-# an older push's Mac job that is still queued or running. The account runs at
-# most five Mac jobs at once and every push to main asks for six, so without
-# this pushes queued behind each other for hours. The newest push to main still
+# dropped as a whole. The Mac jobs (`swift` and `ios-tools`) also have a job-level
+# group: on a push to main it is one group per job with cancel-in-progress, so a
+# newer push to main cancels an older push's Mac job that is still queued or
+# running. The newest push to main still
 # runs its Mac jobs (some pull requests merge before theirs finish); a push
 # that skips a Mac job by path leaves the older push's job running. Any other
 # run's job-level group is its own run id, so it changes nothing there.
@@ -86,7 +83,7 @@ defaults:
 
 jobs:
   # Which jobs the pull request needs, as outputs `gate` (read by gate and
-  # vuln), `swift`, `ios` (read by ios-build, ios and ios-tools),
+  # vuln), `swift`, `ios` (read by ios-tools),
   # `ios_scripts` (the devShell step of ios-tools), `web` and `nixos_vm`, each
   # "true" or "false". A push to main computes them the same way, from the
   # push's `before` commit to its head; any other event, or a push whose
@@ -178,8 +175,8 @@ jobs:
           skip_unless gate "$none|^(docs|web|ios)/" '\.(go|nix)$|(^|/)go\.(mod|sum|work|work\.sum)$|^ios/HasalaCore/Sources/HasalaCore/Resources/templates/'
           # swift reads ios/ and conformance/, plus the server seed templates.
           skip_unless swift "$none|^(docs|web|server|scripts|infra)/|^(flake\.nix|flake\.lock|\.gitleaks\.toml)$" '^server/internal/tmpl/seed/'
-          # ios-build, ios and ios-tools read ios/, design/ (the Paper tokens
-          # the app is generated from) and the flake (which pins its XcodeGen).
+          # ios-tools reads ios/, design/ (the Paper tokens the app is
+          # generated from) and the flake (which pins its XcodeGen).
           skip_unless ios '^LICENSES/|^[^/]+\.md$|^(NOTICE|private-fixtures\.lock)$|^(docs|web|server|conformance|scripts|infra)/|^\.gitleaks\.toml$'
           # ios-tools' devShell step reads ios/scripts/ and the flake only.
           skip_unless ios_scripts "$none|^(docs|web|ios|server|conformance|scripts|infra)/|^\.gitleaks\.toml$" '^ios/scripts/'
@@ -443,8 +440,7 @@ jobs:
   # freshness, the project against ios/project.yml, the release-script tests
   # (with the system's tools, and again inside the Nix devShell, where GNU
   # coreutils come first on PATH, when ios/scripts/ or the flake changed) and
-  # shellcheck. On a runner of its own beside `ios-build`. Skipped exactly when
-  # `ios-build` is. Nothing is signed for distribution here (the script tests
+  # shellcheck. Nothing is signed for distribution here (the script tests
   # sign a synthetic app ad hoc) and no Apple credential exists in CI; archives,
   # signing and uploads happen only on the owner's Mac (ios/scripts/archive.sh,
   # ios/scripts/upload.sh). Not a required check.
@@ -527,269 +523,6 @@ jobs:
         run: >-
           nix shell --inputs-from . nixpkgs#shellcheck --command
           shellcheck -S warning ios/scripts/*.sh ios/scripts/tests/*.sh
-
-  # The app built once for testing (ci-simulator-test.sh --build-only), for the
-  # `ios` shards to test without building. The products go to the next jobs as
-  # a tar, which keeps their file modes and symlinks; the artifact lives a day.
-  # It picks the simulator as the shards do, on the same runner image, so the
-  # build matches the simulator they test on. Not a required check.
-  # The app is built with the newest Xcode on the image (spec 06: Xcode 27).
-  ios-build:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
-    concurrency:
-      group: ci-mac-ios-build-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    runs-on: macos-26
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Select the newest Xcode
-        run: |
-          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
-
-      # The SwiftPM clones xcodebuild resolves the project's packages from (see
-      # "Caches" above).
-      - name: SwiftPM repository cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm/repositories
-          key: spm-${{ runner.os }}-${{ hashFiles('ios/HasalaCore/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      - name: Build for testing (unsigned)
-        run: ios/scripts/ci-simulator-test.sh --build-only "$RUNNER_TEMP/dd"
-
-      - name: Pack the test products
-        run: |
-          tar -C "$RUNNER_TEMP/dd" -cf "$RUNNER_TEMP/ios-products.tar" Build/Products
-          ls -lh "$RUNNER_TEMP/ios-products.tar"
-
-      - name: Keep the test products
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ios-products
-          path: ${{ runner.temp }}/ios-products.tar
-          retention-days: 1
-          if-no-files-found: error
-
-  # The unit tests and the UI tests of `ios-build`'s products, without building
-  # (ci-simulator-test.sh --from-build), in three shards of about 40 minutes
-  # each, on three runners side by side. Shards 1 and 2 name their classes;
-  # shard 3 skips those, so a class added later runs there. Each shard runs
-  # the unit tests (HasalaTests, seconds) first: their host app is the
-  # simulator's first launch, so no UI test is (a UI test that was once timed
-  # out launching the app on a freshly booted simulator). A failed test runs
-  # once more; one that passes then is a warning, one that fails twice fails
-  # the shard. Runs only when `ios-build` succeeded. Not a required check.
-  ios:
-    needs: [changes, ios-build]
-    if: ${{ !cancelled() && needs.ios-build.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
-    name: ios (${{ matrix.shard }})
-    concurrency:
-      group: ci-mac-ios-${{ matrix.shard }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    runs-on: macos-26
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 3
-      matrix:
-        include:
-          - shard: 1
-            selectors: >-
-              -only-testing:HasalaTests
-              -only-testing:HasalaUITests/PlanUITests
-              -only-testing:HasalaUITests/MailboxUITests
-              -only-testing:HasalaUITests/ProfileUITests
-              -only-testing:HasalaUITests/HomePeriodTests
-              -only-testing:HasalaUITests/SetupUITests
-              -only-testing:HasalaUITests/ReleaseSurfaceHomeTests
-          - shard: 2
-            selectors: >-
-              -only-testing:HasalaTests
-              -only-testing:HasalaUITests/CoreScreensTests
-              -only-testing:HasalaUITests/SignInSecurityUITests
-              -only-testing:HasalaUITests/SmokeTests
-              -only-testing:HasalaUITests/HomeWidgetsEditTests
-              -only-testing:HasalaUITests/ReleaseSurfaceProfileTests
-              -only-testing:HasalaUITests/TabRoundTripTests
-              -only-testing:HasalaUITests/ReleaseSurfaceInsightsTests
-          - shard: 3
-            selectors: >-
-              -skip-testing:HasalaUITests/PlanUITests
-              -skip-testing:HasalaUITests/MailboxUITests
-              -skip-testing:HasalaUITests/ProfileUITests
-              -skip-testing:HasalaUITests/HomePeriodTests
-              -skip-testing:HasalaUITests/SetupUITests
-              -skip-testing:HasalaUITests/ReleaseSurfaceHomeTests
-              -skip-testing:HasalaUITests/CoreScreensTests
-              -skip-testing:HasalaUITests/SignInSecurityUITests
-              -skip-testing:HasalaUITests/SmokeTests
-              -skip-testing:HasalaUITests/HomeWidgetsEditTests
-              -skip-testing:HasalaUITests/ReleaseSurfaceProfileTests
-              -skip-testing:HasalaUITests/TabRoundTripTests
-              -skip-testing:HasalaUITests/ReleaseSurfaceInsightsTests
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Select the newest Xcode
-        run: |
-          xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -n1)"
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
-
-      - name: Get the test products
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ios-products
-          path: ${{ runner.temp }}
-
-      - name: Unpack the test products
-        run: |
-          mkdir -p "$RUNNER_TEMP/dd"
-          tar -C "$RUNNER_TEMP/dd" -xf "$RUNNER_TEMP/ios-products.tar"
-
-      - name: Test shard ${{ matrix.shard }} in the simulator (unsigned, no build)
-        env:
-          SELECTORS: ${{ matrix.selectors }}
-        run: |
-          read -r -a selectors <<<"$SELECTORS"
-          ios/scripts/ci-simulator-test.sh --from-build "$RUNNER_TEMP/dd" "$RUNNER_TEMP/Hasala.xcresult" "${selectors[@]}"
-
-      - name: List the failed tests
-        if: failure()
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          out="$RUNNER_TEMP/failed-tests/shard-$SHARD.md"
-          mkdir -p "$RUNNER_TEMP/failed-tests"
-          listed=""
-          if [[ -d "$RUNNER_TEMP/Hasala.xcresult" ]]; then
-            listed="$(xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/Hasala.xcresult" | python3 -c '
-          import json, sys
-          def walk(node, path):
-              name = node.get("name", "")
-              kind = node.get("nodeType", "")
-              if kind == "Test Case":
-                  if node.get("result") == "Failed":
-                      print("- " + chr(96) + "/".join(path + [name]) + chr(96))
-                  return
-              if kind in ("Unit test bundle", "UI test bundle", "Test Suite"):
-                  path = path + [name]
-              for child in node.get("children", []):
-                  walk(child, path)
-          for node in json.load(sys.stdin).get("testNodes", []):
-              walk(node, [])
-          ')" || listed=""
-          fi
-          {
-            echo "### ios ($SHARD)"
-            echo
-            echo "${listed:-- No failed test in the result bundle; see the job log.}"
-            echo
-          } >"$out"
-          cat "$out"
-
-      - name: Keep the failed tests
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ios-failed-tests-${{ matrix.shard }}
-          path: ${{ runner.temp }}/failed-tests
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Keep the test report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ios-xcresult-${{ matrix.shard }}
-          path: ${{ runner.temp }}/Hasala.xcresult
-          retention-days: 7
-          if-no-files-found: ignore
-
-  ios-main-red:
-    needs: [ios-build, ios]
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    concurrency:
-      group: ci-main-red
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-    timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      BUILD: ${{ needs.ios-build.result }}
-      IOS: ${{ needs.ios.result }}
-      SHA: ${{ github.sha }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    steps:
-      - name: Get the failed tests
-        if: ${{ needs.ios.result == 'failure' }}
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: ios-failed-tests-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/failed-tests
-
-      - name: Open, update or close the ci-main-red issue
-        run: |
-          set -euo pipefail
-          echo "ios-build: $BUILD, ios: $IOS"
-          if [[ "$BUILD" == failure || "$IOS" == failure ]]; then
-            state=red
-          elif [[ "$IOS" == success ]]; then
-            state=green
-          else
-            echo "No shard result to act on."
-            exit 0
-          fi
-          issue="$(gh issue list --label ci-main-red --state open --limit 1 --json number --jq '.[0].number // empty')"
-          if [[ "$state" == green ]]; then
-            if [[ -n "$issue" ]]; then
-              gh issue close "$issue" --comment "Every \`ios\` shard passed on \`main\` at $SHA: $RUN_URL"
-            fi
-            exit 0
-          fi
-          body="$RUNNER_TEMP/issue.md"
-          {
-            echo "The \`ios\` UI tests fail on \`main\` at $SHA."
-            echo
-            echo "Run: $RUN_URL"
-            echo
-            if [[ "$BUILD" == failure ]]; then
-              echo "\`ios-build\` failed, so no shard ran."
-              echo
-            fi
-            shopt -s nullglob
-            files=("$RUNNER_TEMP"/failed-tests/*.md)
-            if ((${#files[@]})); then
-              cat "${files[@]}"
-            elif [[ "$IOS" == failure ]]; then
-              echo "No list of failed tests was kept; see the run."
-            fi
-            echo
-            echo "This issue closes when a later push to \`main\` passes every \`ios\` shard."
-          } >"$body"
-          cat "$body"
-          gh label create ci-main-red --color B60205 --description "CI on main is red" --force
-          if [[ -n "$issue" ]]; then
-            gh issue edit "$issue" --body-file "$body"
-            gh issue comment "$issue" --body-file "$body"
-          else
-            gh issue create --title "CI on main is red: ios UI tests" --label ci-main-red --body-file "$body"
-          fi
 
   # HasalaCore (ios/HasalaCore): every module builds for macOS and iOS and
   # `swift test` passes (unit tests and the conformance suite, reading

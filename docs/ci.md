@@ -7,11 +7,9 @@ This page has the details that only matter when you change the CI.
 
 - A new push to a pull request cancels the older run of that pull request.
 - A push to `main` does not cancel an older run as a whole. But a newer push
-  to `main` cancels the Mac jobs (`swift`, `ios-build`, `ios-tools` and each
-  `ios` shard) of an older push, if they are in the queue or running. Each of
-  these jobs has a job-level `concurrency` group for this. The reason: each
-  push to `main` asks for six Mac jobs, and the account runs only five at the
-  same time. Without the groups, the runs of `main` waited for hours.
+  to `main` cancels the Mac jobs (`swift` and `ios-tools`) of an older push, if they are in the
+  queue or running. Each of these jobs has a job-level `concurrency` group for
+  this.
 - The newest push to `main` still runs its Mac jobs, because some pull
   requests merge before their Mac jobs finish.
 - A manual run is not cancelled.
@@ -22,7 +20,7 @@ The repository has 10 GB of Actions cache. Above it, GitHub deletes the
 entries that were used least recently.
 
 - `actions/cache` keeps the Go caches (`gate`, `vuln` only reads them), the
-  Bun caches (`gate`, `web`) and the SwiftPM caches (`swift`, `ios-build`).
+  Bun caches (`gate`, `web`) and the SwiftPM caches (`swift`).
 - `nix-community/cache-nix-action` keeps the Nix store in `gate`, `vuln`,
   `nixos-vm`, `web` and `ios-tools`. Each job has one entry, with the key
   `nix-<runner OS>-<job>-<hash of flake.lock>`.
