@@ -92,14 +92,16 @@ Decided 2026-11-01. iOS 27 treats a trigger as part of a shortcut, and an iCloud
 shortcut carries its trigger. It arrives turned off, and the person turns it on. This does not
 change what Hasala reads or keeps. The person still chooses to add it and turn it on.
 
-`BankTexts.automationLink` holds one iCloud link, made once by the owner on an iPhone. While it
-is `nil`, or below iOS 27, the app shows only the steps above. With a link on iOS 27, setup leads
+`BankTexts.automationLink` holds one iCloud link, made once by the owner on an iPhone. Below
+iOS 27, the app shows only the steps above. On iOS 27, setup leads
 with **Add to Shortcuts**, and the steps above stay one tap away, because Hasala supports iOS 26
 and an import can fail. The nothing-arrived checklist then asks first whether the automation is on.
 
-The link stays `nil` until the owner confirms on a real iPhone that the shared shortcut keeps the
-Message trigger with no sender and a full stop, keeps Run Immediately, and passes the message to
-**Add bank text**. Apple documents none of these for a shared shortcut.
+The shared file, read from iCloud on 2026-11-01, holds the Message trigger with no sender and a
+full stop, and passes the trigger's output to **Add bank text**. It has no field for Run
+Immediately, and Apple documents none of this for a shared shortcut, so an import on a real
+iPhone is the check for whether it runs with no confirmation. The set-up test shows this: a
+text that waits for a tap does not reach Hasala in time.
 
 The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
 ago", the last text it added as a row). What the phone keeps for this, and nothing more, is in

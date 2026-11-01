@@ -122,7 +122,7 @@ enum BankTexts {
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
-  static let automationLink: URL? = nil
+  static let automationLink = URL(string: "https://www.icloud.com/shortcuts/51bbdac5d4f644b58d28893a3906073c")
 
   static func installLink(_ link: URL?, iOSMajor: Int) -> URL? { iOSMajor >= 27 ? link : nil }
 

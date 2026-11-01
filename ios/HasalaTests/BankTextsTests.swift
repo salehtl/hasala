@@ -616,8 +616,8 @@ struct BankTextsTests {
     #expect(BankTexts.installLink(nil, iOSMajor: 27) == nil)
   }
 
-  @Test func theAutomationLinkIsAnICloudShortcutOverHTTPS() {
-    guard let link = BankTexts.automationLink else { return }
+  @Test func theAutomationLinkIsAnICloudShortcutOverHTTPS() throws {
+    let link = try #require(BankTexts.automationLink)
     #expect(link.scheme == "https" && link.host() == "www.icloud.com" && link.path().hasPrefix("/shortcuts/"))
   }
 

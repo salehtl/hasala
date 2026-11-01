@@ -9,7 +9,7 @@ final class BankTextsUITests: XCTestCase {
 
   @MainActor
   func testTextsSetUpThroughToHome() throws {
-    let app = launch(scenario: "setupTexts")
+    let app = launch(scenario: "setupTexts", arguments: ["-HasalaAutomationLink", ""])
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: 15), "the choice is missing")
     XCTAssertTrue(app.staticTexts["How do your banks reach you?"].exists)
     XCTAssertTrue(el(app, "source.email").exists)
@@ -95,7 +95,7 @@ final class BankTextsUITests: XCTestCase {
 
   @MainActor
   func testTextsSetUpAtLargeText() throws {
-    let app = launch(scenario: "setupTexts", arguments: Self.largeText)
+    let app = launch(scenario: "setupTexts", arguments: Self.largeText + ["-HasalaAutomationLink", ""])
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: 15))
     attach(app, "Choice · AX")
     try audit(app, atLargeText: true)
