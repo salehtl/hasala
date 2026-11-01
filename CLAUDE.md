@@ -151,22 +151,10 @@ only when it is fast and it must stop a merge. Do not add the slow jobs
 (the Mac jobs, `web` and `nixos-vm`).
 
 These jobs are slow. They are not required, and `ci-ok` does not need them,
-thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-build`,
-`ios` and `ios-tools` (the app on a Mac, refer to "The iOS app" below), `web`
+thus they do not stop a merge: `swift` (HasalaCore on a Mac), `ios-tools`
+(the iOS checks on a Mac, refer to "The iOS app" below), `web`
 (the website, refer to "Website") and `nixos-vm` (it builds
 `checks.x86_64-linux.qa-vm` with KVM).
-
-At most five Mac jobs run at the same time in one run (the account limit).
-
-`ios-main-red` alerts about the UI tests on `main`. It runs only on a push to
-`main`, with `issues: write` only:
-
-- When an `ios` shard (or `ios-build`) fails, it opens one issue with the
-  label `ci-main-red`, or updates the open one (new body and a comment). The
-  issue lists the failed tests of each shard (each failed shard uploads
-  `ios-failed-tests-<shard>`) and the link to the run.
-- When all `ios` shards pass in a later push to `main`, it closes the issue.
-- When the shards were skipped or cancelled, it does nothing.
 
 ### Path rules in CI
 
@@ -176,19 +164,19 @@ it is not sure, it runs the job.
 - The first job, `changes`, makes a list of the changed paths in the pull
   request (`git diff -z`, thus each file name agrees exactly as it is
   written).
-- CI skips `gate`/`vuln`, `swift`, the iOS jobs, `web` or `nixos-vm` only
+- CI skips `gate`/`vuln`, `swift`, `ios-tools`, `web` or `nixos-vm` only
   when all changed paths are on the list of paths that the job does not read.
   All other paths start the job. This includes paths that nobody expected
   (for example a new top-level directory, `go.work`, `.gitattributes`).
 - No job reads `LICENSES/`, root `*.md`, `NOTICE` or
-  `private-fixtures.lock`. Only the iOS jobs read `design/`.
+  `private-fixtures.lock`. Only `ios-tools` reads `design/`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
   in those directories, and the bundled templates
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`). A change in
   `infra/` starts them.
 - `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`.
-- `ios-build`, `ios` and `ios-tools` read only `ios/`, `design/` and the
+- `ios-tools` reads only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
   flake (output `ios_scripts`).
 - `web` reads only `web/`, `docs/legal/` and the flake.
@@ -205,8 +193,7 @@ it is not sure, it runs the job.
 ### Concurrency and caches
 
 A new push to a pull request cancels its older run. A newer push to `main`
-cancels the Mac jobs of an older push (the account runs at most five Mac jobs
-at the same time). Only a push to `main` saves a Nix cache entry. Do not use
+cancels the Mac jobs of an older push. Only a push to `main` saves a Nix cache entry. Do not use
 `magic-nix-cache-action`. `vuln-weekly.yml` and `ci-weekly.yml` run on a
 schedule and are not required. The details are in `docs/ci.md`.
 
@@ -335,27 +322,15 @@ Release scripts:
 
 CI for iOS:
 
-- Job `ios-build` builds the app one time, without a signature, for the
-  tests (`ios/scripts/ci-simulator-test.sh --build-only`).
-- Job `ios` is a matrix of three shards (`ios (1)`, `ios (2)`, `ios (3)`).
-  Each shard tests the products of `ios-build` in the simulator, without a
-  build (`--from-build`), in about 40 minutes. Each shard runs `HasalaTests`
-  first. Shards 1 and 2 name their UI test classes. Shard 3 skips those
-  classes, thus a new class runs in shard 3. To balance the shards, move a
-  class in the matrix in `ci.yml`.
-- A test that fails runs one more time. If it passes then, the job passes
-  and shows a warning "Flaky test" with the test name. If it fails two
-  times, the job fails.
-- Job `ios-tools` runs on its own runner, at the same time as `ios-build`.
-  It does the checks that do not use the app build or a simulator: the
+- CI does not build the app and does not run `HasalaTests` or
+  `HasalaUITests`. Run them with the `xcodebuild test` command in "Tests"
+  above.
+- Job `ios-tools` does the checks that do not use the app build or a simulator: the
   HasalaKit tests, the design tokens, the project against `ios/project.yml`,
   `ios/scripts/tests/run.sh` and shellcheck on `ios/scripts`. It runs
   `ios/scripts/tests/devshell_test.sh` only when `ios/scripts/` or the flake
   changed.
-- `ios-build`, `ios` and `ios-tools` are not required checks, and `ci-ok`
-  does not need them. CI skips them on the same paths. On
-  `main`, `ios-main-red` keeps the `ci-main-red` issue (refer to "CI").
-  `ios` runs only when `ios-build` succeeded.
+- `ios-tools` is not a required check, and `ci-ok` does not need it.
 
 ### Nix
 
