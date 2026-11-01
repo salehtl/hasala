@@ -625,6 +625,23 @@ struct BankTextsTests {
     #expect(BankTextsTestScreen.checklistItems(offersInstall: true).first?.title == BankTextsGuide.turnedOn.title)
     #expect(BankTextsTestScreen.checklistItems(offersInstall: false).count == BankTextsGuide.checklist.count)
     #expect(BankTextsGuide.installSteps.contains { $0.contains("Turn on") })
+    #expect(BankTextsGuide.installSteps.contains { $0.contains("Run Immediately") })
+    #expect(BankTextsGuide.installSteps.contains { $0.contains("Skip Setup") })
+  }
+
+  @Test func aPhoneThatSawTheAutomationRunIsNotOfferedASecondOne() throws {
+    let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
+    #expect(BankTexts.installOffer(link, sawAutomationRun: false) == link)
+    #expect(BankTexts.installOffer(link, sawAutomationRun: true) == nil)
+  }
+
+  @Test func theSetUpCopyFollowsTheOffer() throws {
+    let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
+    let ready = TextsSetUpCopy(install: link)
+    #expect(ready.openURL == link && ready.openTitle == "Add to Shortcuts" && ready.steps == BankTextsGuide.installSteps)
+    let hand = TextsSetUpCopy(install: nil)
+    #expect(hand.openURL == BankTexts.shortcutsURL && hand.openTitle == "Open Shortcuts" && hand.steps == BankTextsGuide.shortSteps)
+    #expect(BankTexts.notSetUpDetail(install: link).hasPrefix("Add") && BankTexts.notSetUpDetail(install: nil).hasPrefix("Make"))
   }
 
   @Test func noGuideStepClaimsTheActionTakesTheMessageByItself() {

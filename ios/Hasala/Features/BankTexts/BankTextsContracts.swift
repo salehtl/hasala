@@ -133,6 +133,19 @@ enum BankTexts {
     return installLink(automationLink, iOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
   }
 
+  static func installOffer(_ install: URL?, sawAutomationRun: Bool) -> URL? { sawAutomationRun ? nil : install }
+
+  static func offeredInstall(_ lane: (any BankTextsConnecting)?) -> URL? {
+    installOffer(automationInstall, sawAutomationRun: lane?.sawAutomationRun == true)
+  }
+
+  static func notSetUpDetail(install: URL?) -> String {
+    install == nil ? "Make the automation in the Shortcuts app." : "Add the automation in the Shortcuts app."
+  }
+
+  static let confirmNote =
+    "If Shortcuts asked before it ran, choose Run Immediately. Otherwise each bank text waits for your tap."
+
   static let clock = LiveMailboxConnecting.localTimeZone
 
   private static func formatter(_ format: String) -> DateFormatter {
@@ -268,7 +281,7 @@ extension MailboxesSummary {
         title: "Bank texts are ready", detail: BankTexts.statusLine(status, now: now), hue: .sky, needsYou: false)
     case .notSetUp:
       MailboxesSummary(
-        title: "Bank texts aren't set up", detail: "Make the automation in the Shortcuts app.", hue: .sand,
+        title: "Bank texts aren't set up", detail: BankTexts.notSetUpDetail(install: BankTexts.automationInstall), hue: .sand,
         needsYou: true)
     }
   }

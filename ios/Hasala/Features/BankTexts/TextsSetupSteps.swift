@@ -119,21 +119,14 @@ struct TextsSetUpStep: View {
   @Bindable var model: SetupModel
   @State private var guiding = false
   @Environment(\.openURL) private var openURL
-  private var install: URL? { BankTexts.automationInstall }
+  private var install: URL? { BankTexts.offeredInstall(model.bankTexts) }
 
   var body: some View {
-    AccountScreen(
-      title: install == nil ? "Make the automation" : BankTextsGuide.installTitle,
-      subtitle: install == nil
-        ? "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Apple doesn't let apps make it for you."
-        : BankTextsGuide.installSubtitle,
-      back: .system
-    ) {
+    let copy = TextsSetUpCopy(install: install)
+    AccountScreen(title: copy.title, subtitle: copy.subtitle, back: .system) {
       VStack(alignment: .leading, spacing: 16) {
-        NumberedStepsCard(steps: install == nil ? BankTextsGuide.shortSteps : BankTextsGuide.installSteps)
-        TextsLinkRow(
-          title: install == nil ? "Show me how, step by step" : "Make it by hand instead", identifier: "texts.showMeHow"
-        ) { guiding = true }
+        NumberedStepsCard(steps: copy.steps)
+        TextsLinkRow(title: copy.guideTitle, identifier: "texts.showMeHow") { guiding = true }
         TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
         TextsNote(icon: .bank, text: BankTexts.anyBankLine)
@@ -142,22 +135,21 @@ struct TextsSetUpStep: View {
       }
       .padding(.top, -8)
     } footer: {
-      Button { openURL(install ?? BankTexts.shortcutsURL) } label: {
-        Text(install == nil ? "Open Shortcuts" : "Add to Shortcuts").fixedSize(horizontal: false, vertical: true)
+      Button { openURL(copy.openURL) } label: {
+        Text(copy.openTitle).fixedSize(horizontal: false, vertical: true)
       }
       .buttonStyle(.pill(.primary, fill: true))
       .dockPill()
-      .accessibilityIdentifier(install == nil ? "texts.openShortcuts" : "texts.addAutomation")
+      .accessibilityIdentifier(copy.openIdentifier)
       Button { model.sendTestText() } label: {
-        Text(install == nil ? "I made it, send a test" : "I turned it on, send a test")
-          .fixedSize(horizontal: false, vertical: true)
+        Text(copy.testTitle).fixedSize(horizontal: false, vertical: true)
       }
       .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
       .dockPill()
       .accessibilityIdentifier("texts.toTest")
       SkipToNextTextLink(identifier: "texts.skip") { Task { await model.finishTexts() } }
     }
-    .sheet(isPresented: $guiding) { ShortcutsGuideSheet() }
+    .sheet(isPresented: $guiding) { ShortcutsGuideSheet(install: install) }
   }
 }
 
@@ -194,6 +186,8 @@ struct BankTextsTestScreen: View {
         switch test {
         case .received(let at):
           receivedCard(at)
+          TextsNote(text: BankTexts.confirmNote)
+            .accessibilityIdentifier("textsTest.confirmNote")
           TextsNote(text: "Texts from before now don't come in. Paste one from Review if you need it.")
           if inSetup {
             TextsNote(icon: .history, text: "Change it any time in Profile \u{203A} Bank alerts.")

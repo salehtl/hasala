@@ -140,7 +140,7 @@ Instead of connecting an email account, Hasala can read the texts (SMS) your ban
 
 ### How do I set up bank texts?
 
-During setup, at **How do your banks reach you?**, choose texts. Texts need no list of banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. On iOS 27, Hasala may offer it ready-made: tap **Add to Shortcuts**, add it, and turn on its automation. It stays off until you do, because Hasala can't turn it on for you. To make it by hand, in Shortcuts:
+During setup, at **How do your banks reach you?**, choose texts. Texts need no list of banks. If you've already finished setup, or skipped this part, go to **Profile › Bank alerts**. Hasala then guides you through one automation in Apple's **Shortcuts** app. On iOS 27, Hasala offers it ready-made: tap **Add to Shortcuts**, add it, turn on its automation, and check that it's set to **Run Immediately**. It stays off until you do, because Hasala can't turn it on for you. If you already made one, don't add a second, or each text comes in twice. To make it by hand, in Shortcuts (on iOS 27 the screens differ: start a new shortcut and add **Message** from its automation actions first):
 
 1. Tap **Automation** at the bottom, then **+**, then choose **Message**.
 2. Leave **Sender** empty. Tap **Message Contains** and type just a full stop (**.**), so it runs for every text that has one. Choose **Run Immediately**, then tap **Next**.
@@ -165,7 +165,7 @@ In Messages, touch and hold the bank's text and tap **Copy**. In Hasala, tap **P
 
 ### How do I stop bank texts?
 
-Open the **Shortcuts** app, tap **Automation**, then swipe left on the Hasala automation and tap **Delete**. Hasala then gets no more texts. Transactions it has already brought in stay.
+Open the **Shortcuts** app, find the Hasala automation (under **Automation** on iOS 26, or the **Add bank text** shortcut on iOS 27) and delete it. Hasala then gets no more texts. Transactions it has already brought in stay.
 
 ### How do I switch between bank texts and email?
 

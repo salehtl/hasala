@@ -66,6 +66,16 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "textsGuide.done")
     XCTAssertTrue(el(app, "texts.toTest").waitForExistence(timeout: uiWait))
     tap(app, "texts.toTest", opening: "textsTest.phrase")
+    XCTAssertTrue(el(app, "textsTest.received").waitForExistence(timeout: uiWait), "the test text never arrived")
+    XCTAssertTrue(el(app, "textsTest.confirmNote").exists, "the confirmation note is missing")
+  }
+
+  @MainActor
+  func testNothingArrivedAsksWhetherTheReadyMadeAutomationIsOn() throws {
+    let app = launch(scenario: nil, screen: "setup.texts.nothing", arguments: ["-HasalaAutomationLink", "https://www.icloud.com/shortcuts/test"])
+    XCTAssertTrue(el(app, "textsTest.checklist").waitForExistence(timeout: 30), "the checklist is missing")
+    let on = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'The automation is on'"))
+    XCTAssertTrue(on.firstMatch.exists, "the checklist does not ask whether the automation is on")
   }
 
   @MainActor

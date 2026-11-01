@@ -44,7 +44,8 @@ no mailbox at all.
 
 The app adds an App Intent, "Add bank text", with a `text` parameter and an optional
 `sender` parameter. An `AppShortcutsProvider` in the main app target registers it, so the
-action shows in Shortcuts with nothing to install and no shared iCloud shortcut. It runs
+action shows in Shortcuts with nothing to install. A shared iCloud shortcut is only the
+optional way to add the trigger on iOS 27 (see below). It runs
 without opening the app (`openAppWhenRun = false`). A cold background launch does not start
 the account's live graph: a silent push, a background task, a kept text or the app's window
 starts it, so a text that the reading order drops never starts a request.
@@ -100,8 +101,18 @@ and an import can fail. The nothing-arrived checklist then asks first whether th
 The shared file, read from iCloud on 2026-11-01, holds the Message trigger with no sender and a
 full stop, and passes the trigger's output to **Add bank text**. It has no field for Run
 Immediately, and Apple documents none of this for a shared shortcut, so an import on a real
-iPhone is the check for whether it runs with no confirmation. The set-up test shows this: a
-text that waits for a tap does not reach Hasala in time.
+iPhone is the check for whether it runs with no confirmation. The set-up test cannot show this:
+it stays open for 10 minutes, and a tap on the prompt passes it. Thus the steps ask the person to
+check Run Immediately, and the passed test says what to do if Shortcuts asked first.
+
+The offer ends once this iPhone saw the automation run (`sawAutomationRun`), so that a person does
+not add a second one. Two automations would run for each text, and each repeat would wait in
+Review. The app cannot see a hand-made automation that never ran, thus the offer in Profile says
+to skip it if one is already made.
+
+The steps for iOS 27 and the hand note for iOS 27 come from published reviews, not from an import
+on a device. Check them on a real iPhone. The link can change only with a new build. The hand steps
+are the fallback when the link stops working.
 
 The app cannot see the automation, thus its status shows only what it observed ("Ran 4 min
 ago", the last text it added as a row). What the phone keeps for this, and nothing more, is in
@@ -135,7 +146,7 @@ payment cannot arrive through two channels, and no merge is needed.
   step and the mailbox connect as they are now, so an email user gains this one choice and
   nothing else. Choosing texts leads to one screen, a short automation guide ("Make the
   automation") that ends with **I made it, send a test** or **Skip, confirm with my next
-  bank text**. Texts have no bank list, in setup or in Profile › Bank alerts (owner
+  bank text**. On iOS 27 this screen leads with the ready-made automation instead. Texts have no bank list, in setup or in Profile › Bank alerts (owner
   decision, 2026-10-29); email keeps its bank list. The test and the illustrated guide
   ("Show me how, step by step") are optional in setup and stay in Profile › Bank alerts
   ("Test it again", "Show me how"), where a person who skipped them can finish them later.
