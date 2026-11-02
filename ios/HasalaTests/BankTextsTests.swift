@@ -152,7 +152,7 @@ struct BankTextsTests {
     let lines = [
       BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsNoText,
       BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine, BankTextsGuide.intro,
-    ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.checklist.map(\.detail)
+    ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.installSteps + BankTextsGuide.checklist.map(\.detail)
     for line in lines {
       for bank in SupportedBank.allCases {
         #expect(!line.contains(bank.shortName) && !line.contains(bank.name), "\(line)")
@@ -607,6 +607,41 @@ struct BankTextsTests {
     #expect(BankTextsGuide.fullSteps.contains(BankTextsGuide.newBlank))
     #expect(BankTextsGuide.shortSteps.count == 5 && BankTextsGuide.fullSteps.count == 6)
     #expect(BankTextsGuide.checklist.last?.title == BankTextsGuide.actionMissing.title)
+  }
+
+  @Test func theReadyMadeAutomationIsOfferedOnlyFromIOS27() throws {
+    let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
+    #expect(BankTexts.installLink(link, iOSMajor: 26) == nil)
+    #expect(BankTexts.installLink(link, iOSMajor: 27) == link)
+    #expect(BankTexts.installLink(nil, iOSMajor: 27) == nil)
+  }
+
+  @Test func theAutomationLinkIsAnICloudShortcutOverHTTPS() throws {
+    let link = try #require(BankTexts.automationLink)
+    #expect(link.scheme == "https" && link.host() == "www.icloud.com" && link.path().hasPrefix("/shortcuts/"))
+  }
+
+  @Test func theChecklistAsksWhetherAReadyMadeAutomationIsOn() {
+    #expect(BankTextsTestScreen.checklistItems(offersInstall: true).first?.title == BankTextsGuide.turnedOn.title)
+    #expect(BankTextsTestScreen.checklistItems(offersInstall: false).count == BankTextsGuide.checklist.count)
+    #expect(BankTextsGuide.installSteps.contains { $0.contains("Turn on") })
+    #expect(BankTextsGuide.installSteps.contains { $0.contains("Run Immediately") })
+    #expect(BankTextsGuide.installSteps.contains { $0.contains("Skip Setup") })
+  }
+
+  @Test func aPhoneThatSawTheAutomationRunIsNotOfferedASecondOne() throws {
+    let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
+    #expect(BankTexts.installOffer(link, sawAutomationRun: false) == link)
+    #expect(BankTexts.installOffer(link, sawAutomationRun: true) == nil)
+  }
+
+  @Test func theSetUpCopyFollowsTheOffer() throws {
+    let link = try #require(URL(string: "https://www.icloud.com/shortcuts/test"))
+    let ready = TextsSetUpCopy(install: link)
+    #expect(ready.openURL == link && ready.openTitle == "Add to Shortcuts" && ready.steps == BankTextsGuide.installSteps)
+    let hand = TextsSetUpCopy(install: nil)
+    #expect(hand.openURL == BankTexts.shortcutsURL && hand.openTitle == "Open Shortcuts" && hand.steps == BankTextsGuide.shortSteps)
+    #expect(BankTexts.notSetUpDetail(install: link).hasPrefix("Add") && BankTexts.notSetUpDetail(install: nil).hasPrefix("Make"))
   }
 
   @Test func noGuideStepClaimsTheActionTakesTheMessageByItself() {

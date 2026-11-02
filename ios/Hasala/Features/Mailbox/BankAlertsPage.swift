@@ -56,7 +56,7 @@ struct BankAlertsPage: View {
         mailBody
       }
     }
-    .sheet(isPresented: $guidingTexts) { ShortcutsGuideSheet() }
+    .sheet(isPresented: $guidingTexts) { ShortcutsGuideSheet(install: BankTexts.offeredInstall(app.bankTexts)) }
   }
 
   @ViewBuilder private var mailBody: some View {

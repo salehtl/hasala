@@ -646,8 +646,9 @@ the approval of the owner for that deployment.
   model does not read texts. Learned text layouts (from bank senders and from
   texts with no sender) stay in memory only. A text row uses `entry_method: mailbox` with no `gates.ar`,
   `provenance` or `dedupe`. A mail that may repeat a text row's payment waits
-  in Review and never files itself (D10). Refer to
-  `docs/decisions/bank-texts.md`.
+  in Review and never files itself (D10). On iOS 27 the app offers the automation
+  ready-made through an iCloud link (`BankTexts.automationLink`), and the person turns it
+  on. Refer to `docs/decisions/bank-texts.md`.
 - **No card or account linking (2026-10-29).** No code path writes
   `card_linked` or makes an account from a card (texts, Gmail, Outlook). Mail
   files with a confirmed or unconfirmed recipient (a mismatch never files) and

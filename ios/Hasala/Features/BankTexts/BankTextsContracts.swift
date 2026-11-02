@@ -122,6 +122,29 @@ enum BankTexts {
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
   static let messagesURL = URL(string: "sms:")!
+  static let automationLink = URL(string: "https://www.icloud.com/shortcuts/51bbdac5d4f644b58d28893a3906073c")
+
+  static func installLink(_ link: URL?, iOSMajor: Int) -> URL? { iOSMajor >= 27 ? link : nil }
+
+  static var automationInstall: URL? {
+    #if DEBUG
+    if let link = UserDefaults.standard.string(forKey: "HasalaAutomationLink") { return URL(string: link) }
+    #endif
+    return installLink(automationLink, iOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
+  }
+
+  static func installOffer(_ install: URL?, sawAutomationRun: Bool) -> URL? { sawAutomationRun ? nil : install }
+
+  static func offeredInstall(_ lane: (any BankTextsConnecting)?) -> URL? {
+    installOffer(automationInstall, sawAutomationRun: lane?.sawAutomationRun == true)
+  }
+
+  static func notSetUpDetail(install: URL?) -> String {
+    install == nil ? "Make the automation in the Shortcuts app." : "Add the automation in the Shortcuts app."
+  }
+
+  static let confirmNote =
+    "If Shortcuts asked before it ran, choose Run Immediately. Otherwise each bank text waits for your tap."
 
   static let clock = LiveMailboxConnecting.localTimeZone
 
@@ -258,7 +281,7 @@ extension MailboxesSummary {
         title: "Bank texts are ready", detail: BankTexts.statusLine(status, now: now), hue: .sky, needsYou: false)
     case .notSetUp:
       MailboxesSummary(
-        title: "Bank texts aren't set up", detail: "Make the automation in the Shortcuts app.", hue: .sand,
+        title: "Bank texts aren't set up", detail: BankTexts.notSetUpDetail(install: BankTexts.automationInstall), hue: .sand,
         needsYou: true)
     }
   }

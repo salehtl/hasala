@@ -10,6 +10,7 @@ struct BankTextsAlertsPage: View {
   @State private var testing = false
   @State private var askingEmail = false
   @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.openURL) private var openURL
 
   struct Hero: Equatable {
     enum State: Equatable {
@@ -50,7 +51,7 @@ struct BankTextsAlertsPage: View {
       case .notSetUp:
         state = .notSetUp
         title = "Not set up"
-        detail = "Make the automation in the Shortcuts app."
+        detail = BankTexts.notSetUpDetail(install: BankTexts.automationInstall)
         hue = .sand
       }
     }
@@ -165,6 +166,13 @@ struct BankTextsAlertsPage: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("bankAlerts.texts.automation")
         HDivider(inset: .disc68)
+        if let install = BankTexts.offeredInstall(lane) {
+          MailActionRow(
+            title: "Add the automation", identifier: "bankAlerts.texts.addAutomation", icon: .add,
+            detail: "Skip this if you already made one"
+          ) { openURL(install) }
+          HDivider(inset: .disc68)
+        }
         MailActionRow(title: "Test it again", identifier: "bankAlerts.texts.test", icon: .chat) {
           lane.startTest()
           testing = true

@@ -9,7 +9,7 @@ final class BankTextsUITests: XCTestCase {
 
   @MainActor
   func testTextsSetUpThroughToHome() throws {
-    let app = launch(scenario: "setupTexts")
+    let app = launch(scenario: "setupTexts", arguments: ["-HasalaAutomationLink", ""])
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: 15), "the choice is missing")
     XCTAssertTrue(app.staticTexts["How do your banks reach you?"].exists)
     XCTAssertTrue(el(app, "source.email").exists)
@@ -51,6 +51,34 @@ final class BankTextsUITests: XCTestCase {
   }
 
   @MainActor
+  func testReadyMadeAutomationLeadsTheSetUpAndTheHandStepsStay() throws {
+    let app = launch(scenario: "setupTexts", arguments: ["-HasalaAutomationLink", "https://www.icloud.com/shortcuts/test"])
+    tap(app, "source.texts")
+    tap(app, "source.continue", opening: "texts.steps")
+    XCTAssertTrue(app.staticTexts["Add the automation"].exists)
+    XCTAssertTrue(el(app, "texts.addAutomation").exists)
+    XCTAssertFalse(el(app, "texts.openShortcuts").exists, "the hand path leads while a ready-made one is offered")
+    attach(app, "Add the automation")
+    try audit(app)
+
+    tap(app, "texts.showMeHow", opening: "textsGuide.step6")
+    XCTAssertTrue(el(app, "textsGuide.addAutomation").exists)
+    tap(app, "textsGuide.done")
+    XCTAssertTrue(el(app, "texts.toTest").waitForExistence(timeout: uiWait))
+    tap(app, "texts.toTest", opening: "textsTest.phrase")
+    XCTAssertTrue(el(app, "textsTest.received").waitForExistence(timeout: uiWait), "the test text never arrived")
+    XCTAssertTrue(el(app, "textsTest.confirmNote").exists, "the confirmation note is missing")
+  }
+
+  @MainActor
+  func testNothingArrivedAsksWhetherTheReadyMadeAutomationIsOn() throws {
+    let app = launch(scenario: nil, screen: "setup.texts.nothing", arguments: ["-HasalaAutomationLink", "https://www.icloud.com/shortcuts/test"])
+    XCTAssertTrue(el(app, "textsTest.checklist").waitForExistence(timeout: 30), "the checklist is missing")
+    let on = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'The automation is on'"))
+    XCTAssertTrue(on.firstMatch.exists, "the checklist does not ask whether the automation is on")
+  }
+
+  @MainActor
   func testNothingArrivedShowsTheChecklistAndSkipGoesHome() throws {
     let app = launch(scenario: nil, screen: "setup.texts.nothing")
     XCTAssertTrue(el(app, "textsTest.checklist").waitForExistence(timeout: 30), "the checklist is missing")
@@ -77,7 +105,7 @@ final class BankTextsUITests: XCTestCase {
 
   @MainActor
   func testTextsSetUpAtLargeText() throws {
-    let app = launch(scenario: "setupTexts", arguments: Self.largeText)
+    let app = launch(scenario: "setupTexts", arguments: Self.largeText + ["-HasalaAutomationLink", ""])
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: 15))
     attach(app, "Choice · AX")
     try audit(app, atLargeText: true)

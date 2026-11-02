@@ -3,6 +3,7 @@ import HasalaModels
 import SwiftUI
 
 struct ShortcutsGuideSheet: View {
+  let install: URL?
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openURL) private var openURL
 
@@ -28,6 +29,16 @@ struct ShortcutsGuideSheet: View {
             .foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
+          if let install {
+            TextsLinkRow(title: "Add it ready-made instead", icon: .add, identifier: "textsGuide.addAutomation") {
+              openURL(install)
+            }
+            TextsNote(text: BankTextsGuide.alreadyMade)
+          }
+          if BankTexts.automationInstall != nil {
+            TextsNote(text: BankTextsGuide.newShortcuts)
+              .accessibilityIdentifier("textsGuide.newShortcuts")
+          }
           ForEach(steps) { step in
             VStack(alignment: .leading, spacing: 10) {
               HStack(alignment: .firstTextBaseline, spacing: 12) {

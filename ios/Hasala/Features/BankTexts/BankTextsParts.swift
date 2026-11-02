@@ -10,6 +10,21 @@ enum BankTextsGuide {
   static let newBlank = "Tap New Blank Automation, then Add Action."
   static let actionMissing = (title: "Hasala action not in the list?", detail: "Open Hasala once, then search again in the Shortcuts app.")
 
+  static let installTitle = "Add the automation"
+  static let installSubtitle =
+    "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Hasala has it ready. You add it and turn it on."
+  static let installSteps = [
+    "Tap Add to Shortcuts. The Shortcuts app opens with the automation ready.",
+    "Tap Add Shortcut. If nothing happens, tap Skip Setup.",
+    "Turn on its automation switch. It stays off until you do, and Hasala can\u{2019}t turn it on for you.",
+    "Check that it\u{2019}s set to Run Immediately. If it asks first, each text waits for your tap.",
+    "Come back here and send a test.",
+  ]
+  static let alreadyMade = "Already made one? Skip this. Two automations bring in each text twice."
+  static let newShortcuts =
+    "On iOS 27, Shortcuts looks different. Start a new shortcut and add Message from its automation actions first. The settings below stay the same."
+  static let turnedOn = (title: "The automation is on", detail: "In the Shortcuts app, open Hasala\u{2019}s automation and turn on the switch at the top.")
+
   static let shortSteps = [
     "In the Shortcuts app, open the Automation tab, tap +, then Message.",
     "Leave Sender empty. Tap Message Contains and type a full stop (.).",
@@ -34,6 +49,39 @@ enum BankTextsGuide {
     ("The test had its full stop", "Send \u{201C}\(BankTexts.testPhrase)\u{201D} to your own number, or ask someone to text it to you. Without the full stop the automation doesn\u{2019}t run."),
     actionMissing,
   ]
+}
+
+struct TextsSetUpCopy: Equatable {
+  let title: String
+  let subtitle: String
+  let steps: [String]
+  let guideTitle: String
+  let openTitle: String
+  let openIdentifier: String
+  let openURL: URL
+  let testTitle: String
+
+  init(install: URL?) {
+    if let install {
+      title = BankTextsGuide.installTitle
+      subtitle = BankTextsGuide.installSubtitle
+      steps = BankTextsGuide.installSteps
+      guideTitle = "Make it by hand instead"
+      openTitle = "Add to Shortcuts"
+      openIdentifier = "texts.addAutomation"
+      openURL = install
+      testTitle = "I turned it on, send a test"
+    } else {
+      title = "Make the automation"
+      subtitle = "One automation in the Shortcuts app hands Hasala your texts, for all your banks. Apple doesn't let apps make it for you."
+      steps = BankTextsGuide.shortSteps
+      guideTitle = "Show me how, step by step"
+      openTitle = "Open Shortcuts"
+      openIdentifier = "texts.openShortcuts"
+      openURL = BankTexts.shortcutsURL
+      testTitle = "I made it, send a test"
+    }
+  }
 }
 
 struct NumberedStepsCard: View {
