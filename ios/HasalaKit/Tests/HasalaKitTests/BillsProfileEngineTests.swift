@@ -12,8 +12,12 @@ struct BillsProfileEngineParityTests {
   @Test func billsMatchComingUpAndFound() {
     let b = BillsEngine.snapshot(s, now: now)
     #expect(b.next14 == .aed(1_039_15))
-    #expect(b.incomeLine?.rendered(hidden: false) == "+25,000.00 expected Wed 28 Oct")
-    #expect(b.income == BillsIncome(label: "Salary", amount: .aed(25_000_00), expected: "expected Wed 28 Oct"))
+    #expect(b.incomeLine == nil && b.income == nil)
+    #expect(b.next14Caption == "Includes 1 estimate")
+    let near = BillsEngine.snapshot(s, now: LocalDateTime(2026, 10, 20, 9, 0))
+    #expect(near.incomeLine?.rendered(hidden: false) == "+25,000.00 expected Wed 28 Oct")
+    #expect(near.income == BillsIncome(label: "Salary", amount: .aed(25_000_00), expected: "expected Wed 28 Oct"))
+    #expect(b.upcoming.contains { $0.isIncome })
     #expect(b.needsALook.map(\.name) == ["AXA Insurance", "du"])
     #expect(b.needsALook.map(\.pill.text) == ["3 days past usual", "Price change"])
     #expect(b.needsALook.map(\.billKind) == ["Car insurance", "Mobile and internet"])
@@ -134,8 +138,8 @@ struct BillsProfileEngineParityTests {
     #expect(p.accounts.rendered(hidden: false) == "4 accounts · net worth 227,568")
     #expect(p.accounts.rendered(hidden: true) == "4 accounts · net worth ••••")
     #expect(p.accountsKnown)
-    #expect(p.bills == "9 tracked · 1 new found")
-    #expect(p.newBills == 1)
+    #expect(p.bills == "9 tracked · 3 to check")
+    #expect(p.newBills == 3)
     #expect(p.categoriesAndRules == "18 categories · 6 rules")
     #expect(p.projects.rendered(hidden: false) == "1 active")
     #expect(p.email == "maya@example.com")
@@ -193,5 +197,20 @@ struct BillsProfileEngineParityTests {
     #expect(rule.patternLine(showing: 2) == "\u{201C}A\u{201D} or \u{201C}B\u{201D} +2 more")
     #expect(rule.patternLine(showing: 0) == "\u{201C}A\u{201D} +3 more")
     #expect(rule.patternLine(showing: 9) == rule.pattern)
+  }
+}
+
+
+@Suite("Bills · marked paid")
+struct MarkedPaidTests {
+  @Test func aBillMarkedPaidIsInRecentlyPaidAndCounts() throws {
+    var s = MayaLedger.state
+    let base = BillsEngine.snapshot(s, now: MayaLedger.now)
+    let i = try #require(s.bills.firstIndex { $0.id == "axa" })
+    s.bills[i].payments.append(BillPayment(due: LocalDate(2026, 10, 7), amount: .aed(550_00), link: .marked))
+    let b = BillsEngine.snapshot(s, now: MayaLedger.now)
+    let row = try #require(b.recentlyPaid.first { $0.id == "marked:axa:\(LocalDate(2026, 10, 7))" })
+    #expect(row.name == "AXA Insurance")
+    #expect(b.paidThisMonth.minor == base.paidThisMonth.minor + 550_00)
   }
 }

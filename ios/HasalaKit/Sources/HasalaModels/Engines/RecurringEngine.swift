@@ -160,7 +160,7 @@ extension BillsEngine {
       steps += 1
       first = BillDueDates.shift(paid, day: paid.day, cadence: .monthly, every: 1, by: steps)
     }
-    let category = (t.categoryID ?? t.suggestion).flatMap { s.category($0) }.map(\.id) ?? defaultCategory(s)
+    let category = (t.categoryID ?? t.suggestion).flatMap { s.category($0) }.map(\.id)
     return BillDraft(name: t.merchant, keys: [key(t)], amount: .aed(minor), cadence: .monthly, every: 1,
                      firstDue: first, categoryID: category ?? "", accountID: t.accountID)
   }

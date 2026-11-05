@@ -69,6 +69,28 @@ public enum ExchangeRates {
     return "\(whole).\(fraction)"
   }
 
+  public static func fieldLabel(_ currency: String) -> String { "1 \(currency) in \(Money.home)" }
+
+  public static func exampleLine(_ currency: String, rateMicro: Int64) -> String? {
+    guard let home = convert(100_00, rateMicro) else { return nil }
+    return "100 \(currency) counts as \(MoneyFormat.string(home, style: .compact)) \(Money.home)"
+  }
+
+  public static let pegMarginPercent: Int128 = 5
+
+  public static func pegWarning(_ currency: String, rateMicro: Int64) -> String? {
+    guard let peg = pegs[currency], peg > 0 else { return nil }
+    let off = Int128(rateMicro) - Int128(peg)
+    guard (off < 0 ? -off : off) * 100 > Int128(peg) * pegMarginPercent else { return nil }
+    return "That's far from the usual \(format(peg)). Check it's \(Money.home) for 1 \(currency)."
+  }
+
+  public static func note(_ currency: String) -> String? {
+    if currency == "USD" { return "The dirham is pegged to the US dollar, so the peg is a close estimate." }
+    guard pegs[currency] != nil else { return nil }
+    return "\(currency) is pegged to the US dollar, so the peg is a close estimate."
+  }
+
   public struct Row: Sendable, Hashable, Identifiable {
     public var currency: String
     public var rateMicro: Int64?

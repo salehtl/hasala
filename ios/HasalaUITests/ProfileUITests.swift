@@ -62,7 +62,7 @@ final class ProfileUITests: XCTestCase {
     XCTAssertTrue(el(app, "profile.bankAlerts").label.contains("Bank alerts are working"))
     XCTAssertTrue(app.buttons["profile.bankAlerts"].exists, "the bank alerts card opens Bank alerts")
     XCTAssertTrue(el(app, "profile.bills").label.hasPrefix("Recurring"), el(app, "profile.bills").label)
-    XCTAssertTrue(el(app, "profile.bills").label.contains("9 tracked · 1 new found"))
+    XCTAssertTrue(el(app, "profile.bills").label.contains("9 tracked · 3 to check"))
     try audit(app)
     attachPage(app, "Profile", screens: 3)
     XCTAssertTrue(el(app, "profile.buildFooter").label.hasSuffix("End\u{2011}to\u{2011}end encrypted, never sold"))

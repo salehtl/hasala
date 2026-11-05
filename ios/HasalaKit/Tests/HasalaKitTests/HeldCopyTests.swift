@@ -20,7 +20,8 @@ struct HeldCopyTests {
     #expect(ReviewEngine.queue(s).contains { $0.id == "starbucks-copy" })
     let card = ReviewEngine.card(copy, s)
     #expect(card.reviewReason == .probableCopy)
-    #expect(card.copyLine == "Looks like a copy of Starbucks DIFC AED 27.00 from your other inbox")
+    #expect(card.copyLine?.hasPrefix("Same amount at Starbucks DIFC, ") == true)
+    #expect(card.copyLine?.hasSuffix(", in your other inbox. Merge counts it once.") == true)
 
     let token = try ledger.apply(.resolveCopy("starbucks-copy", merge: false))
     #expect(token?.title == "Kept both")
@@ -40,7 +41,7 @@ struct HeldCopyTests {
   @Test func theSameInboxSaysSo() {
     var t = MayaLedger.state.txn("starbucks")!
     t.heldCopy = HeldCopy(of: "starbucks", fromOtherInbox: false)
-    #expect(ReviewEngine.copyLine(t, MayaLedger.state) == "Looks like a copy of Starbucks DIFC AED 27.00 you already have")
+    #expect(ReviewEngine.copyLine(t, MayaLedger.state) == "Same amount at Starbucks DIFC, in the same minute. Merge counts it once.")
   }
 }
 

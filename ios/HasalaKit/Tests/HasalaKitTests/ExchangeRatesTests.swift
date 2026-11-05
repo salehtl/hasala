@@ -107,3 +107,23 @@ struct ExchangeRatesTests {
     #expect(store.state.rates.first { $0.currency == "EUR" }?.rateMicro == nil)
   }
 }
+
+@Suite("Exchange rates · a rate that reads backwards")
+struct RateDirectionTests {
+  @Test func theExampleShowsWhatTheRateMeans() {
+    #expect(ExchangeRates.fieldLabel("USD") == "1 USD in AED")
+    #expect(ExchangeRates.exampleLine("USD", rateMicro: 3_672_500) == "100 USD counts as 367.25 AED")
+    #expect(ExchangeRates.exampleLine("USD", rateMicro: 270_000) == "100 USD counts as 27 AED")
+  }
+
+  @Test func aRateFarFromThePegWarnsWithoutBlocking() {
+    #expect(ExchangeRates.pegWarning("USD", rateMicro: 270_000) == "That's far from the usual 3.6725. Check it's AED for 1 USD.")
+    #expect(ExchangeRates.pegWarning("USD", rateMicro: 3_700_000) == nil)
+    #expect(ExchangeRates.pegWarning("EUR", rateMicro: 270_000) == nil)
+    #expect(ExchangeRates.parse("0.27") == 270_000)
+  }
+
+  @Test func theUSDNoteIsNotCircular() {
+    #expect(ExchangeRates.note("USD") == "The dirham is pegged to the US dollar, so the peg is a close estimate.")
+  }
+}
