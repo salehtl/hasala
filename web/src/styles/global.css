@@ -101,7 +101,7 @@
   --wash-sky: linear-gradient(in oklab 160deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.7% -0.004 -0.025) 48%, oklab(96% 0.002 -0.019) 100%);
   --wash-peach: linear-gradient(in oklab 170deg, oklab(96.2% 0.008 0.03) 0%, oklab(94.7% 0.017 0.027) 55%, oklab(91.3% 0.017 0.056) 100%);
   --wash-navy: linear-gradient(in oklab 180deg, oklab(28.7% -0.007 -0.095) 0%, oklab(25.1% -0.005 -0.081) 60%, oklab(23% -0.004 -0.069) 100%);
-  --wash-pace: linear-gradient(in oklab 160deg, oklab(62.2% -0.006 -0.203) 0%, oklab(55.6% -0.01 -0.217) 45%, oklab(48% -0.01 -0.211) 100%);
+  --wash-pace: linear-gradient(in oklab 160deg, oklab(55.6% -0.01 -0.217) 0%, oklab(48% -0.01 -0.211) 100%);
   --wash-hero-m: linear-gradient(in oklab 180deg, oklab(91.9% -0.01 -0.038) 0%, oklab(94.8% -0.002 -0.024) 45%, oklab(97.3% 0.0002 -0.008) 80%, oklab(100% 0 0) 100%);
   --wash-soft: linear-gradient(in oklab 180deg, oklab(94.8% -0.002 -0.024) 0%, oklab(97.3% 0.0002 -0.008) 55%, oklab(100% 0 0) 100%); /* 404 */
   --glow-blue: radial-gradient(circle farthest-corner at 50% 50% in oklab, oklab(62.2% -0.006 -0.203 / 35%) 0%, oklab(62.2% -0.006 -0.203 / 0%) 70%);

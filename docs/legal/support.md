@@ -1,7 +1,7 @@
 ---
 title: "Help and Support"
 description: "Answers for Hasala beta testers: connecting Gmail or Outlook, setting up bank texts, missing bank alerts, moving to a new iPhone, forgotten passwords, deleting your account and leaving the beta."
-lastUpdated: 2026-11-01
+lastUpdated: 2026-11-05
 status: "final"
 plainWords: "Most problems are fixed by checking that your Gmail or Outlook is still connected and that your bank sends email alerts, or, if you use bank texts, that your automation in Shortcuts is still there. To move to a new iPhone, sign in with Face ID, or use your 12 words. If you can't get in at all, your 12 words and a code we email you are the way back. You can delete your account in the app at any time."
 ---
@@ -16,7 +16,7 @@ Hasala (حصّالة, "piggy bank") is a private budgeting app for iPhone in the
 
 ### How do I join the beta?
 
-Hasala is invite-only for now. Ask for an invite at [hasala.app](/#invite), then tap **Confirm my email** in the email we send you. Invites go out in small batches. When yours is ready, we email you the steps: install TestFlight, accept Apple's TestFlight invitation from its email or the link in your invite, install Hasala, then open it and enter your invite code. Apple handles the TestFlight invitation, so it sees your email address and that you installed Hasala. TestFlight doesn't show testers to each other. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day.
+Hasala is invite-only for now. Ask for an invite at [hasala.app](/#invite), then tap **Confirm my email** in the email we send you. Invites go out in small batches. When yours is ready, we email you the steps: get TestFlight, accept Apple's invitation and install Hasala, from Apple's email or the link in your invite, then open Hasala and paste or type your invite. Apple handles the TestFlight invitation, so it sees your email address and that you installed Hasala. TestFlight doesn't show testers to each other. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day.
 
 To leave the waitlist, open the **Leave the list** link in any email we sent you, then press the **Leave the list** button on the page that opens. Pressing it deletes your address straight away. Only opening the link does nothing. If your mail app shows an **Unsubscribe** button on one of these emails, pressing it does the same.
 
@@ -85,7 +85,7 @@ To turn it off, switch off **Merchant suggestions** in **Profile › Cloud sugge
 
 ### Something changed, or my data looks different. Why?
 
-Hasala is an experimental beta, so a new build can change how payments are sorted or shown. Now and then we may also need to reset the beta, and then data can be lost. Where we can, we tell you in the app or by email first. To keep a copy of your own, export your data from time to time, from **Profile › Settings › Export your data (CSV)**. If something looks wrong, tell us (see [Contact us](#contact-us)).
+Hasala is an experimental beta, so a new build can change how payments are sorted or shown. Now and then we may also need to reset the beta, and then data can be lost. Where we can, we tell you in the app or by email first. To keep a copy of your own, export your transactions from time to time, from **Profile › Settings › Export transactions**, as a CSV file. Your plan, rules and recurring items aren't included. If something looks wrong, tell us (see [Contact us](#contact-us)).
 
 ### Which email accounts work?
 
@@ -272,7 +272,7 @@ Hasala will never ask for your recovery phrase, your password or a code in an em
 
 ## Delete your account
 
-Deleting your account is permanent and can't be undone. If you want to keep your data, export it first from **Profile › Settings › Export your data (CSV)**.
+Deleting your account is permanent and can't be undone. If you want to keep a copy, export your transactions first from **Profile › Settings › Export transactions**, as a CSV file. Your plan, rules and recurring items aren't included.
 
 1. Open Hasala and go to **Profile › Delete your account**.
 2. Read the summary and confirm it's you.

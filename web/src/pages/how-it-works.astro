@@ -10,7 +10,7 @@ import { MAIL_NOTE } from '../data/site';
 <Detail
   title="How it works"
   heading="How Hasala works"
-  lead="Hasala reads your bank’s alert emails on your iPhone, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
+  lead="Hasala reads your bank’s alerts on your iPhone, by email or text, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
   path="/how-it-works"
 >
   <DetailSection id="email" title="Connecting your email">
@@ -26,8 +26,19 @@ import { MAIL_NOTE } from '../data/site';
     <AlertArt kind="mail" slot="art" />
   </DetailSection>
 
-  <DetailSection id="banks" title="Before you start" tint>
-    <p>Turn on email alerts in your banking app. Hasala reads card and account alerts from these banks:</p>
+  <DetailSection id="texts" title="Or use your bank texts" tint>
+    <p>
+      Rather not connect your email? Hasala can read your bank’s text messages instead. You make one automation in Apple’s Shortcuts app, and it hands
+      each text you get to Hasala on your iPhone. Hasala keeps only payment texts and drops every other text at once, without storing it.
+    </p>
+    <p>
+      Hasala never sees your inbox, and no text leaves your iPhone. It reads payments from your next text on. Your account uses bank email or bank
+      texts, not both. The set‑up steps are on our <a href="/support#bank-texts">Support</a> page.
+    </p>
+  </DetailSection>
+
+  <DetailSection id="banks" title="Before you start">
+    <p>Turn on email or text alerts in your banking app. Hasala reads card and account alerts from these banks:</p>
     <BankTiles detail />
     <p>Use a different bank? <a href="/#invite">Tell us which when you request an invite.</a> It helps us pick the next bank to add.</p>
   </DetailSection>
@@ -37,7 +48,8 @@ import { MAIL_NOTE } from '../data/site';
     <ol>
       <li>your own rules;</li>
       <li>a built‑in list of UAE merchants;</li>
-      <li>if you turn on Cloud suggestions, a suggestion for the merchant’s name from Cloudflare’s AI service, or from Apple’s on‑device model.</li>
+      <li>the category you last picked for that merchant;</li>
+      <li>if you turn on Cloud suggestions, which are off by default, a suggestion for the merchant’s name from Cloudflare’s AI service, or from Apple’s on‑device model when Cloudflare can’t help.</li>
     </ol>
     <p>You confirm the rest. Hasala remembers your pick for each merchant and suggests it next time.</p>
     <AlertArt kind="sorted" slot="art" />

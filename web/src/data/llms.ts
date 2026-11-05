@@ -14,9 +14,9 @@ Key facts:
 
 - What it is for: knowing where your money goes, privately. Hasala shows what you spent, on what, and what's left this month, and starts you on a simple plan.
 - Platform: iPhone only, iOS 26 or later. No Android app, no web app.
-- Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; the iPhone checks each email before it uses it, and one it can't be sure came from your bank waits for you to review. Outlook means personal Microsoft accounts (outlook.com, hotmail.com, live.com); work and school accounts are not supported. One mailbox at a time. There is no email forwarding and no bank login, and Hasala can't move money.
+- Where transactions come from: your bank's alert emails in your own email account (${MAIL} today), read-only. Your iPhone asks your email account only for messages from your bank's alert senders, so the rest of your inbox is never downloaded; the iPhone checks each email before it uses it, and one it can't be sure came from your bank waits for you to review. Outlook means personal Microsoft accounts (outlook.com, hotmail.com, live.com); work and school accounts are not supported. One mailbox at a time. Or, instead of email, your bank's texts (SMS): one automation in Apple's Shortcuts app hands each text to Hasala on the iPhone, which keeps only payment texts and drops the rest at once; no text leaves the iPhone. An account uses bank email or bank texts, not both. There is no email forwarding and no bank login, and Hasala can't move money.
 - Banks today: ${BANKS.slice(0, -1).map((b) => b.name).join(', ')} and ${BANKS[BANKS.length - 1].name}. Other banks: people tell us which bank they use when they request an invite, and we use that to decide which bank to add next.
-- Categorization starts on the iPhone: your own rules first, then a built-in list of UAE merchants, then, only if you turn on Cloud suggestions (off by default), a suggestion for the merchant name from Cloudflare's AI service or Apple's on-device model. You confirm the rest. No email is sent to an AI service.
+- Categorization starts on the iPhone: your own rules first, then a built-in list of UAE merchants, then your last pick for that merchant, then, only if you turn on Cloud suggestions (off by default), a suggestion for the merchant name from Cloudflare's AI service, or from Apple's on-device model when Cloudflare can't help. You confirm the rest. No email is sent to an AI service.
 - Privacy: your transactions, budget and plan are encrypted on the iPhone before they sync. Hasala's server stores them but cannot read them. The app contains no ads, analytics or tracking tools. The website, hasala.app, counts visits with Cloudflare Web Analytics (never on invite, freeze or waitlist links), which sets no cookies, doesn't fingerprint or follow visitors across sites, and reports only totals, never linked to a person or a Hasala account.
 - Sign-in: verified email and a display name; Face ID (passkey, recommended) or email and password. A password never unlocks your data: your passkey or your 12-word recovery phrase does. Hasala cannot reset the recovery phrase.
 - Price: free during the beta. English only, light mode only, for now.
@@ -25,7 +25,7 @@ Key facts:
 ## Pages
 
 - [Home](${SITE.url}/): what Hasala is, how it works in three steps, privacy in three points, the banks, and the invite form
-- [How it works](${SITE.url}/how-it-works): connecting your email, supported banks and alerts, how sorting works, reviewing new transactions, signing in
+- [How it works](${SITE.url}/how-it-works): connecting your email, bank texts, supported banks and alerts, how sorting works, reviewing new transactions, signing in
 - [Budgeting](${SITE.url}/budgeting): what's left this month and the 50/30/20 starting plan
 - [How privacy works](${SITE.url}/how-privacy-works): where your data goes, who can see what, a new or lost phone
 - [FAQ](${SITE.url}/faq)
@@ -52,7 +52,7 @@ export function llmsFullTxt(legal: { title: string; url: string; body: string }[
   return plain(`${llmsTxt()}
 ## How it works
 
-1. Connect your email. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access. It can't send, change or delete any mail.
+1. Connect your bank alerts. Hasala looks only at your bank's alert emails, on your iPhone, with read-only access, and can't send, change or delete any mail. Or it reads your bank texts on your iPhone, through one Shortcuts automation.
 2. Check the categories. Each alert becomes a transaction. Hasala sorts most of them into categories: your rules first, then a UAE merchant list, then, if you turn on Cloud suggestions, a suggested category. You confirm the rest: transactions Hasala can't sort on its own wait in a short deck, where you tap Use to take its guess, or swipe to Want, Need, Save or Transfer and then pick the category. Hasala remembers your pick for the merchant and suggests it next time.
 3. See where it went. Hasala shows what you spent, on what, and what's left this month. It also starts you on a simple plan.
 

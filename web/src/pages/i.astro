@@ -36,7 +36,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
 <Base
   title="Your invite"
-  description="Your invite to the Hasala beta: get TestFlight, accept Apple's TestFlight invitation, install Hasala, then open Hasala and paste your invite."
+  description="Your invite to the Hasala beta: get TestFlight, accept Apple's invitation and install Hasala, then open Hasala and paste or type your invite."
   path="/i"
   noindex
   nav="invite"
@@ -72,9 +72,9 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
           <a class="btn btn--glass invite__cta invite__cta--second" href={SITE.testFlightAppStore} data-copy-go>No TestFlight yet? Get it first</a>
         </div>
 
-        <ol class="isteps" role="list">
-          <li class="for-code">
-            <span class="coin-badge">1</span>
+        <div class="isteps">
+          <div class="isteps__row isteps__copy for-code">
+            <span class="isteps__mark" aria-hidden="true"><Icon name="copy" size={16} stroke={1.6} /></span>
             <div class="isteps__text">
               <h2>Copy your invite first</h2>
               <p data-copy-hint>
@@ -87,39 +87,38 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
             <button class="btn btn--subtle btn--sm isteps__btn" type="button" data-copy-code hidden>
               <Icon name="copy" size={16} stroke={1.6} /><span></span>
             </button>
-          </li>
-          <li>
-            <span class="coin-badge"><span class="for-code">2</span><span class="no-code">1</span></span>
-            <div class="isteps__text">
-              <h2>Get TestFlight</h2>
-              <p>
-                <span class="is-wide">Apple's free app for trying betas, from the App Store.</span>
-                <span class="is-narrow">Apple's free app for betas.</span>
-              </p>
-            </div>
-            <a class="btn btn--subtle btn--sm isteps__btn" href={SITE.testFlightAppStore}>Get TestFlight</a>
-          </li>
-          <li>
-            <span class="coin-badge"><span class="for-code">3</span><span class="no-code">2</span></span>
-            <div class="isteps__text">
-              <h2><span class="for-code">Open your invite</span><span class="no-code">Accept Apple’s invitation</span></h2>
-              <p class="for-code">
-                <span class="is-wide">TestFlight opens with Hasala ready to install.</span>
-                <span class="is-narrow">Hasala appears in TestFlight. Tap Install.</span>
-              </p>
-              <p class="no-code">From Apple’s TestFlight email or the link in your invite. Then install Hasala.</p>
-            </div>
-            <a class="btn btn--primary btn--sm isteps__btn" href={TESTFLIGHT_OPEN}>Open in TestFlight</a>
-          </li>
-          <li>
-            <span class="coin-badge"><span class="for-code">4</span><span class="no-code">3</span></span>
-            <div class="isteps__text">
-              <h2><span class="is-wide">Install and set up</span><span class="is-narrow">Set up</span></h2>
-              <p class="for-code">Open Hasala and tap Paste. Then choose Face ID or a password, write down your 12 words and connect your email.</p>
-              <p class="no-code">Open Hasala and type the code from your invite email. Then choose Face ID or a password, and connect your email.</p>
-            </div>
-          </li>
-        </ol>
+          </div>
+          <ol class="isteps__list" role="list">
+            <li>
+              <span class="coin-badge">1</span>
+              <div class="isteps__text">
+                <h2>Get TestFlight</h2>
+                <p>
+                  <span class="is-wide">Apple's free app for trying betas, from the App Store.</span>
+                  <span class="is-narrow">Apple's free app for betas.</span>
+                </p>
+              </div>
+              <a class="btn btn--subtle btn--sm isteps__btn" href={SITE.testFlightAppStore}>Get TestFlight</a>
+            </li>
+            <li>
+              <span class="coin-badge">2</span>
+              <div class="isteps__text">
+                <h2>Accept Apple’s invitation and install Hasala</h2>
+                <p class="for-code">Open your invite in TestFlight, or use Apple’s TestFlight email. Then tap Install.</p>
+                <p class="no-code">From Apple’s TestFlight email or the link in your invite. Then tap Install.</p>
+              </div>
+              <a class="btn btn--primary btn--sm isteps__btn" href={TESTFLIGHT_OPEN}>Open in TestFlight</a>
+            </li>
+            <li>
+              <span class="coin-badge">3</span>
+              <div class="isteps__text">
+                <h2>Open Hasala and paste or type your invite</h2>
+                <p class="for-code">Tap Paste. Then choose Face ID or a password, write down your 12 words and connect your bank alerts.</p>
+                <p class="no-code">Type the code from your invite email. Then choose Face ID or a password, and connect your bank alerts.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
 
         <div class="invite__qr" data-qr-wrap hidden>
           <span class="invite__qr-box" data-qr aria-hidden="true"></span>
@@ -396,6 +395,12 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     background: var(--white);
     box-shadow: rgb(20 38 89 / 8%) 0 12px 28px;
   }
+  .isteps__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .isteps__row,
   .isteps li {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -403,11 +408,20 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     gap: 6px 14px;
     padding: 16px 0;
   }
-  .isteps li + li {
+  .isteps li + li,
+  :global(html.has-code) .isteps li:first-child {
     border-top: 1px solid var(--neutral-200);
   }
-  :global(html:not(.has-code)) .isteps li.for-code + li {
-    border-top: none;
+  .isteps__mark {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--neutral-100);
+    color: var(--text-body);
   }
   .isteps .coin-badge {
     width: 28px;
@@ -559,13 +573,15 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       border-radius: 28px;
       box-shadow: rgb(20 38 89 / 10%) 0 20px 40px, rgb(0 0 0 / 4%) 0 0 0 0.5px;
     }
+    .isteps__row,
     .isteps li {
       grid-template-columns: auto 1fr auto;
       align-items: center;
       gap: 16px;
       padding: 20px 0;
     }
-    .isteps .coin-badge {
+    .isteps .coin-badge,
+    .isteps__mark {
       width: 32px;
       height: 32px;
       font-size: 15px;

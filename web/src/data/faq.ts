@@ -8,12 +8,12 @@ import { FAQ, curly, type FaqItem } from './site';
 
 const OPEN_FIRST: Record<string, string> = {
   'bank-login':
-    "No. Hasala only reads the emails your bank already sends you. It can't move money, and it will never ask for your bank password or card number.",
+    "No. Hasala only reads the alerts your bank already sends you, by email or text. It can't move money, and it will never ask for your bank password or card number.",
 };
 
 const MOBILE_Q: Record<string, string> = { email: 'What can Hasala read in my email?' };
 const MOBILE_A: Record<string, string> = {
-  'bank-login': "No. Hasala only reads the emails your bank already sends. It can't move money and won't ask for your bank password.",
+  'bank-login': "No. Hasala only reads the alerts your bank already sends. It can't move money and won't ask for your bank password.",
 };
 
 export type HomeFaq = { id: string; q: string; qMobile?: string; mobileFirst?: string; paragraphs: string[]; steps: string[]; more: FaqItem['more'] };

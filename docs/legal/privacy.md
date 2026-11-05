@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Hasala handles your data: what stays on your iPhone, what our server can and can't see, how access to your Gmail or Outlook works, how bank texts are read, and your rights under UAE law."
-lastUpdated: 2026-11-01
+lastUpdated: 2026-11-05
 status: "final"
 plainWords: "Hasala is an experimental beta, so the app and this policy change often. Hasala reads your bank alerts on your iPhone, from your Gmail or Outlook or from your bank's texts, and encrypts your transactions there before they sync. Bank texts never leave your iPhone. Texts that don't look like payments are dropped without being stored; a text that looks like a payment, even one from a person, is added for you when Hasala can read it or waits in Review, and stays in your Hasala data until you delete your account, even if you archive it. Our server stores sealed data it can't open. It does see your email address, your name and some account details, which we list here. We don't sell data or show ads. Nothing goes to an AI service unless you turn on Cloud suggestions, and even then we send only what's listed here, without your name or account."
 ---
@@ -248,7 +248,7 @@ In practice, for data Hasala receives from your Gmail:
 - **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
 - **Those details** (amount, merchant, date, card and Gmail message ID) are kept in Hasala's encrypted database on your iPhone, protected by iOS data protection, and on our server only in sealed form that we can't open. They stay until you delete your account. Archiving a transaction hides it but doesn't delete it.
 - **Your Gmail address** is kept on our server only as a keyed hash, which is deleted when you disconnect Gmail or delete your account (see [Gmail connection](#gmail-connection)).
-- **Disconnecting Gmail** stops Hasala reading your mail. Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.
+- **Disconnecting Gmail** stops Hasala reading your mail. When you disconnect, you choose what happens to the transactions it brought in. If you keep them, they stay in Hasala, archived or not, until you delete your account. If you remove them, Hasala takes them out of your lists and totals, and you can't bring them back in the app, but an encrypted record of them stays in your Hasala data, on your iPhones and as sealed data on our server, until you delete your account.
 - **Deleting your account** erases all of it from our server straight away, and from your iPhones. Encrypted backups that still hold sealed copies expire within 30 days.
 
 ### Google's verification screen
@@ -286,7 +286,7 @@ We treat data from your Outlook exactly as we treat data from your Gmail under [
 - **Your bank alert emails** are never stored by Hasala. Your iPhone reads each one and keeps only the details listed above.
 - **Those details** (amount, merchant, date, card and Outlook message ID) are kept in the same way as details from Gmail: in Hasala's encrypted database on your iPhone, and on our server only in sealed form that we can't open. They stay until you delete your account. Archiving a transaction hides it but doesn't delete it.
 - **Your Outlook address** isn't kept on our server, except as a keyed hash on a connection made before 31 October 2026. The keyed hash of a connection is deleted when you disconnect Outlook or delete your account (see [Outlook connection](#outlook-connection)).
-- **Disconnecting Outlook** stops Hasala reading your mail. Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.
+- **Disconnecting Outlook** stops Hasala reading your mail. As with Gmail, you choose whether to keep or remove the transactions it brought in. Kept transactions stay in Hasala, archived or not, until you delete your account. Removed ones leave your lists and totals and can't be brought back in the app, but an encrypted record of them stays in your Hasala data, on your iPhones and as sealed data on our server, until you delete your account.
 
 ### Stopping Outlook access
 
@@ -503,7 +503,7 @@ Under the UAE Personal Data Protection Law (Federal Decree-Law No. 45 of 2021), 
 
 ### Because we can't open your data
 
-Because your transactions, budget and plan are sealed, we can't read them, so we can't hand them over in readable form. You can export them yourself from the app as a CSV file, under Profile › Settings › Export your data. What we can give you on request is the account data listed in [What we collect and why](#what-we-collect-and-why).
+Because your transactions, budget and plan are sealed, we can't read them, so we can't hand them over in readable form. You can export your transactions yourself from the app as a CSV file, under Profile › Settings › Export transactions. The file doesn't include your plan, rules or recurring items. What we can give you on request is the account data listed in [What we collect and why](#what-we-collect-and-why).
 
 ### How to exercise your rights
 

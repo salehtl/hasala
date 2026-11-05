@@ -8,7 +8,7 @@
  */
 import WaitlistForm from '../WaitlistForm.astro';
 import Icon from '../Icon.astro';
-import { MAIL } from '../../data/site';
+import { MAIL_PERSONAL } from '../../data/site';
 ---
 
 <section id="invite" class="beta" aria-labelledby="beta-title">
@@ -23,7 +23,7 @@ import { MAIL } from '../../data/site';
         </p>
         <ul class="beta__needs">
           <li><Icon name="check" size={16} stroke={1.9} />iPhone with iOS 26 or later</li>
-          <li><Icon name="check" size={16} stroke={1.9} />An email account that gets your bank’s emails ({MAIL} today)</li>
+          <li><Icon name="check" size={16} stroke={1.9} />Your bank’s alerts by email ({MAIL_PERSONAL}) or by text</li>
           <li><Icon name="check" size={16} stroke={1.9} />English only for now. Expect a few bugs</li>
         </ul>
       </div>
@@ -68,7 +68,7 @@ import { MAIL } from '../../data/site';
     align-self: flex-start;
     min-height: 0;
     padding: 6px 12px 6px 10px;
-    background: rgb(255 255 255 / 16%);
+    background: rgb(20 38 89 / 24%);
     box-shadow: none;
     color: var(--white);
     font-size: 13px;
@@ -81,7 +81,7 @@ import { MAIL } from '../../data/site';
     background: var(--gold-100);
   }
   .beta__lead {
-    color: rgb(255 255 255 / 88%);
+    color: var(--white);
     font-size: 16px;
     line-height: 25px;
   }
@@ -100,7 +100,7 @@ import { MAIL } from '../../data/site';
     display: flex;
     align-items: center;
     gap: 10px;
-    color: rgb(255 255 255 / 92%);
+    color: var(--white);
     font-size: 16px;
     line-height: 22px;
   }

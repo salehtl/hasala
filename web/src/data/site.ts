@@ -15,6 +15,8 @@ import { WAITLIST_MODE } from '../lib/env';
 export const MAIL_PROVIDERS = ['Gmail', 'Outlook'] as const;
 /** "Gmail or Outlook". */
 export const MAIL = new Intl.ListFormat('en', { type: 'disjunction' }).format(MAIL_PROVIDERS);
+/** "Gmail or personal Outlook": where a line names the services in passing. */
+export const MAIL_PERSONAL = 'Gmail or personal Outlook';
 export const MAIL_NOTE = 'Hasala works with Gmail and with personal Outlook accounts (outlook.com, hotmail.com and live.com) for now. Work and school accounts aren’t supported yet.';
 
 export const SITE = {
@@ -24,7 +26,7 @@ export const SITE = {
   url: 'https://hasala.app',
   tagline: 'A private budgeting app that shows where your money goes.',
   description:
-    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alert emails and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
+    "Hasala is a private budgeting app for iPhone in the UAE. It reads your bank's alerts, by email or text, and shows where your money goes. Your transactions and budget are encrypted on your iPhone, so we can't read them.",
   shortDescription: 'Hasala (حصّالة) is Arabic for piggy bank.',
   supportEmail: 'support@hasala.app',
   privacyEmail: 'privacy@hasala.app',
@@ -37,7 +39,7 @@ export const SITE = {
   repoUrl: 'https://github.com/salehtl/hasala',
   licenseUrl: 'https://github.com/salehtl/hasala/blob/main/LICENSE.md',
   trademarksUrl: 'https://github.com/salehtl/hasala/blob/main/TRADEMARKS.md',
-  requirements: `You’ll need an iPhone with iOS 26 or later and an email account that gets your bank’s alerts (${MAIL} today). The app is in English only for now.`,
+  requirements: `You’ll need an iPhone with iOS 26 or later, and your bank’s alerts by email (${MAIL_PERSONAL} today) or by text. The app is in English only for now.`,
 } as const;
 
 export const BANKS = [
@@ -150,7 +152,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     id: 'bank-login',
     q: 'Do you need my bank login?',
-    short: 'No. Hasala reads the alert emails your bank already sends you.',
+    short: 'No. Hasala reads the alerts your bank already sends you, by email or text.',
     a: "It will never ask for a banking password or card number, and it can't move money.",
     more: { href: '/how-privacy-works', label: 'How privacy works' },
   },
@@ -160,6 +162,13 @@ export const FAQ: readonly FaqItem[] = [
     short: "Only your bank's alert emails, read-only.",
     a: `Your iPhone asks your email account only for messages from your bank's alert senders and reads those on the phone, so the rest of your inbox is never downloaded. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review. Hasala can't send, change or delete mail, and no email is sent to an AI service. ${MAIL_NOTE}`,
     more: { href: '/how-it-works#email', label: 'Connecting your email' },
+  },
+  {
+    id: 'texts',
+    q: 'Can Hasala read my bank texts instead?',
+    short: 'Yes. Use bank texts instead of email, and Hasala never touches your inbox.',
+    a: "You make one automation in Apple's Shortcuts app, and it hands your texts to Hasala on your iPhone. Hasala keeps only payment texts and drops every other text at once. No text leaves your iPhone. It reads payments from your next text on, and your account uses bank email or bank texts, not both.",
+    more: { href: '/how-it-works#texts', label: 'Reading bank texts' },
   },
   {
     id: 'lost-phone',
@@ -194,13 +203,12 @@ export const FAQ: readonly FaqItem[] = [
     short: "We email you an invite, and you install Hasala with Apple's TestFlight app.",
     a: `TestFlight is Apple's free app for trying beta apps. ${ASK_FOR_INVITE} When there's room, we email your invite from no-reply@hasala.app. Then:`,
     steps: [
-      'Install TestFlight.',
-      "Accept Apple's TestFlight invitation, from its email or the link in your invite.",
-      'Install Hasala.',
-      'Open Hasala and enter your invite code.',
+      "Get TestFlight, Apple's free app for betas.",
+      "Accept Apple's invitation and install Hasala, from Apple's email or the link in your invite.",
+      'Open Hasala and paste or type your invite.',
     ],
     after:
-      `Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later and an email account that gets your bank alerts (${MAIL} today).`,
+      `Apple handles the invitation, so it sees your email address and that you installed Hasala; other testers never see you. New versions reach you in TestFlight after Apple's beta review, which usually takes about a day. You need an iPhone with iOS 26 or later, and your bank alerts by email (${MAIL_PERSONAL} today) or by text.`,
     more: { href: '/#invite', label: 'Request an invite' },
   },
 ];
