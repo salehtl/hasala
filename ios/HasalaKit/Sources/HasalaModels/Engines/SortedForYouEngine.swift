@@ -106,7 +106,14 @@ public enum SortedForYouEngine {
   }
 
   public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> SortedForYouSnapshot {
-    let from = since(now)
+    snapshot(s, now: now, from: since(now), cloudflareOnly: false)
+  }
+
+  public static func cloudflareFiled(_ s: LedgerState, now: LocalDateTime) -> SortedForYouSnapshot {
+    snapshot(s, now: now, from: nil, cloudflareOnly: true)
+  }
+
+  static func snapshot(_ s: LedgerState, now: LocalDateTime, from: LocalDateTime?, cloudflareOnly: Bool) -> SortedForYouSnapshot {
     struct Key: Hashable {
       var source: String
       var group: String
@@ -114,8 +121,8 @@ public enum SortedForYouEngine {
     }
     var rows: [Key: [Txn]] = [:]
     var order: [Key] = []
-    for t in s.txns where t.sortedForYou {
-      guard let at = t.categorizedAt, at >= from, at <= now, let c = t.categoryID else { continue }
+    for t in s.txns where t.sortedForYou && (!cloudflareOnly || t.autoFiledByCloudflare) {
+      guard let at = t.categorizedAt, from.map({ at >= $0 }) ?? true, at <= now, let c = t.categoryID else { continue }
       let source: String
       if case .rule(let pattern) = t.categorySource {
         source = "rule:" + (t.ruleID ?? pattern)

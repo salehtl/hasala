@@ -161,7 +161,7 @@ public enum Maya {
   static let notifications = NotificationsSnapshot(needsALook: [
     NotificationItem(
       id: "review", disc: .hue(.sky, .review), title: "6 transactions to sort",
-      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" still to check")]),
+      line: MoneyPhrase([.text("AED "), .amount(.aed(827_28), hidden: 3), .text(" to sort")]),
       when: "Today", destination: .review(.allTime), count: 6),
     NotificationItem(
       id: "bill.axa", disc: .hue(.sand, .insurance), title: "\(Bidi.isolate("AXA Insurance")) may be late",
@@ -179,12 +179,13 @@ public enum Maya {
 
   static let widgets: [HomeWidget] = [
     .budgetPace(BudgetPaceWidget(
-      monthGone: "32% of October gone",
+      monthGone: "Day 10 of 31",
       rows: [
         BucketPaceRow(bucket: .needs, spent: .aed(9_040_80), budget: .aed(12_350_00), verdict: .onTrack),
         BucketPaceRow(bucket: .wants, spent: .aed(1_247_54), budget: .aed(6_650_00), verdict: .onTrack),
         BucketPaceRow(bucket: .savings, spent: .aed(5_000_00), budget: .aed(5_000_00), verdict: .done),
-      ]
+      ],
+      unsorted: .aed(827_28)
     )),
     .nextBill(NextBillWidget(
       glyph: .utilities,

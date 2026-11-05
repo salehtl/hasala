@@ -190,6 +190,12 @@ public struct UndoToken: Sendable, Hashable, Identifiable, Codable {
   }
 }
 
+public extension LedgerEdit {
+  static func assign(_ c: CategoryID, _ month: YearMonth, _ amount: Money, in s: LedgerState) -> LedgerEdit {
+    .setBudget(c, month, .aed(s.plan.budget(c, month).minor.plus(amount.minor)))
+  }
+}
+
 /// A content-free refusal (spec 04 §15.1 `ActionError`).
 public enum ActionError: Error, Sendable, Hashable {
   case notFound

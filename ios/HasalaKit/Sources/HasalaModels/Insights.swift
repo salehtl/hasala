@@ -79,18 +79,20 @@ public struct InsightsDelta: Sendable, Hashable {
     self.tone = tone
   }
 
-  public static func between(_ current: Int64, _ previous: Int64) -> InsightsDelta? {
+  public static func between(_ current: Int64, _ previous: Int64, goodWhenUp: Bool = false) -> InsightsDelta? {
+    let good: Tone = goodWhenUp ? .warning : .success
+    let bad: Tone = goodWhenUp ? .success : .warning
     if current == previous { return InsightsDelta(kind: .same, tone: .neutral) }
     if previous <= 0 {
       return current > 0 ? InsightsDelta(kind: .new, tone: .neutral) : nil
     }
-    if current <= 0 { return InsightsDelta(kind: .gone, tone: .success) }
+    if current <= 0 { return InsightsDelta(kind: .gone, tone: good) }
     let change = current - previous
     let percent = Int(clamping: Fils.percentRounded(change, of: previous).magnitude)
     let marked = Int128(change.magnitude) * 10 >= Int128(previous)
     return change > 0
-      ? InsightsDelta(kind: .up(percent: percent), tone: marked ? .warning : .neutral)
-      : InsightsDelta(kind: .down(percent: percent), tone: marked ? .success : .neutral)
+      ? InsightsDelta(kind: .up(percent: percent), tone: marked ? bad : .neutral)
+      : InsightsDelta(kind: .down(percent: percent), tone: marked ? good : .neutral)
   }
 
   public static let textCap = 999
@@ -363,12 +365,13 @@ public struct InsightsSnapshot: Sendable, Hashable {
   public var flowEmpty: String?
   public var reports: [InsightsReport]
   public var share: MoneyPhrase
+  public var rangeNote: String?
 
   public init(
     months: ClosedRange<YearMonth>, focus: YearMonth, isCurrent: Bool, title: String, status: String,
     window: InsightsWindow, comparison: InsightsComparison?, lensNote: String, summary: InsightsSummary,
-    buckets: [InsightsRow], categories: [InsightsRow], merchants: [InsightsRow], lensFooter: MoneyPhrase,
-    lensEmpty: String, changes: [InsightsChange], changesNotice: InsightsNotice?, flow: InsightsFlow,
+    buckets: [InsightsRow], categories: [InsightsRow], merchants: [InsightsRow], rangeNote: String? = nil,
+    lensFooter: MoneyPhrase, lensEmpty: String, changes: [InsightsChange], changesNotice: InsightsNotice?, flow: InsightsFlow,
     flowEmpty: String?, reports: [InsightsReport], share: MoneyPhrase
   ) {
     self.months = months
@@ -391,6 +394,7 @@ public struct InsightsSnapshot: Sendable, Hashable {
     self.flowEmpty = flowEmpty
     self.reports = reports
     self.share = share
+    self.rangeNote = rangeNote
   }
 
   public func rows(_ lens: InsightsLens) -> [InsightsRow] {

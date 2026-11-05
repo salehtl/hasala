@@ -287,7 +287,7 @@ struct BankTextsReviewTests {
     #expect(t.activeReviewReason == .mayRepeat)
     let card = ReviewEngine.card(t, l.store.state)
     #expect(card.reviewReason == .mayRepeat && card.reasonLine == t.mayRepeat?.line)
-    #expect(ReviewEngine.tabRow(card, l.store.state).subtitle.hasPrefix("Same payment? · you decide"))
+    #expect(ReviewEngine.tabRow(card, l.store.state).subtitle.hasPrefix("Same as a text? · you decide"))
     let detail = try #require(TransactionEngine.detail(second.txnID, l.store.state, now: MayaLedger.now))
     #expect(detail.reviewReason == .mayRepeat && detail.reasonLine == t.mayRepeat?.line)
   }

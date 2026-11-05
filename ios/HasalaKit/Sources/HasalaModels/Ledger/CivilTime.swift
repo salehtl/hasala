@@ -78,6 +78,12 @@ public struct LocalDate: Sendable, Hashable, Comparable, Codable {
 }
 
 /// A local date and minute in the ledger clock.
+extension LocalDateTime {
+  public func minutes(until other: LocalDateTime) -> Int {
+    (other.date.ordinal - date.ordinal) * 1440 + (other.hour - hour) * 60 + (other.minute - minute)
+  }
+}
+
 public struct LocalDateTime: Sendable, Hashable, Comparable, Codable {
   public var date: LocalDate
   public var hour: Int

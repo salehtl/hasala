@@ -13,9 +13,12 @@ public enum HomeEngine {
       let plan = PlanEngine.snapshot(s, now: now)
       var h = hero(s, now: now, plan: plan)
       h.unrated = Spending.unrated(s, in: .month(today))
-      return HomeSnapshot(
+      h.overCategory = overCategory(s, now: now, plan: plan, verdict: h.verdict)
+      var home = HomeSnapshot(
         header: header, hero: h, notifications: notifications,
         widgets: widgets(s, now: now, plan: plan))
+      home.monthClosed = monthClosed(s, now: now)
+      return home
     }
     if p.isAllTime {
       var h = allTimeHero(s, period: p, now: now)
@@ -29,9 +32,11 @@ public enum HomeEngine {
       let plan = PlanEngine.snapshot(s, now: LocalDateTime(date: month.lastDay, hour: 23, minute: 59))
       var h = endedHero(s, month: month, plan: plan)
       h.unrated = Spending.unrated(s, in: .month(month))
+      var ended = budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)")
+      ended.unsorted = unsorted(s, in: .month(month))
       return HomeSnapshot(
         header: header, hero: h, notifications: notifications,
-        widgets: [.budgetPace(budgetPace(plan, label: "Ended \(month.lastDay.dayMonth)"))],
+        widgets: [.budgetPace(ended)],
         period: p, canvasTitle: month.name, aboutNow: aboutNow(s, now: now))
     }
     var h = rangeHero(s, period: p, now: now)
@@ -74,7 +79,8 @@ public enum HomeEngine {
     }
 
     let tick = Self.tick(s, month: month, plan: budget, day: day, days: days)
-    let verdict: Verdict = total > budget ? .overBudget : (total > tick ? .overPace : .onTrack)
+    let verdict: Verdict =
+      total > budget ? .overBudget : (Pace.showsProjection(day: day) && Pace.ahead(total, of: tick) ? .overPace : .onTrack)
     let left = MoneyPhrase([.text("AED "), .amount(.aed(budget.minus(total)), hidden: 3), .text(" left")])
     let word: MoneyPhrase
     let fact: MoneyPhrase?
@@ -98,6 +104,36 @@ public enum HomeEngine {
       wash: verdict == .overBudget ? .rose : (verdict == .overPace ? .sand : .sky),
       notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month)), heldOut: heldOut(s, in: .month(month))
     )
+  }
+
+  public static let monthClosedDays = 5
+
+  public static func monthClosed(_ s: LedgerState, now: LocalDateTime) -> HomeSnapshot.MonthClosed? {
+    guard now.date.day <= monthClosedDays else { return nil }
+    let prev = now.date.yearMonth.previous
+    let plan = PlanEngine.snapshot(s, now: LocalDateTime(date: prev.lastDay, hour: 23, minute: 59))
+    guard spendingBudget(plan) > 0 else { return nil }
+    let h = endedHero(s, month: prev, plan: plan)
+    let toSort = ReviewEngine.queue(s).filter { $0.postedAt.date.yearMonth == prev }.count
+    let line = toSort == 0
+      ? nil : "\(toSort) \(prev.name) payment\(toSort == 1 ? "" : "s") still to sort, which can change this result"
+    return HomeSnapshot.MonthClosed(
+      month: prev, word: MoneyPhrase([.text("\(prev.name) ")] + lowered(h.word.parts)), over: h.verdict == .overBudget,
+      toSort: toSort, toSortLine: line)
+  }
+
+  static func lowered(_ parts: [MoneyPhrase.Part]) -> [MoneyPhrase.Part] {
+    guard case .text(let first)? = parts.first else { return parts }
+    return [.text(first.prefix(1).lowercased() + first.dropFirst())] + parts.dropFirst()
+  }
+
+  static func overCategory(_ s: LedgerState, now: LocalDateTime, plan: PlanSnapshot, verdict: Verdict?) -> CategoryID? {
+    guard verdict == .overBudget || verdict == .overPace else { return nil }
+    let rows = plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows)
+    if let worst = rows.filter({ $0.verdict == .overBudget }).max(by: { $0.spent.minor.minus($0.budget.minor) < $1.spent.minor.minus($1.budget.minor) }) {
+      return worst.id
+    }
+    return rows.first { $0.verdict == .overPace }?.id
   }
 
   static func heroTiles(_ s: LedgerState, month: YearMonth) -> [HeroTile] {
@@ -245,7 +281,7 @@ public enum HomeEngine {
     }
     let waiting = ReviewEngine.queue(s).count
     if waiting > 0 {
-      rows.append(AboutNowRow(id: "review", title: "To review", detail: MoneyPhrase([.text("\(MoneyFormat.count(waiting)) waiting")]), destination: .review(nil)))
+      rows.append(AboutNowRow(id: "review", title: "To sort", detail: MoneyPhrase([.text("\(MoneyFormat.count(waiting)) waiting")]), destination: .review(nil)))
     }
     return rows
   }
@@ -409,8 +445,7 @@ public enum HomeEngine {
 
   static func budgetPaceWidget(_ plan: PlanSnapshot, now: LocalDateTime) -> BudgetPaceWidget {
     let month = now.date.yearMonth
-    let pct = Pace.monthGone(day: now.date.day, days: month.days).value / 10
-    return budgetPace(plan, label: "\(pct)% of \(month.name) gone")
+    return budgetPace(plan, label: "Day \(now.date.day) of \(month.days)")
   }
 
   static func nextBillWidget(_ s: LedgerState, now: LocalDateTime) -> NextBillWidget? {
@@ -504,7 +539,10 @@ struct CanvasSources {
 
   func widget(for entry: HomeLayout.Entry) -> HomeWidget? {
     switch entry.kind {
-    case .budgetPace: return .budgetPace(HomeEngine.budgetPaceWidget(plan, now: now))
+    case .budgetPace:
+      var w = HomeEngine.budgetPaceWidget(plan, now: now)
+      w.unsorted = HomeEngine.unsorted(s, in: .month(now.date.yearMonth))
+      return .budgetPace(w)
     case .nextBill: return HomeEngine.nextBillWidget(s, now: now).map(HomeWidget.nextBill)
     case .netWorth: return HomeEngine.netWorthWidget(s).map(HomeWidget.netWorth)
     case .today: return .today(HomeEngine.todayWidget(s, now: now))

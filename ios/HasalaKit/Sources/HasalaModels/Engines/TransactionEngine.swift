@@ -58,6 +58,13 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var canAlwaysUse: Bool = false
   public var combined: Bool = false
   public var reasonLine: String? = nil
+  public var isManual: Bool = false
+  public var canEditAmount: Bool = false
+  public var canEditDate: Bool = false
+  public var amountLockedLine: String? = nil
+  public var refundLabel: String? = nil
+  public var reversalOf: TxnID? = nil
+  public var reversedBy: TxnID? = nil
 }
 
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
@@ -81,14 +88,17 @@ public enum TransactionEngine {
       let budget = s.plan.budget(c.id, month).minor
       let spent = s.spent(c.id, in: month).minor
       let paced = c.role == .everyday
-      let verdict = Pace.verdict(spent: spent, budget: budget, day: now.date.day, days: month.days, paced: paced)
+      let biggest = PlanEngine.largest(c.id, s, month: month)
+      let verdict = Pace.verdict(
+        spent: spent, budget: budget, day: now.date.day, days: month.days, paced: paced, largest: biggest)
       if budget > 0 {
-        let projected = Pace.projected(spent, day: now.date.day, days: month.days)
+        let projected = Pace.projected(spent, day: now.date.day, days: month.days, largest: biggest)
         pace = EmbeddedPace(
           title: "\(c.name) this month", left: .aed(budget.minus(spent)), budget: .aed(budget),
           progress: Permille.ratio(spent, of: budget),
           today: paced ? Pace.monthGone(day: now.date.day, days: month.days) : nil, verdict: verdict,
-          projection: paced ? MoneyPhrase([.text("on course for "), .amount(.aed(projected), .rounded)]) : nil
+          projection: paced && Pace.showsProjection(day: now.date.day)
+            ? MoneyPhrase([.text("on course for "), .amount(.aed(projected), .rounded)]) : nil
         )
       }
     }
@@ -114,7 +124,7 @@ public enum TransactionEngine {
       }
     }
 
-    return TransactionDetail(
+    var detail = TransactionDetail(
       id: t.id, merchant: t.title, glyph: t.isTransfer ? .transfer : (c?.glyph ?? .review),
       hue: c?.hue ?? .other, monogram: c == nil ? String(t.merchant.prefix(1)).uppercased() : nil,
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
@@ -126,6 +136,14 @@ public enum TransactionEngine {
       home: t.homeAmount, canAlwaysUse: t.canAlwaysUse, combined: t.combinedCopy != nil,
       reasonLine: t.activeReviewReason == .mayRepeat ? t.mayRepeat?.line : nil
     )
+    detail.isManual = t.isManual
+    detail.canEditAmount = t.isManual && t.splits.isEmpty && !t.archived
+    detail.canEditDate = !t.archived
+    detail.amountLockedLine = t.isManual && !t.splits.isEmpty ? "Remove the split to change the amount." : nil
+    detail.refundLabel = RefundEdit.label(t, in: s)
+    detail.reversalOf = t.isReversal ? t.refundOf : nil
+    detail.reversedBy = RefundEdit.reversal(of: t.id, in: s)?.id
+    return detail
   }
 
   /// Whether split lines add up to the transaction (`validateSplitDraft`, simplified).

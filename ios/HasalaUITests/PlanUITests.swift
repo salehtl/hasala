@@ -209,7 +209,7 @@ final class PlanUITests: XCTestCase {
     let app = launch(scenario: "mayaHidden", screen: "plan.dining")
     let hero = el(app, "category.hero")
     XCTAssertTrue(hero.waitForExistence(timeout: 15))
-    XCTAssertTrue(hero.label.hasPrefix("Dining, Amount hidden left of Amount hidden this month. Over pace"), hero.label)
+    XCTAssertTrue(hero.label.hasPrefix("Dining, Amount hidden left of Amount hidden this month. On track"), hero.label)
     XCTAssertFalse(hero.label.contains("957"))
     XCTAssertEqual(el(app, "plan.chart").value as? String,
                    "Largest day Wed 7 Oct, Zuma, Amount hidden. Daily budget Amount hidden.")

@@ -49,7 +49,7 @@ public enum ProfileEngine {
   public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> ProfileSnapshot {
     let netWorth = s.homeTotal(s.accounts.map(\.balance))
     let tracked = s.bills.filter { $0.state == .tracked }.count
-    let found = s.billCandidates.count
+    let toCheck = BillsEngine.toCheck(s, today: now.date)
     let categories = s.categories.filter { !$0.archived }.count
     let activeProjects = s.projects.filter { !$0.complete }.count
     let right = s.prefs.swipeNeedOnRight
@@ -61,8 +61,8 @@ public enum ProfileEngine {
       mailbox: s.mailbox,
       accounts: accountsLine(s.accounts.count, netWorth),
       accountsKnown: s.accounts.contains { !$0.balance.isZero },
-      bills: "\(tracked) tracked" + (found > 0 ? " · \(found) new found" : ""),
-      newBills: found,
+      bills: "\(tracked) tracked" + (toCheck > 0 ? " · \(toCheck) to check" : ""),
+      newBills: toCheck,
       categoriesAndRules: "\(categories) categories · \(s.rules.count) rule\(s.rules.count == 1 ? "" : "s")",
       projects: projectsLine(activeProjects),
       signIn: s.profile.signIn,

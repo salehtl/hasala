@@ -96,7 +96,7 @@ struct ProfileModelTests {
   @Test func theMoneyRowsFollowTheLedger() {
     let app = AppModel(store: InMemoryLedger())
     let profile = ProfileViewModel(app: app)
-    #expect(profile.snapshot.bills == "9 tracked · 1 new found")
+    #expect(profile.snapshot.bills == "9 tracked · 3 to check")
     #expect(profile.snapshot.newBills == 1)
     #expect(app.perform(.trackCandidate("apple-bill")))
     #expect(profile.snapshot.bills == "10 tracked")

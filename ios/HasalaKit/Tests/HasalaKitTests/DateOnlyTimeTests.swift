@@ -10,12 +10,12 @@ struct DateOnlyTimeTests {
   @Test func rowsLeaveOutTheTime() throws {
     var lulu = try #require(s.txn("lulu"))
     lulu.postedTimeKnown = false
-    #expect(ActivityEngine.row(lulu, s).detail == "To review")
-    #expect(ActivityEngine.dated(lulu, s).detail == "To review")
+    #expect(ActivityEngine.row(lulu, s).detail == "To sort")
+    #expect(ActivityEngine.dated(lulu, s).detail == "To sort")
 
     var steam = try #require(s.txn("steam"))
     steam.postedTimeKnown = false
-    #expect(ActivityEngine.row(steam, s).detail == "To review")
+    #expect(ActivityEngine.row(steam, s).detail == "To sort")
     steam.needsReview = false
     steam.categoryID = "entertainment"
     let name = try #require(s.category("entertainment")).name

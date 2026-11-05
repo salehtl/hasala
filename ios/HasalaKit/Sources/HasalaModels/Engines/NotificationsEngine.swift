@@ -88,7 +88,7 @@ public enum NotificationsEngine {
       dated.append((newest, NotificationItem(
         id: "review", disc: .hue(.sky, .review),
         title: "\(MoneyFormat.count(queue.count)) transaction\(queue.count == 1 ? "" : "s") to sort",
-        line: MoneyPhrase([.text("AED "), .amount(.aed(unplanned), hidden: 3), .text(" still to check")]),
+        line: MoneyPhrase([.text("AED "), .amount(.aed(unplanned), hidden: 3), .text(" to sort")]),
         when: when(newest, today: today), destination: .review(window == .all ? .allTime : nil), count: queue.count
       )))
     }
@@ -126,6 +126,25 @@ public enum NotificationsEngine {
       )))
     }
 
+    let month = today.yearMonth
+    let plan = PlanEngine.snapshot(s, now: now)
+    for row in plan.sections.filter({ $0.bucket != .savings }).flatMap(\.rows) where row.verdict == .overBudget && row.budget.minor > 0 {
+      let latest = PlanEngine.lines(row.id, s, month: month).map(\.txn.postedAt.date).max() ?? today
+      dated.append((latest, NotificationItem(
+        id: "over.\(row.id)", disc: .hue(row.hue, row.glyph), title: "\(Bidi.isolate(row.name)) is over budget",
+        line: MoneyPhrase([.text("AED "), .amount(.aed(row.spent.minor.minus(row.budget.minor)), hidden: 3), .text(" over")]),
+        status: .error, when: when(latest, today: today), destination: .category(row.id)
+      )))
+    }
+
+    if let late = salaryLate(s, today: today) {
+      dated.append((late, NotificationItem(
+        id: "salary", disc: .hue(.mint, .salary), title: "Salary not seen yet",
+        line: MoneyPhrase(stringLiteral: "Usually the \(PlanEngine.ordinal(s.plan.payday)) · it may be waiting in Review"),
+        when: when(late, today: today), destination: .review(nil)
+      )))
+    }
+
     // A tracked bill charged outside its usual amount: accept the new price or check it, on the bill.
     for b in tracked {
       guard let usual = b.priceChangeFrom else { continue }
@@ -157,6 +176,17 @@ public enum NotificationsEngine {
       a.element.date == b.element.date ? a.offset < b.offset : b.element.date < a.element.date
     }
     return NotificationsSnapshot(needsALook: ordered.map(\.element.item))
+  }
+
+  public static let salaryLateDays = 3
+
+  public static func salaryLate(_ s: LedgerState, today: LocalDate) -> LocalDate? {
+    let month = today.yearMonth
+    guard let received = s.plan.receivedIncome(in: month), received.minor <= 0,
+      s.plan.expectedIncome(in: month).minor > 0
+    else { return nil }
+    let since = PlanEngine.payday(s, month: month).adding(days: salaryLateDays)
+    return today >= since ? since : nil
   }
 
   /// When something happened, as the sheet writes it (page 06 §6.6): "Today", "Yesterday", the

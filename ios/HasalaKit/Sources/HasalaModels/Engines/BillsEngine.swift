@@ -73,6 +73,11 @@ public struct BillsSnapshot: Sendable, Hashable {
   public var tags: [String: StatusPill]
   public var paidMark: TotalMark?
   public var paused: [BillRowModel] = []
+  public var next14Estimates: Int = 0
+
+  public var next14Caption: String? {
+    next14Estimates > 0 ? "Includes \(next14Estimates) estimate\(next14Estimates == 1 ? "" : "s")" : nil
+  }
   public var ended: [BillRowModel] = []
 }
 
@@ -225,7 +230,7 @@ public enum BillsEngine {
     let in14 = today.adding(days: 14)
     let next14 = s.homeTotal(tracked.filter { !$0.isIncome && $0.nextDue <= in14 }.map(\.amount))
 
-    let incomeBill = tracked.filter { $0.isIncome && $0.nextDue >= today }.min { $0.nextDue < $1.nextDue }
+    let incomeBill = tracked.filter { $0.isIncome && $0.nextDue >= today && $0.nextDue <= in14 }.min { $0.nextDue < $1.nextDue }
     let incomeLine = incomeBill.map {
       MoneyPhrase([.signedMoney($0.amount, style: .exact, hiddenGlyphs: 4), .text(" expected \($0.nextDue.short)")])
     }
@@ -233,25 +238,7 @@ public enum BillsEngine {
       BillsIncome(label: $0.kind, amount: $0.amount, expected: "expected \($0.nextDue.short)")
     }
 
-    var attention: [BillAttention] = []
-    for b in tracked where !b.isIncome && b.nextDue < today {
-      let days = b.nextDue.days(until: today)
-      attention.append(BillAttention(
-        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days), billKind: b.kind,
-        amount: b.amount,
-        body: MoneyPhrase(stringLiteral:
-          "\(b.kind) usually arrives on the \(PlanEngine.ordinal(b.usualDay)). No bank email yet."),
-        pill: StatusPill(pastUsual(days), tone: .error)
-      ))
-    }
-    for b in tracked where !b.isIncome {
-      guard let usual = b.priceChangeFrom else { continue }
-      attention.append(BillAttention(
-        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .priceChange(usual: usual),
-        billKind: b.kind, amount: b.amount, body: priceChange(b, usual: usual),
-        pill: StatusPill("Price change", tone: .warning)
-      ))
-    }
+    let attention = attention(s, today: today)
 
     let found = s.billCandidates.map { c in
       BillCandidateModel(
@@ -286,12 +273,68 @@ public enum BillsEngine {
       )
     }
 
-    return BillsSnapshot(
+    let marked = markedPaid(s, month: month)
+    var dated = zip(paid, paidRows).map { ($0.postedAt.date, $1) }
+    for (b, p) in marked {
+      let c = s.category(b.categoryID)
+      dated.append((p.due, BillRowModel(
+        id: "marked:\(b.id):\(p.due)", name: b.name, glyph: c?.glyph ?? .utilities, hue: c?.hue ?? .sand,
+        detail: [.text(MoneyPhrase(stringLiteral: "\(p.due.short) · Marked paid"))], amount: p.amount ?? b.amount,
+        approximate: false, isIncome: false, trailingNote: nil)))
+    }
+    let rows = dated.enumerated().sorted { x, y in x.element.0 == y.element.0 ? x.offset < y.offset : x.element.0 > y.element.0 }
+      .map(\.element.1)
+    let markedTotal = s.homeTotal(marked.map { $0.1.amount ?? $0.0.amount })
+    var paidMark = TotalMark.unrated(paid)
+    if let m = markedTotal.mark, m.leftOutCount > 0 {
+      var merged = paidMark ?? TotalMark()
+      for (k, v) in m.leftOut { merged.leftOut[k, default: 0] += v }
+      paidMark = merged
+    }
+    let estimates = tracked.filter { !$0.isIncome && $0.approximate && $0.nextDue <= in14 }.count
+
+    var out = BillsSnapshot(
       next14: next14.money, next14Mark: next14.mark, incomeLine: incomeLine, income: income, needsALook: attention, found: found,
-      upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: paidRows,
-      paidThisMonth: .aed(Fils.sum(paid) { $0.homeMinor ?? 0 }), tags: tags, paidMark: TotalMark.unrated(paid),
+      upcoming: upcoming, range: range, tracked: tracked.count, recentlyPaid: rows,
+      paidThisMonth: .aed(Fils.sum(paid) { $0.homeMinor ?? 0 }.plus(markedTotal.minor)), tags: tags, paidMark: paidMark,
       paused: pausedRows(s), ended: endedRows(s)
     )
+    out.next14Estimates = estimates
+    return out
+  }
+
+  static func markedPaid(_ s: LedgerState, month: YearMonth) -> [(Bill, BillPayment)] {
+    s.bills.filter { ($0.state == .tracked || $0.state == .paused) && !$0.isIncome }.flatMap { b in
+      b.payments.filter { $0.link == .marked && $0.txnID == nil && $0.due.yearMonth == month }.map { (b, $0) }
+    }
+  }
+
+  public static func toCheck(_ s: LedgerState, today: LocalDate) -> Int {
+    Set(attention(s, today: today).map(\.id)).count + s.billCandidates.count
+  }
+
+  static func attention(_ s: LedgerState, today: LocalDate) -> [BillAttention] {
+    let tracked = s.bills.filter { $0.state == .tracked }
+    var attention: [BillAttention] = []
+    for b in tracked where !b.isIncome && b.nextDue < today {
+      let days = b.nextDue.days(until: today)
+      attention.append(BillAttention(
+        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days), billKind: b.kind,
+        amount: b.amount,
+        body: MoneyPhrase(stringLiteral:
+          "\(b.kind) usually arrives on the \(PlanEngine.ordinal(b.usualDay)). No bank email yet."),
+        pill: StatusPill(pastUsual(days), tone: .error)
+      ))
+    }
+    for b in tracked where !b.isIncome {
+      guard let usual = b.priceChangeFrom else { continue }
+      attention.append(BillAttention(
+        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .priceChange(usual: usual),
+        billKind: b.kind, amount: b.amount, body: priceChange(b, usual: usual),
+        pill: StatusPill("Price change", tone: .warning)
+      ))
+    }
+    return attention
   }
 
   static let farFuture = LocalDate(9999, 12, 31)

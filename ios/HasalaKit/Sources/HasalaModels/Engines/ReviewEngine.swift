@@ -239,6 +239,8 @@ public struct SortedLine: Sendable, Hashable, Identifiable {
   public var counted: Int64
   public var learnedRule: Bool
   public var notCounted: Bool = false
+  public var month: YearMonth? = nil
+  public var movedIntoSpending: Int64 = 0
 }
 
 public struct ReviewWindow: Sendable, Hashable {
@@ -488,18 +490,29 @@ public enum ReviewEngine {
   public static func copyLine(_ t: Txn, _ s: LedgerState) -> String? {
     guard let held = t.heldCopy else { return nil }
     let other = s.txn(held.of) ?? t
-    let amount = "\(other.amount.currency) \(MoneyFormat.string(other.amount))"
+    let gap = gapPhrase(other.postedAt, t.postedAt)
     let name = copyName(other)
     return held.fromOtherInbox
-      ? "Looks like a copy of \(name) \(amount) from your other inbox"
-      : "Looks like a copy of \(name) \(amount) you already have"
+      ? "Same amount at \(name), \(gap), in your other inbox. Merge counts it once."
+      : "Same amount at \(name), \(gap). Merge counts it once."
+  }
+
+  public static func gapPhrase(_ a: LocalDateTime, _ b: LocalDateTime) -> String {
+    let m = abs(a.minutes(until: b))
+    func unit(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s") apart" }
+    if m == 0 { return "in the same minute" }
+    if m < 60 { return unit(m, "minute") }
+    if m < 24 * 60 { return unit(m / 60, "hour") }
+    return unit(m / (24 * 60), "day")
   }
 
   public static func samePurchaseLine(_ t: Txn, _ s: LedgerState, today: LocalDate? = nil) -> String? {
     guard let match = t.samePurchase, let f = s.txn(match.of) else { return nil }
     var amount = "\(f.amount.currency) \(MoneyFormat.string(f.amount))"
     if let home = f.homeMinor { amount += " (about \(Money.home) \(MoneyFormat.string(home)))" }
-    var line = "Same purchase as \(amount) at \(copyName(f)) on \(today.map { f.postedAt.date.short(today: $0) } ?? f.postedAt.date.short)?"
+    let when = today.map { f.postedAt.date.short(today: $0) } ?? f.postedAt.date.short
+    let near = abs(f.postedAt.minutes(until: t.postedAt)) < 24 * 60
+    var line = "Same purchase as \(amount) at \(copyName(f)) on \(when)\(near ? ", \(gapPhrase(f.postedAt, t.postedAt))" : "")?"
     if match.merchantMissing { line += " This alert has no merchant." }
     return line
   }
@@ -527,12 +540,31 @@ public enum ReviewEngine {
   /// The line for All caught up once `txn` is sorted into `category`.
   public static func sortedLine(_ t: Txn, into category: Category, learnedRule: Bool) -> SortedLine {
     let counts = category.kind == .spending && t.direction == .out
-    return SortedLine(
+    var line = SortedLine(
       id: t.id, merchant: t.title,
       detail: category.name + (learnedRule ? " · new rule" : ""),
       amount: t.amount, isIncome: t.direction == .in, glyph: category.glyph, hue: category.hue,
       counted: counts ? t.homeMinor ?? 0 : 0, learnedRule: learnedRule, notCounted: counts && t.homeMinor == nil
     )
+    line.month = t.postedAt.date.yearMonth
+    line.movedIntoSpending = Spending.counts(category) && t.direction == .out ? t.homeMinor ?? 0 : 0
+    return line
+  }
+
+  public static func doneSummary(_ lines: [SortedLine], _ s: LedgerState) -> MoneyPhrase? {
+    var parts: [MoneyPhrase.Part] = []
+    let months = Set(lines.compactMap(\.month))
+    if months.count == 1, let m = months.first {
+      parts += [.text("Spent in \(m.name) is now AED "), .amount(.aed(Spending.total(s, in: m)), hidden: 3), .text(".")]
+    }
+    let moved = Fils.sum(lines.map(\.movedIntoSpending))
+    if moved > 0 {
+      if !parts.isEmpty { parts.append(.text(" ")) }
+      parts += [.text("AED "), .amount(.aed(moved), hidden: 3), .text(" moved into your categories.")]
+    }
+    let missing = lines.filter(\.notCounted).count
+    if missing > 0 { parts.append(.text(" · \(missing) not counted")) }
+    return parts.isEmpty ? nil : MoneyPhrase(parts)
   }
 }
 

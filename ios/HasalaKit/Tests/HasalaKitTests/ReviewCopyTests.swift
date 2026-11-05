@@ -75,7 +75,7 @@ struct ReviewCopyTests {
     #expect(ReviewEngine.copyName(s.txns[i]).count == ReviewEngine.copyNameLimit)
     var copy = aed
     copy.heldCopy = HeldCopy(of: s.txns[i].id, fromOtherInbox: false)
-    #expect(ReviewEngine.copyLine(copy, s)?.hasPrefix("Looks like a copy of International Duty Free… ") == true)
+    #expect(ReviewEngine.copyLine(copy, s)?.hasPrefix("Same amount at International Duty Free…, ") == true)
   }
 
   @Test func theCardCarriesItsPostedDay() throws {
@@ -84,5 +84,39 @@ struct ReviewCopyTests {
     let card = ReviewEngine.card(t, s)
     #expect(card.posted == t.postedAt.date)
     #expect(ReviewEngine.tabRow(card, s).detail == t.postedAt.date.short)
+  }
+}
+
+@Suite("Review · facts on the duplicate question and the done line")
+struct ReviewGapAndDoneTests {
+  @Test func gapsReadPlainly() {
+    let a = LocalDateTime(2026, 10, 8, 9, 0)
+    #expect(ReviewEngine.gapPhrase(a, a) == "in the same minute")
+    #expect(ReviewEngine.gapPhrase(a, LocalDateTime(2026, 10, 8, 9, 2)) == "2 minutes apart")
+    #expect(ReviewEngine.gapPhrase(a, LocalDateTime(2026, 10, 8, 10, 0)) == "1 hour apart")
+    #expect(ReviewEngine.gapPhrase(LocalDateTime(2026, 10, 9, 9, 0), a) == "1 day apart")
+  }
+
+  @Test func theDoneLineSaysWhatChanged() throws {
+    let s = MayaLedger.state
+    let shopping = try #require(s.category("shopping"))
+    let t = RefundCountingTests.row("x", 59_49, .out, category: nil)
+    let line = ReviewEngine.sortedLine(t, into: shopping, learnedRule: false)
+    let summary = try #require(ReviewEngine.doneSummary([line], s))
+    let total = MoneyFormat.string(Spending.total(s, in: YearMonth(2026, 10)))
+    #expect(summary.rendered(hidden: false) == "Spent in October is now AED \(total). AED 59.49 moved into your categories.")
+    #expect(!summary.rendered(hidden: true).contains("59.49"))
+  }
+
+  @Test func sortingIntoATransferMovesNothing() throws {
+    let s = MayaLedger.state
+    let transfer = try #require(s.category("transfer"))
+    var other = RefundCountingTests.row("y", 500_00, .out, category: nil)
+    other.postedAt = LocalDateTime(2026, 9, 30, 9, 0)
+    let lines = [
+      ReviewEngine.sortedLine(RefundCountingTests.row("x", 500_00, .out, category: nil), into: transfer, learnedRule: false),
+      ReviewEngine.sortedLine(other, into: transfer, learnedRule: false),
+    ]
+    #expect(ReviewEngine.doneSummary(lines, s) == nil)
   }
 }

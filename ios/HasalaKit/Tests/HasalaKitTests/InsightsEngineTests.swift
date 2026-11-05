@@ -154,8 +154,22 @@ struct InsightsCountingTests {
     #expect(snap.categories.map(\.title) == ["Groceries", "Subscriptions"])
     #expect(snap.categories.map(\.amount) == [.aed(8000), .aed(4000)])
     #expect(snap.categories[0].bucket == .needs)
-    #expect(snap.categories[0].bar == Permille(1000))
-    #expect(snap.categories[1].bar == Permille(500))
+    #expect(snap.categories[0].bar == Permille(666))
+    #expect(snap.categories[1].bar == Permille(333))
+  }
+
+  @Test func savingMoreIsGoodAndStoppingIsNot() {
+    #expect(InsightsDelta.between(120, 100, goodWhenUp: true)?.tone == .success)
+    #expect(InsightsDelta.between(80, 100, goodWhenUp: true)?.tone == .warning)
+    #expect(InsightsDelta.between(0, 100, goodWhenUp: true)?.tone == .warning)
+    #expect(InsightsDelta.between(120, 100)?.tone == .warning)
+  }
+
+  @Test func aRangeShowsItsFocusMonthAndSaysSo() {
+    let s = F.ledger([F.txn("1", 5000), F.txn("1", 3000, F.july)])
+    let snap = InsightsEngine.snapshot(s, months: F.june...F.july, now: F.afterJune)
+    #expect(snap.title == "July 2026")
+    #expect(snap.rangeNote == "Insights shows one month at a time. Home and Activity show Jun – Jul 2026.")
   }
 
   @Test func refundsNetAgainstTheirCategoryAndAreNotIncome() {
@@ -232,15 +246,15 @@ struct InsightsCountingTests {
     let s = F.ledger([F.txn("1", 1000, F.july), F.txn(nil, 500, F.july, needsReview: true), F.txn(nil, 200)])
     let snap = InsightsEngine.snapshot(s, months: F.july...F.july, now: F.afterJune)
     #expect(snap.summary.spent == .aed(1500))
-    #expect(snap.categories.map(\.title) == ["Groceries", "Uncategorized"])
-    #expect(snap.buckets.map(\.title) == ["Needs", "Not yet sorted"])
+    #expect(snap.categories.map(\.title) == ["Groceries", "To sort"])
+    #expect(snap.buckets.map(\.title) == ["Needs", "To sort"])
     #expect(snap.categories.reduce(Int64(0)) { $0 + $1.amount.minor } == 1500)
     #expect(snap.buckets.reduce(Int64(0)) { $0 + $1.amount.minor } == 1500)
     #expect(snap.summary.legend.map(\.kind) == [.needs, .wants, .unsorted])
     #expect(snap.categories[1].delta?.kind == .up(percent: 150))
     let d = InsightsEngine.drill(s, target: .unsorted, months: F.july...F.july, now: F.afterJune)
     #expect(d.total == .aed(500))
-    #expect(d.title == "Not yet sorted · July")
+    #expect(d.title == "To sort · July")
     #expect(d.rows.first?.detail.hasPrefix("Uncategorized · ") == true)
   }
 

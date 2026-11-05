@@ -7,18 +7,29 @@
 public enum Pace {
   /// Where `spent` ends the month if it keeps today's daily rate: spent × days / day,
   /// rounded down (Paper: Groceries 812.40 on day 10 of 31 → "on course for 2,518").
-  public static func projected(_ spent: Int64, day: Int, days: Int) -> Int64 {
+  public static let minDay = 7
+  public static let marginPercent: Int64 = 105
+
+  public static func projected(_ spent: Int64, day: Int, days: Int, largest: Int64 = 0) -> Int64 {
     guard day > 0 else { return spent }
-    return Fils.mulDiv(spent, Int64(days), Int64(day))
+    let one = largest > 0 && largest.plus(largest) > spent ? largest : 0
+    return one.plus(Fils.mulDiv(spent.minus(one), Int64(days), Int64(day)))
+  }
+
+  public static func showsProjection(day: Int) -> Bool { day >= minDay }
+
+  public static func ahead(_ projected: Int64, of budget: Int64) -> Bool {
+    Int128(projected) * 100 > Int128(budget) * Int128(marginPercent)
   }
 
   /// The verdict for a budget line. Bills and savings have no pace: they are on track
   /// until they are paid (`done`) or over budget.
-  public static func verdict(spent: Int64, budget: Int64, day: Int, days: Int, paced: Bool) -> Verdict {
+  public static func verdict(spent: Int64, budget: Int64, day: Int, days: Int, paced: Bool, largest: Int64 = 0) -> Verdict {
     if budget <= 0 { return spent > 0 ? .overBudget : .onTrack }
     if spent > budget { return .overBudget }
     if !paced { return spent >= budget ? .done : .onTrack }
-    return projected(spent, day: day, days: days) > budget ? .overPace : .onTrack
+    guard showsProjection(day: day) else { return .onTrack }
+    return ahead(projected(spent, day: day, days: days, largest: largest), of: budget) ? .overPace : .onTrack
   }
 
   /// The month gone, in whole percent as permille ("32% of October gone" draws its tick at 320).

@@ -186,7 +186,9 @@ public enum InsightsEngine {
     let focus = ctx.focus
 
     let status: String
-    if months.lowerBound != months.upperBound {
+    let isRange = months.lowerBound != months.upperBound
+    let rangeNote = isRange ? "Insights shows one month at a time. Home and Activity show \(title(of: months))." : nil
+    if isRange {
       status = "\(focus.shortName) · latest in range"
     } else if ctx.isCurrent {
       status = "Day \(now.date.day) of \(focus.days)"
@@ -216,7 +218,7 @@ public enum InsightsEngine {
         delta: delta(cur.otherSpent, prev.otherSpent)))
     }
     if cur.unsorted != 0 {
-      bucketRows.append(unsortedRow(title: "Not yet sorted", cur: cur, prev: prev, spent: spent, ctx: ctx,
+      bucketRows.append(unsortedRow(title: "To sort", cur: cur, prev: prev, spent: spent, ctx: ctx,
                                     delta: delta))
     }
     bucketRows.sort { $0.amount.minor > $1.amount.minor }
@@ -229,7 +231,7 @@ public enum InsightsEngine {
         count: cur.countByCategory[id] ?? 0, delta: delta(amount, prev.byCategory[id] ?? 0))
     }
     if cur.unsorted != 0 {
-      categoryRows.append(unsortedRow(title: "Uncategorized", cur: cur, prev: prev, spent: spent, ctx: ctx,
+      categoryRows.append(unsortedRow(title: "To sort", cur: cur, prev: prev, spent: spent, ctx: ctx,
                                       delta: delta))
     }
     categoryRows.sort { a, b in
@@ -277,10 +279,11 @@ public enum InsightsEngine {
       : "Nothing was spent in \(focus.name)."
 
     return InsightsSnapshot(
-      months: months, focus: focus, isCurrent: ctx.isCurrent, title: title(of: months), status: status,
+      months: months, focus: focus, isCurrent: ctx.isCurrent, title: isRange ? focus.title : title(of: months), status: status,
       window: ctx.window, comparison: ctx.comparison,
       lensNote: ctx.comparison?.label ?? (ctx.isCurrent ? "\(focus.name) so far" : focus.name),
-      summary: summary, buckets: scaled(bucketRows), categories: scaled(categoryRows), merchants: scaled(merchantRows),
+      summary: summary, buckets: scaled(bucketRows, of: spent), categories: scaled(categoryRows, of: spent),
+      merchants: scaled(merchantRows, of: spent), rangeNote: rangeNote,
       lensFooter: footer, lensEmpty: empty, changes: changes, changesNotice: notice, flow: flow, flowEmpty: flowEmpty,
       reports: reports(s, ctx, cur: cur, now: now), share: share(focus: focus, isCurrent: ctx.isCurrent, totals: cur))
   }
@@ -297,11 +300,10 @@ public enum InsightsEngine {
       count: cur.countByCategory[unsortedID] ?? 0, delta: delta(cur.unsorted, prev.unsorted))
   }
 
-  static func scaled(_ rows: [InsightsRow]) -> [InsightsRow] {
-    let largest = rows.map(\.amount.minor).max() ?? 0
-    return rows.map { r in
+  static func scaled(_ rows: [InsightsRow], of spent: Int64) -> [InsightsRow] {
+    rows.map { r in
       var r = r
-      r.bar = Permille.ratio(r.amount.minor, of: largest)
+      r.bar = Permille.ratio(r.amount.minor, of: spent)
       return r
     }
   }
@@ -321,12 +323,12 @@ public enum InsightsEngine {
                                       delta: delta(cur.otherSpent, prev.otherSpent), target: .bucket(.other)))
     }
     if cur.unsorted != 0 || prev.unsorted != 0 {
-      legend.append(InsightsLegendRow(kind: .unsorted, title: "Not yet sorted", amount: .aed(cur.unsorted),
+      legend.append(InsightsLegendRow(kind: .unsorted, title: "To sort", amount: .aed(cur.unsorted),
                                       delta: delta(cur.unsorted, prev.unsorted), target: .unsorted))
     }
     if cur.saved != 0 || prev.saved != 0 || cur.income > 0 {
       legend.append(InsightsLegendRow(kind: .savings, title: "Moved to savings", amount: .aed(cur.saved),
-                                      delta: delta(cur.saved, prev.saved), target: .bucket(.savings)))
+                                      delta: compared ? InsightsDelta.between(cur.saved, prev.saved, goodWhenUp: true) : nil, target: .bucket(.savings)))
     }
     guard cur.income > 0 else {
       let note: MoneyPhrase = isCurrent
@@ -517,7 +519,7 @@ public enum InsightsEngine {
     case .bucket(.needs): name = "Needs"
     case .bucket(.wants): name = "Wants"
     case .bucket: name = "Other spending"
-    case .unsorted: name = "Not yet sorted"
+    case .unsorted: name = "To sort"
     case .category(let c): name = s.category(c)?.name ?? "Category"
     case .merchant(let m): name = merchantTitle(m)
     }

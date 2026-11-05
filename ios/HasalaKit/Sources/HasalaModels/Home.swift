@@ -84,6 +84,8 @@ public struct HeroTile: Sendable, Hashable, Identifiable {
   public var value: Money
   public var style: MoneyStyle
 
+  public var isApart: Bool { label == "Savings" }
+
   public init(_ label: String, _ value: Money, style: MoneyStyle = .exact) {
     self.label = label
     self.value = value
@@ -170,13 +172,23 @@ public struct SpendHero: Sendable, Hashable {
   public var unrated: TotalMark?
   public var unsorted: Money?
   public var heldOut: Money?
+  public var overCategory: CategoryID?
+
+  public var tickShare: Permille? {
+    guard let tick, plan.minor > 0 else { return nil }
+    return Permille.ratio(tick.minor, of: plan.minor)
+  }
+
+  public var tickPhrase: MoneyPhrase? {
+    tick.map { MoneyPhrase([.text("today's mark AED "), .amount($0, hidden: 3)]) }
+  }
 
   public var heldOutLine: MoneyPhrase? {
     heldOut.map { MoneyPhrase([.text("Maybe a repeat: AED "), .amount($0, hidden: 3), .text(" not counted until you answer")]) }
   }
 
   public var unsortedLine: MoneyPhrase? {
-    unsorted.map { MoneyPhrase([.text("Not sorted: AED "), .amount($0, hidden: 3)]) }
+    unsorted.map { MoneyPhrase([.text("To sort: AED "), .amount($0, hidden: 3), .text(", counted above")]) }
   }
 
   public struct NotCounted: Sendable, Hashable {
@@ -250,11 +262,17 @@ public struct BucketPaceRow: Sendable, Hashable, Codable, Identifiable {
 }
 
 public struct BudgetPaceWidget: Sendable, Hashable, Codable {
-  /// "32% of October gone".
+  /// "Day 10 of 31".
   public var monthGone: String
   public var rows: [BucketPaceRow]
+  public var unsorted: Money?
 
-  public init(monthGone: String, rows: [BucketPaceRow]) {
+  public var unsortedCaption: MoneyPhrase? {
+    unsorted.map { MoneyPhrase([.text("Not in a bucket yet: AED "), .amount($0, .rounded, hidden: 3)]) }
+  }
+
+  public init(monthGone: String, rows: [BucketPaceRow], unsorted: Money? = nil) {
+    self.unsorted = unsorted
     self.monthGone = monthGone
     self.rows = rows
   }
@@ -458,6 +476,15 @@ public struct HomeSnapshot: Sendable, Hashable {
   public var period: Period?
   public var canvasTitle: String
   public var aboutNow: [AboutNowRow]
+  public var monthClosed: MonthClosed?
+
+  public struct MonthClosed: Sendable, Hashable {
+    public var month: YearMonth
+    public var word: MoneyPhrase
+    public var over: Bool
+    public var toSort: Int
+    public var toSortLine: String?
+  }
 
   public init(
     header: HeaderState, hero: SpendHero, notifications: NotificationsSnapshot, widgets: [HomeWidget],

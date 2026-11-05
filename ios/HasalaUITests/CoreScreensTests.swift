@@ -117,7 +117,7 @@ final class CoreScreensTests: XCTestCase {
     let app = launch(scenario: "mayaCopy", screen: "review.copy")
     let line = element(app, "review.copy")
     XCTAssertTrue(line.waitForExistence(timeout: 15))
-    XCTAssertEqual(line.label, "Looks like a copy of Starbucks DIFC AED 27.00 from your other inbox")
+    XCTAssertEqual(line.label, "Same amount at Starbucks DIFC, 4 minutes apart, in your other inbox. Merge counts it once.")
     XCTAssertTrue(element(app, "review.reason.probable_copy").exists)
     XCTAssertTrue(element(app, "review.merge").isHittable && element(app, "review.keepBoth").isHittable)
     for pill in ["need", "want", "save", "transfer"] {

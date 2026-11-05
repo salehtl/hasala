@@ -9,7 +9,7 @@ public struct TxnFilter: Sendable, Hashable, Codable {
     public var title: String {
       switch self {
       case .all: "All"
-      case .toReview: "To review"
+      case .toReview: "To sort"
       case .bills: "Bills"
       case .transfers: "Transfers"
       case .income: "Income"
@@ -263,7 +263,7 @@ public enum ActivityEngine {
     if let reason = t.activeReviewReason {
       detail = t.joined(reason.label, t.postedTime)
     } else if t.inReview {
-      detail = t.joined("To review", t.postedTime)
+      detail = t.joined("To sort", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
     } else if let label = RefundEdit.label(t, in: s) {

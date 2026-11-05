@@ -130,12 +130,12 @@ struct MoneyTotalsTests {
   @Test func theReviewLineDoesNotSayTheAmountIsLeftOut() {
     let n = NotificationsEngine.snapshot(MayaLedger.state, now: now)
     let line = n.needsALook.first { $0.id == "review" }!.line.rendered(hidden: false)
-    #expect(line == "AED 827.28 still to check")
+    #expect(line == "AED 827.28 to sort")
     #expect(!line.contains("plan"))
   }
 
   @Test func theToReviewCaptionDoesNotSayTheAmountIsUncounted() {
-    #expect(ToReviewWidget(count: 2, notCounted: .aed(120_00)).caption.rendered(hidden: false) == "120 still to check")
+    #expect(ToReviewWidget(count: 2, notCounted: .aed(120_00)).caption.rendered(hidden: false) == "120 to sort")
   }
 
   @Test func aNegativeTodayKeepsItsSign() {

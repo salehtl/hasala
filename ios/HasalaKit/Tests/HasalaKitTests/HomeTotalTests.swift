@@ -52,14 +52,14 @@ struct HomeTotalTests {
     #expect(!t.estimate)
     #expect(t.leftOutCount == 2)
     #expect(t.mark?.currency == "EUR")
-    #expect(t.mark?.line == "Not counted: 2 in EUR")
-    #expect(t.mark?.caption == "2 not counted")
+    #expect(t.mark?.line == "No rate yet: 2 in EUR")
+    #expect(t.mark?.caption == "2 with no rate yet")
   }
 
   @Test func severalCurrenciesWithNoRateSayHowMany() {
     let t = Money.homeTotal([Self.eur, Money(minor: 1_00, currency: "GBP")], rates: [])
     #expect(t.mark?.currency == nil)
-    #expect(t.mark?.line == "Not counted: 2 with no rate")
+    #expect(t.mark?.line == "No rate yet: 2")
   }
 
   @Test func netWorthAndEverydayMarkWhatTheyLeaveOut() {
@@ -77,7 +77,7 @@ struct HomeTotalTests {
   @Test func profileAccountsLineLeavesTheSymbolOffNetWorth() {
     let s = Self.withAccounts(("us", Self.usd, true), ("eu", Self.eur, true))
     let line = ProfileEngine.snapshot(s, now: now).accounts.rendered(hidden: false)
-    #expect(line == "6 accounts · net worth 231,241 · 1 not counted")
+    #expect(line == "6 accounts · net worth 231,241 · 1 with no rate yet")
     #expect(ProfileEngine.snapshot(MayaLedger.state, now: now).accounts.rendered(hidden: false)
       == "4 accounts · net worth 227,568")
   }
@@ -87,7 +87,7 @@ struct HomeTotalTests {
     let r = InsightsEngine.snapshot(s, months: MayaLedger.october...MayaLedger.october, now: now).reports.first!
     #expect(r.value == .money(.aed(227_568_00)))
     #expect(r.mark?.leftOutCount == 1)
-    #expect(r.caption.hasSuffix(" · 1 not counted"))
+    #expect(r.caption.hasSuffix(" · 1 with no rate yet"))
     let base = InsightsEngine.snapshot(MayaLedger.state, months: MayaLedger.october...MayaLedger.october, now: now)
     #expect(base.reports.first?.mark == nil)
   }

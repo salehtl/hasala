@@ -59,7 +59,7 @@ struct BudgetPaceWordsTests {
 
   @Test func theOverPaceRowSaysSoAloud() {
     let needs = row(.needs, spent: 900_000, budget: 1_200_000, .overPace)
-    #expect(BudgetPaceWidgetView.rowSummary(needs, hidden: false).hasSuffix("3,000 left, over pace"))
+    #expect(BudgetPaceWidgetView.rowSummary(needs, hidden: false).hasSuffix("3,000 dirhams left, over pace"))
     #expect(BudgetPaceWidgetView.rowSummary(needs, hidden: true) == "Amount hidden, over pace")
   }
 }
