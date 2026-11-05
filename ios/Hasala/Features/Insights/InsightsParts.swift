@@ -19,8 +19,6 @@ enum InsightsSpeech {
 }
 
 enum InsightsInk {
-  static let needsBar = Color(HRGBA(214, 167, 112, 1))
-  static let wantsBar = Color(HRGBA(172, 152, 217, 1))
   static let unsorted = Color(Hue.other.dotDeep)
   static let figure = HFigure(size: HFontSize.numericMedium, leading: HLeading.numericMedium, weight: .bold,
                               tracking: HTracking.numericMedium, textStyle: .title2,
@@ -28,19 +26,19 @@ enum InsightsInk {
 
   static func bar(_ bucket: Bucket) -> Color {
     switch bucket {
-    case .needs: needsBar
-    case .wants: wantsBar
-    case .savings: HColor.bucketSavingsFill
+    case .needs: HColor.chartNeeds
+    case .wants: HColor.chartWants
+    case .savings: HColor.chartSavings
     case .income, .project, .other: HColor.neutral300
     }
   }
 
   static func legend(_ kind: InsightsLegendRow.Kind) -> Color {
     switch kind {
-    case .needs: HColor.bucketNeedsFill
-    case .wants: HColor.bucketWantsFill
+    case .needs: HColor.chartNeeds
+    case .wants: HColor.chartWants
     case .other, .unsorted: unsorted
-    case .savings: HColor.bucketSavingsFill
+    case .savings: HColor.chartSavings
     case .unspent: HColor.neutral300
     }
   }
@@ -107,6 +105,7 @@ struct InsightsSummaryCard: View {
   let comparison: InsightsComparison?
   let hidden: Bool
   let open: (InsightsTarget) -> Void
+  var openNotCounted: (SpendHero.NotCounted) -> Void = { _ in }
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
@@ -129,6 +128,10 @@ struct InsightsSummaryCard: View {
             legend(row).accessibilityIdentifier("insights.legend.\(row.kind.rawValue)")
           }
         }
+      }
+      if let line = summary.notCounted {
+        NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden),
+                       icon: .project, id: "insights.notCounted") { openNotCounted(line) }
       }
     }
     .padding(HSpacing.insetCard)
@@ -156,14 +159,16 @@ struct InsightsSummaryCard: View {
       .accessibilityValue(InsightsSpeech.amount(summary.figure, hidden: hidden, signed: summary.isNet))
       .accessibilityIdentifier("insights.figure")
       if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
-      VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 2) {
-        Text("Kept").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        Text(summary.kept ?? "\u{2014}").hFigure(.small).foregroundStyle(HColor.textPrimary)
+      if let kept = summary.kept {
+        VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 2) {
+          Text("Kept").hType(.footnote).foregroundStyle(HColor.textSecondary)
+          Text(kept).hFigure(.small).foregroundStyle(HColor.textPrimary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Kept")
+        .accessibilityValue(summary.keptPercent.map { "\($0) percent of income" } ?? kept)
+        .accessibilityIdentifier("insights.kept")
       }
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("Kept")
-      .accessibilityValue(summary.keptPercent.map { "\($0) percent of income" } ?? "No income yet")
-      .accessibilityIdentifier("insights.kept")
     }
   }
 
@@ -204,11 +209,13 @@ struct InsightsSummaryCard: View {
 
 struct InsightsSplitBar: View {
   let split: InsightsSplit
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var withoutColor
 
   var body: some View {
-    let parts: [(Color, Int64)] = [
-      (HColor.bucketNeedsFill, split.needs), (HColor.bucketWantsFill, split.wants),
-      (InsightsInk.unsorted, split.unsorted), (HColor.bucketSavingsFill, split.savings), (HColor.neutral300, split.unspent),
+    let parts: [(Color, Int64, ChartPattern)] = [
+      (HColor.chartNeeds, split.needs, .solid), (HColor.chartWants, split.wants, .dots),
+      (InsightsInk.unsorted, split.unsorted, .solid), (HColor.chartSavings, split.savings, .hatch),
+      (HColor.neutral300, split.unspent, .solid),
     ].filter { $0.1 > 0 }
     let total = Fils.sum(parts.map(\.1))
     GeometryReader { geo in
@@ -217,6 +224,7 @@ struct InsightsSplitBar: View {
       HStack(spacing: 2) {
         ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
           Rectangle().fill(part.0)
+            .overlay { if withoutColor { ChartPatternFill(pattern: part.2) } }
             .frame(width: total > 0 ? usable * CGFloat(Double(part.1) / Double(total)) : 0)
         }
       }
@@ -258,7 +266,7 @@ struct InsightsLensRow: View {
             .foregroundStyle(HColor.textSecondary)
             .frame(minWidth: 36, alignment: .trailing)
             .fixedSize()
-          if case .merchant = row.target {} else { InsightsBadgeSlot(delta: row.delta) }
+          if case .merchant = row.target {} else { InsightsBadgeSlot(delta: comparison == nil ? nil : row.delta) }
         }
       }
     }
@@ -357,7 +365,7 @@ struct InsightsFlowCard: View {
         }
         if empty == nil, !showsTable {
           HStack(spacing: 14) {
-            key("In", HColor.blue300)
+            key("In", HColor.chartIn)
             key("Out", HColor.textPrimary)
           }
           .accessibilityHidden(true)
@@ -373,11 +381,7 @@ struct InsightsFlowCard: View {
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(flow.note.spoken(hidden: hidden))
         Button(showsTable ? "Show as a chart" : "Show as a table") { showsTable.toggle() }
-          .buttonStyle(.plain)
-          .hType(.subheadline.weight(.semibold))
-          .foregroundStyle(HColor.textLink)
-          .frame(minHeight: HSpacing.targetMinimum)
-          .contentShape(Rectangle())
+          .buttonStyle(.inlineLink)
           .padding(.top, -10)
           .accessibilityIdentifier("insights.flow.toggle")
       }
@@ -429,7 +433,7 @@ struct InsightsFlowCard: View {
         HStack(alignment: .bottom, spacing: 0) {
           ForEach(flow.months) { m in
             HStack(alignment: .bottom, spacing: 4) {
-              bar(height(m.income.minor), HColor.blue300)
+              bar(height(m.income.minor), HColor.chartIn)
               bar(height(m.out.minor), HColor.textPrimary)
             }
             .frame(maxWidth: .infinity, maxHeight: plot, alignment: .bottom)

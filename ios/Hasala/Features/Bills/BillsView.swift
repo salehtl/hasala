@@ -12,6 +12,7 @@ import SwiftUI
 protocol BillsModel: AnyObject, Observable {
   var snapshot: BillsSnapshot { get }
   var hidden: Bool { get }
+  var holdsLate: Bool { get }
   var next14Estimates: Int { get }
   var incomeInNext14: Bool { get }
   func detail(_ bill: BillID) -> BillDetail?
@@ -37,8 +38,18 @@ final class BillsViewModel: BillsModel {
 
   var snapshot: BillsSnapshot {
     memo.value(for: [app.store.revision, range]) {
-      BillsEngine.snapshot(app.store.state, now: app.store.now, range: range)
+      Self.held(BillsEngine.snapshot(app.store.state, now: app.store.now, range: range),
+                holdsLate: app.store.state.reading?.holdsLateBills == true)
     }
+  }
+
+  var holdsLate: Bool { app.store.state.reading?.holdsLateBills == true }
+
+  static func held(_ snap: BillsSnapshot, holdsLate: Bool) -> BillsSnapshot {
+    guard holdsLate else { return snap }
+    var out = snap
+    out.needsALook = snap.needsALook.filter { if case .late = $0.kind { false } else { true } }
+    return out
   }
   var hidden: Bool { app.amountsHidden }
   var next14Estimates: Int { Self.estimatesDue(app.store.state, now: app.store.now) }

@@ -343,7 +343,7 @@ struct BillDetailView: View {
             .pillHeight()
             .accessibilityIdentifier("bills.detail.editSalary")
         } else {
-          if d.isLate {
+          if d.isLate && !model.holdsLate {
             Button("I paid it — find the payment") { model.markPaid(d.id) }
               .buttonStyle(.pill(.primary, fill: true))
               .pillHeight()

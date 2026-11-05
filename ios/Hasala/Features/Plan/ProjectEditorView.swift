@@ -163,7 +163,7 @@ struct ProjectEditorView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         field("Name") {
-          TextField("Kitchen refresh", text: $model.name)
+          TextField("", text: $model.name, prompt: .fieldPrompt("Kitchen refresh"))
             .hType(.body)
             .foregroundStyle(HColor.fieldText)
             .textInputAutocapitalization(.words)
@@ -175,6 +175,7 @@ struct ProjectEditorView: View {
             .padding(.horizontal, 16)
             .frame(minHeight: 52)
             .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+            .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
             .accessibilityLabel("Name")
             .accessibilityIdentifier("projectEditor.name")
         }
@@ -183,7 +184,7 @@ struct ProjectEditorView: View {
             HStack(spacing: 8) {
               Text("AED").hType(.body.weight(.semibold)).foregroundStyle(HColor.textSecondary)
                 .accessibilityHidden(true)
-              TextField("No budget", text: $model.budgetText)
+              TextField("", text: $model.budgetText, prompt: .fieldPrompt("No budget"))
                 .hType(.body.weight(.semibold))
                 .foregroundStyle(HColor.fieldText)
                 .keyboardType(.decimalPad)
@@ -198,6 +199,7 @@ struct ProjectEditorView: View {
             .padding(.horizontal, 16)
             .frame(minHeight: 52)
             .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+            .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
             Text("The money set aside for it. Leave it empty for no budget.").hType(.footnote).foregroundStyle(HColor.textSecondary)
               .padding(.horizontal, 4)
           }

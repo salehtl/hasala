@@ -60,6 +60,27 @@ final class InsightsModel {
 
   func open(_ target: InsightsTarget) { sheet = .drill(target) }
 
+  func openNotCounted(_ line: SpendHero.NotCounted) { app.openProjectsTab(line.projectID) }
+
+  var reading: ReadingState? { app.store.state.reading }
+
+  var importing: Bool { reading?.importing == true }
+
+  var importLine: String? { Self.importLine(reading) }
+
+  func hold(_ focus: YearMonth) -> ReadingHold? {
+    let h = ReadingOnScreen.hold(reading, month: focus)
+    return h?.warns == true ? h : nil
+  }
+
+  func openReading(_ link: ReadingHold.Link) { app.router.open(.profile, profile: [.bankAlerts]) }
+
+  static func importLine(_ reading: ReadingState?) -> String? {
+    guard case .importing(let read, let total, _, _, _)? = reading?.kind else { return nil }
+    let count = total > 0 ? " · \(MoneyFormat.count(read)) of \(MoneyFormat.count(total))" : ""
+    return "Reading your alerts\(count). Older months will change."
+  }
+
   func openReport(_ kind: InsightsReport.Kind) {
     switch kind {
     case .netWorth: app.router.home.append(.accounts)

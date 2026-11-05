@@ -94,11 +94,7 @@ struct NoAlertsSheet: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           Button("How to") { helping = bank }
-            .buttonStyle(.plain)
-            .hType(HType.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
+            .buttonStyle(.inlineLink)
             .accessibilityLabel("How to turn on email alerts, \(bank.name)")
             .accessibilityIdentifier("noAlerts.howTo.\(bank.rawValue)")
         }
@@ -109,12 +105,8 @@ struct NoAlertsSheet: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 8)
       Button("Use a different email") { model.useDifferentEmail() }
-        .buttonStyle(.plain)
-        .hType(HType.subheadline.weight(.medium))
-        .foregroundStyle(HColor.textLink)
+        .buttonStyle(.inlineLink)
         .disabled(model.checkingAgain)
-        .frame(minHeight: HSpacing.targetMinimum)
-        .contentShape(Rectangle())
         .accessibilityIdentifier("noAlerts.differentEmail")
     }
     .padding(.top, 18)

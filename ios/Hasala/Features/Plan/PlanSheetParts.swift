@@ -155,7 +155,7 @@ struct PlanAmountField: View {
         .foregroundStyle(HColor.textPrimary)
         .fixedSize()
         .accessibilityHidden(true)
-      TextField("0", text: $text)
+      TextField("", text: $text, prompt: .fieldPrompt("0"))
         .font(.system(size: shownFigure, weight: .bold, design: .rounded))
         .tracking(-0.8 * shownFigure / 44)
         .foregroundStyle(HColor.textPrimary)

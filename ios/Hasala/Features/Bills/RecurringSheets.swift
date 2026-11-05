@@ -205,7 +205,7 @@ struct RecurringTextField: View {
       if amount {
         Text("AED").hType(.body.weight(.semibold)).foregroundStyle(HColor.textSecondary).accessibilityHidden(true)
       }
-      TextField(placeholder, text: $text, axis: .vertical)
+      TextField("", text: $text, prompt: .fieldPrompt(placeholder), axis: .vertical)
         .lineLimit(1...4)
         .hType(amount ? .body.weight(.semibold) : .body)
         .foregroundStyle(HColor.fieldText)
@@ -224,6 +224,7 @@ struct RecurringTextField: View {
     .padding(.vertical, 12)
     .frame(minHeight: 52)
     .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+    .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
   }
 }
 

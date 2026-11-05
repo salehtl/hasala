@@ -31,7 +31,7 @@ struct CategoryDetailView: View {
         ]
       ) {
         CategoryHero(detail: d, hidden: model.hidden)
-        ChartCard(chart: d.chart, name: d.name, hue: d.hue, hidden: model.hidden)
+        ChartCard(chart: d.chart, name: d.name, hue: d.hue, bucket: d.bucket, hidden: model.hidden)
         if !d.transactions.isEmpty { ThisMonth(detail: d, model: model) }
         if !d.rules.isEmpty || BuildSurface.showsUnfinished { Rules(detail: d, model: model) }
         actions
@@ -151,6 +151,7 @@ private struct ChartCard: View {
   let chart: DayByDay
   let name: String
   let hue: Hue
+  let bucket: Bucket
   let hidden: Bool
 
   var body: some View {
@@ -160,7 +161,7 @@ private struct ChartCard: View {
       } trailing: {
         Text(chart.range).hType(.footnote).foregroundStyle(HColor.textSecondary)
       }
-      DayByDayChart(chart: chart, name: name, hue: hue, hidden: hidden)
+      DayByDayChart(chart: chart, name: name, hue: hue, bucket: bucket, hidden: hidden)
       if let caption = chart.caption {
         Text(caption).hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
