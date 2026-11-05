@@ -33,6 +33,7 @@ final class SignupModel {
       }
       // "Not found" goes as soon as the code changes (page 11: clear the error on fixing).
       if failure == .notInvited { failure = nil }
+      pastedLinkRefused = false
     }
   }
   private(set) var inviteFromLink = false
@@ -42,6 +43,7 @@ final class SignupModel {
   private var linkKey: String?
   private var linkCode: String?
   private(set) var invitePasted = false
+  private(set) var pastedLinkRefused = false
   private(set) var linkPasteboardChange: Int?
   var clearPasteboard: @MainActor (Int) -> Void = { clearPastedPhrase(changeCount: $0) }
 
@@ -117,6 +119,8 @@ final class SignupModel {
     !replacing && !wordsInSignup && method == .passkey && passkeyPRF && passkeySynced && passkeyRegistered
       && capabilities.contains(.viewPhrase)
   }
+  var passkeyWithoutPRF: Bool { !replacing && method == .passkey && passkeyRegistered && !passkeyPRF }
+  var wordsOnlyInSetup: Bool { !capabilities.contains(.viewPhrase) || method == .password || passkeyWithoutPRF }
   var busy = false
   var failure: AuthFailure?
   var now: () -> Date = { .now }
@@ -181,8 +185,13 @@ final class SignupModel {
 
   func usePastedInvite(_ text: String, pasteboardChange: Int? = nil) {
     failure = nil
+    pastedLinkRefused = false
     guard let link = InviteLink.parse(pasted: text) else {
-      if InviteCode(InviteCode.entryCharacters(text)) != nil { paste(text) }
+      if InviteCode(InviteCode.entryCharacters(text)) != nil {
+        paste(text)
+      } else {
+        pastedLinkRefused = true
+      }
       path = [.invite]
       return
     }

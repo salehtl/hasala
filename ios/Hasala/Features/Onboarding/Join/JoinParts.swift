@@ -115,6 +115,14 @@ struct NumberedStep: View {
 /// 15/20 lines, 14 / 16 in, dividers inset 16.
 struct ReasonsCard: View {
   var reasons: [(title: String, detail: String)]
+  var link: ReasonLink?
+
+  struct ReasonLink {
+    var row: Int
+    var title: String
+    var identifier: String
+    var action: () -> Void
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -122,17 +130,33 @@ struct ReasonsCard: View {
         if i > 0 {
           Rectangle().fill(HColor.borderSubtle).frame(height: 1).padding(.leading, 16)
         }
+        let rowLink = link.flatMap { $0.row == i ? $0 : nil }
         VStack(alignment: .leading, spacing: 2) {
-          Text(reason.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          Text(reason.detail)
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(reason.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+            Text(reason.detail)
+              .hType(.subheadline)
+              .foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .accessibilityElement(children: .combine)
+          if let rowLink {
+            Button(action: rowLink.action) {
+              Text(rowLink.title)
+                .hType(.subheadline.weight(.semibold))
+                .foregroundStyle(HColor.textLink)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, -6)
+            .accessibilityIdentifier(rowLink.identifier)
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
       }
     }
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))

@@ -75,14 +75,13 @@ struct SplitHandles: View {
   /// The handle as VoiceOver and the tests reach it: a 44 box over the knob, adjustable.
   private func handle(_ i: Int, at x: CGFloat, track: CGFloat) -> some View {
     let bucket = i == 0 ? "Needs" : "Wants"
-    let percent = i == 0 ? plan.needsPercent : plan.wantsPercent
     return Color.clear
       .frame(width: 44, height: 44)
       .contentShape(Rectangle())
       .offset(x: x - 22)
       .accessibilityElement()
       .accessibilityLabel(bucket)
-      .accessibilityValue("\(percent)%")
+      .accessibilityValue(plan.handleValue(i))
       .accessibilityHint("Swipe up or down to move 5%.")
       .accessibilityAdjustableAction { direction in
         move(i, to: boundary(i) + (direction == .increment ? 5 : -5))
@@ -110,7 +109,9 @@ struct SplitHandles: View {
   /// more and the three at 100.
   private func move(_ i: Int, to boundary: Int) {
     let next = plan.moving(handle: i, to: boundary)
-    if next != plan { plan = next }
+    guard next != plan else { return }
+    plan = next
+    AccessibilityNotification.Announcement(next.splitAnnouncement).post()
   }
 
   /// "50%" under its segment, in its ink (Paper "Labels": the same growth as the
@@ -133,8 +134,7 @@ struct SplitHandles: View {
     .frame(minHeight: 20)
     .accessibilityElement(children: .ignore)
     .accessibilityAddTraits(.isStaticText)
-    .accessibilityLabel(
-      "Needs \(plan.needsPercent)%, wants \(plan.wantsPercent)%, savings \(plan.savingsPercent)%")
+    .accessibilityLabel(plan.splitAnnouncement)
   }
 
   private func label(_ bucket: Bucket, _ percent: Int) -> some View {
@@ -214,6 +214,30 @@ private struct Knob: View {
 }
 
 extension StartingPlan {
+  func handleValue(_ i: Int) -> String {
+    i == 0 ? "\(needsPercent)%, Wants \(wantsPercent)%" : "\(wantsPercent)%, Savings \(savingsPercent)%"
+  }
+
+  var changed: Bool { self != StartingPlan() }
+
+  func stepping(_ bucket: Bucket, by delta: Int) -> StartingPlan? {
+    let next: StartingPlan
+    switch bucket {
+    case .needs: next = moving(handle: 0, to: needsPercent + delta)
+    case .savings: next = moving(handle: 1, to: needsPercent + wantsPercent - delta)
+    case .wants:
+      next = delta < 0 || savingsPercent > 0
+        ? moving(handle: 1, to: needsPercent + wantsPercent + delta)
+        : moving(handle: 0, to: needsPercent - delta)
+    default: return nil
+    }
+    return next == self ? nil : next
+  }
+
+  var splitAnnouncement: String {
+    "Needs \(needsPercent)%, wants \(wantsPercent)%, savings \(savingsPercent)%"
+  }
+
   /// The split with handle `i` at `boundary` percent from the left, in 5% steps: the left
   /// handle trades needs for wants, the right one wants for savings. No bucket goes under
   /// 0%, and the three stay at 100.

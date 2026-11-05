@@ -19,7 +19,7 @@ extension StoriesView {
 
 extension InviteCodeView {
   init(store: OnboardingStore) {
-    self.init(model: store.signup)
+    self.init(model: store.signup, onSignIn: { store.signup.path = [.signIn] })
   }
 }
 
@@ -59,7 +59,7 @@ extension PhraseShowView {
     self.init(
       revealed: Bindable(m).phraseRevealed, words: m.phrase?.words ?? [], onBack: { m.back() },
       onContinue: { Task { await m.finish() } }, seen: m.phraseSeen, busy: m.busy, failure: m.failure,
-      onCapture: { m.phraseMasked = $0 })
+      onCapture: { m.phraseMasked = $0 }, canShowAgain: !m.wordsOnlyInSetup)
   }
 }
 
@@ -70,7 +70,7 @@ extension AccountReadyView {
 
   init(store: OnboardingStore, signup m: SignupModel) {
     self.init(profile: m.profile, signupEmail: m.email, outlook: store.services.mailbox.connectable.contains(.outlook),
-              capabilities: m.capabilities) {
+              capabilities: m.capabilities, passkeyHoldsKeys: !m.passkeyWithoutPRF) {
       store.session().accountCreated()
     }
   }

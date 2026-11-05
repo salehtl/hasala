@@ -24,11 +24,12 @@ struct IncomeStep: View {
   }
 
   private static let figureID = "income.figure"
+  static let subtitle = "After any deductions. You can change it any time."
 
   private var screen: some View {
     SetupScreen(
       title: "What lands in your account each month?",
-      subtitle: "After tax. You can change it any time.",
+      subtitle: Self.subtitle,
       back: .system,
       trailing: ("Skip", model.skipIncome),
       layout: .fill

@@ -78,7 +78,7 @@ struct StoryArt: View {
     "A spending card: AED 10,288.34 spent of 19,000 on needs and wants, on track, with AED 8,711.66 left. Rent, paid 1 October, counts on its due date. Only your devices can read this.",
     "An Emirates NBD alert email, read on this iPhone, becomes a Carrefour transaction of 342.15 in Groceries.",
     "The Carrefour transaction sealed into the Hasala coin slot. Your key stays on your devices; our server stores only sealed text.",
-    "A Lulu Hypermarket card for AED 214.30 on the review deck, between Need, Want, Transfer and Save. Hasala learns: always Groceries for Lulu.",
+    "A Lulu Hypermarket card for AED 214.30 on the review deck, between Need, Want, Transfer and Save. Hasala suggests Groceries next time for Lulu.",
   ]
 }
 

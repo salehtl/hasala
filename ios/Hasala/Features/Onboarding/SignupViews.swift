@@ -14,9 +14,23 @@ import UIKit
 /// from, or that it wasn't found; "Other reasons" follows a code that wasn't found.
 struct InviteCodeView: View {
   @Bindable var model: SignupModel
+  var onSignIn: () -> Void
   @State private var focused = false
 
+  static let notAnInviteLink = "That link isn't a Hasala invite. Check your invite email, or enter the code."
+
   private var notFound: Bool { model.failure == .notInvited }
+
+  static let alreadyUsedDetail = "Each invite works once. If you made an account, you don't need another."
+  static let linkNotFound = "This invite link didn't work. It may have been used, or it's past its date."
+
+  static func notFoundMessage(fromLink: Bool) -> String? {
+    fromLink ? linkNotFound : AuthFailure.notInvited.message
+  }
+
+  static func canContinue(_ model: SignupModel) -> Bool {
+    model.inviteCode != nil && model.failure != .notInvited
+  }
 
   var body: some View {
     AccountScreen(
@@ -32,19 +46,21 @@ struct InviteCodeView: View {
                    detail: "From no-reply@hasala.app, sent to the email you used on the waitlist.", radius: HRadius.tile)
             .hTransition(.fade)
         } else {
-          ReasonsCard(reasons: [
-            ("Already used it?", "Each invite works once. If you made an account, sign in instead."),
-            ("Past the date in your email?",
-             "Expired invites go back to the list. Ask again at hasala.app and we'll send a new one."),
-          ])
+          ReasonsCard(
+            reasons: [
+              ("Already used it?", Self.alreadyUsedDetail),
+              ("Past the date in your email?",
+               "Expired invites go back to the list. Ask again at hasala.app and we'll send a new one."),
+            ],
+            link: ReasonsCard.ReasonLink(row: 0, title: "Sign in instead", identifier: "invite.signIn", action: onSignIn))
           .hTransition(.rise)
         }
       }
       .hAnimation(.rise, value: notFound)
     } actions: {
-      Button(notFound ? "Try again" : "Continue") { model.submitInvite() }
+      Button("Continue") { model.submitInvite() }
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(model.inviteCode == nil)
+        .disabled(!Self.canContinue(model))
         .accessibilityIdentifier("invite.continue")
       WebLink(title: "No invite yet? Join the waitlist", url: "https://hasala.app", identifier: "invite.waitlist")
     }
@@ -89,8 +105,10 @@ struct InviteCodeView: View {
   }
 
   @ViewBuilder private var status: some View {
-    if notFound, let message = AuthFailure.notInvited.message {
+    if notFound, let message = Self.notFoundMessage(fromLink: model.inviteFromLink) {
       JoinStatusLine(text: message, tone: .error)
+    } else if model.pastedLinkRefused {
+      JoinStatusLine(text: Self.notAnInviteLink, tone: .error)
     } else if let hint = model.inviteHint {
       JoinStatusLine(text: hint, tone: .error)
     } else if model.inviteFromLink, model.inviteCode != nil {
@@ -199,12 +217,19 @@ private struct ChipFitsKey: PreferenceKey {
 struct SignInMethodView: View {
   @Bindable var model: SignupModel
 
+  static func subtitle(emailProvenByLink: Bool) -> String {
+    emailProvenByLink
+      ? "Your link opened it and confirmed your email. Now pick how you'll get back in."
+      : "Email verified. Now pick how you'll get back in."
+  }
+
+  static let passwordDetail =
+    "Signs you in anywhere you can type. It can't unlock your data on a new iPhone, and your 12 words can't be shown again, so keep your paper safe."
+
   var body: some View {
     AccountScreen(
       title: "How do you want to sign in?",
-      subtitle: model.ticket?.emailProven == true
-        ? "Your link opened it and confirmed your email. Now pick how you'll get back in. You can add the other way later."
-        : "Email verified. Now pick how you'll get back in. You can add the other way later.",
+      subtitle: Self.subtitle(emailProvenByLink: model.ticket?.emailProven == true),
       steps: (2, 3),
       back: .system
     ) {
@@ -212,7 +237,7 @@ struct SignInMethodView: View {
         choice(.passkey, icon: .faceID, hue: .sky, title: "Use Face ID (passkey)", recommended: true,
                text: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.")
         choice(.password, icon: .password, hue: .other, title: "Use a password", recommended: false,
-               text: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.")
+               text: Self.passwordDetail)
         FailureBanner(failure: model.failure)
       }
     } actions: {
