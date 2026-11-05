@@ -152,7 +152,14 @@ struct ReviewPickSheet: View {
               Text(o.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
                 .fixedSize(horizontal: false, vertical: true)
               if suggested == o.id {
-                InfoChip(SuggestionSource.chip(pick.card.suggestedBy), style: .suggested)
+                if typeSize.isAccessibilitySize {
+                  Text(SuggestionSource.chip(pick.card.suggestedBy))
+                    .hType(.footnote.weight(.semibold))
+                    .foregroundStyle(HColor.statusInfoForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                  InfoChip(SuggestionSource.chip(pick.card.suggestedBy), style: .suggested)
+                }
               }
             }
             Spacer(minLength: 8)
@@ -221,15 +228,29 @@ struct ReviewPickSheet: View {
 
   private var ruleRow: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Toggle(isOn: $alwaysUse) {
-        Text("Always use it for \(Bidi.isolate(pick.card.merchant))")
+      let title = "Always use it for \(Bidi.isolate(pick.card.merchant))"
+      if typeSize.isAccessibilitySize {
+        Text(title)
           .hType(.subheadline.weight(.medium))
           .foregroundStyle(HColor.textPrimary)
           .fixedSize(horizontal: false, vertical: true)
+          .accessibilityHidden(true)
+        Toggle(title, isOn: $alwaysUse)
+          .labelsHidden()
+          .tint(HColor.controlSwitchTrackOn)
+          .frame(minHeight: 52)
+          .accessibilityIdentifier("pick.alwaysUse")
+      } else {
+        Toggle(isOn: $alwaysUse) {
+          Text(title)
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .tint(HColor.controlSwitchTrackOn)
+        .frame(minHeight: 52)
+        .accessibilityIdentifier("pick.alwaysUse")
       }
-      .tint(HColor.controlSwitchTrackOn)
-      .frame(minHeight: 52)
-      .accessibilityIdentifier("pick.alwaysUse")
       if alwaysUse, let note = ReviewDone.reachNote(reach) {
         Text(note)
           .hType(.footnote)

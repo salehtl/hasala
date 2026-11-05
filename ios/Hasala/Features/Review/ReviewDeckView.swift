@@ -166,6 +166,9 @@ struct ReviewDeckView: View {
     .onChange(of: touched) { _, now in
       if now == nil { released() }
     }
+    .onChange(of: showsDeck) { _, now in
+      if !now { app.dismissToast() }
+    }
   }
 
   private var pickBinding: Binding<ReviewPick?> {
@@ -484,13 +487,22 @@ struct ReviewDeckView: View {
 
   /// A direction pill: idle glass, waking toward 1.06 as the card leans its way, active
   /// (48, the bucket's tint and ring) past the commit point. A real button, 44 at least.
+  @ViewBuilder
   private func pill(_ edge: SwipeEdge) -> some View {
+    let top = model.cards.first
+    if Self.hidesPill(asking: top?.copyLine != nil, leaning: leanEdge == edge || held == edge) {
+      Color.clear.frame(width: 1, height: Self.pillSlot).accessibilityHidden(true)
+    } else {
+      livePill(edge)
+    }
+  }
+
+  private func livePill(_ edge: SwipeEdge) -> some View {
     let choice = choice(for: edge)
     let active = crossed == edge || held == edge
     let waking = !active && leanEdge == edge ? leanStrength : 0
     let top = model.cards.first
     let label = choice.label(isIncome: top?.isIncome == true)
-    let asking = Self.hidesPill(asking: top?.copyLine != nil, leaning: leanEdge == edge || held == edge)
     return Button {
       if let top { send(top, choice) }
     } label: {
@@ -500,10 +512,9 @@ struct ReviewDeckView: View {
     .scaleEffect(motion.isStill ? 1 : 1 + 0.06 * waking)
     .hAnimation(.thumbSlide, value: active)
     // Paper's Pick a need draws the deck without its pills or footer behind the sheet.
-    .opacity(model.picking == nil && !asking ? 1 : 0)
-    .hAnimation(.fade, value: model.picking == nil && !asking)
-    .disabled(model.cards.isEmpty || asking)
-    .accessibilityHidden(asking)
+    .opacity(model.picking == nil ? 1 : 0)
+    .hAnimation(.fade, value: model.picking == nil)
+    .disabled(model.cards.isEmpty)
     .accessibilityLabel("Sort as \(label)")
     .accessibilityIdentifier("review.pill.\(choice.rawValue)")
   }
