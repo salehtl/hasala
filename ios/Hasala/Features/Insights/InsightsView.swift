@@ -72,7 +72,7 @@ struct InsightsView: View {
     let collapsible = model.lens == .categories && all.count > InsightsEngine.collapsedCategories
     let rows = collapsible && !model.showsAllCategories ? Array(all.prefix(InsightsEngine.collapsedCategories)) : all
     return VStack(alignment: .leading, spacing: 12) {
-      SectionTitle(title: "Analyze by", note: snap.lensNote)
+      SectionTitle(title: "Analyse by", note: snap.lensNote)
       HSegmentedControl(InsightsLens.allCases, selection: $model.lens) { $0.title }
         .accessibilityIdentifier("insights.lens")
       Group {

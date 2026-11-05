@@ -178,6 +178,14 @@ struct FinishSetupTests: AccountSuite {
     #expect(again === flow && again.path.isEmpty && again.incomeEntry.text == "25000" && again.paydayChoice == .day(25))
   }
 
+  @Test func theCountLeavesOutARowThatCantStartYet() {
+    let items: [FinishSetupItem] = [.plan, .notifications]
+    #expect(FinishSetupSection.fact(items, isDone: { _ in false }, importing: true) == "0 of 1")
+    #expect(FinishSetupSection.fact(items, isDone: { _ in false }, importing: false) == "0 of 2")
+    #expect(FinishSetupSection.fact([.phrase] + items, isDone: { _ in false }, importing: true) == "0 of 2")
+    #expect(FinishSetupSection.fact(items, isDone: { $0 == .notifications }, importing: true) == "1 of 2")
+  }
+
   @Test func notNowAnswersTheNotificationsItem() {
     let notifications = MockNotificationPermission()
     let m = FinishSetupModel(services: services(notifications: notifications))
@@ -192,13 +200,15 @@ struct FinishSetupTests: AccountSuite {
                                                 notifications: MockNotificationPermission(answered: true)))
     #expect(m.isDone(.plan) && m.isDone(.notifications))
     let onlySplit = FinishSetupModel(services: services(MockSetupAuthoring(saved: SetupReadBack(split: StartingPlan()))))
-    #expect(onlySplit.isDone(.plan))
+    #expect(!onlySplit.isDone(.plan))
     let onlyIncome = FinishSetupModel(services: services(MockSetupAuthoring(
       saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))))
+    #expect(!onlyIncome.isDone(.plan))
+    onlyIncome.refresh(hasPlan: true)
     #expect(onlyIncome.isDone(.plan))
   }
 
-  @Test func anIncomeWithoutASplitCompletesThePlanItem() async throws {
+  @Test func anIncomeWithoutASplitLeavesThePlanItem() async throws {
     let setup = MockSetupAuthoring()
     let m = FinishSetupModel(services: services(setup))
     m.setPlan()
@@ -207,7 +217,7 @@ struct FinishSetupTests: AccountSuite {
     flow.continueWithIncome()
     await flow.savePlan(skip: true)
     #expect(setup.savePlanCalls == 1 && setup.income == 2_500_000 && setup.plan == nil)
-    #expect(m.isDone(.plan) && m.planFlow == nil)
+    #expect(!m.isDone(.plan) && m.planFlow == nil)
   }
 
   @Test func closingThePlanWithNothingChosenSendsNothingAndKeepsTheItem() async throws {

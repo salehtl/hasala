@@ -33,7 +33,7 @@ protocol HomeModel: AnyObject, Observable {
   var hidden: Bool { get }
   var bell: Bell { get }
   /// A widget tap; returns a screen to push, if any.
-  func openWidget(_ id: String) -> HomeRoute?
+  func openWidget(_ id: String, setPlan: (() -> Void)?) -> HomeRoute?
   /// Whether tapping the widget leads anywhere in this build (`BuildSurface`): a Release
   /// build doesn't make a widget tappable when its detail screen isn't built yet.
   func widgetOpens(_ id: String) -> Bool
@@ -43,6 +43,10 @@ protocol HomeModel: AnyObject, Observable {
   /// sheet); what needs the sheet gone first (the review cover) comes back to run once it is.
   func openNotification(_ destination: NotificationDestination) -> (@MainActor () -> Void)?
   func markAllRead()
+}
+
+extension HomeModel {
+  func openWidget(_ id: String) -> HomeRoute? { openWidget(id, setPlan: nil) }
 }
 
 @MainActor
@@ -83,7 +87,11 @@ final class HomeViewModel: HomeModel {
   }
 
   func markAllRead() {
-    app.notificationReads.markAllRead(app.needsALook)
+    app.notificationReads.markAllRead(app.needsALook.filter { !Self.staysUnread($0) })
+  }
+
+  static func staysUnread(_ item: NotificationItem) -> Bool {
+    item.id.hasPrefix("mail.signIn.")
   }
 
   /// Mail's row (plan B4.3: the offer is the bell's mail row and the Profile card). It has no
@@ -155,12 +163,12 @@ final class HomeViewModel: HomeModel {
     if app.router.sheet == .notifications { app.router.sheet = nil }
   }
 
-  func openWidget(_ id: String) -> HomeRoute? {
+  func openWidget(_ id: String, setPlan: (() -> Void)?) -> HomeRoute? {
     switch id {
     case "budgetPace":
-      app.openPlan()
+      if let setPlan, app.snapshot.hero.state == .noPlan { setPlan() } else { app.openPlan() }
       return nil
-    case "today":
+    case "today", "spentSoFar":
       app.tab = .activity
       return nil
     case "nextBill", "comingUp":
@@ -169,8 +177,6 @@ final class HomeViewModel: HomeModel {
       return .accounts
     case "toReview":
       app.startReview()
-      return nil
-    case "spentSoFar":
       return nil
     default:
       if id.hasPrefix(Self.categoryPrefix) {
@@ -192,20 +198,21 @@ final class HomeViewModel: HomeModel {
 
   static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."
   static let projectPrefix = HomeWidgetKind.project.rawValue + "."
+  static let goalPrefix = HomeWidgetKind.goal.rawValue + "."
 
   /// The widgets with a built destination: Plan, a category, a project, Activity, Bills and the review deck.
-  static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "nextBill", "comingUp", "toReview"]
+  static let widgetsWithDestinations: Set<String> = ["budgetPace", "today", "spentSoFar", "nextBill", "comingUp", "toReview"]
 
   func widgetOpens(_ id: String) -> Bool {
-    if id == "spentSoFar" { return false }
+    if id == "netWorth" { return BuildSurface.showsUnfinished || !app.store.state.accounts.isEmpty }
     return BuildSurface.showsUnfinished || Self.widgetsWithDestinations.contains(id) || id.hasPrefix(Self.categoryPrefix)
-      || id.hasPrefix(Self.projectPrefix)
+      || id.hasPrefix(Self.projectPrefix) || id.hasPrefix(Self.goalPrefix)
   }
 }
 
 extension AppModel {
   var needsALook: [NotificationItem] {
-    NotificationsEngine.snapshot(store.state, now: store.now).needsALook
+    NotificationsEngine.snapshot(store.state, now: store.now).needsALook.filter { $0.id != "review" }
       + [HomeViewModel.mailItem(mailOffer, mailboxes: mailbox?.mailboxes ?? [])].compactMap { $0 }
   }
 
