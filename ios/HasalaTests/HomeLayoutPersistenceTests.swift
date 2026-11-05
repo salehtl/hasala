@@ -95,7 +95,7 @@ struct HomeLayoutPersistenceTests {
     #expect(app.router.sheet == .profile)
     #expect(app.router.profile == [.plan, .category("dining")])
     #expect(home.widgetOpens("categoryWatch.dining"))
-    #expect(!home.widgetOpens("spentSoFar"))
+    #expect(home.widgetOpens("spentSoFar"))
     app.router.sheet = nil
     app.router.sheetDismissed()
     #expect(home.openWidget("budgetPace") == nil)

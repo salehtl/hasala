@@ -29,7 +29,7 @@ struct AppModelTests {
     for period in [Period.month(YearMonth(2026, 9)), .month(YearMonth(2026, 6)), Period(YearMonth(2026, 8), YearMonth(2026, 10))] {
       app.period = period
       #expect(app.reviewCount == 7)
-      #expect(app.needsALook.first { $0.id == "review" }?.title == "7 transactions to sort")
+      #expect(!app.needsALook.contains { $0.id == "review" })
     }
     app.period = .month(YearMonth(2026, 12))
     #expect(app.period == .month(MayaLedger.october))
