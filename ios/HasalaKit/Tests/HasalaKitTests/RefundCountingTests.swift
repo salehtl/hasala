@@ -181,3 +181,24 @@ struct ReversalTests {
     #expect(RefundEdit.reversalCandidates(for: first, in: s).isEmpty)
   }
 }
+
+@Suite("Transaction detail · what can change")
+struct TransactionEditFactsTests {
+  @Test func aBankRowCannotChangeItsAmountAndAManualOneCan() throws {
+    var s = MayaLedger.state
+    var bank = RefundCountingTests.row("bank", 50_00, .out, category: "shopping")
+    bank.provenance = Provenance(title: "Bank transaction alert", readAt: "Read automatically", rawMerchant: "TEST STORE")
+    let hand = RefundCountingTests.row("hand", 20_00, .out, category: "shopping")
+    s.txns += [bank, hand]
+    let b = try #require(TransactionEngine.detail("bank", s, now: MayaLedger.now))
+    #expect(!b.canEditAmount && b.canEditDate && !b.isManual)
+    let h = try #require(TransactionEngine.detail("hand", s, now: MayaLedger.now))
+    #expect(h.canEditAmount && h.isManual)
+  }
+
+  @Test func aReversalPairPointsBothWays() throws {
+    let s = ReversalTests.pair()
+    #expect(try #require(TransactionEngine.detail("h1", s, now: MayaLedger.now)).reversedBy == "h2")
+    #expect(try #require(TransactionEngine.detail("h2", s, now: MayaLedger.now)).reversalOf == "h1")
+  }
+}

@@ -58,6 +58,13 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var canAlwaysUse: Bool = false
   public var combined: Bool = false
   public var reasonLine: String? = nil
+  public var isManual: Bool = false
+  public var canEditAmount: Bool = false
+  public var canEditDate: Bool = false
+  public var amountLockedLine: String? = nil
+  public var refundLabel: String? = nil
+  public var reversalOf: TxnID? = nil
+  public var reversedBy: TxnID? = nil
 }
 
 public struct SplitLineModel: Sendable, Hashable, Identifiable {
@@ -117,7 +124,7 @@ public enum TransactionEngine {
       }
     }
 
-    return TransactionDetail(
+    var detail = TransactionDetail(
       id: t.id, merchant: t.title, glyph: t.isTransfer ? .transfer : (c?.glyph ?? .review),
       hue: c?.hue ?? .other, monogram: c == nil ? String(t.merchant.prefix(1)).uppercased() : nil,
       amount: t.amount, isIncome: t.direction == .in, meta: meta, category: c.map(CategoryOption.init),
@@ -129,6 +136,14 @@ public enum TransactionEngine {
       home: t.homeAmount, canAlwaysUse: t.canAlwaysUse, combined: t.combinedCopy != nil,
       reasonLine: t.activeReviewReason == .mayRepeat ? t.mayRepeat?.line : nil
     )
+    detail.isManual = t.isManual
+    detail.canEditAmount = t.isManual && t.splits.isEmpty && !t.archived
+    detail.canEditDate = !t.archived
+    detail.amountLockedLine = t.isManual && !t.splits.isEmpty ? "Remove the split to change the amount." : nil
+    detail.refundLabel = RefundEdit.label(t, in: s)
+    detail.reversalOf = t.isReversal ? t.refundOf : nil
+    detail.reversedBy = RefundEdit.reversal(of: t.id, in: s)?.id
+    return detail
   }
 
   /// Whether split lines add up to the transaction (`validateSplitDraft`, simplified).

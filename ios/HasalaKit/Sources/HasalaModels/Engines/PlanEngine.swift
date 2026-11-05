@@ -214,6 +214,19 @@ public enum PlanEngine {
   }
 
   public static let paydayWindow = 4
+  public static let salaryLookbackDays = 90
+
+  public static func lastSalary(_ s: LedgerState, today: LocalDate) -> LocalDate? {
+    let from = today.adding(days: -salaryLookbackDays)
+    return s.txns.filter { t in
+      t.direction == .in && !t.archived && !t.isTransfer && !t.isHeldCopy && t.postedAt.date >= from
+        && t.postedAt.date <= today && s.category(t.categoryID)?.kind == .income
+    }.map(\.postedAt.date).max()
+  }
+
+  public static func lastSalaryLine(_ s: LedgerState, today: LocalDate) -> String? {
+    lastSalary(s, today: today).map { "Your last salary came on the \(ordinal($0.day))." }
+  }
 
   public static func payday(_ s: LedgerState, month: YearMonth) -> LocalDate {
     LocalDate(month.year, month.month, min(max(1, s.plan.payday), month.days))

@@ -412,6 +412,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var fromText: Bool { provenance?.isText == true }
 
+  public var isManual: Bool { provenance == nil && mailboxMessageID == nil }
+
   /// "Starbucks DIFC".
   public var title: String { place.map { "\(merchant) \($0)" } ?? merchant }
 

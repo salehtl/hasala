@@ -172,3 +172,16 @@ struct PlanCategoryDetailTests {
     #expect(d.verdictFact == nil)
   }
 }
+
+@Suite("Plan · payday from imported salary")
+struct LastSalaryTests {
+  @Test func theNewestSalaryInNinetyDaysNamesTheDay() {
+    let s = InsightsFixture.ledger([
+      InsightsFixture.txn("salary", 1_000_00, InsightsFixture.june, day: 25, direction: .in),
+      InsightsFixture.txn("1", 50_00, InsightsFixture.july, day: 2),
+    ])
+    #expect(PlanEngine.lastSalary(s, today: LocalDate(2026, 7, 10)) == LocalDate(2026, 6, 25))
+    #expect(PlanEngine.lastSalaryLine(s, today: LocalDate(2026, 7, 10)) == "Your last salary came on the 25th.")
+    #expect(PlanEngine.lastSalary(s, today: LocalDate(2026, 12, 10)) == nil)
+  }
+}
