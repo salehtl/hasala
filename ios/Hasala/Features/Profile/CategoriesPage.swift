@@ -177,11 +177,12 @@ final class CategoryEditorModel {
 
   var missing: String? {
     let trimmed = draft.trimmedName
-    if trimmed.isEmpty { return "Add a name" }
+    let needsParent = isNew && parent == nil
+    if trimmed.isEmpty { return needsParent ? "Add a name and choose what it counts as." : "Add a name." }
     if trimmed.unicodeScalars.count > CategoryLimits.maxName {
-      return "Keep the name to \(CategoryLimits.maxName) characters"
+      return "Keep the name to \(CategoryLimits.maxName) characters."
     }
-    if isNew, parent == nil { return "Choose what it counts as" }
+    if needsParent { return "Choose what it counts as." }
     return nil
   }
 
@@ -322,7 +323,9 @@ struct CategoryEditorPage: View {
           .accessibilityIdentifier("categoryEditor.refusal")
       } else if let missing = model.missing {
         Text(missing).hType(.footnote).foregroundStyle(HColor.textSecondary)
-          .padding(.horizontal, 4)
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: .infinity)
+          .padding(.horizontal, 16)
           .accessibilityIdentifier("categoryEditor.missing")
       }
       Button(model.isNew ? "Add category" : "Save") { model.save() }

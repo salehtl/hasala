@@ -322,9 +322,7 @@ final class ProfileUITests: XCTestCase {
     let toggle = merchantSuggestionsSwitch(app)
     XCTAssertEqual(toggle.value as? String, "0", "Merchant suggestions starts off")
     let auto = app.switches["profile.merchantAutoSort"].firstMatch
-    XCTAssertTrue(auto.exists, "Sort automatically shows while Merchant suggestions is off")
-    XCTAssertFalse(auto.isEnabled, "Sort automatically waits for Merchant suggestions")
-    XCTAssertEqual(auto.value as? String, "0")
+    XCTAssertFalse(auto.exists, "Sort automatically waits for Merchant suggestions")
     try audit(app)
 
     flip(app, toggle)
@@ -342,7 +340,8 @@ final class ProfileUITests: XCTestCase {
     tap(app, "merchantSuggestions.turnOn")
     XCTAssertTrue(sheet.waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(toggle.waitForValue("1"), "Turn on turns it on")
-    XCTAssertTrue(auto.isEnabled, "Sort automatically can be turned on now")
+    XCTAssertTrue(auto.waitForExistence(timeout: uiWait), "Sort automatically shows now")
+    XCTAssertTrue(auto.label.contains("Sort automatically"), auto.label)
     XCTAssertEqual(auto.value as? String, "0")
     attach(app, "Merchant suggestions · on")
 
@@ -373,8 +372,7 @@ final class ProfileUITests: XCTestCase {
     flip(app, toggle)
     XCTAssertTrue(toggle.waitForValue("0"), "turning it off asks nothing")
     XCTAssertFalse(sheet.exists)
-    XCTAssertTrue(auto.waitForValue("0"), "turning suggestions off turns sorting off")
-    XCTAssertFalse(auto.isEnabled)
+    XCTAssertTrue(auto.waitForNonExistence(timeout: uiWait), "turning suggestions off hides sorting")
   }
 
   @MainActor

@@ -79,9 +79,10 @@ final class CategoriesUITests: XCTestCase {
     XCTAssertFalse(el(app, "categoryEditor.parent").exists, "a built-in has no Counts as")
     attach(app, "Edit Dining")
     try audit(app)
-    let toggle = app.switches["categoryEditor.hide"].firstMatch
-    XCTAssertTrue(toggle.waitForExistence(timeout: uiWait))
-    toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+    let row = app.buttons["categoryEditor.hide"].firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(row.label.contains("Hide category"), row.label)
+    row.tap()
     let hide = app.buttons["Hide"].firstMatch
     XCTAssertTrue(hide.waitForExistence(timeout: uiWait))
     hide.tap()

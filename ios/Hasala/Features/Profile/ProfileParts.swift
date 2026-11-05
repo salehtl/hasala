@@ -331,7 +331,7 @@ struct SettingSwitchRow: View {
 
   var body: some View {
     Toggle(isOn: $isOn) {
-      HStack(alignment: detail == nil ? .center : .firstTextBaseline, spacing: 14) {
+      HStack(spacing: 14) {
         HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
         VStack(alignment: .leading, spacing: 2) {
           Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)

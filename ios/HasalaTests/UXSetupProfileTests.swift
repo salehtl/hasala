@@ -39,17 +39,19 @@ struct UXSetupProfileTests {
   @Test func addingIsDisabledUntilANameAndCountsAsAreChosen() {
     let m = CategoryEditorModel(app: app(), category: nil)
     #expect(!m.canSave)
-    #expect(m.missing == "Add a name")
+    #expect(m.missing == "Add a name and choose what it counts as.")
     m.name = "   "
-    #expect(m.missing == "Add a name")
+    #expect(m.missing == "Add a name and choose what it counts as.")
     m.name = String(repeating: "a", count: CategoryLimits.maxName + 1)
-    #expect(m.missing == "Keep the name to \(CategoryLimits.maxName) characters")
+    #expect(m.missing == "Keep the name to \(CategoryLimits.maxName) characters.")
     m.name = "Coffee"
-    #expect(m.missing == "Choose what it counts as")
+    #expect(m.missing == "Choose what it counts as.")
     #expect(!m.canSave)
     m.parent = "dining"
     #expect(m.missing == nil)
     #expect(m.canSave)
+    m.name = ""
+    #expect(m.missing == "Add a name.")
   }
 
   @Test func editingNeedsOnlyAName() {
@@ -57,7 +59,7 @@ struct UXSetupProfileTests {
     #expect(m.canSave)
     m.name = ""
     #expect(!m.canSave)
-    #expect(m.missing == "Add a name")
+    #expect(m.missing == "Add a name.")
   }
 
   @Test func hideIsARowThatAsksFirst() {
