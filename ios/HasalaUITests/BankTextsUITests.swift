@@ -82,6 +82,8 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(el(app, "textsTest.again").exists)
     attach(app, "Nothing arrived yet")
     try audit(app)
+    app.swipeUp()
+    waitForStill(app)
     tap(app, "textsTest.skip")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Skip did not finish setup")
   }
@@ -207,11 +209,11 @@ final class BankTextsUITests: XCTestCase {
   @MainActor
   func testTheLastDisconnectSaysTheAutomationStaysOn() throws {
     let app = launch(scenario: nil, screen: "mail.disconnectTexts")
-    let alert = app.alerts.firstMatch
-    XCTAssertTrue(alert.waitForExistence(timeout: 30), "the disconnect alert did not open")
-    let line = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Your Shortcuts automation is still there'"))
-    XCTAssertEqual(line.count, 1, "the automation sentence is missing")
-    attach(app, "Disconnect · Automation still there")
+    XCTAssertTrue(el(app, "mailbox.disconnectPage").waitForExistence(timeout: 30), "the disconnect page did not open")
+    let note = el(app, "mailbox.disconnect.textsNote")
+    XCTAssertTrue(note.waitForExistence(timeout: uiWait), "the automation sentence is missing")
+    XCTAssertTrue(note.label.contains("Your Shortcuts automation is still there"), note.label)
+    attach(app, "Disconnect this mailbox · Automation still there")
   }
 
   @MainActor

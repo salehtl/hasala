@@ -479,6 +479,7 @@ struct MailboxDisconnectPage: View {
       .padding(.top, 8)
       .padding(.bottom, 24)
     }
+    .accessibilityIdentifier("mailbox.disconnectPage")
     .background(HColor.surfaceSecondary)
     .navigationTitle(Self.title)
     .navigationBarTitleDisplayMode(.inline)
@@ -492,7 +493,6 @@ struct MailboxDisconnectPage: View {
         .padding(.bottom, 8)
         .background(HColor.surfaceSecondary)
     }
-    .accessibilityIdentifier("mailbox.disconnectPage")
   }
 
   private func row(_ option: MailboxDisconnectChoice, title: String, detail: String?) -> some View {

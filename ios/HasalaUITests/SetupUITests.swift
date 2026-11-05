@@ -197,7 +197,6 @@ final class SetupUITests: XCTestCase {
     attach(app, "Gmail isn't connected (permission)")
     try audit(app)
     tap(app, "mail.error.retry")
-    answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "trying again did not connect")
   }
 }
