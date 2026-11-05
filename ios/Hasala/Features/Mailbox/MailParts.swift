@@ -35,7 +35,7 @@ enum MailCopy {
   static func pastWindow(days: Int) -> String { days >= 365 ? "the last year" : "the last \(days) days" }
 
   static func pastMailMessage(days: Int) -> String {
-    "Hasala can read your bank alerts from \(pastWindow(days: days)) on this iPhone, then new ones. Or it can read only new alerts from now on, and you can import past email later in Bank alerts."
+    "Hasala can read \(pastWindow(days: days)) of bank alerts on this iPhone. You can also do this later in Bank alerts."
   }
 
   static func pastMailSkippedDetail(days: Int) -> String {

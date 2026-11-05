@@ -86,6 +86,13 @@ struct UXSetupconnectTests {
     #expect(m.provider == .gmail && lane.connectCalls == 0)
   }
 
+  @Test func pastEmailAlertIsShort() {
+    #expect(MailCopy.pastMailMessage(days: 90)
+      == "Hasala can read the last 90 days of bank alerts on this iPhone. You can also do this later in Bank alerts.")
+    #expect(MailCopy.pastMailMessage(days: 365)
+      == "Hasala can read the last year of bank alerts on this iPhone. You can also do this later in Bank alerts.")
+  }
+
   @Test func otherEmailServiceLinkSaysItLeavesTheApp() {
     #expect(TellUsWhichLink.label == "Use another email service? Email us.")
     #expect(TellUsWhichLink.lead + " " + TellUsWhichLink.link == TellUsWhichLink.label)
