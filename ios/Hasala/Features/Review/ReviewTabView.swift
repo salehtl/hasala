@@ -220,14 +220,8 @@ struct ReviewTabView: View {
         .accessibilityIdentifier("review.tab.period")
     } trailing: {
       if let elsewhere {
-        Button { app.period = elsewhere.widened } label: {
-          Text(elsewhere.line)
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        Button(elsewhere.line) { app.period = elsewhere.widened }
+          .buttonStyle(.inlineLink)
         .accessibilityHint("Shows \(elsewhere.widened.title)")
         .accessibilityIdentifier("review.tab.elsewhere")
       } else if !isThisMonth {

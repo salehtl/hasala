@@ -223,7 +223,7 @@ struct SplitEditorView: View {
         HStack(spacing: 12) {
           PathGlyph(PathGlyph.noteLines, size: 20, color: HColor.iconSecondary, stroke: 1.9)
             .frame(width: 40)
-          TextField("Add a note", text: line.note)
+          TextField("Add a note", text: line.note, prompt: .fieldPrompt("Add a note"))
             .hType(.subheadline)
             .foregroundStyle(HColor.textPrimary)
             .focused($noteFocus, equals: draft.id)

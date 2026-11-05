@@ -175,7 +175,7 @@ struct CategoryChooser<Leading: View, Accessory: View>: View {
   private var searchField: some View {
     HStack(spacing: 10) {
       HIconView(.magnifier, size: 20, color: HColor.fieldIcon)
-      TextField("Search categories", text: $query)
+      TextField("Search categories", text: $query, prompt: .fieldPrompt("Search categories"))
         .hType(.body)
         .foregroundStyle(HColor.fieldText)
         .submitLabel(.search)
@@ -217,7 +217,7 @@ struct NoteEditorView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      TextField("Add a note", text: $note, axis: .vertical)
+      TextField("Add a note", text: $note, prompt: .fieldPrompt("Add a note"), axis: .vertical)
         .hType(.body)
         .foregroundStyle(HColor.fieldText)
         .lineLimit(3...8)
@@ -256,7 +256,7 @@ struct RenameMerchantView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      TextField("Merchant name", text: $name)
+      TextField("Merchant name", text: $name, prompt: .fieldPrompt("Merchant name"))
         .hType(.body)
         .foregroundStyle(HColor.fieldText)
         .focused($focused)
