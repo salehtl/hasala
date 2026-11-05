@@ -174,10 +174,11 @@ let day: Int64 = 86_400_000
     await rig.engine.setProgressHandler { seen.append($0) }
     await rig.connectAndActivate()
     let log = seen.all
-    #expect(log.contains(MailboxProgress(stage: .downloading, done: 3, total: 3)))
-    #expect(log.filter { $0.stage == .authoring } == [MailboxProgress(stage: .authoring, done: 3, total: 3)])
+    #expect(log.contains { $0.stage == .downloading && $0.done == 3 && $0.total == 3 })
+    #expect(log.filter { $0.stage == .authoring } == [MailboxProgress(stage: .authoring, done: 3, total: 3, thisMonthRead: true)])
     #expect(log.suffix(2) == [
-      MailboxProgress(stage: .authoring, done: 3, total: 3), MailboxProgress(stage: .done, done: 3, total: 3),
+      MailboxProgress(stage: .authoring, done: 3, total: 3, thisMonthRead: true),
+      MailboxProgress(stage: .done, done: 3, total: 3, thisMonthRead: true),
     ])
   }
 

@@ -26,6 +26,18 @@ enum LocalAccountData {
     defaults.set(p.rawValue, forKey: mailboxProviderKey)
   }
 
+  static let mailboxMovedAwayKey = "app.hasala.prefs.mailbox.movedAway"
+
+  static func mailboxMovedAway(_ defaults: UserDefaults = .standard) -> Int64? {
+    (defaults.object(forKey: mailboxMovedAwayKey) as? NSNumber)?.int64Value
+  }
+
+  static func setMailboxMovedAway(_ ms: Int64?, _ defaults: UserDefaults = .standard) {
+    if let ms { defaults.set(NSNumber(value: ms), forKey: mailboxMovedAwayKey) } else {
+      defaults.removeObject(forKey: mailboxMovedAwayKey)
+    }
+  }
+
   static func setupFinished(_ defaults: UserDefaults = .standard) -> Bool {
     defaults.bool(forKey: setupFinishedKey)
   }
@@ -54,6 +66,7 @@ enum LocalAccountData {
     defaults.removeObject(forKey: setupFinishedKey)
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)
+    defaults.removeObject(forKey: mailboxMovedAwayKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
     TrustCounts.forget(defaults)

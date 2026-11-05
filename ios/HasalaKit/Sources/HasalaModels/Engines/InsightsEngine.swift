@@ -194,7 +194,9 @@ public enum InsightsEngine {
       status = "Closed month"
     }
 
-    let summary = summary(cur: cur, prev: prev, compared: compared, isCurrent: ctx.isCurrent, focus: focus)
+    let summary = summary(
+      cur: cur, prev: prev, compared: compared, isCurrent: ctx.isCurrent, focus: focus,
+      notCounted: HomeEngine.notCounted(s, in: .month(focus)))
 
     var bucketRows: [InsightsRow] = [Bucket.needs, .wants].compactMap { b -> InsightsRow? in
       let amount = cur.bucket(b)
@@ -263,7 +265,7 @@ public enum InsightsEngine {
                               message: start + "Changes show here once a month has a month before it.")
     }
 
-    let (flow, flowEmpty) = flow(ctx, now: now)
+    let (flow, flowEmpty) = flow(ctx, now: now) { !Spending.notCounted(s, in: .month($0)).isEmpty }
 
     let footer: MoneyPhrase = MoneyPhrase([
       .text("Share of "), .amount(.aed(spent)),
@@ -304,7 +306,9 @@ public enum InsightsEngine {
     }
   }
 
-  static func summary(cur: Totals, prev: Totals, compared: Bool, isCurrent: Bool, focus: YearMonth) -> InsightsSummary {
+  static func summary(
+    cur: Totals, prev: Totals, compared: Bool, isCurrent: Bool, focus: YearMonth, notCounted: SpendHero.NotCounted? = nil
+  ) -> InsightsSummary {
     func delta(_ a: Int64, _ b: Int64) -> InsightsDelta? { compared ? InsightsDelta.between(a, b) : nil }
     var legend = [
       InsightsLegendRow(kind: .needs, title: "Needs", amount: .aed(cur.needs), delta: delta(cur.needs, prev.needs),
@@ -330,19 +334,20 @@ public enum InsightsEngine {
         : MoneyPhrase(stringLiteral: "No income came in during \(focus.name).")
       return InsightsSummary(
         label: isCurrent ? "Spent so far" : "Spent", figure: .aed(cur.spent), isNet: false, keptPercent: nil,
-        income: .aed(0), spent: .aed(cur.spent), saved: .aed(cur.saved), split: nil, note: note, legend: legend)
+        income: .aed(0), spent: .aed(cur.spent), saved: .aed(cur.saved), split: nil, note: note, legend: legend,
+        notCounted: notCounted)
     }
     let net = cur.income.minus(cur.spent)
     let unspent = max(0, net.minus(cur.saved))
-    legend.append(InsightsLegendRow(kind: .unspent, title: "Not yet spent or saved", amount: .aed(unspent),
-                                    delta: nil, target: nil))
+    let unspentTitle = (isCurrent ? "Not yet spent or saved" : "Left over") + (notCounted == nil ? "" : ", before projects")
+    legend.append(InsightsLegendRow(kind: .unspent, title: unspentTitle, amount: .aed(unspent), delta: nil, target: nil))
     return InsightsSummary(
-      label: "Net · in minus spent", figure: .aed(net), isNet: true, keptPercent: percent(net, of: cur.income),
+      label: notCounted == nil ? "Left after spending" : "Left after spending · not counting projects", figure: .aed(net), isNet: true, keptPercent: percent(net, of: cur.income),
       income: .aed(cur.income), spent: .aed(cur.spent), saved: .aed(cur.saved),
       split: InsightsSplit(needs: cur.needs, wants: cur.wants, unsorted: cur.unsorted.plus(cur.otherSpent),
                            savings: cur.saved, unspent: unspent),
       note: MoneyPhrase([.text("Where "), .amount(.aed(cur.income)), .text(" of income went")]),
-      legend: legend)
+      legend: legend, notCounted: notCounted)
   }
 
   static func merchants(_ lines: [InsightsLine], _ s: LedgerState, spent: Int64) -> [InsightsRow] {
@@ -379,7 +384,7 @@ public enum InsightsEngine {
     name.first(where: \.isLetter).map { String($0).uppercased() }
   }
 
-  static func flow(_ ctx: Context, now: LocalDateTime) -> (InsightsFlow, String?) {
+  static func flow(_ ctx: Context, now: LocalDateTime, projects: (YearMonth) -> Bool = { _ in false }) -> (InsightsFlow, String?) {
     let none = InsightsFlow(span: ctx.focus.name, months: [], averageOut: nil, note: "")
     guard let first = ctx.all.map(\.postedAt.date.yearMonth).min() else {
       return (none, "Money in and out shows here once transactions arrive.")
@@ -410,8 +415,12 @@ public enum InsightsEngine {
     }
     let span = months.count == 1
       ? months[0].month.name : "\(months[0].month.shortName)\u{2013}\(months[months.count - 1].month.shortName)"
+    let lead =
+      months.contains { projects($0.month) }
+      ? "Out leaves out projects you keep outside your plan, "
+      : sortedOnly ? "Out is spending on needs and wants, " : "Out is everything you spent, "
     let note = MoneyPhrase([
-      .text(sortedOnly ? "Out is spending on needs and wants, " : "Out is everything you spent, "), .amount(.aed(avg)),
+      .text(lead), .amount(.aed(avg)),
       .text(" a month on average. Transfers between your accounts and moves to savings are left out."),
     ])
     return (InsightsFlow(span: span, months: months, averageOut: .aed(avg), note: note), nil)

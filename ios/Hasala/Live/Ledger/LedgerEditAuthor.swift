@@ -85,6 +85,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     /// a name that was the dictionary's or the prettified one clears the rename.
     case displayName(txn: String, shown: String)
     case project(txn: String, project: String?)
+    case refundOf(txn: String, of: String?)
     case archived(txn: String, archived: Bool)
     case split(txn: String, lines: [SplitLine])
     case budget(category: String, month: YearMonth, onward: Int64, assigned: Int64)
@@ -139,15 +140,32 @@ nonisolated struct LedgerEditAuthor: Sendable {
       return (row.split ? [] : [refile(row)]) + noteCorrection(row, to: c)
     case .markTransfer(let id):
       let row = try txn(id)
+      if row.transferState != nil { throw Failure.refused("transfer") }
+      let undo = row.category == "transfer"
       try await build { a throws(AuthorError) in
-        a.categorize(txnID: id, parentVersion: row.version, category: "transfer", needsReview: false)
+        a.categorize(txnID: id, parentVersion: row.version, category: undo ? nil : "transfer", needsReview: undo)
       }
     case .markRefund(let id):
       let row = try txn(id)
-      let undo = row.category == "refunds"
+      guard let shown = before.txn(id) else { throw Failure.notFound }
+      let filing: RefundFiling
+      do { filing = try RefundEdit.mark(shown, in: before) } catch { throw Failure.refused(RefundEdit.refusedOut) }
       try await build { a throws(AuthorError) in
-        a.categorize(txnID: id, parentVersion: row.version, category: undo ? nil : "refunds", needsReview: undo)
+        if row.category != filing.categoryID || row.needsReview != filing.needsReview {
+          a.categorize(txnID: id, parentVersion: row.version, category: filing.categoryID, needsReview: filing.needsReview)
+        }
+        if row.refundTarget != nil, filing.refundOf == nil { a.annotate(txnID: id, set: [("refund_of", nil)]) }
       }
+    case .fileRefund(let id, let c, let target):
+      let row = try txn(id)
+      guard let shown = before.txn(id) else { throw Failure.notFound }
+      let filing: RefundFiling
+      do { filing = try RefundEdit.file(shown, into: c, of: target, in: before) } catch { throw Failure.refused(RefundEdit.refusedTarget) }
+      try await build { a throws(AuthorError) in
+        a.categorize(txnID: id, parentVersion: row.version, category: filing.categoryID, needsReview: false)
+        if row.refundTarget != filing.refundOf { a.annotate(txnID: id, set: [("refund_of", filing.refundOf)]) }
+      }
+      return [.refundOf(txn: id, of: row.refundTarget)]
     case .setNote(let id, let note):
       _ = try txn(id)
       let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -447,7 +465,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     for inv in inverses {
       switch inv {
       case .category(let t, _, _), .split(let t, _), .displayName(let t, _): rows[t] = try txn(t)
-      case .note(let t, _), .project(let t, _), .archived(let t, _): rows[t] = try reader.txn(t)
+      case .note(let t, _), .project(let t, _), .archived(let t, _), .refundOf(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
       default: break
@@ -489,6 +507,9 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .project(let t, let project):
           if let row = rows[t], row.projectID == project { continue }
           a.annotate(txnID: t, set: [("project_id", project)])
+        case .refundOf(let t, let of):
+          if let row = rows[t], row.refundTarget == of { continue }
+          a.annotate(txnID: t, set: [("refund_of", of)])
         case .archived(let t, let archived):
           if let row = rows[t], (row.archived != nil) == archived { continue }
           a.annotate(txnID: t, set: [("archived", archived ? "user" : nil)])

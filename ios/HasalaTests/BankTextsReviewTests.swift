@@ -177,7 +177,6 @@ struct BankTextsReviewTests {
   @Test func markingATextRowATransferOrARefundOrSplittingItLinksNoCard() async throws {
     let edits: [(String, (String) -> LedgerEdit, OpType)] = [
       ("transfer", { .markTransfer($0) }, .txnCategorized),
-      ("refund", { .markRefund($0) }, .txnCategorized),
       ("split", { id in
         .split(id, [
           SplitLine(id: 0, categoryID: "groceries", amount: .aed(100_00)), SplitLine(id: 1, categoryID: "shopping", amount: .aed(23_45)),
@@ -193,6 +192,15 @@ struct BankTextsReviewTests {
       #expect(try l.ops().dropFirst(before).map(\.type) == [op], "\(name)")
       #expect(try l.cardsUnchanged(), "\(name)")
     }
+  }
+
+  @Test func aPurchaseCannotBeMarkedARefund() async throws {
+    let l = try await Self.live("texts.review.refundRefused")
+    let row = try await l.add(Self.purchase, link: .unknownUnanswered)
+    let before = try l.ops().count
+    #expect(throws: ActionError.refused(RefundEdit.refusedOut)) { try l.store.apply(.markRefund(row.txnID)) }
+    #expect(try l.ops().count == before)
+    #expect(try l.cardsUnchanged())
   }
 
   @Test func takingARefundBackLinksNoCard() async throws {
