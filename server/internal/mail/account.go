@@ -176,10 +176,6 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 	alert := func(subject, heading string, lines ...string) (Message, error) {
 		return compose(to, subject, name, page{Heading: heading, Why: whyAlert}, lines...), nil
 	}
-	change := func(subject, heading, lead string) (Message, error) {
-		p := page{Heading: heading, Why: whyAlert, Lead: []string{lead}, NotYou: notYou}
-		return compose(to, subject, name, p, lead, notYou), nil
-	}
 	// withFreeze ends the text with the freeze link; the HTML puts it in the
 	// "This wasn't me" panel's button.
 	withFreeze := func(subject, heading string, lines ...string) (Message, error) {
@@ -202,34 +198,33 @@ func Alert(to, subkind string, at time.Time, name, freezeLink string) (Message, 
 				", and a new "+method+" was added.",
 			"Your old passkeys and your old password were removed, and every other device was signed out.")
 	case "new_passkey":
-		return change("New passkey for Hasala", "New passkey added",
-			"A new passkey was added to your Hasala account on "+when+".")
+		return alert("New passkey for Hasala", "New passkey added",
+			"A new passkey was added to your Hasala account on "+when+".", notYou)
 	case "password_set", "password_changed", "password_removed", "password_reset":
 		verb := strings.TrimPrefix(subkind, "password_")
-		return change("Your Hasala password changed", "Your password was changed",
-			"Your Hasala password was "+verb+" on "+when+". Other devices were signed out.")
+		return alert("Your Hasala password changed", "Your password was changed",
+			"Your Hasala password was "+verb+" on "+when+". Other devices were signed out.", notYou)
 	case "phrase_viewed":
 		return withFreeze("Your Hasala recovery phrase was shown", "Your recovery phrase was viewed",
 			"Your recovery phrase was shown in the Hasala app on "+when+".",
 			"If this was you, there's nothing to do.")
 	case "device_removed":
-		return change("A device was removed from Hasala", "Device removed",
-			"An iPhone was removed from your Hasala account on "+when+".")
+		return alert("A device was removed from Hasala", "Device removed",
+			"An iPhone was removed from your Hasala account on "+when+".", notYou)
 	case "email_changed_new":
 		return alert("This is now your Hasala email address", "This is now your Hasala email",
 			"This address became the email address of a Hasala account on "+when+".")
 	case "email_changed_old":
-		return change("Your Hasala email address changed", "Your email address changed",
+		return alert("Your Hasala email address changed", "Your email address changed",
 			"Your Hasala account stopped using this email address on "+when+
-				". You won't get Hasala email here any more.")
+				". You won't get Hasala email here any more.", notYou)
 	case "account_frozen":
-		const back = "To unfreeze it, sign in on one of your iPhones with a passkey, or with your password, that you had before the freeze."
-		lead := "Your Hasala account was frozen on " + when + ". Everyone was signed out."
-		p := page{Heading: "Your account is frozen", Why: whyAlert, Lead: []string{lead}, NotYou: back, NotYouTitle: "Getting back in"}
-		return compose(to, "Your Hasala account is frozen", name, p, lead+" "+back), nil
+		return alert("Your Hasala account is frozen", "Your account is frozen",
+			"Your Hasala account was frozen on "+when+". Everyone was signed out. To unfreeze it, sign in on "+
+				"one of your iPhones with a passkey, or with your password, that you had before the freeze.")
 	case "account_unfrozen":
-		return change("Your Hasala account is unfrozen", "Your account is unfrozen",
-			"Your Hasala account was unfrozen on "+when+".")
+		return alert("Your Hasala account is unfrozen", "Your account is unfrozen",
+			"Your Hasala account was unfrozen on "+when+".", notYou)
 	}
 	return Message{}, fmt.Errorf("mail: no alert %q", subkind)
 }
@@ -247,7 +242,7 @@ func Deleted(to string, at time.Time) Message {
 		// sealed backup is gone by the day 30 days on (UAE time).
 		Rows: []Row{{"Budget, plan, rules", "Erased"},
 			{"Sealed backup", "Gone from backups by " + at.Add(30*24*time.Hour).In(uae).Format("2 Jan")}},
-		Paras: []string{passkey, notMe}}
+		Paras: []string{passkey}, Small: notMe}
 	return compose(to, "Your Hasala account was deleted", "", p,
 		"Your Hasala account and its data were deleted from our server on "+When(at)+
 			". Encrypted backups expire within 30 days.", passkey, notMe)

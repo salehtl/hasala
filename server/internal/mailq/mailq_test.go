@@ -428,7 +428,7 @@ func TestInviteStepsAndCode(t *testing.T) {
 		`<strong><span class="nw">ABCD-EFGH-IJKL-</span><wbr><span class="nw">MNOP-QRST-UV23</span></strong>`,
 		`<a href="https://hasala.app/testflight">Get TestFlight</a>`,
 		"Accept Apple's invitation and install Hasala.",
-		"Open Hasala and paste or type your invite.",
+		"Open Hasala and paste or type your invite, or tap the button below.",
 	} {
 		if !strings.Contains(r.HTML, want) {
 			t.Errorf("invite HTML lacks %q:\n%s", want, r.HTML)
@@ -437,7 +437,7 @@ func TestInviteStepsAndCode(t *testing.T) {
 	for _, want := range []string{
 		"1. Get TestFlight, Apple's free app for betas, on your iPhone: https://hasala.app/testflight",
 		"2. Accept Apple's invitation and install Hasala.",
-		"3. Open Hasala and paste or type your invite.",
+		"3. Open Hasala and paste or type your invite, or tap the link below.",
 		"Your invite code: ABCD-EFGH-IJKL-MNOP-QRST-UV23",
 	} {
 		if !strings.Contains(r.Text, want) {

@@ -69,10 +69,7 @@ type page struct {
 	Rows    []Row
 	Paras   []string
 	Freeze  string
-	NotYou  string
 	Small   string
-
-	NotYouTitle string
 }
 
 // render executes the account content in the layout.
