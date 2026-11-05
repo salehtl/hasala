@@ -117,7 +117,7 @@ final class ProjectsUITests: XCTestCase {
   @MainActor
   private func searchActivity(_ app: XCUIApplication, for text: String) {
     app.buttons["header.search"].firstMatch.tap()
-    let field = app.searchFields["Ask about your money"]
+    let field = app.searchFields.firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     type(text, into: field)
     let seeAll = el(app, "search.seeAll")

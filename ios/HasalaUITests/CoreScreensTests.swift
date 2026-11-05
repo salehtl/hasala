@@ -50,7 +50,7 @@ final class CoreScreensTests: XCTestCase {
 
     // Search across months: three Carrefour rows, nothing else.
     app.buttons["header.search"].firstMatch.tap()
-    let search = app.searchFields["Ask about your money"]
+    let search = app.searchFields.firstMatch
     XCTAssertTrue(search.waitForExistence(timeout: uiWait))
     type("carrefour", into: search)
     let seeAll = element(app, "search.seeAll")
