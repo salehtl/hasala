@@ -101,6 +101,10 @@ nonisolated enum LedgerStateMapper {
       t.combinedCopy = combined[row.id]?.copyID
       txns.append(t)
     }
+    let categoryByID = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    for i in txns.indices where txns[i].direction == .in && txns[i].splits.isEmpty && !txns[i].isRefund {
+      txns[i].isRefund = Spending.counts(txns[i].categoryID.flatMap { categoryByID[$0] })
+    }
     markSamePurchases(&txns, rows: rows, home: home)
     let unreadable = try r.review(lanes: [.unreadable], limit: 1_000_000)
     markRepeats(&txns, rows: rows, unreadable: unreadable)
@@ -295,7 +299,15 @@ nonisolated enum LedgerStateMapper {
       heldCopy: try heldCopy(row, r: r),
       senderUnverified: row.senderUnverified, merchantKey: row.merchantKey,
       merchantGroup: row.merchantGroup, categorizedAt: row.categorizedMs.map(localTime),
-      ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil)
+      ruleID: row.categorySource == "rule" ? row.categorySourceRef : nil,
+      refundOf: row.refundState == "ok" ? row.refundTarget : nil, isReversal: isReversal(row))
+  }
+
+  static let reversalTemplates = Set(MessageDisposer.refundTemplates.filter { $0.contains("reversal") })
+
+  static func isReversal(_ row: TxnRow) -> Bool {
+    guard row.direction == "credit", let ref = row.templateRef else { return false }
+    return reversalTemplates.contains(String(ref.split(separator: "@", maxSplits: 1).first ?? ""))
   }
 
   static func restored(_ row: TxnRow, to p: SortMemory.Prior) -> Bool {

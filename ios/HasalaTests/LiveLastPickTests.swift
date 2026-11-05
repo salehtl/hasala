@@ -122,11 +122,11 @@ struct LiveLastPickTests {
     #expect(transfer.txn("bl-qasr-2")?.lastPick == "transfer" && transfer.txn("bl-qasr-1")?.lastPick == nil)
 
     var refund = s
-    _ = try LiveLedgerStore.patch(.markRefund("bl-qasr-1"), &refund, now: now)
-    #expect(refund.txn("bl-qasr-2")?.lastPick == "refunds")
-    _ = try LiveLedgerStore.patch(.markRefund("bl-qasr-1"), &refund, now: now)
-    #expect(refund.txn("bl-qasr-1")?.inReview == true)
-    #expect(refund.txn("bl-qasr-1")?.lastPick == nil && refund.txn("bl-qasr-2")?.lastPick == nil)
+    #expect(refund.txn("bl-qasr-1")?.direction == .out)
+    #expect(throws: ActionError.refused(RefundEdit.refusedOut)) {
+      _ = try LiveLedgerStore.patch(.markRefund("bl-qasr-1"), &refund, now: now)
+    }
+    #expect(refund.txn("bl-qasr-2")?.lastPick == "shopping")
 
     var splitPick = s
     let lines = [

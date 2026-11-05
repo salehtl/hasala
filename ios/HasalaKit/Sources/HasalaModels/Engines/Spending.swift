@@ -30,8 +30,23 @@ public enum Spending {
 
   public static func spent(_ s: LedgerState, category c: CategoryID, in period: Period) -> Int64 {
     Fils.sum(s.txns.filter { period.contains($0.postedAt.date) && includes($0, in: s) }) { t in
-      Fils.sum(t.lines.filter { $0.category == c }.map(\.minor))
+      Fils.sum(lines(t, in: s).filter { $0.category == c }.map(\.minor))
     }
+  }
+
+  public static let refundsID: CategoryID = "refunds"
+
+  public static func refundTarget(_ t: Txn, in s: LedgerState) -> Category? {
+    guard t.categoryID == refundsID, t.splits.isEmpty, let of = t.refundOf, let target = s.txn(of),
+      target.categoryID != refundsID, let c = s.category(target.categoryID), counts(c)
+    else { return nil }
+    return c
+  }
+
+  public static func lines(_ t: Txn, in s: LedgerState) -> [(category: CategoryID, minor: Int64)] {
+    guard t.splits.isEmpty, t.categoryID == refundsID else { return t.lines }
+    guard let c = refundTarget(t, in: s) else { return [] }
+    return [(c.id, t.homeSigned ?? 0)]
   }
 
   public static func spent(_ s: LedgerState, category c: CategoryID, in month: YearMonth) -> Int64 {
@@ -43,7 +58,7 @@ public enum Spending {
   }
 
   static func measured(_ t: Txn, in s: LedgerState) -> [(category: Category?, minor: Int64)] {
-    if t.archived || t.isTransfer || t.isHeldCopy { return [] }
+    if t.archived || t.isTransfer || t.isHeldCopy || t.isHeldOut { return [] }
     if !t.splits.isEmpty {
       return t.splits.compactMap { sp in
         let c = s.category(sp.categoryID)
@@ -52,10 +67,17 @@ public enum Spending {
       }
     }
     guard let signed = t.homeSigned else { return [] }
+    if t.categoryID == refundsID { return [(refundTarget(t, in: s), signed)] }
     guard let c = s.category(t.categoryID) else {
       return t.direction == .out || t.isRefund ? [(nil, signed)] : []
     }
     return counts(c) ? [(c, signed)] : []
+  }
+
+  public static func heldOut(_ s: LedgerState, in period: Period) -> Int64 {
+    Fils.sum(s.txns.filter { $0.isHeldOut && !$0.archived && !$0.isTransfer && period.contains($0.postedAt.date) }) { t in
+      carvedOut(t, in: s) == nil && t.direction == .out ? t.homeMinor ?? 0 : 0
+    }
   }
 
   public static func counts(_ c: Category?) -> Bool {
