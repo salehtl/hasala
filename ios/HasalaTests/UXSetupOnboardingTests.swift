@@ -112,6 +112,10 @@ struct UXSetupOnboardingTests: AccountSuite {
     #expect(CopiedInviteCard.title == "Have an invite link?")
   }
 
+  @Test func theTermsLineAsksOnContinuing() {
+    #expect(StoriesView.termsWording == "By continuing, you agree to our Terms and Privacy Policy.")
+  }
+
   @Test func whoCanSeeWhatNamesEveryPartyInPlainWords() {
     for outlook in [true, false] {
       let lines = WhoCanSeeSheet.serverSees(outlook: outlook)

@@ -287,14 +287,10 @@ struct StoriesView: View {
         Link("Terms", destination: URL(string: "https://hasala.app/terms")!)
         Link("Privacy Policy", destination: URL(string: "https://hasala.app/privacy")!)
       } label: {
-        HStack(spacing: 6) {
-          HIconView(.lock, size: 14, color: HColor.textOnWashSecondary, strokeWidth: 2)
-          Text("You agree to the Terms and Privacy Policy.")
-            .hType(.footnote.weight(.medium))
-            .foregroundStyle(HColor.textOnWashSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .multilineTextAlignment(.center)
+        Self.termsLine
+          .hType(.footnote.weight(.medium))
+          .fixedSize(horizontal: false, vertical: true)
+          .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, minHeight: 44)
         .contentShape(Rectangle())
       }
@@ -305,6 +301,14 @@ struct StoriesView: View {
     .hAnimation(.fade, value: linkCopied)
     .padding(.horizontal, HSpacing.insetPage)
     .padding(.bottom, bottom)
+  }
+
+  static let termsWording = "By continuing, you agree to our Terms and Privacy Policy."
+
+  private static var termsLine: Text {
+    let secondary = { (s: String) in Text(s).foregroundStyle(HColor.textOnWashSecondary) }
+    let link = { (s: String) in Text(s).foregroundStyle(HColor.textOnWashLink) }
+    return Text("\(secondary("By continuing, you agree to our "))\(link("Terms"))\(secondary(" and "))\(link("Privacy Policy"))\(secondary("."))")
   }
 
   private func lookForCopiedLink() async {
