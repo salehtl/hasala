@@ -47,6 +47,44 @@ struct AmountFieldTests {
     #expect(made.budget == .aed(8_000_50))
   }
 
+  @Test func theProjectEditorKeepsItsAmountToTheKeypadRules() {
+    let app = AppModel(store: InMemoryLedger())
+    let editor = ProjectEditorModel(app: app, project: nil)
+    #expect(editor.budgetShown("12.345", after: "12.34") == "12.34")
+    #expect(editor.budgetShown("8000", after: "800") == "8,000")
+    #expect(editor.budgetShown("1.2.", after: "1.2") == "1.2")
+    #expect(editor.budgetShown("1234567890", after: "123456789") == "123,456,789")
+    let comma = ProjectEditorModel(app: app, project: nil, decimalSeparator: ",")
+    #expect(comma.budgetShown("12,", after: "12") == "12.")
+  }
+
+  @Test func theProjectEditorAsksBeforeDiscardingOnlyAfterAChange() {
+    let app = AppModel(store: InMemoryLedger())
+    let fresh = ProjectEditorModel(app: app, project: nil)
+    #expect(!fresh.isDirty)
+    #expect(fresh.discardTitle == "Discard this project?")
+    fresh.name = "Kitchen"
+    #expect(fresh.isDirty)
+    fresh.name = ""
+    #expect(!fresh.isDirty)
+    fresh.hasStart = true
+    #expect(fresh.isDirty)
+    fresh.hasStart = false
+    fresh.budgetText = "5"
+    #expect(fresh.isDirty)
+
+    let trip = ProjectEditorModel(app: app, project: "japan")
+    #expect(!trip.isDirty)
+    #expect(trip.discardTitle == "Discard these changes?")
+    trip.budgetText = "12,000"
+    #expect(!trip.isDirty)
+    trip.budgetText = "11,000"
+    #expect(trip.isDirty)
+    trip.budgetText = "12,000"
+    trip.countInPlan.toggle()
+    #expect(trip.isDirty)
+  }
+
   @Test func savingTheSameCategoryAuthorsNothing() throws {
     let app = AppModel(store: InMemoryLedger())
     let sorted = try #require(app.store.state.txns.first { !$0.inReview && $0.categoryID != nil })

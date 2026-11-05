@@ -21,18 +21,35 @@ struct BudgetEditSheet: View {
   /// Large at the accessibility sizes, decided when the sheet opens: a text size changed
   /// while it is up resizes the content, not the kind of sheet.
   @State private var opensLarge: Bool?
+  @State private var askingDiscard = false
   @FocusState private var typing: Bool
   @Environment(\.dismiss) private var dismiss
+  private let openedDraft: String
+  private let openedSource: CategoryID?
   @Environment(\.dynamicTypeSize) private var typeSize
 
   init(model: any BudgetSheetModel) {
     self.model = model
+    var openedDraft = ""
+    var openedSource: CategoryID?
     // The budget and where it comes from are there from the first frame, so the fitted
     // sheet is measured once, at its final height, and does not resize after it rises.
     if let row = model.row {
-      _draft = State(initialValue: PlanAmountField.text(for: row.budget.minor))
-      _source = State(initialValue: model.sources(to: row.id).first?.id)
+      openedDraft = PlanAmountField.text(for: row.budget.minor)
+      openedSource = model.sources(to: row.id).first?.id
+      _draft = State(initialValue: openedDraft)
+      _source = State(initialValue: openedSource)
     }
+    self.openedDraft = openedDraft
+    self.openedSource = openedSource
+  }
+
+  static func isDirty(draft: String, openedDraft: String, source: CategoryID?, openedSource: CategoryID?) -> Bool {
+    MoneyFormat.parseMinor(draft) != MoneyFormat.parseMinor(openedDraft) || source != openedSource
+  }
+
+  private var isDirty: Bool {
+    model.row != nil && Self.isDirty(draft: draft, openedDraft: openedDraft, source: source, openedSource: openedSource)
   }
 
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
@@ -64,6 +81,7 @@ struct BudgetEditSheet: View {
         }
       }
     }
+    .discardGuard(isDirty, title: "Discard this change?", asking: $askingDiscard) { dismiss() }
     // At the accessibility sizes the sheet is large and scrolls (page 14 §10).
     .planMediumSheet(height: fitted, large: opensLarge ?? typeSize.isAccessibilitySize)
     .onAppear { if opensLarge == nil { opensLarge = typeSize.isAccessibilitySize } }
@@ -73,7 +91,9 @@ struct BudgetEditSheet: View {
 
   private func content(_ row: PlanRowModel) -> some View {
     VStack(spacing: 20) {
-      PlanSheetHeader(title: "\(Bidi.isolate(row.name)) budget", closeID: "budget.close") { dismiss() }
+      PlanSheetHeader(title: "\(Bidi.isolate(row.name)) budget", closeID: "budget.close") {
+        DiscardGuard.close(isDirty: isDirty, asking: $askingDiscard) { dismiss() }
+      }
       mathRow(row)
       VStack(alignment: .leading, spacing: 12) {
         PlanOverline("New budget")
