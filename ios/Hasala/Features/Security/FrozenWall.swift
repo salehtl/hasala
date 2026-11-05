@@ -10,6 +10,7 @@ struct FrozenWall: View {
   let info: FreezeInfo
   @State private var path: [Route] = []
   @State private var confirmSignOut = false
+  @Environment(\.openURL) private var openURL
 
   enum Route: Hashable { case unfreeze }
 
@@ -18,17 +19,20 @@ struct FrozenWall: View {
       HeroAccountScreen(
         hero: HeroDisc(icon: .lockKeyhole, hue: .rose),
         title: "Your account is frozen",
-        subtitle: info.by == .operator
-          ? "We froze your account to protect it. Talk to us to unfreeze it."
-          : Self.holderBody(info)
+        subtitle: Self.subtitle(info)
       ) {
         VStack(alignment: .leading, spacing: 12) {
-          if info.by == .holder {
+          if info.by == .holder, info.holderCanLift {
             OptionCard(icon: .key, hue: .sky, title: "Sign in fully to unfreeze",
-                       detail: "Your passkey, or your password on one of your iPhones.", buttonTitle: "Unfreeze",
+                       detail: Self.unfreezeDetail(info), buttonTitle: "Unfreeze",
                        buttonKind: .primary, identifier: "frozen.unfreeze") { path = [.unfreeze] }
-            NoteRow(icon: .shield,
-                    text: "Didn't freeze it yourself? Someone may be reading your email. Unfreeze, then check Sign-in & security and change your email's password.")
+            NoteRow(icon: .shield, text: Self.notYouNote)
+          } else if info.by == .holder {
+            OptionCard(icon: .chat, hue: .other, title: "Talk to us to unfreeze", detail: Self.needsUsDetail,
+                       buttonTitle: "Talk to a person", buttonKind: .primary, identifier: "frozen.talk") {
+              openURL(URL(string: "https://hasala.app/support")!)
+            }
+            NoteRow(icon: .shield, text: Self.needsUsNote)
           } else {
             WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "frozen.talk")
           }
@@ -39,10 +43,13 @@ struct FrozenWall: View {
             SecondaryLink(title: "Leave it frozen", identifier: "frozen.leave") { session.leaveFrozen() }
           }
           SecondaryLink(title: "Sign out", identifier: "frozen.signOut") { confirmSignOut = true }
+          if info.by == .holder, info.holderCanLift {
+            WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "frozen.footerTalk")
+          }
         }
       }
       .navigationDestination(for: Route.self) { _ in
-        UnfreezeView(session: session)
+        UnfreezeView(session: session, hasPassword: info.hasPassword)
       }
       .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
         Button("Sign out", role: .destructive) { Task { await session.signOut() } }
@@ -58,14 +65,31 @@ struct FrozenWall: View {
     #endif
   }
 
-  /// MTO's body: where the freeze came from ("from our email", the cue for "Didn't freeze it
-  /// yourself? Someone may be reading your email"), when, and what it stops.
+  static func subtitle(_ info: FreezeInfo) -> String {
+    switch (info.by, info.holderCanLift) {
+    case (.operator, _): "We froze your account to protect it. Talk to us to unfreeze it."
+    case (.holder, true): holderBody(info)
+    case (.holder, false):
+      "Your recovery phrase was used before this freeze, so only we can lift it. We'll check it's you first."
+    }
+  }
+
   static func holderBody(_ info: FreezeInfo) -> String {
     let source = info.inApp ? "" : " from our email"
     let when = info.when.map { " \($0)" } ?? ""
     return "\u{201C}Freeze my account\u{201D} was used\(source)\(when). "
-      + "Nobody can sign in or change your keys until you sign in fully."
+      + "Everyone is signed out, and nothing on your account can change until you unfreeze."
   }
+
+  static func unfreezeDetail(_ info: FreezeInfo) -> String {
+    info.hasPassword == false ? "Your passkey." : "Your passkey, or your password on one of your iPhones."
+  }
+
+  static let notYouNote =
+    "Didn't freeze it yourself? Someone may be reading your email. Change your email's password first. Then unfreeze and check Sign-in & security."
+  static let needsUsDetail = "Write to us from your account's email address, so we can check it's you."
+  static let needsUsNote =
+    "Didn't use your phrase yourself? Someone may be reading your email. Change your email's password first."
 }
 
 /// "Unfreeze your account · Sign in fully" (Paper MUT): the passkey on its own, or the
@@ -73,6 +97,7 @@ struct FrozenWall: View {
 /// password on an iPhone that has no key yet can't do it: the confirmation says so (IYT).
 struct UnfreezeView: View {
   let session: AccountSession
+  var hasPassword: Bool?
   @State private var password = ""
   @State private var visible = false
   @State private var busy: SignInMethod?
@@ -84,6 +109,7 @@ struct UnfreezeView: View {
   private var method: SignInMethod { session.account.profile?.method ?? .passkey }
   private var email: String { session.account.profile?.email ?? "" }
   private var offersPasskey: Bool { method == .passkey && session.capabilities.contains(.signInPasskey) }
+  private var offersPassword: Bool { hasPassword != false || !offersPasskey }
 
   var body: some View {
     AccountScreen(title: "Unfreeze your account", subtitle: "Sign in fully, so we know it's really you.", back: .system) {
@@ -94,43 +120,17 @@ struct UnfreezeView: View {
               .buttonStyle(.pill(.primary, fill: true, loading: busy == .passkey, leadingIcon: .faceID))
               .disabled(busy != nil)
               .accessibilityIdentifier("unfreeze.passkey")
-            Text("Your passkey is enough on its own.")
-              .hType(.footnote)
-              .foregroundStyle(HColor.textOnWashSecondary)
-              .frame(maxWidth: .infinity)
+            if offersPassword {
+              Text("Your passkey is enough on its own.")
+                .hType(.footnote)
+                .foregroundStyle(HColor.textOnWashSecondary)
+                .frame(maxWidth: .infinity)
+            }
             if failedWith == .passkey { FailureBanner(failure: failure) }
           }
-          OrDivider(label: "or password on your iPhone")
+          if offersPassword { OrDivider(label: "or password on your iPhone") }
         }
-        if !email.isEmpty { ReadOnlyEmail(email: email) }
-        FieldFrame(
-          label: "Password",
-          error: failedWith == .password && failure == .stepUpFailed ? Self.notConfirmed : nil,
-          focused: passwordFocused, trailingPill: true, labelsField: true, onTap: { passwordFocused = true }
-        ) {
-          Group {
-            if visible {
-              TextField("Your password", text: $password)
-            } else {
-              SecureField("Your password", text: $password)
-            }
-          }
-          .textContentType(.password)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-          .focused($passwordFocused)
-          .accessibilityIdentifier("unfreeze.password")
-          .accessibilityLabel("Password")
-        } trailing: {
-          ShowHidePill(visible: $visible)
-        }
-        Button { Task { await run(password: password) } } label: {
-          Text("Sign in").foregroundStyle(password.isEmpty ? HColor.textDisabled : HColor.textPrimary)
-        }
-        .buttonStyle(.pill(.onGrouped, fill: true, loading: busy == .password))
-        .disabled(password.isEmpty || busy != nil)
-        .accessibilityIdentifier("unfreeze.submit")
-        if failedWith == .password, failure != .stepUpFailed { FailureBanner(failure: failure) }
+        if offersPassword { passwordForm }
       }
     } footer: {
       WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "unfreeze.talk")
@@ -140,6 +140,38 @@ struct UnfreezeView: View {
         request: ConfirmRequest(title: "Unfreeze your account", factor: .noKey), password: .constant(""),
         busy: false, failure: nil, onConfirm: {}, onClose: { noKey = false })
     }
+  }
+
+  @ViewBuilder private var passwordForm: some View {
+    if !email.isEmpty { ReadOnlyEmail(email: email) }
+    FieldFrame(
+      label: "Password",
+      error: failedWith == .password && failure == .stepUpFailed ? Self.notConfirmed : nil,
+      focused: passwordFocused, trailingPill: true, labelsField: true, onTap: { passwordFocused = true }
+    ) {
+      Group {
+        if visible {
+          TextField("Your password", text: $password)
+        } else {
+          SecureField("Your password", text: $password)
+        }
+      }
+      .textContentType(.password)
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
+      .focused($passwordFocused)
+      .accessibilityIdentifier("unfreeze.password")
+      .accessibilityLabel("Password")
+    } trailing: {
+      ShowHidePill(visible: $visible)
+    }
+    Button { Task { await run(password: password) } } label: {
+      Text("Sign in").foregroundStyle(password.isEmpty ? HColor.textDisabled : HColor.textPrimary)
+    }
+    .buttonStyle(.pill(.onGrouped, fill: true, loading: busy == .password))
+    .disabled(password.isEmpty || busy != nil)
+    .accessibilityIdentifier("unfreeze.submit")
+    if failedWith == .password, failure != .stepUpFailed { FailureBanner(failure: failure) }
   }
 
   static let notConfirmed = "That didn't confirm. A passkey or password added after the freeze can't unfreeze the account."
@@ -203,14 +235,26 @@ struct FrozenBanner: View {
   var body: some View {
     Group {
       if typeSize.isAccessibilitySize {
-        VStack(alignment: .leading, spacing: 0) {
-          title.padding(.top, 10)
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { links }
-            VStack(alignment: .leading, spacing: 0) { links }
+        Menu {
+          Button("Sign out", role: .destructive) { confirmSignOut = true }
+            .accessibilityIdentifier("frozenBanner.signOut")
+          if by == .holder {
+            Button("Unfreeze", action: onShowWall).accessibilityIdentifier("frozenBanner.unfreeze")
+          } else {
+            Button("Details", action: onShowWall).accessibilityIdentifier("frozenBanner.details")
           }
+        } label: {
+          HStack(spacing: 10) {
+            HIconView(.lockKeyhole, size: 18, color: Hue.rose.ink)
+            Text("Frozen").hType(.rowTitle).foregroundStyle(Hue.rose.ink).lineLimit(1)
+            Spacer(minLength: 0)
+            HIconView(.chevronDown, size: 18, color: Hue.rose.ink)
+          }
+          .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+          .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("Account frozen, options")
+        .accessibilityIdentifier("frozenBanner.menu")
       } else {
         HStack(spacing: 10) {
           title

@@ -24,6 +24,8 @@
     case frozen
     /// An operator freeze: no "Unfreeze".
     case frozenOperator
+    case frozenNeedsUs
+    case frozenPasskeyOnly
     /// Setup at the bank step, a normal account.
     case setupBank
     /// Setup at the bank step on a review account ("Use sample data").
@@ -118,7 +120,8 @@
     /// The mailboxes a signed-in scenario starts with (setup's start with none).
     static func mailboxes(for scenario: AuthScenario?) -> [MailboxSnapshot] {
       switch scenario {
-      case nil, .passkeyUser, .passwordOnly, .mayaSample, .resetApproval, .frozen, .frozenOperator,
+      case nil, .passkeyUser, .passwordOnly, .mayaSample, .resetApproval, .frozen, .frozenOperator, .frozenNeedsUs,
+        .frozenPasskeyOnly,
         .unlockPasswordOnly, .unlockWithPasskey, .relaunchSignedIn, .gmailLinked:
         [MockMailbox.gmail]
       case .outlookReconnect: [MockMailbox.needingSignIn(MockMailbox.outlook)]
@@ -219,12 +222,13 @@
       case .unlockWithPasskey:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
                               phase: .needsUnlock(passkeyCanUnlock: true))
-      case .frozen, .frozenOperator:
+      case .frozen, .frozenOperator, .frozenNeedsUs, .frozenPasskeyOnly:
         let account = MockAccountService(existing: .passkey, signedIn: true)
-        let by: FreezeInfo.By = scenario == .frozen ? .holder : .operator
-        account.freezeForScenario(by: by)
-        return AccountSession(services: services(account),
-                              phase: .frozen(FreezeInfo(by: by, when: MockAccountService.identity.freezeWhen)))
+        let info = FreezeInfo(
+          by: scenario == .frozenOperator ? .operator : .holder, when: MockAccountService.identity.freezeWhen,
+          holderCanLift: scenario != .frozenNeedsUs, hasPassword: scenario == .frozenPasskeyOnly ? false : nil)
+        account.freezeForScenario(info)
+        return AccountSession(services: services(account), phase: .frozen(info))
       case .relaunchInterrupted, .relaunchSignedIn:
         let account = MockAccountService(existing: .passkey, signedIn: true)
         account.resumeOutcome = scenario == .relaunchInterrupted ? .needsKeys : .needsUnlock(passkeyCanUnlock: true)
@@ -281,7 +285,7 @@
         DeviceRow(id: "ios-other", title: "Maya\u{2019}s iPad", detail: "iPad Air · Dubai · 2 days ago",
                   isThisDevice: false, isTablet: true),
       ],
-      lastSignIn: "today at 09:12, here", phraseConfirmed: "Confirmed 11 Sep", passwordChanged: "Changed 3 Oct",
+      lastSignIn: "today at 09:12, here", phraseConfirmed: "Shown 11 Sep", passwordChanged: "Changed 3 Oct",
       freezeWhen: "on Sun 11 Oct at 21:20", resetAskedAgo: "1 minute ago", gmailMeta: "Checked 4 min ago",
       outlookMeta: "Checked 1 h ago", outlookKind: "Personal Microsoft", outlookNote: nil, outlookConnectedOn: "2 Oct",
       gmailLastChecked: "Sat 10 Oct, 13:36", lastEmails: [.enbd: "4 min ago", .dib: "2 h ago"],
@@ -309,7 +313,7 @@
                   isThisDevice: false),
       ]
       id.lastSignIn = "yesterday at 23:47 in Ras Al Khaimah"
-      id.phraseConfirmed = "Confirmed 11 Sep 2025"
+      id.phraseConfirmed = "Shown 11 Sep 2025"
       id.passwordChanged = "Changed 3 Oct 2025"
       id.freezeWhen = "on Thu 12 Dec at 08:05"
       id.resetAskedAgo = "14 minutes ago"

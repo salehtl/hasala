@@ -22,6 +22,7 @@ struct SignInView: View {
 
   @State private var passwordVisible = false
   @FocusState private var focus: Field?
+  @AccessibilityFocusState private var voiceOverOnPassword: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
 
   enum Field: Hashable { case email, password }
@@ -121,9 +122,9 @@ struct SignInView: View {
           .hType(.footnote.weight(.semibold))
           .foregroundStyle(HColor.textSecondary)
         Spacer(minLength: 8)
-        if capabilities.contains(.resetPassword) {
-          // A 44 target that keeps the label row at Paper's 20.
-          InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot", action: onForgot)
+        if capabilities.contains(.resetPassword) || capabilities.contains(.recoverAccess) {
+          InlineTextButton(title: "Forgot password?", identifier: "signIn.forgot",
+                           action: capabilities.contains(.resetPassword) ? onForgot : onRecover)
             .padding(.vertical, typeSize.isAccessibilitySize ? 0 : -12)
         }
       }
@@ -152,6 +153,7 @@ struct SignInView: View {
         .onChange(of: model.password) { _, _ in model.passwordEdited() }
         .accessibilityIdentifier("signIn.password")
         .accessibilityHint(wrongPassword.map { "Error: \($0)" } ?? "")
+        .accessibilityFocused($voiceOverOnPassword)
         // The label above is read as text (it shares its row with "Forgot password?", so
         // it can't be the field's name, and hidden it would be drawn text with no
         // element); the field reads its placeholder. It fills the box's height.
@@ -174,14 +176,22 @@ struct SignInView: View {
       }
     }
     .hAnimation(.fade, value: wrongPassword == nil)
+    .onChange(of: wrongPassword != nil) { _, failed in
+      if failed { voiceOverOnPassword = true }
+    }
   }
 
   /// FWD's line. Without an in-app reset (the beta), "or reset your password" would promise
   /// something this build doesn't do; the support link below says where to turn instead.
   private var wrongPassword: String? {
     guard passwordFailure == .wrongCredentials else { return nil }
-    return capabilities.contains(.resetPassword)
-      ? AuthFailure.wrongCredentials.message
+    return Self.wrongPasswordLine(capabilities)
+  }
+
+  static func wrongPasswordLine(_ capabilities: AccountCapabilities) -> String? {
+    if capabilities.contains(.resetPassword) { return AuthFailure.wrongCredentials.message }
+    return capabilities.contains(.recoverAccess)
+      ? "That email and password don't match. Try again, or use your 12 words if you forgot it."
       : "That email and password don't match. Try again."
   }
 }
@@ -428,13 +438,14 @@ struct ForgotWaitingView: View {
 /// words first and sends the code to the account their key belongs to, so there is no email
 /// field here (Paper's order is the email first).
 struct RecoverIntroView: View {
+  var setsPasskey = true
   var onStart: () -> Void
   var onNoWords: () -> Void
 
   var body: some View {
     AccountScreen(
       title: "Recover your account",
-      subtitle: "For when you can't sign in and your passkey is gone. You'll need both of these.",
+      subtitle: "For when you've lost your passkey or forgotten your password. You'll need both of these.",
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
@@ -444,7 +455,15 @@ struct RecoverIntroView: View {
           NeedRow(icon: .paper, hue: .sand, title: "Your 12-word recovery phrase",
                   detail: "It proves the account is yours and unlocks your data.")
         }
-        WarningNote(text: "No one at Hasala can reset your words or open your data for you. That's what keeps it private.")
+        Text(setsPasskey
+          ? "You'll set up a passkey, and your old sign-in stops working."
+          : "You'll set up a new way to sign in, and your old sign-in stops working.")
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+          .accessibilityIdentifier("recover.afterNote")
+        NoteRow(icon: .shield, text: "No one at Hasala can reset your words or open your data for you. That's what keeps it private.")
       }
     } footer: {
       Button("Enter my 12 words", action: onStart)
@@ -461,6 +480,7 @@ struct RecoverWordsView: View {
   @Bindable var model: SignInModel
   var onNext: () -> Void
   @FocusState private var typing: Bool
+  @State private var edit: PhraseEdit?
 
   var body: some View {
     let state = PhraseEntryState(model.phraseText)
@@ -470,17 +490,15 @@ struct RecoverWordsView: View {
       steps: (1, 3), back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount, focused: $typing) {
+        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedPhraseChangeCount, focused: $typing, edit: $edit) {
           submit()
         }
         FailureBanner(failure: model.failure(on: .recoverWords))
       }
       .accountContentTop(16)
     } footer: {
-      // Return sends the twelfth word (Paper draws no button); the button shows once the
-      // keyboard is down, or while the code goes out.
-      if typing, !model.busy {
-        PhraseSuggestions(text: $model.phraseText)
+      if edit != nil || (typing && !model.busy && !state.isComplete) {
+        PhraseSuggestions(text: $model.phraseText, edit: $edit)
       } else {
         BusyButton(title: "Send code", busy: model.busy, enabled: state.isComplete, identifier: "recover.words") {
           submit()
@@ -519,9 +537,14 @@ struct RecoverMethodView: View {
         steps: (3, 3), back: .system
       ) {
         VStack(alignment: .leading, spacing: 12) {
-          SelectionCard(icon: .faceID, hue: .sky, chip: "Recommended", title: "Use Face ID (passkey)",
-                        detail: "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone.",
-                        selected: choice == .passkey, identifier: "recover.choosePasskey") { choice = .passkey }
+          if model.capabilities.contains(.recoverWithPassword) {
+            SelectionCard(icon: .faceID, hue: .sky, chip: "Recommended", title: "Use Face ID (passkey)",
+                          detail: Self.passkeyDetail,
+                          selected: choice == .passkey, identifier: "recover.choosePasskey") { choice = .passkey }
+          } else {
+            InfoCard(icon: .faceID, hue: .sky, title: "Use Face ID (passkey)", detail: Self.passkeyDetail)
+              .accessibilityIdentifier("recover.choosePasskey")
+          }
           if model.capabilities.contains(.recoverWithPassword) {
             SelectionCard(icon: .password, hue: .other, title: "Use a password",
                           detail: "Signs you in anywhere you can type. It can't unlock your data on a new iPhone; your 12 words will do that job.",
@@ -542,6 +565,9 @@ struct RecoverMethodView: View {
       }
     }
   }
+
+  static let passkeyDetail =
+    "Nothing to remember or type. Your passkey is saved in iCloud Keychain, and it unlocks your data on a new iPhone."
 }
 
 /// Recover account · a new password (H43 with "Use a password"), then "You're back in".
@@ -569,9 +595,17 @@ struct RecoverPasswordView: View {
 }
 
 /// "You're back in" (Paper H5V): what changed, a word on the old phrase, then Home.
-private struct BackInView: View {
+struct BackInView: View {
   let model: SignInModel
   let method: SignInMethod
+
+  private var rotates: Bool { model.capabilities.contains(.rotatePhrase) && BuildSurface.showsUnfinished }
+
+  static func phraseDetail(rotates: Bool) -> String {
+    rotates
+      ? "If someone else may have seen them, make new ones in Sign-in & security."
+      : "They also need a code from your email to get in. If someone may have seen them, talk to us."
+  }
 
   var body: some View {
     let name = model.greetingName
@@ -592,9 +626,13 @@ private struct BackInView: View {
         StatusListRow(title: "Other devices", value: "Signed out", state: .done),
       ])
     } footer: {
-      InfoCard(icon: .paper, hue: .sand, title: "Your 12 words still work",
-               detail: "If someone else may have seen them, make new ones in Sign-in & security.")
-        .padding(.bottom, 12)
+      InfoCard(icon: .paper, hue: .sand, title: "Your recovery phrase still works",
+               detail: Self.phraseDetail(rotates: model.capabilities.contains(.rotatePhrase) && BuildSurface.showsUnfinished))
+        .padding(.bottom, rotates ? 12 : 0)
+      if !rotates {
+        WebLink(title: "Talk to us at hasala.app/support", url: "https://hasala.app/support", identifier: "recover.backIn.support")
+          .padding(.bottom, 4)
+      }
       Button("Go to Home") { model.recoveryDone() }
         .buttonStyle(.pill(.primary, fill: true))
         .accessibilityIdentifier("recover.home")
@@ -622,6 +660,7 @@ struct HonestEndScreen: View {
 
   @Environment(AccountSession.self) private var session: AccountSession?
   @State private var failure: AuthFailure?
+  @State private var confirmSignOut = false
 
   private var startsFresh: Bool { BuildSurface.showsUnfinished }
   private var addsPasskeys: Bool { session?.capabilities.contains(.addPasskey) ?? false }
@@ -655,10 +694,18 @@ struct HonestEndScreen: View {
         }
       } else {
         WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "honest.talk")
+        WebLink(title: "Delete my account instead", url: "mailto:privacy@hasala.app?subject=Delete%20my%20account",
+                identifier: "honest.delete")
       }
-      if let onSignOut {
-        SecondaryLink(title: "Sign out", identifier: "unlock.signOut", action: onSignOut)
+      if onSignOut != nil {
+        SecondaryLink(title: "Sign out", identifier: "unlock.signOut", role: .destructive) { confirmSignOut = true }
       }
+    }
+    .alert("Sign out of this iPhone?", isPresented: $confirmSignOut) {
+      Button("Sign out", role: .destructive) { onSignOut?() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(AccountCopy.signOutMessage)
     }
   }
 
@@ -670,7 +717,7 @@ struct HonestEndScreen: View {
   static func otherDevice(addsPasskeys: Bool, method: SignInMethod?) -> String {
     switch method {
     case .password:
-      return "It can't show your words: on an account without a passkey they can't be shown again."
+      return "Your data still opens there, but it can't show your words. Keep it signed in."
     case .passkey where addsPasskeys:
       return "An iPad or old iPhone with Hasala open can add a passkey or show your words after Face ID."
     case .passkey:

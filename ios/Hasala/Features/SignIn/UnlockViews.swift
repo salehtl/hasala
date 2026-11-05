@@ -156,6 +156,7 @@ struct UnlockView: View {
   @State private var model: UnlockModel
   var onSignOut: () -> Void
   @FocusState private var typing: Bool
+  @State private var edit: PhraseEdit?
 
   /// A password reset another iPhone approved led here (Paper GUM: "You're in. Your data
   /// is still locked.").
@@ -229,8 +230,8 @@ struct UnlockView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         if model.passkeyCanUnlock && !afterReset {
-          OptionCard(icon: .faceID, hue: .sky, chip: "Fastest", title: "Use your passkey",
-                     detail: "If it synced to this iPhone through iCloud Keychain, Face ID opens everything.",
+          OptionCard(icon: .faceID, hue: .sky, title: "Use your passkey",
+                     detail: "If it synced through iCloud Keychain, Face ID opens everything.",
                      buttonTitle: "Unlock with Face ID", buttonKind: .primary, buttonIcon: .faceID,
                      busy: model.busy, identifier: "unlock.passkey") {
             Task { await model.unlockWithPasskey() }
@@ -267,17 +268,15 @@ struct UnlockView: View {
       back: .system
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount, focused: $typing) {
+        PhraseEntryGrid(text: $model.phraseText, pastedChangeCount: $model.pastedChangeCount, focused: $typing, edit: $edit) {
           Task { await model.unlockWithWords() }
         }
         if model.failedOnWords { FailureBanner(failure: model.failure) }
       }
       .accountContentTop(16)
     } footer: {
-      // Return opens with the twelfth word (Paper draws no button); the button shows once
-      // the keyboard is down.
-      if typing, !model.busy {
-        PhraseSuggestions(text: $model.phraseText)
+      if edit != nil || (typing && !model.busy && !state.isComplete) {
+        PhraseSuggestions(text: $model.phraseText, edit: $edit)
       } else {
         BusyButton(title: "Unlock", busy: model.busy, enabled: state.isComplete, identifier: "unlock.submit") {
           Task { await model.unlockWithWords() }
@@ -327,7 +326,7 @@ struct UnlockView: View {
     } footer: {
       if model.offersPasskey {
         InfoCard(icon: .faceID, hue: .sky, title: "Add a passkey to this iPhone",
-                 detail: "Next time Face ID signs you in and unlocks everything, no paper needed.")
+                 detail: "Next time Face ID signs you in and unlocks everything. Keep your paper as your backup.")
           .padding(.bottom, 12)
         Button("Add a passkey") {
           model.confirmPassword = ""

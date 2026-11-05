@@ -68,7 +68,7 @@ struct HeroAccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .dockScrollEdge()
     .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .safeAreaBar(edge: .bottom) {
       AccountDock(content: footer)
@@ -118,17 +118,35 @@ private let accountTemplateContentTop: CGFloat = 24
 /// hairlines and a 13/18 semibold label, 8 above and below.
 struct OrDivider: View {
   var label: String
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    HStack(spacing: 12) {
-      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1).accessibilityHidden(true)
-      Text(label)
-        .hType(.footnote.weight(.semibold))
-        .foregroundStyle(HColor.textSecondary)
-        .fixedSize()
-      Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1).accessibilityHidden(true)
+    Group {
+      if typeSize.isAccessibilitySize {
+        text
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity)
+      } else {
+        HStack(spacing: 12) {
+          rule
+          text.fixedSize()
+          rule
+        }
+      }
     }
     .padding(.vertical, 8)
+  }
+
+  private var rule: some View {
+    Rectangle().fill(HColor.appleSeparatorsNonOpaque).frame(height: 1).accessibilityHidden(true)
+  }
+
+  private var text: some View {
+    Text(label)
+      .hType(.footnote.weight(.semibold))
+      .foregroundStyle(HColor.textSecondary)
+      .accessibilityIdentifier("orDivider.label")
   }
 }
 

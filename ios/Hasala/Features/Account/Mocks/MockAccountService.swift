@@ -440,7 +440,11 @@
 
     /// Scenario hook: start frozen.
     func freezeForScenario(by: FreezeInfo.By) {
-      security.frozen = FreezeInfo(by: by, when: Self.identity.freezeWhen)
+      freezeForScenario(FreezeInfo(by: by, when: Self.identity.freezeWhen))
+    }
+
+    func freezeForScenario(_ info: FreezeInfo) {
+      security.frozen = info
     }
 
     var frozenInfo: FreezeInfo? { security.frozen }

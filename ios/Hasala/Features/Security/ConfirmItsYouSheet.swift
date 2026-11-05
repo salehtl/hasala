@@ -77,10 +77,7 @@ struct ConfirmItsYouSheet: View {
           passwordField
           DeviceKeyRow()
         case .noKey:
-          let other = request.otherDevice ?? "your other iPhone"
-          BulletCard(lines: onEnterWords == nil
-            ? ["Make the change on \(other), where your data is open"]
-            : ["Enter your 12 words to open it here", "Or make the change on \(other)"])
+          BulletCard(lines: Self.noKeyLines(otherDevice: request.otherDevice, entersWords: onEnterWords != nil))
         }
         if let message = otherFailure?.message {
           FieldErrorLine(text: message)
@@ -181,11 +178,29 @@ struct ConfirmItsYouSheet: View {
         Button("Enter my 12 words", action: onEnterWords)
           .buttonStyle(.pill(.primary, fill: true))
           .accessibilityIdentifier("confirm.enterWords")
+      } else if request.otherDevice == nil {
+        VStack(spacing: 8) {
+          Link(destination: URL(string: "https://hasala.app/support")!) {
+            Text("Talk to a person")
+          }
+          .buttonStyle(.pill(.primary, fill: true))
+          .accessibilityIdentifier("confirm.talk")
+          SecondaryLink(title: "Close", identifier: "confirm.close", action: onClose)
+        }
       } else {
         Button("Close", action: onClose)
           .buttonStyle(.pill(.primary, fill: true))
           .accessibilityIdentifier("confirm.close")
       }
+    }
+  }
+
+  static func noKeyLines(otherDevice: String?, entersWords: Bool) -> [String] {
+    switch (entersWords, otherDevice) {
+    case (true, let other?): ["Enter your 12 words to open it here", "Or make the change on \(other)"]
+    case (true, nil): ["Enter your 12 words to open it here"]
+    case (false, let other?): ["Make the change on \(other), where your data is open"]
+    case (false, nil): ["Only an iPhone where your data is open can confirm this"]
     }
   }
 }

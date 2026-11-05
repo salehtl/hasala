@@ -316,12 +316,13 @@ struct SignInSecurityFlowTests: AccountSuite {
   /// Paper MTO: the holder's wall says the freeze came from our email (the cue for
   /// "Someone may be reading your email"), unless it was made here.
   @Test func theHolderWallSaysWhereTheFreezeCameFrom() {
+    let tail = " Everyone is signed out, and nothing on your account can change until you unfreeze."
     #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
-      == "\u{201C}Freeze my account\u{201D} was used from our email on Sun 11 Oct at 21:20. Nobody can sign in or change your keys until you sign in fully.")
+      == "\u{201C}Freeze my account\u{201D} was used from our email on Sun 11 Oct at 21:20." + tail)
     #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: nil))
-      == "\u{201C}Freeze my account\u{201D} was used from our email. Nobody can sign in or change your keys until you sign in fully.")
+      == "\u{201C}Freeze my account\u{201D} was used from our email." + tail)
     #expect(FrozenWall.holderBody(FreezeInfo(by: .holder, when: "just now", inApp: true))
-      == "\u{201C}Freeze my account\u{201D} was used just now. Nobody can sign in or change your keys until you sign in fully.")
+      == "\u{201C}Freeze my account\u{201D} was used just now." + tail)
   }
 
   /// H9F's other-device row promises only what that device can do: only a passkey
@@ -334,7 +335,7 @@ struct SignInSecurityFlowTests: AccountSuite {
     for adds in [true, false] {
       let passwordOnly = HonestEndScreen.otherDevice(addsPasskeys: adds, method: .password)
       #expect(!passwordOnly.contains("can show your words"))
-      #expect(passwordOnly.contains("can't be shown again"))
+      #expect(passwordOnly == "Your data still opens there, but it can't show your words. Keep it signed in.")
       #expect(HonestEndScreen.otherDevice(addsPasskeys: adds, method: nil).contains("where your passkey works"))
     }
   }

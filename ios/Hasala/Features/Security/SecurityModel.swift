@@ -369,7 +369,7 @@ final class SecurityModel {
   func finishEmailChange(to newEmail: String?) async {
     emailChange = nil
     if let newEmail {
-      notice = "Email changed. Codes and alerts now go to\n\(newEmail)"
+      notice = "Email changed. Sign-in codes and security emails now go to\n\(newEmail)"
       await load()
     }
   }
