@@ -84,6 +84,8 @@ nonisolated enum CloudSendBack {
 }
 
 struct CloudSuggestionsSection: View {
+  static let autoSortLine = "Files a payment by itself when Cloudflare's AI is very sure."
+
   let app: AppModel
   @State private var consent = MerchantSuggestionsConsent()
   @State private var confirmSendBack = false
@@ -97,12 +99,11 @@ struct CloudSuggestionsSection: View {
         SettingSwitchRow(icon: .wand, title: "Merchant suggestions",
                          isOn: Binding(get: { consent.isOn }, set: { consent.request($0) }))
           .accessibilityIdentifier("profile.merchantSuggestions")
-        SettingSwitchRow(icon: .done, title: "Sort automatically",
-                         isOn: Binding(get: { consent.autoSortOn }, set: { consent.requestAutoSort($0) }))
-          .disabled(!consent.autoSortAvailable)
-          .opacity(consent.autoSortAvailable ? 1 : 0.5)
-          .accessibilityHint(consent.autoSortAvailable ? "" : "Turn on Merchant suggestions first")
-          .accessibilityIdentifier("profile.merchantAutoSort")
+        if consent.autoSortAvailable {
+          SettingSwitchRow(icon: .done, title: "Sort automatically", detail: Self.autoSortLine,
+                           isOn: Binding(get: { consent.autoSortOn }, set: { consent.requestAutoSort($0) }))
+            .accessibilityIdentifier("profile.merchantAutoSort")
+        }
         if let status, status.cloudSortedCount > 0 {
           Button { confirmSendBack = true } label: {
             SettingRow(icon: .history, title: "Send Cloudflare's sorting back to Review", chevron: false)
