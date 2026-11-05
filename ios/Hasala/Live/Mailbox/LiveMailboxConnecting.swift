@@ -77,10 +77,19 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// over, after the provider screen's confirmation. The holder may be an iPhone the person
   /// no longer has (the server can't tell), so this iPhone isn't left with no way to read.
   var heldElsewhere: MailProviderKind? {
-    guard let rt = runtime(), let lane = rt.lane, rt.store.mailboxStatus?.phase == .unlinked,
-      case .holder(false, _)? = rt.serverLink
-    else { return nil }
-    return lane.provider
+    guard let rt = runtime(), let lane = rt.lane, let phase = rt.store.mailboxStatus?.phase else { return nil }
+    return Self.heldElsewhere(phase: phase, link: rt.serverLink, provider: lane.provider)
+  }
+
+  static func heldElsewhere(phase: MailboxPhase, link: MailboxLinkStatus?, provider: MailProviderKind)
+    -> MailProviderKind?
+  {
+    guard asksBeforeConnect(phase), case .holder(false, _)? = link else { return nil }
+    return provider
+  }
+
+  static func asksBeforeConnect(_ phase: MailboxPhase) -> Bool {
+    phase == .unlinked || phase == .otherDevice
   }
 
   func reading(
@@ -376,10 +385,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     replacing: Bool
   ) throws(MailConnectFailure) -> Bool {
     switch phase {
-    case .unlinked:
-      return false  // a first link, or after a disconnect
-    case .otherDevice:
-      throw .takenByOtherIPhone  // v2 has no "Read them here instead"
+    case .unlinked, .otherDevice:
+      return false
     case .reconnectRequired, .halted:
       if requested == current { return false }  // sign in again
     case .scanning, .awaitingCards, .authoringBackfill, .active:
@@ -409,7 +416,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let replaces = try Self.admit(
       provider, current: current?.provider, phase: status.phase, address: status.address, replacing: replacing)
     var takesOver = false
-    if status.phase == .unlinked {
+    if Self.asksBeforeConnect(status.phase) {
       let link = await rt.askServerLink()
       try Self.checkTakeover(link, confirmed: replacing)
       if case .holder(false, _)? = link { takesOver = true }

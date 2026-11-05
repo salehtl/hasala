@@ -16,10 +16,14 @@ struct WorkCoordinatorTests {
     var all: [String] { entries.withLock { $0 } }
   }
 
-  static func coordinator(_ log: Log, mailbox: Bool = true, delay: Duration = .milliseconds(50)) -> WorkCoordinator {
+  static func coordinator(
+    _ log: Log, mailbox: Bool = true, delay: Duration = .milliseconds(50), mailHalt: MailboxHaltCode? = nil
+  ) -> WorkCoordinator {
     let mail: WorkCoordinator.MailboxStage = { trigger, _ in
       log.add("mail.\(trigger.rawValue)")
-      return CycleReport()
+      var report = CycleReport()
+      report.haltedOn = mailHalt
+      return report
     }
     let sync: WorkCoordinator.SyncStage = { trigger, _ in
       log.add("sync.\(trigger.rawValue)")
@@ -287,5 +291,56 @@ struct WorkCoordinatorTests {
     #expect(WorkCoordinator.joins(.refresh, running: .authored, queued: .silentPush))
     #expect(!WorkCoordinator.joins(.refresh, running: .authored, queued: nil))
     #expect(!WorkCoordinator.joins(.silentPush, running: .launch, queued: nil))
+  }
+
+  @Test func aRunThatWentThroughSaysUpdated() async {
+    let out = await Self.coordinator(Log()).run(.refresh)
+    #expect(out.ran)
+    #expect(out.settled == .updated)
+    #expect(out.announcement == "Updated")
+  }
+
+  @Test func aSpacedForegroundRunSaysNothing() async {
+    let c = Self.coordinator(Log())
+    _ = await c.run(.foreground)
+    let skipped = await c.run(.foreground)
+    #expect(!skipped.ran)
+    #expect(skipped.settled == .notRun)
+    #expect(skipped.announcement == nil)
+  }
+
+  @Test func aCallerWhoseBudgetRanOutNeverHearsUpdated() async {
+    let c = Self.coordinator(Log(), delay: .milliseconds(400))
+    let out = await c.run(.refresh, budget: .milliseconds(50))
+    #expect(out.timedOut)
+    #expect(out.settled == .stillRunning)
+    #expect(out.announcement == nil)
+  }
+
+  @Test func offlineIsNotUpdated() async {
+    let log = Log()
+    log.syncStop.withLock { $0 = .offline }
+    let out = await Self.coordinator(log).run(.refresh)
+    #expect(out.settled == .offline)
+    #expect(out.announcement == "Couldn't check. No connection.")
+  }
+
+  @Test(arguments: [MailboxHaltCode.reconnectRequired, .accountFull, .templatesUnavailable, .noMailbox])
+  func aMailStopIsNotUpdated(halt: MailboxHaltCode) async {
+    let c = Self.coordinator(Log(), mailHalt: halt)
+    let out = await c.run(.refresh)
+    #expect(out.mailHalt == halt)
+    #expect(out.settled == .mailStopped)
+    #expect(out.announcement == "Bank alerts stopped")
+  }
+
+  @Test func aMailCycleThatCouldNotConnectIsOffline() async {
+    let out = await Self.coordinator(Log(), mailHalt: .offline).run(.refresh)
+    #expect(out.settled == .offline)
+  }
+
+  @Test func aStagingPauseIsStillUpdated() async {
+    let out = await Self.coordinator(Log(), mailHalt: .stagingFull).run(.refresh)
+    #expect(out.settled == .updated)
   }
 }

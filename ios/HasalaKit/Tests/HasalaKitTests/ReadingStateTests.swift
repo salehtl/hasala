@@ -137,6 +137,12 @@ struct ReadingStateTests {
     #expect(stale.holdsVerdict(YearMonth(2026, 10)))
   }
 
+  @Test func anOldReaderMayTakeReadingBackWhenTheServerNamesAnotherHolder() {
+    let s = state(ReadingFacts(
+      nowMs: now, mail: mail(.otherDevice), heldElsewhere: .gmail, newestMailRowMs: now - Self.day))
+    #expect(s.kind == .elsewhere(newest: LocalDate(2026, 10, 19), stale: false, canTakeOver: true))
+  }
+
   @Test func elsewhereWithNoRowYetIsStale() {
     let s = state(ReadingFacts(nowMs: now, mail: mail(.otherDevice)))
     #expect(s.elsewhereStale)

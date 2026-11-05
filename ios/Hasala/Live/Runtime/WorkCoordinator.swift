@@ -76,9 +76,41 @@ actor WorkCoordinator {
     /// Why the sync stage stopped early, if it did (`.notNow` when this caller's budget ran
     /// out first, `.cancelled` when it was cancelled).
     var stop: SyncStop?
+    var ran = false
+    var timedOut = false
+    var mailHalt: MailboxHaltCode?
 
     /// The silent push's `.failed`: the run could not reach the server or stopped.
     var failed: Bool { stop.map { !WorkCoordinator.tolerable($0) } ?? false }
+
+    enum Settled: Sendable, Equatable {
+      case updated, notRun, stillRunning, offline, mailStopped, failed
+    }
+
+    var settled: Settled {
+      if timedOut { return .stillRunning }
+      if !ran || stop == .cancelled { return .notRun }
+      switch stop {
+      case .offline?, .protocolError?: return .offline
+      default: break
+      }
+      if failed { return .failed }
+      switch mailHalt {
+      case .offline?: return .offline
+      case nil, .stagingFull?: return .updated
+      default: return .mailStopped
+      }
+    }
+
+    var announcement: String? {
+      switch settled {
+      case .updated: "Updated"
+      case .offline: "Couldn't check. No connection."
+      case .mailStopped: "Bank alerts stopped"
+      case .failed: "Couldn't check"
+      case .notRun, .stillRunning: nil
+      }
+    }
   }
 
   typealias SyncStage = @Sendable (SyncTrigger, ContinuousClock.Instant?) async -> (newData: Bool, stop: SyncStop?)
@@ -195,7 +227,7 @@ actor WorkCoordinator {
     nextWaiter += 1
     waiters[id] = task
     let out = await Self.wait(
-      for: task, until: deadline, timedOut: Outcome(newData: false, stop: .notNow),
+      for: task, until: deadline, timedOut: Outcome(newData: false, stop: .notNow, timedOut: true),
       cancelled: Outcome(newData: false, stop: .cancelled))
     let waited = waiters.removeValue(forKey: id)
     if Task.isCancelled, let waited { cancelIfUnwatched(waited) }
@@ -231,6 +263,7 @@ actor WorkCoordinator {
       let again = await once(next, deadline: limit.deadline)
       out.newData = out.newData || again.newData
       out.stop = again.stop
+      out.mailHalt = again.mailHalt
     }
     rerun = nil
     rerunLimit = .unasked
@@ -244,7 +277,7 @@ actor WorkCoordinator {
     current = trigger
     let stamp: ContinuousClock.Instant? = trigger == .foreground ? .now : nil
     if let stamp { lastForeground = stamp }
-    var out = Outcome()
+    var out = Outcome(ran: true)
     // The sync engine runs in a task of its own, so a cancellation can't reach it; the
     // run stops waiting for it instead (it finishes, or stops at its deadline).
     let sync = stages.sync
@@ -267,6 +300,7 @@ actor WorkCoordinator {
       }
       let report = await mailbox(mt, deadlineMs)
       if report.ops > 0 { out.newData = true }
+      out.mailHalt = report.haltedOn
     }
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     if !closed, let categorize = stages.categorize, synced.stop.map(Self.tolerable) ?? true {
