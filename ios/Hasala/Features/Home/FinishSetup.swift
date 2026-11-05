@@ -110,7 +110,7 @@ final class FinishSetupModel {
     if noAlerts { listed.insert(.bankAlerts) }
     if stoppedMailbox != nil { listed.insert(.readingStopped) }
     let saved = services.setup.readBack()
-    if !planDone, saved.split != nil || saved.incomeMinor != nil { planDone = true }
+    if !planDone, Self.planIsSet(saved) { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
   }
 
@@ -222,13 +222,17 @@ final class FinishSetupModel {
     let flow = draft ?? MonthlyPlanModel(setup: services.setup) { [weak self] held in
       if let held {
         self?.draft = nil
-        if held.split != nil || held.incomeMinor != nil { self?.planDone = true }
+        if Self.planIsSet(held) { self?.planDone = true }
       }
       self?.planFlow = nil
     }
     flow.path = []
     draft = flow
     planFlow = flow
+  }
+
+  static func planIsSet(_ saved: SetupReadBack) -> Bool {
+    saved.split != nil && saved.incomeMinor != nil
   }
 
   func askNotifications() {
@@ -261,7 +265,7 @@ struct FinishSetupSection: View {
     let open = items.filter { !model.isDone($0) }
     if !open.isEmpty {
       VStack(alignment: .leading, spacing: 12) {
-        HSectionHeader("Finish setting up", trailing: .fact("\(items.count - open.count) of \(items.count)"))
+        HSectionHeader("Finish setting up", trailing: .fact(Self.fact(items, isDone: model.isDone, importing: importing)))
         ForEach(open) { item in
           switch item {
           case .phrase:
@@ -301,10 +305,10 @@ struct FinishSetupSection: View {
               enabled: true, identifier: "home.finish.plan", action: model.setPlan)
           case .notifications:
             FinishSetupRow(
-              icon: .bell, title: "A note when money moves",
+              icon: .bell, title: "Show the count on your icon",
               detail: importing
                 ? "Offered once your alerts are read."
-                : "Choose whether Hasala can send you a short note.",
+                : "Allow notifications for the badge and reminders.",
               enabled: !importing, identifier: "home.finish.notifications", action: model.askNotifications)
           }
         }
@@ -317,6 +321,11 @@ struct FinishSetupSection: View {
 }
 
 extension FinishSetupSection {
+  static func fact(_ items: [FinishSetupItem], isDone: (FinishSetupItem) -> Bool, importing: Bool) -> String {
+    let counted = items.filter { !(importing && $0 == .notifications && !isDone($0)) }
+    return "\(counted.filter(isDone).count) of \(counted.count)"
+  }
+
   static func stopped(_ m: MailboxSnapshot?) -> (title: String, detail: String) {
     if let m, m.state == .needsSignIn {
       return ("Sign in to your email again", "Hasala can't read \(m.address) right now. Open Bank alerts to sign in.")

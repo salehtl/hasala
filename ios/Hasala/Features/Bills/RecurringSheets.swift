@@ -20,13 +20,32 @@ enum RecurringSheet: Identifiable, Hashable {
     case .salary(let id): "salary.\(id)"
     }
   }
+
+  var fitted: Bool {
+    switch self {
+    case .pause, .end: true
+    case .add, .editAmount, .link, .salary: false
+    }
+  }
+}
+
+extension EnvironmentValues {
+  @Entry var recurringOnSheet = false
 }
 
 struct RecurringSheetHost: View {
   let app: AppModel
   let sheet: RecurringSheet
 
-  var body: some View {
+  @ViewBuilder var body: some View {
+    if sheet.fitted {
+      stack
+    } else {
+      stack.planLargeSheet()
+    }
+  }
+
+  private var stack: some View {
     NavigationStack {
       switch sheet {
       case .add: AddRecurringSheet(app: app)
@@ -38,18 +57,63 @@ struct RecurringSheetHost: View {
       }
     }
     .overlay(alignment: .bottom) { ToastHost(app: app, placement: .bottom) }
-    .planLargeSheet()
   }
+}
+
+enum RecurringDiscard {
+  static let newItem = "Discard this recurring payment?"
+  static let changes = "Discard these changes?"
 }
 
 struct RecurringForm<Content: View, Dock: View>: View {
   let title: String
   let closeID: String
+  var isDirty = false
+  var discardTitle = RecurringDiscard.changes
+  var fitted = false
   @ViewBuilder let content: () -> Content
   @ViewBuilder let dock: () -> Dock
+  @State private var asking = false
+  @State private var height: CGFloat = 0
+  @State private var opensLarge: Bool?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  private var large: Bool { opensLarge ?? typeSize.isAccessibilitySize }
 
   var body: some View {
+    Group {
+      if fitted { fittedBody } else { largeBody }
+    }
+    .discardGuard(isDirty, title: discardTitle, asking: $asking) { dismiss() }
+  }
+
+  private func close() {
+    DiscardGuard.close(isDirty: isDirty, asking: $asking) { dismiss() }
+  }
+
+  private var fittedBody: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        PlanSheetHeader(title: title, closeID: closeID) { close() }
+        content()
+        VStack(spacing: 8) { dock() }
+      }
+      .padding(.top, 33)
+      .padding(.horizontal, HSpacing.sheetPadding)
+      .padding(.bottom, 28)
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .ignoresSafeArea(.container, edges: large ? [] : .bottom)
+    .background(HColor.sheetSurface)
+    .toolbar(.hidden, for: .navigationBar)
+    .environment(\.recurringOnSheet, true)
+    .planMediumSheet(height: height, large: large)
+    .onAppear { if opensLarge == nil { opensLarge = typeSize.isAccessibilitySize } }
+  }
+
+  private var largeBody: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) { content() }
         .padding(.horizontal, HSpacing.insetPage)
@@ -68,7 +132,7 @@ struct RecurringForm<Content: View, Dock: View>: View {
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
-      SheetCloseButton(identifier: closeID) { dismiss() }
+      SheetCloseButton(identifier: closeID) { close() }
       ToolbarItemGroup(placement: .keyboard) {
         Spacer()
         Button("Done") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
@@ -81,6 +145,7 @@ struct RecurringField<Content: View>: View {
   let title: String
   var footer: String?
   @ViewBuilder let content: () -> Content
+  @Environment(\.recurringOnSheet) private var onSheet
 
   init(_ title: String, footer: String? = nil, @ViewBuilder content: @escaping () -> Content) {
     self.title = title
@@ -92,13 +157,13 @@ struct RecurringField<Content: View>: View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title).hType(.overline).foregroundStyle(HColor.textGroupedHeader)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.leading, 4)
+        .padding(.leading, onSheet ? 0 : 4)
         .accessibilityAddTraits(.isHeader)
       content()
       if let footer {
         Text(footer).hType(.footnote).foregroundStyle(HColor.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 4)
+          .padding(.horizontal, onSheet ? 0 : 4)
       }
     }
   }
@@ -106,11 +171,25 @@ struct RecurringField<Content: View>: View {
 
 struct RecurringCard<Content: View>: View {
   @ViewBuilder let content: () -> Content
+  @Environment(\.recurringOnSheet) private var onSheet
 
   var body: some View {
     VStack(spacing: 0) { content() }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+      .background(onSheet ? Color.clear : HColor.surfacePrimary,
+                  in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+  }
+}
+
+struct RecurringDivider: View {
+  @Environment(\.recurringOnSheet) private var onSheet
+
+  var body: some View {
+    if onSheet {
+      HDivider(inset: .none).padding(.leading, 36)
+    } else {
+      HDivider(inset: .text16)
+    }
   }
 }
 
@@ -135,11 +214,23 @@ struct RecurringTextField: View {
         .autocorrectionDisabled()
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
+        .onChange(of: text) { old, new in
+          guard amount else { return }
+          let shown = Self.filtered(new, after: old)
+          if shown != new { text = shown }
+        }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)
     .frame(minHeight: 52)
     .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+  }
+}
+
+extension RecurringTextField {
+  static func filtered(_ typed: String, after previous: String,
+                       decimalSeparator: String = Locale.current.decimalSeparator ?? ".") -> String {
+    PlanAmountField.shown(typed, after: previous, decimalSeparator: decimalSeparator)
   }
 }
 
@@ -149,6 +240,7 @@ struct RecurringChoiceRow: View {
   let selected: Bool
   let id: String
   let action: () -> Void
+  @Environment(\.recurringOnSheet) private var onSheet
 
   var body: some View {
     Button(action: action) {
@@ -162,7 +254,7 @@ struct RecurringChoiceRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(.horizontal, 16)
+      .padding(.horizontal, onSheet ? 0 : 16)
       .padding(.vertical, 8)
       .frame(minHeight: 52)
       .contentShape(Rectangle())
@@ -179,6 +271,7 @@ struct RecurringRow<Trailing: View>: View {
   let icon: HIcon
   let title: String
   @ViewBuilder let trailing: () -> Trailing
+  @Environment(\.recurringOnSheet) private var onSheet
 
   var body: some View {
     ReflowingRow(spacing: 12) {
@@ -189,7 +282,7 @@ struct RecurringRow<Trailing: View>: View {
     } trailing: {
       HStack(spacing: 8) { trailing() }.hType(.body)
     }
-    .padding(.horizontal, 16)
+    .padding(.horizontal, onSheet ? 0 : 16)
     .padding(.vertical, 8)
     .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
     .contentShape(Rectangle())
@@ -287,12 +380,23 @@ final class AddRecurringModel {
   var seed: TxnID?
   var ticked: Set<TxnID> = []
   private let decimalSeparator: String
+  private let openedDue: Date
+  private let openedCategory: CategoryID?
 
   init(app: AppModel, decimalSeparator: String = Locale.current.decimalSeparator ?? ".") {
     self.app = app
     self.decimalSeparator = decimalSeparator
-    firstDue = ProjectDates.date(app.store.now.date)
-    categoryID = BillsEngine.defaultCategory(app.store.state)
+    let due = ProjectDates.date(app.store.now.date)
+    let category = BillsEngine.defaultCategory(app.store.state)
+    openedDue = due
+    openedCategory = category
+    firstDue = due
+    categoryID = category
+  }
+
+  var isDirty: Bool {
+    !name.isEmpty || !amountText.isEmpty || varies || cadence != .monthly || every != 1 || firstDue != openedDue
+      || categoryID != openedCategory || accountID != nil || seed != nil || !ticked.isEmpty
   }
 
   var hidden: Bool { app.amountsHidden }
@@ -368,7 +472,8 @@ struct AddRecurringSheet: View {
   }
 
   var body: some View {
-    RecurringForm(title: "Add recurring", closeID: "bills.add.close") {
+    RecurringForm(title: "Add recurring", closeID: "bills.add.close", isDirty: model.isDirty,
+                  discardTitle: RecurringDiscard.newItem) {
       fromPayment
       RecurringField("Name") {
         RecurringTextField(placeholder: "Netflix, rent, gym", text: $model.name, label: "Name", id: "bills.add.name")
@@ -643,36 +748,47 @@ struct RecurringCategoryPage: View {
 }
 
 struct EditAmountSheet: View {
+  struct Fields: Equatable {
+    var amountText: String
+    var varies: Bool
+    var start: LocalDate?
+
+    static func opened(_ b: Bill?, today: LocalDate) -> Fields {
+      Fields(amountText: b.map { MoneyFormat.draft(($0.nextAmount ?? $0.amount).minor) } ?? "",
+             varies: b?.approximate ?? false,
+             start: b.flatMap { BillsEngine.defaultAmountStart($0, today: today) })
+    }
+  }
+
   let app: AppModel
   let bill: BillID
-  @State private var amountText: String
-  @State private var varies: Bool
-  @State private var start: LocalDate?
+  private let opened: Fields
+  @State private var fields: Fields
   @Environment(\.dismiss) private var dismiss
 
   init(app: AppModel, bill: BillID) {
     self.app = app
     self.bill = bill
-    let b = app.store.state.bill(bill)
-    _amountText = State(initialValue: b.map { MoneyFormat.draft(($0.nextAmount ?? $0.amount).minor) } ?? "")
-    _varies = State(initialValue: b?.approximate ?? false)
-    _start = State(initialValue: b.flatMap { BillsEngine.defaultAmountStart($0, today: app.store.now.date) })
+    let fields = Fields.opened(app.store.state.bill(bill), today: app.store.now.date)
+    opened = fields
+    _fields = State(initialValue: fields)
   }
 
   private var b: Bill? { app.store.state.bill(bill) }
-  private var minor: Int64? { RecurringCopy.positiveMinor(amountText) }
+  private var minor: Int64? { RecurringCopy.positiveMinor(fields.amountText) }
+  private var start: LocalDate? { fields.start }
 
   var body: some View {
     let today = app.store.now.date
     let choices = b.map { BillsEngine.amountStarts($0, today: today) } ?? []
     let paid = b.flatMap(BillDueDates.latestPaid)
-    RecurringForm(title: "Edit amount", closeID: "bills.amount.close") {
+    RecurringForm(title: "Edit amount", closeID: "bills.amount.close", isDirty: fields != opened) {
       RecurringField("Amount") {
         VStack(spacing: 12) {
-          RecurringTextField(placeholder: "0.00", text: $amountText, label: "Amount, in dirhams",
+          RecurringTextField(placeholder: "0.00", text: $fields.amountText, label: "Amount, in dirhams",
                              id: "bills.amount.field", amount: true)
           RecurringCard {
-            Toggle(isOn: $varies) {
+            Toggle(isOn: $fields.varies) {
               Text("The amount varies").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
             }
             .tint(HColor.controlSwitchTrackOn)
@@ -689,7 +805,7 @@ struct EditAmountSheet: View {
             RecurringChoiceRow(
               title: date.short,
               detail: date == paid ? "Last paid" : date == b?.nextDue ? "Next payment" : nil,
-              selected: start == date, id: "bills.amount.start.\(date.ordinal)") { start = date }
+              selected: start == date, id: "bills.amount.start.\(date.ordinal)") { fields.start = date }
           }
         }
       }
@@ -704,7 +820,7 @@ struct EditAmountSheet: View {
 
   private func save() {
     guard let b, let minor, let start else { return }
-    if app.perform(.editBillAmount(bill, Money(minor: minor, currency: b.amount.currency), approximate: varies,
+    if app.perform(.editBillAmount(bill, Money(minor: minor, currency: b.amount.currency), approximate: fields.varies,
                                    from: start)) {
       dismiss()
     }
@@ -712,34 +828,48 @@ struct EditAmountSheet: View {
 }
 
 struct PauseBillSheet: View {
+  struct Fields: Equatable {
+    var untilDate = false
+    var until: Date
+
+    static func opened(today: LocalDate) -> Fields {
+      Fields(until: ProjectDates.date(today.adding(days: 30)))
+    }
+  }
+
   let app: AppModel
   let bill: BillID
-  @State private var untilDate = false
-  @State private var until: Date
+  private let opened: Fields
+  @State private var fields: Fields
   @Environment(\.dismiss) private var dismiss
 
   init(app: AppModel, bill: BillID) {
     self.app = app
     self.bill = bill
-    _until = State(initialValue: ProjectDates.date(app.store.now.date.adding(days: 30)))
+    let fields = Fields.opened(today: app.store.now.date)
+    opened = fields
+    _fields = State(initialValue: fields)
   }
+
+  private var untilDate: Bool { fields.untilDate }
 
   var body: some View {
     let tomorrow = ProjectDates.date(app.store.now.date.adding(days: 1))
-    RecurringForm(title: "Pause \(app.store.state.bill(bill)?.name ?? "")", closeID: "bills.pause.close") {
+    RecurringForm(title: "Pause \(app.store.state.bill(bill)?.name ?? "")", closeID: "bills.pause.close",
+                  isDirty: fields != opened, fitted: true) {
       RecurringField("Pause", footer: "While it's paused, nothing is expected and nothing is late.") {
         RecurringCard {
           RecurringChoiceRow(title: "Until I resume", selected: !untilDate, id: "bills.pause.untilResume") {
-            withAnimation(.easeInOut(duration: 0.2)) { untilDate = false }
+            withAnimation(.easeInOut(duration: 0.2)) { fields.untilDate = false }
           }
-          HDivider(inset: .text16)
+          RecurringDivider()
           RecurringChoiceRow(title: "Until a date", selected: untilDate, id: "bills.pause.untilDate") {
-            withAnimation(.easeInOut(duration: 0.2)) { untilDate = true }
+            withAnimation(.easeInOut(duration: 0.2)) { fields.untilDate = true }
           }
           if untilDate {
-            HDivider(inset: .text16)
+            RecurringDivider()
             RecurringRow(icon: .calendar, title: "Until") {
-              DatePicker("Until", selection: $until, in: tomorrow..., displayedComponents: .date)
+              DatePicker("Until", selection: $fields.until, in: tomorrow..., displayedComponents: .date)
                 .labelsHidden()
                 .environment(\.timeZone, ProjectDates.calendar.timeZone)
                 .accessibilityIdentifier("bills.pause.date")
@@ -749,7 +879,7 @@ struct PauseBillSheet: View {
       }
     } dock: {
       Button("Pause") {
-        if app.perform(.pauseBill(bill, until: untilDate ? ProjectDates.local(until) : nil)) { dismiss() }
+        if app.perform(.pauseBill(bill, until: untilDate ? ProjectDates.local(fields.until) : nil)) { dismiss() }
       }
       .buttonStyle(.pill(.primary, fill: true))
       .pillHeight()
@@ -761,13 +891,16 @@ struct PauseBillSheet: View {
 struct EndBillSheet: View {
   let app: AppModel
   let bill: BillID
+  private let opened: LocalDate?
   @State private var last: LocalDate?
   @Environment(\.dismiss) private var dismiss
 
   init(app: AppModel, bill: BillID) {
     self.app = app
     self.bill = bill
-    _last = State(initialValue: app.store.state.bill(bill).map { BillsEngine.defaultEnd($0, today: app.store.now.date) })
+    let last = app.store.state.bill(bill).map { BillsEngine.defaultEnd($0, today: app.store.now.date) }
+    opened = last
+    _last = State(initialValue: last)
   }
 
   var body: some View {
@@ -775,11 +908,11 @@ struct EndBillSheet: View {
     let b = app.store.state.bill(bill)
     let choices = b.map { BillsEngine.endChoices($0, today: today) } ?? []
     let paid = Set(b?.payments.map(\.due) ?? [])
-    RecurringForm(title: "End \(b?.name ?? "")", closeID: "bills.end.close") {
+    RecurringForm(title: "End \(b?.name ?? "")", closeID: "bills.end.close", isDirty: last != opened, fitted: true) {
       RecurringField("Last payment", footer: "Nothing is expected after this day. Its payments stay in Activity.") {
         RecurringCard {
           ForEach(Array(choices.enumerated()), id: \.element) { index, date in
-            if index > 0 { HDivider(inset: .text16) }
+            if index > 0 { RecurringDivider() }
             RecurringChoiceRow(
               title: date.short, detail: paid.contains(date) ? "Paid" : date == today ? "Today" : nil,
               selected: last == date, id: "bills.end.\(date.ordinal)") { last = date }
@@ -808,7 +941,7 @@ struct LinkPaymentsSheet: View {
   var body: some View {
     let b = app.store.state.bill(bill)
     let payments = b.map { BillsEngine.pastPayments(app.store.state, for: $0) } ?? []
-    RecurringForm(title: "Link past payments", closeID: "bills.link.close") {
+    RecurringForm(title: "Link past payments", closeID: "bills.link.close", isDirty: !ticked.isEmpty) {
       if payments.isEmpty {
         EmptyNote(systemImage: "link", message: "No other payments look like \(b?.name ?? "this one").")
           .accessibilityIdentifier("bills.link.empty")

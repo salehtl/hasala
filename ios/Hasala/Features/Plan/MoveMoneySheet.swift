@@ -5,7 +5,7 @@ import SwiftUI
 /// Move money (Paper "Plan · Move money (sheet)", 54Y-0), and Assign from Plan when no
 /// category is chosen yet: a grey large sheet with several steps on it. To, how much ("Covers
 /// the projected gap"), where it comes from, the budgets before and after, "Move AED 318.00"
-/// and "You can undo this from the toast." The money moves at once and the toast offers Undo.
+/// and "You can undo this right after." The money moves at once and the toast offers Undo.
 ///
 /// The sources keep 03a §6.13's order and rules (`BudgetSheetViewModel.sources`): the first
 /// four, then "Show all". An amount a source doesn't have is refused on the sheet, before
@@ -17,8 +17,11 @@ struct MoveMoneySheet: View {
   @State private var draft = ""
   @State private var showAllSources = false
   @State private var choosingDestination = false
+  @State private var askingDiscard = false
   @FocusState private var typing: Bool
   @Environment(\.dismiss) private var dismiss
+  private let openedDraft: String
+  private let openedSource: CategoryID?
 
   init(model: any BudgetSheetModel) {
     self.model = model
@@ -32,8 +35,42 @@ struct MoveMoneySheet: View {
     } else {
       start = model.row == nil ? max(0, model.plan.readyToAssign.minor) : 100_00
     }
-    _draft = State(initialValue: PlanAmountField.text(for: start, style: .exact))
+    let opened = PlanAmountField.text(for: start, style: .exact)
+    _draft = State(initialValue: opened)
+    openedDraft = opened
+    openedSource = model.sources(to: model.row?.id).first?.id
   }
+
+  static func assigns(row: PlanRowModel?, readyToAssign: Money) -> Bool {
+    row == nil && readyToAssign.minor > 0
+  }
+
+  static func title(assigns: Bool) -> String { assigns ? "Assign" : "Move money" }
+
+  static func commitLabel(amount: Int64?, assigns: Bool) -> String {
+    guard let amount else { return "Enter an amount" }
+    return "\(assigns ? "Assign" : "Move") AED \(MoneyFormat.string(amount))"
+  }
+
+  static func footnote(assigns: Bool, month: String) -> String {
+    let undo = "You can undo this right after."
+    return assigns ? "Stays in the budget from \(month) on. \(undo)" : undo
+  }
+
+  static func isDirty(destination: CategoryID?, openedDestination: CategoryID?, draft: String, openedDraft: String,
+                      source: CategoryID??, openedSource: CategoryID?) -> Bool {
+    if destination != openedDestination { return true }
+    if MoneyFormat.parseMinor(draft) != MoneyFormat.parseMinor(openedDraft) { return true }
+    if let picked = source, picked != openedSource { return true }
+    return false
+  }
+
+  private var isDirty: Bool {
+    Self.isDirty(destination: destination, openedDestination: model.row?.id, draft: draft, openedDraft: openedDraft,
+                 source: source, openedSource: openedSource)
+  }
+
+  private var assignsHere: Bool { Self.assigns(row: model.row, readyToAssign: model.plan.readyToAssign) }
 
   private var amount: Int64? { MoneyFormat.parseMinor(draft) }
   /// Never the destination: choosing Shopping as "To" takes it off "Take from".
@@ -49,8 +86,9 @@ struct MoveMoneySheet: View {
     NavigationStack {
       ScrollView {
         VStack(spacing: HSpacing.sheetGap) {
-          PlanSheetHeader(title: assigning && model.plan.readyToAssign.minor > 0 ? "Assign" : "Move money",
-                          closeID: "move.close") { dismiss() }
+          PlanSheetHeader(title: Self.title(assigns: assignsHere), closeID: "move.close") {
+            DiscardGuard.close(isDirty: isDirty, asking: $askingDiscard) { dismiss() }
+          }
           VStack(spacing: 16) {
             toBlock
             amountBlock
@@ -82,6 +120,7 @@ struct MoveMoneySheet: View {
         }
       }
     }
+    .discardGuard(isDirty, title: "Discard this change?", asking: $askingDiscard) { dismiss() }
     .planLargeSheet()
   }
 
@@ -256,7 +295,7 @@ struct MoveMoneySheet: View {
 
   private var commit: some View {
     VStack(spacing: 10) {
-      Button(amount.map { "Move AED \(MoneyFormat.string($0))" } ?? "Enter an amount") {
+      Button(Self.commitLabel(amount: amount, assigns: assignsHere)) {
         guard let amount, let to = destination else { return }
         typing = false
         _ = model.move(.aed(amount), from: chosenSource?.id, to: to)
@@ -264,7 +303,7 @@ struct MoveMoneySheet: View {
       .buttonStyle(.pill(.primary, fill: true))
       .disabled(amount == nil || amount == 0 || destination == nil || chosenSource == nil || refusal != nil)
       .accessibilityIdentifier("move.save")
-      Text("You can undo this from the toast.").hType(.footnote).foregroundStyle(HColor.textSecondary)
+      Text(Self.footnote(assigns: assignsHere, month: model.plan.month.name)).hType(.footnote).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
     }
     .padding(.top, 4)

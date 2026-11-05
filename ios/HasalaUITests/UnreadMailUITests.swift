@@ -9,12 +9,11 @@ final class UnreadMailUITests: XCTestCase {
   func testUnreadEmailsAreCountedListedDismissedAndAddedByHand() throws {
     let app = launch(scenario: "mayaUnreadMail")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
-    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 5 need a look")
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 need a look")
     app.buttons["header.notifications"].firstMatch.tap()
     let bellRow = el(app, "bell.row.unread")
     XCTAssertTrue(bellRow.waitForExistence(timeout: uiWait))
     XCTAssertTrue(bellRow.label.contains("2 bank emails we couldn't read"), bellRow.label)
-    XCTAssertTrue(el(app, "bell.row.review").label.contains("6 transactions to sort"))
     attach(app, "Unread mail · Bell")
     try audit(app)
     bellRow.tap()

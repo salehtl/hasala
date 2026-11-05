@@ -38,6 +38,10 @@ struct WidgetGallerySheet: View {
             let shown = available.filter { $0.size == .small } + available.filter { $0.size == .medium }
             if !shown.isEmpty { section(group, shown) }
           }
+          Text("Want these outside the app? Touch and hold your Home Screen, then tap Edit and Add Widget.")
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("gallery.homeScreen")
         }
         .padding(.horizontal, HSpacing.insetPage)
         .padding(.top, 21)

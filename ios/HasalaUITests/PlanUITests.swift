@@ -198,7 +198,7 @@ final class PlanUITests: XCTestCase {
     XCTAssertTrue(to.waitForLabel(containing: "Shopping"))
     XCTAssertFalse(el(app, "move.from.shopping").exists)
     XCTAssertTrue(el(app, "move.save").isEnabled)
-    XCTAssertEqual(el(app, "move.save").label, "Move AED 1,000.00")
+    XCTAssertEqual(el(app, "move.save").label, "Assign AED 1,000.00")
     try audit(app)
   }
 

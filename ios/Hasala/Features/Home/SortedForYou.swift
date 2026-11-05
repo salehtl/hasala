@@ -137,11 +137,9 @@ struct SortedForYouView: View {
     let text = VStack(alignment: .leading, spacing: 2) {
       Text(t.merchant).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
-      HStack(spacing: 0) {
-        Text("\(t.postedAt.date.short) · ").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        MoneyText(t.amount, figure: .compact, unit: .compact, hidden: app.amountsHidden, hiddenGlyphs: 3,
-                  color: HColor.textSecondary)
-      }
+      Text(t.postedAt.date.short).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      MoneyText(t.amount, figure: .compact, unit: .compact, hidden: app.amountsHidden, hiddenGlyphs: 3,
+                color: HColor.textSecondary)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     let name = category?.name ?? item.category.name

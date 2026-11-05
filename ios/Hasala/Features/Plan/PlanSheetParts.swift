@@ -457,3 +457,89 @@ struct QuickChip: View {
     }
   }
 }
+
+extension View {
+  func discardGuard(_ isDirty: Bool, title: String, asking: Binding<Bool>, discard: @escaping () -> Void) -> some View {
+    modifier(DiscardGuard(isDirty: isDirty, title: title, asking: asking, discard: discard))
+  }
+}
+
+struct DiscardGuard: ViewModifier {
+  let isDirty: Bool
+  let title: String
+  @Binding var asking: Bool
+  let discard: () -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .interactiveDismissDisabled(isDirty)
+      .background {
+        DismissAttempt(enabled: isDirty) { asking = true }.frame(width: 0, height: 0)
+      }
+      .confirmationDialog(title, isPresented: $asking, titleVisibility: .visible) {
+        Button("Discard", role: .destructive, action: discard)
+          .accessibilityIdentifier("discard.confirm")
+        Button("Keep editing", role: .cancel) {}
+          .accessibilityIdentifier("discard.keep")
+      }
+  }
+
+  static func close(isDirty: Bool, asking: Binding<Bool>, dismiss: () -> Void) {
+    if isDirty { asking.wrappedValue = true } else { dismiss() }
+  }
+}
+
+struct DismissAttempt: UIViewControllerRepresentable {
+  let enabled: Bool
+  let attempted: () -> Void
+
+  func makeUIViewController(context: Context) -> Controller { Controller() }
+
+  func updateUIViewController(_ controller: Controller, context: Context) {
+    controller.proxy.enabled = enabled
+    controller.proxy.attempted = attempted
+    controller.install()
+  }
+
+  final class Controller: UIViewController {
+    let proxy = Proxy()
+
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      install()
+    }
+
+    func install() {
+      var vc: UIViewController? = self
+      while let current = vc {
+        if current.presentingViewController != nil, let pc = current.presentationController {
+          if pc.delegate !== proxy {
+            proxy.original = pc.delegate
+            pc.delegate = proxy
+          }
+          return
+        }
+        vc = current.parent
+      }
+    }
+  }
+
+  final class Proxy: NSObject, UIAdaptivePresentationControllerDelegate {
+    nonisolated(unsafe) weak var original: UIAdaptivePresentationControllerDelegate?
+    var enabled = false
+    var attempted: () -> Void = {}
+
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+      if enabled { attempted() }
+      original?.presentationControllerDidAttemptToDismiss?(presentationController)
+    }
+
+    nonisolated override func responds(to aSelector: Selector!) -> Bool {
+      super.responds(to: aSelector) || original?.responds(to: aSelector) == true
+    }
+
+    nonisolated override func forwardingTarget(for aSelector: Selector!) -> Any? {
+      original?.responds(to: aSelector) == true ? original : nil
+    }
+  }
+}

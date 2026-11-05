@@ -33,7 +33,7 @@ struct BillDetailView: View {
         if !detail.history.isEmpty { history(detail).padding(.horizontal, HSpacing.insetPage) }
         actions(detail).padding(.horizontal, HSpacing.insetPage)
       } else {
-        EmptyNote(systemImage: "doc.text", message: "This bill is no longer tracked.")
+        EmptyNote(systemImage: "doc.text", message: Self.goneMessage)
           .padding(.horizontal, HSpacing.insetPage)
       }
     }
@@ -54,6 +54,8 @@ struct BillDetailView: View {
         : "Hasala won't suggest it again. Its payments stay in Activity.")
     }
   }
+
+  static let goneMessage = "This bill is no longer tracked."
 
   private func deleteTitle(_ d: BillDetail?) -> String {
     d?.source == .manual ? "Delete \(d?.name ?? "this item")?" : "\(d?.name ?? "This") is not a bill?"
@@ -122,7 +124,15 @@ struct BillDetailView: View {
     }
   }
 
-  private func noticeCard(_ n: BillNoticeCard, _ d: BillDetail) -> some View {
+  @ViewBuilder private func noticeCard(_ n: BillNoticeCard, _ d: BillDetail) -> some View {
+    if case .acceptPrice(let charged, let from) = n.primary.action {
+      priceCard(n, d, charged: charged, from: from)
+    } else {
+      posterCard(n, d)
+    }
+  }
+
+  private func posterCard(_ n: BillNoticeCard, _ d: BillDetail) -> some View {
     BillCard(
       hue: Self.hue(n.tone), glyph: .icon(d.glyph.icon), name: d.name, pill: StatusPill(n.title, tone: n.tone),
       amount: Self.figure(n, d), message: n.body, hidden: model.hidden,
@@ -133,6 +143,62 @@ struct BillDetailView: View {
         .init(title: b.title, id: "bills.notice.\(n.id).secondary") { run(b.action, n, d) }
       },
       id: "bills.notice.\(n.id)")
+  }
+
+  private func priceCard(_ n: BillNoticeCard, _ d: BillDetail, charged: Money, from: LocalDate) -> some View {
+    let was = Text("to").hType(.subheadline).foregroundStyle(HColor.textSecondary).padding(.horizontal, 2)
+    let usual = MoneyText(d.amount, figure: .small.weight(.semibold), hidden: model.hidden, hiddenGlyphs: 3,
+                          color: HColor.textSecondary)
+    let now = MoneyText(charged, figure: .small, hidden: model.hidden, hiddenGlyphs: 3, color: HColor.textPrimary)
+    let unit = Text(verbatim: charged.currency).hFigure(.unit).foregroundStyle(HColor.textPrimary)
+    return VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 12) {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .firstTextBaseline, spacing: 5) { unit; usual; was; now }
+          VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) { unit; usual; was }
+            now
+          }
+        }
+        Text(Self.priceSentence(charged: charged, usual: d.amount, from: from).rendered(hidden: model.hidden))
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(Self.priceSpoken(n, charged: charged, usual: d.amount, from: from, hidden: model.hidden))
+      BillCardButtons(
+        primary: .init(title: Self.title(n.primary, short: typeSize.isAccessibilitySize), id: Self.primaryID(n)) {
+          run(n.primary.action, n, d)
+        },
+        secondary: n.secondary.map { b in
+          .init(title: b.title, id: "bills.notice.\(n.id).secondary") { run(b.action, n, d) }
+        })
+    }
+    .padding(.horizontal, 16)
+    .padding(.top, 12)
+    .padding(.bottom, 14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.surfacePrimary)
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .hElevation(.nearFar)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("bills.notice.\(n.id)")
+  }
+
+  static func priceSentence(charged: Money, usual: Money, from: LocalDate) -> MoneyPhrase {
+    let difference = charged.minor.minus(usual.minor)
+    return MoneyPhrase([
+      .text("Charged "), .amount(Money(minor: Int64(clamping: difference.magnitude), currency: charged.currency)),
+      .text(" \(difference < 0 ? "less" : "more") than usual on \(from.short)."),
+    ])
+  }
+
+  static func priceSpoken(_ n: BillNoticeCard, charged: Money, usual: Money, from: LocalDate, hidden: Bool) -> String {
+    let figures = hidden
+      ? "Amounts hidden"
+      : "from \(usual.currency) \(MoneyFormat.string(usual.minor)) to \(charged.currency) \(MoneyFormat.string(charged.minor))"
+    return "\(n.title), \(figures). \(priceSentence(charged: charged, usual: usual, from: from).spoken(hidden: hidden))"
   }
 
   static func hue(_ tone: StatusTone) -> Hue {
@@ -149,7 +215,7 @@ struct BillDetailView: View {
   }
 
   static func title(_ b: BillNoticeCard.Button, short: Bool) -> String {
-    if short, case .acceptPrice = b.action { return "Accept" }
+    if case .acceptPrice = b.action { return short ? "Accept" : "Accept new amount" }
     return b.title
   }
 
@@ -200,6 +266,7 @@ struct BillDetailView: View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
           if d.approximate && !model.hidden {
             Text(verbatim: "~").hFigure(.large).foregroundStyle(HColor.textPrimary)
+              .accessibilityHidden(true)
           }
           MoneyText(d.amount, figure: .large, unit: .unit, hidden: model.hidden, hiddenGlyphs: 4,
                     color: d.isIncome ? HColor.moneyIn : HColor.textPrimary, unitGap: 6,
@@ -208,10 +275,22 @@ struct BillDetailView: View {
         Text(d.cadence).hType(.subheadline).foregroundStyle(HColor.textOnWashSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      .accessibilityElement(children: .combine)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(Self.heroSpoken(d, hidden: model.hidden))
       .accessibilityIdentifier("bills.detail.\(d.id)")
     }
     .padding(.top, 4)
+  }
+
+  static func spokenAmount(_ m: Money, plus: Bool = false, about: Bool, hidden: Bool) -> String {
+    hidden
+      ? "Amount hidden"
+      : (about ? "about " : "") + (plus ? "plus " : "") + "\(m.currency) \(MoneyFormat.string(m.minor))"
+  }
+
+  static func heroSpoken(_ d: BillDetail, hidden: Bool) -> String {
+    let amount = spokenAmount(d.amount, plus: d.isIncome, about: d.approximate, hidden: hidden)
+    return [d.kind, amount, d.cadence].filter { !$0.isEmpty }.joined(separator: ", ")
   }
 
   // MARK: What we noticed
@@ -244,7 +323,8 @@ struct BillDetailView: View {
       HSectionHeader("Payment history", trailing: d.historyNote.map { .fact($0) } ?? .none)
       VStack(spacing: 0) {
         ForEach(Array(d.history.enumerated()), id: \.element.id) { index, step in
-          TimelineStep(step: step, first: index == 0, last: index == d.history.count - 1, hidden: model.hidden)
+          TimelineStep(step: step, first: index == 0, last: index == d.history.count - 1, approximate: d.approximate,
+                       hidden: model.hidden)
         }
       }
       .padding(.vertical, 8)
@@ -324,11 +404,19 @@ struct BillDetailView: View {
 /// red ring and dot for the payment that hasn't come, a tinted ring for one still due, a green
 /// tick for a paid one) on a 2 pt line, then the date, its note and the amount. 64 tall with a
 /// note, 52 without. One VoiceOver stop.
-private struct TimelineStep: View {
+struct TimelineStep: View {
   let step: BillHistoryStep
   let first: Bool
   let last: Bool
+  var approximate = false
   let hidden: Bool
+
+  private var estimate: Bool { Self.isEstimate(step, approximate: approximate) }
+
+  static func isEstimate(_ step: BillHistoryStep, approximate: Bool) -> Bool {
+    if case .expected = step.kind { return approximate }
+    return false
+  }
 
   var body: some View {
     HStack(spacing: 14) {
@@ -342,9 +430,14 @@ private struct TimelineStep: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if let amount = step.amount {
-          MoneyText(amount, figure: .row, hidden: hidden, hiddenGlyphs: 3,
-                    color: step.kind == .paid ? HColor.moneyOut : HColor.textSecondary)
-            .fixedSize()
+          let color = step.kind == .paid ? HColor.moneyOut : HColor.textSecondary
+          HStack(spacing: 0) {
+            if estimate && !hidden {
+              Text(verbatim: "~").hFigure(.row).foregroundStyle(color)
+            }
+            MoneyText(amount, figure: .row, hidden: hidden, hiddenGlyphs: 3, color: color)
+          }
+          .fixedSize()
         }
       }
       .padding(.vertical, 6)
@@ -353,7 +446,7 @@ private struct TimelineStep: View {
     .background(alignment: .leading) { rail }
     .padding(.horizontal, HSpacing.listRowInsetInline)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(spoken)
+    .accessibilityLabel(Self.spoken(step, approximate: approximate, hidden: hidden))
   }
 
   private var rail: some View {
@@ -388,8 +481,10 @@ private struct TimelineStep: View {
   }
 
   /// "Wed 7 Oct, Expected · no bank email yet, AED 550.00" / "Mon 7 Sep, paid, AED 550.00".
-  private var spoken: String {
-    let amount = step.amount.map { hidden ? "Amount hidden" : "\($0.currency) \(MoneyFormat.string($0.minor))" }
+  static func spoken(_ step: BillHistoryStep, approximate: Bool, hidden: Bool) -> String {
+    let amount = step.amount.map {
+      BillDetailView.spokenAmount($0, about: isEstimate(step, approximate: approximate), hidden: hidden)
+    }
     return [step.title, step.note ?? "paid", amount].compactMap { $0 }.joined(separator: ", ")
   }
 }

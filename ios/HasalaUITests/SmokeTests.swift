@@ -21,7 +21,7 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Your widgets"].exists)
     // Home has no Needs-you rail any more (decided 14 Oct): the bell counts what needs a look.
     XCTAssertFalse(app.staticTexts["Needs you"].exists)
-    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 4 need a look")
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 3 need a look")
     attach(app, "Home · Default")
     try audit(app)
     app.swipeUp()
@@ -38,7 +38,8 @@ final class SmokeTests: XCTestCase {
     app.buttons["header.notifications"].firstMatch.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Needs a look"].exists)
-    for id in ["review", "bill.axa", "found.apple-bill", "price.du"] {
+    XCTAssertFalse(el(app, "bell.row.review").exists)
+    for id in ["bill.axa", "found.apple-bill", "price.du"] {
       XCTAssertTrue(el(app, "bell.row.\(id)").exists, "bell.row.\(id) is missing")
     }
     XCTAssertTrue(app.staticTexts["Earlier"].exists)
@@ -108,12 +109,6 @@ final class SmokeTests: XCTestCase {
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
-    app.buttons["header.notifications"].firstMatch.tap()
-    tap(app, "bell.row.review")
-    XCTAssertTrue(el(app, "review.card").waitForExistence(timeout: 10), "the deck did not open")
-    attach(app, "Bell · Review deck")
-    el(app, "review.close").tap()
-    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait), "not on the Review tab")
   }
 
   @MainActor
@@ -143,7 +138,7 @@ final class SmokeTests: XCTestCase {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
-      XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+      XCTAssertEqual(bell.label, tab == "Projects" ? "Notifications, 3 need a look" : "Notifications")
       XCTAssertLessThan(profile.frame.maxX, search.frame.minX, "\(tab): the profile is not before search and the bell")
       XCTAssertTrue(search.isHittable, "\(tab) has no search")
       XCTAssertEqual(search.frame.maxX, bell.frame.minX, accuracy: 1, "\(tab): search and the bell are not joined")
@@ -157,7 +152,7 @@ final class SmokeTests: XCTestCase {
       attach(app, "Bell · \(tab)")
       bell.tap()
       XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
-      XCTAssertTrue(el(app, "bell.row.review").exists)
+      XCTAssertTrue(el(app, "bell.row.bill.axa").exists)
       el(app, "bell.close").tap()
       XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
       XCTAssertTrue(tabBar.buttons[tab].isSelected, "the bell left \(tab)")
@@ -170,17 +165,16 @@ final class SmokeTests: XCTestCase {
   }
 
   @MainActor
-  func testMarkAllNotificationsRead() throws {
+  func testOpeningTheBellMarksItRead() throws {
     let app = launch(scenario: "maya")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     let bell = app.buttons["header.notifications"].firstMatch
-    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+    XCTAssertEqual(bell.label, "Notifications, 3 need a look")
     bell.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
-    tap(app, "bell.markAllRead")
-    XCTAssertTrue(el(app, "bell.markAllRead").waitForNonExistence(timeout: uiWait))
-    XCTAssertTrue(el(app, "bell.row.review").exists, "marking read removed the rows")
-    attach(app, "Bell · All read")
+    XCTAssertFalse(el(app, "bell.markAllRead").exists)
+    XCTAssertTrue(el(app, "bell.row.bill.axa").exists, "opening the bell removed the rows")
+    attach(app, "Bell · Opened")
     try audit(app)
     el(app, "bell.close").tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))

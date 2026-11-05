@@ -13,10 +13,9 @@ struct HomeModelTests {
     let app = AppModel(store: InMemoryLedger())
     let home = HomeViewModel(app: app)
     #expect(home.snapshot == Maya.home)
-    #expect(home.bell.count == 4)
-    // Sorting a transaction updates the bell's first row; the hero already counted it.
+    #expect(home.bell.count == 3)
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
-    #expect(home.bell.needsALook[0].title == "5 transactions to sort")
+    #expect(!home.bell.needsALook.contains { $0.id == "review" })
     #expect(home.snapshot.hero.spent == .aed(11_115_62))
     #expect(home.snapshot.hero.tiles[0].value == .aed(9_255_10))
     #expect(home.openWidget("nextBill") == .bills)
@@ -50,20 +49,19 @@ struct HomeModelTests {
     #expect(store.revision == revision)
     app.perform(.markBillPaid("axa"))
     #expect(home.snapshot != first)
-    #expect(home.bell.count == 3)
+    #expect(home.bell.count == 2)
   }
 
   @Test func markAllReadClearsTheBadgeUntilSomethingChanges() {
     let app = AppModel(store: InMemoryLedger())
     let home = HomeViewModel(app: app)
-    #expect(home.bell.unread == 4)
-    #expect(app.bellCount == 4)
+    #expect(home.bell.unread == 3)
+    #expect(app.bellCount == 3)
     home.markAllRead()
     #expect(home.bell.unread == 0)
     #expect(app.bellCount == 0)
-    #expect(home.bell.count == 4)
+    #expect(home.bell.count == 3)
     app.perform(.categorize("lulu", "groceries", learnRule: false, project: nil))
-    #expect(home.bell.needsALook[0].title == "5 transactions to sort")
     #expect(home.bell.unread == 0)
     #expect(app.bellCount == 0)
   }
@@ -91,13 +89,13 @@ struct HomeModelTests {
     let first = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
     HomeViewModel(app: first).markAllRead()
     let stored = defaults.stringArray(forKey: NotificationReads.key) ?? []
-    #expect(stored.count == 4)
+    #expect(stored.count == 3)
     #expect(!stored.contains { $0.contains("review") || $0.contains("AXA") })
     let again = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
     #expect(again.bellCount == 0)
     NotificationReads.forget(defaults)
     let after = AppModel(store: InMemoryLedger(), notificationReads: NotificationReads(defaults: defaults))
-    #expect(after.bellCount == 4)
+    #expect(after.bellCount == 3)
   }
 
   /// Mail's offer is the bell's last row (plan B4.3); Home's board stays Maya's.
@@ -107,7 +105,7 @@ struct HomeModelTests {
     let home = HomeViewModel(app: app)
     #expect(app.mailOffer == .connect)
     #expect(home.snapshot == Maya.home)
-    #expect(home.bell.count == 5)
+    #expect(home.bell.count == 4)
     let row = home.bell.needsALook.last
     #expect(row?.id == "mail.connect")
     #expect(row?.title == "Connect your email")
@@ -196,8 +194,8 @@ struct HomeModelTests {
     let home = HomeViewModel(app: app)
     let router = app.router
     let items = home.bell.needsALook
-    #expect(items.map(\.id) == ["review", "bill.axa", "found.apple-bill", "price.du", "mail.connect"])
-    #expect(Bell.label(home.bell.count) == "Notifications, 5 need a look")
+    #expect(items.map(\.id) == ["bill.axa", "found.apple-bill", "price.du", "mail.connect"])
+    #expect(Bell.label(home.bell.count) == "Notifications, 4 need a look")
     #expect(Bell.label(1) == "Notifications, 1 needs a look")
     #expect(Bell.label(0) == "Notifications")
     for item in items {
@@ -256,7 +254,73 @@ struct HomeModelTests {
     let app = AppModel(store: InMemoryLedger(), amountsHidden: true)
     let home = HomeViewModel(app: app)
     #expect(home.hidden)
-    #expect(home.bell.needsALook[0].line.rendered(hidden: home.hidden) == "AED ••• still to check")
+    #expect(home.bell.needsALook.allSatisfy { !$0.line.rendered(hidden: home.hidden).contains("AED 1") })
+    #expect(home.bell.needsALook.contains { $0.line.rendered(hidden: home.hidden).contains("•••") })
+  }
+
+  @Test func theBellLeavesSortingToTheReviewTab() {
+    let app = AppModel(store: InMemoryLedger())
+    #expect(app.reviewCount > 0)
+    #expect(!HomeViewModel(app: app).bell.needsALook.contains { $0.id == "review" })
+    #expect(!app.needsALook.contains { $0.id == "review" })
+  }
+
+  @Test func openingTheBellKeepsASignInRowUnread() {
+    let reads = NotificationReads()
+    let app = AppModel(store: InMemoryLedger(), notificationReads: reads)
+    let home = HomeViewModel(app: app)
+    let signIn = NotificationItem(id: "mail.signIn.gmail", disc: .neutral(.envelope), title: "Sign in again to Gmail",
+                                  line: "", when: nil, destination: .bankAlerts)
+    home.markAllRead()
+    #expect(home.bell.unread == 0)
+    #expect(HomeViewModel.staysUnread(signIn))
+    #expect(!HomeViewModel.staysUnread(NotificationItem(id: "mail.connect", disc: .neutral(.envelope),
+                                                        title: "Connect your email", line: "", when: nil,
+                                                        destination: .bankAlerts)))
+    reads.markAllRead([signIn].filter { !HomeViewModel.staysUnread($0) })
+    #expect(!reads.isRead(signIn))
+  }
+
+  @Test func everyWidgetHasATapResult() {
+    let app = AppModel(store: InMemoryLedger())
+    let home = HomeViewModel(app: app)
+    #expect(!app.store.state.accounts.isEmpty)
+    #expect(home.widgetOpens("netWorth") && home.openWidget("netWorth") == .accounts)
+    #expect(home.widgetOpens("spentSoFar"))
+    #expect(home.openWidget("spentSoFar") == nil && app.tab == .activity)
+    let goal = HomeWidgetKind.goal.rawValue + ".emergency"
+    #expect(home.widgetOpens(goal))
+    var state = MayaLedger.state
+    state.accounts = []
+    let none = HomeViewModel(app: AppModel(store: InMemoryLedger(state: state)))
+    #expect(none.widgetOpens("netWorth") == BuildSurface.showsUnfinished)
+  }
+
+  @Test func anEmptyBudgetPaceOpensTheMonthlyPlan() {
+    var state = MayaLedger.state
+    state.plan.budgets = [:]
+    let app = AppModel(store: InMemoryLedger(state: state))
+    let home = HomeViewModel(app: app)
+    #expect(home.snapshot.hero.state == .noPlan)
+    var asked = 0
+    #expect(home.openWidget("budgetPace", setPlan: { asked += 1 }) == nil)
+    #expect(asked == 1)
+    let planned = HomeViewModel(app: AppModel(store: InMemoryLedger()))
+    _ = planned.openWidget("budgetPace", setPlan: { asked += 1 })
+    #expect(asked == 1)
+  }
+
+  @Test func eachMonthBarSaysItsPlanInWords() {
+    let over = HeroMonthBar(month: YearMonth(2026, 8), spent: .aed(19_283_10), plan: .aed(19_000_00), verdict: .overBudget)
+    let under = HeroMonthBar(month: YearMonth(2026, 9), spent: .aed(18_000_00), plan: .aed(19_000_00), verdict: .onTrack)
+    let unplanned = HeroMonthBar(month: YearMonth(2026, 10), spent: .aed(500_00), plan: .aed(0), verdict: .onTrack)
+    #expect(over.spoken(hidden: false) == "August 2026, AED 19,283.10, AED 283.10 over the plan of AED 19,000.00")
+    #expect(under.spoken(hidden: false) == "September 2026, AED 18,000.00, AED 1,000.00 under the plan of AED 19,000.00")
+    #expect(unplanned.spoken(hidden: false) == "October 2026, AED 500.00")
+    #expect(over.spoken(hidden: true) == "August 2026, Amount hidden")
+    #expect(HeroMonthBar.overLine([over, under, unplanned], hidden: false) == "Aug 283 over plan")
+    #expect(HeroMonthBar.overLine([over], hidden: true) == "Aug ••• over plan")
+    #expect(HeroMonthBar.overLine([under, unplanned], hidden: false) == nil)
   }
 
   /// The hero's first reveal keeps the owner's sequence (motion policy): the tick starts as

@@ -17,6 +17,16 @@ final class ProjectEditorModel {
   var countInPlan: Bool
   var refusal: String?
   private let decimalSeparator: String
+  private var opened: Snapshot?
+
+  struct Snapshot: Equatable {
+    let name: String
+    let budget: String
+    let glyph: Glyph
+    let starts: LocalDate?
+    let ends: LocalDate?
+    let countInPlan: Bool
+  }
 
   init(
     app: AppModel, project: ProjectID?, starter: ProjectStarter? = nil,
@@ -39,6 +49,23 @@ final class ProjectEditorModel {
     hasEnd = d.ends != nil
     end = d.ends.map(ProjectDates.date) ?? today
     countInPlan = d.countInPlan
+    opened = snapshot
+  }
+
+  var snapshot: Snapshot {
+    let trimmed = budgetText.trimmingCharacters(in: .whitespaces)
+    let budget = MoneyFormat.parseMinor(trimmed, decimalSeparator: decimalSeparator).map(String.init) ?? trimmed
+    return Snapshot(
+      name: name, budget: budget, glyph: glyph, starts: hasStart ? ProjectDates.local(start) : nil,
+      ends: hasEnd ? ProjectDates.local(end) : nil, countInPlan: countInPlan)
+  }
+
+  var isDirty: Bool { snapshot != opened }
+
+  var discardTitle: String { isNew ? "Discard this project?" : "Discard these changes?" }
+
+  func budgetShown(_ typed: String, after previous: String) -> String {
+    PlanAmountField.shown(typed, after: previous, decimalSeparator: decimalSeparator)
   }
 
   var isNew: Bool { project == nil }
@@ -122,6 +149,7 @@ struct ProjectEditorView: View {
   @State private var model: ProjectEditorModel
   @FocusState private var focused: Field?
   @State private var confirmRemove = false
+  @State private var askingDiscard = false
 
   enum Field { case name, budget }
 
@@ -160,6 +188,10 @@ struct ProjectEditorView: View {
                 .foregroundStyle(HColor.fieldText)
                 .keyboardType(.decimalPad)
                 .focused($focused, equals: .budget)
+                .onChange(of: model.budgetText) { old, new in
+                  let shown = model.budgetShown(new, after: old)
+                  if shown != new { model.budgetText = shown }
+                }
                 .accessibilityLabel("Money set aside, in dirhams")
                 .accessibilityIdentifier("projectEditor.budget")
             }
@@ -260,10 +292,15 @@ struct ProjectEditorView: View {
       Text("Its transactions stay, and count in your monthly plan again.")
     }
     .background(HColor.sheetSurfaceLarge)
+    .discardGuard(inSheet && model.isDirty, title: model.discardTitle, asking: $askingDiscard) { model.cancel() }
     .navigationTitle(model.isNew ? "New project" : "Edit project")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
-      if inSheet { SheetCloseButton(identifier: "projectEditor.close") { model.cancel() } }
+      if inSheet {
+        SheetCloseButton(identifier: "projectEditor.close") {
+          DiscardGuard.close(isDirty: model.isDirty, asking: $askingDiscard) { model.cancel() }
+        }
+      }
       ToolbarItemGroup(placement: .keyboard) {
         Spacer()
         Button("Done") { focused = nil }

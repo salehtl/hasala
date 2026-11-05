@@ -30,7 +30,11 @@ struct HomeView: View {
   private var canvasActions: WidgetCanvasActions {
     WidgetCanvasActions(
       opens: { model.widgetOpens($0.id) },
-      open: { item in if let next = model.openWidget(item.id) { app.router.home.append(next) } },
+      open: { item in
+        if let next = model.openWidget(item.id, setPlan: onboarding?.finishSetupModel().setPlan) {
+          app.router.home.append(next)
+        }
+      },
       setEditing: { app.editingHome = $0 },
       add: { app.sheet = .widgetGallery },
       remove: { item in
@@ -69,7 +73,8 @@ struct HomeView: View {
           openRates: { mark in
             app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))
           },
-          openUnsorted: { app.router.tab = .review })
+          openUnsorted: { app.router.tab = .review },
+          setPlan: { if let finish { finish.setPlan() } else { app.openPlan() } })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)

@@ -207,7 +207,9 @@ struct ActivityReviewModelTests {
     }
     let app = AppModel(store: InMemoryLedger(state: state))
     app.period = .month(YearMonth(2026, 8))
-    let bell = try #require(app.needsALook.first { $0.id == "review" })
+    #expect(!app.needsALook.contains { $0.id == "review" })
+    let bell = try #require(NotificationsEngine.snapshot(app.store.state, now: app.store.now).needsALook
+      .first { $0.id == "review" })
     #expect(bell.title == "11 transactions to sort")
     #expect(app.reviewCount == 11)
     #expect(ReviewTabView.countLine(ReviewEngine.cards(app.store.state).count) == "11 to sort · about 2 minutes")

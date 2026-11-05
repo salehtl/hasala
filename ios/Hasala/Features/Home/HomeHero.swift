@@ -27,6 +27,7 @@ struct HomeHero: View {
   let openNotCounted: (SpendHero.NotCounted) -> Void
   let openRates: (TotalMark) -> Void
   var openUnsorted: () -> Void = {}
+  var setPlan: (() -> Void)?
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -56,10 +57,20 @@ struct HomeHero: View {
     VStack(alignment: .leading, spacing: 16) {
       periodRow
       figureBlock
+      if noPlan, let setPlan {
+        NoPlanLine(action: setPlan)
+      }
       if !noPlan {
         VStack(alignment: .leading, spacing: 10) {
           if hero.state == .range {
-            if !hero.bars.isEmpty { HeroMonthBars(bars: hero.bars, hidden: hidden) }
+            if !hero.bars.isEmpty {
+              HeroMonthBars(bars: hero.bars, hidden: hidden)
+              if let over = HeroMonthBar.overLine(hero.bars, hidden: hidden) {
+                Text(over).hType(.subheadline.weight(.medium)).foregroundStyle(HColor.paceOverBudget)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .accessibilityIdentifier("home.hero.overMonths")
+              }
+            }
           } else {
             MonthPaceBar(
               spent: hero.spent, plan: hasBar ? hero.plan : .aed(0), tick: isLive ? hero.tick : nil,
@@ -264,9 +275,7 @@ private struct HeroMonthBars: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("By month")
-    .accessibilityValue(bars.map { bar in
-      "\(bar.month.title), " + (hidden ? "Amount hidden" : "\(bar.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(bar.spent.minor))")
-    }.joined(separator: "; "))
+    .accessibilityValue(bars.map { $0.spoken(hidden: hidden) }.joined(separator: "; "))
     .accessibilityIdentifier("home.hero.months")
   }
 
@@ -276,5 +285,55 @@ private struct HeroMonthBars: View {
 
   private func amount(_ bar: HeroMonthBar) -> some View {
     MoneyText(bar.spent, figure: HFigure.compact, hidden: hidden, hiddenGlyphs: 3, color: HColor.textPrimary)
+  }
+}
+
+private struct NoPlanLine: View {
+  let action: () -> Void
+
+  var body: some View {
+    ReflowingRow(spacing: 12) {
+      Text("No plan yet").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+    } trailing: {
+      Button(action: action) {
+        Text("Set your plan")
+          .hType(.subheadline.weight(.semibold))
+          .foregroundStyle(HColor.textOnWashLink)
+          .padding(.vertical, 12)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .padding(.vertical, -12)
+      .accessibilityIdentifier("home.hero.setPlan")
+    }
+    .padding(.top, 4)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("home.hero.noPlan")
+  }
+}
+
+extension HeroMonthBar {
+  func spoken(hidden: Bool) -> String {
+    let head = "\(month.title), "
+    guard !hidden else { return head + "Amount hidden" }
+    let spentWords = "\(spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(spent.minor))"
+    guard plan.minor > 0 else { return head + spentWords }
+    let planWords = "AED \(MoneyFormat.string(plan.minor))"
+    let diff = spent.minor - plan.minor
+    if diff > 0 { return head + spentWords + ", AED \(MoneyFormat.string(diff)) over the plan of \(planWords)" }
+    if diff < 0 { return head + spentWords + ", AED \(MoneyFormat.string(-diff)) under the plan of \(planWords)" }
+    return head + spentWords + ", on the plan of \(planWords)"
+  }
+
+  static func overLine(_ bars: [HeroMonthBar], hidden: Bool) -> String? {
+    let over = bars.filter { $0.plan.minor > 0 && $0.spent.minor > $0.plan.minor }
+    guard !over.isEmpty else { return nil }
+    return over.map { bar in
+      let amount = hidden
+        ? String(repeating: MoneyFormat.hiddenGlyph, count: 3)
+        : MoneyFormat.string(bar.spent.minor - bar.plan.minor, style: .rounded)
+      return "\(bar.label) \(amount) over plan"
+    }.joined(separator: " · ")
   }
 }
