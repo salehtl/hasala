@@ -15,10 +15,13 @@ public enum LedgerEdit: Sendable, Hashable {
   case addTransaction(ManualEntryDraft)
   /// `txn_categorized` (+ learned `rule_added` when `learnRule`, + `txn_annotated{project_id}`).
   case categorize(TxnID, CategoryID, learnRule: Bool, project: ProjectID?)
-  /// `txn_categorized{transfer}`.
+  /// `txn_categorized{transfer}`; on a transfer, back to Review with no category.
   case markTransfer(TxnID)
-  /// `txn_categorized{refunds}` + `txn_annotated{refund_of}`.
+  /// Money in only. A credit in a spending category keeps it; otherwise `txn_categorized{refunds}`.
+  /// On a refund, back to Review with no category and no `refund_of`.
   case markRefund(TxnID)
+  /// Money in only: `txn_categorized{category}` + `txn_annotated{refund_of}` when a purchase is named.
+  case fileRefund(TxnID, into: CategoryID, of: TxnID?)
   /// `txn_annotated{note}`.
   case setNote(TxnID, String)
   /// `merchant_named{key, name}`.

@@ -50,9 +50,10 @@ extension Spending {
   }
 
   public static func unrated(_ t: Txn, in s: LedgerState) -> Bool {
-    guard !t.archived, !t.isTransfer, !t.isHeldCopy, carvedOut(t, in: s) == nil else { return false }
+    guard !t.archived, !t.isTransfer, !t.isHeldCopy, !t.isHeldOut, carvedOut(t, in: s) == nil else { return false }
     if !t.splits.isEmpty { return t.splits.contains { $0.homeMinor == nil && counts(s.category($0.categoryID)) } }
     guard t.homeMinor == nil else { return false }
+    if t.categoryID == refundsID { return true }
     guard let c = s.category(t.categoryID) else { return t.direction == .out || t.isRefund }
     return counts(c)
   }

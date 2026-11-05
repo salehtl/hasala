@@ -318,6 +318,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var combinedCopy: TxnID?
   public var mergedInto: TxnID?
   public var mayRepeat: MayRepeat?
+  public var refundOf: TxnID?
+  public var isReversal: Bool
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -347,7 +349,9 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     ruleID: RuleID? = nil,
     lastPick: CategoryID? = nil,
     combinedCopy: TxnID? = nil,
-    mayRepeat: MayRepeat? = nil
+    mayRepeat: MayRepeat? = nil,
+    refundOf: TxnID? = nil,
+    isReversal: Bool = false
   ) {
     self.id = id
     self.merchant = merchant
@@ -390,6 +394,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.lastPick = lastPick
     self.combinedCopy = combinedCopy
     self.mayRepeat = mayRepeat
+    self.refundOf = refundOf
+    self.isReversal = isReversal
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }
@@ -435,8 +441,9 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var isNotCounted: Bool { homeMinor == nil }
 
-  /// Counts in budgets: not archived, not a transfer, not a held copy. Rows in review count too.
-  public var countsInPlan: Bool { !archived && !isTransfer && !isHeldCopy }
+  public var isHeldOut: Bool { !isHeldCopy && (samePurchase != nil || (mayRepeat != nil && needsReview)) }
+
+  public var countsInPlan: Bool { !archived && !isTransfer && !isHeldCopy && !isHeldOut }
 }
 
 public enum BillCadence: String, Sendable, Hashable, Codable {

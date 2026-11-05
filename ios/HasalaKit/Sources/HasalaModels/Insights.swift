@@ -259,9 +259,12 @@ public struct InsightsSummary: Sendable, Hashable {
   public var split: InsightsSplit?
   public var note: MoneyPhrase
   public var legend: [InsightsLegendRow]
+  public var notCounted: SpendHero.NotCounted?
 
   public init(label: String, figure: Money, isNet: Bool, keptPercent: Int?, income: Money, spent: Money,
-              saved: Money, split: InsightsSplit?, note: MoneyPhrase, legend: [InsightsLegendRow]) {
+              saved: Money, split: InsightsSplit?, note: MoneyPhrase, legend: [InsightsLegendRow],
+              notCounted: SpendHero.NotCounted? = nil) {
+    self.notCounted = notCounted
     self.label = label
     self.figure = figure
     self.isNet = isNet

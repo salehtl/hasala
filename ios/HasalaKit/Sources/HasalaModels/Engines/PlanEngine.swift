@@ -86,6 +86,14 @@ public struct PlanSnapshot: Sendable, Hashable {
   public var projects: [PlanProjectModel]
   public var planned: Money = .aed(0)
   public var lastMonthBudgets: [CategoryID: Money] = [:]
+  public var outsidePlan: OutsidePlan? = nil
+
+  public struct OutsidePlan: Sendable, Hashable {
+    public var projects: Int
+    public var projectID: ProjectID?
+    public var left: Money?
+    public var line: MoneyPhrase
+  }
 
   public var nothingPlanned: Bool { planned.minor == 0 }
 
@@ -147,8 +155,20 @@ public enum PlanEngine {
       startedFrom: "Started from " + s.plan.startingSplit.map(String.init).joined(separator: " / "),
       splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
       split: split, sections: sections, projects: projects, planned: .aed(planned),
-      lastMonthBudgets: lastMonthBudgets
+      lastMonthBudgets: lastMonthBudgets, outsidePlan: outsidePlan(projects)
     )
+  }
+
+  static func outsidePlan(_ projects: [PlanProjectModel]) -> PlanSnapshot.OutsidePlan? {
+    let out = projects.filter { !$0.countInPlan && !$0.complete }
+    guard !out.isEmpty else { return nil }
+    let budgeted = out.compactMap { p in p.budget.map { _ in max(0, p.left?.minor ?? 0) } }
+    let left: Money? = budgeted.isEmpty ? nil : .aed(Fils.sum(budgeted))
+    let lead: String = out.count == 1 ? "Outside this plan: \(out[0].name)" : "\(out.count) projects outside this plan"
+    var parts: [MoneyPhrase.Part] = [.text(lead)]
+    if let left { parts += [.text(", "), .amount(left, .compact, hidden: 3), .text(" left")] }
+    return PlanSnapshot.OutsidePlan(
+      projects: out.count, projectID: out.count == 1 ? out[0].id : nil, left: left, line: MoneyPhrase(parts))
   }
 
   public static func largestRemainderPercents(_ parts: [Int64]) -> [Int64] {
@@ -432,7 +452,7 @@ public struct ProjectCategoryRow: Sendable, Hashable, Identifiable {
   public var spent: Money
 }
 
-/// Plan · Japan trip: money set aside for one thing, outside the monthly plan (spec 12 §10).
+/// Plan · Japan trip: a budget for one thing, outside the monthly plan (spec 12 §10).
 public struct ProjectDetail: Sendable, Hashable {
   public var id: ProjectID
   public var name: String
@@ -587,7 +607,7 @@ public extension PlanEngine {
   static func lines(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> [(txn: Txn, minor: Int64)] {
     var out: [(txn: Txn, minor: Int64)] = []
     for t in s.txns where t.postedAt.date.yearMonth == month && Spending.includes(t, in: s) {
-      let mine = t.lines.filter { $0.category == c }
+      let mine = Spending.lines(t, in: s).filter { $0.category == c }
       if !mine.isEmpty { out.append((t, Fils.sum(mine.map(\.minor)))) }
     }
     return out
@@ -643,8 +663,8 @@ public extension PlanEngine {
       explainer = MoneyPhrase(stringLiteral: "\(kind) spending counts in \(monthName)'s budgets.")
     } else if let budget = p.budget {
       explainer = MoneyPhrase([
-        .text("\(kind) spending stays out of \(monthName)'s budgets. It comes from the "),
-        .amount(budget, .compact, hidden: 3), .text(" you set aside."),
+        .text("\(kind) spending stays out of \(monthName)'s budgets. Hasala doesn't hold this money, so keep the "),
+        .amount(budget, .compact, hidden: 3), .text(" somewhere safe."),
       ])
     } else {
       explainer = MoneyPhrase(stringLiteral: "\(kind) spending stays out of \(monthName)'s budgets.")

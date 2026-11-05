@@ -230,21 +230,26 @@ public final class InMemoryLedger: LedgerStore {
       let merchant = hit.isEmpty ? rule.patterns.first ?? "" : ReviewEngine.displayName(hit)
       title = "Stopped sorting \(merchant) as \(categoryName(rule.categoryID))"
     case .markTransfer(let id):
+      let undo = s.txn(id)?.isTransfer == true
       try editTxn(id) { t in
-        t.categoryID = "transfer"
-        t.categorySource = .user
+        t.categoryID = undo ? nil : "transfer"
+        t.categorySource = undo ? nil : .user
         t.ruleID = nil
-        t.isTransfer = true
-        t.needsReview = false
+        t.isTransfer = !undo
+        t.needsReview = undo
         t.categorizedAt = at
       }
-      title = "Marked as a transfer"
+      title = undo ? "No longer a transfer" : "Marked as a transfer"
     case .markRefund(let id):
-      try editTxn(id) { t in
-        t.isRefund.toggle()
-        t.direction = t.isRefund ? .in : .out
-      }
-      title = s.txn(id)?.isRefund == true ? "Marked as a refund" : "No longer a refund"
+      guard let t = s.txn(id) else { throw .notFound }
+      let filing = try RefundEdit.mark(t, in: s)
+      try editTxn(id) { filing.apply(to: &$0) }
+      title = filing.title
+    case .fileRefund(let id, let c, let target):
+      guard let t = s.txn(id) else { throw .notFound }
+      let filing = try RefundEdit.file(t, into: c, of: target, in: s)
+      try editTxn(id) { filing.apply(to: &$0) }
+      title = filing.title
     case .setNote(let id, let note):
       try editTxn(id) { $0.note = note.trimmedSpaces }
       title = nil
