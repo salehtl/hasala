@@ -106,6 +106,12 @@ struct InviteReadyView: View {
       .fixedSize()
   }
 
+  static let nextSteps = [
+    "Your name, and the email your invite went to",
+    "Sign in with Face ID, or a password",
+    "Save your 12 recovery words, now or from Home",
+  ]
+
   /// Paper "Card · What happens next": the three steps of creating the account.
   private var nextSteps: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -113,9 +119,9 @@ struct InviteReadyView: View {
         .hType(HType(size: 17, leading: 22, weight: .semibold, textStyle: .headline))
         .foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      NumberedStep(number: 1, text: "Your name, and the email your invite went to")
-      NumberedStep(number: 2, text: "Sign in with Face ID, or a password")
-      NumberedStep(number: 3, text: "Write down 12 words, on paper")
+      ForEach(Array(Self.nextSteps.enumerated()), id: \.offset) { i, step in
+        NumberedStep(number: i + 1, text: step)
+      }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)

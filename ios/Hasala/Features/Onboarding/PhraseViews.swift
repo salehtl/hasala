@@ -13,6 +13,11 @@ import UIKit
 struct PhraseIntroView: View {
   var model: SignupModel
 
+  static func onlyYouHaveThem(wordsOnlyInSetup: Bool) -> String {
+    let setup = wordsOnlyInSetup ? " You'll only see these words during setup." : ""
+    return "We never see them, so we can't reset or resend them.\(setup) If you lose these words and every device that can unlock Hasala, your data is gone for good."
+  }
+
   var body: some View {
     AccountScreen(
       title: "Your recovery phrase is your spare key",
@@ -22,8 +27,7 @@ struct PhraseIntroView: View {
       VStack(alignment: .leading, spacing: 18) {
         point(.paper, .sand, "Write them on paper", "Keep it somewhere safe at home. Not in your photos, notes or email.")
         point(.phone, .sky, "For a new iPhone", newIPhone)
-        point(.lock, .rose, "Only you have them",
-              "We never see them, so we can't reset or resend them. Lose them and every device that unlocks Hasala, and your data is gone for good.")
+        point(.lock, .rose, "Only you have them", Self.onlyYouHaveThem(wordsOnlyInSetup: model.wordsOnlyInSetup))
       }
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -80,8 +84,13 @@ struct PhraseShowView: View {
   var failure: AuthFailure?
   /// Whether the screen is being recorded or mirrored, on appear and on every change.
   var onCapture: (Bool) -> Void = { _ in }
+  var canShowAgain = true
 
   enum Mode { case create, view }
+
+  static func createNote(canShowAgain: Bool) -> String {
+    canShowAgain ? "They hide again when you leave this screen." : "After this, you can't see them again. Check every word."
+  }
 
   @Environment(\.scenePhase) private var scenePhase
   @State private var captured = screenIsCaptured()
@@ -118,7 +127,7 @@ struct PhraseShowView: View {
         BusyButton(title: "I've written them down", busy: busy, enabled: seen, identifier: "phrase.written") {
           onContinue()
         }
-        ActionNote(text: "They hide again when you leave this screen.")
+        ActionNote(text: Self.createNote(canShowAgain: canShowAgain))
       } else {
         Button("Done", action: onContinue)
           .buttonStyle(.pill(.primary, fill: true))
@@ -158,6 +167,7 @@ struct AccountReadyView: View {
   /// What this build can do for the account (`AccountService.capabilities`): whether the
   /// words can be shown again, and how.
   var capabilities: AccountCapabilities
+  var passkeyHoldsKeys = true
   var onContinue: () -> Void
 
   @State private var whoSeesOpen = false
@@ -169,9 +179,13 @@ struct AccountReadyView: View {
   /// later on this iPhone signs in but holds no keys, so a password account can't. No line
   /// is longer than Paper's, so the screen still fits above the dock.
   private var subtitle: String {
+    Self.subtitle(capabilities: capabilities, passkey: passkey, passkeyHoldsKeys: passkeyHoldsKeys)
+  }
+
+  static func subtitle(capabilities: AccountCapabilities, passkey: Bool, passkeyHoldsKeys: Bool) -> String {
     let keep = "Keep the paper safe, away from this iPhone."
     guard capabilities.contains(.viewPhrase) else { return "\(keep) It's the only copy of your words." }
-    if passkey { return "\(keep) You can see the words again in Profile after Face ID." }
+    if passkey && passkeyHoldsKeys { return "\(keep) You can see the words again in Profile after Face ID." }
     return "\(keep) Your words can't be shown again on this account."
   }
 

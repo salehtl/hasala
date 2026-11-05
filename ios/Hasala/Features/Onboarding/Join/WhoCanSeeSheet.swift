@@ -27,8 +27,8 @@ struct WhoCanSeeSheet: View {
             .padding(.horizontal, 4)
             .padding(.top, 4)
             .accessibilityAddTraits(.isHeader)
-          parties
           keyNotice
+          parties
           privacyLink
         }
         .padding(.horizontal, HSpacing.insetPage)
@@ -57,6 +57,28 @@ struct WhoCanSeeSheet: View {
 
   // MARK: Parties
 
+  static func serverSees(outlook: Bool) -> [String] {
+    [
+      "Your email address and name, and that your account exists",
+      "Your passkey's public key, or a scrambled form of your password",
+      "When you sync, and how much sealed data you store",
+      "Your devices' push tokens",
+      "Your \(outlook ? "mailbox" : "Gmail") address for a moment when you connect, and with each Gmail notice, then only a code made with a secret key. Also when your mailbox changes, so it can wake your iPhone",
+    ]
+  }
+
+  static let serverCantSee = "Your emails, texts, amounts, merchants, categories, budget or plan"
+
+  static let cloudflare =
+    "Our network provider, which also sends our emails. Sees request details, like IP addresses and times, the emails we send you, and the sealed data passing through. It can't open it. If you turn on Cloud suggestions, its AI service sees the merchant names Hasala asks about, without your name or account."
+
+  static let bankTextsHue = Hue.mint
+  static let bankTextsTitle = "Bank texts, if you use them"
+  static let bankTexts = "Read on your iPhone and sent to no one."
+
+  static let apple =
+    "Your email address, for the TestFlight invitation, and that you installed Hasala. Your passkey syncs in iCloud Keychain, end-to-end encrypted by Apple."
+
   private var parties: some View {
     VStack(spacing: 0) {
       // Paper EW0-0: this row's column sets its title and both lists 8 apart.
@@ -64,21 +86,17 @@ struct WhoCanSeeSheet: View {
         VStack(alignment: .leading, spacing: 8) {
           section("Can see", color: HColor.textSecondary) {
             VStack(alignment: .leading, spacing: 4) {
-              bullet("Your email address and name, and that your account exists")
-              bullet("Your passkey's public key")
-              bullet("When you sync, and how much sealed data you store")
-              bullet("Your devices' push tokens")
-              bullet("A keyed hash of your mailbox address and when new mail arrives, so it can wake your iPhone")
+              ForEach(Self.serverSees(outlook: outlook), id: \.self) { bullet($0) }
             }
           }
           section("Can't see", color: HColor.statusSuccessForeground) {
-            line("Your emails, amounts, merchants, categories, budget or plan")
+            line(Self.serverCantSee)
           }
         }
       }
       divider
       PartyRow(tile: tile(.other, .cloud), title: "Cloudflare") {
-        line("Our network provider, which also sends our emails. Sees request details, like IP addresses and times, the emails we send you, and the sealed data passing through. It can't open it.")
+        line(Self.cloudflare)
       }
       divider
       PartyRow(tile: tile(.sky, .envelope), title: outlook ? "Google or Microsoft" : "Google") {
@@ -87,12 +105,16 @@ struct WhoCanSeeSheet: View {
           : "Sees your mail, as it already does, and that you gave Hasala read-only access. Nothing Hasala works out goes back to Google.")
       }
       divider
+      PartyRow(tile: tile(Self.bankTextsHue, .chat), title: Self.bankTextsTitle) {
+        line(Self.bankTexts)
+      }
+      divider
       PartyRow(tile: tile(.other, .globe), title: "Gravatar") {
         line("Your iPhone asks it for your picture with a code made from your email address. It sees that request and your IP address. No picture means your initials. You can turn it off in Profile.")
       }
       divider
       PartyRow(tile: tile(.lilac, .phone), title: "Apple") {
-        line("Sees that you installed Hasala through TestFlight. Your passkey syncs in iCloud Keychain, end-to-end encrypted by Apple.")
+        line(Self.apple)
       }
     }
     .padding(.vertical, 4)

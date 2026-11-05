@@ -110,6 +110,7 @@ struct StoriesView: View {
   @State private var settles = 0
   @State private var linkCopied = false
   @State private var pasteboardChecks = 0
+  @State private var handStopped = false
 
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
@@ -124,7 +125,18 @@ struct StoriesView: View {
 
   /// Reading a story takes longer than it plays (VoiceOver, the accessibility text sizes):
   /// the person moves on, and the progress marks where they are.
-  private var handPaced: Bool { voiceOver || typeSize.isAccessibilitySize }
+  private var handPaced: Bool {
+    Self.handPaced(voiceOver: voiceOver, accessibilitySize: typeSize.isAccessibilitySize,
+                   reduceMotion: motion.reduceMotion, handStopped: handStopped)
+  }
+
+  static func handPaced(voiceOver: Bool, accessibilitySize: Bool, reduceMotion: Bool, handStopped: Bool) -> Bool {
+    voiceOver || accessibilitySize || reduceMotion || handStopped
+  }
+
+  static func stopsAutoAdvance(_ phase: ScrollPhase) -> Bool {
+    phase == .tracking || phase == .interacting
+  }
 
   /// The clock runs only while someone can watch the story, and never when it is hand-paced.
   private var shouldRun: Bool { visible && !handPaced && !dragging }
@@ -426,6 +438,7 @@ struct StoriesView: View {
   /// The pager's scroll phase: a drag pauses the story; when the page comes to rest on
   /// another story, that story starts and the selection haptic plays.
   private func scrollPhaseChanged(_ phase: ScrollPhase) {
+    if Self.stopsAutoAdvance(phase) { handStopped = true }
     switch phase {
     case .tracking, .interacting, .decelerating:
       dragging = true
@@ -446,6 +459,7 @@ struct StoriesView: View {
 
   /// A tap, the adjustable action or the timer moves to `target`.
   private func go(to target: Int, byUser: Bool) {
+    if byUser { handStopped = true }
     guard (0..<count).contains(target), target != page else { return }
     let m = motion
     if m.settled {
@@ -585,9 +599,11 @@ private struct WidePasteButton: UIViewRepresentable {
   }
 }
 
-private struct CopiedInviteCard: View {
+struct CopiedInviteCard: View {
   var stacked: Bool
   var onPaste: (String) -> Void
+
+  static let title = "Have an invite link?"
 
   var body: some View {
     Group {
@@ -614,13 +630,8 @@ private struct CopiedInviteCard: View {
 
   private var message: some View {
     HStack(alignment: .top, spacing: 10) {
-      ZStack {
-        Circle().fill(HColor.actionAccent)
-        HIconView(.check, size: 12, color: .white, strokeWidth: 2.6)
-      }
-      .frame(width: 20, height: 20)
       VStack(alignment: .leading, spacing: 1) {
-        Text("Copied your invite link?")
+        Text(Self.title)
           .hType(.subheadline.weight(.semibold))
           .foregroundStyle(HColor.textPrimary)
         Text("Paste it here. There's no code to type.")
