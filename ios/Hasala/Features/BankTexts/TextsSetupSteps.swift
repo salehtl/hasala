@@ -35,7 +35,7 @@ enum SourceCardCopy {
   static func title(_ source: PaymentSource) -> String { source == .texts ? "Bank texts" : "Bank email" }
 
   static func subtitle(_ source: PaymentSource) -> String {
-    source == .texts ? "Through one automation in the Shortcuts app" : "Gmail or Outlook, read-only"
+    source == .texts ? "Through one automation in the Shortcuts app" : "Gmail or personal Outlook, read-only"
   }
 
   static var emailBanks: String {
@@ -46,8 +46,8 @@ enum SourceCardCopy {
 
   static func upsides(_ source: PaymentSource) -> [String] {
     source == .texts
-      ? ["No mailbox access, no Google warning", "Works when your bank only texts", "Any bank that texts you"]
-      : ["Can find your older payments too", "Reads only your banks' alert emails", emailBanks]
+      ? ["No mailbox access, no Google warning", "Any bank that texts you", "Works when your bank only texts"]
+      : [emailBanks, "Can find your older payments too", "Reads only your banks' alert emails"]
   }
 
   static func downsides(_ source: PaymentSource) -> [String] {
@@ -92,7 +92,7 @@ private struct SourceCard: View {
               HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
             }
           }
-          .frame(height: 22)
+          .frame(width: 24, height: 40)
           .accessibilityHidden(true)
         }
         VStack(alignment: .leading, spacing: 6) {
@@ -148,9 +148,9 @@ struct TextsSetUpStep: View {
         TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
         NumberedStepsCard(steps: copy.steps)
-        TextsNote(icon: .shield, text: BankTexts.fakedTextNote)
-          .accessibilityIdentifier("texts.fakedText")
         TextsLinkRow(title: copy.guideTitle, identifier: "texts.showMeHow") { guiding = true }
+        TextsNote(icon: .privacy, text: BankTexts.fakedTextNote)
+          .accessibilityIdentifier("texts.fakedText")
         TextsNote(icon: .bank, text: BankTexts.anyBankLine)
           .accessibilityIdentifier("texts.anyBank")
         SetupFailureBanner(failure: model.failure)

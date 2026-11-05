@@ -206,7 +206,7 @@ struct PasteBankTextSheet: View {
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
-        .padding(.top, model.solidDock ? 8 : 0)
+        .padding(.top, model.solidDock ? 12 : 0)
         .padding(.bottom, 8)
         .background {
           if model.solidDock { HColor.surfaceSecondary.ignoresSafeArea(edges: .bottom) }

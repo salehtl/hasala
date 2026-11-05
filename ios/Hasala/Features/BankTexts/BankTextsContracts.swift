@@ -222,7 +222,7 @@ enum BankTexts {
   }
 
   static let keepsNoText =
-    "Hasala keeps only the details it needs from a text that looks like a payment, from any sender, never the text itself. Every other text is dropped at once. The text never leaves this iPhone, and the details sync only end\u{2011}to\u{2011}end encrypted."
+    "Hasala keeps only the details it needs from a text that looks like a payment, from any sender, never the text itself. Every other text is dropped at once, never saved or sent anywhere. The details sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
 
   static let oneSourceNote =
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."

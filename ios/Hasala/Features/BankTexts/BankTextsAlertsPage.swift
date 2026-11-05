@@ -71,8 +71,8 @@ struct BankTextsAlertsPage: View {
   static let readsRows: [(icon: HIcon, text: String)] = [
     (.chat, "The automation hands Hasala each text with a full stop, on this iPhone."),
     (.bank, BankTexts.anyBankLine),
-    (.lock, BankTexts.keepsNoText),
-    (.shield, BankTexts.fakedTextNote),
+    (.privacy, BankTexts.keepsNoText),
+    (.info, BankTexts.fakedTextNote),
   ]
 
   var body: some View {

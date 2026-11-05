@@ -94,10 +94,11 @@ struct UXSetupbanktextsTests {
 
   @Test func theSourceCardsSayWhatEachReadsAndWhichBanks() {
     #expect(SourceCardCopy.upsides(.texts) == [
-      "No mailbox access, no Google warning", "Works when your bank only texts", "Any bank that texts you",
+      "No mailbox access, no Google warning", "Any bank that texts you", "Works when your bank only texts",
     ])
     #expect(SourceCardCopy.downsides(.texts).first == "Hasala sees each text with a full stop, from anyone, and drops all but payments")
-    #expect(SourceCardCopy.upsides(.email).last == "Emirates NBD, DIB and ADIB")
+    #expect(SourceCardCopy.upsides(.email).first == "Emirates NBD, DIB and ADIB")
+    #expect(SourceCardCopy.subtitle(.email) == "Gmail or personal Outlook, read-only")
     #expect(SourceCardCopy.downsides(.email) == ["Gmail shows an unverified-app warning in the beta"])
   }
 
@@ -122,6 +123,13 @@ struct UXSetupbanktextsTests {
     let rows = BankTextsAlertsPage.readsRows.map(\.text)
     #expect(rows.count == 4 && rows.contains(BankTexts.keepsNoText))
     #expect(BankTexts.keepsNoText.contains("never leaves this iPhone") && BankTexts.keepsNoText.contains("end\u{2011}to\u{2011}end encrypted"))
+  }
+
+  @Test func theBankTextsPageKeepsOneRowForWhatIsKeptAndFlagsTheFakedSender() {
+    let rows = BankTextsAlertsPage.readsRows
+    #expect(rows.map(\.icon) == [.chat, .bank, .privacy, .info])
+    #expect(BankTexts.keepsNoText.contains("never saved or sent anywhere"))
+    #expect(BankTexts.keepsNoText.hasSuffix("encrypted; the text never leaves this iPhone."))
   }
 
   @Test func thePasteIntroGoesAndTheDockIsSolidOnceAMatchShows() async {
