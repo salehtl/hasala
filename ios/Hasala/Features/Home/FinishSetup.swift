@@ -100,7 +100,7 @@ final class FinishSetupModel {
     return m
   }
 
-  func refresh(hasTransactions: Bool? = nil, hasPlan: Bool = false) {
+  func refresh(hasTransactions: Bool? = nil) {
     if services.unseenPhrase.unseen {
       phraseTracked = true
       listed.insert(.phrase)
@@ -110,7 +110,7 @@ final class FinishSetupModel {
     if noAlerts { listed.insert(.bankAlerts) }
     if stoppedMailbox != nil { listed.insert(.readingStopped) }
     let saved = services.setup.readBack()
-    if !planDone, Self.planIsSet(saved) || hasPlan { planDone = true }
+    if !planDone, Self.planIsSet(saved) { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
   }
 

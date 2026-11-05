@@ -49,10 +49,8 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     back(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: uiWait))
 
-    // Widgets without a detail screen are not buttons; the others go somewhere.
     for id in ["widget.netWorth", "widget.goal.emergency"] {
-      XCTAssertTrue(el(app, id).exists, "\(id) is missing")
-      XCTAssertFalse(app.buttons[id].exists, "\(id) is a button with nowhere to go")
+      XCTAssertTrue(reveal(app, app.buttons[id]), "\(id) does not open anything")
     }
     let japan = app.buttons["widget.project.japan"]
     XCTAssertTrue(reveal(app, japan))

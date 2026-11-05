@@ -204,8 +204,6 @@ struct FinishSetupTests: AccountSuite {
     let onlyIncome = FinishSetupModel(services: services(MockSetupAuthoring(
       saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))))
     #expect(!onlyIncome.isDone(.plan))
-    onlyIncome.refresh(hasPlan: true)
-    #expect(onlyIncome.isDone(.plan))
   }
 
   @Test func anIncomeWithoutASplitLeavesThePlanItem() async throws {

@@ -105,7 +105,7 @@ struct HomeView: View {
           .padding(.bottom, 12)
       }
       .task(id: app.store.revision) {
-        finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty, hasPlan: !app.store.state.plan.budgets.isEmpty)
+        finish?.refresh(hasTransactions: !app.store.state.txns.isEmpty)
         await finish?.remindAboutPhrase()
       }
       .task { await finish?.resumeImport() }
