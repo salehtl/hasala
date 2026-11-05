@@ -21,6 +21,10 @@ struct AddTransactionTests {
     #expect(model.saveTitle == "Enter an amount")
     type([.digit(4), .digit(8), .decimal, .digit(5)], into: model)
     #expect(model.entry.minor == 48_50)
+    #expect(model.saveTitle == "Add who it was with")
+    model.merchant = "Corner Bakery"
+    #expect(model.saveTitle == "Choose a category")
+    model.categoryID = "dining"
     #expect(model.saveTitle == "Add AED 48.50")
     type([.digit(0), .digit(9)], into: model)
     #expect(model.entry.minor == 48_50)
@@ -81,6 +85,42 @@ struct AddTransactionTests {
     #expect(!t.needsReview)
     #expect(app.sheet == nil)
     #expect(app.toast?.title == "Added Corner Bakery")
+  }
+
+  @Test func theButtonNamesALongName() {
+    let model = AddTransactionModel(app: AppModel(store: InMemoryLedger()))
+    type([.digit(2), .digit(5)], into: model)
+    model.categoryID = "dining"
+    model.merchant = String(repeating: "a", count: 81)
+    #expect(model.saveTitle == "Keep the name to 80 characters")
+  }
+
+  @Test func switchingToMoneyOutDropsARefundsPick() {
+    let model = AddTransactionModel(app: AppModel(store: InMemoryLedger()))
+    #expect(!model.categoryGroups.flatMap(\.options).contains { $0.id == "refunds" })
+    model.direction = .in
+    #expect(model.categoryGroups.first?.bucket == .income)
+    model.categoryID = "refunds"
+    model.direction = .out
+    #expect(model.categoryID == nil)
+    model.categoryID = "dining"
+    model.direction = .in
+    model.direction = .out
+    #expect(model.categoryID == "dining")
+  }
+
+  @Test func aTypedEntryHasNoSourceLine() {
+    let model = AddTransactionModel(app: AppModel(store: InMemoryLedger()))
+    #expect(model.source == nil)
+    #expect(!model.dateOnly)
+  }
+
+  @Test func theSourceLineIsolatesTheBank() {
+    let line = AddTransactionModel.sourceLine(bank: "DIB", on: LocalDate(2026, 10, 9), today: LocalDate(2026, 10, 12),
+                                              kind: "email")
+    #expect(line == "From your \u{2068}DIB\u{2069} email, Fri 9 Oct.")
+    #expect(AddTransactionModel.sourceLine(bank: nil, on: LocalDate(2025, 10, 9), today: LocalDate(2026, 10, 12), kind: "text")
+      .hasPrefix("From your bank text, "))
   }
 
   @Test func aDateAfterNowIsHeldToNow() throws {

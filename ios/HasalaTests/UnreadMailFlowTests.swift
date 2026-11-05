@@ -121,7 +121,11 @@ struct UnreadMailFlowTests {
     let store = InMemoryLedger(state: Scenario.mayaUnreadMail.state)
     let app = AppModel(store: store)
     let model = AddTransactionModel(app: app, resolving: "unread-outlook")
-    #expect(AddTransactionDates.local(model.postedAt) == LocalDateTime(2026, 10, 7, 0, 0))
+    #expect(AddTransactionDates.local(model.postedAt).date == LocalDate(2026, 10, 7))
+    #expect(AddTransactionDates.local(model.postedAt) != LocalDateTime(2026, 10, 7, 0, 0))
+    #expect(model.dateOnly)
+    #expect(model.source == "From your bank email, Wed 7 Oct.")
+    #expect(AddTransactionModel(app: app, resolving: "unread-gmail").source == "From your \u{2068}DIB\u{2069} email, Fri 9 Oct.")
     #expect(model.resolvedMail == "unread-outlook")
     let before = store.state.txns.count
     model.entry = AmountEntry(typing: "250")

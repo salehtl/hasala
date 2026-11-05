@@ -13,6 +13,35 @@ struct CategoryGroup: Identifiable, Hashable {
     groups.append(CategoryGroup(bucket: .other, options: other))
     return groups
   }
+
+  static let refunds: CategoryID = "refunds"
+
+  static func all(_ s: LedgerState, direction: Direction) -> [CategoryGroup] {
+    ordered(all(s), for: direction)
+  }
+
+  static func ordered(_ groups: [CategoryGroup], for direction: Direction) -> [CategoryGroup] {
+    switch direction {
+    case .out:
+      return groups.map { CategoryGroup(bucket: $0.bucket, options: $0.options.filter { $0.id != refunds }) }
+        .filter { !$0.options.isEmpty }
+    case .in:
+      let income = groups.flatMap(\.options).filter { $0.bucket == .income }
+      let rest = groups.map { CategoryGroup(bucket: $0.bucket, options: $0.options.filter { $0.bucket != .income }) }
+      return ([CategoryGroup(bucket: .income, options: income)] + rest).filter { !$0.options.isEmpty }
+    }
+  }
+
+  static func offers(_ id: CategoryID, for direction: Direction) -> Bool {
+    direction == .in || id != refunds
+  }
+
+  static func matching(_ groups: [CategoryGroup], _ query: String) -> [CategoryGroup] {
+    let q = query.trimmedSpaces.lowercased()
+    guard !q.isEmpty else { return groups.filter { !$0.options.isEmpty } }
+    return groups.map { CategoryGroup(bucket: $0.bucket, options: $0.options.filter { $0.name.lowercased().contains(q) }) }
+      .filter { !$0.options.isEmpty }
+  }
 }
 
 /// Transaction detail and its pushed editors (spec 04 §16.1 "Transaction detail", "Choose a category", "Split";

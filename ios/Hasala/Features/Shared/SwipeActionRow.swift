@@ -37,7 +37,9 @@ struct SwipeActionRow<Content: View>: View {
         }
       }
       .offset(x: offset)
-      .background(alignment: .trailing) { revealed }
+      .background(alignment: .trailing) {
+        if offset < 0 { revealed }
+      }
       .clipped()
       .gesture(HorizontalPan(opensRightward: offset < 0, changed: drag, ended: release))
       .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }

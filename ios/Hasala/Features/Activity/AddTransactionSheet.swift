@@ -18,12 +18,25 @@ struct AddTransactionSheet: View {
   @Bindable var model: AddTransactionModel
   @State private var choosingCategory = false
   @FocusState private var merchantFocused: Bool
+  @State private var height: CGFloat = 0
   @Environment(\.dynamicTypeSize) private var typeSize
+
+  static func compactKeypad(height: CGFloat) -> Bool { height > 0 && height < 720 }
 
   var body: some View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
+          if let source = model.source {
+            HStack(spacing: 8) {
+              HIconView(model.dateOnly ? .envelope : .chat, size: 16, color: HColor.iconSecondary)
+              Text(source).hType(.footnote).foregroundStyle(HColor.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("add.source")
+          }
           Picker("Kind", selection: $model.direction) {
             Text("Money out").tag(Direction.out)
             Text("Money in").tag(Direction.in)
@@ -52,11 +65,6 @@ struct AddTransactionSheet: View {
               .accessibilityIdentifier("add.merchant")
           }
           details
-          if let missing = model.missing {
-            Text(missing).hType(.footnote).foregroundStyle(HColor.textSecondary)
-              .padding(.horizontal, 4)
-              .accessibilityIdentifier("add.missing")
-          }
           if typeSize.isAccessibilitySize {
             saveButton
           }
@@ -66,8 +74,9 @@ struct AddTransactionSheet: View {
         .padding(.bottom, 16)
       }
       .scrollDismissesKeyboard(.interactively)
+      .scrollEdgeEffectStyle(.soft, for: .bottom)
       .background(HColor.sheetSurfaceLarge)
-      .safeAreaInset(edge: .bottom, spacing: 0) { dock }
+      .safeAreaBar(edge: .bottom) { dock }
       .navigationTitle("Add transaction")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -84,6 +93,7 @@ struct AddTransactionSheet: View {
         }
       }
     }
+    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
     .planLargeSheet()
   }
 
@@ -103,7 +113,7 @@ struct AddTransactionSheet: View {
           .padding(.bottom, 16)
       }
       if !merchantFocused {
-        AmountKeypad(entry: $model.entry, layout: .docked)
+        AmountKeypad(entry: $model.entry, layout: .docked, compact: Self.compactKeypad(height: height))
       }
     }
     .background(HColor.sheetSurfaceLarge.ignoresSafeArea(edges: .bottom))
@@ -132,7 +142,8 @@ struct AddTransactionSheet: View {
       .accessibilityIdentifier("add.category")
       HDivider(inset: .text16)
       detailRow(icon: .calendar, title: "Date") {
-        DatePicker("Date", selection: $model.postedAt, in: ...model.latest, displayedComponents: [.date, .hourAndMinute])
+        DatePicker("Date", selection: $model.postedAt, in: ...model.latest,
+                   displayedComponents: model.dateOnly ? [.date] : [.date, .hourAndMinute])
           .labelsHidden()
           .environment(\.timeZone, ProjectDates.calendar.timeZone)
           .accessibilityIdentifier("add.date")
@@ -188,36 +199,13 @@ struct AddCategoryPage: View {
   let groups: [CategoryGroup]
   let selected: CategoryID?
   let choose: (CategoryID) -> Void
-  @State private var query = ""
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
-        HStack(spacing: 10) {
-          HIconView(.magnifier, size: 20, color: HColor.fieldIcon)
-          TextField("Search categories", text: $query)
-            .hType(.body)
-            .foregroundStyle(HColor.fieldText)
-            .submitLabel(.search)
-            .autocorrectionDisabled()
-            .accessibilityIdentifier("addCategory.search")
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 52)
-        .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
-        ForEach(filtered) { g in
-          VStack(alignment: .leading, spacing: 8) {
-            Text(g.bucket.label).hType(.overline).foregroundStyle(HColor.textGroupedHeader)
-              .padding(.leading, 4).padding(.top, 2)
-              .accessibilityAddTraits(.isHeader)
-            FlowLayout(spacing: 8) {
-              ForEach(g.options) { o in
-                ChoiceChip(o.name, dot: o.hue, selected: selected == o.id) { choose(o.id) }
-                  .accessibilityIdentifier("addCategory.\(o.id)")
-              }
-            }
-          }
-        }
+      CategoryChooser(groups: groups, selected: selected, idPrefix: "addCategory", choose: choose) {
+        EmptyView()
+      } accessory: {
+        EmptyView()
       }
       .padding(.horizontal, HSpacing.insetPage)
       .padding(.top, 8)
@@ -226,12 +214,5 @@ struct AddCategoryPage: View {
     .background(HColor.sheetSurfaceLarge)
     .navigationTitle("Category")
     .navigationBarTitleDisplayMode(.inline)
-  }
-
-  private var filtered: [CategoryGroup] {
-    let q = query.trimmedSpaces.lowercased()
-    guard !q.isEmpty else { return groups.filter { !$0.options.isEmpty } }
-    return groups.map { CategoryGroup(bucket: $0.bucket, options: $0.options.filter { $0.name.lowercased().contains(q) }) }
-      .filter { !$0.options.isEmpty }
   }
 }
