@@ -172,6 +172,12 @@ a "Your recovery phrase was used" alert is dated to that recovery, and the
 recovery replaced or re-dated every factor. A frozen account also refuses a
 new recovery and a password reset. Then only the operator can lift it.
 
+`GET /api/v1/account` reports `holder_can_lift` while the account is frozen:
+false for an operator freeze, and false when no passkey, and no live device
+with a password, is older than the freeze's trigger. The app then shows no
+Unfreeze. It shows "Talk to a person" and asks the holder to write to us from
+the account's address, so expect the request below.
+
 Lifting a freeze, by the holder or the operator, retires every unused freeze
 link of the account, and a link dated before the latest lift no longer freezes
 it. A link from

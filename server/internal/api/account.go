@@ -39,6 +39,7 @@ type AccountResponse struct {
 	Frozen                 bool         `json:"frozen"`
 	FreezeTriggerAt        *time.Time   `json:"freeze_trigger_at"`
 	FrozenBy               *string      `json:"frozen_by"`
+	HolderCanLift          *bool        `json:"holder_can_lift"`
 	Restricted             bool         `json:"restricted"`
 	ReviewAccount          bool         `json:"review_account"`
 	PhraseUnseenSince      *time.Time   `json:"phrase_unseen_since"`
@@ -54,6 +55,7 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 		undeliv  *time.Time
 		reverify *time.Time
 		frozenAt *time.Time
+		canLift  bool
 	)
 	err := s.Pool.QueryRow(r.Context(),
 		`SELECT u.created_at, u.status, EXISTS (SELECT 1 FROM account_keys k WHERE k.user_id = u.id),
@@ -64,11 +66,16 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 		        u.password_hash IS NOT NULL, u.password_set_at,
 		        EXISTS (SELECT 1 FROM webauthn_credentials c WHERE c.user_id = u.id),
 		        u.frozen_at, u.freeze_trigger_at, u.frozen_by, u.review_account,
-		        (SELECT k.created_at FROM account_keys k WHERE k.user_id = u.id AND k.phrase_seen_at IS NULL)
+		        (SELECT k.created_at FROM account_keys k WHERE k.user_id = u.id AND k.phrase_seen_at IS NULL),
+		        coalesce(u.frozen_by IS DISTINCT FROM 'operator' AND (
+		          EXISTS (SELECT 1 FROM webauthn_credentials c WHERE c.user_id = u.id AND c.created_at < u.freeze_trigger_at)
+		          OR (u.password_hash IS NOT NULL AND u.password_set_at < u.freeze_trigger_at
+		              AND EXISTS (SELECT 1 FROM writers w WHERE w.user_id = u.id AND w.revoked_at IS NULL
+		                          AND w.registered_at < u.freeze_trigger_at))), false)
 		   FROM users u WHERE u.id = $1`, userID).
 		Scan(&out.CreatedAt, &out.Status, &out.HasKeys, &out.Usage.OplogHotBytes, &out.Usage.Limit,
 			&out.Email, &out.EmailVerifiedAt, &undeliv, &reverify, &out.DisplayName, &out.HasPassword, &out.PasswordSetAt,
-			&out.HasPasskey, &frozenAt, &out.FreezeTriggerAt, &out.FrozenBy, &out.ReviewAccount, &out.PhraseUnseenSince)
+			&out.HasPasskey, &frozenAt, &out.FreezeTriggerAt, &out.FrozenBy, &out.ReviewAccount, &out.PhraseUnseenSince, &canLift)
 	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
@@ -77,6 +84,9 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 	out.EmailDeliverable = undeliv == nil
 	out.EmailReverifyRequested = reverify != nil
 	out.Frozen = frozenAt != nil
+	if out.Frozen {
+		out.HolderCanLift = &canLift
+	}
 	out.Restricted = info.Restricted
 	if s.Accounts != nil && s.Accounts.Keys != nil {
 		out.PasswordSalt = b64(s.Accounts.Keys.PasswordSalt(out.Email))
