@@ -417,3 +417,54 @@ func TestRenderEndsBeforeTheLease(t *testing.T) {
 		t.Fatalf("render has %s, the lease is %s", left, leaseFor)
 	}
 }
+
+func TestInviteStepsAndCode(t *testing.T) {
+	r, err := RenderTemplate("invite", Content{Email: "a@example.com", Code: "ABCD-EFGH-IJKL-MNOP-QRST-UV23",
+		InviteURL: "https://hasala.app/i/X#y", FallbackText: "hasala.app/i/X", Until: "Sunday 25 October"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<strong><span class="nw">ABCD-EFGH-IJKL-</span><wbr><span class="nw">MNOP-QRST-UV23</span></strong>`,
+		`<a href="https://hasala.app/testflight">Get TestFlight</a>`,
+		"Accept Apple's invitation and install Hasala.",
+		"Open Hasala and paste or type your invite.",
+	} {
+		if !strings.Contains(r.HTML, want) {
+			t.Errorf("invite HTML lacks %q:\n%s", want, r.HTML)
+		}
+	}
+	for _, want := range []string{
+		"1. Get TestFlight, Apple's free app for betas, on your iPhone: https://hasala.app/testflight",
+		"2. Accept Apple's invitation and install Hasala.",
+		"3. Open Hasala and paste or type your invite.",
+		"Your invite code: ABCD-EFGH-IJKL-MNOP-QRST-UV23",
+	} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("invite text lacks %q:\n%s", want, r.Text)
+		}
+	}
+	if strings.Contains(r.Text, "apps.apple.com") || strings.Contains(r.HTML, "apps.apple.com") {
+		t.Errorf("the invite still names the App Store address")
+	}
+}
+
+func TestBankSupportedOffersTestFlightToAccounts(t *testing.T) {
+	acct, err := RenderTemplate("bank_supported", Content{BankName: "Emirates NBD", AccountAudience: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(acct.HTML, `<a class="button" href="https://hasala.app/testflight">Open TestFlight</a>`) ||
+		!strings.Contains(acct.Text, "Update Hasala if TestFlight offers a newer build") ||
+		!strings.Contains(acct.Text, "Open TestFlight: https://hasala.app/testflight") ||
+		strings.Contains(acct.Text, "Update Hasala in TestFlight") {
+		t.Errorf("account audience:\n%s\n%s", acct.Text, acct.HTML)
+	}
+	wl, err := RenderTemplate("bank_supported", Content{BankName: "Emirates NBD", LeaveURL: "https://hasala.app/waitlist/leave#y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(wl.HTML, "testflight") || strings.Contains(wl.Text, "testflight") {
+		t.Errorf("the waitlist audience got the TestFlight button")
+	}
+}

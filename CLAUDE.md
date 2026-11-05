@@ -591,6 +591,9 @@ the approval of the owner for that deployment.
      `/waitlist/confirm`.
    - `curl -sI https://hasala.app/.well-known/apple-app-site-association`: 200
      (no redirect), `content-type: application/json`.
+   - `curl -sI https://hasala.app/testflight`: 302 to
+     `https://apps.apple.com/app/testflight/id899247664` (the TestFlight
+     link in our emails).
    - `curl -sI https://hasala.app/no-such-page`: 404.
 
 ## Decisions (2026-10-11)

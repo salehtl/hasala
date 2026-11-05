@@ -69,7 +69,7 @@ func TestBankSupportedEmailForBothAudiences(t *testing.T) {
 	}
 	acct, err := render(mailq.Row{Recipient: "maya@example.test", UserID: &user, BankSlug: &slug})
 	if err != nil || !strings.HasPrefix(acct, "First Abu Dhabi Bank works with Hasala now\n") ||
-		!strings.Contains(acct, "Hi Maya,") || !strings.Contains(acct, "Update Hasala in TestFlight") ||
+		!strings.Contains(acct, "Hi Maya,") || !strings.Contains(acct, "Update Hasala if TestFlight offers a newer build") ||
 		strings.Contains(acct, "Leave the list") || strings.Contains(acct, UnsubscribeURL) {
 		t.Fatalf("account email %v:\n%s", err, acct)
 	}

@@ -1,10 +1,10 @@
 {{define "content"}}<h1>You've been invited.</h1>
 <p>A place in the Hasala beta is saved for {{.Email}} until {{.Until}}. Open this email on your iPhone.</p>
-<p class="code">Your invite code<br><strong>{{.Code}}</strong><br>Saved until {{.Until}}</p>
+<p class="code">Your invite code<br><strong>{{if eq (len .Code) 29}}<span class="nw">{{slice .Code 0 15}}</span><wbr><span class="nw">{{slice .Code 15}}</span>{{else}}{{.Code}}{{end}}</strong><br>Saved until {{.Until}}</p>
 <ol>
-<li>Get TestFlight, Apple's free app for betas, on your iPhone: apps.apple.com/app/testflight.</li>
-{{if .ManualTestFlight}}<li>We'll add you to Hasala's TestFlight beta ourselves. Apple then emails you an invitation: open it on your iPhone, tap View in TestFlight, then Accept and Install.</li>{{else}}<li>Apple emails you an invitation to test Hasala in TestFlight. It comes separately and can arrive before or after this email. Open it on your iPhone, tap View in TestFlight, then Accept and Install. You don't need an App Store Connect account, and other testers can't see you.</li>{{end}}
-<li>Open Hasala and tap the button below, or enter your code. You'll set up sign-in and write down 12 words.</li>
+<li><a href="https://hasala.app/testflight">Get TestFlight</a>, Apple's free app for betas, on your iPhone.</li>
+{{if .ManualTestFlight}}<li>Accept Apple's invitation and install Hasala. We'll add you to Hasala's TestFlight beta ourselves, and Apple then emails you the invitation: open it on your iPhone, tap View in TestFlight, then Accept and Install.</li>{{else}}<li>Accept Apple's invitation and install Hasala. Apple emails you the invitation separately, and it can arrive before or after this email: open it on your iPhone, tap View in TestFlight, then Accept and Install. You don't need an App Store Connect account, and other testers can't see you.</li>{{end}}
+<li>Open Hasala and paste or type your invite. The button below opens Hasala with it. You'll set up sign-in and write down 12 words.</li>
 </ol>
 <p><a class="button" href="{{.InviteURL}}">Open my invite</a></p>
 <p>Button not working? Open {{.FallbackText}} on your iPhone, or type the code in the app.</p>

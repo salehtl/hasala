@@ -9,5 +9,9 @@
 <p><a class="button" href="{{.Freeze}}">Freeze my account</a></p>
 <p class="small">This link works for 7 days and can only freeze your account.</p>
 </div>
+{{end}}{{if .NotYou}}<div class="wasnt-you">
+<p class="title">{{if .NotYouTitle}}{{.NotYouTitle}}{{else}}Wasn't you?{{end}}</p>
+<p>{{.NotYou}}</p>
+</div>
 {{end}}{{if .Small}}<p class="small">{{.Small}}</p>
 {{end}}{{end}}
