@@ -213,6 +213,22 @@ struct WidgetLinkRoutingTests {
     #expect(app.cover == nil)
   }
 
+  @Test func aProjectLinkOpensThatProject() {
+    let app = AppModel(store: InMemoryLedger(state: MayaLedger.state))
+    app.open(.project("japan"))
+    #expect(app.tab == app.router.projectsTab)
+    #expect(app.router.projects == [.project("japan")])
+    app.open(.project("no-such-project"))
+    #expect(app.tab == app.router.projectsTab)
+    #expect(app.router.projects.isEmpty)
+  }
+
+  @Test func aGoalLinkOpensPlan() {
+    let app = AppModel(store: InMemoryLedger(state: MayaLedger.state))
+    app.open(.goal("emergency"))
+    #expect(app.router.sheet == .profile && app.router.profile == [.plan])
+  }
+
   @Test func theReviewLinkOpensTheWholeDeckInAnyPeriod() {
     let app = AppModel(store: InMemoryLedger())
     app.period = .month(YearMonth(2026, 9))
