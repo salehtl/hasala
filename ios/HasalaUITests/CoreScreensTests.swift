@@ -418,7 +418,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: uiWait), "the keyboard stayed up")
     try audit(app)
 
-    let field = app.searchFields["Ask about your money"]
+    let field = app.searchFields.firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     type("carre", into: field)
     let result = element(app, "search.txn.carrefour")

@@ -5,21 +5,66 @@ import os
 
 enum AskSearch {
   static func vocabulary(_ s: LedgerState, now: LocalDateTime) -> SearchVocabulary {
+    let d = now.date
+    return SearchVocabulary(
+      today: "\(weekdays[d.weekday]) \(d.day) \(d.yearMonth.name) \(d.year)",
+      categories: s.categories.filter { !$0.archived }.map { .init(id: $0.id, name: $0.name) },
+      merchants: merchantCounts(s).map(\.name))
+  }
+
+  static func merchantCounts(_ s: LedgerState) -> [(name: String, count: Int)] {
     var counts: [String: Int] = [:]
     var order: [String] = []
     for t in s.txns.sorted(by: { $0.postedAt > $1.postedAt }) where !t.archived {
       if counts[t.merchant] == nil { order.append(t.merchant) }
       counts[t.merchant, default: 0] += 1
     }
-    let merchants = order.enumerated().sorted { a, b in
+    return order.enumerated().sorted { a, b in
       let (ca, cb) = (counts[a.element] ?? 0, counts[b.element] ?? 0)
       return ca == cb ? a.offset < b.offset : ca > cb
-    }.map(\.element)
-    let d = now.date
-    return SearchVocabulary(
-      today: "\(weekdays[d.weekday]) \(d.day) \(d.yearMonth.name) \(d.year)",
-      categories: s.categories.filter { !$0.archived }.map { .init(id: $0.id, name: $0.name) },
-      merchants: merchants)
+    }.map { ($0.element, counts[$0.element] ?? 0) }
+  }
+
+  static func merchantChoices(_ s: LedgerState, excluding taken: [String]) -> [(name: String, count: Int)] {
+    merchantCounts(s).filter { c in
+      !c.name.trimmedSpaces.isEmpty && !taken.contains { $0.caseInsensitiveCompare(c.name) == .orderedSame }
+    }
+  }
+
+  static func countLabel(_ n: Int) -> String {
+    "\(MoneyFormat.count(n)) transaction\(n == 1 ? "" : "s")"
+  }
+
+  static func words(_ q: String) -> [String] {
+    SearchText.fold(q).lowercased().split { !($0.isLetter || $0.isNumber) }.map(String.init)
+  }
+
+  static func mentions(_ q: String, _ name: String) -> Bool {
+    let n = words(name)
+    let w = words(q)
+    guard !n.isEmpty, w.count >= n.count else { return false }
+    return (0...(w.count - n.count)).contains { Array(w[$0..<($0 + n.count)]) == n }
+  }
+
+  static func mentionedNames(in q: String, _ s: LedgerState) -> [String] {
+    let names = merchantCounts(s).map(\.name) + s.categories.filter { !$0.archived }.map(\.name)
+    var seen = Set<String>()
+    return names.filter { mentions(q, $0) && seen.insert($0.lowercased()).inserted }
+  }
+
+  static func matchedNote(_ q: String, merchants n: Int) -> String {
+    "Hasala matched “\(Bidi.isolate(q))” to \(MoneyFormat.count(n)) merchant\(n == 1 ? "" : "s"). It may have missed some."
+  }
+
+  static func seeAllLabel(_ a: AskAnswer, _ s: LedgerState) -> String? {
+    guard a.activity != nil else { return nil }
+    let f = a.filter
+    if f.merchants.isEmpty, let c = s.category(f.category) {
+      return "\(Bidi.isolate(c.name)) in Activity"
+    }
+    guard let m = f.merchants.first else { return nil }
+    let widens = f.category != nil || f.period != nil || f.direction != nil || f.minimumFils != nil || f.maximumFils != nil
+    return widens ? "All \(Bidi.isolate(m)) transactions" : "See all"
   }
 
   static let weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -82,6 +127,7 @@ final class AskSearchModel {
   }
 
   private(set) var phase: Phase = .idle
+  private(set) var added: [String] = []
   private static let log = Logger(subsystem: "app.hasala.ios", category: "search")
   @ObservationIgnored let parser: SearchQueryParser
   @ObservationIgnored private(set) var available: Bool
@@ -119,21 +165,49 @@ final class AskSearchModel {
     let parsed = await parser.parse(q, vocabulary: AskSearch.vocabulary(s, now: now))
     if Task.isCancelled { return }
     switch parsed {
-    case .intent(let i): phase = .answered(q, AskSearch.answer(i, s, now: now))
+    case .intent(let i):
+      added = []
+      phase = .answered(q, AskSearch.answer(i, s, now: now))
     case .keywordsOnly(let why):
       Self.log.info("ask search fell back: \(String(describing: why), privacy: .public)")
       phase = .keywords(q, why)
     }
   }
 
-  func remove(_ part: AskScope.Part, _ s: LedgerState, now: LocalDateTime? = nil) {
-    guard case .answered(let q, let a) = phase else { return }
+  func fallback(for q: String) -> SearchFallback? {
+    if case .keywords(let asked, let why) = phase, asked == q { return why }
+    return nil
+  }
+
+  @discardableResult
+  func remove(_ part: AskScope.Part, _ s: LedgerState, now: LocalDateTime? = nil) -> Bool {
+    guard case .answered(let q, let a) = phase else { return false }
     let f = a.filter.removing(part)
-    phase = f.isEmpty ? .keywords(q, .nothingUnderstood) : .answered(q, AskEngine.answer(s, filter: f, today: now?.date))
+    if f.isEmpty {
+      phase = .idle
+      added = []
+      return false
+    }
+    phase = .answered(q, AskEngine.answer(s, filter: f, today: now?.date))
+    return true
   }
 
   func clearScope() {
-    guard case .answered(let q, _) = phase else { return }
-    phase = .keywords(q, .nothingUnderstood)
+    guard case .answered = phase else { return }
+    phase = .idle
+    added = []
+  }
+
+  func add(merchant m: String, _ s: LedgerState, now: LocalDateTime? = nil) {
+    guard case .answered(let q, let a) = phase,
+          !a.filter.merchants.contains(where: { $0.caseInsensitiveCompare(m) == .orderedSame }) else { return }
+    var f = a.filter
+    f.merchants.append(m)
+    added.append(m)
+    phase = .answered(q, AskEngine.answer(s, filter: f, today: now?.date))
+  }
+
+  func inferredMerchants(_ a: AskAnswer, _ q: String) -> [String] {
+    a.filter.merchants.filter { m in !AskSearch.mentions(q, m) && !added.contains(m) }
   }
 }

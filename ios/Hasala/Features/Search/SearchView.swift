@@ -1,9 +1,11 @@
+import CoreCategorize
 import HasalaDesign
+import HasalaModel
 import HasalaModels
 import SwiftUI
 
 /// Search · Ready and Results as you type (Paper "Search · Ready", "Search · Results as you
-/// type (carre)"), in every build; no answers yet (plan D.2). The header's search opens it as
+/// type (carre)"), in every build. The header's search opens it as
 /// a sheet with the field focused; while it is empty, "Try asking" and the recent searches; as
 /// you type, the top result, the matching transactions, the categories and the rules, the typed part in
 /// bold. Everything is found in this iPhone's own ledger (`ActivityEngine`'s search): no
@@ -15,14 +17,13 @@ struct SearchView: View {
   @State private var searching = false
   @State private var ask = AskSearchModel()
   @State private var opened: OpenedTransaction?
+  @State private var addingMerchant = false
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  /// Paper's "Try asking" rows, each searching for the word it is about until Search answers
-  /// questions (the fourth row, "Compare October with September", needs an answer card).
   static let suggestions: [(question: String, term: String)] = [
     ("How much on dining this month?", "dining"),
-    ("When is rent due?", "rent"),
+    ("How much on rent this year?", "rent"),
     ("What did I spend at Carrefour?", "carrefour"),
   ]
 
@@ -30,6 +31,22 @@ struct SearchView: View {
   /// (no rent, never at Carrefour) would open "No matches", so it is not offered.
   static func suggestions(in s: LedgerState, now: LocalDateTime) -> [(question: String, term: String)] {
     suggestions.filter { !SearchResults($0.term, s, now: now).isEmpty }
+  }
+
+  static func prompt(available: Bool) -> String {
+    available ? "Ask about your money" : "Search merchants and categories"
+  }
+
+  static func readyTitle(available: Bool) -> String {
+    available ? "Try asking" : "Try searching"
+  }
+
+  static func nothingFoundCopy(_ q: String, reason: SearchFallback?) -> (title: String, body: String) {
+    let title = "No matches for “\(Bidi.isolate(q))”"
+    if case .unavailable = reason {
+      return (title, "Questions need Apple Intelligence on this iPhone. Try a merchant name or a category.")
+    }
+    return (title, "Try a merchant name or a category. Bank alerts usually spell merchant names in English.")
   }
 
   var body: some View {
@@ -55,7 +72,7 @@ struct SearchView: View {
       // drop the title's words: on a CI simulator the hidden bar left its large title drawn
       // over the top result, where an empty title leaves nothing to see.
       .navigationTitle(typed.isEmpty ? "Search" : "")
-      .searchable(text: $query, isPresented: $searching, prompt: "Ask about your money")
+      .searchable(text: $query, isPresented: $searching, prompt: Self.prompt(available: ask.available))
       .searchPresentationToolbarBehavior(typed.isEmpty ? .avoidHidingContent : .automatic)
       // Merchant names and words as typed ("carre", "talabat"): no capital, no correction,
       // so no QuickType bar over the keys either (Paper's keyboard has none).
@@ -70,6 +87,14 @@ struct SearchView: View {
     }
     .sheet(item: $opened, onDismiss: { app.router.transaction = [] }) { txn in
       TransactionHost(app: app, id: txn.id)
+    }
+    .sheet(isPresented: $addingMerchant) {
+      AddMerchantSheet(
+        choices: AskSearch.merchantChoices(
+          app.store.state, excluding: ask.answer(for: typed)?.filter.merchants ?? [])
+      ) { m in
+        ask.add(merchant: m, app.store.state, now: app.store.now)
+      }
     }
     .onAppear {
       searching = true
@@ -94,14 +119,15 @@ struct SearchView: View {
       let asks = Self.suggestions(in: app.store.state, now: app.store.now)
       if !asks.isEmpty {
         VStack(alignment: .leading, spacing: 10) {
-          overline("Try asking")
+          overline(Self.readyTitle(available: ask.available))
           VStack(spacing: 0) {
             ForEach(Array(asks.enumerated()), id: \.offset) { i, s in
               if i > 0 { HColor.borderSubtle.frame(height: 1).padding(.leading, 46).accessibilityHidden(true) }
               Button { query = ask.available ? s.question : s.term } label: {
                 HStack(spacing: 12) {
-                  HIconView(.chat, size: 18, color: HColor.actionAccent, strokeWidth: 2)
-                  Text(s.question).hType(.callout).foregroundStyle(HColor.textPrimary)
+                  HIconView(ask.available ? .chat : .magnifier, size: 18, color: HColor.actionAccent, strokeWidth: 2)
+                  Text(ask.available ? s.question : s.term.capitalized).hType(.callout)
+                    .foregroundStyle(HColor.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 16)
@@ -162,11 +188,14 @@ struct SearchView: View {
 
   @ViewBuilder
   private func results(_ q: String) -> some View {
-    let found = SearchResults(q, app.store.state, now: app.store.now)
     let answer = ask.answer(for: q)
     let thinking = ask.isThinking(about: q)
+    let fallback = ask.fallback(for: q)
+    let found = SearchResults.find(
+      q, app.store.state, now: app.store.now, aliases: ArabicAlias.bundled, keywordFallback: fallback != nil)
+    let marks = found.shownFor.isEmpty ? [q] : found.shownFor
     if found.isEmpty && answer == nil && !thinking {
-      nothingFound(q)
+      nothingFound(q, reason: fallback)
     } else {
       VStack(alignment: .leading, spacing: 14) {
         if let answer {
@@ -174,10 +203,16 @@ struct SearchView: View {
         } else if thinking {
           thinkingRow
         }
+        if !found.shownFor.isEmpty && answer == nil {
+          Text(verbatim: SearchResults.shownForLine(found.shownFor)).hType(.subheadline)
+            .foregroundStyle(HColor.textOnWashSecondary)
+            .padding(.leading, 4)
+            .accessibilityIdentifier("search.shownFor")
+        }
         if let top = found.top {
           VStack(alignment: .leading, spacing: 8) {
             overline("Top result")
-            topResult(top, q)
+            topResult(top, in: found.rows, q, marks: marks)
           }
         }
         if !found.rows.isEmpty {
@@ -190,10 +225,29 @@ struct SearchView: View {
                   SearchHistory.shared.add(q)
                   open(row.id)
                 } label: {
-                  resultRow(row, q, detail: row.detail)
+                  resultRow(row, marks, detail: row.detail)
                 }
                 .buttonStyle(HRowPressStyle())
                 .accessibilityIdentifier("search.txn.\(row.id)")
+              }
+              if let text = found.activityText(for: q) {
+                HDivider(inset: .disc68)
+                Button {
+                  SearchHistory.shared.add(q)
+                  ActivityRequests.shared.show(TxnFilter(text: text), in: app)
+                } label: {
+                  HStack(spacing: 12) {
+                    Text(SearchResults.seeAllLabel(found.rows.count)).hType(.callout.weight(.medium))
+                      .foregroundStyle(HColor.textLink)
+                      .frame(maxWidth: .infinity, alignment: .leading)
+                    HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+                  }
+                  .padding(.horizontal, 16)
+                  .frame(minHeight: HSpacing.targetMinimum)
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(HRowPressStyle())
+                .accessibilityIdentifier("search.seeAll")
               }
             }
           }
@@ -211,7 +265,7 @@ struct SearchView: View {
                   HStack(spacing: 12) {
                     CategoryDisc(hue: c.hue, icon: c.glyph.icon)
                     VStack(alignment: .leading, spacing: 1) {
-                      highlighted(c.name, q).hType(.callout)
+                      highlighted(c.name, marks).hType(.callout)
                       Text("Open in Activity").hType(.footnote).foregroundStyle(HColor.textSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -242,7 +296,8 @@ struct SearchView: View {
                       .overlay { Circle().strokeBorder(HColor.borderSubtle, lineWidth: 1) }
                       .overlay { HIconView(.rule, size: 20, color: HColor.iconPrimary) }
                     VStack(alignment: .leading, spacing: 1) {
-                      Text("\(highlighted(r.pattern, q))\(Text("  →  \(r.category)"))").hType(.callout)
+                      Text("\(Text(verbatim: "\u{2068}"))\(highlighted(r.pattern, marks))\(Text(verbatim: "\u{2069}  →  \(Bidi.isolate(r.category))"))")
+                        .hType(.callout)
                         .foregroundStyle(HColor.textPrimary)
                       Text("\(r.matches) match\(r.matches == 1 ? "" : "es")").hType(.footnote)
                         .foregroundStyle(HColor.textSecondary)
@@ -303,10 +358,12 @@ struct SearchView: View {
               .accessibilityIdentifier("search.answer.notCounted")
           }
         }
-        if !a.scope.isEmpty {
+        if !a.scope.isEmpty || !a.filter.merchants.isEmpty {
           FlowLayout(spacing: 6) {
             ForEach(a.scope) { chip in
-              Button { ask.remove(chip.part, app.store.state, now: app.store.now) } label: {
+              Button {
+                if !ask.remove(chip.part, app.store.state, now: app.store.now) { query = "" }
+              } label: {
                 HStack(spacing: 4) {
                   Text(chip.label).hType(.caption1).foregroundStyle(HColor.textPrimary)
                   HIconView(.close, size: 10, color: HColor.textSecondary, strokeWidth: 2.4)
@@ -315,22 +372,47 @@ struct SearchView: View {
                 .padding(.trailing, 8)
                 .frame(minHeight: 28)
                 .background(HColor.chipSurfaceOnCard, in: Capsule())
-                .contentShape(Capsule().inset(by: -6))
+                .contentShape(Capsule().inset(by: -8))
               }
               .buttonStyle(HPressStyle(scales: false))
               .accessibilityLabel("Remove \(chip.label) filter")
             }
-            if a.scope.count > 1 {
-              Button("Clear all") { ask.clearScope() }
-                .buttonStyle(.plain)
-                .hType(.caption1.weight(.medium))
-                .foregroundStyle(HColor.textLink)
+            if !a.filter.merchants.isEmpty {
+              Button { addingMerchant = true } label: {
+                HStack(spacing: 4) {
+                  HIconView(.add, size: 10, color: HColor.textLink, strokeWidth: 2.4)
+                  Text("Add merchant").hType(.caption1.weight(.medium)).foregroundStyle(HColor.textLink)
+                }
+                .padding(.leading, 8)
+                .padding(.trailing, 10)
                 .frame(minHeight: 28)
-                .accessibilityIdentifier("search.answer.clear")
+                .overlay { Capsule().strokeBorder(HColor.borderSubtle, lineWidth: 1) }
+                .contentShape(Capsule().inset(by: -8))
+              }
+              .buttonStyle(HPressStyle(scales: false))
+              .accessibilityIdentifier("search.answer.addMerchant")
+            }
+            if a.scope.count > 1 {
+              Button {
+                ask.clearScope()
+                query = ""
+              } label: {
+                Text("Clear all").hType(.caption1.weight(.medium)).foregroundStyle(HColor.textLink)
+                  .frame(minHeight: 28)
+                  .contentShape(Rectangle().inset(by: -8))
+              }
+              .buttonStyle(.plain)
+              .accessibilityIdentifier("search.answer.clear")
             }
           }
           .accessibilityElement(children: .contain)
           .accessibilityIdentifier("search.answer.scope")
+        }
+        let inferred = ask.inferredMerchants(a, q)
+        if !inferred.isEmpty {
+          Text(verbatim: AskSearch.matchedNote(q, merchants: inferred.count)).hType(.caption1)
+            .foregroundStyle(HColor.textSecondary)
+            .accessibilityIdentifier("search.answer.matched")
         }
         HStack(spacing: 6) {
           HIconView(.lock, size: 12, color: HColor.textSecondary, strokeWidth: 2)
@@ -351,15 +433,17 @@ struct SearchView: View {
         HStack(alignment: .firstTextBaseline) {
           overline("Transactions")
           Spacer()
-          if let filter = a.activity {
-            Button("See all") {
+          if let filter = a.activity, let label = AskSearch.seeAllLabel(a, app.store.state) {
+            Button {
               SearchHistory.shared.add(q)
               ActivityRequests.shared.show(filter, in: app)
+            } label: {
+              Text(verbatim: label).hType(.subheadline.weight(.medium)).foregroundStyle(HColor.textLink)
+                .multilineTextAlignment(.trailing)
+                .frame(minHeight: HSpacing.targetMinimum)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
             .accessibilityIdentifier("search.answer.seeAll")
           }
         }
@@ -370,7 +454,7 @@ struct SearchView: View {
               SearchHistory.shared.add(q)
               open(row.id)
             } label: {
-              resultRow(row, "", detail: row.detail)
+              resultRow(row, [], detail: row.detail)
             }
             .buttonStyle(HRowPressStyle())
             .accessibilityIdentifier("search.answer.txn.\(row.id)")
@@ -380,70 +464,55 @@ struct SearchView: View {
     }
   }
 
-  /// The best match: disc, the merchant with the typed part bold, its last amount and day,
-  /// and "See all" (Activity searching the same words).
-  private func topResult(_ row: MiniTxnRow, _ q: String) -> some View {
-    let summary = HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
-      CategoryDisc(hue: row.hue, icon: row.glyph.icon)
-      VStack(alignment: .leading, spacing: 1) {
-        highlighted(row.merchant, q).hType(.body).foregroundStyle(HColor.textPrimary)
-        topResultLine(row)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    let seeAll = Button("See all") {
+  private func topResult(_ top: MiniTxnRow, in rows: [MiniTxnRow], _ q: String, marks: [String]) -> some View {
+    let summary = TopResultSummary(top, in: rows)
+    return Button {
       SearchHistory.shared.add(q)
-      ActivityRequests.shared.show(TxnFilter(text: q), in: app)
-    }
-    .buttonStyle(.pill(.secondary, size: .small))
-    .accessibilityIdentifier("search.seeAll")
-    return Group {
-      if typeSize.isAccessibilitySize {
-        VStack(alignment: .leading, spacing: 12) {
-          summary
-          seeAll
+      ActivityRequests.shared.show(TxnFilter(text: top.merchant), in: app)
+    } label: {
+      HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+        CategoryDisc(hue: top.hue, icon: top.glyph.icon)
+        VStack(alignment: .leading, spacing: 1) {
+          highlighted(top.merchant, marks).hType(.body).foregroundStyle(HColor.textPrimary)
+          topResultLine(summary)
         }
-      } else {
-        HStack(spacing: 12) {
-          summary
-          seeAll
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
       }
+      .padding(.vertical, 14)
+      .padding(.leading, 14)
+      .padding(.trailing, 12)
+      .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+      .contentShape(RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
     }
-    .padding(.vertical, 14)
-    .padding(.leading, 14)
-    .padding(.trailing, 12)
-    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.brief, style: .continuous))
+    .buttonStyle(HPressStyle(scales: false))
     .hElevation(.nearFar)
-    .accessibilityElement(children: .contain)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(top.merchant), \(summary.spoken(hidden: app.amountsHidden))")
+    .accessibilityHint("Opens in Activity")
+    .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("search.top")
   }
 
-  /// "Groceries · 342.15 on Fri 9 Oct": one line of words with the figure in the rounded
-  /// bold face, dots when amounts are hidden.
-  private func topResultLine(_ row: MiniTxnRow) -> some View {
-    let parts = row.detail.components(separatedBy: " · ")
-    let what = "\(parts.first ?? "") · ", when = " on \(parts.last ?? "")"
-    let digits = app.amountsHidden
-      ? MoneyFormat.hidden(count: 3)
-      : row.notCounted ? "Not counted"
-      : (row.estimate ? "\u{2248} " : "") + (row.isIncome ? "+" : "") + MoneyFormat.string(row.amount.minor)
-    let figure = Text(verbatim: digits)
-      .font(.system(.footnote, design: .rounded, weight: .bold).monospacedDigit())
-      .foregroundStyle(HColor.textPrimary)
-    return Text("\(Text(verbatim: what).foregroundStyle(HColor.textSecondary))\(figure)\(Text(verbatim: when).foregroundStyle(HColor.textSecondary))")
-      .hType(.footnote)
-      .accessibilityLabel(
-        row.notCounted && !app.amountsHidden
-          ? "\(what)Not counted\(when)"
-          : MoneyPhrase([.text(what + (row.estimate ? "about " : "")), .amount(row.amount), .text(when)]).spoken(hidden: app.amountsHidden))
+  private func topResultLine(_ summary: TopResultSummary) -> some View {
+    let words = Text(verbatim: summary.countText).foregroundStyle(HColor.textSecondary)
+    let line: Text
+    if let figure = summary.figure(hidden: app.amountsHidden) {
+      let bold = Text(verbatim: figure)
+        .font(.system(.footnote, design: .rounded, weight: .bold).monospacedDigit())
+        .foregroundStyle(HColor.textPrimary)
+      line = Text("\(words)\(Text(verbatim: " · ").foregroundStyle(HColor.textSecondary))\(bold)")
+    } else {
+      line = words
+    }
+    return line.hType(.footnote)
   }
 
-  private func resultRow(_ row: MiniTxnRow, _ q: String, detail: String) -> some View {
+  private func resultRow(_ row: MiniTxnRow, _ marks: [String], detail: String) -> some View {
     HStack(spacing: 12) {
       CategoryDisc(hue: row.hue, icon: row.glyph.icon)
       VStack(alignment: .leading, spacing: 1) {
-        highlighted(row.merchant, q).hType(.callout).foregroundStyle(HColor.textPrimary)
+        highlighted(row.merchant, marks).hType(.callout).foregroundStyle(HColor.textPrimary)
         if let project = row.project {
           ProjectChipFlow(project.name) { Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary) }
         } else {
@@ -468,8 +537,10 @@ struct SearchView: View {
   }
 
   /// The typed part in bold, the rest regular (Paper "Carre" + "four").
-  private func highlighted(_ text: String, _ q: String) -> Text {
-    guard !q.isEmpty, let r = text.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) else {
+  private func highlighted(_ text: String, _ marks: [String]) -> Text {
+    guard let r = marks.lazy.filter({ !$0.isEmpty })
+      .compactMap({ text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) }).first
+    else {
       return Text(text)
     }
     let bold = Font.custom(HWeight.bold.interFace, size: 16, relativeTo: .callout)
@@ -477,14 +548,15 @@ struct SearchView: View {
   }
 
   /// No matches (Paper page 17 "NothingFound", Proposed): echo the query, say what to try.
-  private func nothingFound(_ q: String) -> some View {
-    VStack(spacing: 10) {
+  private func nothingFound(_ q: String, reason: SearchFallback?) -> some View {
+    let copy = Self.nothingFoundCopy(q, reason: reason)
+    return VStack(spacing: 10) {
       Circle().fill(HColor.surfacePrimary).frame(width: 56, height: 56)
         .overlay { HIconView(.magnifier, size: 26, color: HColor.iconSecondary) }
         .accessibilityHidden(true)
-      Text("No matches for “\(q)”").hType(HType.title3.weight(.bold)).foregroundStyle(HColor.textPrimary)
+      Text(verbatim: copy.title).hType(HType.title3.weight(.bold)).foregroundStyle(HColor.textPrimary)
         .multilineTextAlignment(.center)
-      Text("Try a merchant name or a category. Bank alerts usually spell merchant names in English.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+      Text(verbatim: copy.body).hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
     }
     .padding(.vertical, 32)
@@ -500,6 +572,118 @@ private struct OpenedTransaction: Identifiable {
   let id: TxnID
 }
 
+private struct AddMerchantSheet: View {
+  let choices: [(name: String, count: Int)]
+  let pick: (String) -> Void
+  @State private var filter = ""
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    let shown = filter.trimmedSpaces.isEmpty ? choices : choices.filter { SearchText.contains($0.name, filter.trimmedSpaces) }
+    NavigationStack {
+      List {
+        ForEach(shown, id: \.name) { c in
+          Button {
+            pick(c.name)
+            dismiss()
+          } label: {
+            HStack(spacing: 12) {
+              Text(c.name).hType(.callout).foregroundStyle(HColor.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+              Text(AskSearch.countLabel(c.count)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+                .lineLimit(1)
+                .fixedSize()
+            }
+            .frame(minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("search.addMerchant.\(c.name)")
+        }
+      }
+      .navigationTitle("Add merchant")
+      .navigationBarTitleDisplayMode(.inline)
+      .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .always), prompt: "Merchants")
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
+      .toolbar { SheetCloseButton(identifier: "search.addMerchant.close") { dismiss() } }
+    }
+  }
+}
+
+struct TopResultSummary: Equatable {
+  let merchant: String
+  let count: Int
+  let total: Money?
+  let isIncome: Bool
+  let estimate: Bool
+
+  init(_ top: MiniTxnRow, in rows: [MiniTxnRow]) {
+    let same = rows.filter { $0.merchant == top.merchant }
+    merchant = top.merchant
+    count = max(same.count, 1)
+    let currencies = Set(same.map(\.amount.currency))
+    let directions = Set(same.map(\.isIncome))
+    if !same.isEmpty, currencies.count == 1, directions.count == 1, !same.contains(where: \.notCounted),
+       let currency = currencies.first {
+      total = Money(minor: Fils.sum(same.map(\.amount.minor)), currency: currency)
+    } else {
+      total = nil
+    }
+    isIncome = same.first?.isIncome ?? top.isIncome
+    estimate = same.contains(where: \.estimate)
+  }
+
+  var countText: String { AskSearch.countLabel(count) }
+
+  func figure(hidden: Bool) -> String? {
+    guard let total else { return nil }
+    if hidden { return MoneyFormat.hidden(count: 3) }
+    let code = total.currency == "AED" ? "" : total.currency + " "
+    return (estimate ? "\u{2248} " : "") + (isIncome ? "+" : "") + code + MoneyFormat.string(total.minor)
+  }
+
+  func line(hidden: Bool) -> String {
+    figure(hidden: hidden).map { "\(countText) · \($0)" } ?? countText
+  }
+
+  func spoken(hidden: Bool) -> String {
+    guard let total else { return countText }
+    return MoneyPhrase([.text("\(countText), \(estimate ? "about " : "")\(isIncome ? "received " : "")"), .amount(total)])
+      .spoken(hidden: hidden)
+  }
+}
+
+enum ArabicAlias {
+  nonisolated static let bundled: [DictEntry] = AccountRuntime.dictionary.entries.filter { $0.pattern.contains(where: isArabic) }
+
+  nonisolated static func isArabic(_ c: Character) -> Bool {
+    c.unicodeScalars.contains { s in
+      (0x0600...0x06FF).contains(s.value) || (0x0750...0x077F).contains(s.value)
+        || (0xFB50...0xFDFF).contains(s.value) || (0xFE70...0xFEFF).contains(s.value)
+    }
+  }
+
+  static let variants: [Character: Character] = ["\u{0629}": "\u{0647}", "\u{0649}": "\u{064A}"]
+
+  static func fold(_ s: String) -> String {
+    String(SearchText.fold(s).filter { $0 != "\u{0640}" }.map { variants[$0] ?? $0 })
+  }
+
+  static func names(for q: String, _ entries: [DictEntry]) -> [String] {
+    let t = fold(q.trimmedSpaces)
+    guard t.filter(isArabic).count >= 2 else { return [] }
+    var seen = Set<String>()
+    return entries.compactMap { e in
+      guard let d = e.display, e.pattern.contains(where: isArabic) else { return nil }
+      let p = fold(e.pattern)
+      let options: String.CompareOptions = [.diacriticInsensitive, .widthInsensitive]
+      guard p.range(of: t, options: options) != nil || t.range(of: p, options: options) != nil else { return nil }
+      return seen.insert(d.lowercased()).inserted ? d : nil
+    }
+  }
+}
+
 /// What a typed query finds in the ledger, across months: the transactions (newest first),
 /// the categories by name, and the rules whose words contain it.
 struct SearchResults {
@@ -513,6 +697,7 @@ struct SearchResults {
   let rows: [MiniTxnRow]
   let categories: [CategoryOption]
   let rules: [RuleMatch]
+  private(set) var shownFor: [String] = []
 
   init(_ q: String, _ s: LedgerState, now: LocalDateTime) {
     let found = ActivityEngine.snapshot(s, now: now, filter: TxnFilter(text: q)).days.flatMap(\.rows)
@@ -534,6 +719,55 @@ struct SearchResults {
       return RuleMatch(id: r.id, pattern: p.lowercased(), category: c.name,
                        matches: s.txns.count { r.matches($0.merchant) })
     }
+  }
+
+  init(terms: [String], _ s: LedgerState, now: LocalDateTime, shownFor: [String]) {
+    let parts = terms.map { SearchResults($0, s, now: now) }
+    var rowIDs = Set<String>(), categoryIDs = Set<CategoryID>(), ruleIDs = Set<RuleID>()
+    rows = parts.flatMap(\.rows).filter { rowIDs.insert($0.id).inserted }
+    categories = parts.flatMap(\.categories).filter { categoryIDs.insert($0.id).inserted }
+    rules = parts.flatMap(\.rules).filter { ruleIDs.insert($0.id).inserted }
+    self.shownFor = shownFor
+  }
+
+  static func find(
+    _ q: String, _ s: LedgerState, now: LocalDateTime, aliases entries: [DictEntry], keywordFallback: Bool
+  ) -> SearchResults {
+    let plain = SearchResults(q, s, now: now)
+    let aliases = ArabicAlias.names(for: q, entries).filter { !SearchResults($0, s, now: now).isEmpty }
+    if !aliases.isEmpty {
+      let wider = SearchResults(terms: [q] + aliases, s, now: now, shownFor: aliases)
+      if wider.rows.count > plain.rows.count || (plain.isEmpty && !wider.isEmpty) { return wider }
+    }
+    if plain.isEmpty && keywordFallback {
+      let names = AskSearch.mentionedNames(in: q, s)
+      if !names.isEmpty {
+        let named = SearchResults(terms: names, s, now: now, shownFor: names)
+        if !named.isEmpty { return named }
+      }
+    }
+    return plain
+  }
+
+  static func shownForLine(_ names: [String]) -> String {
+    let isolated = names.map(Bidi.isolate)
+    let list =
+      switch isolated.count {
+      case 0, 1: isolated.first ?? ""
+      case 2: "\(isolated[0]) and \(isolated[1])"
+      default: isolated.dropLast().joined(separator: ", ") + " and " + isolated[isolated.count - 1]
+      }
+    return "Showing results for \(list)"
+  }
+
+  static func seeAllLabel(_ count: Int) -> String {
+    "See all \(MoneyFormat.count(count)) in Activity"
+  }
+
+  func activityText(for q: String) -> String? {
+    guard !rows.isEmpty else { return nil }
+    if shownFor.isEmpty { return q }
+    return shownFor.count == 1 ? shownFor[0] : nil
   }
 
   /// The merchant match people most likely meant: the newest one.
