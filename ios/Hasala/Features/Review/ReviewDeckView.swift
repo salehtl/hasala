@@ -1047,7 +1047,7 @@ struct ReviewCardView<Actions: View>: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("review.copy")
-      HStack(spacing: 8) {
+      HStack(spacing: 12) {
         Button("Keep both", action: keepBoth)
           .buttonStyle(.pill(.secondary, size: .small))
           .accessibilityIdentifier("review.keepBoth")
@@ -1074,7 +1074,7 @@ struct ReviewCardView<Actions: View>: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("review.sameText")
-      ReflowingRow(spacing: 8) {
+      ReflowingRow(spacing: 12) {
         Button("Keep both, sort it", action: keepText)
           .buttonStyle(.pill(.secondary, size: .small))
           .accessibilityIdentifier("review.keepText")

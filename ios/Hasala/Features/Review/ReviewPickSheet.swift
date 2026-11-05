@@ -67,7 +67,7 @@ struct ReviewPickSheet: View {
     // home indicator; the detent is exactly the content.
     .ignoresSafeArea(.container, edges: typeSize.isAccessibilitySize ? [] : .bottom)
     .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? estimatedHeight)])
-    .presentationDragIndicator(.visible)
+    .presentationDragIndicator(.hidden)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
     .onChange(of: name) { _, new in
@@ -427,7 +427,7 @@ struct ReviewReasonSheet: View {
       .toolbar(.hidden, for: .navigationBar)
     }
     .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(contentHeight ?? 600)])
-    .presentationDragIndicator(.visible)
+    .presentationDragIndicator(.hidden)
     .presentationBackground(HColor.sheetSurface)
     .presentationCornerRadius(HRadius.sheet)
   }

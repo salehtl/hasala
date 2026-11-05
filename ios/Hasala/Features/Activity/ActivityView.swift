@@ -76,6 +76,7 @@ struct ActivityFilterBar: View {
 
   private var pill: some View {
     PeriodPill(snap.period.title, tinted: !snap.isThisMonth) { model.choosePeriod() }
+      .hContrastEdge(Capsule())
       .accessibilityIdentifier("activity.period")
   }
 
@@ -517,12 +518,8 @@ struct ExportLink: View {
         ShareLink(item: file, preview: SharePreview(file.name)) { Text(title) }
           .buttonStyle(.pill(.onGrouped, fill: true, leadingIcon: .download))
       } else {
-        ShareLink(item: file, preview: SharePreview(file.name)) {
-          Text(title).hType(.textButton).foregroundStyle(HColor.textLink)
-            .frame(minHeight: HSpacing.targetMinimum)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        ShareLink(item: file, preview: SharePreview(file.name)) { Text(title) }
+          .buttonStyle(.inlineLink)
       }
     }
     .disabled(rows.isEmpty)

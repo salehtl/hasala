@@ -51,7 +51,7 @@ struct AddTransactionSheet: View {
             .accessibilityValue(model.entry.spoken())
             .accessibilityIdentifier("add.amount")
           field("Merchant") {
-            TextField("Where or who", text: $model.merchant)
+            TextField("Where or who", text: $model.merchant, prompt: .fieldPrompt("Where or who"))
               .hType(.body)
               .foregroundStyle(HColor.fieldText)
               .textInputAutocapitalization(.words)
