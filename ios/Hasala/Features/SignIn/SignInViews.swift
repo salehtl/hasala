@@ -12,6 +12,7 @@ import UIKit
 /// the password box with one line under it; the email is not marked, since the answer
 /// doesn't say which was wrong. What this build can't do becomes a support link.
 struct SignInView: View {
+  @Environment(\.hBiometry) private var biometry
   @Bindable var model: SignInModel
   /// What this build can do (`AccountSession.capabilities`): a missing sign-in method is
   /// not offered, and a missing reset or recovery becomes a support email link.
@@ -39,7 +40,7 @@ struct SignInView: View {
     AccountScreen(title: "Welcome back", subtitle: "Sign in to Hasala.", back: .system) {
       VStack(alignment: .leading, spacing: 12) {
         if passkey { passkeyGroup }
-        if passkey && password { OrDivider(label: "or use your email") }
+        if passkey && password { OrDivider(label: "or use your password") }
         if password {
           VStack(alignment: .leading, spacing: 12) { passwordFields }
             .id(Self.formID)
@@ -47,10 +48,11 @@ struct SignInView: View {
       }
     } footer: {
       if capabilities.contains(.recoverAccess) {
-        SecondaryLink(title: "Can't get in at all? Recover your account", identifier: "signIn.recover", action: onRecover)
+        SecondaryLink(title: "Can't get in? Recover your account", identifier: "signIn.recover", action: onRecover)
       }
       if !capabilities.isSuperset(of: [.resetPassword, .recoverAccess]) {
-        SupportLink(lead: "Trouble signing in?", identifier: "signIn.support")
+        WebLink(title: "Trouble signing in? Email \(BuildSurface.supportEmail)", url: BuildSurface.supportMail.absoluteString,
+                identifier: "signIn.support")
       }
     }
     .revealsOnKeyboard(Self.formID)
@@ -58,11 +60,11 @@ struct SignInView: View {
 
   private var passkeyGroup: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Button("Sign in with Face ID") {
+      Button(biometry.signInTitle) {
         focus = nil
         Task { await model.signInWithPasskey() }
       }
-      .buttonStyle(.pill(.primary, fill: true, loading: model.signingIn == .passkey, leadingIcon: .faceID))
+      .buttonStyle(.pill(.primary, fill: true, loading: model.signingIn == .passkey, leadingIcon: biometry.icon))
       .disabled(model.busy && model.signingIn != .passkey)
       .accessibilityIdentifier("signIn.passkey")
       Text("Uses the passkey in your iCloud Keychain.")
@@ -80,7 +82,7 @@ struct SignInView: View {
       } else if passkeyFailure == .noCredential {
         FailureBanner(failure: passkeyFailure)
         if password {
-          Text("Use your email instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+          Text("Use your password instead.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
         }
       } else {
         FailureBanner(failure: passkeyFailure)
@@ -104,7 +106,7 @@ struct SignInView: View {
       Text("Sign in with password")
         .foregroundStyle(model.passwordSignInReady ? HColor.textPrimary : HColor.textDisabled)
     }
-    .buttonStyle(.pill(.onGrouped, fill: true, loading: model.signingIn == .password))
+    .buttonStyle(.pill(.onGrouped, fill: true, loading: model.signingIn == .password, greysWhenDisabled: true))
     .disabled(!model.passwordSignInReady || (model.busy && model.signingIn != .password))
     .accessibilityIdentifier("signIn.withPassword")
     if let other = passwordFailure, other != .wrongCredentials {
@@ -131,9 +133,9 @@ struct SignInView: View {
       HStack(spacing: 8) {
         Group {
           if passwordVisible {
-            TextField("Your password", text: $model.password)
+            TextField("", text: $model.password, prompt: .fieldPrompt("Your password"))
           } else {
-            SecureField("Your password", text: $model.password)
+            SecureField("", text: $model.password, prompt: .fieldPrompt("Your password"))
           }
         }
         .textContentType(.password)
@@ -163,6 +165,7 @@ struct SignInView: View {
       .padding(.leading, HSpacing.fieldInsetInline)
       .padding(.trailing, 8)
       .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
       .overlay {
         FieldRing(color: wrongPassword != nil ? HColor.fieldError : focus == .password ? HColor.fieldFocus : .clear)
       }
@@ -522,6 +525,7 @@ struct RecoverWordsView: View {
 /// Recover account · "Set a new way to sign in" (Paper H43): a passkey (recommended) or a
 /// password. Then "You're back in" (H5V) in its place.
 struct RecoverMethodView: View {
+  @Environment(\.hBiometry) private var biometry
   @Bindable var model: SignInModel
   var onPassword: () -> Void
   var onResult: (SignInModel.RecoveryResult) -> Void
@@ -538,11 +542,11 @@ struct RecoverMethodView: View {
       ) {
         VStack(alignment: .leading, spacing: 12) {
           if model.capabilities.contains(.recoverWithPassword) {
-            SelectionCard(icon: .faceID, hue: .sky, chip: "Recommended", title: "Use Face ID (passkey)",
+            SelectionCard(icon: biometry.icon, hue: .sky, chip: "Recommended", title: Self.passkeyTitle(biometry),
                           detail: Self.passkeyDetail,
                           selected: choice == .passkey, identifier: "recover.choosePasskey") { choice = .passkey }
           } else {
-            InfoCard(icon: .faceID, hue: .sky, title: "Use Face ID (passkey)", detail: Self.passkeyDetail)
+            InfoCard(icon: biometry.icon, hue: .sky, title: Self.passkeyTitle(biometry), detail: Self.passkeyDetail)
               .accessibilityIdentifier("recover.choosePasskey")
           }
           if model.capabilities.contains(.recoverWithPassword) {
@@ -554,7 +558,7 @@ struct RecoverMethodView: View {
         }
       } footer: {
         if choice == .passkey {
-          BusyButton(title: "Continue with Face ID", busy: model.busy, identifier: "recover.passkey") {
+          BusyButton(title: biometry.name.map { "Continue with \($0)" } ?? "Continue with your passkey", busy: model.busy, identifier: "recover.passkey") {
             Task { onResult(await model.finishRecovery(.passkey)) }
           }
         } else {
@@ -564,6 +568,10 @@ struct RecoverMethodView: View {
         WebLink(title: "What's a passkey?", url: "https://support.apple.com/102195", identifier: "recover.whatsAPasskey")
       }
     }
+  }
+
+  static func passkeyTitle(_ biometry: HBiometry) -> String {
+    biometry.name.map { "Use \($0) (passkey)" } ?? "Use a passkey"
   }
 
   static let passkeyDetail =

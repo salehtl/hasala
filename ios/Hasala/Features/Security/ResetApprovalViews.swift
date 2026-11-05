@@ -61,6 +61,7 @@ final class ResetApprovalModel {
 /// compared in constant time before any Face ID prompt (`approveReset`), and a person who
 /// can't read the new iPhone's screen can't approve it.
 struct ResetApprovalSheet: View {
+  @Environment(\.hBiometry) private var biometry
   @State private var model: ResetApprovalModel
   /// "No, that's not me": the presenter opens "Let's lock it down" once this sheet is gone.
   var onNotMe: () -> Void
@@ -128,7 +129,7 @@ struct ResetApprovalSheet: View {
         FieldErrorLine(text: message)
           .accessibilityIdentifier("approval.failure")
       }
-      Button("Yes, approve with Face ID") {
+      Button(biometry.name.map { "Yes, approve with \($0)" } ?? "Yes, approve with your passkey") {
         // The keyboard goes first, so the answer (the line) isn't hidden under it.
         codeFocused = false
         Task { await model.approve() }
@@ -152,7 +153,7 @@ struct ResetApprovalSheet: View {
           Text("The new iPhone shows a code").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
           Text("Type it here. Only say yes if it matches.").hType(.footnote).foregroundStyle(HColor.textSecondary)
         }
-        TextField("ABCD EFGH IJKL MNOP", text: $model.code)
+        TextField("", text: $model.code, prompt: .fieldPrompt("ABCD EFGH IJKL MNOP"))
           .font(.system(.body, design: .monospaced).weight(.semibold))
           .keyboardType(.asciiCapable)
           .textInputAutocapitalization(.characters)
@@ -161,6 +162,7 @@ struct ResetApprovalSheet: View {
           .padding(.horizontal, 14)
           .frame(minHeight: 48)
           .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+          .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
           .overlay { FieldRing(color: model.failure == .codeMismatch ? HColor.fieldError : codeFocused ? HColor.fieldFocus : .clear) }
           // A tap anywhere in the box focuses the field, alongside the field's own tap.
           .contentShape(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))

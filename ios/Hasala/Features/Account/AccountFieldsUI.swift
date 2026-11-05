@@ -109,6 +109,7 @@ struct FieldFrame<Field: View, Trailing: View>: View {
       .padding(.trailing, trailingPill ? 8 : HSpacing.fieldInsetInline)
       .frame(minHeight: HSpacing.fieldMinHeight)
       .background(surface.fill, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+      .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
       .overlay { FieldRing(color: ringColor) }
       .modifier(BoxTap(action: onTap))
       if let error {
@@ -237,9 +238,9 @@ struct PasswordInput: View {
           // SwiftUI's fields can't carry `passwordRules`; a UITextField can.
           RuledNewPasswordField(placeholder: placeholder, text: $text, secure: !visible, identifier: identifier)
         } else if visible {
-          TextField(placeholder, text: $text)
+          TextField("", text: $text, prompt: .fieldPrompt(placeholder))
         } else {
-          SecureField(placeholder, text: $text)
+          SecureField("", text: $text, prompt: .fieldPrompt(placeholder))
         }
       }
       .textContentType(isNew ? .newPassword : .password)
@@ -264,7 +265,7 @@ struct RuledNewPasswordField: UIViewRepresentable {
 
   func makeUIView(context: Context) -> UITextField {
     let f = UITextField()
-    f.placeholder = placeholder
+    f.attributedPlaceholder = .fieldPrompt(placeholder)
     f.textContentType = .newPassword
     f.passwordRules = UITextInputPasswordRules(descriptor: Self.rules)
     f.autocapitalizationType = .none
@@ -286,7 +287,7 @@ struct RuledNewPasswordField: UIViewRepresentable {
     context.coordinator.text = $text
     if f.text != text { f.text = text }
     if f.isSecureTextEntry != secure { f.isSecureTextEntry = secure }
-    f.placeholder = placeholder
+    f.attributedPlaceholder = .fieldPrompt(placeholder)
   }
 
   func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
@@ -315,7 +316,7 @@ struct EmailInput: View {
   var identifier: String
 
   var body: some View {
-    TextField(placeholder, text: $text)
+    TextField("", text: $text, prompt: .fieldPrompt(placeholder))
       .textContentType(.username)
       .keyboardType(.emailAddress)
       .textInputAutocapitalization(.never)
@@ -546,6 +547,7 @@ struct CodeCells: View {
     .frame(height: HSpacing.codeCellHeight)
     .background(state == .expired ? HColor.surfaceOnWash : HColor.fieldSurfaceOnGrouped,
                 in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+    .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     .overlay { FieldRing(color: ring(isNext: isNext)) }
     // Digits stay one row; at the largest sizes the cells keep their box.
     .dynamicTypeSize(...DynamicTypeSize.accessibility1)

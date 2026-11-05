@@ -15,6 +15,7 @@ struct AccountRootView<Main: View>: View {
   /// The facts setup resumes from (the live build reads them from the projection).
   var setupFacts: OnboardingStep.Facts = .init(hasSession: true, keysReady: true)
   @ViewBuilder var main: () -> Main
+  @State private var biometry = HBiometry.device()
 
   init(
     session: AccountSession, onboarding: OnboardingStore,
@@ -35,6 +36,7 @@ struct AccountRootView<Main: View>: View {
     .animation(handOff, value: gate)
     .environment(session)
     .environment(onboarding)
+    .environment(\.hBiometry, biometry)
     .onAppear { onboarding.phaseChanged(from: nil, to: session.phase) }
     .onChange(of: session.phase) { old, new in onboarding.phaseChanged(from: old, to: new) }
     .onOpenURL { url in

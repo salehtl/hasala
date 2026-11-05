@@ -17,8 +17,7 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Sign in")
     assertNoPlaceholders(app, "Sign in")
     assertPersonalAccountsOnly(app, "Sign in")
-    assertPresent(app, ["signIn.forgot", "signIn.email", "signIn.password", "signIn.withPassword", "signIn.recover", "signIn.support",
-                        "signIn.support.web"], "Sign in")
+    assertPresent(app, ["signIn.forgot", "signIn.email", "signIn.password", "signIn.withPassword", "signIn.recover", "signIn.support"], "Sign in")
     try audit(app)
 
     type(app, "signIn.email", "maya@example.com")

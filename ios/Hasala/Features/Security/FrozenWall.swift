@@ -96,6 +96,7 @@ struct FrozenWall: View {
 /// password on an iPhone whose key signs too. "Forgot password?" is hidden while frozen. A
 /// password on an iPhone that has no key yet can't do it: the confirmation says so (IYT).
 struct UnfreezeView: View {
+  @Environment(\.hBiometry) private var biometry
   let session: AccountSession
   var hasPassword: Bool?
   @State private var password = ""
@@ -116,8 +117,8 @@ struct UnfreezeView: View {
       VStack(alignment: .leading, spacing: 12) {
         if offersPasskey {
           VStack(spacing: 8) {
-            Button("Sign in with Face ID") { Task { await run(password: nil) } }
-              .buttonStyle(.pill(.primary, fill: true, loading: busy == .passkey, leadingIcon: .faceID))
+            Button(biometry.signInTitle) { Task { await run(password: nil) } }
+              .buttonStyle(.pill(.primary, fill: true, loading: busy == .passkey, leadingIcon: biometry.icon))
               .disabled(busy != nil)
               .accessibilityIdentifier("unfreeze.passkey")
             if offersPassword {
@@ -151,9 +152,9 @@ struct UnfreezeView: View {
     ) {
       Group {
         if visible {
-          TextField("Your password", text: $password)
+          TextField("", text: $password, prompt: .fieldPrompt("Your password"))
         } else {
-          SecureField("Your password", text: $password)
+          SecureField("", text: $password, prompt: .fieldPrompt("Your password"))
         }
       }
       .textContentType(.password)
@@ -217,6 +218,7 @@ private struct ReadOnlyEmail: View {
         .padding(.vertical, 13)
         .frame(maxWidth: .infinity, minHeight: HSpacing.fieldMinHeight, alignment: .leading)
         .background(HColor.fieldSurfaceOnGrouped, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+        .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     }
     .accessibilityElement(children: .combine)
   }

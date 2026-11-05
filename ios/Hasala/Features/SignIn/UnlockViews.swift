@@ -153,6 +153,7 @@ final class UnlockModel {
 }
 
 struct UnlockView: View {
+  @Environment(\.hBiometry) private var biometry
   @State private var model: UnlockModel
   var onSignOut: () -> Void
   @FocusState private var typing: Bool
@@ -230,9 +231,10 @@ struct UnlockView: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         if model.passkeyCanUnlock && !afterReset {
-          OptionCard(icon: .faceID, hue: .sky, title: "Use your passkey",
-                     detail: "If it synced through iCloud Keychain, Face ID opens everything.",
-                     buttonTitle: "Unlock with Face ID", buttonKind: .primary, buttonIcon: .faceID,
+          OptionCard(icon: biometry.icon, hue: .sky, title: "Use your passkey",
+                     detail: "If it synced through iCloud Keychain, \(biometry.name ?? "your passkey") opens everything.",
+                     buttonTitle: biometry.name.map { "Unlock with \($0)" } ?? "Unlock with your passkey", buttonKind: .primary,
+                     buttonIcon: biometry.icon,
                      busy: model.busy, identifier: "unlock.passkey") {
             Task { await model.unlockWithPasskey() }
           }
@@ -326,7 +328,7 @@ struct UnlockView: View {
     } footer: {
       if model.offersPasskey {
         InfoCard(icon: .faceID, hue: .sky, title: "Add a passkey to this iPhone",
-                 detail: "Next time Face ID signs you in and unlocks everything. Keep your paper as your backup.")
+                 detail: "Next time \(biometry.name ?? "your passkey") signs you in and unlocks everything. Keep your paper as your backup.")
           .padding(.bottom, 12)
         Button("Add a passkey") {
           model.confirmPassword = ""
@@ -348,7 +350,7 @@ struct UnlockView: View {
       ConfirmItsYouSheet(
         request: ConfirmRequest(
           title: "Add a passkey", factor: .password,
-          bullets: ["iOS asks where to save it next", "Then Face ID signs you in and unlocks your data"]),
+          bullets: ["iOS asks where to save it next", "Then \(biometry.name ?? "your passkey") signs you in and unlocks your data"]),
         password: $model.confirmPassword, busy: model.busy, failure: model.failure,
         onConfirm: { Task { await model.addPasskey() } },
         onClose: { model.addingPasskey = false })

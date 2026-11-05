@@ -9,6 +9,7 @@ import SwiftUI
 /// offered (`AccountSession.capabilities`); the rest point to support. Every change asks
 /// "Are you sure?" where it can't be undone (native alerts), then "Confirm it's you".
 struct SecurityView: View {
+  @Environment(\.hBiometry) private var biometry
   let session: AccountSession
   let app: AppModel
   @Environment(AppLockController.self) private var lock: AppLockController?
@@ -60,7 +61,7 @@ struct SecurityView: View {
           if s.hasPasskey || (can(.addPasskey) && s.frozen == nil) {
             section("Passkeys", footer: s.hasPasskey
               ? "A passkey signs you in and unlocks your data. iCloud Keychain keeps it on all your Apple devices."
-              : "Add one and Face ID signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
+              : "Add one and \(biometry.name ?? "your passkey") signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
           }
           section("Password", footer: passwordFooter(s)) { passwordCard(s) }
           if let lock { AppLockSecuritySection(app: app, lock: lock) }
@@ -259,7 +260,7 @@ struct SecurityView: View {
         }
       } else {
         SecurityRow(tile: .plate(.password, .other), title: "No password",
-                    detail: can(.changePassword) ? "Optional. Signs you in where Face ID can't." : "You sign in with your passkey.") {
+                    detail: can(.changePassword) ? "Optional. Signs you in where \(biometry.name ?? "a passkey") can't." : "You sign in with your passkey.") {
           if can(.changePassword) {
             Button("Set one") { model.editingPassword = true }
               .buttonStyle(.pill(.secondary, size: .small))
@@ -299,7 +300,7 @@ struct SecurityView: View {
           model.requestPhrase()
         } label: {
           SecurityRow(tile: .disc(.paper, .sand), title: "View recovery phrase",
-                      detail: "\(Self.phraseDetail(s, unseen: unseen)) · Asks for Face ID") {
+                      detail: "\(Self.phraseDetail(s, unseen: unseen)) · Asks for \(biometry.noun)") {
             HIconView(.chevronRight, size: 16, color: HColor.listRowChevron)
           }
           .contentShape(Rectangle())
@@ -352,7 +353,7 @@ struct SecurityView: View {
       if model.lacksAnAction {
         SupportLink(lead: "Don't recognise something here? Contact us.", identifier: "security.support")
       }
-      Text(s.hasPasskey ? "Changes here ask for Face ID first." : "Changes here ask for your password, and this iPhone signs them too.")
+      Text(s.hasPasskey ? "Changes here ask for \(biometry.noun) first." : "Changes here ask for your password, and this iPhone signs them too.")
         .hType(.footnote)
         .foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
@@ -377,14 +378,14 @@ struct SecurityView: View {
   }
 
   private func alertMessage(_ a: PendingAlert) -> String {
-    let confirmWith = model.state?.hasPasskey == true ? "Face ID" : "your password"
+    let confirmWith = model.state?.hasPasskey == true ? biometry.noun : "your password"
     switch a {
     case .removePasskey:
       return "It won't be able to sign in to Hasala. You'll confirm with \(confirmWith) next."
     case .removeDevice:
       return "It's signed out now. The next time it opens Hasala, its copy of your data is erased."
     case .removePassword:
-      return "You'll sign in with your passkey only. You'll confirm with Face ID next."
+      return "You'll sign in with your passkey only. You'll confirm with \(biometry.noun) next."
     case .signOut:
       // The profile's Sign out says the same (requests/p8.md 4).
       return AccountCopy.signOutMessage

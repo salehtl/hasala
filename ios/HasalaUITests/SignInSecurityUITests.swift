@@ -56,7 +56,7 @@ final class SignInSecurityUITests: XCTestCase {
   private func signInFormStaysAbove(arguments: [String]) throws {
     let app = launch(scenario: nil, screen: "signin", release: true, arguments: arguments)
     XCTAssertTrue(el(app, "signIn.recover").waitForExistence(timeout: 15))
-    let links = ["signIn.recover", "signIn.support", "signIn.support.web"]
+    let links = ["signIn.recover", "signIn.support"]
     tap(app, "signIn.email")
     assertClearOfKeyboard(app, shown: ["signIn.email", "signIn.password", "signIn.withPassword"], hidden: links,
                           "Keyboard · Sign in · email")
@@ -68,6 +68,17 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertEqual(el(app, "signIn.email").value as? String, "maya@example.com")
     assertClearOfKeyboard(app, shown: ["signIn.password", "signIn.withPassword"], hidden: links,
                           "Keyboard · Sign in · password")
+  }
+
+  @MainActor
+  func testSignInNamesThisIPhonesBiometryAndThePassword() throws {
+    let app = launch(scenario: nil, screen: "signin", release: true, arguments: ["-HasalaBiometry", "touchID"])
+    XCTAssertTrue(app.buttons["Sign in with Touch ID"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["or use your password"].exists)
+    XCTAssertTrue(el(app, "signIn.support").exists)
+    XCTAssertFalse(el(app, "signIn.support.web").exists)
+    XCTAssertFalse(app.buttons["Sign in with Face ID"].exists)
+    attach(app, "Sign in · Touch ID")
   }
 
   // MARK: - New iPhone: unlock

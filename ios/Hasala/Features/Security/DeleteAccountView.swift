@@ -17,6 +17,7 @@ extension EnvironmentValues {
 /// `AccountService.perform(.deleteAccount, password:)`. Once it succeeds the session signs
 /// out and the account gate shows the welcome screens.
 struct DeleteAccountView: View {
+  @Environment(\.hBiometry) private var biometry
   @State private var model: SecurityModel
   private let session: AccountSession
   @State private var asking = false
@@ -42,7 +43,7 @@ struct DeleteAccountView: View {
             .foregroundStyle(HColor.textPrimary)
             .accessibilityAddTraits(.isHeader)
           Text(confirmsWithFaceID
-            ? "This can't be undone. You'll confirm with Face ID."
+            ? "This can't be undone. You'll confirm with \(biometry.noun)."
             : "This can't be undone. You'll confirm with your password.")
             .hType(.subheadline)
             .foregroundStyle(HColor.textSecondary)
