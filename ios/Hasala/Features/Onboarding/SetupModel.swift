@@ -147,6 +147,10 @@ final class SetupModel {
   /// "Emirates NBD and DIB".
   var bankList: String { orderedBanks.map(\.shortName).formatted(.list(type: .and)) }
 
+  static func banksSummary(_ count: Int) -> String {
+    count == 0 ? "None picked" : "\(count) picked"
+  }
+
   func toggle(_ bank: SupportedBank) {
     var banks = chosenBanks
     if banks.contains(bank) { banks.remove(bank) } else { banks.insert(bank) }
@@ -303,6 +307,18 @@ final class SetupModel {
     path = Array(path.prefix { !$0.isEmailStep })
   }
 
+  func swapProvider(_ provider: MailProviderKind) {
+    guard !busy, !connectBusy, !mailConnected, connectable.contains(provider) else { return }
+    draft.provider = provider
+    failure = nil
+  }
+
+  func useBankTextsInstead() {
+    guard offersBankTexts, !busy, !connectBusy else { return }
+    path = []
+    backToSourceChoice()
+  }
+
   func choose(_ provider: MailProviderKind) {
     pickProvider(provider)
     connectAfterChoosing = provider
@@ -386,8 +402,8 @@ final class SetupModel {
     finish()
   }
 
-  /// A connect that didn't happen: the two the design draws a screen for (an admin's
-  /// approval, a Microsoft sign-in that didn't finish) push it; the rest stay on the
+  /// A connect that didn't happen: the ones the design draws a screen for (a sign-in that
+  /// didn't finish, no mailbox, a permission not given) push it; the rest stay on the
   /// connect screen as a line beside its button ("Errors sit next to the thing that
   /// failed", page 17). A closed Google sign-in is not a failure.
   func connectFailed(_ provider: MailProviderKind) {
@@ -399,7 +415,7 @@ final class SetupModel {
   /// The failures with a screen of their own (Paper P2.9 row 2).
   static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
     switch f {
-    case .adminApprovalNeeded, .cancelled, .noMailbox: true
+    case .cancelled, .noMailbox, .permissionMissing: true
     default: false
     }
   }

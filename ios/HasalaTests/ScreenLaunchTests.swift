@@ -72,7 +72,7 @@ struct ScreenLaunchTests {
     let plan = try await opened("home.finishSetup.plan")
     #expect(plan.onboarding.finishSetupModel().planFlow != nil)
     let grant = try await opened("mail.permissionMissing")
-    #expect(grant.onboarding.setup?.path == [] && grant.onboarding.setup?.failure
+    #expect(grant.onboarding.setup?.path == [.connectError(.gmail)] && grant.onboarding.setup?.failure
       == .failed(MailConnectFailure.permissionMissingLine(.gmail)))
     let txn = try await opened("activity.txn")
     #expect(txn.app.router.tab == .activity && txn.app.router.pendingLaunch?.sheet == .transaction("carrefour"))

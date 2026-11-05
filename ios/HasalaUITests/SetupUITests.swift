@@ -16,7 +16,7 @@ final class SetupUITests: XCTestCase {
   func testSetupThroughToHome() throws {
     let app = launch(scenario: "setupBank")
 
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 15))
     let connect = el(app, "mail.connect.gmail")
     XCTAssertEqual(connect.label, "Continue with Google")
     XCTAssertTrue(app.staticTexts["Connect your bank alerts"].exists)
@@ -26,12 +26,18 @@ final class SetupUITests: XCTestCase {
     attach(app, "Bank alerts and Gmail")
     try audit(app)
 
+    tap(app, "bank.change")
+    XCTAssertTrue(el(app, "banks.sheet").waitForExistence(timeout: uiWait), "Your banks did not open")
+    XCTAssertTrue(el(app, "bank.enbd").isSelected)
+    attach(app, "Your banks")
+    try audit(app, overSheet: true)
     tap(app, "bank.howTo")
     XCTAssertTrue(el(app, "alertsHelp.enbd").waitForExistence(timeout: uiWait), "the how-to did not open")
     XCTAssertTrue(el(app, "alertsHelp.adib").exists)
     attach(app, "How to turn on email alerts")
     try audit(app, overSheet: true)
     tap(app, "alertsHelp.done")
+    tap(app, "banks.done")
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     connect.tap()
     answerPastEmail(app)
@@ -148,7 +154,7 @@ final class SetupUITests: XCTestCase {
   @MainActor
   func testSetupAtLargeTextSizes() throws {
     let app = launch(scenario: "setupBank", arguments: Self.largeText)
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 15))
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 15))
     attach(app, "Bank · AX3")
     try audit(app, atLargeText: true)
     tap(app, "mail.connect.gmail")
@@ -184,12 +190,13 @@ final class SetupUITests: XCTestCase {
   @MainActor
   func testAMissingGmailGrantSaysWhatToTick() throws {
     let app = launch(scenario: nil, screen: "mail.permissionMissing")
-    let line = "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it."
-    XCTAssertTrue(app.staticTexts[line].waitForExistence(timeout: 30), "the missing grant has no line of its own")
-    attach(app, "Bank alerts · Gmail access not ticked")
+    XCTAssertTrue(app.staticTexts["Gmail isn't connected."].waitForExistence(timeout: 30), "the missing grant has no screen of its own")
+    let tick = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "label CONTAINS %@", "Tick \u{201C}View your email messages and settings\u{201D}")).firstMatch
+    XCTAssertTrue(tick.exists, "the screen does not say what to tick")
+    attach(app, "Gmail isn't connected (permission)")
     try audit(app)
-    tap(app, "mail.connect.gmail")
-    answerPastEmail(app)
+    tap(app, "mail.error.retry")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "trying again did not connect")
   }
 }

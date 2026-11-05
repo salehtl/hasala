@@ -138,18 +138,16 @@ struct SetupFlowTests: AccountSuite {
   @Test func outlookFailuresHaveTheirScreensAndTryAgainGoesOn() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)
-    lane.outlookAdmin = true
+    lane.outlookCancelled = true
     var finished = false
     let m = model(s) { finished = true }
     m.pickProvider(.outlook)
     await m.continueWithBanks()
     #expect(m.path == [.connectError(.outlook)])
-    #expect(m.connectFailure(.outlook) == .adminApprovalNeeded(address: MockMailbox.workAddress))
+    #expect(m.connectFailure(.outlook) == .cancelled)
     m.connectFailed(.outlook)
     #expect(m.path == [.connectError(.outlook)])
 
-    lane.outlookAdmin = false
-    lane.outlookCancelled = true
     await m.retryConnect(.outlook)
     #expect(m.connectFailure(.outlook) == .cancelled && m.path.last == .connectError(.outlook) && !finished)
 
@@ -272,7 +270,7 @@ struct SetupFlowTests: AccountSuite {
     await m.continueWithBanks()
     #expect(m.connectFailure(.gmail) == .permissionMissing(.gmail))
     #expect(m.failure?.message == "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it.")
-    #expect(m.path == [] && m.facts.mailbox == .unlinked)
+    #expect(m.path == [.connectError(.gmail)] && m.facts.mailbox == .unlinked)
     await m.continueWithBanks()
     #expect(m.failure == nil && m.step == .finished)
   }

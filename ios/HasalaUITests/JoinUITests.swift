@@ -329,7 +329,7 @@ final class JoinUITests: XCTestCase {
     XCTAssertTrue(el(app, "whoSees.close").waitForExistence(timeout: 10))
     tap(app, "whoSees.close")
     tap(app, "ready.continue")
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow")
   }
 
   /// A passkey with PRF can show the words again after Face ID, so signup makes the account
@@ -346,7 +346,7 @@ final class JoinUITests: XCTestCase {
     type(app, "code.field", "123456")
     XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: 10))
     tap(app, "method.continue")
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow the passkey")
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow the passkey")
     XCTAssertFalse(el(app, "phrase.start").exists)
     XCTAssertFalse(el(app, "ready.continue").exists)
     attach(app, "Setup · after the passkey")
@@ -422,7 +422,7 @@ final class JoinUITests: XCTestCase {
     tap(app, "phrase.written")
     XCTAssertTrue(el(app, "ready.continue").waitForExistence(timeout: 10))
     tap(app, "ready.continue")
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10))
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10))
   }
 
   /// The signed-out screens at `.accessibility3` reflow instead of clipping (spec 04 §17).

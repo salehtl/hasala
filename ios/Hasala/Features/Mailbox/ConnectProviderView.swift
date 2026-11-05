@@ -160,7 +160,7 @@ struct ConnectProviderView: View {
     return "Your bank alerts are fetched from \(provider.appName) by this iPhone. Our server never receives your emails."
   }
 
-  /// "Not your email? Choose a different one." (Gmail, 6RN); Outlook says first that a work
+  /// "Not your email? Choose a different email" (Gmail, 6RN); Outlook says first that a work
   /// account may need its admin (1MRM). With one provider to offer there is nothing else to
   /// choose, so it asks which email the person uses instead (plan B4.6 rule 2). A new
   /// sign-in to one mailbox has nothing to choose, and with the providers behind this
@@ -168,7 +168,7 @@ struct ConnectProviderView: View {
   ///
   /// The live Microsoft app takes personal accounts only, in every build, so the Release
   /// surface says so (main's footnote) where Paper draws the work account's line; Debug
-  /// keeps Paper's, which the `outlookAdmin` mock's admin board follows.
+  /// keeps Paper's.
   @ViewBuilder private var footerLink: some View {
     if signInAgainID != nil {
       EmptyView()
@@ -188,7 +188,7 @@ struct ConnectProviderView: View {
       TextLinkRow(lead: Self.outlookAccountLine,
                   link: "Choose a different email", identifier: "mail.notYours", action: onChooseDifferent)
     } else {
-      TextLinkRow(lead: "Not your email?", link: "Choose a different one.", identifier: "mail.notYours",
+      TextLinkRow(lead: "Not your email?", link: "Choose a different email", identifier: "mail.notYours",
                   action: onChooseDifferent)
     }
   }
@@ -217,7 +217,7 @@ struct ConnectProviderView: View {
     switch failure {
     case .alreadyConnected: .accent
     case .offline, .takenByOtherIPhone, .cancelled, .switchDeclined: .warning
-    case .adminApprovalNeeded, .noMailbox, .permissionMissing, .failed: .error
+    case .noMailbox, .permissionMissing, .failed: .error
     }
   }
 }

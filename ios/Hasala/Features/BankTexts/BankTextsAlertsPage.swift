@@ -39,9 +39,8 @@ struct BankTextsAlertsPage: View {
       case .working(let lastRan):
         state = .working
         title = "Working"
-        detail = ["Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))",
-                  lastText.map { "Last text added \(RelativeTime.ago($0, now: now))" }]
-          .compactMap { $0 }.joined(separator: "\n")
+        detail = lastText.map { "Last text added \(RelativeTime.ago($0, now: now))" }
+          ?? "Bank texts \u{00B7} ran \(RelativeTime.ago(lastRan, now: now))"
         hue = .mint
       case .waitingForFirstText:
         state = .ready
@@ -66,6 +65,15 @@ struct BankTextsAlertsPage: View {
     case .notSetUp: StatusPill("Not set up", tone: .warning, showsDot: false)
     }
   }
+
+  static let skippedTitle = "Skipped texts"
+
+  static let readsRows: [(icon: HIcon, text: String)] = [
+    (.chat, "The automation hands Hasala each text with a full stop, on this iPhone."),
+    (.bank, BankTexts.anyBankLine),
+    (.privacy, BankTexts.keepsNoText),
+    (.info, BankTexts.fakedTextNote),
+  ]
 
   var body: some View {
     ScrollView {
@@ -144,9 +152,9 @@ struct BankTextsAlertsPage: View {
       HListCard {
         HStack(alignment: .top, spacing: HSpacing.listRowGap) {
           RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(HColor.actionAccentSubtle)
+            .fill(HColor.surfaceSecondary)
             .frame(width: 40, height: 40)
-            .overlay { HIconView(.chat, size: 20, color: HColor.actionAccent, strokeWidth: 1.8) }
+            .overlay { HIconView(.chat, size: 20, color: HColor.iconSecondary, strokeWidth: 1.8) }
             .accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             Text("Add bank text").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
@@ -195,7 +203,7 @@ struct BankTextsAlertsPage: View {
 
   private var setAsideSection: some View {
     VStack(alignment: .leading, spacing: 12) {
-      HSectionHeader("Set aside")
+      HSectionHeader(Self.skippedTitle)
       HListCard {
         ForEach(Array(BankTexts.setAsideRows(lane.setAside).enumerated()), id: \.element.id) { i, row in
           if i > 0 { HDivider(inset: .disc68) }
@@ -215,9 +223,9 @@ struct BankTextsAlertsPage: View {
   private func setAsideRow(_ row: BankTextsSetAside) -> some View {
     HStack(alignment: .top, spacing: HSpacing.listRowGap) {
       RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .fill(HColor.actionAccentSubtle)
+        .fill(HColor.surfaceSecondary)
         .frame(width: 40, height: 40)
-        .overlay { HIconView(.chat, size: 20, color: HColor.actionAccent, strokeWidth: 1.8) }
+        .overlay { HIconView(.chat, size: 20, color: HColor.iconSecondary, strokeWidth: 1.8) }
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(row.name).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
@@ -237,10 +245,9 @@ struct BankTextsAlertsPage: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("How Hasala reads your texts").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      readsRow(.chat, "The automation hands Hasala each text with a full stop, on this iPhone.")
-      readsRow(.bank, BankTexts.anyBankLine)
-      readsRow(.privacy, BankTexts.keepsPaymentShapedTexts)
-      readsRow(.lock, BankTexts.keepsNoText)
+      ForEach(Array(Self.readsRows.enumerated()), id: \.offset) { _, row in
+        readsRow(row.icon, row.text)
+      }
     }
     .padding(.top, 18)
     .padding([.horizontal, .bottom], 20)
@@ -285,6 +292,8 @@ struct UseBankTextsSection: View {
   @State private var pasting = false
   @Environment(\.openURL) private var openURL
 
+  static let useTextsDetail = "No mailbox access. Set up a Shortcut once."
+
   static func footnote(_ mailbox: (any MailboxConnecting)?, lane: any BankTextsConnecting) -> String {
     let note = SourceSwitch.reading(mailbox).isEmpty
       ? BankTexts.oneSourceNote : "\(BankTexts.oneSourceNote) Switching disconnects your mailbox."
@@ -322,7 +331,7 @@ struct UseBankTextsSection: View {
         }
         MailActionRow(
           title: "Use bank texts instead", identifier: "bankAlerts.useTexts", icon: .chat,
-          detail: switching ? "Switching to bank texts" : "No inbox access. Set up a Shortcut once.", busy: switching
+          detail: switching ? "Switching to bank texts" : UseBankTextsSection.useTextsDetail, busy: switching
         ) { asking = true }
         .disabled(switching || blocked)
         if lane.offersPaste {

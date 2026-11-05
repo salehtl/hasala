@@ -8,8 +8,8 @@ import SwiftUI
 /// screens will show, and the provider's sign-in, which runs from here.
 struct BankStep: View {
   @Bindable var model: SetupModel
-  @State private var telling = false
-  @State private var helping = false
+  @State private var choosingBanks = false
+  @State private var switchingToTexts = false
   @State private var asking: MailProviderKind?
   @State private var starting = false
 
@@ -25,19 +25,10 @@ struct BankStep: View {
       trailing: skip(connected)
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        Text("Your banks")
-          .hType(.overline)
-          .foregroundStyle(HColor.textGroupedHeader)
-          .padding(.horizontal, 16)
-          .padding(.top, 4)
-          .accessibilityAddTraits(.isHeader)
-        BankList(chosen: model.chosenBanks, toggle: model.toggle)
-        AlertsHowToLink { helping = true }
-        AnotherBankCard(sent: model.bankRequestSent, sample: model.offersSampleData) { telling = true }
+        YourBanksRow(summary: SetupModel.banksSummary(model.chosenBanks.count)) { choosingBanks = true }
         MailboxChoiceCard(
-          provider: provider, connected: connected,
-          other: connected == nil ? model.connectable.first { $0 != provider } : nil,
-          change: model.chooseEmail)
+          provider: provider, connected: connected, other: otherProvider(connected, busy: connectBusy),
+          change: { model.swapProvider($0) })
         if connected == nil, model.connectable.count <= 1 { TellUsWhichLink(small: true, leading: true) }
         if connected == nil, provider == .gmail, BuildSurface.showsGoogleBriefing { GoogleBriefingCard() }
         SetupFailureBanner(failure: model.failure)
@@ -57,26 +48,32 @@ struct BankStep: View {
         BusyButton(title: "Use sample data", busy: model.busy, enabled: !connectBusy,
                    identifier: "mail.sample") { Task { await model.useSampleData() } }
           .dockPill()
-        Button(provider.continueTitle) { connect(provider) }
-          .buttonStyle(.pill(.tertiary, size: .medium, fill: true, loading: connectBusy))
-          .disabled(model.chosenBanks.isEmpty || connectBusy || model.busy)
-          .dockPill()
-          .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
-      } else {
         Button { connect(provider) } label: {
-          Text(provider.continueTitle).fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 10) {
+            if !connectBusy { ProviderMark(provider, size: .disc26) }
+            Text(provider.continueTitle)
+          }
         }
-        .buttonStyle(.pill(.primary, fill: true, loading: connectBusy || model.busy))
+        .buttonStyle(.pill(.tertiary, size: .medium, fill: true, loading: connectBusy))
         .disabled(model.chosenBanks.isEmpty || connectBusy || model.busy)
         .dockPill()
         .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
+      } else {
+        ProviderButton(provider: provider, loading: connectBusy || model.busy) { connect(provider) }
+          .disabled(model.chosenBanks.isEmpty || connectBusy || model.busy)
+          .dockPill()
+          .accessibilityIdentifier("mail.connect.\(provider.rawValue)")
       }
     }
-    .sheet(isPresented: $telling) {
-      RequestBankSheet(setup: model.bankRequests, prober: nil) { _ in model.noteBankRequestSent() }
-    }
-    .sheet(isPresented: $helping) {
-      EmailAlertsHelpSheet(banks: SupportedBank.allCases)
+    .sheet(isPresented: $choosingBanks, onDismiss: {
+      guard switchingToTexts else { return }
+      switchingToTexts = false
+      useTexts(connectBusy)?()
+    }) {
+      YourBanksSheet(model: model, offersTexts: useTexts(connectBusy) != nil) {
+        switchingToTexts = true
+        choosingBanks = false
+      }
     }
     .providerConnectQuestions(coordinator, provider: provider, request: $asking) { replacing, removingOld in
       Task { await model.connectMail(provider, replacing: replacing, removingOld: removingOld) }
@@ -87,6 +84,17 @@ struct BankStep: View {
       model.connectRequest = nil
       connect(request)
     }
+  }
+
+  private func useTexts(_ connectBusy: Bool) -> (() -> Void)? {
+    guard model.offersBankTexts, !connectBusy, !model.busy else { return nil }
+    return { model.backToSourceChoice() }
+  }
+
+  private func otherProvider(_ connected: MailboxSnapshot?, busy connectBusy: Bool) -> MailProviderKind? {
+    guard connected == nil, !connectBusy, !model.busy else { return nil }
+    let provider = model.provider
+    return model.connectable.first { $0 != provider }
   }
 
   private func skip(_ connected: MailboxSnapshot?) -> (title: String, action: () -> Void)? {
@@ -110,6 +118,102 @@ struct BankStep: View {
       : connected != nil
         ? "Only alerts from the banks you pick are downloaded, straight to this iPhone."
         : "Read-only. Downloaded and read on this iPhone; our server never receives your emails. \(MailCopy.confirmNote)")
+  }
+}
+
+private struct YourBanksRow: View {
+  let summary: String
+  var change: () -> Void
+
+  var body: some View {
+    HStack(spacing: 12) {
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(HColor.neutral100)
+        .frame(width: 40, height: 40)
+        .overlay { HIconView(.bank, size: 22, color: HColor.textPrimary, strokeWidth: 1.6) }
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 1) {
+        Text("Your banks").hType(.headline).foregroundStyle(HColor.textPrimary)
+        Text(summary).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .combine)
+      .accessibilityIdentifier("bank.summary")
+      Button("Change", action: change)
+        .buttonStyle(.plain)
+        .hType(HType.subheadline.weight(.medium))
+        .foregroundStyle(HColor.textLink)
+        .frame(minHeight: HSpacing.targetMinimum)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Change banks")
+        .accessibilityIdentifier("bank.change")
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 14)
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+  }
+}
+
+struct YourBanksSheet: View {
+  @Bindable var model: SetupModel
+  let offersTexts: Bool
+  var useTexts: () -> Void
+  @Environment(\.dismiss) private var dismiss
+  @State private var telling = false
+  @State private var helping = false
+
+  static let lead = "Only alerts from the banks you pick are downloaded."
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: HSpacing.sheetGap) {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text("Your banks")
+              .hType(.title1)
+              .foregroundStyle(HColor.textPrimary)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .accessibilityAddTraits(.isHeader)
+            Button("Done") { dismiss() }
+              .buttonStyle(.plain)
+              .hType(.headline)
+              .foregroundStyle(HColor.textLink)
+              .frame(minHeight: HSpacing.targetMinimum)
+              .contentShape(Rectangle())
+              .accessibilityIdentifier("banks.done")
+          }
+          Text(Self.lead)
+            .hType(.callout)
+            .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 12)
+        BankList(chosen: model.chosenBanks, toggle: model.toggle)
+        AlertsHowToLink { helping = true }
+        AnotherBankCard(
+          sent: model.bankRequestSent, sample: model.offersSampleData, useTexts: offersTexts ? useTexts : nil
+        ) {
+          telling = true
+        }
+      }
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.top, 8)
+      .padding(.bottom, 40)
+    }
+    .background(HColor.sheetSurfaceLarge)
+    .presentationDetents([.large])
+    .presentationDragIndicator(.visible)
+    .presentationCornerRadius(HRadius.sheetLarge)
+    .presentationBackground(HColor.sheetSurfaceLarge)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("banks.sheet")
+    .sheet(isPresented: $telling) {
+      RequestBankSheet(setup: model.bankRequests, prober: nil) { _ in model.noteBankRequestSent() }
+    }
+    .sheet(isPresented: $helping) {
+      EmailAlertsHelpSheet(banks: SupportedBank.allCases)
+    }
   }
 }
 
@@ -141,7 +245,7 @@ private struct MailboxChoiceCard: View {
   let provider: MailProviderKind
   let connected: MailboxSnapshot?
   let other: MailProviderKind?
-  var change: () -> Void
+  var change: (MailProviderKind) -> Void
 
   private var detail: String {
     if let connected { return "\(connected.provider.appName) · connected" }
@@ -164,7 +268,7 @@ private struct MailboxChoiceCard: View {
       .accessibilityElement(children: .combine)
       .accessibilityIdentifier(connected == nil ? "mail.provider" : "mail.connected")
       if let other {
-        Button("Use \(other.appName)", action: change)
+        Button("Use \(other.appName)") { change(other) }
           .buttonStyle(.plain)
           .hType(HType.subheadline.weight(.medium))
           .foregroundStyle(HColor.textLink)
@@ -179,17 +283,20 @@ private struct MailboxChoiceCard: View {
   }
 }
 
-private struct GoogleBriefingCard: View {
+struct GoogleBriefingCard: View {
+  static let unverifiedLine =
+    "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala."
+  static let tickLine =
+    "Tick \u{201C}View your email messages and settings\u{201D}. Google has no permission for bank alerts alone. Hasala asks Gmail only for mail from your banks\u{2019} alert addresses, and downloads only that."
+
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("What Google will show")
         .hType(.overline)
         .foregroundStyle(HColor.statusWarningForeground)
         .accessibilityAddTraits(.isHeader)
-      NumberedLine(number: 1, text: "\u{201C}Google hasn\u{2019}t verified this app.\u{201D} Hasala is in beta; tap Advanced, then Go to Hasala.",
-                   numberColor: HColor.statusWarningForeground)
-      NumberedLine(number: 2, text: "Tick \u{201C}View your email messages and settings\u{201D}. Without it, Hasala can\u{2019}t see your alerts.",
-                   numberColor: HColor.statusWarningForeground)
+      NumberedLine(number: 1, text: Self.unverifiedLine, numberColor: HColor.statusWarningForeground)
+      NumberedLine(number: 2, text: Self.tickLine, numberColor: HColor.statusWarningForeground)
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -399,43 +506,66 @@ struct CheckCircle: View {
 
 /// "Bank not listed?" (Paper X4 "Bank not listed?"): a ringed "+" plate, the line, and the
 /// "Tell us" pill, which asks for the bank's name. Where the account offers sample data it
-/// says so; otherwise Skip is the way on, by hand.
+/// says so; where it can read bank texts, "Use bank texts" goes back to the source choice;
+/// otherwise Skip is the way on, by hand.
 struct AnotherBankCard: View {
   let sent: Bool
   let sample: Bool
+  var useTexts: (() -> Void)?
   var tellUs: () -> Void
 
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  private var line: String {
+  static func line(sent: Bool, sample: Bool, texts: Bool) -> String {
     if sent { return "Thanks. We'll email you when it's ready." }
+    if texts { return "Bank texts work with any bank." }
     return sample
       ? "Tell us, and look around with sample data meanwhile."
       : "Tell us yours. Meanwhile, Skip lets you add spending by hand."
   }
 
   var body: some View {
-    let stacked = typeSize.isAccessibilitySize
+    let stacked = typeSize.isAccessibilitySize || useTexts != nil
     let layout = stacked
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
       : AnyLayout(HStackLayout(spacing: 12))
     layout {
-      if !stacked { plate }
-      VStack(alignment: .leading, spacing: 0) {
-        Text("Bank not listed?").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-        Text(line).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      HStack(spacing: 12) {
+        if !typeSize.isAccessibilitySize { plate }
+        VStack(alignment: .leading, spacing: 0) {
+          Text("Bank not listed?").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          Text(Self.line(sent: sent, sample: sample, texts: useTexts != nil))
+            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
       }
-      .fixedSize(horizontal: false, vertical: true)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .accessibilityElement(children: .combine)
-      Button("Tell us", action: tellUs)
-        .buttonStyle(.pill(.secondary, size: .small))
-        .accessibilityIdentifier("bank.tellUs")
+      if let useTexts {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 12) { textsButton(useTexts); tellUsButton }
+          VStack(alignment: .leading, spacing: 8) { textsButton(useTexts); tellUsButton }
+        }
+      } else {
+        tellUsButton
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 12)
     .frame(minHeight: 64)
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
+  }
+
+  private var tellUsButton: some View {
+    Button("Tell us", action: tellUs)
+      .buttonStyle(.pill(.secondary, size: .small))
+      .accessibilityIdentifier("bank.tellUs")
+  }
+
+  private func textsButton(_ action: @escaping () -> Void) -> some View {
+    Button("Use bank texts", action: action)
+      .buttonStyle(.pill(.secondary, size: .small, fill: true))
+      .accessibilityIdentifier("bank.useTexts")
   }
 
   private var plate: some View {

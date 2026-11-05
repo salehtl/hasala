@@ -157,7 +157,7 @@ enum SetupFailure: Error, Equatable, Sendable {
   var message: String? {
     switch self {
     case .cancelled: nil
-    case .offline: "Can't finish setup offline. Try again when you're connected."
+    case .offline: "You're offline. Finish setup when you're back online."
     case .failed(let s): s
     }
   }

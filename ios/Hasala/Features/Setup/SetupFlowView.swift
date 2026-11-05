@@ -63,6 +63,7 @@ private struct EmailErrorStep: View {
       onChooseDifferent: {
         if model.canChooseEmail { model.chooseEmail() } else { openURL(BuildSurface.supportMail) }
       },
+      onUseTexts: model.offersBankTexts ? { model.useBankTextsInstead() } : nil,
       steps: nil)
       .mailSwitchQuestion(coordinator)
       .onChange(of: model.connectFailure(provider), initial: true) { _, failure in

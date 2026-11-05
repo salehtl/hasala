@@ -70,7 +70,9 @@ final class LiveE2ETests: LiveE2ECase {
 
     // Setup: ENBD, then the review account's sample on the bank alerts step, where the
     // sample is the dock's one pill and Google's sign-in the text button under it.
-    tap(app, "bank.enbd", timeout: 30)
+    tap(app, "bank.change", timeout: 30)
+    tap(app, "bank.enbd")
+    tap(app, "banks.done")
     let sample = el(app, "mail.sample")
     XCTAssertTrue(sample.waitForExistence(timeout: 60),
                   "no 'Use sample data': the review flag (#40 review_account) did not reach setup")

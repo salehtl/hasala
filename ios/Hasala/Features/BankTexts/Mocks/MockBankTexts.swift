@@ -18,6 +18,7 @@
     var ignoredLast30Days: Int
     var lastTextAt: Date?
     var test: BankTextsTest = .idle
+    var testWindowOpen = false
     var testOutcome: TestOutcome = .received
     var testDelay: Duration = .seconds(2)
     var finishFails = false

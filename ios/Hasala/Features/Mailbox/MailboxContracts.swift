@@ -43,13 +43,11 @@ enum MailConnectRefusal: Equatable, Sendable {
   }
 }
 
-/// Why a connect, a sign-in again or a disconnect didn't happen (Paper "Connect email ·
-/// Work or school account needs an admin", "Microsoft sign-in didn't finish").
+/// Why a connect, a sign-in again or a disconnect didn't happen (Paper "Microsoft sign-in
+/// didn't finish").
 enum MailConnectFailure: Error, Equatable {
   /// The person closed the provider's sign-in, or declined its permissions.
   case cancelled
-  /// A work or school account whose admin hasn't approved Hasala.
-  case adminApprovalNeeded(address: String)
   /// That mailbox is already read here.
   case alreadyConnected(address: String)
   /// Another iPhone holds the account's link (live: "Your email is read on your other
@@ -67,7 +65,6 @@ enum MailConnectFailure: Error, Equatable {
   func message(for provider: MailProviderKind) -> String? {
     switch self {
     case .cancelled, .switchDeclined: nil
-    case .adminApprovalNeeded: "Your organisation needs to approve Hasala."
     case .alreadyConnected(let address): "\(address) is already connected."
     case .takenByOtherIPhone: "Your email is read on your other iPhone."
     case .offline: "You're offline. Connect \(provider.appName) when you're back online."

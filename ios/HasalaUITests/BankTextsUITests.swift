@@ -13,17 +13,14 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: 15), "the choice is missing")
     XCTAssertTrue(app.staticTexts["How do your banks reach you?"].exists)
     XCTAssertTrue(el(app, "source.email").exists)
-    XCTAssertFalse(el(app, "source.continue").isEnabled, "a source was picked for the person")
     XCTAssertFalse(el(app, "source.texts").isSelected || el(app, "source.email").isSelected, "a card was preselected")
     attach(app, "How do your banks reach you")
     try audit(app)
 
-    tap(app, "source.texts")
-    XCTAssertTrue(el(app, "source.texts").isSelected)
-    tap(app, "source.continue", opening: "texts.steps")
+    tap(app, "source.texts", opening: "texts.steps")
     XCTAssertTrue(app.staticTexts["Make the automation"].exists)
     XCTAssertFalse(app.staticTexts["Which banks text you?"].exists, "texts still ask for banks")
-    XCTAssertFalse(el(app, "bank.dib").exists, "texts still show a bank list")
+    XCTAssertFalse(el(app, "bank.summary").exists, "texts still show the banks")
     XCTAssertTrue(el(app, "texts.keepsOnly").exists, "the privacy line is missing")
     XCTAssertTrue(el(app, "texts.anyBank").label.contains("from any bank"))
     XCTAssertTrue(el(app, "texts.openShortcuts").exists)
@@ -53,8 +50,7 @@ final class BankTextsUITests: XCTestCase {
   @MainActor
   func testReadyMadeAutomationLeadsTheSetUpAndTheHandStepsStay() throws {
     let app = launch(scenario: "setupTexts", arguments: ["-HasalaAutomationLink", "https://www.icloud.com/shortcuts/test"])
-    tap(app, "source.texts")
-    tap(app, "source.continue", opening: "texts.steps")
+    tap(app, "source.texts", opening: "texts.steps")
     XCTAssertTrue(app.staticTexts["Add the automation"].exists)
     XCTAssertTrue(el(app, "texts.addAutomation").exists)
     XCTAssertFalse(el(app, "texts.openShortcuts").exists, "the hand path leads while a ready-made one is offered")
@@ -86,6 +82,8 @@ final class BankTextsUITests: XCTestCase {
     XCTAssertTrue(el(app, "textsTest.again").exists)
     attach(app, "Nothing arrived yet")
     try audit(app)
+    app.swipeUp()
+    waitForStill(app)
     tap(app, "textsTest.skip")
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Skip did not finish setup")
   }
@@ -93,14 +91,13 @@ final class BankTextsUITests: XCTestCase {
   @MainActor
   func testEmailFromTheChoiceKeepsTheBankStep() throws {
     let app = launch(scenario: "setupTexts")
-    tap(app, "source.email")
-    tap(app, "source.continue", opening: "bank.enbd")
+    tap(app, "source.email", opening: "bank.summary")
     XCTAssertTrue(app.staticTexts["Connect your bank alerts"].exists)
     let sms = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'not only SMS'"))
     XCTAssertEqual(sms.count, 0, "the email-only line is still there")
     back(app)
     XCTAssertTrue(el(app, "source.texts").waitForExistence(timeout: uiWait), "back did not return to the choice")
-    XCTAssertTrue(el(app, "source.email").isSelected)
+    XCTAssertTrue(el(app, "source.email").exists)
   }
 
   @MainActor
@@ -110,8 +107,7 @@ final class BankTextsUITests: XCTestCase {
     attach(app, "Choice · AX")
     try audit(app, atLargeText: true)
     el(app, "source.texts").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
-    XCTAssertTrue(el(app, "source.texts").isSelected, "the texts card was not picked")
-    tap(app, "source.continue", opening: "texts.steps")
+    XCTAssertTrue(el(app, "texts.steps").waitForExistence(timeout: uiWait), "the texts card did not go on")
     attach(app, "Make the automation · AX")
     try audit(app, atLargeText: true)
     tap(app, "texts.toTest", opening: "textsTest.phrase")
@@ -125,7 +121,7 @@ final class BankTextsUITests: XCTestCase {
     let app = launch(scenario: nil, screen: "bankAlerts.texts")
     let status = el(app, "bankAlerts.status")
     XCTAssertTrue(status.waitForExistence(timeout: 30))
-    XCTAssertTrue(status.label.contains("Working") && status.label.contains("ran 4 min ago"), status.label)
+    XCTAssertTrue(status.label.contains("Working") && status.label.contains("Last text added 4 min ago"), status.label)
     XCTAssertTrue(el(app, "bankAlerts.texts.automation").label.contains("Ran 4 min ago"))
     XCTAssertTrue(el(app, "bankAlerts.texts.howItReads").label.contains("from any bank"))
     let bankList = NSPredicate(format: "label ==[c] %@ OR label CONTAINS[c] %@ OR identifier BEGINSWITH %@", "Banks", "bank isn't listed", "bankAlerts.texts.bank.")
@@ -213,11 +209,11 @@ final class BankTextsUITests: XCTestCase {
   @MainActor
   func testTheLastDisconnectSaysTheAutomationStaysOn() throws {
     let app = launch(scenario: nil, screen: "mail.disconnectTexts")
-    let alert = app.alerts.firstMatch
-    XCTAssertTrue(alert.waitForExistence(timeout: 30), "the disconnect alert did not open")
-    let line = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Your Shortcuts automation is still there'"))
-    XCTAssertEqual(line.count, 1, "the automation sentence is missing")
-    attach(app, "Disconnect · Automation still there")
+    XCTAssertTrue(el(app, "mailbox.disconnectPage").waitForExistence(timeout: 30), "the disconnect page did not open")
+    let note = el(app, "mailbox.disconnect.textsNote")
+    XCTAssertTrue(note.waitForExistence(timeout: uiWait), "the automation sentence is missing")
+    XCTAssertTrue(note.label.contains("Your Shortcuts automation is still there"), note.label)
+    attach(app, "Disconnect this mailbox · Automation still there")
   }
 
   @MainActor
@@ -259,11 +255,11 @@ final class BankTextsUITests: XCTestCase {
   func testSetAsideCountsShowOnBankAlerts() throws {
     let app = launch(scenario: nil, screen: "bankAlerts.texts")
     let row = el(app, "bankAlerts.texts.setAside.DIB")
-    XCTAssertTrue(row.waitForExistence(timeout: 30), "the set-aside counts are missing")
+    XCTAssertTrue(row.waitForExistence(timeout: 30), "the skipped-text counts are missing")
     dragUntilHittable(app, row)
-    XCTAssertTrue(row.label.contains("11 texts set aside in the last 30 days"), row.label)
+    XCTAssertTrue(row.label.contains("11 texts skipped in the last 30 days"), row.label)
     XCTAssertTrue(row.label.contains("8 one-time codes"), row.label)
-    attach(app, "Bank alerts · Set aside")
+    attach(app, "Bank alerts · Skipped texts")
     try audit(app, overSheet: true)
   }
 

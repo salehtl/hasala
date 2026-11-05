@@ -12,7 +12,7 @@ import SwiftUI
 struct MailboxDetailPage: View {
   @Bindable var app: AppModel
   let mailboxID: String
-  @State private var confirming = false
+  @State private var choosing = false
   @State private var impact: MailboxDisconnectImpact?
   @State private var confirmingPlain = false
   @State private var busy = false
@@ -66,20 +66,21 @@ struct MailboxDetailPage: View {
     .background(HColor.surfaceSecondary)
     .navigationTitle(mailbox?.provider.appName ?? "Mailbox")
     .navigationBarTitleDisplayMode(.inline)
-    .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirming, presenting: impact) { impact in
-      Button(MailCopy.keepTransactions(impact)) { Task { await disconnect(removing: false) } }
-        .accessibilityIdentifier("mailbox.disconnect.keep")
-      Button(MailCopy.removeTitle(impact), role: .destructive) { Task { await disconnect(removing: true) } }
-        .accessibilityIdentifier("mailbox.disconnect.remove")
-      Button("Cancel", role: .cancel) {}
-    } message: { impact in
-      if let m = mailbox { Text(withTextsNote(MailCopy.disconnectChoiceMessage(m.provider, impact))) }
+    .navigationDestination(isPresented: $choosing) {
+      if let m = mailbox, let impact {
+        MailboxDisconnectPage(
+          mailbox: m, impact: impact, textsNote: textsNote, busy: busy,
+          failure: failure?.message(for: m.provider)
+        ) { removing in
+          Task { await disconnect(removing: removing) }
+        }
+      }
     }
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirmingPlain) {
       Button("Cancel", role: .cancel) {}
       Button("Disconnect", role: .destructive) { Task { await disconnect(removing: false) } }
     } message: {
-      if let m = mailbox { Text(withTextsNote(MailCopy.disconnectMessage(m.provider))) }
+      Text(withTextsNote(MailCopy.disconnectPlainMessage))
     }
     .mailSwitchQuestion(signIn)
     // Signed in again: the motion policy's success, once.
@@ -336,10 +337,12 @@ struct MailboxDetailPage: View {
     }
   }
 
+  private var textsNote: String? {
+    BankTexts.disconnectNote(app.bankTexts, mailbox: app.mailbox, disconnecting: mailboxID)
+  }
+
   private func withTextsNote(_ message: String) -> String {
-    guard let note = BankTexts.disconnectNote(app.bankTexts, mailbox: app.mailbox, disconnecting: mailboxID) else {
-      return message
-    }
+    guard let note = textsNote else { return message }
     return "\(message) \(note)"
   }
 
@@ -348,7 +351,8 @@ struct MailboxDetailPage: View {
     busy = true
     impact = await lane.disconnectImpact(mailboxID)
     busy = false
-    if impact == nil { confirmingPlain = true } else { confirming = true }
+    failure = nil
+    if impact == nil { confirmingPlain = true } else { choosing = true }
   }
 
   /// Disconnect, then back to Bank alerts. The mock keeps a grey row there; the live lane
@@ -361,6 +365,7 @@ struct MailboxDetailPage: View {
     do {
       try await lane.disconnect(mailboxID, removeTransactions: removing)
       failure = nil
+      choosing = false
       app.say(MailCopy.disconnected(m.provider, removed: removed))
       app.router.backToBankAlerts()
     } catch {
@@ -418,5 +423,130 @@ private struct FactValue: View {
     Text(text).hType(.subheadline)
       .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
       .multilineTextAlignment(stacked ? .leading : .trailing)
+  }
+}
+
+enum MailboxDisconnectChoice: Hashable, CaseIterable {
+  case keep
+  case remove
+
+  static let initial = MailboxDisconnectChoice.keep
+
+  var removesTransactions: Bool { self == .remove }
+}
+
+struct MailboxDisconnectPage: View {
+  let mailbox: MailboxSnapshot
+  let impact: MailboxDisconnectImpact
+  let textsNote: String?
+  let busy: Bool
+  let failure: String?
+  var disconnect: (Bool) -> Void
+  @State private var choice = MailboxDisconnectChoice.initial
+  @Environment(\.openURL) private var openURL
+
+  static let title = "Disconnect this mailbox"
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 24) {
+        Text(MailCopy.disconnectLead(mailbox.address))
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.horizontal, 4)
+        VStack(spacing: 0) {
+          row(.keep, title: MailCopy.keepTransactions(impact), detail: nil)
+          HDivider(inset: .text16)
+          row(.remove, title: MailCopy.removeTransactions(impact), detail: MailCopy.removeDetail(impact))
+        }
+        .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+        permissionsLink
+        if let textsNote {
+          Text(textsNote)
+            .hType(.footnote)
+            .foregroundStyle(HColor.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
+            .accessibilityIdentifier("mailbox.disconnect.textsNote")
+        }
+        if let failure {
+          InlineStatus(tone: .error, text: failure, size: .regular)
+            .padding(.horizontal, 16)
+        }
+      }
+      .padding(.horizontal, HSpacing.insetPage)
+      .padding(.top, 8)
+      .padding(.bottom, 24)
+    }
+    .accessibilityIdentifier("mailbox.disconnectPage")
+    .background(HColor.surfaceSecondary)
+    .navigationTitle(Self.title)
+    .navigationBarTitleDisplayMode(.inline)
+    .safeAreaInset(edge: .bottom) {
+      Button("Disconnect") { disconnect(choice.removesTransactions) }
+        .buttonStyle(.pill(.destructive, size: .large, fill: true, loading: busy))
+        .disabled(busy)
+        .accessibilityIdentifier("mailbox.disconnect.confirm")
+        .padding(.horizontal, HSpacing.insetPage)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(HColor.surfaceSecondary)
+    }
+  }
+
+  private func row(_ option: MailboxDisconnectChoice, title: String, detail: String?) -> some View {
+    let on = choice == option
+    return Button { choice = option } label: {
+      HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
+          if let detail {
+            Text(detail).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.check, size: 18, color: HColor.textLink, strokeWidth: 2.6)
+          .frame(width: 24, height: 24)
+          .opacity(on ? 1 : 0)
+          .accessibilityHidden(true)
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .frame(minHeight: detail == nil ? 52 : 64)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .disabled(busy)
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+    .accessibilityIdentifier("mailbox.disconnect.\(option == .keep ? "keep" : "remove")")
+  }
+
+  private var permissionsLink: some View {
+    Button { openURL(MailCopy.consentURL(mailbox.provider)) } label: {
+      HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(MailCopy.permissionsTitle(mailbox.provider)).hType(.rowTitle).foregroundStyle(HColor.textLink)
+          Text(MailCopy.consentPage(mailbox.provider)).hType(.footnote).foregroundStyle(HColor.textSecondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        Image(systemName: "arrow.up.right")
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(HColor.textLink)
+          .accessibilityHidden(true)
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .frame(minHeight: 64)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isLink)
+    .accessibilityIdentifier("mailbox.disconnect.permissions")
   }
 }

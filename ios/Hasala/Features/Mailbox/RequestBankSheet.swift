@@ -135,6 +135,8 @@ struct RequestBankSheet: View {
     }
   }
 
+  static let offlineNote = "You're offline. Check again when you're back online."
+
   private var lookNote: String {
     switch probe {
     case nil:
@@ -143,7 +145,7 @@ struct RequestBankSheet: View {
     case .found: "Found on this iPhone. Nothing has been sent."
     case .notReading: "Connect your email first."
     case .signInAgain: "Sign in to your email again first."
-    case .offline: "Couldn't check your mail just now. Try again later."
+    case .offline: Self.offlineNote
     }
   }
 
