@@ -168,7 +168,8 @@ struct LiveMailboxTests {
     for provider in MailProviderKind.allCases {
       #expect(try admit(provider, .unlinked) == false)
       #expect(try admit(provider, .unlinked, replacing: true) == false)
-      #expect(throws: MailConnectFailure.takenByOtherIPhone) { try admit(provider, .otherDevice) }
+      #expect(try admit(provider, .otherDevice) == false)
+      #expect(try admit(provider, .otherDevice, replacing: true) == false)
     }
     for phase in [MailboxPhase.reconnectRequired, .halted] {
       #expect(try admit(.gmail, phase) == false)
@@ -197,6 +198,27 @@ struct LiveMailboxTests {
                   .halted] {
       try LiveMailboxConnecting.checkDisconnect(phase)
     }
+  }
+
+  @Test func anIPhoneThatLostTheLinkCanTakeItBack() throws {
+    let other = MailboxLinkStatus.holder(isThisDevice: false, watchExpiresAtMs: nil)
+    let mine = MailboxLinkStatus.holder(isThisDevice: true, watchExpiresAtMs: nil)
+    #expect(LiveMailboxConnecting.heldElsewhere(phase: .otherDevice, link: other, provider: .outlook) == .outlook)
+    #expect(LiveMailboxConnecting.heldElsewhere(phase: .unlinked, link: other, provider: .gmail) == .gmail)
+    #expect(LiveMailboxConnecting.heldElsewhere(phase: .otherDevice, link: mine, provider: .gmail) == nil)
+    #expect(LiveMailboxConnecting.heldElsewhere(phase: .otherDevice, link: .noLink, provider: .gmail) == nil)
+    #expect(LiveMailboxConnecting.heldElsewhere(phase: .otherDevice, link: nil, provider: .gmail) == nil)
+    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted] {
+      #expect(LiveMailboxConnecting.heldElsewhere(phase: phase, link: other, provider: .gmail) == nil)
+    }
+    #expect(LiveMailboxConnecting.asksBeforeConnect(.otherDevice))
+    #expect(LiveMailboxConnecting.asksBeforeConnect(.unlinked))
+    for phase in [MailboxPhase.scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted] {
+      #expect(!LiveMailboxConnecting.asksBeforeConnect(phase))
+    }
+    #expect(throws: MailConnectFailure.takenByOtherIPhone) { try LiveMailboxConnecting.checkTakeover(other) }
+    try LiveMailboxConnecting.checkTakeover(other, confirmed: true)
+    try LiveMailboxConnecting.checkTakeover(.noLink)
   }
 
   /// One step-up for both lanes: its reason names neither Gmail nor Outlook.

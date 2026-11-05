@@ -184,8 +184,9 @@ final class AccountRuntime {
     let provider = lane?.provider ?? .gmail
     let status = lane == nil ? nil : store.mailboxStatus
     if let phase = status?.phase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
-    let held: MailProviderKind? =
-      if let lane, status?.phase == .unlinked, case .holder(false, _)? = serverLink { lane.provider } else { nil }
+    let held = status.flatMap { s in
+      lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }
+    }
     let trusted = LiveMailboxConnecting.banks(
       trusted: BankDomains.effectiveTrusted((try? projection.reader.senderTrust()) ?? [:]))
     return LiveReading.Inputs(

@@ -201,7 +201,7 @@ public struct ReadingState: Sendable, Hashable, Codable {
           read: min(m.importRead, m.importTotal), total: m.importTotal, thisMonthRead: m.thisMonthRead,
           offline: m.importOffline, paused: m.importPaused)
       case .otherDevice:
-        return elsewhere(f, t, today: today, canTakeOver: false)
+        return elsewhere(f, t, today: today, canTakeOver: f.heldElsewhere != nil)
       case .active:
         return active(f, m, t, today: today)
       case .unlinked:

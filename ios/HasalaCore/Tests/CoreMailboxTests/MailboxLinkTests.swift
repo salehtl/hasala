@@ -115,6 +115,25 @@ import Testing
     #expect(s.phase == .otherDevice && s.haltedOn == .notHolder)
   }
 
+  @Test func anIPhoneThatLostTheLinkTakesItBackAndReadsTheGap() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+    let putsBefore = await rig.server.puts.count
+    let result = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    guard case .connected = result else {
+      Issue.record("\(result)")
+      return
+    }
+    #expect(await rig.server.puts.count == putsBefore + 1)
+    #expect(await rig.state().phase != .otherDevice)
+    rig.gmail.add(SyntheticMail.dibCard(id: "gap", dateMs: rig.clock.nowMs() - 60_000))
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.state().phase == .active)
+    #expect(await rig.accounted("gap") != nil)
+  }
+
   func saveReader(_ rig: Rig) async throws {
     var c = MailboxCommit()
     c.reader = MailReaderState(address: SyntheticMail.defaultTo)
