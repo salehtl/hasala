@@ -44,6 +44,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   /// Bank alerts' health for the next reload (`noteMailbox`).
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
+  @ObservationIgnored var readingSource: (@MainActor () -> ReadingState?)?
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
@@ -143,7 +144,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
       skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
-      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps)
+      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps, reading: readingSource?())
     let mapped = await Task.detached(priority: .userInitiated) { () -> LedgerState? in
       if let author { return try? author.map(reader, context: context) }
       return try? LedgerStateMapper.map(reader, context: context)
