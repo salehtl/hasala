@@ -150,7 +150,7 @@ struct BankTextsTests {
     #expect(BankTexts.anyBankLine.contains("from any bank") && BankTexts.anyBankLine.contains("adds the ones it reads with confidence") && BankTexts.anyBankLine.contains("waits in Review"))
     #expect(!BankTexts.anyBankLine.lowercased().contains("automatically"))
     let lines = [
-      BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsNoText,
+      BankTexts.anyBankLine, BankTexts.keepsPayments, BankTexts.keepsNoText, BankTexts.fakedTextNote,
       BankTexts.setAsideFootnote, BankTextsTestScreen.worksLine, BankTextsGuide.intro,
     ] + BankTextsGuide.shortSteps + BankTextsGuide.fullSteps + BankTextsGuide.installSteps + BankTextsGuide.checklist.map(\.detail)
     for line in lines {
@@ -255,7 +255,7 @@ struct BankTextsTests {
   }
 
   @Test func thePrivacyLineSaysPaymentShapedTextsFromAnySenderAreKept() {
-    for line in [BankTexts.keepsPayments, BankTexts.keepsPaymentShapedTexts] {
+    for line in [BankTexts.keepsPayments, BankTexts.keepsNoText] {
       #expect(line.contains("from any sender") && line.contains("dropped at once"))
       #expect(!line.contains("only your banks"))
     }
@@ -725,7 +725,7 @@ struct BankTextsTests {
     #expect(PasteBankTextModel.paymentCount("Your prepaid card XXX1234 has AED 50 to spend.") == 0)
     let promo = "Get AED 20 back when bills are paid with your card"
     #expect(PasteBankTextModel.paymentCount([MockBankTexts.sampleText, promo].joined(separator: "\n")) == 1)
-    #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Paste them one at a time.")
+    #expect(PasteBankTextModel.severalNote(3) == "This paste has 3 payments. Hasala adds only the one shown above. Paste the others one at a time.")
     let lane = MockBankTexts(setUp: true)
     lane.readDelay = .zero
     let m = PasteBankTextModel(lane: lane)
@@ -778,16 +778,16 @@ struct BankTextsTests {
   }
 
   @Test func theKeepingCopyCoversUnreadPaymentTexts() {
-    for line in [BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts] {
+    for line in [BankTexts.keepsNoText, BankTexts.keepsPayments] {
       #expect(!line.contains("payments it reads") && !line.contains("payment Hasala read"))
     }
     let keepsTexts = #/\bkeeps\b[^.]*?\btexts?\b/#
-    for line in [BankTexts.keepsNoText, BankTexts.keepsPaymentShapedTexts, BankTexts.keepsPayments] {
+    for line in [BankTexts.keepsNoText, BankTexts.keepsPayments] {
       for sentence in line.split(separator: ".") where sentence.contains(keepsTexts) {
         #expect(sentence.contains("details"), "\(sentence)")
       }
     }
-    #expect(BankTexts.keepsPaymentShapedTexts.contains("texts that look like payments"))
+    #expect(BankTexts.keepsPayments.contains("texts that look like payments"))
     #expect(BankTexts.keepsNoText.contains("never the text itself"))
   }
 
@@ -831,7 +831,7 @@ struct BankTextsTests {
   @Test func theHeroNamesTheLastTextWithNoBank() {
     let hero = BankTextsAlertsPage.Hero(
       .working(lastRan: now.addingTimeInterval(-60)), lastText: now.addingTimeInterval(-7200), now: now)
-    #expect(hero.detail.hasSuffix("\nLast text added 2 h ago"))
+    #expect(hero.detail == "Last text added 2 h ago")
     #expect(!hero.detail.contains("Last bank text"))
   }
 

@@ -28,6 +28,10 @@ final class PasteBankTextModel {
     return reading != .notAPayment
   }
 
+  var showsIntro: Bool { text == nil }
+
+  var solidDock: Bool { match != nil }
+
   var addTitle: String {
     switch match?.kind {
     case .payment?: "Add anyway"
@@ -116,7 +120,7 @@ final class PasteBankTextModel {
   }
 
   static func severalNote(_ n: Int) -> String {
-    "This paste has \(MoneyFormat.count(n)) payments. Paste them one at a time."
+    "This paste has \(MoneyFormat.count(n)) payments. Hasala adds only the one shown above. Paste the others one at a time."
   }
 
   static func cardLine(_ p: BankTextPreview) -> String? {
@@ -143,10 +147,12 @@ struct PasteBankTextSheet: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          Text(BankTexts.pasteIntro(usesTexts: model.lane.usesTexts))
-            .hType(.subheadline)
-            .foregroundStyle(HColor.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+          if model.showsIntro {
+            Text(BankTexts.pasteIntro(usesTexts: model.lane.usesTexts))
+              .hType(.subheadline)
+              .foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
           if model.refused {
             InlineStatus(tone: .neutral, text: BankTexts.pasteRefused, size: .regular)
               .accessibilityIdentifier("pasteText.refused")
@@ -200,7 +206,11 @@ struct PasteBankTextSheet: View {
           }
         }
         .padding(.horizontal, HSpacing.insetPage)
+        .padding(.top, model.solidDock ? 8 : 0)
         .padding(.bottom, 8)
+        .background {
+          if model.solidDock { HColor.surfaceSecondary.ignoresSafeArea(edges: .bottom) }
+        }
       }
       .background(HColor.surfaceSecondary)
       .navigationTitle("Paste a bank text")

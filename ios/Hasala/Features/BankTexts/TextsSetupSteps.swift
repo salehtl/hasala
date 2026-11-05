@@ -5,66 +5,79 @@ import UIKit
 
 struct SourceStep: View {
   @Bindable var model: SetupModel
-  @State private var picked: PaymentSource?
+  @State private var tapped: PaymentSource?
 
   var body: some View {
+    let busy = model.busy || model.connectBusy
     AccountScreen(
       title: "How do your banks reach you?",
       subtitle: "Pick one. Hasala reads it on this iPhone, and reads only one at a time.",
       trailing: ("Skip", model.skipSource)
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        SourceCard(source: .texts, picked: picked == .texts) { picked = .texts }
-        SourceCard(source: .email, picked: picked == .email) { picked = .email }
+        ForEach([PaymentSource.texts, .email], id: \.self) { source in
+          SourceCard(source: source, busy: busy && tapped == source) {
+            tapped = source
+            model.chooseSource(source)
+          }
+          .disabled(busy)
+        }
         SetupFailureBanner(failure: model.failure)
         DockNote(text: "Skip to add spending by hand and set this up later in Profile. Either way, payments are read on this iPhone.")
           .padding(.top, 4)
       }
       .padding(.top, -8)
-    } footer: {
-      BusyButton(
-        title: picked == nil ? "Choose one" : "Continue", busy: model.busy, enabled: picked != nil,
-        identifier: "source.continue"
-      ) {
-        guard let picked else { return }
-        model.chooseSource(picked)
-      }
-      .dockPill()
     }
-    .onAppear { if picked == nil { picked = model.source ?? model.lastPickedSource } }
+  }
+}
+
+enum SourceCardCopy {
+  static func title(_ source: PaymentSource) -> String { source == .texts ? "Bank texts" : "Bank email" }
+
+  static func subtitle(_ source: PaymentSource) -> String {
+    source == .texts ? "Through one automation in the Shortcuts app" : "Gmail or Outlook, read-only"
+  }
+
+  static var emailBanks: String {
+    let names = SupportedBank.allCases.map(\.shortName)
+    guard names.count > 1 else { return names.first ?? "" }
+    return names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+  }
+
+  static func upsides(_ source: PaymentSource) -> [String] {
+    source == .texts
+      ? ["No mailbox access, no Google warning", "Works when your bank only texts", "Any bank that texts you"]
+      : ["Can find your older payments too", "Reads only your banks' alert emails", emailBanks]
+  }
+
+  static func downsides(_ source: PaymentSource) -> [String] {
+    source == .texts
+      ? [
+        "Hasala sees each text with a full stop, from anyone, and drops all but payments",
+        "Only from your next payment on, and you set it up in the Shortcuts app",
+      ]
+      : ["Gmail shows an unverified-app warning in the beta"]
   }
 }
 
 private struct SourceCard: View {
   let source: PaymentSource
-  let picked: Bool
+  let busy: Bool
   var pick: () -> Void
 
-  private var title: String { source == .texts ? "Bank texts" : "Bank email" }
-  private var subtitle: String {
-    source == .texts ? "Through one automation in the Shortcuts app" : "Gmail or Outlook, read-only"
-  }
-  private var upsides: [String] {
-    source == .texts
-      ? ["No inbox access, no Google warning", "Works when your bank only texts"]
-      : ["Can find your older payments too", "Reads only your banks' alert emails"]
-  }
-  private var downside: String {
-    source == .texts
-      ? "Only from your next payment on, and you set it up in the Shortcuts app"
-      : "Gmail shows an unverified-app warning in the beta"
-  }
-
   var body: some View {
+    let title = SourceCardCopy.title(source)
+    let subtitle = SourceCardCopy.subtitle(source)
+    let upsides = SourceCardCopy.upsides(source)
+    let downsides = SourceCardCopy.downsides(source)
     Button(action: pick) {
       VStack(alignment: .leading, spacing: 12) {
         HStack(alignment: .top, spacing: 12) {
           RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(source == .texts ? HColor.actionAccentSubtle : HColor.neutral100)
+            .fill(HColor.neutral100)
             .frame(width: 40, height: 40)
             .overlay {
-              HIconView(source == .texts ? .chat : .envelope, size: 22,
-                        color: source == .texts ? HColor.actionAccent : HColor.textPrimary, strokeWidth: 1.6)
+              HIconView(source == .texts ? .chat : .envelope, size: 22, color: HColor.textPrimary, strokeWidth: 1.6)
             }
           VStack(alignment: .leading, spacing: 1) {
             Text(title).hType(.headline).foregroundStyle(HColor.textPrimary)
@@ -72,30 +85,35 @@ private struct SourceCard: View {
           }
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
-          CheckCircle(on: picked)
+          Group {
+            if busy {
+              Spinner(size: HSpacing.iconSmall, track: HColor.feedbackProgressTrack)
+            } else {
+              HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+            }
+          }
+          .frame(height: 22)
+          .accessibilityHidden(true)
         }
         VStack(alignment: .leading, spacing: 6) {
           ForEach(upsides, id: \.self) { line in
             bullet(line, upside: true)
           }
-          bullet(downside, upside: false)
+          ForEach(downsides, id: \.self) { line in
+            bullet(line, upside: false)
+          }
         }
         .padding(.leading, 52)
       }
       .padding(16)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous)
-          .strokeBorder(HColor.actionAccent, lineWidth: 2)
-          .opacity(picked ? 1 : 0)
-      }
       .contentShape(RoundedRectangle(cornerRadius: HRadius.listGroup, style: .continuous))
     }
     .buttonStyle(.plain)
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(([title, subtitle] + upsides + [downside]).joined(separator: ". "))
-    .accessibilityAddTraits(picked ? [.isButton, .isSelected] : .isButton)
+    .accessibilityLabel(([title, subtitle] + upsides + downsides).joined(separator: ". "))
+    .accessibilityAddTraits(.isButton)
     .accessibilityIdentifier("source.\(source.rawValue)")
   }
 
@@ -118,38 +136,65 @@ private struct SourceCard: View {
 struct TextsSetUpStep: View {
   @Bindable var model: SetupModel
   @State private var guiding = false
+  @State private var opened = false
   @Environment(\.openURL) private var openURL
   private var install: URL? { BankTexts.offeredInstall(model.bankTexts) }
 
   var body: some View {
     let copy = TextsSetUpCopy(install: install)
+    let returned = copy.returned(opened: opened)
     AccountScreen(title: copy.title, subtitle: copy.subtitle, back: .system) {
       VStack(alignment: .leading, spacing: 16) {
-        NumberedStepsCard(steps: copy.steps)
-        TextsLinkRow(title: copy.guideTitle, identifier: "texts.showMeHow") { guiding = true }
         TextsNote(icon: .privacy, text: BankTexts.keepsPayments)
           .accessibilityIdentifier("texts.keepsOnly")
+        NumberedStepsCard(steps: copy.steps)
+        TextsNote(icon: .shield, text: BankTexts.fakedTextNote)
+          .accessibilityIdentifier("texts.fakedText")
+        TextsLinkRow(title: copy.guideTitle, identifier: "texts.showMeHow") { guiding = true }
         TextsNote(icon: .bank, text: BankTexts.anyBankLine)
           .accessibilityIdentifier("texts.anyBank")
         SetupFailureBanner(failure: model.failure)
+        SkipToNextTextLink(identifier: "texts.skip") { Task { await model.finishTexts() } }
       }
       .padding(.top, -8)
     } footer: {
-      Button { openURL(copy.openURL) } label: {
-        Text(copy.openTitle).fixedSize(horizontal: false, vertical: true)
+      if returned {
+        testButton(copy, primary: true)
+        openButton(copy, title: copy.againTitle, primary: false)
+        Text(copy.againNote)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity)
+          .accessibilityIdentifier("texts.addAgainNote")
+      } else {
+        openButton(copy, title: copy.openTitle, primary: true)
+        testButton(copy, primary: false)
       }
-      .buttonStyle(.pill(.primary, fill: true))
-      .dockPill()
-      .accessibilityIdentifier(copy.openIdentifier)
-      Button { model.sendTestText() } label: {
-        Text(copy.testTitle).fixedSize(horizontal: false, vertical: true)
-      }
-      .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
-      .dockPill()
-      .accessibilityIdentifier("texts.toTest")
-      SkipToNextTextLink(identifier: "texts.skip") { Task { await model.finishTexts() } }
     }
     .sheet(isPresented: $guiding) { ShortcutsGuideSheet(install: install) }
+  }
+
+  private func openButton(_ copy: TextsSetUpCopy, title: String, primary: Bool) -> some View {
+    Button {
+      openURL(copy.openURL)
+      opened = true
+    } label: {
+      Text(title).fixedSize(horizontal: false, vertical: true)
+    }
+    .buttonStyle(.pill(primary ? .primary : .tertiary, size: primary ? .large : .medium, fill: true))
+    .dockPill()
+    .accessibilityIdentifier(primary ? copy.openIdentifier : "texts.addAgain")
+  }
+
+  private func testButton(_ copy: TextsSetUpCopy, primary: Bool) -> some View {
+    Button { model.sendTestText() } label: {
+      Text(copy.testTitle).fixedSize(horizontal: false, vertical: true)
+    }
+    .buttonStyle(.pill(primary ? .primary : .tertiary, size: primary ? .large : .medium, fill: true))
+    .dockPill()
+    .accessibilityIdentifier("texts.toTest")
   }
 }
 
@@ -194,13 +239,15 @@ struct BankTextsTestScreen: View {
           }
         case .nothingYet:
           checklist
-          TextsNote(text: "Hasala is still watching for the test text.")
+          TextsNote(text: Self.nothingYetNote(windowOpen: lane.testWindowOpen))
+            .accessibilityIdentifier("textsTest.watching")
         case .idle, .waiting:
           waitingCard
           TextsNote(text: "Hasala adds nothing for this text. It only checks that the automation runs.")
           TextsNote(icon: .chat, text: "If nothing arrives in a minute, Hasala shows what to check.")
         }
         SetupFailureBanner(failure: failure)
+        if test == .nothingYet { skipLink }
       }
       .padding(.top, -8)
       .hAnimation(.stateSwap, value: test)
@@ -208,10 +255,21 @@ struct BankTextsTestScreen: View {
       footer(test)
     }
     .onAppear { if test == .idle { lane.startTest() } }
+    .task(id: copied) {
+      guard copied else { return }
+      try? await Task.sleep(for: Self.copiedFor)
+      if !Task.isCancelled { copied = false }
+    }
     .onChange(of: test) { _, now in
       if case .received = now { AccessibilityNotification.Announcement("Test text received").post() }
       if now == .nothingYet { AccessibilityNotification.Announcement("Nothing arrived yet").post() }
     }
+  }
+
+  static let copiedFor: Duration = .seconds(2)
+
+  static func nothingYetNote(windowOpen: Bool) -> String {
+    windowOpen ? "Hasala is still watching for the test text." : "Hasala stopped watching. Tap Send the test again."
   }
 
   static let worksLine =
@@ -229,7 +287,7 @@ struct BankTextsTestScreen: View {
     switch test {
     case .received: Self.worksLine
     case .nothingYet: "Check these in the Shortcuts app, then send the test again."
-    case .idle, .waiting: "In Messages, send this to your own number, full stop included. Hasala is watching for it."
+    case .idle, .waiting: "Messages opens with the test written. Send it to your own number. Hasala is watching for it."
     }
   }
 
@@ -251,7 +309,6 @@ struct BankTextsTestScreen: View {
         .buttonStyle(.pill(.tertiary, size: .medium, fill: true))
         .dockPill()
         .accessibilityIdentifier("textsTest.again")
-      skipLink
     case .idle, .waiting:
       Button { openURL(BankTexts.messagesURL) } label: {
         Text("Open Messages").fixedSize(horizontal: false, vertical: true)
@@ -270,10 +327,7 @@ struct BankTextsTestScreen: View {
   private var waitingCard: some View {
     HListCard(alignment: .leading) {
       ReflowingRow(spacing: 12) {
-        Button {
-          UIPasteboard.general.string = BankTexts.testPhrase
-          copied = true
-        } label: {
+        Button(action: copyPhrase) {
           Text(copied ? "Copied" : "Copy")
             .hType(HType.subheadline.weight(.semibold))
             .foregroundStyle(HColor.textLink)
@@ -286,14 +340,19 @@ struct BankTextsTestScreen: View {
         .accessibilityLabel(copied ? "Copied" : "Copy \(BankTexts.testPhrase)")
         .accessibilityIdentifier("textsTest.copy")
       } trailing: {
-        Text(BankTexts.testPhrase)
-          .hType(.body)
-          .foregroundStyle(HColor.textOnAccent)
-          .padding(.horizontal, 16)
-          .padding(.vertical, 10)
-          .background(HColor.actionAccent, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-          .accessibilityLabel("The test text: \(BankTexts.testPhrase)")
-          .accessibilityIdentifier("textsTest.phrase")
+        Button(action: copyPhrase) {
+          Text(BankTexts.testPhrase)
+            .hType(.body)
+            .foregroundStyle(HColor.textPrimary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(HColor.neutral100, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("The test text: \(BankTexts.testPhrase)")
+        .accessibilityHint("Copies it")
+        .accessibilityIdentifier("textsTest.phrase")
       }
       .padding(16)
       HDivider(inset: .none)
@@ -313,6 +372,11 @@ struct BankTextsTestScreen: View {
       .accessibilityAddTraits(.updatesFrequently)
       .accessibilityIdentifier("textsTest.waiting")
     }
+  }
+
+  private func copyPhrase() {
+    UIPasteboard.general.string = BankTexts.testPhrase
+    copied = true
   }
 
   private func receivedCard(_ at: Date) -> some View {
