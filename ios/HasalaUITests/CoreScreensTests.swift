@@ -212,7 +212,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(chip.waitForExistence(timeout: uiWait))
     XCTAssertTrue(chip.label.contains("1"), chip.label)
     XCTAssertFalse(app.staticTexts["1 to sort"].exists)
-    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 3 need a look")
+    XCTAssertEqual(app.buttons["header.notifications"].firstMatch.label, "Notifications, 2 need a look")
   }
 
   /// A To sort row opens the deck at its own card; a pick sheet closed without a choice sends

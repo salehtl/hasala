@@ -30,11 +30,12 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // The bell counts what needs a look and opens it.
     let bell = app.buttons["header.notifications"].firstMatch
     XCTAssertTrue(bell.exists, "Home has no bell")
-    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+    XCTAssertEqual(bell.label, "Notifications, 3 need a look")
     bell.tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForExistence(timeout: uiWait))
     assertText(app, "Needs a look", "Notifications")
-    assertPresent(app, ["bell.row.review", "bell.row.bill.axa", "bell.row.found.apple-bill", "bell.row.price.du"],
+    assertAbsent(app, ["bell.row.review", "bell.markAllRead", "Mark all as read"], "Notifications")
+    assertPresent(app, ["bell.row.bill.axa", "bell.row.found.apple-bill", "bell.row.price.du"],
                   "Notifications")
     assertAbsent(app, ["Earlier", "bell.settings", "Notification settings"], "Notifications")
     assertNoPlaceholders(app, "Notifications")
@@ -126,7 +127,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
       tabBar.buttons[tab].tap()
       XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
       XCTAssertTrue(bell.isHittable, "\(tab) has no bell")
-      XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+      XCTAssertEqual(bell.label, "Notifications, 3 need a look")
       attach(app, "Release · Bell · \(tab)")
     }
     XCTAssertTrue(app.buttons["header.search"].firstMatch.isHittable, "Activity has no search")
@@ -155,7 +156,7 @@ final class ReleaseSurfaceHomeTests: ReleaseSurfaceTestCase {
     // No mailbox: the bell's last row asks to connect it and opens Bank alerts in Profile.
     app = launchRelease("gmailSkipped")
     let bell = app.buttons["header.notifications"].firstMatch
-    XCTAssertEqual(bell.label, "Notifications, 5 need a look")
+    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
     bell.tap()
     tap(app, "bell.row.mail.connect")
     XCTAssertTrue(el(app, "bankAlerts.hero").waitForExistence(timeout: 10), "Bank alerts did not open")

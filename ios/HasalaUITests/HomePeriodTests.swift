@@ -88,7 +88,7 @@ final class HomePeriodTests: XCTestCase {
   }
 
   @MainActor
-  func testAPastMonthKeepsTheBellAndTheBadgeOnTheWholeQueueAndTheBellOpensTheDeckAtAllTime() throws {
+  func testAPastMonthKeepsTheBadgeOnTheWholeQueueAndTheBellLeavesItToReview() throws {
     let app = launch(scenario: "mayaRange", motion: "off")
     tap(app, "home.period", opening: "period.sheet")
     tap(app, "period.preset.lastMonth")
@@ -96,11 +96,10 @@ final class HomePeriodTests: XCTestCase {
     XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, September 2026"))
 
     let bell = app.buttons["header.notifications"].firstMatch
-    XCTAssertEqual(bell.label, "Notifications, 4 need a look")
+    XCTAssertEqual(bell.label, "Notifications, 3 need a look")
     bell.tap()
-    let row = el(app, "bell.row.review")
-    XCTAssertTrue(row.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(row.label.contains("9 transactions to sort"), row.label)
+    XCTAssertTrue(el(app, "bell.row.bill.axa").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "bell.row.review").exists)
     attach(app, "Bell · September chosen")
     el(app, "bell.close").tap()
     XCTAssertTrue(el(app, "bell.sheet").waitForNonExistence(timeout: uiWait))
@@ -116,19 +115,7 @@ final class HomePeriodTests: XCTestCase {
     attach(app, "Review · September chosen")
     try audit(app)
 
-    bell.tap()
-    tap(app, "bell.row.review")
-    let position = el(app, "review.position")
-    XCTAssertTrue(position.waitForLabel("1 of 9"), position.label)
-    XCTAssertEqual(app.buttons["review.period"].label, "Period, All time")
-    attach(app, "Deck · All time from the bell")
-    try audit(app)
-    el(app, "review.close").tap()
-    XCTAssertTrue(count.waitForLabel("9 to sort · about 2 minutes"), count.label)
-    XCTAssertEqual(app.buttons["review.tab.period"].label, "Period, All time")
-    XCTAssertFalse(app.buttons["review.tab.elsewhere"].exists)
-    app.tabBars.firstMatch.buttons["Home"].tap()
-    XCTAssertTrue(app.buttons["home.period"].waitForLabel("Period, All time"))
+    XCTAssertEqual(bell.label, "Notifications")
   }
 
   @MainActor
