@@ -34,6 +34,7 @@ nonisolated enum LedgerStateMapper {
     var forkOps: [String: Op] = [:]
     var priors: [String: SortMemory.Prior] = [:]
     var undone: [String: SortMemory.Prior] = [:]
+    var reading: ReadingState?
   }
 
   enum MapError: Error { case date }
@@ -167,7 +168,7 @@ nonisolated enum LedgerStateMapper {
       projects: projects, goals: goals, rules: mappedRules, profile: c.profile, mailbox: c.mailbox, prefs: c.prefs,
       netWorth: NetWorthHistory(), skippedReview: skipped(txns, c),
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
-      unreadMail: unreadMail, unreadTexts: unreadTexts)
+      unreadMail: unreadMail, unreadTexts: unreadTexts, reading: c.reading)
     return Mapped(state: state, candidates: feed.derived.candidates)
   }
 
