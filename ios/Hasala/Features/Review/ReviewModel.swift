@@ -50,6 +50,11 @@ protocol ReviewDeckModel: AnyObject, Observable {
   @discardableResult func resolveSamePurchase(_ card: TxnID, same: Bool) -> Bool
   @discardableResult func archive(_ card: TxnID) -> Bool
   func close(goToActivity: Bool)
+  var skipped: Int { get }
+  var reached: Int { get }
+  func reach(_ card: TxnID) -> Int
+  var canUndoLast: Bool { get }
+  func undoLast()
 }
 
 @MainActor
@@ -58,6 +63,8 @@ final class ReviewViewModel: ReviewDeckModel {
   private let app: AppModel
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
+  private(set) var reached = 0
+  private var lastUndo: (card: TxnID, tokens: [UndoToken])?
   /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private var order: [TxnID]
   private(set) var total: Int
@@ -169,11 +176,68 @@ final class ReviewViewModel: ReviewDeckModel {
 
   @discardableResult
   func sort(_ card: TxnID, into category: CategoryID, alwaysUse: Bool, project: ProjectID?) -> Bool {
-    guard app.perform(settling(card) + [.categorize(card, category, learnRule: alwaysUse, project: project)]) else {
+    let settle = settling(card)
+    let name = app.store.state.category(category)?.name
+    let others = alwaysUse ? reachable(card, outside: category) : []
+    guard app.perform(settle + [.categorize(card, category, learnRule: alwaysUse, project: project)],
+                      title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+    else {
       return false
     }
+    count(others, now: category)
     filed(card, learnedRule: alwaysUse)
     return true
+  }
+
+  nonisolated static func keptBothTitle(settling: [LedgerEdit], category: String?, alwaysUse: Bool) -> String? {
+    guard !settling.isEmpty, !alwaysUse, let category else { return nil }
+    return "Kept both, sorted into \(category)"
+  }
+
+  func reach(_ card: TxnID) -> Int {
+    let s = app.store.state
+    guard let ref = s.txn(card)?.groupRef else { return 0 }
+    return s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card }.count
+  }
+
+  private func reachable(_ card: TxnID, outside category: CategoryID?) -> [TxnID] {
+    let s = app.store.state
+    guard let ref = s.txn(card)?.groupRef else { return [] }
+    return s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != category }.map(\.id)
+  }
+
+  private func count(_ others: [TxnID], now category: CategoryID?) {
+    let s = app.store.state
+    reached += others.filter { s.txn($0)?.categoryID == category && category != nil }.count
+  }
+
+  var skipped: Int {
+    let s = app.store.state
+    return s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && s.skippedReview.contains($0.id) }.count
+  }
+
+  var canUndoLast: Bool {
+    guard let last = lastUndo, app.store.state.txn(last.card)?.inReview == false else { return false }
+    let check = app.store as? UndoAvailability
+    return last.tokens.allSatisfy { check?.canUndo($0) != false }
+  }
+
+  func undoLast() {
+    guard canUndoLast, let last = lastUndo else { return }
+    lastUndo = nil
+    if app.toast?.undo == last.tokens.first { app.dismissToast() }
+    for token in last.tokens { app.store.undo(token) }
+    sortedIDs.removeAll { $0 == last.card }
+    shown = nil
+    memo = Memo()
+  }
+
+  private func remember(_ card: TxnID) {
+    guard let toast = app.toast, let undo = toast.undo else {
+      lastUndo = nil
+      return
+    }
+    lastUndo = (card, [undo] + toast.earlier)
   }
 
   func newCategory(for choice: ReviewChoice, card: TxnID) -> CountsAsOption? {
@@ -202,7 +266,9 @@ final class ReviewViewModel: ReviewDeckModel {
       app.say(AppModel.message(for: error), icon: .info)
       return false
     case .success(let edit):
-      guard app.perform(settling(card) + [edit]) else { return false }
+      let settle = settling(card)
+      guard app.perform(settle + [edit], title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+      else { return false }
       filed(card, learnedRule: alwaysUse)
       return true
     }
@@ -235,6 +301,7 @@ final class ReviewViewModel: ReviewDeckModel {
   }
 
   private func filed(_ card: TxnID, learnedRule: Bool) {
+    remember(card)
     follow(card)
     passed(card)
     record(card, learnedRule: learnedRule)
@@ -361,4 +428,47 @@ enum ReviewEntry {
       return scriptOwner === app ? script : nil
     }
   #endif
+}
+
+extension ReviewChoice {
+  func label(isIncome: Bool) -> String {
+    isIncome && self == .transfer ? "Income or transfer" : label
+  }
+
+  func sheetTitle(isIncome: Bool) -> String {
+    isIncome && self == .transfer ? "Money in · which one?" : "\(label) · which one?"
+  }
+}
+
+enum SuggestionSource {
+  static func spoken(_ name: String, _ suggestedBy: String?) -> String {
+    let source = chip(suggestedBy)
+    return source == "Suggested" ? "\(name), suggested" : "\(name), suggested, \(source)"
+  }
+
+  static func chip(_ suggestedBy: String?) -> String {
+    guard let by = suggestedBy else { return "Suggested" }
+    if by == CategorySource.lastPickLabel { return "Your last pick" }
+    if by.contains("Cloudflare") { return "Cloudflare AI" }
+    if by.contains("this iPhone") { return "On this iPhone" }
+    return "Suggested"
+  }
+}
+
+enum ReviewDone {
+  static func title(skipped: Int) -> String { skipped > 0 ? "Done for now" : "All caught up" }
+
+  static func skippedLine(_ n: Int) -> String? {
+    n > 0 ? "\(MoneyFormat.count(n)) skipped, back tomorrow" : nil
+  }
+
+  static func reachLine(_ n: Int) -> String? {
+    guard n > 0 else { return nil }
+    return "New rules also sorted \(MoneyFormat.count(n)) other transaction\(n == 1 ? "" : "s")."
+  }
+
+  static func reachNote(_ n: Int) -> String? {
+    guard n > 0 else { return nil }
+    return "Also applies to \(MoneyFormat.count(n)) other transaction\(n == 1 ? "" : "s"), in every month."
+  }
 }

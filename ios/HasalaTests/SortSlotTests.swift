@@ -53,10 +53,10 @@ struct SortSlotTests {
 
   @Test func withNothingToSortTheImportDoesNotInviteAStart() {
     let line = SortSlot.importingLine(Self.reading, queued: false)
-    #expect(line == "Hasala is reading your bank alerts. Payments to sort show up here.")
+    #expect(line == "Hasala is reading your bank alerts. Transactions to sort show up here.")
     #expect(!line.contains("start"))
     #expect(SortSlot.importingSpoken(Self.reading, queued: false)
-      == "Reading your mail, 312 so far. Hasala is reading your bank alerts. Payments to sort show up here.")
+      == "Reading your mail, 312 so far. Hasala is reading your bank alerts. Transactions to sort show up here.")
     let offline = MailImport(state: .offline, read: 3, total: 9)
     #expect(SortSlot.importingLine(offline, queued: false) == SortSlot.importingLine(offline))
   }

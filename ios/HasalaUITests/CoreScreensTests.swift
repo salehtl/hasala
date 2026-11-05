@@ -119,12 +119,30 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(line.waitForExistence(timeout: 15))
     XCTAssertEqual(line.label, "Looks like a copy of Starbucks DIFC AED 27.00 from your other inbox")
     XCTAssertTrue(element(app, "review.reason.probable_copy").exists)
-    XCTAssertTrue(element(app, "review.merge").exists && element(app, "review.keepBoth").exists)
+    XCTAssertTrue(element(app, "review.merge").isHittable && element(app, "review.keepBoth").isHittable)
+    for pill in ["need", "want", "save", "transfer"] {
+      XCTAssertFalse(element(app, "review.pill.\(pill)").exists, "the \(pill) pill shows over the question")
+    }
     attach(app, "Review · Copy")
     try audit(app)
-    element(app, "review.merge").tap()
+    drag(app, to: CGVector(dx: 0.5, dy: 0.05))
+    XCTAssertTrue(element(app, "pick.close").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(element(app, "pick.keepsBoth").label, "Sorting keeps both transactions.")
+    attach(app, "Review · Pick · From a copy card")
+    element(app, "pick.mergeInstead").tap()
+    XCTAssertTrue(element(app, "pick.close").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(line.waitForNonExistence(timeout: uiWait), "the copy stayed on the deck")
     attach(app, "Review · Copy merged")
+  }
+
+  @MainActor
+  func testSortingACopyCardSaysItKeptBoth() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    XCTAssertTrue(element(app, "review.copy").waitForExistence(timeout: 15))
+    drag(app, to: CGVector(dx: 0.5, dy: 0.05))
+    XCTAssertTrue(element(app, "pick.close").waitForExistence(timeout: uiWait))
+    element(app, "pick.transfer").tap()
+    XCTAssertTrue(app.staticTexts["Kept both, sorted into Transfer"].waitForExistence(timeout: uiWait))
   }
 
   @MainActor
@@ -134,7 +152,8 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertTrue(line.waitForExistence(timeout: 15))
     XCTAssertEqual(line.label, "Same purchase as USD 25.00 (about AED 91.81) at Amazon on Wed 7 Oct?")
     XCTAssertTrue(element(app, "review.reason.same_purchase").exists)
-    XCTAssertTrue(element(app, "review.same").exists && element(app, "review.keepBoth").exists)
+    XCTAssertTrue(element(app, "review.same").isHittable && element(app, "review.keepBoth").isHittable)
+    XCTAssertFalse(element(app, "review.pill.want").exists)
     attach(app, "Review · Same purchase")
     try audit(app)
     element(app, "review.same").tap()
@@ -202,9 +221,25 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertFalse(element(app, "pick.alwaysUse").isSelected)
     element(app, "pick.entertainment").tap()
     XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(element(app, "review.done").label, "Done for now")
     XCTAssertEqual(element(app, "review.done.tally").label, "5 sorted")
-    attach(app, "Review · All caught up")
+    XCTAssertEqual(element(app, "review.done.skipped").label, "1 skipped, back tomorrow")
+    XCTAssertFalse(element(app, "toast").exists, "a toast covers the done screen")
+    attach(app, "Review · Done for now")
     try audit(app)
+    let doneRow = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH 'review.done.row.'")).firstMatch
+    XCTAssertTrue(doneRow.isHittable)
+    doneRow.tap()
+    XCTAssertTrue(element(app, "txn.close").waitForExistence(timeout: uiWait))
+    element(app, "txn.close").tap()
+    XCTAssertTrue(element(app, "txn.close").waitForNonExistence(timeout: uiWait))
+    element(app, "review.undoLast").tap()
+    XCTAssertTrue(merchant.waitForLabel(containing: "Steam"), merchant.debugDescription)
+    element(app, "review.pill.want").tap()
+    XCTAssertTrue(sheet.waitForExistence(timeout: uiWait))
+    element(app, "pick.entertainment").tap()
+    XCTAssertTrue(element(app, "review.done").waitForExistence(timeout: uiWait))
     element(app, "review.seeActivity").tap()
     XCTAssertTrue(element(app, "activity.count").waitForExistence(timeout: uiWait))
     // The skipped card is still in review, but off today's to-do list with the others.
@@ -316,7 +351,7 @@ final class CoreScreensTests: XCTestCase {
     XCTAssertEqual(element(app, "review.done.tally").label, "6 sorted · 1 new rule")
     attach(app, "Reduce Motion · All caught up")
     element(app, "review.close").tap()
-    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("Everything is sorted"))
   }
 
   /// Activity, its transaction sheet and the review deck at `.accessibility3`: layouts
@@ -410,7 +445,7 @@ final class CoreScreensTests: XCTestCase {
   func testCaughtUpScenarioHasNothingToReview() throws {
     let app = launchHome("mayaCaughtUp")
     app.tabBars.firstMatch.buttons["Review"].tap()
-    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("All caught up"))
+    XCTAssertTrue(element(app, "review.tab.count").waitForLabel("Everything is sorted"))
     XCTAssertTrue(element(app, "review.tab.empty").exists)
     XCTAssertFalse(element(app, "review.tab.start").exists)
     app.tabBars.firstMatch.buttons["Activity"].tap()

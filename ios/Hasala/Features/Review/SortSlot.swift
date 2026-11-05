@@ -33,7 +33,7 @@ enum SortSlot: Equatable {
     case .reading, .stopped:
       queued
         ? "You can start on the ones here now. More arrive as Hasala reads."
-        : "Hasala is reading your bank alerts. Payments to sort show up here."
+        : "Hasala is reading your bank alerts. Transactions to sort show up here."
     }
   }
 

@@ -66,19 +66,36 @@ final class BankTextsReviewUITests: XCTestCase {
     XCTAssertTrue(row.waitForExistence(timeout: uiWait))
     XCTAssertTrue(row.label.contains("Same payment? · you decide"), row.label)
     XCTAssertTrue(el(app, "review.tab.row.text-transfer").label.contains("Same payment? · you decide"))
-    tap(app, "review.tab.row.mail-twin", opening: "review.reasonStrip.may_repeat")
-    let strip = el(app, "review.reasonStrip.may_repeat")
-    XCTAssertTrue(strip.label.contains("This may be the same payment as a bank text from DIB on 9 October."), strip.label)
+    tap(app, "review.tab.row.mail-twin", opening: "review.sameText")
+    let strip = el(app, "review.sameText")
+    XCTAssertEqual(strip.label, "This may be the same payment as a bank text from DIB on 9 October.")
+    XCTAssertTrue(el(app, "review.samePayment").isHittable)
+    XCTAssertTrue(el(app, "review.keepText").isHittable)
     attach(app, "Repeat · Deck")
     try audit(app)
-    strip.tap()
+    tap(app, "review.keepText")
+    XCTAssertTrue(strip.waitForNonExistence(timeout: uiWait))
+    XCTAssertTrue(el(app, "review.merchant").label.contains("Sample Grocer"))
+    tap(app, "review.reason.may_repeat")
     XCTAssertTrue(el(app, "reason.archive").waitForExistence(timeout: uiWait))
+    XCTAssertEqual(el(app, "reason.guidance").label, "Not sure? Check your bank app.")
     XCTAssertTrue(el(app, "reason.sort").exists)
     attach(app, "Repeat · About this alert")
     try audit(app, overSheet: true)
     tap(app, "reason.archive")
     XCTAssertTrue(el(app, "reason.archive").waitForNonExistence(timeout: uiWait))
     XCTAssertTrue(app.staticTexts["Archived"].waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testSamePaymentOnTheCardArchivesIt() throws {
+    let app = launch(scenario: "mayaTexts")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Review"].tap()
+    tap(app, "review.tab.row.mail-twin", opening: "review.samePayment")
+    tap(app, "review.samePayment")
+    XCTAssertTrue(app.staticTexts["Archived"].waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "review.merchant").label.contains("Sample Grocer"))
   }
 
   @MainActor

@@ -42,7 +42,7 @@ final class LastPickUITests: XCTestCase {
 
     tap(app, "review.pill.need", opening: "pick.close")
     let suggested = el(app, "pick.groceries")
-    XCTAssertEqual(suggested.label, "Groceries, suggested")
+    XCTAssertEqual(suggested.label, "Groceries, suggested, Your last pick")
     XCTAssertGreaterThan(suggested.frame.minY, el(app, "pick.utilities").frame.minY)
     XCTAssertGreaterThan(el(app, "pick.utilities").frame.minY, el(app, "pick.rent").frame.minY)
     tap(app, "pick.close")

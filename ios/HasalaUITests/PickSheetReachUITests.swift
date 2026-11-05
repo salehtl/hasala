@@ -43,7 +43,7 @@ final class PickSheetReachUITests: XCTestCase {
     }
     XCTAssertGreaterThan(rows[0].frame.minY, rule.frame.maxY)
     XCTAssertGreaterThan(rows[0].frame.minY, close.frame.maxY)
-    XCTAssertEqual(rows[2].label, "Groceries, suggested")
+    XCTAssertEqual(rows[2].label, "Groceries, suggested, Cloudflare AI")
     let add = el(app, "pick.newCategory")
     XCTAssertTrue(add.isHittable)
     XCTAssertGreaterThan(add.frame.minY, rows[5].frame.maxY)
@@ -80,9 +80,11 @@ final class PickSheetReachUITests: XCTestCase {
     XCTAssertTrue(projects.exists)
     XCTAssertLessThan(projects.frame.height, 140, "the project row wrapped")
     let groceries = el(app, "pick.groceries")
-    XCTAssertEqual(groceries.label, "Groceries, suggested")
-    XCTAssertTrue(el(app, "pick.rent").isHittable, "the categories come first at large sizes")
-    XCTAssertLessThan(el(app, "pick.rent").frame.minY, projects.frame.minY)
+    XCTAssertEqual(groceries.label, "Groceries, suggested, Cloudflare AI")
+    XCTAssertLessThan(projects.frame.minY, el(app, "pick.alwaysUse").frame.minY)
+    XCTAssertLessThan(el(app, "pick.alwaysUse").frame.minY, el(app, "pick.rent").frame.minY,
+                      "the options come before the rows that sort")
+    XCTAssertTrue(reveal(app, el(app, "pick.rent")), "a category is in reach")
     attach(app, "Review · Pick a need · 12 projects · accessibility3")
     try audit(app, atLargeText: true, overSheet: true)
     tap(app, "pick.insurance")

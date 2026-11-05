@@ -28,8 +28,10 @@ struct ReviewTabView: View {
       let elsewhere = app.reviewElsewhere
       let isThisMonth = app.period == .month(app.store.now.date.yearMonth)
       let unread = ReviewEngine.unreadCount(app.store.state)
+      let skipped = Self.skippedCount(app.store.state, in: app.reviewWindow)
       TabScreen(app: app, title: "Review", spacing: 24, titleGap: 4) {
-        Text(Self.countLine(cards.count, elsewhere: elsewhere, period: app.period.title))
+        Text(Self.countLine(cards.count, elsewhere: elsewhere, period: app.period.title, skipped: skipped,
+                            importing: app.mailbox?.importing != nil))
           .hType(.subheadline)
           .foregroundStyle(HColor.textSecondary)
           .accessibilityIdentifier("review.tab.count")
@@ -39,14 +41,14 @@ struct ReviewTabView: View {
           if !cards.isEmpty || elsewhere != nil || !isThisMonth { periodRow(elsewhere, isThisMonth: isThisMonth) }
           slotCard(slot)
           if cards.isEmpty {
-            caughtUp(elsewhere)
+            caughtUp(elsewhere, skipped: skipped)
           } else {
             startCard
           }
           if unread > 0 { unreadable(unread) }
           if !app.store.state.unreadTexts.isEmpty { unreadTexts(app.store.state.unreadTexts.count) }
           if app.offersBankTextPaste { pasteTextRow }
-          if !cards.isEmpty { list(cards) }
+          if !cards.isEmpty { list(cards).padding(.top, HSpacing.gapScreenSection - 24) }
         }
         .padding(.horizontal, HSpacing.insetPage)
       }
@@ -132,8 +134,14 @@ struct ReviewTabView: View {
     cloudSortAnswered = true
   }
 
-  static func countLine(_ n: Int, elsewhere: ReviewElsewhere? = nil, period: String = "") -> String {
-    guard n > 0 else { return elsewhere == nil ? "All caught up" : "Nothing to sort in \(period)" }
+  static func countLine(
+    _ n: Int, elsewhere: ReviewElsewhere? = nil, period: String = "", skipped: Int = 0, importing: Bool = false
+  ) -> String {
+    guard n > 0 else {
+      if elsewhere != nil { return "Nothing to sort in \(period)" }
+      if let line = ReviewDone.skippedLine(skipped) { return "Done for now · " + line }
+      return importing ? "Everything is sorted so far" : "Everything is sorted"
+    }
     return "\(MoneyFormat.count(n)) to sort · " + timeLine(minutes: (n + 5) / 6)
   }
 
@@ -145,6 +153,10 @@ struct ReviewTabView: View {
   }
 
   static let emptyLine = "New transactions Hasala can't sort on its own show up here."
+
+  static func skippedCount(_ s: LedgerState, in window: ReviewWindow) -> Int {
+    s.txns.filter { $0.inReview && window.contains($0.postedAt.date) && s.skippedReview.contains($0.id) }.count
+  }
 
   static func orderSpoken(_ order: ReviewOrder) -> String { "Order, \(order.title)" }
 
@@ -263,8 +275,7 @@ struct ReviewTabView: View {
                 .colorSpace(.perceptual),
               startPoint: UnitPoint(x: 0.33, y: 0), endPoint: UnitPoint(x: 0.67, y: 1)))
         }
-        .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
-        .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
+        .hElevation(.nearFar)
     }
   }
 
@@ -375,7 +386,7 @@ struct ReviewTabView: View {
   private func tone(_ t: ReviewTabRow.Tone) -> Color {
     switch t {
     case .reason: HColor.statusWarningForeground
-    case .suggestion: HColor.actionAccent
+    case .suggestion: HColor.textSecondary
     case .decide: HColor.textSecondary
     }
   }
@@ -383,16 +394,16 @@ struct ReviewTabView: View {
   // MARK: Others
 
   /// Nothing to sort: good news, said plainly, with the way to everything that was sorted.
-  private func caughtUp(_ elsewhere: ReviewElsewhere?) -> some View {
+  private func caughtUp(_ elsewhere: ReviewElsewhere?, skipped: Int) -> some View {
     VStack(spacing: 12) {
       Circle().fill(HColor.statusSuccessSurface).frame(width: 56, height: 56)
         .overlay { HIconView(.check, size: 26, color: HColor.statusSuccessForeground, strokeWidth: 2.2) }
         .accessibilityHidden(true)
-      Text(elsewhere == nil ? "Nothing to sort" : "Nothing to sort in \(app.period.title)")
+      Text(elsewhere == nil ? (skipped > 0 ? "Done for now" : "Nothing to sort") : "Nothing to sort in \(app.period.title)")
         .hType(HType.title3).foregroundStyle(HColor.textPrimary)
         .multilineTextAlignment(.center)
         .accessibilityAddTraits(.isHeader)
-      Text(elsewhere.map { "\($0.line)." } ?? Self.emptyLine)
+      Text(elsewhere.map { "\($0.line)." } ?? ReviewDone.skippedLine(skipped).map { "\($0)." } ?? Self.emptyLine)
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
@@ -446,8 +457,8 @@ struct ReviewTabView: View {
   static func unreadableLine(_ n: Int) -> String { ReviewEngine.unreadLine(n) }
 
   private func unreadableRow(_ title: String, detail: String, icon: HIcon = .envelope) -> some View {
-    let disc = Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-      .overlay { HIconView(icon, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+    let disc = Circle().fill(HColor.statusWarningSurface).frame(width: 32, height: 32)
+      .overlay { HIconView(icon, size: 16, color: HColor.statusWarningForeground, strokeWidth: 2) }
     let text = VStack(alignment: .leading, spacing: 0) {
       Text(title)
         .hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
@@ -482,7 +493,6 @@ struct ReviewTabView: View {
   private var cardSurface: some View {
     RoundedRectangle(cornerRadius: HRadius.widget, style: .continuous)
       .fill(HColor.widgetSurface)
-      .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
-      .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
+      .hElevation(.nearFar)
   }
 }

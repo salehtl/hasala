@@ -23,7 +23,7 @@ final class CloudSortUITests: XCTestCase {
     let app = launch(scenario: nil, screen: "review.empty.importing")
     let card = el(app, "review.slot.importing")
     XCTAssertTrue(card.waitForExistence(timeout: 30))
-    XCTAssertEqual(card.label, "Reading your mail, 312 so far. Hasala is reading your bank alerts. Payments to sort show up here.")
+    XCTAssertEqual(card.label, "Reading your mail, 312 so far. Hasala is reading your bank alerts. Transactions to sort show up here.")
     XCTAssertTrue(el(app, "review.tab.empty").exists)
     XCTAssertFalse(el(app, "review.tab.start").exists)
     attach(app, "Review · Reading your mail, nothing to sort")
