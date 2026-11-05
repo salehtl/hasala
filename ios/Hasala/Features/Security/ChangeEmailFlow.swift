@@ -109,7 +109,7 @@ private struct NewAddressStep: View {
   var body: some View {
     AccountScreen(
       title: "Change your email",
-      subtitle: "You've confirmed it's you. Where should codes and alerts go now?",
+      subtitle: "You've confirmed it's you. Where should sign-in codes and security emails go now?",
       steps: (1, 2), back: .action(onCancel)
     ) {
       VStack(alignment: .leading, spacing: 16) {

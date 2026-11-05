@@ -167,6 +167,8 @@ struct FieldRing: View {
 struct FieldErrorLine: View {
   var text: String
   var warning = false
+  var announceDelay: Duration? = .zero
+  var announceKey: AnyHashable?
 
   @ScaledMetric(relativeTo: .subheadline) private var lane: CGFloat = 20
 
@@ -180,6 +182,7 @@ struct FieldErrorLine: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .accessibilityElement(children: .combine)
+    .announcesError(announceDelay == nil ? nil : text, after: announceDelay ?? .zero, key: announceKey)
   }
 
   private var ink: Color { warning ? HColor.statusWarningForeground : HColor.statusErrorForeground }
@@ -378,7 +381,7 @@ struct PasswordStrengthCard: View {
   private func rule(_ text: String, _ met: Bool) -> some View {
     HStack(alignment: .top, spacing: 10) {
       ZStack {
-        Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).opacity(met ? 0 : 1)
+        Circle().strokeBorder(HColor.controlCheckUnselected, lineWidth: 1.5).opacity(met ? 0 : 1)
         Circle().fill(HColor.statusSuccessForeground).opacity(met ? 1 : 0)
         HIconView(.check, size: 11, color: HColor.white, strokeWidth: 3.4).opacity(met ? 1 : 0)
       }
@@ -716,5 +719,6 @@ struct PhraseGrid: View {
       }
     }
     .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .contain)
   }
 }

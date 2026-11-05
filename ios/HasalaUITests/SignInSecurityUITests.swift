@@ -438,22 +438,21 @@ final class SignInSecurityUITests: XCTestCase {
   }
 
   @MainActor
-  func testTheFrozenBannerStacksAtAccessibilitySizes() throws {
+  func testTheFrozenBannerIsOneMenuAtAccessibilitySizes() throws {
     let app = launch(
       scenario: "frozen",
       arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
     tap(app, "frozen.leave")
-    let unfreeze = el(app, "frozenBanner.unfreeze")
-    let signOut = el(app, "frozenBanner.signOut")
-    XCTAssertTrue(unfreeze.waitForExistence(timeout: uiWait))
-    let title = app.staticTexts["Account frozen"].firstMatch
-    XCTAssertTrue(title.exists)
-    attach(app, "Home · frozen banner · AX3")
-    XCTAssertLessThanOrEqual(title.frame.maxY, signOut.frame.minY + 1)
-    XCTAssertLessThanOrEqual(title.frame.maxY, unfreeze.frame.minY + 1)
-    XCTAssertFalse(signOut.frame.intersects(unfreeze.frame))
-    XCTAssertTrue(signOut.isHittable)
-    XCTAssertTrue(unfreeze.isHittable)
+    let menu = el(app, "frozenBanner.menu")
+    XCTAssertTrue(menu.waitForExistence(timeout: uiWait))
+    attach(app, "Home · frozen banner · AX5")
+    XCTAssertLessThanOrEqual(menu.frame.height, 90)
+    XCTAssertTrue(menu.isHittable)
+    menu.tap()
+    XCTAssertTrue(app.buttons["Unfreeze"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.buttons["Sign out"].exists)
+    app.buttons["Unfreeze"].tap()
+    XCTAssertTrue(app.staticTexts["Your account is frozen"].waitForExistence(timeout: uiWait))
   }
 
   @MainActor

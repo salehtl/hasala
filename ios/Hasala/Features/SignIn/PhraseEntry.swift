@@ -76,12 +76,28 @@ struct PhraseEntryState: Equatable {
 
   /// Up to three list words for the active cell, the typed word itself first when it is
   /// one (Paper: "sad" · "saddle" · "sadness").
-  var suggestions: [String] {
-    let found = PhraseRules.suggestions(for: current, limit: 4)
+  var suggestions: [String] { Self.suggestions(for: current) }
+
+  static func suggestions(for word: String) -> [String] {
+    let found = PhraseRules.suggestions(for: word, limit: 4)
     guard !found.isEmpty else { return [] }
-    var out = PhraseRules.isWord(current) ? [current] : []
-    for w in found where w != current && out.count < 3 { out.append(w) }
+    var out = PhraseRules.isWord(word) ? [word] : []
+    for w in found where w != word && out.count < 3 { out.append(w) }
     return out
+  }
+
+  func canEdit(_ index: Int) -> Bool { index < finished }
+
+  static func oneWord(_ raw: String) -> String {
+    String(normalised(raw).prefix { $0 != " " })
+  }
+
+  func replacing(_ index: Int, with word: String) -> String {
+    let w = Self.oneWord(word)
+    guard !w.isEmpty, words.indices.contains(index) else { return text }
+    var ws = words
+    ws[index] = w
+    return Self.normalised(ws.joined(separator: " ") + (endsWithSpace ? " " : ""))
   }
 
   func drawn(masked: Bool) -> [String] {
@@ -111,6 +127,11 @@ struct PhraseEntryState: Equatable {
 /// keyboard), and its button once the keyboard goes. The screen also applies
 /// `revealsPhraseEntry(_:)`, so the title, the grid, the helper and Paste stay in sight
 /// above that bar.
+struct PhraseEdit: Equatable {
+  var index: Int
+  var word: String
+}
+
 struct PhraseEntryGrid: View {
   /// Each cell, for `revealsPhraseEntry(_:)` at the accessibility sizes.
   static func cellID(_ index: Int) -> String { "phraseEntry.cell.\(index)" }
@@ -119,6 +140,7 @@ struct PhraseEntryGrid: View {
   /// The pasteboard's `changeCount` when a paste landed here (nil until one does).
   @Binding var pastedChangeCount: Int?
   var focused: FocusState<Bool>.Binding
+  var edit: Binding<PhraseEdit?> = .constant(nil)
   var identifier = "phraseEntry.field"
   /// Return on the twelfth word.
   var onSubmit: () -> Void = {}
@@ -128,6 +150,7 @@ struct PhraseEntryGrid: View {
   @Environment(\.scenePhase) private var scenePhase
   @State private var captured = screenIsCaptured()
   @State private var screenshotWarning = false
+  @FocusState private var editFocused: Bool
 
   private var state: PhraseEntryState { PhraseEntryState(text) }
   private var masked: Bool { captured || scenePhase != .active }
@@ -137,9 +160,8 @@ struct PhraseEntryGrid: View {
       if compact { compactHeader }
       ZStack {
         field
+        if edit.wrappedValue != nil { editField }
         cells
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
       }
       .contentShape(Rectangle())
       .onTapGesture { focused.wrappedValue = true }
@@ -154,8 +176,8 @@ struct PhraseEntryGrid: View {
       if screenshotWarning {
         FailureBanner(failure: .badPhrase("That screenshot holds your recovery phrase. Delete it from Photos, and from Recently Deleted."))
       }
-      if let unknown = state.unknownIndex {
-        FieldErrorLine(text: "Word \(unknown + 1) isn't on the recovery list. Check the spelling on your paper.")
+      if let unknown = state.unknownIndex, edit.wrappedValue == nil {
+        FieldErrorLine(text: Self.unknownLine(unknown), announceDelay: .seconds(1.5), announceKey: text)
           .accessibilityIdentifier("phraseEntry.unknown")
       }
       if !compact { helper }
@@ -164,6 +186,12 @@ struct PhraseEntryGrid: View {
     .onAppear {
       focused.wrappedValue = true
       captured = screenIsCaptured()
+    }
+    .onChange(of: editFocused) { _, now in
+      if !now, edit.wrappedValue != nil { commitEdit(refocus: false) }
+    }
+    .onChange(of: edit.wrappedValue) { old, new in
+      if old != nil, new == nil, focused.wrappedValue == false, !editFocused { focused.wrappedValue = true }
     }
     .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
       captured = screenIsCaptured()
@@ -212,6 +240,47 @@ struct PhraseEntryGrid: View {
     .accessibilityHint("Your recovery phrase, \(state.finished) of 12 words.")
   }
 
+  static func unknownLine(_ index: Int) -> String {
+    "Word \(index + 1) isn't on the recovery list. Tap it to fix the spelling."
+  }
+
+  private var editField: some View {
+    TextField("", text: Binding(get: { edit.wrappedValue?.word ?? "" }, set: { new in
+      edit.wrappedValue?.word = PhraseEntryState.oneWord(new)
+    }))
+    .textContentType(nil)
+    .keyboardType(.asciiCapable)
+    .autocorrectionDisabled()
+    .textInputAutocapitalization(.never)
+    .submitLabel(.done)
+    .onSubmit { commitEdit(refocus: true) }
+    .focused($editFocused)
+    .foregroundStyle(.clear)
+    .tint(.clear)
+    .frame(maxWidth: .infinity)
+    .accessibilityIdentifier("phraseEntry.editField")
+    .accessibilityLabel("Word \((edit.wrappedValue?.index ?? 0) + 1)")
+    .accessibilityValue(masked ? "" : edit.wrappedValue?.word ?? "")
+  }
+
+  private func beginEdit(_ index: Int) {
+    guard state.canEdit(index), !masked else {
+      focused.wrappedValue = true
+      return
+    }
+    edit.wrappedValue = PhraseEdit(index: index, word: state.words[index])
+    focused.wrappedValue = false
+    editFocused = true
+  }
+
+  private func commitEdit(refocus: Bool) {
+    guard let e = edit.wrappedValue else { return }
+    text = PhraseEntryState(text).replacing(e.index, with: e.word)
+    edit.wrappedValue = nil
+    editFocused = false
+    if refocus { focused.wrappedValue = true }
+  }
+
   private var cells: some View {
     let columns = typeSize.isAccessibilitySize ? 1 : 2
     let perColumn = PhraseEntryState.wordCount / columns
@@ -226,6 +295,7 @@ struct PhraseEntryGrid: View {
           }
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
       }
     }
     .padding(compact ? 8 : 12)
@@ -234,11 +304,30 @@ struct PhraseEntryGrid: View {
 
   @ScaledMetric(relativeTo: .callout) private var caretHeight: CGFloat = 20
 
-  private func cell(_ i: Int, word: String) -> some View {
-    let active = focused.wrappedValue && i == state.activeIndex && !(state.isComplete && i == PhraseEntryState.wordCount - 1)
-    let unknown = state.unknownIndex == i
+  private func cell(_ i: Int, word stored: String) -> some View {
+    let editing = edit.wrappedValue?.index == i
+    let word = editing ? (masked ? "•••••" : edit.wrappedValue?.word ?? "") : stored
+    let active = editing
+      || (edit.wrappedValue == nil && focused.wrappedValue && i == state.activeIndex
+        && !(state.isComplete && i == PhraseEntryState.wordCount - 1))
+    let unknown = state.unknownIndex == i && !editing
     let filled = !word.isEmpty
-    return HStack(spacing: 8) {
+    return Button { beginEdit(i) } label: {
+      cellBody(i, word: word, active: active, unknown: unknown, filled: filled)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(Self.cellLabel(i, word: stored, masked: masked))
+    .accessibilityHint(state.canEdit(i) ? "Double-tap to change this word." : "")
+    .accessibilityIdentifier("phraseEntry.cellButton.\(i)")
+  }
+
+  static func cellLabel(_ i: Int, word: String, masked: Bool) -> String {
+    if word.isEmpty { return "Word \(i + 1), empty" }
+    return masked ? "Word \(i + 1), hidden" : "Word \(i + 1), \(word)"
+  }
+
+  private func cellBody(_ i: Int, word: String, active: Bool, unknown: Bool, filled: Bool) -> some View {
+    HStack(spacing: 8) {
       Text("\(i + 1)")
         .hFigure(HFigure(size: 13, leading: 18, weight: active ? .bold : .semibold, textStyle: .footnote))
         .foregroundStyle(active ? HColor.textLink : filled ? HColor.textSecondary : HColor.neutral400)
@@ -258,6 +347,7 @@ struct PhraseEntryGrid: View {
     }
     .padding(.horizontal, 10)
     .frame(minHeight: compact ? 32 : 38)
+    .contentShape(Rectangle())
     .background(active ? HColor.surfacePrimary : HColor.surfaceSecondary,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay {
@@ -269,13 +359,23 @@ struct PhraseEntryGrid: View {
   }
 
   private var helper: some View {
-    HStack(alignment: .center, spacing: 12) {
-      Text("Suggestions come from the recovery word list, never your keyboard history.")
-        .hType(.footnote)
-        .foregroundStyle(HColor.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-      pasteButton
+    let note = Text("Suggestions come from the recovery word list, never your keyboard history.")
+      .hType(.footnote)
+      .foregroundStyle(HColor.textSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    return Group {
+      if typeSize.isAccessibilitySize {
+        VStack(alignment: .leading, spacing: 12) {
+          note
+          pasteButton
+        }
+      } else {
+        HStack(alignment: .center, spacing: 12) {
+          note
+          pasteButton
+        }
+      }
     }
     .padding(.horizontal, 4)
   }
@@ -395,10 +495,20 @@ private struct PhraseEntryReveal: ViewModifier {
 /// says which cell is next, so it doesn't come and go with each word.
 struct PhraseSuggestions: View {
   @Binding var text: String
+  var edit: Binding<PhraseEdit?> = .constant(nil)
 
   var body: some View {
     let state = PhraseEntryState(text)
-    SuggestionBar(words: state.suggestions, cell: state.activeIndex + 1) { text = state.completing(with: $0) }
+    Group {
+      if let e = edit.wrappedValue {
+        SuggestionBar(words: PhraseEntryState.suggestions(for: e.word), cell: e.index + 1) {
+          text = state.replacing(e.index, with: $0)
+          edit.wrappedValue = nil
+        }
+      } else {
+        SuggestionBar(words: state.suggestions, cell: state.activeIndex + 1) { text = state.completing(with: $0) }
+      }
+    }
       .frame(maxWidth: .infinity, minHeight: 44)
       .hGlass(in: Capsule())
       .accessibilityElement(children: .contain)
@@ -411,6 +521,7 @@ private struct SuggestionBar: View {
   /// The active cell, 1-based.
   let cell: Int
   let pick: (String) -> Void
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     HStack(spacing: 0) {
@@ -418,7 +529,8 @@ private struct SuggestionBar: View {
         Text("Word \(cell) of 12")
           .font(.body)
           .foregroundStyle(HColor.appleLabelsSecondary)
-          .lineLimit(1)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+          .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
           .padding(.horizontal, 18)
           .frame(maxWidth: .infinity, minHeight: 44)
           .accessibilityHidden(true)

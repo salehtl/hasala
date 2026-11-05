@@ -151,7 +151,7 @@ struct LiveAccountFlowTests {
     _ = try await signUp(Phone(server), server)
     server.freezeAll(byOperator: true)
     let b = Phone(server)
-    let info = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20")
+    let info = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)
     #expect(await signIn(b) == .frozen(info))
     let session = AccountSession(services: services(b.relaunched()), phase: .checking)
     await session.resume()
@@ -167,9 +167,9 @@ struct LiveAccountFlowTests {
     server.freezeAll(byOperator: true)
     // The freeze revoked this iPhone's session: signed in again, it reads the freeze.
     #expect(await a.relaunched().freezeInfo() == nil)
-    #expect(await signIn(a) == .frozen(FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20")))
+    #expect(await signIn(a) == .frozen(FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)))
     let account = a.relaunched()
-    #expect(await account.freezeInfo() == FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20"))
+    #expect(await account.freezeInfo() == FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true))
     await #expect(throws: AuthFailure.frozenByOperator) {
       try await account.perform(.unfreeze, password: Self.password)
     }
@@ -186,7 +186,7 @@ struct LiveAccountFlowTests {
     _ = try await signUp(a, server)
     server.freezeAll(byOperator: false)
     let account = a.relaunched()
-    #expect(await account.freezeInfo() == FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20"))
+    #expect(await account.freezeInfo() == FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true))
 
     server.operatorFreezesBeforeUnfreeze = true
     let stale = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
@@ -195,7 +195,7 @@ struct LiveAccountFlowTests {
     #expect(stale.phase == .signedOut)
     #expect(try a.env.secrets.session() == nil)
     #expect(a.binding != nil)  // the data and keys stay
-    let operatorFreeze = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20")
+    let operatorFreeze = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)
     let outcome = try #require(await signIn(a))
     #expect(outcome == .frozen(operatorFreeze))
     stale.signedIn(outcome)
@@ -217,7 +217,7 @@ struct LiveAccountFlowTests {
     _ = try await signUp(a, server)
     server.freezeAll(byOperator: false)
     let b = Phone(server, passkeys: AssertingPasskeys())
-    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)
     #expect(await signIn(b) == .frozen(info))
     #expect(b.binding == nil)
 
@@ -239,7 +239,7 @@ struct LiveAccountFlowTests {
     _ = try await signUp(Phone(server), server)
     server.freezeAll(byOperator: false)
     let b = Phone(server)
-    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20")
+    let info = FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)
     #expect(await signIn(b) == .frozen(info))
     let session = AccountSession(services: services(b.relaunched()), phase: .frozen(info))
     await session.signOut()

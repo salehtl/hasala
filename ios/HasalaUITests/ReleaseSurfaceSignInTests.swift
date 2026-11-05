@@ -17,16 +17,18 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     attach(app, "Release · Sign in")
     assertNoPlaceholders(app, "Sign in")
     assertPersonalAccountsOnly(app, "Sign in")
-    assertAbsent(app, ["signIn.forgot"], "Sign in")
-    assertPresent(app, ["signIn.email", "signIn.password", "signIn.withPassword", "signIn.recover", "signIn.support",
+    assertPresent(app, ["signIn.forgot", "signIn.email", "signIn.password", "signIn.withPassword", "signIn.recover", "signIn.support",
                         "signIn.support.web"], "Sign in")
     try audit(app)
 
     type(app, "signIn.email", "maya@example.com")
     type(app, "signIn.password", "not my password")
     tap(app, "signIn.withPassword")
-    XCTAssertTrue(app.staticTexts["That email and password don't match. Try again."].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["That email and password don't match. Try again, or use your 12 words if you forgot it."]
+      .waitForExistence(timeout: 10))
     assertNoText(app, ["reset your password"], "Sign in · wrong password")
+    tap(app, "signIn.forgot")
+    XCTAssertTrue(el(app, "recover.start").waitForExistence(timeout: uiWait))
   }
 
   /// A lost passkey: Recover your account with the 12 words and the emailed code, to a
@@ -83,8 +85,8 @@ final class ReleaseSurfaceSignInTests: ReleaseSurfaceTestCase {
     assertNoPlaceholders(app, "Honest end")
     assertAbsent(app, ["honest.startFresh"], "Honest end")
     assertNoText(app, ["Starting fresh", "add a passkey", "can show your words"], "Honest end")
-    assertText(app, "can't be shown again", "Honest end")
-    assertPresent(app, ["honest.talk"], "Honest end")
+    assertText(app, "can't show your words", "Honest end")
+    assertPresent(app, ["honest.talk", "honest.delete"], "Honest end")
     try audit(app)
   }
 

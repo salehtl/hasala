@@ -68,7 +68,8 @@ extension ForgotWaitingView {
 
 extension RecoverIntroView {
   init(store: OnboardingStore) {
-    self.init(onStart: { store.signup.go(.recoverWords) }, onNoWords: { store.signup.go(.honestEnd) })
+    self.init(setsPasskey: !store.signIn.capabilities.contains(.recoverWithPassword),
+              onStart: { store.signup.go(.recoverWords) }, onNoWords: { store.signup.go(.honestEnd) })
   }
 }
 
@@ -90,7 +91,7 @@ struct RecoverCodeView: View {
   var body: some View {
     let signIn = store.signIn
     CodeStepScreen(
-      title: "Now, your email",
+      title: "Check your email",
       subtitle: "We sent a code to \(signIn.recovery?.emailHint ?? "your account's address"). Email alone won't get you in; with your 12 words, it does.",
       steps: (2, 3), code: Bindable(signIn).recoverCode, busy: signIn.busy,
       failure: signIn.failure(on: .recoverCode), sentAt: signIn.recoverCodeSentAt,

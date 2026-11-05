@@ -76,7 +76,7 @@ struct AccountScreen<Content: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .dockScrollEdge()
     .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .scrollDismissesKeyboard(.interactively)
     .safeAreaBar(edge: .bottom) {
@@ -154,7 +154,7 @@ private struct AccountHeader: ViewModifier {
             Button(action: trailing.action) {
               Text(trailing.title)
                 .hType(HType(size: 17, leading: 22, weight: .regular, textStyle: .body))
-                .foregroundStyle(HColor.textLink)
+                .foregroundStyle(HColor.textOnWashLink)
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
             }
@@ -239,8 +239,8 @@ struct SubtitleProse: View {
 let accountDockClearance: CGFloat = 12
 
 /// The bottom dock (Paper "Action"): a primary pill, then a secondary link or a note, 4
-/// apart, 20 from the sides, on the home indicator's safe area. A soft scroll edge sits
-/// under it when content scrolls behind (`safeAreaBar`).
+/// apart, 20 from the sides, on the home indicator's safe area. A hard scroll edge sits
+/// under it only when content scrolls behind (`dockScrollEdge`).
 
 struct ActionDock<Content: View>: View {
   let keyboardUp: Bool
@@ -260,6 +260,27 @@ struct ActionDock<Content: View>: View {
 
 extension EnvironmentValues {
   @Entry var dockTyping = false
+}
+
+private struct DockScrollEdge: ViewModifier {
+  @State private var overflows = false
+
+  func body(content: Content) -> some View {
+    content
+      .scrollEdgeEffectStyle(.hard, for: .bottom)
+      .scrollEdgeEffectHidden(!overflows, for: .bottom)
+      .onScrollGeometryChange(for: Bool.self) { g in
+        g.contentSize.height + g.contentInsets.top + g.contentInsets.bottom > g.containerSize.height + 0.5
+      } action: { _, now in
+        overflows = now
+      }
+  }
+}
+
+extension View {
+  func dockScrollEdge() -> some View {
+    modifier(DockScrollEdge())
+  }
 }
 
 private struct DockLinkWhileTyping: ViewModifier {
@@ -428,7 +449,7 @@ struct CelebrationScreen<Cards: View, Footer: View>: View {
       .padding(.bottom, 16)
     }
     .scrollBounceBehavior(.basedOnSize)
-    .scrollEdgeEffectStyle(.hard, for: .bottom)
+    .dockScrollEdge()
     .contentMargins(.bottom, accountDockClearance, for: .scrollContent)
     .safeAreaBar(edge: .bottom) {
       if !typeSize.isAccessibilitySize {
@@ -598,12 +619,27 @@ struct SelectionCard: View {
   var identifier: String
   var action: () -> Void
 
+  @Environment(\.dynamicTypeSize) private var typeSize
+
   var body: some View {
     Button(action: action) {
-      HStack(alignment: .top, spacing: 12) {
-        IconTile(icon: icon, hue: hue)
-        CardText(chip: chip, title: title, detail: detail)
-        Radio(on: selected)
+      Group {
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+              IconTile(icon: icon, hue: hue)
+              Spacer(minLength: 12)
+              Radio(on: selected)
+            }
+            CardText(chip: chip, title: title, detail: detail)
+          }
+        } else {
+          HStack(alignment: .top, spacing: 12) {
+            IconTile(icon: icon, hue: hue)
+            CardText(chip: chip, title: title, detail: detail)
+            Radio(on: selected)
+          }
+        }
       }
       .padding(20)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -631,7 +667,7 @@ private struct Radio: View {
 
   var body: some View {
     ZStack {
-      Circle().strokeBorder(HColor.neutral300, lineWidth: 1.5).opacity(on ? 0 : 1)
+      Circle().strokeBorder(HColor.controlCheckUnselected, lineWidth: 1.5).opacity(on ? 0 : 1)
       Circle().fill(HColor.actionAccent).opacity(on ? 1 : 0)
       HIconView(.check, size: 14, color: HColor.white, strokeWidth: 3).opacity(on ? 1 : 0)
     }
@@ -957,8 +993,41 @@ struct FailureBanner: View {
       .background(HColor.statusErrorSurface, in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
       .accessibilityElement(children: .combine)
       .accessibilityIdentifier("account.failure")
+      .announcesError(message)
       .hTransition(.rise)
     }
+  }
+}
+
+@MainActor
+enum ErrorAnnouncer {
+  static var post: (String) -> Void = { message in
+    var text = AttributedString(message)
+    text.accessibilitySpeechAnnouncementPriority = .high
+    AccessibilityNotification.Announcement(text).post()
+  }
+}
+
+private struct ErrorAnnouncement: ViewModifier {
+  let message: String?
+  let delay: Duration
+  let key: AnyHashable?
+
+  func body(content: Content) -> some View {
+    content.task(id: [AnyHashable(message), key]) {
+      guard let message, !message.isEmpty else { return }
+      if delay > .zero {
+        try? await Task.sleep(for: delay)
+        guard !Task.isCancelled else { return }
+      }
+      ErrorAnnouncer.post(message)
+    }
+  }
+}
+
+extension View {
+  func announcesError(_ message: String?, after delay: Duration = .zero, key: AnyHashable? = nil) -> some View {
+    modifier(ErrorAnnouncement(message: message, delay: delay, key: key))
   }
 }
 

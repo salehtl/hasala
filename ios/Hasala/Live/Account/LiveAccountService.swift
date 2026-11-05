@@ -555,7 +555,7 @@ final class LiveAccountService: AccountService {
         ? [PasskeyRow(id: "this", provider: "Passkey", detail: "Signs you in with Face ID", isThisCredential: true)] : [],
       passwordChanged: hasPassword ? "Set" : nil,
       devices: [DeviceRow(id: b.writer_id, title: "This iPhone", detail: "Active now", isThisDevice: true)],
-      lastSignIn: "on this iPhone", phraseConfirmed: "Confirmed at signup", frozen: frozen)
+      lastSignIn: "on this iPhone", phraseConfirmed: "Shown at signup", frozen: frozen)
   }
 
   /// Who froze the account and when, from `GET /account` (allowed on a restricted
@@ -579,7 +579,8 @@ final class LiveAccountService: AccountService {
   static func freeze(_ a: LiveAccountFields, nowMs: Int64) -> FreezeInfo? {
     guard a.frozen == true || a.restricted == true else { return nil }
     return FreezeInfo(
-      by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at, nowMs: nowMs))
+      by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at, nowMs: nowMs),
+      holderCanLift: a.holder_can_lift ?? true, hasPassword: a.has_password)
   }
 
   /// "on Sun 11 Oct at 21:20", in the app's fixed local clock (UTC+04:00, 03c §1.5).
@@ -872,6 +873,7 @@ nonisolated struct LiveAccountFields: Decodable, Sendable {
   var frozen: Bool?
   var freeze_trigger_at: String?
   var frozen_by: String?
+  var holder_can_lift: Bool?
   var restricted: Bool?
 }
 

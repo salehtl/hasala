@@ -51,10 +51,9 @@ struct DeleteAccountView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding([.top, .horizontal], 4)
         VStack(alignment: .leading, spacing: 14) {
-          item(.trash, "Your budget, plan and rules are erased here and on our server.")
-          item(.mailX, "Hasala's read-only access to your mailboxes is removed straight away.")
-          item(.clock, "Your sealed backup is gone from our backups within 30 days.")
-          item(.linkOff, "Your passkeys and password stop working.")
+          ForEach(Self.lines(providers: providers, texts: usesTexts), id: \.self) { line in
+            item(line.icon, line.text)
+          }
         }
         .padding(.vertical, 18)
         .padding(.horizontal, 20)
@@ -108,10 +107,43 @@ struct DeleteAccountView: View {
     await model.request(.deleteAccount)
   }
 
+  struct Line: Hashable {
+    var icon: HIcon
+    var text: String
+  }
+
+  static let outlookConsent = "account.live.com/consent/Manage"
+
+  static func lines(providers: Set<MailProviderKind>, texts: Bool) -> [Line] {
+    var out = [Line(icon: .trash, text: "Your transactions, plan and rules are erased here and on our server.")]
+    if providers.contains(.gmail) {
+      out.append(Line(icon: .mailX, text: "Hasala ends its access to your Gmail."))
+    }
+    if providers.contains(.outlook) {
+      out.append(Line(icon: .mailX, text:
+        "Hasala deletes its Outlook sign-in. Remove the permission at [\(outlookConsent)](https://\(outlookConsent))."))
+    }
+    if texts {
+      out.append(Line(icon: .phone, text: "Delete the automation in the Shortcuts app."))
+    }
+    out.append(Line(icon: .clock, text: "Your sealed backup is gone from our backups within 30 days."))
+    out.append(Line(icon: .linkOff, text: "Your passkeys and password stop working."))
+    return out
+  }
+
+  private var providers: Set<MailProviderKind> {
+    let mailbox = session.services.mailbox
+    var kinds = Set(mailbox.mailboxes.map(\.provider))
+    if let linked = mailbox.linkedProvider { kinds.insert(linked) }
+    return kinds
+  }
+
+  private var usesTexts: Bool { BankTexts.setUpHere(session.services.bankTexts) }
+
   private func item(_ icon: HIcon, _ text: String) -> some View {
     HStack(alignment: .top, spacing: 14) {
       HIconView(icon, size: 22, color: HColor.actionDestructive)
-      Text(text)
+      Text(LocalizedStringKey(text))
         .hType(.callout)
         .foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
@@ -126,7 +158,7 @@ struct DeleteAccountView: View {
     VStack(alignment: .leading, spacing: 14) {
       VStack(alignment: .leading, spacing: 4) {
         Text("Keep a copy first").hType(.headline).foregroundStyle(HColor.textPrimary)
-        Text("Download everything as a CSV file.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        Text("Download everything as a CSV file. The file isn't encrypted.").hType(.subheadline).foregroundStyle(HColor.textSecondary)
       }
       ShareLink(item: file, preview: SharePreview(file.name)) {
         Text("Export your data (CSV)")

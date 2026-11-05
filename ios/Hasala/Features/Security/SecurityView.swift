@@ -50,13 +50,14 @@ struct SecurityView: View {
       VStack(alignment: .leading, spacing: 24) {
         if let s = model.state {
           hero(s)
+          if let frozen = s.frozen { frozenAction(frozen) }
           if let notice = model.notice {
             StatusLine(text: notice, tone: .success, size: .regular)
               .accessibilityIdentifier("security.notice")
           }
           if model.confirming == nil { FailureBanner(failure: model.failure) }
           section("Email") { emailCard(s) }
-          if s.hasPasskey || can(.addPasskey) {
+          if s.hasPasskey || (can(.addPasskey) && s.frozen == nil) {
             section("Passkeys", footer: s.hasPasskey
               ? "A passkey signs you in and unlocks your data. iCloud Keychain keeps it on all your Apple devices."
               : "Add one and Face ID signs you in. On a new iPhone your 12 words still unlock your data.") { passkeys(s) }
@@ -119,12 +120,10 @@ struct SecurityView: View {
   private func hero(_ s: SecurityState) -> some View {
     Group {
       if let frozen = s.frozen {
-        StatusHero(
-          title: "Frozen",
-          body: frozen.by == .operator
-            ? "We froze your account to protect it. Talk to us to unfreeze it."
-            : can(.unfreeze) ? "Your account is frozen. Confirm it's you to unfreeze it." : "Your account is frozen.",
-          hue: .rose, icon: .lockKeyhole)
+        StatusHero(title: "Frozen", body: Self.frozenBody(frozen, canUnfreeze: can(.unfreeze)), hue: .rose, icon: .lockKeyhole)
+      } else if s.hasPasskey, unseen {
+        StatusHero(title: "Almost protected", body: "Your passkey is set. Write down your 12 words to finish.",
+                   hue: .sand, icon: .paper)
       } else if s.hasPasskey {
         StatusHero(title: "Protected", body: "Passkey and 12 words are set.\nLast sign-in \(s.lastSignIn).",
                    hue: .mint, icon: .check)
@@ -139,6 +138,38 @@ struct SecurityView: View {
       }
     }
     .accessibilityIdentifier("security.hero")
+  }
+
+  private var unseen: Bool { session.services.unseenPhrase.unseen }
+
+  static func frozenBody(_ frozen: FreezeInfo, canUnfreeze: Bool) -> String {
+    if frozen.by == .operator || (canUnfreeze && !frozen.holderCanLift) {
+      return frozen.by == .operator
+        ? "We froze your account to protect it. Talk to us to unfreeze it."
+        : "Only we can lift this freeze. Talk to us to unfreeze it."
+    }
+    return canUnfreeze ? "Your account is frozen. Confirm it's you to unfreeze it." : "Your account is frozen."
+  }
+
+  static func phraseDetail(_ s: SecurityState, unseen: Bool) -> String {
+    if s.frozen != nil { return "Unfreeze to view" }
+    return unseen && s.hasPasskey ? "Not written down yet" : s.phraseConfirmed
+  }
+
+  static let emailDetail = "Verified · sign-in codes and security emails"
+
+  @ViewBuilder private func frozenAction(_ frozen: FreezeInfo) -> some View {
+    if frozen.by == .holder, frozen.holderCanLift, can(.unfreeze) {
+      Button("Unfreeze") { Task { await model.request(.unfreeze) } }
+        .buttonStyle(.pill(.primary, fill: true))
+        .accessibilityIdentifier("security.unfreeze")
+    } else {
+      Link(destination: URL(string: "https://hasala.app/support")!) {
+        Text("Talk to a person")
+      }
+      .buttonStyle(.pill(.primary, fill: true))
+      .accessibilityIdentifier("security.frozenTalk")
+    }
   }
 
   // MARK: Sections
@@ -159,7 +190,7 @@ struct SecurityView: View {
 
   private func emailCard(_ s: SecurityState) -> some View {
     SecurityRow(tile: .plate(.envelope, .sky), title: s.email,
-                detail: s.emailVerified ? "Verified · codes and alerts" : "Not verified yet",
+                detail: s.emailVerified ? Self.emailDetail : "Not verified yet",
                 titleLabel: "Email address \(s.email)", titleLines: 2) {
       // The email change has no live ceremony yet (C6): Debug only, with the capability.
       if can(.changeEmail), BuildSurface.showsUnfinished {
@@ -184,7 +215,7 @@ struct SecurityView: View {
           }
         }
       }
-      if can(.addPasskey) {
+      if can(.addPasskey), s.frozen == nil {
         if !s.passkeys.isEmpty { HDivider() }
         AddRow(title: "Add a passkey", identifier: "security.addPasskey") {
           Task { await model.request(.addPasskey) }
@@ -263,12 +294,12 @@ struct SecurityView: View {
 
   private func phrase(_ s: SecurityState) -> some View {
     Group {
-      if s.hasPasskey, can(.viewPhrase) {
+      if s.hasPasskey, can(.viewPhrase), s.frozen == nil {
         Button {
           model.requestPhrase()
         } label: {
           SecurityRow(tile: .disc(.paper, .sand), title: "View recovery phrase",
-                      detail: "\(s.phraseConfirmed) · Asks for Face ID") {
+                      detail: "\(Self.phraseDetail(s, unseen: unseen)) · Asks for Face ID") {
             HIconView(.chevronRight, size: 16, color: HColor.listRowChevron)
           }
           .contentShape(Rectangle())
@@ -276,7 +307,9 @@ struct SecurityView: View {
         .buttonStyle(HRowPressStyle())
         .accessibilityIdentifier("security.viewPhrase")
       } else {
-        SecurityRow(tile: .disc(.paper, .sand), title: "Recovery phrase", detail: s.phraseConfirmed) { EmptyView() }
+        SecurityRow(tile: .disc(.paper, .sand), title: "Recovery phrase", detail: Self.phraseDetail(s, unseen: unseen)) {
+          EmptyView()
+        }
       }
       // No ceremony makes new words yet (C7): Debug only, with the capability.
       if can(.rotatePhrase), BuildSurface.showsUnfinished {
@@ -295,29 +328,29 @@ struct SecurityView: View {
           .buttonStyle(.pill(.destructiveQuiet, fill: true))
           .accessibilityIdentifier("security.signOut")
       }
-      if can(.signOutEverywhere) {
+      if can(.signOutEverywhere), s.frozen == nil {
         TextLink(title: "Sign out everywhere", identifier: "security.signOutEverywhere") { alert = .signOutEverywhere }
       }
-      if let frozen = s.frozen {
-        // Only the operator lifts an operator freeze (spec 04 §6.11): no Unfreeze then.
-        if frozen.by == .holder, can(.unfreeze) {
-          Button("Unfreeze") { Task { await model.request(.unfreeze) } }
-            .buttonStyle(.pill(.primary, fill: true))
-            .accessibilityIdentifier("security.unfreeze")
-        } else {
-          WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "security.frozenTalk")
-        }
-      } else if can(.freeze) {
+      if s.frozen == nil, can(.freeze) {
         TextLink(title: "Freeze my account", identifier: "security.freeze") { alert = .freeze }
       }
       if model.offersLockdown {
         TextLink(title: "Something not right? Lock it down", identifier: "security.lockdown") { lockingDown = true }
       }
       if can(.deleteAccount) {
-        TextLink(title: "Delete your account", identifier: "security.delete", destructive: true) { deleting = true }
+        if s.frozen == nil {
+          TextLink(title: "Delete your account", identifier: "security.delete", destructive: true) { deleting = true }
+        } else {
+          Text("Unfreeze to delete your account")
+            .hType(.subheadline.weight(.semibold))
+            .foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityIdentifier("security.deleteFrozen")
+        }
       }
       if model.lacksAnAction {
-        SupportLink(lead: "Need a change that isn't here?", identifier: "security.support")
+        SupportLink(lead: "Don't recognise something here? Contact us.", identifier: "security.support")
       }
       Text(s.hasPasskey ? "Changes here ask for Face ID first." : "Changes here ask for your password, and this iPhone signs them too.")
         .hType(.footnote)

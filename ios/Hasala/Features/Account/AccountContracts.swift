@@ -99,6 +99,8 @@ struct FreezeInfo: Equatable, Sendable {
   /// it: `GET /account` doesn't say where a freeze came from, and the beta's only way to
   /// freeze is the email's link.
   var inApp = false
+  var holderCanLift = true
+  var hasPassword: Bool?
 }
 
 /// One row of Sign-in & security › Passkeys.
@@ -142,7 +144,7 @@ struct SecurityState: Equatable, Sendable {
   var passwordChanged: String?
   var devices: [DeviceRow]
   var lastSignIn: String
-  /// The 12 words were confirmed at signup (all accounts) — "Confirmed 11 Sep".
+  /// When the 12 words were shown ("Shown at signup").
   var phraseConfirmed: String
   var frozen: FreezeInfo?
 
