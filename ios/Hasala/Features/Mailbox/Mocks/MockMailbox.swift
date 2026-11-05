@@ -92,6 +92,7 @@
     static var gmailAddress: String { MockAccountService.identity.person.gmailAddress }
     static var outlookAddress: String { MockAccountService.identity.person.outlookAddress }
     static let workAddress = "maya@contoso.com"
+    static let workAccountLine = "Couldn't connect Outlook. Only personal Microsoft accounts work. Try again."
 
     static var gmail: MailboxSnapshot {
       let id = MockAccountService.identity
@@ -178,7 +179,7 @@
       var removal: MailSwitchRemoval?
       try? await Task.sleep(for: connectDelay)
       if offline { throw .offline }
-      if provider == .outlook, outlookAdmin { throw .adminApprovalNeeded(address: Self.workAddress) }
+      if provider == .outlook, outlookAdmin { throw .failed(Self.workAccountLine) }
       if provider == .outlook, outlookCancelled { throw .cancelled }
       if provider == .gmail, gmailPermissionMissing {
         gmailPermissionMissing = false

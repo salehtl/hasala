@@ -249,11 +249,11 @@ final class MailConnectCoordinator {
     return failure.message(for: provider)
   }
 
-  /// Which failures get a screen: an admin's approval for any provider, and a sign-in that
-  /// didn't finish for any provider but Google (whose closed sheet says nothing).
+  /// Which failures get a screen: no mailbox on the account for any provider, and a sign-in
+  /// that didn't finish for any provider but Google (whose closed sheet says nothing).
   static func hasScreen(_ failure: MailConnectFailure, provider: MailProviderKind) -> Bool {
     switch failure {
-    case .adminApprovalNeeded, .noMailbox: true
+    case .noMailbox: true
     case .cancelled: provider != .gmail
     case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .permissionMissing, .failed: false
     }

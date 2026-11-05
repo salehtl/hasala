@@ -52,8 +52,8 @@ enum MailCopy {
   /// Debug's: a Release build relays none.
   static var mailboxesFootnote: String {
     BuildSurface.showsUnfinished
-      ? "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server sees a keyed hash of each address and when new mail arrives, never the mail."
-      : "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server sees a keyed hash of each address, never the mail."
+      ? "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server keeps only a code for each mailbox, made with a secret key, and sees when new mail arrives. It never sees the mail."
+      : "Read on this iPhone, read-only. Only alerts from your banks are downloaded. Our server keeps only a code for each mailbox, made with a secret key, and never sees the mail."
   }
 
   /// The toast after a new sign-in to a mailbox whose provider ended access (Paper flow:
@@ -160,43 +160,44 @@ enum MailCopy {
     return "Your \(held.appName) is read on another iPhone, or was on one you no longer have. \(reads), and the other iPhone stops. Past transactions stay."
   }
 
-  /// The system alert's message before a disconnect (Paper "Mailbox · Disconnect (alert)").
-  /// Google's: the disconnect revokes Hasala's access at Google itself, so it says so
-  /// (and where to check). Microsoft has no revoke, so its permission is removed there.
-  static func keepTransactions(_ impact: MailboxDisconnectImpact) -> String {
-    impact.transactions == 1
-      ? "Keep the 1 transaction from this inbox" : "Keep the \(MoneyFormat.count(impact.transactions)) transactions from this inbox"
+  static func disconnectLead(_ address: String) -> String {
+    "Hasala stops reading \(address) and deletes its sign-in from this iPhone."
   }
 
-  static func disconnectChoiceMessage(_ provider: MailProviderKind, _ impact: MailboxDisconnectImpact) -> String {
-    let (stops, consent) =
-      switch provider {
-      case .gmail:
-        (
-          "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone.",
-          "To check on Google's side, visit \(consentPage(provider))."
-        )
-      case .outlook:
-        (
-          "Hasala stops reading this mailbox and forgets its sign-in.",
-          "To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
-        )
-      }
-    return ([stops] + impactLines(impact) + [consent]).joined(separator: " ")
+  static let disconnectPlainMessage = "Hasala stops reading this mailbox and deletes its sign-in from this iPhone."
+
+  static func keepTransactions(_ impact: MailboxDisconnectImpact) -> String {
+    impact.transactions == 1 ? "Keep the 1 transaction" : "Keep the \(MoneyFormat.count(impact.transactions)) transactions"
+  }
+
+  static func removeTransactions(_ impact: MailboxDisconnectImpact) -> String {
+    impact.transactions == 1
+      ? "Remove the 1 transaction" : "Remove the \(MoneyFormat.count(impact.transactions)) transactions"
+  }
+
+  static func removeDetail(_ impact: MailboxDisconnectImpact) -> String {
+    let after = "You can't bring them back here. An encrypted record stays until you delete your account."
+    if impact.transactions == 1 {
+      return "Takes it out of your lists and totals. You can't bring it back here. An encrypted record stays until you delete your account."
+    }
+    guard impact.edited > 0 else { return "Takes them out of your lists and totals. \(after)" }
+    return "Takes them out of your lists and totals, with the \(MoneyFormat.count(impact.edited)) you changed. \(after)"
+  }
+
+  static func permissionsTitle(_ provider: MailProviderKind) -> String {
+    switch provider {
+    case .gmail: "Check Google's permissions"
+    case .outlook: "Remove the permission at Microsoft"
+    }
+  }
+
+  static func consentURL(_ provider: MailProviderKind) -> URL {
+    URL(string: "https://\(consentPage(provider))")!
   }
 
   static func disconnected(_ provider: MailProviderKind, removed: Int?) -> String {
     guard let removed else { return "\(provider.appName) disconnected. Past transactions stay." }
     return "\(provider.appName) disconnected. \(Self.removed(removed))"
-  }
-
-  static func disconnectMessage(_ provider: MailProviderKind) -> String {
-    switch provider {
-    case .gmail:
-      "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone. Past transactions stay. To check on Google's side, visit \(consentPage(provider))."
-    case .outlook:
-      "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on \(provider.company)'s side too, visit \(consentPage(provider))."
-    }
   }
 }
 
@@ -270,11 +271,6 @@ struct PaperGlyph: View {
   static let check = [Part(d: "M5.5 12.5l4.2 4.2 8.8-9.2")]
   /// The "needs you" hero: a bar and a dot.
   static let alert = [Part(d: "M12 7.5v5.5"), Part(d: "M13.4 17a1.4 1.4 0 1 1-2.8 0a1.4 1.4 0 1 1 2.8 0Z", fill: true)]
-  /// The not-connected hero: Paper's envelope.
-  static let envelope = [
-    Part(d: "M5.5 5.5h13a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16V8a2.5 2.5 0 0 1 2.5-2.5Z"),
-    Part(d: "m3.8 7 8.2 6 8.2-6"),
-  ]
   static let link = [
     Part(d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"),
     Part(d: "M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"),
@@ -285,7 +281,6 @@ struct PaperGlyph: View {
     Part(d: "M9.9 9.9a3 3 0 0 0 4.2 4.2"),
   ]
   static let plus = [Part(d: "M12 5v14M5 12h14")]
-  static let pencil = [Part(d: "M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4")]
   /// The read-only card's tick and dash (12 in a 20 badge).
   static let tick = [Part(d: "m5 12.5 4.5 4.5L19 7.5")]
   static let dash = [Part(d: "M6 12h12")]
@@ -465,9 +460,9 @@ struct TextLinkRow: View {
   }
 }
 
-/// "Use a different email? Tell us which." (Paper, Choose your email): a mail to support
-/// naming the provider Hasala doesn't read yet. A person reads it; nothing is sent from the
-/// app.
+/// "Use another email service? Email us." (Paper, Choose your email): a mail to support
+/// naming the provider Hasala doesn't read yet, marked as leaving the app. A person reads
+/// it; nothing is sent from the app.
 struct TellUsWhichLink: View {
   /// The chooser's footnote: the whole sentence in link blue, 13/18 semibold, from the
   /// leading edge (Paper 1MZG, 1NW2). Otherwise the dock's text link row, 15/20, centred.
@@ -475,6 +470,10 @@ struct TellUsWhichLink: View {
   var leading = false
   /// The small link's text height, so its 44 pt target can overhang it (see `body`).
   @State private var textHeight: CGFloat = 0
+
+  static let label = "Use another email service? Email us."
+  static let lead = "Use another email service?"
+  static let link = "Email us."
 
   static let mail: URL = {
     var parts = URLComponents()
@@ -487,7 +486,7 @@ struct TellUsWhichLink: View {
   var body: some View {
     Link(destination: Self.mail) {
       if small {
-        Text("Use a different email? Tell us which.")
+        Text("\(Self.label)\u{00A0}\(Image(systemName: "arrow.up.right"))")
           .hType(HType.footnote.weight(.semibold))
           .foregroundStyle(HColor.textLink)
           .multilineTextAlignment(leading ? .leading : .center)
@@ -497,10 +496,11 @@ struct TellUsWhichLink: View {
           .frame(minHeight: HSpacing.targetMinimum)
           .contentShape(Rectangle())
       } else {
-        TextLinkLabel(lead: "Use a different email?", link: "Tell us which.", leading: leading)
+        TextLinkLabel(lead: Self.lead, link: Self.link, leading: leading, external: true)
       }
     }
-    .accessibilityLabel("Use a different email? Tell us which.")
+    .accessibilityLabel(Self.label)
+    .accessibilityHint("Opens Mail")
     .accessibilityAddTraits(.isLink)
     .accessibilityIdentifier("mail.choose.other")
     // The chooser's footnote sits 6 above the link (Paper 1N2A): the 44 pt target
@@ -519,11 +519,13 @@ private struct TextLinkLabel: View {
   let lead: String?
   let link: String
   var leading = false
+  var external = false
   @Environment(\.dynamicTypeSize) private var typeSize
   @Environment(\.legibilityWeight) private var legibilityWeight
 
   var body: some View {
-    Self.text(lead: lead, link: link, wholeLink: !typeSize.isAccessibilitySize, boldText: legibilityWeight == .bold)
+    Self.text(lead: lead, link: link, wholeLink: !typeSize.isAccessibilitySize, boldText: legibilityWeight == .bold,
+              external: external)
       .hType(.subheadline)
       .foregroundStyle(HColor.textSecondary)
       .multilineTextAlignment(leading ? .leading : .center)
@@ -534,10 +536,11 @@ private struct TextLinkLabel: View {
 
   /// The lead in the secondary colour (the type the view sets), then the link at 600 in
   /// link blue (a weight up under Bold Text, as `hType` steps its own faces).
-  static func text(lead: String?, link: String, wholeLink: Bool, boldText: Bool) -> Text {
+  static func text(lead: String?, link: String, wholeLink: Bool, boldText: Bool, external: Bool = false) -> Text {
     let weight: HWeight = boldText ? HWeight.semibold.bolder : .semibold
     let words = wholeLink ? link.replacingOccurrences(of: " ", with: "\u{00A0}") : link
-    let run = Text(words).font(HType.subheadline.weight(weight).font).foregroundStyle(HColor.textLink)
+    let glyph = external ? Text("\u{00A0}\(Image(systemName: "arrow.up.right"))") : Text(verbatim: "")
+    let run = Text("\(Text(words))\(glyph)").font(HType.subheadline.weight(weight).font).foregroundStyle(HColor.textLink)
     guard let lead else { return run }
     return Text("\(lead) \(run)")
   }
@@ -553,8 +556,8 @@ extension View {
 
 // MARK: - The errors' card
 
-/// "What you can do" / "Common reasons" (Paper 1MUP, 1NQF): numbered or "?" badges, a title
-/// and a line each.
+/// "What to do" / "Common reasons" (Paper 1NQF): numbered badges for real steps, or plain
+/// rows, a title and a line each.
 struct MailReasonsCard: View {
   struct Item: Hashable {
     let title: String
@@ -563,7 +566,6 @@ struct MailReasonsCard: View {
 
   let title: String
   let items: [Item]
-  /// "1", "2"… or "?" on every badge.
   let numbered: Bool
 
   var body: some View {
@@ -574,13 +576,15 @@ struct MailReasonsCard: View {
         .accessibilityAddTraits(.isHeader)
       ForEach(Array(items.enumerated()), id: \.element) { i, item in
         HStack(alignment: .top, spacing: 12) {
-          Circle().fill(HColor.statusInfoSurface).frame(width: 24, height: 24)
-            .overlay {
-              Text(numbered ? "\(i + 1)" : "?")
-                .font(.custom(HWeight.bold.interFace, size: 13))
-                .foregroundStyle(HColor.statusInfoForeground)
-            }
-            .accessibilityHidden(true)
+          if numbered {
+            Circle().fill(HColor.statusInfoSurface).frame(width: 24, height: 24)
+              .overlay {
+                Text(verbatim: "\(i + 1)")
+                  .font(.custom(HWeight.bold.interFace, size: 13))
+                  .foregroundStyle(HColor.statusInfoForeground)
+              }
+              .accessibilityHidden(true)
+          }
           VStack(alignment: .leading, spacing: 2) {
             Text(item.title).hType(.rowTitle).foregroundStyle(HColor.textPrimary)
             Text(item.detail).hType(HType(size: 14, leading: 20, weight: .regular, textStyle: .subheadline))

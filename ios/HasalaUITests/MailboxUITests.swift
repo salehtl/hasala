@@ -41,10 +41,11 @@ final class MailboxUITests: XCTestCase {
 
     app = launch(scenario: "setupBank")
     tap(app, "mail.change", timeout: 15)
-    let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: 10), "setup did not offer Choose your email")
-    attach(app, "Setup · Choose your email")
-    try audit(app, overSheet: true)
+    let outlook = el(app, "mail.connect.outlook")
+    XCTAssertTrue(outlook.waitForExistence(timeout: 10), "Use Outlook did not swap the mailbox")
+    XCTAssertFalse(el(app, "setup.chooseEmail").exists, "Use Outlook opened the chooser")
+    attach(app, "Setup · Outlook in place")
+    try audit(app)
     outlook.tap()
     answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "the pick did not connect Outlook")
@@ -137,14 +138,10 @@ final class MailboxUITests: XCTestCase {
   @MainActor
   func testOutlookErrors() throws {
     var app = launch(scenario: nil, screen: "mail.add.errorAdmin")
-    XCTAssertTrue(app.staticTexts["Your organisation needs to approve Hasala."].waitForExistence(timeout: 15))
-    XCTAssertTrue(says(app, "Ask your IT admin"))
-    XCTAssertEqual(el(app, "mail.error.chooseDifferent").label, "Choose a different email")
-    XCTAssertTrue(el(app, "mail.error.retry").label.contains("Try Microsoft again"))
-    attach(app, "Work or school account needs an admin")
+    XCTAssertTrue(says(app, "Only personal Microsoft accounts work."), "the work account line is missing")
+    XCTAssertFalse(app.staticTexts["Your organisation needs to approve Hasala."].exists, "the admin screen came back")
+    attach(app, "Work or school account")
     try audit(app)
-    tap(app, "mail.error.chooseDifferent")
-    XCTAssertTrue(el(app, "mail.choose.outlook").waitForExistence(timeout: uiWait), "the providers did not come back")
 
     app = launch(scenario: nil, screen: "mail.add.errorCancelled")
     XCTAssertTrue(app.staticTexts["Outlook isn't connected."].waitForExistence(timeout: 15))
@@ -367,14 +364,15 @@ final class MailboxUITests: XCTestCase {
     XCTAssertFalse(el(app, "mailbox.signInAgain").exists)
     attach(app, "Mailbox · connected again")
     tap(app, "mailbox.disconnect")
-    let alert = app.alerts["Disconnect maya.k@example.com?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(alert.descendants(matching: .any)
-      .matching(NSPredicate(format: "label CONTAINS %@", "account.live.com/consent/Manage")).firstMatch.exists)
+    XCTAssertTrue(el(app, "mailbox.disconnectPage").waitForExistence(timeout: uiWait), "Disconnect this mailbox did not open")
+    XCTAssertTrue(app.staticTexts["Hasala stops reading maya.k@example.com and deletes its sign-in from this iPhone."].exists)
+    XCTAssertTrue(el(app, "mailbox.disconnect.permissions").label.contains("account.live.com/consent/Manage"))
     attach(app, "Mailbox · Disconnect")
-    XCTAssertTrue(alert.buttons["Keep the 12 transactions from this inbox"].firstMatch.exists)
-    XCTAssertTrue(alert.buttons["Remove them"].firstMatch.exists)
-    alert.buttons["Keep the 12 transactions from this inbox"].firstMatch.tap()
+    try audit(app)
+    XCTAssertTrue(el(app, "mailbox.disconnect.keep").label.contains("Keep the 12 transactions"))
+    XCTAssertTrue(el(app, "mailbox.disconnect.keep").isSelected, "Keep is not the default")
+    XCTAssertTrue(el(app, "mailbox.disconnect.remove").label.contains("Remove the 12 transactions"))
+    tap(app, "mailbox.disconnect.confirm")
     let row = el(app, "bankAlerts.mailbox.outlook-1")
     XCTAssertTrue(row.waitForExistence(timeout: 10), "Bank alerts did not come back")
     XCTAssertTrue(row.waitForLabel(containing: "Off since 10 Oct"))
@@ -391,16 +389,15 @@ final class MailboxUITests: XCTestCase {
     tap(app, "bankAlerts.mailbox.gmail-1")
     XCTAssertTrue(el(app, "mailbox.card").waitForExistence(timeout: uiWait))
     tap(app, "mailbox.disconnect")
-    let alert = app.alerts["Disconnect maya@example.com?"]
-    XCTAssertTrue(alert.waitForExistence(timeout: uiWait))
-    XCTAssertTrue(alert.descendants(matching: .any)
-      .matching(NSPredicate(format: "label CONTAINS %@", "It brought in 42 transactions.")).firstMatch.exists)
-    XCTAssertTrue(alert.descendants(matching: .any)
-      .matching(NSPredicate(format: "label CONTAINS %@", "Removing also takes the 3 you changed.")).firstMatch.exists)
-    XCTAssertTrue(alert.buttons["Keep the 42 transactions from this inbox"].firstMatch.exists)
-    XCTAssertTrue(alert.buttons["Cancel"].firstMatch.exists)
+    XCTAssertTrue(el(app, "mailbox.disconnectPage").waitForExistence(timeout: uiWait), "Disconnect this mailbox did not open")
+    XCTAssertTrue(el(app, "mailbox.disconnect.keep").label.contains("Keep the 42 transactions"))
+    XCTAssertTrue(el(app, "mailbox.disconnect.keep").isSelected, "Keep is not the default")
+    XCTAssertTrue(says(app, "with the 3 you changed"))
+    XCTAssertTrue(el(app, "mailbox.disconnect.permissions").label.contains("Check Google's permissions"))
     attach(app, "Mailbox · Disconnect · keep or remove")
-    alert.buttons["Remove them"].firstMatch.tap()
+    tap(app, "mailbox.disconnect.remove")
+    XCTAssertTrue(el(app, "mailbox.disconnect.remove").isSelected)
+    tap(app, "mailbox.disconnect.confirm")
     XCTAssertTrue(app.staticTexts["Gmail disconnected. 42 transactions removed."].waitForExistence(timeout: 10))
     XCTAssertTrue(el(app, "bankAlerts.mailbox.gmail-1").waitForLabel(containing: "Off since 10 Oct"))
     attach(app, "Bank alerts · removed")
@@ -431,7 +428,7 @@ final class MailboxUITests: XCTestCase {
   }
 
   /// The docks of the read-only screen and the two errors, at the default size and AX3:
-  /// "Not your email? Choose a different one." grows with the text as one sentence, and a
+  /// "Not your email? Choose a different email" grows with the text as one sentence, and a
   /// provider's pill takes the two lines it needs (setup's dock draws the same parts). The
   /// row leads to the providers.
   @MainActor
@@ -439,7 +436,7 @@ final class MailboxUITests: XCTestCase {
     var app = launch(scenario: nil, screen: "mail.profile.gmail")
     let notYours = el(app, "mail.notYours")
     XCTAssertTrue(notYours.waitForExistence(timeout: 15))
-    XCTAssertEqual(notYours.label, "Not your email? Choose a different one.")
+    XCTAssertEqual(notYours.label, "Not your email? Choose a different email")
     try audit(app)
     notYours.tap()
     XCTAssertTrue(el(app, "mail.choose.gmail").waitForExistence(timeout: uiWait), "the providers did not open")
@@ -456,8 +453,8 @@ final class MailboxUITests: XCTestCase {
     try audit(app, atLargeText: true)
 
     app = launch(scenario: nil, screen: "mail.add.errorAdmin", arguments: Self.largeText)
-    XCTAssertTrue(el(app, "mail.error.retry").waitForExistence(timeout: 15))
-    attach(app, "Work or school account needs an admin · AX3")
+    XCTAssertTrue(says(app, "Only personal Microsoft accounts work."))
+    attach(app, "Work or school account · AX3")
     try audit(app, atLargeText: true)
   }
 

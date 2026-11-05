@@ -57,7 +57,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     assertPersonalAccountsOnly(app, "Who can see what")
     tap(app, "whoSees.close")
     tap(app, "ready.continue")
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow")
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow")
   }
 
   /// Path A on the Release surface: a passkey with PRF makes the account without the words,
@@ -74,7 +74,7 @@ final class ReleaseSurfaceJoinTests: ReleaseSurfaceTestCase {
     type(app, "code.field", "123456")
     XCTAssertTrue(el(app, "method.passkey").waitForExistence(timeout: 10))
     tap(app, "method.continue")
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow the passkey")
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow the passkey")
     XCTAssertFalse(el(app, "phrase.start").exists)
     tap(app, "mail.connect.gmail")
     answerPastEmail(app)

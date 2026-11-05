@@ -23,7 +23,7 @@ final class BankTextsUITests: XCTestCase {
     tap(app, "source.continue", opening: "texts.steps")
     XCTAssertTrue(app.staticTexts["Make the automation"].exists)
     XCTAssertFalse(app.staticTexts["Which banks text you?"].exists, "texts still ask for banks")
-    XCTAssertFalse(el(app, "bank.dib").exists, "texts still show a bank list")
+    XCTAssertFalse(el(app, "bank.summary").exists, "texts still show the banks")
     XCTAssertTrue(el(app, "texts.keepsOnly").exists, "the privacy line is missing")
     XCTAssertTrue(el(app, "texts.anyBank").label.contains("from any bank"))
     XCTAssertTrue(el(app, "texts.openShortcuts").exists)
@@ -94,7 +94,7 @@ final class BankTextsUITests: XCTestCase {
   func testEmailFromTheChoiceKeepsTheBankStep() throws {
     let app = launch(scenario: "setupTexts")
     tap(app, "source.email")
-    tap(app, "source.continue", opening: "bank.enbd")
+    tap(app, "source.continue", opening: "bank.summary")
     XCTAssertTrue(app.staticTexts["Connect your bank alerts"].exists)
     let sms = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'not only SMS'"))
     XCTAssertEqual(sms.count, 0, "the email-only line is still there")

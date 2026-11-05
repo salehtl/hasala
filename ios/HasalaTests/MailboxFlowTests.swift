@@ -37,16 +37,14 @@ struct MailboxFlowTests: AccountSuite {
     #expect(await lane.linkState() == .linked && lane.connectCalls == 2)
   }
 
-  /// A work account its admin hasn't approved, a closed Microsoft sign-in, and a closed
-  /// Google sign-in (not an error: the screen stays as it was).
+  /// A work account, a closed Microsoft sign-in, and a closed Google sign-in (not an
+  /// error: the screen stays as it was).
   @Test func outlookFailuresAreOutcomes() async {
     let lane = mailbox()
     lane.outlookAdmin = true
     let c = MailConnectCoordinator(mailbox: lane, context: .setup(stepOf: (2, 4)))
     await c.connect(.outlook)
-    #expect(c.outcome == .failed(.adminApprovalNeeded(address: "maya@contoso.com")))
-    #expect(MailConnectFailure.adminApprovalNeeded(address: "maya@contoso.com").message(for: .outlook)
-      == "Your organisation needs to approve Hasala.")
+    #expect(c.outcome == .failed(.failed(MockMailbox.workAccountLine)))
     lane.outlookAdmin = false
     lane.outlookCancelled = true
     c.reset()
@@ -252,7 +250,7 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailCopy.impactLines(big)
       == ["It brought in 12,840 transactions. Keep them, or remove them from your totals.", "Removing also takes the 1,284 you changed."])
     #expect(MailCopy.keepOnSwitch("Switch", big) == "Switch, keep the 12,840 transactions")
-    #expect(MailCopy.keepTransactions(big) == "Keep the 12,840 transactions from this inbox")
+    #expect(MailCopy.keepTransactions(big) == "Keep the 12,840 transactions")
     #expect(MailCopy.removed(1_284) == "1,284 transactions removed.")
     #expect(MailCopy.keepOnSwitch("Switch", impact) == "Switch, keep the 12 transactions")
     #expect(MailCopy.keepOnSwitch("Use Outlook", MailboxDisconnectImpact(transactions: 1, edited: 0))
@@ -298,8 +296,8 @@ struct MailboxFlowTests: AccountSuite {
   }
 
   /// Which failures get a screen of their own and which show on the screen that tried:
-  /// a closed Google sheet says nothing; a closed or declined Microsoft sign-in and an
-  /// admin's approval have their screens; the rest are a line.
+  /// a closed Google sheet says nothing; a closed or declined Microsoft sign-in has its
+  /// screen; the rest are a line.
   @Test func failuresShowWhereThePlanSays() async {
     let lane = mailbox()
     lane.outlookCancelled = true
@@ -309,7 +307,7 @@ struct MailboxFlowTests: AccountSuite {
     lane.outlookCancelled = false
     lane.outlookAdmin = true
     await c.connect(.outlook)
-    #expect(c.errorScreen == .adminApprovalNeeded(address: "maya@contoso.com") && c.inlineMessage == nil)
+    #expect(c.errorScreen == nil && c.inlineMessage == MockMailbox.workAccountLine)
     lane.outlookAdmin = false
     lane.offline = true
     await c.connect(.gmail)
@@ -319,7 +317,7 @@ struct MailboxFlowTests: AccountSuite {
     await c.connect(.outlook)
     #expect(c.errorScreen == nil && c.inlineMessage == "maya.k@example.com is already connected.")
     #expect(MailConnectCoordinator.hasScreen(.cancelled, provider: .gmail) == false)
-    #expect(MailConnectCoordinator.hasScreen(.adminApprovalNeeded(address: "a@example.com"), provider: .gmail))
+    #expect(MailConnectCoordinator.hasScreen(.noMailbox(.gmail), provider: .gmail))
     #expect(ConnectProviderView.tone(.alreadyConnected(address: "a@example.com")) == .accent)
     #expect(ConnectProviderView.tone(.offline) == .warning && ConnectProviderView.tone(.failed("x")) == .error)
   }
@@ -453,18 +451,12 @@ struct MailboxFlowTests: AccountSuite {
   /// The two error screens in the boards' words for Microsoft, and the same pattern for
   /// Google, which names no Outlook.
   @Test func theErrorScreensSayWhatHappened() {
-    let admin = MailConnectErrorView.copy(.adminApprovalNeeded(address: "maya@contoso.com"), .outlook)
-    #expect(admin.title == "Your organisation needs to approve Hasala.")
-    #expect(admin.subtitle == "maya@contoso.com is a work or school account. Its admin has to allow Hasala to read mail before it can connect. Nothing was connected.")
-    #expect(admin.reasons?.title == "What you can do" && admin.reasons?.numbered == true)
-    #expect(admin.reasons?.items.map(\.title) == ["Ask your IT admin", "Use another mailbox"])
-    #expect(admin.reasons?.items.first?.detail == "They approve Hasala once in Microsoft Entra. Then come back and try again.")
     let cancelled = MailConnectErrorView.copy(.cancelled, .outlook)
     #expect(cancelled.title == "Outlook isn't connected.")
     #expect(cancelled.subtitle == "Microsoft sign-in was cancelled or didn't finish. Nothing was connected and nothing was read.")
     #expect(cancelled.reasons?.items.map(\.title) == ["Cancel or Back on Microsoft's screen", "Permissions not accepted"])
     #expect(cancelled.reasons?.numbered == false)
-    let google = MailConnectErrorView.copy(.adminApprovalNeeded(address: "maya@example.org"), .gmail)
+    let google = MailConnectErrorView.copy(.permissionMissing(.gmail), .gmail)
     let words = [google.title, google.subtitle] + (google.reasons?.items.flatMap { [$0.title, $0.detail] } ?? [])
     #expect(!words.contains { $0.contains("Outlook") || $0.contains("Microsoft") })
     #expect(MailConnectErrorView.copy(.cancelled, .gmail).title == "Gmail isn't connected.")
@@ -629,11 +621,10 @@ struct MailboxFlowTests: AccountSuite {
   }
 
   @Test func bankAlertsCountsUnreadableMail() {
-    #expect(BankAlertsPage.unreadableLine(1) == "1 email we couldn't read")
-    #expect(BankAlertsPage.unreadableLine(4) == "4 emails we couldn't read")
-    #expect(BankAlertsPage.unreadableLine(1_284) == "1,284 emails we couldn't read")
+    #expect(BankAlertsPage.unreadableLine(1) == "1 email Hasala couldn't read")
+    #expect(BankAlertsPage.unreadableLine(4) == "4 emails Hasala couldn't read")
+    #expect(BankAlertsPage.unreadableLine(1_284) == "1,284 emails Hasala couldn't read")
     #expect(MonthRead(count: 1_284, month: "September").line == "1,284 read in September")
-    #expect(BankAlertsPage.unreadableDetail == "Kept for you to sort by hand")
     #expect(!mailbox().connectRefused)
   }
 
@@ -661,12 +652,8 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailboxDetailPage.signInHeading(noMailbox) == "Sign in with another account")
     #expect(MailboxDetailPage.signInHeading(MockMailbox.needingSignIn(MockMailbox.outlook))
       == "Microsoft ended Hasala's access")
-    #expect(MailCopy.disconnectMessage(.outlook)
-      == "Hasala stops reading this mailbox and forgets its sign-in. Past transactions stay. To remove the permission on Microsoft's side too, visit account.live.com/consent/Manage.")
-    // Disconnect revokes Hasala's access at Google, and the alert says so (Microsoft has no
-    // revoke, so its alert sends the person to Microsoft's page).
-    #expect(MailCopy.disconnectMessage(.gmail)
-      == "Hasala stops reading this mailbox, ends its access at Google and deletes its sign-in from this iPhone. Past transactions stay. To check on Google's side, visit myaccount.google.com/permissions.")
+    #expect(MailCopy.disconnectPlainMessage
+      == "Hasala stops reading this mailbox and deletes its sign-in from this iPhone.")
     #expect(MailboxDetailPage.readElsewhereFootnote(.gmail)
       == "Your other iPhone reads this mailbox and holds its sign-in. Disconnect it there, or remove Hasala at myaccount.google.com/permissions.")
     #expect(MailCopy.banks([.enbd, .dib]) == "Emirates NBD and DIB")

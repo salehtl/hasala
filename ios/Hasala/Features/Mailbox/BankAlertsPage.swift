@@ -202,11 +202,11 @@ struct BankAlertsPage: View {
       }
     }
 
-    var glyph: [PaperGlyph.Part] {
+    var glyph: [PaperGlyph.Part]? {
       switch kind {
       case .working, .importing: PaperGlyph.check
       case .needsYou, .signInAgain: PaperGlyph.alert
-      case .notConnected, .checking: PaperGlyph.envelope
+      case .notConnected, .checking: nil
       }
     }
   }
@@ -220,7 +220,13 @@ struct BankAlertsPage: View {
     return VStack(alignment: .leading, spacing: 16) {
       layout {
         Circle().fill(HColor.posterGlyph).frame(width: 56, height: 56)
-          .overlay { PaperGlyph(hero.glyph, size: 26, color: hero.hue.ink, lineWidth: 2.4) }
+          .overlay {
+            if let glyph = hero.glyph {
+              PaperGlyph(glyph, size: 26, color: hero.hue.ink, lineWidth: 2.4)
+            } else {
+              HIconView(.envelope, size: 26, color: hero.hue.ink, strokeWidth: 2.2)
+            }
+          }
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 2) {
           Text(hero.title).hType(.title1).foregroundStyle(hero.hue.ink)
@@ -324,7 +330,7 @@ struct BankAlertsPage: View {
             }
           } else if offersChange {
             HDivider(inset: .disc68)
-            MailActionRow(title: "Use another email", identifier: "bankAlerts.changeMailbox", glyph: PaperGlyph.envelope) {
+            MailActionRow(title: "Use another email", identifier: "bankAlerts.changeMailbox", icon: .envelope) {
               app.router.profile.append(.addMailbox)
             }
           }
@@ -450,7 +456,7 @@ struct BankAlertsPage: View {
           if !banks.isEmpty { HDivider(inset: .disc68) }
           MailActionRow(
             title: banks.isEmpty ? "Choose your banks" : "Change banks", identifier: "bankAlerts.changeBanks",
-            glyph: banks.isEmpty ? PaperGlyph.plus : PaperGlyph.pencil
+            icon: banks.isEmpty ? nil : .pencil
           ) { changingBanks = true }
           if session != nil {
             HDivider(inset: .disc68)
@@ -526,40 +532,58 @@ struct BankAlertsPage: View {
 
   // MARK: Needs a look
 
-  /// "1 email we couldn't read" (Paper 64L): the alerts a mailbox fetched but couldn't read.
-  /// Their review has no screen yet (plan P3 work 5): Release shows the count, Debug's row opens.
+  /// "1 email Hasala couldn't read" (Paper 64L): the alerts a mailbox fetched but couldn't
+  /// read. Listed mail opens Bank emails in Review; mail that was never downloaded opens Add
+  /// a transaction, as Review's row does.
   @ViewBuilder private var needsALook: some View {
     let unreadable = (lane as? UnreadableMailReporting)?.unreadableMail ?? []
     let count = max(unreadable.count, app.store.state.mailbox.unreadable)
     if count > 0 {
-      let detail = BuildSurface.showsUnfinished
-        ? unreadable.first.map { "\($0.kind) · \($0.provider.appName) · \($0.day)" } ?? Self.unreadableDetail
-        : Self.unreadableDetail
+      let target = Self.unreadableTarget(listed: !app.store.state.unreadMail.isEmpty)
       VStack(alignment: .leading, spacing: 12) {
         HSectionHeader("Needs a look")
         HListCard {
-          if BuildSurface.showsUnfinished {
-            Button {
-              app.say("Reading these here isn't built yet", icon: .info)
-            } label: {
-              unreadableRow(count, detail: detail, chevron: true)
-            }
-            .buttonStyle(HRowPressStyle())
-            .accessibilityIdentifier("bankAlerts.unreadable")
-          } else {
-            unreadableRow(count, detail: detail, chevron: false)
-              .accessibilityElement(children: .combine)
-              .accessibilityIdentifier("bankAlerts.unreadable")
+          Button {
+            open(target)
+          } label: {
+            unreadableRow(count, detail: target.detail, chevron: true)
           }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityHint(target == .addTransaction ? "Opens Add a transaction" : "")
+          .accessibilityIdentifier("bankAlerts.unreadable")
         }
       }
     }
   }
 
-  static let unreadableDetail = "Kept for you to sort by hand"
+  enum UnreadableTarget: Equatable {
+    case bankEmails
+    case addTransaction
+
+    var detail: String {
+      switch self {
+      case .bankEmails: "Add each one by hand or dismiss it"
+      case .addTransaction: "Add it yourself from your bank app"
+      }
+    }
+  }
+
+  static func unreadableTarget(listed: Bool) -> UnreadableTarget { listed ? .bankEmails : .addTransaction }
+
+  private func open(_ target: UnreadableTarget) {
+    let router = app.router
+    switch target {
+    case .bankEmails:
+      router.sheet = nil
+      router.tab = .review
+      router.review = [.unreadMail]
+    case .addTransaction:
+      router.open(.addTransaction)
+    }
+  }
 
   static func unreadableLine(_ n: Int) -> String {
-    n == 1 ? "1 email we couldn't read" : "\(MoneyFormat.count(n)) emails we couldn't read"
+    n == 1 ? "1 email Hasala couldn't read" : "\(MoneyFormat.count(n)) emails Hasala couldn't read"
   }
 
   private func unreadableRow(_ count: Int, detail: String, chevron: Bool) -> some View {
@@ -591,7 +615,7 @@ struct BankAlertsPage: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("How Hasala reads your email").hType(.body.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .accessibilityAddTraits(.isHeader)
-      readsRow(PaperGlyph.envelope, "Your iPhone asks your mail provider only for emails from your banks' alert addresses.")
+      readsRow(icon: .envelope, "Your iPhone asks your mail provider only for emails from your banks' alert addresses.")
       readsRow(PaperGlyph.eyeOff, "The rest of your inbox, headers included, is never downloaded.")
       readsRow(PaperGlyph.link,
                "The alert text is kept on your iPhone, so every transaction shows where it came from. It syncs only end\u{2011}to\u{2011}end encrypted.")
@@ -602,6 +626,15 @@ struct BankAlertsPage: View {
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.tile, style: .continuous))
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("bankAlerts.howItReads")
+  }
+
+  private func readsRow(icon: HIcon, _ text: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      HIconView(icon, size: 22, color: HColor.iconPrimary, strokeWidth: 1.8).accessibilityHidden(true)
+      Text(text).hType(.subheadline).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 
   private func readsRow(_ glyph: [PaperGlyph.Part], _ text: String) -> some View {

@@ -28,9 +28,13 @@ final class OnboardingJourneyUITests: XCTestCase {
     let app = launch(scenario: "newUser")
     joinWithPasskey(app)
 
+    XCTAssertTrue(el(app, "bank.summary").label.contains("3 picked"))
+    tap(app, "bank.change")
+    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: uiWait), "Your banks did not open")
     XCTAssertTrue(el(app, "bank.enbd").isSelected)
     XCTAssertTrue(el(app, "bank.dib").isSelected)
     XCTAssertTrue(el(app, "bank.adib").isSelected)
+    tap(app, "banks.done")
     let connect = el(app, "mail.connect.gmail")
     XCTAssertTrue(connect.waitForExistence(timeout: uiWait))
     XCTAssertEqual(connect.label, "Continue with Google")
@@ -89,8 +93,9 @@ final class OnboardingJourneyUITests: XCTestCase {
     joinWithPasskey(app)
     tap(app, "mail.change")
 
-    let outlook = el(app, "mail.choose.outlook")
-    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Choose your email did not open")
+    let outlook = el(app, "mail.connect.outlook")
+    XCTAssertTrue(outlook.waitForExistence(timeout: uiWait), "Use Outlook did not swap the mailbox")
+    XCTAssertFalse(el(app, "setup.chooseEmail").exists, "Use Outlook opened the chooser")
     outlook.tap()
     answerPastEmail(app)
 
@@ -110,10 +115,13 @@ final class OnboardingJourneyUITests: XCTestCase {
   func testSetupRemembersEverything() throws {
     let app = launch(scenario: "setupBank")
 
-    XCTAssertTrue(el(app, "bank.dib").waitForExistence(timeout: 15))
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 15))
+    tap(app, "bank.change")
     tap(app, "bank.dib")
     tap(app, "bank.adib")
     assertBanksAsLeft(app)
+    tap(app, "banks.done")
+    XCTAssertTrue(el(app, "bank.summary").label.contains("1 picked"))
     tap(app, "mail.connect.gmail")
     answerPastEmail(app)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10), "Home did not open")
@@ -227,7 +235,7 @@ final class OnboardingJourneyUITests: XCTestCase {
     XCTAssertTrue(passkey.isSelected, "the passkey isn't the default", file: file, line: line)
     tap(app, "method.continue", file: file, line: line)
 
-    XCTAssertTrue(el(app, "bank.enbd").waitForExistence(timeout: 10), "setup did not follow", file: file, line: line)
+    XCTAssertTrue(el(app, "bank.summary").waitForExistence(timeout: 10), "setup did not follow", file: file, line: line)
     XCTAssertFalse(el(app, "phrase.start").exists, "the words came before setup", file: file, line: line)
   }
 
