@@ -24,6 +24,7 @@ struct DayByDayChart: View {
   let name: String
   /// The category's hue: bars in its deeper step (#BBA6E6 for lilac), today in its ink.
   let hue: Hue
+  var bucket: Bucket?
   let hidden: Bool
 
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -131,7 +132,7 @@ struct DayByDayChart: View {
   }
 
   private func barColour(_ day: Int) -> Color {
-    day == chart.today ? hue.ink : Color(hue.dotDeep)
+    day == chart.today ? hue.ink : (bucket?.splitColor ?? Color(hue.dotDeep))
   }
 
   // MARK: The key (accessibility sizes)

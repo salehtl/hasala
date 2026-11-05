@@ -154,10 +154,62 @@ struct PlanOverline: View {
   }
 }
 
-/// A bucket's dot, beside its name and on the split: the hue's deeper step (Paper draws raw
-/// #E9B877, #BBA6E6 and #93D3B5; they are `Hue.dotDeep`).
 extension Bucket {
-  var splitColor: Color { Color(hue.dotDeep) }
+  var splitColor: Color {
+    switch self {
+    case .needs: HColor.chartNeeds
+    case .wants: HColor.chartWants
+    case .savings: HColor.chartSavings
+    case .income, .project, .other: Color(hue.dotDeep)
+    }
+  }
+
+  var chartPattern: ChartPattern {
+    switch self {
+    case .wants: .dots
+    case .savings: .hatch
+    case .needs, .income, .project, .other: .solid
+    }
+  }
+}
+
+enum ChartPattern {
+  case solid, dots, hatch
+}
+
+struct ChartPatternFill: View {
+  let pattern: ChartPattern
+
+  var body: some View {
+    Canvas { context, size in
+      let ink = GraphicsContext.Shading.color(.white.opacity(0.7))
+      switch pattern {
+      case .solid:
+        break
+      case .dots:
+        var y: CGFloat = 2
+        while y < size.height {
+          var x: CGFloat = 2
+          while x < size.width {
+            context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)), with: ink)
+            x += 4
+          }
+          y += 4
+        }
+      case .hatch:
+        var path = Path()
+        var x = -size.height
+        while x < size.width {
+          path.move(to: CGPoint(x: x, y: size.height))
+          path.addLine(to: CGPoint(x: x + size.height, y: 0))
+          x += 4
+        }
+        context.stroke(path, with: ink, lineWidth: 1.2)
+      }
+    }
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
 }
 
 /// The glyphs Plan draws that the kit has no icon for, from the Paper boards' paths: the

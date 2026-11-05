@@ -235,6 +235,7 @@ private struct NothingPlannedCard: View {
 private struct SplitSection: View {
   let snap: PlanSnapshot
   @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var withoutColor
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -253,6 +254,11 @@ private struct SplitSection: View {
               bottomTrailingRadius: i == snap.split.count - 1 ? 6 : 2,
               topTrailingRadius: i == snap.split.count - 1 ? 6 : 2, style: .continuous)
               .fill(share.bucket.splitColor)
+              .overlay { if withoutColor { ChartPatternFill(pattern: share.bucket.chartPattern) } }
+              .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: i == 0 ? 6 : 2, bottomLeadingRadius: i == 0 ? 6 : 2,
+                bottomTrailingRadius: i == snap.split.count - 1 ? 6 : 2,
+                topTrailingRadius: i == snap.split.count - 1 ? 6 : 2, style: .continuous))
               .frame(width: widths[i])
           }
         }
@@ -511,15 +517,9 @@ private struct ProjectsSection: View {
       ReflowingRow(alignment: .firstTextBaseline) {
         Text("Projects").hType(.section).foregroundStyle(HColor.textPrimary).accessibilityAddTraits(.isHeader)
       } trailing: {
-        Button { model.newProject() } label: {
-          Text("New project")
-            .hType(.subheadline.weight(.medium))
-            .foregroundStyle(HColor.textLink)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, -12)
+        Button("New project") { model.newProject() }
+          .buttonStyle(.inlineLink)
+          .padding(.vertical, -12)
         .accessibilityIdentifier("plan.newProject")
       }
       ForEach(model.snapshot.projects) { p in

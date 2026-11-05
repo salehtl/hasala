@@ -178,15 +178,9 @@ struct SortedForYouView: View {
   }
 
   private func link(_ title: String, id: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Text(title)
-        .hType(.subheadline.weight(.semibold))
-        .foregroundStyle(HColor.textLink)
-        .frame(minHeight: HSpacing.targetMinimum)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier(id)
+    Button(title, action: action)
+      .buttonStyle(.inlineLink)
+      .accessibilityIdentifier(id)
   }
 }
 

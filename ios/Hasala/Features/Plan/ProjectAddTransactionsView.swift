@@ -71,14 +71,9 @@ struct ProjectAddTransactionsView: View {
           CountedTitle(title: "Not in this project", count: model.narrowed ? matches.count : model.candidates.count)
         } trailing: {
           if model.narrowed, !rows.isEmpty, chosen.count < rows.count {
-            Button { model.selectAll(rows) } label: {
-              Text("Select all")
-                .hType(.subheadline.weight(.medium))
-                .foregroundStyle(HColor.textLink)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            Button("Select all") { model.selectAll(rows) }
+              .buttonStyle(.inlineLink)
+              .frame(minWidth: 44)
             .accessibilityIdentifier("projectAdd.selectAll")
           }
         }
@@ -135,7 +130,7 @@ struct ProjectAddTransactionsView: View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 10) {
         HIconView(.magnifier, size: 18, color: HColor.textSecondary).accessibilityHidden(true)
-        TextField("Merchant contains", text: $model.filter.merchant, axis: .vertical)
+        TextField("", text: $model.filter.merchant, prompt: .fieldPrompt("Merchant contains"), axis: .vertical)
           .hType(.body)
           .foregroundStyle(HColor.fieldText)
           .lineLimit(1...3)

@@ -240,6 +240,7 @@ struct BudgetEditSheet: View {
     .padding(.vertical, 6)
     .frame(minHeight: HSpacing.fieldMinHeight)
     .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+    .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
 
     if cut || sources.count < 2 {
       content

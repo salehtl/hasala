@@ -94,12 +94,9 @@ struct ReadingHoldRow: View {
               linkButton(tint: HColor.statusWarningForeground)
             } trailing: {
               if let trailing {
-                Button(action: trailing.action) {
-                  Text(trailing.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textOnWashLink)
-                    .padding(.vertical, 12).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.vertical, -12)
+                Button(trailing.title, action: trailing.action)
+                  .buttonStyle(.inlineLink(color: HColor.textOnWashLink))
+                  .padding(.vertical, -12)
                 .accessibilityIdentifier(trailing.identifier)
               }
             }
@@ -128,12 +125,9 @@ struct ReadingHoldRow: View {
 
   @ViewBuilder private func linkButton(tint: Color) -> some View {
     if let title = hold.link.title {
-      Button { open(hold.link) } label: {
-        Text(title).hType(.subheadline.weight(.semibold)).foregroundStyle(tint)
-          .padding(.vertical, 12).contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .padding(.vertical, -12)
+      Button(title) { open(hold.link) }
+        .buttonStyle(.inlineLink(color: tint))
+        .padding(.vertical, -12)
       .accessibilityIdentifier("reading.hold.link")
     }
   }

@@ -200,15 +200,9 @@ struct HomeHero: View {
         }
       } trailing: {
         if let insights {
-          Button(action: insights) {
-            Text("Insights")
-              .hType(.subheadline.weight(.medium))
-              .foregroundStyle(HColor.textOnWashLink)
-              .padding(.vertical, 12)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .padding(.vertical, -12)
+          Button("Insights", action: insights)
+            .buttonStyle(.inlineLink(color: HColor.textOnWashLink))
+            .padding(.vertical, -12)
           .accessibilityIdentifier("home.insights")
         }
       }
@@ -325,15 +319,9 @@ private struct NoPlanLine: View {
       Text("No plan yet").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
         .fixedSize(horizontal: false, vertical: true)
     } trailing: {
-      Button(action: action) {
-        Text("Set your plan")
-          .hType(.subheadline.weight(.semibold))
-          .foregroundStyle(HColor.textOnWashLink)
-          .padding(.vertical, 12)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .padding(.vertical, -12)
+      Button("Set your plan", action: action)
+        .buttonStyle(.inlineLink(color: HColor.textOnWashLink))
+        .padding(.vertical, -12)
       .accessibilityIdentifier("home.hero.setPlan")
     }
     .padding(.top, 4)

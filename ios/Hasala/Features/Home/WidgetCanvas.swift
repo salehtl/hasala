@@ -92,15 +92,9 @@ struct WidgetCanvas: View {
         .accessibilityAddTraits(.isHeader)
     } trailing: {
       if editable, editing || !items.isEmpty {
-        Button { actions.setEditing(!editing) } label: {
-          Text(editing ? "Done" : "Edit")
-            .hType(editing ? .textButton.weight(.semibold) : .textButton)
-            .foregroundStyle(HColor.textLink)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, -10)
+        Button(editing ? "Done" : "Edit") { actions.setEditing(!editing) }
+          .buttonStyle(.inlineLink)
+          .padding(.vertical, -12)
         .accessibilityLabel(editing ? "Done editing widgets" : "Edit widgets")
         .accessibilityIdentifier(editing ? "home.doneWidgets" : "home.editWidgets")
       }
