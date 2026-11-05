@@ -115,15 +115,25 @@ final class ProjectsUITests: XCTestCase {
   }
 
   @MainActor
+  private func searchActivity(_ app: XCUIApplication, for text: String) {
+    app.buttons["header.search"].firstMatch.tap()
+    let field = app.searchFields["Ask about your money"]
+    XCTAssertTrue(field.waitForExistence(timeout: uiWait))
+    type(text, into: field)
+    let seeAll = el(app, "search.seeAll")
+    XCTAssertTrue(seeAll.waitForExistence(timeout: uiWait))
+    seeAll.tap()
+    XCTAssertTrue(el(app, "activity.query").waitForExistence(timeout: uiWait))
+  }
+
+  @MainActor
   private func activityWithTalabatInJapan(arguments: [String] = [], searching: Bool = false) -> XCUIApplication {
     let app = launch(scenario: "maya", motion: "off", arguments: arguments)
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
     app.tabBars.firstMatch.buttons["Activity"].tap()
     XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
     if searching {
-      let search = app.searchFields["Search transactions"]
-      XCTAssertTrue(search.waitForExistence(timeout: uiWait))
-      type("Talabat\n", into: search)
+      searchActivity(app, for: "Talabat")
       XCTAssertTrue(el(app, "txn.talabat").waitForExistence(timeout: uiWait))
       XCTAssertTrue(dragUntilHittable(app, el(app, "txn.talabat")))
     } else {
@@ -154,10 +164,7 @@ final class ProjectsUITests: XCTestCase {
     attach(app, "Activity · Project chip")
     try audit(app)
 
-    let search = app.searchFields["Search transactions"]
-    for _ in 0..<10 where !(search.exists && search.isHittable) { app.swipeDown() }
-    XCTAssertTrue(search.waitForExistence(timeout: uiWait))
-    type("Emirates\n", into: search)
+    searchActivity(app, for: "Emirates")
     let emirates = el(app, "txn.emirates")
     XCTAssertTrue(emirates.waitForExistence(timeout: uiWait))
     XCTAssertTrue(emirates.label.hasSuffix("Japan trip project") || emirates.label.contains("Japan trip project, "),

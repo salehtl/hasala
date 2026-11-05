@@ -22,6 +22,7 @@ protocol ActivityModel: AnyObject, Observable {
   func open(_ txn: TxnID)
   func setArchived(_ txn: TxnID, _ archived: Bool)
   func openBill(_ bill: BillID)
+  func openBills()
   func startReview()
 }
 
@@ -72,6 +73,10 @@ final class ActivityViewModel: ActivityModel {
   func open(_ txn: TxnID) { app.open(txn) }
   func setArchived(_ txn: TxnID, _ archived: Bool) { app.perform(.archive(txn, archived)) }
   func openBill(_ bill: BillID) { app.router.activity.append(.bill(bill)) }
+  func openBills() {
+    app.router.home = [.bills]
+    app.tab = .home
+  }
   func startReview() { ReviewEntry.open(app, at: nil) }
 }
 

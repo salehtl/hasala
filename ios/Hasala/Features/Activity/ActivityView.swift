@@ -23,10 +23,6 @@ struct ActivityView: View {
       } content: {
         ActivityContent(model: model, showsChips: false)
       }
-      .searchable(
-        text: Binding(get: { model.searchText }, set: { model.search($0) }),
-        placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search transactions"
-      )
       .navigationDestination(for: ActivityRoute.self) { route in
         switch route {
         case .bill(let id): BillDetailView(app: app, bill: id)
@@ -61,10 +57,21 @@ struct ActivityFilterBar: View {
     } else {
       VStack(alignment: .leading, spacing: 20) {
         periodRow
+        if let query = Self.queryTitle(model.searchText) {
+          ActiveFilterChip(title: query, icon: .magnifier, label: "Searching for \(model.searchText.trimmedSpaces)") {
+            model.search("")
+          }
+          .accessibilityIdentifier("activity.query")
+        }
         chips
           .padding(.horizontal, -HSpacing.insetPage)
       }
     }
+  }
+
+  static func queryTitle(_ text: String) -> String? {
+    let q = text.trimmedSpaces
+    return q.isEmpty ? nil : "\u{201C}\(q)\u{201D}"
   }
 
   private var pill: some View {
@@ -125,14 +132,33 @@ struct ActivityFilterBar: View {
 /// (Paper "Active filters": 40 tall, 14 / 12, gap 7).
 struct ActiveFilterChip: View {
   let title: String
-  let hue: Hue
+  var hue: Hue?
+  var icon: HIcon?
+  var label: String?
   let clear: () -> Void
+
+  init(title: String, hue: Hue, clear: @escaping () -> Void) {
+    self.title = title
+    self.hue = hue
+    self.clear = clear
+  }
+
+  init(title: String, icon: HIcon, label: String, clear: @escaping () -> Void) {
+    self.title = title
+    self.icon = icon
+    self.label = label
+    self.clear = clear
+  }
 
   var body: some View {
     Button(action: clear) {
       HStack(spacing: 7) {
-        Circle().fill(hue.dotGradient).frame(width: 8, height: 8)
-        Text(title).hType(.smallButton).foregroundStyle(HColor.chipTextSelected)
+        if let hue {
+          Circle().fill(hue.dotGradient).frame(width: 8, height: 8)
+        } else if let icon {
+          HIconView(icon, size: 14, color: HColor.widgetOnInverseSecondary, strokeWidth: 2.4)
+        }
+        Text(title).lineLimit(1).hType(.smallButton).foregroundStyle(HColor.chipTextSelected)
         HIconView(.close, size: 16, color: HColor.widgetOnInverseSecondary, strokeWidth: 2.4)
       }
       .padding(.leading, 14)
@@ -142,8 +168,8 @@ struct ActiveFilterChip: View {
       .contentShape(Capsule().inset(by: -2))
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("Filtered by \(title)")
-    .accessibilityHint("Shows every transaction again")
+    .accessibilityLabel(label ?? "Filtered by \(title)")
+    .accessibilityHint(icon == nil ? "Shows every transaction again" : "Clears the search")
     .accessibilityAddTraits(.isSelected)
   }
 }
@@ -175,22 +201,18 @@ struct ActivityContent: View {
 
   @ViewBuilder private var overview: some View {
     if let review = snap.review {
-      VStack(alignment: .leading, spacing: 12) {
-        header("To review") {
-          Text(Self.minutes(review.count)).hType(.subheadline).foregroundStyle(HColor.textSecondary)
-        }
-        ToReviewCard(review: review, hidden: model.hidden) { model.startReview() }
-      }
-      .padding(.horizontal, HSpacing.insetPage)
+      ToReviewRow(review: review, hidden: model.hidden) { model.startReview() }
+        .padding(.horizontal, HSpacing.insetPage)
     }
 
     if !snap.comingUp.isEmpty {
+      let shown = Self.comingUpShown(snap.comingUp)
       VStack(alignment: .leading, spacing: 12) {
         header("Coming up") {
           Text("next 7 days").hType(.subheadline).foregroundStyle(HColor.textSecondary)
         }
         HListCard {
-          ForEach(Array(snap.comingUp.enumerated()), id: \.element.id) { i, row in
+          ForEach(Array(shown.rows.enumerated()), id: \.element.id) { i, row in
             if i > 0 { HDivider(inset: .disc68) }
             Button { model.openBill(row.id) } label: {
               BillRowView(row, hidden: model.hidden).contentShape(Rectangle())
@@ -198,6 +220,24 @@ struct ActivityContent: View {
             .buttonStyle(HRowPressStyle())
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("bill.\(row.id)")
+          }
+          if shown.more > 0 {
+            HDivider(inset: .text16)
+            Button { model.openBills() } label: {
+              HStack(spacing: 8) {
+                Text("See all bills").hType(.rowTitle).foregroundStyle(HColor.textLink)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(MoneyFormat.count(shown.more)) more").hType(.subheadline)
+                  .foregroundStyle(HColor.textSecondary)
+                HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+              }
+              .padding(.horizontal, 16)
+              .frame(minHeight: 52)
+              .contentShape(Rectangle())
+            }
+            .buttonStyle(HRowPressStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("activity.allBills")
           }
         }
       }
@@ -229,6 +269,10 @@ struct ActivityContent: View {
       }
     }
     .padding(.horizontal, HSpacing.insetPage)
+  }
+
+  static func comingUpShown(_ rows: [BillRowModel], limit: Int = 2) -> (rows: [BillRowModel], more: Int) {
+    (Array(rows.prefix(limit)), max(0, rows.count - limit))
   }
 
   /// "about 1 minute": about ten seconds a card.
@@ -294,7 +338,7 @@ struct ActivityContent: View {
         model.setArchived(id, false)
       }
     } else {
-      SwipeAction(title: "Archive", icon: .archive, fill: HColor.actionDestructive, ink: HColor.textOnDestructive) {
+      SwipeAction(title: "Archive", icon: .archive, fill: HColor.neutral600, ink: HColor.textOnAccent) {
         model.setArchived(id, true)
       }
     }
@@ -367,33 +411,42 @@ private struct EmptyListCard: View {
   }
 }
 
-/// To review (Paper "Review card"): the deck picture, "6 to sort", what isn't in the plan
-/// yet, and "Start review" (44).
-struct ToReviewCard: View {
+struct ToReviewRow: View {
   let review: ReviewSummary
   let hidden: Bool
   let start: () -> Void
 
+  static func phrase(_ review: ReviewSummary) -> MoneyPhrase {
+    MoneyPhrase([.text("AED "), .amount(review.unplanned), .text(" · \(ActivityContent.minutes(review.count))")]
+                + (review.mark?.caption.map { [.text(" · \($0)")] } ?? []))
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack(spacing: 16) {
+    Button(action: start) {
+      HStack(spacing: 12) {
         ReviewDeckArt()
-        VStack(alignment: .leading, spacing: 2) {
-          Text("\(review.count) to sort").hFigure(.small).foregroundStyle(HColor.textPrimary)
-          PhraseText(MoneyPhrase([.text("AED "), .amount(review.unplanned), .text(" still to check")]
-                                 + (review.mark?.caption.map { [.text(" · \($0)")] } ?? [])),
-                     hidden: hidden)
+          .scaleEffect(44.0 / 72.0)
+          .frame(width: 44, height: 44)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("\(MoneyFormat.count(review.count)) to sort").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+          PhraseText(Self.phrase(review), hidden: hidden)
             .hType(.subheadline).foregroundStyle(HColor.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
       }
-      Button("Start review", action: start)
-        .buttonStyle(.pill(.primary, size: .medium, fill: true))
-        .accessibilityIdentifier("activity.startReview")
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .frame(minHeight: 64)
+      .contentShape(Rectangle())
     }
-    .padding(16)
+    .buttonStyle(HRowPressStyle())
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .accessibilityElement(children: .combine)
+    .accessibilityHint("Starts review")
+    .accessibilityIdentifier("activity.startReview")
   }
 }
 

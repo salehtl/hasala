@@ -8,27 +8,46 @@ import Observation
 final class AddTransactionModel {
   private let app: AppModel
   var entry = AmountEntry()
-  var direction: Direction = .out
+  var direction: Direction = .out {
+    didSet {
+      if let id = categoryID, !CategoryGroup.offers(id, for: direction) { categoryID = nil }
+    }
+  }
   var merchant = ""
   var categoryID: CategoryID?
   var postedAt: Date
   var accountID: AccountID?
   let resolvedMail: TxnID?
+  let dateOnly: Bool
+  let source: String?
 
   init(app: AppModel, resolving mail: TxnID? = nil) {
     self.app = app
     let unread = mail.flatMap { id in app.store.state.unreadMail.first { $0.id == id } }
     let text = mail.flatMap { id in app.store.state.unreadTexts.first { $0.id == id } }
     resolvedMail = unread?.id ?? text?.id
-    postedAt = AddTransactionDates.date(
-      unread.map { LocalDateTime(date: $0.receivedOn, hour: 0, minute: 0) } ?? text?.receivedAt ?? app.store.now)
+    let now = app.store.now
+    if let unread {
+      postedAt = AddTransactionDates.date(min(LocalDateTime(date: unread.receivedOn, hour: 12, minute: 0), now))
+      dateOnly = true
+    } else {
+      postedAt = AddTransactionDates.date(text?.receivedAt ?? now)
+      dateOnly = false
+    }
+    source = unread.map { Self.sourceLine(bank: $0.bank, on: $0.receivedOn, today: now.date, kind: "email") }
+      ?? text.map { Self.sourceLine(bank: $0.bank, on: $0.receivedAt.date, today: now.date, kind: "text") }
     let accounts = app.store.state.accounts
     let named = unread?.accountID ?? text?.accountID
     accountID = named.flatMap { id in accounts.first { $0.id == id }?.id } ?? accounts.first { $0.inPlan }?.id
   }
 
+  static func sourceLine(bank: String?, on day: LocalDate, today: LocalDate, kind: String) -> String {
+    let from = bank.map { "your \(Bidi.isolate($0)) \(kind)" } ?? "your bank \(kind)"
+    return "From \(from), \(day.short(today: today))."
+  }
+
   var latest: Date { AddTransactionDates.date(app.store.now) }
-  var categoryGroups: [CategoryGroup] { CategoryGroup.all(app.store.state) }
+  var categoryGroups: [CategoryGroup] { CategoryGroup.all(app.store.state, direction: direction) }
   var accounts: [Account] { app.store.state.accounts }
 
   var category: CategoryOption? {
@@ -49,7 +68,7 @@ final class AddTransactionModel {
 
   var saveTitle: String {
     guard let minor = entry.minor, minor > 0 else { return "Enter an amount" }
-    return "Add AED \(MoneyFormat.string(minor))"
+    return missing ?? "Add AED \(MoneyFormat.string(minor))"
   }
 
   var missing: String? {

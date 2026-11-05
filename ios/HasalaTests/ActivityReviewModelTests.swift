@@ -1,4 +1,5 @@
 import CoreGraphics
+import HasalaDesign
 import HasalaMocks
 import HasalaModels
 import Observation
@@ -453,4 +454,150 @@ private final class LateRuleLedger: LedgerStore {
   }
 
   func undo(_ token: UndoToken) { inner.undo(token) }
+}
+
+@MainActor
+@Suite("Activity and transaction choices")
+struct ActivityTransactionChoiceTests {
+  private func isolated(_ s: String) -> String { "\u{2068}\(s)\u{2069}" }
+
+  @Test func comingUpShowsTwoBillsAndCountsTheRest() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let row = try #require(ActivityViewModel(app: app).snapshot.comingUp.first)
+    let three = [row, row, row]
+    #expect(ActivityContent.comingUpShown(three).rows.count == 2)
+    #expect(ActivityContent.comingUpShown(three).more == 1)
+    #expect(ActivityContent.comingUpShown([row]).more == 0)
+    #expect(ActivityContent.comingUpShown([]).rows.isEmpty)
+  }
+
+  @Test func seeAllBillsOpensTheBillsList() {
+    let app = AppModel(store: InMemoryLedger())
+    ActivityViewModel(app: app).openBills()
+    #expect(app.tab == .home)
+    #expect(app.router.home == [.bills])
+  }
+
+  @Test func theReviewRowSaysTheTotalAndTheTime() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let review = try #require(ActivityViewModel(app: app).snapshot.review)
+    let line = ToReviewRow.phrase(review).rendered(hidden: false)
+    #expect(!line.contains("still to check"))
+    #expect(line.hasPrefix("AED "))
+    #expect(line.contains(" · about 1 minute"))
+  }
+
+  @Test func aSearchShowsAsAClearableChip() {
+    #expect(ActivityFilterBar.queryTitle("") == nil)
+    #expect(ActivityFilterBar.queryTitle("   ") == nil)
+    #expect(ActivityFilterBar.queryTitle(" talabat ") == "\u{201C}talabat\u{201D}")
+    let app = AppModel(store: InMemoryLedger())
+    let activity = ActivityViewModel(app: app)
+    activity.apply(TxnFilter(text: "talabat"))
+    #expect(activity.snapshot.rowCount == 2)
+    activity.search("")
+    #expect(activity.searchText.isEmpty)
+    #expect(activity.snapshot.rowCount == 26)
+  }
+
+  @Test func archivingFromTheSheetAsksNothingAndOffersUndo() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.transaction("carrefour"))
+    let txn = TransactionViewModel(app: app, id: "carrefour")
+    txn.setArchived(true)
+    #expect(txn.detail?.archived == true)
+    #expect(app.sheet == nil)
+    #expect(app.toast?.title == "Archived")
+    app.toastAction()
+    #expect(txn.detail?.archived == false)
+  }
+
+  @Test func moneyOutNeverOffersRefunds() {
+    let app = AppModel(store: InMemoryLedger())
+    let groups = CategoryGroup.all(app.store.state, direction: .out)
+    #expect(!groups.flatMap(\.options).contains { $0.id == "refunds" })
+    #expect(groups.flatMap(\.options).contains { $0.id == "transfer" })
+    #expect(CategoryGroup.matching(groups, "refu").isEmpty)
+    #expect(!CategoryGroup.offers("refunds", for: .out))
+    #expect(CategoryGroup.offers("refunds", for: .in))
+  }
+
+  @Test func moneyInListsIncomeFirst() {
+    let app = AppModel(store: InMemoryLedger())
+    let groups = CategoryGroup.all(app.store.state, direction: .in)
+    #expect(groups.first?.bucket == .income)
+    #expect(groups.first?.options.map(\.id) == ["salary", "freelance"])
+    #expect(groups.flatMap(\.options).contains { $0.id == "refunds" })
+    #expect(groups.filter { $0.bucket == .other }.flatMap(\.options).allSatisfy { $0.bucket != .income })
+  }
+
+  @Test func aDebitPickerSkipsARefundSuggestion() throws {
+    let app = AppModel(store: InMemoryLedger())
+    var detail = try #require(TransactionViewModel(app: app, id: "lulu").detail)
+    #expect(CategoryPickerView.initial(detail) == "groceries")
+    detail.suggestion = app.store.state.category("refunds").map(CategoryOption.init)
+    #expect(detail.suggestion != nil)
+    #expect(CategoryPickerView.initial(detail) == detail.category?.id)
+  }
+
+  @Test func theRuleCardIsolatesTheNamesAndSaysTransactions() {
+    let merchant = "\u{0644}\u{0648}\u{0644}\u{0648}"
+    #expect(CategoryPickerView.alwaysUseTitle(category: "Groceries", merchant: merchant)
+      == "Always use \(isolated("Groceries")) for \(isolated(merchant))")
+    #expect(CategoryPickerView.alwaysUseTitle(category: nil, merchant: merchant)
+      == "Always use this category for \(isolated(merchant))")
+    let footnote = CategoryPickerView.alwaysUseFootnote(merchant: merchant)
+    #expect(footnote.hasPrefix("Also re-files \(isolated(merchant))\u{2019}s other transactions"))
+    #expect(!footnote.contains("payments"))
+    #expect(RenameMerchantView.hint(merchant).contains("from \(isolated(merchant)) shows"))
+  }
+
+  @Test func aNewSplitStartsWithTheRestOnTheFirstLineAndNoGuessedCategory() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let txn = TransactionViewModel(app: app, id: "carrefour")
+    let d = try #require(txn.detail)
+    let options = txn.categoryGroups.filter { $0.bucket != .other }.flatMap(\.options)
+    let seeded = SplitEditorView.seedLines(d, options: options)
+    #expect(!seeded.firstTouched)
+    #expect(seeded.lines.map(\.category) == ["groceries", nil])
+    #expect(seeded.lines[0].entry.minor == 342_15)
+    #expect(seeded.lines[1].entry.minor == nil)
+
+    var lines = seeded.lines
+    lines[1].entry = AmountEntry(minor: 45_15)
+    lines = SplitEditorView.withRemainder(lines, total: 342_15)
+    #expect(lines.map(\.entry.minor) == [297_00, 45_15])
+    let verdict = TransactionEngine.splitDraftVerdict(lines.map(\.entry.minor), total: .aed(342_15))
+    #expect(verdict == .addsUp)
+    #expect(SplitEditorView.status(verdict, lines: lines).0 == "Choose a category for each line")
+    #expect(!SplitEditorView.canSave(verdict, lines: lines))
+    lines[1].category = "shopping"
+    #expect(SplitEditorView.status(verdict, lines: lines).0 == "Adds up exactly")
+    #expect(SplitEditorView.canSave(verdict, lines: lines))
+
+    let added = SplitEditorView.newLine(after: lines)
+    #expect(added.id == 3 && added.category == nil && added.entry.minor == nil)
+
+    lines[1].entry = AmountEntry(minor: 400_00)
+    #expect(SplitEditorView.withRemainder(lines, total: 342_15)[0].entry.minor == 0)
+  }
+
+  @Test func aSavedSplitReopensAsItWas() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let txn = TransactionViewModel(app: app, id: "carrefour")
+    #expect(txn.saveSplit([SplitLine(id: 1, categoryID: "groceries", amount: .aed(297_00)),
+                           SplitLine(id: 2, categoryID: "shopping", amount: .aed(45_15))]))
+    let d = try #require(txn.detail)
+    let seeded = SplitEditorView.seedLines(d, options: txn.categoryGroups.flatMap(\.options))
+    #expect(seeded.firstTouched)
+    #expect(seeded.lines.map(\.category) == ["groceries", "shopping"])
+    #expect(seeded.lines.map(\.entry.minor) == [297_00, 45_15])
+  }
+
+  @Test func theSplitHeaderIsolatesTheMerchant() throws {
+    let app = AppModel(store: InMemoryLedger())
+    var d = try #require(TransactionViewModel(app: app, id: "carrefour").detail)
+    d.merchant = "\u{0643}\u{0627}\u{0631}\u{0641}\u{0648}\u{0631}"
+    #expect(SplitEditorView.headerLine(d).hasPrefix(isolated(d.merchant) + " · "))
+  }
 }

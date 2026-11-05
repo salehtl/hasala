@@ -14,7 +14,6 @@ import SwiftUI
 struct TransactionSheet: View {
   @Bindable var app: AppModel
   let model: any TransactionModel
-  @State private var confirmArchive = false
   @State private var confirmApart = false
   @ScaledMetric(relativeTo: .subheadline) private var senderLane: CGFloat = 20
   @Environment(\.dismiss) private var dismiss
@@ -39,9 +38,7 @@ struct TransactionSheet: View {
         if let d = model.detail {
           ToolbarItem(placement: .topBarTrailing) {
             Menu {
-              Button(d.archived ? "Restore" : "Archive") {
-                if d.archived { model.setArchived(false) } else { confirmArchive = true }
-              }
+              Button(d.archived ? "Restore" : "Archive") { model.setArchived(!d.archived) }
               // TODO(03c §3.8 "…" → Edit amount/date): `txn_edited`.
             } label: {
               // Paper "Glass button · More": the kit's dots in the glass glyph's ink, as on
@@ -76,11 +73,6 @@ struct TransactionSheet: View {
             merge: { model.resolve(reason, merge: true) },
             keepBoth: { model.resolve(reason, merge: false) })
         }
-      }
-      .confirmationDialog("Archive this transaction?", isPresented: $confirmArchive, titleVisibility: .visible) {
-        Button("Archive", role: .destructive) { model.setArchived(true) }
-      } message: {
-        Text("It leaves your plan and your totals. You can restore it from Activity › Archived.")
       }
       .confirmationDialog("Keep as two transactions?", isPresented: $confirmApart, titleVisibility: .visible) {
         Button("Keep both") { model.keepApart() }
@@ -403,7 +395,7 @@ struct TransactionSheet: View {
         HIconView(.envelope, size: 22, color: HColor.iconPrimary)
         VStack(alignment: .leading, spacing: 2) {
           Text("Combined with a second bank email").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-          Text("Your bank sent a transfer notice and an account alert for this payment. It counts once.")
+          Text("Your bank sent a transfer notice and an account alert for this transaction. It counts once.")
             .hType(.footnote).foregroundStyle(HColor.textSecondary)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -444,11 +436,10 @@ struct TransactionSheet: View {
     .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
-  /// Archive on its own, last, in red; Restore in the link colour once archived.
   private func archive(_ d: TransactionDetail) -> some View {
     ActionRow(icon: .archive, title: d.archived ? "Restore" : "Archive",
-              tint: d.archived ? HColor.textLink : HColor.listRowDestructive) {
-      if d.archived { model.setArchived(false) } else { confirmArchive = true }
+              tint: d.archived ? HColor.textLink : HColor.listRowAction) {
+      model.setArchived(!d.archived)
     }
     .accessibilityIdentifier("txn.archive")
     .background(HColor.surfacePrimary)

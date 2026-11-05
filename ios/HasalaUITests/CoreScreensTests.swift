@@ -36,7 +36,7 @@ final class CoreScreensTests: XCTestCase {
     let count = element(app, "activity.count")
     XCTAssertTrue(count.waitForExistence(timeout: uiWait))
     XCTAssertEqual(count.label, "26 transactions this month")
-    XCTAssertTrue(app.staticTexts["6 to sort"].exists)
+    XCTAssertTrue(element(app, "activity.startReview").label.contains("6 to sort"))
     XCTAssertTrue(app.staticTexts["Coming up"].exists)
     attach(app, "Activity · Overview")
     try audit(app)
@@ -49,9 +49,14 @@ final class CoreScreensTests: XCTestCase {
     element(app, "activity.chip.all").tap()
 
     // Search across months: three Carrefour rows, nothing else.
-    let search = app.searchFields["Search transactions"]
+    app.buttons["header.search"].firstMatch.tap()
+    let search = app.searchFields["Ask about your money"]
     XCTAssertTrue(search.waitForExistence(timeout: uiWait))
     type("carrefour", into: search)
+    let seeAll = element(app, "search.seeAll")
+    XCTAssertTrue(seeAll.waitForExistence(timeout: uiWait))
+    seeAll.tap()
+    XCTAssertTrue(element(app, "activity.query").waitForExistence(timeout: uiWait))
     let carrefour = element(app, "txn.carrefour")
     XCTAssertTrue(carrefour.waitForExistence(timeout: uiWait))
     XCTAssertFalse(element(app, "txn.talabat").exists)
@@ -99,11 +104,13 @@ final class CoreScreensTests: XCTestCase {
     second.tap()
     for key in ["4", "5", "decimal", "1", "5"] { element(app, "keypad.\(key)").tap() }
     XCTAssertEqual(second.value as? String, "45.15")
-    XCTAssertTrue(element(app, "split.verdict").waitForLabel("45 dirhams 15 too much"))
-    // Tapping the field again puts the keypad away.
-    second.tap()
+    XCTAssertEqual(element(app, "split.amount.1").value as? String, "297.00")
+    XCTAssertTrue(element(app, "split.verdict").waitForLabel("Choose a category for each line"))
+    XCTAssertFalse(element(app, "split.save").isEnabled)
+    element(app, "split.done").tap()
     XCTAssertTrue(element(app, "keypad.4").waitForNonExistence(timeout: uiWait))
-    app.buttons["Put the rest in Groceries"].tap()
+    element(app, "split.category.2").tap()
+    app.buttons["Shopping"].firstMatch.tap()
     XCTAssertTrue(element(app, "split.verdict").waitForLabel("Adds up exactly"))
     attach(app, "Transaction · Split")
     try audit(app)

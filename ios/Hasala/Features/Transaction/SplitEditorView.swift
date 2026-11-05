@@ -14,7 +14,7 @@ struct SplitEditorView: View {
 
   struct Draft: Identifiable, Equatable {
     var id: Int
-    var category: CategoryID
+    var category: CategoryID?
     var entry: AmountEntry
     var note: String
     /// The note row shows once there is a note or the person asked for one.
@@ -24,6 +24,7 @@ struct SplitEditorView: View {
   @State private var lines: [Draft] = []
   /// The line whose amount the keypad types into.
   @State private var editing: Int?
+  @State private var firstTouched = false
   @FocusState private var noteFocus: Int?
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -42,9 +43,13 @@ struct SplitEditorView: View {
           addCard
         }
         FlowLayout(spacing: 8) {
-          FilterChip("Split evenly", selected: false) { splitEvenly() }
-          if let first = lines.first, let name = name(first.category) {
-            FilterChip("Put the rest in \(name)", selected: false) { putRest() }
+          Button("Split evenly") { splitEvenly() }
+            .buttonStyle(.pill(.onGrouped, size: .small))
+            .accessibilityIdentifier("split.evenly")
+          if firstTouched, let first = lines.first, let name = name(first.category) {
+            Button("Put the rest in \(name)") { putRest() }
+              .buttonStyle(.pill(.onGrouped, size: .small))
+              .accessibilityIdentifier("split.rest")
           }
         }
         Text("Each line counts against its own budget. The bank email stays attached.")
@@ -67,6 +72,16 @@ struct SplitEditorView: View {
     .navigationTitle("Split")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear(perform: seed)
+    .onChange(of: lines.map(\.entry)) { old, new in
+      guard let first = lines.first else { return }
+      if !firstTouched, editing == first.id, old.first != new.first {
+        firstTouched = true
+        return
+      }
+      guard !firstTouched else { return }
+      let filled = Self.withRemainder(lines, total: total)
+      if filled != lines { lines = filled }
+    }
   }
 
   // MARK: Header
@@ -74,7 +89,7 @@ struct SplitEditorView: View {
   /// "Carrefour · Fri 9 Oct, 19:12", the fixed total, the split bar, the status.
   private func header(_ d: TransactionDetail) -> some View {
     VStack(spacing: 4) {
-      Text("\(d.merchant) · \(d.meta.components(separatedBy: " · ").first ?? "")")
+      Text(Self.headerLine(d))
         .hType(.subheadline).foregroundStyle(HColor.textSecondary)
         .multilineTextAlignment(.center)
       MoneyText(d.amount, figure: .large, unit: .unit, color: HColor.moneyOut, unitColor: HColor.textPrimary,
@@ -92,12 +107,7 @@ struct SplitEditorView: View {
 
   /// "● Adds up exactly" (green), "12.00 left to place" (amber), "12.00 too much" (red).
   private var status: some View {
-    let (words, tone): (String, StatusTone) = switch verdict {
-    case .addsUp: ("Adds up exactly", .success)
-    case .leftToPlace(let m): ("\(MoneyFormat.string(m.minor)) left to place", .warning)
-    case .over(let m): ("\(MoneyFormat.string(m.minor)) too much", .error)
-    case .emptyLine: ("Every line needs an amount", .warning)
-    }
+    let (words, tone) = Self.status(verdict, lines: lines)
     return HStack(spacing: 6) {
       Circle().fill(tone == .warning ? HColor.paceFillOverPace : tone.foreground).frame(width: 7, height: 7)
       Text(words).hType(.subheadline.weight(.semibold)).foregroundStyle(tone.foreground)
@@ -107,6 +117,51 @@ struct SplitEditorView: View {
     .accessibilityLabel(spokenVerdict)
     .accessibilityAddTraits(.isStaticText)
     .accessibilityIdentifier("split.verdict")
+  }
+
+  static func headerLine(_ d: TransactionDetail) -> String {
+    "\(Bidi.isolate(d.merchant)) · \(d.meta.components(separatedBy: " · ").first ?? "")"
+  }
+
+  static func status(_ verdict: SplitDraftVerdict, lines: [Draft]) -> (String, StatusTone) {
+    switch verdict {
+    case .addsUp where lines.contains { $0.category == nil }: ("Choose a category for each line", .warning)
+    case .addsUp: ("Adds up exactly", .success)
+    case .leftToPlace(let m): ("\(MoneyFormat.string(m.minor)) left to place", .warning)
+    case .over(let m): ("\(MoneyFormat.string(m.minor)) too much", .error)
+    case .emptyLine: ("Every line needs an amount", .warning)
+    }
+  }
+
+  static func canSave(_ verdict: SplitDraftVerdict, lines: [Draft]) -> Bool {
+    verdict == .addsUp && !lines.contains { $0.category == nil || TextLimit.note.isOver($0.note) }
+  }
+
+  static func seedLines(_ d: TransactionDetail, options: [CategoryOption]) -> (lines: [Draft], firstTouched: Bool) {
+    if !d.splits.isEmpty {
+      let lines = d.splits.map {
+        Draft(id: $0.id, category: $0.category.id, entry: AmountEntry(minor: $0.amount.minor), note: $0.note,
+              showsNote: !$0.note.isEmpty)
+      }
+      return (lines, true)
+    }
+    let first = d.category.flatMap { c in options.contains { $0.id == c.id } ? c.id : nil }
+    return ([Draft(id: 1, category: first, entry: AmountEntry(minor: d.amount.minor), note: "", showsNote: false),
+             Draft(id: 2, category: nil, entry: AmountEntry(), note: "", showsNote: false)], false)
+  }
+
+  static func withRemainder(_ lines: [Draft], total: Int64) -> [Draft] {
+    guard !lines.isEmpty else { return lines }
+    let others = lines.dropFirst().reduce(Int64(0)) { $0 + ($1.entry.minor ?? 0) }
+    let rest = max(0, total - others)
+    guard lines[0].entry.minor != rest else { return lines }
+    var out = lines
+    out[0].entry = AmountEntry(minor: rest)
+    return out
+  }
+
+  static func newLine(after lines: [Draft]) -> Draft {
+    Draft(id: (lines.map(\.id).max() ?? 0) + 1, category: nil, entry: AmountEntry(), note: "", showsNote: false)
   }
 
   /// "12 dirhams" / "12 dirhams 50", as VoiceOver should say a figure (page 16 · 08).
@@ -130,13 +185,7 @@ struct SplitEditorView: View {
       layout {
         Menu {
           Picker("Category", selection: line.category) {
-            ForEach(options) { Text($0.name).tag($0.id) }
-          }
-          if !draft.showsNote {
-            Button("Add a note") {
-              line.wrappedValue.showsNote = true
-              noteFocus = draft.id
-            }
+            ForEach(options) { Text($0.name).tag(CategoryID?.some($0.id)) }
           }
           if lines.count > 2 {
             Button("Remove this line", role: .destructive) {
@@ -148,14 +197,20 @@ struct SplitEditorView: View {
           HStack(spacing: 12) {
             CategoryDisc(hue: option?.hue ?? .other, icon: (option?.glyph ?? .review).icon)
             VStack(alignment: .leading, spacing: 0) {
-              Text(option?.name ?? "Choose").hType(.rowTitle).foregroundStyle(HColor.textPrimary)
-              Text(option.map { $0.bucket.label } ?? "").hType(.footnote).foregroundStyle(HColor.textSecondary)
+              HStack(spacing: 4) {
+                Text(option?.name ?? "Choose").hType(.rowTitle)
+                  .foregroundStyle(option == nil ? HColor.textLink : HColor.textPrimary)
+                HIconView(.chevronDown, size: 14, color: HColor.listRowChevron)
+              }
+              if let option {
+                Text(option.bucket.label).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
           }
           .contentShape(Rectangle())
         }
-        .accessibilityLabel("\(option?.name ?? "Category"), \(option?.bucket.label ?? "")")
+        .accessibilityLabel(option.map { "\($0.name), \($0.bucket.label)" } ?? "Category, not chosen")
         .accessibilityHint("Changes this line's category")
         .accessibilityIdentifier("split.category.\(draft.id)")
         amountField(draft, name: option?.name ?? "Line", fullWidth: stacked)
@@ -179,9 +234,28 @@ struct SplitEditorView: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 48)
+      } else {
+        HDivider(inset: .disc68)
+        Button {
+          line.wrappedValue.showsNote = true
+          noteFocus = draft.id
+        } label: {
+          HStack(spacing: 12) {
+            PathGlyph(PathGlyph.noteLines, size: 20, color: HColor.textLink, stroke: 1.9)
+              .frame(width: 40)
+            Text("Add a note").hType(.subheadline).foregroundStyle(HColor.textLink)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .padding(.horizontal, 16)
+          .frame(minHeight: 44)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(HRowPressStyle())
+        .accessibilityIdentifier("split.addNote.\(draft.id)")
       }
     }
     .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
   }
 
   /// 112 × 44, radius 12, the field grey, the figure 17/22 600 on the right. Focused, it
@@ -250,12 +324,23 @@ struct SplitEditorView: View {
   private var dock: some View {
     VStack(spacing: 10) {
       if let editing, let i = lines.firstIndex(where: { $0.id == editing }) {
+        HStack {
+          Spacer()
+          Button("Done") {
+            self.editing = nil
+            announceStatus()
+          }
+          .hType(.textButton)
+          .foregroundStyle(HColor.textLink)
+          .frame(minHeight: HSpacing.targetMinimum)
+          .accessibilityIdentifier("split.done")
+        }
         AmountKeypad(entry: $lines[i].entry, layout: .inline)
           .transition(.opacity)
       }
       Button("Save split", action: save)
         .buttonStyle(.pill(.primary, fill: true))
-        .disabled(verdict != .addsUp || lines.contains { TextLimit.note.isOver($0.note) })
+        .disabled(!Self.canSave(verdict, lines: lines))
         .accessibilityIdentifier("split.save")
     }
     .padding(.horizontal, HSpacing.insetPage)
@@ -266,31 +351,20 @@ struct SplitEditorView: View {
 
   // MARK: Edits
 
-  private func name(_ id: CategoryID) -> String? { options.first { $0.id == id }?.name }
-  private func hue(_ id: CategoryID) -> Hue { options.first { $0.id == id }?.hue ?? .other }
+  private func name(_ id: CategoryID?) -> String? { options.first { $0.id == id }?.name }
+  private func hue(_ id: CategoryID?) -> Hue { options.first { $0.id == id }?.hue ?? .other }
 
   private func seed() {
     guard lines.isEmpty, let d = model.detail else { return }
-    if !d.splits.isEmpty {
-      lines = d.splits.map {
-        Draft(id: $0.id, category: $0.category.id, entry: AmountEntry(minor: $0.amount.minor), note: $0.note,
-              showsNote: !$0.note.isEmpty)
-      }
-    } else {
-      // The whole amount on line 1 in its category, line 2 empty in the first want.
-      let first = d.category?.id ?? options.first?.id ?? ""
-      let second = options.first { $0.id != first && $0.bucket == .wants }?.id ?? first
-      lines = [Draft(id: 1, category: first, entry: AmountEntry(minor: d.amount.minor), note: "", showsNote: false),
-               Draft(id: 2, category: second, entry: AmountEntry(), note: "", showsNote: false)]
-    }
+    let seeded = Self.seedLines(d, options: options)
+    lines = seeded.lines
+    firstTouched = seeded.firstTouched
   }
 
   private func addLine() {
-    let used = Set(lines.map(\.category))
-    let category = options.first { !used.contains($0.id) && $0.bucket == .wants }?.id ?? options.first?.id ?? ""
-    let id = (lines.map(\.id).max() ?? 0) + 1
-    lines.append(Draft(id: id, category: category, entry: AmountEntry(), note: "", showsNote: false))
-    editing = id
+    let line = Self.newLine(after: lines)
+    lines.append(line)
+    editing = line.id
   }
 
   private func splitEvenly() {
@@ -313,8 +387,10 @@ struct SplitEditorView: View {
   }
 
   private func save() {
-    let parsed = lines.compactMap { l in
-      l.entry.minor.map { SplitLine(id: l.id, categoryID: l.category, amount: Money(minor: $0, currency: currency), note: l.note) }
+    guard Self.canSave(verdict, lines: lines) else { return }
+    let parsed = lines.compactMap { l -> SplitLine? in
+      guard let category = l.category, let minor = l.entry.minor else { return nil }
+      return SplitLine(id: l.id, categoryID: category, amount: Money(minor: minor, currency: currency), note: l.note)
     }
     if model.saveSplit(parsed) { done() }
   }
@@ -326,6 +402,7 @@ struct SplitEditorView: View {
 
   private var spokenVerdict: String {
     switch verdict {
+    case .addsUp where lines.contains { $0.category == nil }: "Choose a category for each line"
     case .addsUp: "Adds up exactly"
     case .leftToPlace(let m): "\(Self.dirhams(m)) left to place"
     case .over(let m): "\(Self.dirhams(m)) too much"
