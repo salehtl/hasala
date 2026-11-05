@@ -139,10 +139,12 @@ public struct MailboxProgress: Sendable, Equatable {
   public var stage: Stage
   public var done: Int
   public var total: Int
-  public init(stage: Stage, done: Int, total: Int) {
+  public var thisMonthRead: Bool
+  public init(stage: Stage, done: Int, total: Int, thisMonthRead: Bool = false) {
     self.stage = stage
     self.done = done
     self.total = total
+    self.thisMonthRead = thisMonthRead
   }
 }
 
@@ -234,6 +236,7 @@ public struct MailboxStatus: Sendable, Equatable {
   public var unparsedSenders: [String: String] = [:]
   public var readFromMs: Int64?
   public var backfillDays: Int?
+  public var connectedAtMs: Int64? = nil
 }
 
 public actor MailboxEngine {
@@ -255,6 +258,7 @@ public actor MailboxEngine {
   private var onProgress: (@Sendable (MailboxProgress) -> Void)?
   private var onCommit: (@Sendable () -> Void)?
   private var scanTotal = 0
+  private var thisMonthRead = false
   /// Consecutive cycles that ended on a 429 (`quota` after 3); process-local.
   private var quotaStrikes = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -318,7 +322,7 @@ public actor MailboxEngine {
   public func setCommitHandler(_ h: (@Sendable () -> Void)?) { onCommit = h }
 
   func emit(_ stage: MailboxProgress.Stage, _ done: Int, _ total: Int) {
-    onProgress?(MailboxProgress(stage: stage, done: done, total: total))
+    onProgress?(MailboxProgress(stage: stage, done: done, total: total, thisMonthRead: thisMonthRead))
   }
 
   // MARK: - Serialization
@@ -926,6 +930,7 @@ public actor MailboxEngine {
     if state.scanStartedMs == nil {
       state.scanStartedMs = clock.nowMs()
       scanTotal = 0
+      thisMonthRead = false
     }
     if state.profileHistoryID == nil {
       do { state.profileHistoryID = try await source.changeToken() } catch let e {
@@ -975,6 +980,7 @@ public actor MailboxEngine {
     var report = report
     let total = (try? await store.stagedCount()) ?? 0
     var authored = 0
+    thisMonthRead = true
     if total > 0 {
       emit(.authoring, 0, total)
     } else if scanTotal > 0 {
@@ -1389,7 +1395,8 @@ public actor MailboxEngine {
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
       health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil,
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
-      readFromMs: state.readFromMs, backfillDays: state.backfillDays)
+      readFromMs: state.readFromMs, backfillDays: state.backfillDays,
+      connectedAtMs: state.scanStartedMs ?? state.readFromMs)
   }
 
   public func readerCounts() async -> [String: ReaderCounts] {
@@ -1621,6 +1628,7 @@ public actor MailboxEngine {
         run.sinceCommit += chunk.count
         if run.sinceCommit >= every || i >= todo.count || i == split {
           if !(await commitStaged(&run, &report)) { return true }
+          if !run.firstPass.isEmpty && i >= split { thisMonthRead = true }
         }
       }
       emit(.downloading, base + skipped + i, shown)

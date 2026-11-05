@@ -83,6 +83,15 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     return lane.provider
   }
 
+  func reading(
+    textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
+  ) -> ReadingState {
+    guard let rt = runtime() else {
+      return ReadingState.derive(ReadingFacts(nowMs: Int64(Date().timeIntervalSince1970 * 1000), known: false))
+    }
+    return rt.reading(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, backgroundRefreshOff: backgroundRefreshOff)
+  }
+
   /// Known once the account is open and its lane's status was read (a build with no lane
   /// has none to read).
   var mailboxesKnown: Bool {
