@@ -13,7 +13,6 @@ struct HasalaWidgetsBundle: WidgetBundle {
     BudgetPaceHomeWidget()
     CategoryWatchHomeWidget()
     NextBillHomeWidget()
-    NetWorthHomeWidget()
     ComingUpHomeWidget()
     ProjectHomeWidget()
     GoalHomeWidget()

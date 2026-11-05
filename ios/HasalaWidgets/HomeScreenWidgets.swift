@@ -9,7 +9,7 @@ enum WaitingCopy {
   static let stale = "Open Hasala to bring this up to date."
   static let bill = "Bills Hasala finds will show here."
   static let netWorth = "Your first account check-in will fill this in."
-  static let project = "Start a project in Plan to see it here."
+  static let project = "Start a project in Projects to see it here."
   static let goal = "Add a savings goal in Plan to see it here."
   static let category = "Set a budget in Plan to watch a category."
   static let projectGone = "Touch and hold to choose a project."
@@ -20,9 +20,11 @@ struct GlanceCard<Content: View>: View {
   let link: WidgetLink
   let fill: AnyShapeStyle
   @ViewBuilder let content: () -> Content
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   var body: some View {
     content()
+      .foregroundStyle(WidgetInk.primary(showsBackground))
       .environment(\.widgetHost, .system)
       .containerBackground(fill, for: .widget)
       .widgetURL(link.url)
@@ -75,7 +77,7 @@ struct SpentSoFarHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "SpentSoFar", provider: GlanceProvider()) { SpentSoFarEntryView(entry: $0) }
       .configurationDisplayName("Spent so far")
-      .description("The Home hero, anywhere: spent on needs and wants against the plan.")
+      .description("See what you've spent this month against your plan.")
       .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
       .contentMarginsDisabled()
   }
@@ -97,7 +99,7 @@ struct BudgetPaceHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "BudgetPace", provider: GlanceProvider()) { BudgetPaceEntryView(entry: $0) }
       .configurationDisplayName("Budget pace")
-      .description("Needs, Wants and Savings against the plan.")
+      .description("Track Needs, Wants and Savings against your plan.")
       .supportedFamilies([.systemMedium])
       .contentMarginsDisabled()
   }
@@ -122,7 +124,7 @@ struct CategoryWatchHomeWidget: Widget {
       CategoryWatchEntryView(entry: $0)
     }
     .configurationDisplayName("Category watch")
-    .description("Any category you pick: what's left and what a day fits.")
+    .description("Watch what's left in a category you pick.")
     .supportedFamilies([.systemSmall])
     .contentMarginsDisabled()
   }
@@ -145,7 +147,7 @@ struct NextBillHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "NextBill", provider: GlanceProvider()) { NextBillEntryView(entry: $0) }
       .configurationDisplayName("Next bill")
-      .description("The next bill Hasala found, and when it's due.")
+      .description("See your next recurring payment and when it's due.")
       .supportedFamilies([.systemSmall])
       .contentMarginsDisabled()
   }
@@ -190,7 +192,7 @@ struct ComingUpHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "ComingUp", provider: GlanceProvider()) { ComingUpEntryView(entry: $0) }
       .configurationDisplayName("Coming up")
-      .description("Bills and salary for the next 14 days.")
+      .description("See recurring payments and salary for the next 14 days.")
       .supportedFamilies([.systemMedium])
       .contentMarginsDisabled()
   }
@@ -201,7 +203,9 @@ struct ProjectEntryView: View {
 
   var body: some View {
     if let model = entry.snapshot?.project(entry.selection) {
-      GlanceCard(link: .plan, fill: light) { ProjectWidgetView(model, hidden: entry.hidden) }
+      GlanceCard(link: model.id.map(WidgetLink.project) ?? .plan, fill: light) {
+        ProjectWidgetView(model, hidden: entry.hidden)
+      }
     } else {
       Waiting(title: "Project", sentence: sentence, link: .plan)
     }
@@ -219,7 +223,7 @@ struct ProjectHomeWidget: Widget {
       ProjectEntryView(entry: $0)
     }
     .configurationDisplayName("Project")
-    .description("A project, once it starts: what's left of its budget.")
+    .description("Follow what's left of a project's budget.")
     .supportedFamilies([.systemSmall])
     .contentMarginsDisabled()
   }
@@ -250,7 +254,7 @@ struct GoalHomeWidget: Widget {
       GoalEntryView(entry: $0)
     }
     .configurationDisplayName("Goal")
-    .description("A savings target with a date.")
+    .description("Follow a savings goal to its date.")
     .supportedFamilies([.systemSmall])
     .contentMarginsDisabled()
   }
@@ -273,7 +277,7 @@ struct ToReviewEntryView: View {
           ToReviewWidgetView(model, hidden: entry.hidden)
         }
       } else {
-        Waiting(title: "To review", sentence: entry.firstSentence, link: .review)
+        Waiting(title: "To sort", sentence: entry.firstSentence, link: .review)
       }
     }
   }
@@ -282,8 +286,8 @@ struct ToReviewEntryView: View {
 struct ToReviewHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "ToReview", provider: GlanceProvider()) { ToReviewEntryView(entry: $0) }
-      .configurationDisplayName("To review")
-      .description("Transactions to sort. Opens the review deck.")
+      .configurationDisplayName("To sort")
+      .description("See what's waiting to sort.")
       .supportedFamilies([.systemSmall, .accessoryCircular])
       .contentMarginsDisabled()
   }
@@ -305,7 +309,7 @@ struct TodayHomeWidget: Widget {
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: "Today", provider: GlanceProvider()) { TodayEntryView(entry: $0) }
       .configurationDisplayName("Today")
-      .description("The day's transactions as they arrive.")
+      .description("See today's transactions as they arrive.")
       .supportedFamilies([.systemMedium])
       .contentMarginsDisabled()
   }

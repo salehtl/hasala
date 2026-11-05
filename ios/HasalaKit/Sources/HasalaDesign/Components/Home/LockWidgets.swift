@@ -4,7 +4,7 @@ import SwiftUI
 extension HType {
   static let lockLabel = HType(size: 12, leading: 15, weight: .semibold, textStyle: .caption)
   static let lockCaption = HType(size: 12, leading: 15, weight: .regular, textStyle: .caption)
-  static let lockRingCaption = HType(size: 10, leading: 12, weight: .semibold, textStyle: .caption2)
+  static let lockRingCaption = HType(size: 11, leading: 13, weight: .semibold, textStyle: .caption2)
 }
 
 extension HFigure {
@@ -13,7 +13,12 @@ extension HFigure {
   static let lockCount = HFigure(size: 24, leading: 26, weight: .bold, textStyle: .title3, minimumScale: 0.6)
 }
 
-private let lockSecondary = Color.white.opacity(0.8)
+public enum LockInk {
+  public static let secondary = Color(white: 0.8)
+  public static let ringTrack = Color(white: 0.28)
+}
+
+private let lockSecondary = LockInk.secondary
 
 public struct LockRing: View {
   let progress: Permille?
@@ -27,7 +32,7 @@ public struct LockRing: View {
       let side = min(geo.size.width, geo.size.height)
       let line = side * 5 / 72
       ZStack {
-        Circle().stroke(Color.white.opacity(0.28), lineWidth: line)
+        Circle().stroke(LockInk.ringTrack, lineWidth: line)
         if let progress, progress.value > 0 {
           Circle().trim(from: 0, to: min(1, progress.fraction))
             .stroke(Color.white, style: StrokeStyle(lineWidth: line, lineCap: .round))
@@ -74,6 +79,9 @@ public struct LockSpentRingView: View {
           }
           Text(Self.word(model.verdict)).hType(.lockRingCaption).foregroundStyle(lockSecondary)
             .multilineTextAlignment(.center)
+            .lineLimit(Self.captionLines)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 44)
         }
       }
     } else {
@@ -81,7 +89,7 @@ public struct LockSpentRingView: View {
     }
   }
 
-  static func word(_ verdict: Verdict?) -> String {
+  nonisolated static func word(_ verdict: Verdict?) -> String {
     switch verdict {
     case .onTrack?, .done?: "on track"
     case .overPace?: "over pace"
@@ -90,12 +98,17 @@ public struct LockSpentRingView: View {
     }
   }
 
-  private var spoken: String {
-    guard let model else { return "Spent so far, your first bank alert will fill this in" }
+  nonisolated static let captionLines = 2
+
+  private var spoken: String { Self.spoken(model, showsAmounts: showsAmounts) }
+
+  nonisolated static func spoken(_ model: SpentSoFarWidget?, showsAmounts: Bool) -> String {
+    let title = LockSpentRectView.title
+    guard let model else { return "\(title), your first bank alert will fill this in" }
     if showsAmounts {
-      return "Spent so far, \(model.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(model.spent.minor, style: .rounded)), \(model.verdictWord)"
+      return "\(title), \(model.spent.isNegative ? "minus " : "")AED \(MoneyFormat.string(model.spent.minor, style: .rounded)), \(model.verdictWord)"
     }
-    return "Spent so far, \(model.verdictWord)"
+    return "\(title), \(model.verdictWord)"
   }
 }
 
@@ -123,6 +136,8 @@ public struct LockSpentRectView: View {
   let model: SpentSoFarWidget?
   let showsAmounts: Bool
 
+  nonisolated static let title = "This month"
+
   public init(_ model: SpentSoFarWidget?, showsAmounts: Bool) {
     self.model = model
     self.showsAmounts = showsAmounts
@@ -132,7 +147,7 @@ public struct LockSpentRectView: View {
     VStack(alignment: .leading, spacing: 1) {
       HStack(spacing: 5) {
         LockSpentMark()
-        Text("Spent so far").hType(.lockLabel).foregroundStyle(lockSecondary).lineLimit(1)
+        Text(Self.title).hType(.lockLabel).foregroundStyle(lockSecondary).lineLimit(1)
       }
       if let model {
         if showsAmounts {
@@ -173,7 +188,7 @@ public struct LockReviewCircleView: View {
       }
     }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(model.map { "To review, \($0.count) to sort" } ?? "To review")
+    .accessibilityLabel(model.map { "\($0.count) to sort" } ?? "To sort")
   }
 }
 

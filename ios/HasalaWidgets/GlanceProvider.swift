@@ -16,13 +16,13 @@ struct GlanceEntry: TimelineEntry {
     self.stale = stale
   }
 
-  init(date: Date, stored: WidgetSnapshot?, selection: String?) {
-    let reading = WidgetReading(stored, at: date)
+  init(date: Date, stored: WidgetSnapshot?, selection: String?, isPreview: Bool = false) {
+    let reading = WidgetPreview.reading(stored, at: date, isPreview: isPreview)
     self.init(date: date, snapshot: reading.snapshot, selection: selection, stale: reading.stale)
   }
 
-  static func current(selection: String? = nil) -> GlanceEntry {
-    GlanceEntry(date: .now, stored: WidgetSnapshotStore.shared()?.read(), selection: selection)
+  static func current(selection: String? = nil, isPreview: Bool = false) -> GlanceEntry {
+    GlanceEntry(date: .now, stored: WidgetSnapshotStore.shared()?.read(), selection: selection, isPreview: isPreview)
   }
 
   static func timeline(selection: String? = nil, now: Date = .now) -> Timeline<GlanceEntry> {
@@ -47,7 +47,7 @@ struct GlanceProvider: TimelineProvider {
   }
 
   func getSnapshot(in context: Context, completion: @escaping (GlanceEntry) -> Void) {
-    completion(.current())
+    completion(.current(isPreview: context.isPreview))
   }
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceEntry>) -> Void) {
@@ -61,7 +61,7 @@ struct CategoryProvider: AppIntentTimelineProvider {
   }
 
   func snapshot(for configuration: CategoryWatchIntent, in context: Context) async -> GlanceEntry {
-    .current(selection: configuration.category?.id)
+    .current(selection: configuration.category?.id, isPreview: context.isPreview)
   }
 
   func timeline(for configuration: CategoryWatchIntent, in context: Context) async -> Timeline<GlanceEntry> {
@@ -75,7 +75,7 @@ struct ProjectProvider: AppIntentTimelineProvider {
   }
 
   func snapshot(for configuration: ProjectWidgetIntent, in context: Context) async -> GlanceEntry {
-    .current(selection: configuration.project?.id)
+    .current(selection: configuration.project?.id, isPreview: context.isPreview)
   }
 
   func timeline(for configuration: ProjectWidgetIntent, in context: Context) async -> Timeline<GlanceEntry> {
@@ -89,7 +89,7 @@ struct GoalProvider: AppIntentTimelineProvider {
   }
 
   func snapshot(for configuration: GoalWidgetIntent, in context: Context) async -> GlanceEntry {
-    .current(selection: configuration.goal?.id)
+    .current(selection: configuration.goal?.id, isPreview: context.isPreview)
   }
 
   func timeline(for configuration: GoalWidgetIntent, in context: Context) async -> Timeline<GlanceEntry> {
