@@ -16,6 +16,7 @@ struct MainHeader: ToolbarContent {
   /// screens draw themselves.
   static let iconColor = HColor.iconGlass
 
+  var barTitle: String? = nil
   let amountsHidden: Bool
   let unread: Int
   let avatarInitial: String
@@ -32,13 +33,13 @@ struct MainHeader: ToolbarContent {
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .principal) {
-      HeaderMark()
+      BarCentre(title: barTitle)
     }
     .sharedBackgroundVisibility(.hidden)
     ToolbarItem(placement: .topBarTrailing) {
       GlassButtonPair {
         GlassIconButton(amountsHidden ? .eyeSlash : .eye, label: amountsHidden ? "Show amounts" : "Hide amounts",
-                        selected: amountsHidden, action: onToggleAmounts)
+                        action: onToggleAmounts)
           .accessibilityIdentifier("header.hideAmounts")
         GlassIconButton(.magnifier, label: "Search", action: onSearch)
           .accessibilityIdentifier("header.search")
@@ -48,5 +49,27 @@ struct MainHeader: ToolbarContent {
       }
     }
     .sharedBackgroundVisibility(.hidden)
+  }
+}
+
+struct BarCentre: View {
+  let title: String?
+
+  var body: some View {
+    ZStack {
+      if let title {
+        Text(title)
+          .hType(.headline)
+          .foregroundStyle(HColor.textPrimary)
+          .lineLimit(1)
+          .accessibilityAddTraits(.isHeader)
+          .accessibilityIdentifier("header.title")
+          .hTransition(.fade)
+      } else {
+        HeaderMark()
+          .hTransition(.fade)
+      }
+    }
+    .hAnimation(.fade, value: title)
   }
 }

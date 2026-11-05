@@ -40,7 +40,7 @@ public enum HIcon: String, CaseIterable, Sendable, Hashable {
   case tabHome, tabPlan, tabReview, tabActivity, magnifier
   // Rows, cards and screens.
   case check, chevronRight, chevronDown, chevronUp, minus, delete
-  case lock, lockKeyhole, key, shield, shieldCheck, privacy, faceID, passkey, password
+  case lock, lockKeyhole, key, shield, shieldCheck, privacy, faceID, touchID, passkey, password
   case envelope, mailX, phone, iPad, cloud, paper, info, calendar, clock, history
   case download, trash, linkOff, wand, rule, split, pencil, refund, swap, archive
   case globe, appearance, help, tag, receipt, bank, cash, trendUp, monitor, chat, mic, cameraSlash, swipe
@@ -285,6 +285,12 @@ private extension HIcon {
     case .faceID:  // Sign-in & security passkey plate; Face ID lock row.
       [line("M3.5 8V6a2.5 2.5 0 0 1 2.5-2.5h2M16 3.5h2A2.5 2.5 0 0 1 20.5 6v2M20.5 16v2a2.5 2.5 0 0 1-2.5 2.5h-2M8 20.5H6A2.5 2.5 0 0 1 3.5 18v-2", joins: false),
        line("M8.5 9v1.5M15.5 9v1.5M12 9v4h-1M9 16a4.5 4.5 0 0 0 6 0")]
+    case .touchID:
+      [line("M6 9.2a7 7 0 0 1 12 0", joins: false),
+       line("M7.6 18.6C6.6 17 6 15.2 6 13a6 6 0 0 1 12 0v.8", joins: false),
+       line("M15.5 13c0 2.8-.6 5.2-1.8 7.2", joins: false),
+       line("M10.6 20.2C9.4 18.4 8.6 16 8.6 13a3.4 3.4 0 0 1 6.8 0", joins: false),
+       line("M12 13v1.5c0 1.7.4 3.2 1.1 4.5", joins: false)]
     case .passkey:  // Sign-in & security, a passkey on another account.
       [line(circlePath(9, 8, 3.5), caps: false, joins: false),
        line("M3 19c.6-3.3 3-5 6-5 1.4 0 2.6.3 3.6 1", joins: false),

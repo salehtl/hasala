@@ -1,7 +1,7 @@
 {
   "comment": "Design tokens exported verbatim from the private Paper design file (get_tokens). Regenerate ios/HasalaKit/Sources/HasalaDesign/Generated/Tokens.swift with ios/tools/tokens/generate.swift after any change.",
-  "hash": "8c572fea",
-  "count": 477,
+  "hash": "a21dd53c",
+  "count": 489,
   "tokens": [
     {
       "name": "--color-white",
@@ -101,7 +101,7 @@
     },
     {
       "name": "--color-action-disabled",
-      "value": "var(--color-neutral-100)"
+      "value": "var(--color-apple-fills-secondary)"
     },
     {
       "name": "--color-action-accent",
@@ -577,7 +577,7 @@
     },
     {
       "name": "--color-hue-peach-end",
-      "value": "#FFCEB5"
+      "value": "#F4B48F"
     },
     {
       "name": "--color-hue-peach-ink",
@@ -949,7 +949,7 @@
     },
     {
       "name": "--color-pace-fill-over-pace",
-      "value": "var(--color-amber-600)"
+      "value": "var(--color-amber-700)"
     },
     {
       "name": "--color-pace-fill-over-budget",
@@ -1057,15 +1057,63 @@
     },
     {
       "name": "--color-bucket-needs-fill",
-      "value": "#E2AA62"
+      "value": "var(--color-chart-needs)"
     },
     {
       "name": "--color-bucket-wants-fill",
-      "value": "#A68DDB"
+      "value": "var(--color-chart-wants)"
     },
     {
       "name": "--color-bucket-savings-fill",
-      "value": "#78C29F"
+      "value": "var(--color-chart-savings)"
+    },
+    {
+      "name": "--color-amber-700",
+      "value": "#A66300"
+    },
+    {
+      "name": "--color-chart-needs",
+      "value": "#B5752A"
+    },
+    {
+      "name": "--color-chart-wants",
+      "value": "#8466D0"
+    },
+    {
+      "name": "--color-chart-savings",
+      "value": "#2E8F6B"
+    },
+    {
+      "name": "--color-chart-in",
+      "value": "#5B7CF0"
+    },
+    {
+      "name": "--color-brand-tile-start",
+      "value": "#3A66FF"
+    },
+    {
+      "name": "--color-brand-tile-end",
+      "value": "#1031EE"
+    },
+    {
+      "name": "--color-brand-coin-start",
+      "value": "#FFDC74"
+    },
+    {
+      "name": "--color-brand-coin-end",
+      "value": "#FFB722"
+    },
+    {
+      "name": "--color-brand-coin-ring",
+      "value": "#F2AD24"
+    },
+    {
+      "name": "--color-brand-coin-edge",
+      "value": "#DD8300"
+    },
+    {
+      "name": "--color-brand-coin-rule",
+      "value": "#955400"
     },
     {
       "name": "--font-sans",
@@ -1881,7 +1929,7 @@
     },
     {
       "name": "--radius-widget",
-      "value": "26px"
+      "value": "24px"
     },
     {
       "name": "--radius-tile",
@@ -1901,7 +1949,7 @@
     },
     {
       "name": "--radius-stat-tile",
-      "value": "18px"
+      "value": "20px"
     },
     {
       "name": "--radius-review-card",

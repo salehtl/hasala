@@ -114,9 +114,13 @@ public struct HType: Sendable, Hashable {
   /// Small button (36-tall pills, chips): 15/20, 600, no tracking.
   public static let smallButton = HType(size: HFontSize.subheadline, leading: HLeading.subheadline,
                                         weight: .semibold, textStyle: .subheadline)
-  /// Text button (header links "See all", "Edit"): 17/24, 500, −0.15, in `--color-text-link`.
-  public static let textButton = HType(size: HFontSize.body, leading: HLeading.body, weight: .medium,
+  /// Text button (a standalone text action, Cancel under a pill): 17/24, 600, −0.15, in `--color-text-link`.
+  public static let textButton = HType(size: HFontSize.body, leading: HLeading.body, weight: .semibold,
                                        tracking: HTracking.body, textStyle: .body)
+  public static let inlineLink = HType(size: HFontSize.subheadline, leading: HLeading.subheadline,
+                                       weight: .semibold, textStyle: .subheadline)
+  public static let cardTitle = HType(size: HFontSize.headline, leading: 22, weight: .semibold,
+                                      tracking: HTracking.headline, textStyle: .headline)
   /// "DAY 10 OF 31": 13/16, 600, 0.06 em, uppercase in styling only (the source stays
   /// sentence case, so VoiceOver reads words).
   public static let overline = HType(size: HFontSize.footnote, leading: HLeading.overline, weight: .semibold,

@@ -18,8 +18,8 @@ struct BootWallView: View {
 
   var body: some View {
     NavigationStack {
-      AccountScreen(title: title, subtitle: subtitle) {
-        if let note {
+      AccountScreen(title: title, subtitle: Self.subtitle(for: wall)) {
+        if let note = Self.note(for: wall) {
           NoteRow(icon: .phone, text: note)
         }
       } footer: {
@@ -38,9 +38,10 @@ struct BootWallView: View {
         }
         if offersErase {
           BusyButton(
-            title: "Remove this iPhone's data", busy: boot.erasing, kind: offersTryAgain ? .onGrouped : .primary,
+            title: Self.eraseTitle(for: wall), busy: boot.erasing, kind: Self.eraseKind,
             identifier: "wall.erase"
           ) { confirmingErase = true }
+          .padding(.top, offersTryAgain ? 8 : 0)
         }
         if case .otherAccount = wall {
           SecondaryLink(title: "Back", identifier: "wall.back") { boot.dismissWall() }
@@ -82,29 +83,40 @@ struct BootWallView: View {
     }
   }
 
-  private var subtitle: String {
+  static let eraseKind: PillButtonStyle.Kind = .destructiveQuiet
+
+  static let lostChanges = "Changes not uploaded yet are lost."
+
+  static func eraseTitle(for wall: BootController.Wall) -> String {
+    wall == .unenrolled ? "Remove data and sign in again" : "Remove this iPhone's data"
+  }
+
+  static func subtitle(for wall: BootController.Wall) -> String {
     switch wall {
     case .otherAccount(let email):
       "Hasala on this iPhone still holds the data of \(email ?? "another account"). To use a different account here, remove that data first."
     case .foreignData:
       "The data on this iPhone doesn't belong to the account it's signed in to, so Hasala won't open it."
     case .unenrolled:
-      "This iPhone's key for your account is missing, so it can't add changes any more."
+      "This iPhone lost its key to your account. Remove its data and sign in again. Everything you uploaded comes back."
     case .restoring:
       "Hasala's data didn't come back with this iPhone's backup. Start this iPhone again to download it."
     case .openFailed:
       "Something on this iPhone stopped Hasala from opening your account."
     case .updateRequired:
-      "This version of Hasala is too old for the server. Install the newest build from TestFlight, then open Hasala again."
+      "This version of Hasala is out of date. Install the newest build from TestFlight, then open Hasala again."
     }
   }
 
-  private var note: String? {
+  static func note(for wall: BootController.Wall) -> String? {
     switch wall {
-    case .otherAccount: "Your other account stays as it is. You can sign in to it again later, on this iPhone or another."
-    case .foreignData, .unenrolled, .restoring:
-      "Remove this iPhone's data, then sign in again. Everything you uploaded comes back."
-    case .openFailed: "If it keeps happening, remove this iPhone's data and sign in again. Everything you uploaded comes back."
+    case .otherAccount:
+      "Your other account stays as it is. You can sign in to it again later, on this iPhone or another. \(lostChanges)"
+    case .unenrolled: lostChanges
+    case .foreignData, .restoring:
+      "Remove this iPhone's data, then sign in again. Everything you uploaded comes back. \(lostChanges)"
+    case .openFailed:
+      "If it keeps happening, remove this iPhone's data and sign in again. Everything you uploaded comes back. \(lostChanges)"
     case .updateRequired: nil
     }
   }

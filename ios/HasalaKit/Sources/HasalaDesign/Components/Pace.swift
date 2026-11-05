@@ -84,7 +84,7 @@ struct MonthBarCanvas: View, Animatable {
       let bar = HSpacing.paceBarHeight
       let shape = RoundedRectangle(cornerRadius: HRadius.paceBar, style: .continuous)
       ZStack(alignment: .leading) {
-        shape.fill(track).frame(width: w, height: bar)
+        shape.fill(track).hContrastEdge(shape).frame(width: w, height: bar)
         if drawn > 1 {
           // Over the plan: full rose, then the overflow past the end.
           shape.fill(HColor.paceFillOverBudget).frame(width: w, height: bar)
@@ -218,7 +218,7 @@ struct CategoryBarCanvas: View, Animatable {
       let bar = HSpacing.paceBarHeight
       let shape = RoundedRectangle(cornerRadius: HRadius.paceBar, style: .continuous)
       ZStack(alignment: .leading) {
-        shape.fill(track).frame(width: w, height: bar)
+        shape.fill(track).hContrastEdge(shape).frame(width: w, height: bar)
         if drawn > 0 {
           shape.fill(fill).frame(width: max(bar, w * drawn), height: bar)
         }
@@ -251,7 +251,7 @@ public struct SlimProgressBar: View {
   public var body: some View {
     GeometryReader { geo in
       ZStack(alignment: .leading) {
-        Capsule().fill(track)
+        Capsule().fill(track).hContrastEdge(Capsule())
         if progress.value > 0 {
           Capsule().fill(fill).frame(width: max(height, geo.size.width * min(1, progress.fraction)))
         }
