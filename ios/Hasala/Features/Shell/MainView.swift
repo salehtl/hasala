@@ -211,3 +211,11 @@ private struct ReviewCover: View {
 
   var body: some View { ReviewDeckView(app: app, model: model) }
 }
+
+enum TabBadge {
+  static let color = HColor.badgeCount
+
+  @MainActor static func apply() {
+    UITabBarItem.appearance().badgeColor = UIColor(color)
+  }
+}

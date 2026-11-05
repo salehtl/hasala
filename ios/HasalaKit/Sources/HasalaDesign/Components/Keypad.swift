@@ -203,6 +203,15 @@ struct KeypadKey: View {
     )
     .accessibilityLabel(spoken)
     .accessibilityIdentifier(identifier)
+    .accessibilityActions {
+      if let name = Self.clearActionName(for: key) {
+        Button(name, action: onClear)
+      }
+    }
+  }
+
+  static func clearActionName(for key: AmountKey) -> String? {
+    key == .delete ? "Clear amount" : nil
   }
 
   private var height: CGFloat {
@@ -265,6 +274,7 @@ struct KeypadKeyStyle: ButtonStyle {
           shape
             .fill(pressed ? (layout == .docked ? HColor.keypadTray : HColor.keypadTrayInline) : HColor.keypadKey)
             .shadow(color: .black.opacity(pressed ? 0 : (layout == .docked ? 0.07 : 0.10)), radius: 0, x: 0, y: 1)
+            .hContrastEdge(shape)
         }
       }
       .animation(.easeOut(duration: HMotion.highlight), value: pressed)

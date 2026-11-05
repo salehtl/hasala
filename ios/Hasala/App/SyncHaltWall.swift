@@ -10,10 +10,10 @@ struct SyncHaltWall: View {
 
   var body: some View {
     NavigationStack {
-      AccountScreen(title: Self.title, subtitle: Self.reason(halt)) {
-        NoteRow(icon: .phone, text: Self.kept)
-        NoteRow(icon: .info, text: Self.next(halt))
-          .accessibilityIdentifier("wall.syncHalted.code")
+      AccountScreen(title: Self.title, subtitle: Self.subtitle) {
+        NoteRow(icon: .info, text: Self.reason(halt))
+        NoteRow(icon: .phone, text: Self.next(halt))
+        SupportCodeLine(lead: Self.codeLead, code: Self.code(halt), identifier: "wall.syncHalted.code")
       } footer: {
         BusyButton(title: "Try again", busy: retrying, identifier: "wall.tryAgain", action: tryAgain)
         SupportLink(lead: "Still stopped?", identifier: "wall.support")
@@ -25,6 +25,10 @@ struct SyncHaltWall: View {
   }
 
   static let title = "Hasala stopped syncing"
+
+  static var subtitle: String { kept }
+
+  static let codeLead = "If you email us, mention:"
 
   static let kept =
     "Everything on this iPhone is kept, including changes that haven't uploaded yet. Nothing is removed."
@@ -49,7 +53,12 @@ struct SyncHaltWall: View {
   }
 
   static func next(_ halt: HaltKind) -> String {
-    "Try again in a while. If it stays stopped, email \(BuildSurface.supportEmail) and mention the code \(code(halt))."
+    switch halt {
+    case .updateRequired:
+      "Install the newest build from TestFlight, then open Hasala again. If it stays stopped, email \(BuildSurface.supportEmail)."
+    default:
+      "Try again in a while. If it stays stopped, email \(BuildSurface.supportEmail)."
+    }
   }
 
   static func code(_ halt: HaltKind) -> String {
@@ -63,5 +72,40 @@ struct SyncHaltWall: View {
     case .unexpectedGone: "unexpectedGone"
     case .updateRequired: "updateRequired"
     }
+  }
+}
+
+struct SupportCodeLine: View {
+  let lead: String
+  let code: String
+  let identifier: String
+  @State private var copied = false
+
+  var body: some View {
+    HStack(alignment: .bottom, spacing: 12) {
+      VStack(alignment: .leading, spacing: 8) {
+        Text(lead)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+        Text(verbatim: code)
+          .font(.system(.footnote, design: .monospaced).weight(.medium))
+          .foregroundStyle(HColor.textPrimary)
+          .textSelection(.enabled)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(HColor.surfaceSecondary, in: RoundedRectangle(cornerRadius: HRadius.control, style: .continuous))
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityIdentifier(identifier)
+      Spacer(minLength: 0)
+      Button(copied ? "Copied" : "Copy") {
+        UIPasteboard.general.string = code
+        copied = true
+      }
+      .buttonStyle(.inlineLink)
+      .accessibilityLabel(copied ? "Copied" : "Copy code")
+      .accessibilityIdentifier("\(identifier).copy")
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }

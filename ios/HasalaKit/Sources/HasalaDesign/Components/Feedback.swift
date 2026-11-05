@@ -181,20 +181,32 @@ public struct StepIndicator: View {
     self.total = total
   }
 
+  public static func caption(current: Int, total: Int) -> String {
+    "Step \(current) of \(total)"
+  }
+
   public var body: some View {
-    HStack(spacing: 6) {
-      ForEach(1...max(1, total), id: \.self) { step in
-        RoundedRectangle(cornerRadius: 2)
-          .fill(step <= current ? HColor.actionAccent : HColor.appleFillsSecondary)
-          .frame(width: 24, height: 4)
+    HStack(spacing: 8) {
+      HStack(spacing: 6) {
+        ForEach(1...max(1, total), id: \.self) { step in
+          RoundedRectangle(cornerRadius: 2)
+            .fill(step <= current ? HColor.actionAccent : HColor.appleFillsSecondary)
+            .frame(width: 24, height: 4)
+        }
       }
+      .hAnimation(.thumbSlide, value: current)
+      Text(Self.caption(current: current, total: total))
+        .hType(.footnote.weight(.semibold))
+        .foregroundStyle(HColor.textOnWashSecondary)
+        .lineLimit(1)
+        .fixedSize()
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
-    .hAnimation(.thumbSlide, value: current)
     // A 44 box around the 4 pt bars, so the element VoiceOver reads is a size it can reach.
     .frame(minWidth: 44, minHeight: 44)
     .contentShape(Rectangle())
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Step \(current) of \(total)")
+    .accessibilityLabel(Self.caption(current: current, total: total))
   }
 }
 

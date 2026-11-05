@@ -11,6 +11,8 @@ struct GlassModifier<S: Shape>: ViewModifier {
   let interactive: Bool
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.hGlassPaired) private var paired
+  @Environment(\.colorSchemeContrast) private var contrast
+  @Environment(\.hIncreasedContrast) private var forcedContrast
 
   func body(content: Content) -> some View {
     if paired {
@@ -19,7 +21,13 @@ struct GlassModifier<S: Shape>: ViewModifier {
       // Reduce Transparency: solid, with the 0.5 hairline so the edge still shows (page 04).
       content
         .background(prominent ? HColor.actionAccent : HColor.materialGlassReduced, in: shape)
-        .overlay { shape.stroke(HColor.materialGlassOutline, lineWidth: HSpacing.strokeHairline) }
+        .overlay {
+          if HContrastEdge.isShown(contrast: contrast, forced: forcedContrast) {
+            shape.stroke(HContrastEdge.color, lineWidth: HContrastEdge.width)
+          } else {
+            shape.stroke(HColor.materialGlassOutline, lineWidth: HSpacing.strokeHairline)
+          }
+        }
     } else {
       content.glassEffect(glass, in: shape)
     }

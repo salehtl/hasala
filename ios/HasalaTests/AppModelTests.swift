@@ -19,6 +19,19 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func reviewingAllMonthsLeavesTheAppsPeriodAlone() {
+    let app = AppModel(store: InMemoryLedger(state: MayaLedger.state))
+    let before = app.period
+    app.startReview(over: .allTime)
+    #expect(app.period == before)
+    #expect(app.reviewPeriod.isAllTime)
+    #expect(app.reviewWindow == .all)
+    app.cover = nil
+    #expect(app.reviewPeriod == before)
+    app.startReview()
+    #expect(app.reviewPeriod == before)
+  }
+
   @Test func theReviewBadgeIgnoresHomesPeriod() {
     var state = MayaLedger.state
     state.txns.append(Txn(id: "sep-shop", merchant: "Corner Shop", amount: .aed(12_50),
