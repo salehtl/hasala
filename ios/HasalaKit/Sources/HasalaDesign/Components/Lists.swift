@@ -469,11 +469,7 @@ public struct HSectionHeader: View {
       switch trailing {
       case .link(let label, let action):
         Button(label, action: action)
-          .buttonStyle(.plain)
-          .hType(.subheadline.weight(.medium))
-          .foregroundStyle(HColor.textLink)
-          .frame(minHeight: HSpacing.targetMinimum)
-          .contentShape(Rectangle())
+          .buttonStyle(.inlineLink)
       case .fact(let fact):
         Text(fact).hType(.subheadline).foregroundStyle(HColor.textSecondary)
       case .count, .none:

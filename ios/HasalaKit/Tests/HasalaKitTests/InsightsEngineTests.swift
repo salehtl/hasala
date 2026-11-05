@@ -490,7 +490,11 @@ struct InsightsMayaTests {
     let sum = snap.summary
     #expect(snap.title == "September 2026")
     #expect(snap.status == "Closed month")
-    #expect(sum.label == "Net · in minus spent")
+    #expect(sum.label == "Left after spending · not counting projects")
+    #expect(sum.notCounted?.amount == .aed(4_860_00))
+    #expect(sum.notCounted?.line.rendered(hidden: false) == "Not counted: AED 4,860.00 on Japan trip")
+    #expect(sum.legend.last?.title == "Left over, before projects")
+    #expect(snap.flow.note.rendered(hidden: false).hasPrefix("Out leaves out projects you keep outside your plan"))
     #expect(sum.figure == .aed(6_587_40))
     #expect(sum.kept == "26%")
     #expect(sum.income == .aed(25_000_00))
@@ -560,5 +564,40 @@ struct InsightsMayaTests {
   @Test func theSampleScenarioKeepsTheSeedLedger() {
     #expect(Scenario.mayaSample.state.txns.count == MayaLedger.state.txns.count)
     #expect(Scenario.maya.state.txns.count > MayaLedger.state.txns.count)
+  }
+}
+
+@Suite("Insights · summary words")
+struct InsightsSummaryWordsTests {
+  @Test func aMonthWithNoProjectSaysLeftAfterSpending() {
+    let s = InsightsFixture.ledger([
+      InsightsFixture.txn("salary", 1_000_00, direction: .in), InsightsFixture.txn("1", 300_00),
+    ])
+    let snap = InsightsEngine.snapshot(s, months: InsightsFixture.june...InsightsFixture.june, now: InsightsFixture.afterJune)
+    #expect(snap.summary.label == "Left after spending")
+    #expect(snap.summary.notCounted == nil)
+    #expect(snap.summary.legend.last?.title == "Left over")
+  }
+
+  @Test func theCurrentMonthStillSaysNotYetSpent() {
+    let s = InsightsFixture.ledger([
+      InsightsFixture.txn("salary", 1_000_00, InsightsFixture.july, direction: .in), InsightsFixture.txn("1", 300_00, InsightsFixture.july),
+    ])
+    let now = LocalDateTime(2026, 7, 20, 12, 0)
+    let snap = InsightsEngine.snapshot(s, months: InsightsFixture.july...InsightsFixture.july, now: now)
+    #expect(snap.summary.legend.last?.title == "Not yet spent or saved")
+  }
+
+  @Test func aCarvedOutProjectIsDisclosed() {
+    let p = Project(id: "trip", name: "Trip", glyph: .travel, budget: nil, starts: nil, ends: nil, countInPlan: false)
+    let s = InsightsFixture.ledger(
+      [
+        InsightsFixture.txn("salary", 1_000_00, direction: .in), InsightsFixture.txn("1", 300_00),
+        InsightsFixture.txn("4", 200_00, projectID: "trip"),
+      ], projects: [p])
+    let snap = InsightsEngine.snapshot(s, months: InsightsFixture.june...InsightsFixture.june, now: InsightsFixture.afterJune)
+    #expect(snap.summary.notCounted?.amount == .aed(200_00))
+    #expect(snap.summary.label == "Left after spending · not counting projects")
+    #expect(snap.summary.figure == .aed(700_00))
   }
 }

@@ -119,6 +119,13 @@ public struct BankHealthRow: Sendable, Equatable, Codable {
   /// `YYYY-MM` (local month).
   public var month: String
   public var readThisMonth: Int
+
+  public init(domain: String, lastEmailAtMs: Int64?, month: String, readThisMonth: Int) {
+    self.domain = domain
+    self.lastEmailAtMs = lastEmailAtMs
+    self.month = month
+    self.readThisMonth = readThisMonth
+  }
 }
 
 /// Everything one engine step writes, in one transaction.

@@ -11,8 +11,8 @@ import Testing
 @Suite("Design tokens")
 struct TokenTests {
   @Test func tokenSetIdentity() {
-    #expect(HTokens.paperHash == "8c572fea")
-    #expect(HTokens.count == 477)
+    #expect(HTokens.paperHash == "a21dd53c")
+    #expect(HTokens.count == 489)
   }
 
   /// The four values the owner settled on 14 Oct (spec 01 §0.06, §8.1).
@@ -39,7 +39,7 @@ struct TokenTests {
     (HPalette.statusWarningForeground, "#7B5100"),
     (HPalette.statusWarningSurface, "#FFF4DD"),
     (HPalette.paceFill, "#365BEB"),
-    (HPalette.paceFillOverPace, "#C77700"),
+    (HPalette.paceFillOverPace, "#A66300"),
     (HPalette.paceFillOverBudget, "#AD3029"),
     (HPalette.paceOnTrack, "#176442"),
     (HPalette.moneyIn, "#176442"),
@@ -78,9 +78,8 @@ struct TokenTests {
     #expect(HPalette.reviewSuggestionSurface == HRGBA(247, 247, 248, 0.72))
   }
 
-  /// The over-pace fill now aliases the amber ramp (same colour, spec 01 §8.2).
-  @Test func overPaceFillIsAmber600() {
-    #expect(HPalette.paceFillOverPace == HPalette.amber600)
+  @Test func overPaceFillIsAmber700() {
+    #expect(HPalette.paceFillOverPace == HPalette.amber700)
   }
 
   @Test(arguments: [
@@ -89,7 +88,7 @@ struct TokenTests {
     (Hue.rose, "#FBE6E4", "#F4CBC6", "#5E1F28"),
     (Hue.lilac, "#EFE7FA", "#DCCFF3", "#3C2A66"),
     (Hue.mint, "#E1F5EA", "#C2E7D6", "#164A35"),
-    (Hue.peach, "#FFE9D9", "#FFCEB5", "#6A2E0E"),
+    (Hue.peach, "#FFE9D9", "#F4B48F", "#6A2E0E"),
     (Hue.other, "#F1F1F3", "#E2E2E6", "#3A3A40"),
   ])
   func hues(hue: Hue, start: String, end: String, ink: String) {
@@ -134,7 +133,7 @@ struct TokenTests {
     #expect(HSpacing.paceBarHeight == 8)
     #expect(HSpacing.paceMarkerHeight == 16)
     #expect(HRadius.listGroup == 24)
-    #expect(HRadius.widget == 26)
+    #expect(HRadius.widget == 24)
     #expect(HRadius.field == 14)
     #expect(HRadius.sheet == 40)
     #expect(HContainer.briefCard == 272)
@@ -152,7 +151,7 @@ struct TokenTests {
     #expect(HSpacing.codeCellHeight == 64)
     #expect(HSpacing.scrollContentBottom == 160)
     #expect(HSpacing.paceMarkerHeightWidget == 12)
-    #expect(HRadius.statTile == 18)
+    #expect(HRadius.statTile == 20)
     #expect(HRadius.reviewCard == 28)
     #expect(HRadius.sheetLarge == 34)
   }

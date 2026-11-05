@@ -36,7 +36,7 @@ struct CategoryNameIconForm<Between: View>: View {
 
   var body: some View {
     CategoryFormField("Name") {
-      TextField("Coffee", text: $name)
+      TextField("", text: $name, prompt: .fieldPrompt("Coffee"))
         .hType(.body)
         .foregroundStyle(HColor.fieldText)
         .textInputAutocapitalization(.words)
@@ -44,6 +44,7 @@ struct CategoryNameIconForm<Between: View>: View {
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
         .background(fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+        .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
         .accessibilityLabel("Name")
         .accessibilityIdentifier(ids.name)
     }

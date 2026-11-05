@@ -119,7 +119,7 @@ struct ContrastTests {
     // Status chips on their own surfaces: mailbox states, inline status, result cards.
     add("connected chip", HPalette.statusSuccessForeground, HPalette.statusSuccessSurface)
     add("syncing chip", HPalette.statusInfoForeground, HPalette.statusInfoSurface)
-    add("sign in again chip", HPalette.statusWarningForeground, HPalette.statusWarningSurface)
+    add("sign-in ended chip", HPalette.statusWarningForeground, HPalette.statusWarningSurface)
     add("disconnected chip", HPalette.textSecondary, HPalette.surfaceGrouped)
     add("error result line", HPalette.statusErrorForeground, HPalette.statusErrorSurface)
     add("primary on a warning result", HPalette.textPrimary, HPalette.statusWarningSurface)
@@ -144,7 +144,7 @@ struct ContrastTests {
     add("amber-950 on keep-safe cream", HPalette.amber950, HRGBA(255, 246, 226, 1))
     add("amber-950 on keep-safe cream end", HPalette.amber950, HRGBA(251, 233, 196, 1))
     // Buttons: disabled labels stay readable; quiet destructive on white.
-    add("disabled label", HPalette.textDisabled, HPalette.actionDisabled)
+    add("disabled label on white", HPalette.textDisabled, HPalette.actionDisabled.over(HPalette.surfacePrimary))
     add("destructive quiet on white", HPalette.actionDestructive, HPalette.surfacePrimary)
     // Keypad digits on the key, and the key's tray-coloured press.
     add("keypad digit", HPalette.textPrimary, HPalette.keypadKey)
@@ -167,6 +167,9 @@ struct ContrastTests {
     }
     add("status hero body on mint end", HPalette.textOnHueSecondary, HPalette.hueMintEnd)
     add("mint ink on mint end", HPalette.hueMintInk, HPalette.hueMintEnd)
+    add("phrase number on surface secondary", HPalette.textSecondary, HPalette.surfaceSecondary)
+    add("step label on wash", HPalette.textOnWashSecondary, HPalette.washMorning)
+    add("step label on canvas", HPalette.textOnWashSecondary, HPalette.surfaceSecondary)
     return p
   }()
 
@@ -174,6 +177,27 @@ struct ContrastTests {
   func textIsReadable(_ pair: Pair) {
     let ratio = pair.text.over(pair.background).contrast(with: pair.background)
     #expect(ratio >= 4.5, "\(pair.name): \(String(format: "%.2f", ratio)):1")
+  }
+
+  static let parts: [Pair] = {
+    let sandTrack = HPalette.progressTrackOnHue.over(HPalette.washOverPace)
+    return [
+      Pair(name: "over-pace fill on the sand track", text: HPalette.paceFillOverPace, background: sandTrack),
+      Pair(name: "over-pace fill on a card track over the canvas", text: HPalette.paceFillOverPace,
+           background: HPalette.appleFillsTertiary.over(HPalette.surfaceSecondary)),
+      Pair(name: "over-pace fill on a card track over white", text: HPalette.paceFillOverPace,
+           background: HPalette.appleFillsTertiary.over(HPalette.surfacePrimary)),
+      Pair(name: "disabled label on the canvas", text: HPalette.textDisabled,
+           background: HPalette.actionDisabled.over(HPalette.surfaceSecondary)),
+      Pair(name: "contrast edge on the canvas", text: HPalette.borderControl, background: HPalette.surfaceSecondary),
+      Pair(name: "contrast edge on white", text: HPalette.borderControl, background: HPalette.surfacePrimary),
+    ]
+  }()
+
+  @Test(arguments: parts)
+  func partsAreVisible(_ pair: Pair) {
+    let ratio = pair.text.over(pair.background).contrast(with: pair.background)
+    #expect(ratio >= 3, "\(pair.name): \(String(format: "%.2f", ratio)):1")
   }
 
   @Test func theFormulaMatchesWCAG() {

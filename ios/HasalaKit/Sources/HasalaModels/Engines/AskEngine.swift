@@ -170,7 +170,7 @@ public enum AskEngine {
     if let p = f.period, t.postedAt.date < p.from || t.postedAt.date > p.through { return false }
     if let lo = f.minimumFils, (t.homeMinor ?? .min) < lo { return false }
     if let hi = f.maximumFils, (t.homeMinor ?? .max) > hi { return false }
-    if let c = f.category, !t.lines.contains(where: { $0.category == c }) { return false }
+    if let c = f.category, !Spending.lines(t, in: s).contains(where: { $0.category == c }) { return false }
     if !f.merchants.isEmpty {
       let hay = [t.title, t.provenance?.rawMerchant ?? ""].joined(separator: "\n")
       if !f.merchants.contains(where: { SearchText.contains(hay, $0) }) { return false }

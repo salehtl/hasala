@@ -20,6 +20,7 @@ struct HasalaApp: App {
         // English, light only (spec 04 §14.9; PO-10 decided).
         .preferredColorScheme(.light)
         .tint(HColor.actionAccent)
+        .environment(\.hIncreasedContrast, BuildSurface.forcesIncreasedContrast)
     }
   }
 }

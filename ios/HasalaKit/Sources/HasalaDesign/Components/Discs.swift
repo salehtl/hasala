@@ -9,6 +9,14 @@ import SwiftUI
 // category; a grey monogram stands in for a merchant with no category yet; a rounded-square
 // plate is a bank, so a bank never reads as a category. All decorative: the row names them.
 
+public enum DiscScale {
+  public static let cap: CGFloat = 1.5
+
+  public static func factor(_ scaledOne: CGFloat) -> CGFloat {
+    min(max(1, scaledOne), cap)
+  }
+}
+
 /// A category disc: the bucket's 160° gradient with its ink icon at half the disc. Three sizes:
 /// 32 (the review suggestion strip, 16 pt icon at 2.0), 40 (rows, 20 at 1.9), 56 (detail heroes
 /// and the review card, 28 at 1.7). `ring` adds the 3 pt white ring a hero disc wears.
@@ -29,6 +37,7 @@ public struct CategoryDisc: View {
   let icon: HIcon
   let size: Size
   let ring: Bool
+  @ScaledMetric(relativeTo: .callout) private var scaledOne: CGFloat = 1
 
   public init(hue: Hue, icon: HIcon, size: Size = .s40, ring: Bool = false) {
     self.hue = hue
@@ -42,10 +51,11 @@ public struct CategoryDisc: View {
   }
 
   public var body: some View {
+    let side = size.side * DiscScale.factor(scaledOne)
     Circle()
       .fill(hue.perceptualGradient)
-      .frame(width: size.side, height: size.side)
-      .overlay { HIconView(icon, size: size.side / 2, color: hue.ink) }
+      .frame(width: side, height: side)
+      .overlay { HIconView(icon, size: side / 2, color: hue.ink) }
       .background { if ring { Circle().fill(HColor.white).padding(-3) } }
       .accessibilityHidden(true)
   }
@@ -58,6 +68,7 @@ public struct HueDisc: View {
   let glyph: Glyph
   let size: CGFloat
   let iconSize: CGFloat
+  @ScaledMetric(relativeTo: .callout) private var scaledOne: CGFloat = 1
 
   public init(hue: Hue, glyph: Glyph, size: CGFloat = HSpacing.listRowLeadingDisc, iconSize: CGFloat? = nil) {
     self.hue = hue
@@ -67,10 +78,11 @@ public struct HueDisc: View {
   }
 
   public var body: some View {
+    let k = DiscScale.factor(scaledOne)
     Circle()
       .fill(hue.perceptualGradient)
-      .frame(width: size, height: size)
-      .overlay { HIconView(glyph.icon, size: iconSize, color: hue.ink) }
+      .frame(width: size * k, height: size * k)
+      .overlay { HIconView(glyph.icon, size: iconSize * k, color: hue.ink) }
       .accessibilityHidden(true)
   }
 }
@@ -81,6 +93,7 @@ public struct HueDisc: View {
 public struct MonogramDisc: View {
   let letter: String
   let size: CGFloat
+  @ScaledMetric(relativeTo: .callout) private var scaledOne: CGFloat = 1
 
   public init(_ letter: String, size: CGFloat = HSpacing.listRowLeadingDisc) {
     self.letter = letter
@@ -91,11 +104,12 @@ public struct MonogramDisc: View {
     Circle()
       .fill(HColor.listRowMonogram)
       .overlay { Circle().strokeBorder(HColor.borderSubtle, lineWidth: 1) }
-      .frame(width: size, height: size)
+      .frame(width: size * DiscScale.factor(scaledOne), height: size * DiscScale.factor(scaledOne))
       .overlay {
         Text(letter)
-          .font(.custom(HWeight.semibold.interFace, size: size >= 56 ? 24 : size * 17 / 40))
+          .font(.custom(HWeight.semibold.interFace, fixedSize: (size >= 56 ? 24 : size * 17 / 40) * DiscScale.factor(scaledOne)))
           .foregroundStyle(HColor.textPrimary)
+          .accessibilityIdentifier(hasalaCappedFigureIdentifier)
       }
       .accessibilityHidden(true)
   }

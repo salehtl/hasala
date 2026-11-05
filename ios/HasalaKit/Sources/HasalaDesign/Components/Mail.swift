@@ -33,12 +33,12 @@ public struct MailboxStatusChip: View {
     .accessibilityLabel(Self.word(state))
   }
 
-  /// "Connected", "Syncing", "Sign in again", "Disconnected".
+  /// "Connected", "Syncing", "Sign-in ended", "Disconnected".
   public static func word(_ state: MailboxState) -> String {
     switch state {
     case .connected: "Connected"
     case .syncing: "Syncing"
-    case .needsSignIn: "Sign in again"
+    case .needsSignIn: "Sign-in ended"
     case .disconnected: "Disconnected"
     }
   }
@@ -72,10 +72,18 @@ public struct MailboxStatusChip: View {
 /// line; an address too long for the row on its own wraps, with the chip under it.
 public struct MailboxRow: View {
   let mailbox: MailboxSnapshot
+  let showsChevron: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
 
-  public init(_ mailbox: MailboxSnapshot) {
+  public init(_ mailbox: MailboxSnapshot, showsChevron: Bool = false) {
     self.mailbox = mailbox
+    self.showsChevron = showsChevron
+  }
+
+  @ViewBuilder private var chevron: some View {
+    if showsChevron {
+      HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
+    }
   }
 
   private var off: Bool { mailbox.state == .disconnected }
@@ -93,6 +101,7 @@ public struct MailboxRow: View {
           MailboxStatusChip(mailbox.state)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .trailing) { chevron }
       } else {
         ViewThatFits(in: .horizontal) {
           // Paper: the address and the chip on one line.
@@ -105,6 +114,7 @@ public struct MailboxRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             MailboxStatusChip(mailbox.state)
+            chevron
           }
           // The address on its own line; the chip beside the provider line.
           HStack(spacing: HSpacing.listRowGap) {
@@ -119,6 +129,7 @@ public struct MailboxRow: View {
               noteLine
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            chevron
           }
           // A very long address wraps; the chip goes under it all.
           HStack(alignment: .top, spacing: HSpacing.listRowGap) {
@@ -130,6 +141,7 @@ public struct MailboxRow: View {
               MailboxStatusChip(mailbox.state).padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            chevron
           }
         }
       }

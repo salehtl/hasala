@@ -80,11 +80,27 @@ struct MonthPill: View {
       }
     }
     .foregroundStyle(HColor.textPrimary)
-    .padding(.horizontal, 14)
-    .frame(minHeight: 36)
-    .background(HColor.surfacePrimary, in: Capsule())
-    .shadow(color: HColor.elevationNear, radius: 1, x: 0, y: 1)
+    .modifier(MonthPillChrome(isPicker: Self.isPicker))
     .accessibilityElement(children: .combine)
+  }
+
+  static var isPicker: Bool { BuildSurface.showsUnfinished }
+}
+
+private struct MonthPillChrome: ViewModifier {
+  let isPicker: Bool
+
+  func body(content: Content) -> some View {
+    if isPicker {
+      content
+        .padding(.horizontal, 14)
+        .frame(minHeight: 36)
+        .background(HColor.surfacePrimary, in: Capsule())
+        .shadow(color: HColor.elevationNear, radius: 1, x: 0, y: 1)
+        .hContrastEdge(Capsule())
+    } else {
+      content
+    }
   }
 }
 

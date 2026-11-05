@@ -40,6 +40,10 @@ public struct PillButtonStyle: ButtonStyle {
       }
     }
 
+    public var hitOutset: CGFloat {
+      self == .small ? 4 : 0
+    }
+
     var inset: CGFloat {
       switch self {
       case .large: HSpacing.buttonInsetLarge
@@ -54,32 +58,44 @@ public struct PillButtonStyle: ButtonStyle {
   let fill: Bool
   let loading: Bool
   let leadingIcon: HIcon?
+  let greysWhenDisabled: Bool
 
   /// `fill` stretches the pill to the width it is offered (sheet CTAs, a pair in a card).
   /// `leadingIcon` is for a known system act only (Face ID, export, add): 18 with an 8 gap,
   /// Face ID 22 with a 10 gap, in the label's colour.
   public init(_ kind: Kind = .primary, size: Size = .large, fill: Bool = false, loading: Bool = false,
-              leadingIcon: HIcon? = nil)
+              leadingIcon: HIcon? = nil, greysWhenDisabled: Bool = false)
   {
     self.kind = kind
     self.size = size
     self.fill = fill
     self.loading = loading
     self.leadingIcon = leadingIcon
+    self.greysWhenDisabled = greysWhenDisabled
   }
 
   public func makeBody(configuration: Configuration) -> some View {
     PillButtonBody(configuration: configuration, kind: kind, size: size, fill: fill, loading: loading,
-                   leadingIcon: leadingIcon)
+                   leadingIcon: leadingIcon, greysWhenDisabled: greysWhenDisabled)
+  }
+
+  public static func disabledFill(_ kind: Kind, greysWhenDisabled: Bool) -> Color {
+    switch kind {
+    case .onGrouped where greysWhenDisabled: return HColor.appleFillsSecondary
+    case .onGrouped, .destructiveQuiet: return HColor.surfacePrimary
+    case .tertiary, .destructiveText: return .clear
+    default: return HColor.appleFillsSecondary
+    }
   }
 }
 
 public extension ButtonStyle where Self == PillButtonStyle {
   static func pill(
     _ kind: PillButtonStyle.Kind = .primary, size: PillButtonStyle.Size = .large, fill: Bool = false,
-    loading: Bool = false, leadingIcon: HIcon? = nil
+    loading: Bool = false, leadingIcon: HIcon? = nil, greysWhenDisabled: Bool = false
   ) -> PillButtonStyle {
-    PillButtonStyle(kind, size: size, fill: fill, loading: loading, leadingIcon: leadingIcon)
+    PillButtonStyle(kind, size: size, fill: fill, loading: loading, leadingIcon: leadingIcon,
+                    greysWhenDisabled: greysWhenDisabled)
   }
 }
 
@@ -90,6 +106,7 @@ struct PillButtonBody: View {
   let fill: Bool
   let loading: Bool
   let leadingIcon: HIcon?
+  let greysWhenDisabled: Bool
   @Environment(\.isEnabled) private var isEnabled
   @Environment(\.pillDisabledBase) private var disabledBase
   @ResolvedMotion private var motion: MotionPolicy
@@ -123,7 +140,7 @@ struct PillButtonBody: View {
         Capsule().fill(disabledBase)
       }
     }
-    .contentShape(Capsule())
+    .contentShape(Capsule().inset(by: -size.hitOutset))
     .scaleEffect(pressed && !motion.isStill ? HMotion.pressScale : 1)
     // Down at once, back over 120 ms.
     .animation(pressed ? nil : motion.animation(.press), value: pressed)
@@ -158,21 +175,15 @@ struct PillButtonBody: View {
   /// The disabled fill is `appleFillsSecondary` (see `background(pressed:)`).
   private var disabledFillIsTranslucent: Bool {
     switch kind {
-    case .onGrouped, .destructiveQuiet, .tertiary, .destructiveText: false
+    case .onGrouped: greysWhenDisabled
+    case .destructiveQuiet, .tertiary, .destructiveText: false
     case .primary, .secondary, .destructive: true
     }
   }
 
   private func background(pressed: Bool) -> Color {
     if !isEnabled {
-      switch kind {
-      // On grouped keeps its white fill: the disabled grey matches the canvas.
-      case .onGrouped, .destructiveQuiet: return HColor.surfacePrimary
-      case .tertiary, .destructiveText: return .clear
-      // The screens' disabled fill (Paper S10a "Create account", S12 "I've written them
-      // down"): `action-disabled` is the grouped canvas itself and would vanish on it.
-      default: return HColor.appleFillsSecondary
-      }
+      return PillButtonStyle.disabledFill(kind, greysWhenDisabled: greysWhenDisabled)
     }
     switch kind {
     case .primary: return pressed ? HColor.actionAccentPressed : HColor.actionAccent
@@ -259,6 +270,29 @@ public struct ProviderButton: View {
     }
     .buttonStyle(.pill(.primary, size: .large, fill: true, loading: loading))
   }
+}
+
+public struct HInlineLinkStyle: ButtonStyle {
+  public static let minimumHitHeight: CGFloat = 44
+  let color: Color
+
+  public init(color: Color = HColor.textLink) {
+    self.color = color
+  }
+
+  public func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .hType(.inlineLink)
+      .foregroundStyle(color)
+      .opacity(configuration.isPressed ? 0.6 : 1)
+      .frame(minHeight: Self.minimumHitHeight)
+      .contentShape(Rectangle())
+  }
+}
+
+public extension ButtonStyle where Self == HInlineLinkStyle {
+  static var inlineLink: HInlineLinkStyle { HInlineLinkStyle() }
+  static func inlineLink(color: Color) -> HInlineLinkStyle { HInlineLinkStyle(color: color) }
 }
 
 public extension EnvironmentValues {

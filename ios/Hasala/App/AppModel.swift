@@ -167,6 +167,8 @@ final class AppModel {
   /// mail needs it.
   var mailOffer: MailOffer? { usesBankTexts ? nil : mailbox?.offer }
 
+  private var reviewPeriodOverride: Period?
+
   var period: Period {
     get { chosenPeriod.map(shown) ?? .month(store.now.date.yearMonth) }
     set {
@@ -184,10 +186,15 @@ final class AppModel {
     period = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
   }
 
-  var reviewWindow: ReviewWindow { ReviewEngine.window(period, today: store.now.date.yearMonth) }
+  var reviewPeriod: Period {
+    guard router.cover == .review, let reviewPeriodOverride else { return period }
+    return shown(reviewPeriodOverride)
+  }
+
+  var reviewWindow: ReviewWindow { ReviewEngine.window(reviewPeriod, today: store.now.date.yearMonth) }
 
   var reviewCards: [ReviewCardModel] {
-    reviewCardsMemo.value(for: ReviewCardsMemoKey(revision: store.revision, period: period, order: reviewOrder, today: store.now.date)) {
+    reviewCardsMemo.value(for: ReviewCardsMemoKey(revision: store.revision, period: reviewPeriod, order: reviewOrder, today: store.now.date)) {
       ReviewEngine.cards(store.state, in: reviewWindow, order: reviewOrder, today: store.now.date)
     }
   }
@@ -336,7 +343,15 @@ final class AppModel {
 
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
-  func startReview() { cover = .review }
+  func startReview() {
+    reviewPeriodOverride = nil
+    cover = .review
+  }
+
+  func startReview(over preset: PeriodPreset) {
+    reviewPeriodOverride = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
+    cover = .review
+  }
 
   static func message(for error: ActionError) -> String {
     switch error {
