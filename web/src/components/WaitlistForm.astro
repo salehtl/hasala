@@ -9,8 +9,9 @@
  * "api": a real form. Without JavaScript it posts to the API like any form
  * (the browser checks the fields first; the server answers with a 303 to
  * /joined). With it, the script validates, posts JSON and shows the success
- * card in place: "Request sent", with one line about the confirmation email
- * while the server still sends one. Every valid submission gets the same
+ * card in place: "Check your email", which asks for the tap on Confirm my
+ * email within 7 days. "You're on the list" is only for the page after that
+ * confirm link works (/waitlist/confirm). Every valid submission gets the same
  * answer whether or not the address is already on the list (Hasala design
  * archive, private).
  *
@@ -140,9 +141,9 @@ const named = (name: string) => (byEmail ? undefined : name);
     ) : (
       <section class="wl-card wl-done" aria-labelledby="wl-done-title" hidden>
         <div class="wl-head">
-          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">You’re on the list.</h3>
+          <h3 class="wl-done__title" id="wl-done-title" tabindex="-1">Check your email.</h3>
           <p class="wl-done__text">
-            We’ve sent a confirmation to <span data-done-email></span> and will email again when your TestFlight invite is ready. Invites go out in small batches, usually within a few weeks.
+            We sent a message to <span data-done-email></span>. If it asks you to confirm, tap Confirm my email within 7 days to join the list. We’ll email again when your TestFlight invite is ready.
           </p>
         </div>
         <dl class="wl-summary">

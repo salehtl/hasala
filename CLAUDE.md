@@ -521,7 +521,8 @@ The PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
 
 - `api` (the default). The invite form sends to the API. People also use
   this form to tell us about a bank that we do not read yet. The page shows
-  "Request sent". The request shows on the waitlist in `hasalad console`.
+  "Check your email", with the step to confirm the address within 7 days.
+  The request shows on the waitlist in `hasalad console`.
 - `email` (use this only when the API does not operate). The form opens a
   prepared email to support@hasala.app. It sends nothing and does not load
   Turnstile. Without JavaScript, the form goes to `/joined`, which tells
