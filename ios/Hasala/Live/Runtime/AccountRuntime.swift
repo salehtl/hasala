@@ -158,6 +158,44 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
+  @ObservationIgnored private(set) var movedAwayMs: Int64? = LocalAccountData.mailboxMovedAway()
+  @ObservationIgnored var lastPhase: MailboxPhase?
+
+  func noteMovedAway(from old: MailboxPhase?, to new: MailboxPhase) {
+    lastPhase = new
+    if LiveReading.movedAway(from: old, to: new) {
+      let now = context.clock.nowMs()
+      LocalAccountData.setMailboxMovedAway(now)
+      movedAwayMs = now
+    } else if new != .otherDevice, movedAwayMs != nil {
+      LocalAccountData.setMailboxMovedAway(nil)
+      movedAwayMs = nil
+    }
+  }
+
+  func reading(
+    textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool = LiveReading.backgroundRefreshOff
+  ) -> ReadingState {
+    LiveReading.state(readingInputs(textsChosen: textsChosen, textsLastRunMs: textsLastRunMs,
+                                    backgroundRefreshOff: backgroundRefreshOff))
+  }
+
+  func readingInputs(textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool) -> LiveReading.Inputs {
+    let provider = lane?.provider ?? .gmail
+    let status = lane == nil ? nil : store.mailboxStatus
+    if let phase = status?.phase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
+    let held: MailProviderKind? =
+      if let lane, status?.phase == .unlinked, case .holder(false, _)? = serverLink { lane.provider } else { nil }
+    let trusted = LiveMailboxConnecting.banks(
+      trusted: BankDomains.effectiveTrusted((try? projection.reader.senderTrust()) ?? [:]))
+    return LiveReading.Inputs(
+      nowMs: context.clock.nowMs(), known: store.loaded && (lane == nil || status != nil),
+      sample: store.holdsSample || reviewAccount, status: status, provider: provider, progress: store.importProgress,
+      heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, trustedBanks: trusted,
+      newestMailRowMs: (try? projection.reader.newestMailboxPostedMs()) ?? nil, txns: store.state.txns,
+      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: movedAwayMs)
+  }
+
   func retryMailbox() async {
     _ = await coordinator.run(.retryMail, budget: .seconds(20))
   }
@@ -322,6 +360,13 @@ final class AccountRuntime {
       await rt?.checkServerLink()
     }
     rt.linkCopy.ownLink(store.mailboxPhase)
+    rt.lastPhase = store.mailboxPhase
+    store.readingSource = { [weak rt] in
+      guard let rt else { return nil }
+      let texts = bankTextFacts.read(nowMs: context.clock.nowMs())
+      return rt.reading(textsChosen: texts.chosen, textsLastRunMs: texts.lastRunMs)
+    }
+    await store.reload()
     await rt.followImports()
     rt.followSwitch()
     await backlog.watchNetwork()
