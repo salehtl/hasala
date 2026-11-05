@@ -31,6 +31,50 @@ struct PlanModelTests {
     #expect(sheet.plan.readyToAssign == .aed(682_00))
   }
 
+  @Test func assignAndMoveMoneyShareTheirWordsWithTheButton() {
+    let app = AppModel(store: InMemoryLedger())
+    let assign = BudgetSheetViewModel(app: app, category: nil)
+    let assigns = MoveMoneySheet.assigns(row: assign.row, readyToAssign: assign.plan.readyToAssign)
+    #expect(assigns)
+    #expect(MoveMoneySheet.title(assigns: assigns) == "Assign")
+    #expect(MoveMoneySheet.commitLabel(amount: 1_000_00, assigns: assigns) == "Assign AED 1,000.00")
+    #expect(MoveMoneySheet.footnote(assigns: assigns, month: "October")
+      == "Stays in the budget from October on. You can undo this right after.")
+    #expect(!MoveMoneySheet.assigns(row: nil, readyToAssign: .aed(0)))
+    #expect(MoveMoneySheet.title(assigns: false) == "Move money")
+    #expect(MoveMoneySheet.commitLabel(amount: nil, assigns: true) == "Enter an amount")
+
+    let move = BudgetSheetViewModel(app: app, category: "groceries")
+    let moves = MoveMoneySheet.assigns(row: move.row, readyToAssign: move.plan.readyToAssign)
+    #expect(!moves)
+    #expect(MoveMoneySheet.title(assigns: moves) == "Move money")
+    #expect(MoveMoneySheet.commitLabel(amount: 318_00, assigns: moves) == "Move AED 318.00")
+    #expect(MoveMoneySheet.footnote(assigns: moves, month: "October") == "You can undo this right after.")
+  }
+
+  @Test func moveMoneyAsksBeforeDiscardingOnlyAfterAChange() {
+    func dirty(_ destination: CategoryID? = "groceries", _ draft: String = "318.00",
+               _ source: CategoryID?? = nil) -> Bool {
+      MoveMoneySheet.isDirty(destination: destination, openedDestination: "groceries", draft: draft,
+                             openedDraft: "318.00", source: source, openedSource: nil)
+    }
+    #expect(!dirty())
+    #expect(!dirty("groceries", "318"))
+    #expect(!dirty("groceries", "318.00", .some(nil)))
+    #expect(dirty("dining"))
+    #expect(dirty("groceries", "300.00"))
+    #expect(dirty("groceries", ""))
+    #expect(dirty("groceries", "318.00", .some("travel")))
+  }
+
+  @Test func changeBudgetAsksBeforeDiscardingOnlyAfterAChange() {
+    #expect(!BudgetEditSheet.isDirty(draft: "1,800", openedDraft: "1,800", source: nil, openedSource: nil))
+    #expect(!BudgetEditSheet.isDirty(draft: "1800", openedDraft: "1,800", source: nil, openedSource: nil))
+    #expect(BudgetEditSheet.isDirty(draft: "2,000", openedDraft: "1,800", source: nil, openedSource: nil))
+    #expect(BudgetEditSheet.isDirty(draft: "", openedDraft: "1,800", source: nil, openedSource: nil))
+    #expect(BudgetEditSheet.isDirty(draft: "1,800", openedDraft: "1,800", source: "travel", openedSource: nil))
+  }
+
   @Test func assignNeverTakesFromTheDestination() {
     let app = AppModel(store: InMemoryLedger())
     let assign = BudgetSheetViewModel(app: app, category: nil)
