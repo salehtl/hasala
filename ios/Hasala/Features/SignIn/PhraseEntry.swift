@@ -330,7 +330,7 @@ struct PhraseEntryGrid: View {
     HStack(spacing: 8) {
       Text("\(i + 1)")
         .hFigure(HFigure(size: 13, leading: 18, weight: active ? .bold : .semibold, textStyle: .footnote))
-        .foregroundStyle(active ? HColor.textLink : filled ? HColor.textSecondary : HColor.neutral400)
+        .foregroundStyle(active ? HColor.textLink : HColor.textSecondary)
         .frame(minWidth: 18, alignment: .trailing)
       HStack(spacing: 1) {
         Text(word)
@@ -350,6 +350,7 @@ struct PhraseEntryGrid: View {
     .contentShape(Rectangle())
     .background(active ? HColor.surfacePrimary : HColor.surfaceSecondary,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .hContrastEdge(RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay {
       // Entry cells ring inside their edge (page 11 known drift: code cells ring outside).
       RoundedRectangle(cornerRadius: 10, style: .continuous)

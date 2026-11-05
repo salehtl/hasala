@@ -305,6 +305,7 @@ struct ReadOnlyField: View {
         .padding(.vertical, 13)
         .frame(maxWidth: .infinity, minHeight: HSpacing.fieldMinHeight, alignment: .leading)
         .background(HColor.fieldSurfaceReadonly, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
+        .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     }
     .accessibilityElement(children: .combine)
   }

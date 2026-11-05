@@ -36,6 +36,7 @@ struct ConfirmRequest: Equatable {
 /// happen. A wrong password keeps the sheet up with the field ringed; a cancelled Face ID
 /// keeps it up quietly; a missing device key turns it into the "can't confirm yet" variant.
 struct ConfirmItsYouSheet: View {
+  @Environment(\.hBiometry) private var biometry
   var request: ConfirmRequest
   @Binding var password: String
   var busy: Bool
@@ -113,7 +114,7 @@ struct ConfirmItsYouSheet: View {
 
   private var hero: (icon: HIcon, hue: Hue) {
     switch request.factor {
-    case .faceID: (.faceID, .sky)
+    case .faceID: (biometry.icon, .sky)
     case .password: (.password, .other)
     case .noKey: (.lock, .sand)
     }
@@ -123,7 +124,7 @@ struct ConfirmItsYouSheet: View {
 
   private var subtitle: String {
     switch request.factor {
-    case .faceID: "Face ID confirms it's really you, using your passkey."
+    case .faceID: biometry.name.map { "\($0) confirms it's really you, using your passkey." } ?? "Your passkey confirms it's really you."
     case .password: "Your current password, plus this iPhone's own key. Neither one can do it alone."
     case .noKey:
       "Changes need your password plus the key of an iPhone where your data is open. Here it's still sealed."
@@ -144,9 +145,9 @@ struct ConfirmItsYouSheet: View {
     ) {
       Group {
         if visible {
-          TextField("Your password", text: $password)
+          TextField("", text: $password, prompt: .fieldPrompt("Your password"))
         } else {
-          SecureField("Your password", text: $password)
+          SecureField("", text: $password, prompt: .fieldPrompt("Your password"))
         }
       }
       .textContentType(.password)
@@ -165,8 +166,8 @@ struct ConfirmItsYouSheet: View {
   @ViewBuilder private var primary: some View {
     switch request.factor {
     case .faceID:
-      Button("Confirm with Face ID", action: onConfirm)
-        .buttonStyle(.pill(.primary, fill: true, loading: busy, leadingIcon: .faceID))
+      Button(biometry.confirmTitle, action: onConfirm)
+        .buttonStyle(.pill(.primary, fill: true, loading: busy, leadingIcon: biometry.icon))
         .accessibilityIdentifier("confirm.submit")
     case .password:
       Button("Confirm", action: onConfirm)

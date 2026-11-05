@@ -12,6 +12,7 @@ import UIKit
 /// called out; nothing can be copied; the grid is `.privacySensitive()`. Closing the cover
 /// drops the words from memory (`SecurityModel.closePhrase`).
 struct PhraseViewer: View {
+  @Environment(\.hBiometry) private var biometry
   @Bindable var model: SecurityModel
 
   @Environment(\.scenePhase) private var scenePhase
@@ -29,7 +30,7 @@ struct PhraseViewer: View {
               .accessibilityAddTraits(.isHeader)
             Text(model.phraseFirstView
               ? "On paper, numbered, in this order. Check each word twice, then close."
-              : "Shown after Face ID. Check them against your paper, then close.")
+              : "\(biometry.name.map { "Shown after \($0)." } ?? "Shown after you confirmed with your passkey.") Check them against your paper, then close.")
               .hType(.body)
               .foregroundStyle(HColor.textOnWashSecondary)
           }
