@@ -27,7 +27,7 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
     assertPresent(app, ["search.placeholder", "search.ask.dining", "search.ask.rent", "search.ask.carrefour"], "Search")
     assertNoPlaceholders(app, "Search")
 
-    let field = app.searchFields["Ask about your money"]
+    let field = app.searchFields.firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     type("carre", into: field)
     let result = el(app, "search.txn.carrefour")
@@ -44,13 +44,13 @@ final class ReleaseSurfaceTests: ReleaseSurfaceTestCase {
   func testAQuestionAnswersOrFallsBackToWords() throws {
     let app = launchRelease()
     app.buttons["header.search"].firstMatch.tap()
-    let field = app.searchFields["Ask about your money"]
+    let field = app.searchFields.firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: uiWait))
     type("carrefour september", into: field)
     XCTAssertTrue(el(app, "search.ask.thinking").waitForNonExistence(timeout: 30), "the question never settled")
     let answered = el(app, "search.answer").waitForExistence(timeout: 2)
     if !answered {
-      XCTAssertTrue(el(app, "search.txn.carrefour").exists || el(app, "search.none").exists, "no keyword fallback")
+      XCTAssertTrue(el(app, "search.txn.carrefour").exists, "the names in the question found nothing")
     }
     attach(app, answered ? "Search · Release · answered" : "Search · Release · keyword fallback")
     assertNoPlaceholders(app, "Search question")
