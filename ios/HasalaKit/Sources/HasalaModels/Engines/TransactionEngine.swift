@@ -81,14 +81,17 @@ public enum TransactionEngine {
       let budget = s.plan.budget(c.id, month).minor
       let spent = s.spent(c.id, in: month).minor
       let paced = c.role == .everyday
-      let verdict = Pace.verdict(spent: spent, budget: budget, day: now.date.day, days: month.days, paced: paced)
+      let biggest = PlanEngine.largest(c.id, s, month: month)
+      let verdict = Pace.verdict(
+        spent: spent, budget: budget, day: now.date.day, days: month.days, paced: paced, largest: biggest)
       if budget > 0 {
-        let projected = Pace.projected(spent, day: now.date.day, days: month.days)
+        let projected = Pace.projected(spent, day: now.date.day, days: month.days, largest: biggest)
         pace = EmbeddedPace(
           title: "\(c.name) this month", left: .aed(budget.minus(spent)), budget: .aed(budget),
           progress: Permille.ratio(spent, of: budget),
           today: paced ? Pace.monthGone(day: now.date.day, days: month.days) : nil, verdict: verdict,
-          projection: paced ? MoneyPhrase([.text("on course for "), .amount(.aed(projected), .rounded)]) : nil
+          projection: paced && Pace.showsProjection(day: now.date.day)
+            ? MoneyPhrase([.text("on course for "), .amount(.aed(projected), .rounded)]) : nil
         )
       }
     }

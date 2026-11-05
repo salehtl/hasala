@@ -59,6 +59,21 @@ public enum MoneyFormat {
     string(money.minor, style: style)
   }
 
+  public enum SpokenSign: Sendable { case none, signed }
+
+  public static let hiddenSpoken = "Amount hidden"
+
+  public static func spoken(_ money: Money, style: MoneyStyle = .exact, sign: SpokenSign = .none, approx: Bool = false) -> String {
+    let lead = (approx ? "about " : "") + (sign == .signed && money.minor != 0 ? (money.minor < 0 ? "minus " : "plus ") : "")
+    guard money.currency == Money.home else { return lead + money.currency + " " + string(money, style: style) }
+    let magnitude = money.minor.magnitude
+    let whole = style == .rounded ? (magnitude + 50) / 100 : magnitude / 100
+    let fils = style == .rounded ? 0 : magnitude % 100
+    var out = lead + grouped(whole) + (whole == 1 ? " dirham" : " dirhams")
+    if fils > 0 { out += " \(fils) fil" + (fils == 1 ? "" : "s") }
+    return out
+  }
+
   /// A run of hidden-figure glyphs, as Paper draws them (four in tiles and rows).
   public static func hidden(count: Int = 4) -> String {
     String(repeating: hiddenGlyph, count: max(1, count))

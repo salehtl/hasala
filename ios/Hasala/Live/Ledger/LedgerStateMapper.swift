@@ -121,20 +121,37 @@ nonisolated enum LedgerStateMapper {
     // The plan: CoreDomain's assigned budgets around this month, the income sources.
     var budgets: [String: Money] = [:]
     var incomeByMonth: [YearMonth: Money] = [:]
-    let months = [month.adding(months: -1), month, month.adding(months: 1)].compactMap { $0 }
+    var expectedByMonth: [YearMonth: Money] = [:]
+    var receivedByMonth: [YearMonth: Money] = [:]
+    let months = [month.adding(months: -2), month.adding(months: -1), month, month.adding(months: 1)].compactMap { $0 }
     for m in months {
-      incomeByMonth[YearMonth(m.year, m.month)] = .aed(engine.income(m).total)
+      let income = engine.income(m)
+      let ym = YearMonth(m.year, m.month)
+      incomeByMonth[ym] = .aed(income.total)
+      expectedByMonth[ym] = .aed(income.expected)
+      receivedByMonth[ym] = .aed(income.received)
+    }
+    for m in budgetMonths(start: engine.planStart, month: month) {
       for info in taxonomy.ordered where info.kind == .spending {
         let v = engine.assigned(m, info.id)
         if v != 0 { budgets[HasalaModels.PlanState.key(info.id, YearMonth(m.year, m.month))] = .aed(v) }
       }
+    }
+    var zeroSet: Set<String> = []
+    var expiredMoves: [CategoryID: Money] = [:]
+    let previous = month.adding(months: -1)
+    for info in taxonomy.ordered where info.kind == .spending {
+      guard let row = engine.plan.cells[info.id] else { continue }
+      if row[month.wire]?.latestSet == 0 { zeroSet.insert(HasalaModels.PlanState.key(info.id, YearMonth(month.year, month.month))) }
+      if let p = previous, let moved = row[p.wire]?.movesAll, moved != 0 { expiredMoves[info.id] = .aed(moved) }
     }
     let sources = engine.plan.incomeSources.values.filter(\.active)
     let split = try r.budgetTemplate()
     let plan = HasalaModels.PlanState(
       income: .aed(Fils.sum(sources.map(\.amountMinor))), payday: Int(sources.first?.payday ?? 28),
       startingSplit: split.map { [Int($0.need), Int($0.want), Int($0.saving)] } ?? [50, 30, 20], budgets: budgets,
-      incomeByMonth: incomeByMonth)
+      incomeByMonth: incomeByMonth, incomeExpectedByMonth: expectedByMonth, incomeReceivedByMonth: receivedByMonth,
+      zeroSet: zeroSet, expiredMoves: expiredMoves)
 
     let bills = try liveBills(feed, r: r, context: c, txns: txns, income: engine.plan.incomeSources.values)
 
@@ -170,6 +187,21 @@ nonisolated enum LedgerStateMapper {
       rates: try r.rates().map { CurrencyRate(currency: $0.currency, rateMicro: $0.rateMicro, updatedAt: $0.updatedAt) },
       unreadMail: unreadMail, unreadTexts: unreadTexts, reading: c.reading)
     return Mapped(state: state, candidates: feed.derived.candidates)
+  }
+
+  static let budgetHistoryMonths = 36
+
+  static func budgetMonths(start: CivilMonth?, month: CivilMonth) -> [CivilMonth] {
+    guard let last = month.adding(months: 1), let window = month.adding(months: -1) else { return [] }
+    let floor = month.adding(months: -budgetHistoryMonths) ?? window
+    var m = min(start.map { max($0, floor) } ?? window, window)
+    var out: [CivilMonth] = []
+    while m <= last {
+      out.append(m)
+      guard let n = m.adding(months: 1) else { break }
+      m = n
+    }
+    return out
   }
 
   static func allRows(_ r: LedgerReader) throws -> [TxnRow] {

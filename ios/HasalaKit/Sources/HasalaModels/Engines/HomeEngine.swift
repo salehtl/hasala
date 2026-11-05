@@ -74,7 +74,8 @@ public enum HomeEngine {
     }
 
     let tick = Self.tick(s, month: month, plan: budget, day: day, days: days)
-    let verdict: Verdict = total > budget ? .overBudget : (total > tick ? .overPace : .onTrack)
+    let verdict: Verdict =
+      total > budget ? .overBudget : (Pace.showsProjection(day: day) && Pace.ahead(total, of: tick) ? .overPace : .onTrack)
     let left = MoneyPhrase([.text("AED "), .amount(.aed(budget.minus(total)), hidden: 3), .text(" left")])
     let word: MoneyPhrase
     let fact: MoneyPhrase?

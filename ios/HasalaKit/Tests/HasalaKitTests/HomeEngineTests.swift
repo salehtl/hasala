@@ -57,7 +57,7 @@ struct HomeHeroTests {
     let h = hero(MayaLedger.state)
     #expect(h.caption.rendered(hidden: true) == "spent of ••• planned")
     #expect(h.fact?.rendered(hidden: true) == "AED ••• left")
-    #expect(h.fact?.spoken(hidden: true) == "AED Amount hidden left")
+    #expect(h.fact?.spoken(hidden: true) == "Amount hidden left")
     #expect(h.word.rendered(hidden: true) == "On track")
   }
 
@@ -143,7 +143,7 @@ struct HomeHeroTests {
     #expect(h.verdict == .overBudget)
     #expect(h.word.rendered(hidden: false) == "Over by AED 2,115.62")
     #expect(h.word.rendered(hidden: true) == "Over by AED •••")
-    #expect(h.word.spoken(hidden: true) == "Over by AED Amount hidden")
+    #expect(h.word.spoken(hidden: true) == "Over by Amount hidden")
     #expect(h.fact == nil)
     #expect(h.wash == .rose)
     // The bills are more than the plan: the rest of the plan is nothing, so the tick is the

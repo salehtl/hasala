@@ -26,10 +26,12 @@ extension ReviewEngine {
     return ReviewTabRow(
       id: c.id, identifier: "review.tab.row.\(c.id)", monogram: c.monogram, title: c.merchant,
       subtitle: rowSupporting(c), tone: tone,
-      amount: c.amount.currency == Money.home
-        ? MoneyPhrase([.amount(c.amount)]) : MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
+      amount: MoneyPhrase(
+        (c.isIncome ? [.text("+")] : [])
+          + (c.amount.currency == Money.home ? [.amount(c.amount)] : [.text("\(c.amount.currency) "), .amount(c.amount)])),
       isIncome: c.isIncome,
-      detail: c.posted?.short ?? "", spokenAmount: MoneyPhrase([.text("\(c.amount.currency) "), .amount(c.amount)]),
+      detail: c.posted?.short ?? "",
+      spokenAmount: MoneyPhrase((c.isIncome ? [.text("plus ")] : []) + [.text("\(c.amount.currency) "), .amount(c.amount)]),
       spokenDetail: c.spokenWhen, reason: c.reviewReason)
   }
 

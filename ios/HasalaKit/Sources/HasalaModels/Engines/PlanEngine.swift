@@ -31,6 +31,7 @@ public struct PlanRowModel: Sendable, Hashable, Identifiable {
   public var paced: Bool
   public var budget: Money
   public var spent: Money
+  public var shortfall: MoneyPhrase? = nil
 }
 
 public struct PlanSection: Sendable, Hashable, Identifiable {
@@ -87,6 +88,42 @@ public struct PlanSnapshot: Sendable, Hashable {
   public var planned: Money = .aed(0)
   public var lastMonthBudgets: [CategoryID: Money] = [:]
   public var outsidePlan: OutsidePlan? = nil
+  public var incomeKnown = true
+  public var income: IncomeState = .unknown
+  public var carryNote = "What you don't assign doesn't carry to next month."
+  public var expiredMoves: [CategoryID: Money] = [:]
+  public var phase: Phase = .current
+  public var selectableMonths: [YearMonth] = []
+
+  public enum Phase: Sendable, Hashable { case past, current, future }
+
+  public var canAssign: Bool { phase != .past }
+
+  public var expiredMovesLine: String? {
+    let n = expiredMoves.count
+    guard n > 0 else { return nil }
+    return "\(n) move\(n == 1 ? "" : "s") from \(month.previous.name) \(n == 1 ? "has" : "have") ended"
+  }
+
+  public var copyLastMonthLabel: String? {
+    lastMonthBudgets.isEmpty ? nil : "Copy \(lastMonthBudgets.count) from \(month.previous.name)"
+  }
+
+  public func keepExpiredMoves(_ s: LedgerState) -> [LedgerEdit] {
+    expiredMoves.keys.sorted().compactMap { c in
+      guard let moved = expiredMoves[c], moved.minor > 0 else { return nil }
+      return LedgerEdit.assign(c, month, moved, in: s)
+    }
+  }
+
+  public enum IncomeState: Sendable, Hashable {
+    case unknown
+    case figure
+    case expected(Money, on: LocalDate)
+    case landed(Money)
+    case partly(received: Money, expected: Money)
+    case short(received: Money, expected: Money)
+  }
 
   public struct OutsidePlan: Sendable, Hashable {
     public var projects: Int
@@ -103,10 +140,26 @@ public struct PlanSnapshot: Sendable, Hashable {
 }
 
 public enum PlanEngine {
-  public static func snapshot(_ s: LedgerState, now: LocalDateTime) -> PlanSnapshot {
-    let month = now.date.yearMonth
-    let day = now.date.day
+  public static let pastMonthsShown = 2
+  public static let nextMonthOpensDays = 5
+
+  public static func selectableMonths(_ s: LedgerState, today: LocalDate) -> [YearMonth] {
+    let current = today.yearMonth
+    var out: [YearMonth] = []
+    var m = current
+    for _ in 0..<pastMonthsShown { m = m.previous; out.insert(m, at: 0) }
+    out.append(current)
+    let lastDays = today.day > current.days - nextMonthOpensDays
+    if lastDays || today >= payday(s, month: current) { out.append(current.next) }
+    return out
+  }
+
+  public static func snapshot(_ s: LedgerState, now: LocalDateTime, month chosen: YearMonth? = nil) -> PlanSnapshot {
+    let current = now.date.yearMonth
+    let month = chosen ?? current
     let days = month.days
+    let day = month < current ? days : (month > current ? 0 : now.date.day)
+    let phase: PlanSnapshot.Phase = month < current ? .past : (month > current ? .future : .current)
     var sections: [PlanSection] = []
     var planned: Int64 = 0
 
@@ -141,22 +194,58 @@ public enum PlanEngine {
     for bucket in [Bucket.needs, .wants, .savings] {
       for c in s.categories(in: bucket) {
         let b = s.plan.budget(c.id, previous)
-        if b.minor > 0 { lastMonthBudgets[c.id] = b }
+        if b.minor > 0, s.plan.budget(c.id, month).minor == 0, !s.plan.setToZero(c.id, month) { lastMonthBudgets[c.id] = b }
       }
     }
-    let income = s.plan.income(in: month)
-    let rta = income.minor.minus(planned)
-    let incomeLine = MoneyPhrase([
-      .text("Income "), .amount(income, .compact), .text(" · planned "), .amount(.aed(planned), .compact),
-    ])
+    let (incomeState, counted) = incomeState(s, month: month, today: now.date)
+    let known = s.plan.incomeKnown(in: month)
+    let rta = known ? counted.minor.minus(planned) : 0
+    let incomeLine = incomeLine(incomeState, counted: counted, planned: planned)
     let projects = s.projects.filter { !$0.complete }.map { projectModel($0, s, today: now.date) }
     return PlanSnapshot(
       month: month, readyToAssign: .aed(rta), incomeLine: incomeLine,
       startedFrom: "Started from " + s.plan.startingSplit.map(String.init).joined(separator: " / "),
       splitName: s.plan.startingSplit.map(String.init).joined(separator: "/"),
       split: split, sections: sections, projects: projects, planned: .aed(planned),
-      lastMonthBudgets: lastMonthBudgets, outsidePlan: outsidePlan(projects)
+      lastMonthBudgets: lastMonthBudgets, outsidePlan: outsidePlan(projects), incomeKnown: known, income: incomeState,
+      expiredMoves: month == current ? s.plan.expiredMoves : [:], phase: phase,
+      selectableMonths: selectableMonths(s, today: now.date)
     )
+  }
+
+  public static let paydayWindow = 4
+
+  public static func payday(_ s: LedgerState, month: YearMonth) -> LocalDate {
+    LocalDate(month.year, month.month, min(max(1, s.plan.payday), month.days))
+  }
+
+  static func incomeState(_ s: LedgerState, month: YearMonth, today: LocalDate) -> (PlanSnapshot.IncomeState, Money) {
+    let total = s.plan.income(in: month)
+    guard s.plan.incomeKnown(in: month) else { return (.unknown, .aed(0)) }
+    guard let received = s.plan.receivedIncome(in: month) else { return (.figure, total) }
+    let expected = s.plan.expectedIncome(in: month)
+    if received.minor <= 0 { return (.expected(expected, on: payday(s, month: month)), total) }
+    if received.minor >= expected.minor { return (.landed(received), total) }
+    let settled = today > payday(s, month: month).adding(days: paydayWindow) || today.yearMonth > month
+    return settled ? (.short(received: received, expected: expected), received) : (.partly(received: received, expected: expected), total)
+  }
+
+  static func incomeLine(_ state: PlanSnapshot.IncomeState, counted: Money, planned: Int64) -> MoneyPhrase {
+    let plannedParts: [MoneyPhrase.Part] = [.text(" · planned "), .amount(.aed(planned), .compact)]
+    switch state {
+    case .unknown:
+      return MoneyPhrase([.text("No income set")] + plannedParts)
+    case .figure:
+      return MoneyPhrase([.text("Income "), .amount(counted, .compact)] + plannedParts)
+    case .expected(let e, let on):
+      return MoneyPhrase([.text("Expected "), .amount(e, .compact), .text(" on \(on.dayMonth)")] + plannedParts)
+    case .landed(let r):
+      return MoneyPhrase([.text("Salary landed · "), .amount(r, .compact)] + plannedParts)
+    case .partly(let r, let e):
+      return MoneyPhrase([.amount(r, .compact), .text(" landed so far · "), .amount(e, .compact), .text(" expected")])
+    case .short(let r, let e):
+      return MoneyPhrase([.amount(r, .compact), .text(" landed · "), .amount(e, .compact), .text(" expected")])
+    }
   }
 
   static func outsidePlan(_ projects: [PlanProjectModel]) -> PlanSnapshot.OutsidePlan? {
@@ -196,7 +285,8 @@ public enum PlanEngine {
     now: LocalDateTime
   ) -> PlanRowModel {
     let paced = c.role == .everyday
-    let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
+    let verdict = Pace.verdict(
+      spent: spent, budget: budget, day: day, days: days, paced: paced, largest: largest(c.id, s, month: month))
     // Row figures hide as three dots (spec 03 §16.16).
     let ofBudget = budget <= 0 && spent > 0
       ? MoneyPhrase([.text("No budget · "), .amount(.aed(spent), hidden: 3), .text(" spent")])
@@ -215,7 +305,7 @@ public enum PlanEngine {
     case .bill:
       let bills = s.bills.filter { $0.categoryID == c.id && $0.state == .tracked && !$0.isIncome }
       let paidNames = bills.filter { $0.nextDue.yearMonth > month }.map { shortName($0.name) }
-      let late = bills.first { $0.nextDue < now.date && $0.nextDue.yearMonth == month }
+      let late = bills.first { $0.nextDue < now.date }
       let due = bills.first { $0.nextDue >= now.date && $0.nextDue.yearMonth == month }
       if let late {
         // "AXA · 3 days past usual · usually the 7th" (Paper Plan · October, Insurance).
@@ -260,8 +350,24 @@ public enum PlanEngine {
     return PlanRowModel(
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, trailing: trailing, detail: detail,
       progress: barProgress(spent: spent, budget: budget), verdict: verdict, paced: paced,
-      budget: .aed(budget), spent: .aed(spent)
+      budget: .aed(budget), spent: .aed(spent),
+      shortfall: c.role == .bill ? shortfall(c.id, s, month: month, today: now.date, budget: budget, spent: spent) : nil
     )
+  }
+
+  public static func dueRest(_ c: CategoryID, _ s: LedgerState, month: YearMonth, today: LocalDate) -> Int64 {
+    let due = s.bills.filter {
+      $0.categoryID == c && $0.state == .tracked && !$0.isIncome && $0.nextDue >= today && $0.nextDue.yearMonth == month
+    }
+    return Money.homeTotal(due.map(\.amount), rates: s.rates).minor
+  }
+
+  public static func shortfall(
+    _ c: CategoryID, _ s: LedgerState, month: YearMonth, today: LocalDate, budget: Int64, spent: Int64
+  ) -> MoneyPhrase? {
+    let short = dueRest(c, s, month: month, today: today).minus(max(0, budget.minus(spent))) / 100 * 100
+    guard short >= 100 else { return nil }
+    return MoneyPhrase([.text("About "), .amount(.aed(short), .compact, hidden: 3), .text(" short")])
   }
 
   static func barProgress(spent: Int64, budget: Int64) -> Permille {
@@ -513,7 +619,8 @@ public extension PlanEngine {
     let left = budget.minus(spent)
     let goal = s.goals.first { $0.categoryID == c.id }
     let paced = c.role == .everyday && goal == nil
-    let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced)
+    let biggest = largest(c.id, s, month: month)
+    let verdict = Pace.verdict(spent: spent, budget: budget, day: day, days: days, paced: paced, largest: biggest)
 
     var word = verdict.label
     var fact: MoneyPhrase?
@@ -522,8 +629,10 @@ public extension PlanEngine {
     case .onTrack, .overPace:
       if paced, budget > 0 {
         // Projections are whole dirhams, rounded down (page 06): "on course for 1,992".
-        let projected = Pace.projected(spent, day: day, days: days) / 100 * 100
-        fact = MoneyPhrase([.text("on course for "), .amount(.aed(projected), .compact, hidden: 3)])
+        let projected = Pace.projected(spent, day: day, days: days, largest: biggest) / 100 * 100
+        if Pace.showsProjection(day: day) {
+          fact = MoneyPhrase([.text("on course for "), .amount(.aed(projected), .compact, hidden: 3)])
+        }
         let perDay = Pace.perDay(left: left, day: day, days: days) / 100 * 100
         if perDay > 0 {
           advice = MoneyPhrase([
@@ -604,6 +713,10 @@ public extension PlanEngine {
 
   /// The transactions that count in the category this month, each with its line's amount
   /// (the same set `LedgerState.spent(_:in:)` sums).
+  public static func largest(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> Int64 {
+    lines(c, s, month: month).map(\.minor).max().map { max(0, $0) } ?? 0
+  }
+
   static func lines(_ c: CategoryID, _ s: LedgerState, month: YearMonth) -> [(txn: Txn, minor: Int64)] {
     var out: [(txn: Txn, minor: Int64)] = []
     for t in s.txns where t.postedAt.date.yearMonth == month && Spending.includes(t, in: s) {

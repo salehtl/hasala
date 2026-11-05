@@ -726,9 +726,19 @@ public struct PlanState: Sendable, Hashable, Codable {
   /// Budgets keyed by "<category>@<yyyy-mm>" (03a §3.2 `budget_set`; carry-forward applied).
   public var budgets: [String: Money]
   public var incomeByMonth: [YearMonth: Money]
+  public var incomeExpectedByMonth: [YearMonth: Money]
+  public var incomeReceivedByMonth: [YearMonth: Money]
+  public var zeroSet: Set<String>
+  public var expiredMoves: [CategoryID: Money]
 
   public init(income: Money, payday: Int, startingSplit: [Int], budgets: [String: Money],
-              incomeByMonth: [YearMonth: Money] = [:]) {
+              incomeByMonth: [YearMonth: Money] = [:], incomeExpectedByMonth: [YearMonth: Money] = [:],
+              incomeReceivedByMonth: [YearMonth: Money] = [:], zeroSet: Set<String> = [],
+              expiredMoves: [CategoryID: Money] = [:]) {
+    self.zeroSet = zeroSet
+    self.expiredMoves = expiredMoves
+    self.incomeExpectedByMonth = incomeExpectedByMonth
+    self.incomeReceivedByMonth = incomeReceivedByMonth
     self.income = income
     self.payday = payday
     self.startingSplit = startingSplit
@@ -739,6 +749,16 @@ public struct PlanState: Sendable, Hashable, Codable {
   public static func key(_ category: CategoryID, _ month: YearMonth) -> String { "\(category)@\(month)" }
 
   public func income(in month: YearMonth) -> Money { incomeByMonth[month] ?? income }
+
+  public func expectedIncome(in month: YearMonth) -> Money { incomeExpectedByMonth[month] ?? income }
+
+  public func receivedIncome(in month: YearMonth) -> Money? { incomeReceivedByMonth[month] }
+
+  public func incomeKnown(in month: YearMonth) -> Bool {
+    expectedIncome(in: month).minor > 0 || (receivedIncome(in: month)?.minor ?? 0) != 0 || income(in: month).minor > 0
+  }
+
+  public func setToZero(_ category: CategoryID, _ month: YearMonth) -> Bool { zeroSet.contains(Self.key(category, month)) }
 
   public func budget(_ category: CategoryID, _ month: YearMonth) -> Money {
     budgets[Self.key(category, month)] ?? .aed(0)

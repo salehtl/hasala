@@ -160,3 +160,19 @@ struct PlanEngineOverflowTests {
     _ = PlanEngine.seed(income: .min, split: nil)
   }
 }
+
+@Suite("PlanEngine pace rule")
+struct PlanEnginePaceRuleTests {
+  @Test func noOverPaceBeforeDaySevenOrWithinTheMargin() {
+    let e = PlanEngineOverflowTests.engine(PlanState(), lines: [])
+    #expect(e.pace(budget: 2_200_00, spent: 215_40, phase: .current(day: 3, days: 31), kind: .everyday).verdict == .onTrack)
+    #expect(e.pace(budget: 3_100_00, spent: 1_040_00, phase: .current(day: 10, days: 31), kind: .everyday).verdict == .onTrack)
+    #expect(e.pace(budget: 3_100_00, spent: 1_100_00, phase: .current(day: 10, days: 31), kind: .everyday).verdict == .overPace)
+  }
+
+  @Test func oneBigPaymentIsProjectedFlat() {
+    let e = PlanEngineOverflowTests.engine(PlanState(), lines: [])
+    let p = e.pace(budget: 1_600_00, spent: 642_75, phase: .current(day: 10, days: 31), kind: .everyday, largest: 412_00)
+    #expect(p.verdict == .onTrack && p.projection == 412_00 + (642_75 - 412_00) * 31 / 10)
+  }
+}

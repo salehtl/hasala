@@ -78,7 +78,9 @@ public enum GlanceEngine {
     return plan.sections.filter { $0.bucket != .savings }.flatMap(\.rows).filter { $0.budget.minor > 0 }.map { row in
       let spent = Spending.spent(s, category: row.id, in: month)
       let left = row.budget.minor.minus(spent)
-      let verdict = Pace.verdict(spent: spent, budget: row.budget.minor, day: day, days: days, paced: row.paced)
+      let verdict = Pace.verdict(
+        spent: spent, budget: row.budget.minor, day: day, days: days, paced: row.paced,
+        largest: PlanEngine.largest(row.id, s, month: month))
       return CategoryWatchWidget(
         id: row.id, name: row.name, glyph: row.glyph, hue: row.hue, left: .aed(left),
         perDay: .aed(Pace.perDay(left: left, day: day, days: days) / 100 * 100), verdict: verdict,

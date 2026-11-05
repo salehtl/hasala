@@ -368,7 +368,16 @@ public struct PlanEngine: Sendable {
 
   public enum PaceKind: Sendable { case everyday, bills, saving }
 
-  public func pace(budget b: Int64, spent s: Int64, phase: Phase, kind: PaceKind) -> PaceFigures {
+  public static let paceMinDay = 7
+  public static let paceMarginPercent: Int128 = 105
+
+  public static func projected(spent s: Int64, largest: Int64, day d: Int, days dd: Int) -> Int64 {
+    guard d > 0, s > 0 else { return max(s, 0) }
+    let one = largest > 0 && Int128(largest) * 2 > Int128(s) ? largest : 0
+    return planAdd(one, Int64(clamping: Int128(s - one) * Int128(dd) / Int128(d)))
+  }
+
+  public func pace(budget b: Int64, spent s: Int64, phase: Phase, kind: PaceKind, largest: Int64 = 0) -> PaceFigures {
     var f = PaceFigures(verdict: .onTrack, budget: b, spent: s, left: planSub(b, s))
     switch kind {
     case .bills:
@@ -389,13 +398,14 @@ public struct PlanEngine: Sendable {
       case .future: f.verdict = .onTrack
       case .past: f.verdict = .underBudget
       case .current(let d, let dd):
-        f.verdict = Int128(s) * Int128(dd) > Int128(b) * Int128(d) ? .overPace : .onTrack
+        let p = Self.projected(spent: s, largest: largest, day: d, days: dd)
+        f.verdict = d >= Self.paceMinDay && Int128(p) * 100 > Int128(b) * Self.paceMarginPercent ? .overPace : .onTrack
       }
     }
     if case .current(let d, let dd) = phase {
       if b > 0 { f.usedPercent = Int64(clamping: Int128(max(s, 0)) * 100 / Int128(b)) }
       f.monthPercent = Int64(d * 100 / dd)
-      f.projection = s <= 0 ? 0 : Int64(clamping: Int128(s) * Int128(dd) / Int128(d))
+      f.projection = s <= 0 ? 0 : Self.projected(spent: s, largest: largest, day: d, days: dd)
       f.allowancePerDay = f.left > 0 ? f.left / Int64(dd - d + 1) : nil
       f.dailyBudget = b / Int64(dd)
       if f.verdict == .overPace, s > 0 {

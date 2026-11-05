@@ -35,7 +35,7 @@ struct PlanEngineParityTests {
     #expect(detail("groceries") == "812.40 of 2,200 · ● Over pace")
     #expect(detail("transport") == "214.50 of 900")
     #expect(detail("insurance") == "● AXA · 3 days past usual · usually the 7th")
-    #expect(detail("dining") == "642.75 of 1,600 · ● Over pace")
+    #expect(detail("dining") == "642.75 of 1,600")
     #expect(detail("travel") == "Nothing yet · 2,500 planned")
     #expect(detail("subscriptions") == "Netflix and Spotify paid · 77.99 of 350")
     #expect(detail("savings") == "3,000 of 3,000 · Standing order 2 Oct")
@@ -92,8 +92,8 @@ struct PlanDetailParityTests {
     // 642.75 of 1,600 is 145 of Paper's 362; the tick at day 10 of 31 is 116.
     #expect(d.progress == Permille(401))
     #expect(d.tick == Permille(320))
-    #expect(d.verdict == .overPace && d.verdictWord == "Over pace")
-    #expect(d.verdictFact?.rendered(hidden: false) == "on course for 1,992")
+    #expect(d.verdict == .onTrack && d.verdictWord == "On track")
+    #expect(d.verdictFact?.rendered(hidden: false) == "on course for 1,127")
     #expect(d.verdictFact?.rendered(hidden: true) == "on course for •••")
     #expect(d.advice?.rendered(hidden: false) == "Spend about AED 43 a day to finish on budget")
 
@@ -245,7 +245,7 @@ struct PlanWorstCaseTests {
     let plan = PlanEngine.snapshot(s, now: now)
     #expect(!plan.nothingPlanned)
     #expect(plan.planned == .aed(24_000_00))
-    #expect(plan.lastMonthBudgets["dining"] == .aed(1_600_00))
+    #expect(plan.lastMonthBudgets.isEmpty)
     let empty = PlanEngine.snapshot(MayaWorst.empty, now: now)
     #expect(empty.nothingPlanned)
     #expect(empty.lastMonthBudgets.isEmpty)

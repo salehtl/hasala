@@ -34,7 +34,7 @@ struct MoneyFormatTests {
     let p = MoneyPhrase([.text("AED "), .amount(.aed(827_28)), .text(" still to check")])
     #expect(p.rendered(hidden: false) == "AED 827.28 still to check")
     #expect(p.rendered(hidden: true) == "AED •••• still to check")
-    #expect(p.spoken(hidden: true) == "AED Amount hidden still to check")
+    #expect(p.spoken(hidden: true) == "Amount hidden still to check")
     let change = MoneyPhrase([.signedMoney(.aed(2_140_00), style: .rounded, hiddenGlyphs: 3), .text(" this month")])
     #expect(change.rendered(hidden: false) == "+2,140 this month")
     #expect(change.rendered(hidden: true) == "••• this month")
@@ -46,5 +46,27 @@ struct MoneyFormatTests {
     #expect(Permille.ratio(1, of: 0).value == 0)
     #expect(Permille.ratio(-5, of: 100).value == 0)
     #expect(Permille.ratio(9_040_80, of: 12_350_00).value == 732)
+  }
+}
+
+@Suite("Spoken money")
+struct SpokenMoneyTests {
+  @Test func dirhamsAndFils() {
+    #expect(MoneyFormat.spoken(.aed(64_50)) == "64 dirhams 50 fils")
+    #expect(MoneyFormat.spoken(.aed(25_000_00), style: .compact) == "25,000 dirhams")
+    #expect(MoneyFormat.spoken(.aed(1_01)) == "1 dirham 1 fil")
+    #expect(MoneyFormat.spoken(.aed(-4_210_50), sign: .signed) == "minus 4,210 dirhams 50 fils")
+    #expect(MoneyFormat.spoken(.aed(337_49), style: .rounded, approx: true) == "about 337 dirhams")
+  }
+
+  @Test func anotherCurrencyKeepsItsCode() {
+    #expect(MoneyFormat.spoken(Money(minor: 64_50, currency: "USD")) == "USD 64.50")
+  }
+
+  @Test func aPhraseDropsTheCurrencyWordBeforeAnAmount() {
+    let p = MoneyPhrase([.text("Not sorted: AED "), .amount(.aed(827_28), hidden: 3)])
+    #expect(p.spoken(hidden: false) == "Not sorted: 827 dirhams 28 fils")
+    #expect(p.spoken(hidden: true) == "Not sorted: Amount hidden")
+    #expect(p.rendered(hidden: true) == "Not sorted: AED •••")
   }
 }

@@ -33,15 +33,30 @@ public struct MoneyPhrase: Sendable, Hashable, Codable, ExpressibleByStringLiter
     }.joined()
   }
 
-  /// What VoiceOver reads: the shown words, with "Amount hidden" for each hidden figure.
   public func spoken(hidden: Bool) -> String {
-    parts.map { part in
+    var out: [String] = []
+    for (i, part) in parts.enumerated() {
       switch part {
-      case .text(let s): return s
-      case .money, .signedMoney:
-        return hidden ? "Amount hidden" : MoneyPhrase([part]).rendered(hidden: false)
+      case .text(let s):
+        guard i + 1 < parts.count else { out.append(s); continue }
+        switch parts[i + 1] {
+        case .money(let m, _, _), .signedMoney(let m, _, _):
+          let unit = m.currency + " "
+          if s.hasSuffix("+") || s.hasSuffix("\u{2212}") || s.hasSuffix("-") {
+            out.append(s)
+          } else {
+            out.append(s.hasSuffix(unit) ? String(s.dropLast(unit.count)) : s)
+          }
+        case .text:
+          out.append(s)
+        }
+      case .money(let m, let style, _):
+        out.append(hidden ? MoneyFormat.hiddenSpoken : MoneyFormat.spoken(m, style: style))
+      case .signedMoney(let m, let style, _):
+        out.append(hidden ? MoneyFormat.hiddenSpoken : MoneyFormat.spoken(m, style: style, sign: .signed))
       }
-    }.joined()
+    }
+    return out.joined()
   }
 }
 

@@ -56,6 +56,19 @@ struct MoneyForeignTests {
     #expect(ReviewEngine.tabRow(ReviewEngine.card(t, s), s).amount.rendered(hidden: false) == "JPY 1,500.00")
   }
 
+  @Test func moneyInOnTheReviewTabCarriesAPlus() throws {
+    let s = Scenario.maya.state
+    var t = try #require(s.txns.first { $0.needsReview && $0.amount.currency == Money.home })
+    t.direction = .in
+    t.amount = .aed(1_250_00)
+    let row = ReviewEngine.tabRow(ReviewEngine.card(t, s), s)
+    #expect(row.amount.rendered(hidden: false) == "+1,250.00")
+    #expect(row.spokenAmount.spoken(hidden: false) == "plus 1,250 dirhams")
+    t.amount = Money(minor: 6_00, currency: "USD")
+    t.homeMinor = nil
+    #expect(ReviewEngine.tabRow(ReviewEngine.card(t, s), s).amount.rendered(hidden: false) == "+USD 6.00")
+  }
+
   @Test func countsAreGrouped() {
     #expect(MoneyFormat.count(1_284) == "1,284")
     #expect(MoneyFormat.count(12_840) == "12,840")

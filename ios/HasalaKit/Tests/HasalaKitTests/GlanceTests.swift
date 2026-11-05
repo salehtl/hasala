@@ -60,11 +60,11 @@ struct GlanceEngineTests {
     #expect(w.project(p.id)?.id == p.id)
   }
 
-  @Test func diningIsWatchedOverPace() throws {
+  @Test func diningIsWatchedOnTrack() throws {
     let dining = try #require(snapshot().categories.first { $0.name == "Dining" })
     #expect(MoneyFormat.string(dining.left.minor, style: .rounded) == "957")
-    #expect(dining.verdict == .overPace)
-    #expect(dining.caption.rendered(hidden: false) == "Dining · 43 a day fits")
+    #expect(dining.verdict == .onTrack)
+    #expect(dining.caption.rendered(hidden: false) == "Dining · 43 a day")
     #expect(dining.tick == Permille(320))
     #expect(snapshot().category(nil)?.verdict != .onTrack)
   }

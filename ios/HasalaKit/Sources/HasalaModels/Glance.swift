@@ -56,7 +56,7 @@ public struct CategoryWatchWidget: Sendable, Hashable, Codable, Identifiable {
   public var caption: MoneyPhrase {
     if isOver { return MoneyPhrase(stringLiteral: "\(name) · over budget") }
     if perDay.minor <= 0 { return MoneyPhrase(stringLiteral: "\(name) · nothing left") }
-    return MoneyPhrase([.text("\(name) · "), .amount(perDay, .rounded, hidden: 3), .text(" a day fits")])
+    return MoneyPhrase([.text("\(name) · "), .amount(perDay, .rounded, hidden: 3), .text(" a day")])
   }
 }
 
