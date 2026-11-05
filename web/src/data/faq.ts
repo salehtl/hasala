@@ -8,7 +8,7 @@ import { FAQ, curly, type FaqItem } from './site';
 
 const OPEN_FIRST: Record<string, string> = {
   'bank-login':
-    "No. Hasala only reads the alerts your bank already sends you, by email or text. It can't move money, and it will never ask for your bank password or card number.",
+    "No. Hasala only reads the alerts your bank already sends you. It can't move money, and it will never ask for your bank password or card number.",
 };
 
 const MOBILE_Q: Record<string, string> = { email: 'What can Hasala read in my email?' };

@@ -43,7 +43,7 @@ Hasala is experimental and unfinished. During the beta:
 - each TestFlight build expires after a period set by Apple, and you'll need to install updates to keep using Hasala; and
 - we may change, pause or end the beta at any time. When we do, accounts and their data may be reset or deleted, for example before a change to how data is stored. Where we can, we'll tell you in the app or by email first, so that you can export your data.
 
-If you want a copy of your own, export your transactions from time to time, from Profile › Settings › Export transactions. The CSV file holds your transactions only, not your plan, rules or recurring items.
+If you want a copy of your own, export your transactions from time to time, as a CSV file, from Profile › Settings › Export transactions. Your plan, rules and recurring items aren't included.
 
 Hasala is English only. It runs on iPhone, and reads bank alerts from a Gmail account or a personal Microsoft Outlook account (such as outlook.com, hotmail.com or live.com). At the time of writing, it supports alerts from Dubai Islamic Bank (DIB), Emirates NBD and Abu Dhabi Islamic Bank (ADIB).
 

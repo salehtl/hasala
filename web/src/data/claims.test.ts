@@ -71,9 +71,9 @@ describe('the invite steps agree', () => {
   test('the FAQ has the three steps', () => {
     const steps = FAQ.find((f) => f.id === 'testflight')!.steps!;
     expect(steps).toHaveLength(3);
-    expect(steps[0]).toStartWith('Get TestFlight');
+    expect(steps[0]).toBe('Get TestFlight.');
     expect(steps[1]).toContain("Accept Apple's invitation and install Hasala");
-    expect(steps[2]).toContain('Open Hasala and paste or type your invite');
+    expect(steps[2]).toBe('Open Hasala and paste or type your invite.');
   });
 
   test('the invite page keeps Copy your invite first out of the numbered steps', async () => {
@@ -98,7 +98,7 @@ describe('the legal pages match the app', () => {
 
   test('the privacy policy describes removing a disconnected mailbox’s transactions', async () => {
     const s = await read('docs/legal/privacy.md');
-    expect(s).toContain('takes them out of your lists and totals');
+    expect(s).toContain('Removing takes them out of your lists and totals.');
     expect(s).not.toContain('Transactions it has already brought in stay in Hasala, archived or not, until you delete your account.\n\n### Stopping Gmail');
   });
 });

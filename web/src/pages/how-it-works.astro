@@ -10,35 +10,35 @@ import { MAIL_NOTE } from '../data/site';
 <Detail
   title="How it works"
   heading="How Hasala works"
-  lead="Hasala reads your bank’s alerts on your iPhone, by email or text, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
+  lead="Hasala reads your bank’s alerts, by email or text, on your iPhone, turns each one into a transaction and sorts most of them into categories. You confirm the rest."
   path="/how-it-works"
 >
   <DetailSection id="email" title="Connecting your email">
     <p>
-      You give Hasala read‑only access to the email account that gets your bank’s alerts. Your iPhone asks it only for messages from your bank’s alert
-      senders and reads them on the phone, so the rest of your inbox is never downloaded.
+      You sign in with Google or Microsoft and give Hasala read‑only access to your Gmail or personal Outlook. Your iPhone asks your mailbox only for
+      messages from your bank’s alert senders and reads them on the phone. The rest of your inbox is never downloaded.
     </p>
     <p>
-      Hasala can’t send, change or delete mail. Before it uses an email, your iPhone checks it, and one it can't be sure came from your bank waits for you to review.
+      Hasala can’t send, change or delete mail. Before it uses an email, your iPhone checks it, and one it can’t be sure came from your bank waits for you to review.
       No email is ever sent to an AI service.
     </p>
     <p>{MAIL_NOTE}</p>
     <AlertArt kind="mail" slot="art" />
   </DetailSection>
 
-  <DetailSection id="texts" title="Or use your bank texts" tint>
+  <DetailSection id="texts" title="Using bank texts instead" tint>
     <p>
-      Rather not connect your email? Hasala can read your bank’s text messages instead. You make one automation in Apple’s Shortcuts app, and it hands
-      each text you get to Hasala on your iPhone. Hasala keeps only payment texts and drops every other text at once, without storing it.
+      No mailbox needed. With one automation in Apple’s Shortcuts, your iPhone hands Hasala the texts it receives. It works from your next payment on,
+      with any bank. Older texts can be pasted in.
     </p>
     <p>
-      Hasala never sees your inbox, and no text leaves your iPhone. It reads payments from your next text on. Your account uses bank email or bank
-      texts, not both. The set‑up steps are on our <a href="/support#bank-texts">Support</a> page.
+      Hasala keeps only payment texts and drops the rest at once, without storing them. No text leaves your iPhone, and Hasala gets no mailbox access.
+      An account uses bank email or bank texts, not both.
     </p>
   </DetailSection>
 
   <DetailSection id="banks" title="Before you start">
-    <p>Turn on email or text alerts in your banking app. Hasala reads card and account alerts from these banks:</p>
+    <p>Turn on email or text alerts in your banking app. Hasala reads payment texts from any bank, and card and account alert emails from these banks:</p>
     <BankTiles detail />
     <p>Use a different bank? <a href="/#invite">Tell us which when you request an invite.</a> It helps us pick the next bank to add.</p>
   </DetailSection>
@@ -48,8 +48,7 @@ import { MAIL_NOTE } from '../data/site';
     <ol>
       <li>your own rules;</li>
       <li>a built‑in list of UAE merchants;</li>
-      <li>the category you last picked for that merchant;</li>
-      <li>if you turn on Cloud suggestions, which are off by default, a suggestion for the merchant’s name from Cloudflare’s AI service, or from Apple’s on‑device model when Cloudflare can’t help.</li>
+      <li>if you turn on Cloud suggestions, a suggestion for the merchant’s name from Cloudflare’s AI service, or from Apple’s on‑device model.</li>
     </ol>
     <p>You confirm the rest. Hasala remembers your pick for each merchant and suggests it next time.</p>
     <AlertArt kind="sorted" slot="art" />
