@@ -1,5 +1,6 @@
 import HasalaModels
 import SwiftUI
+import WidgetKit
 
 // The Home canvas widgets (Paper "Home · Default" 14O7-0, page 18 "Widgets & Lock Screen"): one
 // money fact each, r26, Small 175², Medium 362 wide. Widgets show whole dirhams ("AED 489",
@@ -104,11 +105,14 @@ public struct BudgetPaceWidgetView: View {
   let model: BudgetPaceWidget
   let hidden: Bool
   @Environment(\.widgetHost) private var host
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: BudgetPaceWidget, hidden: Bool) {
     self.model = model
     self.hidden = hidden
   }
+
+  nonisolated static let systemPadding = EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16)
 
   private var nothingPlanned: Bool { model.rows.allSatisfy { $0.budget.minor == 0 } }
 
@@ -118,25 +122,28 @@ public struct BudgetPaceWidgetView: View {
         empty
       } else if host == .system {
         ViewThatFits(in: .vertical) {
-          content(model.rows, spacing: 6, rowSpacing: 4)
-          content(model.rows.filter { $0.bucket != .savings }, spacing: 8, rowSpacing: 6)
+          content(model.rows, spacing: 4, rowSpacing: 4)
+          folded
         }
       } else {
         content(model.rows, spacing: 12, rowSpacing: 6)
       }
     }
     .widgetChrome(HColor.widgetSurface, padding: host == .system
-      ? EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+      ? Self.systemPadding
       : EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Budget pace, \(model.monthGone)")
   }
 
+  private var primary: Color { WidgetInk.primary(showsBackground) }
+  private var secondary: Color { WidgetInk.secondary(showsBackground) }
+
   private var empty: some View {
     VStack(alignment: .leading, spacing: 12) {
       header
       Text("Nothing planned yet. Set a budget in Plan to see your pace here.")
-        .hType(.subheadline).foregroundStyle(HColor.textSecondary)
+        .hType(.subheadline).foregroundStyle(secondary)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("budgetPace.empty")
     }
@@ -149,10 +156,27 @@ public struct BudgetPaceWidgetView: View {
         Circle().fill(HColor.actionAccentSubtle).frame(width: 28, height: 28)
           .overlay { HIconView(.tabPlan, size: 16, color: HColor.actionAccent) }
           .accessibilityHidden(true)
-        Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text("Budget pace").hType(.subheadline.weight(.semibold)).foregroundStyle(primary)
       }
     } trailing: {
-      Text(model.monthGone).hType(.footnote).foregroundStyle(HColor.textSecondary)
+      Text(model.monthGone).hType(.footnote).foregroundStyle(secondary)
+    }
+  }
+
+  private var folded: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      content(model.rows.filter { $0.bucket != .savings }, spacing: 6, rowSpacing: 4)
+      if let savings = model.rows.first(where: { $0.bucket == .savings }) {
+        HStack(spacing: 8) {
+          Circle().fill(savings.bucket.hue.dotGradient).frame(width: 10, height: 10)
+          Text(Self.savingsLine(savings, hidden: hidden)).privacySensitive()
+            .hType(.footnote.weight(.semibold)).foregroundStyle(primary).lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(savings.bucket.title)
+        .accessibilityValue(Self.rowSummary(savings, hidden: hidden))
+      }
     }
   }
 
@@ -164,53 +188,80 @@ public struct BudgetPaceWidgetView: View {
           ReflowingRow(spacing: 12) {
             HStack(spacing: 8) {
               Circle().fill(row.bucket.hue.dotGradient).frame(width: 10, height: 10)
-              Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
-              Text(spentOfPlan(row)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
-                .singleLineAtDefaultTextSize()
+              Text(row.bucket.title).hType(.subheadline.weight(.semibold)).foregroundStyle(primary)
+              if Self.paceWord(row.verdict) == nil {
+                Text(spentOfPlan(row)).privacySensitive().hType(.footnote).foregroundStyle(secondary)
+                  .singleLineAtDefaultTextSize()
+              }
             }
           } trailing: {
             trailing(row)
           }
-          SlimProgressBar(row.verdict == .done || row.verdict == .overBudget ? Permille(1000) : row.progress,
-                          fill: fill(row))
+          WidgetBar(barProgress(row)) {
+            SlimProgressBar(barProgress(row), fill: fill(row))
+          }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.bucket.title)
-        .accessibilityValue(rowSummary(row))
+        .accessibilityValue(Self.rowSummary(row, hidden: hidden))
       }
     }
+  }
+
+  private func barProgress(_ row: BucketPaceRow) -> Permille {
+    row.verdict == .done || row.verdict == .overBudget ? Permille(1000) : row.progress
   }
 
   @ViewBuilder private func trailing(_ row: BucketPaceRow) -> some View {
     switch row.verdict {
     case .done:
       HStack(spacing: 4) {
-        HIconView(.check, size: 14, color: HColor.statusSuccessForeground, strokeWidth: 3)
-        Text("Done").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.statusSuccessForeground)
+        HIconView(.check, size: 14, color: WidgetInk.primary(showsBackground, HColor.statusSuccessForeground),
+                  strokeWidth: 3)
+        Text("Done").hType(.subheadline.weight(.semibold))
+          .foregroundStyle(WidgetInk.primary(showsBackground, HColor.statusSuccessForeground))
+          .widgetAccentable()
       }
     case .overBudget:
-      Text(leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
-        .hFigure(.compact).foregroundStyle(HColor.paceOverBudget).singleLineAtDefaultTextSize()
+      Text(Self.leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
+        .hFigure(.compact).foregroundStyle(WidgetInk.primary(showsBackground, HColor.paceOverBudget))
+        .singleLineAtDefaultTextSize()
+        .widgetAccentable()
     case .onTrack, .overPace:
-      Text(leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
-        .hFigure(.compact).foregroundStyle(HColor.textPrimary).singleLineAtDefaultTextSize()
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        if let word = Self.paceWord(row.verdict) {
+          Text(word).hType(.footnote.weight(.semibold)).foregroundStyle(primary).singleLineAtDefaultTextSize()
+        }
+        Text(Self.leftPhrase(row).rendered(hidden: hidden)).privacySensitive()
+          .hFigure(.compact).foregroundStyle(primary).singleLineAtDefaultTextSize()
+          .widgetAccentable()
+      }
     }
+  }
+
+  nonisolated static func paceWord(_ verdict: Verdict) -> String? {
+    verdict == .overPace ? "over pace" : nil
   }
 
   /// "9,041 of 12,350"; hidden "•••• of •••".
   private func spentOfPlan(_ row: BucketPaceRow) -> String {
-    spentOfPlanPhrase(row).rendered(hidden: hidden)
+    Self.spentOfPlanPhrase(row).rendered(hidden: hidden)
   }
 
-  private func spentOfPlanPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
+  private nonisolated static func spentOfPlanPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
     MoneyPhrase([.amount(row.spent, .rounded), .text(" of "), .amount(row.budget, .rounded, hidden: 3)])
   }
 
   /// The right of a row that is not done: "770 over", "5,000 to save" or "3,309 left".
-  private func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
+  private nonisolated static func leftPhrase(_ row: BucketPaceRow) -> MoneyPhrase {
     if row.verdict == .overBudget { return wholeDirhams(Money(minor: row.left.minor.negated), "over") }
     if row.bucket == .savings { return wholeDirhams(row.left, "to save") }
     return wholeDirhams(row.left, "left")
+  }
+
+  nonisolated static func savingsLine(_ row: BucketPaceRow, hidden: Bool) -> String {
+    let rest = row.verdict == .done ? "Done" : leftPhrase(row).rendered(hidden: hidden)
+    return "\(row.bucket.title) · \(rest)"
   }
 
   private func fill(_ row: BucketPaceRow) -> Color {
@@ -222,11 +273,12 @@ public struct BudgetPaceWidgetView: View {
   }
 
   /// "Needs, 9,041 of 12,350, 3,309 left" (page 18 §15); hidden "Needs, amount hidden".
-  private func rowSummary(_ row: BucketPaceRow) -> String {
-    if hidden { return row.verdict == .done ? "Amount hidden, done" : "Amount hidden" }
+  nonisolated static func rowSummary(_ row: BucketPaceRow, hidden: Bool) -> String {
+    let pace = paceWord(row.verdict).map { ", \($0)" } ?? ""
+    if hidden { return row.verdict == .done ? "Amount hidden, done" : "Amount hidden\(pace)" }
     let spentOfPlan = spentOfPlanPhrase(row).spoken(hidden: false)
     return row.verdict == .done
-      ? "\(spentOfPlan), done" : "\(spentOfPlan), \(leftPhrase(row).spoken(hidden: false))"
+      ? "\(spentOfPlan), done" : "\(spentOfPlan), \(leftPhrase(row).spoken(hidden: false))\(pace)"
   }
 }
 
@@ -236,6 +288,7 @@ public struct BudgetPaceWidgetView: View {
 public struct NextBillWidgetView: View {
   let model: NextBillWidget
   let hidden: Bool
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: NextBillWidget, hidden: Bool) {
     self.model = model
@@ -252,9 +305,11 @@ public struct NextBillWidgetView: View {
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 2) {
         MoneyText(model.amount, figure: .widgetSmall, unit: .widgetUnit, style: .rounded, hidden: hidden,
-                  hiddenGlyphs: 3, hiddenDots: 24, color: HColor.textPrimary, unitGap: 4)
+                  hiddenGlyphs: 3, hiddenDots: 24, color: WidgetInk.primary(showsBackground), unitGap: 4)
+          .widgetAccentable()
         // Two lines: a 169 pt card (a 390 pt-wide phone) cannot always fit it in one.
-        Text(model.caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimitAtDefaultTextSize(2)
+        Text(model.caption).hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground))
+          .lineLimitAtDefaultTextSize(2)
       }
     }
     .smallWidget()
@@ -300,6 +355,7 @@ public struct NetWorthWidgetView: View {
         MoneyText(model.total, figure: .widgetNetWorth, unit: .widgetUnit, style: .rounded, hidden: hidden,
                   hiddenGlyphs: 6, hiddenDots: 22, color: HColor.widgetOnInverse, unitColor: HColor.widgetOnInverseSecondary, unitGap: 4,
                   sign: model.total.isNegative ? .debt : .none)
+          .widgetAccentable()
         HStack(spacing: 6) {
           Circle().fill(changeColor).frame(width: 7, height: 7)
           Text(model.change.rendered(hidden: hidden)).privacySensitive().hType(.footnote.weight(.semibold))
@@ -371,6 +427,7 @@ private extension Path {
 public struct ProjectWidgetView: View {
   let model: ProjectWidget
   let hidden: Bool
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: ProjectWidget, hidden: Bool) {
     self.model = model
@@ -381,7 +438,7 @@ public struct ProjectWidgetView: View {
     VStack(alignment: .leading) {
       HStack(spacing: 8) {
         HueDisc(hue: .peach, glyph: model.glyph, size: 34, iconSize: 18)
-        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(WidgetInk.primary(showsBackground))
           .singleLineAtDefaultTextSize()
       }
       .frame(minHeight: 34)
@@ -391,17 +448,20 @@ public struct ProjectWidgetView: View {
           HStack(alignment: .firstTextBaseline, spacing: 5) {
             MoneyText(model.left, figure: .widgetSmall, style: .rounded, hidden: hidden, hiddenGlyphs: 4,
                       hiddenDots: 24, color: figureColor)
+              .widgetAccentable()
             Text(model.unit.rawValue).hFigure(.widgetUnit).foregroundStyle(figureColor)
           }
           if !model.caption.parts.isEmpty {
             Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote)
-              .foregroundStyle(HColor.textSecondary)
+              .foregroundStyle(WidgetInk.secondary(showsBackground))
               .lineLimitAtDefaultTextSize(2)
               .accessibilityLabel(model.caption.spoken(hidden: hidden))
           }
         }
         if let progress = model.progress {
-          SlimProgressBar(progress, fill: model.unit == .over ? HColor.paceFillOverBudget : HColor.paceFill)
+          WidgetBar(progress) {
+            SlimProgressBar(progress, fill: model.unit == .over ? HColor.paceFillOverBudget : HColor.paceFill)
+          }
         }
       }
     }
@@ -410,7 +470,9 @@ public struct ProjectWidgetView: View {
     .accessibilityElement(children: .combine)
   }
 
-  private var figureColor: Color { model.unit == .over ? HColor.paceOverBudget : HColor.textPrimary }
+  private var figureColor: Color {
+    WidgetInk.primary(showsBackground, model.unit == .over ? HColor.paceOverBudget : HColor.textPrimary)
+  }
 }
 
 /// A savings goal (Small, the mint wash): the jar and its name, the percent funded, the
@@ -418,6 +480,7 @@ public struct ProjectWidgetView: View {
 public struct GoalWidgetView: View {
   let model: GoalWidget
   let hidden: Bool
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: GoalWidget, hidden: Bool) {
     self.model = model
@@ -427,26 +490,31 @@ public struct GoalWidgetView: View {
   public var body: some View {
     VStack(alignment: .leading) {
       HStack(spacing: 6) {
-        HIconView(model.glyph.icon, size: 18, color: Hue.mint.ink, strokeWidth: 2)
-        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(Hue.mint.ink)
+        HIconView(model.glyph.icon, size: 18, color: ink, strokeWidth: 2)
+        Text(model.name).hType(.footnote.weight(.semibold)).foregroundStyle(ink)
           .singleLineAtDefaultTextSize()
       }
       .frame(minHeight: 34)
       Spacer(minLength: 0)
       VStack(alignment: .leading, spacing: 8) {
         VStack(alignment: .leading, spacing: 0) {
-          Text(model.percentLabel).hFigure(.hero).foregroundStyle(Hue.mint.ink)
-          Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+          Text(model.percentLabel).hFigure(.hero).foregroundStyle(ink).widgetAccentable()
+          Text(model.caption.rendered(hidden: hidden)).privacySensitive().hType(.footnote)
+            .foregroundStyle(WidgetInk.secondary(showsBackground, HColor.textOnHueSecondary))
             .lineLimitAtDefaultTextSize(2)
             .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
-        SlimProgressBar(model.progress, fill: Hue.mint.ink, track: HColor.progressTrackOnHue)
+        WidgetBar(model.progress) {
+          SlimProgressBar(model.progress, fill: Hue.mint.ink, track: HColor.progressTrackOnHue)
+        }
       }
     }
     .smallWidget()
     .smallWidgetChrome(Hue.mint.perceptualGradient, trailing: 16)
     .accessibilityElement(children: .combine)
   }
+
+  private var ink: Color { WidgetInk.primary(showsBackground, Hue.mint.ink) }
 }
 
 // MARK: - Today (Medium)
@@ -457,6 +525,7 @@ public struct TodayWidgetView: View {
   let model: TodayWidget
   let hidden: Bool
   @Environment(\.widgetHost) private var host
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: TodayWidget, hidden: Bool) {
     self.model = model
@@ -466,10 +535,11 @@ public struct TodayWidgetView: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       ReflowingRow {
-        Text("Today").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text("Today").hType(.subheadline.weight(.semibold)).foregroundStyle(WidgetInk.primary(showsBackground))
           .accessibilityAddTraits(.isHeader)
       } trailing: {
-        Text(model.summary.rendered(hidden: hidden)).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary)
+        Text(model.summary.rendered(hidden: hidden)).privacySensitive().hType(.footnote)
+          .foregroundStyle(WidgetInk.secondary(showsBackground))
           .accessibilityLabel(model.summary.spoken(hidden: hidden))
       }
       .padding(.bottom, 4)
@@ -485,6 +555,7 @@ struct TodayRow: View {
   let row: MiniTxnRow
   let hidden: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   var body: some View {
     Group {
@@ -521,9 +592,10 @@ struct TodayRow: View {
 
   private var words: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Text(row.merchant).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      Text(row.merchant).privacySensitive().hType(.subheadline.weight(.semibold))
+        .foregroundStyle(WidgetInk.primary(showsBackground)).singleLineAtDefaultTextSize()
+      Text(row.detail).privacySensitive().hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground))
         .singleLineAtDefaultTextSize()
-      Text(row.detail).privacySensitive().hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
     }
   }
 
@@ -532,11 +604,13 @@ struct TodayRow: View {
   private var amount: some View {
     VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
       MoneyText(row.amount, figure: .compact, unit: foreign ? .compact : nil, style: foreign ? .exact : .rounded,
-                hidden: hidden, hiddenGlyphs: 3, color: row.isIncome ? HColor.moneyIn : HColor.moneyOut, unitGap: 4,
+                hidden: hidden, hiddenGlyphs: 3,
+                color: WidgetInk.primary(showsBackground, row.isIncome ? HColor.moneyIn : HColor.moneyOut), unitGap: 4,
                 sign: row.isIncome ? .income : .none, approx: row.estimate)
         .fixedSize()
+        .widgetAccentable()
       if row.notCounted {
-        Text("Not counted").hType(.footnote).foregroundStyle(HColor.textSecondary).fixedSize()
+        Text("Not counted").hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground)).fixedSize()
       }
     }
   }

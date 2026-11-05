@@ -1,6 +1,7 @@
 #if HASALA_MOCKS
   import HasalaMocks
   import HasalaModels
+  import HasalaWidgetData
   import SwiftUI
   import WidgetKit
 
@@ -71,9 +72,55 @@
     SampleGlance.filled
   }
 
-  #Preview("To review", as: .systemSmall) {
+  #Preview("To sort", as: .systemSmall) {
     ToReviewHomeWidget()
   } timeline: {
     SampleGlance.filled
+  }
+
+  #Preview("Gallery sample", as: .systemMedium) {
+    BudgetPaceHomeWidget()
+  } timeline: {
+    GlanceEntry(date: .now, snapshot: WidgetPreview.snapshot(asOf: WidgetClock.today()))
+  }
+
+  private struct Accented<Content: View>: View {
+    let width: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+      content()
+        .environment(\.widgetRenderingMode, .accented)
+        .frame(width: width, height: 158)
+        .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+  }
+
+  #Preview("Accented · Budget pace") {
+    Accented(width: 338) { BudgetPaceEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · Spent so far") {
+    Accented(width: 158) { SpentSoFarEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · Category watch") {
+    Accented(width: 158) { CategoryWatchEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · Project") {
+    Accented(width: 158) { ProjectEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · Goal") {
+    Accented(width: 158) { GoalEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · To sort") {
+    Accented(width: 158) { ToReviewEntryView(entry: SampleGlance.filled) }
+  }
+
+  #Preview("Accented · Coming up") {
+    Accented(width: 338) { ComingUpEntryView(entry: SampleGlance.filled) }
   }
 #endif

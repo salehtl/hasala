@@ -1,5 +1,6 @@
 import HasalaModels
 import SwiftUI
+import WidgetKit
 
 extension HFigure {
   static let widgetRowTotal = HFigure(size: 17, leading: 22, weight: .bold, textStyle: .body)
@@ -48,6 +49,7 @@ public struct SpentSoFarWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
           MoneyText(model.spent, figure: .widget, style: .rounded, hidden: hidden, hiddenGlyphs: 6, hiddenDots: 24,
                     color: HColor.widgetOnInverse, sign: model.spent.isNegative ? .debt : .none)
+            .widgetAccentable()
           HStack(spacing: 6) {
             Circle().fill(model.verdict.onInkColor).frame(width: 7, height: 7)
             Text(model.caption.rendered(hidden: hidden)).privacySensitive()
@@ -56,7 +58,9 @@ public struct SpentSoFarWidgetView: View {
               .accessibilityLabel(model.caption.spoken(hidden: hidden))
           }
         }
-        WidgetPaceBar(spent: model.progress, tick: model.tick, verdict: model.verdict ?? .onTrack, inverse: true)
+        WidgetBar(model.progress, tick: model.tick) {
+          WidgetPaceBar(spent: model.progress, tick: model.tick, verdict: model.verdict ?? .onTrack, inverse: true)
+        }
       }
     }
     .smallWidget()
@@ -68,13 +72,16 @@ public struct SpentSoFarWidgetView: View {
 public struct CategoryWatchWidgetView: View {
   let model: CategoryWatchWidget
   let hidden: Bool
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: CategoryWatchWidget, hidden: Bool) {
     self.model = model
     self.hidden = hidden
   }
 
-  private var figureColor: Color { model.isOver ? HColor.paceOverBudget : HColor.textPrimary }
+  private var figureColor: Color {
+    WidgetInk.primary(showsBackground, model.isOver ? HColor.paceOverBudget : HColor.textPrimary)
+  }
 
   public var body: some View {
     VStack(alignment: .leading) {
@@ -91,14 +98,17 @@ public struct CategoryWatchWidgetView: View {
             MoneyText(Money(minor: abs(model.left.minor), currency: model.left.currency),
                       figure: .widget, style: .rounded, hidden: hidden, hiddenGlyphs: 4, hiddenDots: 24,
                       color: figureColor)
+              .widgetAccentable()
             Text(model.isOver ? "over" : "left").hFigure(.widgetUnit).foregroundStyle(figureColor)
           }
           Text(model.caption.rendered(hidden: hidden)).privacySensitive()
-            .hType(.footnote).foregroundStyle(HColor.textSecondary)
+            .hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground))
             .lineLimitAtDefaultTextSize(2)
             .accessibilityLabel(model.caption.spoken(hidden: hidden))
         }
-        WidgetPaceBar(spent: model.progress, tick: model.tick, verdict: model.verdict)
+        WidgetBar(model.progress, tick: model.tick) {
+          WidgetPaceBar(spent: model.progress, tick: model.tick, verdict: model.verdict)
+        }
       }
     }
     .smallWidget()
@@ -111,6 +121,7 @@ public struct ComingUpWidgetView: View {
   let model: ComingUpWidget
   let hidden: Bool
   @Environment(\.widgetHost) private var host
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(_ model: ComingUpWidget, hidden: Bool) {
     self.model = model
@@ -139,17 +150,19 @@ public struct ComingUpWidgetView: View {
   private func content(_ rows: ArraySlice<ComingUpRow>, compact: Bool = false) -> some View {
     VStack(alignment: .leading, spacing: compact ? 4 : 2) {
       HStack(alignment: .firstTextBaseline) {
-        Text(model.title).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+        Text(model.title).hType(.subheadline.weight(.semibold)).foregroundStyle(WidgetInk.primary(showsBackground))
           .singleLineAtDefaultTextSize()
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 8)
         MoneyText(model.total, figure: .widgetRowTotal, unit: .widgetRowUnit, style: .rounded, hidden: hidden,
-                  hiddenGlyphs: 6, color: HColor.textPrimary, unitColor: HColor.textSecondary, unitGap: 4)
+                  hiddenGlyphs: 6, color: WidgetInk.primary(showsBackground),
+                  unitColor: WidgetInk.secondary(showsBackground), unitGap: 4)
           .fixedSize()
+          .widgetAccentable()
       }
       .padding(.bottom, model.mark?.caption == nil ? 6 : 0)
       if let caption = model.mark?.caption {
-        Text(caption).hType(.footnote).foregroundStyle(HColor.textSecondary).lineLimit(1)
+        Text(caption).hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground)).lineLimit(1)
           .frame(maxWidth: .infinity, alignment: .trailing)
           .padding(.bottom, 6)
       }
@@ -166,6 +179,7 @@ struct ComingUpRowView: View {
   let hidden: Bool
   var compact = false
   @Environment(\.dynamicTypeSize) private var typeSize
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   var body: some View {
     Group {
@@ -198,25 +212,29 @@ struct ComingUpRowView: View {
   }
 
   private var name: some View {
-    Text(row.name).privacySensitive().hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+    Text(row.name).privacySensitive().hType(.subheadline.weight(.semibold))
+      .foregroundStyle(WidgetInk.primary(showsBackground))
       .lineLimitAtDefaultTextSize(compact ? 1 : 2)
   }
 
   @ViewBuilder private var note: some View {
     if row.late {
       HStack(spacing: 5) {
-        Circle().fill(HColor.statusErrorForeground).frame(width: 6, height: 6)
-        Text(row.note).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.statusErrorForeground)
+        Circle().fill(WidgetInk.primary(showsBackground, HColor.statusErrorForeground)).frame(width: 6, height: 6)
+        Text(row.note).hType(.footnote.weight(.semibold))
+          .foregroundStyle(WidgetInk.primary(showsBackground, HColor.statusErrorForeground))
           .lineLimitAtDefaultTextSize(compact ? 1 : 2)
       }
     } else {
-      Text(row.note).hType(.footnote).foregroundStyle(HColor.textSecondary).singleLineAtDefaultTextSize()
+      Text(row.note).hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground))
+        .singleLineAtDefaultTextSize()
     }
   }
 
   private var amount: some View {
     MoneyText(row.amount, figure: .compact, style: .rounded, hidden: hidden, hiddenGlyphs: 3,
-              color: row.isIncome ? HColor.moneyIn : HColor.textPrimary, sign: row.isIncome ? .income : .none)
+              color: WidgetInk.primary(showsBackground, row.isIncome ? HColor.moneyIn : HColor.textPrimary),
+              sign: row.isIncome ? .income : .none)
       .fixedSize()
   }
 }
@@ -224,6 +242,10 @@ struct ComingUpRowView: View {
 public struct ToReviewWidgetView: View {
   let model: ToReviewWidget
   let hidden: Bool
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
+
+  nonisolated static let title = "To sort"
+  nonisolated static let action = "Start review"
 
   public init(_ model: ToReviewWidget, hidden: Bool) {
     self.model = model
@@ -236,7 +258,7 @@ public struct ToReviewWidgetView: View {
         Circle().fill(HColor.posterGlyph).frame(width: 34, height: 34)
           .overlay { HIconView(.reviewSheet, size: 18, color: Hue.sky.ink, strokeWidth: 2) }
           .accessibilityHidden(true)
-        Text("To review").hType(.footnote.weight(.semibold)).foregroundStyle(Hue.sky.ink)
+        Text(Self.title).hType(.footnote.weight(.semibold)).foregroundStyle(ink)
           .singleLineAtDefaultTextSize()
       }
       .frame(minHeight: 34)
@@ -245,20 +267,21 @@ public struct ToReviewWidgetView: View {
         ViewThatFits(in: .horizontal) {
           VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-              Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink).lineLimit(1)
-              Text("to sort").hFigure(.widgetUnit).foregroundStyle(Hue.sky.ink).lineLimit(1)
+              Text("\(model.count)").hFigure(.hero).foregroundStyle(ink).lineLimit(1).widgetAccentable()
+              Text("to sort").hFigure(.widgetUnit).foregroundStyle(ink).lineLimit(1)
             }
             caption("")
               .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
           }
           VStack(alignment: .leading, spacing: 0) {
-            Text("\(model.count)").hFigure(.hero).foregroundStyle(Hue.sky.ink)
-              .lineLimit(1).minimumScaleFactor(0.6)
+            Text("\(model.count)").hFigure(.hero).foregroundStyle(ink)
+              .lineLimit(1).minimumScaleFactor(0.6).widgetAccentable()
             caption(model.count > 0 ? "to sort · " : "")
           }
         }
         if model.count > 0 {
-          Text("Start").hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textOnAccent)
+          Text(Self.action).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textOnAccent)
+            .lineLimit(1).minimumScaleFactor(0.8)
             .frame(maxWidth: .infinity, minHeight: 34)
             .background(HColor.actionAccent, in: Capsule())
             .accessibilityAddTraits(.isButton)
@@ -273,15 +296,18 @@ public struct ToReviewWidgetView: View {
 
   private func caption(_ lead: String) -> some View {
     Text(lead + model.caption.rendered(hidden: hidden)).privacySensitive()
-      .hType(.footnote).foregroundStyle(HColor.textOnHueSecondary)
+      .hType(.footnote).foregroundStyle(WidgetInk.secondary(showsBackground, HColor.textOnHueSecondary))
       .singleLineAtDefaultTextSize()
       .accessibilityLabel(lead + model.caption.spoken(hidden: hidden))
   }
+
+  private var ink: Color { WidgetInk.primary(showsBackground, Hue.sky.ink) }
 }
 
 public struct WaitingWidgetView: View {
   let title: String
   let sentence: String
+  @Environment(\.showsWidgetContainerBackground) private var showsBackground
 
   public init(title: String, sentence: String = "Your first bank alert will fill this in.") {
     self.title = title
@@ -294,12 +320,12 @@ public struct WaitingWidgetView: View {
         Circle().fill(HColor.white).frame(width: 34, height: 34)
           .overlay { HIconView(.envelope, size: 18, color: HColor.iconSecondary, strokeWidth: 2) }
           .accessibilityHidden(true)
-        Text(title).hType(.footnote.weight(.semibold)).foregroundStyle(HColor.textSecondary)
+        Text(title).hType(.footnote.weight(.semibold)).foregroundStyle(WidgetInk.secondary(showsBackground))
           .singleLineAtDefaultTextSize()
       }
       .frame(minHeight: 34)
       Spacer(minLength: 0)
-      Text(sentence).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)
+      Text(sentence).hType(.subheadline.weight(.semibold)).foregroundStyle(WidgetInk.primary(showsBackground))
         .fixedSize(horizontal: false, vertical: true)
     }
     .smallWidget()
