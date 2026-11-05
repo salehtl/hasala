@@ -12,6 +12,8 @@ import SwiftUI
 protocol BillsModel: AnyObject, Observable {
   var snapshot: BillsSnapshot { get }
   var hidden: Bool { get }
+  var next14Estimates: Int { get }
+  var incomeInNext14: Bool { get }
   func detail(_ bill: BillID) -> BillDetail?
   func setRange(_ range: BillsSnapshot.Range)
   func markPaid(_ bill: BillID)
@@ -20,6 +22,7 @@ protocol BillsModel: AnyObject, Observable {
   func stopTracking(_ bill: BillID)
   func track(_ candidate: String)
   func dismiss(_ candidate: String)
+  func openPayment(_ txn: TxnID)
   @discardableResult func perform(_ edit: LedgerEdit) -> Bool
 }
 
@@ -38,6 +41,24 @@ final class BillsViewModel: BillsModel {
     }
   }
   var hidden: Bool { app.amountsHidden }
+  var next14Estimates: Int { Self.estimatesDue(app.store.state, now: app.store.now) }
+  var incomeInNext14: Bool { Self.incomeDue(app.store.state, now: app.store.now) }
+
+  static func estimatesDue(_ s: LedgerState, now: LocalDateTime) -> Int {
+    let in14 = now.date.adding(days: 14)
+    return s.bills.filter { $0.state == .tracked && !$0.isIncome && $0.approximate && $0.nextDue <= in14 }.count
+  }
+
+  static func incomeDue(_ s: LedgerState, now: LocalDateTime) -> Bool {
+    let today = now.date
+    let next = s.bills.filter { $0.state == .tracked && $0.isIncome && $0.nextDue >= today }
+      .min { $0.nextDue < $1.nextDue }
+    return next.map { $0.nextDue <= today.adding(days: 14) } ?? false
+  }
+
+  static func estimatesCaption(_ n: Int) -> String? {
+    n <= 0 ? nil : n == 1 ? "Includes 1 estimate" : "Includes \(n) estimates"
+  }
 
   func detail(_ bill: BillID) -> BillDetail? {
     BillsEngine.detail(app.store.state, now: app.store.now, bill: bill)
@@ -58,6 +79,7 @@ final class BillsViewModel: BillsModel {
   func stopTracking(_ bill: BillID) { app.perform(.stopTrackingBill(bill)) }
   func track(_ candidate: String) { app.perform(.trackCandidate(candidate)) }
   func dismiss(_ candidate: String) { app.perform(.dismissCandidate(candidate)) }
+  func openPayment(_ txn: TxnID) { app.open(txn) }
   @discardableResult func perform(_ edit: LedgerEdit) -> Bool { app.perform(edit) }
 }
 
@@ -90,15 +112,6 @@ struct BillsView: View {
       if !snap.paused.isEmpty { paused.padding(.horizontal, HSpacing.insetPage) }
       if !snap.recentlyPaid.isEmpty { recentlyPaid.padding(.horizontal, HSpacing.insetPage) }
       if !snap.ended.isEmpty { ended.padding(.horizontal, HSpacing.insetPage) }
-    }
-    .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button { sheet = .add } label: {
-          HIconView(.add, size: HSpacing.iconGlass, color: HColor.iconGlass, strokeWidth: 2.3)
-        }
-        .accessibilityLabel("Add recurring")
-        .accessibilityIdentifier("bills.add")
-      }
     }
     .sheet(item: $sheet) { RecurringSheetHost(app: app, sheet: $0) }
   }
@@ -174,7 +187,7 @@ struct BillsView: View {
       } else {
         HStack(alignment: .firstTextBaseline, spacing: 8) { figure; toPay }
       }
-      if let income = snap.income {
+      if let income = snap.income, model.incomeInNext14 {
         let label = Text(income.label).hType(.subheadline.weight(.semibold))
         let amount = MoneyText(income.amount, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3,
                                color: HColor.moneyIn, sign: .income)
@@ -195,6 +208,11 @@ struct BillsView: View {
         .foregroundStyle(HColor.moneyIn)
         .padding(.top, 2)
         .accessibilityElement(children: .combine)
+      }
+      if let caption = BillsViewModel.estimatesCaption(model.next14Estimates) {
+        Text(caption).hType(.footnote).foregroundStyle(HColor.textOnWashSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("bills.next14.estimates")
       }
       if let mark = snap.next14Mark, let line = mark.line {
         NotCountedLine(mark, line: line, id: "bills.next14.notCounted", inProfileSheet: inProfileSheet, app: app)
@@ -227,22 +245,12 @@ struct BillsView: View {
       secondary: secondary, id: "bills.attention.\(item.id)")
   }
 
-  /// On a poster, insurance draws the plain shield (Paper's AXA card) and a phone or internet
-  /// bill the wifi arcs (du's card, spec 13 B1); rows and the bill's own hero keep the
-  /// category's glyph (the shield with its tick, du's bolt). Live bills are named by their
-  /// category ("Utilities"), so there du keeps the bolt.
-  static func posterGlyph(_ item: BillAttention) -> PosterGlyph {
-    if item.glyph == .insurance { return .icon(.shield) }
-    if item.glyph == .utilities, isConnectivity(item.billKind) { return .wifi }
-    return .icon(item.glyph.icon)
-  }
-
-  private static func isConnectivity(_ kind: String) -> Bool {
-    let words = kind.lowercased()
-    return ["internet", "mobile", "phone", "telecom", "broadband"].contains { words.contains($0) }
-  }
+  static func posterGlyph(_ item: BillAttention) -> PosterGlyph { .icon(item.glyph.icon) }
 
   // MARK: Found in your history
+
+  static let foundPill = "Looks recurring"
+  static let trackTitle = "Track it"
 
   private var found: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -250,9 +258,9 @@ struct BillsView: View {
       ForEach(snap.found) { candidate in
         BillCard(
           hue: .sky, glyph: .icon(.subscriptions), name: candidate.name,
-          pill: StatusPill("New bill found", tone: .accent),
+          pill: StatusPill(Self.foundPill, tone: .accent),
           amount: candidate.amount, caption: "every month", message: nil, hidden: model.hidden,
-          primary: .init(title: "Track this bill", id: "bills.track.\(candidate.id)") { model.track(candidate.id) },
+          primary: .init(title: Self.trackTitle, id: "bills.track.\(candidate.id)") { model.track(candidate.id) },
           secondary: .init(title: "Dismiss", id: "bills.dismiss.\(candidate.id)") { model.dismiss(candidate.id) },
           id: "bills.found.\(candidate.id)"
         ) {
@@ -305,10 +313,37 @@ struct BillsView: View {
       }
       if snap.upcoming.isEmpty {
         EmptyNote(systemImage: "calendar", message: "Nothing due in the next \(snap.range.rawValue) days.")
-      } else {
-        rows(snap.upcoming)
+      }
+      HListCard {
+        ForEach(Array(snap.upcoming.enumerated()), id: \.element.id) { index, row in
+          if index > 0 { HDivider(inset: .disc68) }
+          Button { open(row) } label: { BillsListRow(row: row, hidden: model.hidden) }
+            .buttonStyle(HRowPressStyle())
+            .accessibilityIdentifier("bill.\(row.id)")
+        }
+        if !snap.upcoming.isEmpty { HDivider(inset: .disc68) }
+        addRow
       }
     }
+  }
+
+  private var addRow: some View {
+    Button { sheet = .add } label: {
+      HStack(spacing: HSpacing.listRowGap) {
+        Circle().fill(HColor.actionAccentSubtle).frame(width: 40, height: 40)
+          .overlay { HIconView(.add, size: 20, color: HColor.textLink, strokeWidth: 1.9) }
+          .accessibilityHidden(true)
+        Text("Add recurring").hType(.rowTitle).foregroundStyle(HColor.textLink)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.horizontal, HSpacing.listRowInsetInline)
+      .padding(.vertical, HSpacing.listRowInsetBlock)
+      .frame(minHeight: HSpacing.listRowMinHeightTwoLine)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(HRowPressStyle())
+    .accessibilityLabel("Add recurring")
+    .accessibilityIdentifier("bills.add")
   }
 
   /// Paper 7U6-0 "Link · All schedules": 17/24 500 in the link colour, then the 16 chevron,
@@ -343,7 +378,11 @@ struct BillsView: View {
       HListCard {
         ForEach(Array(snap.recentlyPaid.enumerated()), id: \.element.id) { index, row in
           if index > 0 { HDivider(inset: .disc68) }
-          BillsListRow(row: row, tag: snap.tags[row.id], hidden: model.hidden)
+          Button { model.openPayment(row.id) } label: {
+            BillsListRow(row: row, tag: snap.tags[row.id], hidden: model.hidden)
+          }
+          .buttonStyle(HRowPressStyle())
+          .accessibilityIdentifier("bills.recentlyPaid.\(row.id)")
         }
       }
     }

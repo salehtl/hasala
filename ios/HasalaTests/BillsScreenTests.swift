@@ -1,0 +1,83 @@
+import Foundation
+import HasalaMocks
+import HasalaModels
+import Testing
+
+@testable import Hasala
+
+@MainActor
+@Suite("Recurring screens")
+struct BillsScreenTests {
+  @Test func theFourteenDayFigureSaysHowManyEstimatesItHolds() {
+    let state = MayaLedger.state
+    #expect(BillsViewModel.estimatesDue(state, now: MayaLedger.now) == 1)
+    #expect(BillsViewModel.estimatesCaption(1) == "Includes 1 estimate")
+    #expect(BillsViewModel.estimatesCaption(2) == "Includes 2 estimates")
+    #expect(BillsViewModel.estimatesCaption(0) == nil)
+  }
+
+  @Test func salaryShowsUnderTheHeadOnlyInsideFourteenDays() {
+    let state = MayaLedger.state
+    #expect(!BillsViewModel.incomeDue(state, now: MayaLedger.now))
+    #expect(BillsViewModel.incomeDue(state, now: LocalDateTime(2026, 10, 20, 9, 0)))
+  }
+
+  @Test func foundItemsUseTheRecurringWords() {
+    #expect(BillsView.foundPill == "Looks recurring")
+    #expect(BillsView.trackTitle == "Track it")
+  }
+
+  @Test func anEstimateIsSpokenAsAbout() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let dewa = try #require(BillsViewModel(app: app).detail("dewa"))
+    #expect(dewa.approximate)
+    #expect(BillDetailView.heroSpoken(dewa, hidden: false).contains("about AED 489.15"))
+    #expect(!BillDetailView.heroSpoken(dewa, hidden: false).contains("~"))
+    #expect(BillDetailView.heroSpoken(dewa, hidden: true).contains("Amount hidden"))
+    let expected = try #require(dewa.history.first { if case .expected = $0.kind { true } else { false } })
+    #expect(TimelineStep.isEstimate(expected, approximate: true))
+    #expect(TimelineStep.spoken(expected, approximate: true, hidden: false).contains("about AED"))
+    #expect(!TimelineStep.isEstimate(expected, approximate: false))
+  }
+
+  @Test func aNewPriceIsOneSentence() {
+    let line = BillDetailView.priceSentence(charged: .aed(427_90), usual: .aed(389_00), from: LocalDate(2026, 10, 5))
+    #expect(line.rendered(hidden: false) == "Charged 38.90 more than usual on Mon 5 Oct.")
+  }
+
+  @Test func recurringAmountsFollowTheKeypadRules() {
+    #expect(RecurringTextField.filtered("12.345", after: "12.34", decimalSeparator: ".") == "12.34")
+    #expect(RecurringTextField.filtered("1234567890", after: "123456789", decimalSeparator: ".") == "123,456,789")
+    #expect(RecurringTextField.filtered("", after: "1", decimalSeparator: ".") == "")
+  }
+
+  @Test func addRecurringIsDirtyOnlyOnceSomethingIsTyped() {
+    let model = AddRecurringModel(app: AppModel(store: InMemoryLedger()))
+    #expect(!model.isDirty)
+    model.name = "Gym"
+    #expect(model.isDirty)
+  }
+
+  @Test func editFormsCompareWithWhatTheyOpenedWith() throws {
+    let state = MayaLedger.state
+    let dewa = try #require(state.bill("dewa"))
+    let opened = EditAmountSheet.Fields.opened(dewa, today: MayaLedger.now.date)
+    var edited = opened
+    #expect(edited == opened)
+    edited.varies.toggle()
+    #expect(edited != opened)
+    let pause = PauseBillSheet.Fields.opened(today: MayaLedger.now.date)
+    var until = pause
+    until.untilDate = true
+    #expect(until != pause)
+    let salary = SalaryEditSheet.Fields.opened(BillsEngine.salary(state, bill: "salary"))
+    var later = salary
+    later.payday = salary.payday == 1 ? 2 : 1
+    #expect(later != salary)
+  }
+
+  @Test func pauseAndEndAreFittedSheets() {
+    #expect(RecurringSheet.pause("netflix").fitted && RecurringSheet.end("netflix").fitted)
+    #expect(!RecurringSheet.add.fitted && !RecurringSheet.salary("salary").fitted)
+  }
+}

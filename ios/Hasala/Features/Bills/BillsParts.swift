@@ -52,11 +52,7 @@ extension AppRouter {
 /// what else the card shows, and one or two 44 buttons. At the accessibility sizes the buttons
 /// stack, primary on top. VoiceOver reads the card as one sentence, then the buttons.
 struct BillCard<Extra: View>: View {
-  struct Action {
-    let title: String
-    let id: String
-    let run: () -> Void
-  }
+  typealias Action = BillCardAction
 
   let hue: Hue
   let glyph: PosterGlyph
@@ -71,7 +67,6 @@ struct BillCard<Extra: View>: View {
   var secondary: Action?
   let id: String
   @ViewBuilder var extra: Extra
-  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -147,7 +142,31 @@ struct BillCard<Extra: View>: View {
     }
   }
 
-  @ViewBuilder private var buttons: some View {
+  private var buttons: some View {
+    BillCardButtons(primary: primary, secondary: secondary)
+  }
+
+  /// "AXA Insurance, AED 550.00, 3 days past usual. Car insurance usually arrives on the 7th."
+  private var spoken: String {
+    let figure = hidden ? "Amount hidden" : "\(amount.currency) \(MoneyFormat.string(amount.minor))"
+    let head = [name, figure + (caption.map { " \($0)" } ?? ""), pill.text].joined(separator: ", ")
+    return message.map { "\(head). \($0.spoken(hidden: hidden))" } ?? head
+  }
+}
+
+struct BillCardAction {
+  let title: String
+  let id: String
+  let run: () -> Void
+}
+
+struct BillCardButtons: View {
+  typealias Action = BillCardAction
+  let primary: Action
+  var secondary: Action?
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  var body: some View {
     if let secondary, !typeSize.isAccessibilitySize {
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 8) {
@@ -182,13 +201,6 @@ struct BillCard<Extra: View>: View {
       .pillHeight()
       .accessibilityIdentifier(secondary.id)
   }
-
-  /// "AXA Insurance, AED 550.00, 3 days past usual. Car insurance usually arrives on the 7th."
-  private var spoken: String {
-    let figure = hidden ? "Amount hidden" : "\(amount.currency) \(MoneyFormat.string(amount.minor))"
-    let head = [name, figure + (caption.map { " \($0)" } ?? ""), pill.text].joined(separator: ", ")
-    return message.map { "\(head). \($0.spoken(hidden: hidden))" } ?? head
-  }
 }
 
 extension BillCard where Extra == EmptyView {
@@ -201,16 +213,11 @@ extension BillCard where Extra == EmptyView {
 }
 
 /// What a bill card's poster plate draws: one of the kit's icons, or a Paper path the kit
-/// doesn't carry (du's wifi).
+/// doesn't carry.
 enum PosterGlyph: Equatable {
   case icon(HIcon)
   /// Stroked path data on the 24 grid, and an optional part that is filled.
   case path(stroke: String, fill: String?)
-
-  /// Paper 1K9-0 · BillCard · Price change (du): three arcs and a dot at (12, 19.4), r 1.3.
-  static let wifi = PosterGlyph.path(
-    stroke: "M2.8 9.2a13.5 13.5 0 0 1 18.4 0M5.9 12.6a9 9 0 0 1 12.2 0M9 16a4.6 4.6 0 0 1 6 0",
-    fill: "M13.3 19.4a1.3 1.3 0 1 1-2.6 0a1.3 1.3 0 1 1 2.6 0Z")
 }
 
 /// A bill or income line (page 16 §12 BillRow): the 40 disc, the name with an optional tag

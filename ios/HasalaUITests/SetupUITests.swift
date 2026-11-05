@@ -49,7 +49,7 @@ final class SetupUITests: XCTestCase {
     let app = launch(scenario: nil, screen: "home.finishSetup")
     XCTAssertTrue(el(app, "home.finish").waitForExistence(timeout: 30))
     XCTAssertTrue(app.staticTexts["Finish setting up"].exists)
-    XCTAssertTrue(app.staticTexts["0 of 2"].exists)
+    XCTAssertTrue(app.staticTexts["0 of 1"].exists, "the waiting notifications row was counted")
     let note = el(app, "home.finish.notifications")
     XCTAssertFalse(note.isEnabled, "notifications were offered before the alerts were read")
     XCTAssertTrue(note.label.contains("Offered once your alerts are read."))
@@ -78,7 +78,7 @@ final class SetupUITests: XCTestCase {
     try audit(app, overSheet: true)
     tap(app, "plan.use")
     XCTAssertTrue(el(app, "home.finish.plan").waitForNonExistence(timeout: uiWait), "the plan item stayed")
-    XCTAssertTrue(app.staticTexts["1 of 2"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(app.staticTexts["1 of 1"].waitForExistence(timeout: uiWait))
   }
 
   @MainActor
