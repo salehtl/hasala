@@ -70,7 +70,7 @@ public enum HomeEngine {
       return SpendHero(
         state: .noPlan, overline: overline, spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
         word: "No plan yet", fact: nil, caption: "spent so far", tiles: tiles, wash: .sky,
-        notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month)))
+        notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month)), heldOut: heldOut(s, in: .month(month)))
     }
 
     let tick = Self.tick(s, month: month, plan: budget, day: day, days: days)
@@ -96,7 +96,7 @@ public enum HomeEngine {
       caption: planned(budget),
       tiles: tiles,
       wash: verdict == .overBudget ? .rose : (verdict == .overPace ? .sand : .sky),
-      notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month))
+      notCounted: notCounted(s, in: .month(month)), unsorted: unsorted(s, in: .month(month)), heldOut: heldOut(s, in: .month(month))
     )
   }
 
@@ -116,6 +116,11 @@ public enum HomeEngine {
         .text("Not counted: AED "), .amount(.aed(total), hidden: 3),
         .text(" on \(one?.name ?? "\(spend.count) projects")"),
       ]))
+  }
+
+  public static func heldOut(_ s: LedgerState, in period: Period) -> Money? {
+    let total = Spending.heldOut(s, in: period)
+    return total > 0 ? .aed(total) : nil
   }
 
   public static func unsorted(_ s: LedgerState, in period: Period) -> Money? {
@@ -146,7 +151,7 @@ public enum HomeEngine {
         state: .ended, overline: "Month ended", spent: .aed(total), plan: .aed(0), tick: nil, verdict: nil,
         word: MoneyPhrase([.text("No plan for \(month.name)")]), fact: nil,
         caption: MoneyPhrase([.text("spent in \(month.name)")]), tiles: tiles, wash: .sky,
-        note: note, notCounted: notCounted, unsorted: unsorted)
+        note: note, notCounted: notCounted, unsorted: unsorted, heldOut: heldOut(s, in: .month(month)))
     }
     let over = total > budget
     return SpendHero(
@@ -154,7 +159,7 @@ public enum HomeEngine {
       verdict: over ? .overBudget : .onTrack,
       word: MoneyPhrase([.text("Ended "), .amount(.aed(Int64(clamping: budget.minus(total).magnitude)), hidden: 3), .text(over ? " over" : " under")]),
       fact: nil, caption: planned(budget), tiles: tiles, wash: over ? .rose : .sky, note: note,
-      notCounted: notCounted, unsorted: unsorted)
+      notCounted: notCounted, unsorted: unsorted, heldOut: heldOut(s, in: .month(month)))
   }
 
   public static func rangeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
@@ -185,7 +190,7 @@ public enum HomeEngine {
       fact: n > 0 ? "full months only" : nil,
       caption: budget > 0 ? planned(budget) : "spent",
       tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
-      wash: .sky, bars: bars, notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period))
+      wash: .sky, bars: bars, notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period), heldOut: heldOut(s, in: period))
   }
 
   public static func allTimeHero(_ s: LedgerState, period: Period, now: LocalDateTime) -> SpendHero {
@@ -195,7 +200,7 @@ public enum HomeEngine {
     for t in s.txns where period.contains(t.postedAt.date) {
       byMonth[t.postedAt.date.yearMonth, default: 0].add(Spending.spent(t, in: s))
       guard Spending.includes(t, in: s) else { continue }
-      for line in t.lines { byCategory[line.category, default: 0].add(line.minor) }
+      for line in Spending.lines(t, in: s) { byCategory[line.category, default: 0].add(line.minor) }
     }
     func bucket(_ b: Bucket) -> Int64 { Fils.sum(s.categories(in: b)) { byCategory[$0.id] ?? 0 } }
     let full = period.months.filter { $0 > period.first && $0 < today }.map { byMonth[$0] ?? 0 }
@@ -211,7 +216,7 @@ public enum HomeEngine {
       fact: full.isEmpty ? nil : "full months only",
       caption: "spent, all time",
       tiles: heroTiles(needs: needs, wants: wants, saved: saved, style: .rounded),
-      wash: .sky, bars: [], notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period))
+      wash: .sky, bars: [], notCounted: notCounted(s, in: period), unsorted: unsorted(s, in: period), heldOut: heldOut(s, in: period))
   }
 
   static func bucketSpent(_ s: LedgerState, _ b: Bucket, _ m: YearMonth) -> Int64 {
@@ -275,7 +280,7 @@ public enum HomeEngine {
     }
     var paid: Int64 = 0
     for t in s.txns where t.billID != nil && Spending.includes(t, in: s) && t.postedAt.date.yearMonth == month {
-      for line in t.lines where onTheBar(line.category) { paid.add(line.minor) }
+      for line in Spending.lines(t, in: s) where onTheBar(line.category) { paid.add(line.minor) }
     }
     let toCome = s.homeTotal(s.bills.filter {
       $0.state == .tracked && !$0.isIncome && $0.nextDue.yearMonth <= month && onTheBar($0.categoryID)

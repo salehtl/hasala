@@ -52,11 +52,22 @@ struct SyncHaltTests {
       #expect(reason.contains("stopped"), "\(halt)")
       #expect(!reason.localizedCaseInsensitiveContains("erase") && !reason.localizedCaseInsensitiveContains("reset"))
       let next = SyncHaltWall.next(halt)
-      #expect(next.contains("support@hasala.app") && next.contains(SyncHaltWall.code(halt)), "\(halt)")
+      #expect(next.contains("support@hasala.app"), "\(halt)")
+      #expect(!next.contains(SyncHaltWall.code(halt)), "\(halt)")
       codes.insert(SyncHaltWall.code(halt))
     }
     #expect(codes.count == Self.shown.count)
     #expect(SyncHaltWall.reason(.serverRestored) != SyncHaltWall.reason(.tampered(.chainBreak)))
+  }
+
+  @Test func theCodeStandsOnItsOwnLine() {
+    #expect(SyncHaltWall.codeLead == "If you email us, mention:")
+    #expect(!SyncHaltWall.next(.updateRequired).contains("in a while"))
+    #expect(SyncHaltWall.next(.updateRequired).contains("TestFlight"))
+  }
+
+  @Test func theReassuranceLeadsTheWall() {
+    #expect(SyncHaltWall.subtitle == SyncHaltWall.kept)
   }
 
   @Test func theDebugLaunchNamesEveryHaltByItsCode() {

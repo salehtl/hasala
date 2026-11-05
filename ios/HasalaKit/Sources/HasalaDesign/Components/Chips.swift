@@ -47,6 +47,7 @@ public struct FilterChip: View {
       .padding(.horizontal, HSpacing.chipInset)
       .frame(minHeight: HSpacing.chipHeight)
       .background(ChipPressStyle.surface(selected: selected, onCard: onCard), in: Capsule())
+      .hContrastEdge(Capsule(), active: !selected)
     }
     .buttonStyle(ChipPressStyle())
     // "To review, 6, selected": the count is read once, with the label (page 12 §10).
@@ -89,6 +90,7 @@ public struct ChoiceChip: View {
       .padding(.trailing, dot == nil ? HSpacing.chipInset : (onCard ? 16 : 13))
       .frame(minHeight: HSpacing.chipHeight)
       .background(ChipPressStyle.surface(selected: selected, onCard: onCard), in: Capsule())
+      .hContrastEdge(Capsule(), active: !selected)
     }
     .buttonStyle(ChipPressStyle())
     .accessibilityAddTraits(selected ? .isSelected : [])
@@ -147,6 +149,7 @@ public struct InfoChip: View {
     .padding(.trailing, style == .reason ? 12 : leading)
     .frame(minHeight: height)
     .background(background, in: shape)
+    .hContrastEdge(shape)
     .accessibilityElement(children: .combine)
   }
 

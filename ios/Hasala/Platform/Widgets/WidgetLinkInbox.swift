@@ -31,6 +31,10 @@ extension AppModel {
     case .activity:
       router.tab = .activity
       router.activity = []
+    case .project(let id):
+      openProjectsTab(store.state.project(id) == nil ? nil : id)
+    case .goal:
+      openPlan()
     }
   }
 }

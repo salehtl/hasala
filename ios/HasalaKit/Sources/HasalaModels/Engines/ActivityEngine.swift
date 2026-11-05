@@ -77,6 +77,21 @@ public struct DayGroup: Sendable, Hashable, Identifiable {
   public var title: String
   public var total: Money
   public var rows: [MiniTxnRow]
+  public var spentMinor: Int64 = 0
+  public var inMinor: Int64 = 0
+  public var showsTotals = true
+
+  public var spent: Money? { showsTotals && spentMinor > 0 ? .aed(spentMinor) : nil }
+
+  public var moneyIn: Money? {
+    let minor = inMinor.plus(spentMinor < 0 ? spentMinor.negated : 0)
+    return showsTotals && minor > 0 ? .aed(minor) : nil
+  }
+
+  public var totalLine: MoneyPhrase? {
+    if let spent { return MoneyPhrase([.amount(spent), .text(" spent")]) }
+    return moneyIn.map { MoneyPhrase([.text("+"), .amount($0), .text(" in")]) }
+  }
 }
 
 /// The summary card on a category filter ("Activity · Filtered").
@@ -147,7 +162,8 @@ public enum ActivityEngine {
     ]
 
     let listed = s.txns.filter { matches($0, filter, s, in: window) }.sorted { $0.postedAt > $1.postedAt }
-    let days = group(listed, s, today: now.date)
+    var days = group(listed, s, today: now.date)
+    if filter.kind == .archived { for i in days.indices { days[i].showsTotals = false } }
     let showsOverview = filter.kind == .all && filter.category == nil && !filter.isSearching
     let review = showsOverview ? reviewSummary(s, now: now, in: window) : nil
     let n = inPeriod.count
@@ -192,7 +208,7 @@ public enum ActivityEngine {
     } else if f.kind != .archived, !window.contains(t.postedAt.date) {
       return false
     }
-    if let c = f.category, !t.lines.contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }
+    if let c = f.category, !Spending.lines(t, in: s).contains(where: { $0.category == c }) || !Spending.includes(t, in: s) { return false }
     switch f.kind {
     case .all: return !t.archived
     case .toReview: return t.inReview
@@ -211,12 +227,21 @@ public enum ActivityEngine {
       let d = t.postedAt.date
       let row = row(t, s)
       let signed = t.isHeldCopy ? 0 : t.homeSigned ?? 0
-      if let i = index[d] {
+      let i: Int
+      if let k = index[d] {
+        i = k
         groups[i].rows.append(row)
         groups[i].total.minor.add(signed)
       } else {
-        index[d] = groups.count
+        i = groups.count
+        index[d] = i
         groups.append(DayGroup(date: d, title: dayTitle(d, today: today), total: .aed(signed), rows: [row]))
+      }
+      guard !t.archived, !t.isTransfer, !t.isHeldCopy, !t.isHeldOut else { continue }
+      if t.direction == .out || RefundEdit.isRefund(t, in: s) {
+        groups[i].spentMinor.add(signed)
+      } else {
+        groups[i].inMinor.add(t.homeMinor ?? 0)
       }
     }
     return groups
@@ -241,6 +266,8 @@ public enum ActivityEngine {
       detail = t.joined("To review", t.postedTime)
     } else if !t.splits.isEmpty {
       detail = "Split · \(t.splits.count) categories"
+    } else if let label = RefundEdit.label(t, in: s) {
+      detail = t.joined(label, t.detailOverride ?? t.postedTime)
     } else if let source = t.autoSourceLabel, let c {
       detail = t.joined(t.joined(c.name, source), t.detailOverride ?? t.postedTime)
       spokenDetail = t.autoSourceSpoken.map { t.joined(c.name, t.detailOverride ?? t.postedTime) + ", " + $0 }

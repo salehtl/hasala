@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     OnScreen.shared.follow(application.applicationState)
+    TabBadge.apply()
     #if HASALA_MOCKS
       // A mock scenario or a launched screen: the live graph never starts (no Keychain
       // purge, no network).

@@ -318,6 +318,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var combinedCopy: TxnID?
   public var mergedInto: TxnID?
   public var mayRepeat: MayRepeat?
+  public var refundOf: TxnID?
+  public var isReversal: Bool
 
   public var postedTime: String? { postedTimeKnown ? postedAt.time : nil }
 
@@ -347,7 +349,9 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     ruleID: RuleID? = nil,
     lastPick: CategoryID? = nil,
     combinedCopy: TxnID? = nil,
-    mayRepeat: MayRepeat? = nil
+    mayRepeat: MayRepeat? = nil,
+    refundOf: TxnID? = nil,
+    isReversal: Bool = false
   ) {
     self.id = id
     self.merchant = merchant
@@ -390,6 +394,8 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.lastPick = lastPick
     self.combinedCopy = combinedCopy
     self.mayRepeat = mayRepeat
+    self.refundOf = refundOf
+    self.isReversal = isReversal
   }
 
   public var isHeldCopy: Bool { heldCopy != nil }
@@ -435,8 +441,9 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var isNotCounted: Bool { homeMinor == nil }
 
-  /// Counts in budgets: not archived, not a transfer, not a held copy. Rows in review count too.
-  public var countsInPlan: Bool { !archived && !isTransfer && !isHeldCopy }
+  public var isHeldOut: Bool { !isHeldCopy && (samePurchase != nil || (mayRepeat != nil && needsReview)) }
+
+  public var countsInPlan: Bool { !archived && !isTransfer && !isHeldCopy && !isHeldOut }
 }
 
 public enum BillCadence: String, Sendable, Hashable, Codable {
@@ -875,6 +882,7 @@ public struct LedgerState: Sendable, Hashable, Codable {
   public var rates: [CurrencyRate]
   public var unreadMail: [UnreadMail]
   public var unreadTexts: [UnreadText]
+  public var reading: ReadingState?
 
   public init(
     categories: [Category], accounts: [Account], txns: [Txn], plan: PlanState, bills: [Bill] = [],
@@ -882,8 +890,9 @@ public struct LedgerState: Sendable, Hashable, Codable {
     profile: ProfileInfo, mailbox: MailboxHealth, prefs: DevicePrefs = DevicePrefs(),
     netWorth: NetWorthHistory = NetWorthHistory(), skippedReview: Set<TxnID> = [],
     rates: [CurrencyRate] = [CurrencyRate(currency: "USD", rateMicro: 3_672_500)],
-    unreadMail: [UnreadMail] = [], unreadTexts: [UnreadText] = []
+    unreadMail: [UnreadMail] = [], unreadTexts: [UnreadText] = [], reading: ReadingState? = nil
   ) {
+    self.reading = reading
     self.unreadMail = unreadMail
     self.unreadTexts = unreadTexts
     self.rates = rates

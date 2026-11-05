@@ -20,6 +20,7 @@ import Observation
 @MainActor
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
+  static let pairedTransfer = "This is one side of a matched transfer."
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
@@ -44,6 +45,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   /// Bank alerts' health for the next reload (`noteMailbox`).
   @ObservationIgnored private(set) var mailbox = MailboxHealth(status: .notConnected, lastEmail: "", banks: "")
   @ObservationIgnored private(set) var unreadSenders: [String: String] = [:]
+  @ObservationIgnored var readingSource: (@MainActor () -> ReadingState?)?
   @ObservationIgnored private let prefs: DevicePrefsStore
   @ObservationIgnored var undos: [Int: [LedgerEditAuthor.Inverse]] = [:]
   @ObservationIgnored private var undoable: Set<Int> = []
@@ -143,7 +145,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     let context = LedgerStateMapper.Context(
       today: today.date, profile: profile, mailbox: mailbox, prefs: prefs.prefs,
       skippedDigests: prefs.skippedDigests(on: today.date), digestSalt: prefs.salt, unreadSenders: unreadSenders,
-      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps)
+      dismissedNotices: prefs.dismissedNoticeDigests, forkOps: forkOps, reading: readingSource?())
     let mapped = await Task.detached(priority: .userInitiated) { () -> LedgerState? in
       if let author { return try? author.map(reader, context: context) }
       return try? LedgerStateMapper.map(reader, context: context)
@@ -349,23 +351,35 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     case .markTransfer(let id):
       let i = try index(id)
       let old = s.txns[i]
-      s.txns[i].categoryID = "transfer"
-      s.txns[i].categorySource = .user
-      s.txns[i].isTransfer = true
-      s.txns[i].needsReview = false
-      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, "transfer") }
-      return ("Marked as a transfer", [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)])
+      let undo = old.isTransfer
+      if undo, old.categoryID != "transfer" { throw .refused(LiveLedgerStore.pairedTransfer) }
+      s.txns[i].categoryID = undo ? nil : "transfer"
+      s.txns[i].categorySource = undo ? nil : .user
+      s.txns[i].isTransfer = !undo
+      s.txns[i].needsReview = undo
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, undo ? nil : "transfer") }
+      return (
+        undo ? "No longer a transfer" : "Marked as a transfer",
+        [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+      )
     case .markRefund(let id):
       let i = try index(id)
       let old = s.txns[i]
-      let refund = old.categoryID != "refunds"
-      s.txns[i].categoryID = refund ? "refunds" : nil
-      s.txns[i].isRefund = refund
-      s.txns[i].needsReview = !refund
-      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, refund ? "refunds" : nil) }
+      let filing = try RefundEdit.mark(old, in: s)
+      filing.apply(to: &s.txns[i])
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, filing.categoryID) }
+      var inverses: [LedgerEditAuthor.Inverse] = [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+      if old.refundOf != nil { inverses.append(.refundOf(txn: id, of: old.refundOf)) }
+      return (filing.title, inverses)
+    case .fileRefund(let id, let c, let target):
+      let i = try index(id)
+      let old = s.txns[i]
+      let filing = try RefundEdit.file(old, into: c, of: target, in: s)
+      filing.apply(to: &s.txns[i])
+      if old.splits.isEmpty { SortPatch.picked(&s, old.groupRef, c) }
       return (
-        refund ? "Marked as a refund" : "No longer a refund",
-        [.category(txn: id, category: old.categoryID, needsReview: old.needsReview)]
+        filing.title,
+        [.category(txn: id, category: old.categoryID, needsReview: old.needsReview), .refundOf(txn: id, of: old.refundOf)]
       )
     case .setNote(let id, let note):
       let i = try index(id)

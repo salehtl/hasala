@@ -20,6 +20,7 @@ struct TabScreen<Header: View, Content: View>: View {
   var titleGap: CGFloat
   @ViewBuilder let header: () -> Header
   @ViewBuilder let content: () -> Content
+  @State private var titleInBar = false
 
   init(
     app: AppModel, title: String?,
@@ -63,12 +64,19 @@ struct TabScreen<Header: View, Content: View>: View {
     // content (Paper: absolute, 420 tall); a pull or a refresh doesn't carry it down.
     .washBehind(wash)
     .settlesAfterRefresh()
+    .onScrollGeometryChange(for: Bool.self) { geo in
+      TabTitle.isInBar(contentOffset: geo.contentOffset.y, insetTop: geo.contentInsets.top)
+    } action: { _, value in
+      titleInBar = value
+    }
     .refreshable { [app] in await app.pull() }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .background(HColor.surfaceSecondary)
+    .navigationTitle(title ?? "")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       MainHeader(
+        barTitle: titleInBar ? title : nil,
         amountsHidden: app.amountsHidden,
         unread: app.bellCount,
         avatarInitial: app.avatarInitial,
@@ -80,6 +88,14 @@ struct TabScreen<Header: View, Content: View>: View {
       )
     }
     .overlay(alignment: .bottom) { ToastHost(app: app) }
+  }
+}
+
+nonisolated enum TabTitle {
+  static let scrolledPast: CGFloat = 60
+
+  static func isInBar(contentOffset: CGFloat, insetTop: CGFloat) -> Bool {
+    contentOffset + insetTop > scrolledPast
   }
 }
 
@@ -176,12 +192,8 @@ struct BackToThisMonthLink: View {
   var body: some View {
     Button(action: action) {
       Text("Back to this month")
-        .hType(.subheadline.weight(.medium))
-        .foregroundStyle(tint)
-        .frame(minHeight: HSpacing.targetMinimum)
-        .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.inlineLink(color: tint))
   }
 }
 

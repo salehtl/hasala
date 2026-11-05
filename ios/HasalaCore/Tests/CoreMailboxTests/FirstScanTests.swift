@@ -101,7 +101,7 @@ final class GmailRateLimit: @unchecked Sendable {
     #expect(await rig.state().watermarkMs == Rig.t0)
     // The board never showed "stopped" for a stop the scan rode out, and ended done.
     #expect(!seen.all.contains { if case .failed = $0.stage { true } else { false } })
-    #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500))
+    #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500, thisMonthRead: true))
   }
 
   @Test func aLimitThatNeverLiftsEndsTheForegroundScanQuietlyAndALaterRunFinishesIt() async {
@@ -202,7 +202,43 @@ final class CommitLog: @unchecked Sendable {
     #expect(reading.allSatisfy { $0.total == 500 })
     #expect(reading.map(\.done) == reading.map(\.done).sorted())
     #expect(reading.last?.done == 500)
-    #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500))
+    #expect(seen.all.last == MailboxProgress(stage: .done, done: 500, total: 500, thisMonthRead: true))
+  }
+
+  @Test func progressSaysThisMonthIsReadOnlyOnceItsAlertsAreCommitted() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 500)
+    let thisMonth = Self.dates(count: 500).filter { $0.value >= Self.monthStart }.count
+    let seen = ProgressLog()
+    let authored = rig.authored
+    let atFlip = CommitLog()
+    await rig.engine.setProgressHandler { p in
+      if p.thisMonthRead && atFlip.all.isEmpty { atFlip.mark(authored.all.count) }
+      seen.append(p)
+    }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    _ = await rig.engine.runFirstScan()
+
+    let reading = seen.all.filter { $0.stage == .downloading }
+    let flip = reading.firstIndex { $0.thisMonthRead }
+    #expect(flip != nil)
+    #expect(reading.prefix(flip ?? 0).allSatisfy { !$0.thisMonthRead })
+    let after = Array(reading.dropFirst(flip ?? reading.count))
+    #expect(after.allSatisfy { $0.thisMonthRead })
+    #expect(reading.filter { $0.done < thisMonth }.allSatisfy { !$0.thisMonthRead })
+    #expect((atFlip.all.first ?? 0) >= thisMonth)
+  }
+
+  @Test func aNewScanStartsWithThisMonthUnread() async {
+    let rig = Rig()
+    FirstScanTests.backfill(rig, count: 50)
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    _ = await rig.engine.runFirstScan()
+    #expect(seen.all.first?.thisMonthRead == false)
+    let status = await rig.engine.status()
+    #expect(status.connectedAtMs != nil)
   }
 
   @Test func aStopMidScanKeepsWhatWasCommittedAndTheNextCycleGoesOnWithTheRest() async {
@@ -299,7 +335,7 @@ final class CommitLog: @unchecked Sendable {
     #expect(reading.map(\.total) == reading.map(\.total).sorted())
     #expect(reading.allSatisfy { $0.done <= $0.total })
     #expect(reading.last == MailboxProgress(stage: .downloading, done: 250, total: 250))
-    #expect(seen.all.last == MailboxProgress(stage: .done, done: 250, total: 250))
+    #expect(seen.all.last == MailboxProgress(stage: .done, done: 250, total: 250, thisMonthRead: true))
   }
 
   @Test func aPagedRunAfterAForegroundOneKeepsTheWholeWindowsTotal() async {

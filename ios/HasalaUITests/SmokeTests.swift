@@ -236,6 +236,56 @@ final class SmokeTests: XCTestCase {
     }
   }
 
+  @MainActor
+  func testAccessibilityAtTheLargestTextSize() throws {
+    let app = launch(scenario: "maya", arguments: [
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+    ])
+    let hero = el(app, "home.hero.left")
+    XCTAssertTrue(hero.waitForExistence(timeout: 15), "Home hero did not appear")
+    attach(app, "AX5 · Home")
+    try audit(app, atLargeText: true)
+
+    let tabBar = app.tabBars.firstMatch
+    tabBar.buttons["Activity"].tap()
+    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
+    attach(app, "AX5 · Activity")
+    try audit(app, atLargeText: true)
+
+    tabBar.buttons["Review"].tap()
+    XCTAssertTrue(el(app, "review.tab.count").waitForExistence(timeout: uiWait))
+    attach(app, "AX5 · Review")
+    try audit(app, atLargeText: true)
+  }
+
+  @MainActor
+  func testIncreaseContrastKeepsEveryScreenUsable() throws {
+    let app = launch(scenario: "maya", arguments: ["-HasalaIncreaseContrast"])
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15), "Home hero did not appear")
+    attach(app, "Increase Contrast · Home")
+    try audit(app)
+    let tabBar = app.tabBars.firstMatch
+    for (tab, id) in [("Projects", "projects.new"), ("Review", "review.tab.count"), ("Activity", "activity.count")] {
+      tabBar.buttons[tab].tap()
+      XCTAssertTrue(el(app, id).waitForExistence(timeout: uiWait))
+      attach(app, "Increase Contrast · \(tab)")
+      try audit(app)
+    }
+  }
+
+  @MainActor
+  func testATabsTitleMovesIntoTheBarOnScroll() throws {
+    let app = launch(scenario: "maya")
+    XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 15))
+    app.tabBars.firstMatch.buttons["Activity"].tap()
+    XCTAssertTrue(el(app, "activity.count").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(el(app, "header.title").exists, "the bar shows a title before scrolling")
+    app.swipeUp()
+    XCTAssertTrue(el(app, "header.title").waitForExistence(timeout: uiWait), "the title did not move into the bar")
+    XCTAssertEqual(el(app, "header.title").label, "Activity")
+    attach(app, "Activity · scrolled")
+  }
+
   /// The first reveal after launch keeps the owner's timing with amounts shown, so the figure
   /// rolls with the fill: the bar fills over 300 ms, the tick starts to drop as it lands, the
   /// verdict fades in after the tick and is in by 570 ms (0–300–420–570). The app stamps the
@@ -406,5 +456,6 @@ final class SmokeTests: XCTestCase {
     XCTAssertTrue(hero.waitForExistence(timeout: 15))
     XCTAssertEqual(hero.label, "Amount hidden")
     XCTAssertEqual(app.buttons["header.hideAmounts"].firstMatch.label, "Show amounts")
+    XCTAssertFalse(app.buttons["header.hideAmounts"].firstMatch.isSelected, "the label names the action; no selected trait")
   }
 }

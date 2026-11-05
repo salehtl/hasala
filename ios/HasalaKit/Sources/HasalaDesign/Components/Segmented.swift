@@ -55,6 +55,7 @@ public struct HSegmentedControl<Value: Hashable>: View {
     .padding(2)
     .frame(minHeight: 36)
     .background(HColor.appleFillsTertiary, in: Capsule())
+    .hContrastEdge(Capsule())
   }
 
   private var list: some View {

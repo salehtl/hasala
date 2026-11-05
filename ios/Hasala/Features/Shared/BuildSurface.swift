@@ -27,7 +27,16 @@ nonisolated enum BuildSurface {
     #endif
   }()
 
+  static let forcesIncreasedContrast: Bool = {
+    #if DEBUG
+      ProcessInfo.processInfo.arguments.contains(increaseContrastArgument)
+    #else
+      false
+    #endif
+  }()
+
   #if DEBUG
+    static let increaseContrastArgument = "-HasalaIncreaseContrast"
     static let planTabArgument = "-HasalaPlanTab"
     /// The launch argument that gives a Debug build the Release surface.
     static let releaseArgument = "-HasalaReleaseSurface"

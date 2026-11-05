@@ -169,6 +169,11 @@ public struct SpendHero: Sendable, Hashable {
   public var notCounted: NotCounted?
   public var unrated: TotalMark?
   public var unsorted: Money?
+  public var heldOut: Money?
+
+  public var heldOutLine: MoneyPhrase? {
+    heldOut.map { MoneyPhrase([.text("Maybe a repeat: AED "), .amount($0, hidden: 3), .text(" not counted until you answer")]) }
+  }
 
   public var unsortedLine: MoneyPhrase? {
     unsorted.map { MoneyPhrase([.text("Not sorted: AED "), .amount($0, hidden: 3)]) }
@@ -191,9 +196,11 @@ public struct SpendHero: Sendable, Hashable {
   public init(
     state: State = .live, overline: String, spent: Money, plan: Money, tick: Money?, verdict: Verdict?,
     word: MoneyPhrase, fact: MoneyPhrase?, caption: MoneyPhrase, tiles: [HeroTile], wash: Hue,
-    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil, unsorted: Money? = nil
+    bars: [HeroMonthBar] = [], note: MoneyPhrase? = nil, notCounted: NotCounted? = nil, unsorted: Money? = nil,
+    heldOut: Money? = nil
   ) {
     self.unsorted = unsorted
+    self.heldOut = heldOut
     self.bars = bars
     self.note = note
     self.notCounted = notCounted
