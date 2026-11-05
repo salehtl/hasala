@@ -90,6 +90,7 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var isSetUp: Bool { get }
   var status: BankTextsStatus { get }
   var test: BankTextsTest { get }
+  var testWindowOpen: Bool { get }
   var lastTextAt: Date? { get }
   var lastRanAt: Date? { get }
   var ignoredLast30Days: Int { get }
@@ -121,7 +122,7 @@ extension BankTextsConnecting {
 enum BankTexts {
   static let testPhrase = "Hasala test."
   static let shortcutsURL = URL(string: "shortcuts://")!
-  static let messagesURL = URL(string: "sms:")!
+  static let messagesURL = URL(string: "sms:&body=Hasala%20test.")!
   static let automationLink = URL(string: "https://www.icloud.com/shortcuts/51bbdac5d4f644b58d28893a3906073c")
 
   static func installLink(_ link: URL?, iOSMajor: Int) -> URL? { iOSMajor >= 27 ? link : nil }
@@ -221,15 +222,16 @@ enum BankTexts {
   }
 
   static let keepsNoText =
-    "Hasala keeps only the details it needs from a text that looks like a payment, never the text itself. They sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
+    "Hasala keeps only the details it needs from a text that looks like a payment, from any sender, never the text itself. Every other text is dropped at once, never saved or sent anywhere. The details sync only end\u{2011}to\u{2011}end encrypted; the text never leaves this iPhone."
 
   static let oneSourceNote =
     "Hasala reads one source at a time. After a switch, a payment that may have come in both ways waits in Review."
 
-  static let keepsPaymentShapedTexts =
-    "Hasala keeps the payment details of texts that look like payments, from any sender. Every other text is dropped at once, never saved or sent anywhere."
+  static let keepsPayments =
+    "Hasala looks at each text on this iPhone and keeps the payment details of texts that look like payments, from any sender. Every other text is dropped at once, never saved or sent anywhere."
 
-  static let keepsPayments = "Hasala looks at each text on this iPhone. " + keepsPaymentShapedTexts
+  static let fakedTextNote =
+    "A text's sender can be faked. If you don't recognise a payment, check your bank's app, then archive it here."
 
   static let anyBankLine =
     "Hasala reads payment texts from any bank and adds the ones it reads with confidence. Any other payment waits in Review for you to check."
@@ -254,7 +256,7 @@ enum BankTexts {
   static func setAsideDetail(_ s: BankTextsSetAside) -> String {
     let head =
       s.total == 1
-      ? "1 text set aside in the last 30 days" : "\(MoneyFormat.count(s.total)) texts set aside in the last 30 days"
+      ? "1 text skipped in the last 30 days" : "\(MoneyFormat.count(s.total)) texts skipped in the last 30 days"
     let kinds = BankTextDropKind.allCases.compactMap { k in s.counts[k].flatMap { $0 > 0 ? kindName(k, count: $0) : nil } }
     return kinds.isEmpty ? head : "\(head)\n\(kinds.joined(separator: ", "))"
   }

@@ -1,6 +1,7 @@
 import Foundation
 import HasalaModels
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -11,12 +12,16 @@ final class LiveBankTexts: BankTextsConnecting {
   @ObservationIgnored private let author: () -> (any BankTextsAuthoring)?
   @ObservationIgnored private let secret: () -> TextKeySecret?
   @ObservationIgnored private let now: () -> Date
+  @ObservationIgnored private let hintDelay: Duration
   @ObservationIgnored private var observer: NSObjectProtocol?
+  @ObservationIgnored private var foreground: NSObjectProtocol?
   @ObservationIgnored private var closing: Task<Void, Never>?
+  @ObservationIgnored private var hinting: Task<Void, Never>?
   @ObservationIgnored private var testStartedMs: Int64?
 
   private(set) var data: BankTextsFactsData
   private var testMissed = false
+  private var testHints = false
   private(set) var lockedNotice: Int?
 
   static let saveFailed = "Hasala couldn't save this on your iPhone. Try again."
@@ -27,8 +32,9 @@ final class LiveBankTexts: BankTextsConnecting {
   init(
     facts: BankTextsFacts, marker: LockedTextsMarkerFile, reader: any BankTextsReading,
     author: @escaping () -> (any BankTextsAuthoring)?, secret: @escaping () -> TextKeySecret?,
-    now: @escaping () -> Date = { .now }
+    now: @escaping () -> Date = { .now }, hintDelay: Duration = .seconds(60)
   ) {
+    self.hintDelay = hintDelay
     self.facts = facts
     self.marker = marker
     self.reader = reader
@@ -39,6 +45,11 @@ final class LiveBankTexts: BankTextsConnecting {
     observer = NotificationCenter.default.addObserver(forName: BankTextsFacts.changed, object: nil, queue: .main) {
       [weak self] _ in
       MainActor.assumeIsolated { self?.reload() }
+    }
+    foreground = NotificationCenter.default.addObserver(
+      forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.returnedToForeground() }
     }
   }
 
@@ -58,6 +69,8 @@ final class LiveBankTexts: BankTextsConnecting {
     if let started = testStartedMs, next.testOpenedMs == nil {
       testStartedMs = nil
       if (next.testPassedMs ?? 0) < started { testMissed = true }
+      testHints = false
+      hinting?.cancel()
     }
     if next != data { data = next }
   }
@@ -73,11 +86,16 @@ final class LiveBankTexts: BankTextsConnecting {
   }
 
   var test: BankTextsTest {
-    if let opened = data.testOpenedMs, data.testWindowOpen(nowMs: nowMs) { return .waiting(since: Self.date(opened)) }
+    if let opened = data.testOpenedMs, data.testWindowOpen(nowMs: nowMs) {
+      if let passed = data.testPassedMs, passed >= opened { return .received(at: Self.date(passed)) }
+      return testHints ? .nothingYet : .waiting(since: Self.date(opened))
+    }
     if testMissed { return .nothingYet }
     if let passed = data.testPassedMs { return .received(at: Self.date(passed)) }
     return .idle
   }
+
+  var testWindowOpen: Bool { data.testWindowOpen(nowMs: nowMs) }
 
   var lastTextAt: Date? { data.lastTextMs.map(Self.date) }
 
@@ -108,6 +126,7 @@ final class LiveBankTexts: BankTextsConnecting {
   func startTest() {
     let started = nowMs
     testMissed = false
+    testHints = false
     testStartedMs = started
     data = (try? facts.update(nowMs: started) { $0.testOpenedMs = started }) ?? data
     closing?.cancel()
@@ -116,6 +135,23 @@ final class LiveBankTexts: BankTextsConnecting {
       guard !Task.isCancelled else { return }
       self?.reload()
     }
+    startHints()
+  }
+
+  private func startHints() {
+    hinting?.cancel()
+    let delay = hintDelay
+    hinting = Task { [weak self] in
+      try? await Task.sleep(for: delay)
+      guard !Task.isCancelled, let self, self.testWindowOpen else { return }
+      self.testHints = true
+    }
+  }
+
+  func returnedToForeground() {
+    reload()
+    guard testStartedMs != nil, testWindowOpen, !testHints else { return }
+    startHints()
   }
 
   func read(_ text: String) async -> BankTextReading {
