@@ -63,6 +63,15 @@ else
   fail "/privacy/: status $(status "$h"), location ${loc:-none}, want a redirect to /privacy"
 fi
 
+# The TestFlight link in our emails.
+h="$(headers /testflight)"
+loc="$(grep '^location:' <<<"$h" | awk '{print $2}' || true)"
+if [[ "$(status "$h")" == 302 && "$loc" == https://apps.apple.com/app/testflight/id899247664 ]]; then
+  ok "/testflight: redirects to TestFlight on the App Store"
+else
+  fail "/testflight: status $(status "$h"), location ${loc:-none}, want a 302 to TestFlight on the App Store"
+fi
+
 # Pages whose address carries a code or a token: no Web Analytics.
 for path in /i/test /freeze /waitlist/confirm; do
   h="$(headers "$path")"
