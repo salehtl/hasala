@@ -149,15 +149,15 @@ struct ProfileListCard<Content: View>: View {
 
 /// A 40 hue plate: round for a category (a disc), rounded square (radius 12) for a bank.
 struct HuePlate: View {
-  let hue: Hue
+  var hue: Hue?
   let icon: HIcon
   var square = false
 
   var body: some View {
     RoundedRectangle(cornerRadius: square ? 12 : 20, style: .continuous)
-      .fill(hue.perceptualGradient)
+      .fill(hue.map { AnyShapeStyle($0.perceptualGradient) } ?? AnyShapeStyle(HColor.surfaceSecondary))
       .frame(width: 40, height: 40)
-      .overlay { HIconView(icon, size: 20, color: hue.ink) }
+      .overlay { HIconView(icon, size: 20, color: hue?.ink ?? HColor.iconPrimary) }
       .accessibilityHidden(true)
   }
 }
@@ -326,14 +326,22 @@ struct SettingRow: View {
 struct SettingSwitchRow: View {
   let icon: HIcon
   let title: String
+  var detail: String?
   @Binding var isOn: Bool
 
   var body: some View {
     Toggle(isOn: $isOn) {
       HStack(spacing: 14) {
         HIconView(icon, size: HSpacing.iconGlass, color: HColor.listRowIcon, strokeWidth: 1.8)
-        Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
+          if let detail {
+            Text(detail).hType(.footnote).foregroundStyle(HColor.listRowSupporting)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
       }
+      .padding(.vertical, detail == nil ? 0 : 10)
     }
     .tint(HColor.controlSwitchTrackOn)
     .padding(.horizontal, HSpacing.listRowInsetInline)

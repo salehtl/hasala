@@ -13,7 +13,7 @@ import SwiftUI
 /// as it was.
 ///
 /// A Release build shows only rows that work (`BuildSurface`): the settings with nothing
-/// behind them yet (Notifications) are left out, Accounts shows once the
+/// behind them yet (Notifications, Appearance, Swipe directions) are left out, Accounts shows once the
 /// ledger has balances, and account actions follow `capabilities`.
 struct ProfileSheet: View {
   @Bindable var app: AppModel
@@ -128,22 +128,22 @@ struct ProfileSheet: View {
         // Balances come from check-ins: with none, Accounts would say 0.00 for each.
         if unfinished || snap.accountsKnown {
           row(.accounts, id: "profile.accounts") {
-            MoneyThingRow(plate: HuePlate(hue: .sky, icon: .bank, square: true), title: "Accounts",
+            MoneyThingRow(plate: Self.tile(.bank, square: true), title: "Accounts",
                           detail: snap.accounts, hidden: model.hidden)
           }
         }
         row(.bills, id: "profile.bills") {
-          MoneyThingRow(plate: HuePlate(hue: .sand, icon: .receipt), title: "Recurring",
+          MoneyThingRow(plate: Self.tile(.receipt), title: "Recurring",
                         detail: MoneyPhrase(stringLiteral: snap.bills), hidden: model.hidden, badge: snap.newBills,
                         badgeSpoken: "\(snap.newBills) \(snap.newBills == 1 ? "item needs" : "items need") a look")
         }
         row(.rules, id: "profile.rules") {
-          MoneyThingRow(plate: HuePlate(hue: .lilac, icon: .tag), title: "Categories and rules",
+          MoneyThingRow(plate: Self.tile(.tag), title: "Categories and rules",
                         detail: MoneyPhrase(stringLiteral: snap.categoriesAndRules), hidden: model.hidden)
         }
         if snap.archivedTxns > 0 {
           Button { ActivityRequests.shared.show(TxnFilter(kind: .archived), in: app) } label: {
-            MoneyThingRow(plate: HuePlate(hue: .other, icon: .archive), title: "Archived transactions",
+            MoneyThingRow(plate: Self.tile(.archive), title: "Archived transactions",
                           detail: MoneyPhrase(stringLiteral: Self.archivedLine(snap.archivedTxns)), hidden: model.hidden)
           }
           .buttonStyle(HRowPressStyle())
@@ -152,17 +152,21 @@ struct ProfileSheet: View {
         }
         if BuildSurface.showsPlanTab {
           row(.projects, id: "profile.projects") {
-            MoneyThingRow(plate: HuePlate(hue: .peach, icon: .project), title: "Projects", detail: snap.projects,
+            MoneyThingRow(plate: Self.tile(.project), title: "Projects", detail: snap.projects,
                           hidden: model.hidden)
           }
         } else {
           row(.plan, id: "profile.plan") {
-            MoneyThingRow(plate: HuePlate(hue: .sky, icon: .tabPlan), title: "Plan", detail: model.planLine,
+            MoneyThingRow(plate: Self.tile(.tabPlan), title: "Plan", detail: model.planLine,
                           hidden: model.hidden)
           }
         }
       }
     }
+  }
+
+  static func tile(_ icon: HIcon, square: Bool = false) -> HuePlate {
+    HuePlate(icon: icon, square: square)
   }
 
   private func row(_ route: ProfileRoute, id: String, @ViewBuilder label: () -> some View) -> some View {
@@ -194,12 +198,12 @@ struct ProfileSheet: View {
         if let lane = app.mailbox {
           let value = Self.mailboxesValue(lane.mailboxes, known: lane.mailboxesKnown)
           row(.bankAlerts, id: "profile.mailboxes") {
-            SettingRow(icon: .envelope, title: "Mailboxes",
+            SettingRow(icon: .envelope, title: Self.bankAlertsTitle,
                        trailing: value.tone.map { .status(value.text, $0) } ?? .value(value.text))
           }
         }
         row(.exchangeRates, id: "profile.currency") {
-          SettingRow(icon: .globe, title: "Currency", trailing: Self.currencyTrailing(app.store.state))
+          SettingRow(icon: .globe, title: Self.exchangeRatesTitle, trailing: Self.currencyTrailing(app.store.state))
         }
         // TODO(spec 04 §9): local notifications are not in this build, so a Release build
         // doesn't offer their settings yet.
@@ -208,22 +212,17 @@ struct ProfileSheet: View {
             SettingRow(icon: .bell, title: "Notifications", trailing: .value(snap.prefs.notifications.label))
           }
         }
-        // Hasala is light only for now (spec 04 §14.9), so the row states it.
-        SettingRow(icon: .appearance, title: "Appearance", trailing: .value("Light"), chevron: false)
-        // TODO(spec 04 §16.2 X5): Swipe directions page.
-        SettingRow(icon: .swipe, title: "Swipe directions",
-                   trailing: .value(snap.swipeSummary, spoken: snap.swipeSpoken), chevron: false)
+        if unfinished {
+          SettingRow(icon: .appearance, title: "Appearance", trailing: .value("Light"), chevron: false)
+          SettingRow(icon: .swipe, title: "Swipe directions",
+                     trailing: .value(snap.swipeSummary, spoken: snap.swipeSpoken), chevron: false)
+        }
         ShareLink(item: CSVFile(rows: model.exportRows, name: CSVExport.fileName(model.today)),
                   preview: SharePreview(CSVExport.fileName(model.today))) {
           SettingRow(icon: .download, title: "Export your data", trailing: .value("CSV"))
         }
         .buttonStyle(HRowPressStyle())
         .accessibilityIdentifier("profile.export")
-        Link(destination: URL(string: "https://hasala.app/privacy")!) {
-          SettingRow(icon: .privacy, title: "Privacy and data")
-        }
-        .buttonStyle(HRowPressStyle())
-        .accessibilityIdentifier("profile.privacy")
         row(.help, id: "profile.help") {
           SettingRow(icon: .help, title: "Get help")
         }
@@ -231,7 +230,10 @@ struct ProfileSheet: View {
     }
   }
 
-  /// The Mailboxes row's value: "Checking" while the mailbox state is read, "Not
+  static let bankAlertsTitle = "Bank alerts"
+  static let exchangeRatesTitle = "Exchange rates"
+
+  /// The Bank alerts row's value: "Checking" while the mailbox state is read, "Not
   /// connected" with none, "Sign in again" when one needs it, else the providers read
   /// ("Gmail").
   static func mailboxesValue(_ mailboxes: [MailboxSnapshot], known: Bool) -> (text: String, tone: StatusTone?) {

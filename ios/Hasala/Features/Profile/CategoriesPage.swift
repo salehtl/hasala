@@ -175,6 +175,21 @@ final class CategoryEditorModel {
 
   var draft: CategoryDraft { CategoryDraft(name: name, glyph: glyph, parent: isBuiltin ? nil : parent) }
 
+  var missing: String? {
+    let trimmed = draft.trimmedName
+    let needsParent = isNew && parent == nil
+    if trimmed.isEmpty { return needsParent ? "Add a name and choose what it counts as." : "Add a name." }
+    if trimmed.unicodeScalars.count > CategoryLimits.maxName {
+      return "Keep the name to \(CategoryLimits.maxName) characters."
+    }
+    if needsParent { return "Choose what it counts as." }
+    return nil
+  }
+
+  var canSave: Bool { missing == nil }
+
+  var hideRowTitle: String { isHidden ? "Show category" : "Hide category" }
+
   func pick(_ g: Glyph) {
     glyph = g
     glyphPicked = true
@@ -291,28 +306,31 @@ struct CategoryEditorPage: View {
         if !model.isBuiltin { parentField }
       }
       if model.canHide {
-        Toggle(isOn: Binding(get: { model.isHidden }, set: { model.setHidden($0) })) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Hide").hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
-            Text("Hidden categories leave the lists you pick from. Their transactions keep them.")
-              .hType(.footnote).foregroundStyle(HColor.textSecondary)
-              .fixedSize(horizontal: false, vertical: true)
+        HListCard {
+          Button { model.setHidden(!model.isHidden) } label: {
+            HListRow(
+              leading: .icon22(model.isHidden ? .eye : .eyeSlash, color: HColor.listRowAction), title: model.hideRowTitle,
+              supporting: .wrapping("Hidden categories leave the lists you pick from. Their transactions keep them."),
+              titleColor: HColor.listRowAction)
           }
-          .padding(.vertical, 8)
+          .buttonStyle(HRowPressStyle())
+          .accessibilityIdentifier("categoryEditor.hide")
         }
-        .tint(HColor.controlSwitchTrackOn)
-        .padding(.horizontal, 16)
-        .frame(minHeight: 52)
-        .background(HColor.surfacePrimary, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
-        .accessibilityIdentifier("categoryEditor.hide")
       }
       if let why = model.refusal {
         Text(why).hType(.footnote).foregroundStyle(HColor.statusErrorForeground)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("categoryEditor.refusal")
+      } else if let missing = model.missing {
+        Text(missing).hType(.footnote).foregroundStyle(HColor.textSecondary)
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: .infinity)
+          .padding(.horizontal, 16)
+          .accessibilityIdentifier("categoryEditor.missing")
       }
       Button(model.isNew ? "Add category" : "Save") { model.save() }
         .buttonStyle(.pill(.primary, fill: true))
+        .disabled(!model.canSave)
         .accessibilityIdentifier("categoryEditor.save")
       if !model.isNew, !model.isBuiltin, model.category?.archived == false {
         Button("Archive category") { model.requestArchive() }
