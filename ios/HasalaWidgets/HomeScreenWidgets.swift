@@ -203,7 +203,9 @@ struct ProjectEntryView: View {
 
   var body: some View {
     if let model = entry.snapshot?.project(entry.selection) {
-      GlanceCard(link: .plan, fill: light) { ProjectWidgetView(model, hidden: entry.hidden) }
+      GlanceCard(link: model.id.map(WidgetLink.project) ?? .plan, fill: light) {
+        ProjectWidgetView(model, hidden: entry.hidden)
+      }
     } else {
       Waiting(title: "Project", sentence: sentence, link: .plan)
     }
