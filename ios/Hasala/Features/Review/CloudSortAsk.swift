@@ -6,15 +6,15 @@ extension CloudConsentContent {
   static let sortTheRest = CloudConsentContent(
     id: "sort",
     title: "Sort the rest with Cloudflare AI?",
-    lead: "Hasala's merchant list sorts the payments it knows, and a merchant you sorted yourself gets your last pick. For the rest, Hasala can ask Cloudflare's AI service, one merchant name per request. It stays off unless you turn it on.",
+    lead: "Hasala's merchant list sorts the transactions it knows, and a merchant you sorted yourself gets your last pick. For the rest, Hasala can ask Cloudflare's AI service, one merchant name per request. It stays off unless you turn it on.",
     points: [
       (.tag, "Only the merchant name",
-       "From the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), with Hasala's built-in categories and the app's version. Each name is asked about once, not once per payment."),
+       "From the alert, like \u{201C}CAFE EXAMPLE JBR\u{201D} (sent in lower case), with Hasala's built-in categories and the app's version. Each name is asked about once, not once per transaction."),
       (.eyeSlash, "What's not sent",
        "The amount, date, card or bank, your own category names, your name, or anything about your account."),
       (.cloud, "What Cloudflare sees", CloudConsentContent.cloudflareSees),
       (.done, "Filed only when it's very sure",
-       "Those payments count in your totals right away and are marked \u{201C}Sorted by Cloudflare AI\u{201D}. The rest wait in Review, as they would anyway, some with a suggestion."),
+       "Those transactions count in your totals right away and are marked \u{201C}Sorted by Cloudflare AI\u{201D}. The rest wait in Review, as they would anyway, some with a suggestion."),
       (.check, "Yours to change",
        "This turns on Merchant suggestions and Sort automatically on this iPhone. Turn either off at any time in Profile \u{203A} Cloud suggestions."),
     ])

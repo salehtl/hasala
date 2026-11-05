@@ -14,6 +14,7 @@ struct ReviewPickSheet: View {
   let pick: ReviewPick
   let sort: (CategoryID, Bool, ProjectID?) -> Void
   let create: (String, Glyph, Bool, ProjectID?) -> String?
+  var merge: (() -> Void)? = nil
 
   @State private var project: ProjectID?
   @State private var alwaysUse = false
@@ -42,15 +43,10 @@ struct ReviewPickSheet: View {
             form(formOffer)
           } else {
             header
-            if typeSize.isAccessibilitySize {
-              list
-              if showsProjects { projects }
-              if canAlwaysUse { ruleRow }
-            } else {
-              if showsProjects { projects }
-              if canAlwaysUse { ruleRow }
-              list
-            }
+            if let duplicate = pick.card.copyLine, merge != nil { keepsBothNote(duplicate) }
+            if showsProjects { projects }
+            if canAlwaysUse { ruleRow }
+            list
             if let newCategory { newCategoryRow(newCategory) }
           }
         }
@@ -62,6 +58,9 @@ struct ReviewPickSheet: View {
         .id(Self.top)
       }
       .onChange(of: creating) { proxy.scrollTo(Self.top, anchor: .top) }
+      .onChange(of: refusal) { _, new in
+        if new != nil { proxy.scrollTo(Self.top, anchor: .top) }
+      }
     }
     .scrollBounceBehavior(.basedOnSize)
     // Paper: "Sort into" sits 28 above the sheet's own bottom edge, which floats over the
@@ -89,6 +88,8 @@ struct ReviewPickSheet: View {
 
   private var canAlwaysUse: Bool { pick.card.canAlwaysUse }
 
+  private var reach: Int { canAlwaysUse ? model.reach(pick.card.id) : 0 }
+
   /// The sheet's height before the content is measured, from Paper's parts (header 60, rows
   /// 56 with 1 dividers, the one-row project block 70 whatever the number of projects, the
   /// rule row 44, gaps 20, and the 8 / 28 insets), so it opens at its size instead of growing
@@ -96,16 +97,17 @@ struct ReviewPickSheet: View {
   private var estimatedHeight: CGFloat {
     let n = CGFloat(options.count)
     let projects: CGFloat = showsProjects ? 70 + 20 : 0
-    let rule: CGFloat = canAlwaysUse ? 20 + 44 : 0
+    let rule: CGFloat = canAlwaysUse ? 20 + 52 : 0
+    let note: CGFloat = pick.card.copyLine != nil && merge != nil ? 20 + 52 : 0
     let add: CGFloat = newCategory != nil ? 20 + 56 : 0
-    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + add + 28
+    return 8 + 60 + 20 + 56 * n + max(0, n - 1) + projects + rule + note + add + 28
   }
 
   /// Close, "Need · which one?", and the empty 48 slot that keeps the title centred.
   @ViewBuilder private var header: some View {
     let close = GlassIconButton(.close, label: "Close") { dismiss() }
       .accessibilityIdentifier("pick.close")
-    let title = Text("\(pick.choice.label) · which one?")
+    let title = Text(pick.choice.sheetTitle(isIncome: pick.card.isIncome))
       .hType(.headline.weight(.semibold))
       .foregroundStyle(HColor.textPrimary)
       .fixedSize(horizontal: false, vertical: true)
@@ -150,7 +152,14 @@ struct ReviewPickSheet: View {
               Text(o.name).hType(.rowTitle).foregroundStyle(HColor.listRowTitle)
                 .fixedSize(horizontal: false, vertical: true)
               if suggested == o.id {
-                InfoChip("Suggested", style: .suggested)
+                if typeSize.isAccessibilitySize {
+                  Text(SuggestionSource.chip(pick.card.suggestedBy))
+                    .hType(.footnote.weight(.semibold))
+                    .foregroundStyle(HColor.statusInfoForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                  InfoChip(SuggestionSource.chip(pick.card.suggestedBy), style: .suggested)
+                }
               }
             }
             Spacer(minLength: 8)
@@ -167,7 +176,7 @@ struct ReviewPickSheet: View {
           }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(suggested == o.id ? "\(o.name), suggested" : o.name)
+        .accessibilityLabel(suggested == o.id ? SuggestionSource.spoken(o.name, pick.card.suggestedBy) : o.name)
         .accessibilityHint("Sorts it now")
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("pick.\(o.id)")
@@ -217,20 +226,55 @@ struct ReviewPickSheet: View {
     }
   }
 
-  @ViewBuilder private var ruleRow: some View {
-    let label = Text("Always use it for \(pick.card.merchant)")
-      .hType(.subheadline.weight(.medium))
-      .foregroundStyle(HColor.textPrimary)
-      .fixedSize(horizontal: false, vertical: true)
-    if typeSize.isAccessibilitySize {
-      Toggle(isOn: $alwaysUse) { label }
+  private var ruleRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      let title = "Always use it for \(Bidi.isolate(pick.card.merchant))"
+      if typeSize.isAccessibilitySize {
+        Text(title)
+          .hType(.subheadline.weight(.medium))
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityHidden(true)
+        Toggle(title, isOn: $alwaysUse)
+          .labelsHidden()
+          .tint(HColor.controlSwitchTrackOn)
+          .frame(minHeight: 52)
+          .accessibilityIdentifier("pick.alwaysUse")
+      } else {
+        Toggle(isOn: $alwaysUse) {
+          Text(title)
+            .hType(.subheadline.weight(.medium))
+            .foregroundStyle(HColor.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
         .tint(HColor.controlSwitchTrackOn)
+        .frame(minHeight: 52)
         .accessibilityIdentifier("pick.alwaysUse")
-    } else {
-      Toggle(isOn: $alwaysUse) { label }
-        .toggleStyle(CheckboxToggleStyle())
-        .accessibilityIdentifier("pick.alwaysUse")
+      }
+      if alwaysUse, let note = ReviewDone.reachNote(reach) {
+        Text(note)
+          .hType(.footnote)
+          .foregroundStyle(HColor.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("pick.alwaysUse.reach")
+      }
     }
+  }
+
+  private func keepsBothNote(_: String) -> some View {
+    let instead = pick.card.samePurchase ? "Same purchase instead" : "Merge instead"
+    return ReflowingRow(spacing: 12) {
+      Text("Sorting keeps both transactions.")
+        .hType(.subheadline)
+        .foregroundStyle(HColor.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("pick.keepsBoth")
+    } trailing: {
+      Button(instead) { merge?() }
+        .buttonStyle(.pill(.secondary, size: .small))
+        .accessibilityIdentifier("pick.mergeInstead")
+    }
+    .frame(minHeight: 52)
   }
 
   private func newCategoryRow(_ offer: CountsAsOption) -> some View {
@@ -276,13 +320,14 @@ struct ReviewPickSheet: View {
           .accessibilityIdentifier("pick.newCategory.refusal")
       }
     }
+    Button("Add category", action: save)
+      .buttonStyle(.pill(.primary, fill: true))
+      .accessibilityIdentifier("pick.newCategory.save")
   }
 
   @ViewBuilder private var formHeader: some View {
     let back = GlassIconButton(.back, label: "Back", action: closeForm)
       .accessibilityIdentifier("pick.newCategory.back")
-    let save = GlassIconButton(.done, label: "Save", prominent: true, action: save)
-      .accessibilityIdentifier("pick.newCategory.save")
     let title = Text("\(pick.choice.label) · new category")
       .hType(.headline.weight(.semibold))
       .foregroundStyle(HColor.textPrimary)
@@ -291,11 +336,7 @@ struct ReviewPickSheet: View {
       .accessibilityIdentifier("pick.newCategory.title")
     if typeSize.isAccessibilitySize {
       VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          back
-          Spacer(minLength: 8)
-          save
-        }
+        back
         title
       }
       .padding(.top, 12)
@@ -305,7 +346,7 @@ struct ReviewPickSheet: View {
         Spacer(minLength: 8)
         title.multilineTextAlignment(.center)
         Spacer(minLength: 8)
-        save
+        Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
       }
       .padding(.top, 12)
     }
@@ -338,46 +379,6 @@ struct ReviewPickSheet: View {
     }
     refusal = why
     AccessibilityNotification.Announcement(why).post()
-  }
-}
-
-/// A 24 accent checkbox, radius 6, in a 40 slot (Paper "Rule checkbox"; spec 04 §14.6
-/// `CheckboxSquare`). The whole row toggles it.
-struct CheckboxToggleStyle: ToggleStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    CheckboxRow(configuration: configuration)
-  }
-}
-
-private struct CheckboxRow: View {
-  let configuration: ToggleStyleConfiguration
-
-  var body: some View {
-    Button { configuration.isOn.toggle() } label: {
-      HStack(alignment: .top, spacing: 12) {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .fill(configuration.isOn ? HColor.actionAccent : HColor.surfacePrimary)
-          .overlay {
-            if configuration.isOn {
-              HIconView(.check, size: 16, color: HColor.white, strokeWidth: 3)
-            } else {
-              RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(HColor.controlCheckUnselected, lineWidth: 1.5)
-            }
-          }
-          .frame(width: 24, height: 24)
-          .frame(width: 40, height: 40)
-        configuration.label
-          .fixedSize(horizontal: false, vertical: true)
-          .padding(.vertical, 10)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      }
-      .frame(minHeight: HSpacing.targetMinimum)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
   }
 }
 
@@ -475,12 +476,17 @@ struct ReviewReasonInfo: View {
   let merge: () -> Void
   let keepBoth: () -> Void
 
-  @ScaledMetric(relativeTo: .subheadline) private var stepDisc: CGFloat = 24
-
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       hero
-      whatToDo.padding(.bottom, 8)
+      if let line = Self.guidance(reason) {
+        Text(line)
+          .hType(.subheadline)
+          .foregroundStyle(HColor.textPrimary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.bottom, 8)
+          .accessibilityIdentifier("reason.guidance")
+      }
       actions
     }
     .accessibilityElement(children: .contain)
@@ -492,27 +498,17 @@ struct ReviewReasonInfo: View {
     case .probableCopy:
       "Another alert has the same bank, card, amount and merchant, a few minutes apart. Bank alerts often reach two inboxes. Until you choose, it doesn't count in your totals."
     case .samePurchase:
-      "Your bank sent an alert in another currency, then this one in AED a few days later on the same card. It's often the same purchase. Until you choose, both count in your totals."
+      "Your bank sent an alert in another currency, then this one in AED a few days later on the same card. It's often the same purchase. Until you choose, both count in your totals. If it's the same purchase, the original keeps this AED amount and this alert moves to Archived."
     case .mayRepeat:
       "A bank text and a bank email, or two bank texts, can tell of one payment in different words, so Hasala couldn't be sure. Until you choose, both count in your totals."
     }
   }
 
-  private var steps: [String] {
+  static func guidance(_ reason: TxnReviewReason) -> String? {
     switch reason {
-    case .probableCopy:
-      ["Merge it if it's the same payment.", "Keep both if you really paid twice."]
-    case .samePurchase:
-      [
-        "If it's the same purchase, the original keeps this AED amount and this alert moves to Archived.",
-        "Keep both if they're two different purchases.",
-      ]
-    case .mayRepeat:
-      [
-        "Look for the payment in your bank app.",
-        "If it's the same payment, archive this one.",
-        "If you paid twice, sort it as usual.",
-      ]
+    case .probableCopy: nil
+    case .samePurchase: nil
+    case .mayRepeat: "Not sure? Check your bank app."
     }
   }
 
@@ -560,32 +556,5 @@ struct ReviewReasonInfo: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(.top, 4)
-  }
-
-  private var whatToDo: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("What to do").hType(.overline).foregroundStyle(HColor.textSecondary)
-        .accessibilityAddTraits(.isHeader)
-      VStack(alignment: .leading, spacing: 4) {
-        ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-          HStack(alignment: .top, spacing: 12) {
-            Text("\(i + 1)")
-              .hType(.footnote.weight(.semibold))
-              .foregroundStyle(HColor.textPrimary)
-              .frame(width: stepDisc, height: stepDisc)
-              .background(HColor.surfaceSecondary, in: Circle())
-            Text(step)
-              .hType(.subheadline)
-              .foregroundStyle(HColor.textPrimary)
-              .fixedSize(horizontal: false, vertical: true)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.top, 2)
-          }
-          .padding(.vertical, 6)
-          .accessibilityElement(children: .ignore)
-          .accessibilityLabel("Step \(i + 1). \(step)")
-        }
-      }
-    }
   }
 }

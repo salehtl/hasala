@@ -4,13 +4,14 @@ import SwiftUI
 
 /// Review · All caught up (Paper 4MY-0): the result, not a party. The mint disc, "6 sorted ·
 /// 3 new rules", what the plan now counts and every line this session sorted, then "See
-/// activity". The last sort stays undoable in the toast; Undo brings its card back.
+/// activity" and "Undo last sort", which bring the last card back.
 ///
 /// The disc settles in once a session (the motion policy lets "All caught up" celebrate,
 /// 600 ms at most); with Reduce Motion it fades in. No haptic: the person's last sort already
 /// had its tap (plan B1.4).
 struct ReviewDoneView: View {
   let model: any ReviewDeckModel
+  var open: (TxnID) -> Void = { _ in }
   @State private var shown = false
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -22,11 +23,12 @@ struct ReviewDoneView: View {
   var body: some View {
     let sorted = model.sorted
     let rules = sorted.filter(\.learnedRule).count
+    let skipped = model.skipped
     ScrollView {
       VStack(spacing: 0) {
         badge
           .padding(.top, 22)
-        Text("All caught up")
+        Text(ReviewDone.title(skipped: skipped))
           .hType(.title1)
           .foregroundStyle(HColor.textPrimary)
           .multilineTextAlignment(.center)
@@ -40,6 +42,23 @@ struct ReviewDoneView: View {
           .multilineTextAlignment(.center)
           .padding(.top, 4)
           .accessibilityIdentifier("review.done.tally")
+        if let line = ReviewDone.skippedLine(skipped) {
+          Text(line)
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
+            .padding(.top, 4)
+            .accessibilityIdentifier("review.done.skipped")
+        }
+        if let line = ReviewDone.reachLine(model.reached) {
+          Text(line)
+            .hType(.subheadline)
+            .foregroundStyle(HColor.textSecondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+            .accessibilityIdentifier("review.done.reach")
+        }
         if let elsewhere = model.elsewhere {
           Text(elsewhere.line)
             .hType(.subheadline)
@@ -48,25 +67,47 @@ struct ReviewDoneView: View {
             .padding(.top, 4)
             .accessibilityIdentifier("review.done.elsewhere")
         }
-        VStack(spacing: 16) {
-          if !sorted.isEmpty { summary(sorted) }
-          if let elsewhere = model.elsewhere {
-            Button("Show \(elsewhere.widened.title)") { model.showElsewhere() }
-              .buttonStyle(.pill(.primary, fill: true))
-              .accessibilityIdentifier("review.showElsewhere")
-          }
-          Button("See activity") { model.close(goToActivity: true) }
-            .buttonStyle(.pill(model.elsewhere == nil ? .primary : .secondary, fill: true))
-            .accessibilityIdentifier("review.seeActivity")
+        if !sorted.isEmpty {
+          summary(sorted)
+            .padding(.top, 22)
         }
-        .padding(.top, 22)
       }
       .padding(.horizontal, HSpacing.insetPage)
-      // Clear of the toast, which sits on the bottom safe area.
-      .padding(.bottom, HSpacing.toastHeight + 40)
+      .padding(.bottom, 24)
     }
     .scrollBounceBehavior(.basedOnSize)
+    .safeAreaInset(edge: .bottom, spacing: 0) { dock }
     .onAppear(perform: settle)
+  }
+
+  private var dock: some View {
+    VStack(spacing: 12) {
+      if let elsewhere = model.elsewhere {
+        Button("Show \(elsewhere.widened.title)") { model.showElsewhere() }
+          .buttonStyle(.pill(.primary, fill: true))
+          .accessibilityIdentifier("review.showElsewhere")
+      }
+      Button("See activity") { model.close(goToActivity: true) }
+        .buttonStyle(.pill(model.elsewhere == nil ? .primary : .secondary, fill: true))
+        .accessibilityIdentifier("review.seeActivity")
+      if model.canUndoLast {
+        Button {
+          model.undoLast()
+        } label: {
+          Text("Undo last sort")
+            .hType(.callout.weight(.semibold))
+            .foregroundStyle(HColor.textLink)
+            .frame(maxWidth: .infinity, minHeight: HSpacing.targetMinimum)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review.undoLast")
+      }
+    }
+    .padding(.horizontal, HSpacing.insetPage)
+    .padding(.top, 12)
+    .padding(.bottom, 8)
+    .background(HColor.surfaceSecondary)
   }
 
   /// "6 sorted · 3 new rules", "1 sorted", or nothing sorted in this session.
@@ -140,6 +181,15 @@ struct ReviewDoneView: View {
 
   /// Disc 32, name 15/20 600 over the category 13/16, amount 15/20 bold.
   private func row(_ line: SortedLine) -> some View {
+    Button { open(line.id) } label: { rowLabel(line) }
+      .buttonStyle(HRowPressStyle())
+      .accessibilityElement(children: .combine)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityHint("Opens the transaction")
+      .accessibilityIdentifier("review.done.row.\(line.id)")
+  }
+
+  private func rowLabel(_ line: SortedLine) -> some View {
     HStack(spacing: 12) {
       CategoryDisc(hue: line.hue, icon: line.glyph.icon, size: .s32)
       VStack(alignment: .leading, spacing: 0) {
@@ -152,8 +202,10 @@ struct ReviewDoneView: View {
       MoneyText(line.amount, figure: .compact, hidden: model.hidden, hiddenGlyphs: 3,
                 color: line.isIncome ? HColor.moneyIn : HColor.moneyOut, sign: line.isIncome ? .income : .none)
         .fixedSize()
+      HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.iconSecondary)
+        .accessibilityHidden(true)
     }
     .frame(minHeight: 48)
-    .accessibilityElement(children: .combine)
+    .contentShape(Rectangle())
   }
 }

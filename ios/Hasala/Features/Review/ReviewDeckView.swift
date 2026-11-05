@@ -39,7 +39,38 @@ struct ReviewDeckView: View {
   @State private var reasonInfo: ReviewCardModel?
   @State private var pendingArchive: ReviewCardModel?
   @State private var pendingCopy: (card: ReviewCardModel, merge: Bool)?
+  @State private var pendingMerge: ReviewCardModel?
   @State private var choosingRange = false
+  @State private var textsKept: Set<TxnID> = []
+  @State private var openTxn: TxnRef?
+  @State private var deckSize: CGSize = .zero
+  @State private var idealRegular: CGFloat = 0
+  @State private var idealCompact: CGFloat = 0
+
+  struct TxnRef: Identifiable, Hashable {
+    let id: TxnID
+  }
+
+  enum DeckFit: Equatable {
+    case regular, compact, scroll
+  }
+
+  static let deckOverhead: CGFloat = 20 + pillSlot + 20 + peekDepth + 22 + pillSlot + 12 + HSpacing.targetMinimum + 2
+  static let compactFloor: CGFloat = 240
+
+  static func fit(height: CGFloat, regular: CGFloat, compact: CGFloat, accessibility: Bool) -> DeckFit {
+    if accessibility { return .scroll }
+    guard height > 0, regular > 0 else { return .regular }
+    let room = min(height - deckOverhead, cardHeight)
+    if room >= 300, regular <= room { return .regular }
+    if room >= compactFloor, compact <= room { return .compact }
+    return .scroll
+  }
+
+  private var deckFit: DeckFit {
+    Self.fit(height: deckSize.height, regular: idealRegular, compact: idealCompact,
+             accessibility: typeSize.isAccessibilitySize)
+  }
 
   private struct PendingSort {
     enum Into {
@@ -76,7 +107,7 @@ struct ReviewDeckView: View {
           deck(top)
             .transition(.opacity)
         } else {
-          ReviewDoneView(model: model)
+          ReviewDoneView(model: model) { openTxn = TxnRef(id: $0) }
             .transition(.opacity)
         }
       }
@@ -104,8 +135,9 @@ struct ReviewDeckView: View {
     // On the bottom safe area for All caught up and the scrolling deck at the largest
     // text sizes; otherwise the deck carries it just above its footer (`deck`).
     .overlay(alignment: .bottom) {
-      if !showsDeck || typeSize.isAccessibilitySize { ToastHost(app: app, placement: .bottom) }
+      if showsDeck, deckFit == .scroll { ToastHost(app: app, placement: .bottom) }
     }
+    .sheet(item: $openTxn) { ref in TransactionHost(app: app, id: ref.id) }
     .frame(minHeight: 0, maxHeight: .infinity)
     .ignoresSafeArea(.keyboard)
     .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }
@@ -119,6 +151,10 @@ struct ReviewDeckView: View {
         },
         create: { name, glyph, alwaysUse, project in
           createPicked(pick, name: name, glyph: glyph, alwaysUse: alwaysUse, project: project)
+        },
+        merge: pick.card.copyLine == nil ? nil : {
+          pendingMerge = pick.card
+          model.picking = nil
         })
     }
     .onAppear {
@@ -129,6 +165,9 @@ struct ReviewDeckView: View {
     .onDisappear { SortSound.shared.rest() }
     .onChange(of: touched) { _, now in
       if now == nil { released() }
+    }
+    .onChange(of: showsDeck) { _, now in
+      if !now { app.dismissToast() }
     }
   }
 
@@ -158,9 +197,14 @@ struct ReviewDeckView: View {
         }
       }
       Spacer()
-      moreMenu
-        .opacity(done ? 0 : 1)
-        .disabled(done)
+      if hasMoreItems {
+        moreMenu
+          .opacity(done ? 0 : 1)
+          .disabled(done)
+      } else {
+        Color.clear.frame(width: HSpacing.glassButton, height: HSpacing.glassButton)
+          .accessibilityHidden(true)
+      }
     }
     .padding(.horizontal, HSpacing.insetPage)
     .padding(.top, 6)
@@ -178,10 +222,17 @@ struct ReviewDeckView: View {
       }
   }
 
+  private var hasMoreItems: Bool {
+    BuildSurface.showsUnfinished || model.cards.first?.reviewReason != nil
+  }
+
   private var moreMenu: some View {
     Menu {
       if let top = model.cards.first {
         Button("Skip for now") { skip(top) }
+        if top.reviewReason != nil {
+          Button("About this alert") { reasonInfo = top }
+        }
         if BuildSurface.showsUnfinished, !top.fromText {
           // TODO(spec 04 §16.2 G7): the bank email, once the holder re-fetch exists.
           Button("View bank email") { app.say("The bank email opens in a later build", icon: .envelope) }
@@ -223,11 +274,40 @@ struct ReviewDeckView: View {
   /// of over its text (spec 04 §17).
   @ViewBuilder
   private func deck(_ top: ReviewCardModel?) -> some View {
-    if typeSize.isAccessibilitySize {
+    layout(top, fit: deckFit)
+      .onGeometryChange(for: CGSize.self) { $0.size } action: { deckSize = $0 }
+      .background(alignment: .top) { measure(top) }
+  }
+
+  @ViewBuilder
+  private func measure(_ top: ReviewCardModel?) -> some View {
+    if let top, !typeSize.isAccessibilitySize, deckSize.width > 62 {
+      let width = max(0, min(Self.cardWidth, deckSize.width - 62))
+      ZStack(alignment: .top) {
+        ReviewCardView(card: top, hidden: model.hidden, lean: nil, leanEdge: nil, strength: 0, use: {},
+                       textKept: textsKept.contains(top.id))
+          .frame(width: width)
+          .fixedSize(horizontal: false, vertical: true)
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { idealRegular = $0 }
+        ReviewCardView(card: top, hidden: model.hidden, lean: nil, leanEdge: nil, strength: 0, use: {},
+                       textKept: textsKept.contains(top.id), compact: true)
+          .frame(width: width)
+          .fixedSize(horizontal: false, vertical: true)
+          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { idealCompact = $0 }
+      }
+      .hidden()
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+    }
+  }
+
+  @ViewBuilder
+  private func layout(_ top: ReviewCardModel?, fit: DeckFit) -> some View {
+    if fit == .scroll {
       ScrollView {
         VStack(spacing: 12) {
           pill(.up)
-          stack(top)
+          stack(top, fit: fit)
           HStack(spacing: 12) {
             pill(.left)
             pill(.right)
@@ -243,7 +323,7 @@ struct ReviewDeckView: View {
         // Transfer and Save keep Paper's 44 slot: active, a pill grows to 48 about its
         // middle instead of pushing the card 4 down (a jump with Reduce Motion).
         pill(.up).frame(height: Self.pillSlot).padding(.top, 20)
-        stack(top)
+        stack(top, fit: fit)
           .overlay {
             // Want and Need ride the card's middle, 10 from the screen's edges.
             HStack {
@@ -278,13 +358,14 @@ struct ReviewDeckView: View {
 
   /// The top card over two peeks (Paper: 340 × 430, peeks 324 and 308 wide, 10 steps down),
   /// and any card still flying out.
-  private func stack(_ top: ReviewCardModel?) -> some View {
+  private func stack(_ top: ReviewCardModel?, fit: DeckFit) -> some View {
     let count = model.cards.count
+    let scrolls = fit == .scroll
     return ZStack(alignment: .top) {
       if count > 2 { peek(inset: 16, depth: 20, far: true) }
       if count > 1 { peek(inset: 8, depth: 10, far: false) }
       if let top {
-        live(top)
+        live(top, compact: fit == .compact)
           .id(top.id)
           .transition(arrival(for: top.id))
       }
@@ -295,8 +376,10 @@ struct ReviewDeckView: View {
       }
     }
     // At the accessibility sizes the card grows with its words and the deck scrolls.
-    .frame(maxWidth: Self.cardWidth, minHeight: typeSize.isAccessibilitySize ? Self.cardHeight : 300,
-           maxHeight: typeSize.isAccessibilitySize ? .infinity : Self.cardHeight)
+    .frame(maxWidth: Self.cardWidth,
+           minHeight: scrolls ? (typeSize.isAccessibilitySize ? Self.cardHeight : nil) : (fit == .compact ? Self.compactFloor : 300),
+           maxHeight: scrolls ? .infinity : Self.cardHeight)
+    .fixedSize(horizontal: false, vertical: scrolls)
     .padding(.bottom, Self.peekDepth)
     .padding(.horizontal, 31)
     // Undo, a skip or a sort from elsewhere: the card that arrives rises on spring-drop.
@@ -320,23 +403,32 @@ struct ReviewDeckView: View {
 
   /// The top card: it follows the finger, tilts with the horizontal drag, and carries the
   /// VoiceOver actions that do what the swipes do.
-  private func live(_ card: ReviewCardModel) -> some View {
+  private func live(_ card: ReviewCardModel, compact: Bool) -> some View {
     let lean = leanEdge
+    let asksText = card.copyLine == nil && card.reviewReason == .mayRepeat && !textsKept.contains(card.id)
     return ReviewCardView(
       card: card, hidden: model.hidden, lean: lean.map(choice(for:)), leanEdge: lean, strength: leanStrength,
       use: { use(card) },
       merge: { resolveCopy(card, merge: true) },
       keepBoth: { resolveCopy(card, merge: false) },
       reason: { reasonInfo = card },
+      samePayment: { archive(card) },
+      keepText: { keepText(card) },
+      textKept: textsKept.contains(card.id),
+      compact: compact,
       actions: {
         if card.copyLine != nil {
           Button(card.samePurchase ? "Same purchase" : "Merge") { resolveCopy(card, merge: true) }
           Button("Keep both") { resolveCopy(card, merge: false) }
         }
-        ForEach(ReviewChoice.allCases, id: \.self) { c in
-          Button(c.label) { send(card, c) }
+        if asksText {
+          Button("Same payment, archive it") { archive(card) }
+          Button("Keep both, sort it") { keepText(card) }
         }
-        if card.reviewReason == nil, card.copyLine == nil, let s = card.suggestion {
+        ForEach(ReviewChoice.allCases, id: \.self) { c in
+          Button(c.label(isIncome: card.isIncome)) { send(card, c) }
+        }
+        if Self.usable(card, textKept: textsKept.contains(card.id)), card.copyLine == nil, let s = card.suggestion {
           Button("Use \(s.name)") { use(card) }
         }
         Button("Skip for now") { skip(card) }
@@ -345,7 +437,7 @@ struct ReviewDeckView: View {
         }
       }
     )
-    .modifier(LiveCard(drag: drag, tilt: tilt, gesture: dragGesture(card), passive: typeSize.isAccessibilitySize || held != nil))
+    .modifier(LiveCard(drag: drag, tilt: tilt, gesture: dragGesture(card), passive: deckFit == .scroll || held != nil))
     .accessibilityIdentifier("review.card")
   }
 
@@ -395,14 +487,26 @@ struct ReviewDeckView: View {
 
   /// A direction pill: idle glass, waking toward 1.06 as the card leans its way, active
   /// (48, the bucket's tint and ring) past the commit point. A real button, 44 at least.
+  @ViewBuilder
   private func pill(_ edge: SwipeEdge) -> some View {
+    let top = model.cards.first
+    if Self.hidesPill(asking: top?.copyLine != nil, leaning: leanEdge == edge || held == edge) {
+      Color.clear.frame(width: 1, height: Self.pillSlot).accessibilityHidden(true)
+    } else {
+      livePill(edge)
+    }
+  }
+
+  private func livePill(_ edge: SwipeEdge) -> some View {
     let choice = choice(for: edge)
     let active = crossed == edge || held == edge
     let waking = !active && leanEdge == edge ? leanStrength : 0
+    let top = model.cards.first
+    let label = choice.label(isIncome: top?.isIncome == true)
     return Button {
-      if let top = model.cards.first { send(top, choice) }
+      if let top { send(top, choice) }
     } label: {
-      DirectionPillLabel(choice: choice, edge: edge, active: active)
+      DirectionPillLabel(choice: choice, label: label, edge: edge, active: active)
     }
     .buttonStyle(HPressStyle(in: Capsule()))
     .scaleEffect(motion.isStill ? 1 : 1 + 0.06 * waking)
@@ -411,8 +515,14 @@ struct ReviewDeckView: View {
     .opacity(model.picking == nil ? 1 : 0)
     .hAnimation(.fade, value: model.picking == nil)
     .disabled(model.cards.isEmpty)
-    .accessibilityLabel("Sort as \(choice.label)")
+    .accessibilityLabel("Sort as \(label)")
     .accessibilityIdentifier("review.pill.\(choice.rawValue)")
+  }
+
+  static func hidesPill(asking: Bool, leaning: Bool) -> Bool { asking && !leaning }
+
+  static func usable(_ card: ReviewCardModel, textKept: Bool) -> Bool {
+    card.reviewReason == nil || (card.reviewReason == .mayRepeat && textKept && card.copyLine == nil)
   }
 
   // MARK: Footer
@@ -554,6 +664,11 @@ struct ReviewDeckView: View {
   /// The sheet has gone: file what it chose, or, closed without a sort (close, swipe down,
   /// the scrim), spring the card back.
   private func pickClosed() {
+    if let card = pendingMerge {
+      pendingMerge = nil
+      resolveCopy(card, merge: true)
+      return
+    }
     if let p = pendingSort {
       pendingSort = nil
       let edge = held ?? edge(for: p.pick.choice)
@@ -578,7 +693,7 @@ struct ReviewDeckView: View {
 
   /// "Use": files the suggestion, flying the card toward its bucket's side.
   private func use(_ card: ReviewCardModel) {
-    guard card.reviewReason == nil, let s = card.suggestion else { return }
+    guard Self.usable(card, textKept: textsKept.contains(card.id)), let s = card.suggestion else { return }
     tap += 1
     file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name, chime: true) {
       model.useSuggestion(card.id, shown: s.id)
@@ -596,6 +711,16 @@ struct ReviewDeckView: View {
     file(card, toward: nil, as: merge ? "Merged" : "Kept both") {
       model.resolveCopy(card.id, merge: merge)
     }
+  }
+
+  private func archive(_ card: ReviewCardModel) {
+    tap += 1
+    file(card, toward: nil, as: nil) { model.archive(card.id) }
+  }
+
+  private func keepText(_ card: ReviewCardModel) {
+    textsKept.insert(card.id)
+    announce("Kept both. Sort it as usual.")
   }
 
   private func reasonInfoClosed() {
@@ -643,7 +768,7 @@ struct ReviewDeckView: View {
     if chime { SortSound.shared.play() }
     if let edge { departures[card.id] = edge }
     if !motion.settled {
-      flights.append(Flight(card: card, from: from, tilt: tilt, edge: edge))
+      flights.append(Flight(card: card, from: from, tilt: tilt, edge: edge, compact: deckFit == .compact))
     }
     if let filedAs { announce(model.filedAnnouncement(filedAs)) }
   }
@@ -682,6 +807,7 @@ struct Flight: Identifiable {
   let from: CGSize
   let tilt: Double
   let edge: SwipeEdge?
+  var compact = false
 
   static func target(_ edge: SwipeEdge, width: CGFloat, height: CGFloat) -> CGSize {
     switch edge {
@@ -704,7 +830,8 @@ private struct FlyingCard: View {
   @State private var faded = false
 
   var body: some View {
-    ReviewCardView(card: flight.card, hidden: hidden, lean: nil, leanEdge: nil, strength: 0, use: {})
+    ReviewCardView(card: flight.card, hidden: hidden, lean: nil, leanEdge: nil, strength: 0, use: {},
+                   compact: flight.compact)
       .scaleEffect(gone && flight.edge == nil && travels ? HMotion.nextCardScale : 1)
       .offset(gone && travels ? offset : flight.from)
       .rotationEffect(.degrees(gone && travels ? angle : flight.tilt))
@@ -762,6 +889,7 @@ private struct FlyingCard: View {
 /// the bucket's ink. The arrow sits on the side the card goes.
 private struct DirectionPillLabel: View {
   let choice: ReviewChoice
+  let label: String
   let edge: SwipeEdge
   let active: Bool
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -774,7 +902,7 @@ private struct DirectionPillLabel: View {
       HStack(spacing: 6) {
         Circle().fill(hue.dotGradient).frame(width: 10, height: 10)
           .overlay { if active { Circle().strokeBorder(hue.ink.opacity(0.12), lineWidth: 1) } }
-        Text(choice.label)
+        Text(label)
           .hType(active ? .callout.weight(.bold) : .subheadline.weight(.semibold))
           .foregroundStyle(active ? hue.ink : HColor.textPrimary)
           .fixedSize()
@@ -814,6 +942,10 @@ struct ReviewCardView<Actions: View>: View {
   var merge: () -> Void = {}
   var keepBoth: () -> Void = {}
   var reason: () -> Void = {}
+  var samePayment: () -> Void = {}
+  var keepText: () -> Void = {}
+  var textKept = false
+  var compact = false
   @ViewBuilder let actions: () -> Actions
   @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -821,12 +953,12 @@ struct ReviewCardView<Actions: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       VStack(alignment: .leading, spacing: 0) {
         identity
-        Spacer(minLength: 24)
+        Spacer(minLength: compact ? 12 : 24)
         amount
       }
-      .padding(.top, 24)
+      .padding(.top, compact ? 16 : 24)
       .padding(.horizontal, 24)
-      .padding(.bottom, 22)
+      .padding(.bottom, compact ? 14 : 22)
       // The card drags, so its words read as one element; the sorts are its actions.
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(spoken)
@@ -835,7 +967,9 @@ struct ReviewCardView<Actions: View>: View {
       Group {
         if let line = card.copyLine {
           copyStrip(line)
-        } else if let r = card.reviewReason {
+        } else if card.reviewReason == .mayRepeat, !textKept {
+          sameTextStrip
+        } else if let r = card.reviewReason, r != .mayRepeat {
           reasonStrip(r)
         } else if let s = card.suggestion {
           strip(s)
@@ -861,9 +995,9 @@ struct ReviewCardView<Actions: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .top) {
         if card.copyLine == nil, !card.isNewMerchant, let s = card.suggestion {
-          CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: .s56)
+          CategoryDisc(hue: s.hue, icon: s.glyph.icon, size: compact ? .s40 : .s56)
         } else {
-          MerchantMonogram(letter: card.monogram, size: 56)
+          MerchantMonogram(letter: card.monogram, size: compact ? 40 : 56)
         }
         Spacer(minLength: 8)
         if let r = card.reviewReason {
@@ -873,7 +1007,7 @@ struct ReviewCardView<Actions: View>: View {
           .buttonStyle(.plain)
           .accessibilityIdentifier("review.reason.\(r.rawValue)")
         } else if card.isNewMerchant {
-          InfoChip("New merchant", style: .reason)
+          InfoChip("New merchant", style: .evidence)
         }
       }
       VStack(alignment: .leading, spacing: 8) {
@@ -882,18 +1016,18 @@ struct ReviewCardView<Actions: View>: View {
           .foregroundStyle(HColor.textPrimary)
           .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
           .fixedSize(horizontal: false, vertical: true)
-        if let raw = card.rawMerchant {
+        if !compact, let raw = card.rawMerchant {
           InfoChip(raw, style: .rawText)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
         }
       }
-      .padding(.top, 16)
+      .padding(.top, compact ? 12 : 16)
     }
   }
 
   private var amount: some View {
     VStack(alignment: .leading, spacing: 4) {
-      MoneyText(card.amount, figure: .hero, unit: .unit, hidden: hidden,
+      MoneyText(card.amount, figure: compact ? .large : .hero, unit: .unit, hidden: hidden,
                 color: card.isIncome ? HColor.moneyIn : HColor.moneyOut,
                 unitColor: card.isIncome ? HColor.moneyIn : HColor.textPrimary, unitGap: 6,
                 sign: card.isIncome ? .income : .none)
@@ -920,6 +1054,34 @@ struct ReviewCardView<Actions: View>: View {
         Button(card.samePurchase ? "Same purchase" : "Merge", action: merge)
           .buttonStyle(.pill(.primary, size: .small))
           .accessibilityIdentifier(card.samePurchase ? "review.same" : "review.merge")
+      }
+    }
+    .padding(.top, 14)
+    .padding(.bottom, 14)
+    .padding(.leading, 24)
+    .padding(.trailing, 16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(HColor.reviewSuggestionSurface)
+    .overlay(alignment: .top) { HColor.borderSubtle.frame(height: 1) }
+  }
+
+  private var sameTextStrip: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(card.reasonLine ?? TxnReviewReason.mayRepeat.detail)
+        .hType(.subheadline.weight(.semibold))
+        .foregroundStyle(HColor.textPrimary)
+        .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("review.sameText")
+      ReflowingRow(spacing: 8) {
+        Button("Keep both, sort it", action: keepText)
+          .buttonStyle(.pill(.secondary, size: .small))
+          .accessibilityIdentifier("review.keepText")
+      } trailing: {
+        Button("Same payment, archive it", action: samePayment)
+          .buttonStyle(.pill(.primary, size: .small))
+          .accessibilityIdentifier("review.samePayment")
       }
     }
     .padding(.top, 14)
@@ -1058,10 +1220,10 @@ struct ReviewCardView<Actions: View>: View {
 
 extension ReviewCardView where Actions == EmptyView {
   init(card: ReviewCardModel, hidden: Bool, lean: ReviewChoice?, leanEdge: SwipeEdge?, strength: Double,
-       use: @escaping () -> Void)
+       use: @escaping () -> Void, textKept: Bool = false, compact: Bool = false)
   {
     self.init(card: card, hidden: hidden, lean: lean, leanEdge: leanEdge, strength: strength, use: use,
-              actions: { EmptyView() })
+              textKept: textKept, compact: compact, actions: { EmptyView() })
   }
 }
 

@@ -40,8 +40,8 @@ struct UnreadMailView: View {
   private func card(_ m: UnreadMail, today: LocalDate) -> some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(spacing: 12) {
-        Circle().fill(Color(HRGBA(0xFF, 0xF3, 0xDC, 1))).frame(width: 32, height: 32)
-          .overlay { HIconView(.envelope, size: 16, color: Color(HRGBA(0x9A, 0x64, 0x00, 1)), strokeWidth: 2) }
+        Circle().fill(HColor.statusWarningSurface).frame(width: 32, height: 32)
+          .overlay { HIconView(.envelope, size: 16, color: HColor.statusWarningForeground, strokeWidth: 2) }
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 0) {
           Text(ReviewEngine.unreadTitle(m)).hType(.subheadline.weight(.semibold)).foregroundStyle(HColor.textPrimary)

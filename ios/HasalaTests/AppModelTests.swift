@@ -238,7 +238,7 @@ struct AppModelTests {
     #expect(app.reviewCount == 5)
     #expect(ReviewTabView.countLine(app.reviewCards.count) == "5 to sort · about a minute")
     #expect(ReviewTabView.countLine(13) == "13 to sort · about 3 minutes")
-    #expect(ReviewTabView.countLine(0) == "All caught up")
+    #expect(ReviewTabView.countLine(0) == "Everything is sorted")
   }
 
   @Test func editsMadeAsOneGestureAreAllTakenBack() {
