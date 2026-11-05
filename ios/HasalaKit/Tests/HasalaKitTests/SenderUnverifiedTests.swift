@@ -17,7 +17,7 @@ struct SenderUnverifiedTests {
   @Test func theActivityRowSaysToReview() throws {
     let row = ActivityEngine.row(try #require(s.txn("steam")), s)
     #expect(row.toReview && row.reviewReason == nil)
-    #expect(row.detail == "To review · 11:02")
+    #expect(row.detail == "To sort · 11:02")
   }
 
   @Test func theTransactionSheetCarriesNoReason() {

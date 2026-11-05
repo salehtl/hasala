@@ -498,6 +498,15 @@ public struct DayByDay: Sendable, Hashable {
   public var peak: Peak?
   /// "Zuma on Wed 7 Oct was 64% of this month's dining."; none when one payment is all of it.
   public var caption: String?
+  public var captionHidden: String? = nil
+  public var monthDays: Int = 0
+  public var running: [Money] = []
+  public var budget: Money = .aed(0)
+  public var projection: Money? = nil
+
+  public var runningScaleTop: Money {
+    .aed(max(budget.minor, projection?.minor ?? 0, running.last?.minor ?? 0))
+  }
 
   /// The day the chart's height is drawn against: the tallest day or the daily budget.
   public var scaleTop: Money { .aed(max(days.map(\.spent.minor).max() ?? 0, dailyBudget.minor)) }
@@ -543,6 +552,15 @@ public struct CategoryDetail: Sendable, Hashable {
   /// This month's payments in the category, newest first.
   public var transactions: [MiniTxnRow]
   public var rules: [CategoryRule]
+  public var paidBill: PaidBill? = nil
+  public var billShort: MoneyPhrase? = nil
+
+  public struct PaidBill: Sendable, Hashable {
+    public var total: Money
+    public var paidOn: LocalDate
+    public var nextDue: LocalDate?
+    public var line: String
+  }
 }
 
 // MARK: - Project detail (Plan · Japan trip)
@@ -646,13 +664,30 @@ public extension PlanEngine {
       fact = MoneyPhrase([.amount(.aed(left.negated), .compact, hidden: 3), .text(" over")])
     }
 
-    return CategoryDetail(
+    var detail = CategoryDetail(
       id: c.id, name: c.name, glyph: c.glyph, hue: c.hue, bucket: c.bucket, month: month,
       budget: .aed(budget), spent: .aed(spent), left: .aed(left), progress: barProgress(spent: spent, budget: budget),
       tick: paced ? Pace.monthGone(day: day, days: days) : nil, verdict: verdict, verdictWord: word,
       verdictFact: fact, advice: advice, chart: dayByDay(c, s, now: now, budget: budget, spent: spent, paced: paced),
       transactions: monthRows(c, s, month: month), rules: rules(c, s)
     )
+    if c.role == .bill {
+      detail.paidBill = paidBill(c.id, s, month: month, verdict: verdict, spent: spent)
+      if verdict == .onTrack { detail.billShort = shortfall(c.id, s, month: month, today: now.date, budget: budget, spent: spent) }
+    }
+    return detail
+  }
+
+  static func paidBill(_ c: CategoryID, _ s: LedgerState, month: YearMonth, verdict: Verdict, spent: Int64)
+    -> CategoryDetail.PaidBill?
+  {
+    let bills = s.bills.filter { $0.categoryID == c && $0.state == .tracked && !$0.isIncome }
+    guard verdict == .done, !bills.contains(where: { $0.nextDue.yearMonth <= month }),
+      let paid = paymentDate(c, s, month: month)
+    else { return nil }
+    let next = bills.map(\.nextDue).min()
+    let line = "Paid" + (next.map { " · next due about \($0.dayMonth)" } ?? "")
+    return CategoryDetail.PaidBill(total: .aed(spent), paidOn: paid, nextDue: next, line: line)
   }
 
   /// Day by day from the first of the month to today.
@@ -679,6 +714,7 @@ public extension PlanEngine {
     }
     // The month's largest payment and its share of what the category spent.
     var caption: String?
+    var captionHidden: String?
     let payments = byDay.values.joined()
     if spent > 0, let big = payments.max(by: { ($0.minor, $1.txn.postedAt) < ($1.minor, $0.txn.postedAt) }),
        big.minor > 0
@@ -688,12 +724,27 @@ public extension PlanEngine {
         let name = c.builtin ? c.name.lowercased() : Bidi.isolate(c.name)
         caption = "\(Bidi.isolate(big.txn.merchant)) on \(big.txn.postedAt.date.short) was \(share)% of this month's "
           + "\(name)."
+        captionHidden = "\(Bidi.isolate(big.txn.merchant)) on \(big.txn.postedAt.date.short) was the biggest \(name) payment this month."
       }
     }
     let short = month.shortName
-    return DayByDay(
+    var total: Int64 = 0
+    let running = days.map { d -> Money in
+      total.add(d.spent.minor)
+      return .aed(total)
+    }
+    let projection: Money? =
+      paced && Pace.showsProjection(day: today)
+      ? .aed(Pace.projected(spent, day: today, days: month.days, largest: largest(c.id, s, month: month)) / 100 * 100) : nil
+    var out = DayByDay(
       days: days, today: today, dailyBudget: .aed(paced ? max(0, budget) / Int64(month.days) : 0),
       range: today == 1 ? "1 \(short)" : "1–\(today) \(short)", peak: peak, caption: caption)
+    out.captionHidden = captionHidden
+    out.monthDays = month.days
+    out.running = running
+    out.budget = .aed(paced ? max(0, budget) : 0)
+    out.projection = projection
+    return out
   }
 
   /// This month's payments in the category, newest first, each for its share of the
@@ -766,7 +817,7 @@ public extension PlanEngine {
       }
       let detail = names.count <= 2 ? listed(names) : "\(names[0]), \(names[1]) and \(names.count - 2) more"
       return ProjectCategoryRow(
-        id: key, name: c?.name ?? "Not sorted", glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other, detail: detail,
+        id: key, name: c?.name ?? "To sort", glyph: c?.glyph ?? .tag, hue: c?.hue ?? .other, detail: detail,
         spent: .aed(Fils.sum(ts, projectMinor)))
     }.sorted { $0.spent.minor > $1.spent.minor }
     let monthName = now.date.yearMonth.name

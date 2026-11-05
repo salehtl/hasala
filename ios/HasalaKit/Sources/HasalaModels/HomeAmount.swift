@@ -13,6 +13,16 @@ public struct HomeAmount: Sendable, Hashable, Codable {
     self.rateMicro = rateMicro
   }
 
+  public var notCountedLine: String? {
+    guard notCounted, let original else { return nil }
+    return "Not counted. No exchange rate for \(original.currency) yet."
+  }
+
+  public var notCountedFigure: MoneyPhrase? {
+    guard notCounted, let original else { return nil }
+    return MoneyPhrase([.text("\(original.currency) "), .amount(original, hidden: 3)])
+  }
+
   public var estimateLine: String? {
     guard estimate, let rateMicro, let original else { return nil }
     return "Estimate at \(ExchangeRates.format(rateMicro)) \(Money.home) per \(original.currency). Your bank's charge can be a little higher."
@@ -43,10 +53,21 @@ extension MiniTxnRow {
 extension Spending {
   public static func unrated(_ s: LedgerState, in period: Period) -> TotalMark? {
     var leftOut: [String: Int] = [:]
-    for t in s.txns where period.contains(t.postedAt.date) && unrated(t, in: s) {
-      leftOut[t.amount.currency, default: 0] += 1
+    var estimates = 0
+    for t in s.txns where period.contains(t.postedAt.date) {
+      if unrated(t, in: s) {
+        leftOut[t.amount.currency, default: 0] += 1
+      } else if estimated(t, in: s) {
+        estimates += 1
+      }
     }
-    return leftOut.isEmpty ? nil : TotalMark(leftOut: leftOut)
+    guard !leftOut.isEmpty || estimates > 0 else { return nil }
+    return TotalMark(estimate: estimates > 0, leftOut: leftOut, estimated: estimates)
+  }
+
+  public static func estimated(_ t: Txn, in s: LedgerState) -> Bool {
+    guard !parts(t, in: s).isEmpty else { return false }
+    return t.homeSource == .rate && t.homeMinor != nil
   }
 
   public static func unrated(_ t: Txn, in s: LedgerState) -> Bool {
@@ -62,10 +83,16 @@ extension Spending {
 public struct TotalMark: Sendable, Hashable, Codable {
   public var estimate: Bool
   public var leftOut: [String: Int]
+  public var estimated: Int = 0
 
-  public init(estimate: Bool = false, leftOut: [String: Int] = [:]) {
+  public init(estimate: Bool = false, leftOut: [String: Int] = [:], estimated: Int = 0) {
     self.estimate = estimate
     self.leftOut = leftOut
+    self.estimated = estimated
+  }
+
+  public var estimateLine: String? {
+    estimated > 0 ? "Includes \(estimated) estimated" : nil
   }
 
   public var leftOutCount: Int { leftOut.values.reduce(0, +) }
@@ -75,12 +102,12 @@ public struct TotalMark: Sendable, Hashable, Codable {
   public var line: String? {
     let n = leftOutCount
     guard n > 0 else { return nil }
-    return currency.map { "Not counted: \(n) in \($0)" } ?? "Not counted: \(n) with no rate"
+    return currency.map { "No rate yet: \(n) in \($0)" } ?? "No rate yet: \(n)"
   }
 
   public var caption: String? {
     let n = leftOutCount
-    return n > 0 ? "\(n) not counted" : nil
+    return n > 0 ? "\(n) with no rate yet" : nil
   }
 
   public static func unrated(_ txns: some Sequence<Txn>) -> TotalMark? {

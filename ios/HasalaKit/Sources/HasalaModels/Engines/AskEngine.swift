@@ -151,7 +151,7 @@ public enum AskEngine {
     let rows = found.map { t in
       var r = ActivityEngine.row(t, s)
       let day = today.map { t.postedAt.date.short(today: $0) } ?? t.postedAt.date.short
-      r.detail = "\(s.category(t.categoryID)?.name ?? "To review") · \(day)"
+      r.detail = "\(s.category(t.categoryID)?.name ?? "To sort") · \(day)"
       return r
     }
     let activity: TxnFilter? =

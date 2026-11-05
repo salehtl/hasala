@@ -42,7 +42,7 @@ public enum HomeWidgetKind: String, Sendable, Hashable, CaseIterable, Codable, C
     case .comingUp: "Coming up"
     case .project: "Project"
     case .goal: "Goal"
-    case .toReview: "To review"
+    case .toReview: "To sort"
     case .today: "Today"
     }
   }
@@ -141,6 +141,8 @@ public enum HomeWidgetConfig: Sendable, Hashable, Codable {
 
 public struct HomeLayout: Sendable, Hashable, Codable {
   public static let version = 1
+
+  public var showsBudgetPace: Bool { entries.contains { $0.kind == .budgetPace } }
 
   public struct Entry: Sendable, Hashable, Codable, Identifiable {
     public var kind: HomeWidgetKind

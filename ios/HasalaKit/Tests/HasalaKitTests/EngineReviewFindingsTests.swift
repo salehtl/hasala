@@ -105,7 +105,7 @@ struct HeldCopyTotalsTests {
     #expect(answer.total == .aed(100_00))
     #expect(answer.rows.map(\.id).contains("c2") == false)
     #expect(answer.mark?.leftOut == ["JPY": 1])
-    #expect(answer.mark?.line == "Not counted: 1 in JPY")
+    #expect(answer.mark?.line == "No rate yet: 1 in JPY")
   }
 
   @Test func askKeepsANetRefundNegative() {
@@ -137,7 +137,7 @@ struct UnratedTotalsTests {
     let card = PlanEngine.snapshot(s, now: now).projects.first { $0.id == "japan" }
     #expect(card?.spent == .aed(1_000_00))
     #expect(card?.mark?.leftOut == ["JPY": 2])
-    #expect(PlanEngine.project("japan", s, now: now)?.mark?.line == "Not counted: 2 in JPY")
+    #expect(PlanEngine.project("japan", s, now: now)?.mark?.line == "No rate yet: 2 in JPY")
   }
 
   @Test func theHomeHeroSaysWhatItLeftOut() {
@@ -145,7 +145,7 @@ struct UnratedTotalsTests {
     s.rates = []
     let hero = HomeEngine.snapshot(s, now: now).hero
     #expect(hero.spent == .aed(100_00))
-    #expect(hero.unrated?.line == "Not counted: 1 in JPY")
+    #expect(hero.unrated?.line == "No rate yet: 1 in JPY")
   }
 
   @Test func aCarvedOutOrArchivedRowIsNotMarked() {
@@ -160,7 +160,7 @@ struct UnratedTotalsTests {
   @Test func reviewAndBillsSayWhatTheyLeftOut() {
     var s = InsightsFixture.ledger([yen("y1", needsReview: true)])
     s.rates = []
-    #expect(ActivityEngine.reviewSummary(s, now: now).mark?.caption == "1 not counted")
+    #expect(ActivityEngine.reviewSummary(s, now: now).mark?.caption == "1 with no rate yet")
   }
 }
 

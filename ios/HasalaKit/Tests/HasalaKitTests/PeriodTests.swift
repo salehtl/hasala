@@ -252,7 +252,7 @@ struct HomePeriodTests {
       return
     }
     #expect(pace.monthGone == "Ended 30 Sep")
-    #expect(home.aboutNow.map(\.title) == ["Next bill · DEWA", "To review"])
+    #expect(home.aboutNow.map(\.title) == ["Next bill · DEWA", "To sort"])
     #expect(home.aboutNow.map { $0.detail.rendered(hidden: false) } == ["~489.15 · in 4 days", "6 waiting"])
     #expect(home.aboutNow.map(\.destination) == [.bills, .review(nil)])
   }

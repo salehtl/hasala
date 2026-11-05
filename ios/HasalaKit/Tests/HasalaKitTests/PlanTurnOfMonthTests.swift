@@ -142,3 +142,33 @@ struct PlanOtherMonthTests {
     #expect(next.sections.flatMap(\.rows).allSatisfy { $0.verdict != .overPace })
   }
 }
+
+@Suite("Plan · category details")
+struct PlanCategoryDetailTests {
+  @Test func aPaidBillLeadsWithWhatWasPaid() throws {
+    let rent = try #require(PlanEngine.category("rent", MayaLedger.state, now: MayaLedger.now))
+    let paid = try #require(rent.paidBill)
+    #expect(paid.total == .aed(7_500_00) && paid.paidOn == LocalDate(2026, 10, 1))
+    #expect(paid.line.hasPrefix("Paid · next due about "))
+  }
+
+  @Test func utilitiesSaysItIsAboutShort() throws {
+    let d = try #require(PlanEngine.category("utilities", MayaLedger.state, now: MayaLedger.now))
+    #expect(d.billShort?.rendered(hidden: false) == "About 17 short")
+  }
+
+  @Test func theChartRunsUpToToday() throws {
+    let d = try #require(PlanEngine.category("dining", MayaLedger.state, now: MayaLedger.now))
+    #expect(d.chart.monthDays == 31 && d.chart.running.count == 10)
+    #expect(d.chart.running.last == .aed(642_75))
+    #expect(d.chart.budget == .aed(1_600_00))
+    #expect(d.chart.projection == .aed(1_127_00))
+    #expect(d.chart.captionHidden == "\u{2068}Zuma\u{2069} on Wed 7 Oct was the biggest dining payment this month.")
+  }
+
+  @Test func noProjectionBeforeDaySeven() throws {
+    let d = try #require(PlanEngine.category("dining", MayaLedger.state, now: LocalDateTime(2026, 10, 5, 9, 0)))
+    #expect(d.chart.projection == nil)
+    #expect(d.verdictFact == nil)
+  }
+}

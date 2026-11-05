@@ -189,8 +189,8 @@ struct HomeHeroTests {
     let unsorted = try #require(h.unsorted)
     #expect(unsorted == .aed(827_28))
     #expect(h.spent.minor == Fils.sum(h.tiles.prefix(2).map(\.value.minor)) + unsorted.minor)
-    #expect(h.unsortedLine?.rendered(hidden: false) == "Not sorted: AED 827.28")
-    #expect(h.unsortedLine?.rendered(hidden: true) == "Not sorted: AED •••")
+    #expect(h.unsortedLine?.rendered(hidden: false) == "To sort: AED 827.28, counted above")
+    #expect(h.unsortedLine?.rendered(hidden: true) == "To sort: AED •••, counted above")
     let sorted = Self.maya { s in
       for i in s.txns.indices where s.txns[i].categoryID == nil { s.txns[i].categoryID = "groceries" }
     }
@@ -242,7 +242,7 @@ struct NotificationsEngineTests {
     ])
     #expect(n.needsALook.map(\.count) == [6, 0, 0, 0])
     #expect(n.needsALook.map { $0.line.rendered(hidden: false) } == [
-      "AED 827.28 still to check", "Usually on the 7th · no email yet", "Seen 5× · every ~30 days",
+      "AED 827.28 to sort", "Usually on the 7th · no email yet", "Seen 5× · every ~30 days",
       "427.90 from 389.00 · accept or check",
     ])
     #expect(n.needsALook.map(\.when) == ["Today", "Thu", "Thu", "Mon"])
@@ -252,7 +252,7 @@ struct NotificationsEngineTests {
 
   @Test func hiddenAmountsAreThreeDots() {
     let n = NotificationsEngine.snapshot(MayaLedger.state, now: now)
-    #expect(n.needsALook[0].line.rendered(hidden: true) == "AED ••• still to check")
+    #expect(n.needsALook[0].line.rendered(hidden: true) == "AED ••• to sort")
     #expect(n.needsALook[3].line.rendered(hidden: true) == "••• from ••• · accept or check")
   }
 
@@ -359,7 +359,7 @@ struct HomeWidgetEngineTests {
     #expect(goal.percentLabel == "77%")
     #expect(MoneyFormat.string(bill.amount.minor, style: .rounded) == "489")
     #expect(bill.caption == "Expected Wed · DEWA")
-    #expect(pace.monthGone == "32% of October gone")
+    #expect(pace.monthGone == "Day 10 of 31")
     #expect(pace.rows.map { MoneyFormat.string($0.left.minor, style: .rounded) } == ["3,309", "5,402", "0"])
     #expect(pace.rows.map(\.verdict) == [.onTrack, .onTrack, .done])
   }

@@ -186,7 +186,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .samePurchase: "Same purchase?"
-    case .mayRepeat: "Same payment?"
+    case .mayRepeat: "Same as a text?"
     }
   }
 
@@ -194,7 +194,7 @@ public enum TxnReviewReason: String, Sendable, Hashable, Codable {
     switch self {
     case .probableCopy: "Looks like a copy"
     case .samePurchase: "Same purchase?"
-    case .mayRepeat: "Maybe the same payment"
+    case .mayRepeat: "Maybe the same as a text"
     }
   }
 

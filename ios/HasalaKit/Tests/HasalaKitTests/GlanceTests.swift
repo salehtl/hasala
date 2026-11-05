@@ -82,7 +82,7 @@ struct GlanceEngineTests {
   @Test func toReviewCountsTheDeck() throws {
     let r = try #require(snapshot().toReview)
     #expect(r.count == 6)
-    #expect(r.caption.rendered(hidden: false) == "827 still to check")
+    #expect(r.caption.rendered(hidden: false) == "827 to sort")
     #expect(ToReviewWidget(count: 0, notCounted: .aed(0)).caption.rendered(hidden: false) == "Nothing to sort")
   }
 
