@@ -18,6 +18,8 @@ protocol PlanModel: AnyObject, Observable {
   func open(project: ProjectID)
   func newProject()
   func openProjects()
+  var hold: ReadingHold? { get }
+  func openReading(_ link: ReadingHold.Link)
 }
 
 @MainActor
@@ -28,6 +30,13 @@ final class PlanViewModel: PlanModel {
   @ObservationIgnored private var memo = Memo<Int, PlanSnapshot>()
 
   init(app: AppModel) { self.app = app }
+
+  var hold: ReadingHold? {
+    let h = ReadingOnScreen.hold(app.store.state.reading, month: snapshot.month)
+    return h?.warns == true ? h : nil
+  }
+
+  func openReading(_ link: ReadingHold.Link) { app.router.open(.profile, profile: [.bankAlerts]) }
 
   var snapshot: PlanSnapshot {
     memo.value(for: app.store.revision) { PlanEngine.snapshot(app.store.state, now: app.store.now) }

@@ -74,7 +74,9 @@ struct HomeView: View {
             app.router.open(.profile, profile: [.exchangeRates] + (mark.currency.map { [.editRate($0)] } ?? []))
           },
           openUnsorted: { app.router.tab = .review },
-          setPlan: { if let finish { finish.setPlan() } else { app.openPlan() } })
+          setPlan: { if let finish { finish.setPlan() } else { app.openPlan() } },
+          hold: HomeViewModel.hold(snapshot.hero, reading: app.store.state.reading, period: app.period),
+          openReading: { _ in app.router.open(.profile, profile: [.bankAlerts]) })
           // Paper: 12 from the header to the pill's row (content 8, hero 4); the tab screen's
           // column starts 20 down for a large title.
           .padding(.top, -8)

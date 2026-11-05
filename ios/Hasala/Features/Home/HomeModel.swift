@@ -124,9 +124,10 @@ final class HomeViewModel: HomeModel {
       return nil
     case .review(let preset):
       close()
-      if let preset { app.choose(preset) }
       router.tab = .review
-      return { [app] in app.startReview() }
+      return { [app] in
+        if let preset { app.startReview(over: preset) } else { app.startReview() }
+      }
     case .unreadMail:
       close()
       router.tab = .review
@@ -194,6 +195,11 @@ final class HomeViewModel: HomeModel {
 
   func openNotCounted(_ line: SpendHero.NotCounted) {
     app.openProjectsTab(line.projectID)
+  }
+
+  static func hold(_ hero: SpendHero, reading: ReadingState?, period: Period) -> ReadingHold? {
+    guard period.isMonth, !period.isAllTime, hero.state != .range, hero.state != .syncing else { return nil }
+    return ReadingOnScreen.hold(reading, month: period.first)
   }
 
   static let categoryPrefix = HomeWidgetKind.categoryWatch.rawValue + "."

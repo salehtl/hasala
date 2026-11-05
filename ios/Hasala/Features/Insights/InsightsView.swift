@@ -20,11 +20,14 @@ struct InsightsView: View {
     PushedPage(app: app, title: "Insights", wash: .onTrack) {
       VStack(alignment: .leading, spacing: 12) {
         periodRow(snap)
-        InsightsSummaryCard(summary: snap.summary, comparison: snap.comparison, hidden: hidden) { model.open($0) }
+        if let line = model.importLine { ImportStrip(line: line) }
+        if let hold = model.hold(snap.focus) { ReadingHoldRow(hold: hold, open: model.openReading) }
+        InsightsSummaryCard(summary: snap.summary, comparison: model.importing ? nil : snap.comparison, hidden: hidden,
+                            open: { model.open($0) }, openNotCounted: { model.openNotCounted($0) })
       }
       .padding(.horizontal, HSpacing.insetPage)
       analyze(snap).padding(.horizontal, HSpacing.insetPage)
-      changes(snap).padding(.horizontal, HSpacing.insetPage)
+      if !model.importing { changes(snap).padding(.horizontal, HSpacing.insetPage) }
       InsightsFlowCard(flow: snap.flow, empty: snap.flowEmpty, focus: snap.focus, hidden: hidden,
                        showsTable: $model.showsTable)
         .padding(.horizontal, HSpacing.insetPage)
@@ -83,7 +86,7 @@ struct InsightsView: View {
             ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
               if i > 0 { InsightsSeparator() }
               Button { model.open(row.target) } label: {
-                InsightsLensRow(row: row, comparison: snap.comparison, hidden: hidden)
+                InsightsLensRow(row: row, comparison: model.importing ? nil : snap.comparison, hidden: hidden)
               }
               .buttonStyle(HRowPressStyle())
               .accessibilityIdentifier("insights.row.\(row.id)")
@@ -189,5 +192,23 @@ struct InsightsView: View {
     }
     .buttonStyle(HPressStyle())
     .accessibilityIdentifier("insights.report.\(report.kind.rawValue)")
+  }
+}
+
+private struct ImportStrip: View {
+  let line: String
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Circle().fill(HColor.statusInfoForeground).frame(width: 8, height: 8).accessibilityHidden(true)
+      Text(line).hType(.subheadline).foregroundStyle(HColor.textPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.vertical, 14)
+    .padding(.horizontal, 16)
+    .background(HColor.statusInfoSurface, in: RoundedRectangle(cornerRadius: HRadius.card, style: .continuous))
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("insights.reading")
   }
 }

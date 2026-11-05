@@ -44,10 +44,22 @@ struct PlanContent: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: HSpacing.gapScreenSection) {
+      if let hold = model.hold {
+        ReadingHoldRow(hold: hold, open: model.openReading)
+          .padding(.horizontal, HSpacing.insetPage)
+      }
       if snap.nothingPlanned {
         NothingPlannedCard(model: model)
       } else {
-        ReadyToAssignCard(model: model)
+        VStack(alignment: .leading, spacing: 8) {
+          ReadyToAssignCard(model: model)
+          if let outside = snap.outsidePlan {
+            PhraseText(outside.line, hidden: model.hidden).hType(.footnote).foregroundStyle(HColor.textSecondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .padding(.horizontal, HSpacing.insetPage + 4)
+              .accessibilityIdentifier("plan.outsidePlan")
+          }
+        }
         SplitSection(snap: snap)
       }
       ForEach(snap.sections) { section in

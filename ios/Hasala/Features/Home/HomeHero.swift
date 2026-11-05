@@ -28,6 +28,8 @@ struct HomeHero: View {
   let openRates: (TotalMark) -> Void
   var openUnsorted: () -> Void = {}
   var setPlan: (() -> Void)?
+  var hold: ReadingHold?
+  var openReading: (ReadingHold.Link) -> Void = { _ in }
 
   @Environment(\.hMotion) private var policy
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,7 +45,12 @@ struct HomeHero: View {
   private var noPlan: Bool { hero.state == .noPlan }
 
   private var caption: MoneyPhrase {
-    noPlan && reading ? MoneyPhrase(hero.caption.parts + [.text(" · still reading your alerts")]) : hero.caption
+    if let text = hold?.caption { return MoneyPhrase(stringLiteral: text) }
+    return noPlan && reading ? MoneyPhrase(hero.caption.parts + [.text(" · still reading your alerts")]) : hero.caption
+  }
+
+  private var overline: String {
+    hold?.overlineSuffix.map { "\(hero.overline) · \($0)" } ?? hero.overline
   }
 
   /// Spent as a share of the plan, for the bar's geometry only.
@@ -57,10 +64,12 @@ struct HomeHero: View {
     VStack(alignment: .leading, spacing: 16) {
       periodRow
       figureBlock
-      if noPlan, let setPlan {
+      if let hold, hold.line != nil || !noPlan {
+        heldBlock(hold)
+      } else if noPlan, let setPlan {
         NoPlanLine(action: setPlan)
       }
-      if !noPlan {
+      if !noPlan && hold == nil {
         VStack(alignment: .leading, spacing: 10) {
           if hero.state == .range {
             if !hero.bars.isEmpty {
@@ -81,10 +90,14 @@ struct HomeHero: View {
         }
       }
       VStack(alignment: .leading, spacing: typeSize.isAccessibilitySize ? 8 : 2) {
-        if !noPlan { tiles }
+        if !noPlan && hold == nil { tiles }
         if let line = hero.unsortedLine {
           NotCountedLine(text: line.rendered(hidden: hidden), spoken: line.spoken(hidden: hidden), icon: .tag,
                          id: "home.hero.unsorted", action: openUnsorted)
+        }
+        if let line = hero.heldOutLine {
+          NotCountedLine(text: line.rendered(hidden: hidden), spoken: line.spoken(hidden: hidden), icon: .split,
+                         id: "home.hero.heldOut", action: openUnsorted)
         }
         if let line = hero.notCounted {
           NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden), icon: .project,
@@ -123,7 +136,7 @@ struct HomeHero: View {
 
   private var figureBlock: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(hero.overline).hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
+      Text(overline).hType(.overline).foregroundStyle(HColor.textOnWashSecondary)
       // 6 dots at Paper's 38 pt when hidden (page 06 §6.3). The figure is its own element
       // (`home.hero.left`, plan decision 8) and carries the caption as its value, so VoiceOver
       // reads "AED 10,288.34, spent of 19,000 on needs and wants".
@@ -136,6 +149,22 @@ struct HomeHero: View {
       Text(caption.rendered(hidden: hidden)).hType(.body).foregroundStyle(HColor.textOnWashSecondary)
         .accessibilityHidden(true)
     }
+  }
+
+  // MARK: Reading held
+
+  private func heldBlock(_ hold: ReadingHold) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if hold.showsBar && !noPlan {
+        MonthPaceBar(spent: hero.spent, plan: hero.plan, tick: nil, verdict: .onTrack, overflow: 8, hidden: hidden,
+                     live: false)
+      }
+      ReadingHoldRow(
+        hold: hold, trailing: insights.map { (title: "Insights", identifier: "home.insights", action: $0) },
+        open: openReading)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("home.hero.held")
   }
 
   // MARK: Verdict

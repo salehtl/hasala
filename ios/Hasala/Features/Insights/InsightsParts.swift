@@ -107,6 +107,7 @@ struct InsightsSummaryCard: View {
   let comparison: InsightsComparison?
   let hidden: Bool
   let open: (InsightsTarget) -> Void
+  var openNotCounted: (SpendHero.NotCounted) -> Void = { _ in }
   @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
@@ -129,6 +130,10 @@ struct InsightsSummaryCard: View {
             legend(row).accessibilityIdentifier("insights.legend.\(row.kind.rawValue)")
           }
         }
+      }
+      if let line = summary.notCounted {
+        NotCountedLine(text: line.line.rendered(hidden: hidden), spoken: line.line.spoken(hidden: hidden),
+                       icon: .project, id: "insights.notCounted") { openNotCounted(line) }
       }
     }
     .padding(HSpacing.insetCard)
@@ -156,14 +161,16 @@ struct InsightsSummaryCard: View {
       .accessibilityValue(InsightsSpeech.amount(summary.figure, hidden: hidden, signed: summary.isNet))
       .accessibilityIdentifier("insights.figure")
       if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
-      VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 2) {
-        Text("Kept").hType(.footnote).foregroundStyle(HColor.textSecondary)
-        Text(summary.kept ?? "\u{2014}").hFigure(.small).foregroundStyle(HColor.textPrimary)
+      if let kept = summary.kept {
+        VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 2) {
+          Text("Kept").hType(.footnote).foregroundStyle(HColor.textSecondary)
+          Text(kept).hFigure(.small).foregroundStyle(HColor.textPrimary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Kept")
+        .accessibilityValue(summary.keptPercent.map { "\($0) percent of income" } ?? kept)
+        .accessibilityIdentifier("insights.kept")
       }
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel("Kept")
-      .accessibilityValue(summary.keptPercent.map { "\($0) percent of income" } ?? "No income yet")
-      .accessibilityIdentifier("insights.kept")
     }
   }
 
@@ -258,7 +265,7 @@ struct InsightsLensRow: View {
             .foregroundStyle(HColor.textSecondary)
             .frame(minWidth: 36, alignment: .trailing)
             .fixedSize()
-          if case .merchant = row.target {} else { InsightsBadgeSlot(delta: row.delta) }
+          if case .merchant = row.target {} else { InsightsBadgeSlot(delta: comparison == nil ? nil : row.delta) }
         }
       }
     }
