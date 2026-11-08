@@ -48,6 +48,40 @@ struct ObserverSyncTests {
     #expect(try a.reader.txn(id)?.category == "entertainment")
   }
 
+  @Test("an upload acknowledged just before a kill stays on screen, offline too, until a pull folds it")
+  func acknowledgedSurvivesRelaunch() async throws {
+    let (w, a, _) = try await twoRuntimes()
+    try await a.bootstrap()
+    let wall = w.clock.nowMs() + LocalClock.offsetMs
+    var first = ""
+    let blob = try await a.author { x in first = try Self.manual(&x, "Common Grounds", 8_100, at: wall) }
+    w.server.losePullAfterNextUpload()
+    let pushed = await a.run(.authored)
+    #expect(pushed.pushed.opsAcknowledged == 3 && pushed.stop != nil)
+    #expect(try a.context.store.pendingCount() == 0)
+    #expect(try a.reader.txn(first)?.merchantRaw == "Common Grounds")
+
+    let relaunched = try Runtime(a.context, projection: a.projection)
+    try await relaunched.observer.open()
+    #expect(try relaunched.reader.txn(first)?.merchantRaw == "Common Grounds")
+    #expect(try relaunched.reader.homeCurrency() == "AED")
+    #expect(await relaunched.observer.ops([blob.ops[0].opID]).found.count == 1)
+
+    var second = ""
+    try await relaunched.author { x in second = try Self.manual(&x, "Talabat", 2_500, at: wall + 1) }
+    #expect(try relaunched.reader.txn(first)?.merchantRaw == "Common Grounds")
+    #expect(try relaunched.reader.txn(second)?.pending == true)
+
+    #expect(await relaunched.run(.foreground).stop == nil)
+    #expect(try relaunched.reader.meta()?.pendingOps == 0)
+    let row = try #require(try relaunched.reader.txn(first))
+    #expect(!row.pending && row.amountHomeMinor == 8_100)
+    #expect(try relaunched.reader.txn(second)?.pending == false)
+    let later = try Runtime(a.context, projection: a.projection)
+    try await later.observer.open()
+    #expect(try later.reader.meta()?.pendingOps == 0)
+  }
+
   @Test("ops finds ops in sealed stored rows, newest first, and tells a missing id from a failed lookup")
   func opsLookup() async throws {
     let (w, a, b) = try await twoRuntimes()

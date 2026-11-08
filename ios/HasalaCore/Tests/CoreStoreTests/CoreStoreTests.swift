@@ -139,6 +139,39 @@ struct LedgerStoreTests {
     #expect(try s.syncState().authoredHead.counter == 2)
   }
 
+  @Test("an acknowledged op is kept until the pull reaches its row, whatever that row's disposition")
+  func acknowledgedOpsWaitForTheirRow() throws {
+    let s = try created()
+    try s.enqueue(
+      ["op1", "op2"].map {
+        PendingOp(opID: $0, opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+      })
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0),
+      InflightBlob(counter: 2, batchID: "B", prevHash: h(1), blobHash: h(2), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op2"], headSig: Data(repeating: 5, count: 64), createdAt: 0),
+    ])
+    try s.acknowledge(counters: [1, 2], head: Chain.Head(counter: 2, hash: h(2)), at: 5)
+    #expect(try s.pendingCount() == 0)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op1", "op2"])
+
+    try s.db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO wire_rows (seq, writer_id, writer_counter, type_flag, size_bucket, blob_hash, prev_hash, created_at, blob, disposition)
+          VALUES (7, ?, 1, 'edit', 1024, zeroblob(32), zeroblob(32), 't', x'00', 'set_aside')
+          """,
+        arguments: [writer.string])
+    }
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 6).map(\.opID) == ["op1", "op2"])
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 7).map(\.opID) == ["op2"])
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 6)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).count == 2)
+    try s.forgetAcknowledged(writerID: writer, foldedThrough: 7)
+    #expect(try s.acknowledgedOps(writerID: writer, foldedThrough: 0).map(\.opID) == ["op2"])
+  }
+
   @Test("latch, epoch high-water mark (never lowered), roster and fold-event ring")
   func state() throws {
     let s = try created()

@@ -257,6 +257,9 @@ enum LedgerSchema {
     m.registerMigration("mailbox_read_from") { db in
       for sql in mailboxReadFrom { try db.execute(sql: sql) }
     }
+    m.registerMigration("acknowledged_ops") { db in
+      for sql in acknowledgedOps { try db.execute(sql: sql) }
+    }
     return m
   }
 }

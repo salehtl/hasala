@@ -490,6 +490,14 @@ public final class LedgerStore: Sendable {
             db, sql: "SELECT op_ids_json FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])
         else { continue }
         for id in try JSONDecoder().decode([String].self, from: ids) {
+          try db.execute(
+            sql: """
+              INSERT OR IGNORE INTO acknowledged_ops
+                (local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, writer_counter)
+              SELECT local_seq, op_id, op_json, op_type, entity_kind, entity_id, enqueued_at, ?
+                FROM pending_ops WHERE op_id = ?
+              """,
+            arguments: [c, id])
           try db.execute(sql: "DELETE FROM pending_ops WHERE op_id = ?", arguments: [id])
         }
         try db.execute(sql: "DELETE FROM inflight_blobs WHERE writer_counter = ?", arguments: [c])
