@@ -1,3 +1,4 @@
+import CoreAuth
 import Foundation
 import HasalaModels
 import SwiftUI
@@ -32,12 +33,12 @@ struct SecurityRecoveryCopyTests {
   }
 
   @Test func theAccountSaysWhetherTheHolderCanLiftTheFreeze() throws {
-    let json = #"{"frozen":true,"frozen_by":"holder","holder_can_lift":false,"has_password":false}"#
-    let a = try JSONDecoder().decode(LiveAccountFields.self, from: Data(json.utf8))
+    let json = #"{"user_id":"u","frozen":true,"frozen_by":"holder","holder_can_lift":false,"has_password":false}"#
+    let a = try JSONDecoder().decode(AccountInfo.self, from: Data(json.utf8))
     let info = try #require(LiveAccountService.freeze(a, nowMs: 1_792_000_000_000))
     #expect(!info.holderCanLift)
     #expect(info.hasPassword == false)
-    let older = try JSONDecoder().decode(LiveAccountFields.self, from: Data(#"{"frozen":true,"frozen_by":"holder"}"#.utf8))
+    let older = try JSONDecoder().decode(AccountInfo.self, from: Data(#"{"user_id":"u","frozen":true,"frozen_by":"holder"}"#.utf8))
     #expect(LiveAccountService.freeze(older, nowMs: 1_792_000_000_000)?.holderCanLift == true)
   }
 

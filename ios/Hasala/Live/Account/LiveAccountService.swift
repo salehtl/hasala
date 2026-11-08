@@ -367,9 +367,9 @@ final class LiveAccountService: AccountService {
   /// server's `has_keys` decides (and its PRF wraps whether Face ID can unlock).
   func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
     guard let s = try? env.secrets.session(), !s.pending_logout else { throw .refused }
-    let a: LiveAccountFields
+    let a: AccountInfo
     do {
-      a = try await accountFields(s.token)
+      a = try await env.client.account(bearer: s.token)
     } catch {
       throw Self.map(CeremonyError.api(error))
     }
@@ -534,10 +534,10 @@ final class LiveAccountService: AccountService {
     var hasPassword = profile?.method == .password
     var hasPasskey = profile?.method == .passkey
     var frozen: FreezeInfo?
-    var fetched: LiveAccountFields?
+    var fetched: AccountInfo?
     if let token = try? env.secrets.session()?.token {
       do {
-        fetched = try await accountFields(token)
+        fetched = try await env.client.account(bearer: token)
       } catch {
         if !methodConfirmed { throw Self.map(CeremonyError.api(error)) }
       }
@@ -561,7 +561,7 @@ final class LiveAccountService: AccountService {
   /// Who froze the account and when, from `GET /account` (allowed on a restricted
   /// session); the holder's, with no time, when the server can't be asked.
   private func freezeInfo(token: String) async -> FreezeInfo {
-    let a = try? await accountFields(token)
+    let a = try? await env.client.account(bearer: token)
     return a.flatMap { Self.freeze($0, nowMs: env.clock.nowMs()) } ?? FreezeInfo(by: .holder, when: nil)
   }
 
@@ -569,14 +569,14 @@ final class LiveAccountService: AccountService {
   /// still read; spec 04 §6.11). nil when it isn't frozen, or the server can't be asked.
   func freezeInfo() async -> FreezeInfo? {
     guard let token = try? env.secrets.session()?.token,
-      let a = try? await accountFields(token)
+      let a = try? await env.client.account(bearer: token)
     else { return nil }
     return Self.freeze(a, nowMs: env.clock.nowMs())
   }
 
   /// The freeze `GET /account` reports: `frozen_by` names the operator or the holder, and
   /// `freeze_trigger_at` is shown on the holder's wall.
-  static func freeze(_ a: LiveAccountFields, nowMs: Int64) -> FreezeInfo? {
+  static func freeze(_ a: AccountInfo, nowMs: Int64) -> FreezeInfo? {
     guard a.frozen == true || a.restricted == true else { return nil }
     return FreezeInfo(
       by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at, nowMs: nowMs),
@@ -750,10 +750,6 @@ final class LiveAccountService: AccountService {
     return Date(timeIntervalSince1970: Double(ms) / 1000)
   }
 
-  private func accountFields(_ token: String) async throws(APIError) -> LiveAccountFields {
-    try await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
-  }
-
   private func bearer() throws(CeremonyError) -> String {
     guard let s = try? env.secrets.session(), !s.pending_logout else {
       throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
@@ -860,21 +856,6 @@ final class LiveAccountService: AccountService {
     default: String(String(describing: e).prefix { $0 != "(" })
     }
   }
-}
-
-/// The fields of `GET /account` (#40) the app reads, including the freeze's author and
-/// trigger time, which CoreAuth's `AccountInfo` doesn't carry.
-nonisolated struct LiveAccountFields: Decodable, Sendable {
-  var has_keys: Bool?
-  var email: String?
-  var display_name: String?
-  var has_password: Bool?
-  var has_passkey: Bool?
-  var frozen: Bool?
-  var freeze_trigger_at: String?
-  var frozen_by: String?
-  var holder_can_lift: Bool?
-  var restricted: Bool?
 }
 
 /// `{"step_up"}`, the body of #16, #65, #66 and #67.

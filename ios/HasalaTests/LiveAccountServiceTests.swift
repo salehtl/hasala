@@ -344,8 +344,8 @@ struct LiveAccountServiceTests {
   /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
   @Test func theFreezeIsReadFromTheAccount() {
     let inOct2026: Int64 = 1_792_000_000_000
-    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> LiveAccountFields {
-      LiveAccountFields(frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
+    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> AccountInfo {
+      AccountInfo(user_id: "u", frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
     }
     #expect(LiveAccountService.freeze(fields(frozen: false, by: nil), nowMs: inOct2026) == nil)
     #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator"), nowMs: inOct2026) == FreezeInfo(by: .operator, when: nil))
