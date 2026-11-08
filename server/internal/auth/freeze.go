@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
@@ -227,16 +228,11 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		trigger := *st.FreezeTriggerAt
 		switch p.Kind {
 		case keyproto.ProofPasskey:
-			var created time.Time
-			if err := tx.QueryRow(ctx, `SELECT created_at FROM webauthn_credentials WHERE credential_id = $1`,
-				p.CredentialID).Scan(&created); err != nil || !created.Before(trigger) {
+			if ok, err := passkeyPredatesFreeze(ctx, tx, p.CredentialID, trigger); err != nil || !ok {
 				return fmt.Errorf("%w: the passkey is not older than the freeze", ErrStepUpFailed)
 			}
 		case keyproto.ProofDevice:
-			var registered time.Time
-			if err := tx.QueryRow(ctx, `SELECT registered_at FROM writers WHERE user_id = $1 AND writer_id = $2`,
-				session.UserID, p.WriterID).Scan(&registered); err != nil || !registered.Before(trigger) ||
-				st.PasswordSetAt == nil || !st.PasswordSetAt.Before(trigger) {
+			if ok, err := devicePredatesFreeze(ctx, tx, st, p.WriterID); err != nil || !ok {
 				return fmt.Errorf("%w: the device or the password is not older than the freeze", ErrStepUpFailed)
 			}
 		default:
@@ -262,6 +258,56 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 	a.recordUnfreeze(session.UserID, unfrozenAt)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
+}
+
+func passkeyPredatesFreeze(ctx context.Context, q querier, credentialID []byte, trigger time.Time) (bool, error) {
+	var created time.Time
+	err := q.QueryRow(ctx, `SELECT created_at FROM webauthn_credentials WHERE credential_id = $1`, credentialID).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("auth: read the passkey's age: %w", err)
+	}
+	return created.Before(trigger), nil
+}
+
+func devicePredatesFreeze(ctx context.Context, q querier, st accountState, writerID string) (bool, error) {
+	if writerID == "" || !st.hasPassword() || st.PasswordSetAt == nil || !st.PasswordSetAt.Before(*st.FreezeTriggerAt) {
+		return false, nil
+	}
+	var (
+		registered time.Time
+		live       bool
+	)
+	err := q.QueryRow(ctx, `SELECT registered_at, revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2`,
+		st.ID, writerID).Scan(&registered, &live)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("auth: read the device's age: %w", err)
+	}
+	return live && registered.Before(*st.FreezeTriggerAt), nil
+}
+
+func HolderCanLift(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, writerID string) (bool, error) {
+	st, err := readAccount(ctx, pool, userID, false)
+	if err != nil {
+		return false, err
+	}
+	if !st.frozen() || st.operatorFrozen() || st.FreezeTriggerAt == nil {
+		return false, nil
+	}
+	var older bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM webauthn_credentials WHERE user_id = $1 AND created_at < $2)`,
+		userID, *st.FreezeTriggerAt).Scan(&older); err != nil {
+		return false, fmt.Errorf("auth: read the passkeys' age: %w", err)
+	}
+	if older {
+		return true, nil
+	}
+	return devicePredatesFreeze(ctx, pool, st, writerID)
 }
 
 // DeviceFreezeChallenge is #77: a nonce for any well-formed writer id, with no

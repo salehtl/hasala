@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -54,5 +55,50 @@ func TestADeviceFreezeFindsTheWriterThatSigned(t *testing.T) {
 	}
 	if err := freeze(); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("a freeze over the limit: %v", err)
+	}
+}
+
+func TestTheLiftAnswerAgreesWithTheLiftItself(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	older := m.device
+	f.clock.advance(time.Hour)
+	trigger := f.clock.now()
+	f.clock.advance(time.Hour)
+	newer := authtest.NewDevice(t)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+	        VALUES ($1, $2, 'ed25519', $3, $4, $5)`, m.user.UserID, newer.WriterID, newer.DWKPub(), newer.DAKPub(), f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET frozen_at = $2, freeze_trigger_at = $3, frozen_by = 'holder' WHERE id = $1`,
+		m.user.UserID, f.clock.now(), trigger); err != nil {
+		t.Fatal(err)
+	}
+
+	on := func(d *authtest.Device) bool {
+		t.Helper()
+		in, err := m.loginPassword(m.s, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.token, m.device = in.Session.Token, d
+		can, err := HolderCanLift(bgctx, f.pool, m.user.UserID, d.WriterID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s))
+		if can != (err == nil) {
+			t.Fatalf("the answer for this device is %v, the lift said %v", can, err)
+		}
+		if err != nil && !errors.Is(err, ErrStepUpFailed) {
+			t.Fatalf("a lift by a device newer than the freeze: %v", err)
+		}
+		return can
+	}
+	if on(newer) {
+		t.Fatal("a device newer than the freeze was told it can lift it")
+	}
+	if !on(older) {
+		t.Fatal("the device older than the freeze was told it cannot lift it")
 	}
 }
