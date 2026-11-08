@@ -84,6 +84,26 @@ struct BillsScreenTests {
     #expect(added.name == "Apple" && added.payments.compactMap(\.txnID) == ["apple"])
   }
 
+  @Test func aSecondAddDoesNotAddItAgain() {
+    let app = AppModel(store: InMemoryLedger())
+    let model = appleModel(app)
+    let before = app.store.state.bills.count
+    #expect(model.save())
+    #expect(!model.save())
+    #expect(app.store.state.bills.count == before + 1)
+  }
+
+  @Test func anAddThatCouldNotStartCanBeTriedAgain() {
+    let app = AppModel(store: InMemoryLedger())
+    let model = AddRecurringModel(app: app, decimalSeparator: ".")
+    let before = app.store.state.bills.count
+    #expect(!model.save())
+    model.name = "Gym"
+    model.amountText = "200"
+    #expect(model.save())
+    #expect(app.store.state.bills.count == before + 1)
+  }
+
   @Test func editFormsCompareWithWhatTheyOpenedWith() throws {
     let state = MayaLedger.state
     let dewa = try #require(state.bill("dewa"))

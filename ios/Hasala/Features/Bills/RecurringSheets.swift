@@ -380,6 +380,7 @@ final class AddRecurringModel {
   var keys: [String] = []
   var seed: TxnID?
   var ticked: Set<TxnID> = []
+  private var added = false
   private let decimalSeparator: String
   private let openedDue: Date
   private let openedCategory: CategoryID?
@@ -461,9 +462,10 @@ final class AddRecurringModel {
 
   @discardableResult
   func save() -> Bool {
-    guard var d = draft else { return false }
+    guard !added, var d = draft else { return false }
     d.linkTxns = linkable.sorted()
-    return app.perform(.addBill(d))
+    added = app.perform(.addBill(d))
+    return added
   }
 }
 
