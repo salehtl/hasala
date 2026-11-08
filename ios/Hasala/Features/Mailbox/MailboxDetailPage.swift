@@ -177,7 +177,7 @@ struct MailboxDetailPage: View {
   }
 
   private func tryAgain(_ m: MailboxSnapshot) async {
-    guard let mailbox = app.mailbox, work.begin(.tryingAgain) else { return }
+    guard let mailbox = app.mailbox, work.begin(.tryingAgain, clearing: &failure, signIn: signIn) else { return }
     await mailbox.tryAgain(m.id)
     work = .idle
   }
@@ -206,7 +206,8 @@ struct MailboxDetailPage: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if app.mailbox?.capabilities.contains(.signInAgain) == true {
-        ProviderButton(provider: m.provider, loading: signIn?.busy ?? false) { signInAgain(m.provider) }
+        ProviderButton(provider: m.provider, loading: work.signInLoads) { signInAgain(m.provider) }
+          .disabled(work.isBusy)
           .accessibilityIdentifier("mailbox.signInAgain")
         if let line = signIn?.failureLine {
           InlineStatus(tone: .warning, text: line, size: .regular).hTransition(.rise)
@@ -324,11 +325,11 @@ struct MailboxDetailPage: View {
   }
 
   private func signInAgain(_ provider: MailProviderKind) {
-    guard let signIn else { return }
-    failure = nil
+    guard let signIn, work.begin(.signingIn, clearing: &failure, signIn: signIn) else { return }
     let policy = motion
     Task {
       await signIn.connect(provider)
+      work = .idle
       if signIn.failedWithNoMailbox {
         MailConnectCoordinator.hand(signIn, to: app.router)
         self.signIn = Self.signInAttempt(app, mailboxID)
@@ -352,10 +353,9 @@ struct MailboxDetailPage: View {
   }
 
   private func askToDisconnect() async {
-    guard let lane = app.mailbox, work.begin(.askingToDisconnect) else { return }
+    guard let lane = app.mailbox, work.begin(.askingToDisconnect, clearing: &failure, signIn: signIn) else { return }
     impact = await lane.disconnectImpact(mailboxID)
     work = .idle
-    failure = nil
     confirming = mailbox
     if impact == nil { confirmingPlain = true } else { choosing = true }
   }
@@ -363,7 +363,7 @@ struct MailboxDetailPage: View {
   /// Disconnect, then back to Bank alerts. The mock keeps a grey row there; the live lane
   /// keeps none, so the toast says what happened in both.
   private func disconnect(removing: Bool) async {
-    guard let lane = app.mailbox, let m = mailbox, work.begin(.disconnecting) else { return }
+    guard let lane = app.mailbox, let m = mailbox, work.begin(.disconnecting, clearing: &failure, signIn: signIn) else { return }
     let removed = removing ? impact?.transactions : nil
     defer { work = .idle }
     var refused: MailConnectFailure?
@@ -441,14 +441,26 @@ enum MailboxPageWork: Equatable {
   case tryingAgain
   case askingToDisconnect
   case disconnecting
+  case signingIn
 
   var isBusy: Bool { self != .idle }
   var tryAgainLoads: Bool { self == .tryingAgain }
   var disconnectLoads: Bool { self == .askingToDisconnect || self == .disconnecting }
+  var signInLoads: Bool { self == .signingIn }
 
   mutating func begin(_ next: MailboxPageWork) -> Bool {
     guard self == .idle else { return false }
     self = next
+    return true
+  }
+
+  @MainActor
+  mutating func begin(
+    _ next: MailboxPageWork, clearing failure: inout MailConnectFailure?, signIn: MailConnectCoordinator?
+  ) -> Bool {
+    guard begin(next) else { return false }
+    failure = nil
+    signIn?.reset()
     return true
   }
 }

@@ -111,6 +111,40 @@ struct MailboxDisconnectChoiceTests {
     #expect(!work.begin(.tryingAgain) && work == .disconnecting)
   }
 
+  @Test func aSignInRunsAloneOnThePage() {
+    var work = MailboxPageWork.idle
+    #expect(work.begin(.signingIn) && work.isBusy && work.signInLoads)
+    #expect(!work.tryAgainLoads && !work.disconnectLoads)
+    #expect(!work.begin(.askingToDisconnect) && !work.begin(.disconnecting) && work == .signingIn)
+    work = .askingToDisconnect
+    #expect(!work.begin(.signingIn) && work == .askingToDisconnect && !work.signInLoads)
+  }
+
+  private func failedSignIn() async -> MailConnectCoordinator {
+    let lane = mailbox([MockMailbox.needingSignIn(MockMailbox.outlook)])
+    lane.offline = true
+    let signIn = MailConnectCoordinator(mailbox: lane, context: .signInAgain(mailboxID: "outlook-1"))
+    await signIn.connect(.outlook)
+    return signIn
+  }
+
+  @Test func startingWorkClearsBothFailuresOnThePage() async {
+    let signIn = await failedSignIn()
+    #expect(signIn.failureLine != nil)
+    var work = MailboxPageWork.idle
+    var failure: MailConnectFailure? = .offline
+    #expect(work.begin(.askingToDisconnect, clearing: &failure, signIn: signIn))
+    #expect(work == .askingToDisconnect && failure == nil && signIn.failureLine == nil)
+  }
+
+  @Test func workThatCannotStartClearsNoFailure() async {
+    let signIn = await failedSignIn()
+    var work = MailboxPageWork.disconnecting
+    var failure: MailConnectFailure? = .offline
+    #expect(!work.begin(.signingIn, clearing: &failure, signIn: signIn))
+    #expect(work == .disconnecting && failure == .offline && signIn.failureLine != nil)
+  }
+
   @Test func aMailboxThatIsGoneNeverStaysOnAPageWithNothingToDraw() {
     #expect(MailboxDisconnectEnding.after(.cancelled, mailboxRemains: false, provider: .gmail, removed: nil)
       == .left(line: "Gmail disconnected. Past transactions stay.", partly: true))
