@@ -461,6 +461,53 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .method)
   }
 
+  @Test func aCodeThatWorkedLeavesTheFieldAndIsNotCheckedAgain() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(m.emailVerified)
+    #expect(m.code.isEmpty)
+    #expect(account.codesChecked == 1)
+
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.code.isEmpty)
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(account.codesChecked == 1)
+    #expect(m.path.last == .method)
+    #expect(m.emailVerified)
+    #expect(m.failure == nil)
+    #expect(m.code.isEmpty)
+  }
+
+  @Test func aResentCodeIsCheckedEvenAfterAnEarlierOneWorked() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.navigationPath = Array(m.path.dropLast())
+    await m.resendCode()
+    #expect(!m.emailVerified)
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(account.codesChecked == 2)
+    #expect(m.emailVerified)
+  }
+
   /// The password and the "Show" choice stay through Back and Forward, so Create account is
   /// ready again without typing.
   @Test func backAndForwardKeepThePassword() async {
@@ -759,6 +806,7 @@ final class CountingAccount: AccountService {
   private(set) var signupsBegun = 0
   private(set) var passkeysSaved = 0
   private(set) var phrasesMade = 0
+  private(set) var codesChecked = 0
 
   init(_ mock: MockAccountService = MockAccountService()) {
     mock.delay = .zero
@@ -773,6 +821,7 @@ final class CountingAccount: AccountService {
     return try await mock.beginSignup(code: code, linkKey: linkKey, email: email, displayName: displayName)
   }
   func verifySignupEmail(_ ticket: SignupTicket, code: String) async throws(AuthFailure) {
+    codesChecked += 1
     try await mock.verifySignupEmail(ticket, code: code)
   }
   func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {

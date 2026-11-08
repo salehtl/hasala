@@ -328,12 +328,18 @@ final class SignupModel {
   /// expired one empties the cells.
   func submitCode() async {
     guard let ticket, code.count == 6, !busy else { return }
+    if emailVerified {
+      code = ""
+      go(.method)
+      return
+    }
     busy = true
     defer { busy = false }
     do {
       try await account.verifySignupEmail(ticket, code: code)
       guard self.ticket == ticket else { return }
       emailVerified = true
+      code = ""
       go(.method)
     } catch {
       guard self.ticket == ticket else { return }
