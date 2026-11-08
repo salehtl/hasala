@@ -96,6 +96,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     w.unparsedSenders = c.unparsedSenders.map {
       MailboxUnparsedSenderRow(messageID: $0.messageID, domain: $0.domain, at: $0.atMs)
     }
+    w.strikes = c.strikes.map { ($0.messageID, $0.count, $0.atMs) }
     w.reader = c.reader?.encoded()
     w.health = c.healthBumps.map { ($0.domain, MailboxClock.localMonth($0.internalDateMs), $0.internalDateMs) }
     if let s = c.state {
@@ -142,6 +143,10 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
 
   public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool {
     try io { try tables.isParsing(messageID) }
+  }
+
+  public func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int {
+    try io { try tables.strikes(messageID: messageID) }
   }
 
   public func markParsing(_ messageID: String) async throws(MailboxPersistenceError) {

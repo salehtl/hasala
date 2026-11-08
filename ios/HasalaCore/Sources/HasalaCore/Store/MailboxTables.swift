@@ -139,6 +139,7 @@ public struct MailboxWrite: Sendable {
   public var addImports: [(domain: String, sinceMs: Int64)] = []
   public var doneImports: [String] = []
   public var unparsedSenders: [MailboxUnparsedSenderRow] = []
+  public var strikes: [(messageID: String, count: Int, at: Int64)] = []
   public var reader: Data?
   public var state: MailboxStateRow?
   public var clearAll = false
@@ -168,6 +169,7 @@ public final class MailboxTableStore: Sendable {
       ["pending_ops", "mailbox_", "bank_health"].contains { sql.hasPrefix("CREATE TABLE \($0)") }
     } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
     + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader + LedgerSchema.mailboxReadFrom
+    + LedgerSchema.mailboxMessageStrike
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
@@ -206,6 +208,12 @@ public final class MailboxTableStore: Sendable {
   public func clearParsing(_ messageID: String) throws {
     try db.write { db in
       try db.execute(sql: "DELETE FROM mailbox_parsing WHERE message_id = ?", arguments: [messageID])
+    }
+  }
+
+  public func strikes(messageID: String) throws -> Int {
+    try db.read { db in
+      try Int.fetchOne(db, sql: "SELECT count FROM mailbox_message_strike WHERE message_id = ?", arguments: [messageID]) ?? 0
     }
   }
 
@@ -318,7 +326,7 @@ public final class MailboxTableStore: Sendable {
       if w.clearAll {
         for t in [
           "mailbox_accounted", "mailbox_set_aside", "mailbox_unreadable", "mailbox_staging", "bank_health", "mailbox_parsing",
-          "mailbox_pending_import", "mailbox_reader",
+          "mailbox_pending_import", "mailbox_reader", "mailbox_message_strike",
         ] {
           try db.execute(sql: "DELETE FROM \(t)")
         }
@@ -335,6 +343,12 @@ public final class MailboxTableStore: Sendable {
         try db.execute(
           sql: "INSERT OR REPLACE INTO mailbox_accounted (message_id, outcome, internal_date, at) VALUES (?, ?, ?, ?)",
           arguments: [a.messageID, a.outcome, a.internalDate, a.at])
+        try db.execute(sql: "DELETE FROM mailbox_message_strike WHERE message_id = ?", arguments: [a.messageID])
+      }
+      for s in w.strikes {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO mailbox_message_strike (message_id, count, at) VALUES (?, ?, ?)",
+          arguments: [s.messageID, s.count, s.at])
       }
       for s in w.setAside {
         try db.execute(
@@ -388,6 +402,7 @@ public final class MailboxTableStore: Sendable {
       }
       if let below = w.pruneAccountedBelow {
         try db.execute(sql: "DELETE FROM mailbox_accounted WHERE internal_date < ?", arguments: [below])
+        try db.execute(sql: "DELETE FROM mailbox_message_strike WHERE at < ?", arguments: [below])
       }
       for h in w.health {
         let row = try Row.fetchOne(db, sql: "SELECT * FROM bank_health WHERE domain = ?", arguments: [h.domain])

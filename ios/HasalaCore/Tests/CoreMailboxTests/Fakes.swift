@@ -278,6 +278,19 @@ struct Rig {
     _ = await engine.runCycle(trigger: .launch)  // the scan authors what it finds (no cards step)
   }
 
+  func restarted() -> MailboxEngine {
+    let oauth = GoogleOAuthClient(
+      config: GmailOAuthConfig(clientID: "synthetic-client.apps.googleusercontent.com", redirectScheme: "com.googleusercontent.apps.synthetic-client"),
+      http: gmail)
+    let clock = self.clock
+    return MailboxEngine(
+      config: MailboxEngineConfig(grantID: "00000000-0000-4000-8000-000000000001", buildTopic: nil), oauth: oauth,
+      tokens: RefreshingGmailTokenProvider(oauth: oauth, store: keychain, clock: clock), gmailHTTP: gmail, store: store,
+      ledger: ledger, server: server, stepUp: FakeStepUp(fail: false, log: stepUps), categorizer: NoCategorizer(),
+      templates: BundledTemplates.load(channel: .mail).templates, clock: clock, random: CountingRandom(),
+      readerKeys: readerKeys, sleep: { ms in clock.advance(ms) })
+  }
+
   func enqueued() async -> [MailboxIngestDraft] { backend == .memory ? await memory.enqueued : authored.all }
   func state() async -> MailboxState { (try? await store.loadState()) ?? MailboxState() }
   func stagedCount() async -> Int { (try? await store.stagedCount()) ?? -1 }

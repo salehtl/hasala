@@ -216,6 +216,10 @@ enum LedgerSchema {
 
   static let mailboxReadFrom = ["ALTER TABLE mailbox_state ADD COLUMN read_from_ms INTEGER"]
 
+  static let mailboxMessageStrike: [String] = [
+    "CREATE TABLE mailbox_message_strike (message_id TEXT PRIMARY KEY, count INTEGER NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID"
+  ]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -256,6 +260,9 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_read_from") { db in
       for sql in mailboxReadFrom { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_message_strike") { db in
+      for sql in mailboxMessageStrike { try db.execute(sql: sql) }
     }
     return m
   }

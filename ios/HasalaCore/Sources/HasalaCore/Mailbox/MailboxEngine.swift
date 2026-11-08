@@ -289,7 +289,6 @@ public actor MailboxEngine {
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
   private var firstScanRunning = false
   public private(set) var stopped = false
-  private var strikes: [String: Int] = [:]
   private var lastStatus: MailboxStatus?
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
@@ -522,7 +521,6 @@ public actor MailboxEngine {
       provider.forgetLink()
       pause = ProviderPause()
       quotaStrikes = 0
-      strikes = [:]
     }
     do {
       if otherMailbox { try await tokens.install(grant: grant) }
@@ -1827,12 +1825,12 @@ public actor MailboxEngine {
     switch f {
     case .failed(let id, let error):
       guard let reason = Self.unreadableAfterStrikes(error) else { throw error }
-      let n = (strikes[id] ?? 0) + 1
+      let n = ((try? await store.strikes(messageID: id)) ?? 0) + 1
       if n < config.messageStrikeLimit {
-        strikes[id] = n
+        c.strikes.append(MessageStrike(messageID: id, count: n, atMs: at))
+        try? await store.commit(c)
         throw error
       }
-      strikes[id] = nil
       report.unreadable += 1
       c.unreadable.append(UnreadableRecord(messageID: id, reason: reason, domain: nil, internalDateMs: nil, atMs: at))
       c.accounted.append(AccountedRecord(messageID: id, outcome: .unreadable, internalDateMs: at, atMs: at))

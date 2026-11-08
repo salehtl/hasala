@@ -27,6 +27,35 @@ import Testing
     #expect(try t.pendingOpIDs() == ["A"])
   }
 
+  @Test func aStrikeLastsUntilItsMessageIsAccountedOrTheLaneIsCleared() throws {
+    let t = try MailboxTableStore.inMemory()
+    var w = MailboxWrite()
+    w.strikes = [("m1", 1, 100), ("m2", 2, 100), ("m3", 1, 100)]
+    try t.commit(w)
+    #expect(try t.strikes(messageID: "m1") == 1 && t.strikes(messageID: "m2") == 2 && t.strikes(messageID: "m9") == 0)
+
+    var again = MailboxWrite()
+    again.strikes = [("m1", 2, 200)]
+    try t.commit(again)
+    #expect(try t.strikes(messageID: "m1") == 2)
+
+    var done = MailboxWrite()
+    done.accounted = [MailboxAccountedRow(messageID: "m1", outcome: "unreadable", internalDate: 10, at: 11)]
+    try t.commit(done)
+    #expect(try t.strikes(messageID: "m1") == 0 && t.strikes(messageID: "m2") == 2)
+
+    var prune = MailboxWrite()
+    prune.strikes = [("m4", 1, 500)]
+    prune.pruneAccountedBelow = 200
+    try t.commit(prune)
+    #expect(try t.strikes(messageID: "m2") == 0 && t.strikes(messageID: "m4") == 1)
+
+    var clear = MailboxWrite()
+    clear.clearAll = true
+    try t.commit(clear)
+    #expect(try t.strikes(messageID: "m4") == 0)
+  }
+
   @Test func outcomeOutsideTheCheckIsRefused() throws {
     let t = try MailboxTableStore.inMemory()
     var w = MailboxWrite()
