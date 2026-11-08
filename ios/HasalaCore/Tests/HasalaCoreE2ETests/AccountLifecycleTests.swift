@@ -53,8 +53,6 @@ struct AccountLifecycleTests {
     FileManager.default.fileExists(atPath: try #require(env.storeDirectory(for: user)).appendingPathComponent("ledger.sqlite").path)
   }
 
-  // MARK: Re-enrolment over an earlier writer's store
-
   @Test("a store of an earlier writer that cannot be removed stops the enrolment; a retry finishes it")
   func staleStoreThatCannotBeRemoved() async throws {
     let w = World()
@@ -94,8 +92,6 @@ struct AccountLifecycleTests {
     #expect(try env.secrets.binding()?.writerID == again.writerID)
     #expect(try again.store.syncState().authoredHead == .genesis)
   }
-
-  // MARK: The server's log generation
 
   func enrolledWithoutGeneration(_ w: World) async throws -> SyncContext {
     let a = w.phone("a")
@@ -150,8 +146,6 @@ struct AccountLifecycleTests {
     #expect(try ctx.store.syncState().logGeneration == 1)
   }
 
-  // MARK: Remove this iPhone
-
   @Test("removal stops while ops wait behind a latch: the writer stays and every op and key is kept")
   func removalKeepsOpsBehindALatch() async throws {
     for fault in [false, true] {
@@ -190,8 +184,6 @@ struct AccountLifecycleTests {
       a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: try #require(a.binding))
     #expect(a.keychain.count == 0)
   }
-
-  // MARK: The local wipe and what boot finds after it
 
   @Test("a wipe the Keychain refused keeps the store of the iPhone still bound; the next wipe finishes")
   func refusedWipeKeepsTheStore() async throws {
