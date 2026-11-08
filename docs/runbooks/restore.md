@@ -104,10 +104,11 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
 
 ## Steps
 
-1. Stop the API, the tunnel and the console. The database keeps running.
+1. Stop the API, the tunnel, the console and the health probes, so that the
+   restore does not alert. The database keeps running.
 
    ```sh
-   sudo systemctl stop hasalad cloudflared-hasala hasala-console
+   sudo systemctl stop hasalad cloudflared-hasala hasala-console hasala-health.timer
    ```
 
 2. Keep the host's ledger. It is newer than every backup. Do not replace it
@@ -151,7 +152,8 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
    also on a new host that lost the file. Do not restore the file from a
    backup: a backup can be older than the last restore.
 
-5. Start Hasala, and examine the replay.
+5. Start Hasala, and examine the replay. This also starts the health probes
+   again.
 
    ```sh
    sudo systemctl start hasala.target

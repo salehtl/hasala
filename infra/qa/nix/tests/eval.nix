@@ -1016,6 +1016,14 @@ let
         builtins.match ".*flock --no-fork /run/hasala-maintenance.lock [^ ]*/bin/timeout 600 [^ ]*/bin/hasala-retry 4 15 .*" migrate.ExecStart
         != null
     ) "AT-E3 waiting for the dump's lock must not count against the migration's own ten minutes"
+    ++ check (
+      let
+        lines = lib.splitString "\n" (builtins.readFile "${self}/docs/runbooks/restore.md");
+      in
+      lib.any (l: lib.hasInfix "systemctl stop " l && lib.hasInfix "hasala-health.timer" l) lines
+      && lib.any (lib.hasInfix "systemctl start hasala.target") lines
+      && lib.elem "hasala.target" fullSys.config.systemd.timers.hasala-health.wantedBy
+    ) "AT-E3 the restore runbook must stop the health probes and bring them back with hasala.target"
     ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
       "Comodo AAA Services root"
       "emSign ECC Root CA - G3"
