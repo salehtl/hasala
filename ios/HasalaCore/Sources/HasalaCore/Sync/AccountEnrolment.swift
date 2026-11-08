@@ -163,8 +163,10 @@ public enum Enrolment {
     var email = emailNorm
     var salt = serverSalt
     var name = displayName
-    if email == nil || salt == nil || name == nil {
+    let signedUpAs = try AccountCreation.signupAddress(env)
+    if email == nil || salt == nil || name == nil || signedUpAs != nil {
       let a = try await apiStep { () async throws(APIError) in try await env.client.account(bearer: bearer) }
+      if let signedUpAs { try AccountCreation.compareSignupAddress(env, reported: a.email, signedUpAs: signedUpAs) }
       if email == nil { email = a.email.flatMap { try? EmailNorm.normalize($0) } }
       if salt == nil { salt = a.password_salt.flatMap { try? Base64.decode($0) } }
       if name == nil { name = a.display_name }

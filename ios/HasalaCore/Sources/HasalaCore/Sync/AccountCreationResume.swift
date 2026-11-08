@@ -28,6 +28,7 @@ extension AccountCreation {
     guard let email = account.email.flatMap({ try? EmailNorm.normalize($0) }),
       let salt = account.password_salt.flatMap({ try? Base64.decode($0) })
     else { throw .badResponse("account email or salt") }
+    if let signedUpAs = try signupAddress(env), signedUpAs != email { throw .integrityAlarm("address differs from signup") }
     let aak = try keys.authorityPublicKey()
     let proof = try await StepUpHelper.prove(
       env, params: .keysBootstrap(authorityPublicKey: aak), factor: .passkey, binding: nil,
