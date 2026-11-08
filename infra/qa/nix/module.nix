@@ -452,6 +452,30 @@ let
     text = adminText;
   };
 
+  bumpGenerationText = ''
+    [ "$(id -u)" -eq 0 ] || { echo "hasala-bump-generation: run it with sudo" >&2; exit 2; }
+    file=${ledgerDir}/generation
+    old=0
+    if [ -e "$file" ]; then old="$(tr -d '[:space:]' < "$file")"; fi
+    case "$old" in
+      "" | *[!0-9]*) echo "hasala-bump-generation: $file does not hold a number; fix it by hand" >&2; exit 1 ;;
+    esac
+    next="$(date -u +%s)"
+    if [ "$old" -ge "$next" ]; then next=$((old + 1)); fi
+    tmp="$(mktemp "$file.XXXXXX")"
+    trap 'rm -f "$tmp"' EXIT
+    printf '%s\n' "$next" > "$tmp"
+    chown hasala:hasala-ledger "$tmp"
+    chmod 0640 "$tmp"
+    mv "$tmp" "$file"
+    echo "hasala-bump-generation: $old -> $next"
+  '';
+  bumpGeneration = pkgs.writeShellApplication {
+    name = "hasala-bump-generation";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = bumpGenerationText;
+  };
+
   # ------------------------------------------------------------------ health
   # §5.9.3, the probes this build can answer: P1 (local API), P2–P4 and P9
   # (through Cloudflare, when the tunnel is on), P5 (the AASA, headers and
@@ -933,6 +957,7 @@ in
         backup = backupText;
         retry = retryText;
         admin = adminText;
+        bumpGeneration = bumpGenerationText;
       };
       description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
@@ -1384,7 +1409,10 @@ in
         mode = "0440";
       };
 
-      environment.systemPackages = [ hasalaAdmin ];
+      environment.systemPackages = [
+        hasalaAdmin
+        bumpGeneration
+      ];
       security.pki.caCertificateBlacklist = cfg.hardening.distrustedCARoots;
       services.journald.extraConfig = lib.mkDefault "SystemMaxUse=1G";
 

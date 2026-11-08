@@ -60,6 +60,7 @@ let
     '')
     (stub "id" "echo 0")
     (stub "logger" "true")
+    (stub "chown" "true")
     (stub "systemctl" ''
       echo "systemctl $*" >> "$CALLS"
       exit "''${SYSTEMCTL_EXIT:-0}"
@@ -90,6 +91,12 @@ let
     name = "hasala-admin";
     runtimeInputs = stubs ++ [ pkgs.coreutils ];
     text = builtins.unsafeDiscardStringContext rendered.admin;
+  };
+
+  bump = pkgs.writeShellApplication {
+    name = "hasala-bump-generation";
+    runtimeInputs = stubs ++ [ pkgs.coreutils ];
+    text = localPaths rendered.bumpGeneration;
   };
 
   retry = pkgs.writeShellApplication {
@@ -260,6 +267,39 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$(called '^systemd-run ')" = 1 ] || no "version did not reach hasalad"
     [ "$(called '^systemctl ')" = 0 ] || no "version started a dump"
     [ "$(called '^flock ')" = 0 ] || no "version took the lock"
+
+    run_bump() { rc=0; ${lib.getExe bump} > out.log 2>&1 || rc=$?; cat out.log; }
+
+    scenario "a host that lost its generation file gets a value above every counter"
+    run_bump
+    [ "$rc" = 0 ] || no "a lost generation file exited $rc"
+    [ "$(cat ledger/generation)" -gt 1000000000 ] || no "a lost generation file became $(cat ledger/generation), a value an iPhone may hold"
+    [ "$(find ledger -name 'generation.*' | wc -l | tr -d ' ')" = 0 ] || no "a temporary file is left"
+
+    scenario "a counter moves past every value it has held"
+    echo 2 > ledger/generation
+    run_bump
+    [ "$rc" = 0 ] || no "a counter exited $rc"
+    [ "$(cat ledger/generation)" -gt 2 ] || no "generation 2 became $(cat ledger/generation)"
+
+    scenario "two restores in one second still differ"
+    run_bump
+    first="$(cat ledger/generation)"
+    run_bump
+    [ "$(cat ledger/generation)" -gt "$first" ] || no "the second restore repeated $first"
+
+    scenario "a value ahead of the clock still goes up"
+    echo 99999999999 > ledger/generation
+    run_bump
+    [ "$(cat ledger/generation)" = 100000000000 ] || no "a value ahead of the clock became $(cat ledger/generation)"
+
+    for bad in nope ""; do
+      scenario "a generation file holding '$bad' stops the step and stays as it was"
+      echo "$bad" > ledger/generation
+      run_bump
+      [ "$rc" != 0 ] || no "a file holding '$bad' exited 0"
+      [ "$(cat ledger/generation)" = "$bad" ] || no "a file holding '$bad' was changed"
+    done
 
     [ "$failed" = 0 ]
     touch "$out"
