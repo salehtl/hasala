@@ -55,6 +55,26 @@ struct PagePlaintextTests {
     #expect(out.pages == 1 && out.rowsStored == 3)
   }
 
+  @Test("a stored pin that is half there stops the pull at the roster check, with the page kept out")
+  func halfPinnedWriterIsNotLive() async throws {
+    let (w, a, b) = try await twoPhones()
+    #expect(await SyncEngine(context: b).run(.launch).stop == nil)
+    try enqueue(a, [alone(1)])
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
+
+    let stored = try #require(try b.store.syncState().rosterJSON)
+    var o = try #require(try JSONSerialization.jsonObject(with: stored) as? [String: Any])
+    var writers = try #require(o["writers"] as? [String: [String: Any]])
+    writers[a.writerID.string]?["final_counter"] = 1
+    o["writers"] = writers
+    try b.store.setRoster(try JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]))
+    let cursor = try b.store.syncState().cursorHot
+
+    await #expect(throws: SyncStop.halted(.rosterInvalid)) { _ = try await Puller.pull(b, observer: nil) }
+    #expect(try b.store.syncState().cursorHot == cursor)
+  }
+
   @Test("the cold fold reaches the same state when it folds in smaller slices")
   func coldFoldSlices() async throws {
     let (_, a, b) = try await twoRuntimes()
