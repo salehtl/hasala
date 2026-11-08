@@ -131,6 +131,9 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 		return err
 	}
 	path := cfg.Server.PurgeLedgerPath
+	if _, err := purgeledger.TrimTornTail(path); err != nil {
+		return err
+	}
 	entries, err := purgeledger.Read(path)
 	if err != nil {
 		return err

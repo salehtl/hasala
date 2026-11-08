@@ -3,6 +3,7 @@ package purge
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -203,6 +204,35 @@ func TestARecordThatFailsAfterItsWriteCancelsTheLine(t *testing.T) {
 	})
 	if !errors.Is(err, refused) || !errors.Is(err, ErrUnsettled) {
 		t.Fatalf("a record and a cancel that failed: %v", err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
+		t.Fatal("the account went although its deletion was not recorded")
+	}
+}
+
+func TestACancellationAfterATornLineLeavesAReadableLedger(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "torn-line")
+	path := filepath.Join(t.TempDir(), "purged")
+	refused := errors.New("write stopped part way")
+	_, err := PurgeWith(bg, pool, u, Options{
+		Record: func(ids []uuid.UUID) error {
+			if err := os.WriteFile(path, []byte(ids[0].String()+" 2026-10"), 0o660); err != nil {
+				t.Error(err)
+			}
+			return refused
+		},
+		Cancel: func(ids []uuid.UUID) error { return purgeledger.AppendCancelled(path, ids, time.Now()) },
+	})
+	if !errors.Is(err, refused) || errors.Is(err, ErrUnsettled) {
+		t.Fatalf("a torn line: %v", err)
+	}
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		t.Fatalf("the ledger after the cancellation: %v", err)
+	}
+	if ids := purgeledger.IDs(entries); len(ids) != 0 {
+		t.Fatalf("accounts to purge %v, want none", ids)
 	}
 	if n := countRows(t, pool, `SELECT count(*) FROM users WHERE id = $1`, u); n != 1 {
 		t.Fatal("the account went although its deletion was not recorded")

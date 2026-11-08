@@ -131,6 +131,30 @@ func TestAPurgeSurvivesARestoreThroughTheLedger(t *testing.T) {
 	}
 }
 
+func TestReplayStartsAfterALedgerWhoseLastLineWasTorn(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	gone := oplogtest.NewUser(t, pool)
+	torn := oplogtest.NewUser(t, pool)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	body := gone.String() + " " + time.Now().UTC().Format(time.RFC3339) + "\n" + torn.String() + " 2026-10"
+	if err := os.WriteFile(ledger, []byte(body), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	code, out, msg := hasalad(t, env, "purge-user", "--replay-ledger")
+	if code != 0 || !strings.Contains(out, "1 entries, 1 account(s) purged again") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = $1`, torn).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("the account of the torn line: %d (%v), want 1", left, err)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 1 || entries[0].ID != gone {
+		t.Fatalf("ledger after the replay %+v %v", entries, err)
+	}
+}
+
 func TestReplayNeedsTheLedgerAndNoAccount(t *testing.T) {
 	env := []string{"HASALA_PG_DSN=host=/nonexistent dbname=hasala"}
 	if code, _, msg := hasalad(t, env, "purge-user", "--replay-ledger"); code != 2 || !strings.Contains(msg, "HASALA_PURGE_LEDGER_PATH") {

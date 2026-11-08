@@ -27,6 +27,8 @@ const (
 
 var ErrNotWritten = errors.New("purgeledger: nothing was written")
 
+var writeEntries = (*os.File).Write
+
 type Kind string
 
 const (
@@ -106,9 +108,15 @@ func appendLocked(path string, line []byte) error {
 	if err != nil {
 		return fmt.Errorf("%w: open %s: %w", ErrNotWritten, path, err)
 	}
-	if n, err := f.Write(line); err != nil {
+	size, _, err := trimTail(f, path)
+	if err != nil {
 		_ = f.Close()
-		if n == 0 {
+		return fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	if n, err := writeEntries(f, line); err != nil {
+		undone := n == 0 || undoWrite(f, size) == nil
+		_ = f.Close()
+		if undone {
 			return fmt.Errorf("%w: write %s: %w", ErrNotWritten, path, err)
 		}
 		return fmt.Errorf("purgeledger: write %s: %w", path, err)
@@ -216,6 +224,65 @@ func pruneLocked(path string, cutoff time.Time) (int, error) {
 		return 0, fmt.Errorf("purgeledger: prune %s: %w", path, werr)
 	}
 	return dropped, syncDir(path)
+}
+
+func TrimTornTail(path string) (int64, error) {
+	if path == "" {
+		return 0, errors.New("purgeledger: no ledger path")
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("purgeledger: open %s: %w", path, err)
+	}
+	defer f.Close()
+	_, dropped, err := trimTail(f, path)
+	return dropped, err
+}
+
+func trimTail(f *os.File, path string) (size, dropped int64, err error) {
+	st, err := f.Stat()
+	if err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: stat %s: %w", path, err)
+	}
+	size = st.Size()
+	if size == 0 {
+		return 0, 0, nil
+	}
+	var last [1]byte
+	if _, err := f.ReadAt(last[:], size-1); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	if last[0] == '\n' {
+		return size, 0, nil
+	}
+	raw := make([]byte, size)
+	if _, err := f.ReadAt(raw, 0); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	keep := int64(bytes.LastIndexByte(raw, '\n') + 1)
+	if _, whole := parseLine(string(raw[keep:])); whole {
+		return 0, 0, fmt.Errorf("purgeledger: %s ends in a whole entry with no newline: add the newline or remove the line", path)
+	}
+	if err := undoWrite(f, keep); err != nil {
+		return 0, 0, fmt.Errorf("purgeledger: cut the incomplete last line of %s: %w", path, err)
+	}
+	slog.Warn("purgeledger: cut an incomplete last line", "path", path, "bytes", size-keep)
+	return keep, size - keep, nil
+}
+
+func undoWrite(f *os.File, size int64) error {
+	if err := f.Truncate(size); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func IDs(entries []Entry) []uuid.UUID {
@@ -433,7 +500,7 @@ func parse(path string, raw []byte) ([]line, error) {
 }
 
 func openAppend(path string) (*os.File, bool, error) {
-	return openShared(path, os.O_WRONLY|os.O_APPEND)
+	return openShared(path, os.O_RDWR|os.O_APPEND)
 }
 
 func openShared(path string, flag int) (*os.File, bool, error) {
