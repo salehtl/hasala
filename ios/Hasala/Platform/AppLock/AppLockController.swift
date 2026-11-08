@@ -130,6 +130,7 @@ final class AppLockController {
   @ObservationIgnored private let grace: Duration
   @ObservationIgnored private var backgroundedAt: ContinuousClock.Instant?
   @ObservationIgnored private var promptsOnActive = false
+  @ObservationIgnored private var sceneActive = false
 
   init(
     makeContext: @escaping () -> any LockContext, isEnabled: @escaping () -> Bool,
@@ -150,6 +151,7 @@ final class AppLockController {
 
   func scenePhaseChanged(_ phase: ScenePhase) {
     isCovered = phase == .background || (SnapshotCover.covers(phase) && !confirming)
+    sceneActive = phase == .active
     switch phase {
     case .background:
       if backgroundedAt == nil { backgroundedAt = now() }
@@ -165,10 +167,7 @@ final class AppLockController {
         }
       }
       if isLocked, !isAvailable { isLocked = false }
-      if isLocked, promptsOnActive {
-        promptsOnActive = false
-        Task { await unlock() }
-      }
+      promptIfOwed()
     default:
       break
     }
@@ -191,6 +190,13 @@ final class AppLockController {
     case .cancelled:
       break
     }
+    promptIfOwed()
+  }
+
+  private func promptIfOwed() {
+    guard sceneActive, isLocked, promptsOnActive, !busy else { return }
+    promptsOnActive = false
+    Task { await unlock() }
   }
 
   func confirmChange(to on: Bool) async -> Bool {
@@ -206,6 +212,7 @@ final class AppLockController {
     busy = false
     confirming = false
     if check == .unavailable { refreshAvailability() }
+    promptIfOwed()
     return check
   }
 
