@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -246,6 +247,15 @@ type QueueingWaker interface {
 	TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason) bool
 }
 
+type ConfirmingWaker interface {
+	TryWakeWriterConfirmed(ctx context.Context, userID uuid.UUID, writerID string, r pushv2.Reason, sent func()) bool
+}
+
+const (
+	unconfirmedNudgeAge = 12*time.Hour - 14*time.Minute
+	confirmNudgeFor     = 5 * time.Second
+)
+
 // Nudge is spec 02 §13.7, run every 15 minutes: a holder whose watch was never
 // reported (an hour after linking) or expires within 36 hours gets one nudge
 // wake, and no second one for 12 hours. The mark is taken back for a wake w
@@ -257,6 +267,11 @@ func Nudge(ctx context.Context, pool *pgxpool.Pool, w Waker, providers ...string
 	if len(providers) == 0 {
 		return "", nil
 	}
+	var markAge time.Duration
+	cw, confirming := w.(ConfirmingWaker)
+	if confirming {
+		markAge = unconfirmedNudgeAge
+	}
 	rows, err := pool.Query(ctx,
 		`WITH due AS (
 		   SELECT user_id, provider, last_nudge_at FROM mailbox_links
@@ -266,9 +281,9 @@ func Nudge(ctx context.Context, pool *pgxpool.Pool, w Waker, providers ...string
 		      AND (last_nudge_at IS NULL OR last_nudge_at < now() - interval '12 hours')
 		    LIMIT 500
 		    FOR UPDATE SKIP LOCKED)
-		 UPDATE mailbox_links m SET last_nudge_at = now()
+		 UPDATE mailbox_links m SET last_nudge_at = now() - $2::interval
 		   FROM due WHERE m.user_id = due.user_id AND m.provider = due.provider
-		 RETURNING m.user_id, m.provider, m.holder_writer_id, due.last_nudge_at, m.last_nudge_at`, providers)
+		 RETURNING m.user_id, m.provider, m.holder_writer_id, due.last_nudge_at, m.last_nudge_at`, providers, markAge)
 	if err != nil {
 		return "", fmt.Errorf("gmailpush: nudge: %w", err)
 	}
@@ -290,15 +305,25 @@ func Nudge(ctx context.Context, pool *pgxpool.Pool, w Waker, providers ...string
 	if err := rows.Err(); err != nil {
 		return "", err
 	}
-	qw, queueing := w.(QueueingWaker)
+	wake := func(n nudged) bool {
+		w.WakeWriter(ctx, n.h.UserID, n.h.WriterID, pushv2.ReasonNudge)
+		return true
+	}
+	if qw, ok := w.(QueueingWaker); ok {
+		wake = func(n nudged) bool {
+			return qw.TryWakeWriter(ctx, n.h.UserID, n.h.WriterID, pushv2.ReasonNudge)
+		}
+	}
+	if confirming {
+		wake = func(n nudged) bool {
+			return cw.TryWakeWriterConfirmed(ctx, n.h.UserID, n.h.WriterID, pushv2.ReasonNudge, func() {
+				confirmNudge(context.WithoutCancel(ctx), pool, n.h.UserID, n.provider, n.mark)
+			})
+		}
+	}
 	sent := 0
 	for _, n := range due {
-		if !queueing {
-			w.WakeWriter(ctx, n.h.UserID, n.h.WriterID, pushv2.ReasonNudge)
-			sent++
-			continue
-		}
-		if qw.TryWakeWriter(ctx, n.h.UserID, n.h.WriterID, pushv2.ReasonNudge) {
+		if wake(n) {
 			sent++
 			continue
 		}
@@ -316,4 +341,14 @@ func Nudge(ctx context.Context, pool *pgxpool.Pool, w Waker, providers ...string
 		return fmt.Sprintf("nudged %d mailbox holder(s); %d not queued", sent, len(due)-sent), nil
 	}
 	return fmt.Sprintf("nudged %d mailbox holder(s)", sent), nil
+}
+
+func confirmNudge(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, provider string, mark *time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, confirmNudgeFor)
+	defer cancel()
+	if _, err := pool.Exec(ctx,
+		`UPDATE mailbox_links SET last_nudge_at = now()
+		  WHERE user_id = $1 AND provider = $2 AND last_nudge_at = $3`, userID, provider, mark); err != nil {
+		slog.Warn("gmailpush: nudge: confirm the mark", "err", err.Error())
+	}
 }

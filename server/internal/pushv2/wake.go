@@ -89,6 +89,7 @@ type job struct {
 	tokens  []Target
 	r       Reason
 	resolve bool // false: tokens are already final (a trailing wake)
+	sent    func()
 }
 
 // Stats are the dispatcher's counters (spec 02 §20.1's apns_* metrics).
@@ -177,11 +178,15 @@ func (d *Dispatcher) WakeWriter(ctx context.Context, userID uuid.UUID, writerID 
 }
 
 // TryWakeWriter is WakeWriter that reports whether the wake was queued.
-func (d *Dispatcher) TryWakeWriter(_ context.Context, userID uuid.UUID, writerID string, r Reason) bool {
+func (d *Dispatcher) TryWakeWriter(ctx context.Context, userID uuid.UUID, writerID string, r Reason) bool {
+	return d.TryWakeWriterConfirmed(ctx, userID, writerID, r, nil)
+}
+
+func (d *Dispatcher) TryWakeWriterConfirmed(_ context.Context, userID uuid.UUID, writerID string, r Reason, sent func()) bool {
 	if writerID == "" {
 		return false
 	}
-	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true})
+	return d.enqueue(job{user: userID, writer: writerID, r: r, resolve: true, sent: sent})
 }
 
 // WakeOthers wakes every device of userID except exceptWriterID ("" = all).
@@ -222,6 +227,7 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 		slog.Warn("pushv2: resolve wake targets", "reason", j.r.String(), "err", err.Error())
 		return
 	}
+	delivered := false
 	for _, t := range ts {
 		d.mu.Lock()
 		paused := d.pausedFor(t)
@@ -236,10 +242,15 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 		}
 		switch dec {
 		case sendNow:
-			d.send(ctx, t)
+			if d.send(ctx, t) == ResultSent {
+				delivered = true
+			}
 		case dropCap, dropCool:
 			d.Stats.Dropped[j.r].Add(1)
 		}
+	}
+	if delivered && j.sent != nil {
+		j.sent()
 	}
 }
 
@@ -292,9 +303,9 @@ func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
 	return ok
 }
 
-func (d *Dispatcher) send(ctx context.Context, t Target) {
+func (d *Dispatcher) send(ctx context.Context, t Target) Result {
 	if d.Sender == nil {
-		return
+		return ResultTransient
 	}
 	res := d.Sender.Send(ctx, t)
 	switch res {
@@ -336,6 +347,7 @@ func (d *Dispatcher) send(ctx context.Context, t Target) {
 		d.Stats.Transient.Add(1)
 		slog.Warn("pushv2: APNs send failed", "result", res.String())
 	}
+	return res
 }
 
 // Querier is what the token readers need: a pool or a transaction.
