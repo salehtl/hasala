@@ -77,11 +77,24 @@ var paramsAllowed = map[string][]string{
 // retryWindow is how long a transient failure may keep retrying (spec 07
 // §6.2): a code is dead after 10 minutes, anything else gets a day.
 func retryWindow(kind string) time.Duration {
-	switch kind {
-	case "code", "reset_code", "recovery_code":
-		return 10 * time.Minute
+	if slices.Contains(codeKinds, kind) {
+		return codeRetryWindow
 	}
-	return 24 * time.Hour
+	return mailRetryWindow
+}
+
+var codeKinds = []string{"code", "reset_code", "recovery_code"}
+
+const (
+	codeRetryWindow = 10 * time.Minute
+	mailRetryWindow = 24 * time.Hour
+)
+
+const pastRetryWindow = `created_at < now() - CASE WHEN kind = ANY($2::text[]) THEN $3::interval ELSE $4::interval END`
+
+func leaseRescueArgs() []any {
+	return []any{maxAttempts, codeKinds, fmt.Sprintf("%d seconds", int(codeRetryWindow/time.Second)),
+		fmt.Sprintf("%d seconds", int(mailRetryWindow/time.Second))}
 }
 
 var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour}
@@ -306,8 +319,8 @@ func (q *Queue) SendNow(ctx context.Context, e Enqueue, render func() (mail.Mess
 	)
 	err = q.Pool.QueryRow(ctx,
 		`INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id,
-		                       waitlist_entry_id, invite_id, bank_slug, params, status, attempts, lease_until, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sending', 1, now() + interval '2 minutes', now())
+		                       waitlist_entry_id, invite_id, bank_slug, params, status, attempts, one_shot, lease_until, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'sending', 1, true, now() + interval '2 minutes', now())
 		 RETURNING id, lease_until`,
 		e.Kind, nilIfEmpty(e.Subkind), string(e.Lane), e.To, tag, Hint(e.To), e.UserID, e.EntryID, e.InviteID,
 		e.BankSlug, params).Scan(&id, &lease)
@@ -510,7 +523,8 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if _, err := q.Pool.Exec(ctx,
 		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
-		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1`, maxAttempts); err != nil {
+		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot
+		    AND NOT (`+pastRetryWindow+`)`, leaseRescueArgs()...); err != nil {
 		return false, fmt.Errorf("mailq: expired leases: %w", err)
 	}
 	if err := q.failExhausted(ctx); err != nil {
@@ -690,8 +704,9 @@ func (q *Queue) failExhausted(ctx context.Context) error {
 	tag, err := q.Pool.Exec(ctx,
 		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL, hook_due = true,
 		        error = 'attempts exhausted', recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
-		  WHERE attempts >= $1 AND recipient_tag IS NOT NULL
-		    AND (status = 'queued' OR (status = 'sending' AND lease_until < now()))`, maxAttempts)
+		  WHERE recipient_tag IS NOT NULL
+		    AND ((attempts >= $1 AND (status = 'queued' OR (status = 'sending' AND lease_until < now())))
+		      OR (status = 'sending' AND lease_until < now() AND (one_shot OR `+pastRetryWindow+`)))`, leaseRescueArgs()...)
 	if err != nil {
 		return err
 	}

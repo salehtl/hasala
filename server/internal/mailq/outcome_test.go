@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -248,5 +249,82 @@ func TestOutcomeRetriesEndBeforeTheLease(t *testing.T) {
 	}
 	if total >= leaseFor {
 		t.Fatalf("render, send and every outcome write can take %s, the lease is %s", total, leaseFor)
+	}
+}
+
+func TestAnOrphanedSendNowRowIsNotSentAgain(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	rendered := 0
+	q.Register("code", RenderFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
+		rendered++
+		return mail.Message{To: r.Recipient, Subject: "s", Text: "t"}, nil
+	}))
+	var ran []string
+	q.Unsent = func(_ context.Context, _ pgx.Tx, r Row) (func(), error) {
+		ran = append(ran, r.Kind)
+		return nil, nil
+	}
+	died := make(chan struct{})
+	go func() {
+		defer close(died)
+		_ = q.SendNow(bg, Enqueue{Kind: "code", To: "a@example.com", Params: map[string]any{"purpose": "email_verify"}},
+			func() (mail.Message, error) {
+				runtime.Goexit()
+				return mail.Message{}, nil
+			})
+	}()
+	<-died
+	expireLeases(t, q)
+	if n, err := q.Drain(bg); err != nil || n != 0 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	var (
+		st  string
+		att int
+	)
+	if err := pool.QueryRow(bg, `SELECT status, attempts FROM mail_log`).Scan(&st, &att); err != nil {
+		t.Fatal(err)
+	}
+	if st != "failed" || att != 1 || rendered != 0 || len(fake.Sent()) != 0 {
+		t.Fatalf("status %s, attempts %d, rendered %d, sent %d", st, att, rendered, len(fake.Sent()))
+	}
+	if len(ran) != 1 || ran[0] != "code" {
+		t.Fatalf("the hook ran for %v", ran)
+	}
+}
+
+func TestALeaseRescueHonoursTheRetryWindow(t *testing.T) {
+	for _, c := range []struct {
+		name, kind, age string
+		params          map[string]any
+		status          string
+		sent            int
+	}{
+		{"code inside its window", "code", "9 minutes", map[string]any{"purpose": "email_verify"}, "sent", 1},
+		{"code past its window", "code", "11 minutes", map[string]any{"purpose": "email_verify"}, "failed", 0},
+		{"other kind inside its window", "test", "11 minutes", nil, "sent", 1},
+		{"other kind past its window", "test", "25 hours", nil, "failed", 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			pool := pgtest.New(t)
+			fake := &mail.Fake{}
+			q := New(pool, fake, fixedTagger{})
+			q.Register(c.kind, RenderFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
+				return mail.Message{To: r.Recipient, Subject: "s", Text: "t"}, nil
+			}))
+			id := enqueue(t, pool, q, Enqueue{Kind: c.kind, To: "a@example.com", Params: c.params})
+			if _, err := pool.Exec(bg, `UPDATE mail_log SET status = 'sending', attempts = 1, next_attempt_at = NULL,
+				lease_until = now() - interval '1 minute', created_at = now() - $2::interval WHERE id = $1`, id, c.age); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			if st, _, _, _ := row(t, pool, id); st != c.status || len(fake.Sent()) != c.sent {
+				t.Fatalf("status %s, sent %d", st, len(fake.Sent()))
+			}
+		})
 	}
 }
