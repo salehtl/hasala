@@ -1,9 +1,14 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/cryptoref"
 	"github.com/salehtl/hasala/server/internal/pgtx"
 )
@@ -73,5 +78,150 @@ func TestARecoveryEndedWhileItWaitedForTheAccountIsRefused(t *testing.T) {
 	}
 	if n := f.count(`SELECT count(*) FROM writers WHERE user_id = $1 AND writer_id = $2`, m.user.UserID, req.Writer.WriterID); n != 0 {
 		t.Fatal("an ended ceremony registered a device")
+	}
+}
+
+const injectFailure = `CREATE FUNCTION injected_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$;`
+
+func TestAServerFaultAfterTheClaimHandsTheRecoveryBack(t *testing.T) {
+	for _, c := range []struct {
+		name, kind, breakIt, fixIt string
+	}{
+		{"reading the account", "password",
+			`ALTER TABLE users RENAME COLUMN display_name TO display_name_gone`,
+			`ALTER TABLE users RENAME COLUMN display_name_gone TO display_name`},
+		{"reading the keys", "password",
+			`ALTER TABLE account_keys RENAME COLUMN authority_pubkey TO authority_pubkey_gone`,
+			`ALTER TABLE account_keys RENAME COLUMN authority_pubkey_gone TO authority_pubkey`},
+		{"reading the passkey handle", "passkey",
+			`ALTER TABLE users RENAME COLUMN user_handle TO user_handle_gone`,
+			`ALTER TABLE users RENAME COLUMN user_handle_gone TO user_handle`},
+		{"storing the passkey", "passkey",
+			injectFailure + `CREATE TRIGGER injected BEFORE INSERT ON webauthn_credentials FOR EACH ROW EXECUTE FUNCTION injected_failure();`,
+			`DROP TRIGGER injected ON webauthn_credentials`},
+		{"storing the device", "password",
+			injectFailure + `CREATE TRIGGER injected BEFORE INSERT ON writers FOR EACH ROW EXECUTE FUNCTION injected_failure();`,
+			`DROP TRIGGER injected ON writers`},
+		{"the commit", "password",
+			injectFailure + `CREATE CONSTRAINT TRIGGER injected AFTER INSERT ON writers DEFERRABLE INITIALLY DEFERRED
+			   FOR EACH ROW EXECUTE FUNCTION injected_failure();`,
+			`DROP TRIGGER injected ON writers`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newAcctFixture(t)
+			m := f.passwordMember("Maya")
+			id, v := f.verifiedRecovery(m, c.kind)
+			var req RecoverFinishRequest
+			if c.kind == "passkey" {
+				req, _ = f.passkeyRecoveryRequest(m, id, v)
+			} else {
+				req = f.passwordRecoveryRequest(m, id, v, f.stretch(m.addr, "a recovered password"))
+			}
+			if _, err := f.owner.Exec(bgctx, c.breakIt); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.acct.RecoverFinish(bgctx, req); err == nil || errors.Is(err, ErrRecoveryRefused) {
+				t.Fatalf("a server fault: %v, want an error that is not a refusal", err)
+			}
+			if f.count(`SELECT count(*) FROM recovery_ceremonies WHERE id = $1 AND claimed_at IS NULL`, id) != 1 {
+				t.Fatal("a server fault spent the recovery")
+			}
+			if _, err := f.owner.Exec(bgctx, c.fixIt); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.acct.RecoverFinish(bgctx, req); err != nil {
+				t.Fatalf("the retry: %v", err)
+			}
+		})
+	}
+}
+
+func TestALockTimeoutOnTheAccountHandsTheRecoveryBack(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	id, v := f.verifiedRecovery(m, "password")
+	req := f.passwordRecoveryRequest(m, id, v, f.stretch(m.addr, "a recovered password"))
+
+	cfg := f.pool.Config()
+	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "100ms"
+	impatient, err := pgxpool.NewWithConfig(bgctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(impatient.Close)
+	f.acct.Pool = impatient
+
+	holder, err := pgtx.BeginReadCommitted(bgctx, f.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pgtx.Rollback(bgctx, holder)
+	if _, err := holder.Exec(bgctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.RecoverFinish(bgctx, req); err == nil || errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a lock timeout: %v, want an error that is not a refusal", err)
+	}
+	if f.count(`SELECT count(*) FROM recovery_ceremonies WHERE id = $1 AND claimed_at IS NULL`, id) != 1 {
+		t.Fatal("a lock timeout spent the recovery")
+	}
+	pgtx.Rollback(bgctx, holder)
+	if _, err := f.acct.RecoverFinish(bgctx, req); err != nil {
+		t.Fatalf("the retry: %v", err)
+	}
+}
+
+func TestACancelledRequestHandsTheRecoveryBack(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	id, v := f.verifiedRecovery(m, "password")
+	req := f.passwordRecoveryRequest(m, id, v, f.stretch(m.addr, "a recovered password"))
+
+	gate := authkeys.NewGate(1, 1, time.Minute)
+	free, err := gate.Acquire(bgctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(free)
+	f.acct.Gate = gate
+	ctx, cancel := context.WithCancel(bgctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.acct.RecoverFinish(ctx, req)
+		done <- err
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for f.count(`SELECT count(*) FROM recovery_ceremonies WHERE id = $1 AND claimed_at IS NOT NULL`, id) != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the recovery never claimed its ceremony")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err == nil || errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a cancelled request: %v, want an error that is not a refusal", err)
+	}
+	if f.count(`SELECT count(*) FROM recovery_ceremonies WHERE id = $1 AND claimed_at IS NULL`, id) != 1 {
+		t.Fatal("a cancelled request spent the recovery")
+	}
+	free()
+	if _, err := f.acct.RecoverFinish(bgctx, req); err != nil {
+		t.Fatalf("the retry: %v", err)
+	}
+}
+
+func TestARecoveryRefusedForItsOwnDeviceStaysSpent(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	id, v := f.verifiedRecovery(m, "password")
+	req := f.passwordRecoveryRequest(m, id, v, f.stretch(m.addr, "a recovered password"))
+	req.Writer = Registration{WriterID: m.device.WriterID, Alg: AlgEd25519, PubKey: m.device.DWKPub(), DAKPubkey: m.device.DAKPub(),
+		Sig: m.acct.Registration(t, m.device, v.Nonce)}
+	if _, err := f.acct.RecoverFinish(bgctx, req); !errors.Is(err, ErrRecoveryRefused) {
+		t.Fatalf("a device already enrolled: %v", err)
+	}
+	if f.count(`SELECT count(*) FROM recovery_ceremonies WHERE id = $1 AND claimed_at IS NOT NULL`, id) != 1 {
+		t.Fatal("a refused attempt handed the recovery back")
 	}
 }

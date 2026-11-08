@@ -19,6 +19,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
@@ -239,17 +240,54 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil {
 		return RecoverFinished{}, refuse("not claimable")
 	}
+	// A busy gate or a server fault is not the attempt's failure: the verified
+	// ceremony goes back unclaimed, so the retry (under recover-ip's 3 an hour)
+	// is not refused for the server's sake.
+	var tx pgx.Tx
+	release := func(err error) (RecoverFinished, error) {
+		if tx != nil {
+			pgtx.Rollback(ctx, tx)
+		}
+		bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if _, xerr := a.Pool.Exec(bctx, `UPDATE recovery_ceremonies SET claimed_at = NULL WHERE id = $1 AND claimed_at = $2`,
+			r.CeremonyID, now); xerr != nil {
+			return RecoverFinished{}, errors.Join(err, fmt.Errorf("auth: recovery: release the ceremony: %w", xerr))
+		}
+		return RecoverFinished{}, err
+	}
+	unusable := func(st accountState) bool {
+		return !st.active() || !st.HasKeys || st.frozen() || st.InDoubt
+	}
+	refuseUnusable := func() (RecoverFinished, error) {
+		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
+	}
+	refuseOrRelease := func(err error) (RecoverFinished, error) {
+		if integrityViolation(err) || errors.Is(err, ErrWriterMalformed) {
+			return RecoverFinished{}, refuse("%v", err)
+		}
+		return release(err)
+	}
 	if kind != r.Kind {
 		return RecoverFinished{}, refuse("the kind is not the one verified (%s)", kind)
 	}
 	st, err := readAccount(ctx, a.Pool, userID, false)
-	if err != nil || !st.active() || !st.HasKeys || st.frozen() || st.InDoubt {
-		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
+	if errors.Is(err, ErrNoSuchAccount) {
+		return refuseUnusable()
+	}
+	if err != nil {
+		return release(err)
+	}
+	if unusable(st) {
+		return refuseUnusable()
 	}
 	var recoveryPub, authorityPub []byte
 	if err := a.Pool.QueryRow(ctx, `SELECT recovery_pubkey, authority_pubkey FROM account_keys WHERE user_id = $1`, userID).
 		Scan(&recoveryPub, &authorityPub); err != nil {
-		return RecoverFinished{}, refuse("keys")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RecoverFinished{}, refuse("keys")
+		}
+		return release(err)
 	}
 	// The new authenticator, its RK signature, and (passkey) its attestation.
 	var (
@@ -286,7 +324,10 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 			return RecoverFinished{}, refuse("session data")
 		}
 		_, handle, err = a.Passkeys.credentialsForUser(ctx, a.Pool, userID)
-		if err != nil || handle == nil {
+		if err != nil {
+			return release(err)
+		}
+		if handle == nil {
 			return RecoverFinished{}, refuse("handle")
 		}
 		made, err = a.Passkeys.createCredential(passkeyUser{handle: handle, rpName: passkeyUserName},
@@ -316,20 +357,6 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err != nil || !keyproto.VerifyEd25519(authorityPub, rm, w.Sig) {
 		return RecoverFinished{}, refuse("registration_sig")
 	}
-	// A busy gate or a server fault before the commit is not the attempt's
-	// failure: the verified ceremony goes back unclaimed, so the retry (under
-	// recover-ip's 3 an hour) is not refused for the server's sake.
-	var tx pgx.Tx
-	release := func(err error) (RecoverFinished, error) {
-		if tx != nil {
-			pgtx.Rollback(ctx, tx)
-		}
-		if _, xerr := a.Pool.Exec(ctx, `UPDATE recovery_ceremonies SET claimed_at = NULL WHERE id = $1 AND claimed_at = $2`,
-			r.CeremonyID, now); xerr != nil {
-			return RecoverFinished{}, errors.Join(err, fmt.Errorf("auth: recovery: release the ceremony: %w", xerr))
-		}
-		return RecoverFinished{}, err
-	}
 	if kind == MethodPassword {
 		if hash, salt, err = newPasswordHash(ctx, a.Keys, a.Gate, r.Verifier); err != nil {
 			return release(err)
@@ -342,8 +369,14 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	defer pgtx.Rollback(ctx, tx)
 	// The account's state again, under the lock: a freeze or a suspension
 	// that landed since the check above refuses.
-	if st, err = readAccount(ctx, tx, userID, true); err != nil || !st.active() || !st.HasKeys || st.frozen() || st.InDoubt {
-		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
+	if st, err = readAccount(ctx, tx, userID, true); errors.Is(err, ErrNoSuchAccount) {
+		return refuseUnusable()
+	}
+	if err != nil {
+		return release(err)
+	}
+	if unusable(st) {
+		return refuseUnusable()
 	}
 	var claimed bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM recovery_ceremonies WHERE id = $1 AND claimed_at = $2)`,
@@ -366,20 +399,20 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		cred = made.Credential.ID
 		if err := insertCredential(ctx, tx, storedCredential{UserID: userID, UserHandle: handle, Credential: *made.Credential,
 			AttestationSHA256: made.AttestationSHA256}, now); err != nil {
-			return RecoverFinished{}, refuse("%v", err)
+			return refuseOrRelease(err)
 		}
 		if hasWrap {
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at) VALUES ($1, $2, $3, 1, $4)`,
 				userID, cred, r.PRFWrap, now); err != nil {
-				return RecoverFinished{}, refuse("%v", err)
+				return refuseOrRelease(err)
 			}
 		}
 	} else if err := setPasswordTx(ctx, tx, userID, hash, salt, a.Keys.Current(), now); err != nil {
 		return release(err)
 	}
 	if err := insertWriterTx(ctx, tx, userID, w, now); err != nil {
-		return RecoverFinished{}, refuse("%v", err)
+		return refuseOrRelease(err)
 	}
 	revoked, err := RevokeOtherSessionsTx(ctx, tx, userID, nil, now)
 	if err != nil {
@@ -409,12 +442,17 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 		return release(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return RecoverFinished{}, err
+		return release(err)
 	}
 	held.Release(a.Record)
 	a.Mail.Kick()
 	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
 		Wake: wakeFor(userID, w.WriterID, revoked)}, nil
+}
+
+func integrityViolation(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && strings.HasPrefix(pg.Code, "23")
 }
 
 func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keepCredential []byte, keepPassword bool, now time.Time) ([][]byte, error) {
