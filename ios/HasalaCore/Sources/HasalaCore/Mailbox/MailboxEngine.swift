@@ -527,7 +527,7 @@ public actor MailboxEngine {
     s.address = claims.email
     s.haltedOn = nil
     s.haltedDetail = nil
-    s.lastHolderCheckAtMs = clock.nowMs()
+    s.lastHolderCheckAtMs = nil
     s.watchExpiresAtMs = nil  // a new link starts with no watch (spec 02 §13.2 step 3)
     if s.phase == .scanning && s.scanStartedMs == nil {
       // First connect. A resumed scan keeps its window: what it staged and accounted still counts.
