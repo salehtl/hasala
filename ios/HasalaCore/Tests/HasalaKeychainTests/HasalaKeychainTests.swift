@@ -130,6 +130,145 @@ struct InstallCheckTests {
     #expect(try k.read(.accountBinding) == nil)
   }
 
+  let host = "api.example.test"
+
+  func stranded(_ k: KeychainSecretStore, pending: Bool = false) throws -> Secrets {
+    let secrets = Secrets(store: k, apiHost: host)
+    try secrets.writeSession(
+      SessionRecord(token: "old-token", userID: "user-1", expiresAt: 4_000_000_000, tag: "0011223344556677", pendingLogout: pending))
+    try k.write(.accountBinding, Data("b".utf8))
+    return secrets
+  }
+
+  func run(_ k: KeychainSecretStore, _ d: UserDefaults) -> InstallCheck.Outcome {
+    InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil, apiHost: host)
+  }
+
+  @Test("a session the Keychain answers not-now for stops the install before anything is deleted")
+  func strandedNotNow() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k)
+    let d = defaults()
+    api.sessionReadFailure = errSecInteractionNotAllowed
+    #expect(run(k, d) == .notNow(statuses: [errSecInteractionNotAllowed]))
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+    #expect(api.deletes.isEmpty)
+    api.sessionReadFailure = nil
+    #expect(run(k, d) == .done)
+    #expect(try secrets.session()?.token == "old-token" && secrets.session()?.pending_logout == true)
+    #expect(try k.read(.accountBinding) == nil)
+  }
+
+  @Test("a stranded session that cannot be marked stays, and the next launch marks it")
+  func strandedMarkRefused() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k)
+    let d = defaults()
+    api.sessionWriteFailure = errSecNotAvailable
+    #expect(run(k, d) == .notNow(statuses: [errSecNotAvailable]))
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+    #expect(api.deletes.isEmpty)
+    #expect(try secrets.session()?.token == "old-token")
+    api.sessionWriteFailure = nil
+    #expect(run(k, d) == .done)
+    #expect(try secrets.session()?.pending_logout == true)
+  }
+
+  @Test("a mark that was applied but not read back is finished by the next launch")
+  func strandedMarkNotConfirmed() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k)
+    let d = defaults()
+    api.failReadAfterWrite = errSecNotAvailable
+    guard case .notNow = run(k, d) else {
+      Issue.record("an unconfirmed mark must not commit the install")
+      return
+    }
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+    #expect(try secrets.session()?.token == "old-token")
+    api.failReadAfterWrite = nil
+    #expect(run(k, d) == .done)
+    #expect(try secrets.session()?.token == "old-token" && secrets.session()?.pending_logout == true)
+  }
+
+  @Test("the purge never deletes the marked session, so a kill mid-purge cannot lose it")
+  func strandedNeverDeleted() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k)
+    let d = defaults()
+    api.deleteFailure = errSecNotAvailable
+    guard case .notNow = run(k, d) else {
+      Issue.record("a failed delete must not commit the install")
+      return
+    }
+    #expect(try secrets.session()?.pending_logout == true)
+    api.deleteFailure = nil
+    #expect(run(k, d) == .done)
+    #expect(api.sessionDeletes(of: host).isEmpty)
+    #expect(try secrets.session()?.token == "old-token" && secrets.session()?.pending_logout == true)
+  }
+
+  @Test("a session of another API host still goes when this host's is kept")
+  func strandedOtherHost() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k)
+    let other = Secrets(store: k, apiHost: "old.example.test")
+    try other.writeSession(SessionRecord(token: "other", userID: "user-2", expiresAt: 4_000_000_000, tag: "8899aabbccddeeff"))
+    #expect(run(k, defaults()) == .done)
+    #expect(try other.session() == nil)
+    #expect(try secrets.session()?.token == "old-token")
+    #expect(api.inner.count == 1)
+  }
+
+  @Test("sessions that cannot be listed leave the install for the next launch")
+  func strandedListingRefused() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    _ = try stranded(k)
+    let d = defaults()
+    api.accountsFailure = errSecNotAvailable
+    #expect(run(k, d) == .notNow(statuses: [errSecNotAvailable]))
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+  }
+
+  @Test("a session the Keychain refuses outright cannot hold the install back")
+  func strandedRefused() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    _ = try stranded(k)
+    let d = defaults()
+    api.sessionReadFailure = errSecDecode
+    #expect(run(k, d) == .done)
+    #expect(api.inner.count == 0)
+    #expect(d.string(forKey: InstallCheck.installIDKey)?.count == 36)
+  }
+
+  @Test("a session item that is not a session cannot hold the install back")
+  func strandedUndecodable() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    try k.write(.session(apiHost: host), Data("not json".utf8))
+    let d = defaults()
+    #expect(run(k, d) == .done)
+    #expect(api.inner.count == 0)
+    #expect(d.string(forKey: InstallCheck.installIDKey)?.count == 36)
+  }
+
+  @Test("a session already marked is kept without another write")
+  func strandedAlreadyMarked() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let secrets = try stranded(k, pending: true)
+    api.sessionWriteFailure = errSecNotAvailable
+    #expect(run(k, defaults()) == .done)
+    #expect(try secrets.session()?.token == "old-token" && secrets.session()?.pending_logout == true)
+  }
+
   func widgets() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-install-\(UUID().uuidString)", isDirectory: true)
     let dir = root.appendingPathComponent("Widgets", isDirectory: true)
@@ -201,5 +340,61 @@ struct InstallCheckTests {
       protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil)
     else { Issue.record("expected notNow"); return }
     #expect(!s.isEmpty && d.string(forKey: InstallCheck.installIDKey) == nil)
+  }
+}
+
+final class ScriptedKeychain: KeychainAPI, @unchecked Sendable {
+  let inner = InMemoryKeychainAPI()
+  var sessionReadFailure: OSStatus?
+  var sessionWriteFailure: OSStatus?
+  var failReadAfterWrite: OSStatus?
+  var accountsFailure: OSStatus?
+  var deleteFailure: OSStatus?
+  private var failNextRead = false
+  private(set) var deletes: [[String: Any]] = []
+
+  private func isSession(_ q: [String: Any]) -> Bool { q[kSecAttrService as String] as? String == "app.hasala.session" }
+
+  func sessionDeletes(of host: String) -> [[String: Any]] {
+    deletes.filter { q in
+      guard isSession(q) else { return false }
+      guard let account = q[kSecAttrAccount as String] as? String else { return true }
+      return account == host
+    }
+  }
+
+  private func wrote(_ q: [String: Any], _ s: OSStatus) -> OSStatus {
+    if s == errSecSuccess, isSession(q), failReadAfterWrite != nil { failNextRead = true }
+    return s
+  }
+
+  func add(_ q: [String: Any]) -> OSStatus {
+    if isSession(q), let f = sessionWriteFailure { return f }
+    return wrote(q, inner.add(q))
+  }
+
+  func update(_ q: [String: Any], _ a: [String: Any]) -> OSStatus {
+    if isSession(q), let f = sessionWriteFailure { return f }
+    return wrote(q, inner.update(q, a))
+  }
+
+  func copyData(_ q: [String: Any]) -> (OSStatus, Data?) {
+    if isSession(q), failNextRead, let f = failReadAfterWrite {
+      failNextRead = false
+      return (f, nil)
+    }
+    if isSession(q), let f = sessionReadFailure { return (f, nil) }
+    return inner.copyData(q)
+  }
+
+  func accounts(_ q: [String: Any]) -> (OSStatus, [String]) {
+    if let f = accountsFailure { return (f, []) }
+    return inner.accounts(q)
+  }
+
+  func delete(_ q: [String: Any]) -> OSStatus {
+    if let f = deleteFailure { return f }
+    deletes.append(q)
+    return inner.delete(q)
   }
 }
