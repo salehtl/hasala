@@ -128,8 +128,10 @@ struct AccountRootView<Main: View>: View {
         SetupFlowView(model: onboarding.setupModel(
           displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
       }
-    case .needsUnlock:
-      UnlockView(session: session)
+    case .needsUnlock(let passkeyCanUnlock):
+      UnlockView(model: onboarding.unlockModel(passkeyCanUnlock: passkeyCanUnlock), onSignOut: {
+        Task { await session.signOut() }
+      })
     case .needsKeys:
       InterruptedSetupFlowView(store: onboarding)
     case .frozen(let info):

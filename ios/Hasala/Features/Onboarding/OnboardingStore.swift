@@ -30,6 +30,7 @@ final class OnboardingStore {
   @ObservationIgnored private(set) var setup: SetupModel?
   /// C1 interrupted: the replacement phrase, made once (not on every re-render).
   @ObservationIgnored private(set) var replacement: SignupModel?
+  @ObservationIgnored private(set) var unlock: UnlockModel?
   @ObservationIgnored private var finish: FinishSetupModel?
   @ObservationIgnored private var firstScan = FirstScanRun()
   /// The facts setup was last brought in line with.
@@ -101,6 +102,15 @@ final class OnboardingStore {
     return made
   }
 
+  func unlockModel(passkeyCanUnlock: Bool) -> UnlockModel {
+    let offered = passkeyCanUnlock && services.account.capabilities.contains(.signInPasskey)
+    if let unlock, unlock.passkeyCanUnlock == offered { return unlock }
+    let session = self.session
+    let made = UnlockModel(account: services.account, passkeyCanUnlock: offered) { session().unlocked() }
+    unlock = made
+    return made
+  }
+
   /// Called by `AccountRootView` on every phase change (and with `old` nil when it
   /// appears). Signing out after any signed-in phase (sign out, erase, a wipe, the session
   /// ended) drops every draft: the account it described is gone (plan B3.4). Nothing else
@@ -108,6 +118,7 @@ final class OnboardingStore {
   func phaseChanged(from old: AccountSession.Phase?, to new: AccountSession.Phase) {
     let previous = old ?? lastPhase
     lastPhase = new
+    if case .needsUnlock = new {} else { unlock = nil }
     if new == .signedOut, let previous, previous != .signedOut { forgetAccountDrafts() }
     if new != .signedOut, new != .checking { signIn.forgetRecovery() }
   }

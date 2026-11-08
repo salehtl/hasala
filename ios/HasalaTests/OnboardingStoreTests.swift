@@ -72,6 +72,50 @@ struct OnboardingStoreTests: AccountSuite {
   }
 
   /// Signing out after a signed-in phase drops every draft; the stories' page stays.
+  @Test func aRemadeGateKeepsTheUnlockAsItWas() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    let (store, _) = store(account, phase: .needsUnlock(passkeyCanUnlock: false))
+    let unlock = store.unlockModel(passkeyCanUnlock: false)
+    unlock.phraseText = "abandon ability"
+    unlock.enterWords()
+    #expect(store.unlockModel(passkeyCanUnlock: false) === unlock)
+    #expect(unlock.phraseText == "abandon ability" && unlock.path == [.words])
+
+    unlock.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.unlocked)
+    #expect(store.unlockModel(passkeyCanUnlock: false).unlocked)
+  }
+
+  @Test func theUnlockGoesWhenTheGateLeavesIt() {
+    let (store, session) = store(MockAccountService(existing: .passkey, signedIn: true),
+                                 phase: .needsUnlock(passkeyCanUnlock: false))
+    let needsUnlock = AccountSession.Phase.needsUnlock(passkeyCanUnlock: false)
+    let first = store.unlockModel(passkeyCanUnlock: false)
+    first.phraseText = "abandon"
+    store.phaseChanged(from: nil, to: needsUnlock)
+    #expect(store.unlock === first)
+
+    first.openApp()
+    #expect(session.phase == .ready)
+    store.phaseChanged(from: needsUnlock, to: .ready)
+    #expect(store.unlock == nil)
+
+    let second = store.unlockModel(passkeyCanUnlock: false)
+    #expect(second !== first && second.phraseText.isEmpty)
+    store.phaseChanged(from: needsUnlock, to: .signedOut)
+    #expect(store.unlock == nil)
+  }
+
+  @Test func theUnlockFollowsWhatThisBuildCanOffer() {
+    let (store, _) = store(MockAccountService(existing: .passkey, signedIn: true),
+                           phase: .needsUnlock(passkeyCanUnlock: true))
+    let offered = store.unlockModel(passkeyCanUnlock: true)
+    #expect(offered.passkeyCanUnlock)
+    #expect(store.unlockModel(passkeyCanUnlock: true) === offered)
+    #expect(!store.unlockModel(passkeyCanUnlock: false).passkeyCanUnlock)
+  }
+
   @Test func signingOutDropsTheDrafts() {
     let (store, _) = store()
     store.phaseChanged(from: nil, to: .signedOut)
