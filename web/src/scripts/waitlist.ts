@@ -16,7 +16,7 @@
  * the visitor's email app and shows how to finish if it didn't open.
  */
 import { reducedMotion } from './motion';
-import { onPage } from './page';
+import { onPage, pageTimer } from './page';
 import { bankText, postWithTurnstile, renderTurnstile, waitText, type ApiAnswer } from './api';
 
 type State = 'default' | 'focus' | 'error' | 'success';
@@ -59,19 +59,6 @@ function openMail(card: HTMLElement, url: string): void {
   const again = card.querySelector<HTMLAnchorElement>('[data-mailto]');
   if (again) again.href = url;
   window.location.href = url;
-}
-
-function pageTimer(signal: AbortSignal) {
-  let id = 0;
-  const clear = () => window.clearTimeout(id);
-  signal.addEventListener('abort', clear, { once: true });
-  return {
-    clear,
-    set: (fn: () => void, ms: number) => {
-      clear();
-      id = window.setTimeout(fn, ms);
-    },
-  };
 }
 
 export function initWaitlist(): void {
