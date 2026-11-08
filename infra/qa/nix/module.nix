@@ -1403,6 +1403,12 @@ in
           CPUQuota = "200%";
           TasksMax = 128;
           LimitNOFILE = 4096;
+          Restart = "on-failure";
+          RestartSec = "5s";
+        };
+        unitConfig = {
+          StartLimitIntervalSec = 300;
+          StartLimitBurst = 5;
         };
         restartTriggers = [ pgConf ];
       };

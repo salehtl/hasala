@@ -376,6 +376,14 @@ in
           machine.succeed("journalctl -u hasala-backup-premigrate -o cat | grep 'no pending migrations' >/dev/null")
           machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
 
+      with subtest("AT-V8b: Postgres comes back by itself and the API with it"):
+          pid = machine.succeed("systemctl show -P MainPID hasala-postgresql.service").strip()
+          machine.succeed(f"kill -9 {pid}")
+          machine.wait_until_succeeds(f"test \"$(systemctl show -P MainPID hasala-postgresql.service)\" != {pid}")
+          machine.wait_for_unit("hasala-postgresql.service")
+          machine.wait_until_succeeds(f"curl -sf {API}/api/v1/healthz")
+          machine.succeed("systemctl is-active hasalad.service")
+
       with subtest("AT-V9: hasala-admin runs each mode in a sandbox, as root only"):
           for mode in ["invite", "waitlist", "account", "email", "purge-user", "verify", "version", "migrate"]:
               machine.succeed(f"hasala-admin {mode} --help")

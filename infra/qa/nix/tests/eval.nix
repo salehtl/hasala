@@ -961,6 +961,11 @@ let
         )
         "AT-E3 the off-site unit must copy without .part files and delete copies at retentionDays: ${builtins.toJSON offsiteExec}"
     ++ check (
+      (backupOf "hasala-postgresql").Restart or null == "on-failure"
+      && (backupOf "hasala-postgresql").RestartSec or null != null
+      && (svc fullSys "hasala-postgresql").unitConfig.StartLimitBurst or null != null
+    ) "AT-E3 Postgres must restart after it dies, within a start limit"
+    ++ check (
       let
         timer = fullSys.config.systemd.timers.hasala-backup-offsite or { };
       in
