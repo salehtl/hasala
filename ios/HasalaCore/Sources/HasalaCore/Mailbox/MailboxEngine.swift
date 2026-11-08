@@ -770,7 +770,10 @@ public actor MailboxEngine {
       state.phase = .authoringBackfill
     case .reconnectRequired:
       await forgetReader()
-      guard trigger == .retry else { return report }
+      guard trigger == .retry else {
+        guard holderCheckDue(state, trigger) else { return report }
+        return await recheckHolder(&state, report)
+      }
       state.phase = resumePhase(state)
       state.haltedOn = nil
       state.haltedDetail = nil
@@ -899,6 +902,26 @@ public actor MailboxEngine {
     report.phase = state.phase
     if cut || state.phase != .active { return report }
     return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, report).report
+  }
+
+  private func recheckHolder(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
+    var report = report
+    let now = clock.nowMs()
+    do throws(MailboxServerError) {
+      if case .holder(isThisDevice: false, _) = try await server.linkStatus(provider: provider.id) {
+        _ = await leaveLink(&state)
+        report.haltedOn = .notHolder
+        report.phase = state.phase
+        return report
+      }
+      state.lastHolderCheckAtMs = now
+      return await finish(&state, report)
+    } catch .otherProvider {
+      return await linkOnOtherProvider(report, now: now)
+    } catch {
+      report.haltedOn = .offline
+      return report
+    }
   }
 
   private enum OtherProviderHolder { case thisIPhone, elsewhere, unknown }
