@@ -354,7 +354,8 @@ public enum BacklogSort {
     concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
     trusts: @Sendable (String) -> Bool = { _ in true }, mayAsk: @Sendable () -> Bool = { true }, stamps: AuthorStamps,
     serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
-    enqueue: @Sendable (AuthoredBlob) async throws -> Void, reproject: @Sendable () async throws -> Void = {}
+    willFile: @Sendable (Filing) async -> Void = { _ in }, enqueue: @Sendable (AuthoredBlob) async throws -> Void,
+    reproject: @Sendable () async throws -> Void = {}
   ) async throws -> Committed {
     let p = try await pass(
       rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
@@ -368,7 +369,9 @@ public enum BacklogSort {
         let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
         guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
         let blobs = try stamps.categorizations(items, context: fresh.context)
-        let c = await commit(blobs, filing: Filing(items), enqueue: enqueue)
+        let filing = Filing(items)
+        await willFile(filing)
+        let c = await commit(blobs, filing: filing, enqueue: enqueue)
         var failed = c.failed
         let authored = c.enqueued > 0
         if authored {

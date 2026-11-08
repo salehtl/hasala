@@ -284,6 +284,37 @@ struct BacklogSortTests {
     #expect(failed.failed && decided.next == .pass(afterMs: BacklogSort.backoffMs[0]) && decided.backoffs == 1)
   }
 
+  @Test("what a pass will file is told before its first write, also when that write fails")
+  func toldBeforeTheWrite() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("UNSURE SHOP", "debit")], needsReview: false)
+    let snapshot = l
+    func cloud() -> BacklogCloud {
+      BacklogCloud(["sure shop": (.category("groceries"), true), "unsure shop": (.category("dining"), false)])
+    }
+    func sort(enqueue: @escaping @Sendable (AuthoredBlob) async throws -> Void, told: @escaping @Sendable (BacklogSort.Filing) async -> Void)
+      async throws -> BacklogSort.Committed
+    {
+      try await BacklogSort.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud(), memo: .init(), cache: MemoryCache(),
+        now: { now }, autoFile: true, stamps: AuthorStamps(), serial: WriteSerial(),
+        reread: { (snapshot.rows(), snapshot.context()) }, willFile: told, enqueue: enqueue)
+    }
+    let events = Locked<[String]>([])
+    let told = Locked<BacklogSort.Filing?>(nil)
+    let good = try await sort(enqueue: { _ in events.withLock { $0.append("write") } }) { f in
+      told.withLock { $0 = f }
+      events.withLock { $0.append("told") }
+    }
+    #expect(events.withLock { $0.first } == "told" && events.withLock { $0.filter { $0 == "told" }.count } == 1)
+    #expect(told.withLock { $0 } == good.filing && good.filing.filed == [ids[0]: l.state.txns[ids[0]]!.version + 1])
+    told.withLock { $0 = nil }
+    let bad = try await sort(enqueue: { _ in throw Boom() }) { f in told.withLock { $0 = f } }
+    #expect(bad.failed && bad.filing == BacklogSort.Filing())
+    #expect(told.withLock { $0 }?.filed == [ids[0]: l.state.txns[ids[0]]!.version + 1])
+  }
+
   @Test("a commit that fails part way keeps the filing of the blobs it enqueued")
   func partialCommit() async throws {
     struct Boom: Error {}

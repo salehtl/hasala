@@ -164,6 +164,11 @@ nonisolated final class BacklogLink: Sendable {
     guard let s = sorter.withLock({ $0 }) else { return }
     await s.spent(calls)
   }
+
+  func willFile(_ filing: BacklogSort.Filing) async {
+    guard let s = sorter.withLock({ $0 }) else { return }
+    await s.willFile(filing)
+  }
 }
 
 actor BacklogSorter {
@@ -215,6 +220,7 @@ actor BacklogSorter {
   private let wake = WakeSignal()
   private var record: BacklogRunRecord
   private var memo = BacklogSort.Memo()
+  private var intended: [String: Int64] = [:]
   private var retryArmed = false
   private var checking = false
   private var checkAgain = false
@@ -372,6 +378,13 @@ actor BacklogSorter {
     save()
   }
 
+  func willFile(_ filing: BacklogSort.Filing) {
+    guard !filing.filed.isEmpty else { return }
+    intended.merge(filing.filed) { _, new in new }
+    record.filedHere.merge(filing.filed) { _, new in new }
+    save()
+  }
+
   private func halt() {
     task?.cancel()
     task = nil
@@ -426,6 +439,8 @@ actor BacklogSorter {
 
   private func apply(_ r: PassResult) {
     record.spend(r.pass.calls, nowMs: nowMs())
+    for (id, v) in intended where r.filing.filed[id] != v && record.filedHere[id] == v { record.filedHere[id] = nil }
+    intended = [:]
     record.filedHere.merge(r.filing.filed) { _, new in new }
     save()
   }

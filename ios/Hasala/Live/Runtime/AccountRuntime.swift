@@ -306,6 +306,7 @@ final class AccountRuntime {
       autoFileEnabled: MerchantSuggestionsSetting.isAutoSortEnabledReader,
       cloudBudget: { await link.budget() },
       cloudSpent: { await link.spent($0) },
+      willFile: { await link.willFile($0) },
       trusts: TrustCounts.shared.autoFile)
     let backlog = BacklogSorter(
       pass: { await suggestions.backlogPass($0, dayLeft: $1) }, waiting: { await suggestions.backlogWaiting($0) },

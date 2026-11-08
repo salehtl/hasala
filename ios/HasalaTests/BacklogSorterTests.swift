@@ -397,6 +397,71 @@ struct BacklogSorterTests {
     #expect(await s.sendAllBack { _ in 9 } == 0)
   }
 
+  nonisolated final class Seen: Sendable {
+    let value = Mutex<[String: Int64]?>(nil)
+    var filed: [String: Int64]? { value.withLock { $0 } }
+  }
+
+  func filing(
+    _ saved: Saved, link: BacklogLink, tell: [String: Int64], seen: Seen = Seen(),
+    result: @escaping @Sendable (BacklogSort.Memo) -> BacklogSorter.PassResult
+  ) -> BacklogSorter {
+    BacklogSorter(
+      pass: { memo, _ in
+        await link.willFile(BacklogSort.Filing(filed: tell))
+        seen.value.withLock { $0 = saved.value.filedHere }
+        return result(memo)
+      }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: Sleeps().sleep)
+  }
+
+  @Test func aFilingIsSavedBeforeItsWriteSoAKillCannotHideItFromSendingBack() async {
+    let saved = Saved()
+    let link = BacklogLink()
+    let seen = Seen()
+    let s = filing(saved, link: link, tell: ["a": 2], seen: seen) {
+      BacklogSorter.PassResult(
+        pass: BacklogSort.Pass(suggestions: [], memo: $0, pending: 0, calls: 1, stop: nil), filing: BacklogSort.Filing(filed: ["a": 2]))
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(seen.filed == ["a": 2])
+    let relaunched = sorter(Script([Step?]()), Saved(BacklogRunRecord(filedHere: seen.filed ?? [:])))
+    let given = Mutex<[String: Int64]?>(nil)
+    #expect(await relaunched.sendAllBack { m in
+      given.withLock { $0 = m }
+      return m.count
+    } == 1)
+    #expect(given.withLock { $0 } == ["a": 2])
+  }
+
+  @Test func aFilingWhoseWriteFailedIsNotKept() async {
+    let saved = Saved()
+    let link = BacklogLink()
+    let seen = Seen()
+    let s = filing(saved, link: link, tell: ["a": 2, "b": 2, "c": 2], seen: seen) {
+      BacklogSorter.PassResult(pass: .failed($0, calls: 1), filing: BacklogSort.Filing(filed: ["a": 2]))
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(seen.filed == ["a": 2, "b": 2, "c": 2])
+    #expect(saved.value.filedHere == ["a": 2] && saved.run?.reason == .failed)
+  }
+
+  @Test func aFailedWriteLeavesOnlyTheRowsItDidNotTouch() async {
+    let saved = Saved(BacklogRunRecord(filedHere: ["a": 2, "z": 9]))
+    let link = BacklogLink()
+    let s = filing(saved, link: link, tell: ["a": 4]) {
+      BacklogSorter.PassResult(pass: .failed($0, calls: 1), filing: BacklogSort.Filing())
+    }
+    link.set(s)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(saved.value.filedHere == ["z": 9])
+  }
+
   @Test func aRateLimitWaitsThreeTimesThenPausesUntilALaterForeground() async {
     let saved = Saved()
     let script = Script(Array(repeating: (3, 1, BacklogSort.Stop.rateLimited), count: 4) + [(0, 1, nil)])
