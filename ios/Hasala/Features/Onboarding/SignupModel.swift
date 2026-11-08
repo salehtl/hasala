@@ -295,7 +295,7 @@ final class SignupModel {
 
   /// "Resend code" and "Send a new code": a fresh ceremony, a fresh code, five fresh tries.
   func resendCode() async {
-    guard let ticket else { return }
+    guard let ticket, !busy else { return }
     busy = true
     defer { busy = false }
     do {
@@ -324,14 +324,16 @@ final class SignupModel {
   /// Checked on the sixth digit (page 11). A wrong code keeps its digits on screen; an
   /// expired one empties the cells.
   func submitCode() async {
-    guard let ticket, code.count == 6 else { return }
+    guard let ticket, code.count == 6, !busy else { return }
     busy = true
     defer { busy = false }
     do {
       try await account.verifySignupEmail(ticket, code: code)
+      guard self.ticket == ticket else { return }
       emailVerified = true
       go(.method)
     } catch {
+      guard self.ticket == ticket else { return }
       if error == .codeExpired { codeUsedUp = true }
       wrongCode = error == .codeExpired ? "" : code
       failure = error

@@ -831,3 +831,99 @@ final class CountingAccount: AccountService {
     try await mock.approveReset(request, code: code)
   }
 }
+
+@MainActor
+@Suite("Signup answers that overlap")
+struct SignupOverlapTests: AccountSuite {
+  private func atCode(_ account: MockAccountService) async -> SignupModel {
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    return m
+  }
+
+  private func atMethod(_ account: MockAccountService, created: @escaping () -> Void = {}) async -> SignupModel {
+    account.delay = .zero
+    let m = SignupModel(account: account, accountCreated: created)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    return m
+  }
+
+  @Test func theSixthDigitDuringAResendChecksNothing() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    let before = m.ticket
+    account.delay = .milliseconds(20)
+    let resend = Task { await m.resendCode() }
+    while !m.busy { await Task.yield() }
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await resend.value
+    #expect(!m.emailVerified)
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.ticket != before)
+    #expect(m.code.isEmpty)
+  }
+
+  @Test func aResendDuringACheckStartsNothing() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    let before = m.ticket
+    account.delay = .milliseconds(20)
+    m.code = MockAccountService.emailCode
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    await m.resendCode()
+    #expect(m.busy)
+    await check.value
+    #expect(m.emailVerified)
+    #expect(m.ticket == before)
+    #expect(m.path.last == .method)
+  }
+
+  @Test func aCheckAnsweredForAnOlderTicketDoesNotConfirmTheNewOne() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    account.delay = .milliseconds(40)
+    m.code = MockAccountService.emailCode
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    account.delay = .zero
+    m.back()
+    m.displayName = "Maya R"
+    await m.submitAboutYou()
+    let path = m.path
+    await check.value
+    #expect(!m.emailVerified)
+    #expect(m.path == path)
+    #expect(m.failure == nil)
+  }
+
+  @Test func aRefusalForAnOlderTicketLeavesTheNewOneAlone() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    account.delay = .milliseconds(40)
+    m.code = "000000"
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    account.delay = .zero
+    m.back()
+    m.displayName = "Maya R"
+    await m.submitAboutYou()
+    m.code = "12"
+    await check.value
+    #expect(m.failure == nil)
+    #expect(m.wrongCode.isEmpty)
+    #expect(m.code == "12")
+  }
+}
