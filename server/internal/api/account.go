@@ -70,9 +70,9 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request, userID
 		        coalesce(u.frozen_by IS DISTINCT FROM 'operator' AND (
 		          EXISTS (SELECT 1 FROM webauthn_credentials c WHERE c.user_id = u.id AND c.created_at < u.freeze_trigger_at)
 		          OR (u.password_hash IS NOT NULL AND u.password_set_at < u.freeze_trigger_at
-		              AND EXISTS (SELECT 1 FROM writers w WHERE w.user_id = u.id AND w.revoked_at IS NULL
+		              AND EXISTS (SELECT 1 FROM writers w WHERE w.user_id = u.id AND w.writer_id = $2 AND w.revoked_at IS NULL
 		                          AND w.registered_at < u.freeze_trigger_at))), false)
-		   FROM users u WHERE u.id = $1`, userID).
+		   FROM users u WHERE u.id = $1`, userID, info.WriterID).
 		Scan(&out.CreatedAt, &out.Status, &out.HasKeys, &out.Usage.OplogHotBytes, &out.Usage.Limit,
 			&out.Email, &out.EmailVerifiedAt, &undeliv, &reverify, &out.DisplayName, &out.HasPassword, &out.PasswordSetAt,
 			&out.HasPasskey, &frozenAt, &out.FreezeTriggerAt, &out.FrozenBy, &out.ReviewAccount, &out.PhraseUnseenSince, &canLift)
