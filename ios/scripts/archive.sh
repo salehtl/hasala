@@ -179,6 +179,16 @@ if ! xcodebuild archive \
 	exit 30
 fi
 
+if ((${#trial[@]} == 0)); then
+	tree_after="$(git -C "$repo" status --porcelain)"
+	sha_after="$(git -C "$repo" rev-parse --short=12 HEAD)"
+	branch_after="$(git -C "$repo" branch --show-current)"
+	if [[ -n "$tree_after" || "$sha_after" != "$SHA" || "$branch_after" != "$branch" ]]; then
+		echo "archive: the checkout changed while xcodebuild was building $SHA on $branch, so this archive is not exported; archive again from a worktree nothing else uses" >&2
+		exit 10
+	fi
+fi
+
 # --- export (re-signs for distribution) --------------------------------------------
 if ! xcodebuild -exportArchive \
 	-archivePath "$OUT/Hasala.xcarchive" \
