@@ -377,7 +377,7 @@ func (q *Queue) Run(ctx context.Context) <-chan struct{} {
 			tick := time.NewTicker(pollEvery)
 			defer tick.Stop()
 			for {
-				if _, err := q.Drain(context.WithoutCancel(ctx)); err != nil {
+				if _, err := q.drain(context.WithoutCancel(ctx), ctx); err != nil {
 					slog.Warn("mailq: worker", "err", err.Error())
 				}
 				select {
@@ -437,8 +437,12 @@ func sleep(ctx context.Context, d time.Duration) {
 // Drain sends due rows until none is left (or the worker is stopped). It
 // returns how many rows it processed.
 func (q *Queue) Drain(ctx context.Context) (int, error) {
+	return q.drain(ctx, ctx)
+}
+
+func (q *Queue) drain(ctx, stop context.Context) (int, error) {
 	n := 0
-	for !q.Stopped() {
+	for !q.Stopped() && stop.Err() == nil {
 		did, err := q.ProcessOne(ctx)
 		if err != nil {
 			return n, err
