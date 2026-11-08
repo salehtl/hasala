@@ -383,6 +383,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       )
     case .setNote(let id, let note):
       let i = try index(id)
+      if s.txns[i].mergedInto != nil { throw .refused(SamePurchaseText.restoreRefused) }
       s.txns[i].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
       return (nil, [])
     case .renameMerchant(let id, let new):

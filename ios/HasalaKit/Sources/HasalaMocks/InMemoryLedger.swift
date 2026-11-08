@@ -251,6 +251,7 @@ public final class InMemoryLedger: LedgerStore {
       try editTxn(id) { filing.apply(to: &$0) }
       title = filing.title
     case .setNote(let id, let note):
+      if s.txn(id)?.mergedInto != nil { throw .refused(SamePurchaseText.restoreRefused) }
       try editTxn(id) { $0.note = note.trimmedSpaces }
       title = nil
     case .renameMerchant(let id, let name):

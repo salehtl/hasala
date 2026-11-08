@@ -96,6 +96,17 @@ struct InMemoryLedgerTests {
     #expect(ledger.state.rules.first { $0.id == "r-zuma" }?.enabled == false)
   }
 
+  @Test func theNoteOfAMergedAlertStaysUntilTheMergeIsUndone() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaSamePurchase.state)
+    let merged = try #require(try ledger.apply(.resolveSamePurchase("amazon-aed", same: true)))
+    let note = try #require(ledger.state.txn("amazon-aed")?.note)
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) { try ledger.apply(.setNote("amazon-aed", "Lunch")) }
+    #expect(ledger.state.txn("amazon-aed")?.note == note && ledger.state.txn("amazon-aed")?.mergedInto == "amazon-usd")
+    ledger.undo(merged)
+    try ledger.apply(.setNote("amazon-aed", "Lunch"))
+    #expect(ledger.state.txn("amazon-aed")?.note == "Lunch")
+  }
+
   @Test func undoLeavesAFieldChangedAgainSince() throws {
     let ledger = InMemoryLedger()
     let first = try #require(try ledger.apply(.categorize("lulu", "groceries", learnRule: false, project: nil)))
