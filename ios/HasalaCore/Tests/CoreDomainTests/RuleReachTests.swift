@@ -289,4 +289,31 @@ struct RuleReachTests {
     #expect(RuleReach.plan(rows: rows, rule: rule, group: "n:tailscale", direction: "debit", home: "AED", scope: .waiting).map(\.txnID) == ["w"])
     #expect(RuleReach.plan(rows: rows, rule: rule, group: "n:tailscale", direction: "debit", home: "AED").map(\.txnID) == ["w", "d", "m"])
   }
+
+  static func fork(winner: String, loser: String) -> ForkNotice {
+    ForkNotice(entityKind: "txn", entityID: "t-\(loser)", winnerOp: winner, loserOp: loser, atSeq: 1)
+  }
+
+  @Test("a fork is open only when this iPhone's automatic op won it and it is not repaired yet")
+  func openForks() {
+    let notices = [Self.fork(winner: "auto-1", loser: "person-1"), Self.fork(winner: "auto-2", loser: "person-2"), Self.fork(winner: "other", loser: "person-3")]
+    let out = RuleReach.forkRepairs(notices, own: ["auto-1", "auto-2"], repaired: ["person-1"])
+    #expect(out.open.map(\.loserOp) == ["person-2"])
+    #expect(out.repaired == ["person-1"])
+  }
+
+  @Test("a repaired fork is forgotten once its automatic op is, and no other is")
+  func repairedForksAgeOut() {
+    let notices = [Self.fork(winner: "aged-out", loser: "person-1"), Self.fork(winner: "auto-2", loser: "person-2")]
+    let out = RuleReach.forkRepairs(notices, own: ["auto-2", "auto-3"], repaired: ["person-1", "person-2"])
+    #expect(out.repaired == ["person-2"])
+    #expect(out.open.isEmpty)
+  }
+
+  @Test("a repaired fork with no notice left is forgotten")
+  func repairedForksWithNoNotice() {
+    let out = RuleReach.forkRepairs([], own: ["auto-1"], repaired: ["person-1"])
+    #expect(out.repaired.isEmpty)
+    #expect(out.open.isEmpty)
+  }
 }

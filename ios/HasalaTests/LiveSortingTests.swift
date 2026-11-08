@@ -277,6 +277,29 @@ struct LiveSortingTests {
     #expect(await l.author.followUp() == false)
   }
 
+  @Test func aRepairedForkIsForgottenOnceItsAutomaticOpIsForgotten() async throws {
+    let l = try await Self.ledger(suite: "sorting.forkaged", rows: Self.tailscale)
+    let inc = try #require(l.ids["inc"]?.first)
+    let parent = try #require(try l.row(inc)).version
+    try l.store.apply(.categorize(l.ids["com"]![0], "subscriptions", learnRule: true, project: nil))
+    try await Mapper.eventually { try l.row(inc)?.categorySource == "rule" }
+    var stale = OpAuthor(
+      AuthorContext(
+        writerID: Mapper.writer.string, nowMs: Mapper.anchor - 3_600_000, ownLastMs: nil, maxAuthored: [:], random: SystemRandom()))
+    stale.categorize(txnID: inc, parentVersion: parent, category: "dining", needsReview: false)
+    try await l.a.outbox.enqueue(try stale.build().ops)
+    try await l.a.observer.reproject()
+    #expect(await l.author.followUp())
+    let fork = try #require(try l.reader.forkNotices(kind: "txn").first { $0.entityID == inc })
+    #expect(l.memory.value.repaired == [fork.loserOp])
+    #expect(await l.author.followUp() == false)
+    #expect(l.memory.value.repaired == [fork.loserOp])
+    l.memory.update { m in m.autoOps.removeAll { $0 == fork.winnerOp } }
+    #expect(await l.author.followUp() == false)
+    #expect(l.memory.value.repaired.isEmpty)
+    #expect(try l.row(inc)?.category == "dining" && l.row(inc)?.categorySource == "user")
+  }
+
   @Test func twoCorrectionsOfACloudflareFilingStopItAutoFilingThatCategoryHere() async throws {
     let suite = "sorting.trust"
     let l = try await Self.ledger(suite: suite, rows: [
