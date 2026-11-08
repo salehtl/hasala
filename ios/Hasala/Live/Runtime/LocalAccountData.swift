@@ -72,6 +72,7 @@ enum LocalAccountData {
     TrustCounts.forget(defaults)
     StoredUnseenPhrase.forget(defaults)
     ManualEntryChoice.forget(defaults)
+    FinishSetupRows.forget(defaults)
     HomeLayoutStore.forgetAll(defaults)
     NotificationReads.forget(defaults)
     PushRegistrar.forgetRegistration(defaults)

@@ -37,6 +37,31 @@ final class ManualEntryChoice {
 }
 
 @MainActor
+final class FinishSetupRows {
+  static let key = "prefs.home.finish.listed.v1"
+
+  private let defaults: UserDefaults?
+  private var inMemory: [String] = []
+
+  init(defaults: UserDefaults? = nil) {
+    self.defaults = defaults
+  }
+
+  var listed: Set<FinishSetupItem> {
+    Set((defaults?.stringArray(forKey: Self.key) ?? inMemory).compactMap(FinishSetupItem.init(rawValue:)))
+  }
+
+  func list(_ item: FinishSetupItem) {
+    let names = listed.union([item]).map(\.rawValue).sorted()
+    if let defaults { defaults.set(names, forKey: Self.key) } else { inMemory = names }
+  }
+
+  static func forget(_ defaults: UserDefaults) {
+    defaults.removeObject(forKey: key)
+  }
+}
+
+@MainActor
 @Observable
 final class FinishSetupModel {
   @ObservationIgnored private let services: AccountServices
@@ -67,6 +92,7 @@ final class FinishSetupModel {
     self.firstScan = firstScan
     self.session = session
     entersByHand = services.manualEntry.chosen
+    listed.formUnion(services.finishRows.listed)
     refresh()
   }
 
@@ -100,14 +126,19 @@ final class FinishSetupModel {
   }
 
   func refresh(hasTransactions: Bool? = nil) {
-    if services.unseenPhrase.unseen { listed.insert(.phrase) }
+    if services.unseenPhrase.unseen { list(.phrase) }
     if let hasTransactions { ledgerEmpty = !hasTransactions }
-    if needsEmail { listed.insert(.connectEmail) }
-    if noAlerts { listed.insert(.bankAlerts) }
-    if stoppedMailbox != nil { listed.insert(.readingStopped) }
+    if needsEmail { list(.connectEmail) }
+    if noAlerts { list(.bankAlerts) }
+    if stoppedMailbox != nil { list(.readingStopped) }
     let saved = services.setup.readBack()
     if !planDone, Self.planIsSet(saved) { planDone = true }
     if !notificationsDone, services.notifications.answered { notificationsDone = true }
+  }
+
+  private func list(_ item: FinishSetupItem) {
+    guard listed.insert(item).inserted else { return }
+    services.finishRows.list(item)
   }
 
   func resumeImport() async {

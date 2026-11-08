@@ -295,6 +295,36 @@ struct FinishSetupTests: AccountSuite {
     #expect(m.items == [.bankAlerts, .plan, .notifications] && m.isDone(.bankAlerts))
   }
 
+  @Test func aFinishedRowIsStillCountedAfterARelaunch() throws {
+    let suite = "FinishSetupTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    func launched() -> FinishSetupModel {
+      var s = services(mailbox: readMailbox())
+      s.unseenPhrase = unseen
+      s.finishRows = FinishSetupRows(defaults: defaults)
+      return FinishSetupModel(services: s)
+    }
+    let first = launched()
+    #expect(first.items == [.phrase, .plan, .notifications] && !first.isDone(.phrase))
+    unseen.noteSeen()
+    let relaunched = launched()
+    #expect(relaunched.items == [.phrase, .plan, .notifications] && relaunched.isDone(.phrase))
+    #expect(FinishSetupSection.fact(relaunched.items, isDone: relaunched.isDone, importing: false) == "1 of 3")
+    FinishSetupRows.forget(defaults)
+    #expect(launched().items == [.plan, .notifications])
+  }
+
+  @Test func aRowNoLongerKnownIsLeftOutOfTheList() throws {
+    let suite = "FinishSetupTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(["phrase", "retired"], forKey: FinishSetupRows.key)
+    #expect(FinishSetupRows(defaults: defaults).listed == [.phrase])
+  }
+
   @Test func checkAgainWhileTheImportReadsSaysSo() async {
     let mailbox = readMailbox()
     let m = FinishSetupModel(services: services(mailbox: mailbox))
