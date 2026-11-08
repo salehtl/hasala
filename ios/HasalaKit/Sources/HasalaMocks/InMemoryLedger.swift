@@ -272,6 +272,7 @@ public final class InMemoryLedger: LedgerStore {
         t.splits = t.apportioned(lines)
         if let first = lines.first { t.categoryID = first.categoryID }
         t.needsReview = false
+        t.priorFiling = nil
       }
       title = lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories"
     case .archive(let id, let archived):
@@ -571,6 +572,7 @@ public final class InMemoryLedger: LedgerStore {
     var record = UndoRecord()
     for id in touched {
       record.txnsBefore[id] = before.txn(id)
+      if case .split = edit { record.txnsBefore[id]?.priorFiling = nil }
       record.txnsAfter[id] = s.txn(id)
       if s.txn(id) == nil, let at = before.txns.firstIndex(where: { $0.id == id }) {
         record.txnsRemoved.append((before.txns[at], at))
