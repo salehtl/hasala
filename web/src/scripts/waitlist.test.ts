@@ -242,3 +242,22 @@ describe('work that ends with the page', () => {
     expect(p.timers.size).toBe(0);
   });
 });
+
+describe('the invite hash', () => {
+  test('a press on a request button leaves no hash for a later reload', () => {
+    const p = start();
+    p.cta.fire('click');
+    expect(p.replaced).toEqual([]);
+    expect(p.location.hash).toBe('');
+    p.runTimers();
+    expect(p.email.focused).toBe(1);
+    const reloaded = start({ hash: p.location.hash });
+    expect(reloaded.timers.size).toBe(0);
+  });
+
+  test('a link that arrives with the hash still focuses Email', () => {
+    const p = start({ hash: '#invite' });
+    p.runTimers();
+    expect(p.email.focused).toBe(1);
+  });
+});

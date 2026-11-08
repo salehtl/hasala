@@ -320,7 +320,6 @@ function setup(signal: AbortSignal): void {
       (e) => {
         if (form.hidden) return;
         e.preventDefault();
-        history.replaceState(history.state, '', '#invite');
         goToForm();
       },
       { signal },
