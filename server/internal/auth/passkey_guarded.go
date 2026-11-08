@@ -192,7 +192,7 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 		revoked int64
 		held    purgeledger.Held
 	)
-	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+	err = p.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, proven Proven) error {
 		var err error
 		removedAt := p.now()
 		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
@@ -205,7 +205,7 @@ func (p *Passkeys) DeletePasskey(ctx context.Context, session SessionInfo, crede
 		if held, err = p.Hold.Tx(ctx, tx, passkeyRemovalEntries(session.UserID, [][]byte{credentialID}, removedAt)...); err != nil {
 			return err
 		}
-		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, CredentialID: credentialID}, p.now())
+		return recordEventTx(ctx, tx, p.Mail, session.UserID, AuthEvent{Kind: EventPasskeyRemoved, WriterID: proven.WriterID, CredentialID: credentialID}, removedAt)
 	})
 	if err != nil {
 		return revoked, err

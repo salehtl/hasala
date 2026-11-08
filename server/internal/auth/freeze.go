@@ -37,6 +37,17 @@ const DeviceFreezeTTL = 5 * time.Minute
 // deviceFreezeBackdate bounds how far a device freeze is dated back.
 const deviceFreezeBackdate = 7 * 24 * time.Hour
 
+var stepUpSignOutKinds = []string{
+	EventSessionsRevoked,
+	EventAccountFrozen,
+	EventAccountUnfrozen,
+	EventPasswordSet,
+	EventPasswordChanged,
+	EventPasswordRemoved,
+	EventPasswordReset,
+	EventPasskeyRemoved,
+}
+
 // Who froze an account.
 const (
 	FrozenByHolder   = "holder"
@@ -405,7 +416,7 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 		    AND NOT EXISTS (SELECT 1 FROM auth_events e
 		                     WHERE e.user_id = s.user_id AND e.writer_id = s.writer_id AND e.at = s.revoked_at
 		                       AND e.kind = ANY($3::text[]))`,
-		c.user, writerID, []string{EventSessionsRevoked, EventAccountFrozen}).Scan(&signedOut); err != nil {
+		c.user, writerID, stepUpSignOutKinds).Scan(&signedOut); err != nil {
 		return Wake{}, err
 	}
 	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) {

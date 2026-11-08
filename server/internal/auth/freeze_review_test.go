@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"testing"
 	"time"
@@ -206,5 +207,179 @@ func TestADeviceFreezeStaysDatedToASignOutProvedOnlyByAPasskey(t *testing.T) {
 	f.clock.advance(2 * time.Hour)
 	if got := m.deviceFreezeTrigger(); !got.Equal(signedOut) {
 		t.Fatalf("trigger %v, want the sign-out %v: a passkey does not show this device asked", got, signedOut)
+	}
+}
+
+func (m *member) signInAgainOnThisDevice() {
+	m.f.t.Helper()
+	if _, err := m.loginPassword(m.s, m.device); err != nil {
+		m.f.t.Fatal(err)
+	}
+}
+
+func (m *member) deviceFreezeIsDatedNowAndLifts() {
+	m.f.t.Helper()
+	want := m.f.clock.now()
+	if got := m.deviceFreezeTrigger(); !got.Equal(want) {
+		m.f.t.Fatalf("trigger %v, want the freeze itself %v and not the device's own action", got, want)
+	}
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil {
+		m.f.t.Fatal(err)
+	}
+	m.token = in.Session.Token
+	can, err := HolderCanLift(bgctx, m.f.pool, m.user.UserID, m.device.WriterID)
+	if err != nil {
+		m.f.t.Fatal(err)
+	}
+	if !can {
+		m.f.t.Fatal("the device was told it cannot lift its own freeze")
+	}
+	if _, err := m.f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		m.f.t.Fatalf("the device could not lift its own freeze: %v", err)
+	}
+}
+
+func (m *member) changePasswordWithThisDevice() {
+	m.f.t.Helper()
+	next := m.f.stretch(m.addr, "an entirely new password")
+	su := m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(next))
+	if _, err := m.f.acct.ChangePassword(bgctx, m.info(), next, su); err != nil {
+		m.f.t.Fatal(err)
+	}
+	m.s = next
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordChange(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	m.signInAgainOnThisDevice()
+	f.clock.advance(time.Hour)
+	m.changePasswordWithThisDevice()
+	f.clock.advance(2 * time.Hour)
+	m.deviceFreezeIsDatedNowAndLifts()
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasswordReset(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	m.signInAgainOnThisDevice()
+	f.clock.advance(time.Hour)
+	next := f.stretch(m.addr, "an entirely new password")
+	i := m.info()
+	ph, _ := keyproto.ParamsHash(keyproto.ActionPasswordReset, sumBytes(next))
+	b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionPasswordReset, ph[:], keyproto.ProofDeviceCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := keyproto.DeviceStepUpMessage(b.Challenge, m.device.WriterID)
+	su := &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "device_code", WriterID: m.device.WriterID,
+		Sig: m.device.SignDAK(t, msg), Code: f.lastCode(m.addr)}}
+	if _, err := f.acct.ResetPasswordWithCode(bgctx, i, next, su); err != nil {
+		t.Fatal(err)
+	}
+	m.s = next
+	f.clock.advance(2 * time.Hour)
+	m.deviceFreezeIsDatedNowAndLifts()
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnUnfreeze(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.token = in.Session.Token
+	m.signInAgainOnThisDevice()
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET password_set_at = $2 WHERE id = $1`, m.user.UserID, f.clock.now().Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(2 * time.Hour)
+	m.deviceFreezeIsDatedNowAndLifts()
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnPasskeyRemoval(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	a := f.enrolPasskey(m.user.UserID)
+	f.clock.advance(time.Hour)
+	id, opts, err := f.passkeys.BeginLogin(bgctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bind, _ := keyproto.SessionBindMessage(opts.Response.Challenge, m.device.WriterID)
+	if _, err := f.acct.PasskeyLoginFinish(bgctx, id, a.Assert(t, opts, 2),
+		&DeviceBinding{WriterID: m.device.WriterID, Sig: ed25519.Sign(m.device.DWK, bind)}); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	su := m.deviceStepUp(keyproto.ActionPasskeyDelete, m.s, a.CredID)
+	if _, err := f.passkeys.DeletePasskey(bgctx, m.info(), a.CredID, su); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	m.changePasswordWithThisDevice()
+	f.clock.advance(2 * time.Hour)
+	m.deviceFreezeIsDatedNowAndLifts()
+}
+
+func TestADeviceFreezeIsDatedToAPasswordChangeAnotherDeviceAskedFor(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	victim := m.device
+	f.clock.advance(time.Hour)
+	other := authtest.NewDevice(t)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+	        VALUES ($1, $2, 'ed25519', $3, $4, $5)`, m.user.UserID, other.WriterID, other.DWKPub(), other.DAKPub(), f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.token, m.device = in.Session.Token, other
+	f.clock.advance(time.Hour)
+	changed := f.clock.now()
+	m.changePasswordWithThisDevice()
+	f.clock.advance(2 * time.Hour)
+	m.device = victim
+	if got := m.deviceFreezeTrigger(); !got.Equal(changed) {
+		t.Fatalf("trigger %v, want the password change another device asked for %v", got, changed)
+	}
+}
+
+func TestADeviceFreezeStaysDatedToAPasswordChangeProvedOnlyByAPasskey(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	a := f.enrolPasskey(m.user.UserID)
+	f.clock.advance(time.Hour)
+	m.signInAgainOnThisDevice()
+	f.clock.advance(time.Hour)
+	next := f.stretch(m.addr, "an entirely new password")
+	i := m.info()
+	ph, _ := keyproto.ParamsHash(keyproto.ActionPasswordChange, sumBytes(next))
+	b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionPasswordChange, ph[:], keyproto.ProofPasskey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := f.clock.now()
+	if _, err := f.acct.ChangePassword(bgctx, i, next, &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "passkey",
+		Assertion: a.AssertChallenge(t, authtest.RPID, b.Challenge[:], 2)}}); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(2 * time.Hour)
+	if got := m.deviceFreezeTrigger(); !got.Equal(changed) {
+		t.Fatalf("trigger %v, want the change %v: a passkey does not show this device asked", got, changed)
 	}
 }
