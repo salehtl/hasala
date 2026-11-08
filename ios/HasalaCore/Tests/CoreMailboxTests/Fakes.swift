@@ -137,6 +137,7 @@ actor FakeServer: MailboxServer {
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
     if let watchRefusal { throw watchRefusal }
     watches.append(expiresAtMs)
+    if case .holder(isThisDevice: true, _) = link { link = .holder(isThisDevice: true, watchExpiresAtMs: expiresAtMs) }
   }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
     deletes += 1

@@ -37,7 +37,10 @@ actor OutlookServer: MailboxServer {
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     return MailboxLinkResult(status: link, clientState: returnsClientState ? Self.clientState : nil)
   }
-  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) { watches.append(expiresAtMs) }
+  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
+    watches.append(expiresAtMs)
+    if case .holder(isThisDevice: true, _) = link { link = .holder(isThisDevice: true, watchExpiresAtMs: expiresAtMs) }
+  }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
     deletes += 1
     link = .noLink

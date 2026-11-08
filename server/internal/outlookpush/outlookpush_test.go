@@ -105,3 +105,23 @@ func TestEntryHasNoResourceFields(t *testing.T) {
 		}
 	}
 }
+
+func TestParseNamesRemovedSubscriptions(t *testing.T) {
+	ha, hb := sha256.Sum256([]byte(csA)), sha256.Sum256([]byte(csB))
+	entries := []map[string]any{
+		{"clientState": csA, "lifecycleEvent": EventSubscriptionRemoved},
+		{"clientState": csA, "lifecycleEvent": EventSubscriptionRemoved},
+		{"clientState": csA, "lifecycleEvent": EventMissed},
+		{"clientState": csB, "lifecycleEvent": EventReauthorizationRequired},
+	}
+	p, err := Parse(body(t, entries...), true)
+	if err != nil || len(p.Hashes) != 2 || p.Hashes[0] != ha || p.Hashes[1] != hb {
+		t.Fatalf("parsed %+v %v", p, err)
+	}
+	if len(p.Removed) != 1 || p.Removed[0] != ha {
+		t.Fatalf("removed %+v, want only the first clientState once", p.Removed)
+	}
+	if p, err := Parse(body(t, entries...), false); err != nil || len(p.Removed) != 0 {
+		t.Fatalf("the change path reported removals: %+v %v", p, err)
+	}
+}

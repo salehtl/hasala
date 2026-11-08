@@ -790,7 +790,7 @@ public actor MailboxEngine {
           return await setPhase(&state, .otherDevice, halt: .notHolder, report, clearReader: true)
         case .holder(isThisDevice: true, let watch):
           state.lastHolderCheckAtMs = now
-          if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
+          state.watchExpiresAtMs = watch
         }
       } catch .otherProvider {
         if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() {

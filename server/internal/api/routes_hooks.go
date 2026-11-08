@@ -18,6 +18,7 @@ package api
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -291,10 +292,7 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	hashes := make([][]byte, len(p.Hashes))
-	for i := range p.Hashes {
-		hashes[i] = p.Hashes[i][:]
-	}
+	hashes := hashBytes(p.Hashes)
 
 	// The route comes before hook-global and hook-link: only a clientState
 	// that names a link spends them, so made-up clientStates cannot drain the
@@ -334,6 +332,16 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		return
 	}
 	o.Counters.Unknown.Add(int64(len(hashes) - len(matched)))
+	if len(p.Removed) > 0 && !s.fuseTripped() {
+		if _, err := s.Pool.Exec(ctx,
+			`UPDATE mailbox_links SET watch_expires_at = NULL, updated_at = $2
+			  WHERE provider = 'outlook' AND client_state_hash = ANY($1::bytea[]) AND watch_expires_at IS NOT NULL`,
+			hashBytes(p.Removed), s.now()); err != nil {
+			s.logf("api: outlook hook: end watch: %v", err)
+			writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+			return
+		}
+	}
 	var (
 		holders []gmailpush.Holder
 		spent   []string
@@ -383,6 +391,14 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func hashBytes(hashes [][sha256.Size]byte) [][]byte {
+	out := make([][]byte, len(hashes))
+	for i := range hashes {
+		out[i] = hashes[i][:]
+	}
+	return out
 }
 
 func (s *Server) markWakeHour(ctx context.Context, provider string, h gmailpush.Holder, hour time.Time) {

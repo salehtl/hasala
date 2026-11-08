@@ -404,6 +404,31 @@ import Testing
     #expect(try rig.link.read()?.subscriptionID == now.id)
   }
 
+  @Test func aWatchTheServerNoLongerReportsIsMadeAgain() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    let old = try #require(rig.graph.subscriptions.first?.id)
+    _ = try await GraphClient(http: rig.graph, accessToken: "t", link: MemoryOutlookLinkStore(), nowMs: { 0 })
+      .deleteSubscription(id: old)
+    await rig.server.setLink(.holder(isThisDevice: true, watchExpiresAtMs: nil))
+    rig.clock.advance(MailboxEngineConfig(grantID: "x").holderCheckIntervalMs)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    let now = try #require(rig.graph.subscriptions.first)
+    #expect(now.id != old && rig.graph.subscriptions.count == 1)
+    #expect(await rig.server.watches == [t0 + lifetime, rig.clock.nowMs() + lifetime])
+    #expect(await rig.engine.status().watchActive)
+  }
+
+  @Test func aWatchTheServerStillReportsIsLeftAlone() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    rig.clock.advance(MailboxEngineConfig(grantID: "x").holderCheckIntervalMs)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rig.subscriptionRequests("POST").count == 1)
+    #expect(rig.subscriptionRequests("PATCH").isEmpty)
+    #expect(await rig.server.watches == [t0 + lifetime])
+  }
+
   @Test func anotherIPhonesSubscriptionIsReplacedOnConflict() async throws {
     let rig = OutlookRig()
     for (id, resource) in [("sub-other-iphone", GraphClient.subscriptionResource), ("sub-older-build", "/me/messages")] {
