@@ -440,6 +440,41 @@ struct LiveAccountFlowTests {
     #expect(server.phraseViews == 1)
   }
 
+  @Test func aPasskeySignInWithNoWrapUnlocksThroughOneThatHas() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let passkeys = BareThenWrappedPasskeys()
+    let b = Phone(server, passkeys: passkeys)
+    let adding = b.relaunched()
+    _ = try await adding.signInWithPassword(email: "maya@example.com", password: Self.password)
+    let m = UnlockModel(account: adding, passkeyCanUnlock: false) {}
+    m.phraseText = words.joined(separator: " ")
+    await m.unlockWithWords()
+    m.addingPasskey = true
+    m.confirmPassword = Self.password
+    await m.addPasskey()
+    #expect(server.wrapsStored == 1)
+    let user = try #require(b.binding?.user_id)
+
+    server.passkeySignsInAs = user
+    let c = Phone(server, passkeys: passkeys)
+    let account = c.relaunched()
+    #expect(try await account.signInWithPasskey() == .needsUnlock(passkeyCanUnlock: true))
+    #expect(passkeys.allowLists.last == [])
+    try await account.unlockWithPasskey()
+    #expect(passkeys.allowLists.last == [passkeys.wrapped.credentialID])
+    #expect(c.binding?.user_id == user)
+  }
+
+  @Test func aPasskeySignInOnAnAccountWithNoWrapOffersOnlyTheWords() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    server.passkeySignsInAs = try #require(a.binding?.user_id)
+    let account = Phone(server, passkeys: SamePRFPasskeys()).relaunched()
+    #expect(try await account.signInWithPasskey() == .needsUnlock(passkeyCanUnlock: false))
+  }
+
   @Test func aWrongPasswordAddsNoPasskey() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server, passkeys: StubPasskeys())
@@ -578,6 +613,27 @@ nonisolated final class SamePRFPasskeys: PasskeyProvider, @unchecked Sendable {
       credentialID: credentialID,
       rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
       authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: output())
+  }
+}
+
+nonisolated final class BareThenWrappedPasskeys: PasskeyProvider, @unchecked Sendable {
+  let wrapped = SamePRFPasskeys()
+  let bareID = Data(repeating: 7, count: 16)
+  private let asked = Mutex<[[Data]]>([])
+
+  var allowLists: [[Data]] { asked.withLock { $0 } }
+
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    try await wrapped.register(options, prfSalt: prfSalt)
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    asked.withLock { $0.append(allowCredentialIDs) }
+    let a = try await wrapped.assert(challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
+    guard allowCredentialIDs.isEmpty else { return a }
+    return RawAssertion(
+      credentialID: bareID, rawClientDataJSON: a.rawClientDataJSON, authenticatorData: a.authenticatorData,
+      signature: a.signature, userHandle: a.userHandle, prfFirst: a.prfFirst)
   }
 }
 

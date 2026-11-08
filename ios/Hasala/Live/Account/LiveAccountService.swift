@@ -211,7 +211,7 @@ final class LiveAccountService: AccountService {
 
   // MARK: Sign in
 
-  private func outcome(_ r: SignInResult, passkeyCanUnlock: Bool) async -> SignInOutcome {
+  private func outcome(_ r: SignInResult) async -> SignInOutcome {
     signIn = r
     if r.restricted { return .frozen(await freezeInfo(token: r.grant.session_token)) }
     if !r.hasKeys { return .needsKeys }
@@ -221,7 +221,9 @@ final class LiveAccountService: AccountService {
     {
       return .ready
     }
-    return .needsUnlock(passkeyCanUnlock: passkeyCanUnlock)
+    let offer = await AccountSignIn.passkeyUnlockOffer(env, after: r)
+    signIn = offer.signIn
+    return .needsUnlock(passkeyCanUnlock: offer.canUnlock)
   }
 
   func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome {
@@ -233,7 +235,7 @@ final class LiveAccountService: AccountService {
                                method: .passkey)
       methodConfirmed = true
       Self.logOutLater(stale, env)
-      return await outcome(r, passkeyCanUnlock: r.assertion?.prfFirst != nil)
+      return await outcome(r)
     } catch {
       switch error.failureClass {
       case .rejected:
@@ -269,7 +271,7 @@ final class LiveAccountService: AccountService {
       methodConfirmed = true
       Self.logOutLater(stale, env)
       // TODO(WS-14): offer the passkey unlock when GET /keys/wraps lists a PRF wrap (K34).
-      return await outcome(r, passkeyCanUnlock: false)
+      return await outcome(r)
     } catch {
       throw Self.map(error)
     }

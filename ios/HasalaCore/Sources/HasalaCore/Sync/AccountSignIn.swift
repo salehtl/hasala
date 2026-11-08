@@ -85,6 +85,18 @@ public enum AccountSignIn {
     return try await withPasskey(env, bound: nil, wantPRF: true, only: wrapped)
   }
 
+  public static func passkeyUnlockOffer(_ env: AccountEnvironment, after r: SignInResult) async -> (
+    signIn: SignInResult, canUnlock: Bool
+  ) {
+    guard let a = r.assertion, a.prfFirst != nil else { return (r, false) }
+    guard let listed = try? await env.client.keyWraps(bearer: r.grant.session_token) else { return (r, true) }
+    let wrapped = listed.wraps.compactMap { try? Base64.decodeURL($0.credential_id) }
+    if wrapped.contains(a.credentialID) { return (r, true) }
+    a.prfFirst?.wipe()
+    let spent = SignInResult(grant: r.grant, emailNorm: r.emailNorm, serverSalt: r.serverSalt, assertion: nil)
+    return (spent, !wrapped.isEmpty)
+  }
+
   /// The SessionBind proof for a bound iPhone, or `nil` when unbound.
   static func binding(_ env: AccountEnvironment, bound: AccountBinding?, challenge: Data) throws(CeremonyError)
     -> DeviceBindingJSON?
