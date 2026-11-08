@@ -8,4 +8,6 @@ enum AccountCopy {
   /// what happens instead.
   static let signOutMessage =
     "To come back, sign in with your passkey or your password. Hasala's data stays on this iPhone, locked to your account."
+
+  static let unfreezeToDelete = "Unfreeze to delete your account"
 }

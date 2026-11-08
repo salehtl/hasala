@@ -433,6 +433,15 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(FrozenWall.shownPath(open, for: FreezeInfo(by: .holder, when: nil, holderCanLift: false)).isEmpty)
   }
 
+  @Test func deleteWaitsForAnUnfreezeWhileTheAccountIsLeftFrozen() {
+    let session = AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
+                                 phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    session.leaveFrozen()
+    #expect(session.deleteWaitsForUnfreeze)
+    session.unfroze()
+    #expect(!session.deleteWaitsForUnfreeze)
+  }
+
   @Test func aHolderUnfreezeOpensTheApp() async throws {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero

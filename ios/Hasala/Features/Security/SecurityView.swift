@@ -342,7 +342,7 @@ struct SecurityView: View {
         if s.frozen == nil {
           TextLink(title: "Delete your account", identifier: "security.delete", destructive: true) { deleting = true }
         } else {
-          Text("Unfreeze to delete your account")
+          Text(AccountCopy.unfreezeToDelete)
             .hType(.subheadline.weight(.semibold))
             .foregroundStyle(HColor.textSecondary)
             .multilineTextAlignment(.center)

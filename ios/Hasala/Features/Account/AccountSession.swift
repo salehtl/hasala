@@ -136,6 +136,8 @@ final class AccountSession {
 
   var canLeaveFrozen: Bool { account.keysOnThisIPhone }
 
+  var deleteWaitsForUnfreeze: Bool { leftFrozen != nil }
+
   func leaveFrozen() {
     guard canLeaveFrozen, case .frozen(let info) = phase else { return }
     leftFrozen = info
