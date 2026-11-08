@@ -74,6 +74,12 @@ let
     ];
     text = localPaths rendered.backup;
   };
+
+  retry = pkgs.writeShellApplication {
+    name = "hasala-retry";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.unsafeDiscardStringContext rendered.retry;
+  };
 in
 pkgs.runCommand "hasala-ops-scripts"
   {
@@ -147,6 +153,38 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$rc" = 0 ] || no "a clean backup with an old file exited $rc"
     [ ! -e backups/hasala-daily-seed29.dump.age ] || no "a clean backup kept a 29 day old dump"
     [ "$(count 'hasala-daily-2*.dump.age')" = 1 ] || no "retention removed the new dump"
+
+    scenario "a command that fails twice and then succeeds is retried to success"
+    cat > flaky <<'SH'
+    #!${pkgs.runtimeShell}
+    echo x >> tries
+    [ "$(wc -l < tries)" -ge 3 ]
+    SH
+    chmod +x flaky
+    rc=0; ${lib.getExe retry} 4 0 ./flaky || rc=$?
+    [ "$rc" = 0 ] || no "the retry gave up with $rc on a command that recovers"
+    [ "$(wc -l < tries | tr -d ' ')" = 3 ] || no "the retry ran $(wc -l < tries) times, want 3"
+
+    scenario "a command that keeps failing stops at the bound with its own exit code"
+    cat > broken <<'SH'
+    #!${pkgs.runtimeShell}
+    echo x >> tries
+    exit 7
+    SH
+    chmod +x broken
+    rc=0; ${lib.getExe retry} 4 0 ./broken || rc=$?
+    [ "$rc" = 7 ] || no "the retry exited $rc, want the command's 7"
+    [ "$(wc -l < tries | tr -d ' ')" = 4 ] || no "the retry ran $(wc -l < tries) times, want 4"
+
+    scenario "a command that succeeds runs once"
+    cat > fine <<'SH'
+    #!${pkgs.runtimeShell}
+    echo x >> tries
+    SH
+    chmod +x fine
+    rc=0; ${lib.getExe retry} 4 0 ./fine || rc=$?
+    [ "$rc" = 0 ] || no "a command that succeeds exited $rc"
+    [ "$(wc -l < tries | tr -d ' ')" = 1 ] || no "a command that succeeds ran more than once"
 
     [ "$failed" = 0 ]
     touch "$out"

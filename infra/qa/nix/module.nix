@@ -275,6 +275,29 @@ let
     HASALA_ASC_REQUEST_BUDGET = "300";
   };
 
+  # -------------------------------------------------------------------- retry
+  retryText = ''
+    attempts="$1"
+    delay="$2"
+    shift 2
+    try=1
+    while true; do
+      rc=0
+      "$@" || rc=$?
+      [ "$rc" != 0 ] || exit 0
+      [ "$try" -lt "$attempts" ] || exit "$rc"
+      echo "hasala-retry: attempt $try of $attempts failed with exit $rc; trying again in ''${delay}s" >&2
+      sleep "$delay"
+      try=$((try + 1))
+    done
+  '';
+  retryScript = pkgs.writeShellApplication {
+    name = "hasala-retry";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = retryText;
+  };
+  retrying = "${lib.getExe retryScript} 4 15";
+
   # ------------------------------------------------------------------- backups
   offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
   ageRecipientFlags = concatStringsSep " " (map (r: "-r ${r}") cfg.backup.ageRecipients);
@@ -897,6 +920,7 @@ in
       readOnly = true;
       default = {
         backup = backupText;
+        retry = retryText;
       };
       description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
@@ -1459,7 +1483,7 @@ in
           User = "hasala-migrate";
           Group = "hasala-migrate";
           SupplementaryGroups = [ "hasala-db" ];
-          ExecStart = "${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${hasalad} migrate";
+          ExecStart = "${retrying} ${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${hasalad} migrate";
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           IPAddressDeny = "any";
@@ -1492,7 +1516,7 @@ in
             "hasala-db"
             "hasala-ledger"
           ];
-          ExecStart = "${hasalad} purge-user --replay-ledger";
+          ExecStart = "${retrying} ${hasalad} purge-user --replay-ledger";
           ReadWritePaths = [ ledgerDir ];
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
@@ -1772,7 +1796,7 @@ in
           TZ = "UTC";
         };
         script = ''
-          n=$(${hasalad} migrate --pending)
+          n=$(${retrying} ${hasalad} migrate --pending)
           if [ "$n" = 0 ]; then
             echo "hasala-backup-premigrate: no pending migrations, no dump"
             exit 0

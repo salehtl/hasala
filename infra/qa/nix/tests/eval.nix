@@ -960,6 +960,11 @@ let
           && lib.hasSuffix " r2:test-bucket/daily" (lib.elemAt offsiteExec 1)
         )
         "AT-E3 the off-site unit must copy without .part files and delete copies at retentionDays: ${builtins.toJSON offsiteExec}"
+    ++ check (lib.all (u: lib.hasInfix "/bin/hasala-retry 4 15 " (backupOf u).ExecStart) [
+      "hasala-migrate"
+      "hasala-purge-replay"
+    ]) "AT-E3 the migrate and replay oneshots must retry a transient failure, a bounded number of times"
+    ++ check (lib.hasInfix "/bin/hasala-retry 4 15 " (svc fullSys "hasala-backup-premigrate").script) "AT-E3 the pre-migration check must retry a transient failure"
     ++ check (
       (backupOf "hasala-postgresql").Restart or null == "on-failure"
       && (backupOf "hasala-postgresql").RestartSec or null != null
