@@ -65,7 +65,8 @@ final class BankTextIntake {
   func run(_ text: String, sender rawSender: String?, at now: Date) async -> BankTextIntakeResult {
     let nowMs = Self.ms(now)
     let sender = Self.sender(rawSender)
-    let signIn = deps.secret.beforeFirstUnlock() ? .locked : deps.signIn()
+    let answer = deps.signIn()
+    let signIn: BankTextSignIn = answer != .locked && deps.secret.beforeFirstUnlock() ? .locked : answer
     if signIn == .locked {
       guard case .keep(let kept) = deps.reader.read(text, sender: sender, testWindowOpen: false) else {
         return .dropped(counted: false)

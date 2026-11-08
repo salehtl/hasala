@@ -127,6 +127,33 @@ nonisolated final class GatedTextAuthor: BankTextsAuthoring {
   func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] { [] }
 }
 
+nonisolated final class IntakeEvents: Sendable {
+  private let events = Mutex<[String]>([])
+
+  var all: [String] { events.withLock { $0 } }
+
+  func add(_ event: String) { events.withLock { $0.append(event) } }
+}
+
+nonisolated final class WatchedSecretStore: SecretStore {
+  let base: any SecretStore
+  let events: IntakeEvents
+
+  init(_ base: any SecretStore, events: IntakeEvents) {
+    self.base = base
+    self.events = events
+  }
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? {
+    events.add("keychain")
+    return try base.read(item)
+  }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try base.write(item, value) }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { try base.delete(item) }
+}
+
 nonisolated struct NoRandom: RandomSource {
   func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) { throw .sealFailed }
 }
@@ -542,6 +569,28 @@ struct BankTextsIntakeTests {
     #expect(d.authoredToday == nil)
     d.releaseAuthored(atMs: nowMs)
     #expect(d.authoredToday == nil)
+  }
+
+  @Test func theInstallCheckComesBeforeTheKeychain() async throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    let events = IntakeEvents()
+    let i = wiredIntake(
+      r, author: r.author, secret: TextKeySecret(store: WatchedSecretStore(r.secrets, events: events)),
+      signIn: {
+        events.add("install check")
+        return .signedIn
+      })
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
+    #expect(events.all.first == "install check")
+  }
+
+  @Test func aLockedKeychainStillWinsOverTheSignInAnswer() async {
+    let r = rig()
+    r.secrets.locked = true
+    let i = intake(r, signedIn: false)
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.lockedMessage, marked: true))
+    #expect(r.marker.read()?.count == 1)
   }
 
   @Test func aLinkedAccountIgnoresTextsBeforeTheDailyLimit() async throws {
