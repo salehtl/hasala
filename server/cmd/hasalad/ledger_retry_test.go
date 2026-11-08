@@ -6,13 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/salehtl/hasala/server/internal/api"
+	"github.com/salehtl/hasala/server/internal/config"
+	"github.com/salehtl/hasala/server/internal/pgtest"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 func TestARestoreLedgerLineThatFailedIsWrittenOnRetry(t *testing.T) {
@@ -99,5 +105,118 @@ func TestALineThatFailsDuringStopIsTriedOnceMore(t *testing.T) {
 	}
 	if entries, err := purgeledger.Read(path); err != nil || len(entries) != 1 {
 		t.Fatalf("ledger %+v %v, want the waiting line", entries, err)
+	}
+}
+
+func TestAWaitingLineIsWrittenWhileTheServerRuns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-there-yet", "purged")
+	w := newLedgerWriter(path)
+	w.every = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := w.run(ctx)
+	defer func() {
+		cancel()
+		<-done
+	}()
+	w.record(purgeledger.Entry{ID: uuid.New(), At: time.Now(), Kind: purgeledger.KindWaitlistLeave})
+	if err := os.Mkdir(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		entries, err := purgeledger.Read(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) == 1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ledger %+v while the server runs, want the waiting line", entries)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestServeWritesALeaveTheLedgerMissedWhenItStops(t *testing.T) {
+	pool := pgtest.New(t)
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	ledgerDir := filepath.Join(dir, "ledger")
+	path := filepath.Join(ledgerDir, "purged")
+	env := []string{
+		"HASALA_PG_DSN=x",
+		"HASALA_AUTH_KEY_FILE=" + write("auth", strings.Repeat("cd", 32)+"\n"),
+		"HASALA_WEB_ORIGINS=https://hasala.app",
+		"HASALA_EMAIL_CF_ACCOUNT_ID=" + strings.Repeat("0a", 16),
+		"HASALA_EMAIL_API_TOKEN_FILE=" + write("cftoken", "test-token\n"),
+		"HASALA_PURGE_LEDGER_PATH=" + path,
+	}
+	cfg, err := config.LoadEnv("", func(name string) (string, bool) {
+		for _, kv := range env {
+			if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+				return v, true
+			}
+		}
+		return "", false
+	}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := &api.Server{Pool: pool}
+	ex, err := wireExtras(ctx, cfg, pool, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Web == nil {
+		t.Fatal("the waitlist routes were not mounted")
+	}
+
+	var entry uuid.UUID
+	if err := pool.QueryRow(context.Background(), `INSERT INTO waitlist_entries (email_tag, email_norm, state, source,
+		created_at, updated_at, confirmed_at) VALUES ($1, 'leave@example.test', 'confirmed', 'web', now(), now(), now())
+		RETURNING id`, []byte(strings.Repeat("7", 32))).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := pgx.BeginFunc(context.Background(), pool, func(tx pgx.Tx) error {
+		var err error
+		token, err = waitlist.MintToken(context.Background(), tx, entry, "leave")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	before := time.Now().Truncate(time.Second)
+	if err := srv.Web.Waitlist.Leave(context.Background(), token); err != nil {
+		t.Fatal(err)
+	}
+	left := time.Now()
+	if entries, err := purgeledger.Read(path); err != nil || len(entries) != 0 {
+		t.Fatalf("ledger %+v %v before it can be written, want nothing", entries, err)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	if err := os.Mkdir(ledgerDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	ex.wait()
+
+	entries, err := purgeledger.Read(path)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("ledger %+v %v after the stop, want the one line", entries, err)
+	}
+	got := entries[0]
+	if got.ID != entry || got.Kind != purgeledger.KindWaitlistLeave || got.At.Before(before) || got.At.After(left) {
+		t.Fatalf("line %+v, want entry %s as %s between %s and %s", got, entry, purgeledger.KindWaitlistLeave, before, left)
 	}
 }

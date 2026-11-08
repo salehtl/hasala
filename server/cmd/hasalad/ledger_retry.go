@@ -15,13 +15,17 @@ const ledgerRetryInterval = time.Minute
 
 type ledgerWriter struct {
 	write func(purgeledger.Entry) error
+	every time.Duration
 
 	mu      sync.Mutex
 	waiting []purgeledger.Entry
 }
 
 func newLedgerWriter(path string) *ledgerWriter {
-	return &ledgerWriter{write: func(e purgeledger.Entry) error { return purgeledger.AppendEntries(path, e) }}
+	return &ledgerWriter{
+		every: ledgerRetryInterval,
+		write: func(e purgeledger.Entry) error { return purgeledger.AppendEntries(path, e) },
+	}
 }
 
 func (w *ledgerWriter) record(e purgeledger.Entry) {
@@ -69,8 +73,15 @@ func (w *ledgerWriter) retry(context.Context) (int, error) {
 }
 
 func (w *ledgerWriter) run(ctx context.Context) <-chan struct{} {
-	loop := startSweepEvery(ctx, "restore ledger retry", ledgerRetryInterval,
-		countSweep("wrote %d restore ledger line(s) that had failed", w.retry))
+	retry := countSweep("wrote %d restore ledger line(s) that had failed", w.retry)
+	started := false
+	loop := startSweepEvery(ctx, "restore ledger retry", w.every, func(ctx context.Context) (string, error) {
+		if !started {
+			started = true
+			return "", nil
+		}
+		return retry(ctx)
+	})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
