@@ -132,6 +132,14 @@ struct PastMailChoiceAppTests: AccountSuite {
     #expect(LiveMailboxConnecting.pastMail(.newOnly, takesOver: true, newestImportMs: nil) == .skip(catchUpFromMs: nil))
   }
 
+  @Test func aTakeoverReadsOnlyNewEmailWhateverAnEarlierAttemptAnswered() {
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: true, newestImportMs: 5) == .skip(catchUpFromMs: 5))
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: true, newestImportMs: nil) == .skip(catchUpFromMs: nil))
+    #expect(LiveMailboxConnecting.connectPastMail(.newOnly, takesOver: true, newestImportMs: 5) == .skip(catchUpFromMs: 5))
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: false, newestImportMs: 5) == .read)
+    #expect(LiveMailboxConnecting.connectPastMail(.newOnly, takesOver: false, newestImportMs: 5) == .skip(catchUpFromMs: nil))
+  }
+
   @Test func theCopyNamesTheWindow() {
     #expect(MailCopy.pastMailMessage(days: 90).contains("the last 90 days"))
     #expect(MailCopy.pastMailMessage(days: 365).contains("the last year"))

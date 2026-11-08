@@ -430,7 +430,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     await old?.stop()
     let newest = (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil
     let result = await lane.connect(
-      backfillDays: days, pastMail: Self.pastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
+      backfillDays: days, pastMail: Self.connectPastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
       replacing: replaces, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
@@ -449,6 +449,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
     return MailLinked(
       mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
+  }
+
+  static func connectPastMail(_ answer: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
+    pastMail(takesOver ? .newOnly : answer, takesOver: takesOver, newestImportMs: newestImportMs)
   }
 
   static func pastMail(_ choice: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
