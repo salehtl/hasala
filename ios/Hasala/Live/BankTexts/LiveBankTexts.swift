@@ -73,6 +73,16 @@ final class LiveBankTexts: BankTextsConnecting {
       hinting?.cancel()
     }
     if next != data { data = next }
+    if lockedNotice != nil, link == .linked {
+      lockedNotice = nil
+      if let m = marker.read() { countAsIgnored(m) }
+    }
+  }
+
+  private func countAsIgnored(_ m: LockedTextsMarker) {
+    guard (try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }) != nil else { return }
+    marker.remove()
+    reload()
   }
 
   var link: MailboxLinkCopy { BankTextsLinkCopy.copy(data) }
@@ -214,9 +224,7 @@ final class LiveBankTexts: BankTextsConnecting {
       return
     }
     lockedNotice = nil
-    guard (try? facts.update(nowMs: nowMs) { $0.addIgnored(m.count, atMs: m.latestMinuteMs) }) != nil else { return }
-    marker.remove()
-    reload()
+    countAsIgnored(m)
   }
 
   func lockedNoticeShown() {
