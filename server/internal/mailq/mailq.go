@@ -172,7 +172,7 @@ func (s Stale) Error() string { return string(s) }
 func (Stale) Is(target error) bool { return target == mail.ErrPermanent }
 
 func transientRender(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+	if errors.Is(err, ErrNoRenderer) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || pgconn.Timeout(err) || pgconn.SafeToRetry(err) {
 		return true
 	}

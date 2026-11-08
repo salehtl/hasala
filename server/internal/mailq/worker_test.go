@@ -3,6 +3,7 @@ package mailq
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/mail"
+	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -183,5 +185,49 @@ func TestConcurrentWorkersDoNotPassALaneRate(t *testing.T) {
 		if got["sent"] != 1 || got["sending"] != 0 || got["queued"] != workers-1 {
 			t.Fatalf("round %d: %v, want one sent and the rest queued", round, got)
 		}
+	}
+}
+
+func TestARowWithNoRendererWaitsForAWorkerThatHasOne(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	partial := New(pool, fake, fixedTagger{})
+	user := oplogtest.NewUserWithoutKeys(t, pool)
+	alert := enqueue(t, pool, partial, Enqueue{Kind: "alert", To: "alert@example.com", UserID: &user})
+	if n, err := partial.Drain(bg); err != nil || n != 1 {
+		t.Fatalf("drain %d %v", n, err)
+	}
+	st, att, _, e := row(t, pool, alert)
+	if st != "queued" || att != 1 || e == nil || !strings.Contains(*e, "retrying") {
+		t.Fatalf("a row this worker cannot render: %s %d %v", st, att, e)
+	}
+	var kept bool
+	if err := pool.QueryRow(bg, `SELECT hook_due OR final_at IS NOT NULL FROM mail_log WHERE id = $1`, alert).Scan(&kept); err != nil || kept {
+		t.Fatalf("the row was closed: %v %v", kept, err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE id = $1`, alert); err != nil {
+		t.Fatal(err)
+	}
+	full := New(pool, fake, fixedTagger{})
+	full.Register("alert", RenderFunc(func(_ context.Context, _ pgx.Tx, r Row) (mail.Message, error) {
+		return mail.Message{To: r.Recipient, Subject: "s", Text: "t"}, nil
+	}))
+	if n, err := full.Drain(bg); err != nil || n != 1 {
+		t.Fatalf("drain with the renderer: %d %v", n, err)
+	}
+	if st, att, _, _ := row(t, pool, alert); st != "sent" || att != 2 {
+		t.Fatalf("after a worker with the renderer: %s %d", st, att)
+	}
+
+	late := enqueue(t, pool, partial, Enqueue{Kind: "alert", To: "late@example.com", UserID: &user})
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET created_at = now() - $2::interval WHERE id = $1`,
+		late, fmt.Sprintf("%d seconds", int((mailRetryWindow-time.Second)/time.Second))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := partial.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, _, _ := row(t, pool, late); st != "failed" {
+		t.Fatalf("past the retry window: %s", st)
 	}
 }
