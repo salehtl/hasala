@@ -509,6 +509,8 @@ type Options struct {
 	Now    func() time.Time
 	Record func(users []uuid.UUID) error
 	Cancel func(users []uuid.UUID) error
+
+	armed func(users []uuid.UUID) ([]uuid.UUID, error)
 }
 
 var ErrUnsettled = errors.New("purge: the deletion did not finish and the ledger may still name the accounts")
@@ -558,6 +560,14 @@ func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE`, users); err != nil {
 		return rep, fmt.Errorf("purge: lock the accounts: %w", err)
+	}
+	if opts.armed != nil {
+		if users, err = opts.armed(users); err != nil {
+			return rep, err
+		}
+		if len(users) == 0 {
+			return rep, nil
+		}
 	}
 
 	// Counted BEFORE the delete, because after it there is nothing to count.
@@ -725,6 +735,38 @@ func settleFailedCommit(ctx context.Context, pool *pgxpool.Pool, deleted []uuid.
 }
 
 func Replay(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID) (Report, error) {
+	return replayIDs(ctx, pool, ids, Options{})
+}
+
+func ReplayLedger(ctx context.Context, pool *pgxpool.Pool, path string) (Report, error) {
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		return newReport(), err
+	}
+	return replayIDs(ctx, pool, purgeledger.IDs(entries), Options{armed: func(users []uuid.UUID) ([]uuid.UUID, error) {
+		return stillArmed(path, users)
+	}})
+}
+
+func stillArmed(path string, users []uuid.UUID) ([]uuid.UUID, error) {
+	entries, err := purgeledger.Read(path)
+	if err != nil {
+		return nil, err
+	}
+	armed := make(map[uuid.UUID]bool, len(entries))
+	for _, id := range purgeledger.IDs(entries) {
+		armed[id] = true
+	}
+	kept := make([]uuid.UUID, 0, len(users))
+	for _, u := range users {
+		if armed[u] {
+			kept = append(kept, u)
+		}
+	}
+	return kept, nil
+}
+
+func replayIDs(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, opts Options) (Report, error) {
 	if pool == nil {
 		return Report{}, errors.New("purge: pool is nil")
 	}
@@ -739,7 +781,7 @@ func Replay(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID) (Report, e
 	if err != nil {
 		return newReport(), fmt.Errorf("purge: replay: %w", err)
 	}
-	return purgeUsers(ctx, pool, live, Options{})
+	return purgeUsers(ctx, pool, live, opts)
 }
 
 func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (int, error) {

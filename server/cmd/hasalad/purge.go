@@ -141,7 +141,7 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 		return err
 	}
 	defer pool.Close()
-	rep, err := purge.Replay(ctx, pool, purgeledger.IDs(entries))
+	rep, err := purge.ReplayLedger(ctx, pool, path)
 	if err != nil {
 		return fmt.Errorf("purge-user --replay-ledger: %w", err)
 	}
