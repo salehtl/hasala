@@ -127,6 +127,41 @@ public enum HMotion {
   public static let idlePeriod = 4.0
 }
 
+public struct ToastWindow: Sendable, Equatable {
+  public private(set) var left: Duration
+  private let dwell: Duration
+  private var since: ContinuousClock.Instant?
+  private var held = false
+  private var away: Bool
+
+  public init(dwell: Duration, away: Bool, now: ContinuousClock.Instant) {
+    self.dwell = dwell
+    left = dwell
+    self.away = away
+    since = away ? nil : now
+  }
+
+  public var counting: Bool { since != nil }
+
+  public mutating func hold(_ on: Bool, now: ContinuousClock.Instant) {
+    held = on
+    left = dwell
+    since = held || away ? nil : now
+  }
+
+  public mutating func setAway(_ on: Bool, now: ContinuousClock.Instant) {
+    guard on != away else { return }
+    away = on
+    if on {
+      if let since { left = max(.zero, left - since.duration(to: now)) }
+      since = nil
+      held = false
+    } else {
+      since = now
+    }
+  }
+}
+
 public extension HMotion {
   /// What moves in the app. Each kind has a normal curve and a Reduce Motion substitute
   /// (B1.2); `MotionPolicy` picks between them once per transition.

@@ -65,6 +65,10 @@ final class AppModel {
   let sync = SyncActivity()
 
   private var toastTask: Task<Void, Never>?
+  @ObservationIgnored private var toastWindow: ToastWindow?
+  @ObservationIgnored private var offScreen = false
+  @ObservationIgnored var toastNow: @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
+  @ObservationIgnored var toastSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
   @ObservationIgnored private var homeMemo = Memo<HomeMemoKey, HomeSnapshot>()
   private var chosenPeriod: Period?
   @ObservationIgnored private var reviewMemo = Memo<Int, Int>()
@@ -341,8 +345,15 @@ final class AppModel {
   /// The toast is touched: it stays while the finger is down, then for a full dwell after.
   func holdToast(_ held: Bool) {
     guard toast != nil else { return }
-    toastTask?.cancel()
-    if !held { scheduleToastEnd() }
+    toastWindow?.hold(held, now: toastNow())
+    scheduleToastEnd()
+  }
+
+  func sceneChanged(onScreen: Bool) {
+    offScreen = !onScreen
+    guard toast != nil else { return }
+    toastWindow?.setAway(offScreen, now: toastNow())
+    scheduleToastEnd()
   }
 
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
@@ -375,18 +386,21 @@ final class AppModel {
   /// that is also the window for its Undo.
   /// VoiceOver hears it without losing its place ("Sorted into Groceries. Undo available.").
   /// The motion is `ToastHost`'s.
-  // TODO(spec 04 §14.6): pause the window while the app is in the background (pwa `pausableTimeout`).
   private func show(_ t: Toast) {
     toast = t
     AccessibilityNotification.Announcement(Self.announcement(for: t)).post()
+    let dwell = Self.dwell(lasting: t.undo?.batch == true, voiceOver: UIAccessibility.isVoiceOverRunning)
+    toastWindow = ToastWindow(dwell: .seconds(dwell), away: offScreen, now: toastNow())
     scheduleToastEnd()
   }
 
   private func scheduleToastEnd() {
     toastTask?.cancel()
-    let dwell = Self.dwell(lasting: toast?.undo?.batch == true, voiceOver: UIAccessibility.isVoiceOverRunning)
+    guard let window = toastWindow, window.counting else { return }
+    let left = window.left
+    let sleep = toastSleep
     toastTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(dwell))
+      await sleep(left)
       guard !Task.isCancelled else { return }
       self?.toast = nil
     }
