@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,6 +62,7 @@ type Console struct {
 	queue  *mailq.Queue
 	kCSRF  []byte
 	tunnel refusalLog
+	spent  spentTokens
 }
 
 // New builds a console with a fresh CSRF key (a restart invalidates open
@@ -97,9 +99,9 @@ func (c *Console) Handler() http.Handler {
 		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("POST /waitlist/{id}/approve", c.action("waitlist.approve", "waitlist_entry", c.approve))
-	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.mint))
+	mux.HandleFunc("POST /invites/mint", c.action("invite.mint", "invite", c.once(c.mint)))
 	mux.HandleFunc("POST /invites/{id}/revoke", c.actionThen("invite.revoke", "invite", c.revoke, c.recordRevoked))
-	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.resend))
+	mux.HandleFunc("POST /invites/{id}/resend", c.action("invite.resend", "invite", c.once(c.resend)))
 	mux.HandleFunc("POST /banks/{id}/status", c.action("bank.status", "bank", c.bankStatus))
 	mux.HandleFunc("POST /banks/add", c.action("bank.add", "bank", c.bankAdd))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
@@ -209,6 +211,35 @@ func (c *Console) csrfOK(login, path, target, token string) bool {
 	}
 	want := c.csrf(login, path, target, issued)
 	return hmac.Equal([]byte(want), []byte(token))
+}
+
+type spentTokens struct {
+	mu    sync.Mutex
+	until map[string]time.Time
+}
+
+func (s *spentTokens) claim(token string, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for t, until := range s.until {
+		if now.After(until) {
+			delete(s.until, t)
+		}
+	}
+	if _, spent := s.until[token]; spent {
+		return false
+	}
+	if s.until == nil {
+		s.until = map[string]time.Time{}
+	}
+	s.until[token] = now.Add(csrfTTL)
+	return true
+}
+
+func (s *spentTokens) release(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.until, token)
 }
 
 // view is what every page template gets.
@@ -441,6 +472,20 @@ func (c *Console) actionThen(name, kind string, f actionFunc, then func(target s
 			return
 		}
 		http.Redirect(w, r, back+"?done="+name, http.StatusSeeOther)
+	}
+}
+
+func (c *Console) once(f actionFunc) actionFunc {
+	return func(ctx context.Context, tx pgx.Tx, r *http.Request) (string, string, string, error) {
+		token := r.PostForm.Get("csrf")
+		if !c.spent.claim(token, c.now()) {
+			return r.PathValue("id"), "", "", errRefused
+		}
+		target, back, show, err := f(ctx, tx, r)
+		if err != nil {
+			c.spent.release(token)
+		}
+		return target, back, show, err
 	}
 }
 
