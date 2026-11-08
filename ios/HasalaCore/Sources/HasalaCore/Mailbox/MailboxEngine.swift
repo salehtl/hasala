@@ -962,8 +962,9 @@ public actor MailboxEngine {
 
   func holderCheckDue(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
     let now = clock.nowMs()
+    let last = state.lastHolderCheckAtMs ?? 0
     return trigger == .launch || trigger == .retry || state.lastHolderCheckAtMs == nil
-      || now - (state.lastHolderCheckAtMs ?? 0) >= config.holderCheckIntervalMs
+      || now < last || now - last >= config.holderCheckIntervalMs
   }
 
   // MARK: - First connect (§7.7)
