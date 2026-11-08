@@ -11,10 +11,14 @@ set -euo pipefail
 
 HASALAD="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 IOS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${HASALA_E2E_PORT:-18443}"
+if /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+	echo "e2e-hasalad: 127.0.0.1:$PORT is already in use; stop that process or set HASALA_E2E_PORT" >&2
+	exit 2
+fi
 # /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path
 # longer than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
 TMP="$(mktemp -d /tmp/hasala-e2e.XXXXXX)"
-PORT="${HASALA_E2E_PORT:-18443}"
 SERVER_PID=""
 
 cleanup() {
@@ -59,14 +63,19 @@ HASALA_PG_DSN="host=$TMP user=hasala_runtime dbname=hasala" \
 	HASALA_HEADROOM_PATH="$TMP" HASALA_HEADROOM_FLOOR_BYTES=1 \
 	"$HASALAD" serve >"$TMP/serve.log" 2>&1 &
 SERVER_PID=$!
+ready=0
 for _ in $(seq 100); do
-	curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null 2>&1 && break
+	kill -0 "$SERVER_PID" 2>/dev/null || break
+	if curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null 2>&1; then
+		ready=1
+		break
+	fi
 	sleep 0.1
 done
-curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null || {
+if [[ "$ready" != 1 ]] || ! kill -0 "$SERVER_PID" 2>/dev/null; then
 	cat "$TMP/serve.log" >&2
 	exit 1
-}
+fi
 
 status=0
 HASALA_E2E_URL="http://127.0.0.1:$PORT" HASALA_E2E_PSQL="$(command -v psql)" \
