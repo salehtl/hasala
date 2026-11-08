@@ -149,6 +149,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
 
 <script>
   import { onPage } from '../scripts/page';
+  import { inviteCopy } from '../lib/invite-copy';
 
   // The code: 24 base32 characters, from /i/<code> or, in the
   // older form, from /i#<code>. Hyphens and spaces are ignored, as in the app.
@@ -203,12 +204,15 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
     const field = document.querySelector<HTMLInputElement>('[data-copy-field]');
     const hint = document.querySelector<HTMLElement>('[data-copy-hint]');
     const manual = document.querySelector<HTMLElement>('[data-copy-manual]');
+    const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
+    const goLabel = go?.textContent ?? '';
     const showManual = (focus: boolean) => {
       if (!field) return;
       field.value = copied;
       field.hidden = false;
       if (hint) hint.hidden = true;
       if (manual) manual.hidden = false;
+      if (go) go.textContent = goLabel;
       if (focus) {
         field.scrollIntoView({ block: 'center' });
         field.focus();
@@ -221,37 +225,26 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       label.textContent = idle;
       copy.hidden = false;
       let reset = 0;
+      const clipboard = inviteCopy(
+        () => navigator.clipboard.writeText(copied),
+        () => showManual(true),
+      );
       copy.addEventListener(
         'click',
         async () => {
           clearTimeout(reset);
-          try {
-            await navigator.clipboard.writeText(copied);
+          if (await clipboard.copy()) {
             label.textContent = 'Copied';
             reset = window.setTimeout(() => (label.textContent = idle), 2000);
-          } catch {
+          } else {
             label.textContent = idle;
-            showManual(true);
           }
         },
         { signal },
       );
-      const go = document.querySelector<HTMLAnchorElement>('.invite__cta:not(.invite__cta--second)');
       if (go) go.textContent = 'Copy invite and open TestFlight';
       document.querySelectorAll<HTMLAnchorElement>('[data-copy-go]').forEach((a) =>
-        a.addEventListener(
-          'click',
-          async (event) => {
-            event.preventDefault();
-            try {
-              await navigator.clipboard.writeText(copied);
-              location.href = a.href;
-            } catch {
-              showManual(true);
-            }
-          },
-          { signal },
-        ),
+        a.addEventListener('click', (event) => void clipboard.leave(event, () => (location.href = a.href)), { signal }),
       );
     } else {
       showManual(false);
