@@ -56,6 +56,35 @@ struct SharedComponentTests {
     #expect(lifted == nil && pan.isIdle)
   }
 
+  @Test func aLostTouchLetsTheToastGoAndTheNextTouchHoldsAgain() {
+    var touch = ToastTouch()
+    let down = touch.moved()
+    let moved = touch.moved()
+    #expect(down == .hold && moved == nil)
+    let lost = touch.lost()
+    let lostAgain = touch.lost()
+    #expect(lost == .resume && lostAgain == nil)
+    let next = touch.moved()
+    #expect(next == .hold)
+  }
+
+  @Test func aLiftedTouchResumesTheToastOrSendsItAway() {
+    var touch = ToastTouch()
+    _ = touch.moved()
+    let short = touch.ended(pulled: 24)
+    let afterShort = touch.lost()
+    #expect(short == .resume && afterShort == nil)
+    _ = touch.moved()
+    let long = touch.ended(pulled: 25)
+    let afterLong = touch.lost()
+    #expect(long == .dismiss && afterLong == nil)
+    _ = touch.moved()
+    let lost = touch.lost()
+    let pulledLate = touch.ended(pulled: 30)
+    let shortLate = touch.ended(pulled: 0)
+    #expect(lost == .resume && pulledLate == .dismiss && shortLate == nil)
+  }
+
   @Test func biometryWordingFollowsTheDevice() {
     #expect(HBiometry.faceID.signInTitle == "Sign in with Face ID")
     #expect(HBiometry.touchID.signInTitle == "Sign in with Touch ID")

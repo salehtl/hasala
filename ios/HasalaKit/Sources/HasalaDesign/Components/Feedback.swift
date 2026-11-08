@@ -7,6 +7,37 @@ import SwiftUI
 
 // MARK: - Toast
 
+public struct ToastTouch: Sendable, Equatable {
+  public enum Effect: Sendable, Equatable {
+    case hold, resume, dismiss
+  }
+
+  public static let dismissPull: CGFloat = 24
+
+  private var held = false
+
+  public init() {}
+
+  public mutating func moved() -> Effect? {
+    guard !held else { return nil }
+    held = true
+    return .hold
+  }
+
+  public mutating func ended(pulled: CGFloat) -> Effect? {
+    let wasHeld = held
+    held = false
+    if pulled > Self.dismissPull { return .dismiss }
+    return wasHeld ? .resume : nil
+  }
+
+  public mutating func lost() -> Effect? {
+    guard held else { return nil }
+    held = false
+    return .resume
+  }
+}
+
 /// The glass toast (page 14 §03): a 56 strip that says what just happened, in the past tense,
 /// with one action at most (Undo or Show). It floats 14 above the tab bar (or 34 from the
 /// bottom) and never blocks. Frost-strong glass; solid under Reduce Transparency. The message
