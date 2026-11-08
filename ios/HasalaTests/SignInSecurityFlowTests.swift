@@ -419,6 +419,20 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(left.phase == .ready)
   }
 
+  @Test func theUnfreezePageGoesWhenTheFreezeTurnsOutToBeTheOperators() async {
+    let open: [FrozenWall.Route] = [.unfreeze]
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .operator)
+    let holder = FreezeInfo(by: .holder, when: nil)
+    #expect(FrozenWall.shownPath(open, for: holder) == open)
+    let session = AccountSession(services: services(account), phase: .frozen(holder))
+    await #expect(throws: AuthFailure.frozenByOperator) { try await session.unfreeze(password: nil) }
+    guard case .frozen(let learned) = session.phase else { Issue.record("\(session.phase)"); return }
+    #expect(FrozenWall.shownPath(open, for: learned).isEmpty)
+    #expect(FrozenWall.shownPath(open, for: FreezeInfo(by: .holder, when: nil, holderCanLift: false)).isEmpty)
+  }
+
   @Test func aHolderUnfreezeOpensTheApp() async throws {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     account.delay = .zero
