@@ -117,3 +117,55 @@ func TestBankRequestsQueue(t *testing.T) {
 		t.Fatalf("%d audit rows, want 8", audits)
 	}
 }
+
+func TestBankToldLeavesOutAFailedEmail(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	var user string
+	if err := pool.QueryRow(bg, `INSERT INTO users (user_handle, created_at, email_norm, email_verified_at, display_name)
+		VALUES (decode(md5('a') || md5('b'), 'hex'), now(), 'maya@example.test', now(), 'Maya Test') RETURNING id`).
+		Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `INSERT INTO bank_requests (bank_slug, source, user_id, created_at) VALUES ('fab', 'app', $1, now())`, user); err != nil {
+		t.Fatal(err)
+	}
+	status := func(form url.Values) {
+		t.Helper()
+		form.Set("csrf", c.csrf("owner@github", "/banks/fab/status", "fab", c.now()))
+		if code := req(c, "POST", "/banks/fab/status", form, nil).Code; code != http.StatusSeeOther {
+			t.Fatalf("status: %d", code)
+		}
+	}
+	told := func() bool {
+		t.Helper()
+		body := req(c, "GET", "/banks", nil, nil).Body.String()
+		yes, no := strings.Contains(body, "<td>1</td><td>0</td><td>0</td><td>1</td>"), strings.Contains(body, "<td>1</td><td>0</td><td>0</td><td>0</td>")
+		if yes == no {
+			t.Fatalf("the row for fab is not on the page as expected:\n%s", body)
+		}
+		return yes
+	}
+	if told() {
+		t.Fatal("told before any email")
+	}
+	status(url.Values{"status": {"supported"}})
+	if !told() {
+		t.Fatal("a queued email is not counted as told")
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET status = 'failed', final_at = now(), next_attempt_at = NULL,
+		recipient_tag = decode(repeat('cd', 32), 'hex') WHERE kind = 'bank_supported'`); err != nil {
+		t.Fatal(err)
+	}
+	if told() {
+		t.Fatal("a failed email is counted as told")
+	}
+	status(url.Values{"status": {"supported"}, "notify": {"on"}})
+	if !told() {
+		t.Fatal("the retried email is not counted as told")
+	}
+	var mails int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE kind = 'bank_supported'`).Scan(&mails); err != nil || mails != 2 {
+		t.Fatalf("%d emails (%v), want the failed one and the retry", mails, err)
+	}
+}
