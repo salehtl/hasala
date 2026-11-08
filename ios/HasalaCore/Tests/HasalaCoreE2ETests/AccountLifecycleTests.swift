@@ -132,4 +132,45 @@ struct AccountLifecycleTests {
     #expect(await SyncEngine(context: ctx).run(.launch).stop == nil)
     #expect(try ctx.store.syncState().logGeneration == 1)
   }
+
+  // MARK: Remove this iPhone
+
+  @Test("removal stops while ops wait behind a latch: the writer stays and every op and key is kept")
+  func removalKeepsOpsBehindALatch() async throws {
+    for fault in [false, true] {
+      let w = World()
+      let a = w.phone("a")
+      let (_, _, ctx) = try await w.passwordAccount(a)
+      try enqueue(ctx, [op(1)])
+      if fault { try ctx.store.setLatch(.sealerFault) } else { try ctx.store.setLatch(.hardStop) }
+      let held = a.keychain.count
+      let binding = try #require(a.binding)
+      do throws(CeremonyError) {
+        try await AccountManagement.removeThisIPhone(
+          a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: binding)
+        Issue.record("removed with an op that never left this iPhone")
+      } catch {
+        guard case .badResponse = error else {
+          Issue.record("\(error)")
+          continue
+        }
+      }
+      #expect(try ctx.store.pendingCount() == 1)
+      #expect(a.keychain.count == held)
+      let token = try #require(try a.env.secrets.session()).token
+      let writers = try await a.env.client.writers(bearer: token).writers
+      #expect(writers.first { $0.writer_id == ctx.writerID.string }?.revoked_at == nil)
+    }
+  }
+
+  @Test("removal under a latch with nothing waiting goes ahead")
+  func removalUnderALatchWithNothingWaiting() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    try ctx.store.setLatch(.hardStop)
+    try await AccountManagement.removeThisIPhone(
+      a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: try #require(a.binding))
+    #expect(a.keychain.count == 0)
+  }
 }

@@ -87,6 +87,9 @@ public enum AccountManagement {
     if let stop = await engine.run(.refresh).stop {
       throw .badResponse("sync before removal: \(stop)")
     }
+    let unsent: Int
+    do { unsent = try engine.context.store.pendingCount() } catch { throw .store(error) }
+    guard unsent == 0 else { throw .badResponse("sync before removal: unsent ops") }
   }
 
   static func dwk(_ env: AccountEnvironment, _ ctx: SyncContext) throws(CeremonyError) -> SecureBytes {
