@@ -106,6 +106,7 @@ const COPY = {
       root.querySelector<HTMLElement>(`[data-step="${step}"] h1`)?.focus();
     };
 
+    root.querySelector('[data-no-script]')?.remove();
     const token = location.hash.slice(1);
     // The token leaves the address bar; the router's history state stays.
     history.replaceState(history.state, '', location.pathname);

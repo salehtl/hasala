@@ -108,6 +108,7 @@ import { API_BASE } from '../lib/env';
       status.textContent = text;
     };
 
+    root.querySelector('[data-no-script]')?.remove();
     const token = location.hash.slice(1);
     // The token leaves the address bar and the history entry (the router's
     // state stays, so Back and Forward still work).

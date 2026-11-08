@@ -14,6 +14,15 @@ describe('the message for a page whose script never ran', () => {
     });
   }
 
+  for (const [name, path] of [
+    ['/freeze', '../pages/freeze.astro'],
+    ['/waitlist links', '../components/WaitlistLink.astro'],
+  ]) {
+    test(`${name} takes it away once its own script has run`, async () => {
+      expect(await read(path)).toContain("root.querySelector('[data-no-script]')?.remove();");
+    });
+  }
+
   test('a running script hides it', async () => {
     expect(await read('../styles/global.css')).toMatch(/\.js \[data-no-script\]\s*\{\s*display: none;/);
   });
