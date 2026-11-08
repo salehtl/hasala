@@ -81,6 +81,7 @@ const COPY = {
 <script>
   import { postJson, waitText } from '../scripts/api';
   import { onPage } from '../scripts/page';
+  import { arriveAtLink, markLinkDone } from '../lib/link-page';
 
   // onPage: it runs again whenever the router brings this page back (Back).
   onPage((signal) => {
@@ -106,14 +107,22 @@ const COPY = {
       root.querySelector<HTMLElement>(`[data-step="${step}"] h1`)?.focus();
     };
 
+    const finish = () => {
+      if (kind === 'confirm') panel.dataset.state = 'success';
+      show('done');
+    };
+
     root.querySelector('[data-no-script]')?.remove();
-    const token = location.hash.slice(1);
-    // The token leaves the address bar; the router's history state stays.
-    history.replaceState(history.state, '', location.pathname);
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    const arrival = arriveAtLink(kind, location.pathname);
+    if (arrival.step === 'done') {
+      finish();
+      return;
+    }
+    if (arrival.step === 'incomplete') {
       say(incomplete);
       return;
     }
+    const { token } = arrival;
     button.hidden = false;
     button.addEventListener(
       'click',
@@ -130,8 +139,8 @@ const COPY = {
         spinner.hidden = true;
         label.textContent = label.dataset.idle!;
         if (a.status === 200) {
-          if (kind === 'confirm') panel.dataset.state = 'success';
-          show('done');
+          markLinkDone(kind);
+          finish();
         } else if (kind === 'confirm' && (a.status === 410 || a.status === 400)) {
           show('expired');
         } else if (a.status === 400) {
