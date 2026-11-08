@@ -57,7 +57,15 @@ public struct MailboxState: Sendable, Equatable, Codable {
   public var lastCycleAtMs: Int64?
   public var lastSuccessAtMs: Int64?
   public var lastHolderCheckAtMs: Int64?
+  public var provider: MailProviderID?
   public init() {}
+
+  public var heldProvider: MailProviderID? {
+    switch phase {
+    case .unlinked, .otherDevice: nil
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: provider
+    }
+  }
 }
 
 public enum AccountedOutcome: String, Sendable, Codable {

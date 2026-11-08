@@ -216,6 +216,8 @@ enum LedgerSchema {
 
   static let mailboxReadFrom = ["ALTER TABLE mailbox_state ADD COLUMN read_from_ms INTEGER"]
 
+  static let mailboxProvider = ["ALTER TABLE mailbox_state ADD COLUMN provider TEXT"]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -256,6 +258,9 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_read_from") { db in
       for sql in mailboxReadFrom { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_provider") { db in
+      for sql in mailboxProvider { try db.execute(sql: sql) }
     }
     return m
   }

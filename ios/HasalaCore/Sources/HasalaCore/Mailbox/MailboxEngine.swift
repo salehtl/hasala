@@ -518,6 +518,7 @@ public actor MailboxEngine {
       s.phase = resumePhase(s)
     }
     s.address = claims.email
+    s.provider = provider.id
     s.haltedOn = nil
     s.haltedDetail = nil
     s.lastHolderCheckAtMs = clock.nowMs()

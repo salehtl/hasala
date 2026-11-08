@@ -310,6 +310,13 @@ struct LiveMailboxTests {
     #expect(lane.mailboxes.isEmpty && lane.offer == nil && lane.linkedProvider == nil)
   }
 
+  @Test func theLinksOwnStateBeatsTheRememberedProviderAfterAnInterruptedSwitch() {
+    #expect(AccountRuntime.interruptedSwitch(held: .outlook, remembered: .gmail) == .gmail)
+    #expect(AccountRuntime.interruptedSwitch(held: .gmail, remembered: .gmail) == nil)
+    #expect(AccountRuntime.interruptedSwitch(held: nil, remembered: .gmail) == nil)
+    #expect(AccountRuntime.interruptedSwitch(held: .outlook, remembered: nil) == nil)
+  }
+
   /// The mailbox page's "Last checked", on the iPhone's clock in its time zone; and a
   /// connect before the account has opened is refused, and says so.
   @Test func theLiveMailboxSaysWhenItLastChecked() async {

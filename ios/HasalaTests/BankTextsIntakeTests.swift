@@ -372,6 +372,39 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  static func bothProviders() throws -> BuildInfo {
+    try BuildInfo(infoDictionary: [
+      "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "1", "HasalaGitCommit": "unset",
+      "HasalaEnvironment": "qa", "HasalaAPIBaseURL": "https://api.example.com",
+      "HasalaGoogleClientID": "test.apps.googleusercontent.com",
+      "HasalaGoogleRedirectScheme": "com.googleusercontent.apps.test", "HasalaGmailPubSubTopic": "unset",
+      "HasalaOutlookClientID": "00000000-0000-4000-8000-000000000000",
+      "HasalaOutlookRedirectScheme": "msauth.app.hasala.ios",
+    ])
+  }
+
+  func twoLaneRuntime() async throws -> (AccountRuntime, MiniHasalad) {
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: try Self.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    return (rt, server)
+  }
+
+  @Test func theLinkHeldStateOpensTheLaneOfTheProviderItNames() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, _) = try await twoLaneRuntime()
+    #expect(await AccountRuntime.initialLane(rt.lanes, held: .outlook, remembered: .gmail)?.provider == .outlook)
+    #expect(await AccountRuntime.initialLane(rt.lanes, held: nil, remembered: .gmail)?.provider == .gmail)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()
