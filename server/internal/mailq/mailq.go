@@ -176,9 +176,9 @@ type Queue struct {
 	// (the transactional lane).
 	Rates     map[Lane]int
 	Retention time.Duration
-	// Bounced, when set, runs in the finalizing transaction of a bounced row
-	// that names an account (spec 02 §14.7: the account's address is marked
-	// undeliverable). It makes no network call.
+	// Bounced, when set, runs once a bounced row that names an account is
+	// final (spec 02 §14.7: the account's address is marked undeliverable). It
+	// makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
 	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
 
@@ -421,10 +421,11 @@ func (q *Queue) Drain(ctx context.Context) (int, error) {
 			return n, err
 		}
 		if !did {
-			return n, nil
+			break
 		}
 		n++
 	}
+	q.settleDue(ctx)
 	return n, nil
 }
 
@@ -610,7 +611,7 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 		sql  string
 		args = []any{row.ID, lease}
 	)
-	unsent := false
+	hooked := false
 	redact := "recipient"
 	if kind == "deleted" {
 		redact = "NULL"
@@ -621,10 +622,10 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 		        provider_message_id = $3, recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, nilIfEmpty(pid))
 	case errors.Is(sendErr, mail.ErrBounced):
-		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3,
+		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3, hook_due = true,
 		        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, clip("bounced"))
-		unsent = true
+		hooked = true
 	case errors.Is(sendErr, mail.ErrAuth) && !oneShot:
 		q.stopped.Store(true)
 		slog.Error("mailq: the email provider refused the credentials; sending stopped on every lane until restart")
@@ -646,28 +647,20 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 			}
 		}
 		if !retry {
-			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3,
+			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3, hook_due = true,
 			        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 			args = append(args, clip(sendErr.Error()))
-			unsent = true
+			hooked = true
 		}
 		if errors.Is(sendErr, mail.ErrAuth) {
 			q.stopped.Store(true)
 		}
 	}
-	bounced := errors.Is(sendErr, mail.ErrBounced) && row.UserID != nil && q.Bounced != nil
-	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) (func(), error) {
-		if bounced {
-			if err := q.Bounced(ctx, tx, *row); err != nil {
-				return nil, err
-			}
-		}
-		if unsent && q.Unsent != nil {
-			return q.Unsent(ctx, tx, *row)
-		}
-		return nil, nil
-	}); err != nil {
+	if _, err := q.Pool.Exec(ctx, sql, args...); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
+	}
+	if hooked {
+		q.settle(ctx, row.ID)
 	}
 	if sendErr != nil {
 		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
@@ -675,41 +668,84 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 }
 
 func (q *Queue) failExhausted(ctx context.Context) error {
+	tag, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL, hook_due = true,
+		        error = 'attempts exhausted', recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
+		  WHERE attempts >= $1 AND recipient_tag IS NOT NULL
+		    AND (status = 'queued' OR (status = 'sending' AND lease_until < now()))`, maxAttempts)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() > 0 {
+		q.settleDue(ctx)
+	}
+	return nil
+}
+
+func (q *Queue) settleDue(ctx context.Context) {
+	rows, err := q.Pool.Query(ctx, `SELECT id FROM mail_log WHERE hook_due ORDER BY id`)
+	if err != nil {
+		slog.Error("mailq: hooks due", "err", err.Error())
+		return
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		slog.Error("mailq: hooks due", "err", err.Error())
+		return
+	}
+	for _, id := range ids {
+		q.settle(ctx, id)
+	}
+}
+
+func (q *Queue) settle(ctx context.Context, id int64) {
+	if err := q.settleTx(ctx, id); err != nil {
+		slog.Error("mailq: hook", "err", err.Error())
+	}
+}
+
+func (q *Queue) settleTx(ctx context.Context, id int64) error {
 	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
 		return err
 	}
 	defer pgtx.Rollback(ctx, tx)
-	rows, err := tx.Query(ctx,
-		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL,
-		        error = 'attempts exhausted', recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
-		  WHERE attempts >= $1 AND recipient_tag IS NOT NULL
-		    AND (status = 'queued' OR (status = 'sending' AND lease_until < now()))
-		 RETURNING id, kind, user_id, waitlist_entry_id, invite_id`, maxAttempts)
+	row := Row{ID: id}
+	var (
+		status    string
+		recipient *string
+	)
+	err = tx.QueryRow(ctx,
+		`SELECT kind, status, recipient, user_id, waitlist_entry_id, invite_id FROM mail_log
+		  WHERE id = $1 AND hook_due FOR UPDATE SKIP LOCKED`, id).
+		Scan(&row.Kind, &status, &recipient, &row.UserID, &row.EntryID, &row.InviteID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	failed, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Row, error) {
-		var row Row
-		return row, r.Scan(&row.ID, &row.Kind, &row.UserID, &row.EntryID, &row.InviteID)
-	})
-	if err != nil {
-		return err
+	if recipient != nil {
+		row.Recipient = *recipient
 	}
-	var after []func()
-	if q.Unsent != nil {
-		for _, row := range failed {
-			done, err := q.Unsent(ctx, tx, row)
-			if err != nil {
-				return err
-			}
-			after = appendDone(after, done)
+	if status == string(StatusBounced) && row.UserID != nil && q.Bounced != nil {
+		if err := q.Bounced(ctx, tx, row); err != nil {
+			return err
 		}
+	}
+	var done func()
+	if q.Unsent != nil {
+		if done, err = q.Unsent(ctx, tx, row); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE mail_log SET hook_due = false WHERE id = $1`, id); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	runDone(after)
+	runDone(appendDone(nil, done))
 	return nil
 }
 
@@ -724,30 +760,6 @@ func runDone(after []func()) {
 	for _, done := range after {
 		done()
 	}
-}
-
-// finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
-func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) (func(), error)) error {
-	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
-	if err != nil {
-		return err
-	}
-	defer pgtx.Rollback(ctx, tx)
-	tag, err := tx.Exec(ctx, sql, args...)
-	if err != nil {
-		return err
-	}
-	var done func()
-	if tag.RowsAffected() == 1 {
-		if done, err = then(tx); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-	runDone(appendDone(nil, done))
-	return nil
 }
 
 // Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less
