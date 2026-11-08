@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+while IFS= read -r v; do unset "$v"; done < <(git rev-parse --local-env-vars)
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -104,7 +106,6 @@ gate() {
 	local name="$1" want="$2" rc=0
 	shift 2
 	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL \
-		-u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
 		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" "$@" \
 		"$work/t/scripts/check.sh" >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
