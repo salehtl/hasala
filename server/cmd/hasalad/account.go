@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/accounts"
 	"github.com/salehtl/hasala/server/internal/auth"
@@ -131,6 +132,14 @@ func runAccountUnfreeze(env *runEnv, positional []string, confirm string) error 
 		return err
 	}
 	if !frozen {
+		recorded, err := recordMissedUnfreeze(ctx, pool, cfg.Server.PurgeLedgerPath, target)
+		if err != nil {
+			return fmt.Errorf("account unfreeze: the restore ledger did not record the last unfreeze: %w", err)
+		}
+		if recorded {
+			fmt.Fprintf(env.stdout, "account %s: was not frozen; the restore ledger now records its last unfreeze\n", target)
+			return nil
+		}
 		fmt.Fprintf(env.stdout, "account %s: was not frozen; nothing changed\n", target)
 		return nil
 	}
@@ -145,4 +154,16 @@ func runAccountUnfreeze(env *runEnv, positional []string, confirm string) error 
 		return fmt.Errorf("account unfreeze: the account is unfrozen, but the restore ledger did not record it: %w", err)
 	}
 	return nil
+}
+
+func recordMissedUnfreeze(ctx context.Context, pool *pgxpool.Pool, ledger string, target uuid.UUID) (bool, error) {
+	if ledger == "" {
+		return false, nil
+	}
+	var last *time.Time
+	if err := pool.QueryRow(ctx, `SELECT max(at) FROM auth_events WHERE user_id = $1 AND kind = 'account_unfrozen'`,
+		target).Scan(&last); err != nil || last == nil {
+		return false, err
+	}
+	return purgeledger.EnsureEntry(ledger, auth.UnfreezeEntry(target, *last), time.Now().Add(-purgeledger.Retention))
 }

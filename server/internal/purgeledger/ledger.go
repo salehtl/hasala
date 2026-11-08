@@ -478,3 +478,38 @@ func syncDir(path string) error {
 	}
 	return nil
 }
+
+func EnsureEntry(path string, e Entry, cutoff time.Time) (bool, error) {
+	if path == "" {
+		return false, errors.New("purgeledger: no ledger path")
+	}
+	if err := check(e); err != nil {
+		return false, fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	if e.At.Before(cutoff) {
+		return false, nil
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrNotWritten, err)
+	}
+	defer unlock()
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("purgeledger: read %s: %w", path, err)
+	}
+	lines, err := parse(path, raw)
+	if err != nil {
+		return false, err
+	}
+	at := e.At.Truncate(time.Second)
+	for _, l := range lines {
+		if !l.unknown && l.e.ID == e.ID && l.e.Kind == e.Kind && !l.e.At.Before(at) {
+			return false, nil
+		}
+	}
+	if err := appendLocked(path, []byte(formatEntry(e))); err != nil {
+		return false, err
+	}
+	return true, nil
+}

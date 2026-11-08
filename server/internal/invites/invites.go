@@ -267,6 +267,35 @@ func Revoke(ctx context.Context, tx pgx.Tx, prefix string, now time.Time) (uuid.
 	return ids[0], nil
 }
 
+func Revoked(ctx context.Context, q Querier, prefix string) (uuid.UUID, time.Time, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, closed_at FROM invite_codes WHERE id::text LIKE $1 || '%' AND state = 'revoked'`,
+		strings.ToLower(strings.TrimSpace(prefix)))
+	if err != nil {
+		return uuid.Nil, time.Time{}, err
+	}
+	type revoked struct {
+		id uuid.UUID
+		at time.Time
+	}
+	found, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (revoked, error) {
+		var v revoked
+		err := r.Scan(&v.id, &v.at)
+		return v, err
+	})
+	if err != nil {
+		return uuid.Nil, time.Time{}, err
+	}
+	switch len(found) {
+	case 0:
+		return uuid.Nil, time.Time{}, ErrNoSuchInvite
+	case 1:
+		return found[0].id, found[0].at, nil
+	default:
+		return uuid.Nil, time.Time{}, ErrAmbiguous
+	}
+}
+
 // Resolution is what Resolve learned about a code at signup/begin.
 type Resolution struct {
 	InviteID uuid.UUID

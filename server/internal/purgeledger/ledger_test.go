@@ -432,3 +432,49 @@ func TestTheLedgerAndItsLockAreGroupWritableUnderAStrictUmask(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureEntryAddsOnlyWhatTheLedgerDoesNotHold(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	id := uuid.New()
+	at := time.Date(2026, 10, 20, 9, 30, 0, 500_000_000, time.UTC)
+	cutoff := at.Add(-time.Hour)
+	missed := Entry{ID: id, At: at, Kind: KindUnfreeze}
+
+	added, err := EnsureEntry(path, missed, cutoff)
+	if err != nil || !added {
+		t.Fatalf("first ensure: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, missed, cutoff); err != nil || added {
+		t.Fatalf("second ensure: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at.Add(-time.Minute), Kind: KindUnfreeze}, cutoff); err != nil || added {
+		t.Fatalf("an older event than a recorded one: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at, Kind: KindSessions}, cutoff); err != nil || !added {
+		t.Fatalf("another kind of the same id: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: id, At: at.Add(time.Minute), Kind: KindUnfreeze}, cutoff); err != nil || !added {
+		t.Fatalf("a newer event: added %v, %v", added, err)
+	}
+	if added, err := EnsureEntry(path, Entry{ID: uuid.New(), At: cutoff.Add(-time.Second), Kind: KindUnfreeze}, cutoff); err != nil || added {
+		t.Fatalf("an event past retention: added %v, %v", added, err)
+	}
+	entries, err := Read(path)
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("entries %+v, %v, want 3", entries, err)
+	}
+}
+
+func TestEnsureEntryLeavesAMalformedLedgerAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	if err := os.WriteFile(path, []byte("not a line\n"), FileMode); err != nil {
+		t.Fatal(err)
+	}
+	e := Entry{ID: uuid.New(), At: time.Now(), Kind: KindUnfreeze}
+	if added, err := EnsureEntry(path, e, time.Time{}); err == nil || added {
+		t.Fatalf("added %v, %v, want an error", added, err)
+	}
+	if raw, _ := os.ReadFile(path); string(raw) != "not a line\n" {
+		t.Fatalf("ledger changed: %q", raw)
+	}
+}
