@@ -368,6 +368,99 @@ extension RejectionSweepTests {
     #expect(order.withLock { $0 } == ["enqueue", "reproject", "next write"])
   }
 
+  @Test("a bulk sort cancelled while it waits behind another write authors nothing, and keeps its answers and requests")
+  func backlogCancelledInTheQueue() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let serial = WriteSerial()
+    let gate = AsyncGate()
+    let held = Task { try await serial.run { await gate.wait() } }
+    while !serial.isBusy { await Task.yield() }
+    let enqueued = Locked(0)
+    let running = Task {
+      try await BacklogSort.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: BacklogCloud(fallback: (.category("dining"), true)),
+        memo: .init(), cache: MemoryCache(), now: { now }, autoFile: true, stamps: AuthorStamps(), serial: serial,
+        reread: { (snapshot.rows(), snapshot.context()) },
+        enqueue: { _ in enqueued.withLock { $0 += 1 } })
+    }
+    while serial.queued == 0 { await Task.yield() }
+    running.cancel()
+    gate.open()
+    try await held.value
+    do {
+      let r = try await running.value
+      Issue.record("authored \(r.authored)")
+    } catch let e as BacklogSort.Interrupted {
+      #expect(e.calls == 1 && e.memo.answers["cafe example jbr"]?.category == "dining")
+    }
+    #expect(enqueued.withLock { $0 } == 0)
+    #expect(!serial.isBusy)
+  }
+
+  @Test("a bulk sort cancelled while it re-reads authors nothing")
+  func backlogCancelledInTheReread() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let enqueued = Locked(0)
+    let running = Task {
+      try await BacklogSort.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: BacklogCloud(fallback: (.category("dining"), true)),
+        memo: .init(), cache: MemoryCache(), now: { now }, autoFile: true, stamps: AuthorStamps(), serial: WriteSerial(),
+        reread: {
+          withUnsafeCurrentTask { $0?.cancel() }
+          return (snapshot.rows(), snapshot.context())
+        },
+        enqueue: { _ in enqueued.withLock { $0 += 1 } })
+    }
+    await #expect(throws: BacklogSort.Interrupted.self) { _ = try await running.value }
+    #expect(enqueued.withLock { $0 } == 0)
+  }
+
+  @Test("a foreground sweep cancelled while it waits behind another write commits nothing")
+  func sweepCancelledInTheQueue() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let serial = WriteSerial()
+    let gate = AsyncGate()
+    let held = Task { try await serial.run { await gate.wait() } }
+    while !serial.isBusy { await Task.yield() }
+    let committed = Locked(0)
+    let running = Task {
+      try await ModelSuggestionSweep.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground,
+        cache: MemoryCache(), now: { now }, stamps: AuthorStamps(), serial: serial,
+        reread: { (snapshot.rows(), snapshot.context()) },
+        commit: { _ in committed.withLock { $0 += 1 } })
+    }
+    while serial.queued == 0 { await Task.yield() }
+    running.cancel()
+    gate.open()
+    try await held.value
+    await #expect(throws: CancellationError.self) { _ = try await running.value }
+    #expect(committed.withLock { $0 } == 0)
+  }
+
+  @Test("a write that does not ask about cancellation still runs when its task was cancelled in the queue")
+  func plainWriteRunsAfterCancelInTheQueue() async throws {
+    let serial = WriteSerial()
+    let gate = AsyncGate()
+    let held = Task { try await serial.run { await gate.wait() } }
+    while !serial.isBusy { await Task.yield() }
+    let ran = Locked(false)
+    let edit = Task { try await serial.run { ran.withLock { $0 = true } } }
+    while serial.queued == 0 { await Task.yield() }
+    edit.cancel()
+    gate.open()
+    try await held.value
+    try await edit.value
+    #expect(ran.withLock { $0 })
+  }
+
   @Test("a bulk sort whose reproject fails reports the pass as failed")
   func backlogReprojectFailure() async throws {
     struct Boom: Error {}

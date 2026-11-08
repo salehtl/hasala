@@ -13,6 +13,8 @@ public final class WriteSerial: Sendable {
 
   public var isBusy: Bool { state.withLock { $0.busy } }
 
+  var queued: Int { state.withLock { $0.waiters.count } }
+
   private func acquire() async {
     await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
       let now = state.withLock { s -> Bool in

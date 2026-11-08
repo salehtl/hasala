@@ -358,6 +358,7 @@ public enum BacklogSort {
       try Task.checkCancellation()
       return try await serial.run {
         let fresh = try await reread()
+        try Task.checkCancellation()
         let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
         guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
         let blobs = try stamps.categorizations(items, context: fresh.context)
