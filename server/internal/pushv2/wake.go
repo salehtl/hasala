@@ -260,22 +260,24 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 // revoked, logged out or moved to another account since is not woken.
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
-	owed, dropped := d.th.due(d.now())
-	paused := make([]bool, len(owed))
-	for i, w := range owed {
-		paused[i] = d.pausedFor(w.t)
-	}
+	owed, dropped := d.th.due(d.now(), d.pausedFor)
 	d.mu.Unlock()
 	for _, r := range dropped {
 		d.Stats.Dropped[r].Add(1)
 	}
-	for i, w := range owed {
-		if paused[i] || !d.stillRegistered(ctx, w) {
+	for _, w := range owed {
+		if !d.stillRegistered(ctx, w) || !d.chargeTrailing(w) {
 			d.Stats.Dropped[w.r].Add(1)
 			continue
 		}
 		d.send(ctx, w.t)
 	}
+}
+
+func (d *Dispatcher) chargeTrailing(w trailing) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return !d.pausedFor(w.t) && d.th.charge(w, d.now())
 }
 
 func (d *Dispatcher) pausedFor(t Target) bool {
