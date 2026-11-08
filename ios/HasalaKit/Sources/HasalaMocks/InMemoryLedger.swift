@@ -65,7 +65,10 @@ public final class InMemoryLedger: LedgerStore {
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touched.insert(id)
+      let filedIn = s.txns[i].categoryID
       change(&s.txns[i])
+      guard s.txns[i].categoryID != filedIn, s.txns[i].splits.isEmpty else { return }
+      s.txns[i].isRefund = Self.filedAsRefund(s.txns[i], in: s)
     }
 
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
@@ -665,6 +668,10 @@ public final class InMemoryLedger: LedgerStore {
     field(\.mergedInto)
     field(\.refundOf)
     field(\.billID)
+  }
+
+  private static func filedAsRefund(_ t: Txn, in s: LedgerState) -> Bool {
+    t.categoryID == Spending.refundsID || t.refundOf != nil || (t.direction == .in && Spending.counts(s.category(t.categoryID)))
   }
 
   static func pauseStart(_ b: Bill, today: LocalDate) -> LocalDate {

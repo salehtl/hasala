@@ -101,6 +101,39 @@ struct RefundEditTests {
     #expect(!t.isRefund && t.categoryID == nil && t.needsReview)
   }
 
+  @Test func filingAMarkedRefundIntoIncomeStopsItBeingARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    #expect(l.state.txn("c1")?.isRefund == true && l.state.txn("c1")?.categoryID == "refunds")
+    let token = try #require(try l.apply(.categorize("c1", "salary", learnRule: false, project: nil)))
+    #expect(l.state.txn("c1")?.isRefund == false && l.state.txn("c1")?.categoryID == "salary")
+    l.undo(token)
+    #expect(l.state.txn("c1")?.isRefund == true && l.state.txn("c1")?.categoryID == "refunds")
+  }
+
+  @Test func aMarkedRefundMadeATransferStopsBeingARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    try l.apply(.markTransfer("c1"))
+    #expect(l.state.txn("c1")?.isTransfer == true && l.state.txn("c1")?.isRefund == false)
+  }
+
+  @Test func aRefundMatchedToAPurchaseStaysARefundWhenFiledElsewhere() throws {
+    let l = Self.ledger()
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    try l.apply(.categorize("c1", "salary", learnRule: false, project: nil))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.categoryID == "salary" && t.isRefund && t.refundOf == "p1")
+  }
+
+  @Test func aCreditFiledIntoASpendingCategoryIsARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.categorize("c1", "salary", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == false)
+  }
+
   @Test func undoTakesBackTheMatchedPurchase() throws {
     let l = Self.ledger()
     let filed = try #require(try l.apply(.fileRefund("c1", into: "shopping", of: "p1")))
