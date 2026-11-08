@@ -59,4 +59,17 @@ if [[ "$out_a" != "$out_b" ]]; then pass "two checkouts have their own default o
 rmdir "$out_a" "$out_b" 2>/dev/null || true
 
 export HASALA_SCREENS_OUT="$work/shots"
+terminated() { grep -qF "terminate SIM app.hasala.ios" "$work/calls"; }
+screens "$a" SIM --no-build one two three
+if [[ "$rc" == 0 ]] && terminated && [[ "$(wc -l <"$work/out" | tr -d ' ')" == 3 ]]; then pass "every id captured, the app terminated, exit 0"; else bad "a clean run: exit $rc"; fi
+
+STUB_SCREENSHOT_FAILS=two screens "$a" SIM --no-build one two three
+if [[ "$rc" == 1 ]]; then pass "a failed screenshot fails the run (exit 1)"; else bad "a failed screenshot: exit $rc"; fi
+if grep -qF "screenshot $work/shots/three.png" "$work/calls"; then pass "...and the ids after it are still captured"; else bad "the ids after a failed screenshot were lost"; fi
+if terminated; then pass "...and the app is terminated"; else bad "the app was not terminated after a failed screenshot"; fi
+if grep -qF "two" "$work/err"; then pass "...and it names the id"; else bad "the failed id was not named"; fi
+if ! grep -qF "two.png" "$work/out"; then pass "...and does not list a file it did not write"; else bad "the failed screenshot is listed as written"; fi
+
+STUB_LAUNCH_FAILS=two screens "$a" SIM --no-build one two three
+if [[ "$rc" == 1 ]] && terminated && grep -qF "screenshot $work/shots/three.png" "$work/calls"; then pass "a failed launch is counted and skipped the same way"; else bad "a failed launch: exit $rc"; fi
 exit "$fail"

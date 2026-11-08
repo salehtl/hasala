@@ -116,7 +116,11 @@ for id in "${ids[@]}"; do
 		continue
 	fi
 	sleep "$wait"
-	"${xcrun[@]}" simctl io "$udid" screenshot "$out/$name.png" >/dev/null 2>&1
+	if ! "${xcrun[@]}" simctl io "$udid" screenshot "$out/$name.png" >/dev/null 2>&1; then
+		echo "screens.sh: $id was not captured" >&2
+		failed=1
+		continue
+	fi
 	echo "$out/$name.png"
 done
 "${xcrun[@]}" simctl terminate "$udid" app.hasala.ios 2>/dev/null || true
