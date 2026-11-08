@@ -417,16 +417,19 @@ final class BootController {
     switch stop {
     case .wipe:
       // `410 account_deleted`, or a revocation the pinned key history shows: the account was
-      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is read before
-      // the wipe and revoked after it.
+      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is
+      // revoked before the wipe, while its token is still here.
       let binding = try? env.account.secrets.binding()
-      let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: env.account.secrets, userID: $0) }
       await closeRuntime()
-      if let b = binding, let u = b.userID { AccountWipe.wipe(env.account, userID: u, writerID: b.writerID) }
+      if let b = binding, let u = b.userID {
+        let build = env.build
+        await MailboxLane.endGrantThenWipe(env.account, userID: u, writerID: b.writerID) {
+          await MailboxLane.endGrant($0, build: build, stopWatch: false)
+        }
+      }
       try? env.account.secrets.deleteSession()
       LocalAccountData.forget()
       account.forgetAll()
-      MailboxLane.endGrantLater(grant, build: env.build)
       session.signedOut()
     case .needsSignIn, .needsRebind:
       // The session is gone (expired, signed out everywhere): sign in again. The data and

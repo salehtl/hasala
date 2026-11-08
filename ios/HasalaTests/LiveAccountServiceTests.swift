@@ -181,6 +181,66 @@ struct LiveAccountServiceTests {
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
   }
 
+  @Test func aDeletionEndsItsGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let user = try #require(try env.secrets.binding()?.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    a.grantEnds = MailGrantEnds()
+    a.endGrant = { held, _ in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    a.hooks = LiveAccountHooks(left: {})
+    try await a.perform(.deleteAccount, password: Self.password)
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeEndsTheGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aHungEndingStillLetsTheWipeFinish() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let ends = MailGrantEnds()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: ends, within: .milliseconds(50)) { _ in
+      try? await Task.sleep(for: .seconds(1))
+    }
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+    #expect(await ends.settled(within: .seconds(10)))
+  }
+
+  @Test func aWipeWithNoGrantDoesNotWaitOnAnEnding() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    let log = MailGrantEndsTests.Log()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { _ in log.add("ended") }
+    #expect(log.all.isEmpty)
+  }
+
   @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)

@@ -7,6 +7,7 @@ import CoreSoftAuth
 import CoreSync
 import CoreTestSupport
 import Foundation
+import Synchronization
 import Testing
 
 @Suite("Accounts: signup, creation, sign-in, enrolment")
@@ -373,6 +374,53 @@ struct AccountManagementTests {
       client: b.env.client, bearer: token, authorityPublicKey: try #require(PinnedRoster.decode(try ctxB.store.syncState().rosterJSON)?.authorityPublicKey))
     #expect(roster.writers[account.writerID.string]?.final_counter == 1)
     #expect(try storedOps(ctxB).map(\.opID) == [op(1).opID])
+  }
+
+  @Test("delete: the step before the wipe runs once the server agreed, with every item still here")
+  func deleteRunsItsStepBeforeTheWipe() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let keychain = a.keychain
+    let seen = Mutex<Int?>(nil)
+    try await AccountManagement.deleteAccount(
+      a.env, ctx: ctx, factor: .device(password: password), binding: try #require(a.binding),
+      beforeWipe: { seen.withLock { $0 = keychain.count } })
+    #expect(try #require(seen.withLock { $0 }) > 0)
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: a refused deletion never reaches the step before the wipe")
+  func aRefusedDeleteDoesNotRunItsStep() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let seen = Mutex(false)
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(
+        a.env, ctx: ctx, factor: .device(password: "not the password at all 7"), binding: try #require(a.binding),
+        beforeWipe: { seen.withLock { $0 = true } })
+    }
+    #expect(!seen.withLock { $0 })
+    #expect(a.keychain.count > 0)
+  }
+
+  @Test("remove: the step before the wipe runs once the server agreed, with every item still here")
+  func removeRunsItsStepBeforeTheWipe() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, ctxA) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let r = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+    _ = try await Enrolment.enrolWriter(b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    let keychain = a.keychain
+    let seen = Mutex<Int?>(nil)
+    try await AccountManagement.removeThisIPhone(
+      a.env, engine: SyncEngine(context: ctxA), factor: .device(password: password), binding: try #require(a.binding),
+      beforeWipe: { seen.withLock { $0 = keychain.count } })
+    #expect(try #require(seen.withLock { $0 }) > 0)
+    #expect(a.keychain.count == 0)
   }
 
   @Test("delete: step-up account.delete plus the DWK's DeletionMessage; afterwards 410 wipes other iPhones")

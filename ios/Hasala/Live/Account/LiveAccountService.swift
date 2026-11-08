@@ -613,14 +613,15 @@ final class LiveAccountService: AccountService {
         let grant = MailboxLane.heldGrant(secrets: env.secrets, userID: ctx.userID)
         await hooks.pause()
         do {
-          try await AccountManagement.deleteAccount(env, ctx: ctx, factor: factor, binding: b)
+          try await AccountManagement.deleteAccount(
+            env, ctx: ctx, factor: factor, binding: b, beforeWipe: grantEnding(grant, stopWatch: true))
         } catch {
           await hooks.resume()
           throw error
         }
         // The server dropped the push token with the account.
         PushRegistrar.shared.forget()
-        await leftThisIPhone(grant: grant, stopWatch: true)
+        leftThisIPhone()
         await left()
       case .removeDevice(let id) where id == b.writer_id:
         // "Remove this iPhone" (§4.7 row 2): the server stops waking it (#33), then the
@@ -631,13 +632,14 @@ final class LiveAccountService: AccountService {
         await hooks.pause()
         await PushRegistrar.shared.unregister()
         do {
-          try await AccountManagement.removeThisIPhone(env, engine: engine, factor: factor, binding: b)
+          try await AccountManagement.removeThisIPhone(
+            env, engine: engine, factor: factor, binding: b, beforeWipe: grantEnding(grant, stopWatch: false))
         } catch {
           PushRegistrar.shared.register(env: env, userID: b.user_id)
           await hooks.resume()
           throw error
         }
-        await leftThisIPhone(grant: grant, stopWatch: false)
+        leftThisIPhone()
         await left()
       case .signOutEverywhere:
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
@@ -769,18 +771,21 @@ final class LiveAccountService: AccountService {
     methodConfirmed = false
   }
 
-  /// The account's data left this iPhone (deleted, removed): the session item, what the
-  /// iPhone noted about the account, and this iPhone's Google grant (`users.stop` only when
-  /// the account itself is gone). The grant's ending acts on the Google account, which the
-  /// next account here may link again, so it is waited for (bounded) before this iPhone
-  /// shows Welcome: it reaches Google before any new link can be made.
-  private func leftThisIPhone(grant: HeldMailGrants?, stopWatch: Bool) async {
+  /// The account's data left this iPhone (deleted, removed): the session item and what the
+  /// iPhone noted about the account.
+  private func leftThisIPhone() {
     try? env.secrets.deleteSession()
     LocalAccountData.forget(facts: bankTextFacts, marker: bankTextMarker)
     clearSignedIn()
-    guard let grant, let endGrant else { return }
-    grantEnds.enqueue { await endGrant(grant, stopWatch) }
-    await grantEnds.settled(within: MailGrantEnds.departureWait)
+  }
+
+  private func grantEnding(_ grant: HeldMailGrants?, stopWatch: Bool) -> @Sendable () async -> Void {
+    let ends = grantEnds
+    let endGrant = endGrant
+    return {
+      guard let grant, let endGrant else { return }
+      await ends.end { await endGrant(grant, stopWatch) }
+    }
   }
 
   /// Forgets everything held in memory for the account (the gate erased this iPhone's data).

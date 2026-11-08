@@ -22,7 +22,8 @@ public enum AccountManagement {
   /// it, so it never overlaps another run's flush (a second, concurrent
   /// flush could seal the same pending op twice).
   public static func removeThisIPhone(
-    _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding
+    _ env: AccountEnvironment, engine: SyncEngine, factor: StepUpHelper.Factor, binding: AccountBinding,
+    beforeWipe: @Sendable () async -> Void = {}
   ) async throws(CeremonyError) {
     let ctx = engine.context
     for attempt in 0..<2 {
@@ -49,6 +50,7 @@ public enum AccountManagement {
             final_counter: String(head.counter), final_head: Base64.encode(head.hash.bytes), sig: Base64.encode(sig),
             step_up: proof.stepUp),
           bearer: bearer)
+        await beforeWipe()
         AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
         return
       } catch {
@@ -59,7 +61,8 @@ public enum AccountManagement {
   }
 
   public static func deleteAccount(
-    _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding
+    _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding,
+    beforeWipe: @Sendable () async -> Void = {}
   ) async throws(CeremonyError) {
     let proof = try await StepUpHelper.prove(
       env, params: .accountDelete(ctx.userID), factor: factor, binding: binding,
@@ -76,6 +79,7 @@ public enum AccountManagement {
         DeleteAccountRequest(step_up: proof.stepUp, writer_id: ctx.writerID.string, sig: Base64.encode(sig)),
         bearer: bearer)
     }
+    await beforeWipe()
     AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
   }
 
