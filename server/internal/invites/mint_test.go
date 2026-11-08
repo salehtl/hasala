@@ -359,3 +359,32 @@ func TestAStaleEmailDoesNotReplaceANewerDeliveredCode(t *testing.T) {
 		t.Fatalf("the newest code: %v", err)
 	}
 }
+
+func TestAReplacedInviteEmailIsLoggedAsClosedNotAsARefusal(t *testing.T) {
+	const addr = "replaced-log@example.com"
+	pool, q, fake, _, invite, _, _ := resendFixture(t, addr)
+	fake.Err = errors.New("provider timeout")
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	fake.Err = nil
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	var text string
+	if err := pool.QueryRow(bg, `SELECT error FROM mail_log WHERE invite_id = $1 AND status = 'failed'`, invite).Scan(&text); err != nil {
+		t.Fatal(err)
+	}
+	if text != ErrStale.Error() {
+		t.Fatalf("logged %q", text)
+	}
+}

@@ -396,7 +396,7 @@ func readEntry(ctx context.Context, tx pgx.Tx, id uuid.UUID) (entryView, error) 
 }
 
 // ErrStale is a queued email whose subject changed state before it was sent.
-var ErrStale = errors.New("waitlist: the entry no longer needs this email")
+var ErrStale error = mailq.Stale("waitlist: the entry no longer needs this email")
 
 func toMessage(row mailq.Row, r mailq.Rendered) mail.Message {
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}

@@ -165,6 +165,12 @@ var ErrNoRenderer = errors.New("mailq: no renderer for this kind")
 
 var errRenderRetry = errors.New("mailq: render failed; retrying")
 
+type Stale string
+
+func (s Stale) Error() string { return string(s) }
+
+func (Stale) Is(target error) bool { return target == mail.ErrPermanent }
+
 func transientRender(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || pgconn.Timeout(err) || pgconn.SafeToRetry(err) {
@@ -569,7 +575,10 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil {
 		slog.Warn("mailq: render failed", "mail_kind", row.Kind, "mail_attempt", row.Attempts, "err", err.Error())
 		failure := fmt.Errorf("%w: render", mail.ErrPermanent)
-		if transientRender(err) {
+		var stale Stale
+		if errors.As(err, &stale) {
+			failure = stale
+		} else if transientRender(err) {
 			failure = errRenderRetry
 		}
 		q.finalize(ctx, &row, lease, "", failure, false)

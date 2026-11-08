@@ -328,3 +328,30 @@ func TestALeaseRescueHonoursTheRetryWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestAStaleEmailSaysSoInTheLog(t *testing.T) {
+	const reason = "the subject no longer needs this email"
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	q.Register("test", RenderFunc(func(context.Context, pgx.Tx, Row) (mail.Message, error) {
+		return mail.Message{}, fmt.Errorf("wrapped: %w", Stale(reason))
+	}))
+	q.Register("alert", RenderFunc(func(context.Context, pgx.Tx, Row) (mail.Message, error) {
+		return mail.Message{}, errors.New("a private detail of the render")
+	}))
+	stale := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com"})
+	broken := enqueue(t, pool, q, Enqueue{Kind: "alert", To: "b@example.com", Params: map[string]any{"event_at": "x"}})
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if st, att, _, e := row(t, pool, stale); st != "failed" || att != 1 || e == nil || *e != reason {
+		t.Fatalf("stale row %s, attempt %d, error %v", st, att, e)
+	}
+	if st, _, _, e := row(t, pool, broken); st != "failed" || e == nil || *e != "mail: refused permanently: render" {
+		t.Fatalf("broken row %s, error %v", st, e)
+	}
+	if len(fake.Sent()) != 0 {
+		t.Fatalf("sent %d", len(fake.Sent()))
+	}
+}

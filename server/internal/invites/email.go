@@ -113,7 +113,7 @@ var ErrAddressGone = errors.New("invites: the invite's email address is no longe
 
 // ErrStale is a queued invite email whose invite is no longer sendable, or
 // that a newer email for the invite has replaced.
-var ErrStale = errors.New("invites: the invite is closed")
+var ErrStale error = mailq.Stale("invites: the invite is closed")
 
 // Render mints the code and link key, stores their hashes, and renders the
 // email. A resend (an active invite) re-mints: the earlier code dies.
