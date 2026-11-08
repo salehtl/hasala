@@ -246,6 +246,32 @@ struct AccountGatePhaseTests: AccountSuite {
     #expect(s.leftFrozen == nil)
   }
 
+  @Test func theWallFromTheBannerAfterSetupFinishedGoesBackToTheApp() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.leaveFrozen()
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.showFrozenWall()
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func aLaterFreezeAfterSetupFinishedGoesBackToTheApp() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.unfroze()
+    #expect(s.phase == .onboarding)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.froze(FreezeInfo(by: .holder, when: "just now", inApp: true))
+    s.unfroze()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == nil)
+  }
+
   @Test func aFreezeFromTheAppStillOpensTheApp() {
     let s = session(.ready)
     s.froze(holder)

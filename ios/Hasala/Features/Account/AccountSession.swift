@@ -106,7 +106,9 @@ final class AccountSession {
 
   func setupFinished() {
     switch phase {
-    case .onboarding: phase = .ready
+    case .onboarding:
+      setupBehindWall = false
+      phase = .ready
     case .frozen: setupBehindWall = false
     default: break
     }
