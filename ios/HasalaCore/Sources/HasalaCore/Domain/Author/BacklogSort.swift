@@ -29,17 +29,24 @@ public enum BacklogSort {
     public var asked: Set<String> = []
     public var answers: [String: Answer] = [:]
     public var tries: [String: Int] = [:]
+    public var taxonomy: String?
 
     public init() {}
 
     public func keeping(_ allowed: [AllowedCategory]) -> Memo {
       let ids = Set(allowed.map(\.id))
+      let hash = ModelTier.taxonomyHash(allowed)
       var m = self
       for (s, a) in answers where !ids.contains(a.category) {
         m.answers[s] = nil
         m.asked.remove(s)
         m.tries[s] = nil
       }
+      if let taxonomy, taxonomy != hash {
+        m.asked.formIntersection(m.answers.keys)
+        m.tries = [:]
+      }
+      m.taxonomy = hash
       return m
     }
   }

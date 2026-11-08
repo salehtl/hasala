@@ -182,6 +182,38 @@ struct BacklogSortTests {
     #expect(p.calls == 1 && p.memo.tries == ["slow shop": 1] && p.pending == 1)
   }
 
+  @Test("a changed category list reopens the names left unknown or given up; an unchanged list and a kept answer do not")
+  func changedListReopens() async throws {
+    var l = T.Ledger()
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit"), ("SLOW SHOP", "debit")])
+    let cloud = BacklogCloud(["sure shop": (.category("groceries"), true), "slow shop": (.failed(.timeout), false)])
+    let cache = MemoryCache()
+    var memo = BacklogSort.Memo()
+    for _ in 1...BacklogSort.maxTries { memo = try await Self.pass(l, cloud, memo: memo, cache: cache).memo }
+    #expect(memo.asked == ["sure shop", "mystery place 77", "slow shop"] && memo.tries["slow shop"] == BacklogSort.maxTries)
+    let asked = cloud.calls.count
+    let same = try await Self.pass(l, cloud, memo: memo, cache: cache)
+    #expect(same.calls == 0 && same.pending == 0 && cloud.calls.count == asked)
+
+    let fewer = T.allowed.filter { $0.id != "dining" }
+    let waiting = try BacklogSort.counts(
+      rows: l.rows(), categorizer: T.categorizer, allowed: fewer, modelTag: "cf-clef/1", cache: cache, now: now, memo: memo)
+    #expect(waiting.waitingNames == 2 && waiting.pendingTxnIDs == [ids[1], ids[2]])
+    let after = BacklogCloud(["mystery place 77": (.category("shopping"), false)])
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: fewer, cloud: after, memo: memo, cache: cache, now: { now }, autoFile: true)
+    #expect(after.calls.sorted() == ["mystery place 77", "slow shop"] && p.calls == 2 && p.pending == 0)
+    #expect(p.memo.tries.isEmpty && p.memo.answers["sure shop"]?.category == "groceries")
+    #expect(p.memo.answers["mystery place 77"]?.category == "shopping" && p.memo.asked.contains("slow shop"))
+    let unchanged = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: fewer, cloud: after, memo: p.memo, cache: cache, now: { now }, autoFile: true)
+    #expect(unchanged.calls == 0 && after.calls.count == 2)
+
+    let back = BacklogCloud()
+    let restored = try await Self.pass(l, back, memo: p.memo, cache: cache)
+    #expect(back.calls == ["slow shop"] && restored.calls == 1)
+  }
+
   @Test("a context-overflow retry is a request: it counts toward the pass and the device budget")
   func overflowRetry() async throws {
     final class OverflowsOnce: GradedCategoryModel, Sendable {
