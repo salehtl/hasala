@@ -11,9 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// LosingCommitAnswers returns a pool on p's database and a function that arms
-// it: the next COMMIT sent through the pool reaches the server, and its answer
-// never reaches the caller.
 func LosingCommitAnswers(t *testing.T, p *pgxpool.Pool) (*pgxpool.Pool, func()) {
 	t.Helper()
 	armed := &atomic.Bool{}
