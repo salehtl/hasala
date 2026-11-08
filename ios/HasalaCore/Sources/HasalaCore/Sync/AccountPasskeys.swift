@@ -27,7 +27,11 @@ public enum AccountPasskeys {
     do { options = try begin.options.decoded() } catch { throw .badResponse("add options") }
     var opened: KeyBody?
     if body == nil, let credentialID = proof.credentialID, proof.prf != nil {
-      opened = try? await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
+      do {
+        opened = try await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
+      } catch {
+        if case .integrityAlarm = error { throw error }
+      }
     }
     defer { opened?.wipe() }
     let reg: RawRegistration

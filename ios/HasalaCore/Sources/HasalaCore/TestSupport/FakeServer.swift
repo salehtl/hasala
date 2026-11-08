@@ -214,6 +214,16 @@ public final class FakeServer: Transport, @unchecked Sendable {
     }
   }
 
+  public func misreportCommitment(user: UserID) {
+    state.withLock { s in
+      guard let k = s.users[user]?.keys else { return }
+      s.users[user]?.keys = KeysResponse(
+        format_version: k.format_version, amk_commitment: Base64.encode(Data(repeating: 7, count: 32)),
+        authority_pubkey: k.authority_pubkey, recovery_pubkey: k.recovery_pubkey, recovery_wrap: k.recovery_wrap,
+        current_epoch: k.current_epoch)
+    }
+  }
+
   public func publishEpoch(user: UserID, _ epoch: Int) {
     state.withLock { s in
       guard let k = s.users[user]?.keys else { return }
