@@ -206,6 +206,21 @@ struct AccountTests {
     #expect(await AccountSignIn.signOut(a.env) == true)
     #expect(try a.env.secrets.session() == nil)
   }
+
+  @Test("sign-out reports no confirmation for a session it could not read, and keeps what it could not act on")
+  func signOutUnreadable() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    a.keychain.locked = true
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    a.keychain.locked = false
+    #expect(try a.env.secrets.session()?.pending_logout == false)
+    try a.keychain.write(.session(apiHost: "api.hasala.app"), Data("not a session".utf8))
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    try a.env.secrets.deleteSession()
+    #expect(await AccountSignIn.signOut(a.env) == true)
+  }
 }
 
 @Suite("Step-up helper")

@@ -89,7 +89,7 @@ final class AppEnvironment {
     let session = try? secrets.session()
     let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: secrets, userID: $0) }
     let confirmed = await AccountSignIn.signOut(account)
-    let pending = confirmed ? nil : (try? secrets.session())
+    let pending = confirmed ? nil : (try? secrets.session()).flatMap { $0.pending_logout ? $0 : nil }
     if let b = binding, let u = b.userID { AccountWipe.wipe(account, userID: u, writerID: b.writerID) }
     if let s = session, let u = UserID(s.user_id) { AccountWipe.wipe(account, userID: u, writerID: nil) }
     if let dir = account.accountsDirectory,

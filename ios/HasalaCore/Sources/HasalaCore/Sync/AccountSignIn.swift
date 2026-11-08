@@ -133,7 +133,9 @@ public enum AccountSignIn {
   /// Returns whether the server confirmed (`204` or `401`).
   @discardableResult
   public static func signOut(_ env: AccountEnvironment) async -> Bool {
-    guard let s = try? env.secrets.session() else { return true }
+    let held: SessionRecord?
+    do { held = try env.secrets.session() } catch { return false }
+    guard let s = held else { return true }
     do {
       try await env.client.logout(bearer: s.token)
     } catch {
