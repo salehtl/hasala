@@ -292,6 +292,9 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 			  WHERE id = $1`, e); err != nil {
 			return fmt.Errorf("waitlist: join: %w", err)
 		}
+		if _, err := tx.Exec(ctx, `DELETE FROM waitlist_tokens WHERE entry_id = $1 AND purpose = 'confirm'`, e); err != nil {
+			return fmt.Errorf("waitlist: join: drop the entry's confirm links: %w", err)
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE invite_codes SET state = 'revoked', closed_at = now()
 			  WHERE waitlist_entry_id = $1 AND id <> $2 AND state IN ('awaiting_testflight','queued','active')`,
