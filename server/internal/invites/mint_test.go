@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -386,5 +387,114 @@ func TestAReplacedInviteEmailIsLoggedAsClosedNotAsARefusal(t *testing.T) {
 	}
 	if text != ErrStale.Error() {
 		t.Fatalf("logged %q", text)
+	}
+}
+
+func mailStatuses(t *testing.T, pool *pgxpool.Pool, invite uuid.UUID) []string {
+	t.Helper()
+	rows, err := pool.Query(bg, `SELECT status FROM mail_log WHERE invite_id = $1 ORDER BY id`, invite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func assertStatuses(t *testing.T, pool *pgxpool.Pool, invite uuid.UUID, want ...string) {
+	t.Helper()
+	if got := mailStatuses(t, pool, invite); !slices.Equal(got, want) {
+		t.Fatalf("mail rows %v, want %v", got, want)
+	}
+}
+
+func TestAResendThatFailsBeforeAnOlderRetryEndsLeavesTheDeliveredCodeWorking(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"bounced", mail.ErrBounced, "bounced"},
+		{"failed for good", mail.ErrPermanent, "failed"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			const addr = "older-retry@example.com"
+			pool, q, fake, entry, invite, key, code := resendFixture(t, addr)
+			fake.Err = errors.New("provider timeout")
+			resend(t, pool, q, invite)
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			fake.Err = c.err
+			resend(t, pool, q, invite)
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			assertStatuses(t, pool, invite, "sent", "queued", c.want)
+			fake.Err = nil
+			if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+				invite); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			assertStatuses(t, pool, invite, "sent", "failed", c.want)
+			if len(fake.Sent()) != 1 {
+				t.Fatalf("sent %d", len(fake.Sent()))
+			}
+			if s := inviteState(t, pool, invite); s != "active" {
+				t.Fatalf("invite %s, want active", s)
+			}
+			assertEntryInvited(t, pool, entry, addr)
+			r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+			if err != nil || r.InviteID != invite || !r.Proven {
+				t.Fatalf("the delivered code: %+v %v", r, err)
+			}
+		})
+	}
+}
+
+func TestAResendThatEndsWithoutMintingRestoresPastTheCodeOfAnEarlierFailedResend(t *testing.T) {
+	const addr = "unminted@example.com"
+	pool, q, fake, _, invite, key, code := resendFixture(t, addr)
+	fake.Err = errors.New("provider timeout")
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	fake.Err = nil
+	var minted int64
+	if err := pool.QueryRow(bg, `SELECT id FROM mail_log WHERE invite_id = $1 AND status = 'queued'`, invite).Scan(&minted); err != nil {
+		t.Fatal(err)
+	}
+	resend(t, pool, q, invite)
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() + interval '1 hour' WHERE invite_id = $1 AND id > $2`,
+		invite, minted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET attempts = 10, next_attempt_at = now() WHERE id = $1`, minted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertStatuses(t, pool, invite, "sent", "failed", "queued")
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET attempts = 10, next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertStatuses(t, pool, invite, "sent", "failed", "failed")
+	if len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d", len(fake.Sent()))
+	}
+	r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+	if err != nil || r.InviteID != invite || !r.Proven {
+		t.Fatalf("the delivered code: %+v %v", r, err)
 	}
 }

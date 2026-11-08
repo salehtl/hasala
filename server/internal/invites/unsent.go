@@ -22,7 +22,7 @@ func MailUnsent(minter Minter, record func(purgeledger.Entry)) func(context.Cont
 		if row.Kind != "invite" || row.InviteID == nil {
 			return nil, nil
 		}
-		if err := restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID, row.ID); err != nil {
+		if err := restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID); err != nil {
 			return nil, err
 		}
 		_, gone, err := closeUnsentTx(ctx, tx, *row.InviteID, []string{"queued", "active"})
@@ -33,7 +33,7 @@ func MailUnsent(minter Minter, record func(purgeledger.Entry)) func(context.Cont
 	}
 }
 
-func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uuid.UUID, unsentMail int64) error {
+func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uuid.UUID) error {
 	if minter == nil {
 		return nil
 	}
@@ -58,12 +58,9 @@ func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uu
 		return nil
 	}
 	r := Renderer{Minter: minter}
-	unsent, _, _, err := r.secrets(id, unsentMail)
-	if err != nil {
+	undelivered, err := currentCodeIsUndeliveredTx(ctx, tx, r, id, *delivered, current)
+	if err != nil || !undelivered {
 		return err
-	}
-	if !bytes.Equal(current, CodeHash(unsent)) {
-		return nil
 	}
 	code, _, linkHash, err := r.secrets(id, *delivered)
 	if err != nil {
@@ -74,6 +71,27 @@ func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uu
 		return fmt.Errorf("invites: restore a delivered code: %w", err)
 	}
 	return nil
+}
+
+func currentCodeIsUndeliveredTx(ctx context.Context, tx pgx.Tx, r Renderer, id uuid.UUID, delivered int64, current []byte) (bool, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM mail_log WHERE invite_id = $1 AND id > $2`, id, delivered)
+	if err != nil {
+		return false, fmt.Errorf("invites: read a resent invite's newer mail: %w", err)
+	}
+	newer, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return false, fmt.Errorf("invites: read a resent invite's newer mail: %w", err)
+	}
+	for _, mailID := range newer {
+		code, _, _, err := r.secrets(id, mailID)
+		if err != nil {
+			return false, err
+		}
+		if bytes.Equal(current, CodeHash(code)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func recordUnsent(record func(purgeledger.Entry), entry uuid.UUID) {
