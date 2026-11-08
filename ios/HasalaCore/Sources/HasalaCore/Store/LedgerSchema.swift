@@ -220,6 +220,20 @@ enum LedgerSchema {
     "CREATE TABLE mailbox_message_strike (message_id TEXT PRIMARY KEY, count INTEGER NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID"
   ]
 
+  static let mailboxRetirePlan: [String] = [
+    """
+    CREATE TABLE mailbox_retire_plan (
+      grant_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      legacy INTEGER NOT NULL,
+      total INTEGER NOT NULL,
+      edited INTEGER NOT NULL,
+      count_known INTEGER NOT NULL,
+      PRIMARY KEY (grant_id, provider)
+    ) WITHOUT ROWID
+    """
+  ]
+
   static var migrator: DatabaseMigrator {
     var m = DatabaseMigrator()
     m.registerMigration("v1") { db in
@@ -263,6 +277,9 @@ enum LedgerSchema {
     }
     m.registerMigration("mailbox_message_strike") { db in
       for sql in mailboxMessageStrike { try db.execute(sql: sql) }
+    }
+    m.registerMigration("mailbox_retire_plan") { db in
+      for sql in mailboxRetirePlan { try db.execute(sql: sql) }
     }
     return m
   }

@@ -56,6 +56,31 @@ import Testing
     #expect(try t.strikes(messageID: "m4") == 0)
   }
 
+  @Test func aRetirePlanOutlivesClearingTheLaneUntilItIsEnded() throws {
+    let t = try MailboxTableStore.inMemory()
+    let plan = MailboxRetirePlanRow(grantID: "g/mbx-1", provider: "gmail", legacy: true, total: 7, edited: 2, countKnown: false)
+    var begin = MailboxWrite()
+    begin.clearAll = true
+    begin.beginRetire = plan
+    try t.commit(begin)
+    #expect(try t.pendingRetires() == [plan])
+
+    var clear = MailboxWrite()
+    clear.clearAll = true
+    try t.commit(clear)
+    #expect(try t.pendingRetires() == [plan])
+
+    var other = MailboxWrite()
+    other.endRetire = ("g/mbx-1", "outlook")
+    try t.commit(other)
+    #expect(try t.pendingRetires() == [plan])
+
+    var end = MailboxWrite()
+    end.endRetire = ("g/mbx-1", "gmail")
+    try t.commit(end)
+    #expect(try t.pendingRetires().isEmpty)
+  }
+
   @Test func outcomeOutsideTheCheckIsRefused() throws {
     let t = try MailboxTableStore.inMemory()
     var w = MailboxWrite()

@@ -30,6 +30,7 @@ actor UnreadableStateStore: MailboxPersistence {
   func markParsing(_ messageID: String) async throws(MailboxPersistenceError) { try await base.markParsing(messageID) }
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { try await base.clearParsing(messageID) }
   func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int { try await base.strikes(messageID: messageID) }
+  func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { try await base.pendingRetires() }
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport] { try await base.pendingImports() }
   func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String] { try await base.unparsedSenders() }
   func loadReader() async throws(MailboxPersistenceError) -> MailReaderState? { try await base.loadReader() }

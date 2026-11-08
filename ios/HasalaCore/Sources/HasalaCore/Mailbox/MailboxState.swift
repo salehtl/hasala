@@ -158,6 +158,8 @@ public struct MailboxCommit: Sendable {
   public var doneImports: [String] = []
   public var unparsedSenders: [UnparsedSenderRecord] = []
   public var strikes: [MessageStrike] = []
+  public var beginRetire: MailboxRetirePlan?
+  public var endRetire: MailboxRetirePlan?
   public var reader: MailReaderState?
   /// Replaces the state row when set.
   public var state: MailboxState?
@@ -169,7 +171,7 @@ public struct MailboxCommit: Sendable {
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
       && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
-      && unparsedSenders.isEmpty && strikes.isEmpty && reader == nil && state == nil && !clearAll && !clearReader
+      && unparsedSenders.isEmpty && strikes.isEmpty && beginRetire == nil && endRetire == nil && reader == nil && state == nil && !clearAll && !clearReader
   }
 }
 
@@ -196,6 +198,7 @@ public protocol MailboxPersistence: Sendable {
   func markParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func clearParsing(_ messageID: String) async throws(MailboxPersistenceError)
   func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int
+  func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan]
   func pendingImports() async throws(MailboxPersistenceError) -> [PendingImport]
   func unparsedSenders() async throws(MailboxPersistenceError) -> [String: String]
   func loadReader() async throws(MailboxPersistenceError) -> MailReaderState?
@@ -222,6 +225,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public private(set) var addresses: [String] = []
   public private(set) var parsing: Set<String> = []
   public private(set) var messageStrikes: [String: MessageStrike] = [:]
+  public private(set) var retires: [MailboxRetirePlan] = []
   public private(set) var imports: [String: Int64] = [:]
   public private(set) var senders: [String: UnparsedSenderRecord] = [:]
   public static let unparsedSenderRing = 1_000
@@ -248,6 +252,8 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func clearParsing(_ messageID: String) async throws(MailboxPersistenceError) { parsing.remove(messageID) }
 
   public func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int { messageStrikes[messageID]?.count ?? 0 }
+
+  public func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] { retires }
 
   public func loadState() async throws(MailboxPersistenceError) -> MailboxState { state }
 
@@ -287,6 +293,11 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       reader = nil
     }
     if c.clearReader { reader = nil }
+    if let e = c.endRetire { retires.removeAll { $0.grantID == e.grantID && $0.provider == e.provider } }
+    if let b = c.beginRetire {
+      retires.removeAll { $0.grantID == b.grantID && $0.provider == b.provider }
+      retires.append(b)
+    }
     enqueued.append(contentsOf: c.drafts)
     for a in c.accounted {
       accountedRows[a.messageID] = a

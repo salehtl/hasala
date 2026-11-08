@@ -88,7 +88,10 @@ actor FakeLedger: MailboxLedger {
   }
   var retireFails = false
   func setRetireFails(_ v: Bool) { retireFails = v }
+  var retireGate: (@Sendable () async -> Void)?
+  func setRetireGate(_ g: (@Sendable () async -> Void)?) { retireGate = g }
   func authorRetire(_ plan: MailboxRetirePlan) async throws(MailboxLedgerError) {
+    if let retireGate { await retireGate() }
     if retireFails { throw MailboxLedgerError("enqueue") }
     retired.append(plan)
   }
