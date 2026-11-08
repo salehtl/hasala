@@ -67,12 +67,23 @@ enum Puller {
     _ ctx: SyncContext, observer: (any PageObserver)?, plaintextBudget: Int = PageReader.maxPagePlaintext
   ) async throws(SyncStop) -> PullSummary {
     do {
+      let before = try ctx.storeCall { () throws(StoreError) in try ctx.store.syncState() }
       let summary = try await pages(ctx, observer: observer, plaintextBudget: plaintextBudget)
+      recordChainsShortOfFinal(PinnedRoster.decode(before.rosterJSON), ctx: ctx)
       await observer?.pullEnded()
       return summary
     } catch {
       await observer?.pullEnded()
       throw error
+    }
+  }
+
+  static func recordChainsShortOfFinal(_ roster: PinnedRoster?, ctx: SyncContext) {
+    guard let roster, let heads = try? ctx.store.chainHeads() else { return }
+    let now = ctx.clock.nowMs()
+    for (writer, final) in roster.shortOfFinal(heads: heads) {
+      try? ctx.store.recordFoldEventOnce(
+        kind: "integrity_alarm", detail: "short_of_final_\(writer.string)_\(final.counter)", at: now)
     }
   }
 

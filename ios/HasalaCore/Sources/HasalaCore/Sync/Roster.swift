@@ -66,6 +66,15 @@ public struct PinnedRoster: Codable, Sendable, Hashable {
     writers.compactMap { $0.value.isLive ? WriterID($0.key) : nil }
   }
 
+  public func shortOfFinal(heads: [WriterID: Chain.Head]) -> [(writer: WriterID, final: Chain.Head)] {
+    writers.compactMap { id, w in
+      guard let writer = WriterID(id), let final = w.final, (heads[writer] ?? .genesis).counter < final.counter else {
+        return nil
+      }
+      return (writer, final)
+    }
+  }
+
   public func encoded() -> Data {
     let e = JSONEncoder()
     e.outputFormatting = [.sortedKeys]

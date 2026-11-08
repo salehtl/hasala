@@ -521,6 +521,18 @@ public final class LedgerStore: Sendable {
     }
   }
 
+  public func recordFoldEventOnce(kind: String, detail: String, at: Int64) throws(StoreError) {
+    try write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO fold_events (at, kind, detail)
+          SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM fold_events WHERE kind = ? AND detail = ?)
+          """,
+        arguments: [at, kind, detail, kind, detail])
+      try Self.pruneFoldEvents(db)
+    }
+  }
+
   /// `fold_events` keeps its newest 64 entries.
   static func pruneFoldEvents(_ db: Database) throws {
     try db.execute(

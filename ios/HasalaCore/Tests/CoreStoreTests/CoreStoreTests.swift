@@ -154,6 +154,28 @@ struct LedgerStoreTests {
     #expect(ev.count == 64 && ev.last?.detail == "69")
   }
 
+  @Test("a once-only fold event is one row, however often it is recorded, and leaves the rest of the ring")
+  func foldEventOnce() throws {
+    let s = try created()
+    try s.recordFoldEvent(kind: "k", detail: "earlier", at: 1)
+    for i in 0..<100 { try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: Int64(i)) }
+    #expect(try s.foldEvents().map(\.detail) == ["earlier", "a"])
+    try s.recordFoldEventOnce(kind: "alarm", detail: "b", at: 2)
+    try s.recordFoldEventOnce(kind: "other", detail: "a", at: 3)
+    #expect(try s.foldEvents().map { "\($0.kind):\($0.detail)" } == ["k:earlier", "alarm:a", "alarm:b", "other:a"])
+  }
+
+  @Test("once the ring has dropped a once-only fold event it is recorded again, and the ring stays at 64")
+  func foldEventOnceAfterTheRingMoved() throws {
+    let s = try created()
+    try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: 0)
+    for i in 0..<64 { try s.recordFoldEvent(kind: "k", detail: "\(i)", at: Int64(i)) }
+    #expect(try !s.foldEvents().contains { $0.kind == "alarm" })
+    try s.recordFoldEventOnce(kind: "alarm", detail: "a", at: 65)
+    let ev = try s.foldEvents()
+    #expect(ev.count == 64 && ev.last?.kind == "alarm")
+  }
+
   @Test("open(directory:) protects and excludes the directory and the database files")
   func files() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-store-\(ProcessInfo.processInfo.globallyUniqueString)")

@@ -51,6 +51,30 @@ struct PinnedRosterLivenessTests {
     #expect(r.forReader()[Self.key] == nil)
   }
 
+  @Test(
+    "a chain is short only while its head is below a readable pin",
+    arguments: [
+      (Int64?.none, Int64?.none, false),
+      (Int64?.some(3), Int64?.none, true),
+      (Int64?.some(3), Int64?.some(2), true),
+      (Int64?.some(3), Int64?.some(3), false),
+      (Int64?.some(3), Int64?.some(4), false),
+      (Int64?.some(0), Int64?.none, false),
+    ] as [(Int64?, Int64?, Bool)])
+  func short(pin: Int64?, head: Int64?, want: Bool) throws {
+    let r = try roster(counter: pin, head: pin == nil ? nil : Self.head.base64EncodedString())
+    let heads = head.map { [Self.key: Chain.Head(counter: $0, hash: Hash32(Self.head)!)] } ?? [:]
+    let got = r.shortOfFinal(heads: heads)
+    #expect(got.map(\.writer) == (want ? [Self.key] : []))
+    #expect(got.map(\.final.counter) == (want ? [pin!] : []))
+  }
+
+  @Test("a pin that does not read is never short")
+  func brokenPinIsNotShort() throws {
+    #expect(try roster(counter: 3, head: nil).shortOfFinal(heads: [:]).isEmpty)
+    #expect(try roster(counter: 3, head: "not a head").shortOfFinal(heads: [:]).isEmpty)
+  }
+
   @Test("the pin of a half-revoked writer still cannot be dropped by a later roster")
   func extendsKeepsThePin() throws {
     let pinned = try roster(counter: 3, head: nil)
