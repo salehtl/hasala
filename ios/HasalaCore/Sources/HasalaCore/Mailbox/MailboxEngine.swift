@@ -1000,8 +1000,10 @@ public actor MailboxEngine {
 
   func rewindCheckpointAheadOfClock(_ state: inout MailboxState, now: Int64) {
     guard let watermark = state.watermarkMs, watermark > now else { return }
-    if let from = state.readFromMs, from > now { state.readFromMs = max(0, from - (watermark - now)) }
-    state.watermarkMs = max(0, now - Int64(state.backfillDays ?? 90) * 86_400_000)
+    let window = Int64(state.backfillDays ?? 90) * 86_400_000
+    let rewound = max(now - window, windowSinceSec(state) * 1000 + BankDomains.overlapMs)
+    guard rewound < watermark else { return }
+    state.watermarkMs = rewound
     state.profileHistoryID = nil
   }
 
