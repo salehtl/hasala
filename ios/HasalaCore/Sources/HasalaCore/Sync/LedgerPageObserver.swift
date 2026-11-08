@@ -260,7 +260,6 @@ public actor LedgerPageObserver: PageObserver {
 
   public func pullEnded() async {
     guard dirty, let s = state else { return }
-    dirty = false
     try? project(s)
   }
 
@@ -340,6 +339,7 @@ public actor LedgerPageObserver: PageObserver {
       try projection.project(
         s, pending: pending, writerID: context.writerID.string, dictionary: dictionary, projectedAtMs: context.clock.nowMs())
       projectionFailure = nil
+      dirty = false
     } catch {
       projectionFailure = String(describing: type(of: error))
       try? context.store.recordFoldEvent(kind: "projection_failed", detail: projectionFailure ?? "", at: context.clock.nowMs())
