@@ -18,6 +18,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 // EmailChangeTTL is an email-change ceremony's lifetime.
@@ -207,6 +208,9 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 		if uniqueViolation(err) != nil {
 			return fmt.Errorf("%w: the address was taken meanwhile", ErrCodeRejected)
 		}
+		return err
+	}
+	if err := waitlist.OnAddressTakenTx(ctx, tx, st.ID, a.Keys.EmailTag(newAddr)); err != nil {
 		return err
 	}
 	if hash != nil {

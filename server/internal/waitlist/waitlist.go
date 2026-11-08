@@ -318,6 +318,10 @@ func OnInviteRedeemedTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UU
 	return nil
 }
 
+func OnAddressTakenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, accountTag []byte) error {
+	return OnInviteRedeemedTx(ctx, tx, uuid.Nil, userID, accountTag)
+}
+
 // MintToken creates one confirm or leave token for an entry inside tx and
 // returns its link form (spec 07 §4.2); only the hash is stored.
 func MintToken(ctx context.Context, tx pgx.Tx, entry uuid.UUID, purpose string) (string, error) {
