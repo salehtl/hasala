@@ -130,6 +130,44 @@ final class GmailRateLimit: @unchecked Sendable {
     #expect(later.phase == .active && later.ops == 20, "\(later)")
   }
 
+  @Test func aSecondFirstScanFollowsTheOneRunningInsteadOfRunningBesideIt() async {
+    let rig = Rig()
+    Self.backfill(rig, count: 20)
+    let limit = GmailRateLimit(clock: rig.clock, allowance: 1_000, penaltyMs: 0)
+    limit.forever = true
+    rig.gmail.limiter = { limit.answer($0) }
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+
+    async let first = rig.engine.runFirstScan()
+    async let second = rig.engine.runFirstScan()
+    let (a, b) = await (first, second)
+    #expect(a.count == 5 && b.count == 5, "\(a) \(b)")
+    #expect(a == b)
+    #expect(!seen.all.contains { if case .failed = $0.stage { true } else { false } })
+
+    limit.forever = false
+    let later = await rig.engine.runFirstScan()
+    #expect(later.last?.phase == .active && later.reduce(0) { $0 + $1.ops } == 20, "\(later)")
+  }
+
+  @Test func aSecondFirstScanEndsWithTheOneItFollowsWhenTheLaneStops() async {
+    let rig = Rig()
+    Self.backfill(rig, count: 20)
+    let limit = GmailRateLimit(clock: rig.clock, allowance: 1_000, penaltyMs: 0)
+    limit.forever = true
+    rig.gmail.limiter = { limit.answer($0) }
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+
+    async let first = rig.engine.runFirstScan()
+    async let second = rig.engine.runFirstScan()
+    await rig.engine.stop()
+    let (a, b) = await (first, second)
+    #expect(a == b)
+    #expect(await rig.engine.runFirstScan().allSatisfy { $0 == CycleReport() })
+  }
+
   @Test func aStopTheUserMustActOnEndsTheFirstScanAtOnce() async {
     let rig = Rig()
     Self.backfill(rig, count: 10)

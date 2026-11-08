@@ -274,7 +274,8 @@ public actor MailboxEngine {
   /// No cycle starts before this (engine clock): the provider's last `Retry-After`. Process-local.
   private var notBeforeMs: Int64 = 0
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
-  private var firstScanRunning = false
+  private var firstScanRunning: Bool { firstScanFollowers != nil }
+  private var firstScanFollowers: [CheckedContinuation<[CycleReport], Never>]?
   public private(set) var stopped = false
   private var strikes: [String: Int] = [:]
 
@@ -1108,8 +1109,18 @@ public actor MailboxEngine {
   /// provider's `Retry-After`) when it read nothing, giving up after the last wait. While this
   /// runs, a passing stop is not reported as `.failed` progress, since the scan goes on.
   public func runFirstScan(maxCycles: Int = 50) async -> [CycleReport] {
-    firstScanRunning = true
-    defer { firstScanRunning = false }
+    if firstScanFollowers != nil {
+      return await withCheckedContinuation { firstScanFollowers?.append($0) }
+    }
+    firstScanFollowers = []
+    let reports = await driveFirstScan(maxCycles: maxCycles)
+    let followers = firstScanFollowers ?? []
+    firstScanFollowers = nil
+    for follower in followers { follower.resume(returning: reports) }
+    return reports
+  }
+
+  private func driveFirstScan(maxCycles: Int) async -> [CycleReport] {
     var reports: [CycleReport] = []
     var stalls = 0
     for _ in 0..<maxCycles {
