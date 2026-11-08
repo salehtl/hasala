@@ -84,6 +84,27 @@ struct LiveGateTests {
     #expect(LedgerStateMapper.skipped(MayaFixture.txns(["txn-1", "txn-123"]), c) == ["txn-123"])
   }
 
+  @Test func reachingTheAppByAnyRouteKeepsSetupFinishedThroughARelaunch() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let before: [AccountSession.Phase] = [.signedOut, .checking, .onboarding, .needsKeys, .frozen(holder),
+                                          .needsUnlock(passkeyCanUnlock: false)]
+    let d = Self.defaults()
+    for phase in before {
+      BootController.noteReached(phase, defaults: d)
+      #expect(!LocalAccountData.setupFinished(d), "\(phase)")
+    }
+    let session = AccountSession(services: AccountServices(
+      account: MockAccountService(existing: .passkey), mailbox: MockMailbox(), setup: MockSetupAuthoring(),
+      notifications: MockNotificationPermission()), phase: .signedOut)
+    let recovery = SignInModel(account: session.account) { session.signedIn($0) }
+    recovery.recoveryDone()
+    #expect(session.phase == .ready)
+    BootController.noteReached(session.phase, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    let (relaunched, wall) = BootController.initialPhase(.opening(Self.binding()), finished: LocalAccountData.setupFinished(d))
+    #expect(relaunched == .ready && wall == nil)
+  }
+
   @Test func theFaceIDLockIsOffUntilTheAppLockExists() {
     #expect(DevicePrefsStore(defaults: Self.defaults()).prefs.faceIDLock == false)
   }

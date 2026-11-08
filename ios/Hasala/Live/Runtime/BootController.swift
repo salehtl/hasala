@@ -82,7 +82,6 @@ final class BootController {
   @ObservationIgnored private var closing: Task<Void, Never>?
   /// Bumped by every open and close, so an older opening can't publish or clear a newer one.
   @ObservationIgnored private var openingID = 0
-  @ObservationIgnored private var lastPhase: AccountSession.Phase?
   @ObservationIgnored private var observingProtectedData = false
   @ObservationIgnored private var startRetry: Task<Void, Never>?
   @ObservationIgnored private var startRetryDelay: Duration = .seconds(1)
@@ -204,13 +203,9 @@ final class BootController {
   /// The gate moved: open the account when it reaches setup or the app, close it when
   /// it leaves. Called by the root view on every phase change.
   func phaseChanged(_ phase: AccountSession.Phase) {
-    let previous = lastPhase
-    lastPhase = phase
+    Self.noteReached(phase)
     switch phase {
     case .onboarding, .ready, .frozen:
-      if case .onboarding? = previous, phase == .ready { LocalAccountData.markSetupFinished() }
-      // A new iPhone unlocked: the account's setup was done on the first one.
-      if case .needsUnlock? = previous, phase == .ready { LocalAccountData.markSetupFinished() }
       openRuntimeIfNeeded()
     case .signedOut:
       app?.forgetHomeLayout()
@@ -219,6 +214,10 @@ final class BootController {
     case .checking, .needsUnlock, .needsKeys:
       break
     }
+  }
+
+  static func noteReached(_ phase: AccountSession.Phase, defaults: UserDefaults = .standard) {
+    if phase == .ready { LocalAccountData.markSetupFinished(defaults) }
   }
 
   /// The open runtime, waiting for one that is opening (a silent push or a background
