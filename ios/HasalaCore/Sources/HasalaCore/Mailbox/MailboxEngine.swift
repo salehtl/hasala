@@ -723,7 +723,7 @@ public actor MailboxEngine {
       return report
     }
     if state.phase == .halted {
-      guard trigger == .retry || resumesAfterAccountFull(state, trigger) else {
+      guard trigger == .retry || resumesWithoutTryAgain(state, trigger) else {
         report.haltedOn = state.haltedOn
         return report
       }
@@ -2014,10 +2014,16 @@ public actor MailboxEngine {
     return await finish(&state, report, clearReader: clearReader)
   }
 
-  func resumesAfterAccountFull(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
-    guard state.haltedOn == .accountFull else { return false }
-    if trigger == .launch || trigger == .foreground || trigger == .refresh { return true }
-    return clock.nowMs() - (state.lastCycleAtMs ?? 0) >= config.accountFullRetryMs
+  func resumesWithoutTryAgain(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {
+    switch state.haltedOn {
+    case .templatesUnavailable?:
+      return !templates.isEmpty
+    case .accountFull?:
+      if trigger == .launch || trigger == .foreground || trigger == .refresh { return true }
+      return clock.nowMs() - (state.lastCycleAtMs ?? 0) >= config.accountFullRetryMs
+    default:
+      return false
+    }
   }
 
   func halt(_ state: inout MailboxState, _ code: MailboxHaltCode, _ report: CycleReport) async -> CycleReport {
