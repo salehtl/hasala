@@ -299,10 +299,11 @@ function setup(signal: AbortSignal): void {
         try {
           await navigator.clipboard.writeText(value);
           text.textContent = btn.dataset.copied ?? 'Copied';
+          restore.set(() => (text.textContent = label), 2400);
         } catch {
+          restore.clear();
           text.textContent = value;
         }
-        restore.set(() => (text.textContent = label), 2400);
       },
       { signal },
     );

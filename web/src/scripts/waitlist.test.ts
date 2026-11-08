@@ -4,7 +4,7 @@ import { initWaitlist } from './waitlist';
 type Handler = (e: Record<string, unknown>) => unknown;
 
 const g = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame'].map((k) => [k, g[k]]));
+const saved = Object.fromEntries(['window', 'document', 'history', 'location', 'fetch', 'requestAnimationFrame', 'navigator'].map((k) => [k, g[k]]));
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) g[k] = v;
 });
@@ -82,7 +82,16 @@ function field() {
   return new El().with('.field__error', new El().with('span', new El()));
 }
 
+const allowCopy = () => {
+  g.navigator = { clipboard: { writeText: async () => {} } };
+};
+
+const refuseCopy = () => {
+  g.navigator = { clipboard: { writeText: () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError')) } };
+};
+
 function start(arrival: { hash?: string; bank?: string } = {}) {
+  allowCopy();
   const email = new El();
   const bank = new El();
   const other = new El();
@@ -240,6 +249,52 @@ describe('work that ends with the page', () => {
     expect(p.form.hidden).toBe(true);
     expect(p.root.dataset.state).toBe('success');
     expect(p.timers.size).toBe(0);
+  });
+});
+
+describe('a copy the browser refuses', () => {
+  const link = 'https://hasala.test/#invite';
+
+  test('the link stays on the button with no restore waiting', async () => {
+    const p = start();
+    refuseCopy();
+    await p.copy.fire('click');
+    expect(p.copyText.textContent).toBe(link);
+    expect(p.timers.size).toBe(0);
+    p.runTimers();
+    expect(p.copyText.textContent).toBe(link);
+  });
+
+  test('a browser with no clipboard keeps the link on the button', async () => {
+    const p = start();
+    g.navigator = {};
+    await p.copy.fire('click');
+    expect(p.copyText.textContent).toBe(link);
+    expect(p.timers.size).toBe(0);
+  });
+
+  test('a refusal right after a copy that worked drops the waiting restore', async () => {
+    const p = start();
+    await p.copy.fire('click');
+    expect(p.copyText.textContent).toBe('Copied');
+    expect(p.timers.size).toBe(1);
+    refuseCopy();
+    await p.copy.fire('click');
+    expect(p.timers.size).toBe(0);
+    p.runTimers();
+    expect(p.copyText.textContent).toBe(link);
+  });
+
+  test('a copy that works after a refusal brings the label back', async () => {
+    const p = start();
+    refuseCopy();
+    await p.copy.fire('click');
+    allowCopy();
+    await p.copy.fire('click');
+    expect(p.copyText.textContent).toBe('Copied');
+    expect(p.timers.size).toBe(1);
+    p.runTimers();
+    expect(p.copyText.textContent).toBe('Copy link for a friend');
   });
 });
 
