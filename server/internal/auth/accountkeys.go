@@ -39,6 +39,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // Account-key errors, mapped by the HTTP layer.
@@ -90,6 +91,8 @@ type AccountKeys struct {
 	Pool   *pgxpool.Pool
 	StepUp *StepUp
 	Now    func() time.Time
+	Record func(purgeledger.Entry)
+	Hold   purgeledger.HoldFunc
 }
 
 func (k *AccountKeys) now() time.Time {
@@ -488,13 +491,23 @@ func (k *AccountKeys) DeleteWrap(ctx context.Context, session SessionInfo, crede
 	if err != nil {
 		return err
 	}
-	return k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
+	var held purgeledger.Held
+	err = k.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		if err := refuseIfLastUnseenWrapTx(ctx, tx, session.UserID, credentialID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, session.UserID, credentialID)
+		tag, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, session.UserID, credentialID)
+		if err != nil || tag.RowsAffected() == 0 {
+			return err
+		}
+		held, err = k.Hold.Tx(ctx, tx, wrapDeletionEntry(session.UserID, credentialID, k.now()))
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	held.Release(k.Record)
+	return nil
 }
 
 // AttestationHash is SHA-256 of a raw attestationObject, as stored in

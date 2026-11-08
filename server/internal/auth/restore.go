@@ -49,12 +49,17 @@ func passkeyRemovalEntries(userID uuid.UUID, credentials [][]byte, at time.Time)
 	return out
 }
 
+func wrapDeletionEntry(userID uuid.UUID, credential []byte, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindWrap, Credential: credential}
+}
+
 type ReapplyReport struct {
 	Freezes     int
 	Unfreezes   int
 	Devices     int
 	Passwords   int
 	Passkeys    int
+	Wraps       int
 	PhrasesSeen int
 	Sessions    int
 	Emails      int
@@ -176,6 +181,8 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 			step, count, locks = reapplyPasswordTx, &rep.Passwords, true
 		case purgeledger.KindPasskey:
 			step, count, locks = reapplyPasskeyTx, &rep.Passkeys, true
+		case purgeledger.KindWrap:
+			step, count = reapplyWrapTx, &rep.Wraps
 		case purgeledger.KindPhraseSeen:
 			step, count = reapplyPhraseSeenTx, &rep.PhrasesSeen
 		case purgeledger.KindSessions:
@@ -464,6 +471,21 @@ func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now t
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, e.ID, e.Credential)
+	if err != nil || tag.RowsAffected() != 1 {
+		return reappliedNothing, err
+	}
+	return reappliedDone, nil
+}
+
+func reapplyWrapTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ time.Time) (reapplied, error) {
+	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
+		if errors.Is(err, ErrPhraseUnseen) {
+			return reappliedNothing, nil
+		}
+		return reappliedNothing, err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2 AND created_at < $3`,
+		e.ID, e.Credential, e.At.Truncate(time.Second))
 	if err != nil || tag.RowsAffected() != 1 {
 		return reappliedNothing, err
 	}

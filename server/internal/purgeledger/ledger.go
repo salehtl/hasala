@@ -43,6 +43,7 @@ const (
 	KindEmail          Kind = "email"
 	KindInviteRevoked  Kind = "invite-revoked"
 	KindPurgeCancelled Kind = "purge-cancelled"
+	KindWrap           Kind = "wrap"
 )
 
 type Entry struct {
@@ -251,7 +252,7 @@ func check(e Entry) error {
 	if e.ID == uuid.Nil {
 		return errors.New("purgeledger: zero id")
 	}
-	if e.Kind != KindPasskey && e.Credential != nil {
+	if e.Kind != KindPasskey && e.Kind != KindWrap && e.Credential != nil {
 		return fmt.Errorf("purgeledger: a %q entry carries no credential", e.Kind)
 	}
 	switch e.Kind {
@@ -260,9 +261,9 @@ func check(e Entry) error {
 		if !e.Trigger.IsZero() || e.Device != nil {
 			return fmt.Errorf("purgeledger: a %q entry carries no trigger and no device", e.Kind)
 		}
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		if !e.Trigger.IsZero() || e.Device != nil || keyproto.CheckCredentialID(e.Credential) != nil {
-			return errors.New("purgeledger: a passkey entry carries a credential id and no trigger or device")
+			return fmt.Errorf("purgeledger: a %q entry carries a credential id and no trigger or device", e.Kind)
 		}
 	case KindFreeze:
 		if e.Trigger.IsZero() || e.Device != nil {
@@ -291,7 +292,7 @@ func formatEntry(e Entry) string {
 		line += " " + string(e.Kind) + " " + d.WriterID + " " + d.SignerWriterID + " " +
 			strconv.FormatInt(d.FinalCounter, 10) + " " + hex.EncodeToString(d.FinalHead) + " " +
 			hex.EncodeToString(d.Nonce) + " " + hex.EncodeToString(d.Sig)
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		line += " " + string(e.Kind) + " " + hex.EncodeToString(e.Credential)
 	case KindPassword, KindUnfreeze, KindWaitlistLeave, KindWaitlistUnsent, KindPhraseSeen,
 		KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
@@ -316,7 +317,7 @@ func parseHex(s string, n int) ([]byte, bool) {
 func unknownKind(k Kind) bool {
 	switch k {
 	case KindPurge, KindFreeze, KindDevice, KindPassword, KindUnfreeze, KindWaitlistLeave, KindPasskey, KindWaitlistUnsent,
-		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled:
+		KindPhraseSeen, KindSessions, KindEmail, KindInviteRevoked, KindPurgeCancelled, KindWrap:
 		return false
 	}
 	for _, r := range string(k) {
@@ -379,7 +380,7 @@ func parseLine(text string) (Entry, bool) {
 		if len(f) != 3 {
 			return Entry{}, false
 		}
-	case KindPasskey:
+	case KindPasskey, KindWrap:
 		if len(f) != 4 || len(f[3]) < 2*keyproto.MinCredentialID || len(f[3]) > 2*keyproto.MaxCredentialID {
 			return Entry{}, false
 		}
