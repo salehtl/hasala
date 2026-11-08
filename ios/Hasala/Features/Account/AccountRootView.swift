@@ -194,8 +194,6 @@ private struct LockdownSheetContent: View {
   var body: some View {
     LockdownView(model: model)
       .task { await model.load() }
-      // LockdownView presents its own "Confirm it's you" (`host: .lockdown`).
-      .sheet(isPresented: $model.editingPassword) { PasswordEditSheet(model: model) }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           // In the glass ink, as Paper draws the sheet's close (not the accent).
