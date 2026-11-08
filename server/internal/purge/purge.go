@@ -807,10 +807,17 @@ func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Option
 	}
 	const addrs = `(SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`
 	if _, err := tx.Exec(ctx,
-		`UPDATE invite_codes SET state = 'revoked', closed_at = now(), email_tag = NULL, link_key_hash = NULL
-		  WHERE state IN ('awaiting_testflight','queued','active')
-		    AND ((email_tag IS NOT NULL AND email_tag = ANY($2::bytea[]))
-		      OR id IN (SELECT invite_id FROM mail_log WHERE invite_id IS NOT NULL AND recipient IN `+addrs+`))`,
+		`WITH revoked AS (
+		   UPDATE invite_codes SET state = 'revoked', closed_at = now(), email_tag = NULL, link_key_hash = NULL
+		    WHERE state IN ('awaiting_testflight','queued','active')
+		      AND ((email_tag IS NOT NULL AND email_tag = ANY($2::bytea[]))
+		        OR id IN (SELECT invite_id FROM mail_log WHERE invite_id IS NOT NULL AND recipient IN `+addrs+`))
+		   RETURNING id, waitlist_entry_id)
+		 UPDATE waitlist_entries e SET state = 'confirmed', invited_at = NULL, updated_at = now()
+		  WHERE e.state = 'invited' AND e.id IN (SELECT waitlist_entry_id FROM revoked WHERE waitlist_entry_id IS NOT NULL)
+		    AND NOT EXISTS (SELECT 1 FROM invite_codes i WHERE i.waitlist_entry_id = e.id
+		                     AND i.state IN ('awaiting_testflight','queued','active')
+		                     AND i.id NOT IN (SELECT id FROM revoked))`,
 		users, tags); err != nil {
 		return fmt.Errorf("purge: revoke the address's invites: %w", err)
 	}

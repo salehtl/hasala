@@ -21,6 +21,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/blob/blobtest"
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
 func TestMain(m *testing.M) { os.Exit(pgtest.Main(m)) }
@@ -936,6 +937,90 @@ func TestPurgeRevokesTheAddresssOpenInvites(t *testing.T) {
 	}
 	if s, tagged := state(stays); s != "active" || !tagged {
 		t.Fatalf("another address's invite is %s, tag kept %v", s, tagged)
+	}
+}
+
+func TestPurgePutsAnInvitedEntryBackOnTheListWhenItRevokesItsInvite(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		opts   Options
+		byMail bool
+	}{
+		{name: "by the tag", opts: Options{Tagger: sumTagger{}}},
+		{name: "by the invite email", byMail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := pgtest.New(t)
+			u := newUser(t, pool, "invited-entry")
+			addr := "invited@example.com"
+			exec(t, pool, `UPDATE users SET email_norm = $2 WHERE id = $1`, u, addr)
+			addrTag := sumTagger{}.EmailTag(addr)
+			entryFor := func(tag []byte, email string) uuid.UUID {
+				var id uuid.UUID
+				if err := pool.QueryRow(bg, `INSERT INTO waitlist_entries (email_tag, email_norm, state, source, created_at, updated_at,
+				    confirmed_at, invited_at) VALUES ($1, $2, 'invited', 'web', now(), now(), now() - interval '200 days', now()) RETURNING id`,
+					tag, email).Scan(&id); err != nil {
+					t.Fatal(err)
+				}
+				return id
+			}
+			invite := func(tag []byte, entry uuid.UUID) uuid.UUID {
+				var id uuid.UUID
+				if err := pool.QueryRow(bg, `INSERT INTO invite_codes (code_hash, link_key_hash, email_tag, waitlist_entry_id, origin, state,
+				    created_at, minted_at, expires_at, mint_count)
+				    VALUES ($1, $2, $3, $4, 'admin', 'active', now(), now(), now() + interval '1 day', 1) RETURNING id`,
+					randBytes(t, 32), randBytes(t, 32), tag, entry).Scan(&id); err != nil {
+					t.Fatal(err)
+				}
+				return id
+			}
+			entry := entryFor(addrTag, addr)
+			revoked := invite(addrTag, entry)
+			if tc.byMail {
+				exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, invite_id, params, status, sent_at, final_at, created_at)
+				               VALUES ('invite', 'transactional', $1, $2, 'i•••@example.com', $3, '{}', 'sent', now(), now(), now())`, addr, addrTag, revoked)
+			}
+			shared := entryFor(sumTagger{}.EmailTag("shared@example.com"), "shared@example.com")
+			sharedRevoked := invite(addrTag, shared)
+			if tc.byMail {
+				exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_tag, recipient_hint, invite_id, params, status, sent_at, final_at, created_at)
+				               VALUES ('invite', 'transactional', $1, $2, 'i•••@example.com', $3, '{}', 'sent', now(), now(), now())`, addr, addrTag, sharedRevoked)
+			}
+			stillOpen := invite(sumTagger{}.EmailTag("shared@example.com"), shared)
+			other := entryFor(sumTagger{}.EmailTag("other@example.com"), "other@example.com")
+			invite(sumTagger{}.EmailTag("other@example.com"), other)
+
+			if _, err := PurgeWith(bg, pool, u, tc.opts); err != nil {
+				t.Fatal(err)
+			}
+			read := func(id uuid.UUID) (state string, invited bool) {
+				if err := pool.QueryRow(bg, `SELECT state, invited_at IS NOT NULL FROM waitlist_entries WHERE id = $1`, id).
+					Scan(&state, &invited); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if s, invited := read(entry); s != "confirmed" || invited {
+				t.Fatalf("the entry of the revoked invite is %s, invited_at kept %v", s, invited)
+			}
+			if s, _ := read(shared); s != "invited" {
+				t.Fatalf("an entry with another open invite is %s", s)
+			}
+			if s, _ := read(other); s != "invited" {
+				t.Fatalf("another address's entry is %s", s)
+			}
+			if n := countRows(t, pool, `SELECT count(*) FROM invite_codes WHERE id = $1 AND state = 'active'`, stillOpen); n != 1 {
+				t.Fatal("the entry's other invite was closed")
+			}
+
+			w := waitlist.New(pool, sumTagger{}, "https://hasala.test")
+			if _, err := w.Sweep(bg); err != nil {
+				t.Fatal(err)
+			}
+			if n := countRows(t, pool, `SELECT count(*) FROM waitlist_entries WHERE id = $1`, entry); n != 0 {
+				t.Fatal("the retention sweep cannot reach the entry")
+			}
+		})
 	}
 }
 
