@@ -395,6 +395,48 @@ struct FinishSetupTests: AccountSuite {
     #expect(mailbox.scans == 1 && m.checkNote == FinishSetupModel.alreadyCheckingLine(.gmail) && m.showingNoAlerts)
   }
 
+  @Test func aFailureThatLandsAfterTheSheetWentWaitsForTheNextOpen() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    let check = Task { await m.checkAgain() }
+    while !m.checkingAgain { await Task.yield() }
+    m.showingNoAlerts = false
+    scan.yield(ScanProgress(phase: .failed("Gmail stopped answering"), read: 0, total: 0))
+    scan.finish()
+    await check.value
+    #expect(m.checkFailure == .failed("Gmail stopped answering"))
+    m.openNoAlerts()
+    #expect(m.showingNoAlerts && m.checkFailure == .failed("Gmail stopped answering"))
+    m.showingNoAlerts = false
+    #expect(m.checkFailure == nil)
+    m.openNoAlerts()
+    #expect(m.checkFailure == nil)
+  }
+
+  @Test func aFailureSeenInTheSheetGoesWithIt() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    scan.yield(ScanProgress(phase: .failed("Gmail stopped answering"), read: 0, total: 0))
+    scan.finish()
+    await m.checkAgain()
+    #expect(m.checkFailure == .failed("Gmail stopped answering"))
+    m.showingNoAlerts = false
+    m.openNoAlerts()
+    #expect(m.checkFailure == nil)
+  }
+
   @Test func useADifferentEmailClosesTheSheetForBankAlerts() {
     let m = FinishSetupModel(services: services(mailbox: readMailbox()))
     m.openNoAlerts()
