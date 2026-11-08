@@ -1860,6 +1860,15 @@ in
           CPUQuota = "100%";
         };
       };
+      systemd.timers.hasala-backup-offsite = {
+        wantedBy = [ "hasala.target" ];
+        partOf = [ "hasala.target" ];
+        timerConfig = {
+          OnCalendar = "*-*-* 08:00:00";
+          Persistent = true;
+          RandomizedDelaySec = "5m";
+        };
+      };
     })
 
     # ------------------------------------------------------------- §5.9.3

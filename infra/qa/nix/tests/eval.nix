@@ -961,6 +961,18 @@ let
         )
         "AT-E3 the off-site unit must copy without .part files and delete copies at retentionDays: ${builtins.toJSON offsiteExec}"
     ++ check (
+      let
+        timer = fullSys.config.systemd.timers.hasala-backup-offsite or { };
+      in
+      lib.elem "hasala.target" (timer.wantedBy or [ ])
+      && (timer.timerConfig.OnCalendar or null) != null
+      && (timer.timerConfig.Persistent or false)
+    ) "AT-E3 the off-site unit must run on its own daily timer, whatever the daily backup did"
+    ++ check (lib.elem "hasala-backup-offsite.service" (svc fullSys "hasala-backup").onSuccess) "AT-E3 a daily backup must still start the off-site copy when it succeeds"
+    ++ check (
+      !(minimal.config.systemd.timers ? hasala-backup-offsite)
+    ) "AT-E3 the off-site timer exists with the off-site copy off"
+    ++ check (
       (backupOf "hasala-backup").RuntimeDirectory != (backupOf "hasala-backup-premigrate")
       .RuntimeDirectory
     ) "AT-E3 the daily and pre-migration backups share a RuntimeDirectory"
