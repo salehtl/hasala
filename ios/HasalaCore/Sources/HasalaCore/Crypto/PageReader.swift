@@ -100,6 +100,7 @@ public enum PageReader {
     /// page again with the new roster and `rosterRefreshed: true`. Nothing from
     /// the page is persisted.
     case refreshRoster
+    case budgetReached
   }
 
   public enum RowDecision: Sendable, Hashable {
@@ -169,7 +170,7 @@ public enum PageReader {
       }
       if case .opened(let plaintext) = opened {
         held += plaintext.count
-        if held >= plaintextBudget { return Result(rows: out, stop: nil, stopRow: nil) }
+        if held >= plaintextBudget, i < checked.count - 1 { return stopped(i, .budgetReached, out) }
       }
     }
     return Result(rows: out, stop: nil, stopRow: nil)

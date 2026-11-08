@@ -9,8 +9,34 @@ import CoreTestSupport
 import CoreWire
 import Foundation
 import Testing
+import os
 
 @testable import CoreSync
+
+final class RouteCounter: Transport, Sendable {
+  let inner: any Transport
+  private let counts = OSAllocatedUnfairLock(initialState: [String: Int]())
+
+  init(_ inner: any Transport) { self.inner = inner }
+
+  func count(_ route: String) -> Int { counts.withLock { $0[route] ?? 0 } }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    let route = "\(request.method.rawValue) \(request.path.split(separator: "?").first ?? "")"
+    counts.withLock { $0[route, default: 0] += 1 }
+    return try await inner.send(request)
+  }
+}
+
+func counted(_ c: SyncContext, through server: any Transport) -> (SyncContext, RouteCounter) {
+  let routes = RouteCounter(server)
+  return (
+    SyncContext(
+      userID: c.userID, writerID: c.writerID, store: c.store, secrets: c.secrets, client: AuthClient(transport: routes), clock: c.clock,
+      random: c.random),
+    routes
+  )
+}
 
 @Suite("Pull: the plaintext one page may hold")
 struct PagePlaintextTests {
@@ -44,6 +70,16 @@ struct PagePlaintextTests {
     #expect(try b.store.wireRowCount() == 3)
     #expect(try b.store.chainHeads()[a.writerID]?.counter == 3)
     #expect(try await Puller.pull(b, observer: nil, plaintextBudget: 1).rowsStored == 0)
+  }
+
+  @Test("a short page asks again for the rest; a page whose last row meets the budget does not")
+  func roundTrips() async throws {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, (1...3).map(alone))
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    let (pull, routes) = counted(b, through: w.server)
+    let out = try await Puller.pull(pull, observer: nil, plaintextBudget: 1)
+    #expect(out.rowsStored == 3 && routes.count("GET /api/v1/sync") == 3)
   }
 
   @Test("within budget, one pull stores the page whole")
@@ -108,7 +144,7 @@ struct ShortPageObserverTests {
     var summary = PullSummary()
     let stored = try await Puller.readAndPersist(
       page, state: before, bearer: bearer, ctx: b.context, observer: b.observer, plaintextBudget: 1, summary: &summary)
-    #expect(stored == 1 && summary.rowsStored == 1)
+    #expect(stored == Puller.StoredPage(rows: 1, whole: false) && summary.rowsStored == 1)
 
     let cursor = try b.context.store.syncState().cursorHot
     #expect(cursor == Int64(page.rows[0].seq))

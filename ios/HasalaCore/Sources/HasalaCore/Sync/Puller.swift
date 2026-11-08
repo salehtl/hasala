@@ -58,6 +58,11 @@ public struct PullSummary: Sendable, Hashable {
 enum Puller {
   static let pageLimit = 500
 
+  struct StoredPage: Sendable, Hashable {
+    let rows: Int
+    let whole: Bool
+  }
+
   static func pull(
     _ ctx: SyncContext, observer: (any PageObserver)?, plaintextBudget: Int = PageReader.maxPagePlaintext
   ) async throws(SyncStop) -> PullSummary {
@@ -96,14 +101,14 @@ enum Puller {
       summary.pages += 1
       let stored = try await readAndPersist(
         page, state: state, bearer: bearer, ctx: ctx, observer: observer, plaintextBudget: plaintextBudget, summary: &summary)
-      if page.complete, stored == page.rows.count { return summary }
+      if page.complete, stored.whole { return summary }
     }
   }
 
   static func readAndPersist(
     _ page: PullPage, state: SyncStateRow, bearer: String, ctx: SyncContext, observer: (any PageObserver)?,
     plaintextBudget: Int, summary: inout PullSummary
-  ) async throws(SyncStop) -> Int {
+  ) async throws(SyncStop) -> StoredPage {
     // R0's page-level checks the row checker cannot see: seqs strictly
     // increasing above the cursor (I1), `next` = the last seq.
     var seqs: [Int64] = []
@@ -186,7 +191,7 @@ enum Puller {
           continue
         case .tampered(let t): throw .halted(.tampered(t))
         }
-      case nil:
+      case .budgetReached?, nil:
         break
       }
 
@@ -230,7 +235,7 @@ enum Puller {
         try? ctx.store.recordFoldEvent(kind: "integrity_alarm", detail: "aead_failed", at: now)
       }
       summary.rowsStored += records.count
-      return records.count
+      return StoredPage(rows: records.count, whole: result.stop == nil)
     }
   }
 }
