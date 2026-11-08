@@ -1,6 +1,7 @@
 package invites
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,10 +17,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-func MailUnsent(record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
+func MailUnsent(minter Minter, record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
 	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) (func(), error) {
 		if row.Kind != "invite" || row.InviteID == nil {
 			return nil, nil
+		}
+		if err := restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID, row.ID); err != nil {
+			return nil, err
 		}
 		_, gone, err := closeUnsentTx(ctx, tx, *row.InviteID, []string{"queued", "active"})
 		if err != nil || gone == uuid.Nil || record == nil {
@@ -27,6 +31,49 @@ func MailUnsent(record func(purgeledger.Entry)) func(context.Context, pgx.Tx, ma
 		}
 		return func() { recordUnsent(record, gone) }, nil
 	}
+}
+
+func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uuid.UUID, unsentMail int64) error {
+	if minter == nil {
+		return nil
+	}
+	var current []byte
+	err := tx.QueryRow(ctx, `SELECT code_hash FROM invite_codes WHERE id = $1 AND state = 'active' FOR UPDATE`, id).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("invites: lock a resent invite: %w", err)
+	}
+	var (
+		delivered *int64
+		inFlight  bool
+	)
+	if err := tx.QueryRow(ctx,
+		`SELECT max(id) FILTER (WHERE status = 'sent'), coalesce(bool_or(status IN ('queued','sending')), false)
+		   FROM mail_log WHERE invite_id = $1`, id).Scan(&delivered, &inFlight); err != nil {
+		return fmt.Errorf("invites: read a resent invite's mail: %w", err)
+	}
+	if delivered == nil || inFlight {
+		return nil
+	}
+	r := Renderer{Minter: minter}
+	unsent, _, _, err := r.secrets(id, unsentMail)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, CodeHash(unsent)) {
+		return nil
+	}
+	code, _, linkHash, err := r.secrets(id, *delivered)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE invite_codes SET code_hash = $2, link_key_hash = $3 WHERE id = $1`,
+		id, CodeHash(code), linkHash); err != nil {
+		return fmt.Errorf("invites: restore a delivered code: %w", err)
+	}
+	return nil
 }
 
 func recordUnsent(record func(purgeledger.Entry), entry uuid.UUID) {

@@ -27,7 +27,7 @@ func (testTagger) EmailTag(s string) []byte {
 func unsentQueue(pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queue {
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(nil, nil)
 	return q
 }
 
@@ -347,7 +347,7 @@ func TestABouncedInviteRecordsTheDeletedEntryAndTheReplayDeletesItAgain(t *testi
 			var recorded []purgeledger.Entry
 			record := func(e purgeledger.Entry) { recorded = append(recorded, e) }
 			q := unsentQueue(pool, &mail.Fake{Err: mail.ErrBounced})
-			q.Unsent = MailUnsent(record)
+			q.Unsent = MailUnsent(nil, record)
 			const addr = "bounce@example.com"
 			entry, invite := approved(t, pool, q, addr)
 			var saved string
@@ -413,7 +413,7 @@ func TestAnInviteWhoseEntryGoesBackToTheListRecordsNothing(t *testing.T) {
 	pool := pgtest.New(t)
 	var recorded []purgeledger.Entry
 	q := unsentQueue(pool, &mail.Fake{Err: mail.ErrPermanent})
-	q.Unsent = MailUnsent(func(e purgeledger.Entry) { recorded = append(recorded, e) })
+	q.Unsent = MailUnsent(nil, func(e purgeledger.Entry) { recorded = append(recorded, e) })
 	const addr = "back@example.com"
 	entry, _ := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {

@@ -67,7 +67,7 @@ func TestARetriedInviteEmailCarriesTheSameCode(t *testing.T) {
 	}}
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(minter, nil)
 	const addr = "retry@example.com"
 	_, invite := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
@@ -133,7 +133,7 @@ func TestARetryOfAReplacedInviteEmailLeavesTheNewerCodeLive(t *testing.T) {
 	}}
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(minter, nil)
 	const addr = "replaced@example.com"
 	_, invite := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
@@ -232,5 +232,130 @@ func TestResendRefusesACLIInviteWhoseAddressIsGone(t *testing.T) {
 	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1 AND status = 'queued'`, invite).
 		Scan(&queued); err != nil || queued != 0 {
 		t.Fatalf("%d queued rows, %v", queued, err)
+	}
+}
+
+func resendFixture(t *testing.T, addr string) (*pgxpool.Pool, *mailq.Queue, *mail.Fake, uuid.UUID, uuid.UUID, []byte, string) {
+	t.Helper()
+	pool := pgtest.New(t)
+	minter, err := authkeys.NewEmailTagger(bytes.Repeat([]byte{3}, authkeys.KeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &mail.Fake{}
+	q := mailq.New(pool, fake, testTagger{})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Unsent = MailUnsent(minter, nil)
+	entry, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d", len(fake.Sent()))
+	}
+	code, key := linkOf(t, fake.Sent()[0])
+	return pool, q, fake, entry, invite, key, code
+}
+
+func resend(t *testing.T, pool *pgxpool.Pool, q *mailq.Queue, invite uuid.UUID) {
+	t.Helper()
+	if err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error { return Resend(bg, tx, q, invite) }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAResendThatFailsLeavesTheDeliveredCodeWorking(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+	}{
+		{"bounced", mail.ErrBounced},
+		{"failed for good", mail.ErrPermanent},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			const addr = "resend-fails@example.com"
+			pool, q, fake, entry, invite, key, code := resendFixture(t, addr)
+			fake.Err = c.err
+			resend(t, pool, q, invite)
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			if s := inviteState(t, pool, invite); s != "active" {
+				t.Fatalf("invite %s, want active", s)
+			}
+			assertEntryInvited(t, pool, entry, addr)
+			r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+			if err != nil || r.InviteID != invite || !r.Proven {
+				t.Fatalf("the delivered code: %+v %v", r, err)
+			}
+		})
+	}
+}
+
+func TestAFailedResendDoesNotRestoreACodeWhileAnotherEmailIsOnItsWay(t *testing.T) {
+	const addr = "resend-pending@example.com"
+	pool, q, fake, _, invite, key, code := resendFixture(t, addr)
+	fake.Err = mail.ErrPermanent
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now()); err != nil {
+		t.Fatalf("the delivered code after the failed resend: %v", err)
+	}
+	fake.Err = errors.New("provider timeout")
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now()); !errors.Is(err, ErrNotInvited) {
+		t.Fatalf("the earlier code while a newer email retries: %v", err)
+	}
+	fake.Err = nil
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.Sent()) != 2 {
+		t.Fatalf("sent %d", len(fake.Sent()))
+	}
+	newest, newestKey := linkOf(t, fake.Sent()[1])
+	if _, err := Resolve(bg, pool, newest, newestKey, testTagger{}.EmailTag(addr), time.Now()); err != nil {
+		t.Fatalf("the newest code: %v", err)
+	}
+	if _, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now()); !errors.Is(err, ErrNotInvited) {
+		t.Fatalf("the replaced code: %v", err)
+	}
+}
+
+func TestAStaleEmailDoesNotReplaceANewerDeliveredCode(t *testing.T) {
+	const addr = "resend-stale@example.com"
+	pool, q, fake, _, invite, _, _ := resendFixture(t, addr)
+	fake.Err = errors.New("provider timeout")
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	fake.Err = nil
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.Sent()) != 2 {
+		t.Fatalf("sent %d", len(fake.Sent()))
+	}
+	newest, newestKey := linkOf(t, fake.Sent()[1])
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(bg, pool, newest, newestKey, testTagger{}.EmailTag(addr), time.Now()); err != nil {
+		t.Fatalf("the newest code: %v", err)
 	}
 }
