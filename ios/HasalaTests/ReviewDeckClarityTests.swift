@@ -22,6 +22,25 @@ struct ReviewDeckClarityTests {
     #expect(app.toast?.title == "Kept both, sorted into \(name)")
   }
 
+  @Test func sortingAnUnansweredRepeatSaysItKeptBoth() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    #expect(deck.repeatAnswers.asks(try #require(deck.cards.first)))
+    #expect(deck.sort("mail-twin", into: "groceries", alwaysUse: false, project: nil))
+    let name = try #require(app.store.state.category("groceries")?.name)
+    #expect(app.toast?.title == "Kept both, sorted into \(name)")
+  }
+
+  @Test func aKeptRepeatStaysAnsweredWhenTheDeckOpensAgain() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    let card = try #require(deck.cards.first)
+    deck.keepText(card.id)
+    #expect(!deck.repeatAnswers.asks(card))
+    ReviewEntry.request(app, at: card.id)
+    let reopened = ReviewViewModel(app: app)
+    #expect(reopened.cards.first?.id == card.id)
+    #expect(!reopened.repeatAnswers.asks(card) && reopened.repeatAnswers.allowsUse(card))
+  }
+
   @Test func sortingAPlainCardKeepsItsUsualToast() throws {
     let (app, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
     #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: false, project: nil))

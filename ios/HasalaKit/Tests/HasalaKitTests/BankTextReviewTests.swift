@@ -21,6 +21,26 @@ struct BankTextReviewTests {
     #expect(TransactionEngine.detail("mail-twin", s, now: now)?.reasonLine == card.reasonLine)
   }
 
+  @Test func aMayRepeatCardAsksUntilKeepingBothIsAnswered() throws {
+    let card = ReviewEngine.card(try #require(s.txn("mail-twin")), s)
+    var answers = ReviewRepeatAnswers()
+    #expect(answers.asks(card) && answers.holdsPills(card) && !answers.allowsUse(card) && !answers.isKept(card.id))
+    answers.keep(card.id)
+    #expect(!answers.asks(card) && !answers.holdsPills(card) && answers.allowsUse(card) && answers.isKept(card.id))
+  }
+
+  @Test func aHeldCopyHoldsThePillsAndAPlainCardDoesNot() throws {
+    let copies = Scenario.mayaCopy.state
+    let held = ReviewEngine.card(try #require(copies.txn("starbucks-copy")), copies)
+    var answers = ReviewRepeatAnswers()
+    answers.keep(held.id)
+    #expect(!answers.asks(held) && answers.holdsPills(held) && !answers.allowsUse(held))
+    var plain = held
+    plain.copyLine = nil
+    plain.reviewReason = nil
+    #expect(!ReviewRepeatAnswers().asks(plain) && !ReviewRepeatAnswers().holdsPills(plain) && ReviewRepeatAnswers().allowsUse(plain))
+  }
+
   @Test func aSortedRowOrAnUnverifiedSenderHidesTheRepeatLine() throws {
     var t = try #require(s.txn("mail-twin"))
     t.needsReview = false

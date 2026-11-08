@@ -32,6 +32,8 @@ protocol ReviewDeckModel: AnyObject, Observable {
   var periodTitle: String { get }
   var isThisMonth: Bool { get }
   var elsewhere: ReviewElsewhere? { get }
+  var repeatAnswers: ReviewRepeatAnswers { get }
+  func keepText(_ card: TxnID)
   func periodChanged()
   func showElsewhere()
   func options(for choice: ReviewChoice, card: TxnID) -> [CategoryOption]
@@ -124,6 +126,9 @@ final class ReviewViewModel: ReviewDeckModel {
   var periodTitle: String { app.period.title }
   var isThisMonth: Bool { app.period == .month(app.store.now.date.yearMonth) }
   var elsewhere: ReviewElsewhere? { app.reviewElsewhere }
+  var repeatAnswers: ReviewRepeatAnswers { app.repeatAnswers }
+
+  func keepText(_ card: TxnID) { app.repeatAnswers.keep(card) }
 
   func periodChanged() {
     restart()
@@ -180,7 +185,7 @@ final class ReviewViewModel: ReviewDeckModel {
     let name = app.store.state.category(category)?.name
     let others = alwaysUse ? reachable(card, outside: category) : []
     guard app.perform(settle + [.categorize(card, category, learnRule: alwaysUse, project: project)],
-                      title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+                      title: Self.keptBothTitle(keptBoth: keepsBoth(card, settle), category: name, alwaysUse: alwaysUse))
     else {
       return false
     }
@@ -189,8 +194,8 @@ final class ReviewViewModel: ReviewDeckModel {
     return true
   }
 
-  nonisolated static func keptBothTitle(settling: [LedgerEdit], category: String?, alwaysUse: Bool) -> String? {
-    guard !settling.isEmpty, !alwaysUse, let category else { return nil }
+  nonisolated static func keptBothTitle(keptBoth: Bool, category: String?, alwaysUse: Bool) -> String? {
+    guard keptBoth, !alwaysUse, let category else { return nil }
     return "Kept both, sorted into \(category)"
   }
 
@@ -267,7 +272,7 @@ final class ReviewViewModel: ReviewDeckModel {
       return false
     case .success(let edit):
       let settle = settling(card)
-      guard app.perform(settle + [edit], title: Self.keptBothTitle(settling: settle, category: name, alwaysUse: alwaysUse))
+      guard app.perform(settle + [edit], title: Self.keptBothTitle(keptBoth: keepsBoth(card, settle), category: name, alwaysUse: alwaysUse))
       else { return false }
       filed(card, learnedRule: alwaysUse)
       return true
@@ -298,6 +303,10 @@ final class ReviewViewModel: ReviewDeckModel {
     if t?.isHeldCopy == true { edits.append(.resolveCopy(card, merge: false)) }
     if t?.samePurchase != nil { edits.append(.resolveSamePurchase(card, same: false)) }
     return edits
+  }
+
+  private func keepsBoth(_ card: TxnID, _ settling: [LedgerEdit]) -> Bool {
+    !settling.isEmpty || app.store.state.txn(card)?.activeReviewReason == .mayRepeat
   }
 
   private func filed(_ card: TxnID, learnedRule: Bool) {

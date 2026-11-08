@@ -41,6 +41,7 @@ final class AppModel {
   var offersBankTextPaste: Bool { bankTexts?.offersPaste == true }
   private(set) var amountsHidden: Bool
   private(set) var toast: Toast?
+  var repeatAnswers = ReviewRepeatAnswers()
   /// Where the app is: the selected tab, every push path, the sheet and the cover.
   let router = AppRouter()
   var tab: AppTab {

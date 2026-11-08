@@ -41,7 +41,6 @@ struct ReviewDeckView: View {
   @State private var pendingCopy: (card: ReviewCardModel, merge: Bool)?
   @State private var pendingMerge: ReviewCardModel?
   @State private var choosingRange = false
-  @State private var textsKept: Set<TxnID> = []
   @State private var openTxn: TxnRef?
   @State private var deckSize: CGSize = .zero
   @State private var idealRegular: CGFloat = 0
@@ -116,7 +115,11 @@ struct ReviewDeckView: View {
       .sheet(item: $reasonInfo, onDismiss: reasonInfoClosed) { card in
         if let reason = card.reviewReason {
           ReviewReasonSheet(
-            reason: reason, sort: { reasonInfo = nil },
+            reason: reason,
+            sort: {
+              keepText(card)
+              reasonInfo = nil
+            },
             archive: {
               pendingArchive = card
               reasonInfo = nil
@@ -285,12 +288,12 @@ struct ReviewDeckView: View {
       let width = max(0, min(Self.cardWidth, deckSize.width - 62))
       ZStack(alignment: .top) {
         ReviewCardView(card: top, hidden: model.hidden, lean: nil, leanEdge: nil, strength: 0, use: {},
-                       textKept: textsKept.contains(top.id))
+                       textKept: model.repeatAnswers.isKept(top.id))
           .frame(width: width)
           .fixedSize(horizontal: false, vertical: true)
           .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { idealRegular = $0 }
         ReviewCardView(card: top, hidden: model.hidden, lean: nil, leanEdge: nil, strength: 0, use: {},
-                       textKept: textsKept.contains(top.id), compact: true)
+                       textKept: model.repeatAnswers.isKept(top.id), compact: true)
           .frame(width: width)
           .fixedSize(horizontal: false, vertical: true)
           .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { idealCompact = $0 }
@@ -405,7 +408,7 @@ struct ReviewDeckView: View {
   /// VoiceOver actions that do what the swipes do.
   private func live(_ card: ReviewCardModel, compact: Bool) -> some View {
     let lean = leanEdge
-    let asksText = card.copyLine == nil && card.reviewReason == .mayRepeat && !textsKept.contains(card.id)
+    let asksText = model.repeatAnswers.asks(card)
     return ReviewCardView(
       card: card, hidden: model.hidden, lean: lean.map(choice(for:)), leanEdge: lean, strength: leanStrength,
       use: { use(card) },
@@ -414,7 +417,7 @@ struct ReviewDeckView: View {
       reason: { reasonInfo = card },
       samePayment: { archive(card) },
       keepText: { keepText(card) },
-      textKept: textsKept.contains(card.id),
+      textKept: model.repeatAnswers.isKept(card.id),
       compact: compact,
       actions: {
         if card.copyLine != nil {
@@ -428,7 +431,7 @@ struct ReviewDeckView: View {
         ForEach(ReviewChoice.allCases, id: \.self) { c in
           Button(c.label(isIncome: card.isIncome)) { send(card, c) }
         }
-        if Self.usable(card, textKept: textsKept.contains(card.id)), card.copyLine == nil, let s = card.suggestion {
+        if model.repeatAnswers.allowsUse(card), card.copyLine == nil, let s = card.suggestion {
           Button("Use \(s.name)") { use(card) }
         }
         Button("Skip for now") { skip(card) }
@@ -490,7 +493,7 @@ struct ReviewDeckView: View {
   @ViewBuilder
   private func pill(_ edge: SwipeEdge) -> some View {
     let top = model.cards.first
-    if Self.hidesPill(asking: top?.copyLine != nil, leaning: leanEdge == edge || held == edge) {
+    if Self.hidesPill(asking: top.map(model.repeatAnswers.holdsPills) ?? false, leaning: leanEdge == edge || held == edge) {
       Color.clear.frame(width: 1, height: Self.pillSlot).accessibilityHidden(true)
     } else {
       livePill(edge)
@@ -520,10 +523,6 @@ struct ReviewDeckView: View {
   }
 
   static func hidesPill(asking: Bool, leaning: Bool) -> Bool { asking && !leaning }
-
-  static func usable(_ card: ReviewCardModel, textKept: Bool) -> Bool {
-    card.reviewReason == nil || (card.reviewReason == .mayRepeat && textKept && card.copyLine == nil)
-  }
 
   // MARK: Footer
 
@@ -693,7 +692,7 @@ struct ReviewDeckView: View {
 
   /// "Use": files the suggestion, flying the card toward its bucket's side.
   private func use(_ card: ReviewCardModel) {
-    guard Self.usable(card, textKept: textsKept.contains(card.id)), let s = card.suggestion else { return }
+    guard model.repeatAnswers.allowsUse(card), let s = card.suggestion else { return }
     tap += 1
     file(card, toward: edge(for: ReviewChoice(filing: s.bucket)), as: s.name, chime: true) {
       model.useSuggestion(card.id, shown: s.id)
@@ -719,7 +718,7 @@ struct ReviewDeckView: View {
   }
 
   private func keepText(_ card: ReviewCardModel) {
-    textsKept.insert(card.id)
+    model.keepText(card.id)
     announce("Kept both. Sort it as usual.")
   }
 
