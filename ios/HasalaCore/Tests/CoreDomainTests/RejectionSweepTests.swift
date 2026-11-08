@@ -187,6 +187,93 @@ struct RejectionSweepTests {
     #expect(p.suggestions.isEmpty && backlog.calls.isEmpty)
   }
 
+  final class FlakyKept: ModelAnswerCache, Sendable {
+    struct Boom: Error {}
+    let base = MemoryCache()
+    let broken = Mutex(true)
+
+    func heal() { broken.withLock { $0 = false } }
+    func check() throws { if broken.withLock({ $0 }) { throw Boom() } }
+
+    func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer? {
+      try base.answer(subject: subject, taxonomyHash: taxonomyHash, modelTag: modelTag, now: now)
+    }
+    func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws {
+      try base.recordUnknown(entries, taxonomyHash: taxonomyHash, now: now)
+    }
+    func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws {
+      try base.recordAnswers(entries, taxonomyHash: taxonomyHash, now: now)
+    }
+    func keptAnswer(subject: String, modelTag: String) throws -> String? { try base.keptAnswer(subject: subject, modelTag: modelTag) }
+    func keepAnswers(_ entries: [ModelTier.StagedSuggestion]) throws {
+      try check()
+      try base.keepAnswers(entries)
+    }
+    func dropKept(_ entries: [(subject: String, modelTag: String)]) throws {
+      try check()
+      try base.dropKept(entries)
+    }
+  }
+
+  @Test("a kept answer that could not be written is written by the next sweep or open, with no second request")
+  func keptWriteHeals() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let rows = Self.rejecting(l.rows(), ["shopping"])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("shopping"))
+    func sweep(_ cache: FlakyKept) async throws {
+      _ = try await ModelSuggestionSweep.suggest(
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground, cache: cache,
+        now: { now })
+    }
+    let swept = FlakyKept()
+    await #expect(throws: FlakyKept.Boom.self) { try await sweep(swept) }
+    #expect(try swept.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == nil && cloud.calls.count == 1)
+    swept.heal()
+    try await sweep(swept)
+    #expect(try swept.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "shopping" && cloud.calls.count == 1)
+
+    let backlog = BacklogCloud(fallback: (.category("shopping"), true))
+    let open = FlakyKept()
+    func pass(_ memo: BacklogSort.Memo) async throws -> BacklogSort.Pass {
+      try await BacklogSort.pass(
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: backlog, memo: memo, cache: open, now: { now }, autoFile: true)
+    }
+    var memo = BacklogSort.Memo()
+    do {
+      _ = try await pass(memo)
+      Issue.record("the kept write failed, so the pass must throw")
+    } catch let e as BacklogSort.Interrupted {
+      memo = e.memo
+    }
+    #expect(memo.asked == ["cafe example jbr"] && backlog.calls.count == 1)
+    open.heal()
+    let nextOpen = try await pass(.init())
+    #expect(nextOpen.suggestions.isEmpty && backlog.calls.count == 1)
+    #expect(try open.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "shopping")
+  }
+
+  @Test("a stale kept answer that could not be dropped is dropped by the next sweep")
+  func keptDropHeals() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let cache = FlakyKept()
+    try cache.base.keepAnswers([ModelTier.StagedSuggestion(subject: "cafe example jbr", category: "shopping", modelTag: "cf-clef/1")])
+    let cloud = RecordingModel("cf-clef/1", reply: .category("dining"))
+    let snapshot = l
+    func sweep() async throws -> [ModelSuggestionSweep.Suggestion] {
+      try await ModelSuggestionSweep.suggest(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, stages: [.cloud(cloud)], context: .foreground, cache: cache,
+        now: { now })
+    }
+    await #expect(throws: FlakyKept.Boom.self) { _ = try await sweep() }
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == "shopping")
+    cache.heal()
+    let second = try await sweep()
+    #expect(second.map(\.category) == ["dining"] && cloud.calls.count == 1)
+    #expect(try cache.keptAnswer(subject: "cafe example jbr", modelTag: "cf-clef/1") == nil)
+  }
+
   @Test("a kept answer whose rejection was undone is dropped, so the name is asked again and refreshed")
   func keptAfterUndo() async throws {
     var l = T.Ledger()
