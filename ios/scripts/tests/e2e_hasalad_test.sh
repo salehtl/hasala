@@ -59,6 +59,7 @@ cat >"$work/hasalad" <<STUB
 case "\$1" in
 migrate) exit 0 ;;
 serve)
+	cat "\$HASALA_HEADROOM_PATH/owner.pid" >"$work/owner-seen" 2>/dev/null || echo none >"$work/owner-seen"
 	if [ "\${STUB_SERVE:-dies}" = healthy ]; then
 		exec /usr/bin/python3 -I "$work/listener.py" "\${HASALA_HTTP_LISTEN##*:}"
 	fi
@@ -129,5 +130,16 @@ port="$(free_port)"
 run "$port" STUB_SERVE=healthy
 if reached_tests; then pass "a healthy server reaches the tests"; else bad "a healthy server did not reach the tests (exit $rc)"; fi
 if ! listening "$port"; then pass "...and is stopped on exit"; else bad "the server still listens on $port after the run"; fi
+
+run_owner=""
+port="$(free_port)"
+: >"$work/pg_ctl-calls"
+env PATH="$work/stub:$PATH" HASALA_E2E_PORT="$port" STUB_SERVE=healthy "$work/ios/scripts/e2e-hasalad.sh" "$work/hasalad" >"$work/out" 2>&1 &
+run_owner=$!
+wait "$run_owner" || true
+if [[ "$(cat "$work/owner-seen")" == "$run_owner" ]]; then pass "the cluster names the run that owns it"; else bad "owner.pid says '$(cat "$work/owner-seen")', the run was $run_owner"; fi
+if grep -qE -- '-D .+/pgtest-[^/]+/data ' "$work/pg_ctl-calls"; then pass "the cluster has the shape the gate's reaper looks for"; else
+	bad "pg_ctl started $(head -n 1 "$work/pg_ctl-calls")"
+fi
 
 exit "$fail"

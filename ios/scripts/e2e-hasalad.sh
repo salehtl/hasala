@@ -18,18 +18,19 @@ if /usr/sbin/lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 # /tmp, not $TMPDIR: Postgres's unix socket lives here, and a socket path
 # longer than 103 bytes (a deep $TMPDIR on macOS) makes the server fail to start.
-TMP="$(mktemp -d /tmp/hasala-e2e.XXXXXX)"
+TMP="$(mktemp -d /tmp/pgtest-e2e.XXXXXX)"
+echo "$$" >"$TMP/owner.pid"
 SERVER_PID=""
 
 cleanup() {
 	[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null || true
-	pg_ctl -D "$TMP/pg" -m immediate stop >/dev/null 2>&1 || true
+	pg_ctl -D "$TMP/data" -m immediate stop >/dev/null 2>&1 || true
 	rm -rf "$TMP"
 }
 trap cleanup EXIT
 
-initdb -D "$TMP/pg" -U postgres -A trust --no-sync >/dev/null
-pg_ctl -D "$TMP/pg" -l "$TMP/pg.log" -o "-k $TMP -c listen_addresses='' -c fsync=off" start >/dev/null
+initdb -D "$TMP/data" -U postgres -A trust --no-sync >/dev/null
+pg_ctl -D "$TMP/data" -l "$TMP/pg.log" -o "-k $TMP -c listen_addresses='' -c fsync=off" start >/dev/null
 for _ in $(seq 50); do pg_isready -h "$TMP" -q && break; sleep 0.1; done
 
 ADMIN="host=$TMP user=postgres dbname=postgres"
