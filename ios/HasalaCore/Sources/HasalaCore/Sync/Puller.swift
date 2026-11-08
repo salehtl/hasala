@@ -147,7 +147,6 @@ enum Puller {
     var hwm = state.epochHWM
     var serverEpoch: UInt32?
     var rosterRefreshed = false
-    var epochRefreshed = false
     var newerVersionUnshipped = false
 
     while true {
@@ -159,21 +158,18 @@ enum Puller {
       let result = PageReader.read(rows, state: readerState, plaintextBudget: plaintextBudget)
       switch result.stop {
       case .refreshRoster?:
-        guard !rosterRefreshed else { throw .halted(.tampered(.unknownWriter)) }
         let fresh = try await RosterService.refetch(client: ctx.client, bearer: bearer, pinned: pinned)
         try ctx.storeCall { () throws(StoreError) in try ctx.store.setRoster(fresh.encoded()) }
         roster = fresh
         rosterRefreshed = true
         continue
       case .refreshEpoch(let e)?:
-        guard !epochRefreshed else { throw .halted(.tampered(.epochInvalid)) }
         let keys: KeysResponse
         do { keys = try await ctx.client.keys(bearer: bearer) } catch { throw SyncStop.read(error) }
         guard keys.current_epoch >= 1, keys.current_epoch <= Int(Int32.max) else {
           throw .halted(.tampered(.epochInvalid))
         }
         serverEpoch = UInt32(keys.current_epoch)
-        epochRefreshed = true
         if serverEpoch! >= e {
           hwm = max(hwm, serverEpoch!)
           try ctx.storeCall { () throws(StoreError) in try ctx.store.setEpochHWM(hwm) }

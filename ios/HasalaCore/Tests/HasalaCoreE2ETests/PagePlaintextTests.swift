@@ -1,6 +1,7 @@
 import CoreAuth
 import CoreCrypto
 import CoreJSON
+import CorePrimitives
 import CoreProjection
 import CoreReplay
 import CoreSoftAuth
@@ -121,6 +122,53 @@ struct PagePlaintextTests {
     let whole = try await b.observer.coldFold(cursor: cursor)
     let sliced = try await b.observer.coldFold(cursor: cursor, plaintextBudget: 1)
     #expect(whole.serialized() == sliced.serialized() && cursor > 0)
+  }
+}
+
+@Suite("Pull: each network step of a page runs once")
+struct PageRefreshOnceTests {
+  func twoPhones() async throws -> (World, SyncContext, SyncContext) { try await PagePlaintextTests().twoPhones() }
+
+  func injectAboveHWM(_ w: World, _ a: SyncContext) throws {
+    let key = try EpochKey(epoch: 2, key: Data(repeating: 3, count: 32))
+    let envelope = try Envelope(userID: a.userID, writerID: a.writerID, counter: 1)
+    let frame = try Sealer(epoch: 2, key: key).seal(
+      plaintextOps: Data(#"{"v":4,"kind":"ops","ops":[]}"#.utf8), envelope: envelope, prevHash: .zero, random: a.random)
+    let seed = try #require(try a.secrets.writerSeed(userID: a.userID, writerID: a.writerID))
+    let sig = try Ed25519.sign(
+      seed: seed, message: SigningMessage.head(userID: a.userID, counter: 1, blobHash: frame.blobHash, writerID: a.writerID))
+    w.server.injectRow(
+      user: a.userID, writerID: a.writerID.string, counter: 1, prevHash: Data(count: 32), blob: frame.bytes, headSig: sig)
+  }
+
+  @Test("an unknown writer: one key-history fetch, then tampered")
+  func rosterOnce() async throws {
+    let (w, a, b) = try await twoPhones()
+    w.server.injectRow(
+      user: a.userID, writerID: "ios-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", counter: 1, prevHash: Data(count: 32),
+      blob: Data(repeating: 7, count: 1024), headSig: Data(repeating: 1, count: 64))
+    let (pull, routes) = counted(b, through: w.server)
+    await #expect(throws: SyncStop.halted(.tampered(.unknownWriter))) { _ = try await Puller.pull(pull, observer: nil) }
+    #expect(routes.count("GET /api/v1/key-history") == 1)
+  }
+
+  @Test("a frame above the published epoch: one keys read, then tampered")
+  func epochOnceRefused() async throws {
+    let (w, a, b) = try await twoPhones()
+    try injectAboveHWM(w, a)
+    let (pull, routes) = counted(b, through: w.server)
+    await #expect(throws: SyncStop.halted(.tampered(.epochInvalid))) { _ = try await Puller.pull(pull, observer: nil) }
+    #expect(routes.count("GET /api/v1/keys") == 1)
+  }
+
+  @Test("a frame at the published epoch this iPhone has no key for: one keys read, then the unlock")
+  func epochOnceAccepted() async throws {
+    let (w, a, b) = try await twoPhones()
+    try injectAboveHWM(w, a)
+    w.server.publishEpoch(user: a.userID, 2)
+    let (pull, routes) = counted(b, through: w.server)
+    await #expect(throws: SyncStop.needsUnlock(epoch: 2)) { _ = try await Puller.pull(pull, observer: nil) }
+    #expect(routes.count("GET /api/v1/keys") == 1)
   }
 }
 
