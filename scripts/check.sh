@@ -329,32 +329,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Reap clusters a PREVIOUS run leaked. The EXIT trap cannot run on SIGKILL (the
-# OOM killer), and on ledgerd's 4 GB box stranded clusters piled up for days.
-# Only this user's orphans (parent gone, PPID 1) whose data directory is a
-# pgtest- scratch directory under the temp dir are touched.
-reap_orphaned_clusters() {
-	local pid ppid dir reaped=0 tmp="${TMPDIR:-/tmp}"
-	tmp="${tmp%/}"
-	while read -r pid ppid dir; do
-		[[ "$ppid" == 1 ]] || continue
-		[[ "$dir" == "$tmp"/pgtest-*/data ]] || continue
-		kill -QUIT "$pid" 2>/dev/null || true
-		rm -rf "${dir%/data}" 2>/dev/null || true
-		reaped=$((reaped + 1))
-	done < <(ps -u "$(id -u)" -o pid=,ppid=,args= | awk '/postgres -D .*\/pgtest-/ {for (i=1;i<=NF;i++) if ($i=="-D") print $1, $2, $(i+1)}')
-	if [[ "$reaped" -gt 0 ]]; then
-		echo "check: reaped $reaped orphaned scratch cluster(s) from an earlier run"
-	fi
-	return 0
-}
-
 step "postgres"
-reap_orphaned_clusters
 # Captured, then checked: `eval "$(go run ...)"` alone would swallow a failed
 # boot (empty stdout, eval "" succeeds) and every package would quietly boot
 # its own cluster instead.
-BOOT_OUT="$(go run ./internal/pgtest/cmd/boot 2>"$PG_LOG")" || {
+BOOT_OUT="$(go run ./internal/pgtest/cmd/boot -owner "$$" 2>"$PG_LOG")" || {
 	cat "$PG_LOG" >&2
 	echo "check: failed to boot the postgres cluster (see the error above)" >&2
 	exit 1

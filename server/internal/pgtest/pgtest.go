@@ -35,13 +35,16 @@ package pgtest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -371,7 +374,7 @@ func boot() (func(), string, error) {
 	if u := os.Getenv("HASALA_TEST_POSTGRES_URL"); u != "" {
 		return func() {}, u, nil
 	}
-	dir, srv, dsn, err := bootCluster(false)
+	dir, srv, dsn, err := bootCluster(false, os.Getpid())
 	if err != nil {
 		return nil, "", err
 	}
@@ -396,8 +399,8 @@ func boot() (func(), string, error) {
 // It returns the admin DSN and the path to a self-contained shell script
 // that stops the server and removes its data directory; the caller is
 // responsible for eventually running that script.
-func BootStandalone() (dsn string, stopScript string, err error) {
-	dir, srv, dsn, err := bootCluster(true)
+func BootStandalone(owner int) (dsn string, stopScript string, err error) {
+	dir, srv, dsn, err := bootCluster(true, owner)
 	if err != nil {
 		return "", "", err
 	}
@@ -433,7 +436,7 @@ func BootStandalone() (dsn string, stopScript string, err error) {
 // BootStandalone; detach controls whether the server process is placed in
 // its own session (required when the caller is a short-lived `go run`
 // process that must not take the server down with it on exit).
-func bootCluster(detach bool) (dir string, srv *exec.Cmd, dsn string, err error) {
+func bootCluster(detach bool, owner int) (dir string, srv *exec.Cmd, dsn string, err error) {
 	binDir, err := postgresBinDir()
 	if err != nil {
 		return "", nil, "", err
@@ -507,6 +510,11 @@ func bootCluster(detach bool) (dir string, srv *exec.Cmd, dsn string, err error)
 		"-c", "listen_addresses=", "-c", "fsync=off", "-c", "full_page_writes=off",
 		"-c", "synchronous_commit=off")
 	srv.Stdout, srv.Stderr = os.Stderr, os.Stderr // long-running: stream, never capture
+	if owner > 0 {
+		if err := os.WriteFile(filepath.Join(dir, ownerFile), []byte(strconv.Itoa(owner)), 0o644); err != nil {
+			return "", nil, "", fmt.Errorf("write owner file: %w", err)
+		}
+	}
 	if err := srv.Start(); err != nil {
 		return "", nil, "", err
 	}
@@ -589,4 +597,46 @@ func waitReady(dsn string) error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("postgres did not become ready")
+}
+
+const ownerFile = "owner.pid"
+
+var postmasterLine = regexp.MustCompile(`^\s*(\d+)\s+\S*postgres -D (.+/pgtest-[^/]+/data) -k `)
+
+func ReapOrphans() (int, error) {
+	out, err := exec.Command("ps", "-u", strconv.Itoa(os.Getuid()), "-o", "pid=", "-o", "args=").Output()
+	if err != nil {
+		return 0, fmt.Errorf("pgtest: list processes: %w", err)
+	}
+	reaped := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		m := postmasterLine.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		dir := filepath.Dir(m[2])
+		if !ownerGone(dir) {
+			continue
+		}
+		pid, err := strconv.Atoi(m[1])
+		if err != nil {
+			continue
+		}
+		_ = syscall.Kill(pid, syscall.SIGQUIT)
+		_ = os.RemoveAll(dir)
+		reaped++
+	}
+	return reaped, nil
+}
+
+func ownerGone(dir string) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, ownerFile))
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 1 {
+		return false
+	}
+	return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 }
