@@ -344,11 +344,13 @@ final class AppModel {
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
   func startReview() {
+    ReviewEntry.forget(self)
     reviewPeriodOverride = nil
     cover = .review
   }
 
   func startReview(over preset: PeriodPreset) {
+    ReviewEntry.forget(self)
     reviewPeriodOverride = preset.period(today: store.now.date.yearMonth, earliest: earliestMonth)
     cover = .review
   }
