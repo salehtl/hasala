@@ -1122,12 +1122,14 @@ public actor MailboxEngine {
     // no card gate (`MessageDisposer.finalize`).
     state.phase = .authoringBackfill
     try? await store.commit(commitState(state))
-    return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
+    return await authorBackfill(
+      source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, windowRead: !run.stagingFull && !Task.isCancelled,
+      report)
   }
 
   private func authorBackfill(
     _ source: any MailSource, _ state: inout MailboxState, trusted: [String], deadlineMs: Int64?, paged: Bool,
-    _ report: CycleReport
+    windowRead: Bool = false, _ report: CycleReport
   ) async -> CycleReport {
     var report = report
     let total = (try? await store.stagedCount()) ?? 0
@@ -1149,11 +1151,10 @@ public actor MailboxEngine {
       emit(.authoring, authored, total)
     }
     if let stopped = await flushOrStop(&state, report) { return stopped }
-    var remainderDone = false
-    if ((try? await store.stagedCount()) ?? 1) == 0 {
+    var remainderDone = windowRead
+    if !windowRead, ((try? await store.stagedCount()) ?? 1) == 0 {
       // §7.7 step 7: when the scan stopped at the staging cap, the rest of its window is listed
-      // again and authored directly. Run unconditionally (no state
-      // column records the cap): ids only, and the accounted set skips everything already done.
+      // again and authored directly.
       let since = windowSinceSec(state)
       var run = Run(trusted: trusted, grant: grant(state), address: state.address)
       do {
