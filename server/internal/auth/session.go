@@ -112,7 +112,16 @@ func forgetPushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any)
 }
 
 func takePushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]pushv2.Target, error) {
-	rows, err := tx.Query(ctx, `DELETE FROM apns_tokens WHERE `+where+` RETURNING token_hex, environment`, args...)
+	return collectTakenPushTokens(tx.Query(ctx, `DELETE FROM apns_tokens WHERE `+where+` RETURNING token_hex, environment`, args...))
+}
+
+func takeAccountPushTokens(ctx context.Context, tx pgx.Tx, userID uuid.UUID, exceptWriterID string) ([]pushv2.Target, error) {
+	return collectTakenPushTokens(tx.Query(ctx,
+		`WITH taken AS (DELETE FROM apns_tokens WHERE user_id = $1 RETURNING writer_id, token_hex, environment)
+		 SELECT token_hex, environment FROM taken WHERE writer_id <> $2`, userID, exceptWriterID))
+}
+
+func collectTakenPushTokens(rows pgx.Rows, err error) ([]pushv2.Target, error) {
 	if err != nil {
 		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
 	}
@@ -406,12 +415,19 @@ func RevokeOtherSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, kee
 	if err != nil {
 		return nil, err
 	}
+	if err := revokeSessionRowsTx(ctx, tx, userID, keep, now); err != nil {
+		return nil, err
+	}
+	return revoked, nil
+}
+
+func revokeSessionRowsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, keep [][]byte, now time.Time) error {
 	if _, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'
 		  WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[]))`, userID, keep, now); err != nil {
-		return nil, fmt.Errorf("auth: revoke other sessions: %w", err)
+		return fmt.Errorf("auth: revoke other sessions: %w", err)
 	}
-	return revoked, nil
+	return nil
 }
 
 // ErrSessionBound means a bind was asked of a session that is already bound

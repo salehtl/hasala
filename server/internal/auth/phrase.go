@@ -99,17 +99,22 @@ func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepU
 		if held, err = a.Hold.Tx(ctx, tx, sessionsEntry(session.UserID, now)); err != nil {
 			return err
 		}
-		if revoked, err = takePushTokens(ctx, tx, `user_id = $1 AND writer_id <> $2`, session.UserID, session.WriterID); err != nil {
+		if revoked, err = takeAccountPushTokens(ctx, tx, session.UserID, session.WriterID); err != nil {
 			return err
 		}
-		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, nil, now); err != nil {
+		if err := revokeSessionRowsTx(ctx, tx, session.UserID, [][]byte{}, now); err != nil {
 			return err
 		}
-		if err := forgetPushTokens(ctx, tx, `user_id = $1`, session.UserID); err != nil {
+		if err := recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: session.WriterID,
+			CredentialID: p.CredentialID}, now); err != nil {
 			return err
 		}
-		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: session.WriterID,
-			CredentialID: p.CredentialID}, now)
+		late, err := takeAccountPushTokens(ctx, tx, session.UserID, session.WriterID)
+		if err != nil {
+			return err
+		}
+		revoked = append(revoked, late...)
+		return nil
 	})
 	if err != nil {
 		return nil, err
