@@ -557,6 +557,8 @@ public actor MailboxEngine {
     s.watchExpiresAtMs = nil  // a new link starts with no watch (spec 02 §13.2 step 3)
     if s.phase == .scanning && s.scanStartedMs == nil {
       // First connect. A resumed scan keeps its window: what it staged and accounted still counts.
+      scanTotal = 0
+      thisMonthRead = false
       s.backfillDays = [30, 90, 365].contains(backfillDays) ? backfillDays : 90
       let inherited = otherMailbox && stored?.readFromMs != nil
       if let from = await readFrom(pastMail, inherited: inherited, address: claims.email) {
