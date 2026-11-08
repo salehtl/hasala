@@ -33,6 +33,7 @@
     var capabilities: AccountCapabilities = .all
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
+    var keysOnThisIPhone = true
     var refuseFinish: AuthFailure?
     var refusePhrase: AuthFailure?
     /// What the existing account has (the sign-in scenarios).

@@ -312,7 +312,7 @@ struct AccountGatePhaseTests: AccountSuite {
     #expect(s.phase == .signedOut)
   }
 
-  @Test func anUnfreezeAnsweredAfterTheWallLeftChangesNothing() async {
+  @Test func anUnfreezeAnsweredAfterASignOutChangesNothing() async {
     let account = signedInAccount()
     account.freezeForScenario(by: .holder)
     let (_, s) = store(account, phase: .frozen(holder))
@@ -322,6 +322,55 @@ struct AccountGatePhaseTests: AccountSuite {
     s.signedOut()
     await unfreeze.value
     #expect(s.phase == .signedOut)
+  }
+
+  @Test func anUnfreezeAnsweredAfterASignOutOnAnIPhoneWithNoKeysStaysSignedOut() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    account.keysOnThisIPhone = false
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.signedOut()
+    await unfreeze.value
+    #expect(s.phase == .signedOut)
+  }
+
+  @Test func leavingTheWallWhileAnUnfreezeIsAnsweredDropsTheBanner() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+    await unfreeze.value
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == nil)
+    #expect(account.frozenInfo == nil)
+  }
+
+  @Test func leavingTheWallInSetupWhileAnUnfreezeIsAnsweredStaysInSetupWithNoBanner() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .onboarding)
+    s.froze(holder)
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+    await unfreeze.value
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == nil)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.froze(holder)
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
   }
 
   private var inviteLink: URL { URL(string: "https://hasala.app/i/\(Self.code)")! }

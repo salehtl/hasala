@@ -180,8 +180,8 @@ final class AccountSession {
       signedOut()
       throw .sessionEnded
     }
-    guard case .frozen = phase else { return }
     guard account.keysOnThisIPhone else {
+      guard case .frozen = phase else { return }
       leftFrozen = nil
       setupBehindWall = false
       phase = .checking
