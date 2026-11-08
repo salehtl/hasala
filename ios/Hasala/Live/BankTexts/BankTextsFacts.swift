@@ -67,6 +67,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     authoredToday = DayCount(day: day, count: authoredToday?.day == day ? (authoredToday?.count ?? 0) + 1 : 1)
   }
 
+  mutating func releaseAuthored(atMs ms: Int64) {
+    guard let authored = authoredToday, authored.day == Self.day(ms) else { return }
+    authoredToday = authored.count > 1 ? DayCount(day: authored.day, count: authored.count - 1) : nil
+  }
+
   mutating func addSetAside(sender: String, bank: String?, kind: BankTextDropKind, atMs: Int64) {
     let day = Self.day(atMs)
     if let i = setAside.firstIndex(where: { $0.sender == sender && $0.day == day && $0.kind == kind }) {
@@ -108,6 +113,12 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
 
 nonisolated enum BankTextsFactsError: Error, Equatable, Sendable {
   case unavailable
+}
+
+nonisolated enum BankTextsDailyClaim: Equatable, Sendable {
+  case claimed
+  case atLimit
+  case notSaved
 }
 
 nonisolated final class BankTextsFacts: Sendable {
@@ -159,6 +170,19 @@ nonisolated final class BankTextsFacts: Sendable {
     lock.unlock()
     Self.announce()
     return next
+  }
+
+  func claimDailyText(nowMs: Int64) -> BankTextsDailyClaim {
+    var atLimit = false
+    do {
+      try update(nowMs: nowMs) { data in
+        atLimit = data.atDailyTextLimit(nowMs: nowMs)
+        if !atLimit { data.noteAuthored(atMs: nowMs) }
+      }
+    } catch {
+      return atLimit ? .atLimit : .notSaved
+    }
+    return atLimit ? .atLimit : .claimed
   }
 
   func forget() {

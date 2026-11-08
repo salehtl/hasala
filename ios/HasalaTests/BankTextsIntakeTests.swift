@@ -89,6 +89,48 @@ nonisolated final class FakeTextAccount: BankTextAccount {
   }
 }
 
+nonisolated final class GatedTextAuthor: BankTextsAuthoring {
+  private let state = Mutex<(calls: Int, waiting: [CheckedContinuation<Void, Never>], open: Bool)>((0, [], false))
+
+  var calls: Int { state.withLock { $0.calls } }
+
+  func open() {
+    let waiting = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+      s.open = true
+      let held = s.waiting
+      s.waiting = []
+      return held
+    }
+    waiting.forEach { $0.resume() }
+  }
+
+  func author(
+    _ text: String, sender: String?, reading: KeptBankText, arrivedAt: Date, secret: Data, link: BankTextLinkState,
+    origin: BankTextRoute
+  ) async throws(BankTextsCoreFailure) -> BankTextAuthored {
+    let second = state.withLock { s -> Bool in
+      s.calls += 1
+      return s.calls >= 2
+    }
+    if second { open() }
+    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+      let go = state.withLock { s -> Bool in
+        if s.open { return true }
+        s.waiting.append(c)
+        return false
+      }
+      if go { c.resume() }
+    }
+    return .authored(rowID: "row-1", filed: false, keptAt: arrivedAt)
+  }
+
+  func liveRows(postedFrom: Date, through: Date) async -> [PasteRow] { [] }
+}
+
+nonisolated struct NoRandom: RandomSource {
+  func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) { throw .sealFailed }
+}
+
 @MainActor
 @Suite("Bank texts: the intent, the facts and paste")
 struct BankTextsIntakeTests {
@@ -404,6 +446,102 @@ struct BankTextsIntakeTests {
     let tomorrow = Self.t0.addingTimeInterval(86_400)
     #expect(await i.run(Self.payment, sender: "DIB", at: tomorrow) == .authored(filed: false))
     #expect(r.author.calls.count == 2)
+  }
+
+  func nearTheLimit(_ r: Rig) throws {
+    let nowMs = BankTextIntake.ms(Self.t0)
+    try r.facts.update(nowMs: nowMs) {
+      $0.link = .init(linked: false, learnedAtMs: nowMs)
+      $0.authoredToday = BankTextsFactsData.DayCount(
+        day: BankTextsFactsData.day(nowMs), count: BankTextsFactsData.dailyTextLimit - 1)
+    }
+  }
+
+  func wiredIntake(
+    _ r: Rig, author: any BankTextsAuthoring, secret: TextKeySecret? = nil,
+    signIn: @escaping () -> BankTextSignIn = { .signedIn }
+  ) -> BankTextIntake {
+    let account = FakeTextAccount(author: author)
+    return BankTextIntake(
+      BankTextIntakeDeps(
+        reader: r.reader, facts: r.facts, marker: r.marker, secret: secret ?? TextKeySecret(store: r.secrets),
+        signIn: signIn, account: { account }, linkBudget: .milliseconds(200)))
+  }
+
+  @Test func twoTextsAtOnceCannotBothTakeTheLastPlaceOfTheDay() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let author = GatedTextAuthor()
+    let i = wiredIntake(r, author: author)
+    let first = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    while author.calls < 1 { await Task.yield() }
+    let second = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    #expect(await second.value == .failed(BankTextIntake.limitMessage))
+    author.open()
+    #expect(await first.value == .authored(filed: false))
+    #expect(author.calls == 1)
+    #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit)
+  }
+
+  @Test func theDaysCountIsOnDiskBeforeTheTextIsAuthored() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let author = GatedTextAuthor()
+    let i = wiredIntake(r, author: author)
+    let run = Task { await i.run(Self.payment, sender: "DIB", at: Self.t0) }
+    while author.calls < 1 { await Task.yield() }
+    let afterARestart = BankTextsFacts(directory: r.dir.appendingPathComponent("facts"))
+    #expect(afterARestart.read(nowMs: BankTextIntake.ms(Self.t0)).atDailyTextLimit(nowMs: BankTextIntake.ms(Self.t0)))
+    author.open()
+    #expect(await run.value == .authored(filed: false))
+  }
+
+  @Test func aTextThatIsNotAuthoredGivesItsPlaceBack() async throws {
+    let authors = [
+      FakeTextAuthor(failure: .unavailable), FakeTextAuthor(failure: .notAPayment), FakeTextAuthor(failure: .failed),
+      FakeTextAuthor(outcome: .ignoredLinked(counts: false)),
+    ]
+    for author in authors {
+      let r = rig(author: author)
+      try nearTheLimit(r)
+      _ = await intake(r).run(Self.payment, sender: "DIB", at: Self.t0)
+      #expect(author.calls.count == 1)
+      #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit - 1)
+    }
+  }
+
+  @Test func aSecretThatCannotBeMadeGivesThePlaceBack() async throws {
+    let r = rig()
+    try nearTheLimit(r)
+    let i = wiredIntake(r, author: r.author, secret: TextKeySecret(store: r.secrets, random: NoRandom()))
+    #expect(await i.run(Self.payment, sender: "DIB", at: Self.t0) == .failed(BankTextIntake.notOpenMessage))
+    #expect(r.author.calls.isEmpty)
+    #expect(r.factsData.authoredToday?.count == BankTextsFactsData.dailyTextLimit - 1)
+  }
+
+  @Test func aCountThatCannotBeSavedDoesNotStopTheText() async throws {
+    let r = rig()
+    setCopy(r, linked: false)
+    let factsDir = r.dir.appendingPathComponent("facts")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: factsDir.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: factsDir.path) }
+    #expect(await intake(r).run(Self.payment, sender: "DIB", at: Self.t0) == .authored(filed: false))
+    #expect(r.author.calls.count == 1)
+  }
+
+  @Test func theDayCountGivesBackOnlyItsOwnDay() {
+    let nowMs = BankTextIntake.ms(Self.t0)
+    var d = BankTextsFactsData()
+    d.noteAuthored(atMs: nowMs)
+    d.noteAuthored(atMs: nowMs)
+    d.releaseAuthored(atMs: nowMs + 86_400_000)
+    #expect(d.authoredToday?.count == 2)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday?.count == 1)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday == nil)
+    d.releaseAuthored(atMs: nowMs)
+    #expect(d.authoredToday == nil)
   }
 
   @Test func aLinkedAccountIgnoresTextsBeforeTheDailyLimit() async throws {

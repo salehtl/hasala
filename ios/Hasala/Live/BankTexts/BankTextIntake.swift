@@ -111,8 +111,11 @@ final class BankTextIntake {
       link = answer ? .linked : .notLinked
     }
     if link == .linked { return ignore(kept, nowMs: nowMs) }
-    if facts.atDailyTextLimit(nowMs: nowMs) {
-      return .failed(Self.limitMessage)
+    let claim = deps.facts.claimDailyText(nowMs: nowMs)
+    if claim == .atLimit { return .failed(Self.limitMessage) }
+    var authored = false
+    defer {
+      if claim == .claimed, !authored { note(nowMs) { $0.releaseAuthored(atMs: nowMs) } }
     }
     let secret: Data
     do { secret = try deps.secret.current() } catch { return .failed(Self.notOpenMessage) }
@@ -129,9 +132,10 @@ final class BankTextIntake {
     }
     switch outcome {
     case .authored(_, let filed, let keptAt):
+      authored = true
       note(nowMs) {
         $0.noteKept(atMs: Self.ms(keptAt))
-        $0.noteAuthored(atMs: nowMs)
+        if claim == .notSaved { $0.noteAuthored(atMs: nowMs) }
       }
       return .authored(filed: filed)
     case .ignoredLinked(let counts):
