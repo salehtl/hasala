@@ -285,6 +285,23 @@ struct LiveAccountServiceTests {
     #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
   }
 
+  @Test func theSampleDataAnswerReachesTheSessionToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    var told: [Bool] = []
+    rt.onAccount = { told.append($0.review_account == true) }
+    server.reviewAccounts = true
+    try? await rt.loadSample()
+    #expect(rt.reviewAccount)
+    #expect(told == [true])
+    await rt.close()
+  }
+
   @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)

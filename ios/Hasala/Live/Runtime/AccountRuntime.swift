@@ -416,6 +416,10 @@ final class AccountRuntime {
   func refreshAccount() async {
     guard let token = try? env.secrets.session()?.token else { return }
     guard let info = try? await env.client.account(bearer: token), info.user_id == binding.user_id else { return }
+    await adopt(info)
+  }
+
+  private func adopt(_ info: AccountInfo) async {
     account = info
     reviewAccount = info.review_account == true
     await onAccount?(info)
@@ -465,7 +469,7 @@ final class AccountRuntime {
     } catch {
       throw .offline
     }
-    reviewAccount = info.review_account == true
+    await adopt(info)
     let outbox = self.outbox
     do {
       try await observer.loadSample(account: info) { try await outbox.enqueue($0) }
