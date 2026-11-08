@@ -218,6 +218,8 @@
         mailboxes[i].meta = "Checking now"
         mailboxes[i].banks = banks.map(\.name)
         mailboxes[i].connectedOn = "10 Oct"
+        mailboxes[i].pastMailSkipped = false
+        mailboxes[i].note = nil
         return MailLinked(mailboxID: mailboxes[i].id, removal: removal)
       }
       let n = mailboxes.filter { $0.provider == provider }.count + 1

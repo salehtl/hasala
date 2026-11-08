@@ -112,6 +112,20 @@ struct PastMailChoiceAppTests: AccountSuite {
     #expect(lane.firstScanFinished)
   }
 
+  @Test func aMailboxConnectedAgainForgetsItsEarlierChoice() async throws {
+    var off = MockMailbox.gmail
+    off.state = .disconnected
+    off.pastMailSkipped = true
+    off.note = "Synthetic note"
+    let lane = mailbox([off])
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    c.pastMail = .importPast
+    await c.connect(.gmail)
+    let row = try #require(lane.mailboxes.first)
+    #expect(row.id == off.id && row.state == .syncing)
+    #expect(!row.pastMailSkipped && row.note == nil)
+  }
+
   @Test func theOutcomeSaysWhetherTheImportStarted() {
     func report(started: Bool, completed: Bool = false, halted: MailboxHaltCode? = nil, ops: Int = 0) -> CycleReport {
       var r = CycleReport()
