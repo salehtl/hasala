@@ -133,6 +133,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     // tamper switches
     var cannedRefusals: [String: [(Int, String, String)]] = [:]
     var loseNextUploadResponse = false
+    var loseNextRegisterAnswer = false
     var losePullAfterNextUpload = false
     var loseNextPull = false
     var partialApplyNextUpload: Int?
@@ -169,6 +170,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
 
   /// The next upload is applied, but its answer is lost (a transport error).
   public func loseNextUploadResponse() { state.withLock { $0.loseNextUploadResponse = true } }
+
+  public func loseNextRegisterAnswer() { state.withLock { $0.loseNextRegisterAnswer = true } }
 
   public func losePullAfterNextUpload() { state.withLock { $0.losePullAfterNextUpload = true } }
 
@@ -264,6 +267,13 @@ public final class FakeServer: Transport, @unchecked Sendable {
       defer { s.loseNextPull = false }
       return s.loseNextPull
     }) {
+      throw .offline(.networkConnectionLost)
+    }
+    if route == "POST /api/v1/writers/register", state.withLock({ s -> Bool in
+      defer { s.loseNextRegisterAnswer = false }
+      return s.loseNextRegisterAnswer
+    }) {
+      _ = handle(request, route: route)
       throw .offline(.networkConnectionLost)
     }
     if route == "POST /api/v1/sync" {

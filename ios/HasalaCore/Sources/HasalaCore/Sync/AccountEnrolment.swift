@@ -40,10 +40,34 @@ public struct NewDevice: @unchecked Sendable {
     guard DAK.isValidPublicKey(dak) else { throw .approvalKey(.unavailable) }
     // Persisted before first use (§6.2): a lost answer to the registration or
     // the bootstrap leaves a server-side writer whose key this iPhone keeps.
-    // TODO(WS-14): the lost-answer path itself (C2b-P with this writer, §6.2
-    // C1-P row) needs the minted writer id remembered outside the binding.
     try secretStep { () throws(SecretStoreError) in try env.secrets.writeWriterSeed(seed, userID: userID, writerID: w) }
     return NewDevice(writerID: w, dwkSeed: seed, dwkPublic: pub, dakPublic: dak)
+  }
+
+  static func registeredOnThisSession(_ env: AccountEnvironment, userID: UserID, bearer: String)
+    async throws(CeremonyError) -> NewDevice?
+  {
+    let session = try await apiStep { () async throws(APIError) in try await env.client.session(bearer: bearer) }
+    guard let w = session.writer_id.flatMap({ WriterID($0) }) else { return nil }
+    let binding = try secretStep { () throws(SecretStoreError) in try env.secrets.binding() }
+    guard binding?.writerID != w else { return nil }
+    guard
+      let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: userID, writerID: w) })
+    else { return nil }
+    let dak: Data
+    do {
+      dak = try env.approvalKeys.publicKeyX963(userID: userID, writerID: w)
+    } catch {
+      seed.wipe()
+      if error == .missing { return nil }
+      throw .approvalKey(error)
+    }
+    do {
+      return NewDevice(writerID: w, dwkSeed: seed, dwkPublic: try Ed25519.publicKey(seed: seed), dakPublic: dak)
+    } catch {
+      seed.wipe()
+      throw .crypto("writer key")
+    }
   }
 }
 
@@ -122,7 +146,24 @@ public enum Enrolment {
       if name == nil { name = a.display_name }
     }
     guard let email, let salt else { throw .badResponse("account email or salt") }
-    let device = try await NewDevice.mint(env, userID: userID)
+    let device: NewDevice
+    if let registered = try await NewDevice.registeredOnThisSession(env, userID: userID, bearer: bearer) {
+      device = registered
+    } else {
+      device = try await NewDevice.mint(env, userID: userID)
+      try await register(env, device: device, body: body, bearer: bearer)
+    }
+    let k1 = try cryptoStep("K_1") { try body.epochKey1(userID: userID) }
+    defer { k1.wipe() }
+    let aak = try cryptoStep("aak") { try body.authorityPublicKey() }
+    return try await persist(
+      env, userID: userID, device: device, epochKey: k1, emailNorm: email, serverSalt: salt, displayName: name,
+      authorityPublicKey: aak)
+  }
+
+  static func register(_ env: AccountEnvironment, device: NewDevice, body: KeyBody, bearer: String)
+    async throws(CeremonyError)
+  {
     let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
     let nonce = try b64(challenge.nonce, "writer nonce")
     let sig = try cryptoStep("registration") {
@@ -138,12 +179,6 @@ public enum Enrolment {
         bearer: bearer)
     }
     guard r.writer_id == device.writerID.string else { throw .badResponse("register writer_id") }
-    let k1 = try cryptoStep("K_1") { try body.epochKey1(userID: userID) }
-    defer { k1.wipe() }
-    let aak = try cryptoStep("aak") { try body.authorityPublicKey() }
-    return try await persist(
-      env, userID: userID, device: device, epochKey: k1, emailNorm: email, serverSalt: salt, displayName: name,
-      authorityPublicKey: aak)
   }
 
   /// The end of every enrolment (C1, C1-P, C2, C2-P, C3). `beforeBinding`
@@ -190,7 +225,9 @@ public enum Enrolment {
     var roster = PinnedRoster(authorityPublicKey: authorityPublicKey, roster: .empty)
     do {
       roster = try await RosterService.fetch(client: env.client, bearer: bearer, authorityPublicKey: authorityPublicKey)
-      guard roster.writers[device.writerID.string] != nil else {
+      guard let own = roster.writers[device.writerID.string], own.final_counter == nil,
+        own.dwk == Base64.encode(device.dwkPublic), own.dak == Base64.encode(device.dakPublic)
+      else {
         throw CeremonyError.integrityAlarm("own writer not in key history")
       }
     } catch let e as CeremonyError {

@@ -192,6 +192,108 @@ struct HardeningTests {
     #expect(b.binding == nil)
   }
 
+  func enrolmentWithLostAnswer(_ w: World) async throws -> (Phone, UserID, KeyBody, SignInResult) {
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let r = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+    w.server.loseNextRegisterAnswer()
+    await #expect(throws: CeremonyError.self) {
+      _ = try await Enrolment.enrolWriter(
+        b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    }
+    #expect(b.binding == nil)
+    return (b, account.userID, body, r)
+  }
+
+  func boundWriter(_ phone: Phone) async throws -> WriterID {
+    let token = try #require(try phone.env.secrets.session()).token
+    let id = try #require(try await phone.env.client.session(bearer: token).writer_id)
+    return try #require(WriterID(id))
+  }
+
+  func expectSessionBound(_ env: AccountEnvironment, _ user: UserID, _ body: KeyBody, _ r: SignInResult) async {
+    do {
+      _ = try await Enrolment.enrolWriter(env, userID: user, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+      Issue.record("enrolled on a session that is already bound")
+    } catch {
+      guard case .api(.refused(let f)) = error, f.code == "session_bound" else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+  }
+
+  @Test("a lost registration answer finishes with the same writer on the same session")
+  func lostRegistrationAnswerResumes() async throws {
+    let w = World()
+    let (b, user, body, r) = try await enrolmentWithLostAnswer(w)
+    let writer = try await boundWriter(b)
+    let token = try #require(try b.env.secrets.session()).token
+    let writers = try await b.env.client.writers(bearer: token).writers.count
+    let held = b.keychain.count
+    let enrolled = try await Enrolment.enrolWriter(
+      b.env, userID: user, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    #expect(enrolled.writerID == writer)
+    #expect(b.binding?.writerID == writer)
+    #expect(try await b.env.client.writers(bearer: token).writers.count == writers)
+    #expect(b.keychain.count == held + 2)
+    let ctx = Enrolment.context(b.env, account: enrolled)
+    try enqueue(ctx, [op(1)])
+    #expect(await SyncEngine(context: ctx).run(.authored).stop == nil)
+    #expect(try ctx.store.pendingCount() == 0)
+  }
+
+  @Test("a bound session is not resumed when this iPhone lacks that writer's key or approval key")
+  func lostRegistrationAnswerNeedsBothKeys() async throws {
+    let w1 = World()
+    let (b1, user1, body1, r1) = try await enrolmentWithLostAnswer(w1)
+    try b1.keychain.delete(.writerKey(userID: user1, writerID: try await boundWriter(b1)))
+    await expectSessionBound(b1.env, user1, body1, r1)
+    #expect(b1.binding == nil)
+
+    let w2 = World()
+    let (b2, user2, body2, r2) = try await enrolmentWithLostAnswer(w2)
+    let noApprovalKey = AccountEnvironment(
+      client: b2.env.client, secrets: b2.env.secrets, approvalKeys: SoftwareApprovalKeySigner(), passkeys: b2.passkeys,
+      clock: w2.clock, random: b2.env.random, apiBase: b2.env.apiBase, accountsDirectory: nil)
+    await expectSessionBound(noApprovalKey, user2, body2, r2)
+    #expect(b2.binding == nil)
+  }
+
+  @Test("a writer that finished enrolling is not enrolled again on its bound session")
+  func finishedWriterIsNotResumed() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let r = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+    let enrolled = try await Enrolment.enrolWriter(
+      b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    await expectSessionBound(b.env, account.userID, body, r)
+    #expect(b.binding?.writerID == enrolled.writerID)
+  }
+
+  @Test("a held writer key that the signed history does not name stops the enrolment")
+  func resumedWriterMustMatchKeyHistory() async throws {
+    let w = World()
+    let (b, user, body, r) = try await enrolmentWithLostAnswer(w)
+    try b.env.secrets.writeWriterSeed(Data(repeating: 9, count: 32), userID: user, writerID: try await boundWriter(b))
+    do {
+      _ = try await Enrolment.enrolWriter(
+        b.env, userID: user, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+      Issue.record("enrolled with a key the history does not name")
+    } catch {
+      guard case .integrityAlarm = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(b.binding == nil)
+  }
+
   @Test("a published current_epoch above Int32.max is a bad response, not a trap")
   func oversizedPublishedEpoch() async throws {
     let w = World()
