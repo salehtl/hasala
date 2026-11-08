@@ -127,6 +127,35 @@ struct AskSearchTests {
     #expect(m.phase == .idle)
   }
 
+  @Test func anAnswerFollowsTheLedgerWithoutAskingAgain() async throws {
+    let m = AskSearchModel(parser: SearchQueryParser(model: CannedSearchModel(replies: [
+      "carrefour september": .reply(SearchModelReply(merchants: ["Carrefour"], period: .month, month: 9, flow: .spent)),
+    ])))
+    await m.run("carrefour september", store.state, now: store.now, debounce: .zero)
+    let before = try #require(m.answer(for: "carrefour september"))
+    #expect(before.rows.map(\.id) == ["carrefour-sep26", "carrefour-sep13"])
+    #expect(before.rows.first?.detail.hasPrefix("Shopping") == false)
+    try store.apply(.categorize("carrefour-sep26", "shopping", learnRule: false, project: nil))
+    m.refresh(store.state, now: store.now)
+    #expect(m.answer(for: "carrefour september")?.rows.first?.detail.hasPrefix("Shopping") == true)
+    m.remove(.direction, store.state, now: store.now)
+    try store.apply(.archive("carrefour-sep13", true))
+    m.refresh(store.state, now: store.now)
+    let after = try #require(m.answer(for: "carrefour september"))
+    #expect(after.rows.map(\.id) == ["carrefour-sep26"])
+    #expect(after.scope.map(\.part) == [.merchant("Carrefour"), .period])
+  }
+
+  @Test func refreshingLeavesAnythingButAnAnswerAlone() async throws {
+    let m = AskSearchModel(parser: SearchQueryParser(model: CannedSearchModel(state: .notEligible)))
+    m.refresh(store.state, now: store.now)
+    #expect(m.phase == .idle)
+    await m.run("carrefour september", store.state, now: store.now, debounce: .zero)
+    let keywords = m.phase
+    m.refresh(store.state, now: store.now)
+    #expect(m.phase == keywords)
+  }
+
   @Test func merchantsTheModelChoseAreMarkedAndMoreCanBeAdded() async throws {
     let s = store.state, now = store.now
     let m = AskSearchModel(parser: SearchQueryParser(model: CannedSearchModel(replies: [

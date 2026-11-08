@@ -83,7 +83,9 @@ struct SearchView: View {
       .overlay(alignment: .bottom) { ToastHost(app: app) }
       .task(id: typed) {
         await ask.run(typed, app.store.state, now: app.store.now)
+        ask.refresh(app.store.state, now: app.store.now)
       }
+      .onChange(of: app.store.revision) { ask.refresh(app.store.state, now: app.store.now) }
     }
     .nestedTransactionSheet(item: $opened, app: app)
     .sheet(isPresented: $addingMerchant) {

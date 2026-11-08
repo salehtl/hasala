@@ -174,6 +174,11 @@ final class AskSearchModel {
     }
   }
 
+  func refresh(_ s: LedgerState, now: LocalDateTime) {
+    guard case .answered(let q, let a) = phase else { return }
+    phase = .answered(q, AskEngine.answer(s, filter: a.filter, today: now.date))
+  }
+
   func fallback(for q: String) -> SearchFallback? {
     if case .keywords(let asked, let why) = phase, asked == q { return why }
     return nil
