@@ -49,4 +49,21 @@ import Testing
     #expect(try rig.link.read()?.subscriptionID == now.id)
     #expect(await rig.server.watches.count == 1)
   }
+
+  @Test func aSubscriptionWhoseIDCouldNotBeKeptIsRemovedAndMadeAgainLater() async throws {
+    let rig = OutlookRig()
+    _ = await rig.connect()
+    rig.link.writesFail = true
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(rig.graph.subscriptions.isEmpty)
+    #expect(await rig.server.watches.isEmpty)
+    #expect(await rig.state().watchExpiresAtMs == nil)
+
+    rig.link.writesFail = false
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    let made = try #require(rig.graph.subscriptions.first)
+    #expect(rig.graph.subscriptions.count == 1)
+    #expect(try rig.link.read()?.subscriptionID == made.id)
+    #expect(await rig.server.watches.count == 1)
+  }
 }
