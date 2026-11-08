@@ -162,9 +162,6 @@ public enum StepUpHelper {
     case passkey
     /// The current password and the DAK (Face ID or the passcode).
     case device(password: String)
-    /// The emailed code and the DAK (`password.reset` only). Call
-    /// `beginDeviceCode` first, then `proveDeviceCode` per typed code.
-    case deviceCode
   }
 
   public struct Proof: @unchecked Sendable {  // `prf` is handed to one ceremony, which wipes it
@@ -183,7 +180,6 @@ public enum StepUpHelper {
       switch factor {
       case .passkey: .passkey
       case .device: .device
-      case .deviceCode: .deviceCode
       }
     guard params.proofKinds.contains(kind) else { throw kind == .passkey ? .noDeviceKey : .needsPasskey }
     let bearer = try AccountCreation.currentBearer(env)
@@ -226,22 +222,7 @@ public enum StepUpHelper {
           nonce: begin.nonce,
           proof: .device(writerID: w.string, sigB64: Base64.encode(sig), verifierB64: s.withUnsafeBytes { Base64.encode($0) })),
         prf: nil, credentialID: nil)
-    case .deviceCode:
-      guard let binding, let u = binding.userID, let w = binding.writerID else { throw .noDeviceKey }
-      // The DAK signs ONCE; a wrong code re-sends the same signature (≤ 5 tries).
-      let sig = try await dakSign(env, challenge: challenge, userID: u, writerID: w, reason: reason)
-      return Proof(
-        stepUp: StepUpJSON(nonce: begin.nonce, proof: .deviceCode(writerID: w.string, sigB64: Base64.encode(sig), code: "")),
-        prf: nil, credentialID: nil)
     }
-  }
-
-  /// A `device_code` proof with the typed code, reusing the stored signature.
-  public static func withCode(_ proof: Proof, code: String) -> StepUpJSON {
-    let p = proof.stepUp.proof
-    return StepUpJSON(
-      nonce: proof.stepUp.nonce,
-      proof: .deviceCode(writerID: p.writer_id ?? "", sigB64: p.sig ?? "", code: code))
   }
 
   static func dakSign(_ env: AccountEnvironment, challenge: Data, userID: UserID, writerID: WriterID, reason: String)
