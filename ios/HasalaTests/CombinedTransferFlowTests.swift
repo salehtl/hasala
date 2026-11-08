@@ -97,6 +97,32 @@ struct CombinedTransferFlowTests {
     #expect(try a.projection.reader.forkNotices(kind: "txn").filter { $0.entityID == alert }.isEmpty)
   }
 
+  @Test func undoingATransferOnAMatchedRowIsRefusedBeforeItShows() async throws {
+    let a = try Mapper.account()
+    let store = try await LiveUndoTests.store(a, suite: "transfer.matched.tests")
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    let rows = store.state.txns.filter { !$0.archived && $0.splits.isEmpty && !$0.isHeldCopy && !$0.isTransfer }
+    let id = try #require(rows.first).id
+    let peer = try #require(rows.first { $0.id != id }).id
+    let row = try #require(try a.projection.reader.txn(id))
+    let matched = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        o.categorize(txnID: id, parentVersion: row.version, category: "transfer", needsReview: false)
+        o.annotate(txnID: id, set: [("transfer_peer", peer)])
+      })
+    try await a.outbox.enqueue(matched.ops)
+    try await a.observer.reproject()
+    await store.reload()
+    #expect(try a.projection.reader.txn(id)?.transferState != nil)
+    #expect(store.state.txn(id)?.categoryID == "transfer")
+
+    let shown = store.state
+    #expect(throws: ActionError.refused(LiveLedgerStore.pairedTransfer)) { try store.apply(.markTransfer(id)) }
+    #expect(store.state == shown)
+    #expect(!failed)
+  }
+
   @Test func theSheetOffersNothingForARowThatWasNotCombined() {
     let app = AppModel(store: InMemoryLedger())
     let txn = TransactionViewModel(app: app, id: "carrefour")

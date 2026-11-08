@@ -179,6 +179,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   func apply(_ edit: LedgerEdit) throws(ActionError) -> UndoToken? {
     let edit = withCategoryID(edit)
     if let why = try categoryRefusal(edit) { throw .refused(why) }
+    if case .markTransfer(let id) = edit, matchedTransfer(id) { throw .refused(Self.pairedTransfer) }
     let before = state
     var s = state
     var batch = false
@@ -207,6 +208,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       enqueue(undo: token?.id) { try await author.author(edit, before: before, today: today) }
     }
     return token
+  }
+
+  private func matchedTransfer(_ id: TxnID) -> Bool {
+    (try? reader.txn(id))??.transferState != nil
   }
 
   static func authorsInverse(_ edit: LedgerEdit) -> Bool {
