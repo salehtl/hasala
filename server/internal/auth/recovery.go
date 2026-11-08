@@ -319,7 +319,11 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	// A busy gate or a server fault before the commit is not the attempt's
 	// failure: the verified ceremony goes back unclaimed, so the retry (under
 	// recover-ip's 3 an hour) is not refused for the server's sake.
+	var tx pgx.Tx
 	release := func(err error) (RecoverFinished, error) {
+		if tx != nil {
+			pgtx.Rollback(ctx, tx)
+		}
 		if _, xerr := a.Pool.Exec(ctx, `UPDATE recovery_ceremonies SET claimed_at = NULL WHERE id = $1 AND claimed_at = $2`,
 			r.CeremonyID, now); xerr != nil {
 			return RecoverFinished{}, errors.Join(err, fmt.Errorf("auth: recovery: release the ceremony: %w", xerr))
@@ -331,7 +335,7 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 			return release(err)
 		}
 	}
-	tx, err := pgtx.BeginReadCommitted(ctx, a.Pool)
+	tx, err = pgtx.BeginReadCommitted(ctx, a.Pool)
 	if err != nil {
 		return release(err)
 	}
@@ -340,6 +344,14 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	// that landed since the check above refuses.
 	if st, err = readAccount(ctx, tx, userID, true); err != nil || !st.active() || !st.HasKeys || st.frozen() || st.InDoubt {
 		return RecoverFinished{}, refuse("the account is not active, keyed, unfrozen and on a verified address")
+	}
+	var claimed bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM recovery_ceremonies WHERE id = $1 AND claimed_at = $2)`,
+		r.CeremonyID, now).Scan(&claimed); err != nil {
+		return release(err)
+	}
+	if !claimed {
+		return RecoverFinished{}, refuse("another recovery ended this one")
 	}
 	var live int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM writers WHERE user_id = $1 AND revoked_at IS NULL`, userID).Scan(&live); err != nil {
@@ -440,6 +452,7 @@ func revokeOldCredentialsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, ke
 		`DELETE FROM webauthn_ceremonies WHERE user_id = $1`,
 		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
 		`DELETE FROM email_change_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`,
+		`DELETE FROM recovery_ceremonies WHERE user_id = $1`,
 	} {
 		if _, err := tx.Exec(ctx, q, userID); err != nil {
 			return nil, fmt.Errorf("auth: recovery: end outstanding ceremonies: %w", err)
