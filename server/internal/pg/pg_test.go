@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -646,5 +648,31 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	latest, err := pg.LatestEmbedded()
 	if err != nil || latest != 28 {
 		t.Fatalf("LatestEmbedded = %d, %v; want 28", latest, err)
+	}
+}
+
+func TestTheLogIdentityMovesWithARestoreAndNotOtherwise(t *testing.T) {
+	runtime, owner := pgtest.NewWithOwner(t)
+	before, err := pg.LogIdentity(bg, runtime)
+	if err != nil || before == "" {
+		t.Fatalf("identity %q, %v", before, err)
+	}
+	mustExec(t, owner, `ALTER TABLE op_log SET (fillfactor = 90)`)
+	mustExec(t, owner, `VACUUM FULL op_log`)
+	if again, err := pg.LogIdentity(bg, runtime); err != nil || again != before {
+		t.Fatalf("identity %q, %v after a rewrite, want %q", again, err, before)
+	}
+	dsn := owner.Config().ConnString()
+	dump := filepath.Join(t.TempDir(), "restore.dump")
+	if out, err := exec.Command("pg_dump", "--format=custom", "--no-password", "--file="+dump, "--dbname="+dsn).CombinedOutput(); err != nil {
+		t.Fatalf("pg_dump: %v: %s", err, out)
+	}
+	if out, err := exec.Command("pg_restore", "--no-password", "--clean", "--if-exists", "--single-transaction",
+		"--exit-on-error", "--dbname="+dsn, dump).CombinedOutput(); err != nil {
+		t.Fatalf("pg_restore: %v: %s", err, out)
+	}
+	after, err := pg.LogIdentity(bg, runtime)
+	if err != nil || after == before {
+		t.Fatalf("identity %q, %v after a restore, was %q", after, err, before)
 	}
 }

@@ -128,3 +128,34 @@ func TestFinishGivesUpOnAWorkerThatDoesNotStop(t *testing.T) {
 		t.Fatal("the pool closed while a worker still held it")
 	}
 }
+
+func TestServeRaisesTheGenerationWhenTheDatabaseWasReplaced(t *testing.T) {
+	pool := pgtest.New(t)
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	dir := t.TempDir()
+	generation := filepath.Join(dir, "generation")
+	if err := os.WriteFile(generation+".seal", []byte("1 1\n"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{
+		"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_RP_ID=hasala.app", "HASALA_RP_ORIGINS=https://hasala.app",
+		"HASALA_HTTP_LISTEN=" + busy.Addr().String(), "HASALA_HEADROOM_PATH=" + dir, "HASALA_HEADROOM_FLOOR_BYTES=1",
+		"HASALA_LOG_GENERATION_FILE=" + generation,
+	}
+	if code, _, msg := hasalad(t, env, "serve"); code != 1 || !strings.Contains(msg, "listen") {
+		t.Fatalf("serve exited %d (%s), want the listen failure", code, msg)
+	}
+	if b, err := os.ReadFile(generation); err != nil || strings.TrimSpace(string(b)) != "2" {
+		t.Fatalf("generation %q, %v, want 2", b, err)
+	}
+	if code, _, msg := hasalad(t, env, "serve"); code != 1 || !strings.Contains(msg, "listen") {
+		t.Fatalf("a second serve exited %d (%s), want the listen failure", code, msg)
+	}
+	if b, err := os.ReadFile(generation); err != nil || strings.TrimSpace(string(b)) != "2" {
+		t.Fatalf("generation %q, %v after a second start of the same database", b, err)
+	}
+}

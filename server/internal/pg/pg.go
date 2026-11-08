@@ -10,6 +10,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -44,6 +45,14 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg.MaxConns = 16
 	cfg.MinConns = 2
 	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
+func LogIdentity(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var oid uint32
+	if err := pool.QueryRow(ctx, `SELECT 'public.op_log'::regclass::oid`).Scan(&oid); err != nil {
+		return "", fmt.Errorf("read the op log's identity: %w", err)
+	}
+	return strconv.FormatUint(uint64(oid), 10), nil
 }
 
 // Migrate applies every embedded migration. Idempotent.

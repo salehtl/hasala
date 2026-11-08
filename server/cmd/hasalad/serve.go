@@ -67,6 +67,10 @@ func runServe(env *runEnv, args []string) error {
 	lifecycle := newServeStop(ctx, pool.Close)
 	defer lifecycle.finish()
 
+	if err := settleLogGeneration(ctx, &cfg, pool); err != nil {
+		return err
+	}
+
 	srvAPI, err := api.NewServer(cfg, pool)
 	if err != nil {
 		return err
@@ -158,6 +162,26 @@ func (s *serveStop) finish() {
 	case <-giveUp.C:
 		slog.Error("hasalad serve: the workers did not stop in time; exiting without them", "limit", s.limit.String())
 	}
+}
+
+func settleLogGeneration(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) error {
+	if cfg.Server.LogGenerationFile == "" {
+		return nil
+	}
+	database, err := pg.LogIdentity(ctx, pool)
+	if err != nil {
+		return err
+	}
+	generation, raised, err := config.SettleLogGeneration(cfg.Server.LogGenerationFile, database)
+	if err != nil {
+		return refusal{err}
+	}
+	if raised {
+		slog.Warn("hasalad serve: the database was replaced and the log generation was not raised, so serve raised it",
+			"generation", generation)
+	}
+	cfg.Server.LogGeneration = generation
+	return nil
 }
 
 func newHTTPServer(h http.Handler) *http.Server {

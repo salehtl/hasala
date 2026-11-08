@@ -94,8 +94,9 @@ type ServerConfig struct {
 	// Cloudflare.
 	LogLevel string `toml:"log_level"`
 	// LogGenerationFile (HASALA_LOG_GENERATION_FILE, env only) holds spec 02
-	// §15.5's log generation: one decimal integer ≥ 1, written only by the
-	// operator's restore and wipe runbooks. Absent means 1.
+	// §15.5's log generation: one decimal integer ≥ 1, written by the
+	// operator's restore and wipe runbooks, and by serve when it finds the
+	// database replaced without a raise. Absent means 1.
 	LogGenerationFile string `toml:"-"`
 	// LogGeneration is the file's value, read once by serve at start
 	// (ReadLogGeneration) and reported by GET /api/v1/meta.
@@ -124,6 +125,91 @@ func ReadLogGeneration(path string) (int, error) {
 		return 0, fmt.Errorf("HASALA_LOG_GENERATION_FILE %s holds %q: want one decimal integer >= 1", path, text)
 	}
 	return n, nil
+}
+
+type logSeal struct {
+	generation int
+	database   string
+}
+
+func SettleLogGeneration(path, database string) (int, bool, error) {
+	generation, err := ReadLogGeneration(path)
+	if err != nil || path == "" {
+		return generation, false, err
+	}
+	if database == "" {
+		return 0, false, errors.New("HASALA_LOG_GENERATION_FILE: the database has no identity to compare")
+	}
+	sealPath := path + ".seal"
+	seal, sealed, err := readLogSeal(sealPath)
+	if err != nil {
+		return 0, false, err
+	}
+	raised := sealed && seal.database != database && generation <= seal.generation
+	if raised {
+		generation = seal.generation + 1
+		if err := writeGenerationFile(path, strconv.Itoa(generation)+"\n"); err != nil {
+			return 0, false, err
+		}
+	}
+	current := logSeal{generation: generation, database: database}
+	if !sealed || seal != current {
+		if err := writeGenerationFile(sealPath, strconv.Itoa(generation)+" "+database+"\n"); err != nil {
+			return 0, false, err
+		}
+	}
+	return generation, raised, nil
+}
+
+func readLogSeal(path string) (logSeal, bool, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return logSeal{}, false, nil
+	}
+	if err != nil {
+		return logSeal{}, false, fmt.Errorf("HASALA_LOG_GENERATION_FILE seal: %w", err)
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 2 {
+		if n, err := strconv.Atoi(fields[0]); err == nil && n >= 1 {
+			return logSeal{generation: n, database: fields[1]}, true, nil
+		}
+	}
+	return logSeal{}, false, fmt.Errorf("HASALA_LOG_GENERATION_FILE seal %s holds %q: want a generation and a database identity", path, raw)
+}
+
+func writeGenerationFile(path, body string) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o660)
+	if err != nil {
+		return fmt.Errorf("HASALA_LOG_GENERATION_FILE: %w", err)
+	}
+	werr := f.Chmod(0o660)
+	if werr == nil {
+		_, werr = f.WriteString(body)
+	}
+	if werr == nil {
+		werr = f.Sync()
+	}
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Rename(tmp, path)
+	}
+	if werr != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("HASALA_LOG_GENERATION_FILE: %w", werr)
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("HASALA_LOG_GENERATION_FILE: %w", err)
+	}
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		return fmt.Errorf("HASALA_LOG_GENERATION_FILE: %w", err)
+	}
+	return nil
 }
 
 // TrustedProxy values.

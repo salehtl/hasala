@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -616,5 +617,97 @@ func TestUnknownEnvironment(t *testing.T) {
 		"HASALA_PURGE_LEDGER_PATH=x", "HASALA_PURGE_LEDGER=x", "HASALA_TURNSTYLE_REQUIRED=false"})
 	if strings.Join(got, ",") != "HASALA_PURGE_LEDGER,HASALA_TURNSTYLE_REQUIRED" {
 		t.Fatalf("unknown: %v", got)
+	}
+}
+
+func TestSettleLogGeneration(t *testing.T) {
+	old := syscall.Umask(0o077)
+	defer syscall.Umask(old)
+	read := func(p string) string {
+		t.Helper()
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	settle := func(path, database string, want int, wantRaised bool) {
+		t.Helper()
+		got, raised, err := SettleLogGeneration(path, database)
+		if err != nil || got != want || raised != wantRaised {
+			t.Fatalf("SettleLogGeneration(%q) = %d, %v, %v; want %d, %v", database, got, raised, err, want, wantRaised)
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "generation")
+	settle(path, "100", 1, false)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the first start wrote the generation file: %v", err)
+	}
+	if got := read(path + ".seal"); got != "1 100" {
+		t.Fatalf("seal %q", got)
+	}
+	settle(path, "100", 1, false)
+
+	settle(path, "200", 2, true)
+	if got := read(path); got != "2" {
+		t.Fatalf("generation %q after a replaced database", got)
+	}
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o660 {
+		t.Fatalf("generation mode %v, %v: the backup reads it through the group", st.Mode(), err)
+	}
+	settle(path, "200", 2, false)
+
+	if err := os.WriteFile(path, []byte("5\n"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	settle(path, "300", 5, false)
+	if got := read(path + ".seal"); got != "5 300" {
+		t.Fatalf("seal %q after the operator raised the generation", got)
+	}
+
+	if err := os.WriteFile(path, []byte("6\n"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	settle(path, "300", 6, false)
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	settle(path, "400", 7, true)
+	if got := read(path); got != "7" {
+		t.Fatalf("generation %q after a lost file and a replaced database", got)
+	}
+}
+
+func TestSettleLogGenerationResumesAfterAStopBetweenItsTwoWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "generation")
+	if err := os.WriteFile(path+".seal", []byte("3 100\n"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("4\n"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if got, raised, err := SettleLogGeneration(path, "200"); err != nil || got != 4 || raised {
+		t.Fatalf("got %d, raised %v, %v; want 4 and no second raise", got, raised, err)
+	}
+}
+
+func TestSettleLogGenerationRefusesWhatItCannotRead(t *testing.T) {
+	dir := t.TempDir()
+	if n, raised, err := SettleLogGeneration("", "100"); err != nil || n != 1 || raised {
+		t.Fatalf("no file configured: %d, %v, %v", n, raised, err)
+	}
+	for _, body := range []string{"", "1", "x 100", "0 100", "1 100 2"} {
+		path := filepath.Join(dir, "g")
+		if err := os.WriteFile(path+".seal", []byte(body+"\n"), 0o660); err != nil {
+			t.Fatal(err)
+		}
+		if n, _, err := SettleLogGeneration(path, "100"); err == nil {
+			t.Errorf("seal %q gave %d, want an error", body, n)
+		}
+	}
+	if _, _, err := SettleLogGeneration(filepath.Join(dir, "h"), ""); err == nil {
+		t.Error("an empty database identity was accepted")
 	}
 }
