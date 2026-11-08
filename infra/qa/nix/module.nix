@@ -1348,8 +1348,11 @@ in
             "App Store Connect needs the console, the dedicated key (file, 10-character id not in a non-empty refusedKeyIds) and a UUID issuer; serve never gets a console, ASC or TestFlight variable."
           )
           (a "M21"
-            (!cfg.console.enable || (config.networking.firewall.enable && !config.networking.nftables.enable))
-            "the console's kernel rule lives in the iptables firewall: it must be enabled, and an nftables host would silently drop the rule."
+            (
+              !(cfg.console.enable || cfg.tunnel.enable)
+              || (config.networking.firewall.enable && !config.networking.nftables.enable)
+            )
+            "the kernel rules on the console and API ports live in the iptables firewall: it must be enabled, and an nftables host would silently drop the rules."
           )
           (a "M22" (secretsInStore == [ ])
             "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."

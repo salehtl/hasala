@@ -509,7 +509,8 @@ What the module adds by itself when `console.enable`:
 - The kernel rule in `networking.firewall.extraCommands`: locally generated TCP
   to `127.0.0.1:8472` (and its `ip6tables` twin, `[::1]:8472`) is reset unless
   its owner is `console.restrictToUser` (`nginx`). The host's firewall must be
-  the iptables one and enabled (M21 refuses nftables and a disabled firewall).
+  the iptables one and enabled (M21 refuses nftables and a disabled firewall;
+  it does the same for the API port's rule whenever `tunnel.enable`).
   `hasala-health`'s probe P10 checks every two minutes that the rule still
   resets a non-nginx connection.
 - Assertions M14–M19: distinct ports, neither console port in the firewall or

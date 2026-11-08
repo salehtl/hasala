@@ -482,6 +482,14 @@ let
       "M21"
       (lib.recursiveUpdate (hasala consoleOn) { networking.firewall.enable = false; })
     ];
+    "tunnel on an nftables host" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) { networking.nftables.enable = true; })
+    ];
+    "tunnel with the firewall off" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) { networking.firewall.enable = false; })
+    ];
     # M19: nginx is the one user the kernel rule lets through, so a second,
     # ungated vhost reaching the console by any loopback spelling is refused.
     "second vhost to localhost:8472" = [
