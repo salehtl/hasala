@@ -144,6 +144,17 @@ func (s *Sessions) IssueTx(ctx context.Context, q queryExecer, m Mint) (Minted, 
 	default:
 		return Minted{}, fmt.Errorf("auth: issue session: minted_by %q", m.MintedBy)
 	}
+	if m.WriterID != "" {
+		var live bool
+		err := q.QueryRow(ctx, `SELECT revoked_at IS NULL FROM writers WHERE user_id = $1 AND writer_id = $2 FOR SHARE`,
+			m.UserID, m.WriterID).Scan(&live)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return Minted{}, fmt.Errorf("auth: issue session: read the writer: %w", err)
+		}
+		if err == nil && !live {
+			return Minted{}, ErrWriterRevoked
+		}
+	}
 	raw, err := randBytes(sessionTokenBytes)
 	if err != nil {
 		return Minted{}, err

@@ -361,6 +361,9 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
 	var revokedAt time.Time
 	err = w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
+		if err := lockUser(ctx, tx, userID); err != nil {
+			return err
+		}
 		var revoked *time.Time
 		err := tx.QueryRow(ctx,
 			`SELECT revoked_at FROM writers WHERE user_id = $1 AND writer_id = $2 FOR UPDATE`,
