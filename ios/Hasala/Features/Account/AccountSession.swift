@@ -32,8 +32,9 @@ final class AccountSession {
   }
   @ObservationIgnored var onPhaseChange: (@MainActor (Phase) -> Void)?
   @ObservationIgnored var onUnfroze: (@MainActor () -> Void)?
-  /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
-  /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
+  /// "Leave it frozen": the app, or the setup the freeze interrupted, opens with the frozen
+  /// banner. The freeze is kept as it was (who froze it decides whether Unfreeze is offered,
+  /// spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
   @ObservationIgnored private var setupBehindFreeze: OnboardingStep?
   /// An invite link that arrived while signed out (§13.5), for the invite screen.
@@ -125,7 +126,8 @@ final class AccountSession {
   func leaveFrozen() {
     guard canLeaveFrozen else { return }
     if case .frozen(let info) = phase { leftFrozen = info }
-    phase = .ready
+    phase = setupBehindFreeze.map(Phase.onboarding) ?? .ready
+    setupBehindFreeze = nil
   }
 
   /// The wall again, from the banner, with the freeze as it was.
