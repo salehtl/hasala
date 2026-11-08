@@ -405,6 +405,9 @@ func (c *Console) actionThen(name, kind string, f actionFunc, then func(target s
 				code, result = "address_gone", "refused"
 				say = "The server no longer keeps this invite's email address, so it cannot resend it. " +
 					"Revoke the invite and mint a new one.\n"
+			} else if errors.Is(err, invites.ErrMintLimit) {
+				code, result = "mint_limit", "refused"
+				say = "That did not work (refused). Go back and reload.\n"
 			} else if errors.Is(err, errRefused) || errors.Is(err, invites.ErrNotApprovable) || errors.Is(err, invites.ErrNoSuchInvite) {
 				code, result = "refused", "refused"
 				say = "That did not work (refused). Go back and reload.\n"

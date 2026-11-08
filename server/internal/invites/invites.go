@@ -43,6 +43,7 @@ const (
 	MinTTL       = 24 * time.Hour
 	MaxTTL       = 30 * 24 * time.Hour
 	MaxNote      = 200
+	MaxMints     = 20
 )
 
 // ErrNotInvited is the one distinguishable signup refusal (spec 02 §14.1):

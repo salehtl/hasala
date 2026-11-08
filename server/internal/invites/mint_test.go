@@ -362,3 +362,138 @@ func TestARetryOfAnEmailForALapsedInviteIsNotSent(t *testing.T) {
 	}
 	assertEntryConfirmed(t, pool, entry, addr)
 }
+
+func TestResendStopsAtTheMintLimit(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := mintingQueue(t, pool, fake)
+	const addr = "limit@example.com"
+	entry, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	code, key := linkOf(t, fake.Sent()[0])
+	if _, err := pool.Exec(bg, `UPDATE invite_codes SET mint_count = $2 WHERE id = $1`, invite, MaxMints); err != nil {
+		t.Fatal(err)
+	}
+	if err := resendNow(pool, q, invite); !errors.Is(err, ErrMintLimit) {
+		t.Fatalf("resend at the limit: %v", err)
+	}
+	var queued int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1 AND status = 'queued'`, invite).
+		Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("%d queued rows, %v", queued, err)
+	}
+	r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+	if err != nil || r.InviteID != invite || !r.Proven {
+		t.Fatalf("the delivered code after the refusal: %+v %v", r, err)
+	}
+	if s := inviteState(t, pool, invite); s != "active" {
+		t.Fatalf("invite %s, want active", s)
+	}
+	assertEntryInvited(t, pool, entry, addr)
+}
+
+func TestTheLastMintUnderTheLimitStillSends(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := mintingQueue(t, pool, fake)
+	_, invite := approved(t, pool, q, "last@example.com")
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE invite_codes SET mint_count = $2 WHERE id = $1`, invite, MaxMints-1); err != nil {
+		t.Fatal(err)
+	}
+	if err := resendNow(pool, q, invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 2 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	if n := mintCount(t, pool, invite); n != MaxMints {
+		t.Fatalf("mint_count %d, want %d", n, MaxMints)
+	}
+}
+
+func TestAQueuedEmailAtTheMintLimitNamesTheLimitAndKeepsTheCode(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := mintingQueue(t, pool, fake)
+	const addr = "queued-limit@example.com"
+	_, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	code, key := linkOf(t, fake.Sent()[0])
+	if err := resendNow(pool, q, invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE invite_codes SET mint_count = $2 WHERE id = $1`, invite, MaxMints); err != nil {
+		t.Fatal(err)
+	}
+	row := mailq.Row{Kind: "invite", Recipient: addr, InviteID: &invite}
+	if err := pool.QueryRow(bg, `SELECT max(id) FROM mail_log WHERE invite_id = $1`, invite).Scan(&row.ID); err != nil {
+		t.Fatal(err)
+	}
+	minter, err := authkeys.NewEmailTagger(bytes.Repeat([]byte{3}, authkeys.KeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter}
+	err = pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+		_, err := r.Render(bg, tx, row)
+		return err
+	})
+	if !errors.Is(err, ErrMintLimit) {
+		t.Fatalf("render at the limit: %v", err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.Sent()) != 1 {
+		t.Fatalf("%d sent", len(fake.Sent()))
+	}
+	got, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+	if err != nil || got.InviteID != invite || !got.Proven {
+		t.Fatalf("the delivered code after the failed render: %+v %v", got, err)
+	}
+	if s := inviteState(t, pool, invite); s != "active" {
+		t.Fatalf("invite %s, want active", s)
+	}
+}
+
+func TestARetryAtTheMintLimitStillCarriesItsCode(t *testing.T) {
+	pool := pgtest.New(t)
+	var attempts []mail.Message
+	fake := &mail.Fake{ErrFor: func(m mail.Message) error {
+		attempts = append(attempts, m)
+		if len(attempts) == 1 {
+			return errors.New("provider timeout")
+		}
+		return nil
+	}}
+	q := mintingQueue(t, pool, fake)
+	_, invite := approved(t, pool, q, "retry-limit@example.com")
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(bg, `UPDATE invite_codes SET mint_count = $2 WHERE id = $1`, invite, MaxMints); err != nil {
+		t.Fatal(err)
+	}
+	retryNow(t, pool, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 2 || len(fake.Sent()) != 1 {
+		t.Fatalf("%d attempts, %d sent", len(attempts), len(fake.Sent()))
+	}
+	first, _ := linkOf(t, attempts[0])
+	second, _ := linkOf(t, attempts[1])
+	if first != second {
+		t.Fatal("the retry minted a new code")
+	}
+	if n := mintCount(t, pool, invite); n != MaxMints {
+		t.Fatalf("mint_count %d, want %d", n, MaxMints)
+	}
+}
