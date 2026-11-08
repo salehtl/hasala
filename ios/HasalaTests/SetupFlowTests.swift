@@ -392,6 +392,7 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var heldElsewhere: MailProviderKind?
   @ObservationIgnored var known = true
   @ObservationIgnored var offerOverride: MailOffer??
+  @ObservationIgnored var afterDisconnect: (() -> Void)?
 
   init(_ base: MockMailbox) { self.base = base }
 
@@ -420,6 +421,7 @@ final class CountingMailbox: MailboxConnecting {
   }
   func disconnect(_ mailboxID: String, removeTransactions: Bool) async throws(MailConnectFailure) {
     try await base.disconnect(mailboxID, removeTransactions: removeTransactions)
+    afterDisconnect?()
   }
   func disconnectImpact(_ mailboxID: String) async -> MailboxDisconnectImpact? { await base.disconnectImpact(mailboxID) }
   func firstScan() -> AsyncStream<ScanProgress> {

@@ -482,6 +482,36 @@ struct BankTextsIntakeTests {
       secret: { TextKeySecret(store: secrets) }, now: { now })
   }
 
+  func gmailReader(_ r: Rig, writes linkEnded: Bool) -> (lane: CountingMailbox, base: MockMailbox) {
+    let base = MockMailbox(mailboxes: [MockMailbox.gmail])
+    base.connectDelay = .zero
+    let mailbox = CountingMailbox(base)
+    if linkEnded {
+      mailbox.afterDisconnect = { BankTextsLinkCopy.disconnected(facts: r.facts, nowMs: BankTextIntake.ms(Self.t0)) }
+    }
+    return (mailbox, base)
+  }
+
+  @Test func theSwitchToTextsSeesTheDisconnectItJustSaved() async {
+    let r = rig()
+    setCopy(r, linked: true)
+    let l = lane(r)
+    #expect(l.readsEmail)
+    let mailbox = gmailReader(r, writes: true)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox.lane, texts: l) == .switched)
+    #expect(l.usesTexts && r.factsData.chosen && r.factsData.link?.linked == false)
+    #expect(mailbox.base.mailboxes.allSatisfy { $0.state == .disconnected })
+  }
+
+  @Test func theSwitchToTextsStopsWhenTheLinkStaysAfterTheDisconnect() async {
+    let r = rig()
+    setCopy(r, linked: true)
+    let l = lane(r)
+    let mailbox = gmailReader(r, writes: false)
+    #expect(await SourceSwitch.toTexts(mailbox: mailbox.lane, texts: l) == .failed(SourceSwitch.linkRemains))
+    #expect(!r.factsData.chosen && l.source == .email)
+  }
+
   @Test func afterTheUnlockTheNoticeShowsWhenNotLinked() {
     for linked in [false, nil] as [Bool?] {
       let r = rig()
