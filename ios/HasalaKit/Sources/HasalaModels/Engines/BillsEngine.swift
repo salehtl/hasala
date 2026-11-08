@@ -311,7 +311,7 @@ public enum BillsEngine {
   }
 
   static func markedPaid(_ s: LedgerState, month: YearMonth) -> [(Bill, BillPayment)] {
-    s.bills.filter { ($0.state == .tracked || $0.state == .paused) && !$0.isIncome }.flatMap { b in
+    s.bills.filter { $0.state != .dismissed && !$0.isIncome }.flatMap { b in
       b.payments.filter { $0.link == .marked && $0.txnID == nil && $0.due.yearMonth == month }.map { (b, $0) }
     }
   }

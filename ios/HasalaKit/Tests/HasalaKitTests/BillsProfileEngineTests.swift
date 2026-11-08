@@ -225,4 +225,29 @@ struct MarkedPaidTests {
     #expect(row.name == "AXA Insurance")
     #expect(b.paidThisMonth.minor == base.paidThisMonth.minor + 550_00)
   }
+
+  @Test func endingABillKeepsWhatWasMarkedPaidThisMonth() throws {
+    var s = MayaLedger.state
+    let i = try #require(s.bills.firstIndex { $0.id == "axa" })
+    let due = LocalDate(2026, 10, 7)
+    s.bills[i].payments.append(BillPayment(due: due, amount: .aed(550_00), link: .marked))
+    let before = BillsEngine.snapshot(s, now: MayaLedger.now)
+    s.bills[i].state = .ended
+    s.bills[i].endedOn = due
+    let after = BillsEngine.snapshot(s, now: MayaLedger.now)
+    #expect(after.paidThisMonth == before.paidThisMonth)
+    #expect(after.recentlyPaid.contains { $0.id == "marked:axa:\(due)" })
+  }
+
+  @Test func aBillThatWasNeverOneCountsNothing() throws {
+    var s = MayaLedger.state
+    let base = BillsEngine.snapshot(s, now: MayaLedger.now)
+    let i = try #require(s.bills.firstIndex { $0.id == "axa" })
+    let due = LocalDate(2026, 10, 7)
+    s.bills[i].payments.append(BillPayment(due: due, amount: .aed(550_00), link: .marked))
+    s.bills[i].state = .dismissed
+    let b = BillsEngine.snapshot(s, now: MayaLedger.now)
+    #expect(b.paidThisMonth == base.paidThisMonth)
+    #expect(!b.recentlyPaid.contains { $0.id == "marked:axa:\(due)" })
+  }
 }
