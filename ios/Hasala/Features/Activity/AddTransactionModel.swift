@@ -20,6 +20,7 @@ final class AddTransactionModel {
   let resolvedMail: TxnID?
   let dateOnly: Bool
   let source: String?
+  @ObservationIgnored private var saved = false
 
   init(app: AppModel, resolving mail: TxnID? = nil) {
     self.app = app
@@ -83,11 +84,12 @@ final class AddTransactionModel {
 
   @discardableResult
   func save() -> Bool {
-    guard let d = draft else { return false }
+    guard !saved, let d = draft else { return false }
     var edits: [LedgerEdit] = []
     if let resolvedMail { edits.append(.archive(resolvedMail, true)) }
     edits.append(.addTransaction(d))
     guard app.perform(edits) else { return false }
+    saved = true
     app.sheet = nil
     app.say("Added \(d.trimmedMerchant)")
     return true
