@@ -83,7 +83,7 @@ final class AppEnvironment {
   /// can't be reached, so the logout is retried), this iPhone's Google grant is revoked
   /// while its token is still here, then every Hasala item in both access groups and every
   /// account's files go, with what UserDefaults noted about the account.
-  func eraseLocalData() async {
+  func eraseLocalData(defaults: UserDefaults = .standard) async {
     let secrets = account.secrets
     let binding = try? secrets.binding()
     let session = try? secrets.session()
@@ -101,8 +101,9 @@ final class AppEnvironment {
     {
       for item in items { try? FileManager.default.removeItem(at: item) }
     }
-    _ = keychain.purgeAll(groups: [Self.keychainGroup, Self.sharedKeychainGroup])
-    LocalAccountData.forget()
+    let purged = InstallCheck.erase(defaults: defaults, keychain: keychain, groups: [Self.keychainGroup, Self.sharedKeychainGroup])
+    installCheck = secretsInMemory ? .done : purged
+    LocalAccountData.forget(defaults: defaults)
     if let pending { try? secrets.writeSession(pending) }
   }
 

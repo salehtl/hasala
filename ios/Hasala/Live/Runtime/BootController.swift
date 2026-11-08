@@ -413,6 +413,9 @@ final class BootController {
     wall = nil
     erasing = false
     if session.phase != .signedOut { session.signedOut() }
+    guard case .notNow = env.installCheck else { return }
+    state = .waiting
+    start()
   }
 
   // MARK: Stops only the gate can act on

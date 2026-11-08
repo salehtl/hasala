@@ -39,4 +39,11 @@ public enum InstallCheck {
     defaults.set(id, forKey: installIDKey)
     return .done
   }
+
+  public static func erase(defaults: UserDefaults, keychain: KeychainSecretStore, groups: [String?]) -> Outcome {
+    let (complete, statuses) = keychain.purgeAll(groups: groups)
+    guard !complete else { return .done }
+    defaults.removeObject(forKey: installIDKey)
+    return .notNow(statuses: statuses)
+  }
 }

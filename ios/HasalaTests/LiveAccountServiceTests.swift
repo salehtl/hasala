@@ -4,6 +4,7 @@ import CoreStore
 import CoreSync
 import CoreTime
 import Foundation
+import HasalaKeychain
 import Testing
 
 @testable import Hasala
@@ -261,6 +262,27 @@ struct LiveAccountServiceTests {
     let log = MailGrantEndsTests.Log()
     await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { _ in log.add("ended") }
     #expect(log.all.isEmpty)
+  }
+
+  @Test func aWipeThatCouldNotDeleteEverythingWaitsForThePurgeToRunAgain() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let api = InMemoryKeychainAPI()
+    api.locked = true
+    let name = "test.erase.\(UUID().uuidString)"
+    let d = try #require(UserDefaults(suiteName: name))
+    defer { d.removePersistentDomain(forName: name) }
+    d.set("install", forKey: InstallCheck.installIDKey)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let env = AppEnvironment(
+      build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"),
+      account: Self.phone(server), keychain: KeychainSecretStore(accessGroup: nil, api: api), installCheck: .done,
+      secretsInMemory: false, hasPasscode: { true })
+    await env.eraseLocalData(defaults: d)
+    guard case .notNow = env.installCheck else {
+      Issue.record("expected the purge to be owed")
+      return
+    }
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
   }
 
   @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
