@@ -41,6 +41,20 @@ struct BankTextReviewTests {
     #expect(!ReviewRepeatAnswers().asks(plain) && !ReviewRepeatAnswers().holdsPills(plain) && ReviewRepeatAnswers().allowsUse(plain))
   }
 
+  @MainActor @Test func aMergedAlertKeepsTheNoteThatMarksIt() throws {
+    let store = InMemoryLedger(state: Scenario.mayaSamePurchase.state)
+    let token = try #require(try store.apply(.resolveSamePurchase("amazon-aed", same: true)))
+    let note = try #require(store.state.txn("amazon-aed")?.note)
+    #expect(TransactionEngine.detail("amazon-aed", store.state, now: now)?.canEditNote == false)
+    #expect(TransactionEngine.detail("amazon-usd", store.state, now: now)?.canEditNote == true)
+    #expect(throws: ActionError.refused(SamePurchaseText.restoreRefused)) { try store.apply(.setNote("amazon-aed", "Mine")) }
+    #expect(store.state.txn("amazon-aed")?.note == note)
+    store.undo(token)
+    #expect(TransactionEngine.detail("amazon-aed", store.state, now: now)?.canEditNote == true)
+    _ = try store.apply(.setNote("amazon-aed", "Mine"))
+    #expect(store.state.txn("amazon-aed")?.note == "Mine")
+  }
+
   @Test func aSortedRowOrAnUnverifiedSenderHidesTheRepeatLine() throws {
     var t = try #require(s.txn("mail-twin"))
     t.needsReview = false

@@ -234,15 +234,20 @@ struct TransactionSheet: View {
       KeyValueRow("Account", value: d.account ?? "Not set", placeholder: d.account == nil)
 
       HDivider(inset: .none)
-      Button { push(.note) } label: {
-        KeyValueRow("Note", value: d.note.isEmpty ? "Add a note" : d.note, chevron: true, placeholder: d.note.isEmpty)
-          .contentShape(Rectangle())
+      if d.canEditNote {
+        Button { push(.note) } label: {
+          KeyValueRow("Note", value: d.note.isEmpty ? "Add a note" : d.note, chevron: true, placeholder: d.note.isEmpty)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(d.note.isEmpty ? "Note, Add a note" : "Note, \(d.note)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("txn.note")
+      } else {
+        KeyValueRow("Note", value: d.note)
+          .accessibilityIdentifier("txn.note")
       }
-      .buttonStyle(.plain)
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(d.note.isEmpty ? "Note, Add a note" : "Note, \(d.note)")
-      .accessibilityAddTraits(.isButton)
-      .accessibilityIdentifier("txn.note")
 
       if d.project != nil || !model.projects.isEmpty {
         HDivider(inset: .none)

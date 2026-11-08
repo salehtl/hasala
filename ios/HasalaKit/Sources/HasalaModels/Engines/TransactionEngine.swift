@@ -61,6 +61,7 @@ public struct TransactionDetail: Sendable, Hashable, Identifiable {
   public var isManual: Bool = false
   public var canEditAmount: Bool = false
   public var canEditDate: Bool = false
+  public var canEditNote: Bool = true
   public var amountLockedLine: String? = nil
   public var refundLabel: String? = nil
   public var reversalOf: TxnID? = nil
@@ -139,6 +140,7 @@ public enum TransactionEngine {
     detail.isManual = t.isManual
     detail.canEditAmount = t.isManual && t.splits.isEmpty && !t.archived
     detail.canEditDate = !t.archived
+    detail.canEditNote = t.mergedInto == nil
     detail.amountLockedLine = t.isManual && !t.splits.isEmpty ? "Remove the split to change the amount." : nil
     detail.refundLabel = RefundEdit.label(t, in: s)
     detail.reversalOf = t.isReversal ? t.refundOf : nil
