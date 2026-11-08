@@ -111,6 +111,22 @@ func forgetPushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any)
 	return nil
 }
 
+func takePushTokens(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]pushv2.Target, error) {
+	rows, err := tx.Query(ctx, `DELETE FROM apns_tokens WHERE `+where+` RETURNING token_hex, environment`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	taken, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (pushv2.Target, error) {
+		var t pushv2.Target
+		err := r.Scan(&t.TokenHex, &t.Environment)
+		return t, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+	}
+	return taken, nil
+}
+
 // Mint describes a session a ceremony issues.
 type Mint struct {
 	UserID       uuid.UUID
@@ -384,21 +400,11 @@ func RevokeOtherSessionsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, kee
 	if keep == nil {
 		keep = [][]byte{}
 	}
-	rows, err := tx.Query(ctx,
-		`DELETE FROM apns_tokens
-		  WHERE user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
-		    WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))
-		 RETURNING token_hex, environment`, userID, keep)
+	revoked, err := takePushTokens(ctx, tx,
+		`user_id = $1 AND session_hash IN (SELECT token_hash FROM sessions
+		    WHERE user_id = $1 AND revoked_at IS NULL AND NOT (token_hash = ANY($2::bytea[])))`, userID, keep)
 	if err != nil {
-		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
-	}
-	revoked, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (pushv2.Target, error) {
-		var t pushv2.Target
-		err := r.Scan(&t.TokenHex, &t.Environment)
-		return t, err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("auth: forget push tokens: %w", err)
+		return nil, err
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE sessions SET revoked_at = $3, revoked_reason = 'others'

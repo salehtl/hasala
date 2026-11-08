@@ -51,16 +51,10 @@ func (s *Server) wakeOthers(ctx context.Context, userID uuid.UUID, except string
 	s.waker().WakeOthers(context.WithoutCancel(ctx), userID, except, r)
 }
 
-// writerTokens and accountTokens read the tokens a deletion is about to take
-// with it (spec 02 §12.5: "collected before deletion"), so they can still be
-// woken once it commits. accountTokens skips except ("" = none). A failed read
-// costs only the wake, never the request.
-func (s *Server) writerTokens(ctx context.Context, userID uuid.UUID, writerID string) []pushv2.Target {
-	return s.tokensOrLog(userID, func(q pushv2.Querier) ([]pushv2.Target, error) {
-		return pushv2.WriterTokens(ctx, q, userID, writerID)
-	})
-}
-
+// accountTokens reads the tokens a deletion is about to take with it (spec 02
+// §12.5: "collected before deletion"), so they can still be woken once it
+// commits. It skips except ("" = none). A failed read costs only the wake,
+// never the request.
 func (s *Server) accountTokens(ctx context.Context, userID uuid.UUID, except string) []pushv2.Target {
 	return s.tokensOrLog(userID, func(q pushv2.Querier) ([]pushv2.Target, error) {
 		return pushv2.CollectTokens(ctx, q, userID, except)

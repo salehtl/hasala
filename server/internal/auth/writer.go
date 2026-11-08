@@ -54,6 +54,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // AlgEd25519 is the only writers.alg (spec 01 §4.8: 0x01; 0x02 is reserved).
@@ -335,32 +336,35 @@ type Revocation struct {
 // UPDATE, its current head compared with the pinned one, the RevocationMessage
 // verified under a live signer's DWK, the writer revoked, key_history appended,
 // its sessions revoked and its APNs token deleted.
-func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionInfo, r Revocation) error {
+func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionInfo, r Revocation) (Wake, error) {
 	if w.Pool == nil || w.StepUp == nil {
-		return errors.New("auth: Writers is not configured")
+		return Wake{}, errors.New("auth: Writers is not configured")
 	}
 	if !keyproto.ValidWriterID(r.WriterID) || !keyproto.ValidWriterID(r.SignerWriterID) {
-		return ErrBadWriterID
+		return Wake{}, ErrBadWriterID
 	}
 	if r.FinalCounter < 0 || len(r.FinalHead) != keyproto.HashSize || len(r.Sig) != keyproto.Ed25519SigSize {
-		return fmt.Errorf("%w: final_counter, final_head or sig is malformed", ErrWriterMalformed)
+		return Wake{}, fmt.Errorf("%w: final_counter, final_head or sig is malformed", ErrWriterMalformed)
 	}
 	if r.StepUp == nil {
-		return ErrStepUpRequired
+		return Wake{}, ErrStepUpRequired
 	}
 	if err := consumeChallenge(ctx, w.Pool, w.now(), userID, r.Nonce); err != nil {
-		return err
+		return Wake{}, err
 	}
 	if _, err := keyproto.RevocationMessage(r.Nonce, r.WriterID, uint64(r.FinalCounter), r.FinalHead); err != nil {
-		return fmt.Errorf("%w: %v", ErrWriterMalformed, err)
+		return Wake{}, fmt.Errorf("%w: %v", ErrWriterMalformed, err)
 	}
 	ph, err := keyproto.ParamsHash(keyproto.ActionWriterRevoke, []byte(r.WriterID))
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	g := Guarded{UserID: userID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
-	var held purgeledger.Held
+	var (
+		held   purgeledger.Held
+		tokens []pushv2.Target
+	)
 	err = w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR KEY SHARE`, userID); err != nil {
 			return fmt.Errorf("auth: revoke: lock the account: %w", err)
@@ -396,6 +400,9 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 		if err != nil {
 			return err
 		}
+		if r.WriterID != session.WriterID {
+			tokens = so.tokens
+		}
 		if so.unlinked {
 			if err := RecordQuietEventTx(ctx, tx, userID, AuthEvent{Kind: EventMailboxUnlinked,
 				WriterID: session.WriterID, CredentialID: p.CredentialID}, now); err != nil {
@@ -410,10 +417,10 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 		return recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceRemoved, WriterID: r.WriterID}, now)
 	})
 	if err != nil {
-		return err
+		return Wake{}, err
 	}
 	held.Release(w.Record)
-	return nil
+	return wakeFor(userID, session.WriterID, tokens), nil
 }
 
 type writerRevocation struct {
@@ -449,6 +456,7 @@ func (r writerRevocation) verifiesTx(ctx context.Context, tx pgx.Tx) (bool, erro
 type writerSignOut struct {
 	changed  bool
 	unlinked bool
+	tokens   []pushv2.Target
 }
 
 func revokeWriterTx(ctx context.Context, tx pgx.Tx, r writerRevocation, retire bool, at, now time.Time) (writerSignOut, error) {
@@ -479,11 +487,10 @@ func revokeWriterTx(ctx context.Context, tx pgx.Tx, r writerRevocation, retire b
 		return so, fmt.Errorf("auth: revoke the writer's sessions: %w", err)
 	}
 	so.changed = tag.RowsAffected() > 0
-	tag, err = tx.Exec(ctx, `DELETE FROM apns_tokens WHERE user_id = $1 AND writer_id = $2`, r.UserID, r.WriterID)
-	if err != nil {
-		return so, fmt.Errorf("auth: forget push tokens: %w", err)
+	if so.tokens, err = takePushTokens(ctx, tx, `user_id = $1 AND writer_id = $2`, r.UserID, r.WriterID); err != nil {
+		return so, err
 	}
-	so.changed = so.changed || tag.RowsAffected() > 0
+	so.changed = so.changed || len(so.tokens) > 0
 	tag, err = tx.Exec(ctx,
 		`DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND approved_by_writer = $2 AND consumed_at IS NULL`,
 		r.UserID, r.WriterID)

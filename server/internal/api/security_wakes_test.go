@@ -1,10 +1,12 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/authtest"
 	"github.com/salehtl/hasala/server/internal/keyproto"
@@ -91,5 +93,84 @@ func TestAuthenticatorChangesWakeTheSignedOutDevices(t *testing.T) {
 	rows.Close()
 	if !slices.Equal(reasons, []string{"others"}) {
 		t.Fatalf("revocation reasons %v, want only 'others' (spec 02 §9.3)", reasons)
+	}
+}
+
+func TestALogoutAllWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionSessionLogoutAll)
+	var late string
+	h.srv.StepUp.Now = func() time.Time {
+		if late == "" {
+			late = tokenHexFor(2)
+			putToken(h, tok2, 2)
+		}
+		return time.Now()
+	}
+	wantStatus(t, h.req("POST", "/api/v1/auth/logout-all", k.token, StepUpOnlyRequest{StepUp: su}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 0 {
+		t.Fatal("logout-all left tokens")
+	}
+	ws := wk.take()
+	if len(ws) != 1 || !slices.Equal(ws[0].tokens, []string{late}) || ws[0].r != pushv2.ReasonSecurity {
+		t.Fatalf("logout-all wakes %+v, want the token registered during the request", ws)
+	}
+}
+
+func TestRevokingADeviceWakesATokenRegisteredAfterTheRequestBegan(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	d2 := authtest.NewDevice(t)
+	tok2 := k.enrol(d2)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(d2.WriterID))
+	n := k.nonce(k.token)
+	rm, _ := keyproto.RevocationMessage(n, d2.WriterID, 0, make([]byte, 32))
+	var late string
+	h.srv.Writers.Now = func() time.Time {
+		if late == "" {
+			late = tokenHexFor(2)
+			putToken(h, tok2, 2)
+		}
+		return time.Now()
+	}
+	wantStatus(t, h.req("POST", "/api/v1/writers/revoke", k.token, RevokeRequest{WriterID: d2.WriterID,
+		SignerWriterID: k.device.WriterID, Nonce: b64(n), FinalCounter: "0", FinalHead: b64(make([]byte, 32)),
+		Sig: b64(ed25519.Sign(k.device.DWK, rm)), StepUp: su}), http.StatusNoContent)
+	if h.countAPNs(k.user) != 1 {
+		t.Fatal("the revoked writer's token survived")
+	}
+	ws := wk.take()
+	if len(ws) != 2 || !ws[0].others || ws[0].writer != k.device.WriterID || !slices.Equal(ws[1].tokens, []string{late}) {
+		t.Fatalf("revoke wakes %+v, want the others and the token registered during the request", ws)
+	}
+}
+
+func TestRemovingThisDeviceDoesNotWakeItsOwnToken(t *testing.T) {
+	h := newHarness(t).passkeys()
+	wk, _ := withPushAndGmail(h)
+	k := h.onboard(true)
+	putToken(h, k.token, 1)
+	wk.take()
+
+	su := k.stepUp(k.token, keyproto.ActionWriterRevoke, []byte(k.device.WriterID))
+	n := k.nonce(k.token)
+	rm, _ := keyproto.RevocationMessage(n, k.device.WriterID, 0, make([]byte, 32))
+	wantStatus(t, h.req("POST", "/api/v1/writers/revoke", k.token, RevokeRequest{WriterID: k.device.WriterID,
+		SignerWriterID: k.device.WriterID, Nonce: b64(n), FinalCounter: "0", FinalHead: b64(make([]byte, 32)),
+		Sig: b64(ed25519.Sign(k.device.DWK, rm)), StepUp: su}), http.StatusNoContent)
+	ws := wk.take()
+	if len(ws) != 1 || !ws[0].others || ws[0].writer != k.device.WriterID {
+		t.Fatalf("removing this device wakes %+v, want only the others", ws)
 	}
 }

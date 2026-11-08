@@ -125,7 +125,7 @@ func TestADeviceFreezeIsNotDatedToTheDevicesOwnSignOut(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
 	f.clock.advance(time.Hour)
-	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(2 * time.Hour)
@@ -178,7 +178,7 @@ func TestADeviceFreezeIsDatedToASignOutAnotherDeviceAskedFor(t *testing.T) {
 	m.token, m.device = in.Session.Token, other
 	f.clock.advance(time.Hour)
 	signedOut := f.clock.now()
-	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(2 * time.Hour)
@@ -196,7 +196,7 @@ func TestADeviceFreezeStaysDatedToASignOutAPasskeyProvedOnAnotherDevice(t *testi
 	p.signIn(m.anotherDevice())
 	f.clock.advance(time.Hour)
 	signedOut := f.clock.now()
-	if err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(2 * time.Hour)
@@ -212,7 +212,7 @@ func TestADeviceFreezeStaysDatedToASignOutAPasskeyProvedWithNoDevice(t *testing.
 	p.signIn(nil)
 	f.clock.advance(time.Hour)
 	signedOut := f.clock.now()
-	if err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(2 * time.Hour)
@@ -484,7 +484,7 @@ func TestADeviceFreezeOnAPasskeyOnlyAccountIsNotDatedToItsOwnSignOut(t *testing.
 	f := newAcctFixture(t)
 	m, old := f.passkeyOnlyMember("Maya")
 	f.clock.advance(time.Hour)
-	if err := f.acct.LogoutAll(bgctx, m.info(), old.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), old.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(time.Hour)
@@ -506,7 +506,7 @@ func TestADeviceFreezeIsNotDatedToAChangeThisDeviceProvedWithAPasskey(t *testing
 		act         func(t *testing.T, f *acctFixture, m *member, p *passkeyProver)
 	}{
 		{"sign out everywhere", false, func(t *testing.T, f *acctFixture, m *member, p *passkeyProver) {
-			if err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
+			if _, err := f.acct.LogoutAll(bgctx, m.info(), p.stepUp(keyproto.ActionSessionLogoutAll)); err != nil {
 				t.Fatal(err)
 			}
 		}},

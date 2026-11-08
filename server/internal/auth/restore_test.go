@@ -56,7 +56,7 @@ func TestRevokingTheHolderDropsTheMailboxLinkAndRecordsTheRemoval(t *testing.T) 
 
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
 	rev := f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), rev); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), rev); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 0 {
@@ -86,7 +86,7 @@ func TestRevokingAnotherDeviceKeepsTheHoldersLink(t *testing.T) {
 	f.enrol(other)
 	plantMailboxLink(t, f.pool, f.user, f.device.WriterID, 0x12)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1 AND holder_writer_id = $2`, f.user, f.device.WriterID); n != 1 {
@@ -108,7 +108,7 @@ func TestAFailedRevocationRecordsNothing(t *testing.T) {
 	f.enrol(other)
 	plantMailboxLink(t, f.pool, f.user, other.WriterID, 0x13)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("a wrong head: %v", err)
 	}
 	if n := f.count(`SELECT count(*) FROM mailbox_links WHERE user_id = $1`, f.user); n != 1 {
@@ -857,7 +857,7 @@ func TestAReplayOnTheLiveDatabaseAppliesNothing(t *testing.T) {
 		plantMailboxLink(t, f.pool, f.user, stolen.WriterID, 0x16)
 		f.clock.advance(time.Minute + 820*time.Millisecond)
 		su = f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(stolen.WriterID))
-		if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+		if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(stolen.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 			t.Fatal(err)
 		}
 		entries := readLedger(t, path)
@@ -883,7 +883,7 @@ func TestALogoutAllIsRecordedAndSurvivesARestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.clock.advance(time.Hour + 300*time.Millisecond)
-	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	entries := readLedger(t, path)

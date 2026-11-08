@@ -106,7 +106,10 @@ func TestARevocationWaitsForASignInThatGotThereFirst(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- f.writers.Revoke(bgctx, f.user, info, rev) }()
+	go func() {
+		_, err := f.writers.Revoke(bgctx, f.user, info, rev)
+		done <- err
+	}()
 	waitForLockWait(t, f.count)
 
 	minted, err := f.sessions.IssueTx(bgctx, tx, Mint{UserID: f.user, MintedBy: MintedLogin, WriterID: target.WriterID})
@@ -153,7 +156,10 @@ func TestARevocationAndAPasskeyAddOnThatDeviceBothFinish(t *testing.T) {
 	}
 
 	revoked := make(chan error, 1)
-	go func() { revoked <- f.writers.Revoke(bgctx, f.user, info, rev) }()
+	go func() {
+		_, err := f.writers.Revoke(bgctx, f.user, info, rev)
+		revoked <- err
+	}()
 	waitForLockWaiters(t, f.count, 1)
 	added := make(chan error, 1)
 	go func() {
@@ -196,7 +202,10 @@ func TestARevocationWaitsForAMailboxUnlinkThatHoldsTheLink(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- f.writers.Revoke(bgctx, f.user, info, rev) }()
+	go func() {
+		_, err := f.writers.Revoke(bgctx, f.user, info, rev)
+		done <- err
+	}()
 	waitForLockWait(t, f.count)
 
 	if err := RecordQuietEventTx(bgctx, unlink, f.user, AuthEvent{Kind: EventMailboxUnlinked, WriterID: f.device.WriterID}, f.clock.now()); err != nil {

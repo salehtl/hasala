@@ -62,7 +62,7 @@ func TestAResetCannotFinishOnceTheApprovingSessionSignedOut(t *testing.T) {
 			}
 		},
 		"a sign-out of all sessions": func(f *acctFixture, m *member) {
-			if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+			if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 				f.t.Fatal(err)
 			}
 		},

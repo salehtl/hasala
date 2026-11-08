@@ -78,7 +78,7 @@ func TestEachAccountChangeHoldsItsLineWithTheChange(t *testing.T) {
 	}
 	m.s = newS
 	f.clock.advance(time.Hour)
-	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+	if _, err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
 		t.Fatal(err)
 	}
 	f.clock.advance(time.Hour)
@@ -141,7 +141,7 @@ func TestADeviceRemovalHoldsItsLine(t *testing.T) {
 	other := authtest.NewDevice(t)
 	f.enrol(other)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 0, make([]byte, 32), su)); err != nil {
 		t.Fatal(err)
 	}
 	if entries := flushed(t, f.pool); len(entries) != 1 || entries[0].Kind != purgeledger.KindDevice || entries[0].Device.WriterID != other.WriterID {
@@ -155,7 +155,7 @@ func TestAFailedRevocationHoldsNoLine(t *testing.T) {
 	other := authtest.NewDevice(t)
 	f.enrol(other)
 	su := f.stepUpPasskey(f.token, keyproto.ActionWriterRevoke, []byte(other.WriterID))
-	if err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
+	if _, err := f.writers.Revoke(bgctx, f.user, f.info(f.token), f.revocation(other.WriterID, f.device, 3, make([]byte, 32), su)); !errors.Is(err, ErrHeadMoved) {
 		t.Fatalf("a wrong head: %v", err)
 	}
 	if n := heldLines(t, f.pool); n != 0 {

@@ -164,22 +164,15 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request, userID uui
 	if !ok {
 		return
 	}
-	// The revoked writer's token goes with it (spec 02 §9.5), so it is read
-	// first: the revoked device is woken too (§12.5) and learns it is out.
-	revoked := s.writerTokens(r.Context(), userID, req.WriterID)
-	if err := s.Writers.Revoke(r.Context(), userID, info, auth.Revocation{
+	wake, err := s.Writers.Revoke(r.Context(), userID, info, auth.Revocation{
 		WriterID: req.WriterID, SignerWriterID: req.SignerWriterID, Nonce: nonce,
 		FinalCounter: counter, FinalHead: head, Sig: sig, StepUp: su,
-	}); err != nil {
+	})
+	if err != nil {
 		s.writeKeyErr(w, r, err)
 		return
 	}
-	// Every other device hears of the revocation, and so does the revoked one
-	// through the token collected above.
-	s.wakeOthers(r.Context(), userID, info.WriterID, pushv2.ReasonSecurity)
-	if req.WriterID != info.WriterID {
-		s.wakeTokens(r.Context(), revoked, pushv2.ReasonSecurity)
-	}
+	s.securityWake(r.Context(), wake)
 	w.WriteHeader(http.StatusNoContent)
 }
 

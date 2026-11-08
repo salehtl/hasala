@@ -9,6 +9,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
+	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
 // ViewPhrase is #67 (spec 02 §10.14, spec 01 §10.19): step-up phrase.view with
@@ -83,16 +84,22 @@ func (a *Accounts) SetDisplayName(ctx context.Context, userID uuid.UUID, name st
 // LogoutAll is #16: step-up session.logout_all, then every session of the
 // account (this one included) revoked and every APNs token deleted, with
 // sessions_revoked recorded. Writers are not revoked.
-func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) error {
+func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepUpObject) ([]pushv2.Target, error) {
 	g, err := guardFor(session, keyproto.ActionSessionLogoutAll, su)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var held purgeledger.Held
+	var (
+		held    purgeledger.Held
+		revoked []pushv2.Target
+	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
 		var err error
 		if held, err = a.Hold.Tx(ctx, tx, sessionsEntry(session.UserID, now)); err != nil {
+			return err
+		}
+		if revoked, err = takePushTokens(ctx, tx, `user_id = $1 AND writer_id <> $2`, session.UserID, session.WriterID); err != nil {
 			return err
 		}
 		if _, err := RevokeOtherSessionsTx(ctx, tx, session.UserID, nil, now); err != nil {
@@ -105,8 +112,8 @@ func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepU
 			CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	held.Release(a.Record)
-	return nil
+	return revoked, nil
 }
