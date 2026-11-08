@@ -112,7 +112,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     mailbox = LedgerStateMapper.health(status, nowMs: nowMs)
     unreadSenders = status.unparsedSenders
     if mailboxStatus != status { mailboxStatus = status }
-    if mailboxPhase != status.phase { mailboxPhase = status.phase }
+    let phase = status.stateUnread ? nil : status.phase
+    if mailboxPhase != phase { mailboxPhase = phase }
     if mailboxHalt != status.haltedOn { mailboxHalt = status.haltedOn }
     switch status.phase {
     case .scanning, .awaitingCards, .authoringBackfill:

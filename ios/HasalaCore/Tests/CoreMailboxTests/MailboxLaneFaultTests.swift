@@ -81,9 +81,19 @@ actor UnreadableStateStore: MailboxPersistence {
     await store.setFailing(true)
     let s = await rig.engine.status()
     #expect(s.hero == .needsYou && s.phase == .halted && s.haltedOn == .offline)
+    #expect(s.stateUnread)
     await store.setFailing(false)
     let real = await rig.engine.status()
     #expect(real.hero == .notConnected && real.phase == .unlinked && real.haltedOn == nil)
+    #expect(!real.stateUnread)
+  }
+
+  @Test func aStatusThatKeepsTheLastAnswerIsNotMarkedUnread() async throws {
+    let (rig, store) = try rig()
+    await rig.connectAndActivate()
+    #expect(await rig.engine.status().stateUnread == false)
+    await store.setFailing(true)
+    #expect(await rig.engine.status().stateUnread == false)
   }
 
   @Test func viewingAnEmailThatCannotReadTheStateIsOfflineNotAnotherIPhone() async throws {

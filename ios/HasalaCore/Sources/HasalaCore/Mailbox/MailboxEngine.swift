@@ -237,6 +237,7 @@ public struct MailboxStatus: Sendable, Equatable {
   public var readFromMs: Int64?
   public var backfillDays: Int?
   public var connectedAtMs: Int64? = nil
+  public var stateUnread = false
 }
 
 public actor MailboxEngine {
@@ -1450,9 +1451,9 @@ public actor MailboxEngine {
     return status
   }
 
-  static let stateUnread = MailboxStatus(
+  public static let stateUnread = MailboxStatus(
     hero: .needsYou, phase: .halted, address: nil, lastSuccessAtMs: nil, haltedOn: .offline, setAside: [], unreadable: 0,
-    health: [], watchActive: false)
+    health: [], watchActive: false, stateUnread: true)
 
   public func readerCounts() async -> [String: ReaderCounts] {
     guard let r = (try? await store.loadReader()) ?? nil else { return [:] }
