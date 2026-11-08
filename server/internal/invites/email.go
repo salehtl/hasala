@@ -115,6 +115,8 @@ var ErrAddressGone = errors.New("invites: the invite's email address is no longe
 // that a newer email for the invite has replaced.
 var ErrStale = errors.New("invites: the invite is closed")
 
+const inviteSendable = `(i.state = 'queued' OR (i.state = 'active' AND i.expires_at > now()))`
+
 // Render mints the code and link key, stores their hashes, and renders the
 // email. A resend (an active invite) re-mints: the earlier code dies.
 func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Message, error) {
@@ -126,12 +128,13 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		entry                   *uuid.UUID
 		state                   string
 		expires                 *time.Time
+		sendable                bool
 	)
 	err := tx.QueryRow(ctx,
-		`SELECT email_tag, waitlist_entry_id, state, code_hash, link_key_hash, expires_at
-		   FROM invite_codes WHERE id = $1 FOR UPDATE`, *row.InviteID).
-		Scan(&tag, &entry, &state, &codeHash, &linkHash, &expires)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "queued" && state != "active") {
+		`SELECT i.email_tag, i.waitlist_entry_id, i.state, i.code_hash, i.link_key_hash, i.expires_at, `+inviteSendable+`
+		   FROM invite_codes i WHERE i.id = $1 FOR UPDATE`, *row.InviteID).
+		Scan(&tag, &entry, &state, &codeHash, &linkHash, &expires, &sendable)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sendable) {
 		return mail.Message{}, ErrStale
 	}
 	if err != nil {
@@ -203,18 +206,18 @@ func (r Renderer) secrets(inviteID uuid.UUID, mailID int64) (code, linkKey strin
 // re-mints, so the code the person had stops working.
 func Resend(ctx context.Context, tx pgx.Tx, q *mailq.Queue, id uuid.UUID) error {
 	var (
-		entry *uuid.UUID
-		tag   []byte
-		state string
-		to    *string
+		entry    *uuid.UUID
+		tag      []byte
+		sendable bool
+		to       *string
 	)
 	err := tx.QueryRow(ctx,
-		`SELECT i.waitlist_entry_id, i.email_tag, i.state,
+		`SELECT i.waitlist_entry_id, i.email_tag, `+inviteSendable+`,
 		        coalesce(e.email_norm, (SELECT recipient FROM mail_log m WHERE m.invite_id = i.id AND m.recipient IS NOT NULL
 		                                ORDER BY m.id DESC LIMIT 1))
 		   FROM invite_codes i LEFT JOIN waitlist_entries e ON e.id = i.waitlist_entry_id
-		  WHERE i.id = $1 FOR UPDATE OF i`, id).Scan(&entry, &tag, &state, &to)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && state != "active" && state != "queued") {
+		  WHERE i.id = $1 FOR UPDATE OF i`, id).Scan(&entry, &tag, &sendable, &to)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !sendable) {
 		return ErrNoSuchInvite
 	}
 	if err != nil {

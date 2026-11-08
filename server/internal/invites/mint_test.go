@@ -234,3 +234,131 @@ func TestResendRefusesACLIInviteWhoseAddressIsGone(t *testing.T) {
 		t.Fatalf("%d queued rows, %v", queued, err)
 	}
 }
+
+func mintingQueue(t *testing.T, pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queue {
+	t.Helper()
+	minter, err := authkeys.NewEmailTagger(bytes.Repeat([]byte{3}, authkeys.KeySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := mailq.New(pool, fake, testTagger{})
+	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
+	q.Unsent = MailUnsent(nil)
+	return q
+}
+
+func resendNow(pool *pgxpool.Pool, q *mailq.Queue, invite uuid.UUID) error {
+	return pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error { return Resend(bg, tx, q, invite) })
+}
+
+func lapse(t *testing.T, pool *pgxpool.Pool, invite uuid.UUID) time.Time {
+	t.Helper()
+	var at time.Time
+	if err := pool.QueryRow(bg, `UPDATE invite_codes SET minted_at = now() - interval '15 days', expires_at = now() - interval '1 hour'
+		WHERE id = $1 AND state = 'active' RETURNING expires_at`, invite).Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
+func retryNow(t *testing.T, pool *pgxpool.Pool, invite uuid.UUID) {
+	t.Helper()
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResendRefusesAnInvitePastItsExpiryBeforeTheSweep(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := mintingQueue(t, pool, fake)
+	const addr = "lapsed@example.com"
+	entry, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	until := lapse(t, pool, invite)
+	if err := resendNow(pool, q, invite); !errors.Is(err, ErrNoSuchInvite) {
+		t.Fatalf("resend of a lapsed invite: %v", err)
+	}
+	var queued int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE invite_id = $1 AND status = 'queued'`, invite).
+		Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("%d queued rows, %v", queued, err)
+	}
+	if !expiresAt(t, pool, invite).Equal(until) {
+		t.Fatal("the refused resend moved the expiry")
+	}
+	if _, err := Sweep(bg, pool, nil); err != nil {
+		t.Fatal(err)
+	}
+	if s := inviteState(t, pool, invite); s != "expired" {
+		t.Fatalf("invite %s, want expired", s)
+	}
+	assertEntryConfirmed(t, pool, entry, addr)
+}
+
+func TestAnEmailAlreadyQueuedDoesNotReviveALapsedInvite(t *testing.T) {
+	pool := pgtest.New(t)
+	fake := &mail.Fake{}
+	q := mintingQueue(t, pool, fake)
+	const addr = "queued-resend@example.com"
+	entry, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil || len(fake.Sent()) != 1 {
+		t.Fatalf("sent %d, %v", len(fake.Sent()), err)
+	}
+	if err := resendNow(pool, q, invite); err != nil {
+		t.Fatal(err)
+	}
+	until := lapse(t, pool, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.Sent()) != 1 {
+		t.Fatalf("%d sent: the queued resend went out for a lapsed invite", len(fake.Sent()))
+	}
+	if !expiresAt(t, pool, invite).Equal(until) {
+		t.Fatal("the queued resend moved the expiry")
+	}
+	if n := mintCount(t, pool, invite); n != 1 {
+		t.Fatalf("mint_count %d, want 1", n)
+	}
+	if _, err := Sweep(bg, pool, nil); err != nil {
+		t.Fatal(err)
+	}
+	if s := inviteState(t, pool, invite); s != "expired" {
+		t.Fatalf("invite %s, want expired", s)
+	}
+	assertEntryConfirmed(t, pool, entry, addr)
+}
+
+func TestARetryOfAnEmailForALapsedInviteIsNotSent(t *testing.T) {
+	pool := pgtest.New(t)
+	attempts := 0
+	fake := &mail.Fake{ErrFor: func(mail.Message) error {
+		attempts++
+		return errors.New("provider timeout")
+	}}
+	q := mintingQueue(t, pool, fake)
+	const addr = "lapsed-retry@example.com"
+	entry, invite := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil || attempts != 1 {
+		t.Fatalf("%d attempts, %v", attempts, err)
+	}
+	until := lapse(t, pool, invite)
+	retryNow(t, pool, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 {
+		t.Fatalf("%d attempts: the retry went out for a lapsed invite", attempts)
+	}
+	if !expiresAt(t, pool, invite).Equal(until) {
+		t.Fatal("the retry moved the expiry")
+	}
+	if s := inviteState(t, pool, invite); s != "revoked" {
+		t.Fatalf("invite %s, want revoked", s)
+	}
+	assertEntryConfirmed(t, pool, entry, addr)
+}
