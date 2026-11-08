@@ -189,6 +189,7 @@ const TESTFLIGHT_OPEN = 'https://testflight.apple.com/';
       return;
     }
 
+    document.documentElement.classList.add('has-code');
     const shown = code.match(/.{4}/g)!.join('-');
     document.querySelectorAll<HTMLElement>('[data-code]').forEach((el) => {
       el.textContent = shown;

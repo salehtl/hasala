@@ -20,6 +20,6 @@ export const HERO_SEEN =
  * Decided before first paint, so neither view flashes; the page script
  * checks the code itself and drops the class if it is not one.
  */
-export const INVITE_CODE = "if(/^\\/i\\/./.test(location.pathname)||location.hash.length>1)document.documentElement.classList.add('has-code')";
+export const INVITE_CODE = "if(/^\\/i\\/./.test(location.pathname)||location.hash.length>1){let c=document.documentElement.classList;c.add('has-code');addEventListener('error',()=>{c.contains('js')||document.querySelector('[data-code]:not([hidden])')||c.remove('has-code')},true)}";
 
 export const INLINE_SCRIPTS = [JS_CLASS, HERO_SEEN, INVITE_CODE];
