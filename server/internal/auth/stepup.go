@@ -175,7 +175,7 @@ func (s *StepUp) Begin(ctx context.Context, userID uuid.UUID, sessionHash []byte
 			`SELECT (SELECT count(*) FROM step_up_challenges
 			          WHERE user_id = $1 AND proof_kind = 'device_code' AND issued_at > $2),
 			        EXISTS (SELECT 1 FROM email_codes WHERE user_id = $1 AND ceremony_kind = 'step_up'
-			                   AND burned_at > $3)`,
+			                   AND (burned_at > $3 OR (used_at IS NULL AND out_of_attempts_at > $3)))`,
 			userID, now.Add(-time.Hour), now.Add(-deviceCodeBurnPause)).Scan(&begins, &burned); err != nil {
 			return Begun{}, fmt.Errorf("auth: step-up begin: C8 budget: %w", err)
 		}

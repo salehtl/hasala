@@ -101,8 +101,10 @@ func insertCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.
 	if ceremonyKind != CeremonyStepUp {
 		var paused bool
 		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM email_code_pauses WHERE purpose = $1 AND email_tag = $2 AND paused_until > $3)`,
-			purpose, tag, now).Scan(&paused); err != nil {
+			`SELECT EXISTS (SELECT 1 FROM email_code_pauses WHERE purpose = $1 AND email_tag = $2 AND paused_until > $3)
+			     OR EXISTS (SELECT 1 FROM email_codes WHERE purpose = $1 AND email_tag = $2 AND ceremony_kind <> 'step_up'
+			                   AND used_at IS NULL AND out_of_attempts_at > $4)`,
+			purpose, tag, now, now.Add(-codePause)).Scan(&paused); err != nil {
 			return IssuedCode{}, fmt.Errorf("auth: code pause: %w", err)
 		}
 		var sends int
@@ -202,10 +204,11 @@ func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, cod
 		tag           []byte
 	)
 	err = tx.QueryRow(ctx,
-		`UPDATE email_codes SET attempts = attempts + 1
+		`UPDATE email_codes SET attempts = attempts + 1,
+		        out_of_attempts_at = CASE WHEN attempts + 1 >= $2 THEN $3::timestamptz END
 		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2
 		 RETURNING purpose, ceremony_kind, email_tag`,
-		codeID, codeMaxAttempts).Scan(&purpose, &kind, &tag)
+		codeID, codeMaxAttempts, now).Scan(&purpose, &kind, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: no attempts left", ErrCodeRejected)
 	}
