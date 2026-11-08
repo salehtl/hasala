@@ -751,10 +751,7 @@ final class LiveAccountService: AccountService {
   }
 
   private func bearer() throws(CeremonyError) -> String {
-    guard let s = try? env.secrets.session(), !s.pending_logout else {
-      throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
-    }
-    return s.token
+    try AccountSignIn.liveBearer(env)
   }
 
   private func clearSignedIn() {

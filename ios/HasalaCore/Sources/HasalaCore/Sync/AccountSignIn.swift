@@ -91,12 +91,26 @@ public enum AccountSignIn {
     return DeviceBindingJSON(writerID: w.string, sigB64: Base64.encode(sig))
   }
 
+  public static func liveBearer(_ env: AccountEnvironment) throws(CeremonyError) -> String {
+    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }), !s.pending_logout else {
+      throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
+    }
+    return s.token
+  }
+
   /// §4.7 row 1: `POST /auth/logout` BEFORE the session item goes; offline →
   /// keep it with `pending_logout: true` and treat the app as signed out.
   /// Returns whether the server confirmed (`204` or `401`).
   @discardableResult
   public static func signOut(_ env: AccountEnvironment) async -> Bool {
-    guard let s = try? env.secrets.session() else { return true }
+    let stored: SessionRecord?
+    do {
+      stored = try env.secrets.session()
+    } catch {
+      try? env.secrets.deleteSession()
+      return false
+    }
+    guard let s = stored else { return true }
     do {
       try await env.client.logout(bearer: s.token)
     } catch {
