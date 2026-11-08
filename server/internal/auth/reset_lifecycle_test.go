@@ -106,3 +106,88 @@ func TestAResetFinishWaitsForASignOutOfTheApprovingSession(t *testing.T) {
 		t.Fatalf("a reset that lost to the sign-out: %v", err)
 	}
 }
+
+func TestFinishingAResetEndsTheOtherResets(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	first := f.approvedReset(m, "the first new password")
+	second := f.approvedReset(m, "the second new password")
+	if _, err := f.acct.ResetFinish(bgctx, first.id, first.newS, first.sig); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.ResetFinish(bgctx, second.id, second.newS, second.sig); !errors.Is(err, ErrResetRefused) {
+		t.Fatalf("a second reset after the first finished: %v", err)
+	}
+	if _, err := m.loginPassword(first.newS, nil); err != nil {
+		t.Fatalf("the first reset's password: %v", err)
+	}
+	if _, err := m.loginPassword(second.newS, nil); !errors.Is(err, ErrPasswordRejected) {
+		t.Fatalf("the second reset's password: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`, m.user.UserID); n != 0 {
+		t.Fatalf("%d resets outlived the finished one", n)
+	}
+}
+
+func TestChangingThePasswordEndsAPendingReset(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	r := f.approvedReset(m, "a brand new password")
+	changed := f.stretch(m.addr, "the password the holder chose")
+	if _, err := f.acct.ChangePassword(bgctx, m.info(), changed,
+		m.deviceStepUp(keyproto.ActionPasswordChange, m.s, sumBytes(changed))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig); !errors.Is(err, ErrResetRefused) {
+		t.Fatalf("a reset begun before the change: %v", err)
+	}
+	if _, err := m.loginPassword(changed, nil); err != nil {
+		t.Fatalf("the changed password: %v", err)
+	}
+}
+
+func TestTwoResetsFinishingTogetherLeaveOnePassword(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	first := f.approvedReset(m, "the first new password")
+	second := f.approvedReset(m, "the second new password")
+
+	holder, err := pgtx.BeginReadCommitted(bgctx, f.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pgtx.Rollback(bgctx, holder)
+	if _, err := holder.Exec(bgctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		r   approvedReset
+		err error
+	}
+	done := make(chan result, 2)
+	for _, r := range []approvedReset{first, second} {
+		go func() {
+			_, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig)
+			done <- result{r, err}
+		}()
+	}
+	waitForLockWaiters(t, f.count, 2)
+	pgtx.Rollback(bgctx, holder)
+	a, b := <-done, <-done
+	if (a.err == nil) == (b.err == nil) {
+		t.Fatalf("two resets: %v and %v, want one to finish", a.err, b.err)
+	}
+	won, lost := a, b
+	if a.err != nil {
+		won, lost = b, a
+	}
+	if !errors.Is(lost.err, ErrResetRefused) {
+		t.Fatalf("the reset that lost: %v", lost.err)
+	}
+	if _, err := m.loginPassword(won.r.newS, nil); err != nil {
+		t.Fatalf("the winning password: %v", err)
+	}
+	if _, err := m.loginPassword(lost.r.newS, nil); !errors.Is(err, ErrPasswordRejected) {
+		t.Fatalf("the losing password: %v", err)
+	}
+}

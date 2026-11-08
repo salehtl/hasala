@@ -149,5 +149,8 @@ func setPasswordTx(ctx context.Context, q queryExecer, userID uuid.UUID, hash, s
 		  WHERE id = $1`, userID, hash, salt, generation, now); err != nil {
 		return fmt.Errorf("auth: set password: %w", err)
 	}
+	if _, err := q.Exec(ctx, `DELETE FROM password_reset_ceremonies WHERE user_id = $1 AND consumed_at IS NULL`, userID); err != nil {
+		return fmt.Errorf("auth: set password: end outstanding resets: %w", err)
+	}
 	return nil
 }
