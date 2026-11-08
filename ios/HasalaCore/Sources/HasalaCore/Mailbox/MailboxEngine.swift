@@ -276,6 +276,7 @@ public actor MailboxEngine {
   private var firstScanRunning = false
   public private(set) var stopped = false
   private var strikes: [String: Int] = [:]
+  private var lastStatus: MailboxStatus?
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
   public init(
@@ -451,7 +452,12 @@ public actor MailboxEngine {
     } catch where error.status == 401 || error.status == 403 {
       return .failed(.permissionMissing)
     } catch {}
-    let stored = replacing ? nil : ((try? await store.loadState()) ?? MailboxState())
+    let stored: MailboxState?
+    if replacing {
+      stored = nil
+    } else {
+      do throws(MailboxPersistenceError) { stored = try await store.loadState() } catch { return .failed(.keychain) }
+    }
     if let stored, Self.identityUnknown(linked: stored.address, signedIn: claims.email) {
       return .failed(.permissionMissing)
     }
@@ -1308,7 +1314,7 @@ public actor MailboxEngine {
   public func probeSenders(_ domains: [String], days: Int = 180) async -> SenderProbeResult {
     let wanted = domains.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
     return await exclusive {
-      let state = (try? await store.loadState()) ?? MailboxState()
+      guard let state = try? await store.loadState() else { return .offline }
       switch state.phase {
       case .otherDevice, .unlinked: return .notReading
       case .reconnectRequired: return .reconnectRequired
@@ -1341,7 +1347,7 @@ public actor MailboxEngine {
   /// never persisted). Holder only.
   public func viewEmail(messageID: String) async -> EmailView {
     await exclusive {
-      let state = (try? await store.loadState()) ?? MailboxState()
+      guard let state = try? await store.loadState() else { return .offline }
       switch state.phase {
       case .otherDevice, .unlinked: return .nonHolder
       case .reconnectRequired: return .reconnectRequired
@@ -1370,7 +1376,7 @@ public actor MailboxEngine {
   // MARK: - Status (§7.10)
 
   public func status() async -> MailboxStatus {
-    let state = (try? await store.loadState()) ?? MailboxState()
+    guard let state = try? await store.loadState() else { return lastStatus ?? Self.stateUnread }
     let setAside = (try? await store.setAsideRecords()) ?? []
     var groups: [String: (Int, Int64)] = [:]
     for r in setAside {
@@ -1387,7 +1393,7 @@ public actor MailboxEngine {
       let recent = state.lastSuccessAtMs.map { clock.nowMs() - $0 < 6 * 3_600_000 } ?? false
       hero = recent ? .working : .catchingUp
     }
-    return MailboxStatus(
+    let status = MailboxStatus(
       hero: hero, phase: state.phase, address: state.address, lastSuccessAtMs: state.lastSuccessAtMs,
       haltedOn: state.haltedOn,
       setAside: groups.map { .init(domain: $0.key, count: $0.value.0, newestMs: $0.value.1) }.sorted {
@@ -1397,7 +1403,13 @@ public actor MailboxEngine {
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
       readFromMs: state.readFromMs, backfillDays: state.backfillDays,
       connectedAtMs: state.scanStartedMs ?? state.readFromMs)
+    lastStatus = status
+    return status
   }
+
+  static let stateUnread = MailboxStatus(
+    hero: .needsYou, phase: .halted, address: nil, lastSuccessAtMs: nil, haltedOn: .offline, setAside: [], unreadable: 0,
+    health: [], watchActive: false)
 
   public func readerCounts() async -> [String: ReaderCounts] {
     guard let r = (try? await store.loadReader()) ?? nil else { return [:] }
