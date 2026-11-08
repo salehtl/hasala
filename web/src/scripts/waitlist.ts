@@ -17,7 +17,7 @@
  */
 import { reducedMotion } from './motion';
 import { onPage } from './page';
-import { bankText, postJson, renderTurnstile, waitText, type ApiAnswer } from './api';
+import { bankText, postWithTurnstile, renderTurnstile, waitText, type ApiAnswer } from './api';
 
 type State = 'default' | 'focus' | 'error' | 'success';
 const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', adib: 'Abu Dhabi Islamic Bank', other: 'Another bank' };
@@ -85,7 +85,7 @@ function setup(signal: AbortSignal): void {
   const status = form.querySelector<HTMLElement>('.wl-status')!;
   const api = root.dataset.api;
   const mail = root.dataset.mail;
-  const resetTurnstile = renderTurnstile(form, 'waitlist', signal);
+  const turnstile = renderTurnstile(form, 'waitlist', signal);
   let touched = false;
   let sending = false;
 
@@ -244,15 +244,13 @@ function setup(signal: AbortSignal): void {
       }
       const body: Record<string, string> = { email: email.value.trim(), bank: bank.value, source: 'web', website: '' };
       if (typed) body.otherBank = typed;
-      const token = (form.elements.namedItem('cf-turnstile-response') as HTMLInputElement | null)?.value;
-      if (token) body.turnstileToken = token;
 
       lock(true);
       const slow = window.setTimeout(() => setStatus('Still trying. Check your connection.'), 8000);
-      const answer = await postJson(`${api!}/v1/waitlist`, body);
+      const answer = await postWithTurnstile(`${api!}/v1/waitlist`, body, turnstile);
       window.clearTimeout(slow);
       lock(false);
-      resetTurnstile();
+      turnstile.reset();
       setStatus('');
       if (answer.status >= 200 && answer.status < 300) {
         showDone();

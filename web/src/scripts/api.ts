@@ -57,8 +57,10 @@ declare global {
     hasalaTurnstileReady?: () => void;
   }
 }
-const waiting: (() => void)[] = [];
+const waiting: ((loaded: boolean) => void)[] = [];
 let requested = false;
+let keepsTag = false;
+const settleLoad = (loaded: boolean) => waiting.splice(0).forEach((f) => f(loaded));
 
 /**
  * Loads Turnstile's api.js once per document. The router rebuilds <head> on
@@ -70,13 +72,20 @@ let requested = false;
 function loadTurnstile(): void {
   if (requested) return;
   requested = true;
-  window.hasalaTurnstileReady = () => waiting.splice(0).forEach((f) => f());
+  window.hasalaTurnstileReady = () => settleLoad(true);
   const s = document.createElement('script');
   s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=hasalaTurnstileReady';
   s.async = true;
   s.dataset.astroTransitionPersist = 'turnstile';
   s.dataset.astroExec = '';
+  s.onerror = () => {
+    s.remove();
+    requested = false;
+    settleLoad(false);
+  };
   document.head.append(s);
+  if (keepsTag) return;
+  keepsTag = true;
   document.addEventListener('astro:before-swap', (e) => {
     const keep = e.newDocument.createElement('meta');
     keep.dataset.astroTransitionPersist = 'turnstile';
@@ -84,27 +93,81 @@ function loadTurnstile(): void {
   });
 }
 
+export type TurnstileCheck = { state: 'off' } | { state: 'ready'; token: string } | { state: 'missing' };
+export type TurnstileGate = { check: () => Promise<TurnstileCheck>; reset: () => void };
+const MISSING: TurnstileCheck = { state: 'missing' };
+
 /**
  * Cloudflare Turnstile, rendered explicitly (so it also appears after a
  * client-side navigation) with the action the server checks.
- * Returns a reset function: tokens are single use, so call it after every
- * attempt. A no-op when the form has no widget (no site key at build time).
+ * Returns the form's token check and its reset: tokens are single use, so
+ * call reset after every attempt. With no widget (no site key at build time)
+ * check answers "off" and reset does nothing.
  */
-export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'bank_request', signal: AbortSignal): () => void {
+export function renderTurnstile(form: HTMLFormElement, action: 'waitlist' | 'bank_request', signal: AbortSignal, waitMs = 15000): TurnstileGate {
   const box = form.querySelector<HTMLElement>('.cf-turnstile');
-  if (!box?.dataset.sitekey) return () => {};
+  if (!box?.dataset.sitekey) return { check: async () => ({ state: 'off' }), reset: () => {} };
   let id = '';
+  let token = '';
+  const waiters = new Set<(c: TurnstileCheck) => void>();
+  const settle = (c: TurnstileCheck) => waiters.forEach((f) => f(c));
+  const give = (t: string) => {
+    token = t;
+    if (t) settle({ state: 'ready', token: t });
+  };
   const draw = () => {
-    if (signal.aborted || !window.turnstile || box.childElementCount) return;
-    id = window.turnstile.render(box, { sitekey: box.dataset.sitekey, action, theme: 'light', size: 'flexible', appearance: 'interaction-only' });
-    signal.addEventListener('abort', () => window.turnstile?.remove(id), { once: true });
+    if (signal.aborted || id || !window.turnstile || box.childElementCount) return;
+    id = window.turnstile.render(box, {
+      sitekey: box.dataset.sitekey,
+      action,
+      theme: 'light',
+      size: 'flexible',
+      appearance: 'interaction-only',
+      callback: give,
+      'expired-callback': () => give(''),
+    });
   };
-  if (window.turnstile) draw();
-  else {
-    waiting.push(draw);
-    loadTurnstile();
-  }
-  return () => {
-    if (id) window.turnstile?.reset(id);
+  const load = () => {
+    if (window.turnstile) draw();
+    else {
+      waiting.push((loaded) => (loaded ? draw() : settle(MISSING)));
+      loadTurnstile();
+    }
   };
+  signal.addEventListener(
+    'abort',
+    () => {
+      if (id) window.turnstile?.remove(id);
+      id = '';
+      token = '';
+      settle(MISSING);
+    },
+    { once: true },
+  );
+  load();
+  return {
+    check: () =>
+      new Promise((resolve) => {
+        if (signal.aborted) return resolve(MISSING);
+        if (token) return resolve({ state: 'ready', token });
+        const finish = (c: TurnstileCheck) => {
+          clearTimeout(timer);
+          waiters.delete(finish);
+          resolve(c);
+        };
+        const timer = setTimeout(() => finish(MISSING), waitMs);
+        waiters.add(finish);
+        if (!id) load();
+      }),
+    reset: () => {
+      token = '';
+      if (id) window.turnstile?.reset(id);
+    },
+  };
+}
+
+export async function postWithTurnstile(url: string, body: Record<string, string>, turnstile: TurnstileGate): Promise<ApiAnswer> {
+  const check = await turnstile.check();
+  if (check.state === 'missing') return { status: 403, error: 'turnstile_failed', data: {}, retryAfter: 0 };
+  return postJson(url, check.state === 'ready' ? { ...body, turnstileToken: check.token } : body);
 }
