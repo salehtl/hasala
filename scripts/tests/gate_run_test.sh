@@ -175,6 +175,23 @@ fresh
 gate "a passing run" 0
 leftovers
 
+logged() {
+	if grep -qF -- "$1" "$work/log"; then echo "ok   ...ran bun $1"; else
+		echo "FAIL bun $1 did not run; bun ran:"
+		sed 's/^/     /' "$work/log"
+		failures=$((failures + 1))
+	fi
+}
+
+fresh
+mkdir -p "$work/t/infra/assist/node_modules"
+gate "an assist worker with node_modules from an older lockfile" 0
+logged "install --frozen-lockfile"
+
+fresh
+gate "an assist worker with no node_modules" 0
+logged "install --frozen-lockfile"
+
 if ((failures)); then
 	echo "$failures gate run case(s) failed"
 	exit 1

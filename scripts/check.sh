@@ -406,9 +406,7 @@ echo "$((s_ran + o_ran)) $((s_skipped + o_skipped))" >"$REAL_GO"
 # `--bun` runs node-shebang tools (tsc) on Bun, so nothing needs a host Node.
 step "assist worker (infra/assist)"
 cd "$ROOT/infra/assist"
-if [[ ! -d node_modules ]]; then
-	bun install --frozen-lockfile
-fi
+bun install --frozen-lockfile
 bun run --bun typecheck
 bun test
 
