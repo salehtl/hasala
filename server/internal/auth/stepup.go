@@ -600,19 +600,8 @@ func (s *StepUp) verifyDeviceCode(ctx context.Context, tx pgx.Tx, g Guarded, p P
 	if fail == nil {
 		return Proven{}, nil, fmt.Errorf("%w: %v", ErrStepUpFailed, err)
 	}
-	nonce := g.StepUp.Nonce
 	return Proven{}, func(ctx context.Context, tx pgx.Tx) (bool, error) {
-		var attempts int
-		if err := tx.QueryRow(ctx,
-			`UPDATE step_up_challenges SET code_attempts = least(code_attempts + 1, 5) WHERE nonce = $1 RETURNING code_attempts`,
-			nonce).Scan(&attempts); err != nil {
-			return false, err
-		}
-		burned, err := fail.apply(ctx, tx, now)
-		if err != nil {
-			return false, err
-		}
-		return burned || attempts >= codeMaxAttempts, nil
+		return fail.apply(ctx, tx, now)
 	}, fmt.Errorf("%w: wrong code", ErrStepUpFailed)
 }
 
