@@ -150,7 +150,9 @@ final class BootController {
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
     Self.dropLockedTextsMarker(phase)
     self.wall = wall
-    session = AccountSession(services: services, phase: phase)
+    let decided = AccountSession(services: services, phase: phase)
+    decided.onPhaseChange = { [weak self] in self?.phaseChanged($0) }
+    session = decided
     state = .decided
     phaseChanged(session.phase)
     let env = self.env.account
@@ -202,7 +204,7 @@ final class BootController {
   // MARK: Phase changes
 
   /// The gate moved: open the account when it reaches setup or the app, close it when
-  /// it leaves. Called by the root view on every phase change.
+  /// it leaves.
   func phaseChanged(_ phase: AccountSession.Phase) {
     let previous = lastPhase
     lastPhase = phase

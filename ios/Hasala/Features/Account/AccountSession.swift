@@ -27,7 +27,10 @@ final class AccountSession {
   }
 
   let services: AccountServices
-  private(set) var phase: Phase
+  private(set) var phase: Phase {
+    didSet { if phase != oldValue { onPhaseChange?(phase) } }
+  }
+  @ObservationIgnored var onPhaseChange: (@MainActor (Phase) -> Void)?
   /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
   /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?

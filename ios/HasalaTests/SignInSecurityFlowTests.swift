@@ -420,6 +420,19 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(fresh.phase == .frozen(FreezeInfo(by: .holder, when: nil)))
   }
 
+  @Test func theGateHearsEveryPhaseChangeWithNoViewWatching() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .ready)
+    var heard: [AccountSession.Phase] = []
+    session.onPhaseChange = { heard.append($0) }
+    session.setupFinished()
+    #expect(heard.isEmpty)
+    session.signedOut()
+    session.signedOut()
+    session.accountCreated()
+    session.setupFinished()
+    #expect(heard == [.signedOut, .onboarding(.bank), .ready])
+  }
+
   // MARK: Relaunch (spec 04 §6.5)
 
   @Test func aRelaunchedSignInGoesToUnlockNotToTheKeysStep() async {
