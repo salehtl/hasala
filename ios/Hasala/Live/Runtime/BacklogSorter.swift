@@ -338,7 +338,12 @@ actor BacklogSorter {
   func switchedOff() {
     guard !enabled() else { return }
     halt()
-    if let run = record.run, run.phase != .done { end(.off) }
+    if let run = record.run, run.phase != .done { end(.off) } else { publish() }
+  }
+
+  func switchedOn() async {
+    publish()
+    await ensure(retry: true)
   }
 
   func suspend() {

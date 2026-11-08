@@ -920,6 +920,26 @@ struct CloudSortStatusTests {
     #expect(await c.sendAllBack() == 5)
   }
 
+  @Test(arguments: [BacklogSorterTests.Saved(), BacklogSorterTests.Saved.ended(nil), BacklogSorterTests.Saved.ended(.failed)])
+  func theSwitchIsReadWhenItChangesWithNoRunGoing(_ saved: BacklogSorterTests.Saved) async {
+    let enabled = BacklogSorterTests.Flag()
+    let sorter = BacklogSorter(
+      pass: { _, _ in nil }, waiting: { _ in false }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
+      importRunning: { false }, enabled: { enabled.value }, network: BacklogSorterTests.Net(), sleep: { _ in })
+    let c = LiveCloudSortController(sorter: sorter, view: { _ in Self.view(2) }, sendBack: { 0 }, enabled: { enabled.value })
+    await c.refresh()
+    let before = c.status.phase
+    #expect(before != .off)
+    enabled.set(false)
+    await sorter.switchedOff()
+    for _ in 0..<400 where c.status.phase != .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == .off)
+    enabled.set(true)
+    await sorter.switchedOn()
+    for _ in 0..<400 where c.status.phase == .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == before)
+  }
+
   @Test func aRecountAskedForWhileOneRunsRunsOnceMore() async {
     let saved = BacklogSorterTests.Saved()
     let sorter = BacklogSorter(

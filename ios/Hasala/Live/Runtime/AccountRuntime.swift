@@ -517,7 +517,7 @@ final class AccountRuntime {
       Task { await sorter.switchedOff() }
     }
     switchOn = center.addObserver(forName: MerchantSuggestionsSetting.turnedOn, object: defaults, queue: nil) { _ in
-      Task { await sorter.ensure(retry: true) }
+      Task { await sorter.switchedOn() }
     }
   }
 
