@@ -288,7 +288,7 @@ public actor MailboxEngine {
   public private(set) var topicMismatch = false
   private var pause = ProviderPause()
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
-  private var firstScanRunning = false
+  private var firstScansRunning = 0
   public private(set) var stopped = false
   public private(set) var disconnectsWaiting = 0
   private var retiresRunning: Set<String> = []
@@ -1256,8 +1256,8 @@ public actor MailboxEngine {
   /// provider's `Retry-After`) when it read nothing, giving up after the last wait. While this
   /// runs, a passing stop is not reported as `.failed` progress, since the scan goes on.
   public func runFirstScan(maxCycles: Int = 50) async -> [CycleReport] {
-    firstScanRunning = true
-    defer { firstScanRunning = false }
+    firstScansRunning += 1
+    defer { firstScansRunning -= 1 }
     var reports: [CycleReport] = []
     var stalls = 0
     for _ in 0..<maxCycles {
@@ -2160,7 +2160,7 @@ public actor MailboxEngine {
   func finish(_ state: inout MailboxState, _ report: CycleReport, clearReader: Bool = false) async -> CycleReport {
     var report = report
     let passes = report.haltedOn.map(Self.passing) == true && state.phase != .halted
-    if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && passes) { emit(.failed(h), 0, 0) }
+    if let h = report.haltedOn, h != .stagingFull, !(firstScansRunning > 0 && passes) { emit(.failed(h), 0, 0) }
     var c = commitState(state)
     c.clearReader = clearReader
     try? await commitForgetting(c)
