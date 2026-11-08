@@ -648,7 +648,7 @@ final class LiveAccountService: AccountService {
         // #16 revokes every session, this one too (`02` §9.3); keys and writers stay.
         try await guarded(.sessionLogoutAll, "/api/v1/auth/logout-all", factor: factor, binding: b, action: action)
         try? env.secrets.deleteSession()
-        signIn = nil
+        sessionEnded()
         await left()
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
@@ -683,7 +683,7 @@ final class LiveAccountService: AccountService {
         // An operator freeze revokes every session, this one too: as after any
         // revoked session, this iPhone signs in again, and then shows their wall.
         try? env.secrets.deleteSession()
-        signIn = nil
+        sessionEnded()
         await left()
         throw .sessionEnded
       }
@@ -766,10 +766,14 @@ final class LiveAccountService: AccountService {
     return s.token
   }
 
-  private func clearSignedIn() {
+  func sessionEnded() {
     endUnlockOffer()
     signIn = nil
     enrolled = nil
+  }
+
+  private func clearSignedIn() {
+    sessionEnded()
     profile = nil
     methodConfirmed = false
   }
@@ -807,8 +811,7 @@ final class LiveAccountService: AccountService {
 
   func signOut() async {
     await AccountSignIn.signOut(env)
-    endUnlockOffer()
-    signIn = nil
+    sessionEnded()
     await left()
   }
 

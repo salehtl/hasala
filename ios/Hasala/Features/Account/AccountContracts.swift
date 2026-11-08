@@ -437,6 +437,8 @@ extension AccountService {
 
   func endUnlockOffer() {}
 
+  func sessionEnded() {}
+
   // No ceremony binds the email change yet (C6): a service that doesn't carry it out says
   // so, and the screens offer it only with `.changeEmail` on the unfinished surface.
   func beginEmailChange(password: String?) async throws(AuthFailure) -> EmailChangeTicket { throw .notInThisBuild }

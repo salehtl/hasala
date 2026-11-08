@@ -199,6 +199,7 @@ final class AccountSession {
   }
 
   func signedOut() {
+    if phase != .signedOut { account.sessionEnded() }
     leftFrozen = nil
     setupBehindWall = false
     reviewAccount = false

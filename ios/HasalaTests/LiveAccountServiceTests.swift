@@ -272,6 +272,27 @@ struct LiveAccountServiceTests {
     await #expect(throws: (any Error).self) { _ = try await env.client.session(bearer: token) }
   }
 
+  @Test func everyWayOutOfTheSessionForgetsTheEnrolledAccount() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    #expect(a.enrolled != nil)
+    await a.signOut()
+    #expect(a.enrolled == nil)
+    #expect(try await a.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+
+    let other = MiniHasalad(invite: Self.invite)
+    let (stopped, _) = try await Self.signUp(other, Self.phone(other))
+    let services = AccountServices(
+      account: stopped, mailbox: MockMailbox(), setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let waiting = AccountSession(services: services, phase: .signedOut)
+    waiting.signedOut()
+    #expect(stopped.enrolled != nil)
+    let session = AccountSession(services: services, phase: .ready)
+    session.signedOut()
+    #expect(stopped.enrolled == nil)
+  }
+
   @Test func aSignInFinishesAPendingSignOutFirst() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
