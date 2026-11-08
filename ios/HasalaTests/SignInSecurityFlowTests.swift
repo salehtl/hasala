@@ -38,6 +38,30 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.failure == .orphanedPasskey)
   }
 
+  @Test func aSignInWhileAnotherIsRunningStartsNothing() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .milliseconds(50)
+    var outcomes = 0
+    let m = SignInModel(account: account) { _ in outcomes += 1 }
+    let first = Task { await m.signInWithPasskey() }
+    while !m.busy { await Task.yield() }
+    await m.signInWithPasskey()
+    #expect(m.busy && m.signingIn == .passkey)
+    await first.value
+    #expect(outcomes == 1)
+    #expect(!m.busy && m.signingIn == nil)
+
+    m.email = "maya@example.com"
+    m.password = MockAccountService.existingPassword
+    let second = Task { await m.signInWithPassword() }
+    while !m.busy { await Task.yield() }
+    await m.signInWithPasskey()
+    await m.signInWithPassword()
+    #expect(m.busy && m.signingIn == .password)
+    await second.value
+    #expect(outcomes == 2)
+  }
+
   @Test func forgotPasswordWaitsForTheOtherIPhone() async {
     let account = MockAccountService(existing: .passwordOnly)
     account.delay = .zero

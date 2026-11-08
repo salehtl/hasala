@@ -86,6 +86,7 @@ final class SignInModel {
   // MARK: Sign in
 
   func signInWithPasskey() async {
+    guard !busy else { return }
     busy = true
     signingIn = .passkey
     lastTried = .passkey
@@ -105,7 +106,7 @@ final class SignInModel {
   var passwordSignInReady: Bool { AccountFields.email(email) != nil && !password.isEmpty }
 
   func signInWithPassword() async {
-    guard passwordSignInReady else { return }
+    guard passwordSignInReady, !busy else { return }
     busy = true
     signingIn = .password
     lastTried = .password
