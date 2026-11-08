@@ -33,7 +33,6 @@ final class SignInModel {
   private(set) var resetCodeUsedUp = false
   var newPassword = ""
   var confirmPassword = ""
-  private(set) var waiting = false
   /// When the request to the other iPhone runs out (the countdown on "Check your other
   /// iPhone").
   private(set) var approvalDeadline: Date?
@@ -226,8 +225,6 @@ final class SignInModel {
   /// Polls every 3 s while on screen until approved, failed or the 10 minutes pass.
   func waitForApproval(interval: Duration = .seconds(3), limit: Duration = .seconds(600)) async {
     guard let reset else { return }
-    waiting = true
-    defer { waiting = false }
     let start = ContinuousClock.now
     while !Task.isCancelled {
       do {
