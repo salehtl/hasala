@@ -527,8 +527,10 @@ func (s *Server) handleLinkWatch(w http.ResponseWriter, r *http.Request, userID 
 		return
 	}
 	var provider, holder string
+	var linkedAt time.Time
 	err := s.Pool.QueryRow(r.Context(),
-		`SELECT provider, holder_writer_id FROM mailbox_links WHERE user_id = $1`, userID).Scan(&provider, &holder)
+		`SELECT provider, holder_writer_id, created_at FROM mailbox_links WHERE user_id = $1`, userID).
+		Scan(&provider, &holder, &linkedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeErr(w, http.StatusNotFound, "no_link", "")
 		return
@@ -550,14 +552,17 @@ func (s *Server) handleLinkWatch(w http.ResponseWriter, r *http.Request, userID 
 		writeErr(w, http.StatusBadRequest, "bad_request", "expires_at must be in the next 7 days")
 		return
 	}
-	// The provider is matched too: a link replaced since the read above is
-	// not given the old one's watch.
-	if _, err := s.Pool.Exec(r.Context(),
-		`UPDATE mailbox_links SET watch_expires_at = $4, updated_at = $5
-		  WHERE user_id = $1 AND provider = $2 AND holder_writer_id = $3`,
-		userID, provider, info.WriterID, req.ExpiresAt, now); err != nil {
+	tag, err := s.Pool.Exec(r.Context(),
+		`UPDATE mailbox_links SET watch_expires_at = GREATEST(watch_expires_at, $4), updated_at = $5
+		  WHERE user_id = $1 AND provider = $2 AND holder_writer_id = $3 AND created_at = $6`,
+		userID, provider, info.WriterID, req.ExpiresAt, now, linkedAt)
+	if err != nil {
 		s.logf("api: link watch for %s: %v", userID, err)
 		writeErr(w, http.StatusInternalServerError, "internal", "")
+		return
+	}
+	if tag.RowsAffected() != 1 {
+		writeErr(w, http.StatusNotFound, "no_link", "")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
