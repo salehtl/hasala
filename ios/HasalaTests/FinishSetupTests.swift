@@ -241,6 +241,32 @@ struct FinishSetupTests: AccountSuite {
     #expect(m.isDone(.notifications) && notifications.answered && !notifications.asked)
   }
 
+  @Test func aSheetSwipedAwayDuringTheAskSendsOneRequest() async {
+    let held = HeldNotificationPermission()
+    let m = FinishSetupModel(services: AccountServices(
+      account: MockAccountService(existing: .passkey, signedIn: true), mailbox: MockMailbox(),
+      setup: MockSetupAuthoring(), notifications: held))
+    m.askNotifications()
+    let first = Task { await m.allowNotifications() }
+    while held.requests == 0 { await Task.yield() }
+    m.askingNotifications = false
+    #expect(!m.isDone(.notifications))
+    m.askNotifications()
+    let second = Task { await m.allowNotifications() }
+    for _ in 0..<5 { await Task.yield() }
+    #expect(held.requests == 1)
+    held.answer(false)
+    await first.value
+    await second.value
+    #expect(m.isDone(.notifications) && !m.askingNotifications)
+    m.askNotifications()
+    let later = Task { await m.allowNotifications() }
+    while held.requests == 1 { await Task.yield() }
+    held.answer(true)
+    await later.value
+    #expect(held.requests == 2)
+  }
+
   @Test func whatTheAccountHoldsCountsAsDone() {
     let saved = SetupReadBack(incomeMinor: 2_500_000, payday: 25, split: StartingPlan())
     let m = FinishSetupModel(services: services(MockSetupAuthoring(saved: saved),
@@ -456,5 +482,27 @@ struct FinishSetupTests: AccountSuite {
     await m.resumeImport()
     await m.resumeImport()
     #expect(mailbox.scans == 1)
+  }
+}
+
+@MainActor
+private final class HeldNotificationPermission: NotificationPermissionAsking {
+  var showsDetails = false
+  private(set) var answered = false
+  private(set) var requests = 0
+  private var waiting: [CheckedContinuation<Bool, Never>] = []
+
+  func decline() { answered = true }
+
+  func requestAuthorization() async -> Bool {
+    requests += 1
+    answered = true
+    return await withCheckedContinuation { waiting.append($0) }
+  }
+
+  func answer(_ allowed: Bool) {
+    let held = waiting
+    waiting = []
+    for continuation in held { continuation.resume(returning: allowed) }
   }
 }

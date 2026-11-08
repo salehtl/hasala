@@ -88,6 +88,7 @@ final class FinishSetupModel {
     didSet { if !showingNoAlerts, !checkingAgain { checkFailure = nil } }
   }
   @ObservationIgnored private var bankAlertsAfterSheet = false
+  @ObservationIgnored private var requestingNotifications = false
 
   init(services: AccountServices, firstScan: FirstScanRun = FirstScanRun(), session: (() -> AccountSession)? = nil) {
     self.services = services
@@ -274,7 +275,10 @@ final class FinishSetupModel {
 
   func allowNotifications() async {
     services.notifications.showsDetails = showDetails
+    guard !requestingNotifications else { return }
+    requestingNotifications = true
     _ = await services.notifications.requestAuthorization()
+    requestingNotifications = false
     notificationsDone = true
     askingNotifications = false
     await services.unseenPhrase.remindIfAllowed()
