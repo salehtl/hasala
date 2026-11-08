@@ -115,6 +115,26 @@ if ! "$here/privacy-lint.sh" >&2; then
 	echo "archive: privacy-lint.sh failed; declare the API in ios/Hasala/PrivacyInfo.xcprivacy or stop using it" >&2
 	exit 13
 fi
+if ((${#trial[@]} == 0)); then
+	author="$(sed -nE 's/^[[:space:]]*public static let author = ([0-9]+)$/\1/p' "$ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift")"
+	if [[ ! "$author" =~ ^[0-9]+$ ]]; then
+		echo "archive: cannot read SchemaVersion.author from ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift" >&2
+		exit 13
+	fi
+	if ! meta="$(curl --fail --silent --show-error --proto =https --max-time 20 "$RELEASE_API_BASE_URL/api/v1/meta")"; then
+		echo "archive: cannot read op_version_ceiling from $RELEASE_API_BASE_URL/api/v1/meta" >&2
+		exit 13
+	fi
+	if [[ ! "$meta" =~ \"op_version_ceiling\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+		echo "archive: cannot read op_version_ceiling from $RELEASE_API_BASE_URL/api/v1/meta" >&2
+		exit 13
+	fi
+	ceiling="${BASH_REMATCH[1]}"
+	if ((10#$ceiling < 10#$author)); then
+		echo "archive: this build writes op schema $author, but $RELEASE_API_BASE_URL reports op_version_ceiling $ceiling; raise OpVersionCeiling and deploy hasalad first" >&2
+		exit 13
+	fi
+fi
 asc_resolve_key || exit 14
 xcode="$(xcodebuild -version 2>/dev/null || true)"
 xcode="${xcode%%$'\n'*}"

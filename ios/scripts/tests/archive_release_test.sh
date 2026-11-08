@@ -14,6 +14,10 @@ cp "$ios"/Config/*.xcconfig "$mini/ios/Config/"
 cp "$ios/Hasala/PrivacyInfo.xcprivacy" "$mini/ios/Hasala/"
 echo 'struct App {}' >"$mini/ios/Hasala/App.swift"
 echo 'enum Core {}' >"$mini/ios/HasalaCore/Sources/HasalaCore/Core.swift"
+op_swift() {
+	printf 'public enum SchemaVersion {\n  public static let current = %s\n  public static let author = %s\n}\n' "$1" "$1" >"$mini/ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift"
+}
+op_swift 4
 echo 'enum Design {}' >"$mini/ios/HasalaKit/Sources/HasalaDesign/Design.swift"
 printf 'build/\n' >"$mini/ios/.gitignore"
 git -C "$mini" init -q
@@ -38,7 +42,18 @@ archive)
 esac
 exit 65
 STUB
-chmod +x "$work/stub/xcodebuild"
+cat >"$work/stub/curl" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >>"$work/curl-calls"
+if [ -e "$work/curl-fails" ]; then
+	echo "curl stub: refusing" >&2
+	exit 22
+fi
+cat "$work/meta"
+STUB
+chmod +x "$work/stub/xcodebuild" "$work/stub/curl"
+meta() { printf '%s\n' "$1" >"$work/meta"; }
+meta '{"rp_id":"hasala.app","min_ios_build":0,"op_version_ceiling":4,"log_generation":1}'
 key="$work/keys/AuthKey_TESTKEY000.p8"
 echo "not a key" >"$key"
 chmod 600 "$key"
@@ -49,6 +64,7 @@ archive() {
 	shift 2
 	n=$((n + 1))
 	: >"$work/calls"
+	: >"$work/curl-calls"
 	env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH HOME="$work/home" HASALA_BUILD_DIR="$work/build-$n" HASALA_TEST_MODE=1 \
 		PATH="$work/stub:$PATH" ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000 \
 		ASC_KEY_PATH="$key" STUB_ARCHIVE_DOES="${STUB_ARCHIVE_DOES:-}" "$mini/ios/scripts/archive.sh" "$@" >"$work/out" 2>&1 || rc=$?
@@ -71,6 +87,17 @@ expect_exports() {
 		echo "FAIL $1: $(exported) export(s), want $2"
 		fail=1
 	fi
+}
+archives() { grep -c '^archive ' "$work/calls" || true; }
+expect_no_archive() {
+	if [[ "$(archives)" == 0 ]]; then echo "ok   ...nothing was built"; else
+		echo "FAIL a refused gate reached xcodebuild archive"
+		fail=1
+	fi
+}
+commit_all() {
+	git -C "$mini" add -A
+	gitc commit -q -m "$1"
 }
 reset_tree() {
 	git -C "$mini" checkout -q main
@@ -110,4 +137,59 @@ echo 'struct Dirty {}' >"$mini/ios/Hasala/Dirty.swift"
 STUB_ARCHIVE_DOES="echo 'struct Other {}' >'$mini/ios/Hasala/Other.swift'" archive "a local trial from a dirty tree is not stopped (upload refuses it anyway)" 31 --allow-dirty
 expect_exports "the export ran" 1
 reset_tree
+
+archive "a deployed ceiling equal to the build's schema passes the gate" 31
+if grep -qF 'https://api.hasala.app/api/v1/meta' "$work/curl-calls"; then echo "ok   ...it asked the release API"; else
+	echo "FAIL archive.sh did not ask https://api.hasala.app/api/v1/meta"
+	cat "$work/curl-calls"
+	fail=1
+fi
+
+meta '{"op_version_ceiling":5}'
+archive "a deployed ceiling above the build's schema passes the gate" 31
+
+meta '{"op_version_ceiling":3}'
+archive "a deployed ceiling below the build's schema" 13
+said "raise OpVersionCeiling and deploy hasalad first"
+expect_no_archive
+
+meta '{"rp_id":"hasala.app"}'
+archive "a server that does not report a ceiling" 13
+said "cannot read op_version_ceiling"
+expect_no_archive
+
+meta '{"op_version_ceiling":"4"}'
+archive "a ceiling that is not a number" 13
+expect_no_archive
+
+meta '{"op_version_ceiling":4}'
+touch "$work/curl-fails"
+archive "a server that does not answer" 13
+said "cannot read op_version_ceiling"
+expect_no_archive
+
+echo 'struct Dirty {}' >"$mini/ios/Hasala/Dirty.swift"
+archive "a local trial does not need the server" 31 --allow-dirty
+if [[ ! -s "$work/curl-calls" ]]; then echo "ok   ...it did not call it"; else
+	echo "FAIL a local trial called the server"
+	fail=1
+fi
+reset_tree
+rm "$work/curl-fails"
+
+op_swift 5
+commit_all "next schema"
+start="$(git -C "$mini" rev-parse HEAD)"
+archive "a build that writes the next schema before the ceiling is deployed" 13
+said "this build writes op schema 5"
+expect_no_archive
+meta '{"op_version_ceiling":5}'
+archive "...and once the ceiling is deployed" 31
+
+printf 'public enum SchemaVersion {}\n' >"$mini/ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift"
+commit_all "no schema"
+start="$(git -C "$mini" rev-parse HEAD)"
+archive "a tree with no readable schema" 13
+said "cannot read SchemaVersion.author"
+expect_no_archive
 exit "$fail"

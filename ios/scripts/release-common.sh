@@ -14,6 +14,11 @@
 # shellcheck disable=SC2034 # read by the scripts that source this file
 HASALA_TRIAL_MARKER="TRIAL"
 
+# I12: the API endpoint a release talks to, exactly: Info.plist's HasalaAPIBaseURL,
+# which Xcode fills in from HASALA_API_BASE_URL (ios/Config/Shared.xcconfig).
+# shellcheck disable=SC2034
+RELEASE_API_BASE_URL=https://api.hasala.app
+
 # hasala_build_root IOS_DIR: the directory that holds <BUILD>/ (one per archive) and
 # last-build-number: IOS_DIR/build. The offline script tests move it with
 # HASALA_BUILD_DIR, which counts only together with HASALA_TEST_MODE=1 (and is then

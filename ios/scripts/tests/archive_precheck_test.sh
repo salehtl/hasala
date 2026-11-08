@@ -45,7 +45,11 @@ cat >"$work/stub/git" <<STUB
 if [ -n "\${STUB_GIT_FAIL:-}" ]; then echo "git stub: failing" >&2; exit 128; fi
 exec "$real_git" "\$@"
 STUB
-chmod +x "$work/stub/xcodebuild" "$work/stub/git"
+cat >"$work/stub/curl" <<'STUB'
+#!/bin/sh
+echo '{"op_version_ceiling":999}'
+STUB
+chmod +x "$work/stub/xcodebuild" "$work/stub/git" "$work/stub/curl"
 key="$work/keys/AuthKey_TESTKEY000.p8"
 echo "not a key" >"$key"
 chmod 600 "$key"
@@ -126,13 +130,14 @@ fi
 # --- the gate (13), on a small repository ------------------------------------------------
 ios="$(cd "$here/.." && pwd)"
 mini="$work/mini"
-mkdir -p "$mini/ios/scripts" "$mini/ios/Config" "$mini/ios/Hasala" "$mini/ios/HasalaCore/Sources/HasalaCore" \
+mkdir -p "$mini/ios/scripts" "$mini/ios/Config" "$mini/ios/Hasala" "$mini/ios/HasalaCore/Sources/HasalaCore/Wire" \
 	"$mini/ios/HasalaKit/Sources/HasalaDesign"
 cp "$here"/{archive.sh,asc-env.sh,release-common.sh,privacy-lint.sh,build_number.sh} "$mini/ios/scripts/"
 cp "$ios"/Config/*.xcconfig "$mini/ios/Config/"
 cp "$ios/Hasala/PrivacyInfo.xcprivacy" "$mini/ios/Hasala/"
 echo 'struct App {}' >"$mini/ios/Hasala/App.swift"
 echo 'enum Core {}' >"$mini/ios/HasalaCore/Sources/HasalaCore/Core.swift"
+printf 'public enum SchemaVersion {\n  public static let author = 4\n}\n' >"$mini/ios/HasalaCore/Sources/HasalaCore/Wire/Op.swift"
 echo 'enum Design {}' >"$mini/ios/HasalaKit/Sources/HasalaDesign/Design.swift"
 printf 'build/\n' >"$mini/ios/.gitignore"
 git -C "$mini" init -q
