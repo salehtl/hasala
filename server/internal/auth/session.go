@@ -253,6 +253,14 @@ func (s *Sessions) CredentialForSession(ctx context.Context, token string) ([]by
 	return cred, nil
 }
 
+func LiveSessionSQL(alias, nowArg, idleSinceArg string) string {
+	return alias + ".revoked_at IS NULL AND " + alias + ".expires_at > " + nowArg + " AND " + alias + ".last_used_at > " + idleSinceArg
+}
+
+func (s *Sessions) IdleSince(now time.Time) time.Time {
+	return now.Add(-s.TTL)
+}
+
 // Resolve returns the account of a live session, or an error wrapping
 // ErrSessionInvalid.
 func (s *Sessions) Resolve(ctx context.Context, token string) (uuid.UUID, error) {
