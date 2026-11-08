@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,5 +228,65 @@ func TestTheSenderFollowsTheEmailGroup(t *testing.T) {
 	}
 	if s, err := newSender(config.Config{}); err != nil || s != (mail.Unconfigured{}) {
 		t.Fatalf("no [email]: %T %v", s, err)
+	}
+}
+
+func TestAnAuthKeyWithoutTheSaltKeyIsHeldToTheFirstStart(t *testing.T) {
+	pool := pgtest.New(t)
+	dir := t.TempDir()
+	write := func(name, hexByte string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(strings.Repeat(hexByte, 32)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	first, other, salt := write("first", "cd"), write("other", "ab"), write("salt", "ef")
+	start := func(env ...string) error {
+		t.Helper()
+		env = append(env, "HASALA_PG_DSN=x")
+		cfg, err := config.LoadEnv("", func(name string) (string, bool) {
+			for _, kv := range env {
+				if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+					return v, true
+				}
+			}
+			return "", false
+		}, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		ex, err := wireExtras(ctx, cfg, pool, &api.Server{Pool: pool})
+		if err != nil {
+			return err
+		}
+		cancel()
+		ex.wait()
+		return nil
+	}
+	refused := func(err error) bool {
+		var r refusal
+		return errors.As(err, &r) && strings.Contains(err.Error(), "wrong key file")
+	}
+
+	if err := start("HASALA_AUTH_KEY_FILE=" + first); err != nil {
+		t.Fatalf("the first start: %v", err)
+	}
+	if err := start("HASALA_AUTH_KEY_FILE=" + first); err != nil {
+		t.Fatalf("a restart with the same key: %v", err)
+	}
+	if err := start("HASALA_AUTH_KEY_FILE=" + other); !refused(err) {
+		t.Fatalf("another auth key: %v, want the wrong key refusal", err)
+	}
+	if err := start("HASALA_AUTH_KEY_FILE="+first, "HASALA_SALT_KEY_FILE="+salt); err != nil {
+		t.Fatalf("the same auth key with the salt key: %v", err)
+	}
+	if err := start("HASALA_AUTH_KEY_FILE="+other, "HASALA_SALT_KEY_FILE="+salt); !refused(err) {
+		t.Fatalf("another auth key with the salt key: %v, want the wrong key refusal", err)
+	}
+	if err := start("HASALA_AUTH_KEY_FILE=" + other); !refused(err) {
+		t.Fatalf("another auth key alone after both were pinned: %v, want the wrong key refusal", err)
 	}
 }

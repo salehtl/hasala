@@ -55,22 +55,24 @@ func readKeyFile(name, path string) ([]byte, error) {
 // D41 id in server_meta, and every later start refuses a key whose id differs
 // (a wrong salt_key would make every password fail silently).
 func checkKeyIDs(ctx context.Context, pool *pgxpool.Pool, keys *authkeys.Keys) error {
-	for _, kv := range []struct{ key, id string }{
-		{"salt_key_id", keys.SaltKeyID},
-		{"auth_key_id", keys.AuthKeyID[keys.Current()]},
-	} {
-		if _, err := pool.Exec(ctx, `INSERT INTO server_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
-			kv.key, kv.id); err != nil {
-			return fmt.Errorf("record %s: %w", kv.key, err)
-		}
-		var stored string
-		if err := pool.QueryRow(ctx, `SELECT value FROM server_meta WHERE key = $1`, kv.key).Scan(&stored); err != nil {
-			return fmt.Errorf("read %s: %w", kv.key, err)
-		}
-		if stored != kv.id {
-			return fmt.Errorf("the loaded key's %s is %s, the database recorded %s: wrong key file (spec 02 O9)",
-				kv.key, kv.id, stored)
-		}
+	if err := pinKeyID(ctx, pool, "salt_key_id", keys.SaltKeyID); err != nil {
+		return err
+	}
+	return pinKeyID(ctx, pool, "auth_key_id", keys.AuthKeyID[keys.Current()])
+}
+
+func pinKeyID(ctx context.Context, pool *pgxpool.Pool, key, id string) error {
+	if _, err := pool.Exec(ctx, `INSERT INTO server_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
+		key, id); err != nil {
+		return fmt.Errorf("record %s: %w", key, err)
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `SELECT value FROM server_meta WHERE key = $1`, key).Scan(&stored); err != nil {
+		return fmt.Errorf("read %s: %w", key, err)
+	}
+	if stored != id {
+		return fmt.Errorf("the loaded key's %s is %s, the database recorded %s: wrong key file (spec 02 O9)",
+			key, id, stored)
 	}
 	return nil
 }

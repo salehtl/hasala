@@ -234,6 +234,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		if err != nil {
 			return nil, refusal{err}
 		}
+		if err := pinKeyID(ctx, pool, "auth_key_id", authkeys.KeyID(k)); err != nil {
+			return nil, refusal{err}
+		}
 		tagger = t
 	}
 
