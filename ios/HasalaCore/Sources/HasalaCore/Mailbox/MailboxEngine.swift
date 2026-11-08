@@ -1270,6 +1270,7 @@ public actor MailboxEngine {
       let days = Int64(state.backfillDays ?? 90)
       let sinceMs = max(0, from - days * 86_400_000)
       state.readFromMs = nil
+      state.scanStartedMs = state.scanStartedMs ?? from
       var c = commitState(state)
       c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
       do { try await store.commit(c) } catch {

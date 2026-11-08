@@ -94,6 +94,22 @@ extension FakeLedger {
     }())
   }
 
+  @Test(arguments: [Backend.sqlite, .memory])
+  func theConnectedTimeOutlivesTheLaterImport(_ backend: Backend) async {
+    let rig = Rig(backend: backend)
+    seedPast(rig)
+    _ = await skip(rig)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    rig.clock.advance(5 * Self.day)
+    #expect(await rig.engine.importPastMail().completed)
+    let s = await rig.state()
+    #expect(s.readFromMs == nil && s.scanStartedMs == t0)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(await rig.engine.status().connectedAtMs == t0)
+  }
+
   @Test func aLaterImportThatStopsFinishesOnALaterCycle() async throws {
     let rig = Rig()
     seedPast(rig)
