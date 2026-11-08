@@ -1484,14 +1484,20 @@ in
         preStart = ''
           set -euo pipefail
           shopt -s nullglob
+          allowed="$(cat ${pgRoot}/ALLOW_MAJOR_CHANGE 2>/dev/null || true)"
+          other=""
           for v in ${pgRoot}/*/PG_VERSION; do
             d="''${v%/PG_VERSION}"
-            if [ "$d" != "${dataDir}" ] && [ ! -e ${pgRoot}/ALLOW_MAJOR_CHANGE ]; then
+            [ "$d" != "${dataDir}" ] || continue
+            other="$d"
+            if [ "$allowed" != "${pgMajor}" ]; then
               echo "hasala-postgresql: a cluster exists at $d but this build runs PostgreSQL ${pgMajor}." >&2
               echo "Dump and restore first (spec 05 §11.7, 'PostgreSQL major upgrade')." >&2
+              echo "To start an empty ${pgMajor} cluster for the restore, write ${pgMajor} to ${pgRoot}/ALLOW_MAJOR_CHANGE." >&2
               exit 1
             fi
           done
+          [ -n "$other" ] || rm -f ${pgRoot}/ALLOW_MAJOR_CHANGE
           if [ ! -s ${dataDir}/PG_VERSION ]; then
             if [ -n "$(ls -A ${dataDir})" ]; then
               echo "hasala-postgresql: ${dataDir} is not empty but has no PG_VERSION; refusing initdb" >&2

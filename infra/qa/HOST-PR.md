@@ -534,4 +534,8 @@ Connect server key exists".
 - A binary rollback is a revert of the `flake.lock` bump; migrations are
   expand-only within a release, so the previous `hasalad` keeps working.
 - A PostgreSQL major change refuses to start the cluster until it is dumped and
-  restored (the data directory is named after the major).
+  restored (the data directory is named after the major). To start the new
+  major's empty cluster for the restore while the old one is still there, write
+  that major to the allowance file, as `hasala-pg`:
+  `echo <new major> > /var/lib/hasala-postgresql/ALLOW_MAJOR_CHANGE`. It opens
+  only that major, and the first start with no other cluster left removes it.

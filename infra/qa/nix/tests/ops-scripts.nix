@@ -214,6 +214,19 @@ let
       exit "$rc"
     '';
 
+  postgres =
+    let
+      sys = t.evalSystem { };
+    in
+    {
+      major = lib.versions.major sys.config.services.hasala.database.package.version;
+      start = stub "hasala-postgresql-start" (
+        builtins.replaceStrings [ "/var/lib/hasala-postgresql" ] [ "./pg" ] (
+          builtins.unsafeDiscardStringContext sys.config.systemd.services.hasala-postgresql.preStart
+        )
+      );
+    };
+
   firewall =
     (t.evalSystem {
       services.hasala = {
@@ -235,6 +248,10 @@ pkgs.runCommand "hasala-ops-scripts"
       pkgs.gnused
       (fakeFirewall "iptables")
       (fakeFirewall "ip6tables")
+      (stub "initdb" ''
+        echo "initdb $*" >> "$CALLS"
+        echo ${postgres.major} > ./pg/${postgres.major}/PG_VERSION
+      '')
     ];
   }
   ''
@@ -579,6 +596,89 @@ pkgs.runCommand "hasala-ops-scripts"
     guards_gone "after a stop"
     ${lib.getExe firewallStart}
     guards_in_place "after a start"
+
+    major=${postgres.major}
+    older=$((major - 1))
+    newer=$((major + 1))
+    run_pg() { rc=0; ${lib.getExe postgres.start} > out.log 2>&1 || rc=$?; cat out.log; }
+    pg_scenario() {
+      scenario "$1"
+      mkdir -p "pg/$major"
+    }
+    other_cluster() { mkdir -p "pg/$1"; echo "$1" > "pg/$1/PG_VERSION"; }
+    refused() {
+      [ "$rc" != 0 ] || no "$1: the start went through"
+      [ "$(called '^initdb ')" = 0 ] || no "$1: an empty cluster was created"
+      grep -q 'Dump and restore first' out.log || no "$1: the refusal does not say what to do"
+    }
+
+    pg_scenario "a first start with no other cluster creates this major's cluster"
+    run_pg
+    [ "$rc" = 0 ] || no "a first start exited $rc"
+    [ "$(called '^initdb ')" = 1 ] || no "a first start ran initdb $(called '^initdb ') times"
+
+    pg_scenario "an older cluster stops the start"
+    other_cluster "$older"
+    run_pg
+    refused "an older cluster"
+
+    pg_scenario "an empty allowance left behind does not open a major change"
+    other_cluster "$older"
+    : > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    refused "an empty allowance"
+
+    pg_scenario "an allowance written for the last major change does not open the next"
+    other_cluster "$older"
+    echo "$older" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    refused "an allowance for $older"
+
+    pg_scenario "an allowance for a later major does not open this one"
+    other_cluster "$older"
+    echo "$newer" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    refused "an allowance for $newer"
+
+    pg_scenario "an allowance naming this major starts an empty cluster beside the older one"
+    other_cluster "$older"
+    echo "$major" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    [ "$rc" = 0 ] || no "an allowance naming this major exited $rc"
+    [ "$(called '^initdb ')" = 1 ] || no "an allowance naming this major ran initdb $(called '^initdb ') times"
+    [ -e pg/ALLOW_MAJOR_CHANGE ] || no "the allowance went away while the older cluster is still there"
+
+    pg_scenario "a restart during the restore keeps the new cluster and the allowance"
+    other_cluster "$older"
+    echo "$major" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    run_pg
+    [ "$rc" = 0 ] || no "a restart during the restore exited $rc"
+    [ "$(called '^initdb ')" = 1 ] || no "a restart during the restore ran initdb again"
+    [ -e pg/ALLOW_MAJOR_CHANGE ] || no "a restart during the restore dropped the allowance"
+
+    pg_scenario "the allowance is cleared once no other cluster is left"
+    other_cluster "$older"
+    echo "$major" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    rm -r "pg/$older"
+    run_pg
+    [ "$rc" = 0 ] || no "a start after the older cluster went exited $rc"
+    [ ! -e pg/ALLOW_MAJOR_CHANGE ] || no "the allowance outlived the major change"
+    [ "$(called '^initdb ')" = 1 ] || no "the existing cluster was created again"
+
+    pg_scenario "a cleared allowance leaves the next major change refused"
+    other_cluster "$older"
+    echo "$major" > pg/ALLOW_MAJOR_CHANGE
+    run_pg
+    rm -r "pg/$older"
+    run_pg
+    other_cluster "$older"
+    : > "$CALLS"
+    rm -r "pg/$major"
+    mkdir "pg/$major"
+    run_pg
+    refused "after the allowance was cleared"
 
     [ "$failed" = 0 ]
     touch "$out"
