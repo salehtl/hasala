@@ -140,7 +140,7 @@ struct ReviewDeckView: View {
     .overlay(alignment: .bottom) {
       if showsDeck, deckFit == .scroll { ToastHost(app: app, placement: .bottom) }
     }
-    .sheet(item: $openTxn) { ref in TransactionHost(app: app, id: ref.id) }
+    .nestedTransactionSheet(item: $openTxn, app: app)
     .frame(minHeight: 0, maxHeight: .infinity)
     .ignoresSafeArea(.keyboard)
     .background(alignment: .top) { AmbientWash(.onTrack).ignoresSafeArea() }

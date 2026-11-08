@@ -85,9 +85,7 @@ struct SearchView: View {
         await ask.run(typed, app.store.state, now: app.store.now)
       }
     }
-    .sheet(item: $opened, onDismiss: { app.router.transaction = [] }) { txn in
-      TransactionHost(app: app, id: txn.id)
-    }
+    .nestedTransactionSheet(item: $opened, app: app)
     .sheet(isPresented: $addingMerchant) {
       AddMerchantSheet(
         choices: AskSearch.merchantChoices(
