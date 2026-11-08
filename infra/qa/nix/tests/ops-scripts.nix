@@ -99,6 +99,79 @@ let
     text = localPaths rendered.bumpGeneration;
   };
 
+  curlStub = stub "curl" ''
+    out=/dev/null
+    headers=/dev/null
+    url=""
+    post=""
+    fail=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -o) out="$2"; shift 2 ;;
+        -D) headers="$2"; shift 2 ;;
+        -w | --max-time) shift 2 ;;
+        -d) post="$2"; shift 2 ;;
+        -sf | -f | --fail) fail=1; shift ;;
+        -*) shift ;;
+        *) url="$1"; shift ;;
+      esac
+    done
+    if [ -n "$post" ]; then
+      echo "$post" >> "$POSTS"
+      if [ "''${NTFY_STATUS:-200}" != 200 ] && [ -n "$fail" ]; then exit 22; fi
+      exit 0
+    fi
+    body='{"status":"ok"}'
+    type=text/plain
+    want=200
+    case "$url" in
+      http://127.0.0.1:8471/api/v1/healthz) probe=P1 ;;
+      https://api.hasala.app/api/v1/healthz) probe=P2 ;;
+      */metrics | */admin/) probe=P3; want=404 ;;
+      */api/v1/console) probe=P9; want=404 ;;
+      */apple-app-site-association)
+        probe=P5
+        type=application/json
+        body='{"webcredentials":{"apps":["8CFG28JHP3.app.hasala.ios"]},"applinks":{"details":[{"components":[{"/":"/i/*"}]}]}}'
+        ;;
+      http://127.0.0.1:9473/healthz) probe=P8 ;;
+      *:8472/)
+        case " ''${DOWN:-} " in *" P10 "*) exit 0 ;; esac
+        exit 7
+        ;;
+      *) echo "curl stub: unexpected url $url" >&2; exit 99 ;;
+    esac
+    case " ''${DOWN:-} " in *" $probe "*) want=503 ;; esac
+    printf '%s' "$body" > "$out"
+    printf 'HTTP/2 %s\r\ncontent-type: %s\r\n' "$want" "$type" > "$headers"
+    printf '%s' "$want"
+  '';
+
+  healthWith =
+    extra:
+    pkgs.writeShellApplication {
+      name = "hasala-health";
+      runtimeInputs = [
+        curlStub
+        pkgs.jq
+        pkgs.coreutils
+        pkgs.gnugrep
+      ];
+      text =
+        builtins.unsafeDiscardStringContext
+          (t.evalSystem { services.hasala = extra; }).config.services.hasala.renderedScripts.health;
+    };
+  ntfy.monitoring.ntfyUrl = "http://127.0.0.1:2586/test";
+  healthAll = healthWith (
+    ntfy
+    // {
+      tunnel.enable = true;
+      console.enable = true;
+    }
+  );
+  healthApi = healthWith ntfy;
+  healthQuiet = healthWith { };
+
   retry = pkgs.writeShellApplication {
     name = "hasala-retry";
     runtimeInputs = [ pkgs.coreutils ];
@@ -300,6 +373,86 @@ pkgs.runCommand "hasala-ops-scripts"
       [ "$rc" != 0 ] || no "a file holding '$bad' exited 0"
       [ "$(cat ledger/generation)" = "$bad" ] || no "a file holding '$bad' was changed"
     done
+
+    all=${lib.getExe healthAll}
+    api=${lib.getExe healthApi}
+    quiet=${lib.getExe healthQuiet}
+    health() { rc=0; "$1" > out.log 2>&1 || rc=$?; cat out.log; }
+    posted() { wc -l < "$POSTS" | tr -d ' '; }
+    health_scenario() { scenario "$1"; export POSTS="$PWD/posts"; : > "$POSTS"; }
+
+    health_scenario "a healthy run alerts and posts nothing"
+    health "$all"
+    [ "$rc" = 0 ] || no "a healthy run exited $rc"
+    [ "$(posted)" = 0 ] || no "a healthy run posted"
+
+    health_scenario "a probe alerts on its second failing run and posts one recovery"
+    DOWN=P1 health "$api"
+    [ "$rc" = 0 ] || no "the first failing run alerted"
+    DOWN=P1 health "$api"
+    [ "$rc" = 1 ] || no "the second failing run did not alert"
+    DOWN=P1 health "$api"
+    [ "$rc" = 0 ] || no "the third failing run alerted again"
+    health "$api"
+    [ "$rc" = 0 ] || no "the recovering run exited $rc"
+    [ "$(cat "$POSTS")" = "hasala: recovered P1" ] || no "the recovery notice was: $(cat "$POSTS")"
+    health "$api"
+    [ "$(posted)" = 1 ] || no "the recovery was posted $(posted) times"
+
+    health_scenario "a recovery notice that was not delivered goes out on a later run"
+    DOWN=P1 health "$api"
+    DOWN=P1 health "$api"
+    NTFY_STATUS=500 health "$api"
+    [ "$rc" = 0 ] || no "a lost notice failed the run with $rc"
+    [ "$(posted)" = 1 ] || no "the first attempt posted $(posted) times"
+    health "$api"
+    [ "$(posted)" = 2 ] || no "the notice was not sent again after it was lost"
+    [ "$(tail -n 1 "$POSTS")" = "hasala: recovered P1" ] || no "the second attempt posted: $(tail -n 1 "$POSTS")"
+    health "$api"
+    [ "$(posted)" = 2 ] || no "a delivered notice was sent again"
+
+    health_scenario "a probe that alerts again drops the notice it still owes"
+    DOWN=P1 health "$api"
+    DOWN=P1 health "$api"
+    NTFY_STATUS=500 health "$api"
+    DOWN=P1 NTFY_STATUS=500 health "$api"
+    [ "$rc" = 0 ] || no "one failure after a recovery alerted"
+    [ "$(posted)" = 2 ] || no "one failure dropped the notice that was still owed"
+    DOWN=P1 health "$api"
+    [ "$rc" = 1 ] || no "the new outage did not alert"
+    [ "$(posted)" = 2 ] || no "a probe that is down posted its old recovery"
+    health "$api"
+    [ "$(posted)" = 3 ] || no "the new outage posted no recovery"
+    health "$api"
+    [ "$(posted)" = 3 ] || no "the new recovery was posted twice"
+
+    health_scenario "a probe switched off while alerting is not reported as recovered"
+    DOWN=P2 health "$all"
+    DOWN=P2 health "$all"
+    [ "$rc" = 1 ] || no "the public probe did not alert"
+    health "$api"
+    [ "$rc" = 0 ] || no "the run with the probe off exited $rc"
+    [ "$(posted)" = 0 ] || no "a probe that never passed was posted as recovered: $(cat "$POSTS")"
+    [ ! -e state/failures.P2 ] || no "a probe that is off kept its failure count"
+    DOWN=P2 health "$all"
+    [ "$rc" = 0 ] || no "the first failure after switching back on alerted"
+    DOWN=P2 health "$all"
+    [ "$rc" = 1 ] || no "the probe did not alert again after switching back on"
+
+    health_scenario "a probe switched off drops the notice it still owes"
+    DOWN=P8 health "$all"
+    DOWN=P8 health "$all"
+    NTFY_STATUS=500 health "$all"
+    [ "$(posted)" = 1 ] || no "the first attempt posted $(posted) times"
+    health "$api"
+    [ "$(posted)" = 1 ] || no "a probe that is off posted its old recovery"
+
+    health_scenario "with no notice address a recovery is not kept"
+    DOWN=P1 health "$quiet"
+    DOWN=P1 health "$quiet"
+    health "$quiet"
+    [ "$(posted)" = 0 ] || no "a host with no address posted"
+    [ "$(find state -name 'recovered.*' | wc -l | tr -d ' ')" = 0 ] || no "a host with no address kept an owed notice"
 
     [ "$failed" = 0 ]
     touch "$out"

@@ -484,6 +484,111 @@ let
   # ::1; this unit runs as hasala-health, never nginx). P6 (mail metrics) and P7
   # (apex token pages) need the metrics listener and the website's live
   # checks; they join when those land.
+  healthProbes = [
+    "P1"
+  ]
+  ++ optionals cfg.tunnel.enable [
+    "P2"
+    "P3"
+    "P5"
+    "P9"
+  ]
+  ++ optionals cfg.console.enable [
+    "P8"
+    "P10"
+  ];
+  healthProbesOff = lib.subtractLists healthProbes [
+    "P1"
+    "P2"
+    "P3"
+    "P5"
+    "P8"
+    "P9"
+    "P10"
+  ];
+  healthText = ''
+    failed=" "
+    note() { echo "hasala-health: $1 $2"; failed="$failed$1 "; }
+    code() { curl -s -o "$RUNTIME_DIRECTORY/body" -D "$RUNTIME_DIRECTORY/headers" -w '%{http_code}' --max-time 10 "$1" || true; }
+
+    c=$(code ${lib.escapeShellArg "http://${loopback cfg.listen.port}/api/v1/healthz"})
+    { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P1 "local healthz answered $c"
+    ${optionalString cfg.tunnel.enable ''
+      c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/healthz"})
+      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P2 "public healthz answered $c"
+      for p in metrics admin/; do
+        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/"}"$p")
+        case "$c" in 403 | 404) ;; *) note P3 "/$p answered $c (want 403 or 404)" ;; esac
+      done
+      c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/console"})
+      [ "$c" = 404 ] || note P9 "/api/v1/console answered $c (want 404)"
+      c=$(code ${lib.escapeShellArg cfg.monitoring.healthCheck.aasaUrl})
+      if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
+        || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
+        note P5 "AASA answered $c"
+      elif ! jq -e --arg app ${lib.escapeShellArg appId} \
+        '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
+        "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
+        note P5 "AASA body does not claim exactly webcredentials and /i/*"
+      fi
+    ''}
+    ${optionalString cfg.console.enable ''
+      c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
+      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P8 "console healthz answered $c"
+      for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
+        rc=0
+        curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
+        [ "$rc" = 7 ] || note P10 "$u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
+      done
+    ''}
+    rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
+
+    # Each probe alerts on its second consecutive failing run only, then stays
+    # quiet until it passes (which posts one recovery notice), so one failing
+    # probe never mutes another.
+    rm -f "$STATE_DIRECTORY/failures"
+    on=(${concatStringsSep " " healthProbes})
+    off=(${concatStringsSep " " healthProbesOff})
+    for p in "''${off[@]}"; do
+      rm -f "$STATE_DIRECTORY/failures.$p" "$STATE_DIRECTORY/recovered.$p"
+    done
+    alert=0
+    for p in "''${on[@]}"; do
+      f="$STATE_DIRECTORY/failures.$p"
+      n=$(cat "$f" 2>/dev/null || echo 0)
+      case "$failed" in
+        *" $p "*)
+          n=$((n + 1))
+          echo "$n" > "$f"
+          if [ "$n" -eq 2 ]; then
+            alert=1
+            rm -f "$STATE_DIRECTORY/recovered.$p"
+          fi
+          ;;
+        *)
+          if [ "$n" -ge 2 ]; then : > "$STATE_DIRECTORY/recovered.$p"; fi
+          echo 0 > "$f"
+          ;;
+      esac
+    done
+    ${
+      if cfg.monitoring.ntfyUrl != null then
+        ''
+          recovered=""
+          for p in "''${on[@]}"; do
+            if [ -e "$STATE_DIRECTORY/recovered.$p" ]; then recovered="$recovered $p"; fi
+          done
+          if [ -n "$recovered" ] && curl -sf --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null; then
+            for p in $recovered; do rm -f "$STATE_DIRECTORY/recovered.$p"; done
+          fi
+        ''
+      else
+        ''
+          rm -f "$STATE_DIRECTORY"/recovered.*
+        ''
+    }
+    exit "$alert"
+  '';
   healthScript = pkgs.writeShellApplication {
     name = "hasala-health";
     runtimeInputs = [
@@ -491,71 +596,7 @@ let
       pkgs.jq
       pkgs.coreutils
     ];
-    text = ''
-      failed=" "
-      note() { echo "hasala-health: $1 $2"; failed="$failed$1 "; }
-      code() { curl -s -o "$RUNTIME_DIRECTORY/body" -D "$RUNTIME_DIRECTORY/headers" -w '%{http_code}' --max-time 10 "$1" || true; }
-
-      c=$(code ${lib.escapeShellArg "http://${loopback cfg.listen.port}/api/v1/healthz"})
-      { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P1 "local healthz answered $c"
-      ${optionalString cfg.tunnel.enable ''
-        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P2 "public healthz answered $c"
-        for p in metrics admin/; do
-          c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/"}"$p")
-          case "$c" in 403 | 404) ;; *) note P3 "/$p answered $c (want 403 or 404)" ;; esac
-        done
-        c=$(code ${lib.escapeShellArg "https://${cfg.publicHostname}/api/v1/console"})
-        [ "$c" = 404 ] || note P9 "/api/v1/console answered $c (want 404)"
-        c=$(code ${lib.escapeShellArg cfg.monitoring.healthCheck.aasaUrl})
-        if [ "$c" != 200 ] || grep -qi '^location:' "$RUNTIME_DIRECTORY/headers" \
-          || ! grep -qi '^content-type: application/json' "$RUNTIME_DIRECTORY/headers"; then
-          note P5 "AASA answered $c"
-        elif ! jq -e --arg app ${lib.escapeShellArg appId} \
-          '.webcredentials.apps == [$app] and ([.applinks.details[0].components[] | .["/"]] == ["/i/*"])' \
-          "$RUNTIME_DIRECTORY/body" >/dev/null 2>&1; then
-          note P5 "AASA body does not claim exactly webcredentials and /i/*"
-        fi
-      ''}
-      ${optionalString cfg.console.enable ''
-        c=$(code ${lib.escapeShellArg "http://${loopback cfg.console.metricsPort}/healthz"})
-        { [ "$c" = 200 ] && [ "$(jq -r .status "$RUNTIME_DIRECTORY/body" 2>/dev/null)" = ok ]; } || note P8 "console healthz answered $c"
-        for u in ${lib.escapeShellArg "http://127.0.0.1:${toString cfg.console.port}/"} ${lib.escapeShellArg "http://[::1]:${toString cfg.console.port}/"}; do
-          rc=0
-          curl -sg -o /dev/null --max-time 5 "$u" || rc=$?
-          [ "$rc" = 7 ] || note P10 "$u: curl exit $rc, want 7 (the console's kernel rule must reset this user)"
-        done
-      ''}
-      rm -f "$RUNTIME_DIRECTORY/body" "$RUNTIME_DIRECTORY/headers"
-
-      # Each probe alerts on its second consecutive failing run only, then stays
-      # quiet until it passes (which posts one recovery notice), so one failing
-      # probe never mutes another.
-      rm -f "$STATE_DIRECTORY/failures"
-      alert=0
-      recovered=""
-      for p in P1 P2 P3 P5 P8 P9 P10; do
-        f="$STATE_DIRECTORY/failures.$p"
-        n=$(cat "$f" 2>/dev/null || echo 0)
-        case "$failed" in
-          *" $p "*)
-            n=$((n + 1))
-            echo "$n" > "$f"
-            if [ "$n" -eq 2 ]; then alert=1; fi
-            ;;
-          *)
-            if [ "$n" -ge 2 ]; then recovered="$recovered $p"; fi
-            echo 0 > "$f"
-            ;;
-        esac
-      done
-      ${optionalString (cfg.monitoring.ntfyUrl != null) ''
-        if [ -n "$recovered" ]; then
-          curl -s --max-time 10 -d "hasala: recovered$recovered" ${lib.escapeShellArg cfg.monitoring.ntfyUrl} >/dev/null || true
-        fi
-      ''}
-      exit "$alert"
-    '';
+    text = healthText;
   };
 
   emailTokenCheck = pkgs.writeShellApplication {
@@ -958,6 +999,7 @@ in
         retry = retryText;
         admin = adminText;
         bumpGeneration = bumpGenerationText;
+        health = healthText;
       };
       description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
