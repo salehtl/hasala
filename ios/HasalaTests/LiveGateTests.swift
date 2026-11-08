@@ -118,6 +118,22 @@ struct LiveGateTests {
     #expect(d.string(forKey: "app.hasala.installID") == "install-a")
   }
 
+  struct UnreadableKeychain: Error {}
+
+  @Test func aWipeCutShortIsFinishedOnceTheKeychainHoldsNoAccount() {
+    let d = Self.defaults()
+    LocalAccountData.markSetupFinished(d)
+    LocalAccountData.setMailboxProvider(.outlook, d)
+    LocalAccountData.forgetIfNoAccount(binding: { Self.binding() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { throw UnreadableKeychain() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { nil }, defaults: d)
+    #expect(!LocalAccountData.setupFinished(d))
+    #expect(LocalAccountData.mailboxProvider(d) == nil)
+    #expect(d.string(forKey: "app.hasala.installID") == "install-a")
+  }
+
   @Test func theEarlierSetupListBecomesOneFlag() {
     let d = Self.defaults()
     d.set(["someone-else", "u-1"], forKey: "setup.finished.v1")

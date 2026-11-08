@@ -218,6 +218,8 @@ final class BootController {
     case .signedOut:
       app?.forgetHomeLayout()
       HomeLayoutStore.forgetAll()
+      let secrets = env.account.secrets
+      LocalAccountData.forgetIfNoAccount(binding: { try secrets.binding() })
       Task { await closeRuntime() }
     case .checking, .needsUnlock, .needsKeys:
       break

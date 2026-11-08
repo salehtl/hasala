@@ -1,4 +1,5 @@
 import CorePrimitives
+import CoreStore
 import Foundation
 import HasalaKeychain
 
@@ -79,6 +80,18 @@ enum LocalAccountData {
     #if DEBUG && targetEnvironment(simulator)
       SimulatorApprovalKey.forgetAll(defaults)
     #endif
+  }
+
+  static func forgetIfNoAccount(
+    binding: () throws -> AccountBinding?, defaults: UserDefaults = .standard, facts: BankTextsFacts = .shared,
+    marker: LockedTextsMarkerFile = .shared
+  ) {
+    do {
+      guard try binding() == nil else { return }
+    } catch {
+      return
+    }
+    forget(defaults: defaults, facts: facts, marker: marker)
   }
 
   /// `value` as 16 hex digits of SHA-256 over this install's id and the value: equal
