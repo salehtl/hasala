@@ -154,6 +154,7 @@ public struct MailboxCommit: Sendable {
   public var healthBumps: [(domain: String, internalDateMs: Int64)] = []
   /// Adds pending imports; a domain already pending keeps the earlier start.
   public var addImports: [PendingImport] = []
+  public var senderAddresses: [String] = []
   /// Ends the pending imports of these domains.
   public var doneImports: [String] = []
   public var unparsedSenders: [UnparsedSenderRecord] = []
@@ -170,7 +171,7 @@ public struct MailboxCommit: Sendable {
   public init() {}
   public var isEmpty: Bool {
     drafts.isEmpty && accounted.isEmpty && setAside.isEmpty && unreadable.isEmpty && stage.isEmpty
-      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && doneImports.isEmpty
+      && unstage.isEmpty && pruneAccountedBelowMs == nil && healthBumps.isEmpty && addImports.isEmpty && senderAddresses.isEmpty && doneImports.isEmpty
       && unparsedSenders.isEmpty && strikes.isEmpty && beginRetire == nil && endRetire == nil && reader == nil && state == nil && !clearAll && !clearReader
   }
 }
@@ -237,7 +238,9 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
 
   public func senderAddresses() async throws(MailboxPersistenceError) -> [String] { addresses }
 
-  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) {
+  public func addSenderAddress(_ address: String) async throws(MailboxPersistenceError) { keep(address) }
+
+  private func keep(_ address: String) {
     if !addresses.contains(where: { $0.lowercased() == address.lowercased() }) { addresses.append(address) }
   }
 
@@ -331,6 +334,7 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
       health[b.domain] = row
     }
     for i in c.addImports { imports[i.domain] = min(imports[i.domain] ?? i.sinceMs, i.sinceMs) }
+    for a in c.senderAddresses { keep(a) }
     for d in c.doneImports { imports[d] = nil }
     for u in c.unparsedSenders { senders[u.messageID] = u }
     if senders.count > Self.unparsedSenderRing {

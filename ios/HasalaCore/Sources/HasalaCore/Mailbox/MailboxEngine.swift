@@ -1328,17 +1328,11 @@ public actor MailboxEngine {
         var report = CycleReport()
         guard !stopped, var state = try? await store.loadState() else { return report }
         report.phase = state.phase
-        if let address {
-          do { try await store.addSenderAddress(address) } catch {
-            report.haltedOn = .offline
-            return report
-          }
-        }
         do { try await ledger.authorSenderTrust(domain: domain, trusted: true) } catch {
           report.haltedOn = .offline
           return report
         }
-        return await importLocked([domain], &state, report)
+        return await importLocked([domain], address: address, &state, report)
       })
   }
 
@@ -1355,19 +1349,23 @@ public actor MailboxEngine {
   /// Records the senders' window as pending, then imports it now when the lane is active. A
   /// scan in progress lists every trusted sender itself; anything left pending is finished by
   /// later cycles, and `completed` says the whole window was listed and read.
-  private func importLocked(_ domains: [String], _ state: inout MailboxState, _ report: CycleReport) async
-    -> CycleReport
-  {
+  private func importLocked(
+    _ domains: [String], address: String? = nil, _ state: inout MailboxState, _ report: CycleReport
+  ) async -> CycleReport {
     var report = report
-    guard state.watermarkMs != nil else { return report }
-    let days = Int64(state.backfillDays ?? 90)
-    let sinceMs = max(0, clock.nowMs() - days * 86_400_000, state.readFromMs ?? 0)
     var c = MailboxCommit()
-    c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+    if let address { c.senderAddresses = [address] }
+    if state.watermarkMs != nil {
+      let days = Int64(state.backfillDays ?? 90)
+      let sinceMs = max(0, clock.nowMs() - days * 86_400_000, state.readFromMs ?? 0)
+      c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+    }
+    guard !c.isEmpty else { return report }
     do { try await store.commit(c) } catch {
       report.haltedOn = .offline
       return report
     }
+    guard state.watermarkMs != nil else { return report }
     return await runPendingImports(&state, report)
   }
 

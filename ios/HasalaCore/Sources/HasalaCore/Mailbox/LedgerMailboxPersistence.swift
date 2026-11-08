@@ -92,6 +92,8 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     w.unstage = c.unstage
     w.pruneAccountedBelow = c.pruneAccountedBelowMs
     w.addImports = c.addImports.map { ($0.domain, $0.sinceMs) }
+    let addressAt = nowMs()
+    w.senderAddresses = c.senderAddresses.map { ($0, addressAt) }
     w.doneImports = c.doneImports
     w.unparsedSenders = c.unparsedSenders.map {
       MailboxUnparsedSenderRow(messageID: $0.messageID, domain: $0.domain, at: $0.atMs)

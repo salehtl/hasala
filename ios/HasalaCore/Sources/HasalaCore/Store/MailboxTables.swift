@@ -154,6 +154,7 @@ public struct MailboxWrite: Sendable {
   /// (domain, local month `YYYY-MM`, internalDate ms) per read message.
   public var health: [(domain: String, month: String, internalDate: Int64)] = []
   public var addImports: [(domain: String, sinceMs: Int64)] = []
+  public var senderAddresses: [(address: String, at: Int64)] = []
   public var doneImports: [String] = []
   public var unparsedSenders: [MailboxUnparsedSenderRow] = []
   public var strikes: [(messageID: String, count: Int, at: Int64)] = []
@@ -464,6 +465,10 @@ public final class MailboxTableStore: Sendable {
             INSERT INTO mailbox_pending_import (domain, since_ms) VALUES (?, ?)
             ON CONFLICT(domain) DO UPDATE SET since_ms = min(since_ms, excluded.since_ms)
             """, arguments: [i.domain, i.sinceMs])
+      }
+      for a in w.senderAddresses {
+        try db.execute(
+          sql: "INSERT OR IGNORE INTO mailbox_sender_address (address, at) VALUES (?, ?)", arguments: [a.address, a.at])
       }
       for d in w.doneImports {
         try db.execute(sql: "DELETE FROM mailbox_pending_import WHERE domain = ?", arguments: [d])

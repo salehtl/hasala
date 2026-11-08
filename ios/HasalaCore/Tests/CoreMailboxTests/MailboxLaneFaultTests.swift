@@ -12,6 +12,8 @@ actor UnreadableStateStore: MailboxPersistence {
 
   func setFailing(_ v: Bool) { failing = v }
   func setRetireWriteFails(_ v: Bool) { retireWriteFails = v }
+  var importWriteFails = false
+  func setImportWriteFails(_ v: Bool) { importWriteFails = v }
   var readsToFail = 0
   func setReadsToFail(_ n: Int) { readsToFail = n }
 
@@ -30,6 +32,7 @@ actor UnreadableStateStore: MailboxPersistence {
   func stagedCount() async throws(MailboxPersistenceError) -> Int { try await base.stagedCount() }
   func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) {
     if retireWriteFails, c.beginRetire != nil { throw MailboxPersistenceError("write") }
+    if importWriteFails, !c.addImports.isEmpty { throw MailboxPersistenceError("write") }
     try await base.commit(c)
   }
   func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord] { try await base.setAsideRecords() }

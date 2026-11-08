@@ -76,7 +76,10 @@ actor FakeLedger: MailboxLedger {
   func senderTrust() async -> [String: Bool] { trust }
   func projectedMessageIDs(among ids: [String]) async -> Set<String> { projected.intersection(ids) }
   func isIngested(_ ingestID: String) async -> Bool { ingested.contains(ingestID) }
+  var trustFails = false
+  func setTrustFails(_ v: Bool) { trustFails = v }
   func authorSenderTrust(domain: String, trusted: Bool) async throws(MailboxLedgerError) {
+    if trustFails { throw MailboxLedgerError("enqueue") }
     authoredTrust.append((domain, trusted))
     trust[domain] = trusted
   }
