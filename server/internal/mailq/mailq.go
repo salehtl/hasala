@@ -442,7 +442,7 @@ func (q *Queue) Drain(ctx context.Context) (int, error) {
 
 func (q *Queue) drain(ctx, stop context.Context) (int, error) {
 	n := 0
-	for !q.Stopped() && stop.Err() == nil {
+	for stop.Err() == nil {
 		did, err := q.ProcessOne(ctx)
 		if err != nil {
 			return n, err
@@ -526,20 +526,14 @@ func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
 
 // ProcessOne leases, renders, sends and finalizes at most one due row.
 func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
+	if err := q.settleExpiredLeases(ctx); err != nil {
+		return false, err
+	}
 	if q.Stopped() {
 		return false, nil
 	}
 	if err := q.fillTags(ctx); err != nil {
 		return false, fmt.Errorf("mailq: tags: %w", err)
-	}
-	if _, err := q.Pool.Exec(ctx,
-		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
-		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot
-		    AND NOT (`+pastRetryWindow+`)`, leaseRescueArgs()...); err != nil {
-		return false, fmt.Errorf("mailq: expired leases: %w", err)
-	}
-	if err := q.failExhausted(ctx); err != nil {
-		return false, fmt.Errorf("mailq: exhausted rows: %w", err)
 	}
 	full, err := q.lanesAtRate(ctx)
 	if err != nil {
@@ -714,6 +708,19 @@ func (q *Queue) writeOutcome(ctx context.Context, sql string, args []any, oneSho
 		}
 		time.Sleep(retries[try])
 	}
+}
+
+func (q *Queue) settleExpiredLeases(ctx context.Context) error {
+	if _, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
+		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot
+		    AND NOT (`+pastRetryWindow+`)`, leaseRescueArgs()...); err != nil {
+		return fmt.Errorf("mailq: expired leases: %w", err)
+	}
+	if err := q.failExhausted(ctx); err != nil {
+		return fmt.Errorf("mailq: exhausted rows: %w", err)
+	}
+	return nil
 }
 
 func (q *Queue) failExhausted(ctx context.Context) error {
