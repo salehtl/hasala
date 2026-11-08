@@ -42,6 +42,7 @@ public actor SyncEngine {
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var offlineAttempts = 0
   private var accountFullAtMs: Int64?
+  private var latchThisRun: OutboxLatch?
   public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
@@ -120,6 +121,7 @@ public actor SyncEngine {
 
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
+    latchThisRun = nil
     do {
       try resumeAfterLatch(trigger)
       // Reconcile: an in-flight batch goes first, byte-identical.
@@ -157,7 +159,11 @@ public actor SyncEngine {
     }
     out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
-    status.latch = (try? context.store.syncState().latch) ?? status.latch
+    do {
+      status.latch = try context.store.syncState().latch ?? latchThisRun
+    } catch {
+      status.latch = latchThisRun ?? status.latch
+    }
     publish()
     return out
   }
@@ -196,6 +202,7 @@ public actor SyncEngine {
     } catch {
       if case .latched(let l, let alarm) = error {
         status.latch = l
+        latchThisRun = l
         if alarm { status.integrityAlarms += 1 }
         if l == .accountFull, accountFullAtMs == nil { accountFullAtMs = context.clock.nowMs() }
         if l == .accountFull || l == .sealerFault || l == .chainBreak || l == .hardStop {

@@ -352,6 +352,24 @@ struct SyncTests {
     #expect(w.server.storedRowCount(user: a.userID) == 1)
   }
 
+  @Test("a stored op this build can't read stops that run's push only: the status then follows the store")
+  func localHardStopDoesNotStick() async throws {
+    let (_, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try a.store.enqueue([
+      PendingOp(
+        opID: "01J0000000000000000000BAD1", opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil,
+        entityID: nil, enqueuedAt: 0)
+    ])
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == .hardStop)
+    #expect(try a.store.syncState().latch == nil)
+
+    try await a.store.db.write { db in try db.execute(sql: "DELETE FROM pending_ops") }
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == nil)
+  }
+
   @Test("ops authored while a flush runs are shown to the observer before they are sealed")
   func observerSeesEachBatch() async throws {
     let (_, a, _) = try await twoPhones()
