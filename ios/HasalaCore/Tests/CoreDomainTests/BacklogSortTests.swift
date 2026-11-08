@@ -150,6 +150,38 @@ struct BacklogSortTests {
     #expect(r.stop == .rateLimited && r.calls == 1 && r.memo.tries.isEmpty && r.memo.asked.isEmpty && r.pending == 1)
   }
 
+  @Test("a pass cancelled while its calls run spends no try: the requests still count and the names are asked again", arguments: [BacklogSort.concurrency, 1])
+  func cancelledPass(width: Int) async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("PLACE ONE", "debit"), ("PLACE TWO", "debit"), ("PLACE THREE", "debit")])
+    let rows = l.rows()
+    let hanging = BacklogCloud(delay: .seconds(60))
+    let running = Task {
+      try await BacklogSort.pass(
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: hanging, memo: .init(), cache: MemoryCache(), now: { now },
+        autoFile: true, concurrency: width, callTimeout: .seconds(60))
+    }
+    while hanging.calls.count < width { await Task.yield() }
+    running.cancel()
+    let p = try await running.value
+    #expect(p.calls == width && hanging.calls.count == width)
+    #expect(p.memo.tries.isEmpty && p.memo.asked.isEmpty && p.pending == 3 && p.stop == nil)
+    let cloud = BacklogCloud()
+    let again = try await Self.pass(l, cloud, memo: p.memo)
+    #expect(cloud.calls.count == 3 && again.memo.asked.count == 3 && again.pending == 0)
+  }
+
+  @Test("a call that runs past its limit is still a try")
+  func deadlineIsATry() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("SLOW SHOP", "debit")])
+    let slow = BacklogCloud(delay: .seconds(60))
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: slow, memo: .init(), cache: MemoryCache(), now: { now },
+      autoFile: true, callTimeout: .milliseconds(10))
+    #expect(p.calls == 1 && p.memo.tries == ["slow shop": 1] && p.pending == 1)
+  }
+
   @Test("a context-overflow retry is a request: it counts toward the pass and the device budget")
   func overflowRetry() async throws {
     final class OverflowsOnce: GradedCategoryModel, Sendable {

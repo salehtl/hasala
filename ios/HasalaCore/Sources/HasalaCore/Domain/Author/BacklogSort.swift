@@ -274,7 +274,7 @@ public enum BacklogSort {
           maxCalls: left, concurrency: concurrency, mayAsk: mayAsk)
         calls = r.requests
         let settled = Set(r.suggestions.map(\.subject) + r.unknown.map(\.subject))
-        let halted = Set(r.failed.filter { ModelTier.stops($0.failure) }.map(\.subject))
+        let halted = Set(r.failed.filter { ModelTier.stops($0.failure) || $0.failure == .cancelled }.map(\.subject))
         for a in Set(r.asked.map(\.subject)) {
           if settled.contains(a) {
             if memo.asked.insert(a).inserted { settledCount += 1 }
