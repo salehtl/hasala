@@ -30,7 +30,10 @@ actor OutlookServer: MailboxServer {
   func setPushOn(_ v: Bool) { pushOn = v }
   func setReturnsClientState(_ v: Bool) { returnsClientState = v }
 
-  func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus { link }
+  func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
+    if !pushOn, case .holder(let mine, _) = link { return .holder(isThisDevice: mine, watchExpiresAtMs: nil) }
+    return link
+  }
   func linkChallenge() async throws(MailboxServerError) -> String { nonce }
   func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
     -> MailboxLinkResult
@@ -39,7 +42,10 @@ actor OutlookServer: MailboxServer {
     link = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     return MailboxLinkResult(status: link, clientState: returnsClientState ? Self.clientState : nil)
   }
-  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) { watches.append(expiresAtMs) }
+  func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
+    watches.append(expiresAtMs)
+    if case .holder(let mine, _) = link { link = .holder(isThisDevice: mine, watchExpiresAtMs: expiresAtMs) }
+  }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
     if let deleteRefusal { throw deleteRefusal }
     deletes += 1

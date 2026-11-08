@@ -4,22 +4,29 @@ import Foundation
 import Testing
 
 @Suite struct DisconnectPartwayTests {
-  @Test(arguments: [MailboxServerError.offline, .refused(500, "server_error")])
-  func aServerThatDoesNotDeleteTheLinkLeavesOutlookReading(_ refusal: MailboxServerError) async throws {
+  @Test(arguments: [MailboxServerError.offline, .refused(500, "server_error")], [MailboxTrigger.refresh, .launch])
+  func aServerThatDoesNotDeleteTheLinkLeavesOutlookReading(_ refusal: MailboxServerError, _ next: MailboxTrigger) async throws {
     let rig = OutlookRig()
     await rig.connectAndActivate()
     let token = try rig.keychain.read()
+    let made = try #require(await rig.state().watchExpiresAtMs)
     await rig.server.setDeleteRefusal(refusal)
     #expect(await rig.engine.disconnect(removing: nil) == .failed)
     #expect(try rig.keychain.read() == token)
     #expect(try rig.link.read() != nil)
     #expect(rig.graph.subscriptions.isEmpty)
-    let left = await rig.state()
-    #expect(left.phase == .active && left.watchExpiresAtMs == nil)
+    #expect(await rig.server.link == .holder(isThisDevice: true, watchExpiresAtMs: made))
+    #expect(await rig.state().phase == .active)
+    #expect(await !rig.engine.status().watchActive)
+    rig.clock.advance(3_600_000)
     rig.graph.add(SyntheticOutlookMail.dibCard(id: "AAkALgAA-after", dateMs: rig.clock.nowMs() - 1000))
-    let cycle = await rig.engine.runCycle(trigger: .refresh)
+    let cycle = await rig.engine.runCycle(trigger: next)
     #expect(cycle.phase == .active && cycle.ops == 1)
-    #expect(rig.graph.subscriptions.count == 1)
+    let remade = try #require(rig.graph.subscriptions.first)
+    #expect(rig.graph.subscriptions.count == 1 && remade.expiresAtMs != made)
+    #expect(await rig.state().watchExpiresAtMs == remade.expiresAtMs)
+    #expect(await rig.server.watches.last == remade.expiresAtMs)
+    #expect(await rig.engine.status().watchActive)
     await rig.server.setDeleteRefusal(nil)
     #expect(await rig.engine.disconnect(removing: nil) == .disconnected)
     #expect(try rig.keychain.read() == nil && rig.link.read() == nil)
@@ -43,16 +50,53 @@ import Testing
     #expect(await rig.state().phase == .unlinked)
   }
 
-  @Test func aRevokeThatFailsLeavesAWatchTheNextCycleCanMakeAgain() async throws {
+  @Test(arguments: [MailboxTrigger.refresh, .launch, .retry])
+  func aRevokeThatFailsLeavesAWatchTheNextCycleCanMakeAgain(_ next: MailboxTrigger) async throws {
     let rig = Rig()
     await rig.connectAndActivate()
+    let made = try #require(await rig.state().watchExpiresAtMs)
+    #expect(await rig.server.link == .holder(isThisDevice: true, watchExpiresAtMs: made))
     rig.gmail.fail("/revoke", with: [503])
     #expect(await rig.engine.disconnect(removing: nil) == .failed)
-    #expect(await rig.state().watchExpiresAtMs == nil)
+    #expect(await rig.server.link == .holder(isThisDevice: true, watchExpiresAtMs: made))
+    #expect(await !rig.engine.status().watchActive)
+    rig.gmail.clearRequests()
+    let remade = made + 86_400_000
+    rig.gmail.watchExpirationMs = remade
+    #expect(await rig.engine.runCycle(trigger: next).phase == .active)
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
+    #expect(await rig.state().watchExpiresAtMs == remade)
+    #expect(await rig.server.watches.last == remade)
+    #expect(await rig.engine.status().watchActive)
+  }
+
+  @Test func theRowGivesUpItsWatchBeforeTheStopGoesOut() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let made = try #require(await rig.state().watchExpiresAtMs)
+    let tables = rig.tables
+    rig.gmail.limiter = { path in
+      if path.hasSuffix("/stop") { #expect((try? tables.loadState())?.watchExpiresAt != made) }
+      return nil
+    }
+    rig.gmail.fail("/revoke", with: [503])
+    #expect(await rig.engine.disconnect(removing: nil) == .failed)
+    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/stop") })
+  }
+
+  @Test func aRowThatLostItsWatchStillTakesTheServersExpiry() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let made = try #require(await rig.state().watchExpiresAtMs)
+    var lost = await rig.state()
+    lost.watchExpiresAtMs = nil
+    var commit = MailboxCommit()
+    commit.state = lost
+    try await rig.store.commit(commit)
     rig.gmail.clearRequests()
     #expect(await rig.engine.runCycle(trigger: .launch).phase == .active)
-    #expect(rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
-    #expect(await rig.state().watchExpiresAtMs != nil)
+    #expect(await rig.state().watchExpiresAtMs == made)
+    #expect(!rig.gmail.requests.contains { $0.path.hasSuffix("/watch") })
   }
 
   func withPlan(_ rig: Rig, total: Int = 7) async throws -> MailboxRetirePlan {

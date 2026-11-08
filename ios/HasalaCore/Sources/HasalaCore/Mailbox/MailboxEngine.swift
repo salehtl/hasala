@@ -646,9 +646,9 @@ public actor MailboxEngine {
       }
       let proof: JSONValue
       do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return .failed }
-      await stopPush()
-      state.watchExpiresAtMs = nil
+      state.watchExpiresAtMs = Self.stoppedWatchExpiryMs
       try? await store.commit(commitState(state))
+      await stopPush()
       guard await tokens.revoke() else { return .failed }
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
@@ -1458,7 +1458,8 @@ public actor MailboxEngine {
       setAside: groups.map { .init(domain: $0.key, count: $0.value.0, newestMs: $0.value.1) }.sorted {
         $0.newestMs > $1.newestMs
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
-      health: (try? await store.bankHealth()) ?? [], watchActive: state.watchExpiresAtMs != nil,
+      health: (try? await store.bankHealth()) ?? [],
+      watchActive: state.watchExpiresAtMs.map { $0 != Self.stoppedWatchExpiryMs } ?? false,
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
       readFromMs: state.readFromMs, backfillDays: state.backfillDays,
       connectedAtMs: state.scanStartedMs ?? state.readFromMs)
@@ -1951,6 +1952,8 @@ public actor MailboxEngine {
       // Reported next cycle; the watch itself is live at the provider.
     }
   }
+
+  static let stoppedWatchExpiryMs: Int64 = 0
 
   static let log = CoreLog(category: "CoreMailbox")
 
