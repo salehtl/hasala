@@ -36,6 +36,7 @@
     var keysOnThisIPhone = true
     var refuseFinish: AuthFailure?
     var refusePhrase: AuthFailure?
+    var refuseSecurity: [AuthFailure] = []
     /// What the existing account has (the sign-in scenarios).
     var existing: Account
     /// What a successful sign-in leads to.
@@ -302,6 +303,7 @@
 
     func securityState() async throws(AuthFailure) -> SecurityState {
       await pause()
+      if !refuseSecurity.isEmpty { throw refuseSecurity.removeFirst() }
       return security
     }
 

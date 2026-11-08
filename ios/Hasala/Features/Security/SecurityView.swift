@@ -85,7 +85,7 @@ struct SecurityView: View {
     .navigationTitle("Sign-in & security")
     .navigationBarTitleDisplayMode(.inline)
     .task {
-      await model.load()
+      await model.keepLoading()
       #if HASALA_MOCKS
         await ScreenLaunch.applySecurityLaunch(model, alert: $alert, lockingDown: $lockingDown)
       #endif

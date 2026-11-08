@@ -277,6 +277,55 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .wrong) == .codeWrong(triesLeft: 3))
   }
 
+  @Test func theFirstLoadIsTriedAgainWhileTheServerCantBeReached() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = [.offline, .rateLimited, .offline]
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state != nil)
+    #expect(m.failure == nil)
+    #expect(account.refuseSecurity.isEmpty)
+  }
+
+  @Test func aRefusedFirstLoadIsNotTriedAgain() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = [.refused, .offline]
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state == nil)
+    #expect(m.failure == .refused)
+    #expect(account.refuseSecurity == [.offline])
+  }
+
+  @Test func leavingThePageStopsTheFirstLoadsRetries() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    account.refuseSecurity = Array(repeating: .offline, count: 10_000)
+    let m = SecurityModel(session: session)
+    let loading = Task { await m.keepLoading(firstWait: .milliseconds(1)) }
+    while m.failure == nil { await Task.yield() }
+    loading.cancel()
+    await loading.value
+    let left = account.refuseSecurity.count
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(m.state == nil)
+    #expect(account.refuseSecurity.count == left)
+  }
+
+  @Test func aLoadThatHadAnAnswerDoesNotRetry() async {
+    let account = MockAccountService(existing: .passkey)
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.keepLoading(firstWait: .milliseconds(1))
+    account.refuseSecurity = [.offline, .offline]
+    await m.keepLoading(firstWait: .milliseconds(1))
+    #expect(m.state != nil)
+    #expect(m.failure == .offline)
+    #expect(account.refuseSecurity == [.offline])
+  }
+
   @Test func unlockWithTheWords() async {
     let account = MockAccountService(existing: .passwordOnly, signedIn: true)
     account.delay = .zero
