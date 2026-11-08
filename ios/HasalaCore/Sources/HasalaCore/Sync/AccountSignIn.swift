@@ -259,6 +259,11 @@ public enum StepUpHelper {
 public enum AccountWipe {
   public static func wipe(_ env: AccountEnvironment, userID: UserID, writerID: WriterID?) {
     try? env.secrets.wipeAccount(userID: userID, writerID: writerID)
-    if let dir = env.storeDirectory(for: userID) { try? FileManager.default.removeItem(at: dir) }
+    guard !stillBound(env, userID: userID), let dir = env.storeDirectory(for: userID) else { return }
+    try? FileManager.default.removeItem(at: dir)
+  }
+
+  private static func stillBound(_ env: AccountEnvironment, userID: UserID) -> Bool {
+    do { return try env.secrets.binding()?.user_id == userID.string } catch { return true }
   }
 }

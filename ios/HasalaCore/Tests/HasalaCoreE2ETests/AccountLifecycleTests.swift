@@ -7,6 +7,23 @@ import Foundation
 import Synchronization
 import Testing
 
+final class RefusingDeletes: SecretStore, Sendable {
+  let inner: MemorySecretStore
+  private let refused = Mutex<Set<String>>([])
+
+  init(_ inner: MemorySecretStore) { self.inner = inner }
+
+  func refuse(_ services: Set<String>) { refused.withLock { $0 = services } }
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { try inner.read(item) }
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try inner.write(item, value) }
+  func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
+  func delete(_ item: SecretItem) throws(SecretStoreError) {
+    if refused.withLock({ $0.contains(item.service) }) { throw .failed(status: -1) }
+    try inner.delete(item)
+  }
+}
+
 @Suite("Account lifecycle: enrolment, removal and the local wipe")
 struct AccountLifecycleTests {
   func temporaryDirectory(_ name: String) -> URL {
@@ -172,5 +189,48 @@ struct AccountLifecycleTests {
     try await AccountManagement.removeThisIPhone(
       a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: try #require(a.binding))
     #expect(a.keychain.count == 0)
+  }
+
+  // MARK: The local wipe and what boot finds after it
+
+  @Test("a wipe the Keychain refused keeps the store of the iPhone still bound; the next wipe finishes")
+  func refusedWipeKeepsTheStore() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let dir = temporaryDirectory("refused-wipe")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let keychain = RefusingDeletes(b.keychain)
+    let env = onDisk(w, b, dir, secrets: keychain)
+    let enrolled = try await enrol(env, account.userID, words)
+
+    keychain.refuse(["app.hasala.session", "app.hasala.account", "app.hasala.epoch-key", "app.hasala.writer-key"])
+    AccountWipe.wipe(env, userID: account.userID, writerID: enrolled.writerID)
+    #expect(try hasLedger(env, account.userID))
+    #expect(isOpening(env))
+    #expect(Boot.decide(Boot.gather(env)) != .restoring)
+
+    keychain.refuse([])
+    AccountWipe.wipe(env, userID: account.userID, writerID: enrolled.writerID)
+    #expect(try !hasLedger(env, account.userID))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("a wipe that removed the binding removes the files even when another item stayed")
+  func wipeWithBindingGoneRemovesTheFiles() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let dir = temporaryDirectory("partial-wipe")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let keychain = RefusingDeletes(b.keychain)
+    let env = onDisk(w, b, dir, secrets: keychain)
+    let enrolled = try await enrol(env, account.userID, words)
+    keychain.refuse(["app.hasala.epoch-key"])
+    AccountWipe.wipe(env, userID: account.userID, writerID: enrolled.writerID)
+    #expect(try env.secrets.binding() == nil)
+    #expect(try !hasLedger(env, account.userID))
   }
 }
