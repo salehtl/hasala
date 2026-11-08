@@ -95,7 +95,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case samePurchase(foreign: String, previousHome: Int64, previousRateMicro: Int64?, home: String, previousNote: String)
     case samePurchaseDeclined(home: String)
     case copyReopened(txn: String)
-    case copyUnmerged(txn: String, other: String, version: Int64)
+    case copyUnmerged(txn: String, other: String)
     case bill(id: String, draft: OpAuthor.BillDraft)
     case resolution(bill: String, due: String, resolution: String, txn: String?, until: String?)
     case income(id: String, name: String, category: String, amountMinor: Int64, payday: Int64, active: Bool)
@@ -186,7 +186,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await build { a throws(AuthorError) in
         a.resolveCopy(txnID: id, parentVersion: row.version, otherTxnID: other, decision: merge ? .merge : .keepBoth)
       }
-      if merge { return [.copyUnmerged(txn: id, other: other, version: row.version + 1)] }
+      if merge { return [.copyUnmerged(txn: id, other: other)] }
     case .keepCombinedApart(let id):
       guard let copy = try reader.transferCopy(of: id) else { throw Failure.notFound }
       try await build { a throws(AuthorError) in
@@ -458,6 +458,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
 
   private func undoBlob(_ inverses: [Inverse]) async throws -> AuthoredBlob? {
     var rows: [String: TxnRow] = [:]
+    var mergedCopies: [String: Int64] = [:]
     var projects: [String: CoreReplay.Project] = [:]
     if inverses.contains(where: { if case .projectState = $0 { true } else { false } }) {
       for (id, p) in try reader.projects() { projects[id] = p }
@@ -468,6 +469,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       case .note(let t, _), .project(let t, _), .archived(let t, _), .refundOf(let t, _): rows[t] = try reader.txn(t)
       case .samePurchase(let t, _, _, _, _), .samePurchaseDeclined(let t), .copyReopened(let t): rows[t] = try txn(t)
       case .refile(let t, _, _, _, _, _): rows[t] = try reader.txn(t)
+      case .copyUnmerged(let t, _): mergedCopies[t] = try reader.mergedCopyVersion(t)
       default: break
       }
     }
@@ -552,7 +554,8 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .copyReopened(let t):
           guard let row = rows[t], let other = row.copyOf else { continue }
           a.resolveCopy(txnID: t, parentVersion: row.version, otherTxnID: other, decision: nil)
-        case .copyUnmerged(let t, let other, let version):
+        case .copyUnmerged(let t, let other):
+          guard let version = mergedCopies[t] else { continue }
           a.resolveCopy(txnID: t, parentVersion: version, otherTxnID: other, decision: nil)
         case .bill(let id, let draft):
           guard let version = bills[id] else { continue }

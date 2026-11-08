@@ -131,6 +131,34 @@ struct LiveUndoTests {
     #expect(try a.projection.reader.txn(copy)?.heldCopy == true)
   }
 
+  @Test func undoingAMergeFollowsAnotherDevicesEditOfTheCopy() async throws {
+    let a = try Mapper.account()
+    var copy = ""
+    var blobs: [AuthoredBlob] = []
+    if let b = try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+      try o.ingest(payload: Self.alert(grant: "u/mbx-a", message: "m7", at: "08:00:00"), ingestID: String(repeating: "7", count: 64))
+      copy = try o.ingest(
+        payload: Self.alert(grant: "u/mbx-b", message: "m8", at: "08:05:00"), ingestID: String(repeating: "8", count: 64))
+    }) { blobs.append(b) }
+    let store = try await Self.store(a, suite: "undo.merge.peer.tests", extra: blobs)
+    let app = AppModel(store: store)
+    #expect(app.perform(.resolveCopy(copy, merge: true)))
+    try await Mapper.eventually { try a.projection.reader.mergedCopyVersion(copy) != nil }
+    let head = try #require(try a.projection.reader.mergedCopyVersion(copy))
+    let merged = copy
+    let peer = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext(), { o throws(AuthorError) in
+        o.categorize(txnID: merged, parentVersion: head, category: "groceries", needsReview: false)
+      }))
+    try await a.outbox.enqueue(peer.ops)
+    try await a.observer.reproject()
+    #expect(try a.projection.reader.mergedCopyVersion(copy) == head + 1)
+    app.toastAction()
+    try await Mapper.eventually { try a.projection.reader.txn(copy)?.heldCopy == true }
+    #expect(try a.projection.reader.txn(copy)?.heldCopy == true)
+    #expect(try a.projection.reader.forkNotices(kind: "txn").isEmpty)
+  }
+
   @Test func undoingSamePurchaseKeepsTheRateEstimate() async throws {
     let a = try Mapper.account()
     var foreign = ""

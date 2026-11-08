@@ -247,6 +247,14 @@ public struct LedgerReader: Sendable {
     }
   }
 
+  public func mergedCopyVersion(_ id: String) throws -> Int64? {
+    try db.read { db in
+      try Int64.fetchOne(
+        db, sql: "SELECT alias_version FROM txn_alias WHERE alias_txn_id = ? AND alias_version IS NOT NULL ORDER BY txn_id, idx LIMIT 1",
+        arguments: [id])
+    }
+  }
+
   public func parts(_ txnID: String) throws -> [PartRow] {
     try db.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM txn_part WHERE txn_id = ? ORDER BY idx", arguments: [txnID]).map {
