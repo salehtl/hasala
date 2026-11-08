@@ -164,7 +164,7 @@ public enum AccountCreation {
     else { throw .challengeMismatch }
     let reg: RawRegistration
     do { reg = try await passkeys.register(options, prfSalt: KeyDerivation.prfSalt) } catch { throw .passkey(error) }
-    let grant = try await apiStep { () async throws(APIError) in
+    let grant = try await passkeyFinishStep(env, credentialID: reg.credentialID) { () async throws(APIError) in
       try await env.client.registerFinish(RegisterFinishRequest(ceremonyID: begin.ceremony_id, credential: reg.credential))
     }
     guard grant.user_id == signup.userID.string else { throw .badResponse("register user_id") }

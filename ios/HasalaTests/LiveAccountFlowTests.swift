@@ -484,6 +484,8 @@ nonisolated final class AssertingPasskeys: PasskeyProvider, @unchecked Sendable 
       rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
       authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: nil)
   }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 /// `02` §7's password-account routes in memory, in `02`'s JSON shapes.
@@ -499,6 +501,8 @@ nonisolated final class StubPasskeys: PasskeyProvider, @unchecked Sendable {
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
     throw .noCredential
   }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 nonisolated final class MiniHasalad: Transport, @unchecked Sendable {

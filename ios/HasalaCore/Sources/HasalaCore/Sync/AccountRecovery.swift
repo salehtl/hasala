@@ -173,7 +173,7 @@ public enum AccountRecovery {
     let w = WriterJSON(
       writerID: device.writerID.string, pubkeyB64: Base64.encode(device.dwkPublic),
       dakPubkeyB64: Base64.encode(device.dakPublic))
-    let grant: SessionGrant = try await apiStep { () async throws(APIError) in
+    let grant: SessionGrant = try await passkeyFinishStep(env, credentialID: reg.credentialID) { () async throws(APIError) in
       try await env.client.api.call(
         .post, "/api/v1/auth/recover/finish",
         json: RecoverFinishBody(

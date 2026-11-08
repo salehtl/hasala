@@ -78,6 +78,16 @@ final class PasskeyAuthenticator: NSObject {
       signature: a.signature, userHandle: a.userID, prfFirst: a.prf.map { Self.bytes($0.first) })
   }
 
+  static func reportUnknown(credentialID: Data) async {
+    if #available(iOS 26.2, *) {
+      try? await ASCredentialDataManager().reportUnknownPublicKeyCredential(
+        relyingPartyIdentifier: relyingParty, credentialID: credentialID)
+    } else {
+      try? await ASCredentialUpdater().reportUnknownPublicKeyCredential(
+        relyingPartyIdentifier: relyingParty, credentialID: credentialID)
+    }
+  }
+
   private static func bytes(_ key: SymmetricKey) -> Data { key.withUnsafeBytes { Data($0) } }
 
   private func perform(_ request: ASAuthorizationRequest) async throws(AuthFailure) -> ASAuthorization {

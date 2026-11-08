@@ -34,6 +34,7 @@ public final class SoftPasskey: PasskeyProvider {
   private let failure = Mutex<PasskeyError?>(nil)
   private let prfSupported = Mutex(true)
   private let backup = Mutex<UInt8>(0)
+  private let reported = Mutex<[Data]>([])
 
   public init(rpID: String = "hasala.app", origin: String = "https://hasala.app") {
     self.rpID = rpID
@@ -51,6 +52,7 @@ public final class SoftPasskey: PasskeyProvider {
   public func failNext(_ error: PasskeyError) { failure.withLock { $0 = error } }
 
   public var credentials: [Credential] { state.withLock { $0 } }
+  public var reportedUnknown: [Data] { reported.withLock { $0 } }
 
   /// `P` for a credential and salt (01 §12.1).
   public static func prf(secret: Data, salt: Data) -> Data {
@@ -115,6 +117,11 @@ public final class SoftPasskey: PasskeyProvider {
     return RawAssertion(
       credentialID: cred.id, rawClientDataJSON: clientData, authenticatorData: authData, signature: sig.derRepresentation,
       userHandle: cred.userHandle, prfFirst: prfFirst(secret: cred.prfSecret, salt: prfSalt))
+  }
+
+  public func reportUnknown(credentialID: Data) async {
+    reported.withLock { $0.append(credentialID) }
+    state.withLock { $0.removeAll { $0.id == credentialID } }
   }
 
   /// Forgets every credential (a new iPhone without iCloud Keychain).

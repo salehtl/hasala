@@ -53,7 +53,7 @@ public enum AccountPasskeys {
           nonce: nonce, clientDataJSON: reg.rawClientDataJSON, attestationObject: reg.rawAttestationObject,
           prfWrap: wrap))
     }
-    let added = try await apiStep { () async throws(APIError) in
+    let added = try await passkeyFinishStep(env, credentialID: reg.credentialID) { () async throws(APIError) in
       try await env.client.passkeyAddFinish(
         PasskeyAddFinishRequest(
           ceremonyID: begin.ceremony_id, credential: reg.credential,

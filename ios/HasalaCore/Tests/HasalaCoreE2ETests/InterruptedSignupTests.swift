@@ -29,6 +29,50 @@ struct InterruptedSignupTests {
     #expect(try await a.env.client.writers(bearer: token).writers.count == 1)
   }
 
+  @Test(
+    "a register finish the server refused takes the new passkey off this iPhone; a server fault leaves it",
+    arguments: [(403, "passkey_rejected", 1), (409, "email_in_use", 1), (503, "unavailable", 0)])
+  func refusedRegisterFinishReportsTheCredential(status: Int, code: String, reported: Int) async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await signedUp(w, a)
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    w.server.refuseNext("POST /api/v1/auth/passkey/register/finish", status: status, code: code)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    }
+    #expect(a.passkeys.reportedUnknown.count == reported)
+    #expect(a.passkeys.credentials.count == 1 - reported)
+  }
+
+  @Test("a lost answer to the register finish leaves the new passkey in place")
+  func lostRegisterFinishAnswerKeepsTheCredential() async throws {
+    let w = World()
+    let a = Phone(transport: AfterAnswer(inner: w.server, suffix: "/passkey/register/finish", lose: true), clock: w.clock, seed: "a")
+    let signup = try await signedUp(w, a)
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    }
+    #expect(a.passkeys.reportedUnknown.isEmpty)
+    #expect(a.passkeys.credentials.count == 1)
+  }
+
+  @Test("a refused bootstrap leaves the passkey the server already took")
+  func refusedBootstrapKeepsTheCredential() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await signedUp(w, a)
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    let registered = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    w.server.refuseNext("POST /api/v1/account/bootstrap", status: 403, code: "keys_required")
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountCreation.bootstrapPasskey(a.env, registered: registered, keys: keys)
+    }
+    #expect(a.passkeys.reportedUnknown.isEmpty)
+    #expect(a.passkeys.credentials.count == 1)
+  }
+
   @Test("a lost bootstrap answer: the unlock after a relaunch finishes with the writer the server took")
   func lostBootstrapAnswerKeepsItsWriter() async throws {
     let w = World()

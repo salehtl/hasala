@@ -91,9 +91,35 @@ struct AccountRecoveryTests {
     #expect(enrolled.writerID.string == writer)
     #expect(b.binding?.writer_id == writer)
     #expect(b.passkeys.credentials.count == 1)
+    #expect(b.passkeys.reportedUnknown.isEmpty)
     let token = try #require(try b.env.secrets.session()).token
     #expect(try await b.env.client.writers(bearer: token).writers.count == 2)
     #expect(try await b.env.client.account(bearer: token).has_passkey == true)
+  }
+
+  @Test(
+    "a recover finish the server refused takes the new passkey off this iPhone; a server fault leaves it",
+    arguments: [(403, "recovery_refused", 1), (429, "rate_limited", 1), (503, "unavailable", 0)])
+  func refusedFinishReportsTheCredential(status: Int, code: String, reported: Int) async throws {
+    let w = World()
+    let (_, words) = try await account(w)
+    let b = phone(w, losingAccountFetch: false)
+    let r = try await verified(w, b, words)
+    w.server.refuseNext("POST /api/v1/auth/recover/finish", status: status, code: code)
+    await #expect(throws: CeremonyError.self) { _ = try await AccountRecovery.finishWithPasskey(b.env, r) }
+    #expect(b.passkeys.reportedUnknown.count == reported)
+    #expect(b.passkeys.credentials.count == 1 - reported)
+  }
+
+  @Test("a lost answer to the recover finish leaves the new passkey in place")
+  func lostFinishAnswerKeepsTheCredential() async throws {
+    let w = World()
+    let (_, words) = try await account(w)
+    let b = Phone(transport: AfterAnswer(inner: w.server, suffix: "/recover/finish", lose: true), clock: w.clock, seed: "b")
+    let r = try await verified(w, b, words)
+    await #expect(throws: CeremonyError.self) { _ = try await AccountRecovery.finishWithPasskey(b.env, r) }
+    #expect(b.passkeys.reportedUnknown.isEmpty)
+    #expect(b.passkeys.credentials.count == 1)
   }
 
   @Test("a closed sheet keeps the ceremony; a refusal before the server took it, or an alarm after, ends it")

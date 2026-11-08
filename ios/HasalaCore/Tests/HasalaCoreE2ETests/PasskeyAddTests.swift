@@ -17,6 +17,10 @@ struct SplitPasskeys: PasskeyProvider {
   func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
     try await asserting.assert(challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
   }
+
+  func reportUnknown(credentialID: Data) async {
+    await creating.reportUnknown(credentialID: credentialID)
+  }
 }
 
 @Suite("Adding a passkey (passkey.add)")
@@ -205,6 +209,55 @@ struct PasskeyAddTests {
     }
     #expect(second.credentials.isEmpty)
     #expect(first.credentials.first?.signCount == signatures)
+  }
+
+  @Test(
+    "a finish the server refused takes the new passkey off this iPhone",
+    arguments: [(403, "passkey_rejected"), (409, "conflict"), (429, "rate_limited")])
+  func refusedFinishReportsTheCredential(status: Int, code: String) async throws {
+    let w = World()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
+    let binding = try #require(a.binding)
+    w.server.refuseNext("POST /api/v1/auth/passkey/add/finish", status: status, code: code)
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added past a refusal")
+    } catch {
+      #expect(error.failure?.status == status)
+    }
+    #expect(second.reportedUnknown.count == 1)
+    #expect(second.credentials.isEmpty)
+  }
+
+  @Test("a server fault on the finish leaves the new passkey in place")
+  func serverFaultKeepsTheCredential() async throws {
+    let w = World()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
+    w.server.refuseNext("POST /api/v1/auth/passkey/add/finish", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountPasskeys.add(env, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
+    }
+    #expect(second.reportedUnknown.isEmpty)
+    #expect(second.credentials.count == 1)
+  }
+
+  @Test("a lost answer on the finish leaves the new passkey in place")
+  func lostAnswerKeepsTheCredential() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: first, second: second)
+    let losing = AccountEnvironment(
+      client: AuthClient(transport: AfterAnswer(inner: w.server, suffix: "/passkey/add/finish", lose: true)),
+      secrets: a.env.secrets, approvalKeys: a.dak, passkeys: SplitPasskeys(asserting: first, creating: second),
+      clock: w.clock, random: a.env.random, apiBase: a.env.apiBase, accountsDirectory: nil)
+    await #expect(throws: CeremonyError.self) {
+      _ = try await AccountPasskeys.add(losing, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
+    }
+    #expect(second.reportedUnknown.isEmpty)
+    #expect(second.credentials.count == 1)
   }
 
   @Test("a passkey account's second passkey is wrapped with the body its own step-up opens")
