@@ -275,7 +275,6 @@ let
     HASALA_ASC_REQUEST_BUDGET = "300";
   };
 
-  # -------------------------------------------------------------------- retry
   retryText = ''
     attempts="$1"
     delay="$2"
