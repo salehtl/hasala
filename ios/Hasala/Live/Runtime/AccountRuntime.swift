@@ -247,10 +247,11 @@ final class AccountRuntime {
     if serverLink != link { serverLink = link }
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
-    if case .holder(false, _) = link, connects == 0, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
+    if case .holder(false, _) = link, connects == 0, !closed, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
       let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
     {
       activate(p)
+      await lanes[p]?.resume()
     }
     return link
   }

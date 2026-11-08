@@ -442,6 +442,21 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func followingTheLinkWakesALaneAnEarlierSwitchStopped() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    let outlook = try #require(rt.lanes[.outlook])
+    await outlook.stop()
+    #expect(await outlook.engine.stopped)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    _ = await rt.askServerLink()
+    #expect(rt.activeProvider == .outlook && rt.lane?.provider == .outlook)
+    #expect(await !outlook.engine.stopped)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()
