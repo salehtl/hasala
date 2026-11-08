@@ -767,10 +767,6 @@ func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (in
 //   - step 4, with Goodbye: the `deleted` email is queued to the address, with
 //     no account (the row must outlive it), and loses the address when its
 //     send is final (mailq, O-17).
-//
-// It matches the account's current address only. An earlier address (before
-// an email change) stays in final mail_log rows that never carried the
-// account's id until the 30-day log sweep.
 func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Options, rep *Report) error {
 	type account struct {
 		id   uuid.UUID
@@ -826,6 +822,9 @@ func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Option
 		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now(), error = 'purged'
 		  WHERE status = 'sending' AND recipient IN ` + addrs,
 		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND recipient IN ` + addrs,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND user_id IS NULL AND recipient IN
+		   (SELECT recipient FROM mail_log WHERE user_id = ANY($1) AND kind = 'alert' AND subkind = 'email_changed_old'
+		       AND recipient IS NOT NULL)`,
 		`DELETE FROM waitlist_entries WHERE state = 'joined'
 		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
 		`DELETE FROM signup_ceremonies WHERE email_norm IN ` + addrs,

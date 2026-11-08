@@ -786,6 +786,55 @@ func TestPurgeErasesTheAddressFromTheEmailLog(t *testing.T) {
 	}
 }
 
+func TestPurgeErasesAnEarlierAddressFromTheEmailLog(t *testing.T) {
+	pool := pgtest.New(t)
+	u := newUser(t, pool, "moved-address")
+	bystander := newUser(t, pool, "now-owns-the-address")
+	exec(t, pool, `UPDATE users SET email_norm = 'new@example.com' WHERE id = $1`, u)
+	final := func(kind, subkind, to string, user *uuid.UUID) int64 {
+		var id int64
+		if err := pool.QueryRow(bg, `INSERT INTO mail_log (kind, subkind, lane, recipient, recipient_tag, recipient_hint, user_id, params, status, sent_at, final_at, created_at)
+		    VALUES ($1, nullif($2, ''), 'transactional', $3, $4, 'o•••@example.com', $5, '{}', 'sent', now(), now(), now()) RETURNING id`,
+			kind, subkind, to, randBytes(t, 32), user).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	final("alert", "email_changed_old", "old@example.com", &u)
+	unlinked := final("invite", "", "old@example.com", nil)
+	theirs := final("alert", "password_changed", "old@example.com", &bystander)
+	typed := final("code", "", "typed@example.com", &u)
+	otherFinal := final("invite", "", "typed@example.com", nil)
+	exec(t, pool, `INSERT INTO mail_log (kind, lane, recipient, recipient_hint, params, status, next_attempt_at, created_at)
+	               VALUES ('invite', 'transactional', 'old@example.com', 'o•••@example.com', '{}', 'queued', now(), now())`)
+
+	if _, err := Purge(bg, pool, u); err != nil {
+		t.Fatal(err)
+	}
+	recipient := func(id int64) *string {
+		var r *string
+		if err := pool.QueryRow(bg, `SELECT recipient FROM mail_log WHERE id = $1`, id).Scan(&r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	if r := recipient(unlinked); r != nil {
+		t.Fatalf("a final row to the earlier address kept %q", *r)
+	}
+	if r := recipient(theirs); r == nil {
+		t.Fatal("another account's own row lost its address")
+	}
+	if r := recipient(otherFinal); r == nil {
+		t.Fatal("a row to an address the account never held lost it")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log WHERE status = 'queued' AND recipient = 'old@example.com'`); n != 1 {
+		t.Fatal("mail still waiting to go to the earlier address was touched")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM mail_log WHERE id = $1`, typed); n != 0 {
+		t.Fatal("the account's own row outlived it")
+	}
+}
+
 // sumTagger stands in for the server's email tagger.
 type sumTagger struct{}
 
