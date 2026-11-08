@@ -56,6 +56,15 @@ let
       fi
       cat > "$out"
     '')
+    (stub "id" "echo 0")
+    (stub "logger" "true")
+    (stub "systemctl" ''
+      echo "systemctl $*" >> "$CALLS"
+      exit "''${SYSTEMCTL_EXIT:-0}"
+    '')
+    (stub "systemd-run" ''
+      echo "systemd-run $*" >> "$CALLS"
+    '')
     (stub "flock" ''
       [ "$1" != 9 ] || exit 0
       echo "flock $1 $2" >> "$CALLS"
@@ -75,6 +84,12 @@ let
     text = localPaths rendered.backup;
   };
 
+  admin = pkgs.writeShellApplication {
+    name = "hasala-admin";
+    runtimeInputs = stubs ++ [ pkgs.coreutils ];
+    text = builtins.unsafeDiscardStringContext rendered.admin;
+  };
+
   retry = pkgs.writeShellApplication {
     name = "hasala-retry";
     runtimeInputs = [ pkgs.coreutils ];
@@ -87,6 +102,7 @@ pkgs.runCommand "hasala-ops-scripts"
       pkgs.coreutils
       pkgs.findutils
       pkgs.gnugrep
+      pkgs.gnused
     ];
   }
   ''
@@ -185,6 +201,56 @@ pkgs.runCommand "hasala-ops-scripts"
     rc=0; ${lib.getExe retry} 4 0 ./fine || rc=$?
     [ "$rc" = 0 ] || no "a command that succeeds exited $rc"
     [ "$(wc -l < tries | tr -d ' ')" = 1 ] || no "a command that succeeds ran more than once"
+
+    run_admin() { rc=0; ${lib.getExe admin} "$@" > out.log 2>&1 < /dev/null || rc=$?; cat out.log; }
+    called() { grep -c "$1" "$CALLS" | tr -d ' '; }
+
+    for flag in --status -status --pending -pending --help -help -h; do
+      scenario "hasala-admin migrate $flag only reads"
+      run_admin migrate "$flag"
+      [ "$rc" = 0 ] || no "migrate $flag exited $rc"
+      [ "$(called '^systemd-run ')" = 1 ] || no "migrate $flag did not reach hasalad"
+      [ "$(called '^systemctl ')" = 0 ] || no "migrate $flag started a dump"
+      [ "$(called '^flock ')" = 0 ] || no "migrate $flag took the maintenance lock"
+    done
+
+    check_migrates() {
+      [ "$rc" = 0 ] || no "$1 exited $rc"
+      [ "$(sed -n 1p "$CALLS")" = "systemctl start hasala-backup-premigrate.service" ] \
+        || no "$1 did not start the pre-migration dump first: $(cat "$CALLS")"
+      [ "$(sed -n 2p "$CALLS")" = "flock --no-fork /run/hasala-maintenance.lock" ] \
+        || no "$1 did not take the maintenance lock second: $(cat "$CALLS")"
+      sed -n 3p "$CALLS" | grep -q '^systemd-run .* migrate' || no "$1 did not run hasalad migrate third: $(cat "$CALLS")"
+    }
+
+    scenario "hasala-admin migrate dumps first and holds the maintenance lock"
+    run_admin migrate
+    check_migrates "migrate"
+
+    scenario "hasala-admin migrate --to dumps first and holds the maintenance lock"
+    run_admin migrate --to 5
+    check_migrates "migrate --to 5"
+
+    scenario "a read-only flag turned off is a real migration"
+    run_admin migrate --status=false
+    check_migrates "migrate --status=false"
+
+    scenario "a read-only flag with another argument is a real migration"
+    run_admin migrate --status --to 5
+    check_migrates "migrate --status --to 5"
+
+    scenario "a pre-migration dump that fails stops hasala-admin migrate"
+    SYSTEMCTL_EXIT=1 run_admin migrate
+    [ "$rc" != 0 ] || no "a failed dump let migrate exit 0"
+    [ "$(called '^systemd-run ')" = 0 ] || no "a failed dump still reached hasalad"
+    [ "$(called '^flock ')" = 0 ] || no "a failed dump still took the lock"
+
+    scenario "other modes neither dump nor lock"
+    run_admin version
+    [ "$rc" = 0 ] || no "version exited $rc"
+    [ "$(called '^systemd-run ')" = 1 ] || no "version did not reach hasalad"
+    [ "$(called '^systemctl ')" = 0 ] || no "version started a dump"
+    [ "$(called '^flock ')" = 0 ] || no "version took the lock"
 
     [ "$failed" = 0 ]
     touch "$out"

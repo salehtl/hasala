@@ -391,6 +391,8 @@ in
           code = machine.succeed("hasala-admin invite mint --note vm-note-text 2>/dev/null").strip()
           assert re.fullmatch(r"[A-Z2-7]{24}", code), code
           machine.succeed("hasala-admin migrate --status | grep '^pending 0$' >/dev/null")
+          machine.succeed("hasala-admin migrate")
+          machine.fail(f"ls {BACKUP_DIR} | grep premigrate >/dev/null")
           machine.succeed("journalctl -t hasala-admin -o cat | grep 'mode=invite by=root' >/dev/null")
           # Nowhere in the journal: not from the wrapper, not from systemd's
           # "Started <unit>" line, not from hasalad.

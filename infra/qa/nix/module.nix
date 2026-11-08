@@ -398,47 +398,58 @@ let
     version = "hasala";
     migrate = "hasala-migrate";
   };
+  adminText = ''
+    [ "$(id -u)" -eq 0 ] || { echo "hasala-admin: run it with sudo" >&2; exit 2; }
+    mode="''${1:-}"; [ $# -gt 0 ] && shift
+    case "$mode" in
+      ${concatStringsSep "\n    " (lib.mapAttrsToList (m: u: "${m}) user=${u} ;;") adminModes)}
+      *) echo "usage: sudo hasala-admin {${concatStringsSep "|" (lib.attrNames adminModes)}} [flags]" >&2; exit 2 ;;
+    esac
+    # Every mode except migrate runs as hasala_runtime: spec 02 §5.6 refuses
+    # any non-migrate mode whose role owns op_log or key_history. (Spec 05
+    # review 2 row 1, F-10, moves these to OS user hasala-cli → role
+    # hasala_console; deferred until spec 02/07's grants for that role exist.)
+    if [ "$user" = hasala-migrate ]; then
+      dsn="HASALA_MIGRATE_DSN=${migrateDSN}"
+      groups="hasala-db"
+    else
+      dsn="HASALA_PG_DSN=${runtimeDSN}"
+      groups="hasala-db hasala-ledger"
+    fi
+    logger -t hasala-admin -- "mode=$mode by=''${SUDO_USER:-root}"   # never the arguments
+    lock=()
+    if [ "$mode" = migrate ]; then
+      case "$#:''${1:-}" in
+        1:--status | 1:-status | 1:--pending | 1:-pending | 1:--help | 1:-help | 1:-h) ;;
+        *)
+          ${optionalString cfg.backup.enable "systemctl start hasala-backup-premigrate.service"}
+          lock=(flock --no-fork ${maintenanceLock})
+          ;;
+      esac
+    fi
+    io=--pipe; [ -t 0 ] && [ -t 1 ] && io=--pty
+    # --description: without it systemd logs "Started <the full command line>",
+    # which would put the arguments (a note, an account id) in the journal.
+    exec "''${lock[@]}" systemd-run --quiet --wait --collect "$io" --service-type=exec \
+      --description="hasala-admin $mode" \
+      --uid="$user" --gid="$user" -p SupplementaryGroups="$groups" -p Slice=hasala.slice \
+      -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes \
+      -p PrivateDevices=yes -p ProtectKernelTunables=yes -p ProtectControlGroups=yes \
+      -p PrivateNetwork=yes -p RestrictAddressFamilies=AF_UNIX -p CapabilityBoundingSet= \
+      -p LimitCORE=0 \
+      ${concatStringsSep " " (map (p: "-p InaccessiblePaths=${p}") cfg.hardening.inaccessiblePaths)} \
+      -p SyslogIdentifier=hasala-admin -p ReadWritePaths=${ledgerDir} -p UMask=0077 \
+      -E "$dsn" -E TZ=UTC -E HASALA_PURGE_LEDGER_PATH=${ledgerDir}/purged \
+      -E "HASALA_ADMIN_ACTOR=cli:''${SUDO_USER:-root}" \
+      ${hasalad} "$mode" "$@"
+  '';
   hasalaAdmin = pkgs.writeShellApplication {
     name = "hasala-admin";
     runtimeInputs = [
       config.systemd.package
       pkgs.util-linux
     ];
-    text = ''
-      [ "$(id -u)" -eq 0 ] || { echo "hasala-admin: run it with sudo" >&2; exit 2; }
-      mode="''${1:-}"; [ $# -gt 0 ] && shift
-      case "$mode" in
-        ${concatStringsSep "\n    " (lib.mapAttrsToList (m: u: "${m}) user=${u} ;;") adminModes)}
-        *) echo "usage: sudo hasala-admin {${concatStringsSep "|" (lib.attrNames adminModes)}} [flags]" >&2; exit 2 ;;
-      esac
-      # Every mode except migrate runs as hasala_runtime: spec 02 §5.6 refuses
-      # any non-migrate mode whose role owns op_log or key_history. (Spec 05
-      # review 2 row 1, F-10, moves these to OS user hasala-cli → role
-      # hasala_console; deferred until spec 02/07's grants for that role exist.)
-      if [ "$user" = hasala-migrate ]; then
-        dsn="HASALA_MIGRATE_DSN=${migrateDSN}"
-        groups="hasala-db"
-      else
-        dsn="HASALA_PG_DSN=${runtimeDSN}"
-        groups="hasala-db hasala-ledger"
-      fi
-      logger -t hasala-admin -- "mode=$mode by=''${SUDO_USER:-root}"   # never the arguments
-      io=--pipe; [ -t 0 ] && [ -t 1 ] && io=--pty
-      # --description: without it systemd logs "Started <the full command line>",
-      # which would put the arguments (a note, an account id) in the journal.
-      exec systemd-run --quiet --wait --collect "$io" --service-type=exec \
-        --description="hasala-admin $mode" \
-        --uid="$user" --gid="$user" -p SupplementaryGroups="$groups" -p Slice=hasala.slice \
-        -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes -p PrivateTmp=yes \
-        -p PrivateDevices=yes -p ProtectKernelTunables=yes -p ProtectControlGroups=yes \
-        -p PrivateNetwork=yes -p RestrictAddressFamilies=AF_UNIX -p CapabilityBoundingSet= \
-        -p LimitCORE=0 \
-        ${concatStringsSep " " (map (p: "-p InaccessiblePaths=${p}") cfg.hardening.inaccessiblePaths)} \
-        -p SyslogIdentifier=hasala-admin -p ReadWritePaths=${ledgerDir} -p UMask=0077 \
-        -E "$dsn" -E TZ=UTC -E HASALA_PURGE_LEDGER_PATH=${ledgerDir}/purged \
-        -E "HASALA_ADMIN_ACTOR=cli:''${SUDO_USER:-root}" \
-        ${hasalad} "$mode" "$@"
-    '';
+    text = adminText;
   };
 
   # ------------------------------------------------------------------ health
@@ -921,6 +932,7 @@ in
       default = {
         backup = backupText;
         retry = retryText;
+        admin = adminText;
       };
       description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
