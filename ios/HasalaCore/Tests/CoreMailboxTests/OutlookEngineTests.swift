@@ -429,6 +429,24 @@ import Testing
     #expect(await rig.server.watches == [t0 + lifetime])
   }
 
+  @Test func aWatchTheServerBroughtDueIsRenewedInPlaceOnce() async throws {
+    let rig = OutlookRig()
+    await rig.connectAndActivate()
+    let id = try #require(rig.graph.subscriptions.first?.id)
+    let interval = MailboxEngineConfig(grantID: "x").holderCheckIntervalMs
+    rig.clock.advance(interval)
+    await rig.server.setLink(.holder(isThisDevice: true, watchExpiresAtMs: rig.clock.nowMs()))
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rig.subscriptionRequests("POST").count == 1)
+    #expect(rig.subscriptionRequests("PATCH").map(\.path) == ["/v1.0/subscriptions/\(id)"])
+    #expect(rig.graph.subscriptions.map(\.id) == [id])
+    #expect(await rig.server.watches == [t0 + lifetime, rig.clock.nowMs() + lifetime])
+    #expect(await rig.engine.status().watchActive)
+    rig.clock.advance(interval)
+    _ = await rig.engine.runCycle(trigger: .refresh)
+    #expect(rig.subscriptionRequests("PATCH").count == 1)
+  }
+
   @Test func anotherIPhonesSubscriptionIsReplacedOnConflict() async throws {
     let rig = OutlookRig()
     for (id, resource) in [("sub-other-iphone", GraphClient.subscriptionResource), ("sub-older-build", "/me/messages")] {

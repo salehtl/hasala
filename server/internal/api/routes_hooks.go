@@ -332,11 +332,15 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 		return
 	}
 	o.Counters.Unknown.Add(int64(len(hashes) - len(matched)))
-	if len(p.Removed) > 0 && !s.fuseTripped() {
+	if len(p.Removed)+len(p.Reauthorize) > 0 && !s.fuseTripped() {
 		if _, err := s.Pool.Exec(ctx,
-			`UPDATE mailbox_links SET watch_expires_at = NULL, updated_at = $2
-			  WHERE provider = 'outlook' AND client_state_hash = ANY($1::bytea[]) AND watch_expires_at IS NOT NULL`,
-			hashBytes(p.Removed), s.now()); err != nil {
+			`UPDATE mailbox_links
+			    SET watch_expires_at = CASE WHEN client_state_hash = ANY($1::bytea[]) THEN NULL ELSE $3::timestamptz END,
+			        updated_at = $3
+			  WHERE provider = 'outlook'
+			    AND (client_state_hash = ANY($1::bytea[]) AND watch_expires_at IS NOT NULL
+			         OR client_state_hash = ANY($2::bytea[]) AND watch_expires_at > $3)`,
+			hashBytes(p.Removed), hashBytes(p.Reauthorize), s.now()); err != nil {
 			s.logf("api: outlook hook: end watch: %v", err)
 			writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
 			return
