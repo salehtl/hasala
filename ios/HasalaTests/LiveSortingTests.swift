@@ -216,6 +216,41 @@ struct LiveSortingTests {
     #expect(try l.reader.rules().first?.enabled == true)
   }
 
+  @Test func undoingStopThisRuleKeepsReachingRowsThatArriveLater() async throws {
+    let l = try await Self.ledger(suite: "sorting.stopundo", rows: Self.tailscale)
+    try l.store.apply(.categorize(l.ids["com"]![0], "subscriptions", learnRule: true, project: nil))
+    try await Mapper.eventually { try l.reader.rules().count == 1 }
+    try await Mapper.eventually { l.memory.value.batches.count == 1 }
+    let rule = try #require(try l.reader.rules().first)
+    try await Mapper.eventually { l.store.state.rules.contains { $0.id == rule.id } }
+    let live = try #require(l.memory.value.batches.first?.id)
+    l.memory.update { m in
+      var ended = m.batches[0]
+      ended.id = "ended"
+      ended.rerun = false
+      m.batches.append(ended)
+    }
+    let stop = try #require(try l.store.apply(.stopRule(rule.id)))
+    try await Mapper.eventually { try l.reader.rules().isEmpty }
+    try await Mapper.eventually { l.memory.value.batches.allSatisfy { !$0.rerun } }
+    l.store.undo(stop)
+    try await Mapper.eventually { try l.reader.rules().count == 1 }
+    try await Mapper.eventually { l.memory.value.batches.first { $0.id == live }?.rerun == true }
+    #expect(l.memory.value.batches.first { $0.id == "ended" }?.rerun == false)
+    let ctx = try await l.a.observer.authorContext()
+    var late = ""
+    let blob = try l.a.observer.stamps.build(ctx) { o throws(AuthorError) in
+      late = try o.ingest(payload: Self.payload(Row(raw: "TAILSCALE INC", minor: 18_00, day: 9), n: 78), ingestID: String(repeating: "d", count: 64))
+    }
+    try await l.a.outbox.enqueue(try #require(blob).ops)
+    try await l.a.observer.reproject()
+    l.memory.update { m in for i in m.batches.indices where m.batches[i].id == live { m.batches[i].cursor = -1 } }
+    #expect(try l.row(late)?.category == nil)
+    #expect(await l.author.followUp())
+    #expect(try l.row(late)?.categorySource == "rule")
+    #expect(try l.row(late)?.category == "subscriptions")
+  }
+
   @Test func undoAllInSortedForYouKeepsRowsInReviewAfterTheNextPull() async throws {
     let l = try await Self.ledger(suite: "sorting.undoall", rows: Self.tailscale, guesses: ["paypal": "shopping"])
     try l.store.apply(.categorize(l.ids["com"]![0], "subscriptions", learnRule: true, project: nil))

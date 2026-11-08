@@ -104,6 +104,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
     case prior(txn: String, prior: SortMemory.Prior)
     case rule(id: String, restore: OpAuthor.RuleDraft)
     case trust(category: String, modelTag: String?, corrections: Int)
+    case reruns(batches: [String])
   }
 
   enum Failure: Error, Equatable {
@@ -418,6 +419,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
       try await enqueueAll(blobs, auto: true)
       for inv in inverses {
         if case .trust(let c, let tag, let n) = inv { trust.uncorrected(c, modelTag: tag, by: n) }
+        if case .reruns(let batches) = inv { memory.update { $0.resumeReruns(batches) } }
       }
       try keepPriors(inverses)
     }
@@ -495,7 +497,7 @@ nonisolated struct LedgerEditAuthor: Sendable {
         case .rule(let id, let restore):
           guard let version = ruleVersions[id] else { continue }
           try a.rule(id: id, parentVersion: version, restore)
-        case .trust, .prior:
+        case .trust, .prior, .reruns:
           continue
         case .category(let t, let c, let review):
           guard let row = rows[t], row.category != c || row.needsReview != review || row.split else { continue }

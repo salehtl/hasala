@@ -232,8 +232,8 @@ nonisolated extension LedgerEditAuthor {
     d.removed = true
     let draft = d
     try await build { a throws(AuthorError) in try a.rule(id: id, parentVersion: snapshot.version, draft) }
-    memory.update { $0.stopReruns(ruleID: id) }
-    return [.rule(id: id, restore: snapshot.draft)]
+    let stopped = memory.update { $0.stopReruns(ruleID: id) }
+    return [.rule(id: id, restore: snapshot.draft), .reruns(batches: stopped)]
   }
 
   func followUp() async -> Bool {
