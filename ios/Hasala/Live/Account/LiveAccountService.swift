@@ -646,6 +646,7 @@ final class LiveAccountService: AccountService {
         try await guarded(.sessionLogoutAll, "/api/v1/auth/logout-all", factor: factor, binding: b, action: action)
         try? env.secrets.deleteSession()
         signIn = nil
+        hooks.forgetHomeLayout()
         await left()
       case .freeze:
         try await guarded(.accountFreeze, "/api/v1/account/freeze/now", factor: factor, binding: b, action: action)
@@ -809,6 +810,7 @@ final class LiveAccountService: AccountService {
     await AccountSignIn.signOut(env)
     endUnlockOffer()
     signIn = nil
+    hooks.forgetHomeLayout()
     await left()
   }
 
@@ -911,6 +913,7 @@ struct LiveAccountHooks {
   var resume: @MainActor () async -> Void = {}
   /// This iPhone left the account (signed out, removed, deleted): close the runtime.
   var left: @MainActor () async -> Void = {}
+  var forgetHomeLayout: @MainActor () -> Void = {}
   /// This iPhone holds the data of the account at this address, and a signup or a
   /// sign-in to another account was asked for: show the "Remove this iPhone's data" wall.
   var otherAccountHere: @MainActor (_ email: String?) -> Void = { _ in }

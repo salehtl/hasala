@@ -5,6 +5,7 @@ import CoreSync
 import CoreTime
 import Foundation
 import HasalaKeychain
+import HasalaModels
 import Testing
 
 @testable import Hasala
@@ -351,6 +352,35 @@ struct LiveAccountServiceTests {
     await a.endSessionKeepingData()
     #expect(try env.secrets.session()?.pending_logout == true)
     #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
+  @Test func onlySigningOutOnPurposeForgetsTheHomeLayout() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let log = MailGrantEndsTests.Log()
+    a.hooks = LiveAccountHooks(left: { log.add("left") }, forgetHomeLayout: { log.add("layout") })
+    await a.endSessionKeepingData()
+    #expect(log.all.isEmpty)
+    await a.signOut()
+    #expect(log.all == ["layout", "left"])
+  }
+
+  @Test func anEndedSessionLeavesTheHomeLayoutForTheNextSignIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let boot = BootController(
+      env: AppEnvironment(
+        build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"), account: env,
+        keychain: KeychainSecretStore(accessGroup: nil, api: InMemoryKeychainAPI()), installCheck: .done, secretsInMemory: false,
+        hasPasscode: { true }))
+    let layouts = HomeLayoutStore(account: "test-\(UUID().uuidString)")
+    defer { layouts.forget() }
+    layouts.save(HomeLayout([HomeLayout.Entry(.today)]))
+    boot.phaseChanged(.signedOut)
+    #expect(layouts.load()?.ids == ["today"])
   }
 
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {

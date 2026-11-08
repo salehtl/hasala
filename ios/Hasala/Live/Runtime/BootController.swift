@@ -105,6 +105,10 @@ final class BootController {
       pause: { [weak self] in await self?.runtime?.holdWork() },
       resume: { [weak self] in await self?.runtime?.resumeWork() },
       left: { [weak self] in await self?.left() },
+      forgetHomeLayout: { [weak self] in
+        self?.app?.forgetHomeLayout()
+        HomeLayoutStore.forgetAll()
+      },
       otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) },
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
@@ -211,8 +215,6 @@ final class BootController {
       if case .needsUnlock? = previous, phase == .ready { LocalAccountData.markSetupFinished() }
       openRuntimeIfNeeded()
     case .signedOut:
-      app?.forgetHomeLayout()
-      HomeLayoutStore.forgetAll()
       let secrets = env.account.secrets
       LocalAccountData.forgetIfNoAccount(binding: { try secrets.binding() })
       Task { await closeRuntime() }
