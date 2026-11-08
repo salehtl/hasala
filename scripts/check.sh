@@ -312,6 +312,7 @@ PG_STOP=""
 PG_LOG="$(mktemp "${TMPDIR:-/tmp}/hasala-check-pg.XXXXXX")"
 # Real-corpus counts from step 4.
 REAL_GO="$(mktemp)"
+REAL_ORACLE="$(mktemp)"
 # Step 4's `go test -json` streams (server/ and server/oracle/), which step 6
 # checks the conformance packages against, and step 6's `go test -list`. Step 6
 # relies on step 4 running every test exactly as a run of its own would (only
@@ -325,7 +326,7 @@ cleanup() {
 	if [[ -n "$PG_STOP" && -x "$PG_STOP" ]]; then
 		"$PG_STOP" || true
 	fi
-	rm -f "$REAL_GO" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
+	rm -f "$REAL_GO" "$REAL_ORACLE" "$GO_RECORD" "$ORACLE_RECORD" "$GO_LIST"
 	if [[ "$status" -eq 0 ]]; then
 		rm -f "$PG_LOG"
 	else
@@ -391,7 +392,6 @@ go test -count=1 -p "$JOBS" -skip "$skip_re" -json ./... 2>&1 | tee "$GO_RECORD"
 
 # The oracle module (spec 02 §4.3): the frozen v1 reference packages and the
 # corpus gates. Its real-corpus tests are counted with the server's.
-REAL_ORACLE="$(mktemp)"
 step "oracle: go vet ./... and go test ./..."
 (
 	cd oracle
@@ -400,7 +400,6 @@ step "oracle: go vet ./... and go test ./..."
 )
 read -r s_ran s_skipped <"$REAL_GO"
 read -r o_ran o_skipped <"$REAL_ORACLE"
-rm -f "$REAL_ORACLE"
 echo "$((s_ran + o_ran)) $((s_skipped + o_skipped))" >"$REAL_GO"
 
 # --- 5. the assist worker -----------------------------------------------------------

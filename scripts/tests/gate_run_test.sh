@@ -40,6 +40,7 @@ run)
 	exit 0
 	;;
 vet)
+	[ "$side" = oracle ] && exit "${STUB_ORACLE_VET_RC:-0}"
 	exit 0
 	;;
 test) ;;
@@ -52,6 +53,10 @@ case " $* " in
 	printf '{"Action":"output","Package":"%s","Output":"%s\\n"}\n{"Action":"pass","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 	;;
 *" -skip "*)
+	if [ "$side" = oracle ] && [ -n "${STUB_ORACLE_TEST_FAILS:-}" ]; then
+		printf '{"Action":"fail","Package":"%s","Test":"%s"}\n{"Action":"fail","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
+		exit 1
+	fi
 	printf '{"Action":"pass","Package":"%s","Test":"%s"}\n{"Action":"pass","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 	;;
 *" -v "*)
@@ -147,6 +152,28 @@ fresh
 gate "a CI run with no HEAD^1" 1 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$work/summary"
 says "no base commit"
 lacks "check: OK"
+
+leftovers() {
+	local left
+	left="$(find "$work/tmp" -maxdepth 1 -type f -name 'tmp.*')"
+	if [[ -z "$left" ]]; then echo "ok   ...and leaves no temporary file"; else
+		echo "FAIL temporary files left behind:"
+		sed 's/^/     /' <<<"$left"
+		failures=$((failures + 1))
+	fi
+}
+
+fresh
+gate "a failing oracle go test" 1 STUB_ORACLE_TEST_FAILS=1
+leftovers
+
+fresh
+gate "a failing oracle go vet" 1 STUB_ORACLE_VET_RC=1
+leftovers
+
+fresh
+gate "a passing run" 0
+leftovers
 
 if ((failures)); then
 	echo "$failures gate run case(s) failed"
