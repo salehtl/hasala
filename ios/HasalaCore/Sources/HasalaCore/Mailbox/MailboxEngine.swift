@@ -291,6 +291,7 @@ public actor MailboxEngine {
   public private(set) var stopped = false
   public private(set) var disconnectsWaiting = 0
   private var retiresRunning: Set<String> = []
+  private var retiresNotRecorded: Set<String> = []
   private var lastStatus: MailboxStatus?
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
@@ -652,7 +653,9 @@ public actor MailboxEngine {
   private func runRetire(_ plan: MailboxRetirePlan) async -> RetireRun {
     guard retiresRunning.insert(plan.grantID).inserted else { return .notHeld }
     defer { retiresRunning.remove(plan.grantID) }
-    if let held = try? await store.pendingRetires(), !held.contains(plan) { return .notHeld }
+    if !retiresNotRecorded.contains(plan.grantID), let held = try? await store.pendingRetires(), !held.contains(plan) {
+      return .notHeld
+    }
     do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch { return .failed }
     await endRetire(plan)
     return .authored
@@ -661,10 +664,16 @@ public actor MailboxEngine {
   private func beginRetire(_ plan: MailboxRetirePlan) async {
     var c = MailboxCommit()
     c.beginRetire = plan
-    try? await store.commit(c)
+    do {
+      try await store.commit(c)
+      retiresNotRecorded.remove(plan.grantID)
+    } catch {
+      retiresNotRecorded.insert(plan.grantID)
+    }
   }
 
   private func endRetire(_ plan: MailboxRetirePlan) async {
+    retiresNotRecorded.remove(plan.grantID)
     var c = MailboxCommit()
     c.endRetire = plan
     try? await store.commit(c)
@@ -721,6 +730,7 @@ public actor MailboxEngine {
           _ = await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, CycleReport(), clearReader: true)
           return .disconnectedRemoveFailed
         }
+        retiresNotRecorded.remove(plan.grantID)
       }
       var c = MailboxCommit()
       c.clearAll = true

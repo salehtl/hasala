@@ -6,10 +6,12 @@ import Testing
 actor UnreadableStateStore: MailboxPersistence {
   let base: any MailboxPersistence
   var failing = false
+  var retireWriteFails = false
 
   init(_ base: any MailboxPersistence) { self.base = base }
 
   func setFailing(_ v: Bool) { failing = v }
+  func setRetireWriteFails(_ v: Bool) { retireWriteFails = v }
 
   func loadState() async throws(MailboxPersistenceError) -> MailboxState {
     if failing { throw MailboxPersistenceError("read") }
@@ -20,7 +22,10 @@ actor UnreadableStateStore: MailboxPersistence {
   }
   func staged(limit: Int) async throws(MailboxPersistenceError) -> [ParsedMail] { try await base.staged(limit: limit) }
   func stagedCount() async throws(MailboxPersistenceError) -> Int { try await base.stagedCount() }
-  func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) { try await base.commit(c) }
+  func commit(_ c: MailboxCommit) async throws(MailboxPersistenceError) {
+    if retireWriteFails, c.beginRetire != nil { throw MailboxPersistenceError("write") }
+    try await base.commit(c)
+  }
   func setAsideRecords() async throws(MailboxPersistenceError) -> [SetAsideRecord] { try await base.setAsideRecords() }
   func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord] { try await base.unreadableRecords() }
   func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow] { try await base.bankHealth() }

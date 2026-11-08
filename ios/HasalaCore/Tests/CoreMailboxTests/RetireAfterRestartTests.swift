@@ -167,3 +167,74 @@ import Testing
     #expect(await rig.ledger.retired == [plan])
   }
 }
+
+@Suite struct RetireNotRecordedTests {
+  let helper = GmailAddressSwitchTests()
+  let otherLane = MailboxRetirePlan(grantID: "00000000-0000-4000-8000-000000000001/mbx-other", provider: "outlook", legacy: false, total: 3, edited: 0)
+
+  func rigThatCannotRecord() async throws -> Rig {
+    var wrapped: UnreadableStateStore?
+    let rig = Rig(wrapStore: { base in
+      let store = UnreadableStateStore(base)
+      wrapped = store
+      return store
+    })
+    try await #require(wrapped).setRetireWriteFails(true)
+    return rig
+  }
+
+  func connectedReplacing(_ rig: Rig) async throws {
+    let r = await rig.engine.connect(
+      presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90, replacing: true, retiring: otherLane)
+    #expect(r == .connected(address: SyntheticMail.defaultTo))
+    #expect(try await rig.store.pendingRetires().isEmpty)
+  }
+
+  @Test func anAddressSwitchWhoseRemoveCouldNotBeRecordedStillRemoves() async throws {
+    let rig = try await rigThatCannotRecord()
+    await helper.signedOutWithImports(rig, total: 7, edited: 2)
+    let plan = try #require(await rig.engine.retirePlan())
+    let flushes = await rig.ledger.flushes
+    #expect(
+      await helper.connect(rig, SwitchAsks(.remove))
+        == .connected(address: helper.other, anotherAddress: true, retired: .removed(7)))
+    #expect(await rig.ledger.retired == [plan])
+    #expect(await rig.ledger.flushes > flushes)
+  }
+
+  @Test func aProviderSwitchWhoseRemoveCouldNotBeRecordedStillRemovesOnce() async throws {
+    let rig = try await rigThatCannotRecord()
+    try await connectedReplacing(rig)
+    #expect(await rig.engine.retire(otherLane) == .removed(3))
+    #expect(await rig.ledger.retired == [otherLane])
+    #expect(await rig.engine.retire(otherLane) == .removed(3))
+    #expect(await rig.ledger.retired == [otherLane])
+  }
+
+  @Test func aCycleBeforeTheRemoveDoesNotCountAsFinishingIt() async throws {
+    let rig = try await rigThatCannotRecord()
+    try await connectedReplacing(rig)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.ledger.retired.isEmpty)
+    #expect(await rig.engine.retire(otherLane) == .removed(3))
+    #expect(await rig.ledger.retired == [otherLane])
+  }
+
+  @Test func aRemoveThatCouldNotBeRecordedAndThenFailsSaysItFailed() async throws {
+    let rig = try await rigThatCannotRecord()
+    try await connectedReplacing(rig)
+    await rig.ledger.setRetireFails(true)
+    #expect(await rig.engine.retire(otherLane) == .failed)
+    await rig.ledger.setRetireFails(false)
+    _ = await rig.restarted().runCycle(trigger: .launch)
+    #expect(await rig.ledger.retired.isEmpty)
+  }
+
+  @Test func aDisconnectWhoseRemoveCouldNotBeRecordedStillRemoves() async throws {
+    let rig = try await rigThatCannotRecord()
+    await rig.connectAndActivate()
+    let plan = try #require(await rig.engine.retirePlan())
+    #expect(await rig.engine.disconnect(removing: plan) == .removed(plan.total))
+    #expect(await rig.ledger.retired == [plan])
+  }
+}
