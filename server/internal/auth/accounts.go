@@ -165,25 +165,6 @@ func accountByEmail(ctx context.Context, q querier, emailNorm string) (accountSt
 type AccountStatus struct {
 	Suspended bool
 	Frozen    bool
-	FrozenBy  string
-}
-
-// Status reads an account's suspension and freeze.
-func (a *Accounts) Status(ctx context.Context, userID uuid.UUID) (AccountStatus, error) {
-	var (
-		status string
-		frozen *time.Time
-		by     *string
-	)
-	if err := a.Pool.QueryRow(ctx, `SELECT status, frozen_at, frozen_by FROM users WHERE id = $1`, userID).
-		Scan(&status, &frozen, &by); err != nil {
-		return AccountStatus{}, fmt.Errorf("auth: account status: %w", err)
-	}
-	out := AccountStatus{Suspended: status == "suspended", Frozen: frozen != nil}
-	if by != nil {
-		out.FrozenBy = *by
-	}
-	return out, nil
 }
 
 // normEmail applies email_norm, mapping a refusal to ErrBadEmail.
