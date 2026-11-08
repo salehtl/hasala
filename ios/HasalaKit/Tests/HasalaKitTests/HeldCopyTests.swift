@@ -55,6 +55,40 @@ struct HeldCopyTests {
     #expect(after.needsReview == kept.needsReview)
   }
 
+  @Test func aDeclinedSamePurchaseStaysOutOfARuleAfterKeptBothAndAfterUndo() throws {
+    var s = Scenario.mayaSamePurchase.state
+    for id in ["amazon-aed", "amazon-usd"] {
+      let i = try #require(s.txns.firstIndex { $0.id == id })
+      s.txns[i].merchantGroup = "amazon"
+    }
+    let ledger = InMemoryLedger(state: s)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == false)
+
+    let keep = try #require(try ledger.apply(.resolveSamePurchase("amazon-aed", same: false)))
+    #expect(keep.title == "Kept both")
+    #expect(ledger.state.txn("amazon-aed")?.samePurchase == nil)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == true)
+
+    ledger.undo(keep)
+    #expect(ledger.state.txn("amazon-aed")?.samePurchase != nil)
+    #expect(ledger.state.txn("amazon-aed")?.ruled == false)
+    #expect(ledger.state.txn("amazon-usd")?.ruled == false)
+
+    try ledger.apply(.resolveSamePurchase("amazon-aed", same: false))
+    let kept = try #require(ledger.state.txn("amazon-aed"))
+    let rulesBefore = ledger.state.rules.count
+    try ledger.apply(.categorize("amazon-usd", "groceries", learnRule: true, project: nil))
+    #expect(ledger.state.rules.count == rulesBefore + 1)
+    #expect(ledger.state.txn("amazon-usd")?.categoryID == "groceries")
+    let after = try #require(ledger.state.txn("amazon-aed"))
+    #expect(after.categoryID == kept.categoryID)
+    #expect(after.categorySource == kept.categorySource)
+    #expect(after.ruleID == kept.ruleID)
+    #expect(after.needsReview == kept.needsReview)
+  }
+
   @Test func mergeRemovesTheCopy() throws {
     let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
     #expect(try ledger.apply(.resolveCopy("starbucks-copy", merge: true))?.title == "Merged")

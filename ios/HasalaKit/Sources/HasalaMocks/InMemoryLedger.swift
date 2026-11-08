@@ -295,6 +295,8 @@ public final class InMemoryLedger: LedgerStore {
       }
       if same {
         try editTxn(f.id) { $0.setStatedHome(a.amount.minor) }
+      } else {
+        kept.insert(id)
       }
       title = same ? "Counted once" : "Kept both"
     case .skipReview(let id):
