@@ -106,6 +106,7 @@ function setup(signal: AbortSignal): void {
   const advance = () => {
     history.push(top);
     top++;
+    lit(null);
     layout();
     if (top >= n) done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });
   };
@@ -185,7 +186,6 @@ function setup(signal: AbortSignal): void {
     await fly.finished;
     await wait(240);
     pill?.removeAttribute('data-active');
-    legend?.removeAttribute('data-active');
     card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
     next?.getAnimations().forEach((a) => a.cancel());
     advance();
