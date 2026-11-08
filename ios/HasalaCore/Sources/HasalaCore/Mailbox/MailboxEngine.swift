@@ -289,6 +289,7 @@ public actor MailboxEngine {
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
   private var firstScanRunning = false
   public private(set) var stopped = false
+  public private(set) var disconnectsWaiting = 0
   private var lastStatus: MailboxStatus?
 
   /// `tokens` must refresh through `provider.oauth` and keep the provider's Keychain item.
@@ -640,7 +641,9 @@ public actor MailboxEngine {
   public func disconnect() async -> Bool { await unlink(removing: nil) == .disconnected }
 
   private func unlink(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
-    await exclusive {
+    disconnectsWaiting += 1
+    return await exclusive {
+      disconnectsWaiting -= 1
       guard var state = try? await store.loadState() else { return .failed }
       do throws(MailboxServerError) {
         switch try await server.linkStatus(provider: provider.id) {
@@ -1571,7 +1574,7 @@ public actor MailboxEngine {
   /// Whether a run must stop at this boundary: the BGTask expired (cancellation) or the
   /// deadline's authoring margin is reached.
   func shouldStop(_ deadlineMs: Int64?) -> Bool {
-    if Task.isCancelled || stopped { return true }
+    if Task.isCancelled || stopped || disconnectsWaiting > 0 { return true }
     if let d = deadlineMs, clock.nowMs() >= d - config.authoringMarginMs { return true }
     return false
   }
@@ -1641,7 +1644,7 @@ public actor MailboxEngine {
       var token: String?
       var pages = 0
       repeat {
-        if Task.isCancelled || stopped { return (ids, false) }
+        if Task.isCancelled || stopped || disconnectsWaiting > 0 { return (ids, false) }
         let page = try await source.list(senders: group, since: sinceSec, pageToken: token)
         for id in page.ids where seen.insert(id).inserted { ids.append(id) }
         token = page.nextPageToken
