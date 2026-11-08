@@ -333,6 +333,7 @@ struct SyncTests {
     #expect(await engine.run(.silentPush).stop == nil)
     #expect(w.server.uploadCount == before)
     #expect(try a.store.syncState().latch == .chainBreak)
+    #expect(await engine.status.latch == .chainBreak)
 
     w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
     #expect(await engine.run(.refresh).stop == halted)
