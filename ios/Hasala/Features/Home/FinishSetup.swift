@@ -84,9 +84,7 @@ final class FinishSetupModel {
   private(set) var checkingAgain = false
   var checkFailure: SetupFailure?
   private(set) var checkNote: String?
-  var showingNoAlerts = false {
-    didSet { if !showingNoAlerts, !checkingAgain { checkFailure = nil } }
-  }
+  var showingNoAlerts = false
   @ObservationIgnored private var bankAlertsAfterSheet = false
   @ObservationIgnored private var requestingNotifications = false
 
@@ -204,6 +202,7 @@ final class FinishSetupModel {
   var alreadyChecking: Bool { !checkingAgain && services.mailbox.importing?.busy == true }
 
   func openNoAlerts() {
+    checkFailure = nil
     checkNote = nil
     showingNoAlerts = true
   }

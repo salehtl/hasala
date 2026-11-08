@@ -421,7 +421,7 @@ struct FinishSetupTests: AccountSuite {
     #expect(mailbox.scans == 1 && m.checkNote == FinishSetupModel.alreadyCheckingLine(.gmail) && m.showingNoAlerts)
   }
 
-  @Test func aFailureThatLandsAfterTheSheetWentWaitsForTheNextOpen() async {
+  @Test func aCheckThatStopsAfterTheSheetWentShowsTheStoppedRowAndLeavesNoBannerForLater() async {
     let mailbox = CountingMailbox(readMailbox())
     let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
     mailbox.scanStream = stream
@@ -433,16 +433,38 @@ struct FinishSetupTests: AccountSuite {
     let check = Task { await m.checkAgain() }
     while !m.checkingAgain { await Task.yield() }
     m.showingNoAlerts = false
-    scan.yield(ScanProgress(phase: .failed("Gmail stopped answering"), read: 0, total: 0))
+    mailbox.laneRows = [MockMailbox.needingSignIn(MockMailbox.gmail)]
+    scan.yield(ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: 0, total: 0))
     scan.finish()
     await check.value
-    #expect(m.checkFailure == .failed("Gmail stopped answering"))
+    m.refresh()
+    #expect(!m.noAlerts && m.isDone(.bankAlerts))
+    #expect(m.stoppedMailbox?.id == MockMailbox.gmail.id && !m.isDone(.readingStopped))
+    mailbox.laneRows = nil
+    m.refresh()
+    #expect(m.noAlerts && !m.isDone(.bankAlerts) && m.stoppedMailbox == nil)
     m.openNoAlerts()
-    #expect(m.showingNoAlerts && m.checkFailure == .failed("Gmail stopped answering"))
+    #expect(m.showingNoAlerts && m.checkFailure == nil)
+  }
+
+  @Test func aSheetReopenedDuringTheCheckShowsTheFailure() async {
+    let mailbox = CountingMailbox(readMailbox())
+    let (stream, scan) = AsyncStream<ScanProgress>.makeStream()
+    mailbox.scanStream = stream
+    let s = AccountServices(account: MockAccountService(existing: .passkey, signedIn: true), mailbox: mailbox,
+                            setup: MockSetupAuthoring(), notifications: MockNotificationPermission())
+    let m = FinishSetupModel(services: s)
+    m.refresh(hasTransactions: false)
+    m.openNoAlerts()
+    let check = Task { await m.checkAgain() }
+    while !m.checkingAgain { await Task.yield() }
     m.showingNoAlerts = false
-    #expect(m.checkFailure == nil)
     m.openNoAlerts()
-    #expect(m.checkFailure == nil)
+    mailbox.laneRows = [MockMailbox.needingSignIn(MockMailbox.gmail)]
+    scan.yield(ScanProgress(phase: .failed("Reading your bank alerts stopped. Try again."), read: 0, total: 0))
+    scan.finish()
+    await check.value
+    #expect(m.showingNoAlerts && m.checkFailure == .failed("Reading your bank alerts stopped. Try again."))
   }
 
   @Test func aFailureSeenInTheSheetGoesWithIt() async {

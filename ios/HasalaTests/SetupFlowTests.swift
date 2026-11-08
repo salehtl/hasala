@@ -387,6 +387,7 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var cancelGmail = false
   @ObservationIgnored var scanEndsAtOnce = false
   @ObservationIgnored var scanStream: AsyncStream<ScanProgress>?
+  @ObservationIgnored var laneRows: [MailboxSnapshot]?
   /// The link a relaunch remembers before the lane's rows are read.
   @ObservationIgnored var linkedOverride: MailProviderKind?
   /// The account's link held by another iPhone (live: a new install or a recovered account).
@@ -402,7 +403,7 @@ final class CountingMailbox: MailboxConnecting {
 
   var connectable: [MailProviderKind] { base.connectable }
   var capabilities: MailboxCapabilities { base.capabilities }
-  var mailboxes: [MailboxSnapshot] { base.mailboxes }
+  var mailboxes: [MailboxSnapshot] { laneRows ?? base.mailboxes }
   var offer: MailOffer? { offerOverride ?? base.offer }
   var linkedProvider: MailProviderKind? { linkedOverride ?? base.linkedProvider }
   var offersSampleData: Bool { base.offersSampleData }
@@ -433,5 +434,5 @@ final class CountingMailbox: MailboxConnecting {
   }
   func loadSampleData() async throws(SetupFailure) { try await base.loadSampleData() }
   var importing: MailImport? { base.importing }
-  var firstScanFinished: Bool { base.firstScanFinished }
+  var firstScanFinished: Bool { laneRows.map { $0.contains { $0.state == .connected } } ?? base.firstScanFinished }
 }
