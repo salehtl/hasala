@@ -261,6 +261,10 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 		return SignedIn{}, err
 	}
 	defer pgtx.Rollback(ctx, tx)
+	st, err := readAccount(ctx, tx, *userID, true)
+	if err != nil {
+		return SignedIn{}, fmt.Errorf("%w: %v", ErrResetRefused, err)
+	}
 	var approvedSession []byte
 	err = tx.QueryRow(ctx,
 		`UPDATE password_reset_ceremonies SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL
@@ -271,10 +275,6 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	}
 	if err != nil {
 		return SignedIn{}, err
-	}
-	st, err := readAccount(ctx, tx, *userID, true)
-	if err != nil {
-		return SignedIn{}, fmt.Errorf("%w: %v", ErrResetRefused, err)
 	}
 	if !st.active() || !st.hasPassword() || st.frozen() {
 		return SignedIn{}, fmt.Errorf("%w: the account is no longer eligible", ErrResetRefused)

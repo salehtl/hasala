@@ -362,8 +362,8 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
 	var held purgeledger.Held
 	err = w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
-		if err := lockUser(ctx, tx, userID); err != nil {
-			return err
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR KEY SHARE`, userID); err != nil {
+			return fmt.Errorf("auth: revoke: lock the account: %w", err)
 		}
 		var revoked *time.Time
 		err := tx.QueryRow(ctx,
