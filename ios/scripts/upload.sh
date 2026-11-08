@@ -110,11 +110,22 @@ if ! hasala_record_build "$build_root" "$build"; then
 	echo "upload: cannot record build $build in $last_file; not uploading" >&2
 	exit 21
 fi
+upload_state() {
+	printf '%s\n' "$1" >"$out/upload-state.tmp" && mv -f -- "$out/upload-state.tmp" "$out/upload-state"
+}
+if ! upload_state uploading; then
+	echo "upload: cannot write $out/upload-state; not uploading" >&2
+	exit 21
+fi
 echo "upload: build $build recorded in $last_file; uploading (this waits for processing)"
-if ! xcrun altool --upload-package "$ipa" "${auth[@]}" --wait --output-format json >"$out/upload.json"; then
+altool_rc=0
+xcrun altool --upload-package "$ipa" "${auth[@]}" --wait --output-format json >"$out/upload.json" || altool_rc=$?
+if ((altool_rc != 0)); then
+	upload_state "failed $altool_rc" || echo "upload: cannot write $out/upload-state" >&2
 	cat "$out/upload.json" >&2
 	echo "upload: upload failed; build $build stays recorded, so archive a new build rather than re-upload this one" >&2
 	exit 60
 fi
+upload_state uploaded || echo "upload: cannot write $out/upload-state" >&2
 cat "$out/upload.json"
 echo "upload: done; build $build uploaded"
