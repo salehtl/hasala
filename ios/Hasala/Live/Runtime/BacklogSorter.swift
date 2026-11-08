@@ -483,14 +483,19 @@ actor BacklogSorter {
         apply(result)
       }
       if Task.isCancelled || generation != id { return }
-      guard let r = result, !r.pass.failed else {
+      let failed = result?.pass.failed ?? true
+      if failed {
         failures += 1
         if failures >= Self.maxFailures { return end(.failed) }
+      }
+      guard let r = result, !failed || r.pass.stop != nil else {
         await wake.wait(Self.idleWait, sleep: sleep)
         continue
       }
-      passes += 1
-      failures = 0
+      if !failed {
+        passes += 1
+        failures = 0
+      }
       let decided = BacklogSort.next(after: r.pass, importRunning: await importRunning(), backoffs: backoffs, nowMs: nowMs())
       if Task.isCancelled || generation != id { return }
       backoffs = decided.backoffs

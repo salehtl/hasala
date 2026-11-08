@@ -47,11 +47,15 @@ public enum BacklogSort {
   public struct Interrupted: Error, Sendable {
     public let memo: Memo
     public let calls: Int
+    public let stop: Stop?
 
-    public init(memo: Memo, calls: Int = 0) {
+    public init(memo: Memo, calls: Int = 0, stop: Stop? = nil) {
       self.memo = memo
       self.calls = calls
+      self.stop = stop
     }
+
+    public var pass: Pass { .failed(memo, calls: calls, stop: stop) }
   }
 
   public enum Stop: String, Sendable, Equatable, Codable {
@@ -80,8 +84,8 @@ public enum BacklogSort {
       self.settled = settled
     }
 
-    public static func failed(_ memo: Memo, calls: Int = 0) -> Pass {
-      Pass(suggestions: [], memo: memo, pending: 0, calls: calls, stop: nil, failed: true)
+    public static func failed(_ memo: Memo, calls: Int = 0, stop: Stop? = nil) -> Pass {
+      Pass(suggestions: [], memo: memo, pending: 0, calls: calls, stop: stop, failed: true)
     }
   }
 
@@ -291,7 +295,7 @@ public enum BacklogSort {
           try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
           try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
         } catch {
-          throw Interrupted(memo: memo, calls: calls)
+          throw Interrupted(memo: memo, calls: calls, stop: stop)
         }
         keep += r.suggestions.filter { work.rejected[$0.subject]?.contains($0.category) == true }
       }
@@ -300,7 +304,7 @@ public enum BacklogSort {
       try cache.dropKept(work.stale.map { (subject: $0, modelTag: tag) })
       try cache.keepAnswers(keep)
     } catch {
-      throw Interrupted(memo: memo, calls: calls)
+      throw Interrupted(memo: memo, calls: calls, stop: stop)
     }
     let suggestions = work.queued.compactMap { q -> ModelSuggestionSweep.Suggestion? in
       guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version, !q.row.rejects(a.category)
@@ -331,7 +335,7 @@ public enum BacklogSort {
       let blobs = try stamps.categorizations(items, context: fresh.context)
       return (blobs, p, Filing(items))
     } catch {
-      throw Interrupted(memo: p.memo, calls: p.calls)
+      throw Interrupted(memo: p.memo, calls: p.calls, stop: p.stop)
     }
   }
 
@@ -340,6 +344,8 @@ public enum BacklogSort {
     public var filing: Filing
     public var failed: Bool
     public var authored: Bool
+
+    public var outcome: Pass { failed ? .failed(pass.memo, calls: pass.calls, stop: pass.stop) : pass }
   }
 
   public static func run(
@@ -370,7 +376,7 @@ public enum BacklogSort {
         return Committed(pass: p, filing: c.filing, failed: failed, authored: !blobs.isEmpty)
       }
     } catch {
-      throw Interrupted(memo: p.memo, calls: p.calls)
+      throw Interrupted(memo: p.memo, calls: p.calls, stop: p.stop)
     }
   }
 

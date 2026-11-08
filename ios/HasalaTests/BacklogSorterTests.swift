@@ -313,6 +313,49 @@ struct BacklogSorterTests {
     #expect(saved.value.filedHere == ["a": 2])
   }
 
+  func failing(_ script: Script, _ saved: Saved, sleeps: Sleeps, clock: Clock = Clock()) -> BacklogSorter {
+    BacklogSorter(
+      pass: { memo, left in
+        guard var r = await script.run(memo, left) else { return nil }
+        if let stop = r.pass.stop { r.pass = .failed(r.pass.memo, calls: r.pass.calls, stop: stop) }
+        return r
+      }, store: saved.store, nowMs: clock.now, appActive: { true }, importRunning: { false }, enabled: { true }, network: Net(),
+      sleep: sleeps.sleep)
+  }
+
+  @Test func aRateLimitedPassThatCouldNotWriteWaitsOutTheLimit() async {
+    let saved = Saved()
+    let script = Script([(3, 1, BacklogSort.Stop.rateLimited), (0, 1, nil)])
+    let sleeps = Sleeps()
+    let s = failing(script, saved, sleeps: sleeps)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == 2 && saved.run?.phase == .done && saved.run?.reason == nil)
+    #expect(sleeps.all == [.milliseconds(BacklogSort.backoffMs[0])])
+  }
+
+  @Test func aBusyPassThatCouldNotWritePausesForTheService() async {
+    let saved = Saved()
+    let clock = Clock()
+    let script = Script([(3, 1, BacklogSort.Stop.busy)])
+    let s = failing(script, saved, sleeps: Sleeps(), clock: clock)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == 1 && saved.run?.phase == .paused && saved.run?.reason == .busy)
+    #expect(saved.run?.untilMs == clock.now() + BacklogSort.busyPauseMs)
+  }
+
+  @Test func limitedPassesThatKeepFailingToWriteStillEndTheRun() async {
+    let saved = Saved()
+    let script = Script(Array(repeating: (3, 1, BacklogSort.Stop.rateLimited), count: 5))
+    let sleeps = Sleeps()
+    let s = failing(script, saved, sleeps: sleeps)
+    await s.ensure(retry: true)
+    await s.finished()
+    #expect(script.passes == BacklogSorter.maxFailures && saved.run?.reason == .failed)
+    #expect(sleeps.all == BacklogSort.backoffMs.prefix(2).map { .milliseconds($0) })
+  }
+
   @Test func theForegroundSweepSharesTheDayLedgerAndStopsAtTheCaps() async {
     let clock = Clock()
     let saved = Saved(BacklogRunRecord(day: Array(repeating: BacklogSorterTests.start - 10, count: 390)))

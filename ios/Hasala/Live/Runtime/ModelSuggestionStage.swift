@@ -102,12 +102,9 @@ struct ModelSuggestionStage: Sendable {
           trusts: trusts, mayAsk: appActive, stamps: observer.stamps, serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
-        guard !r.failed else {
-          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: r.filing)
-        }
-        return .init(pass: r.pass, filing: r.filing)
+        return .init(pass: r.outcome, filing: r.filing)
       } catch let e as BacklogSort.Interrupted {
-        return .init(pass: .failed(e.memo, calls: e.calls))
+        return .init(pass: e.pass)
       } catch {
         return nil
       }
