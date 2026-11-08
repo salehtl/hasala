@@ -351,6 +351,49 @@ struct LiveAccountServiceTests {
     #expect(server.unfreezeCalls == 0)
   }
 
+  @Test func aSessionThatCannotBeReadKeepsTheCheckAndTheSession() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    _ = try await Self.signUp(server, env)
+    let held = try #require(try env.secrets.session())
+    var signedOut = 0
+    let account = LiveAccountService(env: env)
+    account.hooks.left = { signedOut += 1 }
+    let session = AccountSession(
+      services: AccountServices(
+        account: account, mailbox: MockMailbox(offersSampleData: false), setup: MockSetupAuthoring(),
+        notifications: MockNotificationPermission()),
+      phase: .checking)
+
+    store.fault = .session
+    await session.resume()
+    #expect(session.phase == .checking)
+    #expect(session.resumeFailure == .offline)
+    #expect(signedOut == 0)
+
+    store.fault = .none
+    #expect(try env.secrets.session() == held)
+    _ = try await env.client.session(bearer: held.token)
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+    #expect(session.resumeFailure == nil)
+  }
+
+  @Test func aMissingOrLoggedOutSessionIsStillRefusedOnResume() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let account = LiveAccountService(env: env)
+
+    var pending = try #require(try env.secrets.session())
+    pending.pending_logout = true
+    try env.secrets.writeSession(pending)
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+
+    try env.secrets.deleteSession()
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+  }
+
   @Test func aBindingThatCannotBeReadCountsAsKeysOnThisIPhone() {
     let (env, store) = Self.faultyPhone(MiniHasalad(invite: Self.invite))
     let a = LiveAccountService(env: env)
@@ -472,7 +515,7 @@ struct LiveAccountServiceTests {
 }
 
 nonisolated final class FaultySecrets: SecretStore {
-  enum Fault { case none, binding, epochKey }
+  enum Fault { case none, binding, epochKey, session }
 
   private let inner = MemorySecretStore()
   private let current = Mutex(Fault.none)
@@ -484,7 +527,7 @@ nonisolated final class FaultySecrets: SecretStore {
 
   func read(_ item: SecretItem) throws(SecretStoreError) -> Data? {
     switch (item, fault) {
-    case (.accountBinding, .binding), (.epochKey, .epochKey): throw .failed(status: -26276)
+    case (.accountBinding, .binding), (.epochKey, .epochKey), (.session, .session): throw .failed(status: -26276)
     default: return try inner.read(item)
     }
   }

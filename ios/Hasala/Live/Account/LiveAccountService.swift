@@ -376,7 +376,9 @@ final class LiveAccountService: AccountService {
   /// tell a sign-in killed before unlock from a C1 killed before its bootstrap, so the
   /// server's `has_keys` decides (and its PRF wraps whether Face ID can unlock).
   func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
-    guard let s = try? env.secrets.session(), !s.pending_logout else { throw .refused }
+    let stored: SessionRecord?
+    do { stored = try env.secrets.session() } catch { throw .offline }
+    guard let s = stored, !s.pending_logout else { throw .refused }
     let a: AccountInfo
     do {
       a = try await env.client.account(bearer: s.token)
