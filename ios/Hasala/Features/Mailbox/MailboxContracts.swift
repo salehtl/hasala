@@ -74,6 +74,13 @@ enum MailConnectFailure: Error, Equatable {
     }
   }
 
+  var hasScreen: Bool {
+    switch self {
+    case .cancelled, .noMailbox, .permissionMissing: true
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
+    }
+  }
+
   static func permissionMissingLine(_ provider: MailProviderKind) -> String {
     switch provider {
     case .gmail: "Hasala needs \u{201C}View your email messages and settings\u{201D} ticked. Try again and tick it."

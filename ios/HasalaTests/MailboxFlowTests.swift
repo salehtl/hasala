@@ -431,6 +431,30 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
+  @Test func aPermissionNotGivenHasItsScreenFromTheProfileToo() async {
+    let lane = mailbox()
+    lane.gmailPermissionMissing = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.errorScreen == .permissionMissing(.gmail) && c.inlineMessage == nil)
+    c.reset()
+    #expect(c.errorScreen == nil)
+    await c.retry(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1") && c.errorScreen == nil)
+  }
+
+  @Test func setupAndTheProfileGiveTheSameFailuresAScreen() {
+    let failures: [MailConnectFailure] = [
+      .cancelled, .alreadyConnected(address: "a@example.com"), .takenByOtherIPhone, .offline, .noMailbox(.gmail),
+      .noMailbox(.outlook), .permissionMissing(.gmail), .permissionMissing(.outlook), .switchDeclined, .failed("x"),
+    ]
+    for failure in failures {
+      #expect(SetupModel.showsErrorScreen(failure) == MailConnectCoordinator.hasScreen(failure, provider: .outlook), "\(failure)")
+    }
+    #expect(!MailConnectCoordinator.hasScreen(.cancelled, provider: .gmail))
+    #expect(MailConnectCoordinator.hasScreen(.permissionMissing(.gmail), provider: .gmail))
+  }
+
   /// Setup's connect screen after Back from the first scan shows the mailbox it connected
   /// (from the service, so a new screen or a relaunch shows it too) and no second sign-in;
   /// Add a mailbox never treats an earlier mailbox as this attempt's.

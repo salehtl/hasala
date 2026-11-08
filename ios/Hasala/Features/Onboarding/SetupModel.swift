@@ -413,12 +413,7 @@ final class SetupModel {
   }
 
   /// The failures with a screen of their own (Paper P2.9 row 2).
-  static func showsErrorScreen(_ f: MailConnectFailure) -> Bool {
-    switch f {
-    case .cancelled, .noMailbox, .permissionMissing: true
-    default: false
-    }
-  }
+  static func showsErrorScreen(_ f: MailConnectFailure) -> Bool { f.hasScreen }
 
   /// A connect failure as the setup banner shows it (a closed sign-in shows nothing), in
   /// the provider's words: offline, "Connect Gmail when you're back online", not setup's
