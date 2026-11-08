@@ -225,7 +225,7 @@ public struct AvatarDisc: View {
           .foregroundStyle(Color(HRGBA(42, 31, 61, 1)))
       }
       .overlay {
-        if let picture {
+        if let picture = picture?.shown(for: email) {
           picture.image
             .resizable()
             .scaledToFill()
@@ -241,7 +241,7 @@ public struct AvatarDisc: View {
         }
         let data = await pictures.load(email, pixels)
         guard !Task.isCancelled else { return }
-        let loaded = data.flatMap(AvatarPicture.init(data:))
+        let loaded = data.flatMap { AvatarPicture(data: $0, email: email) }
         if reduceMotion {
           picture = loaded
         } else {
@@ -262,15 +262,23 @@ private struct AvatarKey: Hashable {
 
 struct AvatarPicture {
   let image: Image
+  let email: String
 
-  init?(data: Data) {
+  init(image: Image, email: String) {
+    self.image = image
+    self.email = email
+  }
+
+  init?(data: Data, email: String) {
     #if canImport(UIKit)
       guard let ui = UIImage(data: data) else { return nil }
-      image = Image(uiImage: ui)
+      self.init(image: Image(uiImage: ui), email: email)
     #else
       return nil
     #endif
   }
+
+  func shown(for current: String?) -> AvatarPicture? { email == current ? self : nil }
 }
 
 public struct AvatarPictureProvider: Sendable {

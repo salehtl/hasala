@@ -7,6 +7,13 @@ import Testing
 @Suite("Shared components")
 @MainActor
 struct SharedComponentTests {
+  @Test func anAvatarPictureOnlyShowsForTheAddressItWasLoadedFor() {
+    let picture = AvatarPicture(image: Image(systemName: "person"), email: "a@example.com")
+    #expect(picture.shown(for: "a@example.com") != nil)
+    #expect(picture.shown(for: "b@example.com") == nil)
+    #expect(picture.shown(for: nil) == nil)
+  }
+
   @Test func biometryWordingFollowsTheDevice() {
     #expect(HBiometry.faceID.signInTitle == "Sign in with Face ID")
     #expect(HBiometry.touchID.signInTitle == "Sign in with Touch ID")
