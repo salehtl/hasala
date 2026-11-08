@@ -992,6 +992,17 @@ let
         fullSys.config.systemd.tmpfiles.settings.hasala-maintenance."/run/hasala-maintenance.lock".f.group
         == "hasala-db"
     ) "AT-E3 migrations must hold the maintenance lock"
+    ++ check (
+      let
+        migrate = backupOf "hasala-migrate";
+        limit = fullSys.config.services.hasala.backup.dumpTimeoutSec;
+      in
+      lib.isInt migrate.TimeoutStartSec
+      && migrate.TimeoutStartSec > limit + 600
+      &&
+        builtins.match ".*flock --no-fork /run/hasala-maintenance.lock [^ ]*/bin/timeout 600 [^ ]*/bin/hasala-retry 4 15 .*" migrate.ExecStart
+        != null
+    ) "AT-E3 waiting for the dump's lock must not count against the migration's own ten minutes"
     ++ check (lib.all (n: lib.elem n fullSys.config.security.pki.caCertificateBlacklist) [
       "Comodo AAA Services root"
       "emSign ECC Root CA - G3"

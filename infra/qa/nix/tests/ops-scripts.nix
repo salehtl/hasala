@@ -13,6 +13,7 @@ let
         enable = true;
         dir = "/hasala-test-backups";
         ageRecipients = [ recipient ];
+        dumpTimeoutSec = 2;
       };
     }).config.services.hasala.renderedScripts;
 
@@ -35,6 +36,7 @@ let
   stubs = [
     (stub "pg_dump" ''
       [ -z "''${PG_DUMP_FAIL:-}" ] || exit 1
+      [ -z "''${PG_DUMP_SLEEP:-}" ] || sleep "$PG_DUMP_SLEEP"
       printf 'synthetic dump\n'
     '')
     (stub "pg_restore" ''
@@ -162,6 +164,13 @@ pkgs.runCommand "hasala-ops-scripts"
       [ ! -e backups/hasala-premigrate-seed29.dump.age.sha256 ] || no "a failing $tag backup kept a 29 day old checksum"
       [ -e backups/hasala-daily-seed28.dump.age ] || no "a failing $tag backup deleted a 28 day old dump"
     done
+
+    scenario "a dump that outlasts its limit is stopped and publishes nothing"
+    PG_DUMP_SLEEP=20 run_backup daily
+    [ "$rc" != 0 ] || no "a dump past its limit exited 0"
+    [ "$(count 'hasala-daily-*.dump.age')" = 0 ] || no "a dump past its limit was published"
+    [ "$(count '*.part')" = 0 ] || no "a dump past its limit left a .part file"
+    [ ! -e state/last-success-daily ] || no "a dump past its limit wrote the success mark"
 
     scenario "a backup that succeeds still applies retention"
     touch -d '29 days ago' backups/hasala-daily-seed29.dump.age

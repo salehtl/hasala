@@ -296,6 +296,7 @@ let
     text = retryText;
   };
   retrying = "${lib.getExe retryScript} 4 15";
+  migrateRunSec = 600;
 
   # ------------------------------------------------------------------- backups
   offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
@@ -324,7 +325,7 @@ let
     mkfifo -m 0600 "$work/stream"
     { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
     toc_pid=$!
-    pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
+    timeout ${toString cfg.backup.dumpTimeoutSec} pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
       --format=custom --compress=zstd:6 --no-password \
       | tee "$work/stream" \
       | age ${ageRecipientFlags} -o "$out.part"
@@ -958,6 +959,11 @@ in
         default = 29;
         description = "Local copies are deleted once this many days old (≤ 29, M13).";
       };
+      dumpTimeoutSec = mkOption {
+        type = types.ints.positive;
+        default = 3600;
+        description = "The longest one pg_dump may run, in seconds. A dump holds the maintenance lock, hasala-migrate waits on that lock, and hasala-migrate's start timeout is derived from this value.";
+      };
       offsite = {
         enable = mkEnableOption "the off-site copy (rclone)";
         rcloneConfigFile = secretPath "rclone.conf for the off-site remote.";
@@ -1494,11 +1500,11 @@ in
           User = "hasala-migrate";
           Group = "hasala-migrate";
           SupplementaryGroups = [ "hasala-db" ];
-          ExecStart = "${retrying} ${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${hasalad} migrate";
+          ExecStart = "${pkgs.util-linux}/bin/flock --no-fork ${maintenanceLock} ${pkgs.coreutils}/bin/timeout ${toString migrateRunSec} ${retrying} ${hasalad} migrate";
           PrivateNetwork = true;
           RestrictAddressFamilies = [ "AF_UNIX" ];
           IPAddressDeny = "any";
-          TimeoutStartSec = "10min";
+          TimeoutStartSec = cfg.backup.dumpTimeoutSec + migrateRunSec + 300;
         };
       };
 
