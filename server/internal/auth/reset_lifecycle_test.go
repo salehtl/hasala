@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
@@ -190,4 +191,31 @@ func TestTwoResetsFinishingTogetherLeaveOnePassword(t *testing.T) {
 	if _, err := m.loginPassword(lost.r.newS, nil); !errors.Is(err, ErrPasswordRejected) {
 		t.Fatalf("the losing password: %v", err)
 	}
+}
+
+func TestAResetThatExpiresWhileItWaitsIsRefused(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	r := f.approvedReset(m, "a brand new password")
+
+	holder, err := pgtx.BeginReadCommitted(bgctx, f.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pgtx.Rollback(bgctx, holder)
+	if _, err := holder.Exec(bgctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig)
+		done <- err
+	}()
+	waitForLockWait(t, f.count)
+	f.clock.advance(ResetTTL + time.Second)
+	pgtx.Rollback(bgctx, holder)
+	if err := <-done; !errors.Is(err, ErrResetRefused) {
+		t.Fatalf("a reset past its expiry: %v", err)
+	}
+	f.assertResetDidNotFinish(m, r)
 }

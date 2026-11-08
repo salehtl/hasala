@@ -265,13 +265,15 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err != nil {
 		return SignedIn{}, fmt.Errorf("%w: %v", ErrResetRefused, err)
 	}
+	now = a.now()
 	var approvedSession []byte
 	err = tx.QueryRow(ctx,
-		`UPDATE password_reset_ceremonies SET consumed_at = $2 WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL
+		`UPDATE password_reset_ceremonies SET consumed_at = $2
+		  WHERE id = $1 AND consumed_at IS NULL AND approved_at IS NOT NULL AND expires_at > $2
 		 RETURNING approved_session`,
 		resetID, now).Scan(&approvedSession)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return SignedIn{}, fmt.Errorf("%w: already consumed", ErrResetRefused)
+		return SignedIn{}, fmt.Errorf("%w: already consumed or expired", ErrResetRefused)
 	}
 	if err != nil {
 		return SignedIn{}, err
