@@ -911,10 +911,8 @@ public actor MailboxEngine {
     let token: AccessToken
     do { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
       return await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, report)
-    } catch .notNow {
-      return report
     } catch {
-      report.haltedOn = .offline
+      report.haltedOn = Self.tokenHalt(error)
       return report
     }
     let source = await listingSource(token)
@@ -1290,6 +1288,14 @@ public actor MailboxEngine {
     return reports
   }
 
+  static func tokenHalt(_ error: MailAuthError) -> MailboxHaltCode? {
+    switch error {
+    case .reconnectRequired: .reconnectRequired
+    case .notNow: nil
+    case .offline, .revoked: .offline
+    }
+  }
+
   /// A stop that passes by itself: the next cycle may read on.
   static func passing(_ code: MailboxHaltCode) -> Bool {
     code == .gmail || code == .offline || code == .quota
@@ -1394,7 +1400,7 @@ public actor MailboxEngine {
     }
     let token: AccessToken
     do { token = try await tokens.accessToken(forceRefresh: false) } catch {
-      report.haltedOn = .reconnectRequired
+      report.haltedOn = Self.tokenHalt(error)
       return report
     }
     let (out, done) = await runImports(await listingSource(token), &state, deadlineMs: nil, paged: false, report)
