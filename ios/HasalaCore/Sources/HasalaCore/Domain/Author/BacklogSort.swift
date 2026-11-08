@@ -370,10 +370,11 @@ public enum BacklogSort {
         let blobs = try stamps.categorizations(items, context: fresh.context)
         let c = await commit(blobs, filing: Filing(items), enqueue: enqueue)
         var failed = c.failed
-        if !blobs.isEmpty {
+        let authored = c.enqueued > 0
+        if authored {
           do { try await reproject() } catch { failed = true }
         }
-        return Committed(pass: p, filing: c.filing, failed: failed, authored: !blobs.isEmpty)
+        return Committed(pass: p, filing: c.filing, failed: failed, authored: authored)
       }
     } catch {
       throw Interrupted(memo: p.memo, calls: p.calls, stop: p.stop)
@@ -382,17 +383,17 @@ public enum BacklogSort {
 
   public static func commit(
     _ blobs: [AuthoredBlob], filing: Filing, enqueue: (AuthoredBlob) async throws -> Void
-  ) async -> (filing: Filing, failed: Bool) {
+  ) async -> (filing: Filing, failed: Bool, enqueued: Int) {
     var done: [AuthoredBlob] = []
     for b in blobs {
       do {
         try await enqueue(b)
       } catch {
-        return (filing.only(done), true)
+        return (filing.only(done), true, done.count)
       }
       done.append(b)
     }
-    return (filing, false)
+    return (filing, false, done.count)
   }
 
   public static func next(after p: Pass, importRunning: Bool, backoffs: Int, nowMs: Int64) -> (next: Next, backoffs: Int) {

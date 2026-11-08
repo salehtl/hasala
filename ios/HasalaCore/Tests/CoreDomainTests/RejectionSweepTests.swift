@@ -560,6 +560,22 @@ extension RejectionSweepTests {
       reread: { (snapshot.rows(), snapshot.context()) }, enqueue: { _ in }, reproject: { throw Boom() })
     #expect(r.authored && r.failed)
   }
+
+  @Test("a bulk sort says it authored only when a blob reached the outbox")
+  func backlogAuthoredOnlyWhenEnqueued() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    _ = try l.ingest([("CAFE EXAMPLE JBR", "debit")])
+    let snapshot = l
+    let reprojects = Locked(0)
+    let r = try await BacklogSort.run(
+      rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: BacklogCloud(fallback: (.category("dining"), false)),
+      memo: .init(), cache: MemoryCache(), now: { now }, autoFile: false, stamps: AuthorStamps(), serial: WriteSerial(),
+      reread: { (snapshot.rows(), snapshot.context()) }, enqueue: { _ in throw Boom() },
+      reproject: { reprojects.withLock { $0 += 1 } })
+    #expect(!r.authored && r.failed && r.filing == BacklogSort.Filing())
+    #expect(reprojects.withLock { $0 } == 0)
+  }
 }
 
 final class Locked<Value: Sendable>: Sendable {
