@@ -442,6 +442,25 @@ struct BacklogSorterTests {
     #expect(script.passes == 1 && script.dayLefts.first.map { $0 > 0 && $0 <= 11 } == true)
   }
 
+  @Test func theForegroundSweepGetsItsBudgetBackWhenTheWindowReopensBeforeTheRunResumes() async {
+    let hour: Int64 = 3_600_000
+    let full = (0..<BacklogSort.dayNames).map { BacklogSorterTests.start - 2 * hour + Int64($0) }
+    let saved = Saved.running(day: full)
+    let clock = Clock()
+    let s = sorter(Script([Step?]()), saved, clock: clock)
+    await s.ensure()
+    await s.finished()
+    #expect(saved.run?.reason == .dayCap)
+    #expect(await s.cloudBudget() == 0)
+    clock.advance(22 * hour - 1)
+    #expect(await s.cloudBudget() == 0)
+    clock.advance(1)
+    #expect(await s.cloudBudget() == 1)
+    #expect(saved.run?.phase == .paused && saved.run?.reason == .dayCap)
+    let relaunched = sorter(Script([Step?]()), saved, clock: clock)
+    #expect(await relaunched.cloudBudget() == 1)
+  }
+
   @Test func aNewRunOnASpentDayPausesWithoutAPass() async {
     let full = Array(repeating: BacklogSorterTests.start - 1_000, count: BacklogSort.dayNames)
     let saved = Saved(BacklogRunRecord(day: full))

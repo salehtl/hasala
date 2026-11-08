@@ -84,9 +84,9 @@ nonisolated struct BacklogRunRecord: Codable, Equatable, Sendable {
     }
   }
 
-  var capped: Bool {
-    guard let run, run.phase == .paused else { return false }
-    return run.reason == .dayCap
+  func capped(nowMs: Int64) -> Bool {
+    guard let run, run.phase == .paused, run.reason == .dayCap else { return false }
+    return run.untilMs.map { nowMs < $0 } ?? true
   }
 
   mutating func spend(_ calls: Int, nowMs: Int64) {
@@ -379,8 +379,9 @@ actor BacklogSorter {
   }
 
   func cloudBudget() -> Int {
-    guard !record.capped else { return 0 }
-    return BacklogSort.dayLeft(record.day, nowMs: nowMs())
+    let now = nowMs()
+    guard !record.capped(nowMs: now) else { return 0 }
+    return BacklogSort.dayLeft(record.day, nowMs: now)
   }
 
   func spent(_ calls: Int) {
