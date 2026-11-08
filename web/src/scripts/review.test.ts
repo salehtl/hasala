@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:te
 type Fn = (e: Record<string, unknown>) => void;
 
 const g = globalThis as unknown as Record<string, unknown>;
-const saved = Object.fromEntries(['document', 'window', 'matchMedia', 'getComputedStyle', 'DOMMatrixReadOnly'].map((k) => [k, g[k]]));
+const saved = Object.fromEntries(['document', 'window', 'matchMedia', 'getComputedStyle', 'DOMMatrixReadOnly', 'IntersectionObserver'].map((k) => [k, g[k]]));
 const reduce = { matches: false };
 let initReview: () => void;
 let pageLoad: Fn[] = [];
@@ -212,5 +212,251 @@ describe('the legend chip', () => {
     await finishCard(d.cards[0]);
     await until(() => d.left() === '2');
     expect(d.legend('need').hasAttribute('data-active')).toBe(false);
+  });
+});
+
+type Deck = ReturnType<typeof mount>;
+const SETTLE_MS = 300;
+const sortByKey = async (d: Deck, card: FakeElement, key = 'ArrowRight') => {
+  d.key(key);
+  await finishCard(card);
+  await finishCard(card);
+  await Bun.sleep(SETTLE_MS);
+};
+
+describe('while a card is held', () => {
+  const presses: [string, (d: Deck) => void][] = [
+    ['an arrow key', (d) => d.key('ArrowRight')],
+    ['a pill', (d) => d.pill('want').fire('click')],
+    ['a legend chip', (d) => d.legend('want').fire('click')],
+    ['Use', (d) => d.cards[0].querySelector('[data-use]')!.fire('click')],
+  ];
+
+  for (const [name, press] of presses) {
+    test(`${name} does not start a sort`, () => {
+      const d = mount();
+      d.grab(d.cards[0]);
+      d.move(30);
+      press(d);
+      expect(d.cards[0].getAnimations()).toEqual([]);
+      expect(d.toast.hasAttribute('data-show')).toBe(false);
+    });
+  }
+
+  test('a key press leaves the finger on the same card', async () => {
+    const d = mount();
+    d.grab(d.cards[0]);
+    d.move(30);
+    await sortByKey(d, d.cards[0]);
+    d.move(60);
+    expect(d.left()).toBe('3');
+    expect(d.cards[0].style.transform).toContain('translate(60px');
+    expect(d.cards[1].style.transform).toBe('');
+  });
+
+  test('a key press on the last card cannot break the drag', async () => {
+    const d = mount(1);
+    d.grab(d.cards[0]);
+    d.move(30);
+    await sortByKey(d, d.cards[0]);
+    expect(() => d.move(60)).not.toThrow();
+    expect(() => d.move(0)).not.toThrow();
+    expect(() => d.release()).not.toThrow();
+    expect(d.left()).toBe('1');
+  });
+
+  test('Undo leaves the held card where it is', async () => {
+    const d = mount();
+    await sortByKey(d, d.cards[0]);
+    expect(d.left()).toBe('2');
+    d.grab(d.cards[1]);
+    d.move(30);
+    d.undo.fire('click');
+    expect(d.left()).toBe('2');
+    d.move(60);
+    expect(d.cards[1].style.transform).toContain('translate(60px');
+    expect(d.cards[0].style.transform).toBe('');
+  });
+
+  test('a second finger is ignored', () => {
+    const d = mount();
+    d.grab(d.cards[0]);
+    d.move(30);
+    d.cards[0].fire('pointerdown', { pointerId: 2, clientX: 200, clientY: 0, timeStamp: 1 });
+    d.cards[0].fire('pointermove', { pointerId: 2, clientX: 200, clientY: 0, timeStamp: 2 });
+    d.cards[0].fire('pointerup', { pointerId: 2, clientX: 200, clientY: 0, timeStamp: 3 });
+    expect(d.cards[0].style.transform).toContain('translate(30px');
+    expect(d.cards[0].getAnimations()).toEqual([]);
+  });
+
+  test('the drag still commits once after an ignored press', async () => {
+    const d = mount();
+    d.grab(d.cards[0]);
+    d.move(200);
+    d.key('ArrowLeft');
+    d.release();
+    expect(d.cards[0].getAnimations().length).toBe(1);
+    await finishCard(d.cards[0]);
+    await until(() => d.left() === '2');
+    expect(d.cards[0].style.transform).toBe('');
+  });
+
+  test('a short release puts the card back and the keys work again', async () => {
+    const d = mount();
+    d.grab(d.cards[0]);
+    d.move(30);
+    d.move(30);
+    d.release();
+    await Bun.sleep(1);
+    d.cards[0].getAnimations().forEach((a) => a.cancel());
+    await sortByKey(d, d.cards[0]);
+    expect(d.left()).toBe('2');
+  });
+});
+
+describe('the toast', () => {
+  for (const [key, word] of [
+    ['ArrowRight', 'Need'],
+    ['ArrowLeft', 'Want'],
+    ['ArrowDown', 'Save'],
+    ['ArrowUp', 'Transfer'],
+  ]) {
+    test(`names ${word} and announces it`, async () => {
+      const d = mount();
+      d.key(key);
+      await finishCard(d.cards[0]);
+      expect(d.toast.querySelector('[data-toast-text]')!.textContent).toBe(`Sorted as ${word}`);
+      expect(d.live.textContent).toBe(`Sorted as ${word}. Undo is available.`);
+    });
+  }
+});
+
+describe('while a card is leaving', () => {
+  test('a press does not start another sort', async () => {
+    const d = mount();
+    d.key('ArrowRight');
+    d.key('ArrowLeft');
+    d.pill('save').fire('click');
+    await finishCard(d.cards[0]);
+    await finishCard(d.cards[0]);
+    await Bun.sleep(SETTLE_MS);
+    expect(d.left()).toBe('2');
+  });
+
+  test('a card cannot be grabbed', async () => {
+    const d = mount();
+    d.key('ArrowRight');
+    d.grab(d.cards[0]);
+    d.move(60);
+    expect(d.cards[0].style.transform ?? '').toBe('');
+  });
+
+  test('Undo during a dragged card\'s flight puts it back once it has gone', async () => {
+    const d = mount();
+    d.grab(d.cards[0]);
+    d.move(200);
+    d.release();
+    expect(d.toast.hasAttribute('data-show')).toBe(true);
+    d.undo.fire('click');
+    await finishCard(d.cards[0]);
+    await Bun.sleep(SETTLE_MS);
+    expect(d.left()).toBe('3');
+    expect(d.cards[0].dataset.pos).toBe('0');
+    expect(d.toast.hasAttribute('data-show')).toBe(false);
+    expect(d.live.textContent).toBe('Undone.');
+  });
+
+  test('Undo during a pressed card\'s flight puts it back once it has gone', async () => {
+    const d = mount();
+    d.key('ArrowRight');
+    await finishCard(d.cards[0]);
+    expect(d.toast.hasAttribute('data-show')).toBe(true);
+    d.undo.fire('click');
+    await finishCard(d.cards[0]);
+    await Bun.sleep(SETTLE_MS);
+    expect(d.left()).toBe('3');
+    expect(d.cards[0].dataset.pos).toBe('0');
+  });
+
+  test('Undo during the fade with reduced motion puts the card back', async () => {
+    reduce.matches = true;
+    const d = mount();
+    d.key('ArrowRight');
+    d.undo.fire('click');
+    await finishCard(d.cards[0]);
+    await tick();
+    expect(d.left()).toBe('3');
+    expect(d.live.textContent).toBe('Undone.');
+  });
+
+  test('one Undo takes back one card, and the next sort stays sorted', async () => {
+    const d = mount();
+    d.key('ArrowRight');
+    await finishCard(d.cards[0]);
+    d.undo.fire('click');
+    d.undo.fire('click');
+    await finishCard(d.cards[0]);
+    await Bun.sleep(SETTLE_MS);
+    expect(d.left()).toBe('3');
+    await sortByKey(d, d.cards[0], 'ArrowLeft');
+    expect(d.left()).toBe('2');
+  });
+
+  test('Undo after the card has gone still works', async () => {
+    const d = mount();
+    await sortByKey(d, d.cards[0]);
+    d.undo.fire('click');
+    expect(d.left()).toBe('3');
+  });
+
+  test('Undo with nothing sorted does nothing', () => {
+    const d = mount();
+    d.undo.fire('click');
+    expect(d.left()).toBe('3');
+    expect(d.live.textContent).toBe('');
+  });
+});
+
+describe('Start again', () => {
+  test('goes back to the first card with the toast gone', async () => {
+    const d = mount(1);
+    await sortByKey(d, d.cards[0]);
+    expect(d.left()).toBe('0');
+    d.restart.fire('click');
+    expect(d.left()).toBe('1');
+    expect(d.cards[0].dataset.pos).toBe('0');
+    expect(d.toast.hasAttribute('data-show')).toBe(false);
+    expect(d.live.textContent).toStartWith('Back to the first card');
+  });
+});
+
+describe('the demo', () => {
+  test('hands the card over when it is grabbed mid-lean', async () => {
+    let seen: (entries: { isIntersecting: boolean }[]) => void = () => {};
+    class Observer {
+      constructor(cb: typeof seen) {
+        seen = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    g.IntersectionObserver = Observer;
+    g.window = {
+      IntersectionObserver: Observer,
+      setTimeout: (f: () => void, ms: number) => (ms === 300 && f(), 1),
+      clearTimeout: () => {},
+    };
+    const d = mount();
+    seen([{ isIntersecting: true }]);
+    await until(() => d.cards[0].getAnimations().length > 0);
+    d.grab(d.cards[0]);
+    await tick();
+    expect(d.cards[0].getAnimations()).toEqual([]);
+    d.move(30);
+    expect(d.cards[0].style.transform).toContain('translate(30px');
+    d.move(0);
+    d.release();
+    await sortByKey(d, d.cards[0]);
+    expect(d.left()).toBe('2');
   });
 });
