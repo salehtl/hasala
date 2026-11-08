@@ -76,12 +76,7 @@ final class BootController {
 
   @ObservationIgnored private let account: LiveAccountService
   @ObservationIgnored private let services: AccountServices
-  /// The runtime being opened; its value is the runtime once it is open (before its
-  /// launch run).
-  @ObservationIgnored private var opening: Task<AccountRuntime?, Never>?
-  @ObservationIgnored private var closing: Task<Void, Never>?
-  /// Bumped by every open and close, so an older opening can't publish or clear a newer one.
-  @ObservationIgnored private var openingID = 0
+  @ObservationIgnored private let turns = RuntimeTurns<AccountRuntime>()
   @ObservationIgnored private var lastPhase: AccountSession.Phase?
   @ObservationIgnored private var observingProtectedData = false
   @ObservationIgnored private var startRetry: Task<Void, Never>?
@@ -231,8 +226,7 @@ final class BootController {
   /// its launch run (a caller's run coalesces with it).
   func openedRuntime() async -> AccountRuntime? {
     if let runtime { return runtime }
-    if let opening { return await opening.value }
-    return runtime
+    return await turns.opened()
   }
 
   /// The app came to the foreground: catch up (at most once a minute), and finish a
@@ -248,7 +242,7 @@ final class BootController {
   }
 
   private func openRuntimeIfNeeded() {
-    guard runtime == nil, opening == nil, wall == nil, let binding = try? env.account.secrets.binding() else { return }
+    guard runtime == nil, !turns.isOpening, wall == nil, let binding = try? env.account.secrets.binding() else { return }
     // The binding and keys are here but the store isn't (a restore to this iPhone, §4.7
     // row 8). A fresh store would restart this writer's chain at zero; this build can't
     // set it from the verified server head, so it asks to start this iPhone again.
@@ -260,11 +254,7 @@ final class BootController {
     let account = self.account
     let profile = Self.profileInfo(account.profile, binding: binding)
     let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop) }
-    openingID += 1
-    let id = openingID
-    let closing = self.closing
-    opening = Task { [weak self] in
-      await closing?.value
+    turns.open { [weak self] turn in
       let rt: AccountRuntime
       do {
         rt = try await AccountRuntime.open(
@@ -273,18 +263,18 @@ final class BootController {
       } catch {
         // The store or projection could not open (a disk or protection failure, or a
         // store left half-made): a wall offers Try again and starting this iPhone over.
-        guard let self, self.openingID == id else { return nil }
-        self.opening = nil
+        guard let self, self.turns.isCurrent(turn) else { return nil }
+        self.turns.finishOpening(turn)
         if self.session.phase != .signedOut { self.wall = .openFailed }
         return nil
       }
-      guard let self, self.openingID == id, self.session.phase != .signedOut else {
+      guard let self, self.turns.isCurrent(turn), self.session.phase != .signedOut else {
         await rt.close()
         return nil
       }
       var facts = Self.facts(rt, texts: self.services.bankTexts)
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
-      self.opening = nil
+      self.turns.finishOpening(turn)
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(
@@ -345,24 +335,17 @@ final class BootController {
     badge?.stop()
     badge = nil
     AppIconBadge.clear()
-    openingID += 1
-    opening?.cancel()
-    opening = nil
     BackgroundScheduler.shared.cancelAll()
     syncHalt = nil
     setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)
-    guard let rt = runtime else { return }
-    runtime = nil
-    app = nil
-    session.reviewAccount = false
-    PushRegistrar.shared.forget()
-    let previous = closing
-    let task = Task {
-      await previous?.value
-      await rt.close()
+    let rt = runtime
+    if rt != nil {
+      runtime = nil
+      app = nil
+      session.reviewAccount = false
+      PushRegistrar.shared.forget()
     }
-    closing = task
-    await task.value
+    await turns.close(rt) { await $0.close() }
   }
 
   // MARK: Walls
