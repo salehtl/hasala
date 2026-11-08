@@ -106,6 +106,8 @@ type Dispatcher struct {
 	Now    func() time.Time
 	Stats  Stats
 
+	SessionIdle time.Duration
+
 	queue    chan job
 	mu       sync.Mutex // guards th, pause, envPause, closed and the sends to queue
 	th       *throttle
@@ -242,16 +244,31 @@ func (d *Dispatcher) Notify(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
 
-// targets resolves a job's tokens from apns_tokens.
-func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
-	switch {
-	case !j.resolve:
-		return j.tokens, nil
-	case j.others:
-		return CollectTokens(ctx, d.Pool, j.user, j.writer)
-	default:
-		return WriterTokens(ctx, d.Pool, j.user, j.writer)
+const liveTokenRows = `apns_tokens a JOIN sessions s ON s.token_hash = a.session_hash
+	  AND s.revoked_at IS NULL AND s.expires_at > $1 AND ($2::timestamptz IS NULL OR s.last_used_at > $2)`
+
+func (d *Dispatcher) sessionCutoffs() (time.Time, *time.Time) {
+	now := d.now()
+	if d.SessionIdle <= 0 {
+		return now, nil
 	}
+	usedAfter := now.Add(-d.SessionIdle)
+	return now, &usedAfter
+}
+
+// targets resolves a job's tokens from apns_tokens: those of live sessions.
+func (d *Dispatcher) targets(ctx context.Context, j job) ([]Target, error) {
+	if !j.resolve {
+		return j.tokens, nil
+	}
+	now, usedAfter := d.sessionCutoffs()
+	rows, err := d.Pool.Query(ctx,
+		`SELECT a.token_hex, a.environment FROM `+liveTokenRows+`
+		  WHERE a.user_id = $3 AND (a.writer_id = $4) = $5`, now, usedAfter, j.user, j.writer, !j.others)
+	if err != nil {
+		return nil, err
+	}
+	return collectTargets(rows)
 }
 
 func (d *Dispatcher) run(ctx context.Context, j job) {
@@ -289,8 +306,9 @@ func (d *Dispatcher) run(ctx context.Context, j job) {
 
 // Flush sends every trailing wake whose window has closed. The ticker calls it
 // every second; tests call it with a fake clock. A trailing wake goes out only
-// if the token's row still exists for the account it was owed to: a token
-// revoked, logged out or moved to another account since is not woken.
+// if the token's row still exists for the account it was owed to and its
+// session is live: a token revoked, logged out, expired or moved to another
+// account since is not woken.
 func (d *Dispatcher) Flush(ctx context.Context) {
 	d.mu.Lock()
 	owed, dropped := d.th.due(d.now(), d.pausedFor)
@@ -326,11 +344,12 @@ func (d *Dispatcher) stillRegistered(ctx context.Context, w trailing) bool {
 	if w.owner != uuid.Nil {
 		owner = &w.owner
 	}
+	now, usedAfter := d.sessionCutoffs()
 	var ok bool
 	err := d.Pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM apns_tokens
-		  WHERE token_hex = $1 AND environment = $2 AND ($3::uuid IS NULL OR user_id = $3))`,
-		w.t.TokenHex, w.t.Environment, owner).Scan(&ok)
+		`SELECT EXISTS (SELECT 1 FROM `+liveTokenRows+`
+		  WHERE a.token_hex = $3 AND a.environment = $4 AND ($5::uuid IS NULL OR a.user_id = $5))`,
+		now, usedAfter, w.t.TokenHex, w.t.Environment, owner).Scan(&ok)
 	if err != nil {
 		slog.Warn("pushv2: check trailing wake token", "reason", w.r.String(), "err", err.Error())
 		return false

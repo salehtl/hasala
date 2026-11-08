@@ -190,6 +190,7 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 			return nil, refusal{err}
 		}
 		d := pushv2.NewDispatcher(pool, client)
+		d.SessionIdle = cfg.Auth.SessionIdle
 		ex.done = append(ex.done, d.Start(ctx))
 		waker = d
 	}
