@@ -198,6 +198,7 @@ func TestResponsesClassifyAndExpiredTokenRetriesOnce(t *testing.T) {
 		{403, "BadTopic", ResultConfig},
 		{403, "BadEnvironmentKeyIdInToken", ResultEnvironment},
 		{403, "BadCertificateEnvironment", ResultEnvironment},
+		{403, "ExpiredProviderToken", ResultConfig},
 		{500, "InternalServerError", ResultTransient},
 		{503, "ServiceUnavailable", ResultTransient},
 	}
@@ -232,6 +233,95 @@ func TestResponsesClassifyAndExpiredTokenRetriesOnce(t *testing.T) {
 	if reqs[1].header.Get("Authorization") != first || reqs[2].header.Get("Authorization") == first {
 		t.Fatal("the retry did not regenerate the provider token")
 	}
+}
+
+func TestAnExpiredAnswerThatNoNewTokenFixesStopsAsConfiguration(t *testing.T) {
+	expired := func(_ string, n int) (int, string) {
+		if n == 1 {
+			return 200, ""
+		}
+		return 403, "ExpiredProviderToken"
+	}
+	setup := func(t *testing.T) (*fakeAPNs, *Client, *time.Time) {
+		key, _ := testKey(t)
+		f := newFakeAPNs(t)
+		now := time.Unix(1_760_000_000, 0)
+		c := f.client(t, key, func() time.Time { return now }, nil)
+		f.answer = expired
+		tok := Target{TokenHex: tokenHex(1), Environment: EnvProduction}
+		if r := c.Send(bg, tok); r != ResultSent {
+			t.Fatal(r)
+		}
+		return f, c, &now
+	}
+	tok := Target{TokenHex: tokenHex(1), Environment: EnvProduction}
+
+	t.Run("a token too young to replace is not sent again", func(t *testing.T) {
+		f, c, now := setup(t)
+		*now = now.Add(5 * time.Minute)
+		if r := c.Send(bg, tok); r != ResultConfig {
+			t.Fatalf("result %v, want config", r)
+		}
+		if n := len(f.requests()); n != 2 {
+			t.Fatalf("%d requests, want the first send and the refused one", n)
+		}
+	})
+
+	t.Run("a new token refused the same way is configuration", func(t *testing.T) {
+		f, c, now := setup(t)
+		*now = now.Add(25 * time.Minute)
+		if r := c.Send(bg, tok); r != ResultConfig {
+			t.Fatalf("result %v, want config", r)
+		}
+		reqs := f.requests()
+		if len(reqs) != 3 {
+			t.Fatalf("%d requests, want one retry", len(reqs))
+		}
+		if reqs[1].header.Get("Authorization") == reqs[2].header.Get("Authorization") {
+			t.Fatal("the retry reused the refused token")
+		}
+	})
+
+	t.Run("a token another sender already replaced is retried", func(t *testing.T) {
+		f, c, now := setup(t)
+		*now = now.Add(25 * time.Minute)
+		f.answer = func(_ string, n int) (int, string) {
+			if n == 2 {
+				refused, err := c.providerToken("")
+				if err != nil {
+					t.Error(err)
+				}
+				if _, err := c.providerToken(refused); err != nil {
+					t.Error(err)
+				}
+				*now = now.Add(time.Second)
+				return 403, "ExpiredProviderToken"
+			}
+			return 200, ""
+		}
+		if r := c.Send(bg, tok); r != ResultSent {
+			t.Fatalf("result %v, want sent", r)
+		}
+		reqs := f.requests()
+		if len(reqs) != 3 || reqs[1].header.Get("Authorization") == reqs[2].header.Get("Authorization") {
+			t.Fatalf("%d requests, want a retry with the other sender's token", len(reqs))
+		}
+	})
+
+	t.Run("the refusal pauses the dispatcher", func(t *testing.T) {
+		f, c, now := setup(t)
+		*now = now.Add(5 * time.Minute)
+		d := NewDispatcher(nil, c)
+		d.Now = func() time.Time { return *now }
+		wake(d, fixedTarget(2), ReasonNudge)
+		wake(d, fixedTarget(3), ReasonNudge)
+		if n := len(f.requests()); n != 2 {
+			t.Fatalf("%d requests, want nothing sent during the pause", n)
+		}
+		if d.Stats.ConfigErrors.Load() != 1 {
+			t.Fatalf("%d configuration errors, want 1", d.Stats.ConfigErrors.Load())
+		}
+	})
 }
 
 // AT-APNS-4: the JWT verifies under the .p8's public key with kid and iss.
