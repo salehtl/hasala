@@ -27,7 +27,6 @@ public enum SyncPhase: Sendable, Hashable {
   case idle
   case reconciling
   case pulling
-  case folding
   case pushing
   case selfPull
   case offline(sinceMs: Int64)
