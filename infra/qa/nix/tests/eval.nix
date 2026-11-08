@@ -51,6 +51,12 @@ let
       tailnet = "example-tailnet.ts.net";
     };
   };
+  firewalldOnIptables = {
+    services.firewalld = {
+      enable = true;
+      settings.FirewallBackend = "iptables";
+    };
+  };
 
   # The [gmail] group's two parts.
   gmailLink = {
@@ -489,6 +495,27 @@ let
     "tunnel with the firewall off" = [
       "M21"
       (lib.recursiveUpdate (hasala tunnelOn) { networking.firewall.enable = false; })
+    ];
+    "tunnel on firewalld with the iptables backend" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) firewalldOnIptables)
+    ];
+    "console on firewalld with the iptables backend" = [
+      "M21"
+      (lib.recursiveUpdate (hasala consoleOn) firewalldOnIptables)
+    ];
+    "tunnel with firewalld beside the iptables firewall" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) (
+        firewalldOnIptables // { networking.firewall.backend = "iptables"; }
+      ))
+    ];
+    "tunnel with nftables beside the iptables firewall" = [
+      "M21"
+      (lib.recursiveUpdate (hasala tunnelOn) {
+        networking.nftables.enable = true;
+        networking.firewall.backend = "iptables";
+      })
     ];
     # M19: nginx is the one user the kernel rule lets through, so a second,
     # ungated vhost reaching the console by any loopback spelling is refused.

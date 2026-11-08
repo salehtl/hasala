@@ -1356,9 +1356,14 @@ in
           (a "M21"
             (
               !(cfg.console.enable || cfg.tunnel.enable)
-              || (config.networking.firewall.enable && !config.networking.nftables.enable)
+              || (
+                config.networking.firewall.enable
+                && config.networking.firewall.backend == "iptables"
+                && !config.networking.nftables.enable
+                && !config.services.firewalld.enable
+              )
             )
-            "the kernel rules on the console and API ports live in the iptables firewall: it must be enabled, and an nftables host would silently drop the rules."
+            "the kernel rules on the console and API ports live in the iptables firewall: it must be enabled and be the only firewall, and an nftables or firewalld host would silently drop the rules."
           )
           (a "M22" (secretsInStore == [ ])
             "every secret-file option is an absolute path outside ${builtins.storeDir} (a secret in the store is world-readable); offending: ${concatStringsSep ", " secretsInStore}."
