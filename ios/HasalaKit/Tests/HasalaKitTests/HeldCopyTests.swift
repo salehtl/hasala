@@ -38,6 +38,21 @@ struct HeldCopyTests {
     #expect(throws: ActionError.notFound) { try ledger.apply(.resolveCopy("starbucks", merge: true)) }
   }
 
+  @Test func undoingAMergeHoldsTheCopyAgainInItsPlace() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
+    let before = ledger.state
+    let token = try #require(try ledger.apply(.resolveCopy("starbucks-copy", merge: true)))
+    #expect(ledger.state.txn("starbucks-copy") == nil)
+    ledger.undo(token)
+    #expect(ledger.state.txns.map(\.id) == before.txns.map(\.id))
+    #expect(ledger.state.txn("starbucks-copy") == before.txn("starbucks-copy"))
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(ReviewEngine.queue(ledger.state).contains { $0.id == "starbucks-copy" })
+    #expect(ledger.state.spent("dining", in: october) == before.spent("dining", in: october))
+    ledger.undo(token)
+    #expect(ledger.state.txns.map(\.id) == before.txns.map(\.id))
+  }
+
   @Test func theSameInboxSaysSo() {
     var t = MayaLedger.state.txn("starbucks")!
     t.heldCopy = HeldCopy(of: "starbucks", fromOtherInbox: false)

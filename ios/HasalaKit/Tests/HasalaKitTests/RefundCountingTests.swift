@@ -101,6 +101,21 @@ struct RefundEditTests {
     #expect(!t.isRefund && t.categoryID == nil && t.needsReview)
   }
 
+  @Test func undoTakesBackTheMatchedPurchase() throws {
+    let l = Self.ledger()
+    let filed = try #require(try l.apply(.fileRefund("c1", into: "shopping", of: "p1")))
+    #expect(l.state.txn("c1")?.refundOf == "p1")
+    l.undo(filed)
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.refundOf == nil && !t.isRefund && t.categoryID == nil && t.needsReview)
+
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let off = try #require(try l.apply(.markRefund("c1")))
+    #expect(l.state.txn("c1")?.refundOf == nil)
+    l.undo(off)
+    #expect(l.state.txn("c1")?.refundOf == "p1" && l.state.txn("c1")?.isRefund == true)
+  }
+
   @Test func aRefundCannotPointAtMoneyIn() {
     let l = Self.ledger()
     #expect(throws: ActionError.refused(RefundEdit.refusedTarget)) {

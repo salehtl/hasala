@@ -21,6 +21,7 @@ public final class InMemoryLedger: LedgerStore {
   private struct UndoRecord {
     var txnsBefore: [TxnID: Txn] = [:]
     var txnsAfter: [TxnID: Txn] = [:]
+    var txnsRemoved: [(txn: Txn, at: Int)] = []
     var plan: (before: PlanState, after: PlanState)?
     var bills: (before: [Bill], after: [Bill])?
     var candidates: (before: [BillCandidate], after: [BillCandidate])?
@@ -567,6 +568,9 @@ public final class InMemoryLedger: LedgerStore {
     for id in touched {
       record.txnsBefore[id] = before.txn(id)
       record.txnsAfter[id] = s.txn(id)
+      if s.txn(id) == nil, let at = before.txns.firstIndex(where: { $0.id == id }) {
+        record.txnsRemoved.append((before.txns[at], at))
+      }
       if orderBefore[id] != order[id] { record.sortOrder[id] = (orderBefore[id], order[id]) }
     }
     if touchedPlan { record.plan = (before.plan, s.plan) }
@@ -596,6 +600,9 @@ public final class InMemoryLedger: LedgerStore {
     for (id, old) in r.txnsBefore {
       guard let new = r.txnsAfter[id], let i = s.txns.firstIndex(where: { $0.id == id }) else { continue }
       Self.revertFields(&s.txns[i], before: old, after: new)
+    }
+    for (t, at) in r.txnsRemoved.sorted(by: { $0.at < $1.at }) where s.txn(t.id) == nil {
+      s.txns.insert(t, at: min(at, s.txns.count))
     }
     if let (old, new) = r.plan {
       for key in Set(old.budgets.keys).union(new.budgets.keys) where s.plan.budgets[key] == new.budgets[key] {
@@ -653,6 +660,7 @@ public final class InMemoryLedger: LedgerStore {
     field(\.heldCopy)
     field(\.combinedCopy)
     field(\.mergedInto)
+    field(\.refundOf)
     field(\.billID)
   }
 
