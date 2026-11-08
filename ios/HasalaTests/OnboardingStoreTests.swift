@@ -44,7 +44,7 @@ struct OnboardingStoreTests: AccountSuite {
   /// store again, as its body does, and gets the same models with what was typed. (The
   /// gate's body itself only renders in a window.)
   @Test func aRemadeGateCannotResetThem() {
-    let (store, session) = store(phase: .onboarding(.bank))
+    let (store, session) = store(phase: .onboarding)
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: facts)
     setup.toggle(.dib)
@@ -57,7 +57,7 @@ struct OnboardingStoreTests: AccountSuite {
     let again = store.setupModel(displayName: "Maya", facts: facts)
     #expect(again === setup && again.orderedBanks == [.enbd])
     store.storyPage = 2
-    store.phaseChanged(from: .onboarding(.bank), to: .ready)
+    store.phaseChanged(from: .onboarding, to: .ready)
     #expect(store.setup === setup && store.storyPage == 2)
   }
 
@@ -71,10 +71,10 @@ struct OnboardingStoreTests: AccountSuite {
     // A failed sign-in, Back and walls keep everything.
     store.phaseChanged(from: .signedOut, to: .signedOut)
     #expect(store.signup.email == "maya@example.com")
-    store.phaseChanged(from: .signedOut, to: .onboarding(.bank))
+    store.phaseChanged(from: .signedOut, to: .onboarding)
     let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
     _ = store.replacementModel()
-    store.phaseChanged(from: .onboarding(.bank), to: .signedOut)
+    store.phaseChanged(from: .onboarding, to: .signedOut)
     #expect(store.setup == nil && store.replacement == nil)
     #expect(store.signup.email.isEmpty && store.signIn.email.isEmpty)
     #expect(store.storyPage == 3)
@@ -95,7 +95,7 @@ struct OnboardingStoreTests: AccountSuite {
     mailbox.banks = [.dib]
     let services = AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                                    notifications: MockNotificationPermission())
-    let session = AccountSession(services: services, phase: .onboarding(.bank))
+    let session = AccountSession(services: services, phase: .onboarding)
     let store = OnboardingStore(services: services, session: { session })
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
     let setup = store.setupModel(displayName: "Maya", facts: facts)
@@ -116,11 +116,11 @@ struct OnboardingStoreTests: AccountSuite {
   /// "Try again", the real facts reach the same model, and an account already past the
   /// email step opens Home.
   @Test func aResumeAtThePlaceholderStepWaitsForTheRealFacts() {
-    let (store, session) = store(phase: .onboarding(.bank))
+    let (store, session) = store(phase: .onboarding)
     let placeholder = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: placeholder)
     setup.resume()
-    #expect(setup.step == .bank && setup.path.isEmpty && session.phase == .onboarding(.bank))
+    #expect(setup.step == .bank && setup.path.isEmpty && session.phase == .onboarding)
     var real = placeholder
     real.banksChosen = true
     real.mailbox = .linked
@@ -128,7 +128,7 @@ struct OnboardingStoreTests: AccountSuite {
     setup.resume()
     #expect(setup.step == .finished && session.phase == .ready)
 
-    let (other, otherSession) = self.store(phase: .onboarding(.bank))
+    let (other, otherSession) = self.store(phase: .onboarding)
     let moving = other.setupModel(displayName: "Maya", facts: placeholder)
     moving.resume()
     moving.skipBanks()

@@ -307,7 +307,7 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .accountReady)
     #expect(m.phrase == nil)
     session.accountCreated()
-    #expect(session.phase == .onboarding(.bank))
+    #expect(session.phase == .onboarding)
   }
 
   // MARK: Back and Forward (plan B3: everything typed stays)

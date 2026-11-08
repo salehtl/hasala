@@ -14,7 +14,7 @@ final class AccountSession {
     /// (`resume()`); a failure to reach it stays here with Retry.
     case checking
     /// Signed in with keys here; setup resumes at the derived step (§6.6).
-    case onboarding(OnboardingStep)
+    case onboarding
     /// Signed in, data sealed here (§6.10).
     case needsUnlock(passkeyCanUnlock: Bool)
     /// Signed in without keys anywhere (C1 interrupted after register/finish): make a new
@@ -88,7 +88,7 @@ final class AccountSession {
   }
 
   /// After the account and keys exist (C1/C1-P complete): setup continues at the bank.
-  func accountCreated() { phase = .onboarding(.bank) }
+  func accountCreated() { phase = .onboarding }
 
   /// After unlocking on a new iPhone: setup steps that are per-device still run.
   func unlocked() { phase = .ready }

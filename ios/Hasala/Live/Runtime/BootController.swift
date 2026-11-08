@@ -195,7 +195,7 @@ final class BootController {
     // A session without keys here: a sign-in killed before unlock, or C1 killed before
     // its bootstrap. The server's `has_keys` tells them apart (`AccountSession.resume`).
     case .onboardingKeys, .needsUnlock: (.checking, nil)
-    case .opening: (finished ? .ready : .onboarding(.bank), nil)
+    case .opening: (finished ? .ready : .onboarding, nil)
     }
   }
 

@@ -34,7 +34,7 @@ struct LiveGateTests {
     check(.restoring, .signedOut, .restoring)
     check(.onboardingKeys, .checking, nil)
     check(.needsUnlock, .checking, nil)
-    check(.opening(Self.binding()), .onboarding(.bank), nil)
+    check(.opening(Self.binding()), .onboarding, nil)
     check(.opening(Self.binding()), finished: true, .ready, nil)
   }
 
