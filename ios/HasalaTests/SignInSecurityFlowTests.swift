@@ -132,6 +132,46 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
   }
 
+  private func verifiedRecovery(_ account: MockAccountService) async -> SignInModel {
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.submitRecoveryCode())
+    #expect(m.verifiedRecoveryKind == .passkey)
+    return m
+  }
+
+  @Test func aFinishThatUsedUpTheCeremonyStartsAgainFromTheWords() async {
+    for spent: AuthFailure in [.offline, .rateLimited, .refused, .integrity] {
+      let account = MockAccountService(existing: .passkey)
+      let m = await verifiedRecovery(account)
+      account.failNext = spent
+      #expect(await m.finishRecovery(.passkey) == .startAgain)
+      #expect(m.recovery == nil && m.verifiedRecoveryKind == nil && m.recoverCode.isEmpty)
+      #expect(m.failure(on: .recoverWords) == spent)
+      #expect(m.failure(on: .recoverMethod) == nil)
+      #expect(!m.phraseText.isEmpty)
+      #expect(await m.submitRecoveryWords())
+      #expect(m.failure(on: .recoverWords) == nil)
+      m.recoverCode = MockAccountService.emailCode
+      #expect(await m.submitRecoveryCode())
+      #expect(await m.finishRecovery(.passkey) == .done)
+    }
+  }
+
+  @Test func aClosedPasskeySheetKeepsTheCeremonyForAnotherTry() async {
+    let account = MockAccountService(existing: .passkey)
+    let m = await verifiedRecovery(account)
+    account.failNext = .cancelled
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
+  }
+
   @Test func aFailedResendShowsOnTheCodeScreen() async {
     let account = MockAccountService(existing: .passkey)
     account.delay = .zero

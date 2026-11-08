@@ -276,6 +276,11 @@
       await pause()
       // `recover/finish` refuses a kind other than the verified one (uniformly).
       guard recoveryKind == credential.method else { throw .refused }
+      if let failure = failNext {
+        failNext = nil
+        if failure != .cancelled { recoveryKind = nil }
+        throw failure
+      }
       let (email, devices) = (security.email, security.devices)
       if case .password(let pw) = credential {
         password = pw

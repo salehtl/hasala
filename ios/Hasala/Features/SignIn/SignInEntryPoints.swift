@@ -139,6 +139,8 @@ extension OnboardingStore {
     case .done, .failed: break
     case .codeRejected:
       if let i = signup.path.lastIndex(of: .recoverCode) { signup.path.removeSubrange((i + 1)...) }
+    case .startAgain:
+      if let i = signup.path.lastIndex(of: .recoverWords) { signup.path.removeSubrange((i + 1)...) }
     }
   }
 }

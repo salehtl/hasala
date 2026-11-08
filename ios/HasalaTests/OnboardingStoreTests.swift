@@ -469,6 +469,17 @@ struct AccountGatePhaseTests: AccountSuite {
     #expect(s.notice == nil)
   }
 
+  @Test func aRecoveryToStartAgainGoesBackToItsWords() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, _, m) = await recoveryOnItsLastScreen(account)
+    account.capabilities = .beta
+    #expect(await m.submitRecoveryCode())
+    account.failNext = .offline
+    store.recoveryResult(await m.finishRecovery(.passkey))
+    #expect(store.signup.path == [.signIn, .recoverIntro, .recoverWords])
+    #expect(m.failure(on: .recoverWords) == .offline)
+  }
+
   @Test func anInviteLinkDuringTheLastSignupStepStillReachesTheMadeAccount() async {
     let account = MockAccountService()
     let (store, s) = store(account, phase: .signedOut)

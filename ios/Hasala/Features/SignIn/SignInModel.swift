@@ -303,6 +303,7 @@ final class SignInModel {
     case done
     /// The code was refused: back to the code screen, whose line says why.
     case codeRejected
+    case startAgain
     case failed
   }
 
@@ -347,9 +348,19 @@ final class SignInModel {
       clearFailure()
       recovered = credential.method
       return .done
-    } catch {
-      fail(error, on: screen)
+    } catch .cancelled {
+      fail(.cancelled, on: screen)
       return .failed
+    } catch .notInThisBuild {
+      fail(.notInThisBuild, on: screen)
+      return .failed
+    } catch {
+      self.recovery = nil
+      recoverCodeSentAt = nil
+      recoverCode = ""
+      verifiedRecoveryKind = nil
+      fail(error, on: .recoverWords)
+      return .startAgain
     }
   }
 
