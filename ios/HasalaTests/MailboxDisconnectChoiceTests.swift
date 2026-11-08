@@ -64,4 +64,37 @@ struct MailboxDisconnectChoiceTests {
       try LiveMailboxConnecting.disconnected(.otherDevice, provider: .gmail)
     }
   }
+
+  @Test func aDisconnectThatWorkedLeavesThePageAndSaysWhatHappened() {
+    #expect(MailboxDisconnectEnding.after(nil, mailboxRemains: false, provider: .gmail, removed: 42)
+      == .left(line: "Gmail disconnected. 42 transactions removed.", partly: false))
+    #expect(MailboxDisconnectEnding.after(nil, mailboxRemains: true, provider: .gmail, removed: nil)
+      == .left(line: "Gmail disconnected. Past transactions stay.", partly: false))
+  }
+
+  @Test func aDisconnectThatEndedTheMailboxButNotItsTransactionsLeavesThePage() {
+    var failure: MailConnectFailure?
+    do {
+      try LiveMailboxConnecting.disconnected(.disconnectedRemoveFailed, provider: .outlook)
+    } catch {
+      failure = error
+    }
+    let rows = LiveMailboxConnecting.mailboxes(
+      phase: .unlinked, halt: nil, address: nil, lastSuccessAtMs: nil, bankDomains: [], provider: .outlook, nowMs: 0)
+    #expect(rows.isEmpty)
+    #expect(MailboxDisconnectEnding.after(failure, mailboxRemains: !rows.isEmpty, provider: .outlook, removed: 4)
+      == .left(line: "Outlook is disconnected, but its transactions couldn't be removed. They stay for now.", partly: true))
+  }
+
+  @Test func aDisconnectThatDidNotHappenStaysOnThePageWithItsReason() {
+    let failed = MailConnectFailure.failed("Couldn't disconnect Gmail. Try again.")
+    #expect(MailboxDisconnectEnding.after(failed, mailboxRemains: true, provider: .gmail, removed: nil) == .stayed(failed))
+    #expect(MailboxDisconnectEnding.after(.takenByOtherIPhone, mailboxRemains: true, provider: .gmail, removed: nil)
+      == .stayed(.takenByOtherIPhone))
+  }
+
+  @Test func aMailboxThatIsGoneNeverStaysOnAPageWithNothingToDraw() {
+    #expect(MailboxDisconnectEnding.after(.cancelled, mailboxRemains: false, provider: .gmail, removed: nil)
+      == .left(line: "Gmail disconnected. Past transactions stay.", partly: true))
+  }
 }

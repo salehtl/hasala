@@ -14,6 +14,7 @@ struct MailboxDetailPage: View {
   let mailboxID: String
   @State private var choosing = false
   @State private var impact: MailboxDisconnectImpact?
+  @State private var confirming: MailboxSnapshot?
   @State private var confirmingPlain = false
   @State private var busy = false
   @State private var failure: MailConnectFailure?
@@ -67,7 +68,7 @@ struct MailboxDetailPage: View {
     .navigationTitle(mailbox?.provider.appName ?? "Mailbox")
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(isPresented: $choosing) {
-      if let m = mailbox, let impact {
+      if let m = confirming, let impact {
         MailboxDisconnectPage(
           mailbox: m, impact: impact, textsNote: textsNote, busy: busy,
           failure: failure?.message(for: m.provider)
@@ -75,6 +76,9 @@ struct MailboxDetailPage: View {
           Task { await disconnect(removing: removing) }
         }
       }
+    }
+    .onChange(of: mailbox == nil) { _, gone in
+      if gone, !busy { choosing = false }
     }
     .alert("Disconnect \(mailbox?.address ?? "this mailbox")?", isPresented: $confirmingPlain) {
       Button("Cancel", role: .cancel) {}
@@ -352,6 +356,7 @@ struct MailboxDetailPage: View {
     impact = await lane.disconnectImpact(mailboxID)
     busy = false
     failure = nil
+    confirming = mailbox
     if impact == nil { confirmingPlain = true } else { choosing = true }
   }
 
@@ -362,14 +367,20 @@ struct MailboxDetailPage: View {
     let removed = removing ? impact?.transactions : nil
     busy = true
     defer { busy = false }
+    var refused: MailConnectFailure?
     do {
       try await lane.disconnect(mailboxID, removeTransactions: removing)
+    } catch {
+      refused = error
+    }
+    switch MailboxDisconnectEnding.after(refused, mailboxRemains: mailbox != nil, provider: m.provider, removed: removed) {
+    case .left(let line, let partly):
       failure = nil
       choosing = false
-      app.say(MailCopy.disconnected(m.provider, removed: removed))
+      app.say(line, icon: partly ? .info : nil)
       app.router.backToBankAlerts()
-    } catch {
-      failure = error
+    case .stayed(let reason):
+      failure = reason
     }
   }
 }
@@ -423,6 +434,19 @@ private struct FactValue: View {
     Text(text).hType(.subheadline)
       .foregroundStyle(style == .details ? HColor.textSecondary : HColor.textPrimary)
       .multilineTextAlignment(stacked ? .leading : .trailing)
+  }
+}
+
+enum MailboxDisconnectEnding: Equatable {
+  case left(line: String, partly: Bool)
+  case stayed(MailConnectFailure)
+
+  static func after(
+    _ failure: MailConnectFailure?, mailboxRemains: Bool, provider: MailProviderKind, removed: Int?
+  ) -> MailboxDisconnectEnding {
+    guard let failure else { return .left(line: MailCopy.disconnected(provider, removed: removed), partly: false) }
+    if mailboxRemains { return .stayed(failure) }
+    return .left(line: failure.message(for: provider) ?? MailCopy.disconnected(provider, removed: nil), partly: true)
   }
 }
 
