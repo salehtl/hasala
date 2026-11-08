@@ -114,6 +114,16 @@ func TestArgumentMistakesAreRefusedBeforeTheDatabase(t *testing.T) {
 	}
 }
 
+func TestMigrateRefusesAVersionItWouldIgnore(t *testing.T) {
+	env := []string{"HASALA_MIGRATE_DSN=postgres://hasala_migrate@127.0.0.1:1/none", "HASALA_PG_DSN=postgres://hasala_runtime@127.0.0.1:1/none"}
+	for _, argv := range [][]string{{"migrate", "--status", "--to", "5"}, {"migrate", "--pending", "--to", "5"}} {
+		code, _, msg := hasalad(t, env, argv...)
+		if code != 2 || !strings.Contains(msg, "--to") {
+			t.Fatalf("hasalad %v exited %d (%s), want 2 naming --to", argv, code, msg)
+		}
+	}
+}
+
 func TestEveryDatabaseModeNeedsItsDSN(t *testing.T) {
 	for _, argv := range [][]string{
 		{"serve"}, {"verify", "structural"}, {"invite", "list"},

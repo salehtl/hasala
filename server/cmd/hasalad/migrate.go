@@ -39,6 +39,9 @@ func runMigrate(env *runEnv, args []string) error {
 	if a.To < 0 {
 		return refusal{errors.New("--to must be a positive version")}
 	}
+	if a.To != 0 && (a.Status || a.Pending) {
+		return refusal{errors.New("--to migrates up to a version; it cannot go with --status or --pending")}
+	}
 	cfg, err := env.load("migrate", func(c *config.Config) { c.Migrate = a })
 	if err != nil {
 		return err
