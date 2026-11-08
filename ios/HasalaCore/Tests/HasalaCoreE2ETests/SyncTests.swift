@@ -317,6 +317,29 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("a suspension met on upload outlives the run that met it; the last upload answer of a run decides")
+  func suspensionFollowsTheUpload() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let suspended = (status: 403, code: "account_suspended")
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.suspended)
+    #expect(await engine.status.phase == .idle)
+    #expect(try a.store.pendingCount() == 1 && a.store.inflight().count == 1)
+
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(await engine.status.suspended)
+
+    w.server.refuseNext("POST /api/v1/sync", status: suspended.status, code: suspended.code)
+    #expect(await engine.run(.foreground).stop == nil)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+  }
+
   @Test("a chain_break stays a halt until a resend is accepted: asking re-tests it, an unasked run stays latched")
   func chainBreakIsRetested() async throws {
     let (w, a, _) = try await twoPhones()
