@@ -61,6 +61,19 @@ function openMail(card: HTMLElement, url: string): void {
   window.location.href = url;
 }
 
+function pageTimer(signal: AbortSignal) {
+  let id = 0;
+  const clear = () => window.clearTimeout(id);
+  signal.addEventListener('abort', clear, { once: true });
+  return {
+    clear,
+    set: (fn: () => void, ms: number) => {
+      clear();
+      id = window.setTimeout(fn, ms);
+    },
+  };
+}
+
 export function initWaitlist(): void {
   onPage(setup);
 }
@@ -88,6 +101,8 @@ function setup(signal: AbortSignal): void {
   const turnstile = renderTurnstile(form, 'waitlist', signal);
   let touched = false;
   let sending = false;
+  const stillTrying = pageTimer(signal);
+  const focusEmail = pageTimer(signal);
 
   const setState = (s: State) => {
     if (root.dataset.state === s) return;
@@ -246,9 +261,10 @@ function setup(signal: AbortSignal): void {
       if (typed) body.otherBank = typed;
 
       lock(true);
-      const slow = window.setTimeout(() => setStatus('Still trying. Check your connection.'), 8000);
+      stillTrying.set(() => setStatus('Still trying. Check your connection.'), 8000);
       const answer = await postWithTurnstile(`${api!}/v1/waitlist`, body, turnstile);
-      window.clearTimeout(slow);
+      if (signal.aborted) return;
+      stillTrying.clear();
       lock(false);
       turnstile.reset();
       setStatus('');
@@ -275,6 +291,7 @@ function setup(signal: AbortSignal): void {
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
     const text = btn.querySelector('span')!;
     const label = text.textContent;
+    const restore = pageTimer(signal);
     btn.addEventListener(
       'click',
       async () => {
@@ -285,7 +302,7 @@ function setup(signal: AbortSignal): void {
         } catch {
           text.textContent = value;
         }
-        window.setTimeout(() => (text.textContent = label), 2400);
+        restore.set(() => (text.textContent = label), 2400);
       },
       { signal },
     );
@@ -295,7 +312,7 @@ function setup(signal: AbortSignal): void {
   const goToForm = () => {
     const target = document.getElementById('invite');
     target?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    window.setTimeout(() => email.focus({ preventScroll: true }), reducedMotion() ? 0 : 600);
+    focusEmail.set(() => email.focus({ preventScroll: true }), reducedMotion() ? 0 : 600);
   };
   document.querySelectorAll<HTMLAnchorElement>('a[href="#invite"], a[href="/#invite"]').forEach((a) =>
     a.addEventListener(
@@ -310,5 +327,5 @@ function setup(signal: AbortSignal): void {
     ),
   );
 
-  if (location.hash === '#invite') window.setTimeout(() => email.focus({ preventScroll: true }), 300);
+  if (location.hash === '#invite') focusEmail.set(() => email.focus({ preventScroll: true }), 300);
 }
