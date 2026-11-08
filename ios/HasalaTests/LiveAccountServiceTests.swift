@@ -215,6 +215,28 @@ struct LiveAccountServiceTests {
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
   }
 
+  @Test func aWipeFromACancelledTaskStillEndsTheGrantBeforeTheTokenGoes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+        try? await Task.sleep(for: .milliseconds(100))
+        log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+      }
+    }
+    departure.cancel()
+    await departure.value
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
   @Test func aHungEndingStillLetsTheWipeFinish() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)

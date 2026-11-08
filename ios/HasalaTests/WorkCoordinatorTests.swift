@@ -311,6 +311,40 @@ struct WorkCoordinatorTests {
     #expect(log.all == ["closed"])
   }
 
+  @Test(.timeLimit(.minutes(1))) func aStopThatClosesTheAccountIsNotCancelledByThatClose() async {
+    let log = Log()
+    let holder = Mutex<WorkCoordinator?>(nil)
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in (newData: false, stop: .wipe) }, mailbox: nil, committed: {},
+        stopped: { _ in
+          let me = holder.withLock { $0 }
+          await me?.close()
+          log.add("cancelled: \(Task.isCancelled)")
+        }))
+    holder.withLock { $0 = c }
+    _ = await c.run(.foreground)
+    #expect(log.all == ["cancelled: false"])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aCallerGivingUpDoesNotCancelTheStopBeingHandled() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in (newData: false, stop: .wipe) }, mailbox: nil, committed: {},
+        stopped: { _ in
+          try? await Task.sleep(for: .milliseconds(150))
+          log.add("cancelled: \(Task.isCancelled)")
+        }))
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    _ = await job.value
+    await c.close()
+    while log.all.isEmpty { await Task.yield() }
+    #expect(log.all == ["cancelled: false"])
+  }
+
   @Test(.timeLimit(.minutes(1))) func aPauseWaitsForASyncItsCallerGaveUpOn() async {
     let log = Log()
     let c = WorkCoordinator(

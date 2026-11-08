@@ -339,7 +339,7 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
 
   func end(within limit: Duration = MailGrantEnds.departureWait, _ work: @escaping @Sendable () async -> Void) async {
     enqueue(work)
-    await settled(within: limit)
+    _ = await Task { await self.settled(within: limit) }.value
   }
 
   /// Before a connect signs in: nil once every earlier ending is done (waiting at most

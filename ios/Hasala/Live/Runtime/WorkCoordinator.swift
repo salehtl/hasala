@@ -298,7 +298,8 @@ actor WorkCoordinator {
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     if let stop = synced.stop, Self.surfaces(stop) {
       handingStop = true
-      await stages.stopped(stop)
+      let stopped = stages.stopped
+      await Task { await stopped(stop) }.value
       handingStop = false
       if Self.endsTheAccount(stop) { return out }
     }
