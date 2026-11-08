@@ -61,8 +61,12 @@ actor FakeLedger: MailboxLedger {
     return texts
   }
 
+  var syncGate: (@Sendable () async -> Void)?
+  func setSyncGate(_ g: (@Sendable () async -> Void)?) { syncGate = g }
+
   func syncToHead() async throws(MailboxLedgerError) {
     syncs += 1
+    if let syncGate { await syncGate() }
     if syncFails { throw MailboxLedgerError("offline") }
     if let pulled = textsOnPull {
       texts = pulled

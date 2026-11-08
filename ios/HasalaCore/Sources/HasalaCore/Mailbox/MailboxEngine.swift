@@ -393,8 +393,8 @@ public actor MailboxEngine {
     presenter: any MailAuthSessionPresenter, backfillDays: Int, pastMail: MailboxPastMail = .read,
     replacing: Bool = false, confirm: MailboxSwitchConfirm? = nil
   ) async -> ConnectResult {
-    stopped = false
     let (result, plan) = await exclusive { () -> (ConnectResult, MailboxRetirePlan?) in
+      stopped = false
       var plan: MailboxRetirePlan?
       let r = await connectLocked(
         presenter: presenter, backfillDays: backfillDays, pastMail: pastMail, replacing: replacing, confirm: confirm,
