@@ -38,6 +38,7 @@ final class LiveAccountService: AccountService {
   var hooks = LiveAccountHooks()
   var bankTextFacts = BankTextsFacts.shared
   var bankTextMarker = LockedTextsMarkerFile.shared
+  var setupDefaults = UserDefaults.standard
 
   var capabilities: AccountCapabilities { .beta }
   private(set) var profile: AccountProfile?
@@ -325,10 +326,8 @@ final class LiveAccountService: AccountService {
       let body = try await Enrolment.unlockWithPRF(
         env, userID: user, credentialID: assertion.credentialID, prf: assertion.prfFirst)
       defer { body.wipe() }
-      enrolled = try await Enrolment.enrolWriter(
-        env, userID: user, body: body, emailNorm: signIn?.emailNorm, serverSalt: signIn?.serverSalt)
+      try await enrolThisIPhone(user, body: body)
       assertion.prfFirst?.wipe()
-      refreshProfile()
     } catch let e as AuthFailure {
       throw e
     } catch let e as CeremonyError {
@@ -344,15 +343,19 @@ final class LiveAccountService: AccountService {
     do {
       let body = try await Enrolment.unlockWithPhrase(env, userID: user, typed: words.joined(separator: " "))
       defer { body.wipe() }
-      // After a relaunch the address and salt are read from `GET /account` (nil here).
-      enrolled = try await Enrolment.enrolWriter(
-        env, userID: user, body: body, emailNorm: signIn?.emailNorm, serverSalt: signIn?.serverSalt)
-      refreshProfile()
+      try await enrolThisIPhone(user, body: body)
       endUnlockOffer()
       if profile?.method == .password { unlockBody = try? KeyBody(amk: body.amk, aakSeed: body.aakSeed) }
     } catch {
       throw Self.map(error)
     }
+  }
+
+  private func enrolThisIPhone(_ user: UserID, body: KeyBody) async throws(CeremonyError) {
+    enrolled = try await Enrolment.enrolWriter(
+      env, userID: user, body: body, emailNorm: signIn?.emailNorm, serverSalt: signIn?.serverSalt)
+    LocalAccountData.markSetupFinished(setupDefaults)
+    refreshProfile()
   }
 
   func endUnlockOffer() {

@@ -130,6 +130,42 @@ struct LiveAccountFlowTests {
     #expect(Boot.decide(Boot.gather(b.env)) == .restoring)  // in-memory store: bound, never the keys step
   }
 
+  @Test func aKillOnWelcomeBackRelaunchesIntoTheApp() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    #expect(await signIn(b) == .needsUnlock(passkeyCanUnlock: false))
+    let defaults = try #require(UserDefaults(suiteName: "unlock.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    var opened = false
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false) { opened = true }
+
+    unlock.phraseText = words.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.unlocked && !opened)
+    #expect(LocalAccountData.setupFinished(defaults))
+
+    let binding = try #require(b.binding)
+    let (phase, wall) = BootController.initialPhase(.opening(binding), finished: LocalAccountData.setupFinished(defaults))
+    #expect(phase == .ready && wall == nil)
+  }
+
+  @Test func wordsThatAreNotThisAccountsLeaveSetupAsItWas() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    _ = try await signUp(Phone(server), server)
+    let b = Phone(server)
+    #expect(await signIn(b) == .needsUnlock(passkeyCanUnlock: false))
+    let defaults = try #require(UserDefaults(suiteName: "unlock.\(UUID().uuidString)"))
+    let account = b.relaunched()
+    account.setupDefaults = defaults
+    let unlock = UnlockModel(account: account, passkeyCanUnlock: false) {}
+    unlock.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(!unlock.unlocked)
+    #expect(!LocalAccountData.setupFinished(defaults))
+  }
+
   @Test func anotherAccountsWordsDontUnlockAfterARelaunch() async throws {
     let server = MiniHasalad(invite: Self.invite)
     _ = try await signUp(Phone(server), server)
