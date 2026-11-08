@@ -124,6 +124,7 @@ public actor SyncEngine {
     latchThisRun = nil
     do {
       try resumeAfterLatch(trigger)
+      await recordLogGenerationIfUnknown()
       // Reconcile: an in-flight batch goes first, byte-identical.
       set(.reconciling)
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
@@ -193,6 +194,13 @@ public actor SyncEngine {
     try context.storeCall { () throws(StoreError) in try context.store.setLatch(nil) }
     accountFullAtMs = nil
     status.latch = nil
+  }
+
+  private func recordLogGenerationIfUnknown() async {
+    guard let state = try? context.store.syncState(), state.logGeneration == nil,
+      let generation = try? await context.client.meta().log_generation, generation >= 1
+    else { return }
+    try? context.store.recordLogGenerationIfUnknown(generation)
   }
 
   /// A latch stops the flush but not the pull (§5.4: reads continue).

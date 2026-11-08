@@ -275,6 +275,14 @@ public final class LedgerStore: Sendable {
     }
   }
 
+  public func recordLogGenerationIfUnknown(_ generation: Int64) throws(StoreError) {
+    try write { db in
+      try db.execute(
+        sql: "UPDATE sync_state SET log_generation = ? WHERE id = 1 AND log_generation IS NULL",
+        arguments: [generation])
+    }
+  }
+
   public func setEpochHWM(_ e: UInt32) throws(StoreError) {
     try write { db in
       try db.execute(

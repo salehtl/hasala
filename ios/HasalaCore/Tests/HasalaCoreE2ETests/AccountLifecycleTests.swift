@@ -77,4 +77,59 @@ struct AccountLifecycleTests {
     #expect(try env.secrets.binding()?.writerID == again.writerID)
     #expect(try again.store.syncState().authoredHead == .genesis)
   }
+
+  // MARK: The server's log generation
+
+  func enrolledWithoutGeneration(_ w: World) async throws -> SyncContext {
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let b = w.phone("b")
+    let r = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let body = try await Enrolment.unlockWithPhrase(b.env, userID: account.userID, typed: words.joined(separator: " "))
+    defer { body.wipe() }
+    w.server.refuseNext("GET /api/v1/meta", status: 503, code: "unavailable")
+    let enrolled = try await Enrolment.enrolWriter(
+      b.env, userID: account.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
+    let ctx = Enrolment.context(b.env, account: enrolled)
+    #expect(try ctx.store.syncState().logGeneration == nil)
+    return ctx
+  }
+
+  @Test("an iPhone enrolled while /meta failed records the generation on its first run and can report a restore")
+  func generationRecordedAfterEnrolment() async throws {
+    let w = World()
+    let ctx = try await enrolledWithoutGeneration(w)
+    #expect(await SyncEngine(context: ctx).run(.launch).stop == nil)
+    #expect(try ctx.store.syncState().logGeneration == 1)
+
+    w.server.injectRow(
+      user: ctx.userID, writerID: ctx.writerID.string, counter: 1, prevHash: Data(count: 32),
+      blob: Data(repeating: 7, count: 1024), headSig: Data(repeating: 1, count: 64))
+    w.server.setLogGeneration(2)
+    let engine = SyncEngine(context: ctx)
+    _ = await engine.run(.launch)
+    #expect(await engine.status.phase == .halted(.serverRestored))
+    #expect(try ctx.store.syncState().logGeneration == 1)
+  }
+
+  @Test("/meta failing again leaves the run alone, and a later run records the generation")
+  func generationRetriedWhileMetaFails() async throws {
+    let w = World()
+    let ctx = try await enrolledWithoutGeneration(w)
+    w.server.refuseNext("GET /api/v1/meta", status: 503, code: "unavailable")
+    #expect(await SyncEngine(context: ctx).run(.launch).stop == nil)
+    #expect(try ctx.store.syncState().logGeneration == nil)
+    #expect(await SyncEngine(context: ctx).run(.foreground).stop == nil)
+    #expect(try ctx.store.syncState().logGeneration == 1)
+  }
+
+  @Test("a recorded generation is never replaced by a later one")
+  func recordedGenerationStays() async throws {
+    let w = World()
+    let (_, _, ctx) = try await w.passwordAccount(w.phone("a"))
+    #expect(try ctx.store.syncState().logGeneration == 1)
+    w.server.setLogGeneration(5)
+    #expect(await SyncEngine(context: ctx).run(.launch).stop == nil)
+    #expect(try ctx.store.syncState().logGeneration == 1)
+  }
 }
