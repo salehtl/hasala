@@ -391,8 +391,12 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	trigger := now
 	var signedOut *time.Time
 	if err := tx.QueryRow(ctx,
-		`SELECT max(revoked_at) FROM sessions WHERE user_id = $1 AND writer_id = $2 AND revoked_reason = 'others'`,
-		c.user, writerID).Scan(&signedOut); err != nil {
+		`SELECT max(s.revoked_at) FROM sessions s
+		  WHERE s.user_id = $1 AND s.writer_id = $2 AND s.revoked_reason = 'others'
+		    AND NOT EXISTS (SELECT 1 FROM auth_events e
+		                     WHERE e.user_id = s.user_id AND e.writer_id = s.writer_id AND e.at = s.revoked_at
+		                       AND e.kind = ANY($3::text[]))`,
+		c.user, writerID, []string{EventSessionsRevoked, EventAccountFrozen}).Scan(&signedOut); err != nil {
 		return Wake{}, err
 	}
 	if signedOut != nil && signedOut.After(now.Add(-deviceFreezeBackdate)) {

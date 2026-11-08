@@ -102,3 +102,109 @@ func TestTheLiftAnswerAgreesWithTheLiftItself(t *testing.T) {
 		t.Fatal("the device older than the freeze was told it cannot lift it")
 	}
 }
+
+func (m *member) deviceFreezeTrigger() time.Time {
+	m.f.t.Helper()
+	nonce, _, err := m.f.acct.DeviceFreezeChallenge(bgctx, m.device.WriterID)
+	if err != nil {
+		m.f.t.Fatal(err)
+	}
+	msg, _ := keyproto.DeviceFreezeMessage(nonce, m.user.UserID, m.device.WriterID)
+	if _, err := m.f.acct.DeviceFreeze(bgctx, m.device.WriterID, nonce, m.device.SignDAK(m.f.t, msg), nil); err != nil {
+		m.f.t.Fatal(err)
+	}
+	var trigger time.Time
+	if err := m.f.pool.QueryRow(bgctx, `SELECT freeze_trigger_at FROM users WHERE id = $1`, m.user.UserID).Scan(&trigger); err != nil {
+		m.f.t.Fatal(err)
+	}
+	return trigger
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnSignOut(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(2 * time.Hour)
+	want := f.clock.now()
+	if got := m.deviceFreezeTrigger(); !got.Equal(want) {
+		t.Fatalf("trigger %v, want the freeze itself %v and not the device's own sign-out", got, want)
+	}
+}
+
+func TestADeviceFreezeIsNotDatedToTheDevicesOwnEarlierFreeze(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	if _, err := f.acct.FreezeNow(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountFreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	in, err := m.loginPassword(m.s, m.device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.token = in.Session.Token
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET password_set_at = $2 WHERE id = $1`, m.user.UserID, f.clock.now().Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.Unfreeze(bgctx, m.info(), m.deviceStepUp(keyproto.ActionAccountUnfreeze, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Hour)
+	want := f.clock.now()
+	if got := m.deviceFreezeTrigger(); !got.Equal(want) {
+		t.Fatalf("trigger %v, want the second freeze %v and not the device's own first freeze", got, want)
+	}
+}
+
+func TestADeviceFreezeIsDatedToASignOutAnotherDeviceAskedFor(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	victim := m.device
+	f.clock.advance(time.Hour)
+	other := authtest.NewDevice(t)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO writers (user_id, writer_id, alg, pubkey, dak_pubkey, registered_at)
+	        VALUES ($1, $2, 'ed25519', $3, $4, $5)`, m.user.UserID, other.WriterID, other.DWKPub(), other.DAKPub(), f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	in, err := m.loginPassword(m.s, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.token, m.device = in.Session.Token, other
+	f.clock.advance(time.Hour)
+	signedOut := f.clock.now()
+	if err := f.acct.LogoutAll(bgctx, m.info(), m.deviceStepUp(keyproto.ActionSessionLogoutAll, m.s)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(2 * time.Hour)
+	m.device = victim
+	if got := m.deviceFreezeTrigger(); !got.Equal(signedOut) {
+		t.Fatalf("trigger %v, want the sign-out another device asked for %v", got, signedOut)
+	}
+}
+
+func TestADeviceFreezeStaysDatedToASignOutProvedOnlyByAPasskey(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	a := f.enrolPasskey(m.user.UserID)
+	f.clock.advance(time.Hour)
+	i := m.info()
+	ph, _ := keyproto.ParamsHash(keyproto.ActionSessionLogoutAll)
+	b, err := f.stepUp.Begin(bgctx, i.UserID, i.Hash, i.WriterID, keyproto.ActionSessionLogoutAll, ph[:], keyproto.ProofPasskey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedOut := f.clock.now()
+	if err := f.acct.LogoutAll(bgctx, i, &StepUpObject{Nonce: b.Nonce, Proof: StepUpProof{Kind: "passkey",
+		Assertion: a.AssertChallenge(t, authtest.RPID, b.Challenge[:], 2)}}); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(2 * time.Hour)
+	if got := m.deviceFreezeTrigger(); !got.Equal(signedOut) {
+		t.Fatalf("trigger %v, want the sign-out %v: a passkey does not show this device asked", got, signedOut)
+	}
+}
