@@ -65,7 +65,7 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	o := s.Web
 	if !o.BankIP.Allow(clientKey(r)) || !prefixAllow(r, o.BankPrefix) {
-		writePublicRateLimited(w)
+		s.answerRateLimited(w, r, isFormPost(r), "bank")
 		return
 	}
 	var (
@@ -95,7 +95,7 @@ func (s *Server) handleBankRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !o.BankGlobal.Allow("") {
-		writePublicRateLimited(w)
+		s.answerRateLimited(w, r, isForm, "bank")
 		return
 	}
 	s.recordBankRequest(w, r, isForm, form.Bank, form.OtherBank, "", nil)
