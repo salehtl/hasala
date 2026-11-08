@@ -33,6 +33,15 @@ func MailUnsent(minter Minter, record func(purgeledger.Entry)) func(context.Cont
 	}
 }
 
+func MailSent(minter Minter) func(context.Context, pgx.Tx, mailq.Row) error {
+	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) error {
+		if row.Kind != "invite" || row.InviteID == nil {
+			return nil
+		}
+		return restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID)
+	}
+}
+
 func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uuid.UUID) error {
 	if minter == nil {
 		return nil

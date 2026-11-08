@@ -2,6 +2,7 @@ package invites
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"regexp"
@@ -247,6 +248,7 @@ func resendFixture(t *testing.T, addr string) (*pgxpool.Pool, *mailq.Queue, *mai
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true, Minter: minter})
 	q.Unsent = MailUnsent(minter, nil)
+	q.Sent = MailSent(minter)
 	entry, invite := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
@@ -496,5 +498,80 @@ func TestAResendThatEndsWithoutMintingRestoresPastTheCodeOfAnEarlierFailedResend
 	r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
 	if err != nil || r.InviteID != invite || !r.Proven {
 		t.Fatalf("the delivered code: %+v %v", r, err)
+	}
+}
+
+type senderFunc func(context.Context, mail.Message) (string, error)
+
+func (f senderFunc) Send(ctx context.Context, m mail.Message) (string, error) { return f(ctx, m) }
+
+func TestAnEmailSentAfterANewerOneFailedKeepsItsCodeWorking(t *testing.T) {
+	const addr = "overlap@example.com"
+	pool, q, _, _, invite, firstKey, first := resendFixture(t, addr)
+	var delivered mail.Message
+	sends := 0
+	q.Sender = senderFunc(func(_ context.Context, m mail.Message) (string, error) {
+		sends++
+		if sends == 2 {
+			return "", mail.ErrPermanent
+		}
+		resend(t, pool, q, invite)
+		if did, err := q.ProcessOne(bg); err != nil || !did {
+			t.Fatalf("the overlapping send: %v %v", did, err)
+		}
+		delivered = m
+		return "provider-id", nil
+	})
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertStatuses(t, pool, invite, "sent", "sent", "failed")
+	code, key := linkOf(t, delivered)
+	r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+	if err != nil || r.InviteID != invite || !r.Proven {
+		t.Fatalf("the code of the last delivered email: %+v %v", r, err)
+	}
+	if _, err := Resolve(bg, pool, first, firstKey, testTagger{}.EmailTag(addr), time.Now()); !errors.Is(err, ErrNotInvited) {
+		t.Fatalf("the replaced code: %v", err)
+	}
+}
+
+func TestASentInviteEmailLeavesAnEmailStillOnItsWayAlone(t *testing.T) {
+	const addr = "overlap-pending@example.com"
+	pool, q, _, _, invite, _, _ := resendFixture(t, addr)
+	var newest mail.Message
+	sends := 0
+	q.Sender = senderFunc(func(_ context.Context, m mail.Message) (string, error) {
+		sends++
+		switch sends {
+		case 1:
+			resend(t, pool, q, invite)
+			if did, err := q.ProcessOne(bg); err != nil || !did {
+				t.Fatalf("the overlapping send: %v %v", did, err)
+			}
+		case 2:
+			return "", errors.New("provider timeout")
+		default:
+			newest = m
+		}
+		return "provider-id", nil
+	})
+	resend(t, pool, q, invite)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertStatuses(t, pool, invite, "sent", "sent", "queued")
+	if _, err := pool.Exec(bg, `UPDATE mail_log SET next_attempt_at = now() WHERE invite_id = $1 AND status = 'queued'`,
+		invite); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertStatuses(t, pool, invite, "sent", "sent", "sent")
+	code, key := linkOf(t, newest)
+	if _, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now()); err != nil {
+		t.Fatalf("the newest code: %v", err)
 	}
 }

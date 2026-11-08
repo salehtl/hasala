@@ -203,6 +203,7 @@ type Queue struct {
 	// makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
 	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
+	Sent    func(ctx context.Context, tx pgx.Tx, row Row) error
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
@@ -645,8 +646,10 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 	switch {
 	case sendErr == nil:
 		sql = `UPDATE mail_log SET status = 'sent', sent_at = now(), final_at = now(), lease_until = NULL,
+		        hook_due = invite_id IS NOT NULL,
 		        provider_message_id = $3, recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, nilIfEmpty(pid))
+		hooked = row.InviteID != nil
 	case errors.Is(sendErr, mail.ErrBounced):
 		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3, hook_due = true,
 		        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
@@ -777,7 +780,13 @@ func (q *Queue) settleTx(ctx context.Context, id int64) error {
 		}
 	}
 	var done func()
-	if q.Unsent != nil {
+	if status == string(StatusSent) {
+		if q.Sent != nil {
+			if err := q.Sent(ctx, tx, row); err != nil {
+				return err
+			}
+		}
+	} else if q.Unsent != nil {
 		if done, err = q.Unsent(ctx, tx, row); err != nil {
 			return err
 		}
