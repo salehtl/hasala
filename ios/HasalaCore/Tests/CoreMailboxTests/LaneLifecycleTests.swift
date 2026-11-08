@@ -7,6 +7,10 @@ import Testing
 @testable import CoreMailbox
 
 @Suite struct MailboxMoveNoteTests {
+  @Test func onlyAScanOrABackfillIsAnImportStillGoing() {
+    #expect(MailboxPhase.allCases.filter(\.isImporting) == [.scanning, .authoringBackfill])
+  }
+
   @Test func aMoveTheLastRunNeverShowedStillCountsAfterARelaunch() {
     var note = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: .active)
     note.see(.active, nowMs: 1)

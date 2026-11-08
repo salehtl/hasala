@@ -446,8 +446,7 @@ final class AccountRuntime {
   }
 
   nonisolated static func importing(_ lane: MailboxLane) async -> Bool {
-    let phase = await lane.status().phase
-    return phase == .scanning || phase == .authoringBackfill
+    await lane.status().phase.isImporting
   }
 
   nonisolated static func authorOpeningOps(after out: RunOutcome, observer: LedgerPageObserver, outbox: Outbox) async {

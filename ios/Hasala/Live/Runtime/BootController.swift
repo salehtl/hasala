@@ -302,7 +302,7 @@ final class BootController {
         self.session.reviewAccount = rt.reviewAccount
         await rt.store.reload()
       }
-      BackgroundScheduler.shared.scheduleRefresh()
+      BackgroundScheduler.shared.scheduleAfterOpening(rt.store.mailboxPhase)
       Task { [weak self] in await self?.launch(rt, binding: binding, turn: turn) }
       return rt
     }

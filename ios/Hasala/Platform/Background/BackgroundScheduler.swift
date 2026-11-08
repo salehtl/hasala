@@ -1,4 +1,5 @@
 import BackgroundTasks
+import CoreMailbox
 import Foundation
 import os
 
@@ -57,6 +58,19 @@ nonisolated final class BackgroundScheduler: Sendable {
     r.requiresNetworkConnectivity = true
     r.requiresExternalPower = false
     submit(r)
+  }
+
+  static func kinds(afterOpening phase: MailboxPhase?) -> [Kind] {
+    phase?.isImporting == true ? [.refresh, .processing] : [.refresh]
+  }
+
+  func scheduleAfterOpening(_ phase: MailboxPhase?) {
+    for kind in Self.kinds(afterOpening: phase) {
+      switch kind {
+      case .refresh: scheduleRefresh()
+      case .processing: scheduleProcessing()
+      }
+    }
   }
 
   /// Cancels both (sign-out, "Remove this iPhone", §4.7).

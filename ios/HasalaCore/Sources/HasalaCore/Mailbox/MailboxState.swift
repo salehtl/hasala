@@ -18,6 +18,8 @@ public enum MailboxPhase: String, Sendable, Codable, CaseIterable {
   case otherDevice = "other_device"
   case reconnectRequired = "reconnect_required"
   case halted
+
+  public var isImporting: Bool { self == .scanning || self == .authoringBackfill }
 }
 
 /// Content-free error codes (spec 04 §7.11).
