@@ -200,9 +200,8 @@ nonisolated enum BillPatch {
       s.bills[i].notices.removeAll { if case .changedOnTwoDevices = $0.kind { true } else { false } }
       return "Re-applied your change"
     case .dismissBillNotice(let id, let noticeID):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].notices.contains(where: { $0.id == noticeID })
-      else { throw .notFound }
-      s.bills[i].notices.removeAll { $0.id == noticeID }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       return nil
     case .editIncome(let id, let amount, let payday, let active):
       guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }

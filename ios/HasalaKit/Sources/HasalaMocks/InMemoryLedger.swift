@@ -461,9 +461,8 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].notices.remove(at: n)
       title = "Re-applied your change"
     case .dismissBillNotice(let id, let noticeID):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }),
-            s.bills[i].notices.contains(where: { $0.id == noticeID }) else { throw .notFound }
-      s.bills[i].notices.removeAll { $0.id == noticeID }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       title = nil
     case .editIncome(let id, let amount, let payday, let active):
       guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }

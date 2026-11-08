@@ -58,4 +58,36 @@ struct BillLifecycleTests {
     #expect(throws: ActionError.notFound) { try ledger.apply(.markBillPaid("nope")) }
     #expect(ledger.state.bill("salary") == MayaLedger.state.bill("salary"))
   }
+
+  @Test func notNowOnANewPriceKeepsTheUsualAmountAndEndsTheOffer() throws {
+    let ledger = InMemoryLedger()
+    #expect(try ledger.apply(.dismissBillNotice("du", noticeID: "priceChange.du")) == nil)
+    let du = try #require(ledger.state.bill("du"))
+    #expect(du.notices.isEmpty)
+    #expect(du.priceChangeFrom == nil)
+    #expect(du.amount == .aed(389_00))
+    #expect(!BillsEngine.snapshot(ledger.state, now: ledger.now).needsALook.contains { $0.id == "du" })
+    #expect(throws: ActionError.notFound) { try ledger.apply(.acceptBillAmount("du")) }
+  }
+
+  @Test func dismissingAnotherNoticeLeavesTheNewPriceOpen() throws {
+    var s = MayaLedger.state
+    let i = try #require(s.bills.firstIndex { $0.id == "du" })
+    s.bills[i].notices.append(BillNotice(id: "chargedAfterEnd.x", kind: .chargedAfterEnd(charged: .aed(5_00), on: LocalDate(2026, 10, 1))))
+    let ledger = InMemoryLedger(state: s)
+    try ledger.apply(.dismissBillNotice("du", noticeID: "chargedAfterEnd.x"))
+    let du = try #require(ledger.state.bill("du"))
+    #expect(du.notices.map(\.id) == ["priceChange.du"])
+    #expect(du.priceChangeFrom == .aed(389_00))
+    #expect(du.amount == .aed(427_90))
+    try ledger.apply(.acceptBillAmount("du"))
+    #expect(ledger.state.bill("du")?.priceChangeFrom == nil)
+  }
+
+  @Test func dismissingAnUnknownNoticeChangesNothing() throws {
+    let ledger = InMemoryLedger()
+    #expect(throws: ActionError.notFound) { try ledger.apply(.dismissBillNotice("du", noticeID: "nope")) }
+    #expect(throws: ActionError.notFound) { try ledger.apply(.dismissBillNotice("nope", noticeID: "priceChange.du")) }
+    #expect(ledger.state.bill("du") == MayaLedger.state.bill("du"))
+  }
 }
