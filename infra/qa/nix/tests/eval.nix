@@ -934,7 +934,23 @@ let
     ) "AT-E3 the API port's kernel rule is installed with the tunnel off"
     ++ check (
       (envOf minimal "hasalad").HASALA_TRUSTED_PROXY == "none"
-    ) "AT-E3 no tunnel must mean trusted_proxy none";
+    ) "AT-E3 no tunnel must mean trusted_proxy none"
+    ++
+      check
+        (
+          let
+            source = builtins.readFile "${nixpkgs}/nixos/modules/services/networking/firewall-iptables.nix";
+            after = marker: text: lib.last (lib.splitString marker text);
+            before = marker: text: lib.head (lib.splitString marker text);
+            start = before "stopScript = " (after "startScript = " source);
+            stop = before "reloadScript = " (after "stopScript = " source);
+            reload = after "reloadScript = " source;
+          in
+          lib.hasInfix "ip46tables -D INPUT -j nixos-fw" (before "cfg.extraCommands" start)
+          && lib.hasInfix "ip46tables -D INPUT -j nixos-drop" (before "cfg.extraStopCommands" stop)
+          && lib.hasInfix "cfg.extraStopCommands" (after "ip46tables -A INPUT -j nixos-drop" reload)
+        )
+        "AT-E3 the firewall's reload no longer closes INPUT with nixos-drop before the stop and start commands, which the port rules rely on";
 
   backupOf = name: (svc fullSys name).serviceConfig;
   offsiteExec = lib.toList (backupOf "hasala-backup-offsite").ExecStart;

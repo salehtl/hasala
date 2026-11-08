@@ -177,6 +177,54 @@ let
     runtimeInputs = [ pkgs.coreutils ];
     text = builtins.unsafeDiscardStringContext rendered.retry;
   };
+
+  fakeFirewall =
+    tool:
+    stub tool ''
+      [ "$1" = -w ] && shift
+      op="$1"
+      chain="$2"
+      shift 2
+      f="$FW/${tool}.$chain"
+      rule="$*"
+      rc=0
+      case "$op" in
+        -N) if [ -e "$f" ]; then rc=1; else : > "$f"; fi ;;
+        -F) if [ -e "$f" ]; then : > "$f"; else rc=1; fi ;;
+        -X) if [ -e "$f" ] && [ ! -s "$f" ]; then rm "$f"; else rc=1; fi ;;
+        -A | -I) if [ -e "$f" ]; then echo "$rule" >> "$f"; else rc=1; fi ;;
+        -C) grep -qxF -- "$rule" "$f" 2>/dev/null || rc=1 ;;
+        -D)
+          if grep -qxF -- "$rule" "$f" 2>/dev/null; then
+            grep -vxF -- "$rule" "$f" > "$f.new" || true
+            mv "$f.new" "$f"
+          else
+            rc=1
+          fi
+          ;;
+        *) echo "${tool} stub: unexpected $op" >&2; exit 99 ;;
+      esac
+      for guard in iptables:hasala-api-out iptables:hasala-console-out ip6tables:hasala-console-out; do
+        t="''${guard%:*}"
+        c="''${guard#*:}"
+        [ "$(head -n 1 "$FW/$t.INPUT")" != "-j nixos-drop" ] || continue
+        grep -q -- "-j $c\$" "$FW/$t.OUTPUT" && grep -q REJECT "$FW/$t.$c" 2>/dev/null && continue
+        echo "$t $c unguarded after ${tool} $op $chain $rule" >> "$FW/gaps"
+      done
+      exit "$rc"
+    '';
+
+  firewall =
+    (t.evalSystem {
+      services.hasala = {
+        tunnel.enable = true;
+        console.enable = true;
+        monitoring.healthCheck.enable = true;
+      };
+    }).config.networking.firewall;
+  firewallScript = name: text: stub name "set -e\n${builtins.unsafeDiscardStringContext text}";
+  firewallStart = firewallScript "firewall-extra-start" firewall.extraCommands;
+  firewallStop = firewallScript "firewall-extra-stop" firewall.extraStopCommands;
 in
 pkgs.runCommand "hasala-ops-scripts"
   {
@@ -185,6 +233,8 @@ pkgs.runCommand "hasala-ops-scripts"
       pkgs.findutils
       pkgs.gnugrep
       pkgs.gnused
+      (fakeFirewall "iptables")
+      (fakeFirewall "ip6tables")
     ];
   }
   ''
@@ -453,6 +503,82 @@ pkgs.runCommand "hasala-ops-scripts"
     health "$quiet"
     [ "$(posted)" = 0 ] || no "a host with no address posted"
     [ "$(find state -name 'recovered.*' | wc -l | tr -d ' ')" = 0 ] || no "a host with no address kept an owed notice"
+
+    fw_both() { iptables "$@"; ip6tables "$@"; }
+    fw_scenario() {
+      scenario "$1"
+      export FW="$PWD/fw"
+      mkdir fw
+      for t in iptables ip6tables; do
+        echo '-j nixos-fw' > "fw/$t.INPUT"
+        : > "fw/$t.OUTPUT"
+      done
+      ${lib.getExe firewallStart}
+      : > fw/gaps
+    }
+    begin_reload() {
+      fw_both -D INPUT -j nixos-drop 2>/dev/null || true
+      fw_both -F nixos-drop 2>/dev/null || true
+      fw_both -X nixos-drop 2>/dev/null || true
+      fw_both -N nixos-drop
+      fw_both -A nixos-drop -j DROP
+      fw_both -A INPUT -j nixos-drop
+      ${lib.getExe firewallStop}
+    }
+    finish_reload() {
+      fw_both -D INPUT -j nixos-fw
+      ${lib.getExe firewallStart}
+      fw_both -A INPUT -j nixos-fw
+      fw_both -D INPUT -j nixos-drop
+    }
+    stop_firewall() {
+      fw_both -D INPUT -j nixos-drop 2>/dev/null || true
+      fw_both -D INPUT -j nixos-fw 2>/dev/null || true
+      ${lib.getExe firewallStop}
+    }
+    guards_in_place() {
+      for g in iptables:hasala-api-out iptables:hasala-console-out ip6tables:hasala-console-out; do
+        tool="''${g%:*}"
+        chain="''${g#*:}"
+        [ "$(grep -c -- "-j $chain\$" "fw/$tool.OUTPUT")" = 1 ] || no "$1: $tool OUTPUT does not jump to $chain exactly once: $(cat "fw/$tool.OUTPUT")"
+        [ "$(grep -c REJECT "fw/$tool.$chain")" = 1 ] || no "$1: $tool $chain does not have exactly one reject"
+        [ "$(tail -n 1 "fw/$tool.$chain" | grep -c REJECT)" = 1 ] || no "$1: $tool $chain does not end in the reject"
+      done
+    }
+    guards_gone() {
+      for g in iptables:hasala-api-out iptables:hasala-console-out ip6tables:hasala-console-out; do
+        tool="''${g%:*}"
+        chain="''${g#*:}"
+        [ ! -e "fw/$tool.$chain" ] || no "$1: $tool $chain is left behind"
+        [ "$(grep -c -- "-j $chain\$" "fw/$tool.OUTPUT" || true)" = 0 ] || no "$1: $tool OUTPUT still jumps to $chain"
+      done
+    }
+
+    fw_scenario "a firewall reload keeps both loopback ports guarded from start to end"
+    begin_reload
+    finish_reload
+    [ ! -s fw/gaps ] || no "a reload left a port unguarded: $(cat fw/gaps)"
+    guards_in_place "after a reload"
+
+    fw_scenario "a second reload in a row changes nothing"
+    begin_reload
+    finish_reload
+    begin_reload
+    finish_reload
+    [ ! -s fw/gaps ] || no "the second reload left a port unguarded: $(cat fw/gaps)"
+    guards_in_place "after two reloads"
+
+    fw_scenario "a reload whose start fails stops the firewall and removes the rules"
+    begin_reload
+    guards_in_place "while the reload runs"
+    stop_firewall
+    guards_gone "after a failed reload"
+
+    fw_scenario "a firewall stop removes the rules and a start puts them back"
+    stop_firewall
+    guards_gone "after a stop"
+    ${lib.getExe firewallStart}
+    guards_in_place "after a start"
 
     [ "$failed" = 0 ]
     touch "$out"

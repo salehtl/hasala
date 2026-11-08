@@ -476,6 +476,12 @@ let
     text = bumpGenerationText;
   };
 
+  unlessFirewallReload = commands: ''
+    if ! iptables -w -C INPUT -j nixos-drop 2>/dev/null; then
+      ${commands}
+    fi
+  '';
+
   # ------------------------------------------------------------------ health
   # §5.9.3, the probes this build can answer: P1 (local API), P2–P4 and P9
   # (through Cloudflare, when the tunnel is on), P5 (the AASA, headers and
@@ -1743,7 +1749,7 @@ in
         iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null \
           || iptables -w -I OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out
       '';
-      networking.firewall.extraStopCommands = ''
+      networking.firewall.extraStopCommands = unlessFirewallReload ''
         iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.listen.port} -j hasala-api-out 2>/dev/null || true
         iptables -w -F hasala-api-out 2>/dev/null || true
         iptables -w -X hasala-api-out 2>/dev/null || true
@@ -1823,7 +1829,7 @@ in
         ip6tables -w -C OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null \
           || ip6tables -w -I OUTPUT -o lo -p tcp -d ::1 --dport ${toString cfg.console.port} -j hasala-console-out
       '';
-      networking.firewall.extraStopCommands = ''
+      networking.firewall.extraStopCommands = unlessFirewallReload ''
         iptables -w -D OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString cfg.console.port} -j hasala-console-out 2>/dev/null || true
         iptables -w -F hasala-console-out 2>/dev/null || true
         iptables -w -X hasala-console-out 2>/dev/null || true

@@ -609,6 +609,9 @@ in
           machine.succeed("systemctl restart firewall.service")
           machine.succeed(f"iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
           machine.fail(f"curl -s --max-time 5 {url}")
+          machine.succeed("systemctl reload firewall.service")
+          machine.succeed(f"iptables -w -C OUTPUT -o lo -p tcp -d 127.0.0.1 --dport {CONSOLE_PORT} -j hasala-console-out")
+          machine.fail(f"curl -s --max-time 5 {url}")
           machine.succeed("systemctl reset-failed hasala-health.service || true")
           if built:
               ok = [
