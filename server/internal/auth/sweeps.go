@@ -42,6 +42,7 @@ func (a *Accounts) SweepHourly(ctx context.Context) (int64, error) {
 		{`DELETE FROM step_up_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
 		{`DELETE FROM writer_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
 		{`DELETE FROM device_freeze_challenges WHERE expires_at < $1`, []any{now.Add(-time.Hour)}},
+		{`DELETE FROM mailbox_link_challenges WHERE expires_at < $1`, []any{now.Add(-24 * time.Hour)}},
 		{`DELETE FROM webauthn_ceremonies WHERE expires_at < $1`, []any{now}},
 	}
 	var total int64

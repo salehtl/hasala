@@ -732,6 +732,31 @@ func TestSweepsForgetExpiredCeremoniesAndCodes(t *testing.T) {
 	}
 }
 
+func TestSweepsDeleteLongExpiredMailboxLinkChallenges(t *testing.T) {
+	f := newAcctFixture(t)
+	f.clock.advance(time.Since(f.clock.now()))
+	m := f.passwordMember("Maya")
+	session := SessionHash(m.token)
+	seed := func(mark byte, expiredFor string) {
+		t.Helper()
+		nonce := make([]byte, 32)
+		nonce[0] = mark
+		if _, err := f.pool.Exec(bgctx, `INSERT INTO mailbox_link_challenges (nonce_hash, user_id, session_hash, issued_at, expires_at)
+		    VALUES ($1, $2, $3, now() - $4::interval - interval '15 minutes', now() - $4::interval)`,
+			nonce, m.user.UserID, session, expiredFor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed(1, "25 hours")
+	seed(2, "23 hours")
+	if _, err := f.acct.SweepHourly(bgctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count(`SELECT count(*) FROM mailbox_link_challenges`); n != 1 {
+		t.Fatalf("mailbox_link_challenges rows = %d, want 1", n)
+	}
+}
+
 func TestSweepsDeleteOldAdminAuditAndRefusals(t *testing.T) {
 	f := newAcctFixture(t)
 	f.clock.advance(time.Since(f.clock.now()))
