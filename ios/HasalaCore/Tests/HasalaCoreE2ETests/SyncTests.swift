@@ -340,6 +340,38 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
   }
 
+  @Test("a run that stops after its upload answer still reports that answer, and a run with no answer changes nothing")
+  func suspensionSurvivesALaterStop() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.authored).stop == .offline)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.inflight().count == 1)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 403, code: "account_suspended")
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await engine.status.suspended)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await engine.status.suspended)
+
+    try a.store.setLatch(.hardStop)
+    let before = w.server.uploadCount
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.suspended)
+    try a.store.setLatch(nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.foreground).stop == .offline)
+    #expect(await !engine.status.suspended)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+  }
+
   @Test("a chain_break stays a halt until a resend is accepted: asking re-tests it, an unasked run stays latched")
   func chainBreakIsRetested() async throws {
     let (w, a, _) = try await twoPhones()

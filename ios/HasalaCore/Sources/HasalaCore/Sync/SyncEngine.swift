@@ -43,7 +43,6 @@ public actor SyncEngine {
   private var offlineAttempts = 0
   private var accountFullAtMs: Int64?
   private var latchThisRun: OutboxLatch?
-  private var suspendedThisRun = false
   public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
@@ -123,7 +122,6 @@ public actor SyncEngine {
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
     latchThisRun = nil
-    suspendedThisRun = false
     do {
       try resumeAfterLatch(trigger)
       await recordLogGenerationIfUnknown()
@@ -155,7 +153,6 @@ public actor SyncEngine {
       offlineAttempts = 0
       status.lastSuccessAt = context.clock.nowMs()
       status.retryAfterSeconds = nil
-      status.suspended = suspendedThisRun
       status.phase = .idle
     } catch {
       out.stop = await apply(await context.settled(error))
@@ -209,7 +206,7 @@ public actor SyncEngine {
   private func latchAware(_ push: () async throws(SyncStop) -> PushSummary) async throws(SyncStop) -> PushSummary {
     do {
       let pushed = try await push()
-      suspendedThisRun = false
+      if pushed.batches > 0 { status.suspended = false }
       return pushed
     } catch {
       if case .latched(let l, let alarm) = error {
@@ -222,7 +219,7 @@ public actor SyncEngine {
         }
       }
       if error == .suspended {
-        suspendedThisRun = true
+        status.suspended = true
         return PushSummary()
       }
       throw error
