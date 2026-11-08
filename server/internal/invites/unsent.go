@@ -16,7 +16,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-func MailUnsent(record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
+func MailUnsent(hold purgeledger.HoldFunc, record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
 	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) (func(), error) {
 		if row.Kind != "invite" || row.InviteID == nil {
 			return nil, nil
@@ -25,14 +25,16 @@ func MailUnsent(record func(purgeledger.Entry)) func(context.Context, pgx.Tx, ma
 		if err != nil || gone == uuid.Nil || record == nil {
 			return nil, err
 		}
-		return func() { recordUnsent(record, gone) }, nil
+		held, err := hold.Tx(ctx, tx, unsentEntry(gone))
+		if err != nil {
+			return nil, err
+		}
+		return func() { held.Release(record) }, nil
 	}
 }
 
-func recordUnsent(record func(purgeledger.Entry), entry uuid.UUID) {
-	if record != nil && entry != uuid.Nil {
-		record(purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistUnsent})
-	}
+func unsentEntry(entry uuid.UUID) purgeledger.Entry {
+	return purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistUnsent}
 }
 
 func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string) (bool, uuid.UUID, error) {
@@ -98,7 +100,7 @@ func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string
 	return true, *entry, nil
 }
 
-func sweepUnsent(ctx context.Context, db *pgxpool.Pool, record func(purgeledger.Entry)) (int64, error) {
+func sweepUnsent(ctx context.Context, db *pgxpool.Pool, hold purgeledger.HoldFunc, record func(purgeledger.Entry)) (int64, error) {
 	rows, err := db.Query(ctx,
 		`SELECT id FROM invite_codes i WHERE state = 'queued' AND created_at < now() - interval '1 hour'
 		    AND NOT EXISTS (SELECT 1 FROM mail_log m WHERE m.invite_id = i.id AND m.status IN ('queued','sending','sent'))
@@ -112,7 +114,7 @@ func sweepUnsent(ctx context.Context, db *pgxpool.Pool, record func(purgeledger.
 	}
 	var n int64
 	for _, id := range ids {
-		closed, err := sweepOne(ctx, db, id, record)
+		closed, err := sweepOne(ctx, db, id, hold, record)
 		if err != nil {
 			return n, fmt.Errorf("invites: unsent sweep: %w", err)
 		}
@@ -123,7 +125,7 @@ func sweepUnsent(ctx context.Context, db *pgxpool.Pool, record func(purgeledger.
 	return n, nil
 }
 
-func sweepOne(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, record func(purgeledger.Entry)) (bool, error) {
+func sweepOne(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, hold purgeledger.HoldFunc, record func(purgeledger.Entry)) (bool, error) {
 	tx, err := pgtx.BeginReadCommitted(ctx, db)
 	if err != nil {
 		return false, err
@@ -133,9 +135,15 @@ func sweepOne(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, record func(p
 	if err != nil {
 		return false, err
 	}
+	var held purgeledger.Held
+	if gone != uuid.Nil {
+		if held, err = hold.Tx(ctx, tx, unsentEntry(gone)); err != nil {
+			return false, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
-	recordUnsent(record, gone)
+	held.Release(record)
 	return closed, nil
 }

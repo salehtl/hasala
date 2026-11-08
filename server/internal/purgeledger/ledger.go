@@ -101,12 +101,21 @@ func AppendEntries(path string, entries ...Entry) error {
 	return appendLocked(path, buf.Bytes())
 }
 
+var writeLine = (*os.File).Write
+
 func appendLocked(path string, line []byte) error {
 	f, created, err := openAppend(path)
 	if err != nil {
 		return fmt.Errorf("%w: open %s: %w", ErrNotWritten, path, err)
 	}
-	if n, err := f.Write(line); err != nil {
+	size := int64(-1)
+	if st, err := f.Stat(); err == nil {
+		size = st.Size()
+	}
+	if n, err := writeLine(f, line); err != nil {
+		if n > 0 && size >= 0 && f.Truncate(size) == nil {
+			n = 0
+		}
 		_ = f.Close()
 		if n == 0 {
 			return fmt.Errorf("%w: write %s: %w", ErrNotWritten, path, err)

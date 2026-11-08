@@ -17,6 +17,7 @@ func TestRemovingTheReadingIPhoneUnlinksTheMailboxAndIgnoresItsNotices(t *testin
 	ledger := filepath.Join(t.TempDir(), "purged")
 	h.srv.PurgeLedger = ledger
 	h.srv.Writers.Record = h.srv.recordRestore
+	h.srv.Writers.Hold = h.srv.holdRestore
 	k := h.onboard(true)
 	reader := authtest.NewDevice(t)
 	readerTok := k.enrol(reader)

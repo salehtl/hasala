@@ -18,6 +18,7 @@ import (
 	"github.com/salehtl/hasala/server/internal/authkeys"
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -494,8 +495,7 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 	}
 	var (
 		revoked []pushv2.Target
-		changed string
-		at      time.Time
+		held    purgeledger.Held
 	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		now := a.now()
@@ -510,7 +510,11 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 		if err != nil {
 			return err
 		}
-		changed, at = event, now
+		if event != EventPasswordSet {
+			if held, err = a.Hold.Tx(ctx, tx, passwordEntry(session.UserID, now)); err != nil {
+				return err
+			}
+		}
 		if revoked, err = RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
 			return err
 		}
@@ -519,9 +523,7 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 	if err != nil {
 		return Wake{}, err
 	}
-	if changed != EventPasswordSet {
-		a.recordPassword(session.UserID, at)
-	}
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 // RecoveryTTL is a recovery ceremony's lifetime, from creation and again from
@@ -387,13 +388,18 @@ func (a *Accounts) RecoverFinish(ctx context.Context, r RecoverFinishRequest) (R
 	if err := recordEventTx(ctx, tx, a.Mail, userID, AuthEvent{Kind: EventDeviceAdded, WriterID: w.WriterID}, now); err != nil {
 		return release(err)
 	}
+	entries := passkeyRemovalEntries(userID, removed, now)
+	if kind == MethodPassword || st.hasPassword() {
+		entries = append([]purgeledger.Entry{passwordEntry(userID, now)}, entries...)
+	}
+	held, err := a.Hold.Tx(ctx, tx, entries...)
+	if err != nil {
+		return release(err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return RecoverFinished{}, err
 	}
-	if kind == MethodPassword || st.hasPassword() {
-		a.recordPassword(userID, now)
-	}
-	recordPasskeyRemovals(a.Record, userID, removed, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return RecoverFinished{Session: m, UserID: userID, WriterID: w.WriterID,
 		Wake: wakeFor(userID, w.WriterID, revoked)}, nil

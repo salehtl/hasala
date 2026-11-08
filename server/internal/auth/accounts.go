@@ -33,6 +33,7 @@ type Accounts struct {
 	Mail     *Mailer
 	Now      func() time.Time
 	Record   func(purgeledger.Entry)
+	Hold     purgeledger.HoldFunc
 }
 
 func (a *Accounts) now() time.Time {

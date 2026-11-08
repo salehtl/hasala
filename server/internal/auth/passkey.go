@@ -119,6 +119,7 @@ type Passkeys struct {
 	// was minted and when it dies (see 00022's note on the two-clock defect).
 	Now    func() time.Time
 	Record func(purgeledger.Entry)
+	Hold   purgeledger.HoldFunc
 }
 
 func (p *Passkeys) now() time.Time {

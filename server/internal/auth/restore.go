@@ -14,57 +14,39 @@ import (
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
-func (a *Accounts) recordFreeze(userID uuid.UUID, trigger, at time.Time) {
-	if a.Record == nil {
-		return
-	}
+func freezeEntry(userID uuid.UUID, trigger, at time.Time) purgeledger.Entry {
 	if trigger.After(at) {
 		trigger = at
 	}
-	a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindFreeze, Trigger: trigger})
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindFreeze, Trigger: trigger}
 }
 
-func (a *Accounts) recordPassword(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPassword})
-	}
+func passwordEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPassword}
 }
 
-func (a *Accounts) recordPhraseSeen(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPhraseSeen})
-	}
+func phraseSeenEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPhraseSeen}
 }
 
-func (a *Accounts) recordSessions(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindSessions})
-	}
+func sessionsEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindSessions}
 }
 
-func (a *Accounts) recordEmail(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindEmail})
-	}
-}
-
-func (a *Accounts) recordUnfreeze(userID uuid.UUID, at time.Time) {
-	if a.Record != nil {
-		a.Record(UnfreezeEntry(userID, at))
-	}
+func emailEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindEmail}
 }
 
 func UnfreezeEntry(userID uuid.UUID, at time.Time) purgeledger.Entry {
 	return purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindUnfreeze}
 }
 
-func recordPasskeyRemovals(record func(purgeledger.Entry), userID uuid.UUID, credentials [][]byte, at time.Time) {
-	if record == nil {
-		return
-	}
+func passkeyRemovalEntries(userID uuid.UUID, credentials [][]byte, at time.Time) []purgeledger.Entry {
+	out := make([]purgeledger.Entry, 0, len(credentials))
 	for _, id := range credentials {
-		record(purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPasskey, Credential: id})
+		out = append(out, purgeledger.Entry{ID: userID, At: at, Kind: purgeledger.KindPasskey, Credential: id})
 	}
+	return out
 }
 
 type ReapplyReport struct {

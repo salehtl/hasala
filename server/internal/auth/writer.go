@@ -117,6 +117,7 @@ type Writers struct {
 	// Now defaults to time.Now; one clock decides minting and expiry.
 	Now    func() time.Time
 	Record func(purgeledger.Entry)
+	Hold   purgeledger.HoldFunc
 }
 
 func (w *Writers) now() time.Time {
@@ -359,7 +360,7 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 	}
 	g := Guarded{UserID: userID, SessionHash: session.Hash, BoundWriter: session.WriterID,
 		Action: keyproto.ActionWriterRevoke, ParamsHash: ph, StepUp: r.StepUp}
-	var revokedAt time.Time
+	var held purgeledger.Held
 	err = w.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		if err := lockUser(ctx, tx, userID); err != nil {
 			return err
@@ -401,17 +402,17 @@ func (w *Writers) Revoke(ctx context.Context, userID uuid.UUID, session SessionI
 				return err
 			}
 		}
-		revokedAt = now
+		if held, err = w.Hold.Tx(ctx, tx, purgeledger.Entry{ID: userID, At: now, Kind: purgeledger.KindDevice, Device: &purgeledger.Device{
+			WriterID: r.WriterID, SignerWriterID: r.SignerWriterID, FinalCounter: r.FinalCounter,
+			FinalHead: r.FinalHead, Nonce: r.Nonce, Sig: r.Sig}}); err != nil {
+			return err
+		}
 		return recordEventTx(ctx, tx, w.Mail, userID, AuthEvent{Kind: EventDeviceRemoved, WriterID: r.WriterID}, now)
 	})
 	if err != nil {
 		return err
 	}
-	if w.Record != nil {
-		w.Record(purgeledger.Entry{ID: userID, At: revokedAt, Kind: purgeledger.KindDevice, Device: &purgeledger.Device{
-			WriterID: r.WriterID, SignerWriterID: r.SignerWriterID, FinalCounter: r.FinalCounter,
-			FinalHead: r.FinalHead, Nonce: r.Nonce, Sig: r.Sig}})
-	}
+	held.Release(w.Record)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package invites
 
 import (
 	"bytes"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func (testTagger) EmailTag(s string) []byte {
 func unsentQueue(pool *pgxpool.Pool, fake *mail.Fake) *mailq.Queue {
 	q := mailq.New(pool, fake, testTagger{})
 	q.Register("invite", Renderer{WebBase: "https://hasala.app", ManualTestFlight: true})
-	q.Unsent = MailUnsent(nil)
+	q.Unsent = MailUnsent(nil, nil)
 	return q
 }
 
@@ -199,7 +200,7 @@ func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
 			if _, err := pool.Exec(bg, c.sql, invite); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Sweep(bg, pool, nil); err != nil {
+			if _, err := Sweep(bg, pool, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if s := inviteState(t, pool, invite); s != "queued" {
@@ -209,7 +210,7 @@ func TestTheInviteSweepCatchesAStaleQueuedInvite(t *testing.T) {
 				invite); err != nil {
 				t.Fatal(err)
 			}
-			if msg, err := Sweep(bg, pool, nil); err != nil || msg == "" {
+			if msg, err := Sweep(bg, pool, nil, nil); err != nil || msg == "" {
 				t.Fatalf("sweep %q %v", msg, err)
 			}
 			if s := inviteState(t, pool, invite); s != "revoked" {
@@ -229,7 +230,7 @@ func TestTheInviteSweepLeavesAQueuedInviteWithMailToSend(t *testing.T) {
 		invite); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Sweep(bg, pool, nil); err != nil {
+	if _, err := Sweep(bg, pool, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if s := inviteState(t, pool, invite); s != "queued" {
@@ -261,7 +262,7 @@ func TestASentInviteIsNotTouched(t *testing.T) {
 	if _, err := q.Drain(bg); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Sweep(bg, pool, nil); err != nil {
+	if _, err := Sweep(bg, pool, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := q.Sweep(bg); err != nil {
@@ -347,7 +348,7 @@ func TestABouncedInviteRecordsTheDeletedEntryAndTheReplayDeletesItAgain(t *testi
 			var recorded []purgeledger.Entry
 			record := func(e purgeledger.Entry) { recorded = append(recorded, e) }
 			q := unsentQueue(pool, &mail.Fake{Err: mail.ErrBounced})
-			q.Unsent = MailUnsent(record)
+			q.Unsent = MailUnsent(nil, record)
 			const addr = "bounce@example.com"
 			entry, invite := approved(t, pool, q, addr)
 			var saved string
@@ -362,7 +363,7 @@ func TestABouncedInviteRecordsTheDeletedEntryAndTheReplayDeletesItAgain(t *testi
 				if _, err := pool.Exec(bg, `UPDATE invite_codes SET created_at = now() - interval '2 hours' WHERE id = $1`, invite); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := Sweep(bg, pool, record); err != nil {
+				if _, err := Sweep(bg, pool, nil, record); err != nil {
 					t.Fatal(err)
 				}
 			} else if _, err := q.Drain(bg); err != nil {
@@ -413,7 +414,7 @@ func TestAnInviteWhoseEntryGoesBackToTheListRecordsNothing(t *testing.T) {
 	pool := pgtest.New(t)
 	var recorded []purgeledger.Entry
 	q := unsentQueue(pool, &mail.Fake{Err: mail.ErrPermanent})
-	q.Unsent = MailUnsent(func(e purgeledger.Entry) { recorded = append(recorded, e) })
+	q.Unsent = MailUnsent(nil, func(e purgeledger.Entry) { recorded = append(recorded, e) })
 	const addr = "back@example.com"
 	entry, _ := approved(t, pool, q, addr)
 	if _, err := q.Drain(bg); err != nil {
@@ -422,5 +423,25 @@ func TestAnInviteWhoseEntryGoesBackToTheListRecordsNothing(t *testing.T) {
 	assertEntryConfirmed(t, pool, entry, addr)
 	if len(recorded) != 0 {
 		t.Fatalf("recorded %+v for an entry that stayed", recorded)
+	}
+}
+
+func TestABouncedInviteHoldsItsLineWithTheDeletion(t *testing.T) {
+	pool := pgtest.New(t)
+	q := unsentQueue(pool, &mail.Fake{Err: mail.ErrBounced})
+	q.Unsent = MailUnsent(purgeledger.HoldTx, func(purgeledger.Entry) {})
+	const addr = "held-bounce@example.com"
+	entry, _ := approved(t, pool, q, addr)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	assertEntryGone(t, pool, entry, addr)
+	path := filepath.Join(t.TempDir(), "purged")
+	if n, err := purgeledger.Flush(bg, pool, path); err != nil || n != 1 {
+		t.Fatalf("flush: %d %v", n, err)
+	}
+	entries, err := purgeledger.Read(path)
+	if err != nil || len(entries) != 1 || entries[0].ID != entry || entries[0].Kind != purgeledger.KindWaitlistUnsent {
+		t.Fatalf("ledger %+v %v, want the deleted entry", entries, err)
 	}
 }

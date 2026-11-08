@@ -300,10 +300,14 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err != nil {
 		return SignedIn{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, passwordEntry(st.ID, now))
+	if err != nil {
+		return SignedIn{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return SignedIn{}, err
 	}
-	a.recordPassword(st.ID, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	// The new iPhone has no writer yet: every device of the account hears of
 	// the reset, the approver included (spec 02 §12.5).

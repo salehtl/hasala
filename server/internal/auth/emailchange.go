@@ -229,10 +229,14 @@ func (a *Accounts) EmailChangeFinish(ctx context.Context, session SessionInfo, c
 	if err := a.Mail.enqueueAlertTx(ctx, tx, st.ID, "email_changed_old", st.EmailNorm, now); err != nil {
 		return err
 	}
+	held, err := a.Hold.Tx(ctx, tx, emailEntry(st.ID, now))
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	a.recordEmail(st.ID, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return nil
 }

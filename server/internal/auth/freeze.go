@@ -27,6 +27,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
 
@@ -139,10 +140,14 @@ func (a *Accounts) FreezeByLink(ctx context.Context, token string) (Wake, error)
 	if err != nil {
 		return Wake{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, freezeEntry(userID, trigger, now))
+	if err != nil {
+		return Wake{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(userID, trigger, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(userID, "", revoked), nil
 }
@@ -157,7 +162,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	}
 	var (
 		revoked []pushv2.Target
-		frozeAt time.Time
+		held    purgeledger.Held
 	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -168,7 +173,9 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 			return ErrAccountFrozen
 		}
 		now := a.now()
-		frozeAt = now
+		if held, err = a.Hold.Tx(ctx, tx, freezeEntry(session.UserID, now, now)); err != nil {
+			return err
+		}
 		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, p.WriterID); err != nil {
 			return err
 		}
@@ -182,7 +189,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 	if err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(session.UserID, frozeAt, frozeAt)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
@@ -211,8 +218,8 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 		return Wake{}, err
 	}
 	var (
-		revoked    []pushv2.Target
-		unfrozenAt time.Time
+		revoked []pushv2.Target
+		held    purgeledger.Held
 	)
 	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
@@ -239,7 +246,9 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 			return fmt.Errorf("%w: proof kind %s", ErrStepUpFailed, p.Kind)
 		}
 		now := a.now()
-		unfrozenAt = now
+		if held, err = a.Hold.Tx(ctx, tx, UnfreezeEntry(session.UserID, now)); err != nil {
+			return err
+		}
 		if err := clearFreezeTx(ctx, tx, session.UserID, now); err != nil {
 			return err
 		}
@@ -255,7 +264,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 	if err != nil {
 		return Wake{}, err
 	}
-	a.recordUnfreeze(session.UserID, unfrozenAt)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(session.UserID, session.WriterID, revoked), nil
 }
@@ -406,10 +415,14 @@ func (a *Accounts) DeviceFreeze(ctx context.Context, writerID string, nonce, sig
 	if err != nil {
 		return Wake{}, err
 	}
+	held, err := a.Hold.Tx(ctx, tx, freezeEntry(c.user, trigger, now))
+	if err != nil {
+		return Wake{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Wake{}, err
 	}
-	a.recordFreeze(c.user, trigger, now)
+	held.Release(a.Record)
 	a.Mail.Kick()
 	return wakeFor(c.user, writerID, revoked), nil
 }
