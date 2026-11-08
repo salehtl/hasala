@@ -125,6 +125,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var loginCeremonies: [String: Data] = [:]
     var addCeremonies: [String: (user: UserID, challenge: Data, nonce: Data)] = [:]
     var passwordCeremonies: [String: (email: String, nonce: Data)] = [:]
+    var recoveryCeremonies: [String: FakeRecoveryCeremony] = [:]
     var writerNonces: [Data: UserID] = [:]
     var stepUps: [Data: StepUpChallenge] = [:]
     var seq: Int64 = 0
@@ -311,6 +312,9 @@ public final class FakeServer: Transport, @unchecked Sendable {
     case "POST /api/v1/auth/passkey/login/finish": return loginFinish(r)
     case "POST /api/v1/auth/password/login/begin": return passwordLoginBegin(r)
     case "POST /api/v1/auth/password/login/finish": return passwordLoginFinish(r)
+    case "POST /api/v1/auth/recover/begin": return recoverBegin(r)
+    case "POST /api/v1/auth/recover/verify": return recoverVerify(r)
+    case "POST /api/v1/auth/recover/finish": return recoverFinish(r)
     default: break
     }
     // Session routes.

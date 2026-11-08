@@ -33,6 +33,7 @@ public final class Recovery: @unchecked Sendable {  // mutated by one ceremony a
   let entropy: SecureBytes
   let recoveryPublicKey: Data
   fileprivate(set) var verified: Verified?
+  fileprivate var grant: SessionGrant?
 
   struct Verified {
     let nonce: Data
@@ -51,9 +52,18 @@ public final class Recovery: @unchecked Sendable {  // mutated by one ceremony a
   /// The account the code was verified for (nil before `verify`).
   public var userID: UserID? { verified?.userID }
 
+  public func canFinish(after error: CeremonyError) -> Bool {
+    switch error.failureClass {
+    case .cancelled: true
+    case .integrity: false
+    default: grant != nil
+    }
+  }
+
   public func wipe() {
     entropy.wipe()
     verified?.body.wipe()
+    grant = nil
   }
 }
 
@@ -119,8 +129,25 @@ public enum AccountRecovery {
     -> EnrolledAccount
   {
     guard let v = r.verified else { throw .badResponse("recovery not verified") }
+    let grant: SessionGrant
+    if let held = r.grant {
+      grant = held
+    } else {
+      grant = try await spendCeremony(env, r, v)
+      r.grant = grant
+    }
+    try AccountCreation.writeSession(env, grant)
+    let enrolled = try await Enrolment.enrolWriter(env, userID: v.userID, body: v.body, emailNorm: nil, serverSalt: nil)
+    r.wipe()
+    return enrolled
+  }
+
+  private static func spendCeremony(_ env: AccountEnvironment, _ r: Recovery, _ v: Recovery.Verified)
+    async throws(CeremonyError) -> SessionGrant
+  {
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
     let device = try await NewDevice.mint(env, userID: v.userID)
+    defer { device.dwkSeed.wipe() }
     let reg: RawRegistration
     do { reg = try await passkeys.register(v.options, prfSalt: KeyDerivation.prfSalt) } catch { throw .passkey(error) }
     defer { reg.prfFirst?.wipe() }
@@ -162,21 +189,7 @@ public enum AccountRecovery {
     guard grant.user_id == v.userID.string, grant.writer_id == device.writerID.string else {
       throw .badResponse("recover session")
     }
-    try AccountCreation.writeSession(env, grant)
-    let account = try await apiStep { () async throws(APIError) in
-      try await env.client.account(bearer: grant.session_token)
-    }
-    guard let email = account.email.flatMap({ try? EmailNorm.normalize($0) }),
-      let salt = account.password_salt.flatMap({ try? Base64.decode($0) })
-    else { throw .badResponse("account email or salt") }
-    let k1 = try cryptoStep("K_1") { try v.body.epochKey1(userID: v.userID) }
-    defer { k1.wipe() }
-    let aak = try cryptoStep("aak") { try v.body.authorityPublicKey() }
-    let enrolled = try await Enrolment.persist(
-      env, userID: v.userID, device: device, epochKey: k1, emailNorm: email, serverSalt: salt,
-      displayName: account.display_name, authorityPublicKey: aak)
-    r.wipe()
-    return enrolled
+    return grant
   }
 }
 

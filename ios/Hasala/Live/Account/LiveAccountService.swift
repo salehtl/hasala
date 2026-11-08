@@ -511,8 +511,7 @@ final class LiveAccountService: AccountService {
     do {
       enrolled = try await AccountRecovery.finishWithPasskey(env, r)
     } catch {
-      // A closed sheet keeps the verified ceremony for another try; anything else spent it.
-      if error.failureClass != .cancelled {
+      if !r.canFinish(after: error) {
         r.wipe()
         recovery = nil
       }
