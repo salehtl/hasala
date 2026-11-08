@@ -351,8 +351,7 @@ final class AppModel {
 
   func sceneChanged(onScreen: Bool) {
     offScreen = !onScreen
-    guard toast != nil else { return }
-    toastWindow?.setAway(offScreen, now: toastNow())
+    guard toast != nil, toastWindow?.setAway(offScreen, now: toastNow()) == true else { return }
     scheduleToastEnd()
   }
 

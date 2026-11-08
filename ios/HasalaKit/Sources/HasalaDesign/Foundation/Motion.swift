@@ -149,8 +149,9 @@ public struct ToastWindow: Sendable, Equatable {
     since = held || away ? nil : now
   }
 
-  public mutating func setAway(_ on: Bool, now: ContinuousClock.Instant) {
-    guard on != away else { return }
+  @discardableResult
+  public mutating func setAway(_ on: Bool, now: ContinuousClock.Instant) -> Bool {
+    guard on != away else { return false }
     away = on
     if on {
       if let since { left = max(.zero, left - since.duration(to: now)) }
@@ -159,6 +160,7 @@ public struct ToastWindow: Sendable, Equatable {
     } else {
       since = now
     }
+    return true
   }
 }
 

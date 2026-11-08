@@ -189,6 +189,25 @@ struct MotionTests {
     #expect(w.counting && w.left == .seconds(4))
   }
 
+  @Test func theToastWindowSaysOnlyWhenTheAppReallyLeftOrCameBack() {
+    let t0 = ContinuousClock.now
+    var w = ToastWindow(dwell: .seconds(6), away: false, now: t0)
+    let stayed = w.setAway(false, now: t0 + .seconds(1))
+    #expect(!stayed)
+    #expect(w.counting && w.left == .seconds(6))
+    let left = w.setAway(true, now: t0 + .seconds(2))
+    #expect(left)
+    #expect(w.left == .seconds(4))
+    let stillAway = w.setAway(true, now: t0 + .seconds(3))
+    #expect(!stillAway)
+    #expect(w.left == .seconds(4))
+    let back = w.setAway(false, now: t0 + .seconds(9))
+    #expect(back)
+    let stillBack = w.setAway(false, now: t0 + .seconds(10))
+    #expect(!stillBack)
+    #expect(w.counting && w.left == .seconds(4))
+  }
+
   @Test func aToastShownWhileAwayWaitsForTheAppToComeBack() {
     let t0 = ContinuousClock.now
     var w = ToastWindow(dwell: .seconds(4), away: true, now: t0)

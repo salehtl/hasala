@@ -251,6 +251,26 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func aSceneReportThatChangesNothingLeavesTheToastTimerRunning() async throws {
+    let app = AppModel(store: InMemoryLedger())
+    let clock = ToastClock()
+    app.toastNow = { clock.now }
+    app.toastSleep = { await clock.sleep($0) }
+    app.sceneChanged(onScreen: true)
+    app.say("Bill marked as paid")
+    try await LiveLedgerMapperTests.eventually { clock.asked.count == 1 }
+    clock.now += .seconds(1)
+    app.sceneChanged(onScreen: true)
+    clock.now += .seconds(1)
+    app.sceneChanged(onScreen: true)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(clock.asked.count == 1)
+    #expect(app.toast != nil)
+    clock.release()
+    try await LiveLedgerMapperTests.eventually { app.toast == nil }
+    #expect(app.toast == nil)
+  }
+
   @Test func theUndoLineStaysLongerThanAToast() {
     #expect(AppModel.dwell(lasting: false, voiceOver: false) == HMotion.toastDwell)
     #expect(AppModel.dwell(lasting: true, voiceOver: false) == HMotion.undoLineDwell)
