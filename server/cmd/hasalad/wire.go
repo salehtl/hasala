@@ -77,6 +77,7 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 	if !cfg.Gmail.LinkEnabled() && !cfg.Outlook.LinkEnabled() {
 		slog.Warn("hasalad serve: neither the [gmail] nor the [outlook] mailbox link is configured: " +
 			"the mailbox link routes and the Pub/Sub hook are not mounted")
+		forgetUnrelayedWatches(ctx, pool)
 		return nil
 	}
 	raw, err := readSecret("HASALA_MAILBOX_ROUTE_KEY_FILE", cfg.Gmail.RouteKeyFile)
@@ -102,11 +103,18 @@ func wireMailbox(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv
 	if srv.Outlook != nil && srv.Outlook.Push != nil {
 		nudged = append(nudged, gmailpush.ProviderOutlook)
 	}
+	forgetUnrelayedWatches(ctx, pool, nudged...)
 	if len(nudged) > 0 {
 		ex.done = append(ex.done, startSweepEvery(ctx, "mailbox watch nudge", nudgeInterval,
 			func(ctx context.Context) (string, error) { return gmailpush.Nudge(ctx, pool, waker, nudged...) }))
 	}
 	return nil
+}
+
+func forgetUnrelayedWatches(ctx context.Context, pool *pgxpool.Pool, relayed ...string) {
+	if err := gmailpush.ForgetUnrelayedWatches(ctx, pool, relayed...); err != nil {
+		slog.Warn("hasalad serve: the watches of mailboxes with no push were not cleared", "err", err)
+	}
 }
 
 // wireOutlook mounts the [outlook] group's parts (config.OutlookConfig): the
