@@ -254,10 +254,21 @@ struct LiveAccountServiceTests {
     for lane in rt.lanes.values { #expect(await lane.isStopped) }
     await rt.backlog.ensure(retry: true)
     #expect(await !rt.backlog.isRunning)
+    let pending = try rt.context.store.pendingCount()
+    #expect(await Self.addText(rt) == nil)
+    #expect(try rt.context.store.pendingCount() == pending)
     await rt.resumeWork()
     for lane in rt.lanes.values { #expect(await !lane.isStopped) }
     #expect(await rt.coordinator.run(.authored).ran)
+    #expect(await Self.addText(rt) != nil)
     await rt.close()
+    #expect(await Self.addText(rt) == nil)
+  }
+
+  static func addText(_ rt: AccountRuntime) async -> BankTextAuthored? {
+    try? await rt.bankTexts.author(
+      BankTextsCoreWiringTests.purchase, sender: nil, reading: KeptBankText(fields: BankTextFields(), mayBeBanks: true),
+      arrivedAt: BankTextsCoreWiringTests.t0, secret: Data(count: 32), link: .notLinked, origin: .automation)
   }
 
   @Test func endingTheSessionForMissingKeysLeavesARelaunchAtWelcomeToo() async throws {

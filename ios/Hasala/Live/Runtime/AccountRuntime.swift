@@ -488,6 +488,7 @@ final class AccountRuntime {
     await backlog.suspend()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
+    await mailboxLedger.textWrites.hold()
     await backlog.settled()
     await coordinator.finished()
   }
@@ -496,11 +497,13 @@ final class AccountRuntime {
     await backlog.holdRuns()
     await coordinator.pause()
     for lane in lanes.values { await lane.stop() }
+    await mailboxLedger.textWrites.hold()
     await store.writesFinished()
     await observer.writes.finished()
   }
 
   func resumeWork() async {
+    mailboxLedger.textWrites.releaseHold()
     for lane in lanes.values { await lane.resume() }
     await coordinator.resume()
     await backlog.releaseRuns()
