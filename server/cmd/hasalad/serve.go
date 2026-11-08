@@ -117,6 +117,9 @@ func runServe(env *runEnv, args []string) error {
 	if err := srv.Shutdown(shutCtx); err != nil && serveErr == nil {
 		serveErr = fmt.Errorf("shutdown: %w", err)
 	}
+	if srvAPI.Accounts != nil {
+		srvAPI.Accounts.Mail.Wait(shutCtx)
+	}
 	stop()
 	for _, done := range sweeps {
 		<-done

@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +40,10 @@ type Mailer struct {
 	// inline so they can read the code from the fake sender.
 	Async func(func())
 	Logf  func(format string, args ...any)
+
+	mu      sync.Mutex
+	sending int
+	idle    chan struct{}
 }
 
 func (m *Mailer) now() time.Time {
@@ -65,7 +70,9 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 		if !c.Send && !c.Notice {
 			continue
 		}
+		m.sendStarted()
 		run := func() {
+			defer m.sendEnded()
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			e := mailq.Enqueue{Kind: mail.CodeKind(c.Purpose), Lane: mailq.LaneTransactional, To: c.To, Tag: c.Tag,
@@ -84,6 +91,42 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 		} else {
 			go run()
 		}
+	}
+}
+
+func (m *Mailer) Wait(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.sending == 0 {
+		m.mu.Unlock()
+		return
+	}
+	if m.idle == nil {
+		m.idle = make(chan struct{})
+	}
+	idle := m.idle
+	m.mu.Unlock()
+	select {
+	case <-idle:
+	case <-ctx.Done():
+	}
+}
+
+func (m *Mailer) sendStarted() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sending++
+}
+
+func (m *Mailer) sendEnded() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sending--
+	if m.sending == 0 && m.idle != nil {
+		close(m.idle)
+		m.idle = nil
 	}
 }
 
