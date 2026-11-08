@@ -58,6 +58,32 @@ struct BillsScreenTests {
     #expect(model.isDirty)
   }
 
+  private func appleModel(_ app: AppModel) -> AddRecurringModel {
+    let model = AddRecurringModel(app: app, decimalSeparator: ".")
+    model.name = "Apple"
+    model.keys = ["apple.com"]
+    model.amountText = "14.99"
+    return model
+  }
+
+  @Test func theLinkCountIsWhatWillBeLinked() throws {
+    let app = AppModel(store: InMemoryLedger())
+    let model = appleModel(app)
+    #expect(model.suggestions.map(\.id) == ["apple"])
+    #expect(model.linkTitle == "Add without them")
+    model.ticked = ["apple"]
+    #expect(model.linkTitle == "Add and link 1 payment")
+    model.ticked = ["apple", "not-suggested"]
+    #expect(model.linkable == ["apple"] && model.linkTitle == "Add and link 1 payment")
+    model.amountText = "15.50"
+    #expect(model.suggestions.isEmpty && model.linkable.isEmpty && model.linkTitle == "Add without them")
+    model.amountText = "14.99"
+    #expect(model.linkTitle == "Add and link 1 payment")
+    #expect(model.save())
+    let added = try #require(app.store.state.bills.last)
+    #expect(added.name == "Apple" && added.payments.compactMap(\.txnID) == ["apple"])
+  }
+
   @Test func editFormsCompareWithWhatTheyOpenedWith() throws {
     let state = MayaLedger.state
     let dewa = try #require(state.bill("dewa"))

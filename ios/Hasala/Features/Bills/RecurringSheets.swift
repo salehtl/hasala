@@ -433,6 +433,13 @@ final class AddRecurringModel {
     return BillsEngine.pastPayments(state, for: d)
   }
 
+  var linkable: Set<TxnID> { ticked.intersection(suggestions.map(\.id)) }
+
+  var linkTitle: String {
+    let count = linkable.count
+    return count == 0 ? "Add without them" : "Add and link \(RecurringCopy.link(count))"
+  }
+
   func start(from txn: TxnID) {
     guard let d = BillsEngine.draft(from: txn, state, now: app.store.now) else { return }
     seed = txn
@@ -455,8 +462,7 @@ final class AddRecurringModel {
   @discardableResult
   func save() -> Bool {
     guard var d = draft else { return false }
-    let valid = Set(suggestions.map(\.id))
-    d.linkTxns = ticked.filter { valid.contains($0) }.sorted()
+    d.linkTxns = linkable.sorted()
     return app.perform(.addBill(d))
   }
 }
@@ -637,7 +643,7 @@ struct AddPastPaymentsPage: View {
     }
     .background(HColor.sheetSurfaceLarge)
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      Button(model.ticked.isEmpty ? "Add without them" : "Add and link \(RecurringCopy.link(model.ticked.count))") {
+      Button(model.linkTitle) {
         if model.save() { done() }
       }
       .buttonStyle(.pill(.primary, fill: true))
