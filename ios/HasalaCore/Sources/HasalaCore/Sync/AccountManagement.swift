@@ -61,6 +61,17 @@ public enum AccountManagement {
   public static func deleteAccount(
     _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding
   ) async throws(CeremonyError) {
+    do throws(CeremonyError) {
+      try await requestDeletion(env, ctx: ctx, factor: factor, binding: binding)
+    } catch {
+      guard await accountIsGone(env, after: error) else { throw error }
+    }
+    AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
+  }
+
+  private static func requestDeletion(
+    _ env: AccountEnvironment, ctx: SyncContext, factor: StepUpHelper.Factor, binding: AccountBinding
+  ) async throws(CeremonyError) {
     let proof = try await StepUpHelper.prove(
       env, params: .accountDelete(ctx.userID), factor: factor, binding: binding,
       reason: "Confirm it's you to delete your account")
@@ -76,7 +87,23 @@ public enum AccountManagement {
         DeleteAccountRequest(step_up: proof.stepUp, writer_id: ctx.writerID.string, sig: Base64.encode(sig)),
         bearer: bearer)
     }
-    AccountWipe.wipe(env, userID: ctx.userID, writerID: ctx.writerID)
+  }
+
+  private static func accountIsGone(_ env: AccountEnvironment, after error: CeremonyError) async -> Bool {
+    guard case .api(let failure) = error else { return false }
+    if failure.is(410, "account_deleted") { return true }
+    switch failure {
+    case .transport(.cancelled), .malformed: return false
+    case .refused(let f) where f.status < 500: return false
+    default: break
+    }
+    guard let bearer = try? AccountCreation.currentBearer(env) else { return false }
+    do {
+      _ = try await env.client.account(bearer: bearer)
+      return false
+    } catch {
+      return error.is(410, "account_deleted")
+    }
   }
 
   /// Uploads what is queued and pulls to the head, so the pinned head is

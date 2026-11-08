@@ -135,6 +135,7 @@ public final class FakeServer: Transport, @unchecked Sendable {
     var loseNextUploadResponse = false
     var losePullAfterNextUpload = false
     var loseNextPull = false
+    var loseNextAccountDeleteAnswer = false
     var partialApplyNextUpload: Int?
     var dropHeadSigs = false
     var flipBlobByteAtSeq: Int64?
@@ -171,6 +172,8 @@ public final class FakeServer: Transport, @unchecked Sendable {
   public func loseNextUploadResponse() { state.withLock { $0.loseNextUploadResponse = true } }
 
   public func losePullAfterNextUpload() { state.withLock { $0.losePullAfterNextUpload = true } }
+
+  public func loseNextAccountDeleteAnswer() { state.withLock { $0.loseNextAccountDeleteAnswer = true } }
 
   /// The next upload stores only its first `rows` rows; the client sees a
   /// transport error, and its resend then meets `409 conflict`.
@@ -270,6 +273,13 @@ public final class FakeServer: Transport, @unchecked Sendable {
       let (response, lose) = upload(request)
       if lose { throw .offline(.networkConnectionLost) }
       return response
+    }
+    if route == "DELETE /api/v1/account", state.withLock({ s -> Bool in
+      defer { s.loseNextAccountDeleteAnswer = false }
+      return s.loseNextAccountDeleteAnswer
+    }) {
+      _ = handle(request, route: route)
+      throw .offline(.networkConnectionLost)
     }
     return handle(request, route: route)
   }
