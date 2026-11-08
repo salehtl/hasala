@@ -19,9 +19,13 @@ public struct WidgetReading: Sendable, Hashable {
   public var snapshot: WidgetSnapshot?
   public var stale: Bool
 
+  public init(_ stored: StoredWidgetSnapshot, at date: Date) {
+    let current = stored.snapshot.map { $0.asOf == WidgetClock.today(at: date) } ?? false
+    snapshot = current ? stored.snapshot : nil
+    stale = stored != .absent && !current
+  }
+
   public init(_ stored: WidgetSnapshot?, at date: Date) {
-    let current = stored.map { $0.asOf == WidgetClock.today(at: date) } ?? false
-    snapshot = current ? stored : nil
-    stale = stored != nil && !current
+    self.init(stored.map(StoredWidgetSnapshot.usable) ?? .absent, at: date)
   }
 }

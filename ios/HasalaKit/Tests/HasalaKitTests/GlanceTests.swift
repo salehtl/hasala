@@ -157,6 +157,34 @@ struct WidgetSnapshotStoreTests {
     #expect(WidgetSnapshotStore.decode(Data("not json".utf8)) == nil)
   }
 
+  @Test func noFileAndAFileThatCannotBeUsedAreDifferent() throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    #expect(store.load() == .absent)
+    let snap = sample()
+    try store.write(snap)
+    #expect(store.load() == .usable(snap))
+    var older = snap
+    older.version = WidgetSnapshot.currentVersion - 1
+    try store.write(try WidgetSnapshotStore.encode(older))
+    #expect(store.load() == .unusable)
+    #expect(store.read() == nil)
+    try store.write(Data("not json".utf8))
+    #expect(store.load() == .unusable)
+    store.clear()
+    #expect(store.load() == .absent)
+  }
+
+  @Test func aFileTheSystemWillNotOpenCannotBeUsed() throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    try store.write(sample())
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: store.fileURL.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: store.fileURL.path) }
+    #expect(store.load() == .unusable)
+    #expect(store.read() == nil)
+  }
+
   @Test func aVersionTwoSnapshotReadsAsNothing() throws {
     var snap = sample()
     snap.version = 2

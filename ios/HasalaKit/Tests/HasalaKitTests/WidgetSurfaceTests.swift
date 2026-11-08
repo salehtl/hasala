@@ -144,6 +144,13 @@ struct WidgetGalleryPreviewTests {
     #expect(WidgetPreview.reading(mine, at: at, isPreview: true).snapshot == mine)
   }
 
+  @Test func aFileThatCannotBeUsedStillPreviewsAndAsksToOpenTheAppOutsideIt() {
+    let shown = WidgetPreview.reading(StoredWidgetSnapshot.unusable, at: at, isPreview: true)
+    #expect(shown.snapshot != nil && !shown.stale)
+    let reading = WidgetPreview.reading(StoredWidgetSnapshot.unusable, at: at, isPreview: false)
+    #expect(reading.snapshot == nil && reading.stale)
+  }
+
   @Test func outsideThePreviewNothingChanges() {
     #expect(WidgetPreview.reading(nil, at: at, isPreview: false) == WidgetReading(nil, at: at))
     let old = WidgetPreview.snapshot(asOf: LocalDate(2026, 11, 1))

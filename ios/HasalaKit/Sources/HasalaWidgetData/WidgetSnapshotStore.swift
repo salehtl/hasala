@@ -1,6 +1,16 @@
 import Foundation
 import HasalaModels
 
+public enum StoredWidgetSnapshot: Sendable, Hashable {
+  case absent
+  case unusable
+  case usable(WidgetSnapshot)
+
+  public var snapshot: WidgetSnapshot? {
+    if case .usable(let snapshot) = self { snapshot } else { nil }
+  }
+}
+
 public struct WidgetSnapshotStore: Sendable {
   public static let appGroup = "group.app.hasala.ios"
   public static let fileName = "widget-snapshot.json"
@@ -55,9 +65,16 @@ public struct WidgetSnapshotStore: Sendable {
     try url.setResourceValues(values)
   }
 
-  public func read() -> WidgetSnapshot? {
-    guard let data = try? Data(contentsOf: fileURL) else { return nil }
-    return Self.decode(data)
+  public func read() -> WidgetSnapshot? { load().snapshot }
+
+  public func load() -> StoredWidgetSnapshot {
+    do {
+      return Self.decode(try Data(contentsOf: fileURL)).map(StoredWidgetSnapshot.usable) ?? .unusable
+    } catch CocoaError.fileReadNoSuchFile, CocoaError.fileNoSuchFile {
+      return .absent
+    } catch {
+      return .unusable
+    }
   }
 
   public func clear() {
