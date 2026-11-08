@@ -220,6 +220,12 @@ else
 	skip "bundled templates" "no template or seed changes"
 fi
 
+if changed '^scripts/(private-fixtures-lock|tests/private_fixtures_lock_test)\.sh$'; then
+	run "private fixtures lock self-test" scripts/tests/private_fixtures_lock_test.sh
+else
+	skip "private fixtures lock self-test" "no lock script changes"
+fi
+
 if changed '^scripts/(check\.sh|gotest-(ran|summary)\.ts|tests/(gate_run|gotest_ran|git_env|fence)_test\.sh)$'; then
 	if have bun; then
 		run "gate run self-test" scripts/tests/gate_run_test.sh

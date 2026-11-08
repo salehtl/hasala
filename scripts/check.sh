@@ -265,6 +265,7 @@ echo "go $have (floor go$want)"
 
 # --- 1b. the private fixtures, if this run has them -------------------------------
 step "private fixtures (HASALA_PRIVATE_FIXTURES)"
+"$ROOT/scripts/tests/private_fixtures_lock_test.sh"
 if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 	if [[ ! -d "$HASALA_PRIVATE_FIXTURES" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES=$HASALA_PRIVATE_FIXTURES is not a directory" >&2
