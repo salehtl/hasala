@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ var ErrBadSlug = errors.New("banks: not a bank slug")
 var ErrNoSuchBank = errors.New("banks: no such bank")
 
 const MaxNote = 500
+
+const maxAliases = 32
 
 var Statuses = []string{"new", "planned", "in_progress", "supported", "wont_do"}
 
@@ -135,6 +138,31 @@ func SetStatus(ctx context.Context, tx pgx.Tx, slug, status, note string, now ti
 	return old, nil
 }
 
+func aliasListedBank(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
+	var listed string
+	var aliases []string
+	if err := tx.QueryRow(ctx, `SELECT name, aliases FROM banks WHERE slug = $1 FOR UPDATE`, slug).Scan(&listed, &aliases); err != nil {
+		return fmt.Errorf("banks: add: %w", err)
+	}
+	typed, err := Key(name)
+	if err != nil {
+		return ErrBadSlug
+	}
+	if k, err := Key(listed); (err != nil || k != typed) && !slices.Contains(aliases, typed) {
+		return ErrBadSlug
+	}
+	if slices.Contains(aliases, key) {
+		return nil
+	}
+	if len(aliases) >= maxAliases {
+		return ErrBadSlug
+	}
+	if _, err := tx.Exec(ctx, `UPDATE banks SET aliases = array_append(aliases, $2) WHERE slug = $1`, slug, key); err != nil {
+		return fmt.Errorf("banks: add: %w", err)
+	}
+	return nil
+}
+
 func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 	slug, err := Slug(slug)
 	if err != nil {
@@ -161,7 +189,12 @@ func AddFromKey(ctx context.Context, tx pgx.Tx, slug, name, key string) error {
 		return fmt.Errorf("banks: add: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrBadSlug
+		if key == "" {
+			return ErrBadSlug
+		}
+		if err := aliasListedBank(ctx, tx, slug, name, key); err != nil {
+			return err
+		}
 	}
 	if key == "" {
 		return nil

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/salehtl/hasala/server/internal/banks"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
@@ -167,5 +168,140 @@ func TestBankToldLeavesOutAFailedEmail(t *testing.T) {
 	var mails int
 	if err := pool.QueryRow(bg, `SELECT count(*) FROM mail_log WHERE kind = 'bank_supported'`).Scan(&mails); err != nil || mails != 2 {
 		t.Fatalf("%d emails (%v), want the failed one and the retry", mails, err)
+	}
+}
+
+func TestATypedNameMovesOntoABankAlreadyListed(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(bg, q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	account := func(handle, email string) string {
+		t.Helper()
+		var id string
+		if err := pool.QueryRow(bg, `INSERT INTO users (user_handle, created_at, email_norm, email_verified_at, display_name)
+			VALUES (decode(md5($1) || md5($1 || 'x'), 'hex'), now(), $2, now(), 'Maya Test') RETURNING id`, handle, email).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	typed := func(key, text string, user any) {
+		t.Helper()
+		source := "web"
+		if user != nil {
+			source = "app"
+		}
+		exec(`INSERT INTO bank_requests (other_key, other_text, source, user_id, created_at) VALUES ($1, $2, $3, $4, now())`,
+			key, text, source, user)
+	}
+	add := func(slug, name, key string) int {
+		t.Helper()
+		form := url.Values{"slug": {slug}, "name": {name}, "key": {key}}
+		form.Set("csrf", c.csrf("owner@github", "/banks/add", "", c.now()))
+		return req(c, "POST", "/banks/add", form, nil).Code
+	}
+	counts := func() (listed, free int) {
+		t.Helper()
+		if err := pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE bank_slug = 'fab'), count(*) FILTER (WHERE other_key IS NOT NULL)
+			FROM bank_requests`).Scan(&listed, &free); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	aliases := func() (out []string) {
+		t.Helper()
+		if err := pool.QueryRow(bg, `SELECT aliases FROM banks WHERE slug = 'fab'`).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	asker, both := account("asker", "asker@example.test"), account("both", "both@example.test")
+	typed("first gulf", "First Gulf", asker)
+	typed("first gulf", "First Gulf", both)
+	typed("first gulf", "First Gulf", nil)
+	exec(`INSERT INTO bank_requests (bank_slug, source, user_id, created_at) VALUES ('fab', 'app', $1, now())`, both)
+	var entry string
+	if err := pool.QueryRow(bg, `INSERT INTO waitlist_entries (email_tag, email_norm, state, other_bank, other_bank_key, source,
+		created_at, updated_at, confirmed_at) VALUES (decode(repeat('ab', 32), 'hex'), 'guest@example.test', 'confirmed',
+		'First Gulf', 'first gulf', 'web', now(), now(), now()) RETURNING id`).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO bank_requests (other_key, other_text, source, waitlist_entry_id, created_at)
+		VALUES ('first gulf', 'First Gulf', 'web_waitlist', $1, now())`, entry)
+	startAliases := len(aliases())
+
+	if code := add("fab", "First Gulf", "first gulf"); code != http.StatusConflict {
+		t.Fatalf("a slug that collides by accident: %d", code)
+	}
+	if listed, free := counts(); listed != 1 || free != 4 {
+		t.Fatalf("a refused add moved requests: listed %d free %d", listed, free)
+	}
+
+	if code := add("fab", "First Abu Dhabi Bank", "first gulf"); code != http.StatusSeeOther {
+		t.Fatalf("move onto the listed bank: %d", code)
+	}
+	if listed, free := counts(); listed != 4 || free != 0 {
+		t.Fatalf("after the move: listed %d free %d, want 4 and 0 (the duplicate dropped)", listed, free)
+	}
+	var slug, name string
+	var otherBank *string
+	if err := pool.QueryRow(bg, `SELECT bank_slug, other_bank FROM waitlist_entries WHERE id = $1`, entry).Scan(&slug, &otherBank); err != nil ||
+		slug != "fab" || otherBank != nil {
+		t.Fatalf("the waitlist entry: %q %v %v", slug, otherBank, err)
+	}
+	if err := pool.QueryRow(bg, `SELECT name FROM banks WHERE slug = 'fab'`).Scan(&name); err != nil || name != "First Abu Dhabi Bank" {
+		t.Fatalf("the catalog name changed: %q %v", name, err)
+	}
+	choice, err := banks.Resolve(bg, pool, "other", "First  Gulf")
+	if err != nil || choice.Slug != "fab" {
+		t.Fatalf("a later submission of the name: %+v %v", choice, err)
+	}
+
+	if code := add("fab", "First Abu Dhabi Bank", "first gulf"); code != http.StatusSeeOther {
+		t.Fatalf("the same move again: %d", code)
+	}
+	if got := aliases(); len(got) != startAliases+1 {
+		t.Fatalf("aliases %v, want the key once", got)
+	}
+
+	typed("fgb", "FGB", asker)
+	if code := add("fab", "First Abu Dhabi", "fgb"); code != http.StatusSeeOther {
+		t.Fatalf("named by one of the bank's aliases: %d", code)
+	}
+
+	exec(`UPDATE banks SET aliases = (SELECT array_agg('a' || g) FROM generate_series(1, 31) g) || aliases[1:1] WHERE slug = 'fab'`)
+	newcomer := account("newcomer", "newcomer@example.test")
+	typed("full bank", "Full Bank", newcomer)
+	if code := add("fab", "First Abu Dhabi Bank", "full bank"); code != http.StatusConflict {
+		t.Fatalf("a bank with no room for another alias: %d", code)
+	}
+	if _, free := counts(); free != 1 {
+		t.Fatalf("a refused add moved requests: free %d", free)
+	}
+	exec(`UPDATE banks SET aliases = aliases[1:5] WHERE slug = 'fab'`)
+	status := url.Values{"status": {"supported"}}
+	status.Set("csrf", c.csrf("owner@github", "/banks/fab/status", "fab", c.now()))
+	if code := req(c, "POST", "/banks/fab/status", status, nil).Code; code != http.StatusSeeOther {
+		t.Fatalf("supported: %d", code)
+	}
+	if code := add("fab", "First Abu Dhabi Bank", "full bank"); code != http.StatusSeeOther {
+		t.Fatalf("move onto a supported bank: %d", code)
+	}
+	var told int
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM bank_requests WHERE bank_slug = 'fab' AND notified_at IS NULL AND user_id = $1`, newcomer).Scan(&told); err != nil || told != 1 {
+		t.Fatalf("%d of the newcomer's requests wait to be told (%v), want the one that moved", told, err)
+	}
+	notify := url.Values{"status": {"supported"}, "notify": {"on"}}
+	notify.Set("csrf", c.csrf("owner@github", "/banks/fab/status", "fab", c.now()))
+	if code := req(c, "POST", "/banks/fab/status", notify, nil).Code; code != http.StatusSeeOther {
+		t.Fatalf("notify: %d", code)
+	}
+	if err := pool.QueryRow(bg, `SELECT count(*) FROM bank_requests WHERE bank_slug = 'fab' AND notified_at IS NULL AND user_id = $1`, newcomer).Scan(&told); err != nil || told != 0 {
+		t.Fatalf("%d of the newcomer's requests still wait to be told (%v)", told, err)
 	}
 }
