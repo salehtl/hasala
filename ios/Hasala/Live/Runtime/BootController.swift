@@ -447,6 +447,7 @@ final class BootController {
       session.runFoundFrozen(info)
     case .needsUnlock, .keysRequired:
       await closeRuntime()
+      await account.endSessionKeepingData()
       session.signedOut()
     case .halted(.updateRequired):
       wall = .updateRequired

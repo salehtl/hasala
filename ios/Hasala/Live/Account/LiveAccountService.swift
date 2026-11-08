@@ -812,6 +812,12 @@ final class LiveAccountService: AccountService {
     await left()
   }
 
+  func endSessionKeepingData() async {
+    await AccountSignIn.signOut(env)
+    endUnlockOffer()
+    signIn = nil
+  }
+
   // MARK: Failures
 
   static func finishFailure(_ e: CeremonyError, phraseUnseen: Bool) -> AuthFailure {

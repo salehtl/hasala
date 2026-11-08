@@ -260,6 +260,27 @@ struct LiveAccountServiceTests {
     await rt.close()
   }
 
+  @Test func endingTheSessionForMissingKeysLeavesARelaunchAtWelcomeToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() != nil)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+    #expect(try await a.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func endingTheSessionOfflineIsFinishedLaterAndARelaunchAgrees() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.offline = true
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)
