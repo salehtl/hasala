@@ -254,7 +254,12 @@ final class SetupModel {
 
   func sendTestText() {
     guard path.last != .textsTest else { return }
-    bankTexts?.startTest()
+    do {
+      try bankTexts?.startTest()
+    } catch {
+      failure = .failed(error.message)
+      return
+    }
     go(.textsTest)
   }
 

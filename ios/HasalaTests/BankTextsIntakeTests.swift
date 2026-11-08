@@ -931,7 +931,7 @@ struct BankTextsIntakeTests {
     #expect(r.facts.read(nowMs: now + 10 * 60_000).testOpenedMs == nil)
     #expect(try onDisk(r).testOpenedMs == nil)
     let l = lane(r, now: Self.t0.addingTimeInterval(60))
-    l.startTest()
+    try l.startTest()
     #expect(l.test == .waiting(since: Self.t0.addingTimeInterval(60)))
     #expect(try onDisk(r).testOpenedMs == now + 60_000)
     let closed = lane(r, now: Self.t0.addingTimeInterval(11 * 60 + 1))

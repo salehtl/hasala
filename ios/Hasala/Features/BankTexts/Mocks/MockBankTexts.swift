@@ -22,6 +22,7 @@
     var testOutcome: TestOutcome = .received
     var testDelay: Duration = .seconds(2)
     var finishFails = false
+    var startFails = false
     var readDelay: Duration = .milliseconds(150)
     var addDelay: Duration = .zero
     var nextAddFailure: BankTextsFailure?
@@ -123,7 +124,8 @@
       refreshes += 1
     }
 
-    func startTest() {
+    func startTest() throws(BankTextsFailure) {
+      if startFails { throw .failed("Hasala couldn't save this on your iPhone. Try again.") }
       testsStarted += 1
       testTask?.cancel()
       test = .waiting(since: now())

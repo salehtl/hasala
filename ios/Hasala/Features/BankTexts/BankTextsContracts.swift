@@ -95,7 +95,7 @@ protocol BankTextsConnecting: AnyObject, Observable {
   var lastRanAt: Date? { get }
   var ignoredLast30Days: Int { get }
   func finishSetUp() async throws(BankTextsFailure)
-  func startTest()
+  func startTest() throws(BankTextsFailure)
   func read(_ text: String) async -> BankTextReading
   func match(_ text: String) async -> BankTextMatch?
   func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure)

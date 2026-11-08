@@ -182,8 +182,12 @@ struct BankTextsAlertsPage: View {
           HDivider(inset: .disc68)
         }
         MailActionRow(title: "Test it again", identifier: "bankAlerts.texts.test", icon: .chat) {
-          lane.startTest()
-          testing = true
+          do throws(BankTextsFailure) {
+            try lane.startTest()
+            testing = true
+          } catch {
+            app.say(error.message)
+          }
         }
         HDivider(inset: .disc68)
         MailActionRow(

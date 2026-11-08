@@ -101,6 +101,18 @@ struct BankTextsTests {
     _ = await connect
   }
 
+  @Test func aTestThatCannotStartStaysOnTheStep() {
+    let lane = MockBankTexts()
+    lane.startFails = true
+    let m = model(services(texts: lane))
+    m.chooseSource(.texts)
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp] && m.failure != nil && lane.testsStarted == 0)
+    lane.startFails = false
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp, .textsTest] && m.failure == nil && lane.testsStarted == 1)
+  }
+
   @Test func skippingTheSourceChoiceLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()
@@ -361,7 +373,7 @@ struct BankTextsTests {
   @Test func theTestTextIsWaitedFor() async throws {
     let lane = MockBankTexts(setUp: true)
     lane.testDelay = .milliseconds(10)
-    lane.startTest()
+    try lane.startTest()
     #expect(lane.test.isWaiting)
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     guard case .received = lane.test else {
@@ -369,7 +381,7 @@ struct BankTextsTests {
       return
     }
     lane.testOutcome = .nothing
-    lane.startTest()
+    try lane.startTest()
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     #expect(lane.test == .nothingYet)
   }
