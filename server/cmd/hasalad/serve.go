@@ -179,6 +179,9 @@ func settleLogGeneration(ctx context.Context, cfg *config.Config, pool *pgxpool.
 	if raised {
 		slog.Warn("hasalad serve: the database was replaced and the log generation was not raised, so serve raised it",
 			"generation", generation)
+	} else if generation != cfg.Server.LogGeneration {
+		slog.Warn("hasalad serve: the log generation file was lost or lowered, so serve wrote back the sealed value",
+			"generation", generation)
 	}
 	cfg.Server.LogGeneration = generation
 	return nil

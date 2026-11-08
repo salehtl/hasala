@@ -146,8 +146,13 @@ func SettleLogGeneration(path, database string) (int, bool, error) {
 		return 0, false, err
 	}
 	raised := sealed && seal.database != database && generation <= seal.generation
+	wentBack := sealed && !raised && generation < seal.generation
 	if raised {
 		generation = seal.generation + 1
+	} else if wentBack {
+		generation = seal.generation
+	}
+	if raised || wentBack {
 		if err := writeGenerationFile(path, strconv.Itoa(generation)+"\n"); err != nil {
 			return 0, false, err
 		}

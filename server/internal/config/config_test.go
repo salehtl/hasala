@@ -680,6 +680,36 @@ func TestSettleLogGeneration(t *testing.T) {
 	}
 }
 
+func TestSettleLogGenerationKeepsTheSealedValueWhenTheFileGoesBack(t *testing.T) {
+	for name, body := range map[string]*string{"lost": nil, "lowered": ptr("2\n")} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "generation")
+			if err := os.WriteFile(path+".seal", []byte("4 100\n"), 0o660); err != nil {
+				t.Fatal(err)
+			}
+			if body != nil {
+				if err := os.WriteFile(path, []byte(*body), 0o660); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 2 {
+				if got, raised, err := SettleLogGeneration(path, "100"); err != nil || got != 4 || raised {
+					t.Fatalf("got %d, raised %v, %v; want 4 and no raise", got, raised, err)
+				}
+				b, err := os.ReadFile(path)
+				if err != nil || strings.TrimSpace(string(b)) != "4" {
+					t.Fatalf("generation file %q, %v; want 4 written back", b, err)
+				}
+			}
+			if got, raised, err := SettleLogGeneration(path, "200"); err != nil || got != 5 || !raised {
+				t.Fatalf("after a replaced database: %d, %v, %v; want 5 and a raise", got, raised, err)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
+
 func TestSettleLogGenerationResumesAfterAStopBetweenItsTwoWrites(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "generation")
 	if err := os.WriteFile(path+".seal", []byte("3 100\n"), 0o660); err != nil {
