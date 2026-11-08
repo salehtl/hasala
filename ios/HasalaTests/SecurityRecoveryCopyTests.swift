@@ -107,6 +107,34 @@ struct SecurityRecoveryCopyTests {
     #expect(PhraseEntryGrid.unknownLine(2) == "Word 3 isn't on the recovery list. Tap it to fix the spelling.")
   }
 
+  private func board(count: Int = 41, strings: Bool = true, emptied: @escaping @MainActor () -> Void = {}) -> PhrasePasteboard {
+    PhrasePasteboard(changeCount: { count }, hasStrings: { strings }, empty: emptied)
+  }
+
+  @Test func onlyABlockOfThePhraseCountsAsAPaste() {
+    let phrase = ["absurd", "avoid", "scissors", "anxiety", "gather", "lottery", "category", "door", "army", "half", "long",
+                  "camera"]
+    func recorded(_ before: String, _ raw: String, _ on: PhrasePasteboard) -> Int? {
+      PhraseEntryState.pasteChangeCount(before: before, raw: raw, on: on)
+    }
+    #expect(recorded("", phrase.joined(separator: " "), board()) == 41)
+    #expect(recorded("", phrase.enumerated().map { "\($0 + 1). \($1)" }.joined(separator: "\n"), board()) == 41)
+    #expect(recorded("", phrase.prefix(6).joined(separator: " "), board()) == 41)
+    #expect(recorded("absurd ", "absurd avoid scissors anxiety gather", board()) == nil)
+    #expect(recorded("", "the corner of the street", board()) == nil)
+    #expect(recorded("", phrase.joined(separator: " "), board(strings: false)) == nil)
+  }
+
+  @Test func aPasteIsEmptiedOnlyWhileThePasteboardStillHoldsIt() {
+    var emptied = 0
+    let held = board(count: 41) { emptied += 1 }
+    clearPastedPhrase(changeCount: nil, on: held)
+    clearPastedPhrase(changeCount: 40, on: held)
+    #expect(emptied == 0)
+    clearPastedPhrase(changeCount: 41, on: held)
+    #expect(emptied == 1)
+  }
+
   @Test func entryCellsReadTheirWordOnlyWhenTheScreenIsNotCaptured() {
     #expect(PhraseEntryGrid.cellLabel(0, word: "orbit", masked: false) == "Word 1, orbit")
     #expect(PhraseEntryGrid.cellLabel(0, word: "orbit", masked: true) == "Word 1, hidden")
