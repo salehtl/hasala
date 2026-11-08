@@ -261,3 +261,17 @@ describe('the invite hash', () => {
     expect(p.email.focused).toBe(1);
   });
 });
+
+describe('a restored form', () => {
+  test('a select restored to Another bank shows Which one?', () => {
+    expect(start({ bank: 'other' }).otherField.hidden).toBe(false);
+  });
+
+  test('a select restored to a listed bank keeps Which one? hidden', () => {
+    expect(start({ bank: 'dib' }).otherField.hidden).toBe(true);
+  });
+
+  test('an untouched select keeps Which one? hidden', () => {
+    expect(start().otherField.hidden).toBe(true);
+  });
+});

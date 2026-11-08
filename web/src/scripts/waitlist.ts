@@ -130,6 +130,7 @@ function setup(signal: AbortSignal): void {
     err.hidden = !message;
     err.querySelector('span')!.textContent = message ?? '';
   };
+  showOther();
   const emailProblem = (v: string): string | null => {
     const value = v.trim();
     if (!value) return MSG.emailEmpty;
