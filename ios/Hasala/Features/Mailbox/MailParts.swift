@@ -220,6 +220,15 @@ enum MailboxMoment: Equatable {
     pending = moment
   }
 
+  static func hand(_ moment: MailboxMoment, to router: AppRouter) {
+    guard router.sheet == .profile, router.profile.last != .bankAlerts else { return }
+    hand(moment)
+  }
+
+  static func discard() {
+    pending = nil
+  }
+
   /// The pending moment, once.
   static func take() -> MailboxMoment? {
     defer { pending = nil }

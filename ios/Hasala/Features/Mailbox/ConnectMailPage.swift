@@ -110,14 +110,14 @@ struct ConnectMailPage: View {
   private func connected(_ id: String, _ mailbox: MailboxConnecting, _ context: MailConnectCoordinator.Context) {
     if context == .addMailbox {
       app.say(coordinator?.addedLine ?? MailCopy.added(provider))
-      MailboxMoment.hand(.added(mailboxID: id))
+      MailboxMoment.hand(.added(mailboxID: id), to: app.router)
       Task {
         guard await mailbox.linkState() == .scanning else { return }
         for await _ in mailbox.firstScan() {}
       }
     } else {
       app.say(coordinator?.signedInAgainLine ?? MailCopy.signedInAgain(provider))
-      MailboxMoment.hand(.signedInAgain(mailboxID: id))
+      MailboxMoment.hand(.signedInAgain(mailboxID: id), to: app.router)
     }
     app.router.backToBankAlerts()
   }

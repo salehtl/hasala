@@ -556,6 +556,44 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailboxMoment.pending == nil)
   }
 
+  @Test func aMomentIsHandedOnlyToABankAlertsAboutToShow() {
+    defer { MailboxMoment.discard() }
+    MailboxMoment.discard()
+    let router = AppRouter()
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.open(.profile, profile: [.bankAlerts])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.profile = [.bankAlerts, .connectMail(.outlook)]
+    MailboxMoment.hand(.signedInAgain(mailboxID: "outlook-1"), to: router)
+    #expect(MailboxMoment.pending == .signedInAgain(mailboxID: "outlook-1"))
+    router.profile = [.connectMail(.outlook)]
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+  }
+
+  @Test func aMomentGoesWithTheProfileSheet() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.bankAlerts, .connectMail(.outlook)])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+    router.sheet = nil
+    router.sheetDismissed()
+    #expect(MailboxMoment.pending == nil)
+  }
+
+  @Test func aMomentDoesNotReachTheNextAccount() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.connectMail(.gmail)])
+    MailboxMoment.hand(.signedInAgain(mailboxID: "gmail-1"), to: router)
+    #expect(MailboxMoment.pending != nil)
+    AppRouter().clearPresentation()
+    #expect(MailboxMoment.pending == nil)
+  }
+
   /// The success haptic waits for the motion it marks to come to rest: the celebrate
   /// spring, the Reduce Motion fade, nothing when motion is settled.
   @Test func theHapticWaitsForTheMotionToSettle() {
