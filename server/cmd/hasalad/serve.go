@@ -30,6 +30,7 @@ const (
 	maxHeaderBytes    = 64 << 10
 	shutdownTimeout   = 15 * time.Second
 	sweepInterval     = time.Hour
+	workerStopTimeout = 60 * time.Second
 )
 
 // runServe serves the API until SIGINT or SIGTERM.
@@ -63,7 +64,8 @@ func runServe(env *runEnv, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	lifecycle := newServeStop(ctx, pool.Close)
+	defer lifecycle.finish()
 
 	srvAPI, err := api.NewServer(cfg, pool)
 	if err != nil {
@@ -72,17 +74,16 @@ func runServe(env *runEnv, args []string) error {
 	fuse := startHeadroom(cfg, srvAPI)
 	defer fuse.Stop()
 	logGroups(cfg)
-	ex, err := wireExtras(ctx, cfg, pool, srvAPI)
+	ex, err := wireExtras(lifecycle.workers, cfg, pool, srvAPI)
 	if err != nil {
 		return err
 	}
+	lifecycle.watch(ex.done...)
 
-	sweeps := []<-chan struct{}{
-		startSweep(ctx, "deleted-account tombstone sweep",
-			countSweep("reaped %d expired deleted-account tombstone(s)", srvAPI.Sessions.ReapDeletedAccountTombstones)),
-	}
+	lifecycle.watch(startSweep(lifecycle.workers, "deleted-account tombstone sweep",
+		countSweep("reaped %d expired deleted-account tombstone(s)", srvAPI.Sessions.ReapDeletedAccountTombstones)))
 	if srvAPI.Passkeys != nil {
-		sweeps = append(sweeps, startSweep(ctx, "passkey ceremony sweep",
+		lifecycle.watch(startSweep(lifecycle.workers, "passkey ceremony sweep",
 			countSweep("reaped %d expired passkey ceremony(s)", srvAPI.Passkeys.ReapExpiredCeremonies)))
 	}
 
@@ -95,34 +96,68 @@ func runServe(env *runEnv, args []string) error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Server.HTTPListen, err)
 	}
-	srv := newHTTPServer(srvAPI.Handler())
+	slog.Info("hasalad serve: listening", "addr", ln.Addr().String(), "tls", false)
+	serveErr := lifecycle.serve(newHTTPServer(srvAPI.Handler()), ln)
+	stop()
+	return serveErr
+}
+
+type serveStop struct {
+	signalled   context.Context
+	workers     context.Context
+	stopWorkers context.CancelFunc
+	running     []<-chan struct{}
+	closePool   func()
+	limit       time.Duration
+}
+
+func newServeStop(signalled context.Context, closePool func()) *serveStop {
+	workers, stopWorkers := context.WithCancel(context.WithoutCancel(signalled))
+	return &serveStop{signalled: signalled, workers: workers, stopWorkers: stopWorkers, closePool: closePool, limit: workerStopTimeout}
+}
+
+func (s *serveStop) watch(done ...<-chan struct{}) { s.running = append(s.running, done...) }
+
+func (s *serveStop) serve(srv *http.Server, ln net.Listener) error {
 	errc := make(chan error, 1)
 	go func() {
-		slog.Info("hasalad serve: listening", "addr", ln.Addr().String(), "tls", false)
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 			return
 		}
 		errc <- nil
 	}()
-
 	var serveErr error
 	select {
 	case serveErr = <-errc:
-	case <-ctx.Done():
+	case <-s.signalled.Done():
 	}
 	slog.Info("hasalad serve: shutting down")
-	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(s.signalled), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil && serveErr == nil {
 		serveErr = fmt.Errorf("shutdown: %w", err)
 	}
-	stop()
-	for _, done := range sweeps {
-		<-done
-	}
-	ex.wait()
 	return serveErr
+}
+
+func (s *serveStop) finish() {
+	s.stopWorkers()
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		for _, done := range s.running {
+			<-done
+		}
+		s.closePool()
+	}()
+	giveUp := time.NewTimer(s.limit)
+	defer giveUp.Stop()
+	select {
+	case <-stopped:
+	case <-giveUp.C:
+		slog.Error("hasalad serve: the workers did not stop in time; exiting without them", "limit", s.limit.String())
+	}
 }
 
 func newHTTPServer(h http.Handler) *http.Server {
