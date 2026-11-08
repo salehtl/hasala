@@ -361,6 +361,7 @@ protocol AccountService: AnyObject {
   /// C3: the 12 words open the recovery wrap and enrol this iPhone.
   func unlockWithPhrase(_ words: [String]) async throws(AuthFailure)
   func endUnlockOffer()
+  func sessionEnded()
 
   // MARK: Relaunch with a session (§6.5)
 
