@@ -156,35 +156,17 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	addrHMAC := s.Gmail.RouteKey.AddressHMAC(n.EmailAddress)
 	n = gmailpush.Notice{}
 	// 8b: per mailbox, so an outsider's watch cannot spend a holder's budget.
-	if !g.HookLink.Allow(hex.EncodeToString(addrHMAC)) {
+	linkKey := hex.EncodeToString(addrHMAC)
+	if !g.HookLink.Allow(linkKey) {
 		g.Counters.LinkLimited.Add(1)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	// 9: route.
-	rows, err := s.Pool.Query(ctx,
-		`SELECT user_id, holder_writer_id FROM mailbox_links
-		  WHERE address_hmac = $1 AND route_key_id = $2 AND provider = 'gmail' LIMIT $3`,
-		addrHMAC, s.Gmail.RouteKey.KeyID(), hookMaxRows)
+	holders, err := s.gmailHolders(ctx, addrHMAC)
 	if err != nil {
 		s.logf("api: gmail hook: route: %v", err)
-		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
-		return
-	}
-	var holders []gmailpush.Holder
-	for rows.Next() {
-		var h gmailpush.Holder
-		if err := rows.Scan(&h.UserID, &h.WriterID); err != nil {
-			rows.Close()
-			writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
-			return
-		}
-		holders = append(holders, h)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		// A read that failed part-way is not "no such link".
-		s.logf("api: gmail hook: route: %v", err)
+		g.HookLink.RefundN(linkKey, 1)
 		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
 		return
 	}
@@ -197,14 +179,53 @@ func (s *Server) handleGmailHook(w http.ResponseWriter, r *http.Request) {
 	// hour, skipped while the disk fuse is tripped).
 	hour := s.now().UTC().Truncate(time.Hour)
 	tripped := s.fuseTripped()
+	allQueued := true
 	for _, h := range holders {
-		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, pushv2.ReasonMail)
+		if !s.queueWake(ctx, h, pushv2.ReasonMail) {
+			allQueued = false
+			continue
+		}
 		g.Counters.Woken.Add(1)
 		if !tripped {
 			s.markWakeHour(ctx, gmailpush.ProviderGmail, h, hour)
 		}
 	}
+	if !allQueued {
+		g.HookLink.RefundN(linkKey, 1)
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) gmailHolders(ctx context.Context, addrHMAC []byte) ([]gmailpush.Holder, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT user_id, holder_writer_id FROM mailbox_links
+		  WHERE address_hmac = $1 AND route_key_id = $2 AND provider = 'gmail' LIMIT $3`,
+		addrHMAC, s.Gmail.RouteKey.KeyID(), hookMaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var holders []gmailpush.Holder
+	for rows.Next() {
+		var h gmailpush.Holder
+		if err := rows.Scan(&h.UserID, &h.WriterID); err != nil {
+			return nil, err
+		}
+		holders = append(holders, h)
+	}
+	return holders, rows.Err()
+}
+
+func (s *Server) queueWake(ctx context.Context, h gmailpush.Holder, r pushv2.Reason) bool {
+	wake := context.WithoutCancel(ctx)
+	waker := s.waker()
+	if q, ok := waker.(gmailpush.QueueingWaker); ok {
+		return q.TryWakeWriter(wake, h.UserID, h.WriterID, r)
+	}
+	waker.WakeWriter(wake, h.UserID, h.WriterID, r)
+	return true
 }
 
 // handleOutlookHook is both Graph hooks; lifecycle says which. The order:
@@ -341,14 +362,25 @@ func (s *Server) handleOutlookHook(w http.ResponseWriter, r *http.Request, lifec
 	}
 	hour := s.now().UTC().Truncate(time.Hour)
 	tripped := s.fuseTripped()
+	allQueued := true
 	for _, h := range holders {
-		s.waker().WakeWriter(context.WithoutCancel(ctx), h.UserID, h.WriterID, reason)
+		if !s.queueWake(ctx, h, reason) {
+			allQueued = false
+			continue
+		}
 		o.Counters.Woken.Add(1)
 		// Like Gmail's: the hour of the last mail wake, at most one write per
 		// link per hour, none while the disk fuse is tripped.
 		if !lifecycle && !tripped {
 			s.markWakeHour(ctx, gmailpush.ProviderOutlook, h, hour)
 		}
+	}
+	if !allQueued {
+		for _, key := range spent {
+			o.HookLink.RefundN(key, 1)
+		}
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "")
+		return
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
