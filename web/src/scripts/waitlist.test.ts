@@ -275,3 +275,22 @@ describe('a restored form', () => {
     expect(start().otherField.hidden).toBe(true);
   });
 });
+
+describe('the coin after a failed send', () => {
+  test('a field error fixed before a failed send does not leave the coin in error', async () => {
+    const p = start();
+    p.email.value = 'not-an-address';
+    p.bank.value = 'dib';
+    await p.form.fire('submit');
+    expect(p.root.dataset.state).toBe('error');
+    const reply = holdFetch();
+    const sending = p.send();
+    await tick();
+    expect(p.root.dataset.state).toBe('default');
+    reply(500);
+    await sending;
+    expect(p.root.dataset.state).toBe('default');
+    expect(p.status.dataset.tone).toBe('error');
+    expect(p.submit.disabled).toBe(false);
+  });
+});

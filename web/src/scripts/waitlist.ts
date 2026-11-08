@@ -281,7 +281,6 @@ function setup(signal: AbortSignal): void {
         focusFirstError();
         return;
       }
-      if (root.dataset.state === 'error') setState('default');
       const { text, retry } = answerText(answer);
       setStatus(text, 'error', retry);
     },
