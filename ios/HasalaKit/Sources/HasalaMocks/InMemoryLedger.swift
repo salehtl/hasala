@@ -236,8 +236,10 @@ public final class InMemoryLedger: LedgerStore {
         t.categorySource = undo ? nil : .user
         t.ruleID = nil
         t.isTransfer = !undo
+        t.isRefund = false
         t.needsReview = undo
         t.categorizedAt = at
+        t.priorFiling = nil
       }
       title = undo ? "No longer a transfer" : "Marked as a transfer"
     case .markRefund(let id):

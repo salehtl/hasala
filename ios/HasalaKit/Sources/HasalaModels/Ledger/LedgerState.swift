@@ -292,6 +292,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
   public var splits: [SplitLine]
   public var isRefund: Bool
   public var isTransfer: Bool
+  public var isMatchedTransfer: Bool
   public var archived: Bool
   public var projectID: ProjectID?
   public var billID: BillID?
@@ -333,7 +334,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     postedAt: LocalDateTime, postedTimeKnown: Bool = true, accountID: AccountID? = nil, categoryID: CategoryID? = nil,
     categorySource: CategorySource? = nil, needsReview: Bool = false, isNewMerchant: Bool = false,
     suggestion: CategoryID? = nil, note: String = "", splits: [SplitLine] = [], isRefund: Bool = false,
-    isTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
+    isTransfer: Bool = false, isMatchedTransfer: Bool = false, archived: Bool = false, projectID: ProjectID? = nil, billID: BillID? = nil,
     provenance: Provenance? = nil, detailOverride: String? = nil, mailboxMessageID: String? = nil,
     heldCopy: HeldCopy? = nil,
     samePurchase: SamePurchaseMatch? = nil,
@@ -373,6 +374,7 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
     self.splits = splits
     self.isRefund = isRefund
     self.isTransfer = isTransfer
+    self.isMatchedTransfer = isMatchedTransfer
     self.archived = archived
     self.projectID = projectID
     self.billID = billID

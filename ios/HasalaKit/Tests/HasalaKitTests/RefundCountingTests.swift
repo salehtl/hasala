@@ -117,6 +117,101 @@ struct RefundEditTests {
     let t = try #require(l.state.txn("p1"))
     #expect(!t.isTransfer && t.categoryID == nil && t.needsReview)
   }
+
+  static func ledger(with row: Txn) -> InMemoryLedger {
+    var s = MayaLedger.state
+    s.txns.append(RefundCountingTests.row("p1", 800_00, .out, category: "shopping"))
+    s.txns.append(row)
+    return InMemoryLedger(state: s)
+  }
+
+  static func markedTransfer(_ id: TxnID) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, .in, category: "transfer")
+    t.isTransfer = true
+    return t
+  }
+
+  static func matchedTransfer(_ id: TxnID, category: CategoryID?) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, .in, category: category)
+    t.isTransfer = true
+    t.isMatchedTransfer = true
+    return t
+  }
+
+  static func filedByRule(_ id: TxnID, _ direction: Direction) -> Txn {
+    var t = RefundCountingTests.row(id, 500_00, direction, category: "shopping")
+    t.categorySource = .rule(pattern: "TEST STORE")
+    t.ruleID = "r"
+    t.priorFiling = PriorFiling(categoryID: nil, categorySource: nil, ruleID: nil, needsReview: true)
+    return t
+  }
+
+  @Test func aCreditMarkedATransferBecomesARefundThatCounts() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    let before = Spending.total(l.state, in: Self.october)
+    try l.apply(.markRefund("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isRefund && !t.isTransfer && t.categoryID == "refunds" && t.countsInPlan)
+    #expect(Spending.total(l.state, in: Self.october) == before - 500_00)
+  }
+
+  @Test func aRefundFiledFromATransferIsNoLongerATransfer() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isRefund && !t.isTransfer && t.categoryID == "shopping" && t.countsInPlan)
+  }
+
+  @Test func undoPutsATransferBackAfterARefund() throws {
+    let l = Self.ledger(with: Self.markedTransfer("c1"))
+    let token = try #require(try l.apply(.markRefund("c1")))
+    l.undo(token)
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund && t.categoryID == "transfer")
+  }
+
+  @Test func aMatchedTransferIsNotARefund() throws {
+    for category in ["transfer", nil] as [CategoryID?] {
+      let l = Self.ledger(with: Self.matchedTransfer("c1", category: category))
+      let before = try #require(l.state.txn("c1"))
+      #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) { try l.apply(.markRefund("c1")) }
+      #expect(throws: ActionError.refused(RefundEdit.refusedMatchedTransfer)) {
+        try l.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+      }
+      #expect(l.state.txn("c1") == before)
+    }
+  }
+
+  @Test func aMatchedTransferAlreadyMarkedARefundCanBeTakenBackAndStaysATransfer() throws {
+    var row = Self.matchedTransfer("c1", category: "refunds")
+    row.isRefund = true
+    let l = Self.ledger(with: row)
+    try l.apply(.markRefund("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(!t.isRefund && t.isTransfer && t.isMatchedTransfer && t.categoryID == nil && t.needsReview)
+  }
+
+  @Test func aRefundMarkedATransferIsNoLongerARefund() throws {
+    let l = Self.ledger()
+    try l.apply(.markRefund("c1"))
+    try l.apply(.markTransfer("c1"))
+    let t = try #require(l.state.txn("c1"))
+    #expect(t.isTransfer && !t.isRefund)
+  }
+
+  @Test func aRefundOrTransferFilingLeavesNoRuleFilingToPutBack() throws {
+    let edits: [(Direction, LedgerEdit)] = [
+      (.in, .markRefund("c1")), (.in, .fileRefund("c1", into: "shopping", of: "p1")), (.out, .markTransfer("c1")),
+    ]
+    for (direction, edit) in edits {
+      let row = Self.filedByRule("c1", direction)
+      let l = Self.ledger(with: row)
+      let token = try #require(try l.apply(edit))
+      #expect(l.state.txn("c1")?.priorFiling == nil, "\(edit)")
+      l.undo(token)
+      #expect(l.state.txn("c1")?.priorFiling == row.priorFiling, "\(edit)")
+    }
+  }
 }
 
 @Suite("Possible repeats are held out until answered")
