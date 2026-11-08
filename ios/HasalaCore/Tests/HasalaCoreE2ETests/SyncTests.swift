@@ -113,6 +113,25 @@ struct SyncTests {
     #expect(try storedOps(b).count == 40)
   }
 
+  @Test("a resend answered as partly applied when the server holds every row finishes the batch with no latch")
+  func partialAnswerWithEveryRowStored() async throws {
+    let (w, a, _) = try await twoPhones()
+    try enqueue(a, [op(1), op(2)])
+    w.server.loseNextUploadResponse()
+    #expect(await SyncEngine(context: a).run(.authored).stop == .offline)
+    let sent = try #require(try a.store.inflight().last)
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "conflict", detail: "oplog: \(partiallyAppliedDetail)")
+    let engine = SyncEngine(context: a)
+    let out = await engine.run(.silentPush)
+    #expect(out.stop == nil)
+    #expect(out.pushed.opsAcknowledged == 2)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.inflight().isEmpty && a.store.pendingCount() == 0)
+    #expect(try a.store.syncState().authoredHead.hash == sent.blobHash)
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
+  }
+
   @Test("every page writer's last row must carry a valid head_sig (R2b); nothing is persisted otherwise")
   func unsignedHeads() async throws {
     let (w, a, b) = try await twoPhones()

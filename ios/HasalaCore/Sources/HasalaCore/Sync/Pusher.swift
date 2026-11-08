@@ -216,7 +216,7 @@ enum Pusher {
         }
         acked += try acknowledge(stored, ctx: ctx)
         remaining = remaining.filter { $0.counter > head.counter }
-        if remaining.isEmpty { throw latch(ctx, .chainBreak) }
+        if remaining.isEmpty { return acked }
         continue
       case (409, "chain_break"):
         throw latch(ctx, .chainBreak, reportedAs: .halted(.tampered(.ownChainConflict)))
