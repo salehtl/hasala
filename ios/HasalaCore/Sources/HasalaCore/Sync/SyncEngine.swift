@@ -121,7 +121,7 @@ public actor SyncEngine {
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
     do {
-      try resumeAfterAccountFull(trigger)
+      try resumeAfterLatch(trigger)
       // Reconcile: an in-flight batch goes first, byte-identical.
       set(.reconciling)
       let hasInflight = !(try context.storeCall { () throws(StoreError) in try context.store.inflight() }).isEmpty
@@ -173,11 +173,17 @@ public actor SyncEngine {
     if fresh != pinned { try context.storeCall { () throws(StoreError) in try context.store.setRoster(fresh.encoded()) } }
   }
 
-  private func resumeAfterAccountFull(_ trigger: SyncTrigger) throws(SyncStop) {
+  private func resumeAfterLatch(_ trigger: SyncTrigger) throws(SyncStop) {
     let state = try context.storeCall { () throws(StoreError) in try context.store.syncState() }
-    guard state.latch == .accountFull else { return }
     let asked = trigger == .launch || trigger == .foreground || trigger == .refresh
-    if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
+    switch state.latch {
+    case .accountFull:
+      if !asked, let at = accountFullAtMs, context.clock.nowMs() - at < Self.accountFullPauseMs { return }
+    case .chainBreak:
+      guard asked else { return }
+    case .hardStop, .sealerFault, nil:
+      return
+    }
     try context.storeCall { () throws(StoreError) in try context.store.setLatch(nil) }
     accountFullAtMs = nil
     status.latch = nil

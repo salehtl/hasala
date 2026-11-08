@@ -317,6 +317,41 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("a chain_break stays a halt until a resend is accepted: asking re-tests it, an unasked run stays latched")
+  func chainBreakIsRetested() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let halted = SyncStop.halted(.tampered(.ownChainConflict))
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    #expect(await engine.run(.authored).stop == halted)
+    #expect(try a.store.syncState().latch == .chainBreak)
+    let sent = try a.store.inflight()
+    #expect(sent.count == 1)
+
+    let before = w.server.uploadCount
+    #expect(await engine.run(.silentPush).stop == nil)
+    #expect(w.server.uploadCount == before)
+    #expect(try a.store.syncState().latch == .chainBreak)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    #expect(await engine.run(.refresh).stop == halted)
+    #expect(w.server.storedRowCount(user: a.userID) == 0)
+    #expect(try a.store.syncState().latch == .chainBreak)
+    #expect(try a.store.inflight() == sent)
+
+    w.server.refuseNext("POST /api/v1/sync", status: 409, code: "chain_break")
+    let relaunched = SyncEngine(context: a)
+    #expect(await relaunched.run(.launch).stop == halted)
+    #expect(try a.store.syncState().latch == .chainBreak)
+
+    #expect(await relaunched.run(.refresh).stop == nil)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(await relaunched.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0 && a.store.inflight().isEmpty)
+    #expect(w.server.storedRowCount(user: a.userID) == 1)
+  }
+
   @Test("ops authored while a flush runs are shown to the observer before they are sealed")
   func observerSeesEachBatch() async throws {
     let (_, a, _) = try await twoPhones()
