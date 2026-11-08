@@ -56,3 +56,5 @@ func TestTheRuntimeRoleMaySetThePhraseFlag(t *testing.T) {
 		t.Fatalf("the runtime role set the flag: %v %v", tag, err)
 	}
 }
+
+func TestDownTo28IsWhat00028Left(t *testing.T) { downIsWhatUpLeft(t, 28) }
