@@ -152,7 +152,7 @@ cleanup() {
 	[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null
 	[[ -n "$MAIL_PID" ]] && kill "$MAIL_PID" 2>/dev/null && wait "$MAIL_PID" 2>/dev/null
 	pg_ctl -D "$TMP/pg" -m immediate stop >/dev/null 2>&1
-	for sim in "${SIMS[@]}"; do
+	for sim in ${SIMS[@]+"${SIMS[@]}"}; do
 		"$XCRUN" simctl shutdown "$sim" >/dev/null 2>&1
 		"$XCRUN" simctl delete "$sim" >/dev/null 2>&1
 	done
@@ -217,12 +217,17 @@ curl -fsS "http://127.0.0.1:$MAIL_PORT/healthz" >/dev/null || {
 
 "$HASALAD" serve >"$TMP/serve.log" 2>&1 &
 SERVER_PID=$!
+server_up=0
 for _ in $(seq 150); do
-	curl -fsS "$API/api/v1/healthz" >/dev/null 2>&1 && break
 	kill -0 "$SERVER_PID" 2>/dev/null || break
+	if curl -fsS "$API/api/v1/healthz" >/dev/null 2>&1 &&
+		/usr/sbin/lsof -a -p "$SERVER_PID" -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+		server_up=1
+		break
+	fi
 	sleep 0.1
 done
-curl -fsS "$API/api/v1/healthz" >/dev/null || {
+[[ "$server_up" == 1 ]] || {
 	log "hasalad did not come up"
 	cat "$TMP/serve.log" >&2
 	exit 1

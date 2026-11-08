@@ -67,7 +67,8 @@ SERVER_PID=$!
 ready=0
 for _ in $(seq 100); do
 	kill -0 "$SERVER_PID" 2>/dev/null || break
-	if curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null 2>&1; then
+	if curl -fsS "http://127.0.0.1:$PORT/api/v1/healthz" >/dev/null 2>&1 &&
+		/usr/sbin/lsof -a -p "$SERVER_PID" -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 		ready=1
 		break
 	fi

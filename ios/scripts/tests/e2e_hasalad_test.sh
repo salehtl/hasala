@@ -10,7 +10,13 @@ stop_listener() {
 		listener=""
 	fi
 }
-trap 'stop_listener; rm -rf "$work"' EXIT
+stop_other_run() {
+	if [[ -f "$work/other-run.pid" ]]; then
+		kill "$(cat "$work/other-run.pid")" 2>/dev/null || true
+		rm -f "$work/other-run.pid"
+	fi
+}
+trap 'stop_listener; stop_other_run; rm -rf "$work"' EXIT
 fail=0
 mkdir -p "$work/ios/scripts" "$work/stub"
 cp "$here/e2e-hasalad.sh" "$work/ios/scripts/"
@@ -34,9 +40,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
 PY
 
-for tool in initdb pg_isready psql; do
+for tool in pg_isready psql; do
 	printf '#!/bin/sh\nexit 0\n' >"$work/stub/$tool"
 done
+cat >"$work/stub/initdb" <<STUB
+#!/bin/sh
+if [ "\${STUB_INITDB:-}" = other-run-binds ]; then
+	/usr/bin/python3 -I "$work/listener.py" "\$HASALA_E2E_PORT" >/dev/null 2>&1 &
+	echo \$! >"$work/other-run.pid"
+	i=0
+	while [ \$i -lt 100 ]; do
+		/usr/sbin/lsof -nP -iTCP:"\$HASALA_E2E_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+		sleep 0.1
+		i=\$((i + 1))
+	done
+fi
+exit 0
+STUB
 cat >"$work/stub/pg_ctl" <<STUB
 #!/bin/sh
 printf '%s\n' "\$*" >>"$work/pg_ctl-calls"
@@ -63,6 +83,7 @@ serve)
 	if [ "\${STUB_SERVE:-dies}" = healthy ]; then
 		exec /usr/bin/python3 -I "$work/listener.py" "\${HASALA_HTTP_LISTEN##*:}"
 	fi
+	[ "\${STUB_SERVE:-dies}" = dies-late ] && sleep 1.5
 	echo "listen tcp: bind: address already in use" >&2
 	exit 1
 	;;
@@ -102,12 +123,21 @@ for _ in $(seq 100); do
 	sleep 0.1
 done
 run "$port" STUB_SERVE=dies
-if [[ "$rc" != 0 ]] && ! reached_tests && said "already in use"; then
-	pass "a server left on the port stops the run before the tests (exit $rc)"
+if [[ "$rc" == 2 ]] && ! reached_tests && said "127.0.0.1:$port is already in use; stop that process" && [[ ! -s "$work/pg_ctl-calls" ]]; then
+	pass "a server left on the port stops the run before it starts anything (exit $rc)"
 else
-	bad "a server left on the port: exit $rc, and the tests ran or the port was not named"
+	bad "a server left on the port: exit $rc, and the run went on or the port was not named"
 fi
 stop_listener
+
+port="$(free_port)"
+run "$port" STUB_INITDB=other-run-binds STUB_SERVE=dies-late
+stop_other_run
+if [[ "$rc" == 1 ]] && ! reached_tests && said "address already in use"; then
+	pass "another run's server on the port does not count as ours while ours is starting (exit $rc)"
+else
+	bad "another run's server on the port while ours is starting: exit $rc, and the tests ran"
+fi
 
 port="$(free_port)"
 run "$port" STUB_SERVE=dies STUB_CURL=refuses
