@@ -457,6 +457,23 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func holdingTheLinkReplacesTheServersEarlierAnswer() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "gmail")
+    _ = await rt.askServerLink()
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    #expect(mailbox.heldElsewhere == .gmail)
+    rt.linkedHere(.gmail)
+    #expect(rt.serverLink == .holder(isThisDevice: true, watchExpiresAtMs: nil))
+    server.offline = true
+    #expect(await rt.askServerLink() == nil)
+    #expect(mailbox.heldElsewhere == nil && mailbox.offer == .connect)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()

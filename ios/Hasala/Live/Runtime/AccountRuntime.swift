@@ -124,6 +124,7 @@ final class AccountRuntime {
 
   func linkedHere(_ provider: MailboxProvider) {
     activate(provider)
+    serverLink = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     linkCopy.connected()
   }
 
