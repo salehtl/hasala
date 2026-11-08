@@ -27,8 +27,7 @@ guard let names = try? fm.contentsOfDirectory(atPath: seedDir) else { fail("cann
 let files = names.filter { $0.hasSuffix(".json") }.sorted()
 guard !files.isEmpty else { fail("no seed templates in \(seedDir)") }
 
-if !check { try? fm.createDirectory(atPath: outDir, withIntermediateDirectories: true) }
-var rows: [(file: String, id: String, version: Int, sha256: String)] = []
+var rows: [(file: String, id: String, version: Int, sha256: String, data: Data)] = []
 for f in files {
   guard let data = fm.contents(atPath: "\(seedDir)/\(f)") else { fail("cannot read \(f)") }
   guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -36,18 +35,25 @@ for f in files {
   else { fail("\(f) has no string id and integer version") }
   guard f == "\(id).json" else { fail("\(f) holds template \(id); the file must be named <id>.json") }
   let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-  rows.append((f, id, version, digest))
-  let dest = "\(outDir)/\(f)"
+  rows.append((f, id, version, digest, data))
+}
+if !check {
+  do { try fm.createDirectory(atPath: outDir, withIntermediateDirectories: true) } catch { fail("cannot create \(outDir): \(error)") }
+}
+for r in rows {
+  let dest = "\(outDir)/\(r.file)"
   if check {
-    if fm.contents(atPath: dest) != data { fail("\(dest) differs from \(seedDir)/\(f); run swift ios/tools/templates/sync.swift") }
+    if fm.contents(atPath: dest) != r.data { fail("\(dest) differs from \(seedDir)/\(r.file); run swift ios/tools/templates/sync.swift") }
   } else {
-    do { try data.write(to: URL(fileURLWithPath: dest)) } catch { fail("cannot write \(dest): \(error)") }
+    do { try r.data.write(to: URL(fileURLWithPath: dest)) } catch { fail("cannot write \(dest): \(error)") }
   }
 }
 let bundled = ((try? fm.contentsOfDirectory(atPath: outDir)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
 if bundled != files {
   if check { fail("\(outDir) holds \(bundled), the seed directory \(files)") }
-  for stale in bundled where !files.contains(stale) { try? fm.removeItem(atPath: "\(outDir)/\(stale)") }
+  for stale in bundled where !files.contains(stale) {
+    do { try fm.removeItem(atPath: "\(outDir)/\(stale)") } catch { fail("cannot remove \(outDir)/\(stale): \(error)") }
+  }
 }
 
 var manifest = """
