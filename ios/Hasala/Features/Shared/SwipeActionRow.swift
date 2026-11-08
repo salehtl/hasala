@@ -17,9 +17,8 @@ struct SwipeActionRow<Content: View>: View {
   @ViewBuilder let content: Content
 
   @State private var offset: CGFloat = 0
-  @State private var start: CGFloat?
+  @State private var pan = SwipeRowPan()
   @State private var width: CGFloat = 0
-  @State private var committing = false
   @Environment(\.hMotion) private var motion
 
   static var revealWidth: CGFloat { 88 }
@@ -31,7 +30,7 @@ struct SwipeActionRow<Content: View>: View {
       .accessibilityAction(named: action.title) { action.perform() }
       .background(HColor.listRowSurface)
       .overlay {
-        if offset < 0, start == nil, !committing {
+        if offset < 0, pan.isIdle {
           Color.clear.contentShape(Rectangle()).onTapGesture { settle(0) }
             .accessibilityHidden(true)
         }
@@ -44,12 +43,12 @@ struct SwipeActionRow<Content: View>: View {
       .gesture(HorizontalPan(opensRightward: offset < 0, changed: drag, ended: release))
       .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
       .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { _ in
-        if offset != 0, start == nil, !committing { settle(0) }
+        if offset != 0, pan.isIdle { settle(0) }
       }
       .onChange(of: open) { _, now in
-        if now != id, offset != 0, start == nil, !committing { settle(0) }
+        if now != id, offset != 0, pan.isIdle { settle(0) }
       }
-      .hHaptic(.impactLight, trigger: pastCommit) { [start] in start != nil && !$0 && $1 }
+      .hHaptic(.impactLight, trigger: pastCommit) { [pan] in pan.isPanning && !$0 && $1 }
   }
 
   private var revealed: some View {
@@ -71,18 +70,15 @@ struct SwipeActionRow<Content: View>: View {
   }
 
   private func drag(_ x: CGFloat) {
-    guard !committing else { return }
-    if start == nil {
-      start = offset
-      if open != id { open = id }
-    }
-    let next = (start ?? 0) + x
+    let began = pan.isIdle
+    guard let from = pan.moved(at: offset) else { return }
+    if began, open != id { open = id }
+    let next = from + x
     offset = next > 0 ? 0 : next < -width ? -width : next
   }
 
   private func release(_ x: CGFloat, _ velocity: CGFloat, _ cancelled: Bool) {
-    guard !committing, let from = start else { return }
-    start = nil
+    guard let from = pan.released() else { return }
     let end = min(0, from + x)
     if cancelled {
       settle(0)
@@ -101,8 +97,7 @@ struct SwipeActionRow<Content: View>: View {
   }
 
   private func commit() {
-    guard !committing else { return }
-    committing = true
+    guard pan.commit() else { return }
     withAnimation(motion.animation(.cardCommit)) {
       offset = -max(width, Self.revealWidth)
     } completion: {
@@ -110,7 +105,7 @@ struct SwipeActionRow<Content: View>: View {
       var still = Transaction()
       still.disablesAnimations = true
       withTransaction(still) { offset = 0 }
-      committing = false
+      pan.committed()
       if open == id { open = nil }
     }
   }
