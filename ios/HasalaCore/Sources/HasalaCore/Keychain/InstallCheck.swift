@@ -22,10 +22,18 @@ public enum InstallCheck {
 
   public static func run(
     protectedDataAvailable: Bool, defaults: UserDefaults, keychain: KeychainSecretStore, groups: [String?],
-    widgetsDirectory: URL?, apiHost: String? = nil
+    widgetsDirectory: URL?, apiHost: String? = nil, random: any RandomSource = SystemRandom()
   ) -> Outcome {
     guard protectedDataAvailable else { return .notNow(statuses: []) }
     if defaults.string(forKey: installIDKey) != nil { return .done }
+    let id: String
+    do {
+      id = try random.uuidV4()
+    } catch .randomUnavailable(let status) {
+      return .notNow(statuses: [status])
+    } catch {
+      return .notNow(statuses: [])
+    }
     var kept: SecretItem?
     if let apiHost {
       switch markStranded(Secrets(store: keychain, apiHost: apiHost)) {
@@ -37,7 +45,6 @@ public enum InstallCheck {
     let (complete, statuses) = keychain.purgeAll(groups: groups, sparing: kept)
     guard complete else { return .notNow(statuses: statuses) }
     if let w = widgetsDirectory { removeWidgets(w) }
-    let id = (try? SystemRandom().uuidV4()) ?? "00000000-0000-4000-8000-000000000000"
     defaults.set(id, forKey: installIDKey)
     return .done
   }

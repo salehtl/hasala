@@ -269,6 +269,27 @@ struct InstallCheckTests {
     #expect(try secrets.session()?.token == "old-token" && secrets.session()?.pending_logout == true)
   }
 
+  struct NoRandom: RandomSource {
+    func fill(_ buffer: UnsafeMutableRawBufferPointer) throws(PrimitivesError) { throw .randomUnavailable(status: -1) }
+  }
+
+  @Test("no random source: nothing is deleted, no install id is set, and the next launch finishes")
+  func noRandom() throws {
+    let api = ScriptedKeychain()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    try k.write(.accountBinding, Data("b".utf8))
+    let d = defaults()
+    #expect(InstallCheck.run(
+      protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil, random: NoRandom())
+      == .notNow(statuses: [-1]))
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+    #expect(api.deletes.isEmpty && api.inner.count == 1)
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil) == .done)
+    let id = try #require(d.string(forKey: InstallCheck.installIDKey))
+    #expect(id.count == 36 && id != "00000000-0000-4000-8000-000000000000")
+    #expect(api.inner.count == 0)
+  }
+
   func widgets() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-install-\(UUID().uuidString)", isDirectory: true)
     let dir = root.appendingPathComponent("Widgets", isDirectory: true)
