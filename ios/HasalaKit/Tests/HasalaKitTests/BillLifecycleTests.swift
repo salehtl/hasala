@@ -169,4 +169,47 @@ struct BillLifecycleTests {
     #expect(ledger.state.plan.income == .aed(25_000_00))
     #expect(ledger.state.plan.expectedIncome(in: october) == .aed(25_000_00))
   }
+
+  @Test func aBudgetSetToZeroIsNotOfferedForCopyingUntilItIsSetAgain() throws {
+    let october = MayaLedger.october
+    let ledger = InMemoryLedger()
+    let token = try #require(try ledger.apply(.setBudget("dining", october, .aed(0))))
+    #expect(ledger.state.plan.budget("dining", october) == .aed(0))
+    #expect(ledger.state.plan.setToZero("dining", october))
+    #expect(PlanEngine.snapshot(ledger.state, now: ledger.now).lastMonthBudgets["dining"] == nil)
+    ledger.undo(token)
+    #expect(!ledger.state.plan.setToZero("dining", october))
+    #expect(ledger.state.plan.budget("dining", october) == MayaLedger.state.plan.budget("dining", october))
+  }
+
+  @Test func aLaterAmountEndsTheSetToZero() throws {
+    let october = MayaLedger.october
+    let ledger = InMemoryLedger()
+    let zero = try #require(try ledger.apply(.setBudget("dining", october, .aed(0))))
+    let later = try #require(try ledger.apply(.setBudget("dining", october, .aed(100_00))))
+    #expect(!ledger.state.plan.setToZero("dining", october))
+    ledger.undo(later)
+    #expect(ledger.state.plan.setToZero("dining", october))
+    ledger.undo(zero)
+    #expect(!ledger.state.plan.setToZero("dining", october))
+  }
+
+  @Test func undoOfASetToZeroLeavesALaterAmountAlone() throws {
+    let october = MayaLedger.october
+    let ledger = InMemoryLedger()
+    let first = try #require(try ledger.apply(.setBudget("dining", october, .aed(0))))
+    try ledger.apply(.setBudget("dining", october, .aed(100_00)))
+    ledger.undo(first)
+    #expect(ledger.state.plan.budget("dining", october) == .aed(100_00))
+    #expect(!ledger.state.plan.setToZero("dining", october))
+  }
+
+  @Test func aMoveThatEmptiesABudgetIsNotASetToZero() throws {
+    let november = YearMonth(2026, 11)
+    let ledger = InMemoryLedger()
+    try ledger.apply(.setBudget("entertainment", november, .aed(100_00)))
+    try ledger.apply(.moveMoney(from: "entertainment", to: "dining", november, .aed(100_00)))
+    #expect(ledger.state.plan.budget("entertainment", november) == .aed(0))
+    #expect(!ledger.state.plan.setToZero("entertainment", november))
+  }
 }

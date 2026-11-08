@@ -301,7 +301,7 @@ public final class InMemoryLedger: LedgerStore {
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
       touchedPlan = true
-      s.plan.budgets[PlanState.key(c, month)] = amount
+      s.plan.setBudget(c, month, to: amount)
       title = "\(categoryName(c)) budget changed"
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
@@ -575,6 +575,9 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.plan {
       for key in Set(old.budgets.keys).union(new.budgets.keys) where s.plan.budgets[key] == new.budgets[key] {
         s.plan.budgets[key] = old.budgets[key]
+      }
+      for key in old.zeroSet.symmetricDifference(new.zeroSet) where s.plan.zeroSet.contains(key) == new.zeroSet.contains(key) {
+        if old.zeroSet.contains(key) { s.plan.zeroSet.insert(key) } else { s.plan.zeroSet.remove(key) }
       }
       if s.plan.income == new.income { s.plan.income = old.income }
       if s.plan.payday == new.payday { s.plan.payday = old.payday }

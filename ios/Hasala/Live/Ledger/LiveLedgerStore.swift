@@ -456,7 +456,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return (try SortPatch.stopRule(&s, id), [])
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
-      s.plan.budgets[PlanState.key(c, month)] = amount
+      s.plan.setBudget(c, month, to: amount)
       return ("\(name(c)) budget changed", [])
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
