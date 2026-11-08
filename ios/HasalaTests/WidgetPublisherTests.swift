@@ -49,6 +49,16 @@ struct WidgetPublisherTests {
     #expect(open.snapshot.amountsHidden == false)
   }
 
+  @Test func widgetsStayHiddenAfterARelaunch() throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    let d = LiveGateTests.defaults()
+    AppModel(store: InMemoryLedger(), amountsDefaults: d).toggleAmountsHidden()
+    let publisher = WidgetPublisher(app: AppModel(store: InMemoryLedger(), amountsDefaults: d), store: store, reload: {})
+    #expect(store.read()?.amountsHidden == true)
+    publisher.stop()
+  }
+
   @Test func followsHiddenAmountsAndLedgerEdits() async throws {
     let store = temporaryStore()
     defer { try? FileManager.default.removeItem(at: store.directory) }

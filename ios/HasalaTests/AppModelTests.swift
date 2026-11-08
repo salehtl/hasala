@@ -19,6 +19,25 @@ struct AppModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func hiddenAmountsStayHiddenAfterARelaunchUntilTheEyeIsTapped() {
+    let d = LiveGateTests.defaults()
+    let first = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    #expect(!first.amountsHidden)
+    first.toggleAmountsHidden()
+    let relaunched = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    #expect(relaunched.amountsHidden)
+    relaunched.toggleAmountsHidden()
+    #expect(!AppModel(store: InMemoryLedger(), amountsDefaults: d).amountsHidden)
+  }
+
+  @Test func theToastsShowAlsoEndsHidingForTheNextLaunch() {
+    let d = LiveGateTests.defaults()
+    let app = AppModel(store: InMemoryLedger(), amountsDefaults: d)
+    app.toggleAmountsHidden()
+    app.toastAction()
+    #expect(!AppModel(store: InMemoryLedger(), amountsDefaults: d).amountsHidden)
+  }
+
   @Test func reviewingAllMonthsLeavesTheAppsPeriodAlone() {
     let app = AppModel(store: InMemoryLedger(state: MayaLedger.state))
     let before = app.period

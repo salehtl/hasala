@@ -81,6 +81,7 @@ final class AppModel {
   private(set) var homeLayout: HomeLayout?
   var editingHome = false
   @ObservationIgnored private let reviewOrderDefaults: UserDefaults?
+  @ObservationIgnored private let amountsDefaults: UserDefaults?
   var reviewOrder: ReviewOrder {
     didSet { ReviewOrderSetting.save(reviewOrder, reviewOrderDefaults) }
   }
@@ -88,13 +89,15 @@ final class AppModel {
   init(
     store: any LedgerStore, amountsHidden: Bool = false, mailbox: (any MailboxConnecting)? = nil,
     layouts: HomeLayoutStore? = nil, notificationReads: NotificationReads = NotificationReads(),
-    bankTexts: (any BankTextsConnecting)? = nil, reviewOrderDefaults: UserDefaults? = nil
+    bankTexts: (any BankTextsConnecting)? = nil, reviewOrderDefaults: UserDefaults? = nil,
+    amountsDefaults: UserDefaults? = nil
   ) {
     self.store = store
     self.reviewOrderDefaults = reviewOrderDefaults
+    self.amountsDefaults = amountsDefaults
     reviewOrder = ReviewOrderSetting.load(reviewOrderDefaults)
     self.notificationReads = notificationReads
-    self.amountsHidden = amountsHidden
+    self.amountsHidden = amountsHidden || amountsDefaults.map { LocalAccountData.amountsHidden($0) } == true
     self.mailbox = mailbox
     self.bankTexts = bankTexts
     self.layouts = layouts
@@ -259,6 +262,7 @@ final class AppModel {
   /// toast confirms it and offers "Show".
   func toggleAmountsHidden() {
     amountsHidden.toggle()
+    if let amountsDefaults { LocalAccountData.setAmountsHidden(amountsHidden, amountsDefaults) }
     if amountsHidden {
       show(Toast(disc: .note(.eyeSlash), title: "Amounts hidden", subtitle: "Until you tap the eye again",
                  actionTitle: "Show"))

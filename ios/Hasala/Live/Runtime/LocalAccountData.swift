@@ -39,6 +39,16 @@ enum LocalAccountData {
     }
   }
 
+  static let amountsHiddenKey = "app.hasala.prefs.amounts.hidden"
+
+  static func amountsHidden(_ defaults: UserDefaults = .standard) -> Bool {
+    defaults.bool(forKey: amountsHiddenKey)
+  }
+
+  static func setAmountsHidden(_ hidden: Bool, _ defaults: UserDefaults = .standard) {
+    defaults.set(hidden, forKey: amountsHiddenKey)
+  }
+
   static func setupFinished(_ defaults: UserDefaults = .standard) -> Bool {
     defaults.bool(forKey: setupFinishedKey)
   }
@@ -68,6 +78,7 @@ enum LocalAccountData {
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)
     defaults.removeObject(forKey: mailboxMovedAwayKey)
+    defaults.removeObject(forKey: amountsHiddenKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)
     TrustCounts.forget(defaults)
