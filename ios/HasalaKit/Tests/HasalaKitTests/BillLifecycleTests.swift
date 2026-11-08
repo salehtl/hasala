@@ -110,4 +110,63 @@ struct BillLifecycleTests {
     #expect(ledger.state.txn("h-netflix-8")?.billID == nil)
     #expect(ledger.state.bill("netflix") == s.bill("netflix"))
   }
+
+  static func withRentalIncome() -> LedgerState {
+    var s = MayaLedger.state
+    s.bills.append(Bill(id: "rental", name: "Rental", kind: "Rent", categoryID: "salary", amount: .aed(5_000_00), isIncome: true,
+                        usualDay: 1, nextDue: LocalDate(2026, 11, 1)))
+    s.plan.income = .aed(30_000_00)
+    return s
+  }
+
+  @Test func editingOneIncomeLeavesTheOthersInThePlan() throws {
+    let ledger = InMemoryLedger(state: Self.withRentalIncome())
+    try ledger.apply(.editIncome(id: "rental", amount: .aed(6_000_00), payday: 1, active: true))
+    #expect(ledger.state.plan.income == .aed(31_000_00))
+    try ledger.apply(.editIncome(id: "rental", amount: .aed(6_000_00), payday: 1, active: false))
+    #expect(ledger.state.plan.income == .aed(25_000_00))
+    try ledger.apply(.editIncome(id: "rental", amount: .aed(7_000_00), payday: 1, active: false))
+    #expect(ledger.state.plan.income == .aed(25_000_00))
+    try ledger.apply(.editIncome(id: "rental", amount: .aed(7_000_00), payday: 1, active: true))
+    #expect(ledger.state.plan.income == .aed(32_000_00))
+  }
+
+  @Test func editingIncomeReplacesEveryFigureFromThisMonthOn() throws {
+    let october = MayaLedger.october, september = YearMonth(2026, 9), november = YearMonth(2026, 11)
+    var s = MayaLedger.state
+    for m in [september, october, november] {
+      s.plan.incomeByMonth[m] = .aed(25_000_00)
+      s.plan.incomeExpectedByMonth[m] = .aed(25_000_00)
+    }
+    s.plan.incomeReceivedByMonth[september] = .aed(25_000_00)
+    s.plan.incomeReceivedByMonth[october] = .aed(1_000_00)
+    let ledger = InMemoryLedger(state: s)
+    let token = try #require(try ledger.apply(.editIncome(id: "salary", amount: .aed(26_000_00), payday: 25, active: true)))
+    let plan = ledger.state.plan
+    #expect(plan.income(in: october) == .aed(26_000_00))
+    #expect(plan.expectedIncome(in: october) == .aed(26_000_00))
+    #expect(plan.expectedIncome(in: november) == .aed(26_000_00))
+    #expect(plan.income(in: september) == .aed(25_000_00))
+    #expect(plan.expectedIncome(in: september) == .aed(25_000_00))
+    #expect(plan.receivedIncome(in: september) == .aed(25_000_00))
+    #expect(plan.receivedIncome(in: october) == .aed(1_000_00))
+    ledger.undo(token)
+    #expect(ledger.state.plan.expectedIncome(in: october) == .aed(25_000_00))
+    #expect(ledger.state.plan.income(in: october) == .aed(25_000_00))
+    #expect(ledger.state.plan == s.plan)
+  }
+
+  @Test func undoOfAnIncomeEditKeepsALaterForecast() throws {
+    let october = MayaLedger.october
+    var s = MayaLedger.state
+    s.plan.incomeExpectedByMonth[october] = .aed(25_000_00)
+    let ledger = InMemoryLedger(state: s)
+    let token = try #require(try ledger.apply(.editIncome(id: "salary", amount: .aed(26_000_00), payday: 25, active: true)))
+    let later = try #require(try ledger.apply(.editIncome(id: "salary", amount: .aed(27_000_00), payday: 25, active: true)))
+    ledger.undo(later)
+    #expect(ledger.state.plan.income == .aed(26_000_00))
+    ledger.undo(token)
+    #expect(ledger.state.plan.income == .aed(25_000_00))
+    #expect(ledger.state.plan.expectedIncome(in: october) == .aed(25_000_00))
+  }
 }

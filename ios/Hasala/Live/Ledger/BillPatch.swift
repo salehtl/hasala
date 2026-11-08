@@ -177,22 +177,7 @@ nonisolated enum BillPatch {
       try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       return nil
     case .editIncome(let id, let amount, let payday, let active):
-      guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }
-      guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw .invalidAmount }
-      guard (1...31).contains(payday) else { throw .invalidBill }
-      let old = s.bills[i]
-      s.bills[i].amount = amount
-      s.bills[i].usualDay = payday
-      s.bills[i].state = active ? .tracked : .ended
-      s.bills[i].endedOn = active ? nil : today
-      let ym = today.yearMonth
-      let thisMonth = LocalDate(ym.year, ym.month, min(payday, ym.days))
-      let next = ym.next
-      s.bills[i].nextDue = thisMonth >= today ? thisMonth : LocalDate(next.year, next.month, min(payday, next.days))
-      let removed = old.state == .tracked ? old.amount.minor : 0
-      s.plan.income = .aed(max(0, s.plan.income.minor - removed + (active ? amount.minor : 0)))
-      s.plan.payday = payday
-      for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
+      try BillLifecycle.editIncome(&s, id, amount: amount, payday: payday, active: active, today: today)
       return "Income updated"
     default:
       throw .notFound
