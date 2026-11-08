@@ -247,4 +247,40 @@ struct AlwaysUseReachTests {
     #expect(l.state.txn("carrefour")?.canAlwaysUse == false)
     #expect(TransactionEngine.detail("carrefour", l.state, now: l.now)?.canAlwaysUse == false)
   }
+
+  @Test func theReachTallyDropsWhatAnUndoPutBack() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let card: TxnID = "bl-alnoor-t-2"
+    let ref = try #require(l.state.txn(card)?.groupRef)
+    let waiting = l.state.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != "groceries" }.map(\.id)
+    let token = try #require(try l.apply(.categorize(card, "groceries", learnRule: true, project: nil)))
+    let moved = waiting.filter { l.state.txn($0)?.categoryID == "groceries" }
+    #expect(!moved.isEmpty)
+    var tally = ReviewReachTally()
+    tally.record(card, into: "groceries", others: moved)
+    #expect(tally.count(l.state) == moved.count)
+    l.undo(token)
+    #expect(l.state.txn(card)?.inReview == true)
+    #expect(tally.count(l.state) == 0)
+    try l.apply(.categorize(card, "groceries", learnRule: false, project: nil))
+    tally.record(card, into: "groceries", others: [])
+    #expect(tally.count(l.state) == 0)
+  }
+
+  @Test func theReachTallyCountsARowOnceAndOnlyWhileItStays() throws {
+    let l = InMemoryLedger(state: Scenario.mayaBacklog.state)
+    let card: TxnID = "bl-alnoor-t-2"
+    let ref = try #require(l.state.txn(card)?.groupRef)
+    let waiting = l.state.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != "groceries" }.map(\.id)
+    try l.apply(.categorize(card, "groceries", learnRule: true, project: nil))
+    let moved = waiting.filter { l.state.txn($0)?.categoryID == "groceries" }
+    let row = try #require(moved.first)
+    var tally = ReviewReachTally()
+    tally.record(card, into: "groceries", others: moved)
+    tally.record(card, into: "groceries", others: moved)
+    #expect(tally.count(l.state) == moved.count)
+    try l.apply(.categorize(row, "shopping", learnRule: false, project: nil))
+    #expect(tally.count(l.state) == moved.count - 1)
+    #expect(ReviewReachTally().count(l.state) == 0)
+  }
 }

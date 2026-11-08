@@ -214,6 +214,30 @@ public struct ReviewRepeatAnswers: Sendable, Equatable {
   }
 }
 
+public struct ReviewReachTally: Sendable, Equatable {
+  private struct Filing: Sendable, Equatable {
+    let category: CategoryID
+    let others: [TxnID]
+  }
+
+  private var filings: [TxnID: Filing] = [:]
+
+  public init() {}
+
+  public mutating func record(_ card: TxnID, into category: CategoryID, others: [TxnID]) {
+    filings[card] = others.isEmpty ? nil : Filing(category: category, others: others)
+  }
+
+  public func count(_ s: LedgerState) -> Int {
+    var moved = Set<TxnID>()
+    for (card, filing) in filings {
+      guard let t = s.txn(card), !t.inReview, t.categoryID == filing.category else { continue }
+      moved.formUnion(filing.others.filter { s.txn($0)?.categoryID == filing.category })
+    }
+    return moved.count
+  }
+}
+
 public struct ReviewMonth: Sendable, Hashable, Identifiable {
   public var month: YearMonth
   public var title: String

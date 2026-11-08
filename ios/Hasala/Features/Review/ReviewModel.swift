@@ -65,7 +65,7 @@ final class ReviewViewModel: ReviewDeckModel {
   private let app: AppModel
   private var sortedIDs: [TxnID] = []
   private var learned: Set<TxnID> = []
-  private(set) var reached = 0
+  private var reachTally = ReviewReachTally()
   private var lastUndo: (card: TxnID, tokens: [UndoToken])?
   /// The order this session reads the queue in: the Review tab's, or from the row that opened it.
   private var order: [TxnID]
@@ -189,7 +189,8 @@ final class ReviewViewModel: ReviewDeckModel {
     else {
       return false
     }
-    count(others, now: category)
+    let s = app.store.state
+    reachTally.record(card, into: category, others: others.filter { s.txn($0)?.categoryID == category })
     filed(card, learnedRule: alwaysUse)
     return true
   }
@@ -211,10 +212,7 @@ final class ReviewViewModel: ReviewDeckModel {
     return s.txns.filter { $0.ruled && $0.groupRef == ref && $0.id != card && $0.categoryID != category }.map(\.id)
   }
 
-  private func count(_ others: [TxnID], now category: CategoryID?) {
-    let s = app.store.state
-    reached += others.filter { s.txn($0)?.categoryID == category && category != nil }.count
-  }
+  var reached: Int { reachTally.count(app.store.state) }
 
   var skipped: Int {
     let s = app.store.state

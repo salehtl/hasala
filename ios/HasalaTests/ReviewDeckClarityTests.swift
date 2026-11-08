@@ -94,6 +94,20 @@ struct ReviewDeckClarityTests {
     #expect(ReviewDone.reachLine(0) == nil)
   }
 
+  @Test func undoingAnAlwaysUseTakesItsReachOutOfTheEnd() throws {
+    let (app, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
+    #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: true, project: nil))
+    #expect(deck.reached > 0)
+    app.toastAction()
+    #expect(deck.reached == 0)
+    #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: true, project: nil))
+    #expect(deck.reached > 0)
+    app.dismissToast()
+    deck.undoLast()
+    #expect(deck.reached == 0)
+    #expect(ReviewDone.reachLine(deck.reached) == nil)
+  }
+
   @Test func skipsAreCountedAndTheEndSaysDoneForNow() throws {
     let (_, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
     #expect(deck.skipped == 0)
