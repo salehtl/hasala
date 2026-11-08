@@ -375,7 +375,7 @@ public actor MailboxEngine {
   // MARK: - Connect, disconnect
 
   /// Connect the provider's mailbox (spec 04 §7.4): link challenge → OAuth with that nonce → code exchange →
-  /// step-up `mailbox.link` over SHA-256(id_token) → `PUT /mailbox/link` → Keychain. A first
+  /// step-up `mailbox.link` over SHA-256(id_token) → Keychain → `PUT /mailbox/link`. A first
   /// connect then starts the scan over `backfillDays` (30, 90 or 365; §7.7); a reconnect or a
   /// takeover of the same address resumes the normal cycle from the kept watermark, and another
   /// address is a first connect, as `replacing` is.
@@ -483,15 +483,22 @@ public actor MailboxEngine {
     do { proof = try await stepUp.proof(kind: "mailbox.link", payloadHash: sha256(Data(idToken.utf8))) } catch {
       return .failed(.stepUpFailed)
     }
+    var replacedToken: String?
+    if !otherMailbox {
+      do throws(MailAuthError) { replacedToken = try await tokens.replace(with: grant) } catch {
+        return .failed(.keychain)
+      }
+    }
     let link: MailboxLinkResult
-    do {
+    do throws(MailboxServerError) {
       link = try await server.putLink(provider: provider.id, idToken: idToken, stepUp: proof)
-    } catch .offline {
-      return .failed(.offline)
-    } catch .refused(409, "mailbox_in_use") {
-      return .failed(.mailboxInUse)
     } catch {
-      return .failed(.serverRefused)
+      if !otherMailbox { await tokens.restore(replacedToken) }
+      switch error {
+      case .offline: return .failed(.offline)
+      case .refused(409, "mailbox_in_use"): return .failed(.mailboxInUse)
+      default: return .failed(.serverRefused)
+      }
     }
     if otherMailbox {
       var cleared = commitState(MailboxState())
@@ -505,7 +512,7 @@ public actor MailboxEngine {
       strikes = [:]
     }
     do {
-      try await tokens.install(grant: grant)
+      if otherMailbox { try await tokens.install(grant: grant) }
       try provider.installLink(link)
     } catch {
       if otherMailbox { await abandonSwitch() }

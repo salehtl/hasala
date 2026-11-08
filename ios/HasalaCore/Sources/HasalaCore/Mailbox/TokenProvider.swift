@@ -133,6 +133,19 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     cached = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
   }
 
+  @discardableResult
+  public func replace(with grant: MailTokenGrant) throws(MailAuthError) -> String? {
+    let prior: String?
+    do { prior = try store.read() } catch { throw .notNow }
+    try install(grant: grant)
+    return prior
+  }
+
+  public func restore(_ token: String?) {
+    cached = nil
+    if let token { try? store.write(token) } else { try? store.delete() }
+  }
+
   /// Whether a refresh token is present (nil: unreadable now).
   public func hasRefreshToken() -> Bool? {
     do { return try store.read() != nil } catch { return nil }
