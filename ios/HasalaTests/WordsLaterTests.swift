@@ -319,6 +319,41 @@ struct WordsLaterTests: AccountSuite {
     #expect(m.items.first == .phrase)
   }
 
+  @Test func aPasskeyAddedSinceTheLastTapLetsHomeShowTheWords() async throws {
+    let account = MockAccountService(existing: .passwordOnly, signedIn: true)
+    account.delay = .zero
+    var s = services(account)
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    s.unseenPhrase = unseen
+    let session = AccountSession(services: s, phase: .ready)
+    let m = FinishSetupModel(services: s, session: { session })
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == .passkeyCantShowUnseenPhrase)
+    try await account.perform(.addPasskey, password: MockAccountService.existingPassword)
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseProblem == nil && m.phraseSecurity?.confirming == .viewPhrase)
+  }
+
+  @Test func aReadThatFailsOnALaterTapSaysSoRatherThanTrustingTheLastOne() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    var s = services(account)
+    let unseen = InMemoryUnseenPhrase()
+    unseen.noteUnseen(at: .now)
+    s.unseenPhrase = unseen
+    let session = AccountSession(services: s, phase: .ready)
+    let m = FinishSetupModel(services: s, session: { session })
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseSecurity?.state != nil)
+    account.securityStateFailure = .offline
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == .offline && m.phraseProblem == .offline && !m.phraseLoading)
+    account.securityStateFailure = nil
+    await m.writeDownPhrase()
+    #expect(m.phraseFailure == nil && m.phraseSecurity?.confirming == .viewPhrase)
+  }
+
   @Test func homeLeavesTheWordsOutWhenNothingIsPending() {
     let account = MockAccountService(existing: .passkey, signedIn: true)
     let m = FinishSetupModel(services: services(account))

@@ -176,7 +176,11 @@ final class FinishSetupModel {
     phraseFailure = nil
     phraseLoading = true
     defer { phraseLoading = false }
-    if security.state == nil { await security.load() }
+    await security.load()
+    if let failure = security.failure {
+      phraseFailure = failure
+      return
+    }
     if security.state?.hasPasskey == false {
       phraseFailure = .passkeyCantShowUnseenPhrase
       return
