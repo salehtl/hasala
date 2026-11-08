@@ -455,8 +455,8 @@ final class AccountRuntime {
   }
 
   /// "Use sample data" (spec 04 §6.13): a live `GET /account` for the gate, the bundled
-  /// seed as blobs (the observer checks the review flag and the empty ledger again), each
-  /// blob through the outbox, then one upload.
+  /// seed as blobs (the observer checks the review flag and the empty ledger again), all
+  /// of it through the outbox in one save, then one upload.
   func loadSample() async throws(SetupFailure) {
     guard let token = try? env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
     let info: AccountInfo
@@ -466,17 +466,13 @@ final class AccountRuntime {
       throw .offline
     }
     reviewAccount = info.review_account == true
-    let blobs: [AuthoredBlob]
+    let outbox = self.outbox
     do {
-      blobs = try await observer.sampleBatches(account: info)
+      try await observer.loadSample(account: info) { try await outbox.enqueue($0) }
+    } catch .notSaved {
+      throw .failed("Couldn't save the sample data. Try again.")
     } catch {
       throw .failed("Sample data isn't available for this account.")
-    }
-    do {
-      for b in blobs { try await outbox.enqueue(b.ops) }
-      try await observer.reproject()
-    } catch {
-      throw .failed("Couldn't save the sample data. Try again.")
     }
     await store.reload()
     Task { await coordinator.run(.authored) }

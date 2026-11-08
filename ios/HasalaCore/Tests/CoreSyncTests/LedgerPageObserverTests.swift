@@ -10,6 +10,7 @@ import CoreProjection
 import CoreReplay
 import CoreTestSupport
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CoreSync
@@ -321,6 +322,48 @@ struct LedgerPageObserverTests {
       try mine.map { PendingOp(opID: $0.opID, opJSON: try Self.canonical($0), opType: $0.type.rawValue, entityKind: "txn", entityID: $0.entity?.id, enqueuedAt: 1) })
     #expect(await refusal(pending, Self.account(review: true)) == .hasTransactions)
     #expect(try pending.store.pendingCount() == 1)
+  }
+
+  static func threeSamples() throws -> Data {
+    let data = try SampleSeed.bundled()
+    var doc = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let ops = try #require(doc["ops"] as? [Any])
+    doc["ops"] = ops + ops + ops
+    return try JSONSerialization.data(withJSONObject: doc)
+  }
+
+  @Test("a sample load is one save: a failed save stores nothing and can be tried again, a saved one is not issued twice")
+  func sampleSavesOnce() async throws {
+    let r = try Rig()
+    let account = Self.account(review: true)
+    let store = r.store
+    let data = try Self.threeSamples()
+    let saves = Mutex<[Int]>([])
+    let seen = Mutex(0)
+    let seed: @Sendable () throws(SampleSeedError) -> Data = { data }
+    await #expect(throws: SampleLoadError.notSaved) {
+      try await r.observer.loadSample(account: account, seed: seed) { ops in
+        saves.withLock { $0.append(ops.count) }
+        let total = seen.withLock {
+          $0 += ops.count
+          return $0
+        }
+        if total > SampleSeed.maxOpsPerBatch { throw StoreError.notCreated }
+        try store.enqueue(try Self.pending(ops))
+      }
+    }
+    #expect(try store.pendingCount() == 0)
+    #expect(saves.withLock { $0.count } == 1)
+    try await r.observer.loadSample(account: account, seed: seed) { ops in
+      saves.withLock { $0.append(ops.count) }
+      try store.enqueue(try Self.pending(ops))
+    }
+    let counts = saves.withLock { $0 }
+    #expect(counts.count == 2 && counts[0] == counts[1] && counts[0] > SampleSeed.maxOpsPerBatch)
+    #expect(try store.pendingCount() == counts[1])
+    await #expect(throws: SampleLoadError.seed(.refused(.alreadyLoaded))) {
+      try await r.observer.loadSample(account: account, seed: seed) { _ in }
+    }
   }
 
   static func pending(_ ops: [Op]) throws -> [PendingOp] {
