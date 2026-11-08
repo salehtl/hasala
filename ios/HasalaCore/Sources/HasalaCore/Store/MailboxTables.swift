@@ -443,6 +443,7 @@ public final class MailboxTableStore: Sendable {
       if let below = w.pruneAccountedBelow {
         try db.execute(sql: "DELETE FROM mailbox_accounted WHERE internal_date < ?", arguments: [below])
         try db.execute(sql: "DELETE FROM mailbox_message_strike WHERE at < ?", arguments: [below])
+        try db.execute(sql: "DELETE FROM mailbox_parsing WHERE at < ?", arguments: [below])
       }
       for h in w.health {
         let row = try Row.fetchOne(db, sql: "SELECT * FROM bank_health WHERE domain = ?", arguments: [h.domain])
