@@ -2033,7 +2033,8 @@ public actor MailboxEngine {
 
   func finish(_ state: inout MailboxState, _ report: CycleReport, clearReader: Bool = false) async -> CycleReport {
     var report = report
-    if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && Self.passing(h)) { emit(.failed(h), 0, 0) }
+    let passes = report.haltedOn.map(Self.passing) == true && state.phase != .halted
+    if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && passes) { emit(.failed(h), 0, 0) }
     var c = commitState(state)
     c.clearReader = clearReader
     try? await commitForgetting(c)
