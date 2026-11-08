@@ -32,8 +32,9 @@
 #   2 usage, MARKETING_VERSION cannot be read from ios/Config, or HASALA_BUILD_DIR is
 #     set without HASALA_TEST_MODE=1 (see hasala_build_root in release-common.sh)
 #   10 dirty tree   11 branch is not main   13 the gate failed: an IntegrationStub is
-#   left under ios/, or privacy-lint.sh failed (spec 06 §5.4: a required-reason API the
-#   privacy manifest doesn't declare)   14 key or asc.env missing or unsafe
+#   left under ios/, privacy-lint.sh failed (spec 06 §5.4: a required-reason API the
+#   privacy manifest doesn't declare), or the sample seed disagrees with
+#   golden/maya-v1.sha256 or SampleManifest.sha256   14 key or asc.env missing or unsafe
 #   16 Xcode is not 27.x   21 build number not newer than the last upload, or
 #   ios/build/<BUILD>/ exists already (a second archive in the same UTC minute)
 #   30 archive failed   31 export failed   40 the exported .ipa failed inspection (§10.3)
@@ -113,6 +114,10 @@ fi
 # Connect rejects an upload that uses one without declaring it.
 if ! "$here/privacy-lint.sh" >&2; then
 	echo "archive: privacy-lint.sh failed; declare the API in ios/Hasala/PrivacyInfo.xcprivacy or stop using it" >&2
+	exit 13
+fi
+if ! hasala_sample_pinned "$ios"; then
+	echo "archive: the sample seed and its two pins disagree, so this build would fail inspection (I6b)" >&2
 	exit 13
 fi
 if ((${#trial[@]} == 0)); then

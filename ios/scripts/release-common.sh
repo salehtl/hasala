@@ -128,6 +128,40 @@ hasala_sha256() {
 	printf '%s\n' "$out"
 }
 
+hasala_sample_manifest_sha256() {
+	local line
+	[[ -f "$1" ]] || return 1
+	line="$(grep -E '^[[:space:]]*public static let sha256 = "[0-9a-f]{64}"' -- "$1" || true)"
+	[[ "$line" =~ \"([0-9a-f]{64})\" ]] || return 1
+	printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+hasala_sample_pinned() {
+	local ios="$1" golden="$1/scripts/golden/maya-v1.sha256" want="" pinned="" got=""
+	local resources="$1/HasalaCore/Sources/HasalaCore/Resources"
+	if [[ -f "$golden" ]]; then want="$(head -n 1 -- "$golden")"; fi
+	if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+		echo "golden/maya-v1.sha256 is missing or is not one SHA-256 in hex" >&2
+		return 1
+	fi
+	if ! pinned="$(hasala_sample_manifest_sha256 "$resources/SampleManifest.swift")"; then
+		echo "cannot read SampleManifest.sha256 from ${resources#"$ios/"}/SampleManifest.swift" >&2
+		return 1
+	fi
+	if [[ "$want" != "$pinned" ]]; then
+		echo "golden/maya-v1.sha256 ($want) is not SampleManifest.sha256 ($pinned); regenerate the seed (HASALA_WRITE_SAMPLE=1) and update both" >&2
+		return 1
+	fi
+	if ! got="$(hasala_sha256 "$resources/sample/maya-v1.json" 2>/dev/null)"; then
+		echo "cannot hash sample/maya-v1.json" >&2
+		return 1
+	fi
+	if [[ "$got" != "$want" ]]; then
+		echo "sample/maya-v1.json has SHA-256 $got, not golden/maya-v1.sha256's $want" >&2
+		return 1
+	fi
+}
+
 # hasala_is_macho FILE: true when FILE starts with a Mach-O or universal-binary magic
 # number (either byte order). od's -An -tx1 -N4 mean the same in BSD and GNU od.
 hasala_is_macho() {
