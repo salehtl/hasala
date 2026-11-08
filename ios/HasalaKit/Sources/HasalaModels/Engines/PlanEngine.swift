@@ -639,6 +639,26 @@ public struct ProjectCandidateFilter: Sendable, Hashable {
   }
 }
 
+public enum BudgetSource<Source: Equatable>: Equatable {
+  case offered(Source)
+  case readyToAssign
+  case gone(CategoryID)
+}
+
+public extension PlanEngine {
+  static func moveSource<Source: Identifiable>(picked: Source.ID?, offered: [Source]) -> Source? {
+    guard let picked else { return offered.first }
+    return offered.first { $0.id == picked }
+  }
+
+  static func budgetSource<Source: Identifiable & Equatable>(
+    picked: CategoryID?, offered: [Source]
+  ) -> BudgetSource<Source> where Source.ID == CategoryID? {
+    if let source = offered.first(where: { $0.id == picked }) { return .offered(source) }
+    return picked.map(BudgetSource.gone) ?? .readyToAssign
+  }
+}
+
 public extension PlanEngine {
   /// Plan · Dining for `id` in the month of `now`; nil when the category is gone.
   static func category(_ id: CategoryID, _ s: LedgerState, now: LocalDateTime) -> CategoryDetail? {

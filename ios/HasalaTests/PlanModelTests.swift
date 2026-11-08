@@ -96,6 +96,22 @@ struct PlanModelTests {
     #expect(app.toast == nil)
   }
 
+  @Test func aSourceNoLongerOfferedIsRefusedInWordsTheSheetsAlreadyUse() {
+    let app = AppModel(store: InMemoryLedger())
+    let sheet = BudgetSheetViewModel(app: app, category: "groceries")
+    #expect(sheet.refusal(noLongerOffered: "travel") == "Travel doesn't have that much left")
+    #expect(sheet.refusal(noLongerOffered: "no-such-category") == "This category is gone")
+    #expect(app.toast == nil)
+  }
+
+  @Test func aPickThatIsNowTheDestinationLeavesNothingChosen() {
+    let app = AppModel(store: InMemoryLedger())
+    let assign = BudgetSheetViewModel(app: app, category: nil)
+    let picked: CategoryID?? = .some("shopping")
+    #expect(PlanEngine.moveSource(picked: picked, offered: assign.sources(to: nil))?.id == "shopping")
+    #expect(PlanEngine.moveSource(picked: picked, offered: assign.sources(to: "shopping")) == nil)
+  }
+
   /// A rise from Ready to assign sets the budget; a rise from a category moves money from it;
   /// a cut gives the money back to Ready to assign. Each closes the sheet with its toast.
   @Test func aBudgetComesFromWhereThePersonSays() {

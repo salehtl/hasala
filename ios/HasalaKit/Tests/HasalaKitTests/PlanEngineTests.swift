@@ -262,3 +262,47 @@ struct PlanWorstCaseTests {
     #expect(ProjectDraft.capped(flags).unicodeScalars.count == 64)
   }
 }
+
+@Suite("Plan · where the money comes from")
+struct SheetSourceTests {
+  struct Place: Identifiable, Equatable { let id: CategoryID? }
+  let rta = Place(id: nil)
+  let travel = Place(id: "travel")
+  let shopping = Place(id: "shopping")
+
+  @Test func aMoveTakesFromThePickWhileItIsOnOffer() {
+    #expect(PlanEngine.moveSource(picked: .some("shopping"), offered: [rta, travel, shopping]) == shopping)
+    #expect(PlanEngine.moveSource(picked: .some(nil), offered: [rta, travel]) == rta)
+  }
+
+  @Test func aMoveWithNoPickTakesTheFirstOnOffer() {
+    #expect(PlanEngine.moveSource(picked: nil, offered: [travel, shopping]) == travel)
+    #expect(PlanEngine.moveSource(picked: nil, offered: [Place]()) == nil)
+  }
+
+  @Test func aMovePickThatLeftTheListIsNotReplaced() {
+    #expect(PlanEngine.moveSource(picked: .some("travel"), offered: [rta, shopping]) == nil)
+    #expect(PlanEngine.moveSource(picked: .some(nil), offered: [travel, shopping]) == nil)
+  }
+
+  @Test func aMovePickThatComesBackIsChosenAgain() {
+    let picked: CategoryID?? = .some("shopping")
+    #expect(PlanEngine.moveSource(picked: picked, offered: [rta, travel]) == nil)
+    #expect(PlanEngine.moveSource(picked: picked, offered: [rta, travel, shopping]) == shopping)
+  }
+
+  @Test func aBudgetTakesFromThePickWhileItIsOnOffer() {
+    #expect(PlanEngine.budgetSource(picked: "travel", offered: [rta, travel]) == .offered(travel))
+    #expect(PlanEngine.budgetSource(picked: nil, offered: [rta, travel]) == .offered(rta))
+  }
+
+  @Test func aBudgetFromReadyToAssignStandsWithNothingLeftThere() {
+    #expect(PlanEngine.budgetSource(picked: nil, offered: [travel]) == .readyToAssign)
+    #expect(PlanEngine.budgetSource(picked: nil, offered: [Place]()) == .readyToAssign)
+  }
+
+  @Test func aBudgetPickThatLeftTheListIsGoneNotReadyToAssign() {
+    #expect(PlanEngine.budgetSource(picked: "travel", offered: [rta, shopping]) == .gone("travel"))
+    #expect(PlanEngine.budgetSource(picked: "travel", offered: [Place]()) == .gone("travel"))
+  }
+}

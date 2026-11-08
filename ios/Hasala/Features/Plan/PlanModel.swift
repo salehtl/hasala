@@ -197,6 +197,7 @@ protocol BudgetSheetModel: AnyObject, Observable {
   func setBudget(_ amount: Money, takingFrom source: CategoryID?) -> Bool
   /// Why `amount` can't come from `source`, said before anything is sent; nil when it can.
   func refusal(moving amount: Money, from source: CategoryID?) -> String?
+  func refusal(noLongerOffered source: CategoryID) -> String
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool
   func close()
 }
@@ -291,8 +292,14 @@ final class BudgetSheetViewModel: BudgetSheetModel {
       return amount.minor > plan.readyToAssign.minor ? "Ready to assign doesn't have that much" : nil
     }
     guard let r = plan.row(source) else { return nil }
-    return amount.minor > r.leftMinor ? "\(r.name) doesn't have that much left" : nil
+    return amount.minor > r.leftMinor ? Self.notEnough(r) : nil
   }
+
+  func refusal(noLongerOffered source: CategoryID) -> String {
+    plan.row(source).map(Self.notEnough) ?? "This category is gone"
+  }
+
+  private static func notEnough(_ row: PlanRowModel) -> String { "\(row.name) doesn't have that much left" }
 
   func move(_ amount: Money, from: CategoryID?, to: CategoryID) -> Bool {
     guard from != to else { return false }

@@ -74,7 +74,7 @@ struct BudgetEditSheet: View {
       .background(HColor.sheetSurface)
       .toolbar(.hidden, for: .navigationBar)
       .navigationDestination(isPresented: $picking) {
-        SourcePickerPage(title: "Take it from", sources: sources, selected: chosen?.id, hidden: model.hidden,
+        SourcePickerPage(title: "Take it from", sources: sources, selected: source, hidden: model.hidden,
                          onCard: false) { id in
           source = id
           picking = false
@@ -207,7 +207,17 @@ struct BudgetEditSheet: View {
   // MARK: Where it comes from
 
   private var sources: [MoveSource] { model.sources(to: model.row?.id) }
-  private var chosen: MoveSource? { sources.first { $0.id == source } }
+  private var pick: BudgetSource<MoveSource> { PlanEngine.budgetSource(picked: source, offered: sources) }
+  private var chosen: MoveSource? {
+    if case .offered(let s) = pick { s } else { nil }
+  }
+  private var gone: CategoryID? {
+    if case .gone(let id) = pick { id } else { nil }
+  }
+  private var sourceName: String {
+    if let gone { return model.plan.row(gone)?.name ?? "Choose a category" }
+    return chosen?.name ?? "Ready to assign"
+  }
 
   private func rise(_ row: PlanRowModel) -> Int64? { amount.map { $0 - row.budget.minor } }
 
@@ -215,9 +225,10 @@ struct BudgetEditSheet: View {
   /// A cut gives the money back: "Goes back to ……… Ready to assign".
   @ViewBuilder private func sourceField(_ row: PlanRowModel) -> some View {
     let cut = (rise(row) ?? 0) < 0
+    let choosable = !cut && (sources.count > 1 || (gone != nil && !sources.isEmpty))
     let label = Text(cut ? "Goes back to" : "Take it from").hType(.callout).foregroundStyle(HColor.textSecondary)
     let value = SideBySideOrStacked(spacing: 6, spreads: false) {
-      Text(cut ? "Ready to assign" : (chosen?.name ?? "Ready to assign"))
+      Text(cut ? "Ready to assign" : sourceName)
         .hType(.rowTitle).foregroundStyle(HColor.textPrimary)
       if !cut, let chosen {
         MoneyText(chosen.available, figure: HFigure.row.weight(.semibold), hidden: model.hidden, hiddenGlyphs: 3,
@@ -231,7 +242,7 @@ struct BudgetEditSheet: View {
         value
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      if !cut, sources.count > 1 {
+      if choosable {
         HIconView(.chevronRight, size: HSpacing.iconSmall, color: HColor.listRowChevron)
       }
     }
@@ -242,17 +253,17 @@ struct BudgetEditSheet: View {
     .background(HColor.fieldSurface, in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
     .hContrastEdge(RoundedRectangle(cornerRadius: HRadius.field, style: .continuous))
 
-    if cut || sources.count < 2 {
+    if !choosable {
       content
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(cut ? "Goes back to Ready to assign" : "Take it from \(chosen?.name ?? "Ready to assign")")
+        .accessibilityLabel(cut ? "Goes back to Ready to assign" : "Take it from \(sourceName)")
         .accessibilityIdentifier("budget.source")
     } else {
       Button { picking = true } label: { content.contentShape(Rectangle()) }
         .buttonStyle(HPressStyle(in: RoundedRectangle(cornerRadius: HRadius.field, style: .continuous), scales: false))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Take it from")
-        .accessibilityValue(chosen.map { "\($0.name), \($0.detail.spoken(hidden: model.hidden))" } ?? "")
+        .accessibilityValue(chosen.map { "\($0.name), \($0.detail.spoken(hidden: model.hidden))" } ?? sourceName)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("budget.source")
     }
@@ -275,7 +286,7 @@ struct BudgetEditSheet: View {
           .accessibilityIdentifier("budget.consequence")
       }
       Button(amount.map { "Set to AED \(MoneyFormat.string($0, style: .compact))" } ?? "Enter a budget") {
-        guard let amount else { return }
+        guard let amount, refusal == nil else { return }
         typing = false
         _ = model.setBudget(.aed(amount), takingFrom: chosen?.id)
       }
@@ -289,7 +300,9 @@ struct BudgetEditSheet: View {
   /// sent (no toast can show over a sheet). Ready to assign may go below zero: that is the
   /// plan asking for more than the income.
   private var refusal: String? {
-    guard let row = model.row, let rise = rise(row), rise > 0, let from = chosen?.id else { return nil }
+    guard let row = model.row, let rise = rise(row), rise > 0 else { return nil }
+    if let gone { return model.refusal(noLongerOffered: gone) }
+    guard let from = chosen?.id else { return nil }
     return model.refusal(moving: .aed(rise), from: from)
   }
 
