@@ -86,6 +86,21 @@ struct BankTextsTests {
     #expect(!lane.usesTexts && lane.finishCalls == 0 && finished == 1 && m.facts.bankSkipped && !m.facts.textsChosen)
   }
 
+  @Test func skippingTheSourceDuringAConnectKeepsTheChoice() async throws {
+    let mailbox = MockMailbox()
+    let s = services(texts: MockBankTexts(), mailbox: mailbox)
+    mailbox.connectDelay = .milliseconds(200)
+    var finished = 0
+    let m = model(s) { finished += 1 }
+    m.chooseSource(.email)
+    async let connect: Void = m.connectMail(.gmail)
+    for _ in 0..<400 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.connectBusy)
+    m.skipSource()
+    #expect(m.source == .email && finished == 0 && !m.facts.bankSkipped)
+    _ = await connect
+  }
+
   @Test func skippingTheSourceChoiceLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()

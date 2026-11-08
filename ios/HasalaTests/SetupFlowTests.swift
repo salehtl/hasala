@@ -69,6 +69,49 @@ struct SetupFlowTests: AccountSuite {
     #expect(noMail.step == .finished && finished == 2)
   }
 
+  @Test func skipWaitsForAConnectThatIsRunning() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.connectDelay = .milliseconds(200)
+    var finished = 0
+    let m = model(s) { finished += 1 }
+    async let connect: Void = m.connectMail(.gmail)
+    for _ in 0..<400 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.connectBusy)
+    m.skipBanks()
+    #expect(finished == 0 && !m.facts.bankSkipped && m.step == .bank)
+    _ = await connect
+    #expect(finished == 1 && !m.facts.bankSkipped && m.facts.mailbox == .scanning)
+  }
+
+  @Test func skipWorksAgainAfterAConnectFails() async throws {
+    let s = services(MockAccountService(existing: .passkey, signedIn: true))
+    let lane = try #require(s.mailbox as? MockMailbox)
+    lane.connectDelay = .milliseconds(50)
+    lane.offline = true
+    var finished = 0
+    let m = model(s) { finished += 1 }
+    async let connect: Void = m.connectMail(.gmail)
+    for _ in 0..<400 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    m.skipBanks()
+    #expect(finished == 0 && !m.facts.bankSkipped)
+    _ = await connect
+    #expect(!m.connectBusy && m.failure != nil && finished == 0)
+    m.skipBanks()
+    #expect(finished == 1 && m.facts.bankSkipped && m.step == .finished)
+  }
+
+  @Test func skipWaitsWhileTheBanksAreSaving() {
+    var finished = 0
+    let m = model(services(MockAccountService(existing: .passkey, signedIn: true))) { finished += 1 }
+    m.busy = true
+    m.skipBanks()
+    #expect(finished == 0 && !m.facts.bankSkipped)
+    m.busy = false
+    m.skipBanks()
+    #expect(finished == 1 && m.facts.bankSkipped)
+  }
+
   @Test func aSecondConnectWhileOneRunsDoesNothing() async throws {
     let s = services(MockAccountService(existing: .passkey, signedIn: true))
     let lane = try #require(s.mailbox as? MockMailbox)

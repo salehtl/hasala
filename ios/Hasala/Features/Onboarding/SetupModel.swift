@@ -193,6 +193,7 @@ final class SetupModel {
 
   /// "Skip": manual-entry mode; your email and the scan are skipped too.
   func skipBanks() {
+    guard !busy, !connectBusy else { return }
     facts.bankSkipped = true
     finish()
   }
@@ -246,7 +247,7 @@ final class SetupModel {
   }
 
   func skipSource() {
-    guard !busy else { return }
+    guard !busy, !connectBusy else { return }
     draft.source = nil
     skipBanks()
   }
