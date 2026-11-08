@@ -42,6 +42,22 @@ struct SharedComponentTests {
     #expect(PillButtonStyle.Size.large.hitOutset == 0)
   }
 
+  @Test func aPillKeepsItsIconUntilTheSpinnerTakesItsPlace() {
+    let leading = PillButtonStyle.leading
+    #expect(leading(.faceID, false, false) == .icon(.faceID))
+    #expect(leading(.faceID, true, false) == .icon(.faceID))
+    #expect(leading(.faceID, true, true) == .spinner)
+    #expect(leading(.faceID, false, true) == .icon(.faceID))
+  }
+
+  @Test func aPillWithNoIconShowsOnlyTheSpinner() {
+    let leading = PillButtonStyle.leading
+    #expect(leading(nil, false, false) == .empty)
+    #expect(leading(nil, true, false) == .empty)
+    #expect(leading(nil, true, true) == .spinner)
+    #expect(leading(nil, false, true) == .empty)
+  }
+
   @Test func aDisabledOnGroupedPillCanReadAsOff() {
     #expect(PillButtonStyle.disabledFill(.onGrouped, greysWhenDisabled: false) == HColor.surfacePrimary)
     #expect(PillButtonStyle.disabledFill(.onGrouped, greysWhenDisabled: true) == HColor.appleFillsSecondary)
