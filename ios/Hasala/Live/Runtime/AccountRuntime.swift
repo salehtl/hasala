@@ -152,9 +152,9 @@ final class AccountRuntime {
     return remembered
   }
 
-  func finishInterruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?) {
+  func finishInterruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?, defaults: UserDefaults = .standard) {
     guard let held, let old = Self.interruptedSwitch(held: held, remembered: remembered) else { return }
-    LocalAccountData.setMailboxProvider(held)
+    LocalAccountData.setMailboxProvider(held, defaults)
     guard let lane = lanes[old] else { return }
     lane.work.start { await lane.endGrant() }
   }
@@ -262,7 +262,8 @@ final class AccountRuntime {
   static func open(
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
-    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared
+    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared,
+    mailHTTP: (any HTTPExchange)? = nil, providerDefaults: UserDefaults = .standard
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
@@ -296,10 +297,10 @@ final class AccountRuntime {
       lanes[p] = MailboxLane(
         provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
         ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
-        presenter: WebAuthenticationPresenter(for: p))
+        presenter: WebAuthenticationPresenter(for: p), mailHTTP: mailHTTP)
     }
     let held = (try? await persistence.loadState())?.heldProvider.flatMap { MailboxProvider(rawValue: $0.rawValue) }
-    let remembered = LocalAccountData.mailboxProvider()
+    let remembered = LocalAccountData.mailboxProvider(providerDefaults)
     let active = ActiveLane(await initialLane(lanes, held: held, remembered: remembered))
     let editor = LedgerEditAuthor(observer: observer, outbox: outbox)
     let store = LiveLedgerStore(
@@ -384,7 +385,7 @@ final class AccountRuntime {
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
-    rt.finishInterruptedSwitch(held: held, remembered: remembered)
+    rt.finishInterruptedSwitch(held: held, remembered: remembered, defaults: providerDefaults)
     rt.linkCopy.ownLink(store.mailboxPhase)
     rt.lastPhase = store.mailboxPhase
     store.readingSource = { [weak rt] in

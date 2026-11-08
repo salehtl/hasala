@@ -89,6 +89,17 @@ nonisolated final class FakeTextAccount: BankTextAccount {
   }
 }
 
+nonisolated final class FakeMailHTTP: HTTPExchange {
+  private let sent = Mutex<[HTTPRequest]>([])
+
+  var requests: [HTTPRequest] { sent.withLock { $0 } }
+
+  func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
+    sent.withLock { $0.append(request) }
+    return HTTPResponse(status: 200, body: Data(#"{"access_token":"synthetic-access","expires_in":3600}"#.utf8))
+  }
+}
+
 nonisolated final class GatedTextAuthor: BankTextsAuthoring {
   private let state = Mutex<(calls: Int, waiting: [CheckedContinuation<Void, Never>], open: Bool)>((0, [], false))
 
@@ -402,6 +413,42 @@ struct BankTextsIntakeTests {
     let (rt, _) = try await twoLaneRuntime()
     #expect(await AccountRuntime.initialLane(rt.lanes, held: .outlook, remembered: .gmail)?.provider == .outlook)
     #expect(await AccountRuntime.initialLane(rt.lanes, held: nil, remembered: .gmail)?.provider == .gmail)
+    await rt.close()
+  }
+
+  @Test func aLaunchAfterAnInterruptedSwitchOpensTheNewLaneAndEndsTheOldGrant() async throws {
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let enrolled = try #require(a.enrolled)
+    let binding = try #require(try env.secrets.binding())
+    let oldGrant = SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .gmail)
+    let newGrant = SecretsMailRefreshTokenStore(secrets: env.secrets, userID: enrolled.userID, provider: .outlook)
+    try oldGrant.write("synthetic-refresh-old")
+    try newGrant.write("synthetic-refresh-new")
+    var row = MailboxStateRow(phase: MailboxPhase.active.rawValue)
+    row.provider = MailProviderID.outlook.rawValue
+    var write = MailboxWrite()
+    write.state = row
+    try MailboxTableStore(writer: enrolled.store.db).commit(write)
+    let suite = "interrupted-switch-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    LocalAccountData.setMailboxProvider(.gmail, defaults)
+    let http = FakeMailHTTP()
+
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: enrolled, build: try Self.bothProviders(),
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: rig().facts, mailHTTP: http, providerDefaults: defaults)
+
+    #expect(rt.activeProvider == .outlook && rt.lane?.provider == .outlook)
+    #expect(rt.linkedProvider == .outlook)
+    #expect(LocalAccountData.mailboxProvider(defaults) == .outlook)
+    try await LiveLedgerMapperTests.eventually { try oldGrant.read() == nil }
+    #expect(try oldGrant.read() == nil)
+    #expect(try newGrant.read() == "synthetic-refresh-new")
+    #expect(http.requests.contains { $0.url.host() == "oauth2.googleapis.com" && $0.url.path() == "/revoke" })
     await rt.close()
   }
 
