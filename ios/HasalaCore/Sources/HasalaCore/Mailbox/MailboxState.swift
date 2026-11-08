@@ -315,6 +315,35 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   }
 }
 
+public struct MailboxMoveNote: Sendable, Equatable {
+  public private(set) var lastPhase: MailboxPhase?
+  public private(set) var movedAwayMs: Int64?
+
+  public init(kept: MailboxPhase?, movedAwayMs: Int64?, current: MailboxPhase?) {
+    lastPhase = kept ?? current
+    self.movedAwayMs = movedAwayMs
+  }
+
+  public mutating func see(_ phase: MailboxPhase, nowMs: Int64) {
+    guard phase != lastPhase else { return }
+    let old = lastPhase
+    lastPhase = phase
+    if Self.movedAway(from: old, to: phase) {
+      movedAwayMs = nowMs
+    } else if phase != .otherDevice {
+      movedAwayMs = nil
+    }
+  }
+
+  public static func movedAway(from old: MailboxPhase?, to new: MailboxPhase) -> Bool {
+    guard new == .otherDevice, let old else { return false }
+    switch old {
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: return true
+    case .unlinked, .otherDevice: return false
+    }
+  }
+}
+
 enum MailboxClock {
   /// `YYYY-MM` of the instant's local (+04:00) month.
   static func localMonth(_ ms: Int64) -> String {

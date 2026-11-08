@@ -1,3 +1,4 @@
+import CoreMailbox
 import CorePrimitives
 import CoreStore
 import Foundation
@@ -36,6 +37,18 @@ enum LocalAccountData {
   static func setMailboxMovedAway(_ ms: Int64?, _ defaults: UserDefaults = .standard) {
     if let ms { defaults.set(NSNumber(value: ms), forKey: mailboxMovedAwayKey) } else {
       defaults.removeObject(forKey: mailboxMovedAwayKey)
+    }
+  }
+
+  static let mailboxPhaseSeenKey = "app.hasala.prefs.mailbox.phaseSeen"
+
+  static func mailboxPhaseSeen(_ defaults: UserDefaults = .standard) -> MailboxPhase? {
+    defaults.string(forKey: mailboxPhaseSeenKey).flatMap(MailboxPhase.init(rawValue:))
+  }
+
+  static func setMailboxPhaseSeen(_ phase: MailboxPhase?, _ defaults: UserDefaults = .standard) {
+    if let phase { defaults.set(phase.rawValue, forKey: mailboxPhaseSeenKey) } else {
+      defaults.removeObject(forKey: mailboxPhaseSeenKey)
     }
   }
 
@@ -78,6 +91,7 @@ enum LocalAccountData {
     defaults.removeObject(forKey: legacySetupFinishedKey)
     defaults.removeObject(forKey: mailboxProviderKey)
     defaults.removeObject(forKey: mailboxMovedAwayKey)
+    defaults.removeObject(forKey: mailboxPhaseSeenKey)
     defaults.removeObject(forKey: amountsHiddenKey)
     DevicePrefsStore(defaults: defaults).forgetAccountData()
     MerchantSuggestionsSetting.forget(defaults)

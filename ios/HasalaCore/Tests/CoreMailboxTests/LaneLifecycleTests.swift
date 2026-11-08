@@ -6,6 +6,51 @@ import Testing
 
 @testable import CoreMailbox
 
+@Suite struct MailboxMoveNoteTests {
+  @Test func aMoveTheLastRunNeverShowedStillCountsAfterARelaunch() {
+    var note = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: .active)
+    note.see(.active, nowMs: 1)
+    #expect(note.lastPhase == .active && note.movedAwayMs == nil)
+    var relaunched = MailboxMoveNote(kept: note.lastPhase, movedAwayMs: note.movedAwayMs, current: .otherDevice)
+    relaunched.see(.otherDevice, nowMs: 5)
+    #expect(relaunched.movedAwayMs == 5 && relaunched.lastPhase == .otherDevice)
+  }
+
+  @Test func anIPhoneThatNeverReadTheMailboxIsNotToldItMoved() {
+    var first = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: .otherDevice)
+    first.see(.otherDevice, nowMs: 5)
+    #expect(first.movedAwayMs == nil)
+    var unlinked = MailboxMoveNote(kept: .unlinked, movedAwayMs: nil, current: .otherDevice)
+    unlinked.see(.otherDevice, nowMs: 5)
+    #expect(unlinked.movedAwayMs == nil)
+  }
+
+  @Test func theNoteStaysUntilThePhaseLeavesOtherDevice() {
+    var note = MailboxMoveNote(kept: .active, movedAwayMs: nil, current: .otherDevice)
+    note.see(.otherDevice, nowMs: 5)
+    var relaunched = MailboxMoveNote(kept: note.lastPhase, movedAwayMs: note.movedAwayMs, current: .otherDevice)
+    relaunched.see(.otherDevice, nowMs: 9)
+    #expect(relaunched.movedAwayMs == 5)
+    relaunched.see(.active, nowMs: 10)
+    #expect(relaunched.movedAwayMs == nil)
+  }
+
+  @Test func aPhaseAlreadySeenChangesNothing() {
+    var note = MailboxMoveNote(kept: .otherDevice, movedAwayMs: 3, current: .otherDevice)
+    note.see(.otherDevice, nowMs: 9)
+    #expect(note.movedAwayMs == 3)
+  }
+
+  @Test func aMoveNeedsAPhaseThatWasReadingHere() {
+    for old in MailboxPhase.allCases {
+      let expected = old != .unlinked && old != .otherDevice
+      #expect(MailboxMoveNote.movedAway(from: old, to: .otherDevice) == expected)
+    }
+    #expect(!MailboxMoveNote.movedAway(from: nil, to: .otherDevice))
+    #expect(!MailboxMoveNote.movedAway(from: .active, to: .active))
+  }
+}
+
 @Suite struct LaneLifecycleTests {
   let day: Int64 = 86_400_000
 

@@ -158,19 +158,19 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
-  @ObservationIgnored private(set) var movedAwayMs: Int64? = LocalAccountData.mailboxMovedAway()
-  @ObservationIgnored var lastPhase: MailboxPhase?
+  @ObservationIgnored private var moveNote = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: nil)
 
-  func noteMovedAway(from old: MailboxPhase?, to new: MailboxPhase) {
-    lastPhase = new
-    if LiveReading.movedAway(from: old, to: new) {
-      let now = context.clock.nowMs()
-      LocalAccountData.setMailboxMovedAway(now)
-      movedAwayMs = now
-    } else if new != .otherDevice, movedAwayMs != nil {
-      LocalAccountData.setMailboxMovedAway(nil)
-      movedAwayMs = nil
-    }
+  func startMoveNote(current: MailboxPhase?) {
+    moveNote = MailboxMoveNote(
+      kept: LocalAccountData.mailboxPhaseSeen(), movedAwayMs: LocalAccountData.mailboxMovedAway(), current: current)
+    LocalAccountData.setMailboxPhaseSeen(moveNote.lastPhase)
+  }
+
+  private func seeMailboxPhase(_ phase: MailboxPhase) {
+    guard phase != moveNote.lastPhase else { return }
+    moveNote.see(phase, nowMs: context.clock.nowMs())
+    LocalAccountData.setMailboxPhaseSeen(phase)
+    LocalAccountData.setMailboxMovedAway(moveNote.movedAwayMs)
   }
 
   func reading(
@@ -183,7 +183,7 @@ final class AccountRuntime {
   func readingInputs(textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
     let status = lane == nil ? nil : store.mailboxStatus
-    if let phase = status?.phase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
+    if let phase = status?.phase { seeMailboxPhase(phase) }
     let held = status.flatMap { s in
       lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }
     }
@@ -194,7 +194,7 @@ final class AccountRuntime {
       sample: store.holdsSample || reviewAccount, status: status, provider: provider, progress: store.importProgress,
       heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, trustedBanks: trusted,
       newestMailRowMs: (try? projection.reader.newestMailboxPostedMs()) ?? nil, txns: store.state.txns,
-      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: movedAwayMs)
+      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: moveNote.movedAwayMs)
   }
 
   func retryMailbox() async {
@@ -362,7 +362,7 @@ final class AccountRuntime {
       await rt?.checkServerLink()
     }
     rt.linkCopy.ownLink(store.mailboxPhase)
-    rt.lastPhase = store.mailboxPhase
+    rt.startMoveNote(current: store.mailboxPhase)
     store.readingSource = { [weak rt] in
       guard let rt else { return nil }
       let texts = bankTextFacts.read(nowMs: context.clock.nowMs())
