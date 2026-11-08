@@ -278,6 +278,54 @@ let
   # ------------------------------------------------------------------- backups
   offsiteFilter = "--filter '- *.part' --filter '+ hasala-*.age*' --filter '- *'";
   ageRecipientFlags = concatStringsSep " " (map (r: "-r ${r}") cfg.backup.ageRecipients);
+  backupText = ''
+    # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
+    # retention. The plaintext dump is never written to a file: pg_dump
+    # streams into age, and a copy of the stream goes through a FIFO to
+    # pg_restore --list, whose TOC (no data) is the only thing kept under
+    # $RUNTIME_DIRECTORY (tmpfs, 0700). Both are removed on every exit.
+    tag="''${1:-daily}"
+    case "$tag" in daily | premigrate) ;; *) echo "hasala-backup: unknown tag $tag" >&2; exit 2 ;; esac
+    ts="$(date -u +%Y%m%dT%H%M%SZ)"
+    dir=${lib.escapeShellArg cfg.backup.dir}
+    out="$dir/hasala-$tag-$ts.dump.age"
+    led="$dir/hasala-ledger-$tag-$ts.tar.age"
+    exec 9< ${maintenanceLock}
+    flock 9
+    work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
+    trap 'rm -rf "$work"; rm -f "$out.part" "$out.sha256.part" "$led.part"' EXIT
+    mkfifo -m 0600 "$work/stream"
+    { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
+    toc_pid=$!
+    pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
+      --format=custom --compress=zstd:6 --no-password \
+      | tee "$work/stream" \
+      | age ${ageRecipientFlags} -o "$out.part"
+    wait "$toc_pid"
+    if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
+    # The purge ledger and the log generation (§5.8.1), read through the
+    # hasala-ledger group; never written here.
+    # A missing purge ledger, or one that cannot be read, fails the backup
+    # (pipefail), never an empty ledger copy.
+    [ -f ${ledgerDir}/purged ] || { echo "hasala-backup: ${ledgerDir}/purged is missing" >&2; exit 1; }
+    files=(purged)
+    if [ -e ${ledgerDir}/generation ]; then files+=(generation); fi
+    tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
+      | age ${ageRecipientFlags} -o "$led.part"
+    sum="$(sha256sum < "$out.part")"
+    printf '%s  %s\n' "''${sum%% *}" "$(basename "$out")" > "$out.sha256.part"
+    sync "$out.part" "$out.sha256.part" "$led.part"
+    mv "$led.part" "$led"
+    mv "$out.sha256.part" "$out.sha256"
+    mv "$out.part" "$out"
+    # Retention is a hard bound (N-06): every dump, ledger copy and checksum
+    # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
+    find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
+      toString (cfg.backup.retentionDays - 1)
+    } -delete
+    date +%s > "$STATE_DIRECTORY/last-success-$tag"
+    echo "hasala-backup: $tag written"
+  '';
   backupScript = pkgs.writeShellApplication {
     name = "hasala-backup";
     runtimeInputs = [
@@ -289,53 +337,7 @@ let
       pkgs.gnutar
       pkgs.util-linux
     ];
-    text = ''
-      # §5.8: an age-encrypted custom-format dump plus the purge ledger, then
-      # retention. The plaintext dump is never written to a file: pg_dump
-      # streams into age, and a copy of the stream goes through a FIFO to
-      # pg_restore --list, whose TOC (no data) is the only thing kept under
-      # $RUNTIME_DIRECTORY (tmpfs, 0700). Both are removed on every exit.
-      tag="''${1:-daily}"
-      case "$tag" in daily | premigrate) ;; *) echo "hasala-backup: unknown tag $tag" >&2; exit 2 ;; esac
-      ts="$(date -u +%Y%m%dT%H%M%SZ)"
-      dir=${lib.escapeShellArg cfg.backup.dir}
-      out="$dir/hasala-$tag-$ts.dump.age"
-      led="$dir/hasala-ledger-$tag-$ts.tar.age"
-      exec 9< ${maintenanceLock}
-      flock 9
-      work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
-      trap 'rm -rf "$work"; rm -f "$out.part" "$led.part"' EXIT
-      mkfifo -m 0600 "$work/stream"
-      { pg_restore --list > "$work/toc"; cat > /dev/null; } < "$work/stream" &
-      toc_pid=$!
-      pg_dump --host=${socketDir} --username=hasala_backup --dbname=hasala \
-        --format=custom --compress=zstd:6 --no-password \
-        | tee "$work/stream" \
-        | age ${ageRecipientFlags} -o "$out.part"
-      wait "$toc_pid"
-      if [ "$tag" = daily ]; then grep -q ' TABLE DATA public op_log ' "$work/toc"; fi
-      sync "$out.part"
-      mv "$out.part" "$out"
-      ( cd "$dir" && sha256sum "$(basename "$out")" > "$(basename "$out").sha256" )
-      # The purge ledger and the log generation (§5.8.1), read through the
-      # hasala-ledger group; never written here.
-      # A missing purge ledger, or one that cannot be read, fails the backup
-      # (pipefail), never an empty ledger copy.
-      [ -f ${ledgerDir}/purged ] || { echo "hasala-backup: ${ledgerDir}/purged is missing" >&2; exit 1; }
-      files=(purged)
-      if [ -e ${ledgerDir}/generation ]; then files+=(generation); fi
-      tar -C ${ledgerDir} -cf - -T /dev/null "''${files[@]}" \
-        | age ${ageRecipientFlags} -o "$led.part"
-      sync "$led.part"
-      mv "$led.part" "$led"
-      # Retention is a hard bound (N-06): every dump, ledger copy and checksum
-      # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
-      find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
-        toString (cfg.backup.retentionDays - 1)
-      } -delete
-      date +%s > "$STATE_DIRECTORY/last-success-$tag"
-      echo "hasala-backup: $tag written"
-    '';
+    text = backupText;
   };
 
   backupServiceConfig = hardening // {
@@ -887,6 +889,16 @@ in
         };
         description = "The exact cloudflared config the tunnel runs; the ingress lint reads it.";
       };
+    };
+
+    renderedScripts = mkOption {
+      type = types.attrsOf types.str;
+      internal = true;
+      readOnly = true;
+      default = {
+        backup = backupText;
+      };
+      description = "The text of the operational scripts; the ops-scripts check runs it against stubs.";
     };
 
     backup = {
