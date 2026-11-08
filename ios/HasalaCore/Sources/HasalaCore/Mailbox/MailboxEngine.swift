@@ -1182,6 +1182,19 @@ public actor MailboxEngine {
       })
   }
 
+  public func importWindow(senders: [String]) async -> [(domain: String, sinceMs: Int64)] {
+    let domains = senders.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
+    guard !domains.isEmpty, let state = try? await store.loadState() else { return [] }
+    return importWindow(domains, state).map { ($0.domain, $0.sinceMs) }
+  }
+
+  private func importWindow(_ domains: [String], _ state: MailboxState) -> [PendingImport] {
+    guard state.watermarkMs != nil else { return [] }
+    let days = Int64(state.backfillDays ?? 90)
+    let sinceMs = max(0, clock.nowMs() - days * 86_400_000, state.readFromMs ?? 0)
+    return domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+  }
+
   public func backfill(senders: [String]) async -> CycleReport {
     let domains = senders.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
     return await exclusive {
@@ -1199,11 +1212,10 @@ public actor MailboxEngine {
     -> CycleReport
   {
     var report = report
-    guard state.watermarkMs != nil else { return report }
-    let days = Int64(state.backfillDays ?? 90)
-    let sinceMs = max(0, clock.nowMs() - days * 86_400_000, state.readFromMs ?? 0)
+    let window = importWindow(domains, state)
+    guard !window.isEmpty else { return report }
     var c = MailboxCommit()
-    c.addImports = domains.map { PendingImport(domain: $0, sinceMs: sinceMs) }
+    c.addImports = window
     do { try await store.commit(c) } catch {
       report.haltedOn = .offline
       return report

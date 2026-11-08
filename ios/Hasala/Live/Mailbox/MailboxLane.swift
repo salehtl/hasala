@@ -156,6 +156,10 @@ nonisolated final class MailboxLane: Sendable {
     }
   }
 
+  func importWindow(senders: [String]) async -> [(domain: String, sinceMs: Int64)] {
+    await engine.importWindow(senders: senders)
+  }
+
   func backfill(senders: [String]) {
     let engine = self.engine
     work.start { _ = await engine.backfill(senders: senders) }
