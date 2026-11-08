@@ -451,8 +451,8 @@ extension State {
     }
   }
 
-  /// The one place `needs_review` is written after create: it may not be
-  /// cleared on an unparsed row (the review queue is its only surface).
+  /// `needs_review` may not be cleared on an unparsed row (the review queue is
+  /// its only surface).
   private mutating func setNeedsReview(_ id: String, _ want: Bool, seq: Int64) {
     if txns[id]!.unparsed && !want {
       anomaly(seq, "unsupported_edit_field", "\(id): needs_review cannot be cleared on an unparsed transaction")
