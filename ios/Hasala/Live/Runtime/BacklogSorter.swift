@@ -223,6 +223,7 @@ actor BacklogSorter {
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
+  private var stopping: Task<Void, Never>?
   private var generation = 0
   private var watching = false
   private(set) var passes = 0
@@ -352,6 +353,10 @@ actor BacklogSorter {
     await task?.value
   }
 
+  func settled() async {
+    await stopping?.value
+  }
+
   func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
     let sent = record.filedHere
     guard !sent.isEmpty else { return 0 }
@@ -373,7 +378,14 @@ actor BacklogSorter {
   }
 
   private func halt() {
-    task?.cancel()
+    if let running = task {
+      running.cancel()
+      let earlier = stopping
+      stopping = Task {
+        await earlier?.value
+        await running.value
+      }
+    }
     task = nil
     hold = nil
     wake.fire()

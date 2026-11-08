@@ -488,6 +488,8 @@ final class AccountRuntime {
     await backlog.suspend()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
+    await backlog.settled()
+    await coordinator.finished()
   }
 
   func followSwitch() {

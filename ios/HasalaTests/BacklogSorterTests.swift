@@ -623,6 +623,36 @@ struct BacklogSorterTests {
     #expect(await !t.isRunning && running.run?.phase == .running && script.passes == 0)
   }
 
+  nonisolated final class SlowPass: Sendable {
+    let log = Mutex<[String]>([])
+    var all: [String] { log.withLock { $0 } }
+
+    func run() async -> BacklogSorter.PassResult? {
+      log.withLock { $0.append("pass.start") }
+      let ended = ContinuousClock.now + .milliseconds(150)
+      while ContinuousClock.now < ended { await Task.yield() }
+      log.withLock { $0.append("pass.end") }
+      return BacklogSorter.PassResult(pass: BacklogSort.Pass(suggestions: [], memo: BacklogSort.Memo(), pending: 1, calls: 1, stop: nil, settled: 1))
+    }
+  }
+
+  func slowSorter(_ slow: SlowPass, _ saved: Saved, mayRun: Bool = true) -> BacklogSorter {
+    BacklogSorter(
+      pass: { _, _ in await slow.run() }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true },
+      network: Net(), mayRun: mayRun, sleep: Sleeps().sleep)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func afterSuspendingSettledWaitsForThePassInFlight() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.suspend()
+    await s.settled()
+    #expect(slow.all == ["pass.start", "pass.end"])
+  }
+
   @Test func nothingStartsOrResumesWhileTheAccountIsStoppedAndWorkGoesOnOnceItClears() async {
     let saved = Saved()
     let script = Script([(0, 1, nil)])

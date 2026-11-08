@@ -255,6 +255,79 @@ struct WorkCoordinatorTests {
     #expect(p.mailSawCancel.withLock { $0 })
   }
 
+  @Test(.timeLimit(.minutes(1))) func closingLeavesNoSyncRunningOnceFinished() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          log.add("sync.start")
+          try? await Task.sleep(for: .milliseconds(300))
+          log.add("sync.end")
+          return (newData: false, stop: nil)
+        }, mailbox: nil, committed: {}, stopped: { _ in }))
+    let watcher = Task { await c.run(.foreground) }
+    try? await Task.sleep(for: .milliseconds(50))
+    await c.close()
+    await c.finished()
+    #expect(log.all == ["sync.start", "sync.end"])
+    _ = await watcher.value
+  }
+
+  @Test(.timeLimit(.minutes(1))) func closingWaitsForTheMailStageToStop() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in (newData: false, stop: nil) },
+        mailbox: { _, _ in
+          log.add("mail.start")
+          try? await Task.sleep(for: .milliseconds(100))
+          let ended = ContinuousClock.now + .milliseconds(100)
+          while ContinuousClock.now < ended { await Task.yield() }
+          log.add("mail.end")
+          return CycleReport()
+        }, committed: {}, stopped: { _ in }))
+    let watcher = Task { await c.run(.foreground) }
+    try? await Task.sleep(for: .milliseconds(50))
+    await c.close()
+    await c.finished()
+    #expect(log.all == ["mail.start", "mail.end"])
+    _ = await watcher.value
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aStopThatClosesTheAccountDoesNotWaitForItsOwnRun() async {
+    let log = Log()
+    let holder = Mutex<WorkCoordinator?>(nil)
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in (newData: false, stop: .needsSignIn) }, mailbox: nil, committed: {},
+        stopped: { _ in
+          let me = holder.withLock { $0 }
+          await me?.close()
+          await me?.finished()
+          log.add("closed")
+        }))
+    holder.withLock { $0 = c }
+    _ = await c.run(.foreground)
+    #expect(log.all == ["closed"])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPauseWaitsForASyncItsCallerGaveUpOn() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          try? await Task.sleep(for: .milliseconds(300))
+          log.add("sync.end")
+          return (newData: false, stop: nil)
+        }, mailbox: nil, committed: {}, stopped: { _ in }))
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    _ = await job.value
+    await c.pause()
+    #expect(log.all == ["sync.end"])
+  }
+
   @Test func pullToRefreshIsNotSpacedAndReadsMail() async {
     let log = Log()
     let c = Self.coordinator(log, delay: .zero)

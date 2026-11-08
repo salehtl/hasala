@@ -179,6 +179,8 @@ actor WorkCoordinator {
   private var lastForeground: ContinuousClock.Instant?
   private var closed = false
   private var paused = false
+  private var syncing: Task<(newData: Bool, stop: SyncStop?), Never>?
+  private var handingStop = false
   private(set) var runs = 0
 
   init(stages: Stages) {
@@ -197,11 +199,16 @@ actor WorkCoordinator {
   func pause() async {
     paused = true
     rerun = nil
-    if let t = inFlight { _ = await t.value }
+    await finished()
   }
 
   func resume() {
     paused = false
+  }
+
+  func finished() async {
+    if let syncing { _ = await syncing.value }
+    if !handingStop, let inFlight { _ = await inFlight.value }
   }
 
   /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
@@ -282,6 +289,7 @@ actor WorkCoordinator {
     // run stops waiting for it instead (it finishes, or stops at its deadline).
     let sync = stages.sync
     let syncTask = Task { await sync(trigger.sync, deadline) }
+    syncing = syncTask
     let synced = await Self.wait(
       for: syncTask, until: nil, timedOut: (newData: false, stop: SyncStop?.some(.cancelled)),
       cancelled: (newData: false, stop: SyncStop?.some(.cancelled)))
@@ -289,7 +297,9 @@ actor WorkCoordinator {
     out.stop = synced.stop
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     if let stop = synced.stop, Self.surfaces(stop) {
+      handingStop = true
       await stages.stopped(stop)
+      handingStop = false
       if Self.endsTheAccount(stop) { return out }
     }
     if !closed, let mailbox = stages.mailbox, let mt = trigger.mailbox, synced.stop.map(Self.tolerable) ?? true {
