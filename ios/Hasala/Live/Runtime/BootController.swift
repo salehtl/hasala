@@ -253,8 +253,8 @@ final class BootController {
     let env = self.env
     let account = self.account
     let profile = Self.profileInfo(account.profile, binding: binding)
-    let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop) }
     turns.open { [weak self] turn in
+      let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop, turn: turn) }
       let rt: AccountRuntime
       do {
         rt = try await AccountRuntime.open(
@@ -303,14 +303,14 @@ final class BootController {
         await rt.store.reload()
       }
       BackgroundScheduler.shared.scheduleRefresh()
-      Task { [weak self] in await self?.launch(rt, binding: binding) }
+      Task { [weak self] in await self?.launch(rt, binding: binding, turn: turn) }
       return rt
     }
   }
 
   /// The launch run, then APNs registration for the account that is still open.
-  private func launch(_ rt: AccountRuntime, binding: AccountBinding) async {
-    await rt.start(buildNumber: env.buildNumber, stopped: { [weak self] stop in await self?.stopped(stop) })
+  private func launch(_ rt: AccountRuntime, binding: AccountBinding, turn: RuntimeTurns<AccountRuntime>.Turn) async {
+    await rt.start(buildNumber: env.buildNumber, stopped: { [weak self] stop in await self?.stopped(stop, turn: turn) })
     guard runtime === rt else { return }
     PushRegistrar.shared.register(env: env.account, userID: binding.user_id)
   }
@@ -366,7 +366,8 @@ final class BootController {
 
   private func relaunch() {
     guard let rt = runtime, let binding = try? env.account.secrets.binding() else { return }
-    Task { await launch(rt, binding: binding) }
+    let turn = turns.turn
+    Task { await launch(rt, binding: binding, turn: turn) }
   }
 
   func retrySync() {
@@ -411,7 +412,8 @@ final class BootController {
 
   // MARK: Stops only the gate can act on
 
-  private func stopped(_ stop: SyncStop) async {
+  private func stopped(_ stop: SyncStop, turn: RuntimeTurns<AccountRuntime>.Turn) async {
+    guard turns.isCurrent(turn) else { return }
     switch stop {
     case .wipe:
       // `410 account_deleted`, or a revocation the pinned key history shows: the account was
@@ -438,7 +440,7 @@ final class BootController {
       // shows the holder's wall; its Unfreeze reads `frozen_by` again before any #66.
       // After "Leave it frozen" the banner stays.
       let info = await account.freezeInfo()
-      guard session.phase != .signedOut else { return }
+      guard turns.isCurrent(turn), session.phase != .signedOut else { return }
       session.runFoundFrozen(info)
     case .needsUnlock, .keysRequired:
       await closeRuntime()

@@ -179,6 +179,21 @@ struct RuntimeTurnsTests {
     #expect(!turns.isCurrent(turn))
   }
 
+  @Test func onlyTheOpenRuntimesTurnIsCurrent() async {
+    let turns = RuntimeTurns<Fake>()
+    let quick = Gate()
+    quick.release()
+    Self.openGated(turns, "a", gate: quick, log: Log())
+    let a = turns.turn
+    await Self.settle()
+    await turns.close(Fake("a")) { _ in }
+    Self.openGated(turns, "b", gate: quick, log: Log())
+    let b = turns.turn
+    await Self.settle()
+    #expect(!turns.isCurrent(a))
+    #expect(turns.isCurrent(b))
+  }
+
   @Test func anOpeningNothingWaitsForAnswersNil() async {
     let turns = RuntimeTurns<Fake>()
     #expect(await turns.opened() == nil)
