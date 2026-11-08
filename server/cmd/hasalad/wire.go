@@ -247,11 +247,9 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 	q.Register("invite", invites.Renderer{WebBase: cfg.Email.WebBaseURL, ManualTestFlight: true, Minter: minter})
 	var record func(purgeledger.Entry)
 	if p := cfg.Server.PurgeLedgerPath; p != "" {
-		record = func(e purgeledger.Entry) {
-			if err := purgeledger.AppendEntries(p, e); err != nil {
-				slog.Warn("hasalad serve: the restore ledger did not record a waitlist deletion", "kind", string(e.Kind), "err", err)
-			}
-		}
+		ledger := newLedgerWriter(p)
+		record = ledger.record
+		ex.done = append(ex.done, ledger.run(ctx))
 	}
 	q.Unsent = invites.MailUnsent(record)
 	wl := waitlist.New(pool, tagger, cfg.Email.WebBaseURL)
