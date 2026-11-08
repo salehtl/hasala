@@ -150,16 +150,61 @@ struct PasskeyAddTests {
     }
   }
 
-  @Test("an unlock that fails for an ordinary reason still adds the passkey, without a wrap")
-  func ordinaryUnlockFailureStillAdds() async throws {
+  @Test("an unlock that fails for an ordinary reason stops the add before the passkey sheet, and the next try wraps the passkey")
+  func ordinaryUnlockFailureStopsTheAdd() async throws {
     let w = World()
-    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: SoftPasskey())
+    let second = SoftPasskey()
+    let (a, _, env) = try await passkeyAccount(w, first: SoftPasskey(), second: second)
     let token = try #require(try a.env.secrets.session()).token
     let wraps = try await a.env.client.keyWraps(bearer: token).wraps.count
+    let binding = try #require(a.binding)
     w.server.refuseNext("GET /api/v1/keys", status: 503, code: "unavailable")
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added a passkey past a failed unlock")
+    } catch {
+      #expect(error.failure?.status == 503)
+    }
+    #expect(second.credentials.isEmpty)
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps)
+    let added = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+    #expect(added.unlocksData)
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps + 1)
+  }
+
+  @Test("a step-up passkey that has no wrap to open still adds a passkey, without a wrap")
+  func stepUpPasskeyWithoutAWrapStillAdds() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    first.setPRFSupported(false)
+    let (a, _, env) = try await passkeyAccount(w, first: first, second: SoftPasskey())
+    first.setPRFSupported(true)
     let added = try await AccountPasskeys.add(env, binding: try #require(a.binding), factor: .passkey, body: nil, reason: "x")
     #expect(!added.unlocksData)
-    #expect(try await a.env.client.keyWraps(bearer: token).wraps.count == wraps)
+    let token = try #require(try a.env.secrets.session()).token
+    #expect(try await a.env.client.keyWraps(bearer: token).wraps.isEmpty)
+  }
+
+  @Test("a writer key the Keychain cannot give stops the add before the step-up and the passkey sheet")
+  func unreadableWriterKeyStopsTheAdd() async throws {
+    let w = World()
+    let first = SoftPasskey()
+    let second = SoftPasskey()
+    let (a, account, env) = try await passkeyAccount(w, first: first, second: second)
+    let binding = try #require(a.binding)
+    try a.keychain.delete(.writerKey(userID: account.userID, writerID: account.writerID))
+    let signatures = first.credentials.first?.signCount
+    do throws(CeremonyError) {
+      _ = try await AccountPasskeys.add(env, binding: binding, factor: .passkey, body: nil, reason: "x")
+      Issue.record("added a passkey with no writer key")
+    } catch {
+      guard case .noDeviceKey = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(second.credentials.isEmpty)
+    #expect(first.credentials.first?.signCount == signatures)
   }
 
   @Test("a passkey account's second passkey is wrapped with the body its own step-up opens")

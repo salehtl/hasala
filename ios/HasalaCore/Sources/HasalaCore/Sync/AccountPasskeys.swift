@@ -16,6 +16,9 @@ public enum AccountPasskeys {
   ) async throws(CeremonyError) -> AddedPasskey {
     guard let user = binding.userID, let writer = binding.writerID else { throw .noDeviceKey }
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
+    guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: user, writerID: writer) })
+    else { throw .noDeviceKey }
+    defer { seed.wipe() }
     let proof = try await StepUpHelper.prove(env, params: .passkeyAdd, factor: factor, binding: binding, reason: reason)
     defer { proof.prf?.wipe() }
     guard let nonce = try? Base64.decodeURL(proof.stepUp.nonce) else { throw .badResponse("step-up nonce") }
@@ -30,7 +33,7 @@ public enum AccountPasskeys {
       do {
         opened = try await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
       } catch {
-        if case .integrityAlarm = error { throw error }
+        guard case .noPRF = error else { throw error }
       }
     }
     defer { opened?.wipe() }
@@ -43,9 +46,6 @@ public enum AccountPasskeys {
         try Wrap.sealPRF(body: source, prfOutput: prf, userID: user, credentialID: reg.credentialID, random: env.random)
       }
     }
-    guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: user, writerID: writer) })
-    else { throw .noDeviceKey }
-    defer { seed.wipe() }
     let sig = try cryptoStep("passkey add") {
       try DWK.sign(
         seed: seed,
