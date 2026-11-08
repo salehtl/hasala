@@ -264,6 +264,16 @@ struct BillMatcherTests {
     #expect(Self.pairs(otherBill) == ["b1 2026-08-06 chosen explicit"])
   }
 
+  @Test("a snooze holds a due until its day: on that day it is due, after it late")
+  func snoozeEnds() {
+    let res = [BillResolution(bill: "b1", due: "2026-10-06", resolution: "snoozed", until: "2026-10-25", atSeq: 1)]
+    let r = Self.run([("b1", Self.bill())], [], resolutions: res)
+    let due = Self.d("2026-10-06")
+    #expect(r.status(bill: "b1", due: due, today: Self.d("2026-10-24")) == .snoozed(until: Self.d("2026-10-25")))
+    #expect(r.status(bill: "b1", due: due, today: Self.d("2026-10-25")) == .due)
+    #expect(r.status(bill: "b1", due: due, today: Self.d("2026-10-26")) == .late)
+  }
+
   @Test("an explicit link at another price proposes a price change; an archived linked row does not")
   func explicitPrice() {
     let res = [
