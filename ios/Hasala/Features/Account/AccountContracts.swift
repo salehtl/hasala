@@ -28,6 +28,12 @@ enum NewCredential: Equatable, Sendable {
   }
 }
 
+enum EmailCode {
+  static let lifetime: TimeInterval = 10 * 60
+
+  static func expired(sentAt: Date, now: Date) -> Bool { now.timeIntervalSince(sentAt) > lifetime }
+}
+
 /// A live signup ceremony (`signup/begin`), alive for 30 minutes (spec 04 §6.2 step 6).
 struct SignupTicket: Equatable, Sendable {
   var id: String
@@ -40,7 +46,7 @@ struct SignupTicket: Equatable, Sendable {
   func isExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 30 * 60 }
   /// The email code expires 10 minutes after it was sent (spec 04 §6.1.4); `startedAt`
   /// is the send, since "Resend code" starts a fresh ceremony.
-  func codeExpired(now: Date) -> Bool { now.timeIntervalSince(startedAt) > 10 * 60 }
+  func codeExpired(now: Date) -> Bool { EmailCode.expired(sentAt: startedAt, now: now) }
 }
 
 /// The 12 words, held in memory for the phrase screens only (spec 04 §6.7). There is no

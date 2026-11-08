@@ -167,6 +167,11 @@ final class SignInModel {
     }
   }
 
+  func resetCodeExpired(now: Date) -> Bool {
+    guard let resetCodeSentAt else { return false }
+    return EmailCode.expired(sentAt: resetCodeSentAt, now: now)
+  }
+
   /// The person changes the code after a wrong one: the cells go back to typing.
   func resetCodeEdited() {
     if failureOn == .forgotCode, case .codeWrong = failure { clearFailure() }
@@ -261,6 +266,11 @@ final class SignInModel {
         return false
       }
     }
+  }
+
+  func recoverCodeExpired(now: Date) -> Bool {
+    guard verifiedRecoveryKind == nil, let recoverCodeSentAt else { return false }
+    return EmailCode.expired(sentAt: recoverCodeSentAt, now: now)
   }
 
   func resendRecoveryCode() async -> Bool {

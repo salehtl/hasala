@@ -221,6 +221,62 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(!t.isExpired(now: .now))
   }
 
+  @Test func aRecoveryCodeRunsOutTenMinutesAfterItWasSent() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    #expect(!m.recoverCodeExpired(now: .now))
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    let sent = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: sent.addingTimeInterval(10 * 60)))
+    #expect(m.recoverCodeExpired(now: sent.addingTimeInterval(10 * 60 + 1)))
+    #expect(await m.resendRecoveryCode())
+    let again = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: again.addingTimeInterval(10 * 60)))
+  }
+
+  @Test func aRecoveryCodeAlreadyAcceptedDoesNotRunOut() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.submitRecoveryCode())
+    let sent = try #require(m.recoverCodeSentAt)
+    #expect(!m.recoverCodeExpired(now: sent.addingTimeInterval(11 * 60)))
+  }
+
+  @Test func aResetCodeRunsOutTenMinutesAfterItWasSent() async throws {
+    let account = MockAccountService(existing: .passwordOnly)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    #expect(!m.resetCodeExpired(now: .now))
+    m.resetEmail = "maya@example.com"
+    #expect(await m.submitResetEmail())
+    let sent = try #require(m.resetCodeSentAt)
+    #expect(!m.resetCodeExpired(now: sent.addingTimeInterval(10 * 60)))
+    #expect(m.resetCodeExpired(now: sent.addingTimeInterval(10 * 60 + 1)))
+  }
+
+  @Test func theCodeScreenExpiresByTheClockAsByTheServer() {
+    #expect(CodeStepScreen.cellState(failure: nil, code: "", expired: false) == .typing)
+    #expect(CodeStepScreen.cellState(failure: nil, code: "12", expired: true) == .expired)
+    #expect(CodeStepScreen.cellState(failure: .codeExpired, code: "", expired: false) == .expired)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "123456", expired: false) == .wrong)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "12", expired: false) == .typing)
+    #expect(CodeStepScreen.cellState(failure: .codeWrong(triesLeft: 3), code: "123456", expired: true) == .expired)
+
+    #expect(CodeStepScreen.line(failure: nil, state: .typing) == nil)
+    #expect(CodeStepScreen.line(failure: nil, state: .expired) == .codeExpired)
+    #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .expired) == .codeExpired)
+    #expect(CodeStepScreen.line(failure: .offline, state: .expired) == .offline)
+    #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .wrong) == .codeWrong(triesLeft: 3))
+  }
+
   @Test func unlockWithTheWords() async {
     let account = MockAccountService(existing: .passwordOnly, signedIn: true)
     account.delay = .zero
