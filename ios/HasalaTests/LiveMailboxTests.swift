@@ -448,6 +448,47 @@ struct LiveMailboxTests {
     #expect(elsewhere.title == "Bank alerts are working" && !elsewhere.needsYou)
   }
 
+  @Test func anotherIPhoneThatWentQuietIsNotShownAsWorking() throws {
+    let now: Int64 = 1_792_483_200_000
+    let day: Int64 = 86_400_000
+    let rows = LiveMailboxConnecting.mailboxes(
+      phase: .otherDevice, halt: nil, address: "maya@example.com", lastSuccessAtMs: now - 4 * 60_000,
+      bankDomains: ["dib.ae"], nowMs: now)
+    let health = MailboxHealth(status: .working, lastEmail: "9 days ago", banks: "DIB")
+    func reading(newestRowDaysAgo days: Int64?) -> ReadingState {
+      ReadingState.derive(
+        ReadingFacts(
+          nowMs: now, mail: ReadingFacts.Mail(provider: .gmail, phase: .otherDevice),
+          newestMailRowMs: days.map { now - $0 * day }))
+    }
+    func summary(_ state: ReadingState) -> MailboxesSummary {
+      MailboxesSummary(rows, health: health, offer: nil, reading: state)
+    }
+
+    let stale = reading(newestRowDaysAgo: 8)
+    let quiet = summary(stale)
+    #expect(quiet.title == "Bank alerts went quiet" && quiet.hue == .sand && quiet.needsYou)
+    #expect(quiet.detail == "Nothing new from your other iPhone since 12 Oct. Newer payments aren't counted.")
+    let hold = try #require(ReadingOnScreen.hold(stale, month: stale.today.yearMonth))
+    #expect(quiet.detail == hold.line)
+
+    let hero = BankAlertsPage.Hero(summary: quiet, health: health, mailboxes: rows, offer: nil)
+    #expect(hero.kind == .needsYou && hero.title == "Needs you" && hero.hue == .sand)
+    #expect(hero.detail == quiet.detail && hero.stoppedID == nil)
+
+    let undated = summary(reading(newestRowDaysAgo: nil))
+    #expect(undated.title == "Bank alerts went quiet" && undated.needsYou)
+    #expect(undated.detail == "Nothing new from your other iPhone. Newer payments aren't counted.")
+
+    let fresh = summary(reading(newestRowDaysAgo: 6))
+    #expect(fresh.title == "Bank alerts are working" && !fresh.needsYou)
+    #expect(fresh.detail == "Last email 9 days ago\nDIB")
+
+    let nothingReadHere = MailboxesSummary(
+      [], health: MailboxHealth(status: .notConnected, lastEmail: "", banks: ""), offer: .connect, reading: stale)
+    #expect(nothingReadHere.title == "Your email isn't connected")
+  }
+
   @Test func homesImportPillFollowsTheFirstScan() {
     func work(_ phase: MailboxPhase?, seen: Bool = true, _ progress: MailboxProgress? = nil) -> MailImport? {
       LiveMailboxConnecting.importing(phase: phase, seen: seen, progress: progress)

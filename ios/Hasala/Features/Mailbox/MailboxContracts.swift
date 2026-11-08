@@ -316,8 +316,12 @@ struct MailboxesSummary: Equatable {
 
   /// `known`: false while the mailbox state is still being read, which says so rather
   /// than "not connected".
-  init(_ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?, known: Bool = true) {
+  init(
+    _ mailboxes: [MailboxSnapshot], health: MailboxHealth, offer: MailOffer?, known: Bool = true,
+    reading: ReadingState? = nil
+  ) {
     let live = mailboxes.filter { $0.state != .disconnected }
+    let quietElsewhere = ReadingOnScreen.quietElsewhereLine(reading)
     let broken = live.first { $0.state == .needsSignIn }
     if !known {
       self.init(title: "Checking your email", detail: "Reading your mailbox's state.", hue: .sky, needsYou: false)
@@ -345,8 +349,9 @@ struct MailboxesSummary: Equatable {
     } else if live.allSatisfy({ $0.state == .syncing }) || health.status == .importing {
       self.init(title: "Importing your bank alerts", detail: Self.lines(health) ?? "Checking now", hue: .mint,
                 needsYou: false)
-    } else if health.status == .quiet {
-      self.init(title: "Bank alerts went quiet", detail: Self.lines(health) ?? "", hue: .sand, needsYou: true)
+    } else if health.status == .quiet || quietElsewhere != nil {
+      self.init(
+        title: "Bank alerts went quiet", detail: quietElsewhere ?? Self.lines(health) ?? "", hue: .sand, needsYou: true)
     } else {
       self.init(title: "Bank alerts are working", detail: Self.lines(health) ?? live[0].meta, hue: .mint,
                 needsYou: false)

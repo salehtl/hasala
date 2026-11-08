@@ -116,7 +116,8 @@ struct ProfileSheet: View {
   /// row also draw from.
   private var summary: MailboxesSummary {
     MailboxesSummary(
-      app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true)
+      app.mailbox?.mailboxes ?? [], health: snap.mailbox, offer: app.mailOffer, known: app.mailbox?.mailboxesKnown ?? true,
+      reading: app.store.state.reading)
   }
 
   // MARK: Your money

@@ -61,7 +61,8 @@ struct BankAlertsPage: View {
 
   @ViewBuilder private var mailBody: some View {
     let health = app.store.state.mailbox
-    let summary = MailboxesSummary(mailboxes, health: health, offer: app.mailOffer, known: stateKnown)
+    let summary = MailboxesSummary(
+      mailboxes, health: health, offer: app.mailOffer, known: stateKnown, reading: app.store.state.reading)
     let hero = Hero(
       summary: summary, health: health, mailboxes: mailboxes, offer: app.mailOffer, read: reporting?.readThisMonth,
       known: stateKnown)
