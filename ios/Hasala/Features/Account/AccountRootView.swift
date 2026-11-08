@@ -108,6 +108,14 @@ struct AccountRootView<Main: View>: View {
     }
   }
 
+  @ViewBuilder private var frozenBanner: some View {
+    if let info = session.leftFrozen {
+      FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
+        Task { await session.signOut() }
+      })
+    }
+  }
+
   @ViewBuilder private var phaseContent: some View {
     switch session.phase {
     case .signedOut:
@@ -115,8 +123,11 @@ struct AccountRootView<Main: View>: View {
     case .checking:
       BootCheckView(session: session)
     case .onboarding:
-      SetupFlowView(model: onboarding.setupModel(
-        displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
+      VStack(spacing: 0) {
+        frozenBanner
+        SetupFlowView(model: onboarding.setupModel(
+          displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
+      }
     case .needsUnlock:
       UnlockView(session: session)
     case .needsKeys:
@@ -125,11 +136,7 @@ struct AccountRootView<Main: View>: View {
       FrozenWall(session: session, info: info)
     case .ready:
       VStack(spacing: 0) {
-        if let info = session.leftFrozen {
-          FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
-            Task { await session.signOut() }
-          })
-        }
+        frozenBanner
         main()
       }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):

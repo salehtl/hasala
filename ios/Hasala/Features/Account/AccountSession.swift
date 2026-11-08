@@ -31,6 +31,8 @@ final class AccountSession {
   /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
   /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
+  private var setupBehindWall = false
+  private var behindWall: Phase { setupBehindWall ? .onboarding : .ready }
   /// An invite link that arrived while signed out (§13.5), for the invite screen.
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
@@ -88,14 +90,29 @@ final class AccountSession {
   }
 
   /// After the account and keys exist (C1/C1-P complete): setup continues at the bank.
-  func accountCreated() { phase = .onboarding }
+  func accountCreated() {
+    switch phase {
+    case .signedOut, .needsKeys: phase = .onboarding
+    default: break
+    }
+  }
 
   /// After unlocking on a new iPhone: setup steps that are per-device still run.
-  func unlocked() { phase = .ready }
+  func unlocked() {
+    guard case .needsUnlock = phase else { return }
+    phase = .ready
+  }
 
-  func setupFinished() { phase = .ready }
+  func setupFinished() {
+    switch phase {
+    case .onboarding: phase = .ready
+    case .frozen: setupBehindWall = false
+    default: break
+    }
+  }
 
   func froze(_ info: FreezeInfo) {
+    if case .onboarding = phase { setupBehindWall = true }
     leftFrozen = nil
     phase = .frozen(info)
   }
@@ -117,9 +134,9 @@ final class AccountSession {
   var canLeaveFrozen: Bool { account.keysOnThisIPhone }
 
   func leaveFrozen() {
-    guard canLeaveFrozen else { return }
-    if case .frozen(let info) = phase { leftFrozen = info }
-    phase = .ready
+    guard canLeaveFrozen, case .frozen(let info) = phase else { return }
+    leftFrozen = info
+    phase = behindWall
   }
 
   /// The wall again, from the banner, with the freeze as it was.
@@ -129,8 +146,12 @@ final class AccountSession {
   }
 
   func unfroze() {
+    switch phase {
+    case .frozen: phase = behindWall
+    case .onboarding, .ready: break
+    default: return
+    }
     leftFrozen = nil
-    phase = .ready
   }
 
   /// The server says the operator froze the account: the wall, or the banner after "Leave
@@ -156,8 +177,10 @@ final class AccountSession {
       signedOut()
       throw .sessionEnded
     }
+    guard case .frozen = phase else { return }
     guard account.keysOnThisIPhone else {
       leftFrozen = nil
+      setupBehindWall = false
       phase = .checking
       await resume()
       return
@@ -172,6 +195,7 @@ final class AccountSession {
 
   func signedOut() {
     leftFrozen = nil
+    setupBehindWall = false
     reviewAccount = false
     phase = .signedOut
   }

@@ -166,3 +166,135 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(setup.failure == nil && setup.path.isEmpty)
   }
 }
+
+@MainActor
+@Suite("Account gate phases")
+struct AccountGatePhaseTests: AccountSuite {
+  private let holder = FreezeInfo(by: .holder, when: nil)
+
+  private func signedInAccount() -> MockAccountService {
+    MockAccountService(existing: .passkey, signedIn: true)
+  }
+
+  private func session(_ phase: AccountSession.Phase) -> AccountSession {
+    AccountSession(services: services(signedInAccount()), phase: phase)
+  }
+
+  private func store(_ account: MockAccountService, phase: AccountSession.Phase) -> (OnboardingStore, AccountSession) {
+    let session = AccountSession(services: services(account), phase: phase)
+    return (OnboardingStore(services: session.services, session: { session }), session)
+  }
+
+  private var everyPhase: [AccountSession.Phase] {
+    [.signedOut, .checking, .onboarding, .needsUnlock(passkeyCanUnlock: false), .needsKeys, .frozen(holder), .ready]
+  }
+
+  @Test func eachStepMovesTheGateOnlyFromItsOwnPhase() {
+    for phase in everyPhase {
+      let created = session(phase)
+      created.accountCreated()
+      #expect(created.phase == (phase == .signedOut || phase == .needsKeys ? .onboarding : phase), "\(phase)")
+      let unlocked = session(phase)
+      unlocked.unlocked()
+      #expect(unlocked.phase == (phase == .needsUnlock(passkeyCanUnlock: false) ? .ready : phase), "\(phase)")
+      let finished = session(phase)
+      finished.setupFinished()
+      #expect(finished.phase == (phase == .onboarding ? .ready : phase), "\(phase)")
+      let left = session(phase)
+      left.leaveFrozen()
+      #expect(left.phase == (phase == .frozen(holder) ? .ready : phase), "\(phase)")
+      let unfrozen = session(phase)
+      unfrozen.unfroze()
+      #expect(unfrozen.phase == (phase == .frozen(holder) ? .ready : phase), "\(phase)")
+    }
+  }
+
+  @Test func leavingAFreezeFromSetupGoesBackToSetupWithTheBanner() {
+    let s = session(.onboarding)
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == holder)
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == holder)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func theWallFromTheBannerInSetupStillGoesBackToSetup() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.leaveFrozen()
+    s.showFrozenWall()
+    #expect(s.phase == .frozen(holder))
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+  }
+
+  @Test func unfreezingFromSetupGoesBackToSetup() async throws {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .onboarding)
+    s.froze(holder)
+    try await s.unfreeze(password: nil)
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == nil)
+  }
+
+  @Test func aFreezeFromTheAppStillOpensTheApp() {
+    let s = session(.ready)
+    s.froze(holder)
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func aFreezeAfterASignOutForgetsTheSetupBehindTheEarlierWall() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.signedOut()
+    s.signedIn(.frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func setupThatFinishesUnderTheWallLeavesToTheApp() async {
+    let (store, s) = store(signedInAccount(), phase: .onboarding)
+    let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
+    let load = Task { await setup.useSampleData() }
+    while !setup.busy { await Task.yield() }
+    s.froze(holder)
+    await load.value
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func setupThatFinishesAfterASignOutStaysSignedOut() async {
+    let (store, s) = store(signedInAccount(), phase: .onboarding)
+    let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
+    let load = Task { await setup.useSampleData() }
+    while !setup.busy { await Task.yield() }
+    s.signedOut()
+    await load.value
+    #expect(s.phase == .signedOut)
+  }
+
+  @Test func anUnfreezeAnsweredAfterTheWallLeftChangesNothing() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.signedOut()
+    await unfreeze.value
+    #expect(s.phase == .signedOut)
+  }
+}
