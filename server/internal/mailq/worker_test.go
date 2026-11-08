@@ -149,3 +149,39 @@ func TestAHaltedQueueStillSettlesExpiredLeasesAndSendsNothing(t *testing.T) {
 		t.Fatalf("sent %d, stopped %v", len(fake.Sent()), q.Stopped())
 	}
 }
+
+func TestConcurrentWorkersDoNotPassALaneRate(t *testing.T) {
+	const workers = 8
+	pool := pgtest.New(t)
+	for round := range 5 {
+		if _, err := pool.Exec(bg, `DELETE FROM mail_log`); err != nil {
+			t.Fatal(err)
+		}
+		fake := &mail.Fake{}
+		q := New(pool, fake, fixedTagger{})
+		q.Rates = map[Lane]int{LaneWaitlist: 1}
+		q.Register("test", TestRenderer)
+		for i := range workers {
+			enqueue(t, pool, q, Enqueue{Kind: "test", Lane: LaneWaitlist, To: fmt.Sprintf("rate%d@example.com", i)})
+		}
+		start := make(chan struct{})
+		errs := make(chan error, workers)
+		for range workers {
+			go func() {
+				<-start
+				_, err := q.ProcessOne(bg)
+				errs <- err
+			}()
+		}
+		close(start)
+		for range workers {
+			if err := <-errs; err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := statusCounts(t, q)
+		if got["sent"] != 1 || got["sending"] != 0 || got["queued"] != workers-1 {
+			t.Fatalf("round %d: %v, want one sent and the rest queued", round, got)
+		}
+	}
+}

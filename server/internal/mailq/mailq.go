@@ -504,14 +504,14 @@ func (q *Queue) fillTags(ctx context.Context) error {
 }
 
 // lanesAtRate lists the lanes that have used their hourly rate.
-func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
+func (q *Queue) lanesAtRate(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	out := []string{}
 	for lane, rate := range q.Rates {
 		if rate <= 0 {
 			continue
 		}
 		var n int
-		if err := q.Pool.QueryRow(ctx,
+		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM mail_log WHERE lane = $1
 			    AND ((status = 'sent' AND sent_at > now() - interval '1 hour') OR status = 'sending')`,
 			string(lane)).Scan(&n); err != nil {
@@ -535,40 +535,10 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	if err := q.fillTags(ctx); err != nil {
 		return false, fmt.Errorf("mailq: tags: %w", err)
 	}
-	full, err := q.lanesAtRate(ctx)
-	if err != nil {
-		return false, fmt.Errorf("mailq: lane rates: %w", err)
+	row, lease, ok, err := q.leaseNext(ctx)
+	if err != nil || !ok {
+		return false, err
 	}
-	var (
-		row    Row
-		params []byte
-		subk   *string
-		lane   string
-		lease  time.Time
-	)
-	err = q.Pool.QueryRow(ctx,
-		`UPDATE mail_log SET status = 'sending', lease_until = now() + interval '2 minutes',
-		        attempts = attempts + 1, next_attempt_at = NULL
-		  WHERE id = (SELECT id FROM mail_log
-		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
-		                 AND lane <> ALL($1::text[]) AND attempts < $2
-		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
-		               FOR UPDATE SKIP LOCKED LIMIT 1)
-		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
-		           bank_slug, params, attempts, created_at, lease_until`, full, maxAttempts).
-		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
-			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("mailq: lease: %w", err)
-	}
-	row.Lane = Lane(lane)
-	if subk != nil {
-		row.Subkind = *subk
-	}
-	_ = json.Unmarshal(params, &row.Params)
 
 	msg, err := q.render(ctx, row)
 	if err != nil {
@@ -594,6 +564,55 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	msg = mail.Message{} // the rendered message is never kept
 	q.finalize(ctx, &row, lease, pid, sendErr, false)
 	return true, nil
+}
+
+func (q *Queue) leaseNext(ctx context.Context) (Row, time.Time, bool, error) {
+	var (
+		row    Row
+		params []byte
+		subk   *string
+		lane   string
+		lease  time.Time
+	)
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	defer pgtx.Rollback(ctx, tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('hasala/mail_lease'))`); err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	full, err := q.lanesAtRate(ctx, tx)
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lane rates: %w", err)
+	}
+	err = tx.QueryRow(ctx,
+		`UPDATE mail_log SET status = 'sending', lease_until = now() + interval '2 minutes',
+		        attempts = attempts + 1, next_attempt_at = NULL
+		  WHERE id = (SELECT id FROM mail_log
+		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
+		                 AND lane <> ALL($1::text[]) AND attempts < $2
+		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
+		               FOR UPDATE SKIP LOCKED LIMIT 1)
+		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
+		           bank_slug, params, attempts, created_at, lease_until`, full, maxAttempts).
+		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
+			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return row, lease, false, nil
+	}
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	row.Lane = Lane(lane)
+	if subk != nil {
+		row.Subkind = *subk
+	}
+	_ = json.Unmarshal(params, &row.Params)
+	return row, lease, true, nil
 }
 
 func (q *Queue) render(ctx context.Context, row Row) (mail.Message, error) {
