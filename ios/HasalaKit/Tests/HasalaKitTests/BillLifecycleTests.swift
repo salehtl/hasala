@@ -90,4 +90,24 @@ struct BillLifecycleTests {
     #expect(throws: ActionError.notFound) { try ledger.apply(.dismissBillNotice("nope", noticeID: "priceChange.du")) }
     #expect(ledger.state.bill("du") == MayaLedger.state.bill("du"))
   }
+
+  @Test func aPaymentAfterTheBillEndedCannotBeLinked() throws {
+    var s = MayaHistory.state
+    let i = try #require(s.bills.firstIndex { $0.id == "netflix" })
+    s.bills[i].state = .ended
+    s.bills[i].endedOn = LocalDate(2026, 8, 6)
+    let ledger = InMemoryLedger(state: s)
+    #expect(throws: ActionError.invalidBill) { try ledger.apply(.linkBillPayments("netflix", ["h-netflix-9"])) }
+    #expect(ledger.state.bill("netflix") == s.bill("netflix"))
+    #expect(ledger.state.txn("h-netflix-9")?.billID == nil)
+    #expect(throws: ActionError.invalidBill) {
+      try ledger.apply(.linkBillPayments("netflix", ["h-netflix-8", "h-netflix-9"]))
+    }
+    #expect(ledger.state.txn("h-netflix-8")?.billID == nil)
+    let token = try #require(try ledger.apply(.linkBillPayments("netflix", ["h-netflix-8"])))
+    #expect(ledger.state.txn("h-netflix-8")?.billID == "netflix")
+    ledger.undo(token)
+    #expect(ledger.state.txn("h-netflix-8")?.billID == nil)
+    #expect(ledger.state.bill("netflix") == s.bill("netflix"))
+  }
 }

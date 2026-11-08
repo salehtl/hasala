@@ -122,29 +122,8 @@ public final class InMemoryLedger: LedgerStore {
     }
 
     func link(_ i: Int, _ ids: [TxnID]) throws(ActionError) {
-      guard !ids.isEmpty, Set(ids).count == ids.count else { throw .invalidBill }
-      let b = s.bills[i]
-      var dues = Set<LocalDate>()
-      var planned: [(TxnID, LocalDate, Money)] = []
-      for id in ids {
-        guard let t = s.txn(id) else { throw .notFound }
-        if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
-        if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
-        if let other = t.billID, other != b.id { throw .invalidBill }
-        let due = BillDueDates.nearest(b, to: t.postedAt.date)
-        if !dues.insert(due).inserted { throw .invalidBill }
-        if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
-        planned.append((id, due, t.amount))
-      }
-      for (id, due, amount) in planned {
-        try editTxn(id) { $0.billID = b.id }
-        s.bills[i].payments.removeAll { $0.due == due || $0.txnID == id }
-        s.bills[i].payments.append(BillPayment(due: due, txnID: id, amount: amount, link: .linked))
-        if let day = s.txn(id)?.postedAt.date, !s.bills[i].history.contains(day) { s.bills[i].history.append(day) }
-        if due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDueDates.shift(s.bills[i], from: due, by: 1) }
-      }
-      s.bills[i].payments.sort { $0.due > $1.due }
-      s.bills[i].history.sort(by: >)
+      try BillLifecycle.link(&s, bill: i, ids)
+      touched.formUnion(ids)
     }
 
     func sort(_ id: TxnID, into c: CategoryID, learnRule: Bool, project: ProjectID?) throws(ActionError) {

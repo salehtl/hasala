@@ -18,4 +18,31 @@ public enum BillLifecycle {
     b.amount = usual
     b.priceChangeFrom = nil
   }
+
+  public static func link(_ s: inout LedgerState, bill i: Int, _ ids: [TxnID]) throws(ActionError) {
+    guard !ids.isEmpty, Set(ids).count == ids.count else { throw .invalidBill }
+    let b = s.bills[i]
+    var dues = Set<LocalDate>()
+    var planned: [(id: TxnID, due: LocalDate, amount: Money, day: LocalDate)] = []
+    for id in ids {
+      guard let t = s.txn(id) else { throw .notFound }
+      if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
+      if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
+      if let other = t.billID, other != b.id { throw .invalidBill }
+      let due = BillDueDates.nearest(b, to: t.postedAt.date)
+      if let end = b.endedOn, due > end { throw .invalidBill }
+      if !dues.insert(due).inserted { throw .invalidBill }
+      if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
+      planned.append((id, due, t.amount, t.postedAt.date))
+    }
+    for p in planned {
+      if let k = s.txns.firstIndex(where: { $0.id == p.id }) { s.txns[k].billID = b.id }
+      s.bills[i].payments.removeAll { $0.due == p.due || $0.txnID == p.id }
+      s.bills[i].payments.append(BillPayment(due: p.due, txnID: p.id, amount: p.amount, link: .linked))
+      if !s.bills[i].history.contains(p.day) { s.bills[i].history.append(p.day) }
+      if p.due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDueDates.shift(s.bills[i], from: p.due, by: 1) }
+    }
+    s.bills[i].payments.sort { $0.due > $1.due }
+    s.bills[i].history.sort(by: >)
+  }
 }
