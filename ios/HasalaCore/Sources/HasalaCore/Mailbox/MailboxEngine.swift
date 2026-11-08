@@ -1563,7 +1563,7 @@ public actor MailboxEngine {
         $0.newestMs > $1.newestMs
       }, unreadable: ((try? await store.unreadableRecords()) ?? []).count,
       health: (try? await store.bankHealth()) ?? [],
-      watchActive: state.watchExpiresAtMs.map { $0 != Self.stoppedWatchExpiryMs } ?? false,
+      watchActive: state.watchExpiresAtMs.map { $0 > clock.nowMs() } ?? false,
       unlisted: await unlisted(state), unparsedSenders: (try? await store.unparsedSenders()) ?? [:],
       readFromMs: state.readFromMs, backfillDays: state.backfillDays,
       connectedAtMs: state.scanStartedMs ?? state.readFromMs)
