@@ -26,6 +26,11 @@ public struct SignInResult: Sendable {
   public var boundWriter: WriterID? { grant.writer_id.flatMap(WriterID.init) }
 }
 
+struct SigningWriter: Sendable {
+  let userID: UserID
+  let writerID: WriterID
+}
+
 public enum AccountSignIn {
   /// C2-P / C2b-P. `bound` is this iPhone's binding when it has a live writer.
   public static func withPassword(
@@ -56,6 +61,26 @@ public enum AccountSignIn {
   public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool)
     async throws(CeremonyError) -> SignInResult
   {
+    try await passkeyLogin(env, writer: signingWriter(bound), wantPRF: wantPRF)
+  }
+
+  public static func replacingHeldSession(_ env: AccountEnvironment, wantPRF: Bool)
+    async throws(CeremonyError) -> SignInResult
+  {
+    guard let held = try await NewDevice.heldRegistration(env) else {
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF)
+    }
+    do {
+      return try await passkeyLogin(env, writer: held, wantPRF: wantPRF)
+    } catch {
+      guard error.failureClass == .otherAccountDevice || error.failureClass == .deviceRefused else { throw error }
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF)
+    }
+  }
+
+  private static func passkeyLogin(_ env: AccountEnvironment, writer: SigningWriter?, wantPRF: Bool)
+    async throws(CeremonyError) -> SignInResult
+  {
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
     let begin = try await apiStep { () async throws(APIError) in try await env.client.loginBegin() }
     let options: AssertionOptions
@@ -68,7 +93,7 @@ public enum AccountSignIn {
     } catch {
       throw .passkey(error)
     }
-    let device = try binding(env, bound: bound, challenge: options.challenge)
+    let device = try proof(env, writer: writer, challenge: options.challenge)
     let grant = try await apiStep { () async throws(APIError) in
       try await env.client.loginFinish(
         LoginFinishRequest(ceremonyID: begin.ceremony_id, credential: assertion.credential, device: device))
@@ -81,7 +106,19 @@ public enum AccountSignIn {
   static func binding(_ env: AccountEnvironment, bound: AccountBinding?, challenge: Data) throws(CeremonyError)
     -> DeviceBindingJSON?
   {
+    try proof(env, writer: signingWriter(bound), challenge: challenge)
+  }
+
+  private static func signingWriter(_ bound: AccountBinding?) -> SigningWriter? {
     guard let bound, let u = bound.userID, let w = bound.writerID else { return nil }
+    return SigningWriter(userID: u, writerID: w)
+  }
+
+  private static func proof(_ env: AccountEnvironment, writer: SigningWriter?, challenge: Data) throws(CeremonyError)
+    -> DeviceBindingJSON?
+  {
+    guard let writer else { return nil }
+    let (u, w) = (writer.userID, writer.writerID)
     guard let seed = try secretStep({ () throws(SecretStoreError) in try env.secrets.writerSeed(userID: u, writerID: w) })
     else { return nil }
     defer { seed.wipe() }

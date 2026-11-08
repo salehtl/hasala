@@ -49,6 +49,30 @@ public struct NewDevice: @unchecked Sendable {
   {
     let session = try await apiStep { () async throws(APIError) in try await env.client.session(bearer: bearer) }
     guard let w = session.writer_id.flatMap({ WriterID($0) }) else { return nil }
+    return try held(env, userID: userID, writerID: w)
+  }
+
+  static func heldRegistration(_ env: AccountEnvironment) async throws(CeremonyError) -> SigningWriter? {
+    guard let held = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }), !held.pending_logout,
+      let userID = UserID(held.user_id)
+    else { return nil }
+    let session: SessionInfo
+    do {
+      session = try await env.client.session(bearer: held.token)
+    } catch {
+      if let status = error.failure?.status, status < 500 { return nil }
+      throw .api(error)
+    }
+    guard let w = session.writer_id.flatMap({ WriterID($0) }),
+      let device = try Self.held(env, userID: userID, writerID: w)
+    else { return nil }
+    device.dwkSeed.wipe()
+    return SigningWriter(userID: userID, writerID: w)
+  }
+
+  private static func held(_ env: AccountEnvironment, userID: UserID, writerID w: WriterID) throws(CeremonyError)
+    -> NewDevice?
+  {
     let binding = try secretStep { () throws(SecretStoreError) in try env.secrets.binding() }
     guard binding?.writerID != w else { return nil }
     guard
