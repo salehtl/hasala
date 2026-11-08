@@ -318,6 +318,11 @@ public enum AccountCreation {
     try secretStep { () throws(SecretStoreError) in try env.secrets.session()?.signup_email_norm }
   }
 
+  static func heldSignupAddress(_ env: AccountEnvironment, userID: String) -> String? {
+    guard let held = try? env.secrets.session(), !held.pending_logout, held.user_id == userID else { return nil }
+    return held.signup_email_norm
+  }
+
   static func compareSignupAddress(_ env: AccountEnvironment, reported: String?, signedUpAs emailNorm: String)
     throws(CeremonyError)
   {

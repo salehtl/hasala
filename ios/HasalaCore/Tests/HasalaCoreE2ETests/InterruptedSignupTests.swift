@@ -1,5 +1,6 @@
 import CoreAuth
 import CoreCrypto
+import CoreSoftAuth
 import CoreSync
 import CoreTestSupport
 import Foundation
@@ -189,6 +190,121 @@ struct InterruptedSignupTests {
     _ = try await Enrolment.enrolWriter(
       a.env, userID: signup.userID, body: body, emailNorm: r.emailNorm, serverSalt: r.serverSalt)
     #expect(a.binding?.email_norm == "maya@example.com")
+  }
+
+  func stoppedPasskeySignup(_ w: World, _ a: Phone) async throws -> Signup {
+    let signup = try await signedUp(w, a)
+    w.server.misreportEmail(user: signup.userID, "someone@example.com")
+    let keys = try NewAccountKeys.generate(random: a.env.random)
+    let registered = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: keys)
+    do {
+      _ = try await AccountCreation.bootstrapPasskey(a.env, registered: registered, keys: keys)
+      Issue.record("created despite a different address")
+    } catch {
+      expectAddressStop(error)
+    }
+    return signup
+  }
+
+  func prfBody(_ a: Phone, _ user: UserID, _ r: SignInResult) async throws -> KeyBody {
+    let assertion = try #require(r.assertion)
+    return try await Enrolment.unlockWithPRF(
+      a.env, userID: user, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+  }
+
+  @Test("the passkey unlock after a relaunch stays stopped while the server reports another address", arguments: [true, false])
+  func passkeyUnlockStaysStopped(replacingHeld: Bool) async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await stoppedPasskeySignup(w, a)
+    let r =
+      replacingHeld
+      ? try await AccountSignIn.replacingHeldSession(a.env, wantPRF: true)
+      : try await AccountSignIn.withPasskey(a.env, bound: nil, wantPRF: true)
+    #expect(try a.env.secrets.session()?.signup_email_norm == "maya@example.com")
+    let body = try await prfBody(a, signup.userID, r)
+    defer { body.wipe() }
+    do {
+      _ = try await Enrolment.enrolWriter(a.env, userID: signup.userID, body: body, emailNorm: nil, serverSalt: nil)
+      Issue.record("enrolled despite a different address")
+    } catch {
+      expectAddressStop(error)
+    }
+    #expect(a.binding == nil)
+    #expect(Boot.decide(Boot.gather(a.env)) == .onboardingKeys)
+    #expect(try a.env.secrets.session()?.signup_email_norm == "maya@example.com")
+  }
+
+  @Test("the passkey unlock finishes with the same writer once the server reports the address the person signed up with")
+  func passkeyUnlockEndsTheStop() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await stoppedPasskeySignup(w, a)
+    let token = try #require(try a.env.secrets.session()).token
+    let writer = try #require(try await a.env.client.session(bearer: token).writer_id)
+    w.server.misreportEmail(user: signup.userID, "maya@example.com")
+    let r = try await AccountSignIn.replacingHeldSession(a.env, wantPRF: true)
+    let body = try await prfBody(a, signup.userID, r)
+    defer { body.wipe() }
+    let enrolled = try await Enrolment.enrolWriter(
+      a.env, userID: signup.userID, body: body, emailNorm: nil, serverSalt: nil)
+    #expect(enrolled.writerID.string == writer)
+    #expect(a.binding?.email_norm == "maya@example.com")
+    #expect(try a.env.secrets.session()?.signup_email_norm == nil)
+  }
+
+  @Test("the replacement phrase after a passkey sign-in still stops on a different address")
+  func replacementPhraseComparesAfterAPasskeySignIn() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let signup = try await signedUp(w, a)
+    let first = try NewAccountKeys.generate(random: a.env.random)
+    _ = try await AccountCreation.registerPasskey(a.env, signup: signup, keys: first)
+    first.wipe()
+    w.server.misreportEmail(user: signup.userID, "someone@example.com")
+    _ = try await AccountSignIn.replacingHeldSession(a.env, wantPRF: true)
+    let fresh = try NewAccountKeys.generate(random: a.env.random)
+    do {
+      _ = try await AccountCreation.bootstrapInterrupted(a.env, keys: fresh)
+      Issue.record("published despite a different address")
+    } catch {
+      guard case .integrityAlarm("address differs from signup") = error else {
+        Issue.record("not the address alarm: \(error)")
+        return
+      }
+    }
+    #expect(a.binding == nil)
+  }
+
+  @Test("a passkey sign-in to another account does not take the stopped signup's address")
+  func anotherAccountsSignInDropsTheAddress() async throws {
+    let w = World()
+    let shared = SoftPasskey()
+    let a = w.phone("a", passkeys: shared)
+    _ = try await stoppedPasskeySignup(w, a)
+    w.server.addInvite(invite)
+    let c = w.phone("c", passkeys: shared)
+    let other = try await AccountCreation.beginSignup(
+      c.env, inviteCode: invite, email: "noor@example.com", displayName: "Noor", inviteLinkKey: nil)
+    try await AccountCreation.verifySignup(c.env, other, code: try #require(w.server.lastCode))
+    let keys = try NewAccountKeys.generate(random: c.env.random)
+    let registered = try await AccountCreation.registerPasskey(c.env, signup: other, keys: keys)
+    _ = try await AccountCreation.bootstrapPasskey(c.env, registered: registered, keys: keys)
+    let r = try await AccountSignIn.replacingHeldSession(a.env, wantPRF: true)
+    #expect(r.userID == other.userID)
+    #expect(try a.env.secrets.session()?.signup_email_norm == nil)
+  }
+
+  @Test("a passkey sign-in after a sign-out that could not reach the server does not take the address")
+  func aSignedOutSessionDropsTheAddress() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await stoppedPasskeySignup(w, a)
+    var held = try #require(try a.env.secrets.session())
+    held.pending_logout = true
+    try a.env.secrets.writeSession(held)
+    _ = try await AccountSignIn.withPasskey(a.env, bound: nil, wantPRF: true)
+    #expect(try a.env.secrets.session()?.signup_email_norm == nil)
   }
 
   @Test("a session saved by an earlier build still decodes, and a record with the address round-trips")

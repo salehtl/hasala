@@ -98,7 +98,7 @@ public enum AccountSignIn {
       try await env.client.loginFinish(
         LoginFinishRequest(ceremonyID: begin.ceremony_id, credential: assertion.credential, device: device))
     }
-    try AccountCreation.writeSession(env, grant)
+    try AccountCreation.writeSession(env, grant, signupEmailNorm: AccountCreation.heldSignupAddress(env, userID: grant.user_id))
     return SignInResult(grant: grant, emailNorm: nil, serverSalt: nil, assertion: assertion)
   }
 
