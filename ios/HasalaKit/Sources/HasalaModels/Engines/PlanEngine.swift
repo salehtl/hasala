@@ -913,6 +913,11 @@ public extension PlanEngine {
     }
   }
 
+  static func projectChosen(_ project: ProjectID, _ s: LedgerState, selected: Set<TxnID>) -> [MiniTxnRow] {
+    guard !selected.isEmpty else { return [] }
+    return projectCandidates(project, s, filter: ProjectCandidateFilter()).filter { selected.contains($0.id) }
+  }
+
   /// What a project's spending is called in its explainer: "Trip" for a trip (Paper's words on
   /// Japan trip, 5JD-0), "Project" for any other. Never the name itself, which already heads
   /// the screen and may not read as a noun ("Dad's 60th spending").

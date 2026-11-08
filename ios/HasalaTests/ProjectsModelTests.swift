@@ -61,10 +61,38 @@ struct ProjectsModelTests {
     let rows = add.candidates
     let first = try #require(rows.first)
     add.toggle(first.id)
-    add.add(rows)
+    add.add()
     #expect(app.store.state.txn(first.id)?.projectID == "japan")
     #expect(app.router.projects == [.project("japan")])
     #expect(ProjectDetailViewModel(app: app, project: "japan").detail?.transactions.contains { $0.id == first.id } == true)
+  }
+
+  @Test func rowsChosenUnderAnEarlierFilterAreCountedAndAdded() throws {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.projects = [.project("japan"), .addToProject("japan")]
+    let add = ProjectAddModel(app: app, project: "japan")
+    add.filter.merchant = "carrefour"
+    let carrefour = try #require(add.shown.first)
+    add.toggle(carrefour.id)
+    add.filter.merchant = ""
+    add.filter.category = "dining"
+    let dining = try #require(add.shown.first { $0.id != carrefour.id })
+    #expect(!add.shown.contains { $0.id == carrefour.id })
+    add.toggle(dining.id)
+    #expect(Set(add.chosen.map(\.id)) == [carrefour.id, dining.id])
+    add.add()
+    #expect(app.store.state.txn(carrefour.id)?.projectID == "japan")
+    #expect(app.store.state.txn(dining.id)?.projectID == "japan")
+    #expect(add.selected.isEmpty)
+  }
+
+  @Test func anEmptyAddStaysOnTheScreen() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.projects = [.project("japan"), .addToProject("japan")]
+    let add = ProjectAddModel(app: app, project: "japan")
+    add.add()
+    #expect(app.router.projects == [.project("japan"), .addToProject("japan")])
+    #expect(app.toast == nil)
   }
 
   @Test func addingWaitsForANarrowedFilterAndUndoes() throws {
@@ -79,7 +107,7 @@ struct ProjectsModelTests {
     #expect(add.selected == Set(rows.map(\.id)))
     add.toggle(try #require(rows.first).id)
     #expect(add.selected.count == rows.count - 1)
-    add.add(rows)
+    add.add()
     let moved = rows.dropFirst().map(\.id)
     #expect(moved.allSatisfy { app.store.state.txn($0)?.projectID == "japan" })
     #expect(app.toast?.actionTitle == "Undo")
