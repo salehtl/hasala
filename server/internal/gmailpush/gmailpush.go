@@ -136,12 +136,9 @@ func CheckKeyID(ctx context.Context, pool *pgxpool.Pool, r RouteKey) error {
 			return err
 		}
 		if !bytes.Equal(id, want) {
-			// Spec 02 §13.3 names `hasalad mailbox rekey --drop-links` for
-			// this; that mode is not built yet, so the message says what it
-			// would do.
-			return errors.New("gmailpush: mailbox_links were made under another route key: put the " +
-				"previous HASALA_MAILBOX_ROUTE_KEY_FILE back, or delete every mailbox_links row " +
-				"(devices then offer \"Reconnect Gmail\")")
+			return fmt.Errorf("gmailpush: mailbox_links were made under another route key: put the "+
+				"previous HASALA_MAILBOX_ROUTE_KEY_FILE back, or run hasalad mailbox rekey --drop-links --keep-key-id %s "+
+				"(devices then offer \"Reconnect Gmail\")", hex.EncodeToString(want))
 		}
 	}
 	return rows.Err()

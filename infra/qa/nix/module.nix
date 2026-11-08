@@ -367,6 +367,7 @@ let
     invite = "hasala";
     waitlist = "hasala";
     account = "hasala";
+    mailbox = "hasala";
     email = "hasala";
     purge-user = "hasala";
     verify = "hasala";
