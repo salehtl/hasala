@@ -252,8 +252,7 @@ public actor SyncEngine {
     case .suspended:
       status.suspended = true
       status.phase = .idle
-    case .rateLimited, .notNow, .cancelled: status.phase = .idle
-    case .store: status.phase = .halted(.inconsistent("store"))
+    case .rateLimited, .notNow, .cancelled, .store: status.phase = .idle
     }
     return stop
   }

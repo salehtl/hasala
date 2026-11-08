@@ -621,6 +621,27 @@ struct SyncTests {
     #expect(await engine.status.lastSuccessAt == clock.nowMs())
   }
 
+  @Test("a store failure is no halt: the phase agrees with the stop, and the next run goes on")
+  func storeFailureIsNoHalt() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    try await a.store.db.write { db in
+      try db.execute(sql: "CREATE TRIGGER no_latch BEFORE UPDATE OF outbox_latch ON sync_state BEGIN SELECT RAISE(ABORT, 'no latch'); END")
+    }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    let failed = await engine.run(.authored)
+    guard case .store? = failed.stop else {
+      Issue.record("\(String(describing: failed.stop))")
+      return
+    }
+    #expect(await engine.status.phase == .idle)
+
+    try await a.store.db.write { db in try db.execute(sql: "DROP TRIGGER no_latch") }
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.phase == .idle)
+  }
+
   @Test("before first unlock every read is 'not now': the run stops quietly and stores nothing")
   func locked() async throws {
     let w = World()
