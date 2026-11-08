@@ -49,8 +49,30 @@ describe('the status of a legal page', () => {
     expect(legalStatus('terms.md', page('"draft"', '[[OWNER: confirm this]]'))).toBe('draft');
   });
 
-  test('a note in the front matter does not count as one in the page', () => {
+  test('a note in draftNote does not count, because a final page does not show it', () => {
     expect(legalStatus('terms.md', '---\nstatus: final\ndraftNote: "no [[OWNER: x]] left"\n---\n\nWords.\n')).toBe('final');
+  });
+
+  for (const field of ['title', 'description', 'standfirst', 'plainWords', 'contact']) {
+    test(`a final page with a note in ${field} stops the build`, () => {
+      expect(() => legalStatus('terms.md', `---\nstatus: final\n${field}: "We keep it. [[OWNER: confirm the period]]"\n---\n\nWords.\n`)).toThrow(/terms\.md.*draft/s);
+    });
+  }
+
+  test('a final page with a note in one section of plainWords stops the build', () => {
+    expect(() => legalStatus('terms.md', '---\nstatus: final\nplainWords:\n  what-we-keep: "[[OWNER: confirm the period]]"\n---\n\nWords.\n')).toThrow(/terms\.md/);
+  });
+
+  test('draftNote does not excuse a note in another field', () => {
+    expect(() => legalStatus('terms.md', '---\nstatus: final\ndraftNote: "fine"\nstandfirst: "[[OWNER: rewrite]]"\n---\n\nWords.\n')).toThrow(/terms\.md/);
+  });
+
+  test('a note in the page still counts after a rule in the text', () => {
+    expect(() => legalStatus('terms.md', page('final', 'One.\n\n---\n\n[[OWNER: confirm this]]'))).toThrow(/terms\.md/);
+  });
+
+  test('a draft may carry notes in its front matter', () => {
+    expect(legalStatus('terms.md', '---\nstatus: draft\nplainWords: "[[OWNER: confirm the period]]"\n---\n\nWords.\n')).toBe('draft');
   });
 
   test('the pages in the repository are valid', async () => {

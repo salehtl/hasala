@@ -11,7 +11,8 @@ export function legalStatus(name, source) {
   if (status !== 'draft' && status !== 'final') {
     throw new Error(`docs/legal/${name}: status must be "draft" or "final", not ${JSON.stringify(status)}`);
   }
-  if (status === 'final' && rest.join('---').includes('[[OWNER:')) {
+  const shown = [head.replace(/^draftNote:.*$/m, ''), ...rest].join('---');
+  if (status === 'final' && shown.includes('[[OWNER:')) {
     throw new Error(`docs/legal/${name}: a final page cannot have an [[OWNER: ...]] note. Resolve the note, or set status to "draft".`);
   }
   return status;
