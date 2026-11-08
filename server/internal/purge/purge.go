@@ -151,6 +151,8 @@ type Report struct {
 
 	// Goodbyes is how many `deleted` emails the purge queued (step 4).
 	Goodbyes int
+
+	Deferred []uuid.UUID
 }
 
 func newReport() Report { return Report{Rows: map[string]int{}} }
@@ -515,7 +517,10 @@ type Options struct {
 
 var ErrUnsettled = errors.New("purge: the deletion did not finish and the ledger may still name the accounts")
 
-const commitWait = 30 * time.Second
+const (
+	commitWait  = 30 * time.Second
+	holdRelease = 5 * time.Second
+)
 
 // PurgeWith is Purge with the steps that need more than the database.
 func PurgeWith(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, opts Options) (Report, error) {
@@ -525,7 +530,60 @@ func PurgeWith(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, opts O
 	if userID == uuid.Nil {
 		return Report{}, errors.New("purge: user id is zero")
 	}
+	if opts.Record != nil {
+		hold, err := newAccountHold(ctx, pool)
+		if err != nil {
+			return newReport(), err
+		}
+		defer hold.release()
+		if err := hold.wait(ctx, userID); err != nil {
+			return newReport(), err
+		}
+	}
 	return purgeUsers(ctx, pool, []uuid.UUID{userID}, opts)
+}
+
+type accountHold struct {
+	conn *pgx.Conn
+}
+
+func newAccountHold(ctx context.Context, pool *pgxpool.Pool) (*accountHold, error) {
+	c, err := pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("purge: open the account hold: %w", err)
+	}
+	return &accountHold{conn: c.Hijack()}, nil
+}
+
+func holdKey(id uuid.UUID) string { return "hasala/purge/" + id.String() }
+
+func (h *accountHold) wait(ctx context.Context, id uuid.UUID) error {
+	if _, err := h.conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 0))`, holdKey(id)); err != nil {
+		return fmt.Errorf("purge: hold the account: %w", err)
+	}
+	return nil
+}
+
+func (h *accountHold) try(ctx context.Context, ids []uuid.UUID) (free, busy []uuid.UUID, err error) {
+	for _, id := range ids {
+		var got bool
+		if err := h.conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1, 0))`, holdKey(id)).Scan(&got); err != nil {
+			return nil, nil, fmt.Errorf("purge: hold the account: %w", err)
+		}
+		if got {
+			free = append(free, id)
+		} else {
+			busy = append(busy, id)
+		}
+	}
+	return free, busy, nil
+}
+
+func (h *accountHold) release() {
+	ctx, cancel := context.WithTimeout(context.Background(), holdRelease)
+	defer cancel()
+	_, _ = h.conn.Exec(ctx, `SELECT pg_advisory_unlock_all()`)
+	_ = h.conn.Close(ctx)
 }
 
 func purgeUsers(ctx context.Context, pool *pgxpool.Pool, users []uuid.UUID, opts Options) (Report, error) {
@@ -781,7 +839,21 @@ func replayIDs(ctx context.Context, pool *pgxpool.Pool, ids []uuid.UUID, opts Op
 	if err != nil {
 		return newReport(), fmt.Errorf("purge: replay: %w", err)
 	}
-	return purgeUsers(ctx, pool, live, opts)
+	if len(live) == 0 {
+		return newReport(), nil
+	}
+	hold, err := newAccountHold(ctx, pool)
+	if err != nil {
+		return newReport(), err
+	}
+	defer hold.release()
+	free, busy, err := hold.try(ctx, live)
+	if err != nil {
+		return newReport(), err
+	}
+	rep, err := purgeUsers(ctx, pool, free, opts)
+	rep.Deferred = busy
+	return rep, err
 }
 
 func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (int, error) {

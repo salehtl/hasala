@@ -172,6 +172,9 @@ func replayPurgeLedger(env *runEnv, a config.PurgeArgs) error {
 		"%d device removal(s) whose signer is not in the database (signed out only), %d entries past retention removed\n",
 		len(entries), len(rep.Users), rep.Total(), again.Freezes, again.Unfreezes, again.Devices, again.Passwords, again.Passkeys,
 		again.PhrasesSeen, left, bounced, again.Sessions, again.Emails, revoked, again.Lifted, again.Unsigned, dropped)
+	if len(rep.Deferred) > 0 {
+		fmt.Fprintf(env.stdout, "purge ledger: %d account(s) have a deletion in progress and were left for the next replay\n", len(rep.Deferred))
+	}
 	return nil
 }
 

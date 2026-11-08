@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
 	"github.com/salehtl/hasala/server/internal/pgtest"
+	"github.com/salehtl/hasala/server/internal/purge"
 	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
@@ -128,6 +131,33 @@ func TestAPurgeSurvivesARestoreThroughTheLedger(t *testing.T) {
 	}
 	if code, out, _ := hasalad(t, env, "purge-user", "--replay-ledger"); code != 0 || !strings.Contains(out, "0 account(s) purged again") {
 		t.Fatalf("a second replay exited %d with %q", code, out)
+	}
+}
+
+func TestAReplayBesideADeletionSaysItLeftTheAccount(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	user := oplogtest.NewUser(t, pool)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	env := []string{"HASALA_PG_DSN=" + pool.Config().ConnString(), "HASALA_PURGE_LEDGER_PATH=" + ledger}
+	var code int
+	var out, msg string
+	rep, err := purge.PurgeWith(ctx, pool, user, purge.Options{Record: func(ids []uuid.UUID) error {
+		if err := purgeledger.Append(ledger, ids, time.Now()); err != nil {
+			return err
+		}
+		code, out, msg = hasalad(t, env, "purge-user", "--replay-ledger")
+		return nil
+	}})
+	if err != nil || len(rep.Users) != 1 {
+		t.Fatalf("the deletion: %v %v", rep.Users, err)
+	}
+	if code != 0 || !strings.Contains(out, "0 account(s) purged again") ||
+		!strings.Contains(out, "1 account(s) have a deletion in progress and were left for the next replay") {
+		t.Fatalf("replay exited %d with %q (%s)", code, out, msg)
+	}
+	if strings.Contains(out, user.String()) {
+		t.Fatalf("the replay printed the account id: %q", out)
 	}
 }
 
