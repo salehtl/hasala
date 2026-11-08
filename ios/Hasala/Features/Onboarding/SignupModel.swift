@@ -75,7 +75,9 @@ final class SignupModel {
   private(set) var codeUsedUp = false
 
   // Sign-in method and password (§6.1.2)
-  var method: SignInMethod = .passkey
+  var method: SignInMethod = .passkey {
+    didSet { if passkeyRegistered, method != .passkey { method = .passkey } }
+  }
   var newPassword = ""
   var confirmPassword = ""
   /// "Show" on the new password: the person's choice stays through Back and Forward.
@@ -374,6 +376,7 @@ final class SignupModel {
     do {
       let made = try await account.registerPasskey(ticket)
       passkeyTicketID = ticket.id
+      method = .passkey
       passkeyPRF = made.prf
       passkeySynced = made.synced
       wordsInSignup = false

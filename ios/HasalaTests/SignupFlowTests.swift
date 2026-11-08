@@ -926,4 +926,57 @@ struct SignupOverlapTests: AccountSuite {
     #expect(m.wrongCode.isEmpty)
     #expect(m.code == "12")
   }
+
+  @Test func aSavedPasskeyKeepsTheMethodAfterARefusedFinish() async {
+    let account = MockAccountService()
+    account.passkeyPRF = true
+    account.refuseFinish = .offline
+    var created = 0
+    let m = await atMethod(account) { created += 1 }
+    await m.continueWithMethod()
+    #expect(m.failure == .offline && m.passkeyRegistered)
+    m.method = .password
+    #expect(m.method == .passkey)
+    await m.continueWithMethod()
+    #expect(!m.path.contains(.password))
+    #expect(created == 1)
+  }
+
+  @Test func aSavedPasskeyFinishesAsAPasskeyAfterBack() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    await m.continueWithMethod()
+    #expect(m.passkeyRegistered && m.path.last == .phraseIntro)
+    m.back()
+    m.method = .password
+    await m.continueWithMethod()
+    #expect(m.path.last == .phraseIntro)
+    m.phraseRevealed = true
+    await m.finish()
+    #expect(m.profile?.method == .passkey)
+    #expect(m.path.last == .accountReady)
+  }
+
+  @Test func aPasswordPickedWhileThePasskeySavesDoesNotStick() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    account.delay = .milliseconds(20)
+    let register = Task { await m.continueWithMethod() }
+    while !m.busy { await Task.yield() }
+    m.method = .password
+    await register.value
+    #expect(m.passkeyRegistered)
+    #expect(m.method == .passkey)
+  }
+
+  @Test func aNewSignupCanChooseAPasswordAgain() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    await m.continueWithMethod()
+    #expect(m.passkeyRegistered)
+    await m.resendCode()
+    #expect(!m.passkeyRegistered)
+    m.method = .password
+    #expect(m.method == .password)
+  }
 }
