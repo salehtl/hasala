@@ -127,6 +127,27 @@ pkgs.runCommand "hasala-ops-scripts"
     [ "$(count 'hasala-daily-*.dump.age')" = 0 ] || no "a missing ledger left a published dump"
     [ "$(count '*.sha256')" = 0 ] || no "a missing ledger left a checksum"
 
+    for tag in daily premigrate; do
+      scenario "a $tag backup that fails still applies retention"
+      touch -d '40 days ago' backups/hasala-daily-seed40.dump.age
+      touch -d '29 days ago' backups/hasala-ledger-daily-seed29.tar.age
+      touch -d '29 days ago' backups/hasala-premigrate-seed29.dump.age.sha256
+      touch -d '28 days ago' backups/hasala-daily-seed28.dump.age
+      PG_DUMP_FAIL=1 run_backup "$tag"
+      [ "$rc" != 0 ] || no "a failing $tag backup exited 0"
+      [ ! -e backups/hasala-daily-seed40.dump.age ] || no "a failing $tag backup kept a 40 day old dump"
+      [ ! -e backups/hasala-ledger-daily-seed29.tar.age ] || no "a failing $tag backup kept a 29 day old ledger copy"
+      [ ! -e backups/hasala-premigrate-seed29.dump.age.sha256 ] || no "a failing $tag backup kept a 29 day old checksum"
+      [ -e backups/hasala-daily-seed28.dump.age ] || no "a failing $tag backup deleted a 28 day old dump"
+    done
+
+    scenario "a backup that succeeds still applies retention"
+    touch -d '29 days ago' backups/hasala-daily-seed29.dump.age
+    run_backup daily
+    [ "$rc" = 0 ] || no "a clean backup with an old file exited $rc"
+    [ ! -e backups/hasala-daily-seed29.dump.age ] || no "a clean backup kept a 29 day old dump"
+    [ "$(count 'hasala-daily-2*.dump.age')" = 1 ] || no "retention removed the new dump"
+
     [ "$failed" = 0 ]
     touch "$out"
   ''

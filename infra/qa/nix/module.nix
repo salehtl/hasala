@@ -292,6 +292,11 @@ let
     led="$dir/hasala-ledger-$tag-$ts.tar.age"
     exec 9< ${maintenanceLock}
     flock 9
+    # Retention is a hard bound (N-06): every dump, ledger copy and checksum
+    # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
+    find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
+      toString (cfg.backup.retentionDays - 1)
+    } -delete
     work="$(mktemp -d "$RUNTIME_DIRECTORY/work.XXXXXX")"
     trap 'rm -rf "$work"; rm -f "$out.part" "$out.sha256.part" "$led.part"' EXIT
     mkfifo -m 0600 "$work/stream"
@@ -318,11 +323,6 @@ let
     mv "$led.part" "$led"
     mv "$out.sha256.part" "$out.sha256"
     mv "$out.part" "$out"
-    # Retention is a hard bound (N-06): every dump, ledger copy and checksum
-    # ${toString cfg.backup.retentionDays} days old or older goes, however few remain.
-    find "$dir" -maxdepth 1 -name 'hasala-*.age*' -mtime +${
-      toString (cfg.backup.retentionDays - 1)
-    } -delete
     date +%s > "$STATE_DIRECTORY/last-success-$tag"
     echo "hasala-backup: $tag written"
   '';
