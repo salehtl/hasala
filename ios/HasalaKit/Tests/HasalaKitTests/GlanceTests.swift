@@ -60,6 +60,33 @@ struct GlanceEngineTests {
     #expect(w.project(p.id)?.id == p.id)
   }
 
+  @Test func aChosenCategoryThatLeftTheListIsNotReplacedByAnother() throws {
+    var state = s
+    let dining = try #require(snapshot().categories.first { $0.name == "Dining" })
+    #expect(snapshot().category(dining.id) == dining)
+    let key = PlanState.key(dining.id, MayaLedger.october)
+    state.plan.budgets[key] = .aed(0)
+    let zeroed = snapshot(state: state)
+    #expect(!zeroed.categories.isEmpty)
+    #expect(zeroed.category(dining.id) == nil)
+    #expect(zeroed.category("gone") == nil)
+    #expect(zeroed.category(nil) != nil)
+    state.plan.budgets[key] = .aed(1_000_00)
+    #expect(snapshot(state: state).category(dining.id)?.id == dining.id)
+  }
+
+  @Test func aChosenTargetThatLeftTheListStaysChosen() {
+    struct Pick: Equatable {
+      let id: String
+      let name: String
+    }
+    let known = [Pick(id: "dining", name: "Dining"), Pick(id: "rent", name: "Rent")]
+    let picks = WidgetSnapshot.chosen(["rent", "gone"], known: known, id: \.id) { Pick(id: $0, name: "Removed") }
+    #expect(picks == [Pick(id: "rent", name: "Rent"), Pick(id: "gone", name: "Removed")])
+    #expect(WidgetSnapshot.chosen(["gone"], known: [Pick](), id: \.id) { Pick(id: $0, name: "Removed") }.map(\.id) == ["gone"])
+    #expect(WidgetSnapshot.chosen([], known: known, id: \.id) { Pick(id: $0, name: "Removed") }.isEmpty)
+  }
+
   @Test func diningIsWatchedOnTrack() throws {
     let dining = try #require(snapshot().categories.first { $0.name == "Dining" })
     #expect(MoneyFormat.string(dining.left.minor, style: .rounded) == "957")

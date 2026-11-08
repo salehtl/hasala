@@ -19,7 +19,7 @@ struct CategoryEntity: AppEntity {
 
 struct CategoryEntityQuery: EntityQuery {
   func entities(for identifiers: [CategoryEntity.ID]) async throws -> [CategoryEntity] {
-    all().filter { identifiers.contains($0.id) }
+    WidgetSnapshot.chosen(identifiers, known: all(), id: \.id) { CategoryEntity(id: $0, name: "Category") }
   }
 
   func suggestedEntities() async throws -> [CategoryEntity] { all() }
@@ -53,8 +53,7 @@ struct ProjectEntity: AppEntity {
 
 struct ProjectEntityQuery: EntityQuery {
   func entities(for identifiers: [ProjectEntity.ID]) async throws -> [ProjectEntity] {
-    let known = all()
-    return identifiers.map { id in known.first { $0.id == id } ?? ProjectEntity(id: id, name: "Project removed") }
+    WidgetSnapshot.chosen(identifiers, known: all(), id: \.id) { ProjectEntity(id: $0, name: "Project removed") }
   }
 
   func suggestedEntities() async throws -> [ProjectEntity] { all() }
@@ -86,8 +85,7 @@ struct GoalEntity: AppEntity {
 
 struct GoalEntityQuery: EntityQuery {
   func entities(for identifiers: [GoalEntity.ID]) async throws -> [GoalEntity] {
-    let known = all()
-    return identifiers.map { id in known.first { $0.id == id } ?? GoalEntity(id: id, name: "Goal removed") }
+    WidgetSnapshot.chosen(identifiers, known: all(), id: \.id) { GoalEntity(id: $0, name: "Goal removed") }
   }
 
   func suggestedEntities() async throws -> [GoalEntity] { all() }
