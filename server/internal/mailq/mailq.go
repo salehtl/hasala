@@ -86,18 +86,21 @@ func retryWindow(kind string) time.Duration {
 
 var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour}
 
+var outcomeRetries = []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, 2 * time.Second, 5 * time.Second, 10 * time.Second}
+
 // Lease and send bounds.
 const (
-	leaseFor     = 2 * time.Minute
-	sendTimeout  = 20 * time.Second
-	renderFor    = 30 * time.Second
-	pollEvery    = 30 * time.Second
-	maxAttempts  = 10
-	hintMax      = 80
-	notifyChan   = "hasala_mail"
-	errorMaxLen  = 200
-	workerCount  = 2
-	tagBatchSize = 50
+	leaseFor       = 2 * time.Minute
+	sendTimeout    = 20 * time.Second
+	renderFor      = 30 * time.Second
+	outcomeTimeout = 5 * time.Second
+	pollEvery      = 30 * time.Second
+	maxAttempts    = 10
+	hintMax        = 80
+	notifyChan     = "hasala_mail"
+	errorMaxLen    = 200
+	workerCount    = 2
+	tagBatchSize   = 50
 )
 
 // Enqueue describes one email to queue.
@@ -656,7 +659,7 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 			q.stopped.Store(true)
 		}
 	}
-	if _, err := q.Pool.Exec(ctx, sql, args...); err != nil {
+	if err := q.writeOutcome(ctx, sql, args, oneShot); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
 	}
 	if hooked {
@@ -664,6 +667,22 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 	}
 	if sendErr != nil {
 		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
+	}
+}
+
+func (q *Queue) writeOutcome(ctx context.Context, sql string, args []any, oneShot bool) error {
+	retries := outcomeRetries
+	if oneShot {
+		retries = nil
+	}
+	for try := 0; ; try++ {
+		wctx, cancel := context.WithTimeout(ctx, outcomeTimeout)
+		_, err := q.Pool.Exec(wctx, sql, args...)
+		cancel()
+		if err == nil || try == len(retries) || !transientRender(err) {
+			return err
+		}
+		time.Sleep(retries[try])
 	}
 }
 

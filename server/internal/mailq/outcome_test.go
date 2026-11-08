@@ -3,9 +3,12 @@ package mailq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/mail"
 	"github.com/salehtl/hasala/server/internal/oplog/oplogtest"
@@ -178,5 +181,72 @@ func TestTwoWorkersRunAHookOnce(t *testing.T) {
 	}
 	if runs != 1 || hookDue(t, q, id) {
 		t.Fatalf("the hook ran %d times, still due %v", runs, hookDue(t, q, id))
+	}
+}
+
+func failOutcomeWrites(t *testing.T, owner *pgxpool.Pool, times int, code string) {
+	t.Helper()
+	for _, sql := range []string{
+		`CREATE SEQUENCE outcome_failures`,
+		`GRANT USAGE ON SEQUENCE outcome_failures TO hasala_runtime`,
+		fmt.Sprintf(`CREATE FUNCTION fail_outcome() RETURNS trigger AS $$
+		BEGIN
+		  IF OLD.status = 'sending' AND NEW.status = 'sent' AND nextval('outcome_failures') <= %d THEN
+		    RAISE EXCEPTION 'the database is busy' USING ERRCODE = '%s';
+		  END IF;
+		  RETURN NEW;
+		END $$ LANGUAGE plpgsql`, times, code),
+		`CREATE TRIGGER fail_outcome BEFORE UPDATE ON mail_log FOR EACH ROW EXECUTE FUNCTION fail_outcome()`,
+	} {
+		if _, err := owner.Exec(bg, sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestASentEmailIsNotSentAgainWhenItsOutcomeWriteFails(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	fake := &mail.Fake{}
+	q := New(pool, fake, fixedTagger{})
+	q.Register("test", TestRenderer)
+	failOutcomeWrites(t, owner, 2, "40001")
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com"})
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	expireLeases(t, q)
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	if st, att, _, _ := row(t, pool, id); st != "sent" || att != 1 || len(fake.Sent()) != 1 {
+		t.Fatalf("status %s, attempt %d, sent %d times", st, att, len(fake.Sent()))
+	}
+}
+
+func TestAnOutcomeWriteRefusedForGoodIsNotRetried(t *testing.T) {
+	pool, owner := pgtest.NewWithOwner(t)
+	q := New(pool, &mail.Fake{}, fixedTagger{})
+	q.Register("test", TestRenderer)
+	failOutcomeWrites(t, owner, 1000, "23514")
+	id := enqueue(t, pool, q, Enqueue{Kind: "test", To: "a@example.com"})
+	if _, err := q.Drain(bg); err != nil {
+		t.Fatal(err)
+	}
+	var tries int64
+	if err := owner.QueryRow(bg, `SELECT last_value FROM outcome_failures`).Scan(&tries); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, _, _ := row(t, pool, id); st != "sending" || tries != 1 {
+		t.Fatalf("status %s after %d writes", st, tries)
+	}
+}
+
+func TestOutcomeRetriesEndBeforeTheLease(t *testing.T) {
+	total := renderFor + sendTimeout + time.Duration(len(outcomeRetries)+1)*outcomeTimeout
+	for _, wait := range outcomeRetries {
+		total += wait
+	}
+	if total >= leaseFor {
+		t.Fatalf("render, send and every outcome write can take %s, the lease is %s", total, leaseFor)
 	}
 }
