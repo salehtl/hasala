@@ -310,7 +310,8 @@ func wireExtras(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, srv 
 		}
 		ex.done = append(ex.done, q.Run(ctx))
 	} else {
-		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted and the email worker does not run")
+		slog.Warn("hasalad serve: no HASALA_AUTH_KEY_FILE: the waitlist routes are not mounted, the email worker does not run and queued email fails")
+		ex.done = append(ex.done, startSweep(ctx, "mail without a worker", q.FailWithoutWorker))
 	}
 	ex.done = append(ex.done,
 		startSweep(ctx, "invite sweep", func(ctx context.Context) (string, error) { return invites.Sweep(ctx, pool, record) }),

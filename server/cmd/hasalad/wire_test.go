@@ -12,11 +12,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/salehtl/hasala/server/internal/api"
 	"github.com/salehtl/hasala/server/internal/config"
 	"github.com/salehtl/hasala/server/internal/googlejwt"
+	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/mail"
+	"github.com/salehtl/hasala/server/internal/mailq"
 	"github.com/salehtl/hasala/server/internal/pgtest"
 	"github.com/salehtl/hasala/server/internal/pushv2"
 )
@@ -182,6 +188,50 @@ func TestWireExtrasFollowsTheConfiguration(t *testing.T) {
 	}
 	cancel()
 	ex.wait()
+}
+
+func TestAServeWithNoAuthKeyFailsMailNoWorkerWillSend(t *testing.T) {
+	pool := pgtest.New(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var invite uuid.UUID
+	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		var err error
+		invite, err = invites.EnqueueEmailed(ctx, tx, mailq.New(pool, nil, nil), "guest@example.com", "", invites.DefaultTTL)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadEnv("", func(n string) (string, bool) {
+		if n == "HASALA_PG_DSN" {
+			return "x", true
+		}
+		return "", false
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex, err := wireExtras(ctx, cfg, pool, &api.Server{Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ex.wait()
+	defer cancel()
+	var status, state string
+	var errText *string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if err := pool.QueryRow(ctx,
+			`SELECT m.status, m.error, i.state FROM mail_log m JOIN invite_codes i ON i.id = m.invite_id WHERE i.id = $1`,
+			invite).Scan(&status, &errText, &state); err != nil {
+			t.Fatal(err)
+		}
+		if status != "queued" {
+			break
+		}
+	}
+	if status != "failed" || errText == nil || !strings.Contains(*errText, "not configured") || state != "revoked" {
+		t.Fatalf("mail %s (%v), invite %s", status, errText, state)
+	}
 }
 
 // HASALA_EMAIL_API_BASE_URL reaches the Cloudflare client (a local run's mail
