@@ -38,6 +38,13 @@ struct LiveGateTests {
     check(.opening(Self.binding()), finished: true, .ready, nil)
   }
 
+  @Test func closingTheAccountTakesTheUpdateWallWithItAndLeavesTheOthers() {
+    #expect(BootController.wallAfterClosing(.updateRequired) == nil)
+    #expect(BootController.wallAfterClosing(nil) == nil)
+    let kept: [BootController.Wall] = [.otherAccount(email: "maya@example.com"), .foreignData, .unenrolled, .restoring, .openFailed]
+    for wall in kept { #expect(BootController.wallAfterClosing(wall) == wall) }
+  }
+
   @Test func theGmailStepResumesFromTheLane() {
     #expect(BootController.mailboxFact(.unlinked) == .unlinked)
     #expect(BootController.mailboxFact(.scanning) == .scanning)

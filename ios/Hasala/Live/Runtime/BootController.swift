@@ -337,6 +337,7 @@ final class BootController {
     AppIconBadge.clear()
     BackgroundScheduler.shared.cancelAll()
     syncHalt = nil
+    wall = Self.wallAfterClosing(wall)
     setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let rt = runtime
     if rt != nil {
@@ -349,6 +350,10 @@ final class BootController {
   }
 
   // MARK: Walls
+
+  static func wallAfterClosing(_ wall: Wall?) -> Wall? {
+    wall == .updateRequired ? nil : wall
+  }
 
   /// "Try again" on a wall that offers it.
   func tryAgain() {
