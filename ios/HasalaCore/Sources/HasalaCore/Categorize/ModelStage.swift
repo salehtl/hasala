@@ -78,7 +78,8 @@ extension ModelTier {
     callTimeout: Duration? = nil, isCached: @Sendable (_ subject: String, _ modelTag: String) -> Bool = { _, _ in false },
     mayLeaveDevice: @Sendable (String) -> Bool = { _ in true }, mayStayOnDevice: @Sendable (String) -> Bool = { _ in true },
     maxCalls: Int? = nil, maxCloudCalls: Int? = nil, concurrency: Int = 1,
-    rejects: @Sendable (_ subject: String, _ category: String) -> Bool = { _, _ in false }, mayAsk: @Sendable () -> Bool = { true }
+    rejects: @Sendable (_ subject: String, _ category: String) -> Bool = { _, _ in false }, mayAsk: @Sendable () -> Bool = { true },
+    cloudSent: @Sendable () -> Void = {}
   ) async -> StagedRun {
     let budget = context.budget
     let callCap = min(budget.calls, maxCalls ?? budget.calls)
@@ -117,6 +118,7 @@ extension ModelTier {
         if stage.leavesDevice { cloudCalls += 1 }
         asked.append((subject, tag))
         var reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
+        if stage.leavesDevice, reply.answer != .failed(.offScreen) { cloudSent() }
         var retried = false
         if reply.answer == .failed(.contextOverflow), calls < callCap, !stage.leavesDevice || cloudCalls < cloudCap {
           if mayAsk() {
@@ -124,6 +126,7 @@ extension ModelTier {
             if stage.leavesDevice { cloudCalls += 1 }
             retried = true
             reply = await graded(stage.model, subject: subject, allowed: allowed, within: limit)
+            if stage.leavesDevice, reply.answer != .failed(.offScreen) { cloudSent() }
           } else {
             cut = true
           }

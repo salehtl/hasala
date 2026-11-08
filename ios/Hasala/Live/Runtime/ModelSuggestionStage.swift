@@ -55,7 +55,7 @@ struct ModelSuggestionStage: Sendable {
     let observer = self.observer
     let reader = observer.reader
     _ = try? cache.purgeExpired(now: nowMs())
-    let tally = CallTally()
+    let spend = SpendQueue(report: cloudSpent)
     let cut = CallTally()
     let done: Bool
     do {
@@ -70,7 +70,7 @@ struct ModelSuggestionStage: Sendable {
         let blobs = try await ModelSuggestionSweep.run(
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           stages: stages, context: .foreground, cache: cache, now: nowMs, autoFile: autoFileEnabled(), maxCloudCalls: budget,
-          spent: { tally.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
+          spent: { spend.add($0) }, trusts: trusts, mayAsk: appActive, cutShort: { cut.add(1) }, stamps: observer.stamps,
           serial: observer.writes,
           reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
           commit: { blobs in
@@ -82,8 +82,7 @@ struct ModelSuggestionStage: Sendable {
     } catch {
       done = false
     }
-    let calls = tally.value
-    if calls > 0 { await cloudSpent(calls) }
+    await spend.drained()
     return (done, cut.value > 0)
   }
 

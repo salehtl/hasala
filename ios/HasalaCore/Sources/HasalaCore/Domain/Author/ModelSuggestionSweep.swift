@@ -1,7 +1,58 @@
 import CoreCategorize
 import CoreReplay
+import Synchronization
+
+public final class SpendQueue: Sendable {
+  private let last = Mutex<Task<Void, Never>?>(nil)
+  private let report: @Sendable (Int) async -> Void
+
+  public init(report: @escaping @Sendable (Int) async -> Void) {
+    self.report = report
+  }
+
+  public func add(_ calls: Int) {
+    last.withLock { current in
+      let earlier = current
+      current = Task { [report] in
+        await earlier?.value
+        await report(calls)
+      }
+    }
+  }
+
+  public func drained() async {
+    await last.withLock { $0 }?.value
+  }
+}
+
+final class SpendCheckpoint: Sendable {
+  private let counts = Mutex((sent: 0, reported: 0))
+  private let every: Int
+
+  init(every: Int) {
+    self.every = every
+  }
+
+  func sent() -> Int {
+    counts.withLock { c -> Int in
+      c.sent += 1
+      guard c.sent - c.reported >= every else { return 0 }
+      defer { c.reported = c.sent }
+      return c.sent - c.reported
+    }
+  }
+
+  func settle(total: Int) -> Int {
+    counts.withLock { c -> Int in
+      defer { c.reported = max(c.reported, total) }
+      return max(0, total - c.reported)
+    }
+  }
+}
 
 public enum ModelSuggestionSweep {
+  static let spendEvery = 5
+
   public struct Suggestion: Sendable, Equatable {
     public let txnID: String
     public let version: Int64
@@ -99,11 +150,17 @@ public enum ModelSuggestionSweep {
       }
     }
     let hits = cached
+    let checkpoint = SpendCheckpoint(every: spendEvery)
     let r = await ModelTier.run(
       subjects: subjects.filter { answer[$0] == nil }, stages: stages, allowed: allowed, context: context, now: now,
       callTimeout: callTimeout, isCached: { hits.contains([$0, $1]) }, mayLeaveDevice: { !held.contains($0) },
-      mayStayOnDevice: { !fromTexts.contains($0) }, maxCloudCalls: maxCloudCalls, rejects: rejects, mayAsk: mayAsk)
-    if r.cloudRequests > 0 { spent(r.cloudRequests) }
+      mayStayOnDevice: { !fromTexts.contains($0) }, maxCloudCalls: maxCloudCalls, rejects: rejects, mayAsk: mayAsk,
+      cloudSent: {
+        let due = checkpoint.sent()
+        if due > 0 { spent(due) }
+      })
+    let left = checkpoint.settle(total: r.cloudRequests)
+    if left > 0 { spent(left) }
     if r.cutShort { cutShort() }
     try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
     try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
