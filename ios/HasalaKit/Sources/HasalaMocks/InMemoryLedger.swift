@@ -327,7 +327,8 @@ public final class InMemoryLedger: LedgerStore {
       let next = c.last.adding(days: c.everyDays)
       let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
       let name = BillDraft.fittedName(c.name)
-      s.bills.append(Bill(id: "bill-\(id)", name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
+      s.bills.removeAll { $0.id == id }
+      s.bills.append(Bill(id: id, name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
                           amount: c.amount, usualDay: c.last.day, nextDue: next, history: [c.last],
                           source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
                           trackingSince: today,

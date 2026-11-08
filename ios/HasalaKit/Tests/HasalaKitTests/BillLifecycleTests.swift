@@ -212,4 +212,21 @@ struct BillLifecycleTests {
     #expect(ledger.state.plan.budget("entertainment", november) == .aed(0))
     #expect(!ledger.state.plan.setToZero("entertainment", november))
   }
+
+  @Test func aTrackedCandidateKeepsItsIDAndReplacesAWithdrawnRecord() throws {
+    var s = MayaLedger.state
+    s.bills.append(Bill(id: "apple-bill", name: "Apple.com/bill", kind: "Subscriptions", categoryID: "subscriptions",
+                        amount: .aed(14_99), usualDay: 8, nextDue: LocalDate(2026, 11, 8), state: .dismissed,
+                        keys: ["apple-bill"]))
+    let ledger = InMemoryLedger(state: s)
+    let token = try #require(try ledger.apply(.trackCandidate("apple-bill")))
+    let tracked = ledger.state.bills.filter { $0.id == "apple-bill" }
+    #expect(tracked.count == 1)
+    #expect(tracked.first?.state == .tracked)
+    #expect(tracked.first?.keys == ["apple.com/bill"])
+    #expect(!ledger.state.billCandidates.contains { $0.id == "apple-bill" })
+    ledger.undo(token)
+    #expect(ledger.state.bills.filter { $0.id == "apple-bill" }.map(\.state) == [.dismissed])
+    #expect(ledger.state.billCandidates.contains { $0.id == "apple-bill" })
+  }
 }
