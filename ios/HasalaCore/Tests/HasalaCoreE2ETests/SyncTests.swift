@@ -562,6 +562,65 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("a 429's wait lasts only as long as the run that met it")
+  func retryAfterFollowsTheLastRun() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.status.retryAfterSeconds == 7)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 503, code: "unavailable")
+    #expect(await engine.run(.launch).stop == .offline)
+    #expect(await engine.status.retryAfterSeconds == nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.status.retryAfterSeconds == 7)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 426, code: "upgrade_required")
+    #expect(await engine.run(.launch).stop == .halted(.updateRequired))
+    #expect(await engine.status.retryAfterSeconds == nil)
+
+    w.server.refuseNext("GET /api/v1/sync", status: 429, code: "rate_limited")
+    _ = await engine.run(.launch)
+    #expect(await engine.run(.launch).stop == nil)
+    #expect(await engine.status.retryAfterSeconds == nil)
+  }
+
+  @Test("a run whose upload was refused is not a success: the screen reads on and the last success stays")
+  func refusedUploadIsNoSuccess() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let clock = try #require(a.clock as? FakeClock)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.latch == .accountFull)
+    #expect(await engine.status.phase == .idle)
+    #expect(await engine.status.lastSuccessAt == nil)
+
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    #expect(await engine.status.lastSuccessAt == nil)
+
+    clock.advance(ms: 1000)
+    #expect(await engine.run(.foreground).stop == nil)
+    let success = clock.nowMs()
+    #expect(await engine.status.lastSuccessAt == success)
+
+    clock.advance(ms: 1000)
+    try enqueue(a, [op(2)])
+    w.server.refuseNext("POST /api/v1/sync", status: 403, code: "account_suspended")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(await engine.status.suspended)
+    #expect(await engine.status.lastSuccessAt == success)
+
+    clock.advance(ms: 1000)
+    #expect(await engine.run(.foreground).stop == nil)
+    #expect(await engine.status.lastSuccessAt == clock.nowMs())
+  }
+
   @Test("before first unlock every read is 'not now': the run stops quietly and stores nothing")
   func locked() async throws {
     let w = World()

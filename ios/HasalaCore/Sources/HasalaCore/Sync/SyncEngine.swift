@@ -42,6 +42,7 @@ public actor SyncEngine {
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var accountFullAtMs: Int64?
   private var latchThisRun: OutboxLatch?
+  private var uploadRefusedThisRun = false
   public static let accountFullPauseMs: Int64 = 15 * 60_000
 
   public init(context: SyncContext, observer: (any PageObserver)? = nil) {
@@ -113,6 +114,7 @@ public actor SyncEngine {
   private func once(_ trigger: SyncTrigger, deadline: ContinuousClock.Instant?) async -> RunOutcome {
     var out = RunOutcome()
     latchThisRun = nil
+    uploadRefusedThisRun = false
     do {
       try resumeAfterLatch(trigger)
       await recordLogGenerationIfUnknown()
@@ -141,12 +143,11 @@ public actor SyncEngine {
         out.pulled.opsOpened += again.opsOpened
         status.integrityAlarms += again.alarms
       }
-      status.lastSuccessAt = context.clock.nowMs()
-      status.retryAfterSeconds = nil
       status.phase = .idle
     } catch {
       out.stop = await apply(await context.settled(error))
     }
+    recordEnd(of: out.stop)
     out.newData = out.pulled.rowsStored > 0 || out.pushed.opsAcknowledged > 0
     status.pendingCount = (try? context.store.pendingCount()) ?? status.pendingCount
     do {
@@ -156,6 +157,15 @@ public actor SyncEngine {
     }
     publish()
     return out
+  }
+
+  private func recordEnd(of stop: SyncStop?) {
+    if case .rateLimited(let after) = stop {
+      status.retryAfterSeconds = min(after ?? 60, 300)
+    } else {
+      status.retryAfterSeconds = nil
+    }
+    if stop == nil, !uploadRefusedThisRun { status.lastSuccessAt = context.clock.nowMs() }
   }
 
   /// 01 §10.13: the key history is verified again on every launch, unlock and
@@ -205,11 +215,13 @@ public actor SyncEngine {
         if alarm { status.integrityAlarms += 1 }
         if l == .accountFull, accountFullAtMs == nil { accountFullAtMs = context.clock.nowMs() }
         if l == .accountFull || l == .sealerFault || l == .chainBreak || l == .hardStop {
+          uploadRefusedThisRun = true
           return PushSummary()
         }
       }
       if error == .suspended {
         status.suspended = true
+        uploadRefusedThisRun = true
         return PushSummary()
       }
       throw error
@@ -225,9 +237,6 @@ public actor SyncEngine {
       } else {
         status.phase = .offline(sinceMs: context.clock.nowMs())
       }
-    case .rateLimited(let r):
-      status.retryAfterSeconds = min(r ?? 60, 300)
-      status.phase = .idle
     case .halted(let h):
       status.phase = .halted(await restoredOr(h))
     case .latched(let l, let alarm):
@@ -243,7 +252,7 @@ public actor SyncEngine {
     case .suspended:
       status.suspended = true
       status.phase = .idle
-    case .notNow, .cancelled: status.phase = .idle
+    case .rateLimited, .notNow, .cancelled: status.phase = .idle
     case .store: status.phase = .halted(.inconsistent("store"))
     }
     return stop
