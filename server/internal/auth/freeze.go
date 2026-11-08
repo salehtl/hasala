@@ -175,7 +175,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 		revoked []pushv2.Target
 		held    purgeledger.Held
 	)
-	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, p Proven) error {
+	err = a.StepUp.Run(ctx, g, func(ctx context.Context, tx pgx.Tx, _ Proven) error {
 		st, err := readAccount(ctx, tx, session.UserID, true)
 		if err != nil {
 			return err
@@ -187,7 +187,7 @@ func (a *Accounts) FreezeNow(ctx context.Context, session SessionInfo, su *StepU
 		if held, err = a.Hold.Tx(ctx, tx, freezeEntry(session.UserID, now, now)); err != nil {
 			return err
 		}
-		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, p.WriterID); err != nil {
+		if revoked, err = freezeTx(ctx, tx, a.Mail, session.UserID, FrozenByHolder, now, now, [][]byte{session.Hash}, session.WriterID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx,
@@ -270,7 +270,7 @@ func (a *Accounts) Unfreeze(ctx context.Context, session SessionInfo, su *StepUp
 			return err
 		}
 		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventAccountUnfrozen,
-			WriterID: p.WriterID, CredentialID: p.CredentialID}, now)
+			WriterID: session.WriterID, CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
 		return Wake{}, err

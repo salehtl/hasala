@@ -101,7 +101,7 @@ func (a *Accounts) LogoutAll(ctx context.Context, session SessionInfo, su *StepU
 		if err := forgetPushTokens(ctx, tx, `user_id = $1`, session.UserID); err != nil {
 			return err
 		}
-		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: p.WriterID,
+		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: EventSessionsRevoked, WriterID: session.WriterID,
 			CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {

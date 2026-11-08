@@ -518,7 +518,7 @@ func (a *Accounts) passwordAction(ctx context.Context, session SessionInfo, acti
 		if revoked, err = RevokeOtherSessionsTx(ctx, tx, session.UserID, [][]byte{session.Hash}, now); err != nil {
 			return err
 		}
-		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: event, WriterID: p.WriterID, CredentialID: p.CredentialID}, now)
+		return recordEventTx(ctx, tx, a.Mail, session.UserID, AuthEvent{Kind: event, WriterID: session.WriterID, CredentialID: p.CredentialID}, now)
 	})
 	if err != nil {
 		return Wake{}, err
