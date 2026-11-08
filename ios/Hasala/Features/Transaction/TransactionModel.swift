@@ -112,7 +112,12 @@ final class TransactionViewModel: TransactionModel {
     switch reason {
     case .probableCopy: edit = .resolveCopy(id, merge: merge)
     case .samePurchase: edit = .resolveSamePurchase(id, same: merge)
-    case .mayRepeat: return
+    case .mayRepeat:
+      if !merge {
+        app.repeatAnswers.keep(id)
+        app.router.transaction.removeAll()
+      }
+      return
     }
     guard app.perform(edit) else { return }
     if merge { close() } else { app.router.transaction.removeAll() }

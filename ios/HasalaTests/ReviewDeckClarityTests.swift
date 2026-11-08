@@ -41,6 +41,16 @@ struct ReviewDeckClarityTests {
     #expect(!reopened.repeatAnswers.asks(card) && reopened.repeatAnswers.allowsUse(card))
   }
 
+  @Test func keepBothOnTheTransactionPageAnswersTheCard() throws {
+    let (app, deck) = Self.deck(at: "mail-twin", Scenario.mayaTexts.state)
+    let card = try #require(deck.cards.first)
+    #expect(deck.repeatAnswers.asks(card))
+    app.router.transaction = [.reviewReason(.mayRepeat)]
+    TransactionViewModel(app: app, id: card.id).resolve(.mayRepeat, merge: false)
+    #expect(app.router.transaction.isEmpty)
+    #expect(!deck.repeatAnswers.asks(card) && !deck.repeatAnswers.holdsPills(card) && deck.repeatAnswers.allowsUse(card))
+  }
+
   @Test func sortingAPlainCardKeepsItsUsualToast() throws {
     let (app, deck) = Self.deck(at: "bl-alnoor-t-2", Scenario.mayaBacklog.state)
     #expect(deck.sort("bl-alnoor-t-2", into: "groceries", alwaysUse: false, project: nil))

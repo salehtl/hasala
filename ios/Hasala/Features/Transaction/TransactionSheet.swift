@@ -68,7 +68,7 @@ struct TransactionSheet: View {
           }
         case .reviewReason(let reason):
           ReviewReasonPage(
-            reason: reason, sort: { app.router.transaction.removeAll() },
+            reason: reason, sort: { model.resolve(reason, merge: false) },
             archive: { model.setArchived(true) },
             merge: { model.resolve(reason, merge: true) },
             keepBoth: { model.resolve(reason, merge: false) })
