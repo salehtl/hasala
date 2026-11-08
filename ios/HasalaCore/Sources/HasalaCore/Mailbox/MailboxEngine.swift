@@ -936,6 +936,7 @@ public actor MailboxEngine {
       return await authorBackfill(source, &state, trusted: trusted, deadlineMs: deadlineMs, paged: paged, report)
     default: break
     }
+    rewindCheckpointAheadOfClock(&state, now: now)
 
     // 6. Change detector (nil: the provider has none, so every cycle lists).
     let h0: String?
@@ -993,6 +994,13 @@ public actor MailboxEngine {
     report.phase = state.phase
     if cut || state.phase != .active { return report }
     return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, report).report
+  }
+
+  func rewindCheckpointAheadOfClock(_ state: inout MailboxState, now: Int64) {
+    guard let watermark = state.watermarkMs, watermark > now else { return }
+    if let from = state.readFromMs, from > now { state.readFromMs = max(0, from - (watermark - now)) }
+    state.watermarkMs = max(0, now - Int64(state.backfillDays ?? 90) * 86_400_000)
+    state.profileHistoryID = nil
   }
 
   private func recheckHolder(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
