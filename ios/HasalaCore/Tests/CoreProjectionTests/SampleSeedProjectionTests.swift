@@ -116,6 +116,31 @@ struct SampleSeedProjectionTests {
     #expect(try r.knownMailboxMessageIDs(["sample-1", "sample-999"]) == ["sample-1"])
   }
 
+  @Test("the sample still counts as held when every sample row is archived")
+  func holdsSampleArchived() throws {
+    let (_, p) = try Self.loaded()
+    #expect(try p.reader.holdsSample())
+    try p.queue.write { db in try db.execute(sql: "UPDATE txn SET archived = 'user' WHERE mailbox_message_id GLOB 'sample-*'") }
+    #expect(try !p.reader.activity(limit: 1_000).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true })
+    #expect(try p.reader.holdsSample())
+  }
+
+  @Test("an account with no live sample row holds no sample")
+  func holdsNoSample() throws {
+    #expect(try !ProjectionStore.inMemory().reader.holdsSample())
+    let (_, renamed) = try Self.loaded()
+    try renamed.queue.write { db in
+      try db.execute(sql: "UPDATE txn SET mailbox_message_id = 'Sample-' || id WHERE mailbox_message_id GLOB 'sample-*'")
+    }
+    #expect(try !renamed.reader.holdsSample())
+    let (_, replaced) = try Self.loaded()
+    try replaced.queue.write { db in
+      try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
+      try db.execute(sql: "UPDATE txn SET superseded_by = id WHERE mailbox_message_id GLOB 'sample-*'")
+    }
+    #expect(try !replaced.reader.holdsSample())
+  }
+
   @Test("accounts, cards, check-ins: ENBD ···4412 and DIB ···8891, net worth 227,568.00")
   func accounts() throws {
     let (_, p) = try Self.loaded()

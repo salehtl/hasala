@@ -481,7 +481,7 @@ final class BootController {
     f.textsChosen = BankTexts.setUpHere(texts)
     let r = rt.projection.reader
     f.banksChosen = !((try? r.senderTrust()) ?? [:]).isEmpty
-    f.sampleLoaded = ((try? r.activity(limit: 1_000)) ?? []).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true }
+    f.sampleLoaded = (try? r.holdsSample()) ?? false
     return f
   }
 
