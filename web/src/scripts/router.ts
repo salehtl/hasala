@@ -45,7 +45,8 @@ document.addEventListener('astro:before-preparation', (e) => {
 
 document.addEventListener('astro:before-swap', (e) => {
   const next = e.newDocument.documentElement.classList;
-  next.add('js', 'vt-swap', 'routed');
+  next.add('vt-swap', 'routed');
+  if (root.classList.contains('js')) next.add('js');
   let seen = root.classList.contains('hero-seen');
   try {
     seen ||= !!sessionStorage.getItem('hasala:hero');

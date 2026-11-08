@@ -72,11 +72,9 @@ import { API_BASE } from '../lib/env';
         <a class="btn btn--glass" href="/">It was me, don’t freeze</a>
       </div>
       <p class="freeze__status" role="status" aria-live="polite"></p>
-      <noscript>
-        <p class="freeze__status freeze__status--error">
-          This page needs JavaScript to read the freeze link from our email. Turn it on and open the link again.
-        </p>
-      </noscript>
+      <p class="freeze__status freeze__status--error" data-no-script>
+        This page needs JavaScript to read the freeze link from our email. Turn it on and open the link again.
+      </p>
 
       <p class="freeze__safety">
         <Icon name="shield" size={18} stroke={1.8} />

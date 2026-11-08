@@ -7,7 +7,8 @@
  */
 
 /** Marks the document as scripted, so CSS can hide no-JS fallbacks. */
-export const JS_CLASS = "document.documentElement.classList.add('js')";
+export const JS_CLASS =
+  "document.documentElement.classList.add('js');addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='SCRIPT'&&t.type==='module')document.documentElement.classList.remove('js')},true)";
 
 /** Plays the hero entrance once per tab session. */
 export const HERO_SEEN =
