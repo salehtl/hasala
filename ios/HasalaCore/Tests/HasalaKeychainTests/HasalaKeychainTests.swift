@@ -130,6 +130,67 @@ struct InstallCheckTests {
     #expect(try k.read(.accountBinding) == nil)
   }
 
+  func widgets() throws -> URL {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-install-\(UUID().uuidString)", isDirectory: true)
+    let dir = root.appendingPathComponent("Widgets", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try Data("{}".utf8).write(to: dir.appendingPathComponent("widget-snapshot.json"))
+    return dir
+  }
+
+  @Test("the first launch removes the widget snapshot; a later launch leaves a new one alone")
+  func widgetSnapshot() throws {
+    let k = KeychainSecretStore(accessGroup: nil, api: InMemoryKeychainAPI())
+    let d = defaults()
+    let dir = try widgets()
+    defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: dir) == .done)
+    #expect(!FileManager.default.fileExists(atPath: dir.path))
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: dir) == .done)
+    #expect(FileManager.default.fileExists(atPath: dir.path))
+  }
+
+  @Test("no widget snapshot to remove is a clean first launch")
+  func noWidgetSnapshot() throws {
+    let k = KeychainSecretStore(accessGroup: nil, api: InMemoryKeychainAPI())
+    let d = defaults()
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-install-\(UUID().uuidString)", isDirectory: true)
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: dir) == .done)
+    #expect(d.string(forKey: InstallCheck.installIDKey)?.count == 36)
+  }
+
+  @Test("a failed Keychain delete leaves the widget snapshot and installID for the next launch")
+  func widgetSnapshotWaitsForThePurge() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    api.locked = true
+    let d = defaults()
+    let dir = try widgets()
+    defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+    guard case .notNow = InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: dir)
+    else { Issue.record("expected notNow"); return }
+    #expect(FileManager.default.fileExists(atPath: dir.path) && d.string(forKey: InstallCheck.installIDKey) == nil)
+  }
+
+  @Test("a widget snapshot that cannot be removed never stops the boot, and the Keychain purge stands")
+  func widgetSnapshotStuck() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    try k.write(.accountBinding, Data("b".utf8))
+    let d = defaults()
+    let dir = try widgets()
+    let parent = dir.deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+      try? FileManager.default.removeItem(at: parent)
+    }
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: dir) == .done)
+    #expect(FileManager.default.fileExists(atPath: dir.path))
+    #expect(api.count == 0 && d.string(forKey: InstallCheck.installIDKey)?.count == 36)
+  }
+
   @Test("a failed delete leaves installID unset, so the next launch retries")
   func retries() throws {
     let api = InMemoryKeychainAPI()

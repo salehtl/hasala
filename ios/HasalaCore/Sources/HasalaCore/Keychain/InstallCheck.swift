@@ -34,9 +34,20 @@ public enum InstallCheck {
       stranded.pending_logout = true
       try? secrets.writeSession(stranded)
     }
-    if let w = widgetsDirectory { try? FileManager.default.removeItem(at: w) }  // logged and retried, never fatal
+    if let w = widgetsDirectory { removeWidgets(w) }
     let id = (try? SystemRandom().uuidV4()) ?? "00000000-0000-4000-8000-000000000000"
     defaults.set(id, forKey: installIDKey)
     return .done
+  }
+
+  private static let log = CoreLog(category: "HasalaKeychain")
+
+  private static func removeWidgets(_ directory: URL) {
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+    do {
+      try FileManager.default.removeItem(at: directory)
+    } catch {
+      log.error("install_widget_snapshot_not_removed")
+    }
   }
 }
