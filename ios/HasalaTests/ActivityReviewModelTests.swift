@@ -520,6 +520,9 @@ struct ActivityTransactionChoiceTests {
     txn.setArchived(true)
     #expect(txn.detail?.archived == true)
     #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.title == "Archived" && app.toast?.actionTitle == "Undo")
+    app.toastAction()
+    #expect(txn.detail?.archived == false)
   }
 
   @Test func mergingFromANestedSheetClosesOnlyThatSheet() {
@@ -530,6 +533,7 @@ struct ActivityTransactionChoiceTests {
     txn.resolve(.probableCopy, merge: true)
     #expect(app.store.state.txn("starbucks-copy") == nil)
     #expect(closed == 1 && app.sheet == .search)
+    #expect(app.toast?.actionTitle == "Undo")
   }
 
   @Test func keepingBothOrRestoringLeavesANestedSheetUp() {

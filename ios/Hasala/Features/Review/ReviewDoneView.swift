@@ -11,6 +11,7 @@ import SwiftUI
 /// had its tap (plan B1.4).
 struct ReviewDoneView: View {
   let model: any ReviewDeckModel
+  var toasts: AppModel?
   var open: (TxnID) -> Void = { _ in }
   @State private var shown = false
   @Environment(\.hMotion) private var policy
@@ -108,6 +109,13 @@ struct ReviewDoneView: View {
     .padding(.top, 12)
     .padding(.bottom, 8)
     .background(HColor.surfaceSecondary)
+    .overlay(alignment: .top) {
+      if let toasts {
+        ToastHost(app: toasts, placement: .bottom)
+          .padding(.horizontal, -HSpacing.insetPage)
+          .alignmentGuide(.top) { $0[.bottom] + 4 }
+      }
+    }
   }
 
   /// "6 sorted · 3 new rules", "1 sorted", or nothing sorted in this session.

@@ -42,6 +42,7 @@ struct ReviewDeckView: View {
   @State private var pendingMerge: ReviewCardModel?
   @State private var choosingRange = false
   @State private var openTxn: TxnRef?
+  @State private var openedFromDone = false
   @State private var deckSize: CGSize = .zero
   @State private var idealRegular: CGFloat = 0
   @State private var idealCompact: CGFloat = 0
@@ -106,8 +107,11 @@ struct ReviewDeckView: View {
           deck(top)
             .transition(.opacity)
         } else {
-          ReviewDoneView(model: model) { openTxn = TxnRef(id: $0) }
-            .transition(.opacity)
+          ReviewDoneView(model: model, toasts: openedFromDone ? app : nil) {
+            openedFromDone = true
+            openTxn = TxnRef(id: $0)
+          }
+          .transition(.opacity)
         }
       }
       .frame(maxHeight: .infinity)
@@ -135,8 +139,8 @@ struct ReviewDeckView: View {
         }
       }
     }
-    // On the bottom safe area for All caught up and the scrolling deck at the largest
-    // text sizes; otherwise the deck carries it just above its footer (`deck`).
+    // On the bottom safe area for the scrolling deck at the largest text sizes; otherwise
+    // the deck carries it just above its footer (`deck`).
     .overlay(alignment: .bottom) {
       if showsDeck, deckFit == .scroll { ToastHost(app: app, placement: .bottom) }
     }
@@ -170,7 +174,7 @@ struct ReviewDeckView: View {
       if now == nil { released() }
     }
     .onChange(of: showsDeck) { _, now in
-      if !now { app.dismissToast() }
+      if now { openedFromDone = false } else { app.dismissToast() }
     }
   }
 

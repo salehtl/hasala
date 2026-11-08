@@ -153,8 +153,7 @@ final class CoreScreensTests: XCTestCase {
   }
 
   @MainActor
-  func testATransactionOpenedAfterASwipeDownStartsAtItsRoot() throws {
-    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+  private func sortedRowOnAllCaughtUp(_ app: XCUIApplication) -> XCUIElement {
     XCTAssertTrue(element(app, "review.copy").waitForExistence(timeout: 15))
     drag(app, to: CGVector(dx: 0.5, dy: 0.05))
     XCTAssertTrue(element(app, "pick.close").waitForExistence(timeout: uiWait))
@@ -167,6 +166,32 @@ final class CoreScreensTests: XCTestCase {
     let row = app.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier BEGINSWITH 'review.done.row.'")).firstMatch
     XCTAssertTrue(row.waitForExistence(timeout: uiWait))
+    return row
+  }
+
+  @MainActor
+  func testArchivingARowFromAllCaughtUpOffersUndoOnThatScreen() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    let row = sortedRowOnAllCaughtUp(app)
+    XCTAssertFalse(element(app, "toast").exists)
+    row.tap()
+    let archive = element(app, "txn.archive")
+    XCTAssertTrue(element(app, "txn.note").waitForExistence(timeout: uiWait))
+    XCTAssertTrue(reveal(app, archive), "could not reach txn.archive")
+    archive.tap()
+    XCTAssertTrue(element(app, "txn.close").waitForNonExistence(timeout: uiWait))
+    let undo = element(app, "toast").buttons["Undo"]
+    XCTAssertTrue(undo.waitForExistence(timeout: uiWait))
+    XCTAssertTrue(undo.isHittable)
+    XCTAssertTrue(element(app, "review.seeActivity").isHittable)
+    undo.tap()
+    XCTAssertTrue(element(app, "toast").waitForNonExistence(timeout: uiWait))
+  }
+
+  @MainActor
+  func testATransactionOpenedAfterASwipeDownStartsAtItsRoot() throws {
+    let app = launch(scenario: "mayaCopy", screen: "review.copy")
+    let row = sortedRowOnAllCaughtUp(app)
     row.tap()
     XCTAssertTrue(element(app, "txn.note").waitForExistence(timeout: uiWait))
     element(app, "txn.note").tap()
