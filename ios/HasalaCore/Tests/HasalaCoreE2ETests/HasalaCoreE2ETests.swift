@@ -241,6 +241,27 @@ struct StepUpTests {
     #expect(r.status == 204)
   }
 
+  @Test("a session signed out while offline cannot prove a step-up")
+  func signedOutSessionProvesNothing() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    var held = try #require(try a.env.secrets.session())
+    held.pending_logout = true
+    try a.env.secrets.writeSession(held)
+    do {
+      _ = try await StepUpHelper.prove(
+        a.env, params: .sessionLogoutAll, factor: .device(password: password), binding: a.binding, reason: "x")
+      Issue.record("expected the signed-out refusal")
+    } catch {
+      guard case .api(.refused(let failure)) = error, failure.status == 401 else {
+        Issue.record("got \(error)")
+        return
+      }
+    }
+    #expect(a.dak.signatureCount == 0)
+  }
+
   @Test("a challenge that is not this client's C is refused before any prompt")
   func challengeMismatch() async throws {
     let w = World()
