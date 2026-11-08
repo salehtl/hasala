@@ -1410,6 +1410,71 @@ func TestAFreezeInTheSameSecondAsARestoredUnfreezeIsApplied(t *testing.T) {
 	}
 }
 
+func TestAFreezeAfterAnUnfreezeOfTheSameSecondOutlivesThatUnfreezesEvent(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	at := f.clock.now().Truncate(time.Second)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, at.Add(400*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	entries := []purgeledger.Entry{
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindUnfreeze},
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at},
+	}
+	rep, err := Reapply(bgctx, f.pool, entries, f.clock.now())
+	if err != nil || rep != (ReapplyReport{Freezes: 1}) {
+		t.Fatalf("reapply %+v %v, want the freeze", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM users WHERE id = $1 AND frozen_by = 'holder'`, m.user.UserID); n != 1 {
+		t.Fatal("the unfreeze before the freeze lifted it")
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("a second replay %+v %v, want nothing", rep, err)
+	}
+}
+
+func TestAFreezeLiftedByAnEventTheLedgerDoesNotExplainStaysLifted(t *testing.T) {
+	for name, gap := range map[string]time.Duration{"the same second": 400 * time.Millisecond, "a later second": 2 * time.Second} {
+		t.Run(name, func(t *testing.T) {
+			f := newAcctFixture(t)
+			m := f.passwordMember("Maya")
+			f.clock.advance(time.Hour)
+			at := f.clock.now().Truncate(time.Second)
+			if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+				m.user.UserID, at.Add(gap)); err != nil {
+				t.Fatal(err)
+			}
+			f.clock.advance(time.Minute)
+			entries := []purgeledger.Entry{{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at}}
+			if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+				t.Fatalf("reapply %+v %v: a lifted freeze came back", rep, err)
+			}
+		})
+	}
+}
+
+func TestAFreezeAfterASameSecondUnfreezeIsStillLiftedByALaterEvent(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	f.clock.advance(time.Hour)
+	at := f.clock.now().Truncate(time.Second)
+	if _, err := f.pool.Exec(bgctx, `INSERT INTO auth_events (user_id, kind, at) VALUES ($1, 'account_unfrozen', $2)`,
+		m.user.UserID, at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(time.Minute)
+	entries := []purgeledger.Entry{
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindUnfreeze},
+		{ID: m.user.UserID, At: at, Kind: purgeledger.KindFreeze, Trigger: at},
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("reapply %+v %v: a freeze lifted a second later came back", rep, err)
+	}
+}
+
 func TestTheOperatorsClearingOfARestoredAddressHoldsAcrossAReplay(t *testing.T) {
 	f := newAcctFixture(t)
 	path, rec := ledgerRecorder(t)

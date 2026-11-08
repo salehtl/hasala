@@ -96,6 +96,25 @@ func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
 	return lifted
 }
 
+func afterSameSecondUnfreeze(entries []purgeledger.Entry) map[int]bool {
+	type second struct {
+		id uuid.UUID
+		at int64
+	}
+	unfrozen := map[second]bool{}
+	after := map[int]bool{}
+	for i, e := range entries {
+		key := second{e.ID, e.At.Unix()}
+		switch e.Kind {
+		case purgeledger.KindUnfreeze:
+			unfrozen[key] = true
+		case purgeledger.KindFreeze:
+			after[i] = unfrozen[key]
+		}
+	}
+	return after
+}
+
 func unfreezesToApply(entries []purgeledger.Entry, lifted map[int]bool) map[int]bool {
 	latest := map[uuid.UUID]int{}
 	frozen := map[uuid.UUID]bool{}
@@ -127,6 +146,7 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 	}
 	lifted := liftedInLedger(entries)
 	unfreezes := unfreezesToApply(entries, lifted)
+	afterUnfreeze := afterSameSecondUnfreeze(entries)
 	var touched []uuid.UUID
 	seen := map[uuid.UUID]bool{}
 	for i, e := range entries {
@@ -142,6 +162,9 @@ func Reapply(ctx context.Context, pool *pgxpool.Pool, entries []purgeledger.Entr
 				break
 			}
 			step, count, locks = reapplyFreezeTx, &rep.Freezes, true
+			if afterUnfreeze[i] {
+				step = reapplyFreezeAfterUnfreezeTx
+			}
 		case purgeledger.KindUnfreeze:
 			if !unfreezes[i] {
 				continue
@@ -215,6 +238,14 @@ func reapplyOne(ctx context.Context, pool *pgxpool.Pool, e purgeledger.Entry, no
 }
 
 func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return restoreFreezeTx(ctx, tx, e, now, `>=`)
+}
+
+func reapplyFreezeAfterUnfreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
+	return restoreFreezeTx(ctx, tx, e, now, `>`)
+}
+
+func restoreFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time, later string) (reapplied, error) {
 	var frozen *time.Time
 	err := tx.QueryRow(ctx, `SELECT frozen_at FROM users WHERE id = $1 FOR UPDATE`, e.ID).Scan(&frozen)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -225,7 +256,7 @@ func reapplyFreezeTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now ti
 	}
 	var lifted bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) >= $3)`,
+		`SELECT EXISTS (SELECT 1 FROM auth_events WHERE user_id = $1 AND kind = $2 AND date_trunc('second', at) `+later+` $3)`,
 		e.ID, EventAccountUnfrozen, e.At).Scan(&lifted); err != nil || lifted {
 		return reappliedNothing, err
 	}
