@@ -562,6 +562,40 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test(
+    "a trailing rerun runs to the most generous deadline of the callers that asked for it, never the first run's",
+    arguments: [
+      (joiners: [Duration?.none], uploads: true),
+      (joiners: [Duration?.some(.seconds(60))], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30)), .none], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30)), .some(.seconds(60))], uploads: true),
+      (joiners: [Duration?.some(.seconds(60)), .some(.seconds(-30))], uploads: true),
+      (joiners: [Duration?.some(.seconds(-30))], uploads: false),
+      (joiners: [Duration?.some(.seconds(-30)), .some(.seconds(-20))], uploads: false),
+    ])
+  func rerunRunsToItsCallersDeadline(joiners: [Duration?], uploads: Bool) async throws {
+    let (w, a, _) = try await twoPhones()
+    let gate = Gate(inner: w.server)
+    let ctx = SyncContext(
+      userID: a.userID, writerID: a.writerID, store: a.store, secrets: a.secrets, client: AuthClient(transport: gate),
+      clock: a.clock, random: a.random)
+    try enqueue(ctx, [op(1)])
+    let engine = SyncEngine(context: ctx)
+    let first = Task { await engine.run(.authored, deadline: ContinuousClock.now - .seconds(60)) }
+    while gate.held == 0 { await Task.yield() }
+    var asked: [Task<RunOutcome, Never>] = []
+    for joiner in joiners {
+      let deadline = joiner.map { ContinuousClock.now + $0 }
+      asked.append(Task { await engine.run(.authored, deadline: deadline) })
+      try await Task.sleep(for: .milliseconds(30))
+    }
+    gate.open()
+    _ = await first.value
+    for task in asked { _ = await task.value }
+    #expect(w.server.uploadCount == (uploads ? 1 : 0))
+    #expect(try ctx.store.pendingCount() == (uploads ? 0 : 1))
+  }
+
   @Test("a 429's wait lasts only as long as the run that met it")
   func retryAfterFollowsTheLastRun() async throws {
     let (w, a, _) = try await twoPhones()

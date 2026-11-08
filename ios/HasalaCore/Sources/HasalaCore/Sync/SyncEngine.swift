@@ -33,12 +33,22 @@ public struct RunOutcome: Sendable, Hashable {
 }
 
 public actor SyncEngine {
+  private struct Rerun {
+    var trigger: SyncTrigger
+    var deadline: ContinuousClock.Instant?
+
+    mutating func widen(by asked: SyncTrigger, until limit: ContinuousClock.Instant?) {
+      if asked.refreshesRoster { trigger = asked }
+      deadline = deadline.flatMap { current in limit.map { max(current, $0) } }
+    }
+  }
+
   public let context: SyncContext
   let observer: (any PageObserver)?
   public private(set) var status = SyncStatus()
   private var inFlight: Task<RunOutcome, Never>?
   /// The trailing rerun asked for while a run was in flight, if any.
-  private var rerun: SyncTrigger?
+  private var rerun: Rerun?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
   private var accountFullAtMs: Int64?
   private var latchThisRun: OutboxLatch?
@@ -84,7 +94,11 @@ public actor SyncEngine {
     if let t = inFlight {
       // The rerun keeps the strongest trigger asked for: one that re-verifies
       // the roster wins over `authored`.
-      if rerun == nil || trigger.refreshesRoster { rerun = trigger }
+      if rerun == nil {
+        rerun = Rerun(trigger: trigger, deadline: deadline)
+      } else {
+        rerun?.widen(by: trigger, until: deadline)
+      }
       return await t.value
     }
     let task = Task { await self.loop(trigger, deadline: deadline) }
@@ -100,7 +114,7 @@ public actor SyncEngine {
     while let next = rerun {
       rerun = nil
       if out.stop != nil { break }
-      let again = await once(next, deadline: deadline)
+      let again = await once(next.trigger, deadline: next.deadline)
       out.newData = out.newData || again.newData
       out.pulled.rowsStored += again.pulled.rowsStored
       out.pulled.opsOpened += again.pulled.opsOpened
