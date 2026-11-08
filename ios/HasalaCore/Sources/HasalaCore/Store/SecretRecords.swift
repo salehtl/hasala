@@ -150,7 +150,18 @@ public struct Secrets: Sendable {
     delete(.session(apiHost: apiHost))
     delete(.accountBinding)
     for e in epochs { delete(.epochKey(userID: userID, epoch: e)) }
-    if let w = writerID {
+    var writers = Set([writerID].compactMap { $0 })
+    let prefix = "\(userID.string):"
+    for service in SecretItem.writerServices {
+      do {
+        for account in try store.accounts(service: service) where account.hasPrefix(prefix) {
+          if let w = WriterID(String(account.dropFirst(prefix.count))) { writers.insert(w) }
+        }
+      } catch {
+        first = first ?? error
+      }
+    }
+    for w in writers {
       delete(.writerKey(userID: userID, writerID: w))
       delete(.approvalKey(userID: userID, writerID: w))
     }

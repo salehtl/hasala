@@ -67,6 +67,8 @@ public enum SecretItem: Sendable, Hashable {
     }
   }
 
+  public static let writerServices = ["app.hasala.writer-key", "app.hasala.approval-key"]
+
   /// Every service the fresh-install purge deletes (§4.4 `installCheck`).
   public static let allServices = [
     "app.hasala.session", "app.hasala.account", "app.hasala.epoch-key", "app.hasala.writer-key",
@@ -103,6 +105,7 @@ public protocol SecretStore: Sendable {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError)
   /// Deleting an absent item succeeds.
   func delete(_ item: SecretItem) throws(SecretStoreError)
+  func accounts(service: String) throws(SecretStoreError) -> [String]
 }
 
 /// An in-memory `SecretStore` for tests and `HASALA_MOCKS` previews. `locked`
@@ -137,6 +140,11 @@ public final class MemorySecretStore: SecretStore {
   public func delete(_ item: SecretItem) throws(SecretStoreError) {
     if locked { throw .notNow(status: -25308) }
     _ = items.withLock { $0.removeValue(forKey: Key(service: item.service, account: item.account)) }
+  }
+
+  public func accounts(service: String) throws(SecretStoreError) -> [String] {
+    if locked { throw .notNow(status: -25308) }
+    return items.withLock { $0.keys.filter { $0.service == service }.map(\.account) }
   }
 
   /// How many items are held (tests).

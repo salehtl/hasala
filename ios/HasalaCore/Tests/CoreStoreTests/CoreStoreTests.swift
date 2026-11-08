@@ -273,6 +273,38 @@ struct SecretTests {
     #expect(m.count == 0)
   }
 
+  @Test("a wipe takes the keys of every writer this account left here, and no other account's")
+  func wipeTakesEveryWriterOfTheAccount() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    let orphan = try #require(WriterID("ios-1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    let otherUser = try #require(UserID("7f1c2b9e-4d3a-4f5b-8c7d-0e1f2a3b4c5d"))
+    let otherWriter = try #require(WriterID("ios-2a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"))
+    for w in [writer, orphan] {
+      try s.writeWriterSeed(Data(count: 32), userID: user, writerID: w)
+      try m.write(.approvalKey(userID: user, writerID: w), Data("k".utf8))
+    }
+    try s.writeWriterSeed(Data(count: 32), userID: otherUser, writerID: otherWriter)
+    try m.write(.approvalKey(userID: otherUser, writerID: otherWriter), Data("k".utf8))
+
+    try s.wipeAccount(userID: user, writerID: writer)
+
+    #expect(try m.read(.writerKey(userID: user, writerID: writer)) == nil)
+    #expect(try m.read(.writerKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.approvalKey(userID: user, writerID: orphan)) == nil)
+    #expect(try m.read(.writerKey(userID: otherUser, writerID: otherWriter)) != nil)
+    #expect(try m.read(.approvalKey(userID: otherUser, writerID: otherWriter)) != nil)
+  }
+
+  @Test("a wipe with no binding still takes the account's writer keys")
+  func wipeWithoutABoundWriter() throws {
+    let m = MemorySecretStore()
+    let s = Secrets(store: m, apiHost: "h")
+    try s.writeWriterSeed(Data(count: 32), userID: user, writerID: writer)
+    try s.wipeAccount(userID: user, writerID: nil)
+    #expect(m.count == 0)
+  }
+
   struct RefusesApprovalKey: SecretStore {
     let inner: MemorySecretStore
     func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { try inner.read(item) }
@@ -281,6 +313,7 @@ struct SecretTests {
       if case .approvalKey = item { throw .notNow(status: -25308) }
       try inner.delete(item)
     }
+    func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
   }
 
   @Test("a refused delete does not stop the wipe: every other item goes, and the refusal is reported")

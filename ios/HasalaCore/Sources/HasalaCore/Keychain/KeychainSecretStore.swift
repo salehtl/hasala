@@ -21,6 +21,7 @@ public protocol KeychainAPI: Sendable {
   func update(_ query: [String: Any], _ attributes: [String: Any]) -> OSStatus
   func copyData(_ query: [String: Any]) -> (OSStatus, Data?)
   func delete(_ query: [String: Any]) -> OSStatus
+  func copyAccounts(_ query: [String: Any]) -> (OSStatus, [String])
 }
 
 public struct SystemKeychain: KeychainAPI {
@@ -35,6 +36,12 @@ public struct SystemKeychain: KeychainAPI {
     return (s, out as? Data)
   }
   public func delete(_ q: [String: Any]) -> OSStatus { SecItemDelete(q as CFDictionary) }
+  public func copyAccounts(_ q: [String: Any]) -> (OSStatus, [String]) {
+    var out: CFTypeRef?
+    let s = SecItemCopyMatching(q as CFDictionary, &out)
+    let items = out as? [[String: Any]] ?? []
+    return (s, items.compactMap { $0[kSecAttrAccount as String] as? String })
+  }
 }
 
 public final class KeychainSecretStore: SecretStore {
@@ -103,6 +110,18 @@ public final class KeychainSecretStore: SecretStore {
   public func delete(_ item: SecretItem) throws(SecretStoreError) {
     let s = api.delete(query(item))
     guard s == errSecSuccess || s == errSecItemNotFound else { throw Self.failure(s) }
+  }
+
+  public func accounts(service: String) throws(SecretStoreError) -> [String] {
+    var q = base(service: service, account: nil)
+    q[kSecReturnAttributes as String] = true
+    q[kSecMatchLimit as String] = kSecMatchLimitAll
+    let (s, accounts) = api.copyAccounts(q)
+    switch s {
+    case errSecSuccess: return accounts
+    case errSecItemNotFound: return []
+    default: throw Self.failure(s)
+    }
   }
 
   /// The fresh-install purge's deletes (§4.4 `installCheck`): every item of
@@ -183,6 +202,15 @@ public final class InMemoryKeychainAPI: KeychainAPI, @unchecked Sendable {
       if locked { return (errSecInteractionNotAllowed, nil) }
       guard let item = items[Self.key(q)] else { return (errSecItemNotFound, nil) }
       return (errSecSuccess, corruptReads ? Data([0]) : item.data)
+    }
+  }
+
+  public func copyAccounts(_ q: [String: Any]) -> (OSStatus, [String]) {
+    lock.withLock {
+      if locked { return (errSecInteractionNotAllowed, []) }
+      let prefix = "\(q[kSecAttrAccessGroup as String] as? String ?? "")|\(q[kSecAttrService as String] as? String ?? "")|"
+      let found = items.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+      return (found.isEmpty ? errSecItemNotFound : errSecSuccess, found)
     }
   }
 

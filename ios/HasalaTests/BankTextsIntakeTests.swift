@@ -901,4 +901,6 @@ nonisolated final class LockedNoSecretStore: SecretStore {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw .notNow(status: -25308) }
 
   func delete(_ item: SecretItem) throws(SecretStoreError) { throw .notNow(status: -25308) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { throw .notNow(status: -25308) }
 }
