@@ -30,6 +30,31 @@ struct HeldCopyTests {
     #expect(!ReviewEngine.queue(ledger.state).contains { $0.id == "starbucks-copy" })
   }
 
+  @Test func aKeptCopyStaysOutOfARuleAfterKeptBothAndAfterUndo() throws {
+    let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    let keep = try #require(try ledger.apply(.resolveCopy("starbucks-copy", merge: false)))
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == false)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    ledger.undo(keep)
+    #expect(ledger.state.txn("starbucks-copy")?.isHeldCopy == true)
+    #expect(ledger.state.txn("starbucks-copy")?.ruled == false)
+
+    try ledger.apply(.resolveCopy("starbucks-copy", merge: false))
+    let kept = try #require(ledger.state.txn("starbucks-copy"))
+    let rulesBefore = ledger.state.rules.count
+    try ledger.apply(.categorize("starbucks", "groceries", learnRule: true, project: nil))
+    #expect(ledger.state.rules.count == rulesBefore + 1)
+    #expect(ledger.state.txn("starbucks")?.categoryID == "groceries")
+    let after = try #require(ledger.state.txn("starbucks-copy"))
+    #expect(after.categoryID == kept.categoryID)
+    #expect(after.categorySource == kept.categorySource)
+    #expect(after.ruleID == kept.ruleID)
+    #expect(after.needsReview == kept.needsReview)
+  }
+
   @Test func mergeRemovesTheCopy() throws {
     let ledger = InMemoryLedger(state: Scenario.mayaCopy.state)
     #expect(try ledger.apply(.resolveCopy("starbucks-copy", merge: true))?.title == "Merged")

@@ -39,6 +39,7 @@ public final class InMemoryLedger: LedgerStore {
   private var nextCategory = 1
   private var sortOrder: [TxnID: Int] = [:]
   private var nextSort = 0
+  private var keptCopies = Set<TxnID>()
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     var state = state
@@ -61,6 +62,7 @@ public final class InMemoryLedger: LedgerStore {
     var title: String?
     var batch = false
     var order = sortOrder
+    var kept = keptCopies
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
@@ -273,6 +275,7 @@ public final class InMemoryLedger: LedgerStore {
         title = "Merged"
       } else {
         s.txns[i].heldCopy = nil
+        kept.insert(id)
         title = "Kept both"
       }
     case .keepCombinedApart(let id):
@@ -526,9 +529,10 @@ public final class InMemoryLedger: LedgerStore {
       title = nil
     }
 
-    MockReach.refresh(&s, sortOrder: order)
+    MockReach.refresh(&s, sortOrder: order, keptCopies: kept)
     let orderBefore = sortOrder
     sortOrder = order
+    keptCopies = kept
     state = s
     revision += 1
     guard let title else { return nil }
@@ -598,7 +602,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
     if let (old, new) = r.unreadTexts { Self.revertElements(&s.unreadTexts, before: old, after: new) }
     for (id, o) in r.sortOrder where sortOrder[id] == o.after { sortOrder[id] = o.before }
-    MockReach.refresh(&s, sortOrder: sortOrder)
+    MockReach.refresh(&s, sortOrder: sortOrder, keptCopies: keptCopies)
     state = s
     revision += 1
   }
