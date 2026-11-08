@@ -181,6 +181,25 @@ struct LiveAccountServiceTests {
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
   }
 
+  @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    await rt.holdWork()
+    #expect(await !rt.coordinator.run(.authored).ran)
+    for lane in rt.lanes.values { #expect(await lane.isStopped) }
+    await rt.backlog.ensure(retry: true)
+    #expect(await !rt.backlog.isRunning)
+    await rt.resumeWork()
+    for lane in rt.lanes.values { #expect(await !lane.isStopped) }
+    #expect(await rt.coordinator.run(.authored).ran)
+    await rt.close()
+  }
+
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let env = Self.phone(server)

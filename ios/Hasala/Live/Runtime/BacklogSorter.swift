@@ -220,6 +220,7 @@ actor BacklogSorter {
   private var checkAgain = false
   private var closed = false
   private var mayRun: Bool
+  private var held = false
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
@@ -270,7 +271,7 @@ actor BacklogSorter {
   func ensure(retry: Bool = false) async {
     guard !closed else { return }
     if retry { retryArmed = true }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     guard enabled() else { return resume() }
     if let run = record.run, run.phase != .done { return resume() }
     if checking {
@@ -292,7 +293,7 @@ actor BacklogSorter {
   }
 
   private var mayStart: Bool {
-    guard !closed, mayRun, task == nil else { return false }
+    guard !closed, mayRun, !held, task == nil else { return false }
     guard let run = record.run else { return true }
     return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
@@ -303,7 +304,7 @@ actor BacklogSorter {
       if run.phase != .done { end(.off) }
       return
     }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     switch run.phase {
     case .running:
       if task == nil { launch() } else { wake.fire() }
@@ -355,6 +356,17 @@ actor BacklogSorter {
 
   func settled() async {
     await stopping?.value
+  }
+
+  func holdRuns() async {
+    held = true
+    halt()
+    await settled()
+  }
+
+  func releaseRuns() {
+    held = false
+    resume()
   }
 
   func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {

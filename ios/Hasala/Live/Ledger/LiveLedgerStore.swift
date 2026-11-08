@@ -272,6 +272,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     }
   }
 
+  func writesFinished() async {
+    await writes?.value
+  }
+
   func canUndo(_ token: UndoToken) -> Bool { undoable.contains(token.id) }
 
   // MARK: The optimistic change

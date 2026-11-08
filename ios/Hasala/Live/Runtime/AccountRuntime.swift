@@ -492,6 +492,20 @@ final class AccountRuntime {
     await coordinator.finished()
   }
 
+  func holdWork() async {
+    await backlog.holdRuns()
+    await coordinator.pause()
+    for lane in lanes.values { await lane.stop() }
+    await store.writesFinished()
+    await observer.writes.finished()
+  }
+
+  func resumeWork() async {
+    for lane in lanes.values { await lane.resume() }
+    await coordinator.resume()
+    await backlog.releaseRuns()
+  }
+
   func followSwitch() {
     let sorter = backlog
     let center = NotificationCenter.default

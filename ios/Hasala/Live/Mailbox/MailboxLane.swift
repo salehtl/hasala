@@ -170,6 +170,8 @@ nonisolated final class MailboxLane: Sendable {
 
   func resume() async { await engine.resume() }
 
+  var isStopped: Bool { get async { await engine.stopped } }
+
   func close() async {
     work.close()
     await engine.stop()

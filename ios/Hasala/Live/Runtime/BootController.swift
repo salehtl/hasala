@@ -102,8 +102,8 @@ final class BootController {
     account.hooks = LiveAccountHooks(
       engine: { [weak self] in self?.runtime?.engine },
       context: { [weak self] in self?.runtime?.context },
-      pause: { [weak self] in await self?.runtime?.coordinator.pause() },
-      resume: { [weak self] in await self?.runtime?.coordinator.resume() },
+      pause: { [weak self] in await self?.runtime?.holdWork() },
+      resume: { [weak self] in await self?.runtime?.resumeWork() },
       left: { [weak self] in await self?.left() },
       otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) },
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })

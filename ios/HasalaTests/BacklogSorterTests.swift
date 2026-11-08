@@ -642,6 +642,46 @@ struct BacklogSorterTests {
       network: Net(), mayRun: mayRun, sleep: Sleeps().sleep)
   }
 
+  @Test(.timeLimit(.minutes(1))) func aHoldWaitsForThePassInFlightAndNothingStartsUntilItIsReleased() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.holdRuns()
+    #expect(slow.all == ["pass.start", "pass.end"])
+    #expect(await !s.isRunning)
+    await s.ensure(retry: true)
+    await s.resume()
+    #expect(await !s.isRunning)
+    #expect(saved.run?.phase == .running)
+    await s.releaseRuns()
+    #expect(await s.isRunning)
+    await s.suspend()
+    await s.settled()
+  }
+
+  @Test func releasingAHoldLeavesARunTheGateStoppedStopped() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.releaseRuns()
+    #expect(await !s.isRunning && script.passes == 0)
+    await s.allowRuns(true)
+    await s.finished()
+    #expect(script.passes == 1)
+  }
+
+  @Test func theGateAllowingRunsDoesNotLiftAHold() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.allowRuns(true)
+    #expect(await !s.isRunning && script.passes == 0)
+  }
+
   @Test(.timeLimit(.minutes(1))) func afterSuspendingSettledWaitsForThePassInFlight() async {
     let saved = Saved.running()
     let slow = SlowPass()

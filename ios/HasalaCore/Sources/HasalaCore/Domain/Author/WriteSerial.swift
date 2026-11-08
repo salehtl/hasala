@@ -11,6 +11,11 @@ public final class WriteSerial: Sendable {
     return try await body()
   }
 
+  public func finished() async {
+    await acquire()
+    release()
+  }
+
   public var isBusy: Bool { state.withLock { $0.busy } }
 
   private func acquire() async {
