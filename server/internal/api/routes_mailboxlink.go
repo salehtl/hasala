@@ -466,7 +466,7 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request, userID uuid.
 			 ON CONFLICT (user_id) DO UPDATE
 			   SET provider = EXCLUDED.provider, address_hmac = EXCLUDED.address_hmac,
 			       route_key_id = EXCLUDED.route_key_id, holder_writer_id = EXCLUDED.holder_writer_id,
-			       client_state_hash = EXCLUDED.client_state_hash, watch_expires_at = NULL, last_nudge_at = NULL,
+			       client_state_hash = EXCLUDED.client_state_hash, watch_expires_at = NULL, last_wake_hour = NULL, last_nudge_at = NULL,
 			       created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
 			 RETURNING created_at`,
 			userID, provider, addrHMAC, routeKey.KeyID(), info.WriterID, clientStateHash, now).Scan(&created)
