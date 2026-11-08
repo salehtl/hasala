@@ -32,6 +32,8 @@ const (
 	codePause           = 15 * time.Minute
 	codeVerifyWindow    = 15 * time.Minute
 	codeVerifiesPerSpan = 20
+	codeSendDeadline    = 30 * time.Second
+	codeSendWindow      = 4 * codeSendDeadline
 )
 
 // Code purposes and ceremony kinds (the closed sets of email_codes).
@@ -89,6 +91,12 @@ func newCode() (string, error) {
 // then a fresh code whose MAC alone is stored.
 func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, purpose, emailNorm string,
 	userID *uuid.UUID, ceremonyKind, ceremonyID string, send bool) (IssuedCode, error) {
+	return insertCodeTx(ctx, tx, keys, now, purpose, emailNorm, userID, ceremonyKind, ceremonyID, send,
+		purpose != PurposePasswordReset)
+}
+
+func insertCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.Time, purpose, emailNorm string,
+	userID *uuid.UUID, ceremonyKind, ceremonyID string, send, waitsForSend bool) (IssuedCode, error) {
 	tag := keys.EmailTag(emailNorm)
 	if ceremonyKind != CeremonyStepUp {
 		var paused bool
@@ -100,8 +108,9 @@ func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.T
 		var sends int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM email_codes WHERE purpose = $1 AND email_tag = $2
-			    AND ceremony_kind <> 'step_up' AND created_at > $3`,
-			purpose, tag, now.Add(-time.Hour)).Scan(&sends); err != nil {
+			    AND ceremony_kind <> 'step_up' AND created_at > $3
+			    AND (awaiting_send_until IS NULL OR awaiting_send_until > $4)`,
+			purpose, tag, now.Add(-time.Hour), now).Scan(&sends); err != nil {
 			return IssuedCode{}, fmt.Errorf("auth: code sends: %w", err)
 		}
 		if paused || sends >= codeSendsPerHour {
@@ -117,11 +126,16 @@ func issueCodeTx(ctx context.Context, tx pgx.Tx, keys *authkeys.Keys, now time.T
 	if err != nil {
 		return IssuedCode{}, err
 	}
+	var awaitingSend *time.Time
+	if waitsForSend {
+		until := now.Add(codeSendWindow)
+		awaitingSend = &until
+	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO email_codes (code_id, purpose, email_tag, user_id, ceremony_kind, ceremony_id, code_mac, sent,
-		   created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		id, purpose, tag, userID, ceremonyKind, ceremonyID, m, send, now, now.Add(CodeTTL)); err != nil {
+		   created_at, expires_at, awaiting_send_until)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		id, purpose, tag, userID, ceremonyKind, ceremonyID, m, send, now, now.Add(CodeTTL), awaitingSend); err != nil {
 		return IssuedCode{}, fmt.Errorf("auth: insert code: %w", err)
 	}
 	return IssuedCode{ID: id, Purpose: purpose, To: emailNorm, Tag: tag, UserID: userID, Code: code, Send: send}, nil

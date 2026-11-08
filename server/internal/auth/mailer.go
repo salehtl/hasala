@@ -73,7 +73,7 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 		m.sendStarted()
 		run := func() {
 			defer m.sendEnded()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), codeSendDeadline)
 			defer cancel()
 			e := mailq.Enqueue{Kind: mail.CodeKind(c.Purpose), Lane: mailq.LaneTransactional, To: c.To, Tag: c.Tag,
 				UserID: c.UserID, Params: map[string]any{"purpose": c.Purpose}}
@@ -84,13 +84,24 @@ func (m *Mailer) SendCodes(codes ...IssuedCode) {
 			}
 			if err := m.Queue.SendNow(ctx, e, render); err != nil {
 				m.logf("auth: code email (%s): %v", c.Purpose, err)
+				return
 			}
+			m.codeWentOut(c)
 		}
 		if m.Async != nil {
 			m.Async(run)
 		} else {
 			go run()
 		}
+	}
+}
+
+func (m *Mailer) codeWentOut(c IssuedCode) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.Queue.Pool.Exec(ctx,
+		`UPDATE email_codes SET awaiting_send_until = NULL WHERE code_id = $1 AND awaiting_send_until IS NOT NULL`, c.ID); err != nil {
+		m.logf("auth: code email (%s) went out, but its row was not updated: %v", c.Purpose, err)
 	}
 }
 
@@ -240,8 +251,8 @@ func (m *Mailer) renderQueuedCode(ctx context.Context, tx pgx.Tx, row mailq.Row)
 	if addr != row.Recipient {
 		return mail.Message{}, errors.New("auth: the account's address changed since the code was queued")
 	}
-	c, err := issueCodeTx(ctx, tx, m.Keys, m.now(), PurposeEmailVerify, addr, row.UserID, CeremonyEmailVerify,
-		row.UserID.String(), true)
+	c, err := insertCodeTx(ctx, tx, m.Keys, m.now(), PurposeEmailVerify, addr, row.UserID, CeremonyEmailVerify,
+		row.UserID.String(), true, false)
 	if err != nil {
 		return mail.Message{}, err
 	}
