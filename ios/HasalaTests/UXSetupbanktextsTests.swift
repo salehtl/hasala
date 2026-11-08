@@ -83,6 +83,54 @@ struct UXSetupbanktextsTests {
       now: { r.clock.now })
   }
 
+  func passTest(_ r: Rig, at date: Date) throws {
+    let passed = BankTextIntake.ms(date)
+    _ = try r.facts.update(nowMs: passed) {
+      $0.testPassedMs = passed
+      $0.testOpenedMs = nil
+    }
+    r.lane.reload()
+  }
+
+  @Test func aMissedSecondTestDoesNotReadAsPassedAfterARelaunch() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    #expect(r.lane.test == .received(at: Self.t0.addingTimeInterval(120)))
+    r.clock.now = Self.t0.addingTimeInterval(3600)
+    try r.lane.startTest()
+    r.clock.now = Self.t0.addingTimeInterval(3600 + 11 * 60)
+    r.lane.reload()
+    #expect(r.lane.test == .nothingYet)
+    #expect(relaunched(r).test == .idle)
+  }
+
+  @Test func aRelaunchDuringASecondTestDoesNotBringBackTheEarlierPass() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    let second = Self.t0.addingTimeInterval(3600)
+    r.clock.now = second
+    try r.lane.startTest()
+    let during = relaunched(r)
+    #expect(during.test == .waiting(since: second) && during.testWindowOpen)
+    r.clock.now = second.addingTimeInterval(11 * 60)
+    during.reload()
+    #expect(during.test == .idle && !during.testWindowOpen)
+  }
+
+  @Test func aPassKeepsAfterARelaunchAndARelaunchedTestCanStillPass() throws {
+    let r = rig(hintDelay: .seconds(60))
+    try r.lane.startTest()
+    try passTest(r, at: Self.t0.addingTimeInterval(120))
+    #expect(relaunched(r).test == .received(at: Self.t0.addingTimeInterval(120)))
+    let second = Self.t0.addingTimeInterval(3600)
+    r.clock.now = second
+    try r.lane.startTest()
+    try passTest(r, at: second.addingTimeInterval(30))
+    #expect(relaunched(r).test == .received(at: second.addingTimeInterval(30)))
+  }
+
   func blockSaving(_ r: Rig) throws {
     let facts = r.dir.appendingPathComponent("facts")
     try? FileManager.default.removeItem(at: facts)

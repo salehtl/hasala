@@ -126,7 +126,7 @@ final class LiveBankTexts: BankTextsConnecting {
   func startTest() throws(BankTextsFailure) {
     let started = nowMs
     do {
-      data = try facts.update(nowMs: started) { $0.testOpenedMs = started }
+      data = try facts.update(nowMs: started) { $0.openTest(atMs: started) }
     } catch {
       throw .failed(Self.saveFailed)
     }

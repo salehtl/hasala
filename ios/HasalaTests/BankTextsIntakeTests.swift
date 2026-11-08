@@ -939,6 +939,15 @@ struct BankTextsIntakeTests {
     #expect(try onDisk(r).testOpenedMs == nil)
   }
 
+  @Test func openingATestForgetsTheLastPass() throws {
+    let r = rig()
+    let now = BankTextIntake.ms(Self.t0)
+    try r.facts.update(nowMs: now) { $0.testPassedMs = now - 60_000 }
+    try r.facts.update(nowMs: now) { $0.openTest(atMs: now) }
+    let stored = try onDisk(r)
+    #expect(stored.testOpenedMs == now && stored.testPassedMs == nil)
+  }
+
   @Test func aReadThatPrunesNothingWritesNothing() {
     let r = rig()
     #expect(r.facts.read(nowMs: BankTextIntake.ms(Self.t0)) == BankTextsFactsData())

@@ -46,6 +46,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     return nowMs >= opened && nowMs < opened + Self.testWindowMs
   }
 
+  mutating func openTest(atMs ms: Int64) {
+    testOpenedMs = ms
+    testPassedMs = nil
+  }
+
   mutating func prune(nowMs: Int64) {
     if let older = lastKeptMs.values.max() { lastTextMs = max(lastTextMs ?? older, older) }
     lastKeptMs = [:]
