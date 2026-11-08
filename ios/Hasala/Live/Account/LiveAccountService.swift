@@ -715,6 +715,10 @@ final class LiveAccountService: AccountService {
       defer { proof.prf?.wipe() }
       guard let credentialID = proof.credentialID, proof.prf != nil else { throw CeremonyError.noPRF }
       let token = try bearer()
+      let keys: KeysResponse
+      do { keys = try await env.client.keys(bearer: token) } catch { throw CeremonyError.api(error) }
+      let body = try await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
+      defer { body.wipe() }
       let answer: PhraseViewAnswer
       do {
         answer = try await env.client.api.call(
@@ -722,10 +726,6 @@ final class LiveAccountService: AccountService {
       } catch {
         throw CeremonyError.api(error)
       }
-      let keys: KeysResponse
-      do { keys = try await env.client.keys(bearer: token) } catch { throw CeremonyError.api(error) }
-      let body = try await Enrolment.unlockWithPRF(env, userID: user, credentialID: credentialID, prf: proof.prf)
-      defer { body.wipe() }
       guard let box = try? Base64.decode(answer.phrase_box), let rk = try? Base64.decode(keys.recovery_pubkey) else {
         throw CeremonyError.badResponse("phrase box")
       }
