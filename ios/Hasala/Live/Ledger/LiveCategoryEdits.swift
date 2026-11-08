@@ -133,7 +133,6 @@ extension LedgerEditAuthor {
       out.append(try a.build())
       return (out, out.last?.lastAuthoredMs)
     }
-    for b in blobs { try await outbox.enqueue(b.ops) }
-    try await observer.reproject()
+    try await enqueueAll(blobs)
   }
 }

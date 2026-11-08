@@ -74,7 +74,9 @@ struct LiveLedgerMapperTests {
     }
   }
 
-  static func account(clock: any CoreTime.Clock = FixedClock(ms: anchor)) throws -> Account {
+  static func account(
+    clock: any CoreTime.Clock = FixedClock(ms: anchor), outboxClock: any CoreTime.Clock = FixedClock(ms: anchor)
+  ) throws -> Account {
     let store = try LedgerStore.inMemory()
     try store.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: anchor))
     let context = SyncContext(
@@ -83,7 +85,7 @@ struct LiveLedgerMapperTests {
       client: AuthClient(transport: MiniHasalad(invite: "")), clock: clock, random: SystemRandom())
     let projection = try ProjectionStore.inMemory()
     let observer = LedgerPageObserver(context: context, projection: projection, dictionary: AccountRuntime.dictionary)
-    let outbox = Outbox(store: store, clock: FixedClock(ms: anchor), debounce: .seconds(3600), onAuthored: {})
+    let outbox = Outbox(store: store, clock: outboxClock, debounce: .seconds(3600), onAuthored: {})
     return Account(context: context, projection: projection, observer: observer, outbox: outbox)
   }
 

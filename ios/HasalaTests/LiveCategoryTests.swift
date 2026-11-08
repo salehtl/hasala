@@ -89,6 +89,49 @@ struct LiveCategoryTests {
     #expect(try a.projection.reader.taxonomy().info("travel")?.name == "Travel")
   }
 
+  nonisolated final class CountingClock: CoreTime.Clock, Sendable {
+    let ms: Int64
+    private let count = Mutex(0)
+
+    init(ms: Int64) { self.ms = ms }
+
+    var calls: Int { count.withLock { $0 } }
+
+    func nowMs() -> Int64 {
+      count.withLock { $0 += 1 }
+      return ms
+    }
+  }
+
+  @Test func archivingMoreRowsThanOneBlobHoldsIsOneWrite() async throws {
+    let clock = CountingClock(ms: Mapper.anchor)
+    let a = try Mapper.account(outboxClock: clock)
+    let wall = Int64(1_791_633_600_000)
+    let trips = try #require(
+      try a.observer.stamps.build(try await a.observer.authorContext()) { o throws(AuthorError) in
+        for i in 0..<Sweep.maxOpsPerBlob {
+          _ = try o.manualEntry(
+            amountMinor: 10_00, currency: "AED", direction: "debit", localWallMs: wall - Int64(i) * 60_000, merchant: "Trip \(i)",
+            category: "travel")
+        }
+      })
+    let store = try await LiveUndoTests.store(a, suite: "categories.archive.onewrite.tests", extra: [trips])
+    var failed = false
+    store.onWriteFailed = { failed = true }
+    #expect(try a.projection.reader.categoryMembers("travel").count >= Sweep.maxOpsPerBlob)
+
+    let writes = clock.calls
+    try store.apply(.archiveCategory("travel", moveTo: "groceries"))
+    for _ in 0..<1_500 where try a.projection.reader.taxonomy().info("travel")?.active != false {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+
+    #expect(try a.projection.reader.taxonomy().info("travel")?.active == false)
+    #expect(try a.projection.reader.categoryMembers("travel").isEmpty)
+    #expect(clock.calls == writes + 1)
+    #expect(!failed)
+  }
+
   @Test func customCategoriesFollowTheirParent() {
     func info(_ id: String, builtin: Bool, parent: String? = nil) -> CategoryInfo {
       CategoryInfo(id: id, name: id, kind: .spending, bucket: .want, icon: "tag", active: true, builtin: builtin, sortKey: 0, parent: parent)
