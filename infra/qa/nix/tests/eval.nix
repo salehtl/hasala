@@ -7,7 +7,7 @@
 #   AT-E1  a minimal system, a fully configured one, one with the Gmail
 #          mailbox link but no Pub/Sub push and one with the Outlook mailbox
 #          link alone evaluate their toplevel with no failed assertion;
-#   AT-E2  each misuse fails the named module assertion (M1–M23), and each
+#   AT-E2  each misuse fails the named module assertion (M1–M24), and each
 #          ill-typed value (a Nix path literal for a secret, an unknown key
 #          kind, a tester limit of 0) fails the option's type, via tryEval;
 #   AT-E3  the rendered units carry exactly the environment and credentials the
@@ -555,6 +555,19 @@ let
     "relative secret path" = [
       "M22"
       (hasala { apns.keyFile = "secrets/apns.p8"; })
+    ];
+    "healthCheck with no alert destination" = [
+      "M24"
+      (hasala { monitoring.healthCheck.enable = true; })
+    ];
+    "healthCheck with a recovery notice and no alert destination" = [
+      "M24"
+      (hasala {
+        monitoring = {
+          healthCheck.enable = true;
+          ntfyUrl = "http://127.0.0.1:2586/test";
+        };
+      })
     ];
     "earlyAccessNotice without ntfyUrl" = [
       "M23"

@@ -1357,6 +1357,9 @@ in
           (a "M23" (
             !cfg.monitoring.earlyAccessNotice || cfg.monitoring.ntfyUrl != null
           ) "monitoring.earlyAccessNotice posts to monitoring.ntfyUrl: set it too.")
+          (a "M24" (
+            !cfg.monitoring.healthCheck.enable || cfg.monitoring.onFailure != [ ]
+          ) "monitoring.healthCheck alerts through monitoring.onFailure: set it too.")
         ];
 
       # ------------------------------------------------------------- §5.11

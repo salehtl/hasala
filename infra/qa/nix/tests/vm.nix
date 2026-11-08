@@ -79,6 +79,7 @@ in
         };
         # The test starts hasala-health by hand (P10); its timer stays off.
         monitoring.healthCheck.enable = true;
+        monitoring.onFailure = [ "hasala-vm-alert@%n.service" ];
         # A stand-in for a neighbour's state that no Hasala unit may read.
         hardening.inaccessiblePaths = [
           "-/var/lib/postgresql"
@@ -86,6 +87,11 @@ in
           "-/run/secrets"
           "-/var/lib/neighbour"
         ];
+      };
+
+      systemd.services."hasala-vm-alert@".serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.coreutils}/bin/true";
       };
 
       systemd.timers.hasala-health.wantedBy = lib.mkForce [ ];
