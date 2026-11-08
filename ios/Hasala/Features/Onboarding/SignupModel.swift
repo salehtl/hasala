@@ -426,6 +426,12 @@ final class SignupModel {
     }
   }
 
+  func showReplacementWords() {
+    if phrase == nil { startReplacement() }
+    guard phrase != nil else { return }
+    go(.phraseShow)
+  }
+
   private func showPhraseIntro(newPhrase: Bool = false) {
     do {
       if newPhrase || phrase == nil { try startPhrase() }

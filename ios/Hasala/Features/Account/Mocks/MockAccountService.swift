@@ -34,6 +34,7 @@
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
     var refuseFinish: AuthFailure?
+    var refusePhrase: AuthFailure?
     /// What the existing account has (the sign-in scenarios).
     var existing: Account
     /// What a successful sign-in leads to.
@@ -129,7 +130,11 @@
     }
 
     func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
-      RecoveryPhrase(words: Self.phraseWords)
+      if let f = refusePhrase {
+        refusePhrase = nil
+        throw f
+      }
+      return RecoveryPhrase(words: Self.phraseWords)
     }
 
     func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)

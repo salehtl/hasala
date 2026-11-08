@@ -297,4 +297,33 @@ struct AccountGatePhaseTests: AccountSuite {
     await unfreeze.value
     #expect(s.phase == .signedOut)
   }
+
+  @Test func aReplacementPhraseThatFailedIsMadeAgainFromItsButton() {
+    let account = signedInAccount()
+    account.refusePhrase = .unsupported
+    let (store, _) = store(account, phase: .needsKeys)
+    let m = store.replacementModel()
+    #expect(m.phrase == nil)
+    #expect(m.failure == .unsupported)
+    account.refusePhrase = .unsupported
+    m.showReplacementWords()
+    #expect(m.phrase == nil)
+    #expect(m.failure == .unsupported)
+    #expect(m.path.isEmpty)
+    m.showReplacementWords()
+    #expect(m.phrase?.words.count == 12)
+    #expect(m.failure == nil)
+    #expect(m.path == [.phraseShow])
+  }
+
+  @Test func theReplacementPhraseIsNotMadeAgainOnceItExists() {
+    let (store, _) = store(signedInAccount(), phase: .needsKeys)
+    let m = store.replacementModel()
+    m.showReplacementWords()
+    m.phraseRevealed = true
+    m.back()
+    m.showReplacementWords()
+    #expect(m.phraseSeen)
+    #expect(m.path == [.phraseShow])
+  }
 }
