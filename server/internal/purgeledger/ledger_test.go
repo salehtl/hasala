@@ -465,6 +465,30 @@ func TestEnsureEntryAddsOnlyWhatTheLedgerDoesNotHold(t *testing.T) {
 	}
 }
 
+func TestMissingOnlyReadsTheLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "purged")
+	at := time.Now().Truncate(time.Second)
+	e := Entry{ID: uuid.New(), At: at, Kind: KindInviteRevoked}
+	if missing, err := Missing(path, e, at.Add(-time.Hour)); err != nil || !missing {
+		t.Fatalf("an absent ledger: %v %v, want missing", missing, err)
+	}
+	if entries, err := Read(path); err != nil || len(entries) != 0 {
+		t.Fatalf("Missing wrote %+v %v", entries, err)
+	}
+	if missing, err := Missing(path, e, at.Add(time.Hour)); err != nil || missing {
+		t.Fatalf("past retention: %v %v, want not missing", missing, err)
+	}
+	if err := AppendEntries(path, e); err != nil {
+		t.Fatal(err)
+	}
+	if missing, err := Missing(path, e, at.Add(-time.Hour)); err != nil || missing {
+		t.Fatalf("a held line: %v %v, want not missing", missing, err)
+	}
+	if missing, err := Missing(path, Entry{ID: e.ID, At: at.Add(time.Minute), Kind: e.Kind}, at.Add(-time.Hour)); err != nil || !missing {
+		t.Fatalf("a later event of the same id: %v %v, want missing", missing, err)
+	}
+}
+
 func TestEnsureEntryLeavesAMalformedLedgerAlone(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "purged")
 	if err := os.WriteFile(path, []byte("not a line\n"), FileMode); err != nil {

@@ -56,6 +56,7 @@ type Console struct {
 	TTL     time.Duration
 	Now     func() time.Time
 	Record  func(purgeledger.Entry) error
+	Missing func(purgeledger.Entry) (bool, error)
 
 	queue  *mailq.Queue
 	kCSRF  []byte
@@ -502,10 +503,33 @@ func (c *Console) revoke(ctx context.Context, tx pgx.Tx, r *http.Request) (strin
 		return "", "/invites", "", errRefused
 	}
 	got, err := invites.Revoke(ctx, tx, id.String(), c.now())
+	if errors.Is(err, invites.ErrNoSuchInvite) {
+		missed, merr := c.revocationMissed(ctx, tx, id)
+		if merr != nil {
+			return id.String(), "/invites", "", merr
+		}
+		if missed {
+			return id.String(), "/invites", "", nil
+		}
+	}
 	if err == nil && got != id {
 		return id.String(), "/invites", "", errRefused
 	}
 	return id.String(), "/invites", "", err
+}
+
+func (c *Console) revocationMissed(ctx context.Context, q invites.Querier, id uuid.UUID) (bool, error) {
+	if c.Missing == nil {
+		return false, nil
+	}
+	_, at, err := invites.Revoked(ctx, q, id.String())
+	if errors.Is(err, invites.ErrNoSuchInvite) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return c.Missing(purgeledger.Entry{ID: id, At: at, Kind: purgeledger.KindInviteRevoked})
 }
 
 func (c *Console) recordRevoked(target string) error {
@@ -513,7 +537,13 @@ func (c *Console) recordRevoked(target string) error {
 	if err != nil || c.Record == nil {
 		return err
 	}
-	return c.Record(purgeledger.Entry{ID: id, At: c.now(), Kind: purgeledger.KindInviteRevoked})
+	ctx, cancel := context.WithTimeout(context.Background(), auditFor)
+	defer cancel()
+	_, at, err := invites.Revoked(ctx, c.Pool, target)
+	if err != nil {
+		return err
+	}
+	return c.Record(purgeledger.Entry{ID: id, At: at, Kind: purgeledger.KindInviteRevoked})
 }
 
 func (c *Console) resend(ctx context.Context, tx pgx.Tx, r *http.Request) (string, string, string, error) {

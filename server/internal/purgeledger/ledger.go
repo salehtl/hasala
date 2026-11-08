@@ -494,6 +494,33 @@ func EnsureEntry(path string, e Entry, cutoff time.Time) (bool, error) {
 		return false, fmt.Errorf("%w: %w", ErrNotWritten, err)
 	}
 	defer unlock()
+	held, err := holdsLocked(path, e)
+	if err != nil || held {
+		return false, err
+	}
+	if err := appendLocked(path, []byte(formatEntry(e))); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func Missing(path string, e Entry, cutoff time.Time) (bool, error) {
+	if path == "" {
+		return false, errors.New("purgeledger: no ledger path")
+	}
+	if e.At.Before(cutoff) {
+		return false, nil
+	}
+	unlock, err := lock(path)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	held, err := holdsLocked(path, e)
+	return !held && err == nil, err
+}
+
+func holdsLocked(path string, e Entry) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, fmt.Errorf("purgeledger: read %s: %w", path, err)
@@ -505,11 +532,8 @@ func EnsureEntry(path string, e Entry, cutoff time.Time) (bool, error) {
 	at := e.At.Truncate(time.Second)
 	for _, l := range lines {
 		if !l.unknown && l.e.ID == e.ID && l.e.Kind == e.Kind && !l.e.At.Before(at) {
-			return false, nil
+			return true, nil
 		}
 	}
-	if err := appendLocked(path, []byte(formatEntry(e))); err != nil {
-		return false, err
-	}
-	return true, nil
+	return false, nil
 }

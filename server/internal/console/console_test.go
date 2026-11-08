@@ -7,10 +7,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/salehtl/hasala/server/internal/invites"
 	"github.com/salehtl/hasala/server/internal/pgtest"
@@ -227,5 +230,72 @@ func TestARevocationTheLedgerDidNotRecordIsNotReportedAsDone(t *testing.T) {
 	w := req(c, "POST", path, form, nil)
 	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "restore ledger") {
 		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestARevocationTheLedgerMissedIsRecordedByPostingItAgain(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	broken := true
+	c.Record = func(e purgeledger.Entry) error {
+		if broken {
+			return os.ErrPermission
+		}
+		return purgeledger.AppendEntries(ledger, e)
+	}
+	c.Missing = func(e purgeledger.Entry) (bool, error) { return purgeledger.Missing(ledger, e, time.Time{}) }
+	id, _, err := invites.MintPrinted(bg, pool, "", invites.DefaultTTL, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusInternalServerError {
+		t.Fatalf("revoke with a failed ledger write: %d %s", w.Code, w.Body)
+	}
+	var closed time.Time
+	if err := pool.QueryRow(bg, `SELECT closed_at FROM invite_codes WHERE id = $1`, id).Scan(&closed); err != nil {
+		t.Fatal(err)
+	}
+
+	broken = false
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("posting again: %d %s", w.Code, w.Body)
+	}
+	entries, err := purgeledger.Read(ledger)
+	if err != nil || len(entries) != 1 || entries[0].Kind != purgeledger.KindInviteRevoked || entries[0].ID != id ||
+		!entries[0].At.Equal(closed.Truncate(time.Second)) {
+		t.Fatalf("ledger %+v %v, want the revocation at %v", entries, err, closed)
+	}
+
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("a third post: %d %s", w.Code, w.Body)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 1 {
+		t.Fatalf("ledger %+v %v after a third post, want one entry", entries, err)
+	}
+	var ok, refused int
+	_ = pool.QueryRow(bg, `SELECT count(*) FILTER (WHERE result = 'ok'), count(*) FILTER (WHERE result = 'refused')
+		FROM admin_audit WHERE action = 'console.invite.revoke'`).Scan(&ok, &refused)
+	if ok != 2 || refused != 1 {
+		t.Fatalf("audit ok=%d refused=%d", ok, refused)
+	}
+}
+
+func TestPostingARevokeForAnInviteThatWasNeverRevokedStaysRefused(t *testing.T) {
+	pool := pgtest.New(t)
+	c := New(pool, host, "tail.example.ts.net", []string{"owner@github"}, 0)
+	ledger := filepath.Join(t.TempDir(), "purged")
+	c.Record = func(e purgeledger.Entry) error { return purgeledger.AppendEntries(ledger, e) }
+	c.Missing = func(e purgeledger.Entry) (bool, error) { return purgeledger.Missing(ledger, e, time.Time{}) }
+	id := uuid.New()
+	path := "/invites/" + id.String() + "/revoke"
+	form := url.Values{"csrf": {c.csrf("owner@github", path, id.String(), c.now())}}
+	if w := req(c, "POST", path, form, nil); w.Code != http.StatusConflict {
+		t.Fatalf("revoke of an unknown invite: %d %s", w.Code, w.Body)
+	}
+	if entries, err := purgeledger.Read(ledger); err != nil || len(entries) != 0 {
+		t.Fatalf("ledger %+v %v, want nothing recorded", entries, err)
 	}
 }
