@@ -786,6 +786,14 @@ struct LiveRecurringTests {
     #expect(d.pauses.isEmpty && d.status == .active && d.end == nil)
   }
 
+  @Test func pausingAgainReplacesAPauseThatHasNotStarted() throws {
+    var d = Self.draft()
+    try BillEdits.pause(&d, today: Self.day(2026, 11, 6), until: nil, paid: [Self.day(2026, 11, 6), Self.day(2026, 12, 6)])
+    #expect(d.pauses == [OpAuthor.BillPauseDraft(from: Self.day(2027, 1, 6))])
+    try BillEdits.pause(&d, today: Self.day(2026, 11, 7), until: nil)
+    #expect(d.pauses == [OpAuthor.BillPauseDraft(from: Self.day(2026, 11, 7))])
+  }
+
   @Test func thePatchPausesAfterAPaidDueAndAcceptsOnlyANotice() throws {
     var s = MayaLedger.state
     let dewa = try #require(s.bills.firstIndex { $0.id == "dewa" })

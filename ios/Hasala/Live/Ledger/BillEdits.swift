@@ -121,11 +121,11 @@ nonisolated enum BillEdits {
       guard let unpaid = firstUnpaidDue(v, onOrAfter: first, paid: paid) else { throw Failure.refused("no later due") }
       from = unpaid
     }
-    if let until, until <= from { throw Failure.refused("until") }
-    if let last = d.pauses.last {
-      guard let lastUntil = last.until, lastUntil <= from else { throw Failure.refused("pauses overlap") }
+    do throws(Draft.PauseRefusal) {
+      try d.startPause(from: from, until: until, today: today)
+    } catch {
+      throw Failure.refused(error.rawValue)
     }
-    d.pauses.append(OpAuthor.BillPauseDraft(from: from, until: until))
   }
 
   static func resume(_ d: inout Draft, today: CivilDate) throws {

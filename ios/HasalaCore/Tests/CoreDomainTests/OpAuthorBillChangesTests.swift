@@ -66,6 +66,38 @@ struct OpAuthorBillChangesTests {
     return s
   }
 
+  @Test func aNewPauseReplacesOneThatHasNotStarted() throws {
+    var d = Self.base
+    d.pauses = [.init(from: Self.d("2026-04-06"), until: Self.d("2026-05-06")), .init(from: Self.d("2026-12-06"))]
+    try d.startPause(from: Self.d("2026-11-05"), until: Self.d("2026-11-20"), today: Self.d("2026-11-05"))
+    #expect(d.pauses == [.init(from: Self.d("2026-04-06"), until: Self.d("2026-05-06")), .init(from: Self.d("2026-11-05"), until: Self.d("2026-11-20"))])
+    #expect(!Self.refused(d))
+  }
+
+  @Test func aNewPauseNeverStartsLaterThanTheOneItReplaces() throws {
+    var d = Self.base
+    d.pauses = [.init(from: Self.d("2026-12-06"), until: Self.d("2027-01-06"))]
+    try d.startPause(from: Self.d("2027-02-06"), until: nil, today: Self.d("2026-11-05"))
+    #expect(d.pauses == [.init(from: Self.d("2026-12-06"))])
+    #expect(!Self.refused(d))
+  }
+
+  @Test func aPauseThatStartedStillRefusesAndNothingChanges() throws {
+    var d = Self.base
+    let open = [OpAuthor.BillPauseDraft(from: Self.d("2026-10-06"))]
+    d.pauses = open
+    #expect(throws: OpAuthor.BillDraft.PauseRefusal.overlap) {
+      try d.startPause(from: Self.d("2026-11-05"), until: nil, today: Self.d("2026-11-05"))
+    }
+    #expect(d.pauses == open)
+    let scheduled = [OpAuthor.BillPauseDraft(from: Self.d("2026-12-06"))]
+    d.pauses = scheduled
+    #expect(throws: OpAuthor.BillDraft.PauseRefusal.until) {
+      try d.startPause(from: Self.d("2026-11-05"), until: Self.d("2026-11-05"), today: Self.d("2026-11-05"))
+    }
+    #expect(d.pauses == scheduled)
+  }
+
   @Test("empty lists are omitted; non-empty ones follow status, in the decoder's shape")
   func payload() throws {
     let plain = try Self.authored(Self.base)
