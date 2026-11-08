@@ -576,8 +576,8 @@ extension TxnRow {
   public var samePurchaseRow: SamePurchase.Row {
     SamePurchase.Row(
       id: id, live: supersededBy == nil, unparsed: unparsed, archived: archived != nil, manual: entryMethod == "manual",
-      amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, direction: direction, bank: bank, last4: last4,
-      postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
+      amountMinor: amountMinor, currency: currency, amountHomeMinor: amountHomeMinor, homeStated: homeSource == .stated, direction: direction,
+      bank: bank, last4: last4, postedMs: postedMs, merchantKey: merchantKey, possibleDuplicateOf: possibleDuplicateOf,
       duplicateDisposition: duplicateDisposition, heldCopy: heldCopy)
   }
 
