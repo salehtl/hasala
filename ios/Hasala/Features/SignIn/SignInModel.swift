@@ -30,6 +30,7 @@ final class SignInModel {
   private(set) var reset: ResetTicket?
   /// When the last reset code was sent (the resend countdown runs from it).
   private(set) var resetCodeSentAt: Date?
+  private(set) var resetCodeUsedUp = false
   var newPassword = ""
   var confirmPassword = ""
   private(set) var waiting = false
@@ -43,6 +44,7 @@ final class SignInModel {
   var phraseText = ""
   private(set) var recovery: RecoveryTicket?
   private(set) var recoverCodeSentAt: Date?
+  private(set) var recoverCodeUsedUp = false
   var recoverCode = ""
   /// The way to sign in `recover/verify` was sent with (`02` #48 binds the ceremony to it).
   private(set) var verifiedRecoveryKind: SignInMethod?
@@ -72,6 +74,9 @@ final class SignInModel {
   private func fail(_ f: AuthFailure, on route: WelcomeRoute) {
     failure = f
     failureOn = route
+    guard f == .codeExpired else { return }
+    if route == .forgotCode { resetCodeUsedUp = true }
+    if route == .recoverCode { recoverCodeUsedUp = true }
   }
 
   private func clearFailure() {
@@ -133,6 +138,7 @@ final class SignInModel {
     resetEmail = email
     resetCodeText = ""
     reset = nil
+    resetCodeUsedUp = false
     resetApproved = false
     clearFailure()
   }
@@ -143,6 +149,7 @@ final class SignInModel {
     do {
       reset = try await account.beginPasswordReset(email: resetEmail)
       resetCodeSentAt = .now
+      resetCodeUsedUp = false
       resetCodeText = ""
       clearFailure()
       return true
@@ -169,7 +176,7 @@ final class SignInModel {
 
   func resetCodeExpired(now: Date) -> Bool {
     guard let resetCodeSentAt else { return false }
-    return EmailCode.expired(sentAt: resetCodeSentAt, now: now)
+    return resetCodeUsedUp || EmailCode.expired(sentAt: resetCodeSentAt, now: now)
   }
 
   /// The person changes the code after a wrong one: the cells go back to typing.
@@ -257,6 +264,7 @@ final class SignInModel {
       do {
         recovery = try await account.beginRecovery(words: words)
         recoverCodeSentAt = .now
+        recoverCodeUsedUp = false
         recoverCode = ""
         verifiedRecoveryKind = nil
         clearFailure()
@@ -270,7 +278,7 @@ final class SignInModel {
 
   func recoverCodeExpired(now: Date) -> Bool {
     guard verifiedRecoveryKind == nil, let recoverCodeSentAt else { return false }
-    return EmailCode.expired(sentAt: recoverCodeSentAt, now: now)
+    return recoverCodeUsedUp || EmailCode.expired(sentAt: recoverCodeSentAt, now: now)
   }
 
   func resendRecoveryCode() async -> Bool {
@@ -284,6 +292,7 @@ final class SignInModel {
     recoverCode = ""
     recovery = nil
     recoverCodeSentAt = nil
+    recoverCodeUsedUp = false
     verifiedRecoveryKind = nil
   }
 
@@ -368,6 +377,7 @@ final class SignInModel {
     } catch {
       self.recovery = nil
       recoverCodeSentAt = nil
+      recoverCodeUsedUp = false
       recoverCode = ""
       verifiedRecoveryKind = nil
       fail(error, on: .recoverWords)

@@ -262,6 +262,105 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(m.resetCodeExpired(now: sent.addingTimeInterval(10 * 60 + 1)))
   }
 
+  @Test func aFailedResendLeavesAUsedUpRecoveryCodeExpired() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(!(await m.submitRecoveryCode()))
+    }
+    #expect(m.failure(on: .recoverCode) == .codeExpired)
+    let sent = try #require(m.recoverCodeSentAt)
+    for refused: AuthFailure in [.offline, .rateLimited] {
+      account.failNext = refused
+      #expect(!(await m.resendRecoveryCode()))
+      #expect(m.failure(on: .recoverCode) == refused)
+      #expect(m.recoverCodeExpired(now: sent))
+      let state = CodeStepScreen.cellState(failure: refused, code: "", expired: m.recoverCodeExpired(now: sent))
+      #expect(state == .expired)
+    }
+    #expect(await m.resendRecoveryCode())
+    #expect(m.failure(on: .recoverCode) == nil)
+    #expect(!m.recoverCodeExpired(now: try #require(m.recoverCodeSentAt)))
+  }
+
+  @Test func aRecoveryCodeUsedUpWhileFinishingStaysExpiredAfterAFailedResend() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(await m.finishRecovery(.password("a brand new passphrase")) == .codeRejected)
+    }
+    #expect(m.failure(on: .recoverCode) == .codeExpired)
+    let sent = try #require(m.recoverCodeSentAt)
+    account.failNext = .offline
+    #expect(!(await m.resendRecoveryCode()))
+    #expect(m.recoverCodeExpired(now: sent))
+  }
+
+  @Test func aWrongRecoveryCodeIsNotUsedUp() async throws {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = "000000"
+    #expect(!(await m.submitRecoveryCode()))
+    let sent = try #require(m.recoverCodeSentAt)
+    account.failNext = .offline
+    #expect(!(await m.resendRecoveryCode()))
+    #expect(!m.recoverCodeExpired(now: sent))
+  }
+
+  @Test func forgettingARecoveryForgetsThatItsCodeWasUsedUp() async {
+    let account = MockAccountService(existing: .passkey)
+    account.delay = .zero
+    account.capabilities = .beta
+    let m = SignInModel(account: account) { _ in }
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    for _ in 0..<5 {
+      m.recoverCode = "000000"
+      #expect(!(await m.submitRecoveryCode()))
+    }
+    #expect(m.recoverCodeUsedUp)
+    m.forgetRecovery()
+    #expect(!m.recoverCodeUsedUp)
+  }
+
+  @Test func aFailedResendLeavesAUsedUpResetCodeExpired() async throws {
+    let account = MockAccountService(existing: .passwordOnly)
+    account.delay = .zero
+    let m = SignInModel(account: account) { _ in }
+    m.resetEmail = "maya@example.com"
+    #expect(await m.submitResetEmail())
+    for _ in 0..<5 {
+      m.resetCodeText = "000000"
+      #expect(!(await m.submitResetCode()))
+    }
+    #expect(m.failure(on: .forgotCode) == .codeExpired)
+    let sent = try #require(m.resetCodeSentAt)
+    for refused: AuthFailure in [.offline, .rateLimited] {
+      account.failNext = refused
+      #expect(!(await m.submitResetEmail()))
+      #expect(m.failure(on: .forgotCode) == refused)
+      #expect(m.resetCodeExpired(now: sent))
+      let state = CodeStepScreen.cellState(failure: refused, code: "000000", expired: m.resetCodeExpired(now: sent))
+      #expect(state == .expired)
+    }
+    #expect(await m.submitResetEmail())
+    #expect(m.failure(on: .forgotCode) == nil)
+    #expect(!m.resetCodeExpired(now: try #require(m.resetCodeSentAt)))
+  }
+
   @Test func theCodeScreenExpiresByTheClockAsByTheServer() {
     #expect(CodeStepScreen.cellState(failure: nil, code: "", expired: false) == .typing)
     #expect(CodeStepScreen.cellState(failure: nil, code: "12", expired: true) == .expired)

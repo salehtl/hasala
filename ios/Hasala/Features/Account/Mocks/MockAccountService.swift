@@ -193,6 +193,7 @@
 
     func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket {
       await pause()
+      try injected()
       guard let norm = AccountFields.email(email) else { throw .badEmail }
       codeTries = 5
       resetPolls = 0
