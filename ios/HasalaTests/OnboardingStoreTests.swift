@@ -363,6 +363,86 @@ struct AccountGatePhaseTests: AccountSuite {
     #expect(s.notice == "You already have an account")
   }
 
+  private func recoveryOnItsLastScreen(_ account: MockAccountService) async -> (OnboardingStore, AccountSession, SignInModel) {
+    let (store, s) = store(account, phase: .signedOut)
+    let m = store.signIn
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    store.signup.path = [.signIn, .recoverIntro, .recoverWords, .recoverCode, .recoverMethod]
+    return (store, s, m)
+  }
+
+  @Test func anInviteLinkLeavesARecoveryBeingVerifiedOnScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finishRecovery(.passkey) }
+    while !m.busy { await Task.yield() }
+    #expect(m.verifiedRecoveryKind == nil)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(s.notice == "You already have an account")
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(await finish.value == .done)
+    #expect(m.recovered == .passkey)
+    #expect(store.signup.path.last == .recoverMethod)
+  }
+
+  @Test func anInviteLinkLeavesARecoveryBeingFinishedOnScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finishRecovery(.passkey) }
+    while m.verifiedRecoveryKind == nil { await Task.yield() }
+    #expect(m.recovered == nil)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(s.notice == "You already have an account")
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(await finish.value == .done)
+    #expect(m.recovered == .passkey)
+    #expect(store.signup.path.last == .recoverMethod)
+    m.recoveryDone()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func anInviteLinkOpensOnceARecoveryHasFailed() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.failNext = .offline
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(store.signup.path == [.inviteReady])
+    #expect(s.notice == nil)
+  }
+
+  @Test func anInviteLinkDuringTheLastSignupStepStillReachesTheMadeAccount() async {
+    let account = MockAccountService()
+    let (store, s) = store(account, phase: .signedOut)
+    let m = store.signup
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await m.continueWithMethod()
+    showPhrase(m)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finish() }
+    while !m.busy { await Task.yield() }
+    s.open(inviteLink)
+    store.consumeInvite()
+    await finish.value
+    #expect(m.profile != nil)
+    #expect(m.path.last == .accountReady)
+  }
+
   @Test func anInviteLinkStillOpensForSomeoneWithoutAnAccount() {
     let (store, s) = store(MockAccountService(), phase: .signedOut)
     store.signup.path = [.signIn]

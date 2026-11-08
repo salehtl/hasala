@@ -84,7 +84,7 @@ final class OnboardingStore {
     let session = self.session()
     guard let link = session.pendingInvite else { return }
     session.pendingInvite = nil
-    guard signup.profile == nil, signIn.recovered == nil else {
+    guard signup.profile == nil, signIn.recovered == nil, !signIn.finishingRecovery else {
       session.notice = AccountSession.hasAccountNotice
       return
     }

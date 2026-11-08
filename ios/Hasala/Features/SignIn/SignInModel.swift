@@ -48,6 +48,7 @@ final class SignInModel {
   private(set) var verifiedRecoveryKind: SignInMethod?
   /// Recovery finished with this new way to sign in ("You're back in", Paper H5V).
   private(set) var recovered: SignInMethod?
+  private(set) var finishingRecovery = false
   /// The pasteboard's `changeCount` when the phrase field received a paste, so the
   /// pasteboard is cleared only if it still holds that paste (spec 04 §6.7).
   var pastedPhraseChangeCount: Int?
@@ -310,7 +311,11 @@ final class SignInModel {
     guard let recovery else { return .failed }
     let screen: WelcomeRoute = credential.method == .passkey ? .recoverMethod : .recoverPassword
     busy = true
-    defer { busy = false }
+    finishingRecovery = true
+    defer {
+      busy = false
+      finishingRecovery = false
+    }
     if let kind = verifiedRecoveryKind, kind != credential.method {
       // The ceremony is bound to the kind it was verified with; its code is spent.
       fail(.badPhrase("This recovery was started for a \(kind == .passkey ? "passkey" : "password"). Go back to your words to choose again."),
