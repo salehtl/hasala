@@ -196,6 +196,10 @@ struct PhraseEntryGrid: View {
       focused.wrappedValue = true
       captured = screenIsCaptured()
     }
+    .onDisappear { forgetPaste() }
+    .onChange(of: scenePhase) { _, now in
+      if now != .active { forgetPaste() }
+    }
     .onChange(of: editFocused) { _, now in
       if !now, edit.wrappedValue != nil { commitEdit(refocus: false) }
     }
@@ -215,6 +219,11 @@ struct PhraseEntryGrid: View {
         focused.wrappedValue = true
       }
     }
+  }
+
+  private func forgetPaste() {
+    clearPastedPhrase(changeCount: pastedChangeCount)
+    pastedChangeCount = nil
   }
 
   private var field: some View {

@@ -114,6 +114,7 @@ final class OnboardingStore {
 
   /// Sign-out, erase, wipe: every draft goes; the stories' page stays.
   func forgetAccountDrafts() {
+    signIn.forgetRecovery()
     setup = nil
     finish = nil
     firstScan = FirstScanRun()

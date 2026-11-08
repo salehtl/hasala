@@ -52,6 +52,7 @@ final class SignInModel {
   /// The pasteboard's `changeCount` when the phrase field received a paste, so the
   /// pasteboard is cleared only if it still holds that paste (spec 04 §6.7).
   var pastedPhraseChangeCount: Int?
+  var clearPasteboard: @MainActor (Int?) -> Void = { clearPastedPhrase(changeCount: $0) }
 
   /// How long the other iPhone has to answer (spec 04 §16.4: the request lives 10 minutes).
   static let approvalWindow: TimeInterval = 600
@@ -267,7 +268,7 @@ final class SignInModel {
   }
 
   func forgetRecovery() {
-    clearPastedPhrase(changeCount: pastedPhraseChangeCount)
+    clearPasteboard(pastedPhraseChangeCount)
     pastedPhraseChangeCount = nil
     phraseText = ""
     recoverCode = ""

@@ -196,6 +196,21 @@ final class SignInSecurityUITests: XCTestCase {
     XCTAssertTrue(el(app, "home.hero.left").waitForExistence(timeout: 10))
   }
 
+  @MainActor
+  func testLeavingTheEntryTakesAPastedPhraseOffThePasteboard() throws {
+    let app = launch(scenario: "signInPassword", pasteboard: Self.phrase.joined(separator: " "))
+    tap(app, "stories.signIn", timeout: 15)
+    tap(app, "signIn.recover")
+    tap(app, "recover.start")
+    XCTAssertTrue(el(app, "phraseEntry.paste").waitForExistence(timeout: 10))
+    tap(app, "phraseEntry.paste")
+    XCTAssertTrue(app.staticTexts["Enter your recovery phrase"].waitForExistence(timeout: uiWait))
+    XCTAssertTrue(UIPasteboard.general.hasStrings)
+    app.navigationBars.buttons.firstMatch.tap()
+    XCTAssertTrue(el(app, "recover.start").waitForExistence(timeout: uiWait))
+    XCTAssertFalse(UIPasteboard.general.hasStrings)
+  }
+
   /// No words (Paper H9F): the honest end, then back to the words.
   @MainActor
   func testTheHonestEndLeadsBackToTheWords() throws {

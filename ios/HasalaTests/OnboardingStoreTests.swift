@@ -28,6 +28,16 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(m.phraseText.isEmpty && m.recoverCode.isEmpty && m.recovery == nil)
   }
 
+  @Test func droppingTheDraftsTakesAPastedPhraseOffThePasteboard() {
+    let (store, _) = store(MockAccountService(existing: .passkey))
+    var cleared: [Int?] = []
+    store.signIn.clearPasteboard = { cleared.append($0) }
+    store.signIn.pastedPhraseChangeCount = 41
+    store.phaseChanged(from: .checking, to: .signedOut)
+    #expect(cleared == [41])
+    #expect(store.signIn.pastedPhraseChangeCount == nil)
+  }
+
   @Test func theSameModelsComeBackOnEveryCall() {
     let (store, _) = store()
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
