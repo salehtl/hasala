@@ -205,7 +205,7 @@ func limitCodeVerify(ctx context.Context, pool *pgxpool.Pool, now time.Time, cod
 	)
 	err = tx.QueryRow(ctx,
 		`UPDATE email_codes SET attempts = attempts + 1,
-		        out_of_attempts_at = CASE WHEN attempts + 1 >= $2 THEN $3::timestamptz END
+		        out_of_attempts_at = CASE WHEN attempts + 1 >= $2 AND expires_at > $3 THEN $3::timestamptz END
 		  WHERE code_id = $1 AND used_at IS NULL AND burned_at IS NULL AND attempts < $2
 		 RETURNING purpose, ceremony_kind, email_tag`,
 		codeID, codeMaxAttempts, now).Scan(&purpose, &kind, &tag)

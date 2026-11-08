@@ -44,6 +44,52 @@ func TestAnAddressPausesWhenItsCodesLastGuessWasNeverJudged(t *testing.T) {
 	}
 }
 
+func TestGuessesAtAnExpiredSignupCodeDoNotPauseTheAddress(t *testing.T) {
+	for name, late := range map[string]time.Duration{
+		"at the moment it expires": CodeTTL,
+		"after it expired":         CodeTTL + time.Minute,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newAcctFixture(t)
+			addr := newAddr()
+			invite := f.printedInvite(false)
+			s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stale := f.lastCode(addr)
+			f.clock.advance(late)
+			for i := 0; i < codeMaxAttempts; i++ {
+				if err := f.acct.SignupVerify(bgctx, s.SignupID, stale); !errors.Is(err, ErrCodeRejected) {
+					t.Fatalf("attempt %d at the expired code: %v", i, err)
+				}
+			}
+			if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"}); err != nil {
+				t.Fatalf("a new code after guesses at an expired one: %v", err)
+			}
+		})
+	}
+}
+
+func TestASignupCodeStillUsableAtItsLastGuessPausesTheAddress(t *testing.T) {
+	f := newAcctFixture(t)
+	addr := newAddr()
+	invite := f.printedInvite(false)
+	s, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var codeID uuid.UUID
+	if err := f.pool.QueryRow(bgctx, `SELECT code_id FROM signup_ceremonies WHERE id = $1`, s.SignupID).Scan(&codeID); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.advance(CodeTTL - time.Second)
+	f.takeEveryAttempt(codeID)
+	if _, err := f.acct.SignupBegin(bgctx, SignupBeginRequest{InviteCode: invite, Email: addr, DisplayName: "Maya"}); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("a code right after the last guess was lost: %v, want the pause", err)
+	}
+}
+
 func TestADeviceCodeWhoseLastGuessWasNeverJudgedPausesTheAccountsResets(t *testing.T) {
 	f := newAcctFixture(t)
 	m := f.passwordMember("Maya")
