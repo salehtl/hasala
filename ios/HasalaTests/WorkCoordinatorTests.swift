@@ -503,4 +503,102 @@ struct WorkCoordinatorTests {
     await c.close()
     #expect(await c.resume() == nil)
   }
+
+  static func slowStop(_ log: Log, _ stop: SyncStop, after: Duration = .milliseconds(150)) -> WorkCoordinator {
+    WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          try? await Task.sleep(for: after)
+          return (newData: false, stop: stop)
+        }, mailbox: nil, committed: { log.add("committed") }, stopped: { log.add("stopped.\($0)") }))
+  }
+
+  @Test(.timeLimit(.minutes(1)), arguments: [SyncStop.wipe, .needsSignIn, .frozen, .halted(.serverRestored)])
+  func aStopFoundAfterTheOnlyCallerGaveUpStillReachesTheGate(_ stop: SyncStop) async {
+    let log = Log()
+    let c = Self.slowStop(log, stop)
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    #expect(await job.value.stop == .cancelled)
+    #expect(log.all.isEmpty)
+    await c.finished()
+    #expect(log.all == ["stopped.\(stop)"])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aStopFoundAfterTheAccountClosedIsDropped() async {
+    let log = Log()
+    let c = Self.slowStop(log, .wipe)
+    let job = Task { await c.run(.foreground) }
+    try? await Task.sleep(for: .milliseconds(50))
+    await c.close()
+    _ = await job.value
+    await c.finished()
+    try? await Task.sleep(for: .milliseconds(50))
+    #expect(log.all.isEmpty)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aCleanSyncAfterTheOnlyCallerGaveUpTellsTheGateNothing() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          try? await Task.sleep(for: .milliseconds(150))
+          return (newData: false, stop: .offline)
+        }, mailbox: nil, committed: {}, stopped: { log.add("stopped.\($0)") }))
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    _ = await job.value
+    await c.finished()
+    #expect(log.all.isEmpty)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aStopSeenByARunAndByTheOneItsCallerLeftIsHandledOnce() async {
+    let log = Log()
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          try? await Task.sleep(for: .milliseconds(150))
+          return (newData: false, stop: .wipe)
+        }, mailbox: nil, committed: {},
+        stopped: {
+          log.add("start.\($0)")
+          try? await Task.sleep(for: .milliseconds(200))
+          log.add("end.\($0)")
+        }))
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    _ = await job.value
+    try? await Task.sleep(for: .milliseconds(20))
+    _ = await c.run(.foreground)
+    for _ in 0..<200 where log.all.count < 2 { try? await Task.sleep(for: .milliseconds(5)) }
+    try? await Task.sleep(for: .milliseconds(50))
+    #expect(log.all == ["start.\(SyncStop.wipe)", "end.\(SyncStop.wipe)"])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aHandlerClosingTheAccountDoesNotWaitForItsOwnHandOver() async {
+    let log = Log()
+    let holder = Mutex<WorkCoordinator?>(nil)
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in
+          try? await Task.sleep(for: .milliseconds(150))
+          return (newData: false, stop: .wipe)
+        }, mailbox: nil, committed: {},
+        stopped: { _ in
+          let me = holder.withLock { $0 }
+          await me?.close()
+          await me?.finished()
+          log.add("closed")
+        }))
+    holder.withLock { $0 = c }
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(50))
+    job.cancel()
+    _ = await job.value
+    await c.finished()
+    #expect(log.all == ["closed"])
+  }
 }

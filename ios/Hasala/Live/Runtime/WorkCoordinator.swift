@@ -183,7 +183,8 @@ actor WorkCoordinator {
   private var closed = false
   private var paused = false
   private var syncing: Task<(newData: Bool, stop: SyncStop?), Never>?
-  private var handingStop = false
+  private var handing: [SyncStop] = []
+  private var settling: Task<Void, Never>?
   private(set) var runs = 0
 
   init(stages: Stages) {
@@ -220,7 +221,8 @@ actor WorkCoordinator {
 
   func finished() async {
     if let syncing { _ = await syncing.value }
-    if !handingStop, let inFlight { _ = await inFlight.value }
+    if handing.isEmpty { await settling?.value }
+    if handing.isEmpty, let inFlight { _ = await inFlight.value }
   }
 
   /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
@@ -311,12 +313,12 @@ actor WorkCoordinator {
       cancelled: (newData: false, stop: SyncStop?.some(.cancelled)))
     out.newData = synced.newData
     out.stop = synced.stop
-    if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
+    if Task.isCancelled {
+      settle(syncTask)
+      return Outcome(newData: out.newData, stop: .cancelled)
+    }
     if let stop = synced.stop, Self.surfaces(stop) {
-      handingStop = true
-      let stopped = stages.stopped
-      await Task { await stopped(stop) }.value
-      handingStop = false
+      await hand(stop)
       if Self.endsTheAccount(stop) { return out }
     }
     if !closed, let mailbox = stages.mailbox, let mt = trigger.mailbox, synced.stop.map(Self.tolerable) ?? true {
@@ -338,6 +340,23 @@ actor WorkCoordinator {
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()
     return out
+  }
+
+  private func settle(_ sync: Task<(newData: Bool, stop: SyncStop?), Never>) {
+    let earlier = settling
+    settling = Task {
+      await earlier?.value
+      guard let stop = await sync.value.stop, Self.surfaces(stop), !closed else { return }
+      await hand(stop)
+    }
+  }
+
+  private func hand(_ stop: SyncStop) async {
+    guard !handing.contains(stop) else { return }
+    handing.append(stop)
+    let stopped = stages.stopped
+    await Task { await stopped(stop) }.value
+    handing.removeAll { $0 == stop }
   }
 
   /// A stop the account gate acts on: the account was deleted (410), the session is gone,
