@@ -219,8 +219,7 @@ enum Pusher {
         if remaining.isEmpty { throw latch(ctx, .chainBreak) }
         continue
       case (409, "chain_break"):
-        try? ctx.store.setLatch(.chainBreak)
-        throw .halted(.tampered(.ownChainConflict))
+        throw latch(ctx, .chainBreak, reportedAs: .halted(.tampered(.ownChainConflict)))
       case (409, "stale_epoch"):
         // TODO(post-beta, 01 R-OUT-4): obtain the new epoch key, check the own
         // head shows these counters unapplied, re-seal from pending_ops and re-sign.
@@ -253,10 +252,12 @@ enum Pusher {
     return blobs.reduce(0) { $0 + $1.opIDs.count }
   }
 
-  /// Persists `latch` (best effort) and returns the stop that reports it.
-  static func latch(_ ctx: SyncContext, _ latch: OutboxLatch, alarm: Bool = false) -> SyncStop {
-    try? ctx.store.setLatch(latch)
-    return .latched(latch, alarm: alarm)
+  /// Persists `latch` and returns the stop that reports it, or the store's failure.
+  static func latch(
+    _ ctx: SyncContext, _ latch: OutboxLatch, alarm: Bool = false, reportedAs stop: SyncStop? = nil
+  ) -> SyncStop {
+    do { try ctx.store.setLatch(latch) } catch { return .store(error) }
+    return stop ?? .latched(latch, alarm: alarm)
   }
 
   /// The own writer's stored head, by scanning `GET /sync/hashes` (spec 04

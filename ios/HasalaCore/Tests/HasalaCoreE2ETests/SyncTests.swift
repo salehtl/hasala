@@ -370,6 +370,31 @@ struct SyncTests {
     #expect(await engine.status.latch == nil)
   }
 
+  @Test("a latch the store will not keep stops the run as a store failure, and the next run latches")
+  func latchWriteFailure() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    try enqueue(a, [op(1)])
+    try await a.store.db.write { db in
+      try db.execute(sql: "CREATE TRIGGER no_latch BEFORE UPDATE OF outbox_latch ON sync_state BEGIN SELECT RAISE(ABORT, 'no latch'); END")
+    }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    let first = await engine.run(.authored)
+    guard case .store? = first.stop else {
+      Issue.record("\(String(describing: first.stop))")
+      return
+    }
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.syncState().latch == nil)
+    #expect(try a.store.inflight().count == 1)
+
+    try await a.store.db.write { db in try db.execute(sql: "DROP TRIGGER no_latch") }
+    w.server.refuseNext("POST /api/v1/sync", status: 400, code: "bad_request")
+    #expect(await engine.run(.authored).stop == nil)
+    #expect(try a.store.syncState().latch == .hardStop)
+    #expect(await engine.status.latch == .hardStop)
+  }
+
   @Test("ops authored while a flush runs are shown to the observer before they are sealed")
   func observerSeesEachBatch() async throws {
     let (_, a, _) = try await twoPhones()
