@@ -147,7 +147,7 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		return mail.Message{}, errors.New("invites: the invite has no email_tag yet")
 	}
 	var superseded bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND id > $2)`,
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND id > $2 AND status IN ('queued','sending','sent'))`,
 		*row.InviteID, row.ID).Scan(&superseded); err != nil {
 		return mail.Message{}, err
 	}

@@ -497,3 +497,108 @@ func TestARetryAtTheMintLimitStillCarriesItsCode(t *testing.T) {
 		t.Fatalf("mint_count %d, want %d", n, MaxMints)
 	}
 }
+
+func TestARetryingEmailIsNotReplacedByANewerEmailThatFailed(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		err    error
+		status string
+	}{
+		{"failed", mail.ErrPermanent, "failed"},
+		{"bounced", mail.ErrBounced, "bounced"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			pool := pgtest.New(t)
+			var attempts []mail.Message
+			fake := &mail.Fake{ErrFor: func(m mail.Message) error {
+				attempts = append(attempts, m)
+				switch len(attempts) {
+				case 1:
+					return errors.New("provider timeout")
+				case 2:
+					return c.err
+				}
+				return nil
+			}}
+			q := mintingQueue(t, pool, fake)
+			const addr = "older-retry@example.com"
+			entry, invite := approved(t, pool, q, addr)
+			if _, err := q.Drain(bg); err != nil || len(attempts) != 1 {
+				t.Fatalf("%d attempts, %v", len(attempts), err)
+			}
+			if err := resendNow(pool, q, invite); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := q.Drain(bg); err != nil || len(attempts) != 2 {
+				t.Fatalf("%d attempts, %v", len(attempts), err)
+			}
+			var newer string
+			if err := pool.QueryRow(bg, `SELECT status FROM mail_log WHERE invite_id = $1 ORDER BY id DESC LIMIT 1`, invite).
+				Scan(&newer); err != nil || newer != c.status {
+				t.Fatalf("the newer email is %s, %v", newer, err)
+			}
+			if s := inviteState(t, pool, invite); s != "active" {
+				t.Fatalf("invite %s with an email still retrying, want active", s)
+			}
+			retryNow(t, pool, invite)
+			if _, err := q.Drain(bg); err != nil {
+				t.Fatal(err)
+			}
+			if len(attempts) != 3 || len(fake.Sent()) != 1 {
+				t.Fatalf("%d attempts, %d sent: the older email was discarded", len(attempts), len(fake.Sent()))
+			}
+			if s := inviteState(t, pool, invite); s != "active" {
+				t.Fatalf("invite %s, want active", s)
+			}
+			assertEntryInvited(t, pool, entry, addr)
+			code, key := linkOf(t, attempts[2])
+			r, err := Resolve(bg, pool, code, key, testTagger{}.EmailTag(addr), time.Now())
+			if err != nil || r.InviteID != invite || !r.Proven {
+				t.Fatalf("the delivered code: %+v %v", r, err)
+			}
+			newerCode, newerKey := linkOf(t, attempts[1])
+			if _, err := Resolve(bg, pool, newerCode, newerKey, testTagger{}.EmailTag(addr), time.Now()); !errors.Is(err, ErrNotInvited) {
+				t.Fatalf("the undelivered code: %v", err)
+			}
+		})
+	}
+}
+
+func TestARetryingEmailStaysReplacedWhileANewerEmailCanStillGo(t *testing.T) {
+	for _, status := range []string{"queued", "sending"} {
+		t.Run(status, func(t *testing.T) {
+			pool := pgtest.New(t)
+			attempts := 0
+			fake := &mail.Fake{ErrFor: func(mail.Message) error {
+				attempts++
+				return errors.New("provider timeout")
+			}}
+			q := mintingQueue(t, pool, fake)
+			_, invite := approved(t, pool, q, "both@example.com")
+			if _, err := q.Drain(bg); err != nil || attempts != 1 {
+				t.Fatalf("%d attempts, %v", attempts, err)
+			}
+			if err := resendNow(pool, q, invite); err != nil {
+				t.Fatal(err)
+			}
+			var older int64
+			if err := pool.QueryRow(bg, `SELECT min(id) FROM mail_log WHERE invite_id = $1`, invite).Scan(&older); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(bg, `UPDATE mail_log SET status = $2, next_attempt_at = CASE WHEN $2 = 'queued' THEN now() END,
+				lease_until = CASE WHEN $2 = 'sending' THEN now() + interval '1 minute' END
+				WHERE invite_id = $1 AND id > $3`, invite, status, older); err != nil {
+				t.Fatal(err)
+			}
+			r := Renderer{WebBase: "https://hasala.app", ManualTestFlight: true}
+			row := mailq.Row{ID: older, Kind: "invite", Recipient: "both@example.com", InviteID: &invite}
+			err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error {
+				_, err := r.Render(bg, tx, row)
+				return err
+			})
+			if !errors.Is(err, ErrStale) {
+				t.Fatalf("render of the older email: %v", err)
+			}
+		})
+	}
+}
