@@ -200,6 +200,63 @@ struct LedgerStoreTests {
   }
 }
 
+@Suite("CoreStore: the owner read at launch")
+struct StoreOwnerTests {
+  func directory() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("hasala-owner-\(ProcessInfo.processInfo.globallyUniqueString)")
+  }
+
+  func file(_ dir: URL) -> URL { dir.appendingPathComponent("ledger.sqlite") }
+
+  @Test("reads the owner of a store that was closed, and of one still open with unwritten changes")
+  func readsOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+    }
+    #expect(LedgerStore.owner(directory: dir) == user)
+    let open = try LedgerStore.open(directory: dir)
+    try open.setLastPull(1)
+    #expect(LedgerStore.owner(directory: dir) == user)
+  }
+
+  @Test("does not migrate a store one migration behind, or mark its folder")
+  func leavesTheStoreAlone() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    do {
+      let s = try LedgerStore.open(directory: dir)
+      try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "b", keyEpoch: 1, createdAt: 0))
+      try s.db.write { db in
+        try db.execute(sql: "DROP TABLE acknowledged_ops")
+        try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'acknowledged_ops'")
+      }
+    }
+    var cleared = URLResourceValues()
+    cleared.isExcludedFromBackup = false
+    var folder = dir
+    try folder.setResourceValues(cleared)
+
+    #expect(LedgerStore.owner(directory: dir) == user)
+
+    #expect(!FileHygiene.isExcluded(URL(fileURLWithPath: dir.path)))
+    let queue = try DatabaseQueue(path: file(dir).path)
+    #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM grdb_migrations WHERE identifier = 'acknowledged_ops'") } == 0)
+  }
+
+  @Test("no owner for a missing file, which stays missing, or for a store never given an identity")
+  func noOwner() throws {
+    let dir = directory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(LedgerStore.owner(directory: dir) == nil)
+    #expect(!FileManager.default.fileExists(atPath: file(dir).path))
+    _ = try LedgerStore.open(directory: dir)
+    #expect(LedgerStore.owner(directory: dir) == nil)
+  }
+}
+
 @Suite("CoreStore: secrets")
 struct SecretTests {
   @Test("§4.4's mapping: services, accounts, accessibility")

@@ -1,6 +1,7 @@
 import CoreAuth
 import CoreCrypto
 import CoreSoftAuth
+import CoreStore
 import CoreSync
 import CoreTestSupport
 import Foundation
@@ -265,6 +266,26 @@ struct AccountLifecycleTests {
 
     try FileManager.default.removeItem(at: try #require(env.storeDirectory(for: account.userID)))
     #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("gathering the launch facts reports the store's owner and does not touch the store")
+  func gatheringLeavesTheStoreAlone() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let dir = temporaryDirectory("gather-read-only")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("b"), dir)
+    _ = try await enrol(env, account.userID, words)
+    var folder = try #require(env.storeDirectory(for: account.userID))
+    var cleared = URLResourceValues()
+    cleared.isExcludedFromBackup = false
+    try folder.setResourceValues(cleared)
+
+    let facts = Boot.gather(env)
+
+    #expect(facts.storeUserID == account.userID)
+    #expect(!FileHygiene.isExcluded(URL(fileURLWithPath: folder.path)))
   }
 
   @Test("with no binding, only a directory named for an account counts as left behind; a session still resumes")

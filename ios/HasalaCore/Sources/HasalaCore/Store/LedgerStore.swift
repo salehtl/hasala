@@ -176,6 +176,17 @@ public final class LedgerStore: Sendable {
     }
   }
 
+  public static func owner(directory: URL) -> UserID? {
+    var configuration = Configuration()
+    configuration.readonly = true
+    configuration.busyMode = .timeout(5)
+    let file = directory.appendingPathComponent("ledger.sqlite").path
+    guard let queue = try? DatabaseQueue(path: file, configuration: configuration),
+      let id = try? queue.read({ try String.fetchOne($0, sql: "SELECT user_id FROM store_meta WHERE id = 1") })
+    else { return nil }
+    return UserID(id)
+  }
+
   /// An in-memory store (tests).
   public static func inMemory() throws(StoreError) -> LedgerStore {
     do {

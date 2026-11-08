@@ -94,7 +94,7 @@ public enum Boot {
         f.writerKeyPresent = try env.secrets.writerSeed(userID: u, writerID: w) != nil
         if let dir = env.storeDirectory(for: u) {
           f.storeExists = FileManager.default.fileExists(atPath: dir.appendingPathComponent("ledger.sqlite").path)
-          if f.storeExists, let s = try? LedgerStore.open(directory: dir) { f.storeUserID = try? s.meta()?.userID }
+          if f.storeExists { f.storeUserID = LedgerStore.owner(directory: dir) }
         }
       }
       if f.binding == nil { f.storeExists = holdsAccountFiles(env) }
