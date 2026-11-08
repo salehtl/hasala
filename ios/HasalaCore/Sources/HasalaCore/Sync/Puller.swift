@@ -169,10 +169,7 @@ enum Puller {
         }
         serverEpoch = UInt32(keys.current_epoch)
         epochRefreshed = true
-        if serverEpoch! >= e {
-          hwm = max(hwm, serverEpoch!)
-          try ctx.storeCall { () throws(StoreError) in try ctx.store.setEpochHWM(hwm) }
-        }
+        if serverEpoch! >= e { hwm = max(hwm, serverEpoch!) }
         continue
       case .needsUnlock(let e)?:
         throw .needsUnlock(epoch: e)
@@ -219,7 +216,9 @@ enum Puller {
       let now = ctx.clock.nowMs()
       do {
         try ctx.storeCall { () throws(StoreError) in
-          try ctx.store.persistPage(rows: records, heads: newHeads, cursor: seqs[records.count - 1], at: now, snapshot: snapshot)
+          try ctx.store.persistPage(
+            rows: records, heads: newHeads, cursor: seqs[records.count - 1], at: now, snapshot: snapshot,
+            epochHWM: hwm > state.epochHWM ? hwm : nil)
         }
       } catch {
         await observer?.pageAbandoned()

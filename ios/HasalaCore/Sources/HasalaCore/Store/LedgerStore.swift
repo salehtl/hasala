@@ -295,10 +295,11 @@ public final class LedgerStore: Sendable {
   }
 
   public func setEpochHWM(_ e: UInt32) throws(StoreError) {
-    try write { db in
-      try db.execute(
-        sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
-    }
+    try write { db in try Self.raiseEpochHWM(e, db) }
+  }
+
+  private static func raiseEpochHWM(_ e: UInt32, _ db: Database) throws {
+    try db.execute(sql: "UPDATE sync_state SET epoch_hwm = max(epoch_hwm, ?) WHERE id = 1", arguments: [Int64(e)])
   }
 
   public func setRoster(_ json: Data) throws(StoreError) {
@@ -345,7 +346,7 @@ public final class LedgerStore: Sendable {
   /// the snapshot and the cursor commit together.
   public func persistPage(
     rows: [WireRowRecord], heads: [WriterID: Chain.Head], cursor: Int64, at: Int64,
-    snapshot: FoldSnapshotChange = .keep
+    snapshot: FoldSnapshotChange = .keep, epochHWM: UInt32? = nil
   ) throws(StoreError) {
     let tip = rows.last(where: { $0.seq == cursor }).map {
       Self.boundTip(seq: $0.seq, writerID: $0.writerID, counter: $0.counter, blobHash: $0.blobHash, prevHash: $0.prevHash)
@@ -373,6 +374,7 @@ public final class LedgerStore: Sendable {
       }
       try db.execute(
         sql: "UPDATE sync_state SET cursor_hot = ?, last_pull_at = ? WHERE id = 1", arguments: [cursor, at])
+      if let epochHWM { try Self.raiseEpochHWM(epochHWM, db) }
       try Self.applySnapshot(snapshot, cursor: cursor, tip: tip, at: at, db)
     }
   }

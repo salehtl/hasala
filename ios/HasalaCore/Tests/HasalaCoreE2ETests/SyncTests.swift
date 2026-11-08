@@ -161,6 +161,75 @@ struct SyncTests {
     #expect(try b.store.syncState().cursorHot == 1)
   }
 
+  func injectAtEpochTwo(
+    _ w: World, writer a: SyncContext, key: EpochKey, counters: ClosedRange<Int64>, sealedAt: (Int64) -> Int64 = { $0 }
+  ) throws {
+    var prev = try #require(try a.store.chainHeads()[a.writerID]?.hash)
+    let seed = try #require(try a.secrets.writerSeed(userID: a.userID, writerID: a.writerID))
+    for counter in counters {
+      let frame = try Sealer(epoch: 2, key: key).seal(
+        plaintextOps: Data(try OpCodec.encodeBlobOps([op(Int(counter))])),
+        envelope: try Envelope(userID: a.userID, writerID: a.writerID, counter: sealedAt(counter)), prevHash: prev,
+        random: SeededRandom(seed: "epoch-\(counter)"))
+      let hash = Chain.hash(prev: prev, frame: frame.bytes)
+      let msg = SigningMessage.head(userID: a.userID, counter: counter, blobHash: hash, writerID: a.writerID)
+      w.server.injectRow(
+        user: a.userID, writerID: a.writerID.string, counter: counter, prevHash: prev.bytes, blob: frame.bytes,
+        headSig: try DWK.sign(seed: seed, message: msg))
+      prev = hash
+    }
+  }
+
+  func pushedAndPulled() async throws -> (World, SyncContext, SyncContext, EpochKey) {
+    let (w, a, b) = try await twoPhones()
+    try enqueue(a, [op(1)])
+    #expect(await SyncEngine(context: a).run(.authored).stop == nil)
+    #expect(await SyncEngine(context: b).run(.launch).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 1)
+    return (w, a, b, try EpochKey(epoch: 2, key: Data(repeating: 9, count: 32)))
+  }
+
+  @Test("a page stopped for a missing epoch key leaves the epoch mark where it was")
+  func newEpochWithoutItsKeyKeepsTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...2)
+    w.server.publishEpoch(user: a.userID, 2)
+    let cursor = try b.store.syncState().cursorHot
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .needsUnlock(epoch: 2))
+    #expect(try b.store.syncState().epochHWM == 1)
+    #expect(try b.store.syncState().cursorHot == cursor)
+
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 2)
+    #expect(try b.store.syncState().cursorHot == cursor + 1)
+  }
+
+  @Test("a page refused after its epoch was read leaves the epoch mark where it was")
+  func refusedPageKeepsTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...3) { $0 == 3 ? 99 : $0 }
+    w.server.publishEpoch(user: a.userID, 2)
+    let cursor = try b.store.syncState().cursorHot
+    #expect(await SyncEngine(context: b).run(.foreground).stop == .halted(.tampered(.aadMismatch)))
+    #expect(try b.store.syncState().epochHWM == 1)
+    #expect(try b.store.syncState().cursorHot == cursor)
+  }
+
+  @Test("an accepted page raises the epoch mark with its rows, so a relaunch seals at the new epoch")
+  func acceptedPageRaisesTheMark() async throws {
+    let (w, a, b, two) = try await pushedAndPulled()
+    try b.secrets.writeEpochKey(two.key, userID: b.userID, epoch: 2)
+    try injectAtEpochTwo(w, writer: a, key: two, counters: 2...3)
+    w.server.publishEpoch(user: a.userID, 2)
+    #expect(await SyncEngine(context: b).run(.foreground).stop == nil)
+    #expect(try b.store.syncState().epochHWM == 2)
+    try enqueue(b, [op(9)])
+    #expect(await SyncEngine(context: b).run(.authored).stop == nil)
+    #expect(try b.store.pendingCount() == 0)
+  }
+
   @Test("a row from a writer outside the verified roster: one re-fetch, then tampered(unknownWriter)")
   func unknownWriter() async throws {
     let (w, a, b) = try await twoPhones()
