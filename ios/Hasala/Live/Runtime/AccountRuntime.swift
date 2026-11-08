@@ -508,8 +508,9 @@ final class AccountRuntime {
   func resumeWork() async {
     mailboxLedger.textWrites.releaseHold()
     for lane in lanes.values { await lane.resume() }
-    await coordinator.resume()
+    let held = await coordinator.resume()
     await backlog.releaseRuns()
+    if let held { Task { await coordinator.run(held) } }
   }
 
   func followSwitch() {

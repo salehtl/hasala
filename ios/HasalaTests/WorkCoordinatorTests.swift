@@ -464,4 +464,43 @@ struct WorkCoordinatorTests {
       #expect(!out.failed && out.settled == .notRun)
     }
   }
+
+  @Test func whatWasAskedForDuringAPauseComesBackAtResume() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    await c.pause()
+    _ = await c.run(.authored)
+    _ = await c.run(.silentPush)
+    _ = await c.run(.authored)
+    #expect(await c.runs == 0)
+    #expect(await c.resume() == .silentPush)
+    #expect(await c.resume() == nil)
+  }
+
+  @Test func aRerunWaitingWhenThePauseStartsComesBackAtResume() async {
+    let p = Probe()
+    let c = Self.probed(p, syncFor: .milliseconds(200))
+    let running = Task { await c.run(.launch) }
+    try? await Task.sleep(for: .milliseconds(50))
+    let waiting = Task { await c.run(.authored) }
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(await c.queued == .authored)
+    await c.pause()
+    #expect(await c.runs == 1)
+    #expect(await c.resume() == .authored)
+    _ = await (running.value, waiting.value)
+  }
+
+  @Test func aPauseWithNothingAskedForResumesToNothing() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    await c.pause()
+    #expect(await c.resume() == nil)
+  }
+
+  @Test func closingForgetsWhatWasAskedForDuringAPause() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    await c.pause()
+    _ = await c.run(.authored)
+    await c.close()
+    #expect(await c.resume() == nil)
+  }
 }

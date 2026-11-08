@@ -175,6 +175,7 @@ actor WorkCoordinator {
   private var current: Trigger?
   private var rerun: Trigger?
   private var rerunLimit = RerunLimit.unasked
+  private var held: Trigger?
   /// The callers waiting, by id, with the run each waits on.
   private var waiters: [Int: Task<Outcome, Never>] = [:]
   private var nextWaiter = 0
@@ -193,6 +194,7 @@ actor WorkCoordinator {
   func close() {
     closed = true
     rerun = nil
+    held = nil
     inFlight?.cancel()
   }
 
@@ -200,12 +202,20 @@ actor WorkCoordinator {
   /// deleted, and its store wiped. `resume()` undoes it when the deletion did not happen.
   func pause() async {
     paused = true
+    if let rerun { hold(rerun) }
     rerun = nil
     await finished()
   }
 
-  func resume() {
+  @discardableResult
+  func resume() -> Trigger? {
     paused = false
+    defer { held = nil }
+    return held
+  }
+
+  private func hold(_ trigger: Trigger) {
+    if Self.queues(trigger, over: held) { held = trigger }
   }
 
   func finished() async {
@@ -218,7 +228,11 @@ actor WorkCoordinator {
   /// 25 s); nil waits until done.
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
-    guard !closed, !paused else { return .notRun }
+    guard !closed else { return .notRun }
+    guard !paused else {
+      hold(trigger)
+      return .notRun
+    }
     if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
