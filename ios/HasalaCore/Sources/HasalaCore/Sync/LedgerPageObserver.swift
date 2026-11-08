@@ -294,13 +294,18 @@ public actor LedgerPageObserver: PageObserver {
       let rows: [WireRowRecord]
       do { rows = try store.wireRows(before: before, limit: 50) } catch { return false }
       guard let oldest = rows.last else { break }
-      for r in rows where r.disposition == .folded {
+      for r in rows where r.disposition != .alarm {
         if opener == nil {
           guard let keys = try? context.epochKeys(upTo: sync.epochHWM) else { return false }
           opener = Opener(epochHWM: sync.epochHWM, keys: keys)
         }
-        guard let opener, case .opened(_, let ops)? = try? reopen(r, opener) else {
+        let setAside = r.disposition == .setAside
+        guard let opener, let outcome = try? reopen(r, opener, revoked: setAside) else {
           complete = false
+          continue
+        }
+        guard case .opened(_, let ops) = outcome else {
+          complete = complete && setAside
           continue
         }
         for op in ops where ids.contains(op.opID) { found[op.opID] = op }
