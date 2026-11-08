@@ -240,6 +240,18 @@ public struct MailboxStatus: Sendable, Equatable {
   public var stateUnread = false
 }
 
+struct ProviderPause: Sendable {
+  private var startedMs: Int64 = 0
+  private var untilMs: Int64 = 0
+
+  mutating func begin(retryAfterSec sec: Int64, now: Int64) {
+    startedMs = now
+    untilMs = now + min(max(sec, 1), 600) * 1000
+  }
+
+  func remainingMs(now: Int64) -> Int64 { now < startedMs ? 0 : max(0, untilMs - now) }
+}
+
 public actor MailboxEngine {
   public let config: MailboxEngineConfig
   public let provider: any MailProvider
@@ -271,8 +283,7 @@ public actor MailboxEngine {
   private var pushReadAtMs: Int64 = 0
   /// Set when the last cycle saw the server's topic differ from the build's (diagnostics).
   public private(set) var topicMismatch = false
-  /// No cycle starts before this (engine clock): the provider's last `Retry-After`. Process-local.
-  private var notBeforeMs: Int64 = 0
+  private var pause = ProviderPause()
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
   private var firstScanRunning = false
   public private(set) var stopped = false
@@ -507,7 +518,7 @@ public actor MailboxEngine {
       await stopPush()
       _ = await tokens.revokeAndForget(keepOnFailure: false)
       provider.forgetLink()
-      notBeforeMs = 0
+      pause = ProviderPause()
       quotaStrikes = 0
       strikes = [:]
     }
@@ -731,7 +742,7 @@ public actor MailboxEngine {
       return report
     }
     report.phase = state.phase
-    if clock.nowMs() < notBeforeMs {
+    if paused {
       // The provider asked for a pause (`Retry-After`): every request now would count against
       // the same limit. Nothing changes; a later trigger runs.
       report.haltedOn = .gmail
@@ -1196,7 +1207,7 @@ public actor MailboxEngine {
           continue
         }
         guard stalls < config.firstScanStallWaitsMs.count else { return reports }
-        let wait = max(config.firstScanStallWaitsMs[stalls], notBeforeMs - clock.nowMs())
+        let wait = max(config.firstScanStallWaitsMs[stalls], pause.remainingMs(now: clock.nowMs()))
         stalls += 1
         // A pause longer than the longest stall wait (a long Retry-After) is left to the later
         // triggers: the setup board says the import goes on in the background.
@@ -1304,6 +1315,10 @@ public actor MailboxEngine {
   private func runPendingImports(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport {
     var report = report
     guard state.phase == .active, !stopped else { return report }
+    if paused {
+      report.haltedOn = .gmail
+      return report
+    }
     do { try await ledger.syncToHead() } catch {
       report.haltedOn = .offline
       return report
@@ -1383,6 +1398,7 @@ public actor MailboxEngine {
       case .reconnectRequired: return .reconnectRequired
       default: break
       }
+      if paused { return .offline }
       let token: AccessToken
       do throws(MailAuthError) { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
         return .reconnectRequired
@@ -1396,6 +1412,7 @@ public actor MailboxEngine {
         do throws(MailAPIError) {
           if !(try await source.list(senders: [domain], since: since, pageToken: nil)).ids.isEmpty { found.append(domain) }
         } catch let e {
+          notePause(e)
           if let s = e.status, s == 401 || s == 403 { return .reconnectRequired }
           return .offline
         }
@@ -1416,6 +1433,7 @@ public actor MailboxEngine {
       case .reconnectRequired: return .reconnectRequired
       default: break
       }
+      if paused { return .offline }
       let token: AccessToken
       do throws(MailAuthError) { token = try await tokens.accessToken(forceRefresh: false) } catch .reconnectRequired {
         return .reconnectRequired
@@ -1424,6 +1442,7 @@ public actor MailboxEngine {
       }
       let raw: MailRawMessage
       do throws(MailAPIError) { raw = try await source(token).raw(id: messageID) } catch let e {
+        notePause(e)
         if let s = e.status, s == 404 || s == 410 { return .gone }
         if let s = e.status, s == 401 || s == 403 { return .reconnectRequired }
         return .offline
@@ -1980,9 +1999,8 @@ public actor MailboxEngine {
     Self.log.notice(
       "mailbox.api_failure", .state("provider", logProvider),
       .state("kind", Self.kind(e)), .count("status", e.status ?? 0))
+    notePause(e)
     switch e {
-    case .throttled(let sec, _):
-      notBeforeMs = clock.nowMs() + min(max(sec, 1), 600) * 1000
     case .noMailbox:
       return await halt(&state, .noMailbox, report)
     case .filterNotApplied:
@@ -2014,6 +2032,12 @@ public actor MailboxEngine {
       report.haltedOn = .gmail
     }
     return await finish(&state, report)
+  }
+
+  private var paused: Bool { pause.remainingMs(now: clock.nowMs()) > 0 }
+
+  private func notePause(_ e: MailAPIError) {
+    if case .throttled(let sec, _) = e { pause.begin(retryAfterSec: sec, now: clock.nowMs()) }
   }
 
   func flushOrStop(_ state: inout MailboxState, _ report: CycleReport) async -> CycleReport? {
