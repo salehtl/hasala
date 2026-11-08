@@ -446,6 +446,18 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
+  public func openingOps(after run: RunOutcome) throws -> AuthoredBlob? {
+    guard run.stop == nil else { return nil }
+    let folded = try loaded()
+    guard folded.homeCurrency == nil else { return nil }
+    let ledger = Projector.overlay(folded, pending: try pendingOverlay(over: folded), writerID: context.writerID.string).0
+    guard ledger.homeCurrency == nil else { return nil }
+    return try stamps.build(try baseContext().raised(to: stamps.lastMs)) { a throws(AuthorError) in
+      a.setHomeCurrency("AED")
+      try a.setRate(currency: "USD", rateMicro: 3_672_500)
+    }
+  }
+
   // MARK: Errors
 
   /// `LedgerFold.page`, its halts as sync stops.

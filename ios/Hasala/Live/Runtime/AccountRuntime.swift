@@ -321,6 +321,7 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
+          await Self.authorOpeningOps(after: out, observer: observer, outbox: outbox)
           let phase = await engine.status.phase
           let shown = Self.shownStop(out.stop, phase: phase)
           if shown == nil { await backlog.allowRuns(true) }
@@ -408,10 +409,7 @@ final class AccountRuntime {
       await backlog.allowRuns(true)
     }
     await refreshAccount()
-    let launched = await coordinator.run(.launch)
-    // Only after a launch run that reached the server's head: an iPhone that couldn't
-    // pull yet (offline) would author the account's opening ops a second time.
-    if launched.stop == nil { await authorOpeningOpsIfNeeded() }
+    await coordinator.run(.launch)
   }
 
   /// `GET /account` (#40), read live: the review flag and the account's own name.
@@ -448,25 +446,11 @@ final class AccountRuntime {
     return phase == .scanning || phase == .authoringBackfill
   }
 
-  /// Home currency AED and the USD peg (04 §6.2), once per account: authored only when
-  /// the ledger (after the launch pull) has no home currency yet.
-  func authorOpeningOpsIfNeeded() async {
-    guard (try? projection.reader.homeCurrency()) == nil else { return }
-    let observer = self.observer
-    do {
-      let ctx = try await observer.authorContext()
-      guard
-        let blob = try observer.stamps.build(
-          ctx,
-          { a throws(AuthorError) in
-            a.setHomeCurrency("AED")
-            try a.setRate(currency: "USD", rateMicro: 3_672_500)
-          })
-      else { return }
+  nonisolated static func authorOpeningOps(after out: RunOutcome, observer: LedgerPageObserver, outbox: Outbox) async {
+    try? await observer.writes.run {
+      guard let blob = try await observer.openingOps(after: out) else { return }
       try await outbox.enqueue(blob.ops)
       try await observer.reproject()
-    } catch {
-      // Retried on the next launch.
     }
   }
 

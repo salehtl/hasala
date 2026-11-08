@@ -323,6 +323,50 @@ struct LedgerPageObserverTests {
     #expect(try pending.store.pendingCount() == 1)
   }
 
+  static func pending(_ ops: [Op]) throws -> [PendingOp] {
+    try ops.map { PendingOp(opID: $0.opID, opJSON: try canonical($0), opType: $0.type.rawValue, entityKind: $0.entity?.kind, entityID: $0.entity?.id, enqueuedAt: 1) }
+  }
+
+  static func reached(_ stop: SyncStop? = nil) -> RunOutcome {
+    var out = RunOutcome()
+    out.stop = stop
+    return out
+  }
+
+  @Test("opening ops wait for a sync that reached the server's head")
+  func openingOpsNeedTheHead() async throws {
+    let r = try Rig()
+    try await r.observer.open()
+    let stops: [SyncStop] = [
+      .offline, .cancelled, .notNow, .frozen, .wipe, .needsSignIn, .needsRebind, .keysRequired, .suspended,
+      .rateLimited(retryAfter: nil), .protocolError("x"), .halted(.updateRequired),
+    ]
+    for stop in stops { #expect(try await r.observer.openingOps(after: Self.reached(stop)) == nil, "\(stop)") }
+    #expect(r.observer.stamps.lastMs == nil)
+    let blob = try #require(try await r.observer.openingOps(after: Self.reached()))
+    #expect(blob.ops.map(\.type) == [.homeCurrencySet, .rateSet])
+    #expect(r.observer.stamps.lastMs == blob.lastAuthoredMs)
+  }
+
+  @Test("opening ops are not authored again while the outbox holds them, even when the projection never showed them")
+  func openingOpsOnce() async throws {
+    let r = try Rig()
+    try await r.observer.open()
+    let blob = try #require(try await r.observer.openingOps(after: Self.reached()))
+    try r.store.enqueue(try Self.pending(blob.ops))
+    #expect(try r.projection.reader.homeCurrency() == nil)
+    #expect(try await r.observer.openingOps(after: Self.reached()) == nil)
+    #expect(r.observer.stamps.lastMs == blob.lastAuthoredMs)
+  }
+
+  @Test("a ledger that already names a home currency gets no opening ops")
+  func openingOpsOnAnOpenedLedger() async throws {
+    let r = try Rig()
+    try await r.page([(1, try Self.setup())], counterBase: 1)
+    #expect(try await r.observer.openingOps(after: Self.reached()) == nil)
+    #expect(r.observer.stamps.lastMs == nil)
+  }
+
   @Test("ops: outbox ops are found; with no stored rows an unknown id is missing; a stored row that does not open makes it failed")
   func opsLookup() async throws {
     let r = try Rig()
