@@ -60,13 +60,16 @@ case " $* " in
 	printf '{"Action":"pass","Package":"%s","Test":"%s"}\n{"Action":"pass","Package":"%s"}\n' "$pkg" "$tst" "$pkg"
 	;;
 *" -v "*)
-	printf '=== RUN   TestKnown\n--- FAIL: TestKnown (0.00s)\nFAIL\n'
+	[ -n "${STUB_KNOWN_PASSES:-}" ] && exit 0
+	printf '=== RUN   TestKnown\n    known_test.go:1: %s\n--- FAIL: TestKnown (0.00s)\nFAIL\n' "${STUB_KNOWN_TEXT:-$(cat "$STUB_RECORDED")}"
 	exit 1
 	;;
 esac
 exit 0
 STUB
 chmod +x "$work/bin/bun" "$work/bin/govulncheck" "$work/bin/go"
+
+sed -nE 's/^[[:space:]]*"[^|]*\|[^|]*\|[^|]*\|(.*)"$/\1/p' "$ROOT/scripts/check.sh" >"$work/recorded"
 
 g() { git -C "$work/t" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
 
@@ -102,7 +105,7 @@ gate() {
 	shift 2
 	env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY -u HASALA_PRIVATE_FIXTURES -u HASALA_TEST_POSTGRES_URL \
 		-u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
-		TMPDIR="$work/tmp" STUB_LOG="$work/log" PATH="$work/bin:$PATH" "$@" \
+		TMPDIR="$work/tmp" STUB_LOG="$work/log" STUB_RECORDED="$work/recorded" PATH="$work/bin:$PATH" "$@" \
 		"$work/t/scripts/check.sh" >"$work/out" 2>&1 || rc=$?
 	if [[ "$rc" == "$want" ]]; then echo "ok   $name (exit $rc)"; else
 		echo "FAIL $name: exit $rc, want $want"
@@ -191,6 +194,15 @@ logged "install --frozen-lockfile"
 fresh
 gate "an assist worker with no node_modules" 0
 logged "install --frozen-lockfile"
+
+fresh
+gate "a known failure that now fails for another reason" 1 STUB_KNOWN_TEXT="panic: something else broke"
+says "not with its recorded reason"
+lacks "check: OK"
+
+fresh
+gate "a known failure that now passes" 1 STUB_KNOWN_PASSES=1
+says "now PASSES"
 
 if ((failures)); then
 	echo "$failures gate run case(s) failed"

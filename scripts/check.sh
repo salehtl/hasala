@@ -360,7 +360,7 @@ echo "cluster up (unix socket only; listen_addresses is empty)"
 # NAME in step 4 so the rest of the run stays a gate, and re-run on its own in
 # step 7, where it must still fail: the day it passes, the gate fails until the
 # entry is removed, so nothing healthy stays skipped. Format:
-# "module dir (under server/)|package|regexp". The regexp names top-level tests
+# "module dir (under server/)|package|regexp|the failure text it must print". The regexp names top-level tests
 # only (no "/"): step 6 proves the conformance packages' tests ran in step 4 from
 # `go test -list`, which lists top-level tests, so a subtest skipped here would
 # go unseen there. A pattern with a slash fails the gate below.
@@ -373,7 +373,7 @@ echo "cluster up (unix socket only; listen_addresses is empty)"
 # (`go test -skip` applies its pattern in every package; each name below is
 # unique in both modules, so it skips exactly the one test.)
 KNOWN_FAILING=(
-	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$"
+	"oracle|./v1ref/store|^TestSelectMonthlyTotals\$|june = {Period: SpentFils:0 IncomeFils:0}, want spent 8000 income 100000"
 )
 skip_re="$(printf '%s\n' "${KNOWN_FAILING[@]}" | cut -d'|' -f3 | paste -sd'|' -)"
 if [[ "$skip_re" == */* ]]; then
@@ -501,7 +501,7 @@ bun "$ROOT/scripts/gotest-ran.ts" "$GO_LIST" "$GO_RECORD" "$ORACLE_RECORD"
 step "known failures"
 cd "$ROOT/server"
 for entry in "${KNOWN_FAILING[@]}"; do
-	IFS='|' read -r mod pkg re <<<"$entry"
+	IFS='|' read -r mod pkg re reason <<<"$entry"
 	if out="$(cd "$ROOT/server/$mod" && go test -count=1 -v -run "$re" "$pkg" 2>&1)"; then
 		echo "check: $pkg $re now PASSES; remove it from KNOWN_FAILING in scripts/check.sh" >&2
 		exit 1
@@ -509,6 +509,11 @@ for entry in "${KNOWN_FAILING[@]}"; do
 	if ! grep -q -- '^--- FAIL: ' <<<"$out"; then
 		printf '%s\n' "$out" >&2
 		echo "check: $pkg $re did not run to a FAIL (see above); it is not the recorded failure" >&2
+		exit 1
+	fi
+	if [[ -z "$reason" ]] || ! grep -qF -- "$reason" <<<"$out"; then
+		printf '%s\n' "$out" >&2
+		echo "check: $pkg $re failed, but not with its recorded reason ('$reason'); fix the new failure or record it in KNOWN_FAILING" >&2
 		exit 1
 	fi
 	echo "still failing, as recorded: $pkg $re"
