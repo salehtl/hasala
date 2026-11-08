@@ -633,7 +633,7 @@ public actor MailboxEngine {
           break
         }
       } catch .otherProvider {
-        if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() { return .failed }
+        guard await otherProviderHolder() == .elsewhere else { return .failed }
         return await leaveLink(&state)
       } catch {
         return .failed
@@ -799,23 +799,7 @@ public actor MailboxEngine {
           if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
         }
       } catch .otherProvider {
-        if case .holder(isThisDevice: true, _)? = try? await server.linkStatus() {
-          stopped = true
-          return report
-        }
-        await endLocalPush()
-        await tokens.forget()
-        var elsewhere = MailboxState()
-        elsewhere.phase = .otherDevice
-        elsewhere.haltedOn = .notHolder
-        elsewhere.lastHolderCheckAtMs = now
-        var c = commitState(elsewhere)
-        c.clearAll = true
-        try? await commitForgetting(c)
-        report.haltedOn = .notHolder
-        report.phase = .otherDevice
-        emit(.failed(.notHolder), 0, 0)
-        return report
+        return await linkOnOtherProvider(report, now: now)
       } catch {
         report.haltedOn = .offline
         return report
@@ -915,6 +899,41 @@ public actor MailboxEngine {
     report.phase = state.phase
     if cut || state.phase != .active { return report }
     return await runImports(source, &state, deadlineMs: deadlineMs, paged: paged, report).report
+  }
+
+  private enum OtherProviderHolder { case thisIPhone, elsewhere, unknown }
+
+  private func otherProviderHolder() async -> OtherProviderHolder {
+    do throws(MailboxServerError) {
+      if case .holder(isThisDevice: true, _) = try await server.linkStatus() { return .thisIPhone }
+      return .elsewhere
+    } catch {
+      return .unknown
+    }
+  }
+
+  private func linkOnOtherProvider(_ report: CycleReport, now: Int64) async -> CycleReport {
+    var report = report
+    switch await otherProviderHolder() {
+    case .thisIPhone:
+      stopped = true
+    case .unknown:
+      report.haltedOn = .offline
+    case .elsewhere:
+      await endLocalPush()
+      await tokens.forget()
+      var elsewhere = MailboxState()
+      elsewhere.phase = .otherDevice
+      elsewhere.haltedOn = .notHolder
+      elsewhere.lastHolderCheckAtMs = now
+      var c = commitState(elsewhere)
+      c.clearAll = true
+      try? await commitForgetting(c)
+      report.haltedOn = .notHolder
+      report.phase = .otherDevice
+      emit(.failed(.notHolder), 0, 0)
+    }
+    return report
   }
 
   func holderCheckDue(_ state: MailboxState, _ trigger: MailboxTrigger) -> Bool {

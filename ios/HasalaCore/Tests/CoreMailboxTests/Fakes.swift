@@ -110,6 +110,7 @@ actor FakeServer: MailboxServer {
   var topicReads = 0
 
   func setLink(_ l: MailboxLinkStatus) { link = l }
+  func setOffline(_ v: Bool) { offline = v }
   func setTopic(_ t: String?) { topic = t }
   func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
   func setLinkRefusal(_ e: MailboxServerError?) { linkRefusal = e }
