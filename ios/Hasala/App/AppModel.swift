@@ -167,6 +167,8 @@ final class AppModel {
   /// mail needs it.
   var mailOffer: MailOffer? { usesBankTexts ? nil : mailbox?.offer }
 
+  var mailOfferKnown: Bool { usesBankTexts || mailbox?.offerKnown ?? true }
+
   private var reviewPeriodOverride: Period?
 
   var period: Period {

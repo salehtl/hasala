@@ -158,6 +158,13 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
+  var mailOfferKnown: Bool {
+    guard lane != nil else { return true }
+    guard store.loaded, let phase = store.mailboxPhase else { return false }
+    return LiveMailboxConnecting.offerKnown(
+      phase: phase, sampleLoaded: store.holdsSample || reviewAccount, serverLink: serverLink)
+  }
+
   @ObservationIgnored private(set) var movedAwayMs: Int64? = LocalAccountData.mailboxMovedAway()
   @ObservationIgnored var lastPhase: MailboxPhase?
 

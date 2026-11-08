@@ -124,6 +124,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   /// Observed through the runtime, like `mailboxes`.
   var offer: MailOffer? { runtime()?.mailOffer }
 
+  var offerKnown: Bool { runtime()?.mailOfferKnown ?? false }
+
   var importing: MailImport? {
     guard let rt = runtime(), !rt.store.holdsSample else { return nil }
     return Self.importing(phase: rt.store.mailboxPhase, seen: rt.store.importSeen, progress: rt.store.importProgress)
@@ -316,6 +318,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let day = date.formatted(format.weekday(.abbreviated).day(.defaultDigits).month(.abbreviated))
     let time = date.formatted(format.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
     return "\(day), \(time)"
+  }
+
+  static func offerKnown(phase: MailboxPhase, sampleLoaded: Bool, serverLink: MailboxLinkStatus?) -> Bool {
+    sampleLoaded || phase != .unlinked || serverLink != nil
   }
 
   /// What the bell, Profile and Bank alerts offer for a lane `phase` (spec 04 §6.6 row 4,

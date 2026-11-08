@@ -393,10 +393,12 @@ final class CountingMailbox: MailboxConnecting {
   @ObservationIgnored var heldElsewhere: MailProviderKind?
   @ObservationIgnored var known = true
   @ObservationIgnored var offerOverride: MailOffer??
+  @ObservationIgnored var offerSettled = true
 
   init(_ base: MockMailbox) { self.base = base }
 
   var mailboxesKnown: Bool { known }
+  var offerKnown: Bool { offerSettled }
 
   var connectable: [MailProviderKind] { base.connectable }
   var capabilities: MailboxCapabilities { base.capabilities }
