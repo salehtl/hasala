@@ -5,6 +5,8 @@
  */
 export type ApiAnswer = { status: number; error: string; data: Record<string, unknown>; retryAfter: number };
 
+const API_WAIT_MS = 20_000;
+
 export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
   try {
     const res = await fetch(url, {
@@ -15,6 +17,7 @@ export async function postJson(url: string, body: unknown): Promise<ApiAnswer> {
       mode: 'cors',
       referrerPolicy: 'no-referrer',
       cache: 'no-store',
+      signal: AbortSignal.timeout?.(API_WAIT_MS),
     });
     let data: Record<string, unknown> = {};
     try {

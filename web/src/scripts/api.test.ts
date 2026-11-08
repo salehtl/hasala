@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 type Api = typeof import('./api');
 type FakeScript = { dataset: Record<string, string>; src?: string; removed?: boolean; onerror?: () => void; remove: () => void };
@@ -134,6 +134,76 @@ describe('renderTurnstile', () => {
     gate.reset();
     expect(t.resets).toEqual([]);
     expect(await gate.check()).toEqual({ state: 'missing' });
+  });
+});
+
+describe('postJson', () => {
+  const URL = 'https://api.example/api/v1/waitlist/confirm';
+  const realTimeout = AbortSignal.timeout;
+  let waited = 0;
+  let expire = () => {};
+  const noAnswer = (signal?: AbortSignal | null) =>
+    new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason));
+    });
+
+  beforeEach(() => {
+    const stop = new AbortController();
+    waited = 0;
+    expire = () => stop.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+    AbortSignal.timeout = (ms: number) => {
+      waited = ms;
+      return stop.signal;
+    };
+  });
+  afterEach(() => {
+    AbortSignal.timeout = realTimeout;
+  });
+
+  test('a request that gets no answer stops waiting and reads as a network failure', async () => {
+    const { postJson } = await loadApi();
+    g.fetch = ((_u: string, i: RequestInit) => noAnswer(i.signal)) as unknown as typeof fetch;
+    const answer = postJson(URL, { token: 't' });
+    expect(await state(answer)).toBe(PENDING);
+    expire();
+    expect(await state(answer)).toEqual({ status: 0, error: 'network', data: {}, retryAfter: 0 });
+  });
+
+  test('it waits for 20 seconds', async () => {
+    const { postJson } = await loadApi();
+    g.fetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    await postJson(URL, { token: 't' });
+    expect(waited).toBe(20_000);
+  });
+
+  test('an answer whose body never ends still counts by its status', async () => {
+    const { postJson } = await loadApi();
+    g.fetch = (async (_u: string, i: RequestInit) => ({ status: 200, headers: new Headers(), json: () => noAnswer(i.signal) })) as unknown as typeof fetch;
+    const answer = postJson(URL, { token: 't' });
+    await Bun.sleep(1);
+    expire();
+    expect(await state(answer)).toEqual({ status: 200, error: '', data: {}, retryAfter: 0 });
+  });
+
+  test('an answer inside the wait counts', async () => {
+    const { postJson } = await loadApi();
+    g.fetch = (async () => new Response('{"status":"confirmed"}', { status: 200 })) as unknown as typeof fetch;
+    expect(await postJson(URL, { token: 't' })).toEqual({ status: 200, error: '', data: { status: 'confirmed' }, retryAfter: 0 });
+  });
+
+  test('a network failure inside the wait reads the same', async () => {
+    const { postJson } = await loadApi();
+    g.fetch = (async () => {
+      throw new TypeError('failed to fetch');
+    }) as unknown as typeof fetch;
+    expect((await postJson(URL, { token: 't' })).status).toBe(0);
+  });
+
+  test('a browser with no timed signal still sends the request', async () => {
+    const { postJson } = await loadApi();
+    (AbortSignal as unknown as Record<string, unknown>).timeout = undefined;
+    g.fetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    expect((await postJson(URL, { token: 't' })).status).toBe(200);
   });
 });
 
