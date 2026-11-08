@@ -908,7 +908,8 @@ struct CloudSortStatusTests {
       pass: { _, _ in nil }, waiting: { _ in false }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
       importRunning: { false }, enabled: { enabled.value }, network: BacklogSorterTests.Net(), sleep: { _ in })
     let c = LiveCloudSortController(sorter: sorter, view: { _ in Self.view(2) }, sendBack: { 0 }, enabled: { enabled.value })
-    await c.refresh()
+    for _ in 0..<400 where c.status.cloudSortedCount != 2 { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.cloudSortedCount == 2)
     let before = c.status.phase
     #expect(before != .off)
     enabled.set(false)
