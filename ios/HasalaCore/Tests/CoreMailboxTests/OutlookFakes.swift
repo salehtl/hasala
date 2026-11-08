@@ -24,7 +24,9 @@ actor OutlookServer: MailboxServer {
   var pushOn = true
   var returnsClientState = true
   var deleteRefusal: MailboxServerError?
+  var watchRefusal: MailboxServerError?
 
+  func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
   func setDeleteRefusal(_ e: MailboxServerError?) { deleteRefusal = e }
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setPushOn(_ v: Bool) { pushOn = v }
@@ -43,6 +45,7 @@ actor OutlookServer: MailboxServer {
     return MailboxLinkResult(status: link, clientState: returnsClientState ? Self.clientState : nil)
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
+    if let watchRefusal { throw watchRefusal }
     watches.append(expiresAtMs)
     if case .holder(let mine, _) = link { link = .holder(isThisDevice: mine, watchExpiresAtMs: expiresAtMs) }
   }

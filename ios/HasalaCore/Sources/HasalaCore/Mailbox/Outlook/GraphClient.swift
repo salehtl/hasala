@@ -475,6 +475,7 @@ extension GraphClient: MailSource {
   /// server relays no Outlook wakes, or this iPhone keeps no clientState.
   public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
     guard case .outlook(let n, let l) = push, let state = try? link.read() else { return nil }
+    if state.subscriptionID != nil { return try await renew(push) }
     return try await createSubscription(n, l, state: state)
   }
 
