@@ -30,6 +30,12 @@ struct SyncHaltTests {
     #expect(!BootController.clearsSyncHalt(.protocolError("refused 409 cursor_ahead")))
   }
 
+  @Test func aRetryThatVerifiedNothingLeavesTheWallUp() {
+    for stop: SyncStop in [.notNow, .cancelled, .suspended] {
+      #expect(!BootController.clearsSyncHalt(stop), "\(stop)")
+    }
+  }
+
   @Test func aRestoredServerIsShownAsRestoredNotTampered() {
     #expect(
       AccountRuntime.shownStop(.halted(.tampered(.chainBreak)), phase: .halted(.serverRestored)) == .halted(.serverRestored))

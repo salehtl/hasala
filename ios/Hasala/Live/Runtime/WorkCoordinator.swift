@@ -80,6 +80,8 @@ actor WorkCoordinator {
     var timedOut = false
     var mailHalt: MailboxHaltCode?
 
+    static let notRun = Outcome(stop: .notNow)
+
     /// The silent push's `.failed`: the run could not reach the server or stopped.
     var failed: Bool { stop.map { !WorkCoordinator.tolerable($0) } ?? false }
 
@@ -216,8 +218,8 @@ actor WorkCoordinator {
   /// 25 s); nil waits until done.
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
-    guard !closed, !paused else { return Outcome() }
-    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return Outcome() }
+    guard !closed, !paused else { return .notRun }
+    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {

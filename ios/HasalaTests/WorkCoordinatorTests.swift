@@ -450,4 +450,18 @@ struct WorkCoordinatorTests {
     let out = await Self.coordinator(Log(), mailHalt: .stagingFull).run(.refresh)
     #expect(out.settled == .updated)
   }
+
+  @Test func aRunThatDidNotStartDoesNotLookLikeACleanRun() async {
+    let c = Self.coordinator(Log(), delay: .zero)
+    _ = await c.run(.foreground)
+    let spaced = await c.run(.foreground)
+    await c.pause()
+    let paused = await c.run(.refresh)
+    await c.close()
+    let closed = await c.run(.refresh)
+    for out in [spaced, paused, closed] {
+      #expect(!out.ran && out.stop == .notNow)
+      #expect(!out.failed && out.settled == .notRun)
+    }
+  }
 }

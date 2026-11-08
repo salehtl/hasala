@@ -389,7 +389,10 @@ final class BootController {
   }
 
   static func clearsSyncHalt(_ stop: SyncStop?) -> Bool {
-    stop.map(WorkCoordinator.tolerable) ?? true
+    switch stop {
+    case nil, .rateLimited?, .latched?: true
+    default: false
+    }
   }
 
   static func syncHalt(for stop: SyncStop) -> HaltKind? {
