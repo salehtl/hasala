@@ -28,7 +28,8 @@
 # a number that is not newer (spec 06 §10.4). A validation alone records nothing.
 #
 # Exit codes (spec 06 §10.4): 2 usage (or HASALA_BUILD_DIR set without
-# HASALA_TEST_MODE=1, see hasala_build_root in release-common.sh), 14 key, 21 not
+# HASALA_TEST_MODE=1, see hasala_build_root in release-common.sh, or set with the
+# real xcrun first on PATH), 14 key, 21 not
 # newer (or not recordable), 40 inspection not passed, 50 validation failed, 60
 # upload failed.
 set -euo pipefail
@@ -49,6 +50,10 @@ fi
 # Where builds and last-build-number live: ios/build, unless the script tests moved it.
 if ! build_root="$(hasala_build_root "$ios")"; then
 	echo "upload: refusing to run with HASALA_BUILD_DIR set outside test mode" >&2
+	exit 2
+fi
+if [[ -n "${HASALA_BUILD_DIR:-}" ]] && hasala_is_macho "$(command -v xcrun || true)"; then
+	echo "upload: refusing to reach the real xcrun with the builds moved to $HASALA_BUILD_DIR; test mode runs only against a stub xcrun" >&2
 	exit 2
 fi
 

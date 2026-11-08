@@ -222,6 +222,17 @@ equal "$(cat "$work/calls")" "" "...before it ran xcrun"
 equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
 upload "HASALA_BUILD_DIR with HASALA_TEST_MODE=yes" 2 HASALA_TEST_MODE=yes -- "$root/$b3/export/Hasala.ipa"
 
+mkdir -p "$work/apple"
+printf '\317\372\355\376' >"$work/apple/xcrun"
+chmod +x "$work/apple/xcrun"
+: >"$work/calls"
+upload "builds moved to a test directory with a real xcrun first on PATH" 2 PATH="$work/apple:$work/stub:$PATH" STUB_UPLOAD_RC=0 \
+	ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" -- "$root/$b3/export/Hasala.ipa" --yes
+said "refusing to reach the real xcrun" "refused for the real xcrun"
+equal "$(cat "$work/calls")" "" "...before it ran the stub"
+equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
+equal "$(cat "$root/$b3/upload-state" 2>/dev/null || echo none)" none "...or started an upload"
+
 : >"$work/calls"
 newer=991231.12400
 upload "a newer build recorded while this one validated" 21 ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" \
