@@ -102,6 +102,11 @@ public enum PageReader {
     case refreshRoster
   }
 
+  public enum RowDecision: Sendable, Hashable {
+    case row(RowOutcome)
+    case stop(Stop)
+  }
+
   public struct Result: Sendable, Hashable {
     /// The rows decided before any stop, in page order.
     public let rows: [RowOutcome]
@@ -157,23 +162,33 @@ public enum PageReader {
       } catch {
         return stopped(i, .hardStop(.tampered(.rowShape)), out)
       }
-      switch state.opener.open(c.blob, envelope: envelope, prevHash: c.prevHash, serverEpoch: state.serverEpoch) {
-      case .hardStop(.updateRequired) where setsAsideNewer: out.append(.setAside(.opsUndecodable, alarm: false))
-      case .hardStop(let h): return stopped(i, .hardStop(h), out)
-      case .needsUnlock(let e): return stopped(i, .needsUnlock(epoch: e), out)
-      case .refreshEpoch(let e): return stopped(i, .refreshEpoch(e), out)
-      case .setAside(let reason, let alarm): out.append(.setAside(reason, alarm: alarm))
-      case .opened(let plaintext):
-        switch OpCodec.decodeR10(plaintext) {
-        case .ops(let ops): out.append(.opened(plaintext: plaintext, ops: ops))
-        case .hardStop(.updateRequired) where setsAsideNewer: out.append(.setAside(.opsUndecodable, alarm: false))
-        case .hardStop(let h): return stopped(i, .hardStop(h), out)
-        case .setAside(let reason, _): out.append(.setAside(reason, alarm: false))
-        }
+      let opened = state.opener.open(c.blob, envelope: envelope, prevHash: c.prevHash, serverEpoch: state.serverEpoch)
+      switch decide(opened, setsAsideNewer: setsAsideNewer) {
+      case .stop(let s): return stopped(i, s, out)
+      case .row(let outcome): out.append(outcome)
+      }
+      if case .opened(let plaintext) = opened {
         held += plaintext.count
         if held >= plaintextBudget { return Result(rows: out, stop: nil, stopRow: nil) }
       }
     }
     return Result(rows: out, stop: nil, stopRow: nil)
+  }
+
+  public static func decide(_ opened: OpenOutcome, setsAsideNewer: Bool) -> RowDecision {
+    switch opened {
+    case .hardStop(.updateRequired) where setsAsideNewer: return .row(.setAside(.opsUndecodable, alarm: false))
+    case .hardStop(let h): return .stop(.hardStop(h))
+    case .needsUnlock(let e): return .stop(.needsUnlock(epoch: e))
+    case .refreshEpoch(let e): return .stop(.refreshEpoch(e))
+    case .setAside(let reason, let alarm): return .row(.setAside(reason, alarm: alarm))
+    case .opened(let plaintext):
+      switch OpCodec.decodeR10(plaintext) {
+      case .ops(let ops): return .row(.opened(plaintext: plaintext, ops: ops))
+      case .hardStop(.updateRequired) where setsAsideNewer: return .row(.setAside(.opsUndecodable, alarm: false))
+      case .hardStop(let h): return .stop(.hardStop(h))
+      case .setAside(let reason, _): return .row(.setAside(reason, alarm: false))
+      }
+    }
   }
 }
