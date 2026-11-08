@@ -298,6 +298,7 @@ public final class InMemoryLedger: LedgerStore {
       title = "Kept both"
     case .resolveSamePurchase(let id, let same):
       guard let a = s.txn(id), let match = a.samePurchase, let f = s.txn(match.of) else { throw .notFound }
+      if same, f.homeMinor == nil { throw .notFound }
       try editTxn(id) { t in
         t.samePurchase = nil
         if same {
@@ -307,7 +308,7 @@ public final class InMemoryLedger: LedgerStore {
         }
       }
       if same {
-        try editTxn(f.id) { $0.homeMinor = a.amount.minor }
+        try editTxn(f.id) { $0.setStatedHome(a.amount.minor) }
       }
       title = same ? "Counted once" : "Kept both"
     case .skipReview(let id):
@@ -656,6 +657,8 @@ public final class InMemoryLedger: LedgerStore {
     field(\.note)
     field(\.archived)
     field(\.homeMinor)
+    field(\.homeSource)
+    field(\.homeRateMicro)
     field(\.samePurchase)
     field(\.heldCopy)
     field(\.combinedCopy)

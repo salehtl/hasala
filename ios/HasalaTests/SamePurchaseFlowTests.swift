@@ -55,6 +55,7 @@ struct SamePurchaseFlowTests {
     #expect(title == "Counted once")
     #expect(inverses == [.samePurchase(foreign: "amazon-usd", previousHome: 91_81, previousRateMicro: nil, home: "amazon-aed", previousNote: "")])
     #expect(s.txn("amazon-usd")?.homeMinor == 93_00 && s.txn("amazon-usd")?.amount == Money(minor: 25_00, currency: "USD"))
+    #expect(s.txn("amazon-usd")?.homeSource == .stated && s.txn("amazon-usd")?.homeRateMicro == nil)
     #expect(s.txn("amazon-aed")?.archived == true && s.txn("amazon-aed")?.note == "Settled the USD 25.00 purchase")
     #expect(s.txn("amazon-aed")?.samePurchase == nil)
 

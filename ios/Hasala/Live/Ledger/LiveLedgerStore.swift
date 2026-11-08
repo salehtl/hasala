@@ -442,7 +442,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].archived = true
       s.txns[i].mergedInto = match.of
       s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
-      s.txns[j].homeMinor = s.txns[i].amount.minor
+      s.txns[j].setStatedHome(s.txns[i].amount.minor)
       return (
         "Counted once",
         [.samePurchase(foreign: match.of, previousHome: previous, previousRateMicro: previousRate, home: id, previousNote: oldNote)]

@@ -441,6 +441,12 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
 
+  public mutating func setStatedHome(_ minor: Int64) {
+    homeMinor = minor
+    homeSource = .stated
+    homeRateMicro = nil
+  }
+
   public var isNotCounted: Bool { homeMinor == nil }
 
   public var isHeldOut: Bool { !isHeldCopy && (samePurchase != nil || (mayRepeat != nil && needsReview)) }
