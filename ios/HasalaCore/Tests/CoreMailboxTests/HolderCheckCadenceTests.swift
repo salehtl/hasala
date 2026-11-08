@@ -12,6 +12,29 @@ import Testing
     #expect(await rig.engine.runCycle(trigger: .foreground).phase == .otherDevice)
   }
 
+  @Test(arguments: [MailboxTrigger.refresh, .launch, .retry])
+  func aLinkThatCameBackIsAskedAboutOnceInTheCycle(_ trigger: MailboxTrigger) async {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    rig.clock.advance(11 * 60_000)
+    #expect(await rig.engine.runCycle(trigger: .refresh).phase == .otherDevice)
+    var parked = await rig.state()
+    parked.watchExpiresAtMs = nil
+    var c = MailboxCommit()
+    c.state = parked
+    try? await rig.store.commit(c)
+    let watch = Rig.t0 + 86_400_000
+    await rig.server.setLink(.holder(isThisDevice: true, watchExpiresAtMs: watch))
+    rig.clock.advance(11 * 60_000)
+    let reads = await rig.server.linkStatusReads
+    _ = await rig.engine.runCycle(trigger: trigger)
+    #expect(await rig.server.linkStatusReads == reads + 1)
+    let s = await rig.state()
+    #expect(s.lastHolderCheckAtMs == rig.clock.nowMs())
+    #expect(s.watchExpiresAtMs == watch)
+  }
+
   @Test func theCheckStillWaitsForTheIntervalWhenTheClockIsSteady() async {
     let rig = Rig()
     await rig.connectAndActivate()

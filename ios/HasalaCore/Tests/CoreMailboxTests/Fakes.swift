@@ -127,8 +127,10 @@ actor FakeServer: MailboxServer {
     return link
   }
   var linkProvider: MailProviderID?
+  var linkStatusReads = 0
   func setLinkProvider(_ p: MailProviderID?) { linkProvider = p }
   func linkStatus(provider: MailProviderID) async throws(MailboxServerError) -> MailboxLinkStatus {
+    linkStatusReads += 1
     if let linkProvider, linkProvider != provider { throw .otherProvider }
     return try await linkStatus()
   }

@@ -748,6 +748,7 @@ public actor MailboxEngine {
       state.haltedOn = nil
       state.haltedDetail = nil
     }
+    var holderConfirmed = false
     switch state.phase {
     case .unlinked:
       return report
@@ -767,10 +768,13 @@ public actor MailboxEngine {
         case .holder(isThisDevice: false, _):
           state.lastHolderCheckAtMs = now
           return await finish(&state, report)
-        case .holder(isThisDevice: true, _):
+        case .holder(isThisDevice: true, let watch):
           state.phase = resumePhase(state)
           state.haltedOn = nil
           state.haltedDetail = nil
+          state.lastHolderCheckAtMs = now
+          if let watch, state.watchExpiresAtMs == nil { state.watchExpiresAtMs = watch }
+          holderConfirmed = true
         }
       } catch .otherProvider {
         state.lastHolderCheckAtMs = now
@@ -798,7 +802,7 @@ public actor MailboxEngine {
 
     let now = clock.nowMs()
     // 1. Holder check.
-    if holderCheckDue(state, trigger) {
+    if !holderConfirmed && holderCheckDue(state, trigger) {
       do {
         switch try await server.linkStatus(provider: provider.id) {
         case .noLink:
