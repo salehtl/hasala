@@ -336,6 +336,59 @@ struct LiveAccountFlowTests {
     #expect(try a.env.secrets.session() == nil)
   }
 
+  @Test func aChangeAfterAFreezeFromTheEmailLinkSignsThisIPhoneOut() async throws {
+    let changes: [SecurityAction] = [.signOutEverywhere, .freeze, .deleteAccount]
+    for change in changes {
+      let server = MiniHasalad(invite: Self.invite)
+      let a = Phone(server)
+      _ = try await signUp(a, server)
+      let session = AccountSession(services: services(a.relaunched()), phase: .ready)
+      let m = SecurityModel(session: session)
+      await m.load()
+      #expect(!m.isFrozen)
+
+      server.freezeFromTheEmailLink()
+      await m.request(change)
+      #expect(m.confirming == .perform(change))
+      m.confirmPassword = Self.password
+      await m.confirm()
+
+      #expect(m.confirming == nil)
+      #expect(m.failure == nil)
+      #expect(session.phase == .signedOut)
+      #expect(try a.env.secrets.session() == nil)
+      #expect(a.binding != nil)
+      #expect(server.deletedAccounts == 0)
+      #expect(await signIn(a) == .frozen(FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true)))
+    }
+  }
+
+  @Test func theWordsAfterAFreezeFromTheEmailLinkSignThisIPhoneOut() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server, passkeys: SamePRFPasskeys())
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    server.freezeFromTheEmailLink()
+    await #expect(throws: AuthFailure.sessionEnded) { _ = try await account.viewRecoveryPhrase() }
+    #expect(server.phraseViews == 0)
+    #expect(try a.env.secrets.session() == nil)
+    #expect(a.binding != nil)
+  }
+
+  @Test func aChangeWithASignOutStillToSendKeepsItsRetry() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let a = Phone(server)
+    _ = try await signUp(a, server)
+    let account = a.relaunched()
+    var pending = try #require(try a.env.secrets.session())
+    pending.pending_logout = true
+    try a.env.secrets.writeSession(pending)
+    await #expect(throws: AuthFailure.sessionEnded) {
+      try await account.perform(.signOutEverywhere, password: Self.password)
+    }
+    #expect(try a.env.secrets.session()?.pending_logout == true)
+  }
+
   @Test func aPasswordAccountAddsAPasskeyFromSecurity() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server, passkeys: StubPasskeys())
@@ -767,6 +820,13 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
         s.users[k]?.freezeTriggerAt = "2026-10-11T17:20:05.123456Z"
       }
       if byOperator { for t in s.sessions.keys { s.sessions[t]?.revoked = true } }
+    }
+  }
+
+  func freezeFromTheEmailLink() {
+    freezeAll(byOperator: false)
+    state.withLock { s in
+      for t in s.sessions.keys { s.sessions[t]?.revoked = true }
     }
   }
 

@@ -665,7 +665,7 @@ final class LiveAccountService: AccountService {
     } catch let e as AuthFailure {
       throw e
     } catch let e as CeremonyError {
-      throw Self.map(e)
+      throw await refusal(e)
     } catch {
       throw .refused
     }
@@ -679,17 +679,18 @@ final class LiveAccountService: AccountService {
       try await guarded(.accountUnfreeze, "/api/v1/account/unfreeze", factor: factor, binding: binding,
                         action: .unfreeze)
     } catch {
-      if error.failure?.status == 401 {
-        // An operator freeze revokes every session, this one too: as after any
-        // revoked session, this iPhone signs in again, and then shows their wall.
-        try? env.secrets.deleteSession()
-        sessionEnded()
-        await left()
-        throw .sessionEnded
-      }
-      if Self.map(error) == .frozen, await freezeInfo()?.by == .operator { throw .frozenByOperator }
-      throw Self.map(error)
+      let failure = await refusal(error)
+      if failure == .frozen, await freezeInfo()?.by == .operator { throw .frozenByOperator }
+      throw failure
     }
+  }
+
+  private func refusal(_ e: CeremonyError) async -> AuthFailure {
+    guard e.failure?.status == 401 else { return Self.map(e) }
+    if (try? env.secrets.activeSession()) != nil { try? env.secrets.deleteSession() }
+    sessionEnded()
+    await left()
+    return .sessionEnded
   }
 
   /// A step-up guarded `POST {"step_up"}` with an empty answer (#16, #65, #66).
@@ -744,7 +745,7 @@ final class LiveAccountService: AccountService {
     } catch let e as CeremonyError {
       // The passkey gave no PRF output, so it has no wrap to open the words with.
       if case .noPRF = e { throw .passkeyCantShowPhrase }
-      throw Self.map(e)
+      throw await refusal(e)
     } catch {
       throw .refused
     }
