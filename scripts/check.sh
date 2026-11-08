@@ -172,6 +172,12 @@ fi
 step "real-mail fence self-test"
 "$ROOT/scripts/tests/fence_test.sh"
 
+step "gate run self-test"
+"$ROOT/scripts/tests/gate_run_test.sh"
+
+GATE_STEPS="real-mail fence, toolchain, fence"
+NOT_RUN=()
+
 # --- 0b. HasalaCore source lints ------------------------------------------------
 # The import allowlist per directory (spec 04 §2.3, R1, R6), 01 AT-C11's source
 # scan and the R2/R3/R7/R8 grep lints. The half of check-imports.sh that
@@ -213,8 +219,12 @@ if [[ -n "$CI_RUN" ]]; then
 else
 	golden_base="$(git merge-base HEAD origin/main 2>/dev/null || true)"
 fi
-if [[ -z "$golden_base" ]]; then
-	echo "no base commit to compare with (CI: HEAD^1, locally: the merge base with origin/main); skipped"
+if [[ -z "$golden_base" && -n "$CI_RUN" ]]; then
+	echo "check: no base commit (HEAD^1), so the golden-fixture rule cannot run; the gate job's checkout needs fetch-depth 2" >&2
+	exit 1
+elif [[ -z "$golden_base" ]]; then
+	echo "no base commit to compare with (the merge base with origin/main); skipped"
+	NOT_RUN+=("the golden-fixture rule (no merge base with origin/main)")
 else
 	golden_paths=()
 	for s in "${GOLDEN_SETS[@]}"; do golden_paths+=("conformance/$s"); done
@@ -289,8 +299,10 @@ go test -count=1 -run '^TestFence' ./cmd/hasalad
 step "govulncheck ./cmd/hasalad/..."
 if [[ -n "$CI_RUN" ]]; then
 	echo "skipped in CI: the vuln job runs govulncheck ./... in server/ and server/oracle/"
+	NOT_RUN+=("govulncheck (the vuln job runs it)")
 else
 	govulncheck ./cmd/hasalad/...
+	GATE_STEPS+=", govulncheck"
 fi
 
 # --- 3. one throwaway Postgres cluster -------------------------------------------
@@ -507,6 +519,7 @@ for entry in "${KNOWN_FAILING[@]}"; do
 done
 
 # --- the real corpus, accounted for -----------------------------------------------
+GATE_STEPS+=", go vet, go test, assist worker, conformance"
 read -r go_ran go_skipped <"$REAL_GO"
 corpus="go ${go_ran} ran / ${go_skipped} skipped"
 echo
@@ -516,10 +529,15 @@ if [[ -n "${HASALA_PRIVATE_FIXTURES:-}" ]]; then
 		echo "check: HASALA_PRIVATE_FIXTURES is set, so every real-corpus test must run and none may skip" >&2
 		exit 1
 	fi
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance; real corpus included)"
+	echo "check: OK ($GATE_STEPS; real corpus included)"
 	ci_report "Real corpus included" "$corpus."
 else
-	echo "check: OK (real-mail fence, toolchain, fence, govulncheck, go vet, go test, assist worker, conformance)"
+	echo "check: OK ($GATE_STEPS)"
 	echo "check: WITHOUT the real corpus: HASALA_PRIVATE_FIXTURES is unset, so the tests above that read real bank mail were skipped"
 	ci_report "Real corpus skipped" "$corpus. HASALA_PRIVATE_FIXTURES is unset, so every test that reads real bank mail skipped by name (listed in the log); this run is the gate without the real corpus."
+fi
+if ((${#NOT_RUN[@]})); then
+	not_run="$(printf '%s; ' "${NOT_RUN[@]}")"
+	echo "check: NOT RUN: ${not_run%; }"
+	ci_report "Gate steps not run" "${not_run%; }"
 fi
