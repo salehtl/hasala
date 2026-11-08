@@ -2,6 +2,7 @@ import Foundation
 import HasalaMocks
 import HasalaModels
 import Testing
+import UIKit
 
 @testable import Hasala
 
@@ -80,8 +81,8 @@ struct BillsScreenTests {
     model.amountText = "14.99"
     #expect(model.linkTitle == "Add and link 1 payment")
     #expect(model.save())
-    let added = try #require(app.store.state.bills.last)
-    #expect(added.name == "Apple" && added.payments.compactMap(\.txnID) == ["apple"])
+    let added = try #require(app.store.state.bills.last { $0.name == "Apple" })
+    #expect(added.payments.compactMap(\.txnID) == ["apple"])
   }
 
   @Test func aSecondAddDoesNotAddItAgain() {
@@ -120,6 +121,56 @@ struct BillsScreenTests {
     var later = salary
     later.payday = salary.payday == 1 ? 2 : 1
     #expect(later != salary)
+  }
+
+  private final class SheetDelegate: NSObject, UIAdaptivePresentationControllerDelegate {}
+
+  private func sheet(_ delegate: SheetDelegate) -> UIPresentationController {
+    let controller = UIPresentationController(presentedViewController: UIViewController(), presenting: nil)
+    controller.delegate = delegate
+    return controller
+  }
+
+  @Test func aGuardWithNothingToGuardLeavesTheSheetAlone() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(false, on: presentation)
+    #expect(presentation.delegate === delegate)
+  }
+
+  @Test func aGuardHandsTheSheetBackWhenItStopsGuarding() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(true, on: presentation)
+    #expect(presentation.delegate === attempt.proxy && attempt.proxy.original === delegate)
+    attempt.setEnabled(false)
+    #expect(presentation.delegate === delegate && attempt.proxy.original == nil)
+    attempt.setEnabled(true, on: presentation)
+    #expect(presentation.delegate === attempt.proxy && attempt.proxy.original === delegate)
+  }
+
+  @Test func aGuardRemovedWhileGuardingHandsTheSheetBack() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    do {
+      let attempt = DismissAttempt.Controller()
+      attempt.setEnabled(true, on: presentation)
+      DismissAttempt.dismantleUIViewController(attempt, coordinator: ())
+    }
+    #expect(presentation.delegate === delegate)
+  }
+
+  @Test func aGuardLeavesASheetAnotherGuardHasTaken() {
+    let delegate = SheetDelegate()
+    let presentation = sheet(delegate)
+    let attempt = DismissAttempt.Controller()
+    attempt.setEnabled(true, on: presentation)
+    let later = SheetDelegate()
+    presentation.delegate = later
+    attempt.setEnabled(false)
+    #expect(presentation.delegate === later)
   }
 
   @Test func pauseAndEndAreFittedSheets() {

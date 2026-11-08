@@ -496,31 +496,47 @@ struct DismissAttempt: UIViewControllerRepresentable {
   func makeUIViewController(context: Context) -> Controller { Controller() }
 
   func updateUIViewController(_ controller: Controller, context: Context) {
-    controller.proxy.enabled = enabled
     controller.proxy.attempted = attempted
-    controller.install()
+    controller.setEnabled(enabled)
+  }
+
+  static func dismantleUIViewController(_ controller: Controller, coordinator: Coordinator) {
+    controller.setEnabled(false)
   }
 
   final class Controller: UIViewController {
     let proxy = Proxy()
+    private weak var held: UIPresentationController?
 
     override func viewDidAppear(_ animated: Bool) {
       super.viewDidAppear(animated)
-      install()
+      setEnabled(proxy.enabled)
     }
 
-    func install() {
+    func setEnabled(_ enabled: Bool, on presentation: UIPresentationController? = nil) {
+      proxy.enabled = enabled
+      if !enabled {
+        release()
+      } else if let pc = presentation ?? sheetPresentation, pc.delegate !== proxy {
+        proxy.original = pc.delegate
+        pc.delegate = proxy
+        held = pc
+      }
+    }
+
+    private func release() {
+      if let held, held.delegate === proxy { held.delegate = proxy.original }
+      held = nil
+      proxy.original = nil
+    }
+
+    private var sheetPresentation: UIPresentationController? {
       var vc: UIViewController? = self
       while let current = vc {
-        if current.presentingViewController != nil, let pc = current.presentationController {
-          if pc.delegate !== proxy {
-            proxy.original = pc.delegate
-            pc.delegate = proxy
-          }
-          return
-        }
+        if current.presentingViewController != nil, let pc = current.presentationController { return pc }
         vc = current.parent
       }
+      return nil
     }
   }
 
