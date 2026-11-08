@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/budget"
@@ -281,9 +282,19 @@ func (a *Appender) appendRows(ctx context.Context, rows []Row, prepare prepareFu
 		return nil, a.budget().RecordRefusal(ctx, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("oplog: append: commit: %w", err)
+		if commitOutcomeKnown(err) {
+			return nil, fmt.Errorf("oplog: append: commit: %w", err)
+		}
+		return nil, fmt.Errorf("%w: %w", errCommitOutcomeUnknown, err)
 	}
 	return seqs, nil
+}
+
+var errCommitOutcomeUnknown = errors.New("oplog: append: commit: the outcome is unknown")
+
+func commitOutcomeKnown(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.Is(err, pgx.ErrTxCommitRollback) || errors.As(err, &pgErr)
 }
 
 // prepareFunc runs inside the append transaction, after allocSeq has taken the

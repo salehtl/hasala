@@ -380,8 +380,9 @@ func (a *Appender) AppendClientStored(ctx context.Context, userID uuid.UUID, wri
 	if err == nil {
 		return seqs, true, nil
 	}
+	mayHaveStored := errors.Is(err, errCommitOutcomeUnknown)
 	seqs, err = a.resolveAppendErr(ctx, userID, writerID, stream, batch, err)
-	return seqs, false, err
+	return seqs, mayHaveStored, err
 }
 
 // Errors of the writer, epoch and head checks.
