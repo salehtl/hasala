@@ -389,6 +389,31 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(account.frozenInfo == nil)
   }
 
+  @Test func onlyLiftingTheFreezeAsksForALaunchRun() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .holder)
+    let session = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.leaveFrozen()
+    session.showFrozenWall()
+    #expect(launches == 0)
+    try await session.unfreeze(password: nil)
+    #expect(session.phase == .ready && launches == 1)
+  }
+
+  @Test func unfreezingFromTheBannerAsksForALaunchRunWithNoPhaseChange() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    session.leaveFrozen()
+    var launches = 0
+    var phases = 0
+    session.onUnfroze = { launches += 1 }
+    session.onPhaseChange = { _ in phases += 1 }
+    session.unfroze()
+    #expect(launches == 1 && phases == 0 && session.leftFrozen == nil)
+  }
+
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
     session.signedIn(.frozen(FreezeInfo(by: .operator, when: nil)))

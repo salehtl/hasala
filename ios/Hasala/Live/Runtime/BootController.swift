@@ -152,6 +152,7 @@ final class BootController {
     self.wall = wall
     let decided = AccountSession(services: services, phase: phase)
     decided.onPhaseChange = { [weak self] in self?.phaseChanged($0) }
+    decided.onUnfroze = { [weak self] in self?.relaunch() }
     session = decided
     state = .decided
     phaseChanged(session.phase)
@@ -372,12 +373,15 @@ final class BootController {
       openRuntimeIfNeeded()
     case .updateRequired:
       wall = nil
-      if let rt = runtime, let binding = try? env.account.secrets.binding() {
-        Task { await launch(rt, binding: binding) }
-      }
+      relaunch()
     default:
       break
     }
+  }
+
+  private func relaunch() {
+    guard let rt = runtime, let binding = try? env.account.secrets.binding() else { return }
+    Task { await launch(rt, binding: binding) }
   }
 
   func retrySync() {

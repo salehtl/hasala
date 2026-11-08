@@ -31,6 +31,7 @@ final class AccountSession {
     didSet { if phase != oldValue { onPhaseChange?(phase) } }
   }
   @ObservationIgnored var onPhaseChange: (@MainActor (Phase) -> Void)?
+  @ObservationIgnored var onUnfroze: (@MainActor () -> Void)?
   /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
   /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
@@ -134,6 +135,7 @@ final class AccountSession {
   func unfroze() {
     leftFrozen = nil
     phase = .ready
+    onUnfroze?()
   }
 
   /// The server says the operator froze the account: the wall, or the banner after "Leave
