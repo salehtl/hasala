@@ -1320,7 +1320,7 @@ public actor MailboxEngine {
     return .success(
       await exclusive {
         var report = CycleReport()
-        guard var state = try? await store.loadState() else { return report }
+        guard !stopped, var state = try? await store.loadState() else { return report }
         report.phase = state.phase
         if let address {
           do { try await store.addSenderAddress(address) } catch {
@@ -1467,7 +1467,7 @@ public actor MailboxEngine {
   public func probeSenders(_ domains: [String], days: Int = 180) async -> SenderProbeResult {
     let wanted = domains.map { $0.lowercased() }.filter(BankDomains.isQuerySafe)
     return await exclusive {
-      guard let state = try? await store.loadState() else { return .offline }
+      guard !stopped, let state = try? await store.loadState() else { return .offline }
       switch state.phase {
       case .otherDevice, .unlinked: return .notReading
       case .reconnectRequired: return .reconnectRequired
@@ -1502,7 +1502,7 @@ public actor MailboxEngine {
   /// never persisted). Holder only.
   public func viewEmail(messageID: String) async -> EmailView {
     await exclusive {
-      guard let state = try? await store.loadState() else { return .offline }
+      guard !stopped, let state = try? await store.loadState() else { return .offline }
       switch state.phase {
       case .otherDevice, .unlinked: return .nonHolder
       case .reconnectRequired: return .reconnectRequired
