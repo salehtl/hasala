@@ -174,6 +174,7 @@ step "real-mail fence self-test"
 
 step "gate run self-test"
 "$ROOT/scripts/tests/gate_run_test.sh"
+"$ROOT/scripts/tests/gotest_ran_test.sh"
 
 GATE_STEPS="real-mail fence, toolchain, fence"
 NOT_RUN=()
@@ -422,7 +423,7 @@ bun test
 # internal/api again, for the same verdict against the same cluster). Instead
 # `go test -list` names every test of each package in the table, and
 # scripts/gotest-ran.ts requires each package to have passed in step 4's record
-# and each of those tests to have a result there (pass, or its own skip). A
+# and each of those tests to have a result there (pass, or a real-corpus or fixture-writer skip). A
 # package left out of step 4, or one of its tests that step 4 did not run (a
 # -run, a -skip, a KNOWN_FAILING pattern that also matches it), fails here.
 #
