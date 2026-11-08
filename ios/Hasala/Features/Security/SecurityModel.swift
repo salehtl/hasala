@@ -232,6 +232,10 @@ final class SecurityModel {
       session.learnedOperatorFreeze()
       await load()
       failure = .frozenByOperator
+    } catch .frozen {
+      closeConfirmation()
+      await load()
+      failure = .frozen
     } catch .sessionEnded {
       // The server ended the session (an operator freeze revokes them all): sign in again.
       closeConfirmation()

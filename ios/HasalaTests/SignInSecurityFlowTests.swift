@@ -400,6 +400,21 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(CodeStepScreen.line(failure: .codeWrong(triesLeft: 3), state: .wrong) == .codeWrong(triesLeft: 3))
   }
 
+  @Test func aChangeRefusedAsFrozenShowsTheFreezeThePageMissed() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    let session = AccountSession(services: services(account), phase: .ready)
+    let m = SecurityModel(session: session)
+    await m.load()
+    #expect(!m.isFrozen)
+    try await account.perform(.freeze, password: nil)
+    await m.request(.signOutEverywhere)
+    #expect(m.confirming != nil)
+    await m.confirm()
+    #expect(m.confirming == nil)
+    #expect(m.failure == .frozen)
+    #expect(m.isFrozen)
+  }
+
   @Test func theFirstLoadIsTriedAgainWhileTheServerCantBeReached() async {
     let account = MockAccountService(existing: .passkey)
     let session = AccountSession(services: services(account), phase: .ready)
