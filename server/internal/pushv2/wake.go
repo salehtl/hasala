@@ -80,6 +80,7 @@ const (
 	senderCount   = 4
 	configPause   = 5 * time.Minute
 	tickEvery     = time.Second
+	drainTimeout  = 10 * time.Second
 )
 
 type job struct {
@@ -106,16 +107,18 @@ type Dispatcher struct {
 	Stats  Stats
 
 	queue    chan job
-	mu       sync.Mutex // guards th, pause and envPause
+	mu       sync.Mutex // guards th, pause, envPause, closed and the sends to queue
 	th       *throttle
 	pause    time.Time
 	envPause map[string]time.Time
+	closed   bool
 	wg       sync.WaitGroup
+	drainFor time.Duration
 }
 
 // NewDispatcher builds a dispatcher; call Start to run it.
 func NewDispatcher(pool *pgxpool.Pool, s Sender) *Dispatcher {
-	return &Dispatcher{Pool: pool, Sender: s, queue: make(chan job, queueCapacity), th: newThrottle()}
+	return &Dispatcher{Pool: pool, Sender: s, queue: make(chan job, queueCapacity), th: newThrottle(), drainFor: drainTimeout}
 }
 
 func (d *Dispatcher) now() time.Time {
@@ -125,9 +128,12 @@ func (d *Dispatcher) now() time.Time {
 	return time.Now()
 }
 
-// Start runs the senders and the trailing-edge ticker until ctx is done; the
-// returned channel closes when every goroutine has stopped.
+// Start runs the senders and the trailing-edge ticker until ctx is done. A
+// wake already queued then still goes out, within drainFor; a later one is
+// refused. The returned channel closes when every goroutine has stopped.
 func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
+	runCtx, stopRun := context.WithCancel(context.WithoutCancel(ctx))
+	context.AfterFunc(ctx, func() { time.AfterFunc(d.drainFor, stopRun) })
 	for range senderCount {
 		d.wg.Add(1)
 		go func() {
@@ -135,9 +141,10 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			for {
 				select {
 				case <-ctx.Done():
+					d.drain(runCtx)
 					return
 				case j := <-d.queue:
-					d.run(context.WithoutCancel(ctx), j)
+					d.run(runCtx, j)
 				}
 			}
 		}()
@@ -152,16 +159,42 @@ func (d *Dispatcher) Start(ctx context.Context) <-chan struct{} {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				d.Flush(context.WithoutCancel(ctx))
+				d.Flush(runCtx)
 			}
 		}
 	}()
 	done := make(chan struct{})
-	go func() { d.wg.Wait(); close(done) }()
+	go func() { d.wg.Wait(); stopRun(); close(done) }()
 	return done
 }
 
+func (d *Dispatcher) drain(ctx context.Context) {
+	d.mu.Lock()
+	d.closed = true
+	d.mu.Unlock()
+	for {
+		select {
+		case j := <-d.queue:
+			if ctx.Err() != nil {
+				d.Stats.Dropped[j.r].Add(1)
+				slog.Warn("pushv2: shutdown limit reached, wake dropped", "reason", j.r.String())
+				continue
+			}
+			d.run(ctx, j)
+		default:
+			return
+		}
+	}
+}
+
 func (d *Dispatcher) enqueue(j job) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		d.Stats.Dropped[j.r].Add(1)
+		slog.Warn("pushv2: shutting down, wake dropped", "reason", j.r.String())
+		return false
+	}
 	select {
 	case d.queue <- j:
 		return true
