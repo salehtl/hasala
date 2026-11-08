@@ -19,6 +19,21 @@ struct SplitPasskeys: PasskeyProvider {
   }
 }
 
+struct TwoPasskeys: PasskeyProvider {
+  let wrapped: SoftPasskey
+  let bare: SoftPasskey
+
+  func register(_ options: CreationOptions, prfSalt: Data?) async throws(PasskeyError) -> RawRegistration {
+    try await bare.register(options, prfSalt: prfSalt)
+  }
+
+  func assert(challenge: Data, allowCredentialIDs: [Data], prfSalt: Data?) async throws(PasskeyError) -> RawAssertion {
+    let bareAllowed = allowCredentialIDs.isEmpty || bare.credentials.contains { allowCredentialIDs.contains($0.id) }
+    return try await (bareAllowed ? bare : wrapped).assert(
+      challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
+  }
+}
+
 @Suite("Adding a passkey (passkey.add)")
 struct PasskeyAddTests {
   @Test("a password account adds a passkey with its password and the DAK; with the words' body it unlocks a new iPhone")
@@ -72,6 +87,64 @@ struct PasskeyAddTests {
       let b = w.phone("b", passkeys: shared)
       let r = try await AccountSignIn.withPasskey(b.env, bound: nil, wantPRF: true)
       #expect(r.userID == account.userID)
+    }
+  }
+
+  func env(_ phone: Phone, _ w: World, passkeys: any PasskeyProvider) -> AccountEnvironment {
+    AccountEnvironment(
+      client: phone.env.client, secrets: phone.env.secrets, approvalKeys: phone.dak, passkeys: passkeys, clock: w.clock,
+      random: phone.env.random, apiBase: phone.env.apiBase, accountsDirectory: nil)
+  }
+
+  @Test("an unlock with no assertion in hand asks only for a passkey that has a wrap")
+  func unlockAsksOnlyForAWrappedPasskey() async throws {
+    let w = World()
+    let wrappedKey = SoftPasskey()
+    let bareKey = SoftPasskey()
+    let a = w.phone("a", passkeys: wrappedKey)
+    let (account, words, _) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let body = try await Enrolment.unlockWithPhrase(a.env, userID: account.userID, typed: words.joined(separator: " "))
+    defer { body.wipe() }
+    let wrapped = try await AccountPasskeys.add(a.env, binding: binding, factor: .device(password: password), body: body, reason: "x")
+    let bare = try await AccountPasskeys.add(
+      env(a, w, passkeys: bareKey), binding: binding, factor: .device(password: password), body: nil, reason: "x")
+    #expect(wrapped.unlocksData && !bare.unlocksData)
+
+    let b = w.phone("b")
+    _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let unlocking = env(b, w, passkeys: TwoPasskeys(wrapped: wrappedKey, bare: bareKey))
+    let r = try await AccountSignIn.forPasskeyUnlock(unlocking)
+    let assertion = try #require(r.assertion)
+    #expect(assertion.credentialID == wrapped.credentialID)
+    let opened = try await Enrolment.unlockWithPRF(
+      unlocking, userID: account.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+    opened.wipe()
+  }
+
+  @Test("an account with no wrap still signs in with its passkey, and the words take over")
+  func unlockWithNoWrapAtAll() async throws {
+    let w = World()
+    let key = SoftPasskey()
+    let a = w.phone("a", passkeys: key)
+    let (account, _, _) = try await w.passwordAccount(a)
+    let bare = try await AccountPasskeys.add(
+      a.env, binding: try #require(a.binding), factor: .device(password: password), body: nil, reason: "x")
+    #expect(!bare.unlocksData)
+    let b = w.phone("b", passkeys: key)
+    _ = try await AccountSignIn.withPassword(b.env, email: "maya@example.com", password: password, bound: nil)
+    let r = try await AccountSignIn.forPasskeyUnlock(b.env)
+    let assertion = try #require(r.assertion)
+    #expect(assertion.credentialID == bare.credentialID)
+    do throws(CeremonyError) {
+      _ = try await Enrolment.unlockWithPRF(
+        b.env, userID: account.userID, credentialID: assertion.credentialID, prf: assertion.prfFirst)
+      Issue.record("expected noPRF")
+    } catch {
+      guard case .noPRF = error else {
+        Issue.record("expected noPRF, got \(error)")
+        return
+      }
     }
   }
 

@@ -316,7 +316,7 @@ final class LiveAccountService: AccountService {
       } else {
         // A password session, or a relaunch (the assertion is gone): C2's passkey login
         // with PRF replaces the session.
-        let again = try await AccountSignIn.withPasskey(env, bound: nil, wantPRF: true)
+        let again = try await AccountSignIn.forPasskeyUnlock(env)
         signIn = again
         guard let a = again.assertion else { throw CeremonyError.noPRF }
         assertion = a
