@@ -556,6 +556,23 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailboxMoment.pending == nil)
   }
 
+  @Test func aSecondFirstScanJoinsTheOneRunning() async throws {
+    let lane = mailbox()
+    lane.step = .milliseconds(5)
+    await MailConnectCoordinator(mailbox: lane, context: .addMailbox).connect(.gmail)
+    var opened: ScanProgress?
+    for await p in lane.firstScan() {
+      opened = p
+      break
+    }
+    let firstRead = try #require(opened).read
+    var reads: [Int] = []
+    for await p in lane.firstScan() { reads.append(p.read) }
+    #expect(try #require(reads.first) > firstRead)
+    #expect(reads == reads.sorted() && reads.last == lane.total)
+    #expect(lane.importing == nil && lane.mailboxes.first?.state == .connected)
+  }
+
   @Test func aMomentIsHandedOnlyToABankAlertsAboutToShow() {
     defer { MailboxMoment.discard() }
     MailboxMoment.discard()
