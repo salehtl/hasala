@@ -60,7 +60,7 @@ public enum SampleSeedRefusal: String, Error, Sendable, Equatable, CaseIterable 
 }
 
 public enum SampleSeed {
-  /// Ops per blob (one `Outbox.enqueue` each).
+  /// Ops per blob.
   public static let maxOpsPerBatch = 200
 
   /// One op of the document.

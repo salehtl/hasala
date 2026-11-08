@@ -436,6 +436,10 @@ public actor LedgerPageObserver: PageObserver {
     }
   }
 
+  public func sampleNotSaved() {
+    sampleIssued = false
+  }
+
   // MARK: Errors
 
   /// `LedgerFold.page`, its halts as sync stops.

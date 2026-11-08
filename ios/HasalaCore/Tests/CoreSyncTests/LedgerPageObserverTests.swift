@@ -342,6 +342,42 @@ struct LedgerPageObserverTests {
     AccountInfo(user_id: user.string, review_account: review)
   }
 
+  static func refusal(_ r: Rig) async -> SampleSeedRefusal? {
+    do {
+      _ = try await r.observer.sampleBatches(account: account(review: true))
+      return nil
+    } catch {
+      guard case .seed(.refused(let why)) = error else { return nil }
+      return why
+    }
+  }
+
+  @Test("a sample load that could not be saved can be tried again, and is one-shot after that")
+  func sampleRetryAfterAFailedSave() async throws {
+    let r = try Rig()
+    _ = try await r.observer.sampleBatches(account: Self.account(review: true))
+    #expect(await Self.refusal(r) == .alreadyLoaded)
+
+    await r.observer.sampleNotSaved()
+
+    let again = try await r.observer.sampleBatches(account: Self.account(review: true))
+    #expect(again.count > 0)
+    #expect(await Self.refusal(r) == .alreadyLoaded)
+  }
+
+  @Test("a sample load that reached the outbox stays refused whatever the app reports")
+  func sampleSavedStaysRefused() async throws {
+    let r = try Rig()
+    let blobs = try await r.observer.sampleBatches(account: Self.account(review: true))
+    let ops = blobs.flatMap(\.ops)
+    try r.store.enqueue(
+      try ops.map { PendingOp(opID: $0.opID, opJSON: try Self.canonical($0), opType: $0.type.rawValue, entityKind: $0.entity?.kind, entityID: $0.entity?.id, enqueuedAt: 1) })
+
+    await r.observer.sampleNotSaved()
+
+    #expect(await Self.refusal(r) == .alreadyLoaded)
+  }
+
   @Test("sample batches: only this review account, only an empty ledger, only once")
   func sampleGate() async throws {
     func refusal(_ r: Rig, _ account: AccountInfo) async -> SampleSeedRefusal? {
