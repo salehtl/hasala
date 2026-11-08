@@ -201,6 +201,10 @@ for f in "$seed"/*.json; do
 done
 echo "$(ls -1 "$seed"/*.json | wc -l | tr -d ' ') templates identical"
 
+step "the template manifest names every seed by its hash"
+"$ROOT/scripts/tests/templates_manifest_test.sh"
+"$ROOT/scripts/check-templates-manifest.sh"
+
 GOLDEN_SETS=(authres categorize extract fx merchant-group norm-dates outlook-sender replay sms-extract)
 step "golden fixtures change only with a Swift test change"
 cd "$ROOT"

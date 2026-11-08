@@ -212,8 +212,10 @@ else
 	skip "design tokens, Xcode project, tool pins" "no ios/ changes"
 fi
 
-if changed '^(ios/HasalaCore/Sources/HasalaCore/Resources/templates/|server/internal/tmpl/seed/)'; then
+if changed '^(ios/HasalaCore/Sources/HasalaCore/Resources/(templates/|TemplatesManifest\.swift$)|server/internal/tmpl/seed/|scripts/(tests/templates_manifest_test|check-templates-manifest)\.sh$)'; then
 	run "bundled templates equal the server seed" templates_check
+	run "template manifest check self-test" scripts/tests/templates_manifest_test.sh
+	run "template manifest matches the seed" scripts/check-templates-manifest.sh
 else
 	skip "bundled templates" "no template or seed changes"
 fi
