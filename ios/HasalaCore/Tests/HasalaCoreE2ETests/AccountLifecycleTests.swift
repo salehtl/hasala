@@ -233,4 +233,39 @@ struct AccountLifecycleTests {
     #expect(try env.secrets.binding() == nil)
     #expect(try !hasLedger(env, account.userID))
   }
+
+  @Test("files left by a wipe that stopped halfway are seen with no binding and no session")
+  func leftoverFilesAreSeenAtBoot() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let dir = temporaryDirectory("leftover")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let env = onDisk(w, w.phone("b"), dir)
+    let enrolled = try await enrol(env, account.userID, words)
+
+    try env.secrets.wipeAccount(userID: account.userID, writerID: enrolled.writerID)
+    #expect(Boot.decide(Boot.gather(env)) == .foreignData)
+
+    try FileManager.default.removeItem(at: try #require(env.storeDirectory(for: account.userID)))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+  }
+
+  @Test("with no binding, only a directory named for an account counts as left behind; a session still resumes")
+  func leftoverNeedsAnAccountDirectory() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (account, words, _) = try await w.passwordAccount(a)
+    let dir = temporaryDirectory("no-leftover")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let b = w.phone("b")
+    let env = onDisk(w, b, dir)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try Data([1]).write(to: dir.appendingPathComponent(".DS_Store"))
+    #expect(Boot.decide(Boot.gather(env)) == .signedOut)
+
+    _ = try await enrol(env, account.userID, words)
+    try b.keychain.delete(.accountBinding)
+    #expect(Boot.decide(Boot.gather(env)) == .onboardingKeys)
+  }
 }
