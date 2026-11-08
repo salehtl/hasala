@@ -35,6 +35,7 @@ final class AccountSession {
   /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
   /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
+  @ObservationIgnored private var setupBehindFreeze: OnboardingStep?
   /// An invite link that arrived while signed out (§13.5), for the invite screen.
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
@@ -101,6 +102,7 @@ final class AccountSession {
 
   func froze(_ info: FreezeInfo) {
     leftFrozen = nil
+    if case .onboarding(let step) = phase { setupBehindFreeze = step }
     phase = .frozen(info)
   }
 
@@ -134,7 +136,8 @@ final class AccountSession {
 
   func unfroze() {
     leftFrozen = nil
-    phase = .ready
+    phase = setupBehindFreeze.map(Phase.onboarding) ?? .ready
+    setupBehindFreeze = nil
     onUnfroze?()
   }
 
@@ -177,6 +180,7 @@ final class AccountSession {
 
   func signedOut() {
     leftFrozen = nil
+    setupBehindFreeze = nil
     reviewAccount = false
     phase = .signedOut
   }

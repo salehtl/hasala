@@ -414,6 +414,43 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(launches == 1 && phases == 0 && session.leftFrozen == nil)
   }
 
+  @Test func aFreezeFoundDuringSetupGoesBackToSetupWhenLifted() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding(.bank))
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding(.bank) && launches == 1)
+    session.setupFinished()
+    session.froze(holder)
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
+  @Test func leavingItFrozenDuringSetupStillGoesBackToSetupWhenLifted() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding(.bank))
+    session.runFoundFrozen(holder)
+    session.leaveFrozen()
+    #expect(session.phase == .ready && session.leftFrozen == holder)
+    session.showFrozenWall()
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding(.bank))
+  }
+
+  @Test func aSignOutForgetsTheSetupBehindAFreeze() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding(.bank))
+    session.runFoundFrozen(holder)
+    session.signedOut()
+    session.signedIn(.frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
     session.signedIn(.frozen(FreezeInfo(by: .operator, when: nil)))
