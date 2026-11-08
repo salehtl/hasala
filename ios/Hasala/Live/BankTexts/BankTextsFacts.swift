@@ -117,6 +117,7 @@ nonisolated final class BankTextsFacts: Sendable {
   private let file: URL?
   private let cache = Mutex<BankTextsFactsData?>(nil)
   private let lock = NSLock()
+  private let missedTest = Mutex(false)
 
   init(directory: URL?) {
     file = directory?.appendingPathComponent("facts.json")
@@ -166,8 +167,13 @@ nonisolated final class BankTextsFacts: Sendable {
       cache.withLock { $0 = BankTextsFactsData() }
       if let file { try? FileManager.default.removeItem(at: file) }
     }
+    missedTest.withLock { $0 = false }
     Self.announce()
   }
+
+  var testMissed: Bool { missedTest.withLock { $0 } }
+
+  func setTestMissed(_ missed: Bool) { missedTest.withLock { $0 = missed } }
 
   var fileExists: Bool {
     guard let file else { return false }

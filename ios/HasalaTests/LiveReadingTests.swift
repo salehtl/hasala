@@ -77,6 +77,20 @@ struct LiveReadingTests {
     #expect(LiveReading.earliestBankRow([]) == nil)
   }
 
+  @Test func aMissedSetUpTestReachesTheReadingState() {
+    func state(missed: Bool, lastRun: Int64?) -> ReadingState {
+      LiveReading.state(
+        LiveReading.Inputs(
+          nowMs: Self.now, known: true, sample: false, status: nil, provider: .gmail, progress: nil, heldElsewhere: nil,
+          textsChosen: true, textsLastRunMs: lastRun, textsTestMissed: missed, trustedBanks: [], newestMailRowMs: nil, txns: [],
+          backgroundRefreshOff: false, movedAwayMs: nil))
+    }
+    #expect(state(missed: false, lastRun: nil).kind == .waitingForFirstText)
+    let missed = state(missed: true, lastRun: nil)
+    #expect(missed.kind == .textTestMissed && missed.needsYou)
+    #expect(state(missed: true, lastRun: Self.now - 60_000).kind == .working)
+  }
+
   @Test func movedAwayOnlyWhenThisIPhoneWasReading() {
     #expect(LiveReading.movedAway(from: .active, to: .otherDevice))
     #expect(LiveReading.movedAway(from: .halted, to: .otherDevice))

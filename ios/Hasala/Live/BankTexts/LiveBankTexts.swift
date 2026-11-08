@@ -68,7 +68,10 @@ final class LiveBankTexts: BankTextsConnecting {
     let next = facts.read(nowMs: nowMs)
     if let started = testStartedMs, next.testOpenedMs == nil {
       testStartedMs = nil
-      if (next.testPassedMs ?? 0) < started { testMissed = true }
+      if (next.testPassedMs ?? 0) < started {
+        testMissed = true
+        facts.setTestMissed(true)
+      }
       testHints = false
       hinting?.cancel()
     }
@@ -126,6 +129,7 @@ final class LiveBankTexts: BankTextsConnecting {
   func startTest() {
     let started = nowMs
     testMissed = false
+    facts.setTestMissed(false)
     testHints = false
     testStartedMs = started
     data = (try? facts.update(nowMs: started) { $0.testOpenedMs = started }) ?? data
