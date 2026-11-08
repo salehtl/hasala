@@ -120,6 +120,8 @@ public struct CycleReport: Sendable, Equatable {
   public var phase: MailboxPhase = .unlinked
   public init() {}
 
+  var readMail: Bool { fetched + ops + staged + setAside + unreadable + dup > 0 }
+
   mutating func count(_ d: MailboxIngestDraft) {
     ops += 1
     if d.needsReview { review += 1 }
@@ -731,7 +733,11 @@ public actor MailboxEngine {
   /// One cycle (spec 04 §7.5). `deadlineMs` is in the engine clock's epoch ms; nil = foreground
   /// (no deadline). Never throws.
   public func runCycle(trigger: MailboxTrigger, deadlineMs: Int64? = nil) async -> CycleReport {
-    await exclusive { await cycleLocked(trigger: trigger, deadlineMs: deadlineMs) }
+    await exclusive {
+      let report = await cycleLocked(trigger: trigger, deadlineMs: deadlineMs)
+      if report.haltedOn == nil && (report.completed || report.readMail) { quotaStrikes = 0 }
+      return report
+    }
   }
 
   private func cycleLocked(trigger: MailboxTrigger, deadlineMs: Int64?) async -> CycleReport {
@@ -923,7 +929,6 @@ public actor MailboxEngine {
       state.watermarkMs = max(state.watermarkMs ?? 0, t0)
       state.profileHistoryID = h0
       state.lastSuccessAtMs = clock.nowMs()
-      quotaStrikes = 0
       c.pruneAccountedBelowMs = (state.watermarkMs ?? 0) - BankDomains.overlapMs - 86_400_000
       report.completed = true
     }
@@ -1194,7 +1199,7 @@ public actor MailboxEngine {
       let r = await runCycle(trigger: .refresh)
       reports.append(r)
       guard r.phase == .scanning || r.phase == .authoringBackfill else { break }
-      let read = r.fetched + r.ops + r.staged + r.setAside + r.unreadable + r.dup > 0
+      let read = r.readMail
       switch r.haltedOn {
       case nil, .stagingFull?:
         // Nothing listed and not finished: no trusted sender yet. Stop rather than spin; the
