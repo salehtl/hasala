@@ -43,7 +43,6 @@ final class FinishSetupModel {
   @ObservationIgnored private let firstScan: FirstScanRun
   @ObservationIgnored private var importResumed = false
   @ObservationIgnored private let session: (() -> AccountSession)?
-  private(set) var phraseTracked = false
   private(set) var phraseSecurity: SecurityModel?
   private(set) var phraseLoading = false
   private(set) var phraseFailure: AuthFailure?
@@ -101,10 +100,7 @@ final class FinishSetupModel {
   }
 
   func refresh(hasTransactions: Bool? = nil) {
-    if services.unseenPhrase.unseen {
-      phraseTracked = true
-      listed.insert(.phrase)
-    }
+    if services.unseenPhrase.unseen { listed.insert(.phrase) }
     if let hasTransactions { ledgerEmpty = !hasTransactions }
     if needsEmail { listed.insert(.connectEmail) }
     if noAlerts { listed.insert(.bankAlerts) }
