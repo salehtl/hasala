@@ -27,7 +27,8 @@ public enum AccountManagement {
     let ctx = engine.context
     for attempt in 0..<2 {
       try await catchUp(engine)
-      let head = (try? ctx.store.chainHeads()[ctx.writerID]) ?? .genesis
+      let head: Chain.Head
+      do { head = try ctx.store.chainHeads()[ctx.writerID] ?? .genesis } catch { throw .store(error) }
       let bearer = try AccountCreation.currentBearer(env)
       let challenge = try await apiStep { () async throws(APIError) in try await env.client.writerChallenge(bearer: bearer) }
       let nonce = try b64(challenge.nonce, "writer nonce")

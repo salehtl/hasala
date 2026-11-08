@@ -174,6 +174,30 @@ struct AccountLifecycleTests {
     }
   }
 
+  @Test("removal stops when the store cannot say where this writer's chain ends: the writer and every key stay")
+  func removalStopsOnAnUnreadableHead() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    try await ctx.store.db.write { db in try db.execute(sql: "ALTER TABLE chain_heads RENAME TO chain_heads_gone") }
+    let held = a.keychain.count
+    let binding = try #require(a.binding)
+    do throws(CeremonyError) {
+      try await AccountManagement.removeThisIPhone(
+        a.env, engine: SyncEngine(context: ctx), factor: .device(password: password), binding: binding)
+      Issue.record("signed a revocation at a head it never read")
+    } catch {
+      guard case .store = error else {
+        Issue.record("\(error)")
+        return
+      }
+    }
+    #expect(a.keychain.count == held)
+    let token = try #require(try a.env.secrets.session()).token
+    let writers = try await a.env.client.writers(bearer: token).writers
+    #expect(writers.first { $0.writer_id == ctx.writerID.string }?.revoked_at == nil)
+  }
+
   @Test("removal under a latch with nothing waiting goes ahead")
   func removalUnderALatchWithNothingWaiting() async throws {
     let w = World()
