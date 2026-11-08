@@ -25,6 +25,7 @@ final class SignupModel {
   var inviteText = "" {
     didSet {
       guard oldValue != inviteText else { return }
+      invitePasted = false
       // Any edit drops a link key: a typed code is never proven by a stale key.
       if inviteFromLink, InviteCode.normalize(inviteText) != linkCode {
         linkKey = nil
