@@ -40,7 +40,6 @@ public actor SyncEngine {
   /// The trailing rerun asked for while a run was in flight, if any.
   private var rerun: SyncTrigger?
   private var continuations: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
-  private var offlineAttempts = 0
   private var accountFullAtMs: Int64?
   private var latchThisRun: OutboxLatch?
   public static let accountFullPauseMs: Int64 = 15 * 60_000
@@ -75,14 +74,6 @@ public actor SyncEngine {
   public func acknowledgeAlarms() {
     status.integrityAlarms = 0
     publish()
-  }
-
-  /// The suggested wait before the next automatic retry after `offline`: 2 s ×
-  /// 2ⁿ, capped at 5 min, ±20 % jitter (§5.5).
-  public func retryDelaySeconds() -> Double {
-    let base = min(300.0, 2.0 * pow(2.0, Double(max(0, offlineAttempts - 1))))
-    let r = (try? context.random.bytes(1)[0]) ?? 128
-    return base * (0.8 + 0.4 * Double(r) / 255.0)
   }
 
   /// Runs once, coalescing with a run in flight: a call while a run is in
@@ -150,7 +141,6 @@ public actor SyncEngine {
         out.pulled.opsOpened += again.opsOpened
         status.integrityAlarms += again.alarms
       }
-      offlineAttempts = 0
       status.lastSuccessAt = context.clock.nowMs()
       status.retryAfterSeconds = nil
       status.phase = .idle
@@ -230,7 +220,6 @@ public actor SyncEngine {
   private func apply(_ stop: SyncStop) async -> SyncStop {
     switch stop {
     case .offline, .protocolError:
-      offlineAttempts += 1
       if case .offline(let since) = status.phase {
         status.phase = .offline(sinceMs: since)
       } else {
