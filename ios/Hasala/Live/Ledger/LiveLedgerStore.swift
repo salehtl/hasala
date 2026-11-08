@@ -126,11 +126,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   }
 
   func noteImport(_ progress: MailboxProgress) {
-    var next = progress
-    if case .failed = progress.stage, let last = importProgress {
-      next.done = last.done
-      next.total = last.total
-    }
+    let next = MailboxProgress.following(progress, after: importProgress, phase: mailboxPhase)
     if importProgress != next { importProgress = next }
   }
 

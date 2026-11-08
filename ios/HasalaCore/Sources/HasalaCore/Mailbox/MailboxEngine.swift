@@ -146,6 +146,19 @@ public struct MailboxProgress: Sendable, Equatable {
     self.total = total
     self.thisMonthRead = thisMonthRead
   }
+
+  public static func following(_ event: MailboxProgress, after last: MailboxProgress?, phase: MailboxPhase?) -> MailboxProgress? {
+    switch phase {
+    case .active?, .unlinked?, .otherDevice?: return nil
+    case .scanning?, .awaitingCards?, .authoringBackfill?, .halted?, .reconnectRequired?, nil: break
+    }
+    var next = event
+    if case .failed = event.stage, let last {
+      next.done = last.done
+      next.total = last.total
+    }
+    return next
+  }
 }
 
 public enum ConnectResult: Sendable, Equatable {
