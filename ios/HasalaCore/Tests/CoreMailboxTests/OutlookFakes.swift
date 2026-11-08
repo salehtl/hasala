@@ -23,7 +23,9 @@ actor OutlookServer: MailboxServer {
   var deletes = 0
   var pushOn = true
   var returnsClientState = true
+  var deleteRefusal: MailboxServerError?
 
+  func setDeleteRefusal(_ e: MailboxServerError?) { deleteRefusal = e }
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setPushOn(_ v: Bool) { pushOn = v }
   func setReturnsClientState(_ v: Bool) { returnsClientState = v }
@@ -39,6 +41,7 @@ actor OutlookServer: MailboxServer {
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) { watches.append(expiresAtMs) }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
+    if let deleteRefusal { throw deleteRefusal }
     deletes += 1
     link = .noLink
   }

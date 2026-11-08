@@ -169,6 +169,12 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// grant this iPhone stops using anyway.
   @discardableResult
   public func revokeAndForget(keepOnFailure: Bool = true) async -> Bool {
+    guard await revoke(stopOnFailure: keepOnFailure) else { return false }
+    try? store.delete()
+    return true
+  }
+
+  public func revoke(stopOnFailure: Bool = true) async -> Bool {
     cached = nil
     let token: String?
     do { token = try store.read() } catch { return false }
@@ -176,10 +182,9 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
       do throws(MailOAuthError) {
         try await oauth.revoke(token: token)
       } catch {
-        if keepOnFailure { return false }
+        if stopOnFailure { return false }
       }
     }
-    try? store.delete()
     return true
   }
 

@@ -601,7 +601,7 @@ public actor MailboxEngine {
   }
 
   /// Disconnect (Bank alerts › Disconnect): step-up `mailbox.unlink` → stop push (users.stop) →
-  /// revoke and delete the Keychain item → `DELETE /mailbox/link` → clear the mailbox tables.
+  /// revoke → `DELETE /mailbox/link` → delete the Keychain item → clear the mailbox tables.
   /// A revoke that did not go through stops the disconnect there (false): the token is kept, so
   /// the retry can still end the grant, and nothing says it ended when it didn't.
   public func retirePlan() async -> MailboxRetirePlan? {
@@ -610,12 +610,10 @@ public actor MailboxEngine {
   }
 
   public func disconnect(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
-    let outcome = await unlink()
+    let outcome = await unlink(removing: plan)
     guard outcome == .disconnected, let plan else { return outcome }
-    switch await retire(plan) {
-    case .removed(let n): return .removed(n ?? 0)
-    case .failed: return .disconnectedRemoveFailed
-    }
+    _ = await ledger.flush()
+    return .removed(plan.countKnown ? plan.total : 0)
   }
 
   public func retire(_ plan: MailboxRetirePlan) async -> MailboxRetireOutcome {
@@ -628,9 +626,9 @@ public actor MailboxEngine {
     return .removed(plan.countKnown ? plan.total : nil)
   }
 
-  public func disconnect() async -> Bool { await unlink() == .disconnected }
+  public func disconnect() async -> Bool { await unlink(removing: nil) == .disconnected }
 
-  private func unlink() async -> MailboxDisconnectOutcome {
+  private func unlink(removing plan: MailboxRetirePlan?) async -> MailboxDisconnectOutcome {
     await exclusive {
       guard var state = try? await store.loadState() else { return .failed }
       do throws(MailboxServerError) {
@@ -649,14 +647,23 @@ public actor MailboxEngine {
       let proof: JSONValue
       do { proof = try await stepUp.proof(kind: "mailbox.unlink", payloadHash: nil) } catch { return .failed }
       await stopPush()
-      guard await tokens.revokeAndForget() else { return .failed }
-      provider.forgetLink()
+      state.watchExpiresAtMs = nil
+      try? await store.commit(commitState(state))
+      guard await tokens.revoke() else { return .failed }
       do throws(MailboxServerError) {
         try await server.deleteLink(stepUp: proof)
       } catch .noLink {
         // Already gone server-side.
       } catch {
         return .failed
+      }
+      await tokens.forget()
+      provider.forgetLink()
+      if let plan {
+        do throws(MailboxLedgerError) { try await ledger.authorRetire(plan) } catch {
+          _ = await setPhase(&state, .reconnectRequired, halt: .reconnectRequired, CycleReport(), clearReader: true)
+          return .disconnectedRemoveFailed
+        }
       }
       var c = MailboxCommit()
       c.clearAll = true
