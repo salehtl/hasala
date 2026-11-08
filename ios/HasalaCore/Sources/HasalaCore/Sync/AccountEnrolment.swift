@@ -228,7 +228,7 @@ public enum Enrolment {
     if let old = try? store.meta(), old.writerID != device.writerID || old.userID != userID,
       let dir = env.storeDirectory(for: userID)
     {
-      try? FileManager.default.removeItem(at: dir)
+      do { try FileManager.default.removeItem(at: dir) } catch { throw .store(.corrupt("earlier writer's store")) }
       store = try env.openStore(for: userID)
     }
     do {
