@@ -35,8 +35,8 @@ public final class SyncContext: Sendable {
   /// treated as signed out (§4.7 row 1).
   func bearer() throws(SyncStop) -> String {
     let s: SessionRecord?
-    do { s = try secrets.session() } catch { throw .notNow }
-    guard let s, !s.pending_logout else { throw .needsSignIn }
+    do { s = try secrets.activeSession() } catch { throw .notNow }
+    guard let s else { throw .needsSignIn }
     return s.token
   }
 

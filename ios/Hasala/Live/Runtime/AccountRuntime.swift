@@ -416,7 +416,7 @@ final class AccountRuntime {
 
   /// `GET /account` (#40), read live: the review flag and the account's own name.
   func refreshAccount() async {
-    guard let token = try? env.secrets.session()?.token else { return }
+    guard let token = try? env.secrets.activeSession()?.token else { return }
     guard let info = try? await env.client.account(bearer: token), info.user_id == binding.user_id else { return }
     account = info
     reviewAccount = info.review_account == true
@@ -474,7 +474,7 @@ final class AccountRuntime {
   /// seed as blobs (the observer checks the review flag and the empty ledger again), each
   /// blob through the outbox, then one upload.
   func loadSample() async throws(SetupFailure) {
-    guard let token = try? env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    guard let token = try? env.secrets.activeSession()?.token else { throw .failed("You're signed out. Sign in again.") }
     let info: AccountInfo
     do {
       info = try await env.client.account(bearer: token)

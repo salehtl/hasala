@@ -433,4 +433,22 @@ struct AccountManagementTests {
     let token = try #require(try a.env.secrets.session()).token
     #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
   }
+
+  @Test("delete: a session waiting for its logout counts as signed out, so nothing is sent")
+  func deleteWithPendingLogout() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let token = try #require(try a.env.secrets.session()).token
+    w.server.refuseNext("POST /api/v1/auth/logout", status: 503, code: "unavailable")
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    do {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+      Issue.record("expected the session to count as signed out")
+    } catch {
+      #expect(error.failure?.status == 401)
+    }
+    #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
+  }
 }

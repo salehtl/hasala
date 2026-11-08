@@ -307,7 +307,7 @@ final class LiveAccountService: AccountService {
   /// relaunch the Keychain's session item (spec 04 §6.5: the session survives a kill).
   private var signedInUser: UserID? {
     if let u = signIn?.userID { return u }
-    guard let s = try? env.secrets.session(), !s.pending_logout else { return nil }
+    guard let s = try? env.secrets.activeSession() else { return nil }
     return UserID(s.user_id)
   }
 
@@ -371,7 +371,7 @@ final class LiveAccountService: AccountService {
   /// tell a sign-in killed before unlock from a C1 killed before its bootstrap, so the
   /// server's `has_keys` decides (and its PRF wraps whether Face ID can unlock).
   func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
-    guard let s = try? env.secrets.session(), !s.pending_logout else { throw .refused }
+    guard let s = try? env.secrets.activeSession() else { throw .refused }
     let a: LiveAccountFields
     do {
       a = try await accountFields(s.token)
@@ -419,7 +419,7 @@ final class LiveAccountService: AccountService {
   /// After a relaunch the binding doesn't say, so `GET /account` is asked first; a
   /// step-up needs the server anyway.
   func usesPasskey() async -> Bool {
-    if !methodConfirmed, let token = try? env.secrets.session()?.token,
+    if !methodConfirmed, let token = try? env.secrets.activeSession()?.token,
       let a = try? await env.client.account(bearer: token)
     {
       noteAccount(a)
@@ -434,7 +434,7 @@ final class LiveAccountService: AccountService {
 
   func updateDisplayName(_ name: String) async throws(AuthFailure) -> String {
     guard let valid = AccountFields.displayName(name) else { throw .badName }
-    guard let token = try? env.secrets.session()?.token else { throw .refused }
+    guard let token = try? env.secrets.activeSession()?.token else { throw .refused }
     do {
       try await env.client.setDisplayName(valid, bearer: token)
     } catch {
@@ -540,7 +540,7 @@ final class LiveAccountService: AccountService {
     var hasPasskey = profile?.method == .passkey
     var frozen: FreezeInfo?
     var fetched: LiveAccountFields?
-    if let token = try? env.secrets.session()?.token {
+    if let token = try? env.secrets.activeSession()?.token {
       do {
         fetched = try await accountFields(token)
       } catch {
@@ -573,7 +573,7 @@ final class LiveAccountService: AccountService {
   /// Who froze the account and when, from `GET /account` (#40, which a frozen account may
   /// still read; spec 04 §6.11). nil when it isn't frozen, or the server can't be asked.
   func freezeInfo() async -> FreezeInfo? {
-    guard let token = try? env.secrets.session()?.token,
+    guard let token = try? env.secrets.activeSession()?.token,
       let a = try? await accountFields(token)
     else { return nil }
     return Self.freeze(a, nowMs: env.clock.nowMs())
@@ -760,7 +760,7 @@ final class LiveAccountService: AccountService {
   }
 
   private func bearer() throws(CeremonyError) -> String {
-    guard let s = try? env.secrets.session(), !s.pending_logout else {
+    guard let s = try? env.secrets.activeSession() else {
       throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
     }
     return s.token

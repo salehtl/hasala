@@ -262,7 +262,7 @@ public enum AccountCreation {
   }
 
   static func currentBearer(_ env: AccountEnvironment) throws(CeremonyError) -> String {
-    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }) else {
+    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.activeSession() }) else {
       throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
     }
     return s.token

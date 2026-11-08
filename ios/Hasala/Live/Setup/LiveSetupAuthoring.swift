@@ -29,7 +29,7 @@ final class LiveSetupAuthoring: SetupAuthoring, SetupClock {
   }
 
   private static func token(_ rt: AccountRuntime) throws(SetupFailure) -> String {
-    guard let token = try? rt.env.secrets.session()?.token else { throw .failed("You're signed out. Sign in again.") }
+    guard let token = try? rt.env.secrets.activeSession()?.token else { throw .failed("You're signed out. Sign in again.") }
     return token
   }
 
