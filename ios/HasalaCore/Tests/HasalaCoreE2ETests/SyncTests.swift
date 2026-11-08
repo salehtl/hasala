@@ -295,6 +295,28 @@ struct SyncTests {
     #expect(try a.store.pendingCount() == 0)
   }
 
+  @Test("account_full's pause runs from the refusal: a run inside it does not restart it")
+  func accountFullPauseDoesNotSlide() async throws {
+    let (w, a, _) = try await twoPhones()
+    let engine = SyncEngine(context: a)
+    let clock = try #require(a.clock as? FakeClock)
+    try enqueue(a, [op(1)])
+    w.server.refuseNext("POST /api/v1/sync", status: 413, code: "account_full")
+    _ = await engine.run(.authored)
+    #expect(await engine.status.latch == .accountFull)
+    let before = w.server.uploadCount
+
+    clock.advance(ms: SyncEngine.accountFullPauseMs - 1)
+    _ = await engine.run(.silentPush)
+    #expect(w.server.uploadCount == before)
+    #expect(await engine.status.latch == .accountFull)
+
+    clock.advance(ms: 1)
+    _ = await engine.run(.silentPush)
+    #expect(await engine.status.latch == nil)
+    #expect(try a.store.pendingCount() == 0)
+  }
+
   @Test("ops authored while a flush runs are shown to the observer before they are sealed")
   func observerSeesEachBatch() async throws {
     let (_, a, _) = try await twoPhones()

@@ -191,7 +191,7 @@ public actor SyncEngine {
       if case .latched(let l, let alarm) = error {
         status.latch = l
         if alarm { status.integrityAlarms += 1 }
-        if l == .accountFull { accountFullAtMs = context.clock.nowMs() }
+        if l == .accountFull, accountFullAtMs == nil { accountFullAtMs = context.clock.nowMs() }
         if l == .accountFull || l == .sealerFault || l == .chainBreak || l == .hardStop {
           return PushSummary()
         }
