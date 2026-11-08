@@ -423,6 +423,22 @@ struct BankTextsTests {
     #expect(lane.replaced == ["row-2"] && lane.added.count == 2)
   }
 
+  @Test func aRetriedAddDropsTheOldFailureWhileItRuns() async throws {
+    let lane = MockBankTexts(setUp: true)
+    lane.readDelay = .zero
+    let m = PasteBankTextModel(lane: lane)
+    await m.paste(MockBankTexts.sampleText)
+    lane.nextAddFailure = .failed("Couldn't add it.")
+    let first = await m.add()
+    #expect(!first && m.failure == "Couldn't add it.")
+    lane.addDelay = .milliseconds(200)
+    let retry = Task { await m.add() }
+    for _ in 0..<200 where !m.adding { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(m.adding && m.failure == nil)
+    let added = await retry.value
+    #expect(added && m.failure == nil && lane.added.count == 1)
+  }
+
   @Test func aCodeTextIsNotCheckedForAMatch() async {
     let lane = MockBankTexts(setUp: true)
     lane.readDelay = .zero

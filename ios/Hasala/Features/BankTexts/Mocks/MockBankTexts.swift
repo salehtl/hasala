@@ -24,6 +24,7 @@
     var finishFails = false
     var readDelay: Duration = .milliseconds(150)
     var addDelay: Duration = .zero
+    var nextAddFailure: BankTextsFailure?
     var nextMatch: BankTextMatch?
     var setAside: [BankTextsSetAside] = []
     var lockedNotice: Int?
@@ -149,6 +150,10 @@
 
     func addToReview(_ text: String, replacing: BankTextMatch?) async throws(BankTextsFailure) {
       if addDelay > .zero { try? await Task.sleep(for: addDelay) }
+      if let failure = nextAddFailure {
+        nextAddFailure = nil
+        throw failure
+      }
       guard !readsEmail else { throw .failed(BankTexts.pasteRefused) }
       guard Self.reading(text) != .notAPayment else { throw .failed("This isn't a bank payment text.") }
       added.append(text.trimmingCharacters(in: .whitespacesAndNewlines))
