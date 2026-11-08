@@ -152,7 +152,10 @@ nonisolated final class MailboxLane: Sendable {
         continuation.yield(.ended(totals))
         continuation.finish()
       }
-      if !started { continuation.finish() }
+      if !started {
+        continuation.yield(.ended(FirstScanTotals(phase: .halted)))
+        continuation.finish()
+      }
     }
   }
 

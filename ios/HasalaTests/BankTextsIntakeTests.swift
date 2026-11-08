@@ -407,6 +407,17 @@ struct BankTextsIntakeTests {
     return (rt, server)
   }
 
+  @Test func aFirstScanOnAClosedLaneEndsWithAFailureAndNotSilence() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, _) = try await twoLaneRuntime()
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    await rt.close()
+    var seen: [ScanProgress] = []
+    for await p in mailbox.firstScan() { seen.append(p) }
+    #expect(seen.map(\.phase) == [.failed("Reading your bank alerts stopped. Try again.")])
+  }
+
   @Test func theLinkHeldStateOpensTheLaneOfTheProviderItNames() async throws {
     let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
     defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
