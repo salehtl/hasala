@@ -93,6 +93,24 @@ struct MailboxDisconnectChoiceTests {
       == .stayed(.takenByOtherIPhone))
   }
 
+  @Test func eachPillLoadsOnlyForItsOwnWork() {
+    #expect(MailboxPageWork.tryingAgain.tryAgainLoads && !MailboxPageWork.tryingAgain.disconnectLoads)
+    #expect(MailboxPageWork.askingToDisconnect.disconnectLoads && !MailboxPageWork.askingToDisconnect.tryAgainLoads)
+    #expect(MailboxPageWork.disconnecting.disconnectLoads && !MailboxPageWork.disconnecting.tryAgainLoads)
+    #expect(!MailboxPageWork.idle.tryAgainLoads && !MailboxPageWork.idle.disconnectLoads)
+  }
+
+  @Test func onlyOneThingRunsOnThePageAtATime() {
+    var work = MailboxPageWork.idle
+    #expect(!work.isBusy)
+    #expect(work.begin(.tryingAgain) && work == .tryingAgain && work.isBusy)
+    #expect(!work.begin(.askingToDisconnect) && work == .tryingAgain)
+    #expect(!work.begin(.disconnecting) && work == .tryingAgain)
+    work = .idle
+    #expect(work.begin(.disconnecting) && work == .disconnecting)
+    #expect(!work.begin(.tryingAgain) && work == .disconnecting)
+  }
+
   @Test func aMailboxThatIsGoneNeverStaysOnAPageWithNothingToDraw() {
     #expect(MailboxDisconnectEnding.after(.cancelled, mailboxRemains: false, provider: .gmail, removed: nil)
       == .left(line: "Gmail disconnected. Past transactions stay.", partly: true))
