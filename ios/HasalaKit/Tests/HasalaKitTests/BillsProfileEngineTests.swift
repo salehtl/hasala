@@ -9,6 +9,17 @@ struct BillsProfileEngineParityTests {
   let s = MayaLedger.state
   let now = MayaLedger.now
 
+  @Test func aLateBillWithAPriceChangeKeepsTwoCardsWithTheirOwnIdentity() throws {
+    var late = s
+    let i = try #require(late.bills.firstIndex { $0.id == "du" })
+    late.bills[i].nextDue = now.date.adding(days: -2)
+    let cards = BillsEngine.snapshot(late, now: now).needsALook.filter { $0.name == "du" }
+    #expect(cards.count == 2)
+    #expect(Set(cards.map(\.id)).count == 2)
+    #expect(cards.allSatisfy { $0.billID == "du" })
+    #expect(BillsEngine.toCheck(late, today: now.date) == BillsEngine.toCheck(s, today: now.date))
+  }
+
   @Test func billsMatchComingUpAndFound() {
     let b = BillsEngine.snapshot(s, now: now)
     #expect(b.next14 == .aed(1_039_15))

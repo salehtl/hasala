@@ -8,7 +8,7 @@
 public struct BillAttention: Sendable, Hashable, Identifiable {
   public enum Kind: Sendable, Hashable { case late(days: Int), priceChange(usual: Money) }
 
-  public var id: BillID
+  public var billID: BillID
   public var name: String
   public var glyph: Glyph
   public var kind: Kind
@@ -21,6 +21,13 @@ public struct BillAttention: Sendable, Hashable, Identifiable {
   /// The poster's pill: "3 days past usual" for a bill that may be late (a short chip says
   /// what we noticed, never "late"), "Price change" for a new amount.
   public var pill: StatusPill
+
+  public var id: String {
+    switch kind {
+    case .late: "late.\(billID)"
+    case .priceChange: "price.\(billID)"
+    }
+  }
 }
 
 public struct BillCandidateModel: Sendable, Hashable, Identifiable {
@@ -310,7 +317,7 @@ public enum BillsEngine {
   }
 
   public static func toCheck(_ s: LedgerState, today: LocalDate) -> Int {
-    Set(attention(s, today: today).map(\.id)).count + s.billCandidates.count
+    Set(attention(s, today: today).map(\.billID)).count + s.billCandidates.count
   }
 
   static func attention(_ s: LedgerState, today: LocalDate) -> [BillAttention] {
@@ -319,7 +326,7 @@ public enum BillsEngine {
     for b in tracked where !b.isIncome && b.nextDue < today {
       let days = b.nextDue.days(until: today)
       attention.append(BillAttention(
-        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days), billKind: b.kind,
+        billID: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .late(days: days), billKind: b.kind,
         amount: b.amount,
         body: MoneyPhrase(stringLiteral:
           "\(b.kind) usually arrives on the \(PlanEngine.ordinal(b.usualDay)). No bank email yet."),
@@ -329,7 +336,7 @@ public enum BillsEngine {
     for b in tracked where !b.isIncome {
       guard let usual = b.priceChangeFrom else { continue }
       attention.append(BillAttention(
-        id: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .priceChange(usual: usual),
+        billID: b.id, name: b.name, glyph: ActivityEngine.glyph(b, s), kind: .priceChange(usual: usual),
         billKind: b.kind, amount: b.amount, body: priceChange(b, usual: usual),
         pill: StatusPill("Price change", tone: .warning)
       ))
