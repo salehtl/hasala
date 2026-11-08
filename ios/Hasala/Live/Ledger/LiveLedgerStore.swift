@@ -470,11 +470,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
       return ("Moved to \(name(to))", [])
     case .markBillPaid(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
-      let due = s.bills[i].nextDue
-      let next = due.yearMonth.next
-      s.bills[i].history.insert(due, at: 0)
-      s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      let due = try BillLifecycle.markPaid(&s.bills[i])
       return ("\(s.bills[i].name) marked paid", [.occurrence(bill: id, due: due)])
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),

@@ -363,11 +363,7 @@ public final class InMemoryLedger: LedgerStore {
     case .markBillPaid(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touchedBills = true
-      let due = s.bills[i].nextDue
-      s.bills[i].history.insert(due, at: 0)
-      s.bills[i].payments.removeAll { $0.due == due }
-      s.bills[i].payments.insert(BillPayment(due: due, amount: s.bills[i].amount, link: .marked), at: 0)
-      s.bills[i].nextDue = due.yearMonth.next.date(clampedDay: s.bills[i].usualDay)
+      try BillLifecycle.markPaid(&s.bills[i])
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),
