@@ -405,6 +405,43 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func aConnectKeepsTheRunningLaneWhateverTheServerAnswers() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    let mailbox = LiveMailboxConnecting(runtime: { rt })
+    await #expect(throws: MailConnectFailure.takenByOtherIPhone) {
+      _ = try await mailbox.connect(
+        .gmail, replacing: false, removingOld: false, pastMail: .importPast, ask: { _ in .cancel })
+    }
+    #expect(rt.activeProvider == .gmail)
+    #expect(rt.serverLink == .holder(isThisDevice: false, watchExpiresAtMs: nil))
+    _ = await rt.askServerLink()
+    #expect(rt.activeProvider == .outlook)
+    await rt.close()
+  }
+
+  @Test func aServerAnswerDuringAConnectDoesNotMoveTheLane() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let (rt, server) = try await twoLaneRuntime()
+    rt.activate(.gmail)
+    server.mailboxLink = (thisDevice: false, provider: "outlook")
+    rt.connectStarted()
+    rt.connectStarted()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .gmail)
+    rt.connectEnded()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .gmail)
+    rt.connectEnded()
+    await rt.checkServerLink()
+    #expect(rt.activeProvider == .outlook)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()

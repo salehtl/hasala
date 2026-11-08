@@ -411,6 +411,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
       throw .failed(refusal.message)
     }
+    rt.connectStarted()
+    defer { rt.connectEnded() }
     let current = rt.lane
     let status = await (current ?? lane).status()
     let replaces = try Self.admit(

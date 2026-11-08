@@ -56,6 +56,7 @@ final class AccountRuntime {
   /// run asks again (an offline launch must not hide "Use sample data" for good).
   private(set) var reviewAccount = false
   @ObservationIgnored private(set) var closed = false
+  @ObservationIgnored private var connects = 0
   /// The last `GET /account` answer, when one arrived.
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
@@ -116,6 +117,10 @@ final class AccountRuntime {
     if activeProvider != provider { activeProvider = provider }
     LocalAccountData.setMailboxProvider(provider)
   }
+
+  func connectStarted() { connects += 1 }
+
+  func connectEnded() { connects -= 1 }
 
   func linkedHere(_ provider: MailboxProvider) {
     activate(provider)
@@ -242,7 +247,7 @@ final class AccountRuntime {
     if serverLink != link { serverLink = link }
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
-    if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
+    if case .holder(false, _) = link, connects == 0, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
       let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
     {
       activate(p)
