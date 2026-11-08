@@ -299,13 +299,31 @@ public struct StepUpJSON: Codable, Sendable, Hashable {
       Proof(kind: "device_code", assertion: nil, writer_id: writerID, sig: sigB64, verifier: nil, code: code)
     }
 
-    public init(kind: String, assertion: PublicKeyCredentialJSON? = nil, writer_id: String? = nil, sig: String? = nil, verifier: String? = nil, code: String? = nil) {
+    private init(kind: String, assertion: PublicKeyCredentialJSON?, writer_id: String?, sig: String?, verifier: String?, code: String?) {
       self.kind = kind
       self.assertion = assertion
       self.writer_id = writer_id
       self.sig = sig
       self.verifier = verifier
       self.code = code
+    }
+
+    public init(from decoder: any Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      switch try c.decode(String.self, forKey: .kind) {
+      case "passkey":
+        self = .passkey(try c.decode(PublicKeyCredentialJSON.self, forKey: .assertion))
+      case "device":
+        self = .device(
+          writerID: try c.decode(String.self, forKey: .writer_id), sigB64: try c.decode(String.self, forKey: .sig),
+          verifierB64: try c.decode(String.self, forKey: .verifier))
+      case "device_code":
+        self = .deviceCode(
+          writerID: try c.decode(String.self, forKey: .writer_id), sigB64: try c.decode(String.self, forKey: .sig),
+          code: try c.decode(String.self, forKey: .code))
+      default:
+        throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown proof kind")
+      }
     }
   }
   public let nonce: String

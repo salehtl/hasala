@@ -198,11 +198,12 @@ public enum StepUpHelper {
   }
 
   /// A `device_code` proof with the typed code, reusing the stored signature.
-  public static func withCode(_ proof: Proof, code: String) -> StepUpJSON {
+  public static func withCode(_ proof: Proof, code: String) throws(CeremonyError) -> StepUpJSON {
     let p = proof.stepUp.proof
-    return StepUpJSON(
-      nonce: proof.stepUp.nonce,
-      proof: .deviceCode(writerID: p.writer_id ?? "", sigB64: p.sig ?? "", code: code))
+    guard p.kind == StepUpProofKind.deviceCode.rawValue, let writer = p.writer_id, let sig = p.sig else {
+      throw .noDeviceKey
+    }
+    return StepUpJSON(nonce: proof.stepUp.nonce, proof: .deviceCode(writerID: writer, sigB64: sig, code: code))
   }
 
   static func dakSign(_ env: AccountEnvironment, challenge: Data, userID: UserID, writerID: WriterID, reason: String)
