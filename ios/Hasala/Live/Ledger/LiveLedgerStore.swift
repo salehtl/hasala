@@ -328,7 +328,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())"))
+      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())", in: s))
       return (nil, [])
     case .categorize(let id, let c, let learnRule, let project):
       guard s.category(c) != nil else { throw .notFound }

@@ -134,6 +134,82 @@ struct RefundEditTests {
     #expect(l.state.txn("c1")?.isRefund == false)
   }
 
+  static let splitLines = [
+    SplitLine(id: 0, categoryID: "dining", amount: .aed(300_00)),
+    SplitLine(id: 1, categoryID: "shopping", amount: .aed(200_00)),
+  ]
+
+  @Test func aSplitCreditIsNotARefundUntilTheSplitGoes() throws {
+    let l = Self.ledger()
+    try l.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    let split = try #require(try l.apply(.split("c1", Self.splitLines)))
+    #expect(l.state.txn("c1")?.isRefund == false)
+    l.undo(split)
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.split("c1", Self.splitLines))
+    try l.apply(.split("c1", []))
+    #expect(l.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func aSplitKeepsARefundFiledOrMatchedAsOne() throws {
+    let filed = Self.ledger()
+    try filed.apply(.markRefund("c1"))
+    try filed.apply(.split("c1", Self.splitLines))
+    #expect(filed.state.txn("c1")?.isRefund == true)
+    try filed.apply(.split("c1", Array(Self.splitLines.reversed())))
+    #expect(filed.state.txn("c1")?.isRefund == true)
+
+    let matched = Self.ledger()
+    try matched.apply(.fileRefund("c1", into: "shopping", of: "p1"))
+    try matched.apply(.split("c1", Self.splitLines))
+    #expect(matched.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func archivingACategoryKeepsACreditARefundOnlyIfItStillIsOne() throws {
+    let toSpending = Self.ledger()
+    try toSpending.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    try toSpending.apply(.archiveCategory("dining", moveTo: "groceries"))
+    #expect(toSpending.state.txn("c1")?.categoryID == "groceries" && toSpending.state.txn("c1")?.isRefund == true)
+
+    let toIncome = Self.ledger()
+    try toIncome.apply(.categorize("c1", "dining", learnRule: false, project: nil))
+    try toIncome.apply(.archiveCategory("dining", moveTo: "salary"))
+    #expect(toIncome.state.txn("c1")?.categoryID == "salary" && toIncome.state.txn("c1")?.isRefund == false)
+
+    let matched = Self.ledger()
+    try matched.apply(.fileRefund("c1", into: "dining", of: "p1"))
+    try matched.apply(.archiveCategory("dining", moveTo: "salary"))
+    #expect(matched.state.txn("c1")?.categoryID == "salary" && matched.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func movingACustomCategoryBetweenSpendingAndIncomeChangesItsCredits() throws {
+    let l = Self.ledger()
+    try l.apply(.addCategory(CategoryDraft(name: "Side jobs", glyph: .tag, parent: "dining")))
+    let c = try #require(l.state.categories.first { $0.name == "Side jobs" }?.id)
+    try l.apply(.categorize("c1", c, learnRule: false, project: nil))
+    #expect(l.state.txn("c1")?.isRefund == true)
+    try l.apply(.editCategory(c, CategoryDraft(name: "Side jobs", glyph: .tag, parent: "salary")))
+    #expect(l.state.txn("c1")?.isRefund == false)
+    try l.apply(.editCategory(c, CategoryDraft(name: "Side jobs", glyph: .tag, parent: "dining")))
+    #expect(l.state.txn("c1")?.isRefund == true)
+  }
+
+  @Test func aManualCreditFiledToSpendingIsARefund() throws {
+    func added(_ direction: Direction, _ category: CategoryID?) throws -> Bool {
+      let l = InMemoryLedger()
+      try l.apply(
+        .addTransaction(
+          ManualEntryDraft(amount: .aed(50_00), direction: direction, merchant: "Test Store", categoryID: category, postedAt: l.now)))
+      return try #require(l.state.txns.last).isRefund
+    }
+    #expect(try added(.in, "dining"))
+    #expect(try added(.in, "refunds"))
+    #expect(try !added(.in, "salary"))
+    #expect(try !added(.in, nil))
+    #expect(try !added(.out, "dining"))
+  }
+
   @Test func undoTakesBackTheMatchedPurchase() throws {
     let l = Self.ledger()
     let filed = try #require(try l.apply(.fileRefund("c1", into: "shopping", of: "p1")))

@@ -124,11 +124,12 @@ public struct ManualEntryDraft: Sendable, Hashable {
     return nil
   }
 
-  public func txn(id: TxnID) -> Txn {
-    Txn(
+  public func txn(id: TxnID, in s: LedgerState) -> Txn {
+    var t = Txn(
       id: id, merchant: trimmedMerchant, amount: amount, direction: direction, postedAt: postedAt, accountID: accountID,
-      categoryID: categoryID, categorySource: categoryID == nil ? nil : .user, isRefund: categoryID == "refunds",
-      isTransfer: categoryID == "transfer")
+      categoryID: categoryID, categorySource: categoryID == nil ? nil : .user, isTransfer: categoryID == "transfer")
+    t.isRefund = RefundEdit.filedAsRefund(t, in: s)
+    return t
   }
 }
 

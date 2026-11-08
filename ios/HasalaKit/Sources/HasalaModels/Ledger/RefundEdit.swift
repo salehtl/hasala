@@ -74,6 +74,11 @@ public enum RefundEdit {
     return nil
   }
 
+  public static func filedAsRefund(_ t: Txn, in s: LedgerState) -> Bool {
+    t.categoryID == Spending.refundsID || t.refundOf != nil
+      || (t.direction == .in && t.splits.isEmpty && Spending.counts(s.category(t.categoryID)))
+  }
+
   public static func isRefund(_ t: Txn, in s: LedgerState) -> Bool {
     t.isRefund || (t.direction == .in && t.splits.isEmpty && Spending.counts(s.category(t.categoryID)))
   }

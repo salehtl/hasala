@@ -65,10 +65,10 @@ public final class InMemoryLedger: LedgerStore {
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touched.insert(id)
-      let filedIn = s.txns[i].categoryID
+      let old = s.txns[i]
       change(&s.txns[i])
-      guard s.txns[i].categoryID != filedIn, s.txns[i].splits.isEmpty else { return }
-      s.txns[i].isRefund = Self.filedAsRefund(s.txns[i], in: s)
+      guard s.txns[i].categoryID != old.categoryID || s.txns[i].splits.isEmpty != old.splits.isEmpty else { return }
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
     }
 
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
@@ -195,7 +195,7 @@ public final class InMemoryLedger: LedgerStore {
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      var t = d.txn(id: "manual-\(nextManual)")
+      var t = d.txn(id: "manual-\(nextManual)", in: s)
       t.merchantKey = t.merchant.lowercased()
       s.txns.append(t)
       nextManual += 1
@@ -270,10 +270,10 @@ public final class InMemoryLedger: LedgerStore {
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
       try editTxn(id) { t in
         t.splits = t.apportioned(lines)
-        if let first = lines.first { t.categoryID = first.categoryID }
         t.needsReview = false
         t.priorFiling = nil
       }
+      if let first = lines.first, let i = s.txns.firstIndex(where: { $0.id == id }) { s.txns[i].categoryID = first.categoryID }
       title = lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories"
     case .archive(let id, let archived):
       if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
@@ -670,10 +670,6 @@ public final class InMemoryLedger: LedgerStore {
     field(\.mergedInto)
     field(\.refundOf)
     field(\.billID)
-  }
-
-  private static func filedAsRefund(_ t: Txn, in s: LedgerState) -> Bool {
-    t.categoryID == Spending.refundsID || t.refundOf != nil || (t.direction == .in && Spending.counts(s.category(t.categoryID)))
   }
 
   static func pauseStart(_ b: Bill, today: LocalDate) -> LocalDate {
