@@ -21,6 +21,7 @@ import Observation
 @Observable
 final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
   static let pairedTransfer = "This is one side of a matched transfer."
+  static let undoKept = 256
   private(set) var state: LedgerState
   private(set) var now: LocalDateTime
   private(set) var revision = 0
@@ -196,6 +197,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
     if let token {
       if !inverses.isEmpty { undos[token.id] = inverses }
       if !inverses.isEmpty || (author != nil && Self.authorsInverse(edit)) { undoable.insert(token.id) }
+      undos[token.id - Self.undoKept] = nil
+      undoable.remove(token.id - Self.undoKept)
     }
     state = s
     revision += 1
@@ -238,7 +241,10 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
 
   private func takeUndo(_ id: Int) -> [LedgerEditAuthor.Inverse]? { undos.removeValue(forKey: id) }
 
+  private func keepsUndo(_ id: Int) -> Bool { id >= nextToken - Self.undoKept }
+
   private func keepUndo(_ id: Int, _ inverses: [LedgerEditAuthor.Inverse]) {
+    guard keepsUndo(id) else { return }
     undos[id] = inverses
     undoable.insert(id)
   }
@@ -266,7 +272,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
           undoable.remove(undo)
         }
         onWriteFailed?()
-      } else if let undo, !authored.isEmpty {
+      } else if let undo, keepsUndo(undo), !authored.isEmpty {
         undos[undo, default: []] += authored
       }
       await reload()

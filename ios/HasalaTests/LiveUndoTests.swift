@@ -48,6 +48,26 @@ struct LiveUndoTests {
     ])
   }
 
+  @Test func onlyTheNewestEditsKeepTheirUndo() async throws {
+    let a = try Mapper.account()
+    for b in try await Mapper.seed(a) { try await a.outbox.enqueue(b.ops) }
+    try await a.observer.reproject()
+    let store = LiveLedgerStore(
+      reader: a.projection.reader, author: nil, profile: Mapper.context().profile,
+      prefs: DevicePrefsStore(defaults: UserDefaults(suiteName: "undo.kept.tests")!), clock: { MayaLedger.now })
+    await store.reload()
+    let id = try #require(store.state.txns.first { !$0.archived && $0.splits.isEmpty && !$0.isHeldCopy && !$0.isTransfer }).id
+    let first = try #require(try store.apply(.markTransfer(id)))
+    var latest = first
+    for _ in 1..<LiveLedgerStore.undoKept { latest = try #require(try store.apply(.markTransfer(id))) }
+    #expect(store.canUndo(first) && store.canUndo(latest))
+    #expect(store.undos.count == LiveLedgerStore.undoKept)
+    let next = try #require(try store.apply(.markTransfer(id)))
+    #expect(!store.canUndo(first) && store.canUndo(latest) && store.canUndo(next))
+    #expect(store.undos[first.id] == nil)
+    #expect(store.undos.count == LiveLedgerStore.undoKept)
+  }
+
   @Test func undoingAMoveTakesTheMoneyBack() async throws {
     let a = try Mapper.account()
     let store = try await Self.store(a, suite: "undo.move.tests")
