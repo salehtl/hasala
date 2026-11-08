@@ -284,6 +284,15 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 		st.ID, *approver).Scan(&live); err != nil || !live {
 		return SignedIn{}, fmt.Errorf("%w: the approver is gone", ErrResetRefused)
 	}
+	var sessionLive bool
+	err = tx.QueryRow(ctx, `SELECT revoked_at IS NULL AND expires_at > $2 FROM sessions WHERE token_hash = $1 FOR SHARE`,
+		approvedSession, now).Scan(&sessionLive)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return SignedIn{}, err
+	}
+	if !sessionLive {
+		return SignedIn{}, fmt.Errorf("%w: the approver's session is gone", ErrResetRefused)
+	}
 	if err := setPasswordTx(ctx, tx, st.ID, hash, salt, a.Keys.Current(), now); err != nil {
 		return SignedIn{}, err
 	}
