@@ -548,6 +548,9 @@ func (s *Server) writeAppendErr(w http.ResponseWriter, r *http.Request, userID u
 	case errors.Is(err, oplog.ErrHeadSignature), errors.Is(err, oplog.ErrWriterRevoked),
 		errors.Is(err, oplog.ErrUnknownWriter), errors.Is(err, oplog.ErrKeysRequired):
 		s.writeKeyErr(w, r, err)
+	case errors.Is(err, oplog.ErrAccountFrozen):
+		s.logf("api: upload for %s: refused, the account froze during the upload", userID)
+		writeErr(w, http.StatusForbidden, "account_frozen", "")
 	case errors.Is(err, oplog.ErrPartiallyApplied):
 		// The client contract, quoted verbatim from oplog/chain.go: the server
 		// refuses a straddling batch rather than trimming it.

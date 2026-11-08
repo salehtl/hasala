@@ -48,6 +48,9 @@ const (
 // and account_frozen recorded (with its alert). It answers the revoked
 // sessions' APNs tokens, to be woken after the commit.
 func freezeTx(ctx context.Context, tx pgx.Tx, m *Mailer, userID uuid.UUID, by string, trigger, now time.Time, keep [][]byte, writer string) ([]pushv2.Target, error) {
+	if _, err := readAccount(ctx, tx, userID, true); err != nil {
+		return nil, err
+	}
 	var q string
 	if by == FrozenByOperator {
 		q = `UPDATE users SET frozen_at = coalesce(frozen_at, $2),

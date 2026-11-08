@@ -394,7 +394,8 @@ var (
 	// ErrWriterRevoked: the writer is revoked (403 writer_revoked).
 	ErrWriterRevoked = errors.New("oplog: the writer is revoked")
 	// ErrKeysRequired: the account has not bootstrapped (403 keys_required).
-	ErrKeysRequired = errors.New("oplog: the account has no keys")
+	ErrKeysRequired  = errors.New("oplog: the account has no keys")
+	ErrAccountFrozen = errors.New("oplog: the account is frozen")
 	// ErrStaleEpoch matches every *StaleEpochError (409 stale_epoch).
 	ErrStaleEpoch = errors.New("oplog: a frame's key epoch is not the account's current epoch")
 )
