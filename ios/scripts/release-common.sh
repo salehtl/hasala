@@ -67,11 +67,26 @@ hasala_build_newer() {
 }
 
 # hasala_record_build ROOT BUILD: write BUILD to ROOT/last-build-number, atomically
-# (a new file renamed over the old one), so a crash never leaves it half-written.
+# (a new file renamed over the old one), so a crash never leaves it half-written, and
+# only when BUILD is newer than what is recorded, under a lock the kernel drops when
+# the holder dies. Refused, saying why, when it is not.
 hasala_record_build() {
 	local root="$1" build="$2"
-	mkdir -p -- "$root" &&
-		printf '%s\n' "$build" >"$root/last-build-number.tmp" &&
+	mkdir -p -- "$root" || return 1
+	/usr/bin/lockf -k -t 30 "$root/last-build-number.lock" "$BASH" -c \
+		'source "$1" && hasala_record_build_locked "$2" "$3"' _ "${BASH_SOURCE[0]}" "$root" "$build"
+}
+
+hasala_record_build_locked() {
+	local root="$1" build="$2" last
+	if [[ -f "$root/last-build-number" ]]; then
+		last="$(cat -- "$root/last-build-number")" || return 1
+		if ! hasala_build_newer "$build" "$last"; then
+			echo "build $build is not newer than the recorded $last" >&2
+			return 1
+		fi
+	fi
+	printf '%s\n' "$build" >"$root/last-build-number.tmp" &&
 		mv -f -- "$root/last-build-number.tmp" "$root/last-build-number"
 }
 

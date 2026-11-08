@@ -34,6 +34,7 @@ printf '%s\n' "\$*" >>"$work/calls"
 [ "\$1" = altool ] || exit 64
 case "\$2" in
 --validate-app)
+	if [ -n "\${STUB_VALIDATE_RECORDS:-}" ]; then echo "\$STUB_VALIDATE_RECORDS" >"\$HASALA_BUILD_DIR/last-build-number"; fi
 	echo '{"stub": "validate"}'
 	exit "\${STUB_VALIDATE_RC:-0}"
 	;;
@@ -214,6 +215,19 @@ said "refusing to run with HASALA_BUILD_DIR set outside test mode" "refused for 
 equal "$(cat "$work/calls")" "" "...before it ran xcrun"
 equal "$(cat "$root/last-build-number")" "$b2" "...or recorded the build"
 upload "HASALA_BUILD_DIR with HASALA_TEST_MODE=yes" 2 HASALA_TEST_MODE=yes -- "$root/$b3/export/Hasala.ipa"
+
+: >"$work/calls"
+newer=991231.12400
+upload "a newer build recorded while this one validated" 21 ASC_KEY_ID=TESTKEY000 ASC_ISSUER_ID="$issuer" ASC_KEY_PATH="$key" \
+	STUB_UPLOAD_RC=0 STUB_VALIDATE_RECORDS="$newer" -- "$root/$b3/export/Hasala.ipa" --yes
+said "is not newer than the recorded $newer" "names the newer build"
+equal "$(cat "$root/last-build-number")" "$newer" "...the record does not move backwards"
+if grep -q -- --upload-package "$work/calls"; then
+	echo "FAIL the older build went on to upload"
+	fail=1
+else
+	echo "ok   ...and the older build does not upload"
+fi
 
 upload "an extra argument" 2 -- "$ipa" --yes --force
 exit "$fail"

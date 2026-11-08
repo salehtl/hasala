@@ -70,6 +70,32 @@ if [[ "$(cat "$work/root/last-build-number")" == 991231.12359 && ! -e "$work/roo
 else
 	bad "hasala_record_build"
 fi
+record_refused() {
+	local name="$1" build="$2" want="$3"
+	if hasala_record_build "$work/root" "$build" 2>/dev/null; then
+		bad "hasala_record_build took $name"
+	elif [[ "$(cat "$work/root/last-build-number")" != "$want" ]]; then
+		bad "hasala_record_build refused $name but changed the record to $(cat "$work/root/last-build-number")"
+	else
+		ok "hasala_record_build refuses $name and keeps $want"
+	fi
+}
+record_refused "an older build" 991231.12358 991231.12359
+record_refused "the same build" 991231.12359 991231.12359
+hasala_record_build "$work/root" 991231.12400 && ok "hasala_record_build takes a newer build" || bad "hasala_record_build refused a newer build"
+echo garbage >"$work/root/last-build-number"
+record_refused "any build over a record it cannot read" 991231.12500 garbage
+rm -rf "$work/root"
+for minute in 59 58 57 56 55 54 53 52 51 50 49 48 47 46 45 44 43 42 41 40; do
+	hasala_record_build "$work/root" "991231.1${minute}00" 2>/dev/null &
+done
+wait || true
+if [[ "$(cat "$work/root/last-build-number")" == 991231.15900 && ! -e "$work/root/last-build-number.tmp" ]]; then
+	ok "twenty recorders at once leave the newest build"
+else
+	bad "twenty recorders at once left $(cat "$work/root/last-build-number")"
+fi
+
 # root NAME WANT(path|refused) [VAR=value...]: hasala_build_root /x/ios with only the
 # given HASALA_BUILD_DIR and HASALA_TEST_MODE.
 root() {
