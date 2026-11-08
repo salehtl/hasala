@@ -118,6 +118,7 @@ public struct CycleReport: Sendable, Equatable {
   /// The checkpoint advanced (or the scan / backfill phase finished).
   public var completed = false
   public var phase: MailboxPhase = .unlinked
+  public var pastImportStarted = false
   public init() {}
 
   mutating func count(_ d: MailboxIngestDraft) {
@@ -1229,6 +1230,7 @@ public actor MailboxEngine {
         report.haltedOn = .offline
         return report
       }
+      report.pastImportStarted = true
       return await runPendingImports(&state, report)
     }
   }

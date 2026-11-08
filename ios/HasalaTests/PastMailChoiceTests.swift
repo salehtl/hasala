@@ -112,6 +112,26 @@ struct PastMailChoiceAppTests: AccountSuite {
     #expect(lane.firstScanFinished)
   }
 
+  @Test func theOutcomeSaysWhetherTheImportStarted() {
+    func report(started: Bool, completed: Bool = false, halted: MailboxHaltCode? = nil, ops: Int = 0) -> CycleReport {
+      var r = CycleReport()
+      r.pastImportStarted = started
+      r.completed = completed
+      r.haltedOn = halted
+      r.ops = ops
+      return r
+    }
+    #expect(LiveMailboxConnecting.pastImport(report(started: false)) == .notStarted)
+    #expect(LiveMailboxConnecting.pastImport(report(started: false, halted: .offline)) == .notStarted)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, halted: .offline)) == .later)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, completed: false)) == .later)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, completed: true, ops: 7)) == .finished(7))
+  }
+
+  @Test func aMailboxThatIsGoneStartsNoImport() async {
+    #expect(await mailbox().importPastMail("gmail-1") == .notStarted)
+  }
+
   @Test func theLiveRowOffersTheImportOnlyWhileActive() {
     func row(_ phase: MailboxPhase, skipped: Bool) -> MailboxSnapshot? {
       LiveMailboxConnecting.mailboxes(

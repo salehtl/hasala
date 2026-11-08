@@ -172,6 +172,7 @@ struct MailboxDetailPage: View {
     switch await mailbox.importPastMail(m.id) {
     case .finished(let count): app.say(MailCopy.pastImported(count))
     case .later: app.say(MailCopy.pastImportLater)
+    case .notStarted: app.say(SourceSwitch.checking, icon: .info)
     }
   }
 

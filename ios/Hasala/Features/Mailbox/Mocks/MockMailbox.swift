@@ -152,7 +152,7 @@
 
     func importPastMail(_ mailboxID: String) async -> MailPastImport {
       pastImports += 1
-      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return .later }
+      guard let i = mailboxes.firstIndex(where: { $0.id == mailboxID }) else { return .notStarted }
       mailboxes[i].pastMailSkipped = false
       return .finished(total)
     }

@@ -142,9 +142,14 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   }
 
   func importPastMail(_ mailboxID: String) async -> MailPastImport {
-    guard let rt = runtime(), let lane = rt.lane else { return .later }
+    guard let rt = runtime(), let lane = rt.lane else { return .notStarted }
     let report = await lane.importPastMail()
     await rt.refreshMailbox()
+    return Self.pastImport(report)
+  }
+
+  static func pastImport(_ report: CycleReport) -> MailPastImport {
+    guard report.pastImportStarted else { return .notStarted }
     return report.completed && report.haltedOn == nil ? .finished(report.ops) : .later
   }
 
