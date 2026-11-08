@@ -37,6 +37,7 @@ final class AccountSession {
   var pendingInvite: InviteLink?
   /// A toast for links that can't act now ("You already have an account").
   var notice: String?
+  static let hasAccountNotice = "You already have an account"
   /// The signed-in account is the App Review demo account (`review_account` on
   /// `GET /account`), so its ledger is sample data. Set by the runtime once the account
   /// is known; false until then and after signing out.
@@ -206,7 +207,7 @@ final class AccountSession {
     if phase == .signedOut {
       pendingInvite = link
     } else {
-      notice = "You already have an account"
+      notice = Self.hasAccountNotice
     }
   }
 }

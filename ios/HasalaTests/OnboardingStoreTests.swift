@@ -298,6 +298,56 @@ struct AccountGatePhaseTests: AccountSuite {
     #expect(s.phase == .signedOut)
   }
 
+  private var inviteLink: URL { URL(string: "https://hasala.app/i/\(Self.code)")! }
+
+  @Test func anInviteLinkLeavesYoureBackInOnScreen() async {
+    let (store, s) = store(MockAccountService(existing: .passkey), phase: .signedOut)
+    let m = store.signIn
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.finishRecovery(.passkey) == .done)
+    store.signup.path = [.signIn, .recoverIntro, .recoverWords, .recoverCode, .recoverMethod]
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(s.notice == "You already have an account")
+    m.recoveryDone()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func anInviteLinkLeavesAMadeAccountOnScreen() async {
+    let (store, s) = store(MockAccountService(), phase: .signedOut)
+    let m = store.signup
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await m.continueWithMethod()
+    showPhrase(m)
+    await m.finish()
+    #expect(m.path.last == .accountReady)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(m.path.last == .accountReady)
+    #expect(s.notice == "You already have an account")
+  }
+
+  @Test func anInviteLinkStillOpensForSomeoneWithoutAnAccount() {
+    let (store, s) = store(MockAccountService(), phase: .signedOut)
+    store.signup.path = [.signIn]
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(store.signup.path == [.inviteReady])
+    #expect(store.signup.normalizedInvite == Self.code)
+    #expect(s.notice == nil)
+  }
+
   @Test func aReplacementPhraseThatFailedIsMadeAgainFromItsButton() {
     let account = signedInAccount()
     account.refusePhrase = .unsupported

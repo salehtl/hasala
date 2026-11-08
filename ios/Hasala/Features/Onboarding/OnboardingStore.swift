@@ -80,6 +80,18 @@ final class OnboardingStore {
     return made
   }
 
+  func consumeInvite() {
+    let session = self.session()
+    guard let link = session.pendingInvite else { return }
+    session.pendingInvite = nil
+    guard signup.profile == nil, signIn.recovered == nil else {
+      session.notice = AccountSession.hasAccountNotice
+      return
+    }
+    signup.applyInviteLink(link)
+    signup.path = [.inviteReady]
+  }
+
   /// The replacement phrase's model (`.needsKeys`): one, its phrase made once.
   func replacementModel() -> SignupModel {
     if let replacement { return replacement }
