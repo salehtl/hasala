@@ -118,6 +118,7 @@ public struct CycleReport: Sendable, Equatable {
   /// The checkpoint advanced (or the scan / backfill phase finished).
   public var completed = false
   public var phase: MailboxPhase = .unlinked
+  public var stateUnread = false
   public init() {}
 
   var readMail: Bool { fetched + ops + staged + setAside + unreadable + dup > 0 }
@@ -801,6 +802,7 @@ public actor MailboxEngine {
     await finishRetires()
     guard var state = try? await store.loadState() else {
       report.haltedOn = .offline
+      report.stateUnread = true
       return report
     }
     report.phase = state.phase
@@ -1260,7 +1262,7 @@ public actor MailboxEngine {
       if Task.isCancelled || stopped { break }
       let r = await runCycle(trigger: .refresh)
       reports.append(r)
-      guard r.phase == .scanning || r.phase == .authoringBackfill else { break }
+      guard r.stateUnread || r.phase == .scanning || r.phase == .authoringBackfill else { break }
       let read = r.readMail
       switch r.haltedOn {
       case nil, .stagingFull?:

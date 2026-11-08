@@ -12,9 +12,15 @@ actor UnreadableStateStore: MailboxPersistence {
 
   func setFailing(_ v: Bool) { failing = v }
   func setRetireWriteFails(_ v: Bool) { retireWriteFails = v }
+  var readsToFail = 0
+  func setReadsToFail(_ n: Int) { readsToFail = n }
 
   func loadState() async throws(MailboxPersistenceError) -> MailboxState {
     if failing { throw MailboxPersistenceError("read") }
+    if readsToFail > 0 {
+      readsToFail -= 1
+      throw MailboxPersistenceError("read")
+    }
     return try await base.loadState()
   }
   func accounted(among ids: [String]) async throws(MailboxPersistenceError) -> Set<String> {
