@@ -7,8 +7,7 @@
  */
 import { onPage, observe } from './page';
 
-const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
-export const reducedMotion = (): boolean => !!mq?.matches;
+export const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const once = (signal: AbortSignal, els: Iterable<Element>, threshold: number, fn: (el: HTMLElement) => void) => {
   const io = observe(

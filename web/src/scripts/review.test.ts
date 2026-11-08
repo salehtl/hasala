@@ -177,6 +177,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   reduce.matches = false;
+  g.matchMedia = () => reduce;
   pageLoad = [];
   g.window = { setTimeout: () => 1, clearTimeout: () => {} };
   g.getComputedStyle = () => ({ transform: 'none' });
