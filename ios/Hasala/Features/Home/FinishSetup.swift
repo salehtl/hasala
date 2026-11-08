@@ -253,7 +253,7 @@ final class FinishSetupModel {
       }
       self?.planFlow = nil
     }
-    flow.path = []
+    flow.reopen()
     draft = flow
     planFlow = flow
   }

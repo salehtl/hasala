@@ -178,6 +178,53 @@ struct FinishSetupTests: AccountSuite {
     #expect(again === flow && again.path.isEmpty && again.incomeEntry.text == "25000" && again.paydayChoice == .day(25))
   }
 
+  @Test func aKeptPlanTakesASalaryChangedSinceItWasClosed() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.plan = StartingPlan(needsPercent: 60, wantsPercent: 20, savingsPercent: 20)
+    m.planFlow = nil
+    try await setup.savePlan(income: 3_000_000, payday: 1, plan: nil)
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again === flow && again.incomeMinor == 3_000_000 && again.paydayChoice == .day(1))
+    #expect(again.plan.needsPercent == 60)
+    again.continueWithIncome()
+    await again.savePlan()
+    #expect(setup.income == 3_000_000 && setup.payday == 1 && setup.plan?.needsPercent == 60)
+  }
+
+  @Test func aKeptPlanKeepsWhatWasTypedWhereNothingElseChanged() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    let flow = try #require(m.planFlow)
+    flow.incomeEntry = AmountEntry(typing: "26000")
+    flow.paydayChoice = .day(20)
+    m.planFlow = nil
+    try await setup.savePlan(
+      income: 2_500_000, payday: 25, plan: StartingPlan(needsPercent: 50, wantsPercent: 30, savingsPercent: 20))
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    #expect(again.incomeMinor == 2_600_000 && again.paydayChoice == .day(20) && again.plan.needsPercent == 50)
+  }
+
+  @Test func aKeptPlanThatMatchesTheAccountSendsNothing() async throws {
+    let setup = MockSetupAuthoring(saved: SetupReadBack(incomeMinor: 2_500_000, payday: 25))
+    let m = FinishSetupModel(services: services(setup))
+    m.setPlan()
+    m.planFlow = nil
+    let split = StartingPlan(needsPercent: 50, wantsPercent: 30, savingsPercent: 20)
+    try await setup.savePlan(income: 3_000_000, payday: 1, plan: split)
+    let calls = setup.savePlanCalls
+    m.setPlan()
+    let again = try #require(m.planFlow)
+    again.continueWithIncome()
+    await again.savePlan()
+    #expect(setup.savePlanCalls == calls && m.planFlow == nil)
+  }
+
   @Test func theCountLeavesOutARowThatCantStartYet() {
     let items: [FinishSetupItem] = [.plan, .notifications]
     #expect(FinishSetupSection.fact(items, isDone: { _ in false }, importing: true) == "0 of 1")
