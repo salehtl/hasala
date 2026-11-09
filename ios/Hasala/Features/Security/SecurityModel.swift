@@ -115,6 +115,17 @@ final class SecurityModel {
     }
   }
 
+  func keepLoading(firstWait: Duration = .seconds(5)) async {
+    var wait = firstWait
+    await load()
+    while state == nil, failure == .offline || failure == .rateLimited, !Task.isCancelled {
+      try? await Task.sleep(for: wait)
+      guard !Task.isCancelled else { return }
+      wait = min(wait * 2, .seconds(30))
+      await load()
+    }
+  }
+
   // MARK: Confirm it's you
 
   /// Starts a change: "Confirm it's you" opens on `host` (P2.6: one pattern for every
@@ -221,6 +232,10 @@ final class SecurityModel {
       session.learnedOperatorFreeze()
       await load()
       failure = .frozenByOperator
+    } catch .frozen {
+      closeConfirmation()
+      await load()
+      failure = .frozen
     } catch .sessionEnded {
       // The server ended the session (an operator freeze revokes them all): sign in again.
       closeConfirmation()

@@ -58,27 +58,27 @@ public enum AccountSignIn {
 
   /// C2 / C2b. `wantPRF` asks the assertion for the PRF output (an unbound
   /// iPhone that will unlock with Face ID).
-  public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool)
+  public static func withPasskey(_ env: AccountEnvironment, bound: AccountBinding?, wantPRF: Bool, only: [Data] = [])
     async throws(CeremonyError) -> SignInResult
   {
-    try await passkeyLogin(env, writer: signingWriter(bound), wantPRF: wantPRF)
+    try await passkeyLogin(env, writer: signingWriter(bound), wantPRF: wantPRF, only: only)
   }
 
-  public static func replacingHeldSession(_ env: AccountEnvironment, wantPRF: Bool)
+  public static func replacingHeldSession(_ env: AccountEnvironment, wantPRF: Bool, only: [Data] = [])
     async throws(CeremonyError) -> SignInResult
   {
     guard let held = try await NewDevice.heldRegistration(env) else {
-      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF)
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF, only: only)
     }
     do {
-      return try await passkeyLogin(env, writer: held, wantPRF: wantPRF)
+      return try await passkeyLogin(env, writer: held, wantPRF: wantPRF, only: only)
     } catch {
       guard error.failureClass == .otherAccountDevice || error.failureClass == .deviceRefused else { throw error }
-      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF)
+      return try await passkeyLogin(env, writer: nil, wantPRF: wantPRF, only: only)
     }
   }
 
-  private static func passkeyLogin(_ env: AccountEnvironment, writer: SigningWriter?, wantPRF: Bool)
+  private static func passkeyLogin(_ env: AccountEnvironment, writer: SigningWriter?, wantPRF: Bool, only: [Data])
     async throws(CeremonyError) -> SignInResult
   {
     guard let passkeys = env.passkeys else { throw .passkey(.unsupported) }
@@ -88,7 +88,7 @@ public enum AccountSignIn {
     let assertion: RawAssertion
     do {
       assertion = try await passkeys.assert(
-        challenge: options.challenge, allowCredentialIDs: options.allowCredentialIDs,
+        challenge: options.challenge, allowCredentialIDs: only.isEmpty ? options.allowCredentialIDs : only,
         prfSalt: wantPRF ? KeyDerivation.prfSalt : nil)
     } catch {
       throw .passkey(error)
@@ -100,6 +100,26 @@ public enum AccountSignIn {
     }
     try AccountCreation.writeSession(env, grant, signupEmailNorm: AccountCreation.heldSignupAddress(env, userID: grant.user_id))
     return SignInResult(grant: grant, emailNorm: nil, serverSalt: nil, assertion: assertion)
+  }
+
+  public static func forPasskeyUnlock(_ env: AccountEnvironment) async throws(CeremonyError) -> SignInResult {
+    var wrapped: [Data] = []
+    if let bearer = try? AccountCreation.currentBearer(env), let listed = try? await env.client.keyWraps(bearer: bearer) {
+      wrapped = listed.wraps.compactMap { try? Base64.decodeURL($0.credential_id) }
+    }
+    return try await replacingHeldSession(env, wantPRF: true, only: wrapped)
+  }
+
+  public static func passkeyUnlockOffer(_ env: AccountEnvironment, after r: SignInResult) async -> (
+    signIn: SignInResult, canUnlock: Bool
+  ) {
+    guard let a = r.assertion, a.prfFirst != nil else { return (r, false) }
+    guard let listed = try? await env.client.keyWraps(bearer: r.grant.session_token) else { return (r, true) }
+    let wrapped = listed.wraps.compactMap { try? Base64.decodeURL($0.credential_id) }
+    if wrapped.contains(a.credentialID) { return (r, true) }
+    a.prfFirst?.wipe()
+    let spent = SignInResult(grant: r.grant, emailNorm: r.emailNorm, serverSalt: r.serverSalt, assertion: nil)
+    return (spent, !wrapped.isEmpty)
   }
 
   /// The SessionBind proof for a bound iPhone, or `nil` when unbound.

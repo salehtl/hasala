@@ -108,6 +108,14 @@ struct AccountRootView<Main: View>: View {
     }
   }
 
+  @ViewBuilder private var frozenBanner: some View {
+    if let info = session.leftFrozen {
+      FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
+        Task { await session.signOut() }
+      })
+    }
+  }
+
   @ViewBuilder private var phaseContent: some View {
     switch session.phase {
     case .signedOut:
@@ -115,21 +123,22 @@ struct AccountRootView<Main: View>: View {
     case .checking:
       BootCheckView(session: session)
     case .onboarding:
-      SetupFlowView(model: onboarding.setupModel(
-        displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
-    case .needsUnlock:
-      UnlockView(session: session)
+      VStack(spacing: 0) {
+        frozenBanner
+        SetupFlowView(model: onboarding.setupModel(
+          displayName: session.account.profile?.displayName ?? "", facts: setupFacts))
+      }
+    case .needsUnlock(let passkeyCanUnlock):
+      UnlockView(model: onboarding.unlockModel(passkeyCanUnlock: passkeyCanUnlock), onSignOut: {
+        Task { await session.signOut() }
+      })
     case .needsKeys:
       InterruptedSetupFlowView(store: onboarding)
     case .frozen(let info):
       FrozenWall(session: session, info: info)
     case .ready:
       VStack(spacing: 0) {
-        if let info = session.leftFrozen {
-          FrozenBanner(by: info.by, onShowWall: { session.showFrozenWall() }, onSignOut: {
-            Task { await session.signOut() }
-          })
-        }
+        frozenBanner
         main()
       }
         // A password reset another iPhone asked this one to approve (spec 04 §6.12):
@@ -185,8 +194,6 @@ private struct LockdownSheetContent: View {
   var body: some View {
     LockdownView(model: model)
       .task { await model.load() }
-      // LockdownView presents its own "Confirm it's you" (`host: .lockdown`).
-      .sheet(isPresented: $model.editingPassword) { PasswordEditSheet(model: model) }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) {
           // In the glass ink, as Paper draws the sheet's close (not the accent).

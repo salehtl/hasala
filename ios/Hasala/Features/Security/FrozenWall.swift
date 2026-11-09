@@ -15,14 +15,14 @@ struct FrozenWall: View {
   enum Route: Hashable { case unfreeze }
 
   var body: some View {
-    NavigationStack(path: $path) {
+    NavigationStack(path: Binding(get: { Self.shownPath(path, for: info) }, set: { path = $0 })) {
       HeroAccountScreen(
         hero: HeroDisc(icon: .lockKeyhole, hue: .rose),
         title: "Your account is frozen",
         subtitle: Self.subtitle(info)
       ) {
         VStack(alignment: .leading, spacing: 12) {
-          if info.by == .holder, info.holderCanLift {
+          if Self.offersUnfreeze(info) {
             OptionCard(icon: .key, hue: .sky, title: "Sign in fully to unfreeze",
                        detail: Self.unfreezeDetail(info), buttonTitle: "Unfreeze",
                        buttonKind: .primary, identifier: "frozen.unfreeze") { path = [.unfreeze] }
@@ -43,7 +43,7 @@ struct FrozenWall: View {
             SecondaryLink(title: "Leave it frozen", identifier: "frozen.leave") { session.leaveFrozen() }
           }
           SecondaryLink(title: "Sign out", identifier: "frozen.signOut") { confirmSignOut = true }
-          if info.by == .holder, info.holderCanLift {
+          if Self.offersUnfreeze(info) {
             WebLink(title: "Talk to a person", url: "https://hasala.app/support", identifier: "frozen.footerTalk")
           }
         }
@@ -64,6 +64,10 @@ struct FrozenWall: View {
       }
     #endif
   }
+
+  static func offersUnfreeze(_ info: FreezeInfo) -> Bool { info.by == .holder && info.holderCanLift }
+
+  static func shownPath(_ path: [Route], for info: FreezeInfo) -> [Route] { offersUnfreeze(info) ? path : [] }
 
   static func subtitle(_ info: FreezeInfo) -> String {
     switch (info.by, info.holderCanLift) {

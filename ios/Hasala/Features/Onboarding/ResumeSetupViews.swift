@@ -66,9 +66,8 @@ struct InterruptedSetupFlowView: View {
           FailureBanner(failure: model.failure)
         }
       } actions: {
-        Button("Show my new words") { model.go(.phraseShow) }
+        Button("Show my new words") { model.showReplacementWords() }
           .buttonStyle(.pill(.primary, fill: true))
-          .disabled(model.phrase == nil)
           .accessibilityIdentifier("resume.start")
         LinkButton(title: "Sign out", identifier: "resume.signOut") {
           Task { await session.signOut() }

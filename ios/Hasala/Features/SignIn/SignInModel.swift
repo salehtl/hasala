@@ -30,9 +30,9 @@ final class SignInModel {
   private(set) var reset: ResetTicket?
   /// When the last reset code was sent (the resend countdown runs from it).
   private(set) var resetCodeSentAt: Date?
+  private(set) var resetCodeUsedUp = false
   var newPassword = ""
   var confirmPassword = ""
-  private(set) var waiting = false
   /// When the request to the other iPhone runs out (the countdown on "Check your other
   /// iPhone").
   private(set) var approvalDeadline: Date?
@@ -43,14 +43,17 @@ final class SignInModel {
   var phraseText = ""
   private(set) var recovery: RecoveryTicket?
   private(set) var recoverCodeSentAt: Date?
+  private(set) var recoverCodeUsedUp = false
   var recoverCode = ""
   /// The way to sign in `recover/verify` was sent with (`02` #48 binds the ceremony to it).
   private(set) var verifiedRecoveryKind: SignInMethod?
   /// Recovery finished with this new way to sign in ("You're back in", Paper H5V).
   private(set) var recovered: SignInMethod?
+  private(set) var finishingRecovery = false
   /// The pasteboard's `changeCount` when the phrase field received a paste, so the
   /// pasteboard is cleared only if it still holds that paste (spec 04 §6.7).
   var pastedPhraseChangeCount: Int?
+  var clearPasteboard: @MainActor (Int?) -> Void = { clearPastedPhrase(changeCount: $0) }
 
   /// How long the other iPhone has to answer (spec 04 §16.4: the request lives 10 minutes).
   static let approvalWindow: TimeInterval = 600
@@ -70,6 +73,9 @@ final class SignInModel {
   private func fail(_ f: AuthFailure, on route: WelcomeRoute) {
     failure = f
     failureOn = route
+    guard f == .codeExpired else { return }
+    if route == .forgotCode { resetCodeUsedUp = true }
+    if route == .recoverCode { recoverCodeUsedUp = true }
   }
 
   private func clearFailure() {
@@ -80,6 +86,7 @@ final class SignInModel {
   // MARK: Sign in
 
   func signInWithPasskey() async {
+    guard !busy else { return }
     busy = true
     signingIn = .passkey
     lastTried = .passkey
@@ -99,7 +106,7 @@ final class SignInModel {
   var passwordSignInReady: Bool { AccountFields.email(email) != nil && !password.isEmpty }
 
   func signInWithPassword() async {
-    guard passwordSignInReady else { return }
+    guard passwordSignInReady, !busy else { return }
     busy = true
     signingIn = .password
     lastTried = .password
@@ -131,6 +138,7 @@ final class SignInModel {
     resetEmail = email
     resetCodeText = ""
     reset = nil
+    resetCodeUsedUp = false
     resetApproved = false
     clearFailure()
   }
@@ -141,6 +149,7 @@ final class SignInModel {
     do {
       reset = try await account.beginPasswordReset(email: resetEmail)
       resetCodeSentAt = .now
+      resetCodeUsedUp = false
       resetCodeText = ""
       clearFailure()
       return true
@@ -163,6 +172,11 @@ final class SignInModel {
       fail(error, on: .forgotCode)
       return false
     }
+  }
+
+  func resetCodeExpired(now: Date) -> Bool {
+    guard let resetCodeSentAt else { return false }
+    return resetCodeUsedUp || EmailCode.expired(sentAt: resetCodeSentAt, now: now)
   }
 
   /// The person changes the code after a wrong one: the cells go back to typing.
@@ -212,8 +226,6 @@ final class SignInModel {
   /// Polls every 3 s while on screen until approved, failed or the 10 minutes pass.
   func waitForApproval(interval: Duration = .seconds(3), limit: Duration = .seconds(600)) async {
     guard let reset else { return }
-    waiting = true
-    defer { waiting = false }
     let start = ContinuousClock.now
     while !Task.isCancelled {
       do {
@@ -250,6 +262,7 @@ final class SignInModel {
       do {
         recovery = try await account.beginRecovery(words: words)
         recoverCodeSentAt = .now
+        recoverCodeUsedUp = false
         recoverCode = ""
         verifiedRecoveryKind = nil
         clearFailure()
@@ -261,17 +274,23 @@ final class SignInModel {
     }
   }
 
+  func recoverCodeExpired(now: Date) -> Bool {
+    guard verifiedRecoveryKind == nil, let recoverCodeSentAt else { return false }
+    return recoverCodeUsedUp || EmailCode.expired(sentAt: recoverCodeSentAt, now: now)
+  }
+
   func resendRecoveryCode() async -> Bool {
     await submitRecoveryWords(on: .recoverCode)
   }
 
   func forgetRecovery() {
-    clearPastedPhrase(changeCount: pastedPhraseChangeCount)
+    clearPasteboard(pastedPhraseChangeCount)
     pastedPhraseChangeCount = nil
     phraseText = ""
     recoverCode = ""
     recovery = nil
     recoverCodeSentAt = nil
+    recoverCodeUsedUp = false
     verifiedRecoveryKind = nil
   }
 
@@ -302,6 +321,7 @@ final class SignInModel {
     case done
     /// The code was refused: back to the code screen, whose line says why.
     case codeRejected
+    case startAgain
     case failed
   }
 
@@ -310,7 +330,11 @@ final class SignInModel {
     guard let recovery else { return .failed }
     let screen: WelcomeRoute = credential.method == .passkey ? .recoverMethod : .recoverPassword
     busy = true
-    defer { busy = false }
+    finishingRecovery = true
+    defer {
+      busy = false
+      finishingRecovery = false
+    }
     if let kind = verifiedRecoveryKind, kind != credential.method {
       // The ceremony is bound to the kind it was verified with; its code is spent.
       fail(.badPhrase("This recovery was started for a \(kind == .passkey ? "passkey" : "password"). Go back to your words to choose again."),
@@ -342,9 +366,20 @@ final class SignInModel {
       clearFailure()
       recovered = credential.method
       return .done
-    } catch {
-      fail(error, on: screen)
+    } catch .cancelled {
+      fail(.cancelled, on: screen)
       return .failed
+    } catch .notInThisBuild {
+      fail(.notInThisBuild, on: screen)
+      return .failed
+    } catch {
+      self.recovery = nil
+      recoverCodeSentAt = nil
+      recoverCodeUsedUp = false
+      recoverCode = ""
+      verifiedRecoveryKind = nil
+      fail(error, on: .recoverWords)
+      return .startAgain
     }
   }
 

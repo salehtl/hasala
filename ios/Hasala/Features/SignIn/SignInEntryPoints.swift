@@ -39,6 +39,7 @@ struct ForgotCodeView: View {
       subtitle: "We sent a reset code to \(signIn.resetEmail). It works for 10 minutes.",
       steps: (2, 4), code: Bindable(signIn).resetCodeText, busy: signIn.busy,
       failure: signIn.failure(on: .forgotCode), sentAt: signIn.resetCodeSentAt,
+      expired: { signIn.resetCodeExpired(now: $0) },
       trailing: (title: "Change email", identifier: "code.changeEmail", action: { store.signup.back() }),
       onSubmit: { Task { if await signIn.submitResetCode() { store.signup.go(.forgotCheck) } } },
       onResend: { Task { _ = await signIn.submitResetEmail() } })
@@ -95,6 +96,7 @@ struct RecoverCodeView: View {
       subtitle: "We sent a code to \(signIn.recovery?.emailHint ?? "your account's address"). Email alone won't get you in; with your 12 words, it does.",
       steps: (2, 3), code: Bindable(signIn).recoverCode, busy: signIn.busy,
       failure: signIn.failure(on: .recoverCode), sentAt: signIn.recoverCodeSentAt,
+      expired: { signIn.recoverCodeExpired(now: $0) },
       trailing: (title: "Change words", identifier: "code.changeWords", action: { store.signup.back() }),
       onSubmit: { Task { if await signIn.submitRecoveryCode() { store.signup.go(.recoverMethod) } } },
       onResend: { Task { _ = await signIn.resendRecoveryCode() } })
@@ -139,6 +141,8 @@ extension OnboardingStore {
     case .done, .failed: break
     case .codeRejected:
       if let i = signup.path.lastIndex(of: .recoverCode) { signup.path.removeSubrange((i + 1)...) }
+    case .startAgain:
+      if let i = signup.path.lastIndex(of: .recoverWords) { signup.path.removeSubrange((i + 1)...) }
     }
   }
 }

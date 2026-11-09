@@ -28,6 +28,16 @@ struct OnboardingStoreTests: AccountSuite {
     #expect(m.phraseText.isEmpty && m.recoverCode.isEmpty && m.recovery == nil)
   }
 
+  @Test func droppingTheDraftsTakesAPastedPhraseOffThePasteboard() {
+    let (store, _) = store(MockAccountService(existing: .passkey))
+    var cleared: [Int?] = []
+    store.signIn.clearPasteboard = { cleared.append($0) }
+    store.signIn.pastedPhraseChangeCount = 41
+    store.phaseChanged(from: .checking, to: .signedOut)
+    #expect(cleared == [41])
+    #expect(store.signIn.pastedPhraseChangeCount == nil)
+  }
+
   @Test func theSameModelsComeBackOnEveryCall() {
     let (store, _) = store()
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
@@ -44,7 +54,7 @@ struct OnboardingStoreTests: AccountSuite {
   /// store again, as its body does, and gets the same models with what was typed. (The
   /// gate's body itself only renders in a window.)
   @Test func aRemadeGateCannotResetThem() {
-    let (store, session) = store(phase: .onboarding(.bank))
+    let (store, session) = store(phase: .onboarding)
     let facts = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: facts)
     setup.toggle(.dib)
@@ -57,11 +67,55 @@ struct OnboardingStoreTests: AccountSuite {
     let again = store.setupModel(displayName: "Maya", facts: facts)
     #expect(again === setup && again.orderedBanks == [.enbd])
     store.storyPage = 2
-    store.phaseChanged(from: .onboarding(.bank), to: .ready)
+    store.phaseChanged(from: .onboarding, to: .ready)
     #expect(store.setup === setup && store.storyPage == 2)
   }
 
   /// Signing out after a signed-in phase drops every draft; the stories' page stays.
+  @Test func aRemadeGateKeepsTheUnlockAsItWas() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    let (store, _) = store(account, phase: .needsUnlock(passkeyCanUnlock: false))
+    let unlock = store.unlockModel(passkeyCanUnlock: false)
+    unlock.phraseText = "abandon ability"
+    unlock.enterWords()
+    #expect(store.unlockModel(passkeyCanUnlock: false) === unlock)
+    #expect(unlock.phraseText == "abandon ability" && unlock.path == [.words])
+
+    unlock.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    await unlock.unlockWithWords()
+    #expect(unlock.unlocked)
+    #expect(store.unlockModel(passkeyCanUnlock: false).unlocked)
+  }
+
+  @Test func theUnlockGoesWhenTheGateLeavesIt() {
+    let (store, session) = store(MockAccountService(existing: .passkey, signedIn: true),
+                                 phase: .needsUnlock(passkeyCanUnlock: false))
+    let needsUnlock = AccountSession.Phase.needsUnlock(passkeyCanUnlock: false)
+    let first = store.unlockModel(passkeyCanUnlock: false)
+    first.phraseText = "abandon"
+    store.phaseChanged(from: nil, to: needsUnlock)
+    #expect(store.unlock === first)
+
+    first.openApp()
+    #expect(session.phase == .ready)
+    store.phaseChanged(from: needsUnlock, to: .ready)
+    #expect(store.unlock == nil)
+
+    let second = store.unlockModel(passkeyCanUnlock: false)
+    #expect(second !== first && second.phraseText.isEmpty)
+    store.phaseChanged(from: needsUnlock, to: .signedOut)
+    #expect(store.unlock == nil)
+  }
+
+  @Test func theUnlockFollowsWhatThisBuildCanOffer() {
+    let (store, _) = store(MockAccountService(existing: .passkey, signedIn: true),
+                           phase: .needsUnlock(passkeyCanUnlock: true))
+    let offered = store.unlockModel(passkeyCanUnlock: true)
+    #expect(offered.passkeyCanUnlock)
+    #expect(store.unlockModel(passkeyCanUnlock: true) === offered)
+    #expect(!store.unlockModel(passkeyCanUnlock: false).passkeyCanUnlock)
+  }
+
   @Test func signingOutDropsTheDrafts() {
     let (store, _) = store()
     store.phaseChanged(from: nil, to: .signedOut)
@@ -71,10 +125,10 @@ struct OnboardingStoreTests: AccountSuite {
     // A failed sign-in, Back and walls keep everything.
     store.phaseChanged(from: .signedOut, to: .signedOut)
     #expect(store.signup.email == "maya@example.com")
-    store.phaseChanged(from: .signedOut, to: .onboarding(.bank))
+    store.phaseChanged(from: .signedOut, to: .onboarding)
     let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
     _ = store.replacementModel()
-    store.phaseChanged(from: .onboarding(.bank), to: .signedOut)
+    store.phaseChanged(from: .onboarding, to: .signedOut)
     #expect(store.setup == nil && store.replacement == nil)
     #expect(store.signup.email.isEmpty && store.signIn.email.isEmpty)
     #expect(store.storyPage == 3)
@@ -95,7 +149,7 @@ struct OnboardingStoreTests: AccountSuite {
     mailbox.banks = [.dib]
     let services = AccountServices(account: account, mailbox: mailbox, setup: MockSetupAuthoring(),
                                    notifications: MockNotificationPermission())
-    let session = AccountSession(services: services, phase: .onboarding(.bank))
+    let session = AccountSession(services: services, phase: .onboarding)
     let store = OnboardingStore(services: services, session: { session })
     var facts = OnboardingStep.Facts(hasSession: true, keysReady: true, banksChosen: true)
     let setup = store.setupModel(displayName: "Maya", facts: facts)
@@ -116,11 +170,11 @@ struct OnboardingStoreTests: AccountSuite {
   /// "Try again", the real facts reach the same model, and an account already past the
   /// email step opens Home.
   @Test func aResumeAtThePlaceholderStepWaitsForTheRealFacts() {
-    let (store, session) = store(phase: .onboarding(.bank))
+    let (store, session) = store(phase: .onboarding)
     let placeholder = OnboardingStep.Facts(hasSession: true, keysReady: true)
     let setup = store.setupModel(displayName: "Maya", facts: placeholder)
     setup.resume()
-    #expect(setup.step == .bank && setup.path.isEmpty && session.phase == .onboarding(.bank))
+    #expect(setup.step == .bank && setup.path.isEmpty && session.phase == .onboarding)
     var real = placeholder
     real.banksChosen = true
     real.mailbox = .linked
@@ -128,7 +182,7 @@ struct OnboardingStoreTests: AccountSuite {
     setup.resume()
     #expect(setup.step == .finished && session.phase == .ready)
 
-    let (other, otherSession) = self.store(phase: .onboarding(.bank))
+    let (other, otherSession) = self.store(phase: .onboarding)
     let moving = other.setupModel(displayName: "Maya", facts: placeholder)
     moving.resume()
     moving.skipBanks()
@@ -164,5 +218,382 @@ struct OnboardingStoreTests: AccountSuite {
     setup.failure = .offline
     setup.navigationPath = []
     #expect(setup.failure == nil && setup.path.isEmpty)
+  }
+}
+
+@MainActor
+@Suite("Account gate phases")
+struct AccountGatePhaseTests: AccountSuite {
+  private let holder = FreezeInfo(by: .holder, when: nil)
+
+  private func signedInAccount() -> MockAccountService {
+    MockAccountService(existing: .passkey, signedIn: true)
+  }
+
+  private func session(_ phase: AccountSession.Phase) -> AccountSession {
+    AccountSession(services: services(signedInAccount()), phase: phase)
+  }
+
+  private func store(_ account: MockAccountService, phase: AccountSession.Phase) -> (OnboardingStore, AccountSession) {
+    let session = AccountSession(services: services(account), phase: phase)
+    return (OnboardingStore(services: session.services, session: { session }), session)
+  }
+
+  private var everyPhase: [AccountSession.Phase] {
+    [.signedOut, .checking, .onboarding, .needsUnlock(passkeyCanUnlock: false), .needsKeys, .frozen(holder), .ready]
+  }
+
+  @Test func eachStepMovesTheGateOnlyFromItsOwnPhase() {
+    for phase in everyPhase {
+      let created = session(phase)
+      created.accountCreated()
+      #expect(created.phase == (phase == .signedOut || phase == .needsKeys ? .onboarding : phase), "\(phase)")
+      let unlocked = session(phase)
+      unlocked.unlocked()
+      #expect(unlocked.phase == (phase == .needsUnlock(passkeyCanUnlock: false) ? .ready : phase), "\(phase)")
+      let finished = session(phase)
+      finished.setupFinished()
+      #expect(finished.phase == (phase == .onboarding ? .ready : phase), "\(phase)")
+      let left = session(phase)
+      left.leaveFrozen()
+      #expect(left.phase == (phase == .frozen(holder) ? .ready : phase), "\(phase)")
+      let unfrozen = session(phase)
+      unfrozen.unfroze()
+      #expect(unfrozen.phase == (phase == .frozen(holder) ? .ready : phase), "\(phase)")
+    }
+  }
+
+  @Test func leavingAFreezeFromSetupGoesBackToSetupWithTheBanner() {
+    let s = session(.onboarding)
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == holder)
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == holder)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func theWallFromTheBannerInSetupStillGoesBackToSetup() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.leaveFrozen()
+    s.showFrozenWall()
+    #expect(s.phase == .frozen(holder))
+    s.runFoundFrozen(holder)
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+  }
+
+  @Test func unfreezingFromSetupGoesBackToSetup() async throws {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .onboarding)
+    s.froze(holder)
+    try await s.unfreeze(password: nil)
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == nil)
+  }
+
+  @Test func theWallFromTheBannerAfterSetupFinishedGoesBackToTheApp() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.leaveFrozen()
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.showFrozenWall()
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func aLaterFreezeAfterSetupFinishedGoesBackToTheApp() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.unfroze()
+    #expect(s.phase == .onboarding)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.froze(FreezeInfo(by: .holder, when: "just now", inApp: true))
+    s.unfroze()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == nil)
+  }
+
+  @Test func aFreezeFromTheAppStillOpensTheApp() {
+    let s = session(.ready)
+    s.froze(holder)
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func aFreezeAfterASignOutForgetsTheSetupBehindTheEarlierWall() {
+    let s = session(.onboarding)
+    s.froze(holder)
+    s.signedOut()
+    s.signedIn(.frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func setupThatFinishesUnderTheWallLeavesToTheApp() async {
+    let (store, s) = store(signedInAccount(), phase: .onboarding)
+    let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
+    let load = Task { await setup.useSampleData() }
+    while !setup.busy { await Task.yield() }
+    s.froze(holder)
+    await load.value
+    #expect(s.phase == .frozen(holder))
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+  }
+
+  @Test func setupThatFinishesAfterASignOutStaysSignedOut() async {
+    let (store, s) = store(signedInAccount(), phase: .onboarding)
+    let setup = store.setupModel(displayName: "Maya", facts: .init(hasSession: true, keysReady: true))
+    let load = Task { await setup.useSampleData() }
+    while !setup.busy { await Task.yield() }
+    s.signedOut()
+    await load.value
+    #expect(s.phase == .signedOut)
+  }
+
+  @Test func anUnfreezeAnsweredAfterASignOutChangesNothing() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.signedOut()
+    await unfreeze.value
+    #expect(s.phase == .signedOut)
+  }
+
+  @Test func anUnfreezeAnsweredAfterASignOutOnAnIPhoneWithNoKeysStaysSignedOut() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    account.keysOnThisIPhone = false
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.signedOut()
+    await unfreeze.value
+    #expect(s.phase == .signedOut)
+  }
+
+  @Test func leavingTheWallWhileAnUnfreezeIsAnsweredDropsTheBanner() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .frozen(holder))
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == holder)
+    await unfreeze.value
+    #expect(s.phase == .ready)
+    #expect(s.leftFrozen == nil)
+    #expect(account.frozenInfo == nil)
+  }
+
+  @Test func leavingTheWallInSetupWhileAnUnfreezeIsAnsweredStaysInSetupWithNoBanner() async {
+    let account = signedInAccount()
+    account.freezeForScenario(by: .holder)
+    let (_, s) = store(account, phase: .onboarding)
+    s.froze(holder)
+    account.delay = .milliseconds(20)
+    let unfreeze = Task { try? await s.unfreeze(password: nil) }
+    await Task.yield()
+    s.leaveFrozen()
+    #expect(s.phase == .onboarding)
+    await unfreeze.value
+    #expect(s.phase == .onboarding)
+    #expect(s.leftFrozen == nil)
+    s.setupFinished()
+    #expect(s.phase == .ready)
+    s.froze(holder)
+    s.leaveFrozen()
+    #expect(s.phase == .ready)
+  }
+
+  private var inviteLink: URL { URL(string: "https://hasala.app/i/\(Self.code)")! }
+
+  @Test func anInviteLinkLeavesYoureBackInOnScreen() async {
+    let (store, s) = store(MockAccountService(existing: .passkey), phase: .signedOut)
+    let m = store.signIn
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    #expect(await m.finishRecovery(.passkey) == .done)
+    store.signup.path = [.signIn, .recoverIntro, .recoverWords, .recoverCode, .recoverMethod]
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(s.notice == "You already have an account")
+    m.recoveryDone()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func anInviteLinkLeavesAMadeAccountOnScreen() async {
+    let (store, s) = store(MockAccountService(), phase: .signedOut)
+    let m = store.signup
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await m.continueWithMethod()
+    showPhrase(m)
+    await m.finish()
+    #expect(m.path.last == .accountReady)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(m.path.last == .accountReady)
+    #expect(s.notice == "You already have an account")
+  }
+
+  private func recoveryOnItsLastScreen(_ account: MockAccountService) async -> (OnboardingStore, AccountSession, SignInModel) {
+    let (store, s) = store(account, phase: .signedOut)
+    let m = store.signIn
+    m.phraseText = MockAccountService.phraseWords.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = MockAccountService.emailCode
+    store.signup.path = [.signIn, .recoverIntro, .recoverWords, .recoverCode, .recoverMethod]
+    return (store, s, m)
+  }
+
+  @Test func anInviteLinkLeavesARecoveryBeingVerifiedOnScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finishRecovery(.passkey) }
+    while !m.busy { await Task.yield() }
+    #expect(m.verifiedRecoveryKind == nil)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(s.notice == "You already have an account")
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(await finish.value == .done)
+    #expect(m.recovered == .passkey)
+    #expect(store.signup.path.last == .recoverMethod)
+  }
+
+  @Test func anInviteLinkLeavesARecoveryBeingFinishedOnScreen() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finishRecovery(.passkey) }
+    while m.verifiedRecoveryKind == nil { await Task.yield() }
+    #expect(m.recovered == nil)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(s.notice == "You already have an account")
+    #expect(store.signup.path.last == .recoverMethod)
+    #expect(await finish.value == .done)
+    #expect(m.recovered == .passkey)
+    #expect(store.signup.path.last == .recoverMethod)
+    m.recoveryDone()
+    #expect(s.phase == .ready)
+  }
+
+  @Test func anInviteLinkOpensOnceARecoveryHasFailed() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, s, m) = await recoveryOnItsLastScreen(account)
+    account.failNext = .offline
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(store.signup.path == [.inviteReady])
+    #expect(s.notice == nil)
+  }
+
+  @Test func aRecoveryToStartAgainGoesBackToItsWords() async {
+    let account = MockAccountService(existing: .passkey)
+    let (store, _, m) = await recoveryOnItsLastScreen(account)
+    account.capabilities = .beta
+    #expect(await m.submitRecoveryCode())
+    account.failNext = .offline
+    store.recoveryResult(await m.finishRecovery(.passkey))
+    #expect(store.signup.path == [.signIn, .recoverIntro, .recoverWords])
+    #expect(m.failure(on: .recoverWords) == .offline)
+  }
+
+  @Test func anInviteLinkDuringTheLastSignupStepStillReachesTheMadeAccount() async {
+    let account = MockAccountService()
+    let (store, s) = store(account, phase: .signedOut)
+    let m = store.signup
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await m.continueWithMethod()
+    showPhrase(m)
+    account.delay = .milliseconds(20)
+    let finish = Task { await m.finish() }
+    while !m.busy { await Task.yield() }
+    s.open(inviteLink)
+    store.consumeInvite()
+    await finish.value
+    #expect(m.profile != nil)
+    #expect(m.path.last == .accountReady)
+  }
+
+  @Test func anInviteLinkStillOpensForSomeoneWithoutAnAccount() {
+    let (store, s) = store(MockAccountService(), phase: .signedOut)
+    store.signup.path = [.signIn]
+    s.open(inviteLink)
+    store.consumeInvite()
+    #expect(s.pendingInvite == nil)
+    #expect(store.signup.path == [.inviteReady])
+    #expect(store.signup.normalizedInvite == Self.code)
+    #expect(s.notice == nil)
+  }
+
+  @Test func aReplacementPhraseThatFailedIsMadeAgainFromItsButton() {
+    let account = signedInAccount()
+    account.refusePhrase = .unsupported
+    let (store, _) = store(account, phase: .needsKeys)
+    let m = store.replacementModel()
+    #expect(m.phrase == nil)
+    #expect(m.failure == .unsupported)
+    account.refusePhrase = .unsupported
+    m.showReplacementWords()
+    #expect(m.phrase == nil)
+    #expect(m.failure == .unsupported)
+    #expect(m.path.isEmpty)
+    m.showReplacementWords()
+    #expect(m.phrase?.words.count == 12)
+    #expect(m.failure == nil)
+    #expect(m.path == [.phraseShow])
+  }
+
+  @Test func theReplacementPhraseIsNotMadeAgainOnceItExists() {
+    let (store, _) = store(signedInAccount(), phase: .needsKeys)
+    let m = store.replacementModel()
+    m.showReplacementWords()
+    m.phraseRevealed = true
+    m.back()
+    m.showReplacementWords()
+    #expect(m.phraseSeen)
+    #expect(m.path == [.phraseShow])
   }
 }

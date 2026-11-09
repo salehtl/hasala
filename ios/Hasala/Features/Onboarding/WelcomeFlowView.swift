@@ -22,17 +22,8 @@ struct WelcomeFlowView: View {
           destination(route)
         }
     }
-    .onAppear(perform: consumeInvite)
-    .onChange(of: session.pendingInvite) { _, _ in consumeInvite() }
-  }
-
-  /// An invite link opens "Your invite is ready" prefilled, never auto-submitted (§13.5).
-  /// What was typed in About you stays.
-  private func consumeInvite() {
-    guard let link = session.pendingInvite else { return }
-    session.pendingInvite = nil
-    store.signup.applyInviteLink(link)
-    store.signup.path = [.inviteReady]
+    .onAppear { store.consumeInvite() }
+    .onChange(of: session.pendingInvite) { _, _ in store.consumeInvite() }
   }
 
   @ViewBuilder private func destination(_ route: WelcomeRoute) -> some View {

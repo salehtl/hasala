@@ -96,6 +96,11 @@ public struct Secrets: Sendable {
     return try Self.decode(d)
   }
 
+  public func activeSession() throws(SecretStoreError) -> SessionRecord? {
+    guard let s = try session(), !s.pending_logout else { return nil }
+    return s
+  }
+
   public func writeSession(_ s: SessionRecord) throws(SecretStoreError) {
     try store.write(.session(apiHost: apiHost), try Self.encode(s))
   }

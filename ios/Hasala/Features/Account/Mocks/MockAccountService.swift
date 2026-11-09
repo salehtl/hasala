@@ -33,7 +33,10 @@
     var capabilities: AccountCapabilities = .all
     /// Simulated latency per call.
     var delay: Duration = .milliseconds(250)
+    var keysOnThisIPhone = true
     var refuseFinish: AuthFailure?
+    var refusePhrase: AuthFailure?
+    var refuseSecurity: [AuthFailure] = []
     /// What the existing account has (the sign-in scenarios).
     var existing: Account
     /// What a successful sign-in leads to.
@@ -129,7 +132,11 @@
     }
 
     func makeRecoveryPhrase() throws(AuthFailure) -> RecoveryPhrase {
-      RecoveryPhrase(words: Self.phraseWords)
+      if let f = refusePhrase {
+        refusePhrase = nil
+        throw f
+      }
+      return RecoveryPhrase(words: Self.phraseWords)
     }
 
     func finishAccount(_ ticket: SignupTicket, credential: NewCredential, phrase: RecoveryPhrase)
@@ -186,6 +193,7 @@
 
     func beginPasswordReset(email: String) async throws(AuthFailure) -> ResetTicket {
       await pause()
+      try injected()
       guard let norm = AccountFields.email(email) else { throw .badEmail }
       codeTries = 5
       resetPolls = 0
@@ -270,6 +278,11 @@
       await pause()
       // `recover/finish` refuses a kind other than the verified one (uniformly).
       guard recoveryKind == credential.method else { throw .refused }
+      if let failure = failNext {
+        failNext = nil
+        if failure != .cancelled { recoveryKind = nil }
+        throw failure
+      }
       let (email, devices) = (security.email, security.devices)
       if case .password(let pw) = credential {
         password = pw
@@ -291,6 +304,7 @@
 
     func securityState() async throws(AuthFailure) -> SecurityState {
       await pause()
+      if !refuseSecurity.isEmpty { throw refuseSecurity.removeFirst() }
       return security
     }
 

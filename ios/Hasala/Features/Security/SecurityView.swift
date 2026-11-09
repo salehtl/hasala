@@ -85,7 +85,7 @@ struct SecurityView: View {
     .navigationTitle("Sign-in & security")
     .navigationBarTitleDisplayMode(.inline)
     .task {
-      await model.load()
+      await model.keepLoading()
       #if HASALA_MOCKS
         await ScreenLaunch.applySecurityLaunch(model, alert: $alert, lockingDown: $lockingDown)
       #endif
@@ -342,7 +342,7 @@ struct SecurityView: View {
         if s.frozen == nil {
           TextLink(title: "Delete your account", identifier: "security.delete", destructive: true) { deleting = true }
         } else {
-          Text("Unfreeze to delete your account")
+          Text(AccountCopy.unfreezeToDelete)
             .hType(.subheadline.weight(.semibold))
             .foregroundStyle(HColor.textSecondary)
             .multilineTextAlignment(.center)
@@ -630,15 +630,5 @@ struct PasswordEditPage: View {
     }
     .confirmSheet(model, host: .passwordEditor,
                   onEnterWords: BuildSurface.showsUnfinished ? { model.enterWordsToUnlock() } : nil)
-  }
-}
-
-/// The password page as a sheet, for a host that isn't a navigation stack ("Let's lock it
-/// down" after "No, that's not me").
-struct PasswordEditSheet: View {
-  @Bindable var model: SecurityModel
-
-  var body: some View {
-    NavigationStack { PasswordEditPage(model: model) }
   }
 }

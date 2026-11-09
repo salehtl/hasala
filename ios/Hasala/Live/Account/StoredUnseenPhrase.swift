@@ -64,10 +64,13 @@ final class StoredUnseenPhrase: UnseenPhraseNoting {
     let fireAt = since.addingTimeInterval(Self.reminderDelay)
     guard fireAt > now() else { return }
     guard await scheduler.allowed() else { return }
-    guard unseen, !defaults.bool(forKey: Self.remindedKey) else { return }
-    if await scheduler.schedule(Self.reminderID, fireAt) {
-      defaults.set(true, forKey: Self.remindedKey)
+    guard self.since == since, !defaults.bool(forKey: Self.remindedKey) else { return }
+    guard await scheduler.schedule(Self.reminderID, fireAt) else { return }
+    guard self.since == since else {
+      scheduler.cancel(Self.reminderID)
+      return
     }
+    defaults.set(true, forKey: Self.remindedKey)
   }
 
   static func forget(_ defaults: UserDefaults = .standard) {

@@ -48,7 +48,7 @@ final class PushRegistrar {
     let key = LocalAccountData.digest("\(userID)|\(hex)|\(raw)", salt: LocalAccountData.salt(defaults))
     defaults.removeObject(forKey: Self.legacyLastKey)
     guard defaults.string(forKey: Self.lastKey) != key else { return }
-    guard let session = try? env.secrets.session(), !session.pending_logout else { return }
+    guard let session = try? env.secrets.activeSession() else { return }
     do {
       try await env.client.putAPNs(tokenHex: hex, environment: environment, bearer: session.token)
       defaults.set(key, forKey: Self.lastKey)
@@ -61,7 +61,7 @@ final class PushRegistrar {
   /// this iPhone. Best effort.
   func unregister() async {
     defer { forget() }
-    guard let env, let session = try? env.secrets.session(), !session.pending_logout else { return }
+    guard let env, let session = try? env.secrets.activeSession() else { return }
     try? await env.client.deleteAPNs(bearer: session.token)
   }
 

@@ -307,7 +307,7 @@ struct SignupFlowTests: AccountSuite {
     #expect(m.path.last == .accountReady)
     #expect(m.phrase == nil)
     session.accountCreated()
-    #expect(session.phase == .onboarding(.bank))
+    #expect(session.phase == .onboarding)
   }
 
   // MARK: Back and Forward (plan B3: everything typed stays)
@@ -459,6 +459,53 @@ struct SignupFlowTests: AccountSuite {
     m.code = MockAccountService.emailCode
     await m.submitCode()
     #expect(m.path.last == .method)
+  }
+
+  @Test func aCodeThatWorkedLeavesTheFieldAndIsNotCheckedAgain() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(m.emailVerified)
+    #expect(m.code.isEmpty)
+    #expect(account.codesChecked == 1)
+
+    m.navigationPath = Array(m.path.dropLast())
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.code.isEmpty)
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(account.codesChecked == 1)
+    #expect(m.path.last == .method)
+    #expect(m.emailVerified)
+    #expect(m.failure == nil)
+    #expect(m.code.isEmpty)
+  }
+
+  @Test func aResentCodeIsCheckedEvenAfterAnEarlierOneWorked() async {
+    let account = CountingAccount()
+    let m = SignupModel(account: account)
+    m.path = [.invite]
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    m.navigationPath = Array(m.path.dropLast())
+    await m.resendCode()
+    #expect(!m.emailVerified)
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    #expect(account.codesChecked == 2)
+    #expect(m.emailVerified)
   }
 
   /// The password and the "Show" choice stay through Back and Forward, so Create account is
@@ -759,6 +806,7 @@ final class CountingAccount: AccountService {
   private(set) var signupsBegun = 0
   private(set) var passkeysSaved = 0
   private(set) var phrasesMade = 0
+  private(set) var codesChecked = 0
 
   init(_ mock: MockAccountService = MockAccountService()) {
     mock.delay = .zero
@@ -773,6 +821,7 @@ final class CountingAccount: AccountService {
     return try await mock.beginSignup(code: code, linkKey: linkKey, email: email, displayName: displayName)
   }
   func verifySignupEmail(_ ticket: SignupTicket, code: String) async throws(AuthFailure) {
+    codesChecked += 1
     try await mock.verifySignupEmail(ticket, code: code)
   }
   func resendSignupCode(_ ticket: SignupTicket) async throws(AuthFailure) -> SignupTicket {
@@ -829,5 +878,154 @@ final class CountingAccount: AccountService {
   func pendingResetRequest() async -> PendingReset? { await mock.pendingResetRequest() }
   func approveReset(_ request: PendingReset, code: String) async throws(AuthFailure) {
     try await mock.approveReset(request, code: code)
+  }
+}
+
+@MainActor
+@Suite("Signup answers that overlap")
+struct SignupOverlapTests: AccountSuite {
+  private func atCode(_ account: MockAccountService) async -> SignupModel {
+    account.delay = .zero
+    let m = SignupModel(account: account)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    return m
+  }
+
+  private func atMethod(_ account: MockAccountService, created: @escaping () -> Void = {}) async -> SignupModel {
+    account.delay = .zero
+    let m = SignupModel(account: account, accountCreated: created)
+    m.inviteText = Self.code
+    m.submitInvite()
+    m.displayName = "Maya Rahman"
+    m.email = "maya@example.com"
+    await m.submitAboutYou()
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    return m
+  }
+
+  @Test func theSixthDigitDuringAResendChecksNothing() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    let before = m.ticket
+    account.delay = .milliseconds(20)
+    let resend = Task { await m.resendCode() }
+    while !m.busy { await Task.yield() }
+    m.code = MockAccountService.emailCode
+    await m.submitCode()
+    await resend.value
+    #expect(!m.emailVerified)
+    #expect(m.path.last == .verifyEmail)
+    #expect(m.ticket != before)
+    #expect(m.code.isEmpty)
+  }
+
+  @Test func aResendDuringACheckStartsNothing() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    let before = m.ticket
+    account.delay = .milliseconds(20)
+    m.code = MockAccountService.emailCode
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    await m.resendCode()
+    #expect(m.busy)
+    await check.value
+    #expect(m.emailVerified)
+    #expect(m.ticket == before)
+    #expect(m.path.last == .method)
+  }
+
+  @Test func aCheckAnsweredForAnOlderTicketDoesNotConfirmTheNewOne() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    account.delay = .milliseconds(40)
+    m.code = MockAccountService.emailCode
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    account.delay = .zero
+    m.back()
+    m.displayName = "Maya R"
+    await m.submitAboutYou()
+    let path = m.path
+    await check.value
+    #expect(!m.emailVerified)
+    #expect(m.path == path)
+    #expect(m.failure == nil)
+  }
+
+  @Test func aRefusalForAnOlderTicketLeavesTheNewOneAlone() async {
+    let account = MockAccountService()
+    let m = await atCode(account)
+    account.delay = .milliseconds(40)
+    m.code = "000000"
+    let check = Task { await m.submitCode() }
+    while !m.busy { await Task.yield() }
+    account.delay = .zero
+    m.back()
+    m.displayName = "Maya R"
+    await m.submitAboutYou()
+    m.code = "12"
+    await check.value
+    #expect(m.failure == nil)
+    #expect(m.wrongCode.isEmpty)
+    #expect(m.code == "12")
+  }
+
+  @Test func aSavedPasskeyKeepsTheMethodAfterARefusedFinish() async {
+    let account = MockAccountService()
+    account.passkeyPRF = true
+    account.refuseFinish = .offline
+    var created = 0
+    let m = await atMethod(account) { created += 1 }
+    await m.continueWithMethod()
+    #expect(m.failure == .offline && m.passkeyRegistered)
+    m.method = .password
+    #expect(m.method == .passkey)
+    await m.continueWithMethod()
+    #expect(!m.path.contains(.password))
+    #expect(created == 1)
+  }
+
+  @Test func aSavedPasskeyFinishesAsAPasskeyAfterBack() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    await m.continueWithMethod()
+    #expect(m.passkeyRegistered && m.path.last == .phraseIntro)
+    m.back()
+    m.method = .password
+    await m.continueWithMethod()
+    #expect(m.path.last == .phraseIntro)
+    m.phraseRevealed = true
+    await m.finish()
+    #expect(m.profile?.method == .passkey)
+    #expect(m.path.last == .accountReady)
+  }
+
+  @Test func aPasswordPickedWhileThePasskeySavesDoesNotStick() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    account.delay = .milliseconds(20)
+    let register = Task { await m.continueWithMethod() }
+    while !m.busy { await Task.yield() }
+    m.method = .password
+    await register.value
+    #expect(m.passkeyRegistered)
+    #expect(m.method == .passkey)
+  }
+
+  @Test func aNewSignupCanChooseAPasswordAgain() async {
+    let account = MockAccountService()
+    let m = await atMethod(account)
+    await m.continueWithMethod()
+    #expect(m.passkeyRegistered)
+    await m.resendCode()
+    #expect(!m.passkeyRegistered)
+    m.method = .password
+    #expect(m.method == .password)
   }
 }

@@ -31,8 +31,7 @@ public struct SessionHTTPExchange: HTTPExchange {
     if let q = parts.percentEncodedQuery, !q.isEmpty { path += "?" + q }
     let bearer: String?
     do {
-      let s = try secrets.session()
-      bearer = (s?.pending_logout ?? true) ? nil : s?.token
+      bearer = try secrets.activeSession()?.token
     } catch {
       throw .offline
     }

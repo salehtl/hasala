@@ -478,4 +478,65 @@ struct AccountManagementTests {
       #expect(error.failure?.status == 410 && error.failure?.code == "account_deleted")
     }
   }
+
+  @Test("delete: the answer is lost and the server says the account is gone, so it ends here too")
+  func deleteAnswerLost() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    w.server.loseNextAccountDeleteAnswer()
+    try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: try #require(a.binding))
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: the answer is lost and the check can't reach the server; asking again finds it gone")
+  func deleteAnswerLostAndCheckFails() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let held = a.keychain.count
+    w.server.loseNextAccountDeleteAnswer()
+    w.server.refuseNext("GET /api/v1/account", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    }
+    #expect(a.keychain.count == held)
+    try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    #expect(a.keychain.count == 0)
+  }
+
+  @Test("delete: a failure the server did not act on keeps the account and everything here")
+  func deleteFailsAndAccountStays() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let held = a.keychain.count
+    w.server.refuseNext("DELETE /api/v1/account", status: 503, code: "unavailable")
+    await #expect(throws: CeremonyError.self) {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+    }
+    #expect(a.keychain.count == held)
+    let token = try #require(try a.env.secrets.session()).token
+    #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
+  }
+
+  @Test("delete: a session waiting for its logout counts as signed out, so nothing is sent")
+  func deleteWithPendingLogout() async throws {
+    let w = World()
+    let a = w.phone("a")
+    let (_, _, ctx) = try await w.passwordAccount(a)
+    let binding = try #require(a.binding)
+    let token = try #require(try a.env.secrets.session()).token
+    w.server.refuseNext("POST /api/v1/auth/logout", status: 503, code: "unavailable")
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    do {
+      try await AccountManagement.deleteAccount(a.env, ctx: ctx, factor: .device(password: password), binding: binding)
+      Issue.record("expected the session to count as signed out")
+    } catch {
+      #expect(error.failure?.status == 401)
+    }
+    #expect(try await a.env.client.account(bearer: token).user_id == binding.user_id)
+  }
 }

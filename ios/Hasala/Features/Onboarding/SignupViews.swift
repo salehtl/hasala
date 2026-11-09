@@ -257,6 +257,7 @@ struct SignInMethodView: View {
       model.method = m
       model.failure = nil
     }
+    .disabled(m == .password && model.passkeyRegistered)
   }
 }
 

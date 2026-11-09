@@ -235,10 +235,10 @@
         return AccountSession(services: services(account), phase: .checking)
       case .setupBank, .reviewAccount, .setupTexts:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
-                              phase: .onboarding(.bank))
+                              phase: .onboarding)
       case .setupEmail, .outlookAdmin, .outlookCancelled:
         return AccountSession(services: services(MockAccountService(existing: .passkey, signedIn: true)),
-                              phase: .onboarding(.mail))
+                              phase: .onboarding)
       }
     }
   }
