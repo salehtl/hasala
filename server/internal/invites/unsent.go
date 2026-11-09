@@ -1,6 +1,7 @@
 package invites
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,10 +17,13 @@ import (
 	"github.com/salehtl/hasala/server/internal/waitlist"
 )
 
-func MailUnsent(hold purgeledger.HoldFunc, record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
+func MailUnsent(hold purgeledger.HoldFunc, minter Minter, record func(purgeledger.Entry)) func(context.Context, pgx.Tx, mailq.Row) (func(), error) {
 	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) (func(), error) {
 		if row.Kind != "invite" || row.InviteID == nil {
 			return nil, nil
+		}
+		if err := restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID); err != nil {
+			return nil, err
 		}
 		_, gone, err := closeUnsentTx(ctx, tx, *row.InviteID, []string{"queued", "active"})
 		if err != nil || gone == uuid.Nil || record == nil {
@@ -35,6 +39,76 @@ func MailUnsent(hold purgeledger.HoldFunc, record func(purgeledger.Entry)) func(
 
 func unsentEntry(entry uuid.UUID) purgeledger.Entry {
 	return purgeledger.Entry{ID: entry, At: time.Now(), Kind: purgeledger.KindWaitlistUnsent}
+}
+
+func MailSent(minter Minter) func(context.Context, pgx.Tx, mailq.Row) error {
+	return func(ctx context.Context, tx pgx.Tx, row mailq.Row) error {
+		if row.Kind != "invite" || row.InviteID == nil {
+			return nil
+		}
+		return restoreDeliveredCodeTx(ctx, tx, minter, *row.InviteID)
+	}
+}
+
+func restoreDeliveredCodeTx(ctx context.Context, tx pgx.Tx, minter Minter, id uuid.UUID) error {
+	if minter == nil {
+		return nil
+	}
+	var current []byte
+	err := tx.QueryRow(ctx, `SELECT code_hash FROM invite_codes WHERE id = $1 AND state = 'active' FOR UPDATE`, id).Scan(&current)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("invites: lock a resent invite: %w", err)
+	}
+	var (
+		delivered *int64
+		inFlight  bool
+	)
+	if err := tx.QueryRow(ctx,
+		`SELECT max(id) FILTER (WHERE status = 'sent'), coalesce(bool_or(status IN ('queued','sending')), false)
+		   FROM mail_log WHERE invite_id = $1`, id).Scan(&delivered, &inFlight); err != nil {
+		return fmt.Errorf("invites: read a resent invite's mail: %w", err)
+	}
+	if delivered == nil || inFlight {
+		return nil
+	}
+	r := Renderer{Minter: minter}
+	undelivered, err := currentCodeIsUndeliveredTx(ctx, tx, r, id, *delivered, current)
+	if err != nil || !undelivered {
+		return err
+	}
+	code, _, linkHash, err := r.secrets(id, *delivered)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE invite_codes SET code_hash = $2, link_key_hash = $3 WHERE id = $1`,
+		id, CodeHash(code), linkHash); err != nil {
+		return fmt.Errorf("invites: restore a delivered code: %w", err)
+	}
+	return nil
+}
+
+func currentCodeIsUndeliveredTx(ctx context.Context, tx pgx.Tx, r Renderer, id uuid.UUID, delivered int64, current []byte) (bool, error) {
+	rows, err := tx.Query(ctx, `SELECT id FROM mail_log WHERE invite_id = $1 AND id > $2`, id, delivered)
+	if err != nil {
+		return false, fmt.Errorf("invites: read a resent invite's newer mail: %w", err)
+	}
+	newer, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return false, fmt.Errorf("invites: read a resent invite's newer mail: %w", err)
+	}
+	for _, mailID := range newer {
+		code, _, _, err := r.secrets(id, mailID)
+		if err != nil {
+			return false, err
+		}
+		if bytes.Equal(current, CodeHash(code)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func closeUnsentTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, states []string) (bool, uuid.UUID, error) {

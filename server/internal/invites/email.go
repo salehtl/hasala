@@ -113,7 +113,7 @@ var ErrAddressGone = errors.New("invites: the invite's email address is no longe
 
 // ErrStale is a queued invite email whose invite is no longer sendable, or
 // that a newer email for the invite has replaced.
-var ErrStale = errors.New("invites: the invite is closed")
+var ErrStale error = mailq.Stale("invites: the invite is closed")
 
 var ErrMintLimit = errors.New("invites: the invite has been resent as many times as it can be; revoke it and mint a new invite")
 
@@ -147,7 +147,9 @@ func (r Renderer) Render(ctx context.Context, tx pgx.Tx, row mailq.Row) (mail.Me
 		return mail.Message{}, errors.New("invites: the invite has no email_tag yet")
 	}
 	var superseded bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log WHERE invite_id = $1 AND id > $2 AND status IN ('queued','sending','sent'))`,
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM mail_log n WHERE n.invite_id = $1 AND n.id > $2
+		   AND (n.status IN ('queued','sending','sent')
+		        OR EXISTS (SELECT 1 FROM mail_log d WHERE d.invite_id = $1 AND d.status = 'sent')))`,
 		*row.InviteID, row.ID).Scan(&superseded); err != nil {
 		return mail.Message{}, err
 	}

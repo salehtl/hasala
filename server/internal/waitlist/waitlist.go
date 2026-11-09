@@ -403,7 +403,7 @@ func readEntry(ctx context.Context, tx pgx.Tx, id uuid.UUID) (entryView, error) 
 		   FROM waitlist_entries e LEFT JOIN banks b ON b.slug = e.bank_slug
 		  WHERE e.id = $1 FOR UPDATE OF e`, id).
 		Scan(&v.email, &v.state, &v.bankName, &v.confirmedAt, &v.invitedAt, &v.until)
-	return v, err
+	return v, staleIfGone(err)
 }
 
 func readEntryIn(ctx context.Context, tx pgx.Tx, id uuid.UUID, states ...string) (entryView, error) {
@@ -425,7 +425,7 @@ func staleIfGone(err error) error {
 }
 
 // ErrStale is a queued email whose subject changed state before it was sent.
-var ErrStale = errors.New("waitlist: the entry no longer needs this email")
+var ErrStale error = mailq.Stale("waitlist: the entry no longer needs this email")
 
 func toMessage(row mailq.Row, r mailq.Rendered) mail.Message {
 	return mail.Message{To: row.Recipient, Subject: r.Subject, Text: r.Text, HTML: r.HTML}

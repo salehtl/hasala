@@ -77,27 +77,43 @@ var paramsAllowed = map[string][]string{
 // retryWindow is how long a transient failure may keep retrying (spec 07
 // §6.2): a code is dead after 10 minutes, anything else gets a day.
 func retryWindow(kind string) time.Duration {
-	switch kind {
-	case "code", "reset_code", "recovery_code":
-		return 10 * time.Minute
+	if slices.Contains(codeKinds, kind) {
+		return codeRetryWindow
 	}
-	return 24 * time.Hour
+	return mailRetryWindow
+}
+
+var codeKinds = []string{"code", "reset_code", "recovery_code"}
+
+const (
+	codeRetryWindow = 10 * time.Minute
+	mailRetryWindow = 24 * time.Hour
+)
+
+const pastRetryWindow = `created_at < now() - CASE WHEN kind = ANY($2::text[]) THEN $3::interval ELSE $4::interval END`
+
+func leaseRescueArgs() []any {
+	return []any{maxAttempts, codeKinds, fmt.Sprintf("%d seconds", int(codeRetryWindow/time.Second)),
+		fmt.Sprintf("%d seconds", int(mailRetryWindow/time.Second))}
 }
 
 var backoff = []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 6 * time.Hour, 12 * time.Hour}
 
+var outcomeRetries = []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, 2 * time.Second, 5 * time.Second, 10 * time.Second}
+
 // Lease and send bounds.
 const (
-	leaseFor     = 2 * time.Minute
-	sendTimeout  = 20 * time.Second
-	renderFor    = 30 * time.Second
-	pollEvery    = 30 * time.Second
-	maxAttempts  = 10
-	hintMax      = 80
-	notifyChan   = "hasala_mail"
-	errorMaxLen  = 200
-	workerCount  = 2
-	tagBatchSize = 50
+	leaseFor       = 2 * time.Minute
+	sendTimeout    = 20 * time.Second
+	renderFor      = 30 * time.Second
+	outcomeTimeout = 5 * time.Second
+	pollEvery      = 30 * time.Second
+	maxAttempts    = 10
+	hintMax        = 80
+	notifyChan     = "hasala_mail"
+	errorMaxLen    = 200
+	workerCount    = 2
+	tagBatchSize   = 50
 )
 
 // Enqueue describes one email to queue.
@@ -149,8 +165,14 @@ var ErrNoRenderer = errors.New("mailq: no renderer for this kind")
 
 var errRenderRetry = errors.New("mailq: render failed; retrying")
 
+type Stale string
+
+func (s Stale) Error() string { return string(s) }
+
+func (Stale) Is(target error) bool { return target == mail.ErrPermanent }
+
 func transientRender(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+	if errors.Is(err, ErrNoRenderer) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || pgconn.Timeout(err) || pgconn.SafeToRetry(err) {
 		return true
 	}
@@ -179,11 +201,12 @@ type Queue struct {
 	// (the transactional lane).
 	Rates     map[Lane]int
 	Retention time.Duration
-	// Bounced, when set, runs in the finalizing transaction of a bounced row
-	// that names an account (spec 02 §14.7: the account's address is marked
-	// undeliverable). It makes no network call.
+	// Bounced, when set, runs once a bounced row that names an account is
+	// final (spec 02 §14.7: the account's address is marked undeliverable). It
+	// makes no network call.
 	Bounced func(ctx context.Context, tx pgx.Tx, row Row) error
 	Unsent  func(ctx context.Context, tx pgx.Tx, row Row) (func(), error)
+	Sent    func(ctx context.Context, tx pgx.Tx, row Row) error
 
 	renderers map[string]Renderer
 	stopped   atomic.Bool
@@ -357,7 +380,7 @@ func (q *Queue) Run(ctx context.Context) <-chan struct{} {
 			tick := time.NewTicker(pollEvery)
 			defer tick.Stop()
 			for {
-				if _, err := q.Drain(context.WithoutCancel(ctx)); err != nil {
+				if _, err := q.drain(context.WithoutCancel(ctx), ctx); err != nil {
 					slog.Warn("mailq: worker", "err", err.Error())
 				}
 				select {
@@ -417,17 +440,22 @@ func sleep(ctx context.Context, d time.Duration) {
 // Drain sends due rows until none is left (or the worker is stopped). It
 // returns how many rows it processed.
 func (q *Queue) Drain(ctx context.Context) (int, error) {
+	return q.drain(ctx, ctx)
+}
+
+func (q *Queue) drain(ctx, stop context.Context) (int, error) {
 	n := 0
-	for !q.Stopped() {
+	for stop.Err() == nil {
 		did, err := q.ProcessOne(ctx)
 		if err != nil {
 			return n, err
 		}
 		if !did {
-			return n, nil
+			break
 		}
 		n++
 	}
+	q.settleDue(ctx)
 	return n, nil
 }
 
@@ -479,14 +507,14 @@ func (q *Queue) fillTags(ctx context.Context) error {
 }
 
 // lanesAtRate lists the lanes that have used their hourly rate.
-func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
+func (q *Queue) lanesAtRate(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	out := []string{}
 	for lane, rate := range q.Rates {
 		if rate <= 0 {
 			continue
 		}
 		var n int
-		if err := q.Pool.QueryRow(ctx,
+		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM mail_log WHERE lane = $1
 			    AND ((status = 'sent' AND sent_at > now() - interval '1 hour') OR status = 'sending')`,
 			string(lane)).Scan(&n); err != nil {
@@ -501,60 +529,28 @@ func (q *Queue) lanesAtRate(ctx context.Context) ([]string, error) {
 
 // ProcessOne leases, renders, sends and finalizes at most one due row.
 func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
+	if err := q.settleExpiredLeases(ctx); err != nil {
+		return false, err
+	}
 	if q.Stopped() {
 		return false, nil
 	}
 	if err := q.fillTags(ctx); err != nil {
 		return false, fmt.Errorf("mailq: tags: %w", err)
 	}
-	if _, err := q.Pool.Exec(ctx,
-		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
-		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot`, maxAttempts); err != nil {
-		return false, fmt.Errorf("mailq: expired leases: %w", err)
+	row, lease, ok, err := q.leaseNext(ctx)
+	if err != nil || !ok {
+		return false, err
 	}
-	if err := q.failExhausted(ctx); err != nil {
-		return false, fmt.Errorf("mailq: exhausted rows: %w", err)
-	}
-	full, err := q.lanesAtRate(ctx)
-	if err != nil {
-		return false, fmt.Errorf("mailq: lane rates: %w", err)
-	}
-	var (
-		row    Row
-		params []byte
-		subk   *string
-		lane   string
-		lease  time.Time
-	)
-	err = q.Pool.QueryRow(ctx,
-		`UPDATE mail_log SET status = 'sending', lease_until = now() + interval '2 minutes',
-		        attempts = attempts + 1, next_attempt_at = NULL
-		  WHERE id = (SELECT id FROM mail_log
-		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
-		                 AND lane <> ALL($1::text[]) AND attempts < $2
-		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
-		               FOR UPDATE SKIP LOCKED LIMIT 1)
-		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
-		           bank_slug, params, attempts, created_at, lease_until`, full, maxAttempts).
-		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
-			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("mailq: lease: %w", err)
-	}
-	row.Lane = Lane(lane)
-	if subk != nil {
-		row.Subkind = *subk
-	}
-	_ = json.Unmarshal(params, &row.Params)
 
 	msg, err := q.render(ctx, row)
 	if err != nil {
 		slog.Warn("mailq: render failed", "mail_kind", row.Kind, "mail_attempt", row.Attempts, "err", err.Error())
 		failure := fmt.Errorf("%w: render", mail.ErrPermanent)
-		if transientRender(err) {
+		var stale Stale
+		if errors.As(err, &stale) {
+			failure = stale
+		} else if transientRender(err) {
 			failure = errRenderRetry
 		}
 		q.finalize(ctx, &row, lease, "", failure, false)
@@ -571,6 +567,55 @@ func (q *Queue) ProcessOne(ctx context.Context) (bool, error) {
 	msg = mail.Message{} // the rendered message is never kept
 	q.finalize(ctx, &row, lease, pid, sendErr, false)
 	return true, nil
+}
+
+func (q *Queue) leaseNext(ctx context.Context) (Row, time.Time, bool, error) {
+	var (
+		row    Row
+		params []byte
+		subk   *string
+		lane   string
+		lease  time.Time
+	)
+	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	defer pgtx.Rollback(ctx, tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('hasala/mail_lease'))`); err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	full, err := q.lanesAtRate(ctx, tx)
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lane rates: %w", err)
+	}
+	err = tx.QueryRow(ctx,
+		`UPDATE mail_log SET status = 'sending', lease_until = now() + interval '2 minutes',
+		        attempts = attempts + 1, next_attempt_at = NULL
+		  WHERE id = (SELECT id FROM mail_log
+		               WHERE status = 'queued' AND next_attempt_at <= now() AND recipient_tag IS NOT NULL
+		                 AND lane <> ALL($1::text[]) AND attempts < $2
+		               ORDER BY CASE lane WHEN 'transactional' THEN 0 WHEN 'waitlist' THEN 1 ELSE 2 END, next_attempt_at
+		               FOR UPDATE SKIP LOCKED LIMIT 1)
+		 RETURNING id, kind, subkind, lane, recipient, recipient_tag, user_id, waitlist_entry_id, invite_id,
+		           bank_slug, params, attempts, created_at, lease_until`, full, maxAttempts).
+		Scan(&row.ID, &row.Kind, &subk, &lane, &row.Recipient, &row.RecipientTag, &row.UserID, &row.EntryID,
+			&row.InviteID, &row.BankSlug, &params, &row.Attempts, &row.CreatedAt, &lease)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return row, lease, false, nil
+	}
+	if err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return row, lease, false, fmt.Errorf("mailq: lease: %w", err)
+	}
+	row.Lane = Lane(lane)
+	if subk != nil {
+		row.Subkind = *subk
+	}
+	_ = json.Unmarshal(params, &row.Params)
+	return row, lease, true, nil
 }
 
 func (q *Queue) render(ctx context.Context, row Row) (mail.Message, error) {
@@ -613,7 +658,7 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 		sql  string
 		args = []any{row.ID, lease}
 	)
-	unsent := false
+	hooked := false
 	redact := "recipient"
 	if kind == "deleted" {
 		redact = "NULL"
@@ -621,13 +666,15 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 	switch {
 	case sendErr == nil:
 		sql = `UPDATE mail_log SET status = 'sent', sent_at = now(), final_at = now(), lease_until = NULL,
+		        hook_due = invite_id IS NOT NULL,
 		        provider_message_id = $3, recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, nilIfEmpty(pid))
+		hooked = row.InviteID != nil
 	case errors.Is(sendErr, mail.ErrBounced):
-		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3,
+		sql = `UPDATE mail_log SET status = 'bounced', final_at = now(), lease_until = NULL, error = $3, hook_due = true,
 		        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 		args = append(args, clip("bounced"))
-		unsent = true
+		hooked = true
 	case errors.Is(sendErr, mail.ErrAuth) && !oneShot:
 		q.stopped.Store(true)
 		slog.Error("mailq: the email provider refused the credentials; sending stopped on every lane until restart")
@@ -649,72 +696,142 @@ func (q *Queue) finalize(ctx context.Context, row *Row, lease time.Time, pid str
 			}
 		}
 		if !retry {
-			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3,
+			sql = `UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, error = $3, hook_due = true,
 			        recipient = ` + redact + ` WHERE id = $1 AND status = 'sending' AND lease_until = $2`
 			args = append(args, clip(sendErr.Error()))
-			unsent = true
+			hooked = true
 		}
 		if errors.Is(sendErr, mail.ErrAuth) {
 			q.stopped.Store(true)
 		}
 	}
-	bounced := errors.Is(sendErr, mail.ErrBounced) && row.UserID != nil && q.Bounced != nil
-	if err := q.finalizeTx(ctx, sql, args, func(tx pgx.Tx) (func(), error) {
-		if bounced {
-			if err := q.Bounced(ctx, tx, *row); err != nil {
-				return nil, err
-			}
-		}
-		if unsent && q.Unsent != nil {
-			return q.Unsent(ctx, tx, *row)
-		}
-		return nil, nil
-	}); err != nil {
+	if err := q.writeOutcome(ctx, sql, args, oneShot); err != nil {
 		slog.Error("mailq: finalize", "mail_kind", kind, "err", err.Error())
+	}
+	if hooked {
+		q.settle(ctx, row.ID)
 	}
 	if sendErr != nil {
 		slog.Warn("mailq: send failed", "mail_kind", kind, "err", clip(sendErr.Error()))
 	}
 }
 
+func (q *Queue) writeOutcome(ctx context.Context, sql string, args []any, oneShot bool) error {
+	retries := outcomeRetries
+	if oneShot {
+		retries = nil
+	}
+	for try := 0; ; try++ {
+		wctx, cancel := context.WithTimeout(ctx, outcomeTimeout)
+		_, err := q.Pool.Exec(wctx, sql, args...)
+		cancel()
+		if err == nil || try == len(retries) || !transientRender(err) {
+			return err
+		}
+		time.Sleep(retries[try])
+	}
+}
+
+func (q *Queue) settleExpiredLeases(ctx context.Context) error {
+	if _, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'queued', lease_until = NULL, next_attempt_at = now()
+		  WHERE status = 'sending' AND lease_until < now() AND attempts < $1 AND NOT one_shot
+		    AND NOT (`+pastRetryWindow+`)`, leaseRescueArgs()...); err != nil {
+		return fmt.Errorf("mailq: expired leases: %w", err)
+	}
+	if err := q.failExhausted(ctx); err != nil {
+		return fmt.Errorf("mailq: exhausted rows: %w", err)
+	}
+	return nil
+}
+
 func (q *Queue) failExhausted(ctx context.Context) error {
+	tag, err := q.Pool.Exec(ctx,
+		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL, hook_due = true,
+		        error = CASE WHEN one_shot THEN 'interrupted: outcome unknown' ELSE 'attempts exhausted' END,
+		        recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
+		  WHERE recipient_tag IS NOT NULL
+		    AND ((attempts >= $1 AND (status = 'queued' OR (status = 'sending' AND lease_until < now())))
+		      OR (status = 'sending' AND lease_until < now() AND (one_shot OR `+pastRetryWindow+`)))`, leaseRescueArgs()...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() > 0 {
+		q.settleDue(ctx)
+	}
+	return nil
+}
+
+func (q *Queue) settleDue(ctx context.Context) {
+	rows, err := q.Pool.Query(ctx, `SELECT id FROM mail_log WHERE hook_due ORDER BY id`)
+	if err != nil {
+		slog.Error("mailq: hooks due", "err", err.Error())
+		return
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		slog.Error("mailq: hooks due", "err", err.Error())
+		return
+	}
+	for _, id := range ids {
+		q.settle(ctx, id)
+	}
+}
+
+func (q *Queue) settle(ctx context.Context, id int64) {
+	if err := q.settleTx(ctx, id); err != nil {
+		slog.Error("mailq: hook", "err", err.Error())
+	}
+}
+
+func (q *Queue) settleTx(ctx context.Context, id int64) error {
 	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
 	if err != nil {
 		return err
 	}
 	defer pgtx.Rollback(ctx, tx)
-	rows, err := tx.Query(ctx,
-		`UPDATE mail_log SET status = 'failed', final_at = now(), lease_until = NULL, next_attempt_at = NULL,
-		        error = CASE WHEN one_shot THEN 'interrupted: outcome unknown' ELSE 'attempts exhausted' END,
-		        recipient = CASE WHEN kind = 'deleted' THEN NULL ELSE recipient END
-		  WHERE recipient_tag IS NOT NULL
-		    AND ((attempts >= $1 AND status = 'queued')
-		         OR ((attempts >= $1 OR one_shot) AND status = 'sending' AND lease_until < now()))
-		 RETURNING id, kind, user_id, waitlist_entry_id, invite_id`, maxAttempts)
+	row := Row{ID: id}
+	var (
+		status    string
+		recipient *string
+	)
+	err = tx.QueryRow(ctx,
+		`SELECT kind, status, recipient, user_id, waitlist_entry_id, invite_id FROM mail_log
+		  WHERE id = $1 AND hook_due FOR UPDATE SKIP LOCKED`, id).
+		Scan(&row.Kind, &status, &recipient, &row.UserID, &row.EntryID, &row.InviteID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	failed, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Row, error) {
-		var row Row
-		return row, r.Scan(&row.ID, &row.Kind, &row.UserID, &row.EntryID, &row.InviteID)
-	})
-	if err != nil {
-		return err
+	if recipient != nil {
+		row.Recipient = *recipient
 	}
-	var after []func()
-	if q.Unsent != nil {
-		for _, row := range failed {
-			done, err := q.Unsent(ctx, tx, row)
-			if err != nil {
+	if status == string(StatusBounced) && row.UserID != nil && q.Bounced != nil {
+		if err := q.Bounced(ctx, tx, row); err != nil {
+			return err
+		}
+	}
+	var done func()
+	if status == string(StatusSent) {
+		if q.Sent != nil {
+			if err := q.Sent(ctx, tx, row); err != nil {
 				return err
 			}
-			after = appendDone(after, done)
 		}
+	} else if q.Unsent != nil {
+		if done, err = q.Unsent(ctx, tx, row); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE mail_log SET hook_due = false WHERE id = $1`, id); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	runDone(after)
+	runDone(appendDone(nil, done))
 	return nil
 }
 
@@ -729,30 +846,6 @@ func runDone(after []func()) {
 	for _, done := range after {
 		done()
 	}
-}
-
-// finalizeTx runs the finalizing UPDATE and, when it changed the row, then.
-func (q *Queue) finalizeTx(ctx context.Context, sql string, args []any, then func(pgx.Tx) (func(), error)) error {
-	tx, err := pgtx.BeginReadCommitted(ctx, q.Pool)
-	if err != nil {
-		return err
-	}
-	defer pgtx.Rollback(ctx, tx)
-	tag, err := tx.Exec(ctx, sql, args...)
-	if err != nil {
-		return err
-	}
-	var done func()
-	if tag.RowsAffected() == 1 {
-		if done, err = then(tx); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-	runDone(appendDone(nil, done))
-	return nil
 }
 
 // Sweep is spec 07 §2.11's mail rows: retention, redaction of subject-less
