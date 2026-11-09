@@ -644,4 +644,111 @@ struct WorkCoordinatorTests {
     await c.finished()
     #expect(log.all == ["closed"])
   }
+
+  @Test(.timeLimit(.minutes(1))) func aHandlerClosingThroughAnotherTaskDoesNotWaitForItsOwnHandOver() async {
+    let log = Log()
+    let holder = Mutex<WorkCoordinator?>(nil)
+    let c = WorkCoordinator(
+      stages: .init(
+        sync: { _, _ in (newData: false, stop: .wipe) }, mailbox: nil, committed: {},
+        stopped: { _ in
+          let me = holder.withLock { $0 }
+          await Task {
+            await me?.close()
+            await me?.finished()
+          }.value
+          log.add("closed")
+        }))
+    holder.withLock { $0 = c }
+    let out = await c.run(.launch)
+    #expect(out.stop == .wipe)
+    #expect(log.all == ["closed"])
+  }
+
+  static func handingSlowly(
+    _ log: Log, commitFor: Duration = .zero, sync: @escaping WorkCoordinator.SyncStage
+  ) -> WorkCoordinator {
+    WorkCoordinator(
+      stages: .init(
+        sync: sync, mailbox: nil,
+        committed: {
+          try? await Task.sleep(for: commitFor)
+          log.add("committed")
+        },
+        stopped: {
+          log.add("start.\($0)")
+          try? await Task.sleep(for: .milliseconds(200))
+          log.add("end.\($0)")
+        }))
+  }
+
+  static func untilLogged(_ log: Log, _ entry: String) async {
+    for _ in 0..<400 where !log.all.contains(entry) { try? await Task.sleep(for: .milliseconds(5)) }
+  }
+
+  @Test(.timeLimit(.minutes(1))) func anOutsideWaitCoversAHandOverAlreadyUnderWay() async {
+    let log = Log()
+    let c = Self.handingSlowly(log) { _, _ in
+      try? await Task.sleep(for: .milliseconds(100))
+      return (newData: false, stop: .wipe)
+    }
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(30))
+    job.cancel()
+    _ = await job.value
+    await Self.untilLogged(log, "start.\(SyncStop.wipe)")
+    await c.finished()
+    #expect(log.all == ["start.\(SyncStop.wipe)", "end.\(SyncStop.wipe)"])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func anOutsideWaitCoversTheRunThatIsHandingOver() async {
+    let log = Log()
+    let c = Self.handingSlowly(log) { _, _ in (newData: false, stop: .halted(.serverRestored)) }
+    let job = Task { await c.run(.launch) }
+    await Self.untilLogged(log, "start.\(SyncStop.halted(.serverRestored))")
+    await c.finished()
+    #expect(log.all.contains("end.\(SyncStop.halted(.serverRestored))"))
+    #expect(log.all.contains("committed"))
+    #expect(await c.runs == 1)
+    _ = await job.value
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPauseWaitsForAHandOverAndANewerRun() async {
+    let log = Log()
+    let calls = Mutex(0)
+    let c = Self.handingSlowly(log, commitFor: .milliseconds(400)) { _, _ in
+      let n = calls.withLock {
+        $0 += 1
+        return $0
+      }
+      if n > 1 { return (newData: false, stop: nil) }
+      try? await Task.sleep(for: .milliseconds(100))
+      return (newData: false, stop: .wipe)
+    }
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(30))
+    job.cancel()
+    _ = await job.value
+    await Self.untilLogged(log, "start.\(SyncStop.wipe)")
+    let newer = Task { await c.run(.authored) }
+    try? await Task.sleep(for: .milliseconds(20))
+    await c.pause()
+    #expect(log.all.contains("end.\(SyncStop.wipe)"))
+    #expect(log.all.contains("committed"))
+    _ = await newer.value
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aWaitCoversAStopHandedOverAfterTheRunWasCancelled() async {
+    let log = Log()
+    let c = Self.handingSlowly(log) { _, _ in
+      try? await Task.sleep(for: .milliseconds(150))
+      return (newData: false, stop: .needsSignIn)
+    }
+    let job = Task { await c.run(.bgProcessing) }
+    try? await Task.sleep(for: .milliseconds(30))
+    job.cancel()
+    await c.finished()
+    #expect(log.all == ["start.\(SyncStop.needsSignIn)", "end.\(SyncStop.needsSignIn)"])
+    _ = await job.value
+  }
 }

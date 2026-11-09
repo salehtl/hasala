@@ -186,6 +186,7 @@ actor WorkCoordinator {
   private var handing: [SyncStop] = []
   private var settling: Task<Void, Never>?
   private(set) var runs = 0
+  @TaskLocal private static var insideHandOver = false
 
   init(stages: Stages) {
     self.stages = stages
@@ -221,8 +222,13 @@ actor WorkCoordinator {
 
   func finished() async {
     if let syncing { _ = await syncing.value }
-    if handing.isEmpty { await settling?.value }
-    if handing.isEmpty, let inFlight { _ = await inFlight.value }
+    guard !Self.insideHandOver else { return }
+    var settled: Task<Void, Never>?
+    while inFlight != nil || settling != settled {
+      settled = settling
+      await settled?.value
+      if let inFlight { _ = await inFlight.value }
+    }
   }
 
   /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
@@ -355,7 +361,7 @@ actor WorkCoordinator {
     guard !handing.contains(stop) else { return }
     handing.append(stop)
     let stopped = stages.stopped
-    await Task { await stopped(stop) }.value
+    await Task { await Self.$insideHandOver.withValue(true) { await stopped(stop) } }.value
     handing.removeAll { $0 == stop }
   }
 
