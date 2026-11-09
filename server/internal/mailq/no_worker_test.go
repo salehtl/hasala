@@ -20,9 +20,9 @@ func TestMailNoWorkerWillSendFailsOnce(t *testing.T) {
 	untagged := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "later@example.com"})
 	tagged := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "tagged@example.com", Tag: fixedTagger{}.EmailTag("tagged@example.com")})
 	goodbye := enqueue(t, pool, enqueuer, Enqueue{Kind: "deleted", To: "gone@example.com", Params: map[string]any{"deleted_at": "x"}})
-	expired := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "expired@example.com"})
-	live := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "live@example.com"})
-	sent := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "sent@example.com"})
+	expired := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "expired@example.com", Tag: fixedTagger{}.EmailTag("expired@example.com")})
+	live := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "live@example.com", Tag: fixedTagger{}.EmailTag("live@example.com")})
+	sent := enqueue(t, pool, enqueuer, Enqueue{Kind: "test", To: "sent@example.com", Tag: fixedTagger{}.EmailTag("sent@example.com")})
 	for _, u := range []struct {
 		id  int64
 		sql string

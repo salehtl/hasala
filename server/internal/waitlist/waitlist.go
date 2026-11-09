@@ -190,8 +190,12 @@ func (s *Service) Confirm(ctx context.Context, token string) (string, error) {
 		entry); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE waitlist_tokens SET used_at = now() WHERE token_hash = $1`, hash); err != nil {
+	used, err := tx.Exec(ctx, `UPDATE waitlist_tokens SET used_at = now() WHERE token_hash = $1`, hash)
+	if err != nil {
 		return "", err
+	}
+	if used.RowsAffected() == 0 {
+		return "", ErrLinkExpired
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM waitlist_tokens WHERE entry_id = $1 AND purpose = 'confirm' AND used_at IS NULL`, entry); err != nil {
