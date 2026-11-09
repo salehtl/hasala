@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/salehtl/hasala/server/internal/api"
 	"github.com/salehtl/hasala/server/internal/config"
@@ -59,6 +62,65 @@ func TestALineThatMayHaveReachedTheLedgerIsNotWrittenAgain(t *testing.T) {
 	w.record(purgeledger.Entry{ID: uuid.New(), At: time.Now(), Kind: purgeledger.KindWaitlistUnsent})
 	if n, err := w.retry(context.Background()); n != 0 || err != nil || calls != 1 {
 		t.Fatalf("retry: %d, %v after %d writes; want no second write", n, err, calls)
+	}
+}
+
+func TestAFlushThatFailsDuringAnOutageTellsTheTruthAboutItsLine(t *testing.T) {
+	pool := pgtest.New(t)
+	bg := context.Background()
+	path := filepath.Join(t.TempDir(), "purged")
+	e := purgeledger.Entry{ID: uuid.New(), At: time.Now().Truncate(time.Second), Kind: purgeledger.KindWaitlistLeave}
+	if err := pgx.BeginFunc(bg, pool, func(tx pgx.Tx) error { return purgeledger.HoldTx(bg, tx, e) }); err != nil {
+		t.Fatal(err)
+	}
+	down, err := pgxpool.NewWithConfig(bg, pool.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	down.Close()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	outage := true
+	w := &ledgerWriter{write: func(purgeledger.Entry) error {
+		if outage {
+			_, err := purgeledger.Flush(bg, down, path)
+			return err
+		}
+		return fmt.Errorf("%w: disk", purgeledger.ErrNotWritten)
+	}}
+	check := func(when string) {
+		t.Helper()
+		logged := buf.String()
+		buf.Reset()
+		if strings.Contains(logged, "not retried") || !strings.Contains(logged, "next sweep of held lines") {
+			t.Fatalf("%s the log says %q; want it to say the next sweep writes a held line", when, logged)
+		}
+	}
+	w.record(e)
+	check("a flush during an outage:")
+
+	outage = false
+	w.record(e)
+	buf.Reset()
+	outage = true
+	if n, err := w.retry(bg); n != 0 || err != nil {
+		t.Fatalf("retry: %d, %v", n, err)
+	}
+	check("a retry during an outage:")
+
+	if entries, err := purgeledger.Read(path); err != nil || len(entries) != 0 {
+		t.Fatalf("ledger %+v %v during the outage, want nothing", entries, err)
+	}
+	if n, err := purgeledger.Flush(bg, pool, path); err != nil || n != 1 {
+		t.Fatalf("the sweep after the outage: %d, %v; want the held line", n, err)
+	}
+	entries, err := purgeledger.Read(path)
+	if err != nil || len(entries) != 1 || entries[0].ID != e.ID {
+		t.Fatalf("ledger %+v %v after the sweep, want the held line", entries, err)
 	}
 }
 
