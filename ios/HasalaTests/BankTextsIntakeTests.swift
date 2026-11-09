@@ -163,6 +163,8 @@ nonisolated final class WatchedSecretStore: SecretStore {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try base.write(item, value) }
 
   func delete(_ item: SecretItem) throws(SecretStoreError) { try base.delete(item) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { try base.accounts(service: service) }
 }
 
 nonisolated struct NoRandom: RandomSource {

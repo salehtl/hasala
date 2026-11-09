@@ -757,6 +757,8 @@ nonisolated private struct RefusingSecretStore: SecretStore {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw refusal }
 
   func delete(_ item: SecretItem) throws(SecretStoreError) { throw refusal }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { throw refusal }
 }
 
 nonisolated final class FaultySecrets: SecretStore {
