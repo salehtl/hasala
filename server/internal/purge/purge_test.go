@@ -156,6 +156,14 @@ var seeders = map[string]seeder{
 		exec(t, pool, `INSERT INTO account_key_wraps (user_id, credential_id, wrap, wrap_version, created_at)
 		               VALUES ($1, $2, $3, 1, now())`, u, credential, append([]byte{1, 2}, randBytes(t, 125)...))
 	},
+	"public.reapply_kept_credentials": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
+		credential := randBytes(t, 20)
+		exec(t, pool, `INSERT INTO webauthn_credentials
+		  (credential_id, user_id, user_handle, public_key, sign_count, backup_eligible, backup_state, attestation_sha256, created_at)
+		  VALUES ($2, $1, $3, $4, 1, true, true, $5, now())`,
+			u, credential, randBytes(t, 32), randBytes(t, 77), randBytes(t, 32))
+		exec(t, pool, `INSERT INTO reapply_kept_credentials (user_id, credential_id, kept_at) VALUES ($1, $2, now())`, u, credential)
+	},
 	// A step-up challenge names the account and the session it was issued to.
 	"public.step_up_challenges": func(t *testing.T, pool *pgxpool.Pool, u uuid.UUID) {
 		session := ensureSession(t, pool, u)

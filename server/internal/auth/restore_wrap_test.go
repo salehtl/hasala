@@ -206,3 +206,103 @@ func TestAReplayCountsWordsTheLedgerSawAfterTheRemoval(t *testing.T) {
 		})
 	}
 }
+
+func removalOf(f *keyFixture, kind purgeledger.Kind, at time.Time) purgeledger.Entry {
+	return purgeledger.Entry{ID: f.user, At: at.Truncate(time.Second), Kind: kind, Credential: f.credID}
+}
+
+func (f *keyFixture) assertKeptBackStaysPut() {
+	f.t.Helper()
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, f.user, f.credID); n != 1 {
+		f.t.Fatal("a removal kept back at an earlier replay took the passkey")
+	}
+	if n := f.count(`SELECT count(*) FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2`, f.user, f.credID); n != 1 {
+		f.t.Fatal("a removal kept back at an earlier replay took the wrap")
+	}
+	if _, err := f.sessions.Resolve(bgctx, f.token); err != nil {
+		f.t.Fatalf("a removal kept back at an earlier replay ended a session: %v", err)
+	}
+}
+
+func TestARemovalKeptBackStaysKeptAfterTheWordsAreSeen(t *testing.T) {
+	for name, kind := range map[string]purgeledger.Kind{"a passkey": purgeledger.KindPasskey, "a wrap": purgeledger.KindWrap} {
+		t.Run(name, func(t *testing.T) {
+			f := newKeyFixtureUnbootstrapped(t)
+			f.bootstrapWordsUnseen()
+			at := f.clock.now().Add(time.Hour)
+			removal := removalOf(f, kind, at)
+			if _, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal}, f.clock.now()); err != nil {
+				t.Fatal(err)
+			}
+			f.assertKeptBackStaysPut()
+			seen := purgeledger.Entry{ID: f.user, At: removal.At.Add(time.Minute), Kind: purgeledger.KindPhraseSeen}
+			rep, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal, seen}, f.clock.now())
+			if err != nil || rep != (ReapplyReport{PhrasesSeen: 1}) {
+				t.Fatalf("the replay after the words were seen: %+v %v, want only the words", rep, err)
+			}
+			f.assertKeptBackStaysPut()
+			if rep, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal, seen}, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+				t.Fatalf("one more replay: %+v %v, want nothing", rep, err)
+			}
+			f.assertKeptBackStaysPut()
+		})
+	}
+}
+
+func TestARemovalKeptBackStaysKeptOnceAnotherPasskeyHoldsAWrap(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t).guarded()
+	f.bootstrapWordsUnseen()
+	removal := removalOf(f, purgeledger.KindPasskey, f.clock.now().Add(time.Hour))
+	if rep, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal}, f.clock.now()); err != nil || rep != (ReapplyReport{Kept: 1}) {
+		t.Fatalf("reapply %+v %v, want the removal kept back", rep, err)
+	}
+	if _, _, err := f.addOver(f.token, f.device, true); err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal}, f.clock.now()); err != nil || rep != (ReapplyReport{}) {
+		t.Fatalf("the replay after another passkey came: %+v %v, want nothing", rep, err)
+	}
+	f.assertKeptBackStaysPut()
+}
+
+func TestAWrapLineDatedBeforeAKeptBackPasskeyLineIsSkippedToo(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t)
+	f.bootstrapWordsUnseen()
+	at := f.clock.now().Add(time.Hour)
+	removal := removalOf(f, purgeledger.KindPasskey, at)
+	if _, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal}, f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	entries := []purgeledger.Entry{
+		removalOf(f, purgeledger.KindWrap, at.Add(-time.Minute)),
+		{ID: f.user, At: removal.At.Add(time.Minute), Kind: purgeledger.KindPhraseSeen},
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep != (ReapplyReport{PhrasesSeen: 1}) {
+		t.Fatalf("reapply %+v %v, want only the words", rep, err)
+	}
+	f.assertKeptBackStaysPut()
+}
+
+func TestAPasskeyRemovedAfterItWasKeptBackIsRemovedAgainByAReplay(t *testing.T) {
+	f := newKeyFixtureUnbootstrapped(t)
+	f.bootstrapWordsUnseen()
+	at := f.clock.now().Add(time.Hour)
+	removal := removalOf(f, purgeledger.KindPasskey, at)
+	if _, err := Reapply(bgctx, f.pool, []purgeledger.Entry{removal}, f.clock.now()); err != nil {
+		t.Fatal(err)
+	}
+	entries := []purgeledger.Entry{
+		removal,
+		{ID: f.user, At: removal.At.Add(time.Minute), Kind: purgeledger.KindPhraseSeen},
+		removalOf(f, purgeledger.KindPasskey, at.Add(2*time.Minute)),
+	}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Passkeys != 1 || rep.Kept != 0 {
+		t.Fatalf("reapply %+v %v, want the later removal applied", rep, err)
+	}
+	if n := f.count(`SELECT count(*) FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2`, f.user, f.credID); n != 0 {
+		t.Fatal("the removal the holder made after the keep-back came undone")
+	}
+	if n := f.count(`SELECT count(*) FROM reapply_kept_credentials WHERE user_id = $1`, f.user); n != 0 {
+		t.Fatal("the marker outlived its passkey")
+	}
+}

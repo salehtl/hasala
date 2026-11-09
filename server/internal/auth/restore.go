@@ -75,6 +75,7 @@ const (
 	reappliedDone
 	reappliedUnsigned
 	reappliedKept
+	reappliedMarked
 )
 
 func liftedInLedger(entries []purgeledger.Entry) map[int]bool {
@@ -467,15 +468,43 @@ func reapplyPasswordTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now 
 	return reappliedDone, nil
 }
 
+func keepBackIfLastUnseenWrapTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry) (bool, error) {
+	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); !errors.Is(err, ErrPhraseUnseen) {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO reapply_kept_credentials (user_id, credential_id, kept_at) VALUES ($1, $2, $3)
+		 ON CONFLICT (user_id, credential_id)
+		 DO UPDATE SET kept_at = greatest(reapply_kept_credentials.kept_at, EXCLUDED.kept_at)`,
+		e.ID, e.Credential, e.At.Truncate(time.Second)); err != nil {
+		return false, fmt.Errorf("auth: keep a removal back: %w", err)
+	}
+	return true, nil
+}
+
+func keptBackEarlierTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry) (bool, error) {
+	var kept bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM reapply_kept_credentials WHERE user_id = $1 AND credential_id = $2 AND kept_at >= $3)`,
+		e.ID, e.Credential, e.At.Truncate(time.Second)).Scan(&kept); err != nil {
+		return false, fmt.Errorf("auth: read a kept-back removal: %w", err)
+	}
+	return kept, nil
+}
+
 func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now time.Time) (reapplied, error) {
-	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
-		if errors.Is(err, ErrPhraseUnseen) {
-			return reappliedKept, nil
-		}
+	held, err := keepBackIfLastUnseenWrapTx(ctx, tx, e)
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if held {
+		return reappliedKept, nil
+	}
+	if kept, err := keptBackEarlierTx(ctx, tx, e); err != nil || kept {
 		return reappliedNothing, err
 	}
 	var created time.Time
-	err := tx.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`SELECT created_at FROM webauthn_credentials WHERE user_id = $1 AND credential_id = $2 FOR UPDATE`,
 		e.ID, e.Credential).Scan(&created)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -498,10 +527,14 @@ func reapplyPasskeyTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, now t
 }
 
 func reapplyWrapTx(ctx context.Context, tx pgx.Tx, e purgeledger.Entry, _ time.Time) (reapplied, error) {
-	if err := refuseIfLastUnseenWrapTx(ctx, tx, e.ID, e.Credential); err != nil {
-		if errors.Is(err, ErrPhraseUnseen) {
-			return reappliedNothing, nil
-		}
+	held, err := keepBackIfLastUnseenWrapTx(ctx, tx, e)
+	if err != nil {
+		return reappliedNothing, err
+	}
+	if held {
+		return reappliedMarked, nil
+	}
+	if kept, err := keptBackEarlierTx(ctx, tx, e); err != nil || kept {
 		return reappliedNothing, err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM account_key_wraps WHERE user_id = $1 AND credential_id = $2 AND created_at < $3`,

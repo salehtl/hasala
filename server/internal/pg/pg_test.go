@@ -78,7 +78,7 @@ func TestTheBaselineHoldsExactlyTheKeptTables(t *testing.T) {
 		"deleted_account_sessions", "device_freeze_challenges", "email_change_ceremonies", "email_code_pauses",
 		"email_codes", "freeze_tokens", "goose_db_version", "invite_codes", "key_history", "mail_log",
 		"mailbox_link_challenges", "mailbox_links", "op_log", "oplog_seq", "password_login_ceremonies",
-		"password_reset_ceremonies", "rate_counters", "recovery_ceremonies", "restore_ledger_held", "server_meta", "sessions",
+		"password_reset_ceremonies", "rate_counters", "reapply_kept_credentials", "recovery_ceremonies", "restore_ledger_held", "server_meta", "sessions",
 		"signup_ceremonies", "step_up_challenges", "users", "waitlist_entries", "waitlist_tokens",
 		"webauthn_ceremonies", "webauthn_credentials", "writer_challenges", "writers",
 	}
@@ -646,8 +646,8 @@ func TestMigrateRunsOnlyAsTheSchemaOwner(t *testing.T) {
 	// 00021_waitlist_invites_mail, 00022_accounts, 00023_mailbox_outlook and
 	// 00024_mailbox_one_account.
 	latest, err := pg.LatestEmbedded()
-	if err != nil || latest != 38 {
-		t.Fatalf("LatestEmbedded = %d, %v; want 38", latest, err)
+	if err != nil || latest != 39 {
+		t.Fatalf("LatestEmbedded = %d, %v; want 39", latest, err)
 	}
 }
 

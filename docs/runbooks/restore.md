@@ -202,7 +202,9 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
    holder changes the address again in the app. If the count of
    `passkey removal(s) kept back because that passkey is the only way to show the unseen 12 words`
    is above 0, ask the holder to view the words, then remove that passkey
-   again. The journal
+   again. A later replay does not apply the old line (the database notes the
+   keep-back in `reapply_kept_credentials`), so only the new removal takes the
+   passkey. The journal
    shows counts only, never an account id.
 
 ## Lift a freeze that the holder cannot lift
