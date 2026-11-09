@@ -21,6 +21,7 @@ public final class InMemoryLedger: LedgerStore {
   private struct UndoRecord {
     var txnsBefore: [TxnID: Txn] = [:]
     var txnsAfter: [TxnID: Txn] = [:]
+    var txnsRemoved: [(txn: Txn, at: Int)] = []
     var plan: (before: PlanState, after: PlanState)?
     var bills: (before: [Bill], after: [Bill])?
     var candidates: (before: [BillCandidate], after: [BillCandidate])?
@@ -38,6 +39,7 @@ public final class InMemoryLedger: LedgerStore {
   private var nextCategory = 1
   private var sortOrder: [TxnID: Int] = [:]
   private var nextSort = 0
+  private var keptCopies = Set<TxnID>()
 
   public init(state: LedgerState = MayaLedger.state, now: LocalDateTime = MayaLedger.now) {
     var state = state
@@ -60,11 +62,15 @@ public final class InMemoryLedger: LedgerStore {
     var title: String?
     var batch = false
     var order = sortOrder
+    var kept = keptCopies
 
     func editTxn(_ id: TxnID, _ change: (inout Txn) -> Void) throws(ActionError) {
       guard let i = s.txns.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touched.insert(id)
+      let old = s.txns[i]
       change(&s.txns[i])
+      guard s.txns[i].categoryID != old.categoryID || s.txns[i].splits.isEmpty != old.splits.isEmpty else { return }
+      s.txns[i].isRefund = RefundEdit.filedAsRefund(s.txns[i], in: s)
     }
 
     func categoryName(_ id: CategoryID) -> String { s.category(id)?.name ?? "Uncategorized" }
@@ -118,29 +124,8 @@ public final class InMemoryLedger: LedgerStore {
     }
 
     func link(_ i: Int, _ ids: [TxnID]) throws(ActionError) {
-      guard !ids.isEmpty, Set(ids).count == ids.count else { throw .invalidBill }
-      let b = s.bills[i]
-      var dues = Set<LocalDate>()
-      var planned: [(TxnID, LocalDate, Money)] = []
-      for id in ids {
-        guard let t = s.txn(id) else { throw .notFound }
-        if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
-        if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
-        if let other = t.billID, other != b.id { throw .invalidBill }
-        let due = BillDueDates.nearest(b, to: t.postedAt.date)
-        if !dues.insert(due).inserted { throw .invalidBill }
-        if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
-        planned.append((id, due, t.amount))
-      }
-      for (id, due, amount) in planned {
-        try editTxn(id) { $0.billID = b.id }
-        s.bills[i].payments.removeAll { $0.due == due || $0.txnID == id }
-        s.bills[i].payments.append(BillPayment(due: due, txnID: id, amount: amount, link: .linked))
-        if let day = s.txn(id)?.postedAt.date, !s.bills[i].history.contains(day) { s.bills[i].history.append(day) }
-        if due >= s.bills[i].nextDue { s.bills[i].nextDue = BillDueDates.shift(s.bills[i], from: due, by: 1) }
-      }
-      s.bills[i].payments.sort { $0.due > $1.due }
-      s.bills[i].history.sort(by: >)
+      try BillLifecycle.link(&s, bill: i, ids)
+      touched.formUnion(ids)
     }
 
     func sort(_ id: TxnID, into c: CategoryID, learnRule: Bool, project: ProjectID?) throws(ActionError) {
@@ -191,7 +176,7 @@ public final class InMemoryLedger: LedgerStore {
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      var t = d.txn(id: "manual-\(nextManual)")
+      var t = d.txn(id: "manual-\(nextManual)", in: s)
       t.merchantKey = t.merchant.lowercased()
       s.txns.append(t)
       nextManual += 1
@@ -267,9 +252,10 @@ public final class InMemoryLedger: LedgerStore {
       if !lines.isEmpty, !TransactionEngine.splitAddsUp(lines, total: t.amount) { throw .splitDoesNotAddUp }
       try editTxn(id) { t in
         t.splits = t.apportioned(lines)
-        if let first = lines.first { t.categoryID = first.categoryID }
         t.needsReview = false
+        t.priorFiling = nil
       }
+      if let first = lines.first, let i = s.txns.firstIndex(where: { $0.id == id }) { s.txns[i].categoryID = first.categoryID }
       title = lines.isEmpty ? "Split removed" : "Split into \(lines.count) categories"
     case .archive(let id, let archived):
       if archived, s.unreadMail.contains(where: { $0.id == id }) || s.unreadTexts.contains(where: { $0.id == id }) {
@@ -290,6 +276,7 @@ public final class InMemoryLedger: LedgerStore {
         title = "Merged"
       } else {
         s.txns[i].heldCopy = nil
+        kept.insert(id)
         title = "Kept both"
       }
     case .keepCombinedApart(let id):
@@ -298,6 +285,7 @@ public final class InMemoryLedger: LedgerStore {
       title = "Kept both"
     case .resolveSamePurchase(let id, let same):
       guard let a = s.txn(id), let match = a.samePurchase, let f = s.txn(match.of) else { throw .notFound }
+      if same, f.homeMinor == nil { throw .notFound }
       try editTxn(id) { t in
         t.samePurchase = nil
         if same {
@@ -307,7 +295,9 @@ public final class InMemoryLedger: LedgerStore {
         }
       }
       if same {
-        try editTxn(f.id) { $0.homeMinor = a.amount.minor }
+        try editTxn(f.id) { $0.setStatedHome(a.amount.minor) }
+      } else {
+        kept.insert(id)
       }
       title = same ? "Counted once" : "Kept both"
     case .skipReview(let id):
@@ -317,7 +307,7 @@ public final class InMemoryLedger: LedgerStore {
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
       touchedPlan = true
-      s.plan.budgets[PlanState.key(c, month)] = amount
+      s.plan.setBudget(c, month, to: amount)
       title = "\(categoryName(c)) budget changed"
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
@@ -343,7 +333,8 @@ public final class InMemoryLedger: LedgerStore {
       let next = c.last.adding(days: c.everyDays)
       let cadence: BillCadence = c.everyDays <= 10 ? .weekly : c.everyDays >= 300 ? .yearly : .monthly
       let name = BillDraft.fittedName(c.name)
-      s.bills.append(Bill(id: "bill-\(id)", name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
+      s.bills.removeAll { $0.id == id }
+      s.bills.append(Bill(id: id, name: name, kind: categoryName(c.categoryID), categoryID: c.categoryID,
                           amount: c.amount, usualDay: c.last.day, nextDue: next, history: [c.last],
                           source: .detected, cadence: cadence, every: cadence == .weekly ? max(1, c.everyDays / 7) : 1,
                           trackingSince: today,
@@ -358,11 +349,7 @@ public final class InMemoryLedger: LedgerStore {
     case .markBillPaid(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
       touchedBills = true
-      let due = s.bills[i].nextDue
-      s.bills[i].history.insert(due, at: 0)
-      s.bills[i].payments.removeAll { $0.due == due }
-      s.bills[i].payments.insert(BillPayment(due: due, amount: s.bills[i].amount, link: .marked), at: 0)
-      s.bills[i].nextDue = due.yearMonth.next.date(clampedDay: s.bills[i].usualDay)
+      try BillLifecycle.markPaid(&s.bills[i])
       title = "\(s.bills[i].name) marked paid"
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),
@@ -460,26 +447,13 @@ public final class InMemoryLedger: LedgerStore {
       s.bills[i].notices.remove(at: n)
       title = "Re-applied your change"
     case .dismissBillNotice(let id, let noticeID):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }),
-            s.bills[i].notices.contains(where: { $0.id == noticeID }) else { throw .notFound }
-      s.bills[i].notices.removeAll { $0.id == noticeID }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       title = nil
     case .editIncome(let id, let amount, let payday, let active):
-      guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }
-      guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw .invalidAmount }
-      guard (1...31).contains(payday) else { throw .invalidBill }
+      try BillLifecycle.editIncome(&s, id, amount: amount, payday: payday, active: active, today: today)
       touchedBills = true
       touchedPlan = true
-      s.bills[i].amount = amount
-      s.bills[i].usualDay = payday
-      s.bills[i].state = active ? .tracked : .ended
-      s.bills[i].endedOn = active ? nil : today
-      let ym = today.yearMonth
-      let thisMonth = ym.date(clampedDay: payday)
-      s.bills[i].nextDue = thisMonth >= today ? thisMonth : ym.next.date(clampedDay: payday)
-      s.plan.income = active ? amount : Money(minor: 0, currency: amount.currency)
-      s.plan.payday = payday
-      for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
       title = "Income updated"
 
     case .saveProject(let id, let draft):
@@ -558,16 +532,21 @@ public final class InMemoryLedger: LedgerStore {
       title = nil
     }
 
-    MockReach.refresh(&s, sortOrder: order)
+    MockReach.refresh(&s, sortOrder: order, keptCopies: kept)
     let orderBefore = sortOrder
     sortOrder = order
+    keptCopies = kept
     state = s
     revision += 1
     guard let title else { return nil }
     var record = UndoRecord()
     for id in touched {
       record.txnsBefore[id] = before.txn(id)
+      if case .split = edit { record.txnsBefore[id]?.priorFiling = nil }
       record.txnsAfter[id] = s.txn(id)
+      if s.txn(id) == nil, let at = before.txns.firstIndex(where: { $0.id == id }) {
+        record.txnsRemoved.append((before.txns[at], at))
+      }
       if orderBefore[id] != order[id] { record.sortOrder[id] = (orderBefore[id], order[id]) }
     }
     if touchedPlan { record.plan = (before.plan, s.plan) }
@@ -598,15 +577,25 @@ public final class InMemoryLedger: LedgerStore {
       guard let new = r.txnsAfter[id], let i = s.txns.firstIndex(where: { $0.id == id }) else { continue }
       Self.revertFields(&s.txns[i], before: old, after: new)
     }
+    for (t, at) in r.txnsRemoved.sorted(by: { $0.at < $1.at }) where s.txn(t.id) == nil {
+      s.txns.insert(t, at: min(at, s.txns.count))
+    }
     if let (old, new) = r.plan {
       for key in Set(old.budgets.keys).union(new.budgets.keys) where s.plan.budgets[key] == new.budgets[key] {
         s.plan.budgets[key] = old.budgets[key]
+      }
+      for key in old.zeroSet.symmetricDifference(new.zeroSet) where s.plan.zeroSet.contains(key) == new.zeroSet.contains(key) {
+        if old.zeroSet.contains(key) { s.plan.zeroSet.insert(key) } else { s.plan.zeroSet.remove(key) }
       }
       if s.plan.income == new.income { s.plan.income = old.income }
       if s.plan.payday == new.payday { s.plan.payday = old.payday }
       for m in Set(old.incomeByMonth.keys).union(new.incomeByMonth.keys)
       where s.plan.incomeByMonth[m] == new.incomeByMonth[m] {
         s.plan.incomeByMonth[m] = old.incomeByMonth[m]
+      }
+      for m in Set(old.incomeExpectedByMonth.keys).union(new.incomeExpectedByMonth.keys)
+      where s.plan.incomeExpectedByMonth[m] == new.incomeExpectedByMonth[m] {
+        s.plan.incomeExpectedByMonth[m] = old.incomeExpectedByMonth[m]
       }
     }
     if let (old, new) = r.bills { Self.revertElements(&s.bills, before: old, after: new) }
@@ -616,7 +605,7 @@ public final class InMemoryLedger: LedgerStore {
     if let (old, new) = r.unread { Self.revertElements(&s.unreadMail, before: old, after: new) }
     if let (old, new) = r.unreadTexts { Self.revertElements(&s.unreadTexts, before: old, after: new) }
     for (id, o) in r.sortOrder where sortOrder[id] == o.after { sortOrder[id] = o.before }
-    MockReach.refresh(&s, sortOrder: sortOrder)
+    MockReach.refresh(&s, sortOrder: sortOrder, keptCopies: keptCopies)
     state = s
     revision += 1
   }
@@ -650,10 +639,13 @@ public final class InMemoryLedger: LedgerStore {
     field(\.note)
     field(\.archived)
     field(\.homeMinor)
+    field(\.homeSource)
+    field(\.homeRateMicro)
     field(\.samePurchase)
     field(\.heldCopy)
     field(\.combinedCopy)
     field(\.mergedInto)
+    field(\.refundOf)
     field(\.billID)
   }
 

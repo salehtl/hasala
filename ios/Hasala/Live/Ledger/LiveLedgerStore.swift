@@ -329,7 +329,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       if let refusal = d.refusal { throw refusal }
       if let c = d.categoryID, s.category(c) == nil { throw .notFound }
       if let a = d.accountID, !s.accounts.contains(where: { $0.id == a }) { throw .notFound }
-      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())"))
+      s.txns.append(d.txn(id: "pending-manual-\(UUID().uuidString.lowercased())", in: s))
       return (nil, [])
     case .categorize(let id, let c, let learnRule, let project):
       guard s.category(c) != nil else { throw .notFound }
@@ -444,7 +444,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.txns[i].archived = true
       s.txns[i].mergedInto = match.of
       s.txns[i].note = SamePurchaseText.note(s.txns[j].amount)
-      s.txns[j].homeMinor = s.txns[i].amount.minor
+      s.txns[j].setStatedHome(s.txns[i].amount.minor)
       return (
         "Counted once",
         [.samePurchase(foreign: match.of, previousHome: previous, previousRateMicro: previousRate, home: id, previousNote: oldNote)]
@@ -458,7 +458,7 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       return (try SortPatch.stopRule(&s, id), [])
     case .setBudget(let c, let month, let amount):
       guard amount.minor >= 0 else { throw .invalidAmount }
-      s.plan.budgets[PlanState.key(c, month)] = amount
+      s.plan.setBudget(c, month, to: amount)
       return ("\(name(c)) budget changed", [])
     case .moveMoney(let from, let to, let month, let amount):
       guard amount.minor > 0 else { throw .invalidAmount }
@@ -472,11 +472,8 @@ final class LiveLedgerStore: HasalaModels.LedgerStore, UndoAvailability {
       s.plan.budgets[PlanState.key(to, month)] = .aed(s.plan.budget(to, month).minor + amount.minor)
       return ("Moved to \(name(to))", [])
     case .markBillPaid(let id):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), !s.bills[i].isIncome else { throw .notFound }
-      let due = s.bills[i].nextDue
-      let next = due.yearMonth.next
-      s.bills[i].history.insert(due, at: 0)
-      s.bills[i].nextDue = LocalDate(next.year, next.month, min(s.bills[i].usualDay, next.days))
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      let due = try BillLifecycle.markPaid(&s.bills[i])
       return ("\(s.bills[i].name) marked paid", [.occurrence(bill: id, due: due)])
     case .acceptBillAmount(let id):
       guard let i = s.bills.firstIndex(where: { $0.id == id }),

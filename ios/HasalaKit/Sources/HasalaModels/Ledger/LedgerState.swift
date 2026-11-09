@@ -441,6 +441,12 @@ public struct Txn: Sendable, Hashable, Identifiable, Codable {
 
   public var isEstimate: Bool { homeMinor != nil && homeSource == .rate }
 
+  public mutating func setStatedHome(_ minor: Int64) {
+    homeMinor = minor
+    homeSource = .stated
+    homeRateMicro = nil
+  }
+
   public var isNotCounted: Bool { homeMinor == nil }
 
   public var isHeldOut: Bool { !isHeldCopy && (samePurchase != nil || (mayRepeat != nil && needsReview)) }
@@ -761,6 +767,12 @@ public struct PlanState: Sendable, Hashable, Codable {
   }
 
   public func setToZero(_ category: CategoryID, _ month: YearMonth) -> Bool { zeroSet.contains(Self.key(category, month)) }
+
+  public mutating func setBudget(_ category: CategoryID, _ month: YearMonth, to amount: Money) {
+    let key = Self.key(category, month)
+    budgets[key] = amount
+    if amount.minor == 0 { zeroSet.insert(key) } else { zeroSet.remove(key) }
+  }
 
   public func budget(_ category: CategoryID, _ month: YearMonth) -> Money {
     budgets[Self.key(category, month)] ?? .aed(0)

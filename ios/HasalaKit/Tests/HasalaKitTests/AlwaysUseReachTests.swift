@@ -117,6 +117,50 @@ struct AlwaysUseReachTests {
     #expect(item.txnIDs.allSatisfy { l.state.txn($0)?.categoryID == "subscriptions" && l.state.txn($0)?.filedByRule == true })
   }
 
+  static func splitLines(_ t: Txn) -> [SplitLine] {
+    [
+      SplitLine(id: 0, categoryID: "subscriptions", amount: Money(minor: t.amount.minor - 1_00, currency: t.amount.currency)),
+      SplitLine(id: 1, categoryID: "dining", amount: Money(minor: 1_00, currency: t.amount.currency)),
+    ]
+  }
+
+  static func expectGoesToReview(_ l: InMemoryLedger, _ id: TxnID) throws {
+    try l.apply(.returnToReview([id]))
+    let t = try #require(l.state.txn(id))
+    #expect(t.inReview && t.categoryID == nil && t.categorySource == nil && t.ruleID == nil && t.needsReview)
+  }
+
+  @Test func removingASplitForgetsTheFilingTheRuleReplaced() throws {
+    let l = InMemoryLedger(state: try Self.state())
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let filed = try #require(l.state.txn("ts-rule"))
+    #expect(filed.priorFiling != nil)
+    let filedAt = try #require(filed.categorizedAt)
+
+    try l.apply(.split("ts-rule", Self.splitLines(filed)))
+    #expect(l.state.txn("ts-rule")?.priorFiling == nil)
+
+    try l.apply(.split("ts-rule", []))
+    let unsplit = try #require(l.state.txn("ts-rule"))
+    #expect(unsplit.sortedForYou && unsplit.priorFiling == nil)
+    #expect(unsplit.categorizedAt == filedAt)
+
+    try Self.expectGoesToReview(l, "ts-rule")
+  }
+
+  @Test func undoingASplitForgetsTheFilingTheRuleReplaced() throws {
+    let l = InMemoryLedger(state: try Self.state())
+    try l.apply(.categorize("bl-ts-01", "subscriptions", learnRule: true, project: nil))
+    let filed = try #require(l.state.txn("ts-rule"))
+    #expect(filed.priorFiling != nil)
+
+    l.undo(try #require(try l.apply(.split("ts-rule", Self.splitLines(filed)))))
+    let back = try #require(l.state.txn("ts-rule"))
+    #expect(back.splits.isEmpty && back.sortedForYou && back.priorFiling == nil)
+
+    try Self.expectGoesToReview(l, "ts-rule")
+  }
+
   @Test func undoAllAfterUndoingAnUndoAllPutsEachRowBackAgain() throws {
     let before = try Self.state()
     let l = InMemoryLedger(state: before)

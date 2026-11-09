@@ -55,33 +55,6 @@ nonisolated enum BillPatch {
     return i
   }
 
-  static func link(_ s: inout LedgerState, _ i: Int, _ ids: [TxnID]) throws(ActionError) {
-    guard !ids.isEmpty, Set(ids).count == ids.count else { throw .invalidBill }
-    let b = s.bills[i]
-    var dues = Set<LocalDate>()
-    var planned: [(TxnID, LocalDate, Money, LocalDate)] = []
-    for id in ids {
-      guard let t = s.txn(id) else { throw .notFound }
-      if t.archived || t.isTransfer || t.isHeldCopy || t.isRefund { throw .invalidBill }
-      if t.direction != (b.isIncome ? .in : .out) { throw .invalidBill }
-      if let other = t.billID, other != b.id { throw .invalidBill }
-      let due = nearest(b, to: t.postedAt.date)
-      if let end = b.endedOn, due > end { throw .invalidBill }
-      if !dues.insert(due).inserted { throw .invalidBill }
-      if b.payments.contains(where: { $0.due == due && $0.link == .linked && $0.txnID != id }) { throw .invalidBill }
-      planned.append((id, due, t.amount, t.postedAt.date))
-    }
-    for (id, due, amount, day) in planned {
-      if let k = s.txns.firstIndex(where: { $0.id == id }) { s.txns[k].billID = b.id }
-      s.bills[i].payments.removeAll { $0.due == due || $0.txnID == id }
-      s.bills[i].payments.append(BillPayment(due: due, txnID: id, amount: amount, link: .linked))
-      if !s.bills[i].history.contains(day) { s.bills[i].history.append(day) }
-      if due >= s.bills[i].nextDue { s.bills[i].nextDue = shift(s.bills[i], from: due, by: 1) }
-    }
-    s.bills[i].payments.sort { $0.due > $1.due }
-    s.bills[i].history.sort(by: >)
-  }
-
   static func end(_ b: inout Bill, lastPayment: LocalDate) throws(ActionError) {
     guard b.state == .tracked || b.state == .paused else { throw .invalidBill }
     guard lastPayment >= start(b) else { throw .invalidBill }
@@ -131,7 +104,7 @@ nonisolated enum BillPatch {
           nextDue: d.firstDue, accountID: d.accountID, source: .manual, cadence: d.cadence, every: d.every,
           trackingSince: max(d.firstDue, today), keys: BillEdits.keys(name: name, given: d.keys)))
       let i = s.bills.count - 1
-      if !d.linkTxns.isEmpty { try link(&s, i, d.linkTxns) }
+      if !d.linkTxns.isEmpty { try BillLifecycle.link(&s, bill: i, d.linkTxns) }
       let first = min(d.firstDue, s.bills[i].payments.map(\.due).min() ?? d.firstDue)
       s.bills[i].trackingSince = max(first, today)
       return "Added \(name)"
@@ -190,7 +163,7 @@ nonisolated enum BillPatch {
       return s.bills[i].source == .manual ? "Deleted \(s.bills[i].name)" : "\(s.bills[i].name) is not a bill"
     case .linkBillPayments(let id, let txns):
       let i = try index(s, id, expense: false)
-      try link(&s, i, txns)
+      try BillLifecycle.link(&s, bill: i, txns)
       return txns.count == 1 ? "Linked 1 payment" : "Linked \(txns.count) payments"
     case .reapplyBill(let id):
       let i = try index(s, id, expense: false)
@@ -200,27 +173,11 @@ nonisolated enum BillPatch {
       s.bills[i].notices.removeAll { if case .changedOnTwoDevices = $0.kind { true } else { false } }
       return "Re-applied your change"
     case .dismissBillNotice(let id, let noticeID):
-      guard let i = s.bills.firstIndex(where: { $0.id == id }), s.bills[i].notices.contains(where: { $0.id == noticeID })
-      else { throw .notFound }
-      s.bills[i].notices.removeAll { $0.id == noticeID }
+      guard let i = s.bills.firstIndex(where: { $0.id == id }) else { throw .notFound }
+      try BillLifecycle.dismissNotice(&s.bills[i], id: noticeID)
       return nil
     case .editIncome(let id, let amount, let payday, let active):
-      guard let i = s.bills.firstIndex(where: { $0.id == id && $0.isIncome }) else { throw .notFound }
-      guard amount.minor > 0, amount.minor <= ManualEntryDraft.maxMinor else { throw .invalidAmount }
-      guard (1...31).contains(payday) else { throw .invalidBill }
-      let old = s.bills[i]
-      s.bills[i].amount = amount
-      s.bills[i].usualDay = payday
-      s.bills[i].state = active ? .tracked : .ended
-      s.bills[i].endedOn = active ? nil : today
-      let ym = today.yearMonth
-      let thisMonth = LocalDate(ym.year, ym.month, min(payday, ym.days))
-      let next = ym.next
-      s.bills[i].nextDue = thisMonth >= today ? thisMonth : LocalDate(next.year, next.month, min(payday, next.days))
-      let removed = old.state == .tracked ? old.amount.minor : 0
-      s.plan.income = .aed(max(0, s.plan.income.minor - removed + (active ? amount.minor : 0)))
-      s.plan.payday = payday
-      for m in s.plan.incomeByMonth.keys where m >= ym { s.plan.incomeByMonth[m] = nil }
+      try BillLifecycle.editIncome(&s, id, amount: amount, payday: payday, active: active, today: today)
       return "Income updated"
     default:
       throw .notFound

@@ -299,7 +299,7 @@ struct RecurringLedgerTests {
   @Test func trackingACandidateRecordsHowItWasFound() throws {
     let ledger = InMemoryLedger()
     try ledger.apply(.trackCandidate("apple-bill"))
-    let b = try #require(ledger.state.bill("bill-apple-bill"))
+    let b = try #require(ledger.state.bill("apple-bill"))
     #expect(b.source == .detected)
     #expect(b.cadence == .monthly)
     #expect(b.keys == ["apple.com/bill"])
