@@ -318,7 +318,7 @@ public actor LedgerPageObserver: PageObserver {
     let hot = s.cursors.hot
     try? store.forgetAcknowledged(writerID: writer, foldedThrough: hot)
     let rows = try context.storeCall { () throws(StoreError) in
-      try store.acknowledgedOps(writerID: writer, foldedThrough: hot) + store.pendingOps()
+      try store.outboxOverlay(writerID: writer, foldedThrough: hot)
     }
     let items = rows.compactMap { r in (try? Pusher.decodeStored(r)).map { (r.localSeq, $0) } }
     return items.sorted { $0.0 < $1.0 }.map { [$0.1] }

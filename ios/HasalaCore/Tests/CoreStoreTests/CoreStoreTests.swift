@@ -5,6 +5,7 @@ import CorePrimitives
 import CoreWire
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 
 @testable import CoreStore
@@ -138,6 +139,68 @@ struct LedgerStoreTests {
     // An older acknowledgement never moves the head back.
     try s.acknowledge(counters: [], head: Chain.Head(counter: 1, hash: h(1)), at: 7)
     #expect(try s.syncState().authoredHead.counter == 2)
+  }
+
+  @Test("an acknowledgement that lands while the outbox overlay is read loses no op")
+  func overlayReadsBothTablesAtOnce() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hasala-overlay-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let s = try LedgerStore.open(directory: dir)
+    try s.create(StoreMeta(userID: user, writerID: writer, apiBase: "https://api.hasala.app", keyEpoch: 1, createdAt: 1))
+    try s.enqueue([
+      PendingOp(opID: "op1", opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+    ])
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0)
+    ])
+    let step = Mutex(0)
+    try s.db.read { db in
+      db.trace(options: .statement) { event in
+        guard case .statement(let statement) = event else { return }
+        let acknowledgeNow = step.withLock { step -> Bool in
+          if step == 0, statement.sql.contains("FROM acknowledged_ops") { step = 1 } else if step == 1 {
+            step = 2
+            return true
+          }
+          return false
+        }
+        if acknowledgeNow { try? s.acknowledge(counters: [1], head: Chain.Head(counter: 1, hash: h(1)), at: 5) }
+      }
+    }
+
+    let overlay = try s.outboxOverlay(writerID: writer, foldedThrough: 0)
+
+    #expect(step.withLock { $0 } == 2)
+    #expect(try s.pendingCount() == 0)
+    #expect(overlay.map(\.opID) == ["op1"])
+  }
+
+  @Test("the outbox overlay lists acknowledged ops, then pending ones, without the ones already folded")
+  func overlayLeavesOutWhatIsFolded() throws {
+    let s = try created()
+    try s.enqueue(
+      ["op1", "op2", "op3"].map {
+        PendingOp(opID: $0, opJSON: Data("{}".utf8), opType: "home_currency_set", entityKind: nil, entityID: nil, enqueuedAt: 0)
+      })
+    try s.persistBatch([
+      InflightBlob(counter: 1, batchID: "B", prevHash: .zero, blobHash: h(1), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op1"], headSig: nil, createdAt: 0),
+      InflightBlob(counter: 2, batchID: "B", prevHash: h(1), blobHash: h(2), sizeBucket: 1024, blob: Data(count: 1024),
+        opIDs: ["op2"], headSig: Data(repeating: 5, count: 64), createdAt: 0),
+    ])
+    try s.acknowledge(counters: [1, 2], head: Chain.Head(counter: 2, hash: h(2)), at: 5)
+    try s.db.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO wire_rows (seq, writer_id, writer_counter, type_flag, size_bucket, blob_hash, prev_hash, created_at, blob, disposition)
+          VALUES (7, ?, 1, 'edit', 1024, zeroblob(32), zeroblob(32), 't', x'00', 'folded')
+          """,
+        arguments: [writer.string])
+    }
+
+    #expect(try s.outboxOverlay(writerID: writer, foldedThrough: 0).map(\.opID) == ["op1", "op2", "op3"])
+    #expect(try s.outboxOverlay(writerID: writer, foldedThrough: 7).map(\.opID) == ["op2", "op3"])
   }
 
   @Test("an acknowledged op is kept until the pull reaches its row, whatever that row's disposition")

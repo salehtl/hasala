@@ -428,14 +428,18 @@ public final class LedgerStore: Sendable {
   }
 
   public func pendingOps(limit: Int = 10_000) throws(StoreError) -> [PendingOp] {
-    let rows = try read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM pending_ops ORDER BY local_seq LIMIT ?", arguments: [limit])
-    }
-    return rows.map {
-      PendingOp(
-        localSeq: $0["local_seq"], opID: $0["op_id"], opJSON: $0["op_json"], opType: $0["op_type"],
-        entityKind: $0["entity_kind"], entityID: $0["entity_id"], enqueuedAt: $0["enqueued_at"])
-    }
+    let rows = try read { db in try Self.pendingRows(db, limit: limit) }
+    return rows.map(Self.pendingOp)
+  }
+
+  static func pendingRows(_ db: Database, limit: Int) throws -> [Row] {
+    try Row.fetchAll(db, sql: "SELECT * FROM pending_ops ORDER BY local_seq LIMIT ?", arguments: [limit])
+  }
+
+  static func pendingOp(_ row: Row) -> PendingOp {
+    PendingOp(
+      localSeq: row["local_seq"], opID: row["op_id"], opJSON: row["op_json"], opType: row["op_type"],
+      entityKind: row["entity_kind"], entityID: row["entity_id"], enqueuedAt: row["enqueued_at"])
   }
 
   public func pendingCount() throws(StoreError) -> Int {

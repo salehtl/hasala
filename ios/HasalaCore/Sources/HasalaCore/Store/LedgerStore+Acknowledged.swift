@@ -24,17 +24,22 @@ extension LedgerStore {
     """
 
   public func acknowledgedOps(writerID: WriterID, foldedThrough seq: Int64) throws(StoreError) -> [PendingOp] {
+    let rows = try read { db in try Self.unfoldedAcknowledged(db, writerID: writerID, foldedThrough: seq) }
+    return rows.map(Self.pendingOp)
+  }
+
+  public func outboxOverlay(writerID: WriterID, foldedThrough seq: Int64) throws(StoreError) -> [PendingOp] {
     let rows = try read { db in
-      try Row.fetchAll(
-        db,
-        sql: "SELECT * FROM acknowledged_ops WHERE NOT (\(Self.foldedAcknowledged)) ORDER BY local_seq",
-        arguments: [writerID.string, seq])
+      try Self.unfoldedAcknowledged(db, writerID: writerID, foldedThrough: seq) + Self.pendingRows(db, limit: 10_000)
     }
-    return rows.map {
-      PendingOp(
-        localSeq: $0["local_seq"], opID: $0["op_id"], opJSON: $0["op_json"], opType: $0["op_type"],
-        entityKind: $0["entity_kind"], entityID: $0["entity_id"], enqueuedAt: $0["enqueued_at"])
-    }
+    return rows.map(Self.pendingOp)
+  }
+
+  private static func unfoldedAcknowledged(_ db: Database, writerID: WriterID, foldedThrough seq: Int64) throws -> [Row] {
+    try Row.fetchAll(
+      db,
+      sql: "SELECT * FROM acknowledged_ops WHERE NOT (\(foldedAcknowledged)) ORDER BY local_seq",
+      arguments: [writerID.string, seq])
   }
 
   public func forgetAcknowledged(writerID: WriterID, foldedThrough seq: Int64) throws(StoreError) {
