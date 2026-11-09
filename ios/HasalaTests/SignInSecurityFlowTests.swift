@@ -186,6 +186,22 @@ struct SignInSecurityFlowTests: AccountSuite {
     }
   }
 
+  @Test func aFinishTheServerAlreadyTookStaysOnItsScreenForAnotherTry() async {
+    for failure: AuthFailure in [.offline, .rateLimited, .refused] {
+      let account = MockAccountService(existing: .passkey)
+      let m = await verifiedRecovery(account)
+      account.recoverySurvivesFailure = true
+      account.failNext = failure
+      #expect(await m.finishRecovery(.passkey) == .failed)
+      #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+      #expect(m.recoverCode == MockAccountService.emailCode)
+      #expect(m.failure(on: .recoverMethod) == failure)
+      #expect(m.failure(on: .recoverWords) == nil)
+      #expect(await m.finishRecovery(.passkey) == .done)
+      #expect(account.verifiedRecoveryCodes == [MockAccountService.emailCode])
+    }
+  }
+
   @Test func aClosedPasskeySheetKeepsTheCeremonyForAnotherTry() async {
     let account = MockAccountService(existing: .passkey)
     let m = await verifiedRecovery(account)

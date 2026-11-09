@@ -389,6 +389,7 @@ protocol AccountService: AnyObject {
   /// (`02` #48 answers `options` for a passkey or `salt` for a password).
   func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure)
   func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure)
+  func recoveryCanContinue(_ ticket: RecoveryTicket) -> Bool
 
   // MARK: Signed in
 

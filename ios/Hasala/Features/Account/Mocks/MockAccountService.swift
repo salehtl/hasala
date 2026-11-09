@@ -262,6 +262,7 @@
 
     /// The kind the ceremony was verified with (`02` #48).
     private(set) var recoveryKind: SignInMethod?
+    var recoverySurvivesFailure = false
 
     func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
       await pause()
@@ -274,13 +275,15 @@
       recoveryKind = kind
     }
 
+    func recoveryCanContinue(_ ticket: RecoveryTicket) -> Bool { recoveryKind != nil }
+
     func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
       await pause()
       // `recover/finish` refuses a kind other than the verified one (uniformly).
       guard recoveryKind == credential.method else { throw .refused }
       if let failure = failNext {
         failNext = nil
-        if failure != .cancelled { recoveryKind = nil }
+        if failure != .cancelled && !recoverySurvivesFailure { recoveryKind = nil }
         throw failure
       }
       let (email, devices) = (security.email, security.devices)

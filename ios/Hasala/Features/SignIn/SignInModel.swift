@@ -373,6 +373,10 @@ final class SignInModel {
       fail(.notInThisBuild, on: screen)
       return .failed
     } catch {
+      if account.recoveryCanContinue(recovery) {
+        fail(error, on: screen)
+        return .failed
+      }
       self.recovery = nil
       recoverCodeSentAt = nil
       recoverCodeUsedUp = false

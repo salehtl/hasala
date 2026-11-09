@@ -250,6 +250,45 @@ struct LiveAccountFlowTests {
     #expect(await account.freezeInfo() == nil)
   }
 
+  private func recoveryReadyToFinish(_ server: MiniHasalad) async throws -> (Phone, SignInModel) {
+    let words = try await signUp(Phone(server), server)
+    let b = Phone(server, passkeys: StubPasskeys())
+    let m = SignInModel(account: b.relaunched()) { _ in }
+    m.phraseText = words.joined(separator: " ")
+    #expect(await m.submitRecoveryWords())
+    m.recoverCode = try #require(server.lastCode)
+    #expect(await m.submitRecoveryCode())
+    #expect(m.verifiedRecoveryKind == .passkey)
+    return (b, m)
+  }
+
+  @Test func aRecoveryTheServerTookFinishesOnTheSameScreen() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (b, m) = try await recoveryReadyToFinish(server)
+    server.accountUnavailable = true
+    #expect(await m.finishRecovery(.passkey) == .failed)
+    #expect(m.recovery != nil && m.verifiedRecoveryKind == .passkey)
+    #expect(m.failure(on: .recoverMethod) != nil)
+    #expect(m.failure(on: .recoverWords) == nil)
+    #expect(server.recoverFinishes == 1)
+    #expect(b.binding == nil)
+
+    server.accountUnavailable = false
+    #expect(await m.finishRecovery(.passkey) == .done)
+    #expect(server.recoverFinishes == 1 && server.recoverVerifies == 1)
+    #expect(b.binding != nil)
+  }
+
+  @Test func aRecoveryTheServerRefusedGoesBackToTheWords() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (_, m) = try await recoveryReadyToFinish(server)
+    server.refusesRecoverFinish = true
+    #expect(await m.finishRecovery(.passkey) == .startAgain)
+    #expect(m.recovery == nil && m.verifiedRecoveryKind == nil)
+    #expect(m.failure(on: .recoverWords) != nil)
+    #expect(server.recoverFinishes == 0)
+  }
+
   @Test func aNewIPhoneSignedInToAFrozenAccountUnfreezesWithItsPasskey() async throws {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
@@ -760,7 +799,11 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var mailboxLink: (thisDevice: Bool, provider: String)?
     var mailboxLinkAsks = 0
     var recoveries: [String: (user: String, code: String)] = [:]
+    var recoverNonces: [String: Data] = [:]
     var recoverVerifies = 0
+    var recoverFinishes = 0
+    var refusesRecoverFinish = false
+    var accountUnavailable = false
     var phraseViews = 0
     var keysUnavailable = false
   }
@@ -789,6 +832,15 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
   var recoverVerifies: Int { state.withLock { $0.recoverVerifies } }
+  var recoverFinishes: Int { state.withLock { $0.recoverFinishes } }
+  var refusesRecoverFinish: Bool {
+    get { state.withLock { $0.refusesRecoverFinish } }
+    set { state.withLock { $0.refusesRecoverFinish = newValue } }
+  }
+  var accountUnavailable: Bool {
+    get { state.withLock { $0.accountUnavailable } }
+    set { state.withLock { $0.accountUnavailable = newValue } }
+  }
   var mailboxLinkAsks: Int { state.withLock { $0.mailboxLinkAsks } }
   var phraseViews: Int { state.withLock { $0.phraseViews } }
   var keysUnavailable: Bool {
@@ -934,8 +986,10 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       guard let id = b["ceremony_id"] as? String, let c = s.recoveries[id], c.code == b["code"] as? String,
         let u = s.users[c.user]
       else { return error(403, "code_rejected") }
+      let nonce = bytes(32)
+      s.recoverNonces[id] = nonce
       return ok([
-        "nonce": Base64.encode(bytes(32)), "user_id": u.id, "amk_commitment": u.keys["amk_commitment"] ?? "",
+        "nonce": Base64.encode(nonce), "user_id": u.id, "amk_commitment": u.keys["amk_commitment"] ?? "",
         "authority_pubkey": u.keys["authority_pubkey"] ?? "", "recovery_wrap": u.keys["recovery_wrap"] ?? "",
         "current_epoch": 1,
         "options": [
@@ -945,6 +999,18 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
           ]
         ],
       ])
+    case "POST /api/v1/auth/recover/finish":
+      guard !s.refusesRecoverFinish, let id = b["ceremony_id"] as? String, let c = s.recoveries.removeValue(forKey: id),
+        var u = s.users[c.user], let nonce = s.recoverNonces.removeValue(forKey: id),
+        let w = b["writer"] as? [String: Any], let wid = w["writer_id"] as? String
+      else { return error(403, "recovery_refused") }
+      s.recoverFinishes += 1
+      u.writers.append(
+        writerRow(wid, w["pubkey"], w["dak_pubkey"], Base64.encode(nonce), w["registration_sig"], id: u.writers.count + 1))
+      s.users[u.id] = u
+      let t = token()
+      s.sessions[t] = (c.user, wid, false)
+      return grant(t, u, writer: wid)
     default: break
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }
@@ -961,6 +1027,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     case "GET /api/v1/auth/session":
       return ok(["user_id": u.id, "writer_id": opt(sess.writer), "restricted": u.frozenBy != nil])
     case "GET /api/v1/account":
+      if s.accountUnavailable { return error(503, "unavailable") }
       return ok([
         "user_id": u.id, "status": "active", "has_keys": true, "email": u.email, "display_name": u.name,
         "has_password": true, "password_salt": Base64.encode(salt(u.email)), "has_passkey": !u.passkeys.isEmpty,

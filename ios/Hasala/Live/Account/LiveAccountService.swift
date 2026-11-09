@@ -540,6 +540,8 @@ final class LiveAccountService: AccountService {
     methodConfirmed = true
   }
 
+  func recoveryCanContinue(_ ticket: RecoveryTicket) -> Bool { recovery?.ceremonyID == ticket.id }
+
   // MARK: Signed in
 
   /// What `GET /account` and the binding say. Passkey rows, devices and last sign-in

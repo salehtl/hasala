@@ -869,6 +869,7 @@ final class CountingAccount: AccountService {
   func finishRecovery(_ ticket: RecoveryTicket, credential: NewCredential) async throws(AuthFailure) {
     try await mock.finishRecovery(ticket, credential: credential)
   }
+  func recoveryCanContinue(_ ticket: RecoveryTicket) -> Bool { mock.recoveryCanContinue(ticket) }
   func securityState() async throws(AuthFailure) -> SecurityState { try await mock.securityState() }
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
     try await mock.perform(action, password: password)
