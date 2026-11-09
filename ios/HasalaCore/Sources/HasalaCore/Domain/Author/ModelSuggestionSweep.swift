@@ -156,6 +156,7 @@ public enum ModelSuggestionSweep {
     try Task.checkCancellation()
     return try await serial.run {
       let fresh = try await reread()
+      try Task.checkCancellation()
       let blobs = try stamps.categorizations(items(suggestions, current: fresh.rows), context: fresh.context)
       if !blobs.isEmpty { try await commit(blobs) }
       return blobs

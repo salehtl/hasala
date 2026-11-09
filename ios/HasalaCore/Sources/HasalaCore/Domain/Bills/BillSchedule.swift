@@ -99,7 +99,10 @@ public struct BillScheduleView: Sendable {
     pauses.contains { p in p.from <= due && (p.until.map { due < $0 } ?? true) }
   }
 
-  public var openPause: (from: CivilDate, until: CivilDate?)? { pauses.last }
+  public var openPause: (from: CivilDate, until: CivilDate?)? {
+    guard let last = pauses.last, last.until == nil else { return nil }
+    return last
+  }
 
   public func halfWindowDays(at due: CivilDate) -> Int {
     let days: Int

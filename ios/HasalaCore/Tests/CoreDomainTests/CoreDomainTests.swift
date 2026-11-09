@@ -134,6 +134,11 @@ struct CoreDomainTests {
     #expect(e2.income(CivilMonth(year: 2026, month: 9)!).total == 2_500_000)
   }
 
+  @Test("a bill due is never cancelled: an ended bill gives no due at all")
+  func noCancelledDue() {
+    #expect(BillExpectation.Status(rawValue: "cancelled") == nil)
+  }
+
   @Test("OpAuthor refuses an op the fold would refuse")
   func authorRefusals() throws {
     var a = OpAuthor(ctx())

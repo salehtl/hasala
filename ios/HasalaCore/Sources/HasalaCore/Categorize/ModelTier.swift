@@ -21,7 +21,7 @@ public enum ModelAvailability: String, Sendable, Equatable {
 
 public enum ModelFailure: String, Sendable, Equatable {
   case timeout, guardrail, refusal, rateLimited, busy, contextOverflow, assetsUnavailable, decoding, unsupportedLanguage, notEnabled,
-    refused, offScreen, other
+    refused, offScreen, cancelled, other
 }
 
 public enum ModelAnswer: Sendable, Equatable {
@@ -186,6 +186,7 @@ public enum ModelTier {
   static func graded(_ model: any CategoryModel, subject: String, allowed: [AllowedCategory], within limit: Duration) async -> Graded {
     let race = Race()
     let timedOut = Graded(answer: .failed(.timeout), autoFile: false)
+    let cancelled = Graded(answer: .failed(.cancelled), autoFile: false)
     return await withTaskCancellationHandler {
       await withCheckedContinuation { (k: CheckedContinuation<Graded, Never>) in
         race.start(
@@ -204,7 +205,7 @@ public enum ModelTier {
           })
       }
     } onCancel: {
-      race.finish(timedOut)
+      race.finish(cancelled)
     }
   }
 

@@ -322,6 +322,8 @@ public struct CompiledTemplate: Sendable {
     case definition
   }
 
+  static func runError(_ e: EngineError) -> RunError { e == .limitExceeded ? .limitExceeded : .definition }
+
   /// Evaluates one entry; whether it produced a value. A pattern that does not match, or
   /// whose capture fails typed conversion, moves on to the next pattern. A currency the format
   /// refuses ends the field for the run.
@@ -338,7 +340,7 @@ public struct CompiledTemplate: Sendable {
       // deadline, which arrives as cancellation.
       if Task.isCancelled { throw .cancelled }
       let m: ICURegex.Match?
-      do { m = try re.firstMatch(in: src) } catch { throw .limitExceeded }
+      do { m = try re.firstMatch(in: src) } catch { throw Self.runError(error) }
       guard let m else { continue }
       func group(_ name: String) -> String? {
         for (k, n) in re.groups.enumerated() where n.map({ same($0, name) }) == true {

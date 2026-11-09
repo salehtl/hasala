@@ -150,6 +150,38 @@ struct BacklogSortTests {
     #expect(r.stop == .rateLimited && r.calls == 1 && r.memo.tries.isEmpty && r.memo.asked.isEmpty && r.pending == 1)
   }
 
+  @Test("a pass cancelled while its calls run spends no try: the requests still count and the names are asked again", arguments: [BacklogSort.concurrency, 1])
+  func cancelledPass(width: Int) async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("PLACE ONE", "debit"), ("PLACE TWO", "debit"), ("PLACE THREE", "debit")])
+    let rows = l.rows()
+    let hanging = BacklogCloud(delay: .seconds(60))
+    let running = Task {
+      try await BacklogSort.pass(
+        rows: rows, categorizer: T.categorizer, allowed: T.allowed, cloud: hanging, memo: .init(), cache: MemoryCache(), now: { now },
+        autoFile: true, concurrency: width, callTimeout: .seconds(60))
+    }
+    while hanging.calls.count < width { await Task.yield() }
+    running.cancel()
+    let p = try await running.value
+    #expect(p.calls == width && hanging.calls.count == width)
+    #expect(p.memo.tries.isEmpty && p.memo.asked.isEmpty && p.pending == 3 && p.stop == nil)
+    let cloud = BacklogCloud()
+    let again = try await Self.pass(l, cloud, memo: p.memo)
+    #expect(cloud.calls.count == 3 && again.memo.asked.count == 3 && again.pending == 0)
+  }
+
+  @Test("a call that runs past its limit is still a try")
+  func deadlineIsATry() async throws {
+    var l = T.Ledger()
+    _ = try l.ingest([("SLOW SHOP", "debit")])
+    let slow = BacklogCloud(delay: .seconds(60))
+    let p = try await BacklogSort.pass(
+      rows: l.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: slow, memo: .init(), cache: MemoryCache(), now: { now },
+      autoFile: true, callTimeout: .milliseconds(10))
+    #expect(p.calls == 1 && p.memo.tries == ["slow shop": 1] && p.pending == 1)
+  }
+
   @Test("a context-overflow retry is a request: it counts toward the pass and the device budget")
   func overflowRetry() async throws {
     final class OverflowsOnce: GradedCategoryModel, Sendable {
@@ -210,6 +242,77 @@ struct BacklogSortTests {
     #expect(BacklogSort.Pass.failed(.init()).failed)
     let failed = BacklogSort.Pass.failed(.init(), calls: 3)
     #expect(failed.failed && failed.calls == 3)
+  }
+
+  @Test("a pass that hit a limit and then could not write still reports the limit")
+  func limitOutlivesAFailedWrite() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    _ = try l.ingest([("SURE SHOP", "debit"), ("MYSTERY PLACE 77", "debit"), ("THIRD PLACE 88", "debit")])
+    let snapshot = l
+    func cloud() -> BacklogCloud { BacklogCloud(fallback: (.category("groceries"), false), failAt: (2, .rateLimited)) }
+    let write = try await BacklogSort.run(
+      rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud(), memo: .init(), cache: MemoryCache(),
+      now: { now }, autoFile: true, concurrency: 1, stamps: AuthorStamps(), serial: WriteSerial(),
+      reread: { (snapshot.rows(), snapshot.context()) }, enqueue: { _ in throw Boom() })
+    #expect(write.failed && write.outcome.failed && write.outcome.stop == .rateLimited && write.outcome.calls == 2)
+    do {
+      _ = try await BacklogSort.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud(), memo: .init(), cache: MemoryCache(),
+        now: { now }, autoFile: true, concurrency: 1, stamps: AuthorStamps(), serial: WriteSerial(),
+        reread: { throw Boom() }, enqueue: { _ in })
+      Issue.record("the reread failed, so the run must throw")
+    } catch let e as BacklogSort.Interrupted {
+      #expect(e.pass.failed && e.pass.stop == .rateLimited && e.pass.calls == 2)
+    }
+    final class NoRecords: ModelAnswerCache, Sendable {
+      func answer(subject: String, taxonomyHash: String, modelTag: String, now: Int64) throws -> CachedAnswer? { nil }
+      func recordUnknown(_ entries: [(subject: String, modelTag: String)], taxonomyHash: String, now: Int64) throws {}
+      func recordAnswers(_ entries: [ModelTier.StagedSuggestion], taxonomyHash: String, now: Int64) throws { throw Boom() }
+      func keptAnswer(subject: String, modelTag: String) throws -> String? { nil }
+      func keepAnswers(_ entries: [ModelTier.StagedSuggestion]) throws {}
+      func dropKept(_ entries: [(subject: String, modelTag: String)]) throws {}
+    }
+    do {
+      _ = try await Self.pass(snapshot, cloud(), cache: NoRecords(), concurrency: 1)
+      Issue.record("the cache failed, so the pass must throw")
+    } catch let e as BacklogSort.Interrupted {
+      #expect(e.pass.failed && e.pass.stop == .rateLimited && e.pass.calls == 2)
+    }
+    let failed = BacklogSort.Pass.failed(.init(), calls: 1, stop: .rateLimited)
+    let decided = BacklogSort.next(after: failed, importRunning: false, backoffs: 0, nowMs: now)
+    #expect(failed.failed && decided.next == .pass(afterMs: BacklogSort.backoffMs[0]) && decided.backoffs == 1)
+  }
+
+  @Test("what a pass will file is told before its first write, also when that write fails")
+  func toldBeforeTheWrite() async throws {
+    struct Boom: Error {}
+    var l = T.Ledger()
+    let ids = try l.ingest([("SURE SHOP", "debit"), ("UNSURE SHOP", "debit")], needsReview: false)
+    let snapshot = l
+    func cloud() -> BacklogCloud {
+      BacklogCloud(["sure shop": (.category("groceries"), true), "unsure shop": (.category("dining"), false)])
+    }
+    func sort(enqueue: @escaping @Sendable (AuthoredBlob) async throws -> Void, told: @escaping @Sendable (BacklogSort.Filing) async -> Void)
+      async throws -> BacklogSort.Committed
+    {
+      try await BacklogSort.run(
+        rows: snapshot.rows(), categorizer: T.categorizer, allowed: T.allowed, cloud: cloud(), memo: .init(), cache: MemoryCache(),
+        now: { now }, autoFile: true, stamps: AuthorStamps(), serial: WriteSerial(),
+        reread: { (snapshot.rows(), snapshot.context()) }, willFile: told, enqueue: enqueue)
+    }
+    let events = Locked<[String]>([])
+    let told = Locked<BacklogSort.Filing?>(nil)
+    let good = try await sort(enqueue: { _ in events.withLock { $0.append("write") } }) { f in
+      told.withLock { $0 = f }
+      events.withLock { $0.append("told") }
+    }
+    #expect(events.withLock { $0.first } == "told" && events.withLock { $0.filter { $0 == "told" }.count } == 1)
+    #expect(told.withLock { $0 } == good.filing && good.filing.filed == [ids[0]: l.state.txns[ids[0]]!.version + 1])
+    told.withLock { $0 = nil }
+    let bad = try await sort(enqueue: { _ in throw Boom() }) { f in told.withLock { $0 = f } }
+    #expect(bad.failed && bad.filing == BacklogSort.Filing())
+    #expect(told.withLock { $0 }?.filed == [ids[0]: l.state.txns[ids[0]]!.version + 1])
   }
 
   @Test("a commit that fails part way keeps the filing of the blobs it enqueued")

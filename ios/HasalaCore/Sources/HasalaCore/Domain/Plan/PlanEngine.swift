@@ -62,7 +62,7 @@ public struct MoneyLine: Sendable, Equatable {
 /// 03b §3.12 `BillExpectation`, as the plan reads it.
 public struct BillExpectation: Sendable, Equatable {
   public enum Status: String, Sendable {
-    case upcoming, due, late, paid, skipped, cancelled
+    case upcoming, due, late, paid, skipped
 
     var isUnpaid: Bool { self == .upcoming || self == .due || self == .late }
   }

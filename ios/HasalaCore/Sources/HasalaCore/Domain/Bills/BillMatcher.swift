@@ -112,7 +112,10 @@ public struct BillMatcherResult: Sendable {
       switch r.resolution {
       case "paid": return .paid(txnID: r.txn, explicit: true)
       case "skipped": return .skipped
-      case "snoozed": return .snoozed(until: r.until.flatMap { CivilDate(wire: $0) } ?? due)
+      case "snoozed":
+        let until = r.until.flatMap { CivilDate(wire: $0) } ?? due
+        if until > today { return .snoozed(until: until) }
+        return until == today ? .due : .late
       default: break
       }
     }

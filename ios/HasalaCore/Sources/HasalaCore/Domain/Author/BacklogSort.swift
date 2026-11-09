@@ -47,11 +47,15 @@ public enum BacklogSort {
   public struct Interrupted: Error, Sendable {
     public let memo: Memo
     public let calls: Int
+    public let stop: Stop?
 
-    public init(memo: Memo, calls: Int = 0) {
+    public init(memo: Memo, calls: Int = 0, stop: Stop? = nil) {
       self.memo = memo
       self.calls = calls
+      self.stop = stop
     }
+
+    public var pass: Pass { .failed(memo, calls: calls, stop: stop) }
   }
 
   public enum Stop: String, Sendable, Equatable, Codable {
@@ -80,8 +84,8 @@ public enum BacklogSort {
       self.settled = settled
     }
 
-    public static func failed(_ memo: Memo, calls: Int = 0) -> Pass {
-      Pass(suggestions: [], memo: memo, pending: 0, calls: calls, stop: nil, failed: true)
+    public static func failed(_ memo: Memo, calls: Int = 0, stop: Stop? = nil) -> Pass {
+      Pass(suggestions: [], memo: memo, pending: 0, calls: calls, stop: stop, failed: true)
     }
   }
 
@@ -274,7 +278,7 @@ public enum BacklogSort {
           maxCalls: left, concurrency: concurrency, mayAsk: mayAsk)
         calls = r.requests
         let settled = Set(r.suggestions.map(\.subject) + r.unknown.map(\.subject))
-        let halted = Set(r.failed.filter { ModelTier.stops($0.failure) }.map(\.subject))
+        let halted = Set(r.failed.filter { ModelTier.stops($0.failure) || $0.failure == .cancelled }.map(\.subject))
         for a in Set(r.asked.map(\.subject)) {
           if settled.contains(a) {
             if memo.asked.insert(a).inserted { settledCount += 1 }
@@ -291,7 +295,7 @@ public enum BacklogSort {
           try cache.recordUnknown(r.unknown, taxonomyHash: taxonomy, now: now())
           try cache.recordAnswers(r.suggestions, taxonomyHash: taxonomy, now: now())
         } catch {
-          throw Interrupted(memo: memo, calls: calls)
+          throw Interrupted(memo: memo, calls: calls, stop: stop)
         }
         keep += r.suggestions.filter { work.rejected[$0.subject]?.contains($0.category) == true }
       }
@@ -300,7 +304,7 @@ public enum BacklogSort {
       try cache.dropKept(work.stale.map { (subject: $0, modelTag: tag) })
       try cache.keepAnswers(keep)
     } catch {
-      throw Interrupted(memo: memo, calls: calls)
+      throw Interrupted(memo: memo, calls: calls, stop: stop)
     }
     let suggestions = work.queued.compactMap { q -> ModelSuggestionSweep.Suggestion? in
       guard !work.blocked.contains(q.subject), let a = memo.answers[q.subject], let v = q.row.version, !q.row.rejects(a.category)
@@ -331,7 +335,7 @@ public enum BacklogSort {
       let blobs = try stamps.categorizations(items, context: fresh.context)
       return (blobs, p, Filing(items))
     } catch {
-      throw Interrupted(memo: p.memo, calls: p.calls)
+      throw Interrupted(memo: p.memo, calls: p.calls, stop: p.stop)
     }
   }
 
@@ -340,6 +344,8 @@ public enum BacklogSort {
     public var filing: Filing
     public var failed: Bool
     public var authored: Bool
+
+    public var outcome: Pass { failed ? .failed(pass.memo, calls: pass.calls, stop: pass.stop) : pass }
   }
 
   public static func run(
@@ -348,7 +354,8 @@ public enum BacklogSort {
     concurrency: Int = BacklogSort.concurrency, random: (any RandomSource)? = nil, callTimeout: Duration? = nil,
     trusts: @Sendable (String) -> Bool = { _ in true }, mayAsk: @Sendable () -> Bool = { true }, stamps: AuthorStamps,
     serial: WriteSerial, reread: @Sendable () async throws -> (rows: [SweepRow], context: AuthorContext),
-    enqueue: @Sendable (AuthoredBlob) async throws -> Void, reproject: @Sendable () async throws -> Void = {}
+    willFile: @Sendable (Filing) async -> Void = { _ in }, enqueue: @Sendable (AuthoredBlob) async throws -> Void,
+    reproject: @Sendable () async throws -> Void = {}
   ) async throws -> Committed {
     let p = try await pass(
       rows: rows, categorizer: categorizer, allowed: allowed, cloud: cloud, memo: memo, cache: cache, now: now, autoFile: autoFile,
@@ -358,34 +365,38 @@ public enum BacklogSort {
       try Task.checkCancellation()
       return try await serial.run {
         let fresh = try await reread()
+        try Task.checkCancellation()
         let items = ModelSuggestionSweep.items(p.suggestions, current: fresh.rows)
         guard !items.isEmpty else { return Committed(pass: p, filing: Filing(), failed: false, authored: false) }
         let blobs = try stamps.categorizations(items, context: fresh.context)
-        let c = await commit(blobs, filing: Filing(items), enqueue: enqueue)
+        let filing = Filing(items)
+        await willFile(filing)
+        let c = await commit(blobs, filing: filing, enqueue: enqueue)
         var failed = c.failed
-        if !blobs.isEmpty {
+        let authored = c.enqueued > 0
+        if authored {
           do { try await reproject() } catch { failed = true }
         }
-        return Committed(pass: p, filing: c.filing, failed: failed, authored: !blobs.isEmpty)
+        return Committed(pass: p, filing: c.filing, failed: failed, authored: authored)
       }
     } catch {
-      throw Interrupted(memo: p.memo, calls: p.calls)
+      throw Interrupted(memo: p.memo, calls: p.calls, stop: p.stop)
     }
   }
 
   public static func commit(
     _ blobs: [AuthoredBlob], filing: Filing, enqueue: (AuthoredBlob) async throws -> Void
-  ) async -> (filing: Filing, failed: Bool) {
+  ) async -> (filing: Filing, failed: Bool, enqueued: Int) {
     var done: [AuthoredBlob] = []
     for b in blobs {
       do {
         try await enqueue(b)
       } catch {
-        return (filing.only(done), true)
+        return (filing.only(done), true, done.count)
       }
       done.append(b)
     }
-    return (filing, false)
+    return (filing, false, done.count)
   }
 
   public static func next(after p: Pass, importRunning: Bool, backoffs: Int, nowMs: Int64) -> (next: Next, backoffs: Int) {

@@ -133,6 +133,21 @@ struct ModelSuggestionStageTests {
     #expect(cloud.calls.count == 3)
   }
 
+  @MainActor
+  @Test func theBackgroundStageSaysWhatItWillFileBeforeItWrites() async throws {
+    let a = try LiveLedgerMapperTests.account()
+    _ = try await Self.waiting(a, suite: "stage.willfile.tests")
+    let anchor = LiveLedgerMapperTests.anchor
+    let told = Mutex<BacklogSort.Filing?>(nil)
+    let stage = ModelSuggestionStage(
+      observer: a.observer, outbox: a.outbox, cache: FMCache(a.context.store), dictionary: AccountRuntime.dictionary,
+      onDevice: Counting("apple-fm/27.1", answer: .unknown), cloud: Counting("cf-clef/1", answer: .category("dining")),
+      onDeviceAlone: false, nowMs: { anchor }, willFile: { f in told.withLock { $0 = f } }, appActive: { true })
+    let r = await stage.backlogPass(BacklogSort.Memo(), dayLeft: 100)
+    #expect(r?.pass.failed == false && r?.filing.suggested.isEmpty == false)
+    #expect(told.withLock { $0 } == r?.filing)
+  }
+
   nonisolated final class Ledger: Sendable {
     private let log = Mutex<[Int]>([])
     func add(_ n: Int) { log.withLock { $0.append(n) } }

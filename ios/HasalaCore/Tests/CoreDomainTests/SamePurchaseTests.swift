@@ -1,4 +1,5 @@
 import CoreJSON
+import CorePrimitives
 import CoreReplay
 import CoreTime
 import CoreWire
@@ -135,6 +136,25 @@ struct SamePurchaseTests {
     #expect(Self.pairs([Self.f(), Self.f("f2"), a]).isEmpty)
   }
 
+  @Test("a foreign purchase a merged alert already settled is not offered to a later posting; another purchase still is")
+  func settledForeign() {
+    let note = SamePurchase.note(foreignMinor: 2_500, currency: "USD")
+    var merged = Self.a("merged")
+    merged.archived = true
+    merged.note = note
+    let settled = Self.f(home: 9_300, stated: true)
+    let later = Self.a("later", minor: 9_300, after: 3 * Self.day)
+    #expect(Self.pairs([settled, merged, later]).isEmpty)
+    #expect(Self.pairs([later, merged, settled]).isEmpty)
+    #expect(Self.pairs([settled, merged, Self.f("other", home: 9_280), later]) == ["other>later"])
+    var plain = merged
+    plain.note = nil
+    #expect(Self.pairs([settled, plain, later]) == ["f>later"])
+    var other = merged
+    other.note = "Lunch"
+    #expect(Self.pairs([settled, other, later]) == ["f>later"])
+  }
+
   @Test("one to one: the nearest amount wins, then the nearest date, then the ids")
   func oneToOne() {
     #expect(Self.pairs([Self.f(home: 10_000), Self.a("a1", minor: 10_300), Self.a("a2", minor: 10_100)]) == ["f>a2"])
@@ -168,7 +188,7 @@ struct SamePurchaseTests {
       manual: t.entryMethod == "manual", amountMinor: t.amountMinor, currency: t.currency, amountHomeMinor: t.amountHomeMinor,
       direction: t.direction, bank: t.bank, last4: t.last4, postedMs: try! parseInstantMs(t.postedAt),
       merchantKey: DuplicateRules.merchantKey(t.merchantRaw), possibleDuplicateOf: t.possibleDuplicateOf,
-      duplicateDisposition: t.duplicateDisposition, heldCopy: t.isHeldCopy)
+      duplicateDisposition: t.duplicateDisposition, heldCopy: t.isHeldCopy, note: t.annotation("note"))
   }
 
   static func fold(_ ops: [Op], _ s: inout State, seq: Int64) throws {
@@ -209,6 +229,23 @@ struct SamePurchaseTests {
     try Self.fold(try u.build().ops, &s, seq: 3)
     #expect(s.txns[f]?.amountHomeMinor == 9_181)
     #expect(s.txns[h]?.annotation("archived") == nil && s.txns[h]?.annotation("note") == nil)
+  }
+
+  @Test("after confirm a later posting is not asked about F; undo offers F again")
+  func confirmThenLaterPosting() throws {
+    var (s, f, h, last) = try Self.seeded()
+    var c = OpAuthor(AuthorContext(writerID: Self.w, nowMs: now, ownLastMs: last, maxAuthored: [:], random: SystemRandom()))
+    c.confirmSamePurchase(foreignID: f, foreignVersion: s.txns[f]!.version, homeID: h, homeAmountMinor: 9_300, foreignMinor: 2_500, foreignCurrency: "USD")
+    let later = try c.ingest(
+      payload: Self.payload("9250", "AED", "2026-10-12T08:00:00.000Z", "AMAZON"), ingestID: String(repeating: "c", count: 64))
+    let blob = try c.build()
+    try Self.fold(blob.ops, &s, seq: 2)
+    #expect(SamePurchase.pairs(s.txns.values.map(Self.row), home: "AED").isEmpty)
+
+    var u = OpAuthor(ctx(own: blob.lastAuthoredMs))
+    u.undoSamePurchase(foreignID: f, foreignVersion: s.txns[f]!.version, previousHomeMinor: 9_181, homeID: h, previousNote: nil)
+    try Self.fold(try u.build().ops, &s, seq: 3)
+    #expect(SamePurchase.pairs(s.txns.values.map(Self.row), home: "AED") == [SamePurchase.Pair(foreign: f, home: later, merchantMissing: false)])
   }
 
   @Test("undo with the live rate re-freezes F as an estimate at that rate")

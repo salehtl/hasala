@@ -23,6 +23,7 @@ struct ModelSuggestionStage: Sendable {
   var autoFileEnabled: @Sendable () -> Bool = { false }
   var cloudBudget: @Sendable () async -> Int = { BacklogSort.dayNames }
   var cloudSpent: @Sendable (Int) async -> Void = { _ in }
+  var willFile: @Sendable (BacklogSort.Filing) async -> Void = { _ in }
   var trusts: @Sendable (String) -> Bool = { _ in true }
   var appActive: @Sendable () -> Bool = { OnScreen.shared.isOn }
   let gate = SweepGate()
@@ -100,14 +101,11 @@ struct ModelSuggestionStage: Sendable {
           rows: try reader.sweepRows(), categorizer: try categorizer(taxonomy), allowed: ModelTier.allowed(taxonomy.ordered),
           cloud: cloud, memo: memo, cache: cache, now: nowMs, autoFile: autoFileEnabled(), dayLeft: left, random: SystemRandom(),
           trusts: trusts, mayAsk: appActive, stamps: observer.stamps, serial: observer.writes,
-          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) },
+          reread: { (try observer.reader.sweepRows(), try await observer.authorContext()) }, willFile: willFile,
           enqueue: { try await outbox.enqueue($0.ops) }, reproject: { try await observer.reproject() })
-        guard !r.failed else {
-          return .init(pass: .failed(r.pass.memo, calls: r.pass.calls), filing: r.filing)
-        }
-        return .init(pass: r.pass, filing: r.filing)
+        return .init(pass: r.outcome, filing: r.filing)
       } catch let e as BacklogSort.Interrupted {
-        return .init(pass: .failed(e.memo, calls: e.calls))
+        return .init(pass: e.pass)
       } catch {
         return nil
       }
