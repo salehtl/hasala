@@ -29,6 +29,35 @@ struct BankRequestTests {
     #expect(s.askable.map(\.slug) == ["fab", "wio"])
   }
 
+  @Test func nothingIsAskableUntilTheServerAnswers() {
+    #expect(BankRequestsSnapshot.unknown.askable.isEmpty)
+    #expect(BankRequestsSnapshot.unknown.requests.isEmpty)
+  }
+
+  @Test func aTypedRequestIsListedWhenTheReloadFails() {
+    let asked = RequestedBank(bank: "other", name: "Some Bank", state: .requested)
+    let held = BankRequestsSnapshot.unknown.answered(nil, asked: asked)
+    #expect(held.requests == [asked])
+    #expect(held.answered(nil, asked: asked).requests == [asked])
+  }
+
+  @Test func aCatalogRequestIsListedWhenTheReloadFails() {
+    let asked = RequestedBank(bank: "fab", name: "First Abu Dhabi Bank", state: .requested)
+    let open = BankRequestsSnapshot(
+      requests: [], catalog: [BankCatalogChoice(slug: "fab", name: "First Abu Dhabi Bank", state: .collectingSamples)])
+    let held = open.answered(nil, asked: asked)
+    #expect(held.requests == [asked] && held.catalog == open.catalog)
+  }
+
+  @Test func theServersAnswerReplacesARowKeptForARequest() {
+    let typed = RequestedBank(bank: "other", name: "FAB", state: .requested)
+    let fresh = BankRequestsSnapshot(
+      requests: [RequestedBank(bank: "fab", name: "First Abu Dhabi Bank", state: .collectingSamples)],
+      catalog: [BankCatalogChoice(slug: "fab", name: "First Abu Dhabi Bank", state: .collectingSamples)])
+    let held = BankRequestsSnapshot.unknown.answered(nil, asked: typed)
+    #expect(held.answered(fresh, asked: typed) == fresh)
+  }
+
   @Test func hintsNameOneDomainPerBank() {
     let hints = OtherBankProbe.hints(found: ["mashreqbank.com", "wio.io", "elsewhere.example"], in: BankCandidate.all)
     #expect(hints.map(\.candidate.slug) == ["mashreq", "wio"])

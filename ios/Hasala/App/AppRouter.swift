@@ -48,6 +48,7 @@ final class AppRouter {
   func sheetDismissed() {
     guard sheet == nil else { return }
     MailConnectCoordinator.release()
+    MailboxMoment.discard()
     profile = []
     overProfile = nil
     transaction = []
@@ -80,6 +81,7 @@ final class AppRouter {
   /// No sheet, no cover and nothing queued (the shell appearing again, after signing out
   /// and back in).
   func clearPresentation() {
+    MailboxMoment.discard()
     sheet = nil
     overProfile = nil
     cover = nil

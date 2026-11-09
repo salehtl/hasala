@@ -7,7 +7,7 @@ struct RequestBankSheet: View {
   let prober: OtherBankProbing?
   var onSent: (String) -> Void = { _ in }
 
-  @State private var snapshot: BankRequestsSnapshot = .offline
+  @State private var snapshot: BankRequestsSnapshot = .unknown
   @State private var typed = ""
   @State private var busy: String?
   @State private var probe: OtherBankProbe?
@@ -151,7 +151,16 @@ struct RequestBankSheet: View {
 
   private func load() async {
     guard let setup else { return }
-    if let s = try? await setup.bankRequests() { snapshot = s }
+    do {
+      snapshot = try await setup.bankRequests()
+    } catch {
+      failure = error
+    }
+  }
+
+  private func noteSent(_ asked: RequestedBank) async {
+    let fresh = try? await setup?.bankRequests()
+    snapshot = snapshot.answered(fresh, asked: asked)
   }
 
   private func look(_ prober: OtherBankProbing) async {
@@ -170,7 +179,7 @@ struct RequestBankSheet: View {
       try await setup.requestBank(name)
       typed = ""
       failure = nil
-      await load()
+      await noteSent(RequestedBank(bank: "other", name: name, state: .requested))
       onSent(name)
     } catch {
       failure = error
@@ -184,10 +193,7 @@ struct RequestBankSheet: View {
     do {
       try await setup.requestBank(slug: slug, senderDomain: domain)
       failure = nil
-      await load()
-      if !requested(slug) {
-        snapshot.requests.append(RequestedBank(bank: slug, name: name, state: .requested))
-      }
+      await noteSent(RequestedBank(bank: slug, name: name, state: .requested))
       onSent(name)
     } catch {
       failure = error

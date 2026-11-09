@@ -14,6 +14,7 @@ enum MailPastChoice: Equatable, Sendable {
 enum MailPastImport: Equatable, Sendable {
   case finished(Int)
   case later
+  case notStarted
 }
 
 /// What the bell, the Profile card and Bank alerts offer for mail.
@@ -71,6 +72,13 @@ enum MailConnectFailure: Error, Equatable {
     case .noMailbox(let account): Self.noMailboxLine(account)
     case .permissionMissing(let account): Self.permissionMissingLine(account)
     case .failed(let message): message
+    }
+  }
+
+  var hasScreen: Bool {
+    switch self {
+    case .cancelled, .noMailbox, .permissionMissing: true
+    case .alreadyConnected, .takenByOtherIPhone, .offline, .switchDeclined, .failed: false
     }
   }
 
@@ -246,7 +254,7 @@ struct MailImport: Equatable, Sendable {
 extension MailboxConnecting {
   var pastMailDays: Int { 90 }
 
-  func importPastMail(_ mailboxID: String) async -> MailPastImport { .later }
+  func importPastMail(_ mailboxID: String) async -> MailPastImport { .notStarted }
 
   var defaultPastMail: MailPastChoice { heldElsewhere == nil ? .importPast : .newOnly }
 

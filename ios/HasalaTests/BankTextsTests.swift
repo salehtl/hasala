@@ -86,6 +86,33 @@ struct BankTextsTests {
     #expect(!lane.usesTexts && lane.finishCalls == 0 && finished == 1 && m.facts.bankSkipped && !m.facts.textsChosen)
   }
 
+  @Test func skippingTheSourceDuringAConnectKeepsTheChoice() async throws {
+    let mailbox = MockMailbox()
+    let s = services(texts: MockBankTexts(), mailbox: mailbox)
+    mailbox.connectDelay = .milliseconds(200)
+    var finished = 0
+    let m = model(s) { finished += 1 }
+    m.chooseSource(.email)
+    async let connect: Void = m.connectMail(.gmail)
+    for _ in 0..<400 where !m.connectBusy { try await Task.sleep(for: .milliseconds(1)) }
+    #expect(m.connectBusy)
+    m.skipSource()
+    #expect(m.source == .email && finished == 0 && !m.facts.bankSkipped)
+    _ = await connect
+  }
+
+  @Test func aTestThatCannotStartStaysOnTheStep() {
+    let lane = MockBankTexts()
+    lane.startFails = true
+    let m = model(services(texts: lane))
+    m.chooseSource(.texts)
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp] && m.failure != nil && lane.testsStarted == 0)
+    lane.startFails = false
+    m.sendTestText()
+    #expect(m.path == [.textsSetUp, .textsTest] && m.failure == nil && lane.testsStarted == 1)
+  }
+
   @Test func skippingTheSourceChoiceLeavesSetUp() {
     var finished = 0
     let lane = MockBankTexts()
@@ -346,7 +373,7 @@ struct BankTextsTests {
   @Test func theTestTextIsWaitedFor() async throws {
     let lane = MockBankTexts(setUp: true)
     lane.testDelay = .milliseconds(10)
-    lane.startTest()
+    try lane.startTest()
     #expect(lane.test.isWaiting)
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     guard case .received = lane.test else {
@@ -354,7 +381,7 @@ struct BankTextsTests {
       return
     }
     lane.testOutcome = .nothing
-    lane.startTest()
+    try lane.startTest()
     for _ in 0..<200 where lane.test.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
     #expect(lane.test == .nothingYet)
   }
@@ -421,6 +448,22 @@ struct BankTextsTests {
     #expect(lane.replaced == ["row-2"])
     #expect(await m.add(replacing: false))
     #expect(lane.replaced == ["row-2"] && lane.added.count == 2)
+  }
+
+  @Test func aRetriedAddDropsTheOldFailureWhileItRuns() async throws {
+    let lane = MockBankTexts(setUp: true)
+    lane.readDelay = .zero
+    let m = PasteBankTextModel(lane: lane)
+    await m.paste(MockBankTexts.sampleText)
+    lane.nextAddFailure = .failed("Couldn't add it.")
+    let first = await m.add()
+    #expect(!first && m.failure == "Couldn't add it.")
+    lane.addDelay = .milliseconds(200)
+    let retry = Task { await m.add() }
+    for _ in 0..<200 where !m.adding { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(m.adding && m.failure == nil)
+    let added = await retry.value
+    #expect(added && m.failure == nil && lane.added.count == 1)
   }
 
   @Test func aCodeTextIsNotCheckedForAMatch() async {

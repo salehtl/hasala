@@ -16,7 +16,7 @@ import Foundation
 
 /// The provider ids of the shared contract: the strings used in the database, the API, the op's
 /// `provenance.provider` and the server's address HMAC.
-public enum MailProviderID: String, Sendable, Hashable, CaseIterable {
+public enum MailProviderID: String, Sendable, Hashable, CaseIterable, Codable {
   case gmail
   case outlook
 

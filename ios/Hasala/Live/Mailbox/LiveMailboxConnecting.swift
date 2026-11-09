@@ -142,9 +142,14 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
   }
 
   func importPastMail(_ mailboxID: String) async -> MailPastImport {
-    guard let rt = runtime(), let lane = rt.lane else { return .later }
+    guard let rt = runtime(), let lane = rt.lane else { return .notStarted }
     let report = await lane.importPastMail()
     await rt.refreshMailbox()
+    return Self.pastImport(report)
+  }
+
+  static func pastImport(_ report: CycleReport) -> MailPastImport {
+    guard report.pastImportStarted else { return .notStarted }
     return report.completed && report.haltedOn == nil ? .finished(report.ops) : .later
   }
 
@@ -411,6 +416,8 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     if let refusal = Self.refusal(reviewAccount: rt.reviewAccount, holdsSample: rt.store.holdsSample) {
       throw .failed(refusal.message)
     }
+    rt.connectStarted()
+    defer { rt.connectEnded() }
     let current = rt.lane
     let status = await (current ?? lane).status()
     let replaces = try Self.admit(
@@ -431,7 +438,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     await old?.stop()
     let newest = (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil
     let result = await lane.connect(
-      backfillDays: days, pastMail: Self.pastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
+      backfillDays: days, pastMail: Self.connectPastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
       replacing: replaces, retiring: retiring, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
@@ -450,6 +457,10 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     }
     return MailLinked(
       mailboxID: Self.mailboxID(provider), nowReading: nowReading, removal: Self.removal(retired, old: oldName))
+  }
+
+  static func connectPastMail(_ answer: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {
+    pastMail(takesOver ? .newOnly : answer, takesOver: takesOver, newestImportMs: newestImportMs)
   }
 
   static func pastMail(_ choice: MailPastChoice, takesOver: Bool, newestImportMs: Int64?) -> MailboxPastMail {

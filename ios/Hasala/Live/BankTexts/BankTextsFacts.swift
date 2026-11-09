@@ -46,6 +46,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
     return nowMs >= opened && nowMs < opened + Self.testWindowMs
   }
 
+  mutating func openTest(atMs ms: Int64) {
+    testOpenedMs = ms
+    testPassedMs = nil
+  }
+
   mutating func prune(nowMs: Int64) {
     if let older = lastKeptMs.values.max() { lastTextMs = max(lastTextMs ?? older, older) }
     lastKeptMs = [:]
@@ -65,6 +70,11 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
   mutating func noteAuthored(atMs ms: Int64) {
     let day = Self.day(ms)
     authoredToday = DayCount(day: day, count: authoredToday?.day == day ? (authoredToday?.count ?? 0) + 1 : 1)
+  }
+
+  mutating func releaseAuthored(atMs ms: Int64) {
+    guard let authored = authoredToday, authored.day == Self.day(ms) else { return }
+    authoredToday = authored.count > 1 ? DayCount(day: authored.day, count: authored.count - 1) : nil
   }
 
   mutating func addSetAside(sender: String, bank: String?, kind: BankTextDropKind, atMs: Int64) {
@@ -108,6 +118,12 @@ nonisolated struct BankTextsFactsData: Codable, Equatable, Sendable {
 
 nonisolated enum BankTextsFactsError: Error, Equatable, Sendable {
   case unavailable
+}
+
+nonisolated enum BankTextsDailyClaim: Equatable, Sendable {
+  case claimed
+  case atLimit
+  case notSaved
 }
 
 nonisolated final class BankTextsFacts: Sendable {
@@ -160,6 +176,19 @@ nonisolated final class BankTextsFacts: Sendable {
     lock.unlock()
     Self.announce()
     return next
+  }
+
+  func claimDailyText(nowMs: Int64) -> BankTextsDailyClaim {
+    var atLimit = false
+    do {
+      try update(nowMs: nowMs) { data in
+        atLimit = data.atDailyTextLimit(nowMs: nowMs)
+        if !atLimit { data.noteAuthored(atMs: nowMs) }
+      }
+    } catch {
+      return atLimit ? .atLimit : .notSaved
+    }
+    return atLimit ? .atLimit : .claimed
   }
 
   func forget() {

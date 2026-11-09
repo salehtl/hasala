@@ -431,6 +431,30 @@ struct MailboxFlowTests: AccountSuite {
     #expect(MailConnectErrorView.otherAccountTitle(.gmail) == "Use another Google account")
   }
 
+  @Test func aPermissionNotGivenHasItsScreenFromTheProfileToo() async {
+    let lane = mailbox()
+    lane.gmailPermissionMissing = true
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    await c.connect(.gmail)
+    #expect(c.errorScreen == .permissionMissing(.gmail) && c.inlineMessage == nil)
+    c.reset()
+    #expect(c.errorScreen == nil)
+    await c.retry(.gmail)
+    #expect(c.outcome == .connected(mailboxID: "gmail-1") && c.errorScreen == nil)
+  }
+
+  @Test func setupAndTheProfileGiveTheSameFailuresAScreen() {
+    let failures: [MailConnectFailure] = [
+      .cancelled, .alreadyConnected(address: "a@example.com"), .takenByOtherIPhone, .offline, .noMailbox(.gmail),
+      .noMailbox(.outlook), .permissionMissing(.gmail), .permissionMissing(.outlook), .switchDeclined, .failed("x"),
+    ]
+    for failure in failures {
+      #expect(SetupModel.showsErrorScreen(failure) == MailConnectCoordinator.hasScreen(failure, provider: .outlook), "\(failure)")
+    }
+    #expect(!MailConnectCoordinator.hasScreen(.cancelled, provider: .gmail))
+    #expect(MailConnectCoordinator.hasScreen(.permissionMissing(.gmail), provider: .gmail))
+  }
+
   /// Setup's connect screen after Back from the first scan shows the mailbox it connected
   /// (from the service, so a new screen or a relaunch shows it too) and no second sign-in;
   /// Add a mailbox never treats an earlier mailbox as this attempt's.
@@ -529,6 +553,61 @@ struct MailboxFlowTests: AccountSuite {
     MailboxMoment.hand(.signedInAgain(mailboxID: "outlook-1"))
     #expect(MailboxMoment.pendingAddition == nil)
     #expect(MailboxMoment.take() == .signedInAgain(mailboxID: "outlook-1"))
+    #expect(MailboxMoment.pending == nil)
+  }
+
+  @Test func aSecondFirstScanJoinsTheOneRunning() async throws {
+    let lane = mailbox()
+    lane.step = .milliseconds(5)
+    await MailConnectCoordinator(mailbox: lane, context: .addMailbox).connect(.gmail)
+    var opened: ScanProgress?
+    for await p in lane.firstScan() {
+      opened = p
+      break
+    }
+    let firstRead = try #require(opened).read
+    var reads: [Int] = []
+    for await p in lane.firstScan() { reads.append(p.read) }
+    #expect(try #require(reads.first) > firstRead)
+    #expect(reads == reads.sorted() && reads.last == lane.total)
+    #expect(lane.importing == nil && lane.mailboxes.first?.state == .connected)
+  }
+
+  @Test func aMomentIsHandedOnlyToABankAlertsAboutToShow() {
+    defer { MailboxMoment.discard() }
+    MailboxMoment.discard()
+    let router = AppRouter()
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.open(.profile, profile: [.bankAlerts])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pending == nil)
+    router.profile = [.bankAlerts, .connectMail(.outlook)]
+    MailboxMoment.hand(.signedInAgain(mailboxID: "outlook-1"), to: router)
+    #expect(MailboxMoment.pending == .signedInAgain(mailboxID: "outlook-1"))
+    router.profile = [.connectMail(.outlook)]
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+  }
+
+  @Test func aMomentGoesWithTheProfileSheet() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.bankAlerts, .connectMail(.outlook)])
+    MailboxMoment.hand(.added(mailboxID: "outlook-2"), to: router)
+    #expect(MailboxMoment.pendingAddition == "outlook-2")
+    router.sheet = nil
+    router.sheetDismissed()
+    #expect(MailboxMoment.pending == nil)
+  }
+
+  @Test func aMomentDoesNotReachTheNextAccount() {
+    defer { MailboxMoment.discard() }
+    let router = AppRouter()
+    router.open(.profile, profile: [.connectMail(.gmail)])
+    MailboxMoment.hand(.signedInAgain(mailboxID: "gmail-1"), to: router)
+    #expect(MailboxMoment.pending != nil)
+    AppRouter().clearPresentation()
     #expect(MailboxMoment.pending == nil)
   }
 

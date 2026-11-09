@@ -119,6 +119,7 @@ public struct CycleReport: Sendable, Equatable {
   public var completed = false
   public var phase: MailboxPhase = .unlinked
   public var stateUnread = false
+  public var pastImportStarted = false
   public init() {}
 
   var readMail: Bool { fetched + ops + staged + setAside + unreadable + dup > 0 }
@@ -288,7 +289,8 @@ public actor MailboxEngine {
   public private(set) var topicMismatch = false
   private var pause = ProviderPause()
   /// `runFirstScan` is driving: its passing stops are not `.failed` progress.
-  private var firstScansRunning = 0
+  private var firstScanRunning: Bool { firstScanFollowers != nil }
+  private var firstScanFollowers: [CheckedContinuation<[CycleReport], Never>]?
   public private(set) var stopped = false
   public private(set) var disconnectsWaiting = 0
   private var retiresRunning: Set<String> = []
@@ -551,6 +553,7 @@ public actor MailboxEngine {
       s.phase = resumePhase(s)
     }
     s.address = claims.email
+    s.provider = provider.id
     s.haltedOn = nil
     s.haltedDetail = nil
     s.lastHolderCheckAtMs = nil
@@ -1259,8 +1262,19 @@ public actor MailboxEngine {
   /// provider's `Retry-After`) when it read nothing, giving up after the last wait. While this
   /// runs, a passing stop is not reported as `.failed` progress, since the scan goes on.
   public func runFirstScan(maxCycles: Int = 50) async -> [CycleReport] {
-    firstScansRunning += 1
-    defer { firstScansRunning -= 1 }
+    if firstScanFollowers != nil {
+      if Task.isCancelled { return [] }
+      return await withCheckedContinuation { firstScanFollowers?.append($0) }
+    }
+    firstScanFollowers = []
+    let reports = await driveFirstScan(maxCycles: maxCycles)
+    let followers = firstScanFollowers ?? []
+    firstScanFollowers = nil
+    for follower in followers { follower.resume(returning: reports) }
+    return reports
+  }
+
+  private func driveFirstScan(maxCycles: Int) async -> [CycleReport] {
     var reports: [CycleReport] = []
     var stalls = 0
     for _ in 0..<maxCycles {
@@ -1388,6 +1402,7 @@ public actor MailboxEngine {
         report.haltedOn = .offline
         return report
       }
+      report.pastImportStarted = true
       return await runPendingImports(&state, report)
     }
   }
@@ -2161,7 +2176,7 @@ public actor MailboxEngine {
   func finish(_ state: inout MailboxState, _ report: CycleReport, clearReader: Bool = false) async -> CycleReport {
     var report = report
     let passes = report.haltedOn.map(Self.passing) == true && state.phase != .halted
-    if let h = report.haltedOn, h != .stagingFull, !(firstScansRunning > 0 && passes) { emit(.failed(h), 0, 0) }
+    if let h = report.haltedOn, h != .stagingFull, !(firstScanRunning && passes) { emit(.failed(h), 0, 0) }
     var c = commitState(state)
     c.clearReader = clearReader
     try? await commitForgetting(c)

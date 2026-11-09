@@ -103,6 +103,7 @@ import Testing
     s.lastCycleAt = 6
     s.lastSuccessAt = 7
     s.lastHolderCheckAt = 8
+    s.provider = "outlook"
     var w = MailboxWrite()
     w.state = s
     try t.commit(w)

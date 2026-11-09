@@ -46,6 +46,7 @@ enum SourceSwitch {
         }
       }
     }
+    texts.refresh()
     guard !texts.readsEmail else { return .failed(off.isEmpty ? readElsewhereLink : linkRemains) }
     do {
       try await texts.finishSetUp()

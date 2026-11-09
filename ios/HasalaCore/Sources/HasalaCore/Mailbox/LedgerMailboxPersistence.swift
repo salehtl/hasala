@@ -41,6 +41,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     s.lastCycleAtMs = r.lastCycleAt
     s.lastSuccessAtMs = r.lastSuccessAt
     s.lastHolderCheckAtMs = r.lastHolderCheckAt
+    s.provider = r.provider.flatMap(MailProviderID.init(rawValue:))
     return s
   }
 
@@ -120,6 +121,7 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
       r.lastCycleAt = s.lastCycleAtMs
       r.lastSuccessAt = s.lastSuccessAtMs
       r.lastHolderCheckAt = s.lastHolderCheckAtMs
+      r.provider = s.provider?.rawValue
       w.state = r
     }
     let write = w

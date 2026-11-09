@@ -112,6 +112,40 @@ struct PastMailChoiceAppTests: AccountSuite {
     #expect(lane.firstScanFinished)
   }
 
+  @Test func aMailboxConnectedAgainForgetsItsEarlierChoice() async throws {
+    var off = MockMailbox.gmail
+    off.state = .disconnected
+    off.pastMailSkipped = true
+    off.note = "Synthetic note"
+    let lane = mailbox([off])
+    let c = MailConnectCoordinator(mailbox: lane, context: .addMailbox)
+    c.pastMail = .importPast
+    await c.connect(.gmail)
+    let row = try #require(lane.mailboxes.first)
+    #expect(row.id == off.id && row.state == .syncing)
+    #expect(!row.pastMailSkipped && row.note == nil)
+  }
+
+  @Test func theOutcomeSaysWhetherTheImportStarted() {
+    func report(started: Bool, completed: Bool = false, halted: MailboxHaltCode? = nil, ops: Int = 0) -> CycleReport {
+      var r = CycleReport()
+      r.pastImportStarted = started
+      r.completed = completed
+      r.haltedOn = halted
+      r.ops = ops
+      return r
+    }
+    #expect(LiveMailboxConnecting.pastImport(report(started: false)) == .notStarted)
+    #expect(LiveMailboxConnecting.pastImport(report(started: false, halted: .offline)) == .notStarted)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, halted: .offline)) == .later)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, completed: false)) == .later)
+    #expect(LiveMailboxConnecting.pastImport(report(started: true, completed: true, ops: 7)) == .finished(7))
+  }
+
+  @Test func aMailboxThatIsGoneStartsNoImport() async {
+    #expect(await mailbox().importPastMail("gmail-1") == .notStarted)
+  }
+
   @Test func theLiveRowOffersTheImportOnlyWhileActive() {
     func row(_ phase: MailboxPhase, skipped: Bool) -> MailboxSnapshot? {
       LiveMailboxConnecting.mailboxes(
@@ -130,6 +164,14 @@ struct PastMailChoiceAppTests: AccountSuite {
     #expect(LiveMailboxConnecting.pastMail(.newOnly, takesOver: false, newestImportMs: 5) == .skip(catchUpFromMs: nil))
     #expect(LiveMailboxConnecting.pastMail(.newOnly, takesOver: true, newestImportMs: 5) == .skip(catchUpFromMs: 5))
     #expect(LiveMailboxConnecting.pastMail(.newOnly, takesOver: true, newestImportMs: nil) == .skip(catchUpFromMs: nil))
+  }
+
+  @Test func aTakeoverReadsOnlyNewEmailWhateverAnEarlierAttemptAnswered() {
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: true, newestImportMs: 5) == .skip(catchUpFromMs: 5))
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: true, newestImportMs: nil) == .skip(catchUpFromMs: nil))
+    #expect(LiveMailboxConnecting.connectPastMail(.newOnly, takesOver: true, newestImportMs: 5) == .skip(catchUpFromMs: 5))
+    #expect(LiveMailboxConnecting.connectPastMail(.importPast, takesOver: false, newestImportMs: 5) == .read)
+    #expect(LiveMailboxConnecting.connectPastMail(.newOnly, takesOver: false, newestImportMs: 5) == .skip(catchUpFromMs: nil))
   }
 
   @Test func theCopyNamesTheWindow() {

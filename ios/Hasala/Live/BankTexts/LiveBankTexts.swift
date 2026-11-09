@@ -126,13 +126,17 @@ final class LiveBankTexts: BankTextsConnecting {
     }
   }
 
-  func startTest() {
+  func startTest() throws(BankTextsFailure) {
     let started = nowMs
+    do {
+      data = try facts.update(nowMs: started) { $0.openTest(atMs: started) }
+    } catch {
+      throw .failed(Self.saveFailed)
+    }
     testMissed = false
     facts.setTestMissed(false)
     testHints = false
     testStartedMs = started
-    data = (try? facts.update(nowMs: started) { $0.testOpenedMs = started }) ?? data
     closing?.cancel()
     closing = Task { [weak self] in
       try? await Task.sleep(for: .milliseconds(BankTextsFactsData.testWindowMs + 500))

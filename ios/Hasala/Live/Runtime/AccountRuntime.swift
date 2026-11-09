@@ -56,6 +56,7 @@ final class AccountRuntime {
   /// run asks again (an offline launch must not hide "Use sample data" for good).
   private(set) var reviewAccount = false
   @ObservationIgnored private(set) var closed = false
+  @ObservationIgnored private var connects = 0
   /// The last `GET /account` answer, when one arrived.
   @ObservationIgnored private(set) var account: AccountInfo?
   /// Told each `GET /account` answer (the gate updates the profile and the review flag).
@@ -117,8 +118,13 @@ final class AccountRuntime {
     LocalAccountData.setMailboxProvider(provider)
   }
 
+  func connectStarted() { connects += 1 }
+
+  func connectEnded() { connects -= 1 }
+
   func linkedHere(_ provider: MailboxProvider) {
     activate(provider)
+    serverLink = .holder(isThisDevice: true, watchExpiresAtMs: nil)
     linkCopy.connected()
   }
 
@@ -126,16 +132,31 @@ final class AccountRuntime {
     linkCopy.disconnected(outcome)
   }
 
-  /// The lane to run when the account opens: the provider this iPhone ran last, else the one
-  /// it keeps a grant for, else Gmail (else Outlook, in a build with only that client).
-  nonisolated static func initialLane(_ lanes: [MailboxProvider: MailboxLane], remembered: MailboxProvider?) async
-    -> MailboxLane?
-  {
-    if let r = remembered, let lane = lanes[r] { return lane }
+  /// The lane to run when the account opens: the provider saved with the link's own state,
+  /// else the provider this iPhone ran last, else the one it keeps a grant for, else Gmail
+  /// (else Outlook, in a build with only that client).
+  nonisolated static func initialLane(
+    _ lanes: [MailboxProvider: MailboxLane], held: MailboxProvider? = nil, remembered: MailboxProvider?
+  ) async -> MailboxLane? {
+    for p in [held, remembered].compactMap({ $0 }) {
+      if let lane = lanes[p] { return lane }
+    }
     for p in [MailboxProvider.outlook, .gmail] {
       if let lane = lanes[p], await lane.hasGrant() == true { return lane }
     }
     return lanes[.gmail] ?? lanes[.outlook]
+  }
+
+  nonisolated static func interruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?) -> MailboxProvider? {
+    guard let held, let remembered, held != remembered else { return nil }
+    return remembered
+  }
+
+  func finishInterruptedSwitch(held: MailboxProvider?, remembered: MailboxProvider?, defaults: UserDefaults = .standard) {
+    guard let held, let old = Self.interruptedSwitch(held: held, remembered: remembered) else { return }
+    LocalAccountData.setMailboxProvider(held, defaults)
+    guard let lane = lanes[old] else { return }
+    lane.work.start { await lane.endGrant() }
   }
 
   /// Plain-language words for a halt a reconnect alone doesn't fix.
@@ -230,10 +251,11 @@ final class AccountRuntime {
     if serverLink != link { serverLink = link }
     // Another iPhone's link names the provider this one reads it through, if it reads it
     // here instead ("Read them here instead").
-    if case .holder(false, _) = link, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
+    if case .holder(false, _) = link, connects == 0, !closed, store.mailboxPhase == .unlinked || store.mailboxPhase == .otherDevice,
       let p = provider.flatMap({ MailboxProvider(rawValue: $0.rawValue) }), p != activeProvider
     {
       activate(p)
+      await lanes[p]?.resume()
     }
     return link
   }
@@ -243,7 +265,8 @@ final class AccountRuntime {
   static func open(
     env: AccountEnvironment, binding: AccountBinding, enrolled: EnrolledAccount?, build: BuildInfo,
     profile: ProfileInfo, usesPasskey: @escaping @Sendable () async -> Bool,
-    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared
+    stopped: @escaping @Sendable (SyncStop) async -> Void, bankTextFacts: BankTextsFacts = .shared,
+    mailHTTP: (any HTTPExchange)? = nil, providerDefaults: UserDefaults = .standard
   ) async throws -> AccountRuntime {
     let context: SyncContext
     if let enrolled, enrolled.userID.string == binding.user_id {
@@ -277,9 +300,11 @@ final class AccountRuntime {
       lanes[p] = MailboxLane(
         provider: p, build: build, secrets: env.secrets, userID: context.userID, persistence: persistence,
         ledger: mailboxLedger, server: mailboxServer, stepUp: stepUp, categorizer: categorizer,
-        presenter: WebAuthenticationPresenter(for: p))
+        presenter: WebAuthenticationPresenter(for: p), mailHTTP: mailHTTP)
     }
-    let active = ActiveLane(await initialLane(lanes, remembered: LocalAccountData.mailboxProvider()))
+    let held = (try? await persistence.loadState())?.heldProvider.flatMap { MailboxProvider(rawValue: $0.rawValue) }
+    let remembered = LocalAccountData.mailboxProvider(providerDefaults)
+    let active = ActiveLane(await initialLane(lanes, held: held, remembered: remembered))
     let editor = LedgerEditAuthor(observer: observer, outbox: outbox)
     let store = LiveLedgerStore(
       reader: projection.reader, author: editor, profile: profile, prefs: DevicePrefsStore(), clock: LiveLedgerStore.runClock())
@@ -364,6 +389,7 @@ final class AccountRuntime {
       await rt?.refreshAccountIfUnknown()
       await rt?.checkServerLink()
     }
+    rt.finishInterruptedSwitch(held: held, remembered: remembered, defaults: providerDefaults)
     rt.linkCopy.ownLink(store.mailboxPhase)
     rt.lastPhase = store.mailboxPhase
     store.readingSource = { [weak rt] in

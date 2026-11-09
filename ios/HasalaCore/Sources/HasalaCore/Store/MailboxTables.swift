@@ -22,6 +22,7 @@ public struct MailboxStateRow: Sendable, Equatable {
   public var lastCycleAt: Int64?
   public var lastSuccessAt: Int64?
   public var lastHolderCheckAt: Int64?
+  public var provider: String?
 
   public init(phase: String) { self.phase = phase }
 }
@@ -190,6 +191,7 @@ public final class MailboxTableStore: Sendable {
     } + LedgerSchema.mailboxSenderAddress + LedgerSchema.mailboxParsing + LedgerSchema.mailboxPendingImport
     + LedgerSchema.mailboxUnparsedSender + LedgerSchema.mailboxReader + LedgerSchema.mailboxReadFrom
     + LedgerSchema.mailboxMessageStrike + LedgerSchema.mailboxRetirePlan
+    + LedgerSchema.mailboxProvider
 
   public func loadReader() throws -> Data? {
     try db.read { db in try Data.fetchOne(db, sql: "SELECT json FROM mailbox_reader WHERE id = 1") }
@@ -274,6 +276,7 @@ public final class MailboxTableStore: Sendable {
       s.lastCycleAt = r["last_cycle_at"]
       s.lastSuccessAt = r["last_success_at"]
       s.lastHolderCheckAt = r["last_holder_check_at"]
+      s.provider = r["provider"]
       return s
     }
   }
@@ -480,12 +483,12 @@ public final class MailboxTableStore: Sendable {
             INSERT OR REPLACE INTO mailbox_state
               (id, phase, address, watermark_ms, profile_history_id, backfill_days, scan_started_ms,
                list_page_token, watch_expires_at, halted_on, halted_detail, last_cycle_at, last_success_at,
-               last_holder_check_at, read_from_ms)
-            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+               last_holder_check_at, read_from_ms, provider)
+            VALUES (1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             s.phase, s.address, s.watermarkMs, s.profileHistoryID, s.backfillDays, s.scanStartedMs, s.watchExpiresAt,
-            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt, s.readFromMs,
+            s.haltedOn, s.haltedDetail, s.lastCycleAt, s.lastSuccessAt, s.lastHolderCheckAt, s.readFromMs, s.provider,
           ])
       }
     }

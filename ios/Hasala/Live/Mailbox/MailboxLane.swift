@@ -34,9 +34,9 @@ nonisolated final class MailboxLane: Sendable {
   init?(
     provider: MailboxProvider, build: BuildInfo, secrets: Secrets, userID: UserID, persistence: any MailboxPersistence,
     ledger: any MailboxLedger, server: any MailboxServer, stepUp: any MailboxStepUp, categorizer: any IngestCategorizer,
-    presenter: any MailAuthSessionPresenter
+    presenter: any MailAuthSessionPresenter, mailHTTP: (any HTTPExchange)? = nil
   ) {
-    let http = URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes)
+    let http = mailHTTP ?? URLSessionHTTPExchange.ephemeral(maxResponseBytes: MailboxLimits.maxResponseBytes)
     let clock = SystemClock()
     let mail: any MailProvider
     switch provider {
@@ -154,7 +154,10 @@ nonisolated final class MailboxLane: Sendable {
         continuation.yield(.ended(totals))
         continuation.finish()
       }
-      if !started { continuation.finish() }
+      if !started {
+        continuation.yield(.ended(FirstScanTotals(phase: .halted)))
+        continuation.finish()
+      }
     }
   }
 
