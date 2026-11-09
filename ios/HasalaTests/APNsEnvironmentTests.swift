@@ -1,3 +1,8 @@
+import CoreAuth
+import CorePrimitives
+import CoreStore
+import CoreSync
+import CoreTime
 import Foundation
 import Testing
 
@@ -77,5 +82,95 @@ struct APNsEnvironmentTests {
     #if targetEnvironment(simulator)
       #expect(resolveAPNsEnvironment() == .unknown)
     #endif
+  }
+}
+
+nonisolated private final class HeldPut: Transport, @unchecked Sendable {
+  private let arrivals = AsyncStream.makeStream(of: Void.self)
+  private let releases = AsyncStream.makeStream(of: Void.self)
+  private let lock = NSLock()
+  private var sent = 0
+
+  var count: Int {
+    lock.withLock { sent }
+  }
+
+  func send(_ request: APIRequest) async throws(TransportError) -> APIResponse {
+    lock.withLock { sent += 1 }
+    arrivals.continuation.yield()
+    for await _ in releases.stream { break }
+    return APIResponse(status: 204)
+  }
+
+  func arrived() async {
+    for await _ in arrivals.stream { break }
+  }
+
+  func release() {
+    releases.continuation.yield()
+  }
+}
+
+@MainActor
+@Suite("APNs registration")
+struct PushRegistrarTests {
+  private static let user = "00000000-0000-4000-8000-000000000001"
+  private static let lastKey = "push.apns.registered.v2"
+  private static let token = Data(repeating: 0x5c, count: 32)
+
+  private func defaults() -> UserDefaults {
+    let name = "test.push.\(UUID().uuidString)"
+    UserDefaults(suiteName: name)!.removePersistentDomain(forName: name)
+    return UserDefaults(suiteName: name)!
+  }
+
+  private func registrar(_ d: UserDefaults) -> PushRegistrar {
+    PushRegistrar(defaults: d, resolveEnvironment: { .resolved("sandbox") }, askForToken: {})
+  }
+
+  private func account(_ put: HeldPut) throws -> AccountEnvironment {
+    let secrets = Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app")
+    try secrets.writeSession(
+      SessionRecord(token: "synthetic-token", userID: Self.user, expiresAt: 4_000_000_000, tag: "0011223344556677"))
+    return AccountEnvironment(
+      client: AuthClient(transport: put), secrets: secrets, approvalKeys: SoftDAK(), passkeys: nil, clock: SystemClock(),
+      random: SystemRandom(), apiBase: "https://api.hasala.app", accountsDirectory: nil)
+  }
+
+  private func send(_ subject: PushRegistrar, _ put: HeldPut) async {
+    let running = Task { await subject.didRegister(token: Self.token) }
+    await put.arrived()
+    put.release()
+    await running.value
+  }
+
+  @Test func aFinishedRegistrationIsNotSentAgain() async throws {
+    let d = defaults()
+    let put = HeldPut()
+    let subject = registrar(d)
+    subject.register(env: try account(put), userID: Self.user)
+    await send(subject, put)
+    #expect(d.string(forKey: Self.lastKey) != nil)
+    await subject.didRegister(token: Self.token)
+    #expect(put.count == 1)
+  }
+
+  @Test func aRegistrationThatFinishesAfterForgetIsNotRemembered() async throws {
+    let d = defaults()
+    let put = HeldPut()
+    let env = try account(put)
+    let subject = registrar(d)
+    subject.register(env: env, userID: Self.user)
+    let running = Task { await subject.didRegister(token: Self.token) }
+    await put.arrived()
+    subject.forget()
+    put.release()
+    await running.value
+    #expect(d.object(forKey: Self.lastKey) == nil)
+
+    subject.register(env: env, userID: Self.user)
+    await send(subject, put)
+    #expect(put.count == 2)
+    #expect(d.string(forKey: Self.lastKey) != nil)
   }
 }
