@@ -384,7 +384,7 @@ in
 
       with subtest("AT-V8b: Postgres comes back by itself and the API with it"):
           pid = machine.succeed("systemctl show -P MainPID hasala-postgresql.service").strip()
-          pg_alerts = "journalctl -u hasala-vm-alert@hasala-postgresql.service -o cat | wc -l"
+          pg_alerts = "journalctl -u hasala-vm-alert@hasala-postgresql.service.service -o cat | wc -l"
           pg_alerts_before = int(machine.succeed(pg_alerts).strip())
           machine.succeed(f"kill -9 {pid}")
           machine.wait_until_succeeds(f"test \"$(systemctl show -P MainPID hasala-postgresql.service)\" != {pid}")
