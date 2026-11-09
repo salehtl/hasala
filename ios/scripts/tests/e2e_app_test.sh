@@ -31,9 +31,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
 PY
 
-for tool in pg_ctl pg_isready psql; do
+for tool in pg_isready psql; do
 	printf '#!/bin/sh\nexit 0\n' >"$work/stub/$tool"
 done
+cat >"$work/stub/pg_ctl" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >>"$work/pg_ctl-calls"
+exit 0
+STUB
 cat >"$work/stub/initdb" <<STUB
 #!/bin/sh
 if [ "\${STUB_INITDB:-}" = other-run-binds ]; then
@@ -57,6 +62,7 @@ cat >"$work/hasalad" <<STUB
 case "\$1" in
 migrate) exit 0 ;;
 serve)
+	cat "\$HASALA_HEADROOM_PATH/owner.pid" >"$work/owner-seen" 2>/dev/null || echo none >"$work/owner-seen"
 	if [ "\${STUB_SERVE:-dies}" = healthy ]; then
 		exec /usr/bin/python3 -I "$work/listener.py" "\${HASALA_HTTP_LISTEN##*:}"
 	fi
@@ -76,6 +82,7 @@ free_port() {
 rc=0
 run() {
 	rc=0
+	: >"$work/pg_ctl-calls"
 	env PATH="$work/stub:$PATH" HASALA_E2E_PORT="$(free_port)" HASALA_E2E_MAIL_PORT="$(free_port)" \
 		HASALA_E2E_OUT="$work/kept" "$@" "$work/ios/scripts/e2e-app.sh" "$work/hasalad" --server-only >"$work/out" 2>&1 || rc=$?
 }
@@ -107,5 +114,16 @@ fi
 
 run STUB_SERVE=healthy
 if said "hasalad is up"; then pass "this run's own server counts as up"; else bad "this run's own server did not count as up (exit $rc)"; fi
+
+: >"$work/pg_ctl-calls"
+rm -f "$work/owner-seen"
+env PATH="$work/stub:$PATH" HASALA_E2E_PORT="$(free_port)" HASALA_E2E_MAIL_PORT="$(free_port)" HASALA_E2E_OUT="$work/kept" STUB_SERVE=dies \
+	"$work/ios/scripts/e2e-app.sh" "$work/hasalad" --server-only >"$work/out" 2>&1 &
+run_owner=$!
+wait "$run_owner" || true
+if [[ "$(cat "$work/owner-seen" 2>/dev/null)" == "$run_owner" ]]; then pass "the cluster names the run that owns it"; else bad "owner.pid says '$(cat "$work/owner-seen" 2>/dev/null)', the run was $run_owner"; fi
+if grep -qE -- '-D .+/pgtest-[^/]+/data ' "$work/pg_ctl-calls"; then pass "the cluster has the shape the gate's reaper looks for"; else
+	bad "pg_ctl started $(head -n 1 "$work/pg_ctl-calls")"
+fi
 
 exit "$fail"
