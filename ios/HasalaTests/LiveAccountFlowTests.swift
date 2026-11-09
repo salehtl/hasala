@@ -676,6 +676,8 @@ nonisolated final class SamePRFPasskeys: PasskeyProvider, @unchecked Sendable {
       rawClientDataJSON: Data(#"{"type":"webauthn.get","challenge":"\#(Base64.encodeURL(challenge))"}"#.utf8),
       authenticatorData: Data(repeating: 0, count: 37), signature: Data([0x30]), userHandle: nil, prfFirst: output())
   }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 nonisolated final class BareThenWrappedPasskeys: PasskeyProvider, @unchecked Sendable {
@@ -697,6 +699,8 @@ nonisolated final class BareThenWrappedPasskeys: PasskeyProvider, @unchecked Sen
       credentialID: bareID, rawClientDataJSON: a.rawClientDataJSON, authenticatorData: a.authenticatorData,
       signature: a.signature, userHandle: a.userHandle, prfFirst: a.prfFirst)
   }
+
+  func reportUnknown(credentialID: Data) async {}
 }
 
 /// `02` §7's password-account routes in memory, in `02`'s JSON shapes.

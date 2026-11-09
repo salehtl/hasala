@@ -36,6 +36,10 @@ struct TwoPasskeys: PasskeyProvider {
     return try await (bareAllowed ? bare : wrapped).assert(
       challenge: challenge, allowCredentialIDs: allowCredentialIDs, prfSalt: prfSalt)
   }
+
+  func reportUnknown(credentialID: Data) async {
+    await bare.reportUnknown(credentialID: credentialID)
+  }
 }
 
 @Suite("Adding a passkey (passkey.add)")
