@@ -1,14 +1,13 @@
 /**
  * The page's small dynamic layer ("13 · Dynamic layer"): scroll-linked
- * reveals (B), the pace bar (C), phone parallax and the privacy arrows.
+ * reveals (B), the pace bar (C) and phone parallax.
  * Nothing loops, nothing moves while text is being read, and everything has
  * a still version: with reduced motion the page is simply shown in its final
  * state.
  */
 import { onPage, observe } from './page';
 
-const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
-export const reducedMotion = (): boolean => !!mq?.matches;
+export const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const once = (signal: AbortSignal, els: Iterable<Element>, threshold: number, fn: (el: HTMLElement) => void) => {
   const io = observe(
@@ -137,27 +136,6 @@ function parallax(signal: AbortSignal) {
 }
 
 /**
- * The privacy diagram draws left to right, card, arrow, card, 100 ms apart;
- * then data-play sends a token down each arrow and drops the sealed coin into
- * the server's slot (CSS).
- */
-function stages(signal: AbortSignal) {
-  if (reducedMotion()) return;
-  const diagram = document.querySelector<HTMLElement>('[data-diagram]');
-  if (diagram && diagram.getBoundingClientRect().top > innerHeight) {
-    const items = [...diagram.children] as HTMLElement[];
-    items.forEach((el) => el.setAttribute('data-undrawn', ''));
-    once(signal, [diagram], 0.3, () => {
-      diagram.setAttribute('data-play', '');
-      items.forEach((el, k) => {
-        el.style.transitionDelay = `${120 + k * 100}ms`;
-        el.removeAttribute('data-undrawn');
-      });
-    });
-  }
-}
-
-/**
  * Once per document: the footer calls it on every page (its top reveals), and
  * the pages with sections of their own call it too. onPage re-runs it after
  * each client-side navigation, so a second registration would run it twice.
@@ -170,6 +148,5 @@ export function initMotion(): void {
     reveals(signal);
     pace(signal);
     parallax(signal);
-    stages(signal);
   });
 }

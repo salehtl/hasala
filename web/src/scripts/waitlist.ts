@@ -16,8 +16,8 @@
  * the visitor's email app and shows how to finish if it didn't open.
  */
 import { reducedMotion } from './motion';
-import { onPage } from './page';
-import { bankText, postJson, renderTurnstile, waitText, type ApiAnswer } from './api';
+import { onPage, pageTimer } from './page';
+import { bankText, postWithTurnstile, renderTurnstile, waitText, type ApiAnswer } from './api';
 
 type State = 'default' | 'focus' | 'error' | 'success';
 const BANK_NAMES: Record<string, string> = { dib: 'Dubai Islamic Bank', enbd: 'Emirates NBD', adib: 'Abu Dhabi Islamic Bank', other: 'Another bank' };
@@ -85,9 +85,11 @@ function setup(signal: AbortSignal): void {
   const status = form.querySelector<HTMLElement>('.wl-status')!;
   const api = root.dataset.api;
   const mail = root.dataset.mail;
-  const resetTurnstile = renderTurnstile(form, 'waitlist', signal);
+  const turnstile = renderTurnstile(form, 'waitlist', signal);
   let touched = false;
   let sending = false;
+  const stillTrying = pageTimer(signal);
+  const focusEmail = pageTimer(signal);
 
   const setState = (s: State) => {
     if (root.dataset.state === s) return;
@@ -115,6 +117,7 @@ function setup(signal: AbortSignal): void {
     err.hidden = !message;
     err.querySelector('span')!.textContent = message ?? '';
   };
+  showOther();
   const emailProblem = (v: string): string | null => {
     const value = v.trim();
     if (!value) return MSG.emailEmpty;
@@ -244,15 +247,14 @@ function setup(signal: AbortSignal): void {
       }
       const body: Record<string, string> = { email: email.value.trim(), bank: bank.value, source: 'web', website: '' };
       if (typed) body.otherBank = typed;
-      const token = (form.elements.namedItem('cf-turnstile-response') as HTMLInputElement | null)?.value;
-      if (token) body.turnstileToken = token;
 
       lock(true);
-      const slow = window.setTimeout(() => setStatus('Still trying. Check your connection.'), 8000);
-      const answer = await postJson(`${api!}/v1/waitlist`, body);
-      window.clearTimeout(slow);
+      stillTrying.set(() => setStatus('Still trying. Check your connection.'), 8000);
+      const answer = await postWithTurnstile(`${api!}/v1/waitlist`, body, turnstile);
+      if (signal.aborted) return;
+      stillTrying.clear();
       lock(false);
-      resetTurnstile();
+      turnstile.reset();
       setStatus('');
       if (answer.status >= 200 && answer.status < 300) {
         showDone();
@@ -266,7 +268,6 @@ function setup(signal: AbortSignal): void {
         focusFirstError();
         return;
       }
-      if (root.dataset.state === 'error') setState('default');
       const { text, retry } = answerText(answer);
       setStatus(text, 'error', retry);
     },
@@ -277,6 +278,7 @@ function setup(signal: AbortSignal): void {
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
     const text = btn.querySelector('span')!;
     const label = text.textContent;
+    const restore = pageTimer(signal);
     btn.addEventListener(
       'click',
       async () => {
@@ -284,10 +286,11 @@ function setup(signal: AbortSignal): void {
         try {
           await navigator.clipboard.writeText(value);
           text.textContent = btn.dataset.copied ?? 'Copied';
+          restore.set(() => (text.textContent = label), 2400);
         } catch {
+          restore.clear();
           text.textContent = value;
         }
-        window.setTimeout(() => (text.textContent = label), 2400);
       },
       { signal },
     );
@@ -297,7 +300,7 @@ function setup(signal: AbortSignal): void {
   const goToForm = () => {
     const target = document.getElementById('invite');
     target?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    window.setTimeout(() => email.focus({ preventScroll: true }), reducedMotion() ? 0 : 600);
+    focusEmail.set(() => email.focus({ preventScroll: true }), reducedMotion() ? 0 : 600);
   };
   document.querySelectorAll<HTMLAnchorElement>('a[href="#invite"], a[href="/#invite"]').forEach((a) =>
     a.addEventListener(
@@ -305,12 +308,11 @@ function setup(signal: AbortSignal): void {
       (e) => {
         if (form.hidden) return;
         e.preventDefault();
-        history.replaceState(history.state, '', '#invite');
         goToForm();
       },
       { signal },
     ),
   );
 
-  if (location.hash === '#invite') window.setTimeout(() => email.focus({ preventScroll: true }), 300);
+  if (location.hash === '#invite') focusEmail.set(() => email.focus({ preventScroll: true }), 300);
 }

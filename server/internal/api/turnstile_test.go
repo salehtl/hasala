@@ -98,8 +98,11 @@ func TestTurnstileRequiredWithoutAVerifierRefuses(t *testing.T) {
 
 type publicForm struct {
 	name, path, good string
+	form             url.Values
+	landing          string
 	junk             []string
 	global, prefix   func(*WebOptions) **Limiter
+	ip               func(*WebOptions) **Limiter
 }
 
 func publicFormCases() []publicForm {
@@ -115,6 +118,9 @@ func publicFormCases() []publicForm {
 	}
 	waitlist.global = func(o *WebOptions) **Limiter { return &o.WaitlistGlobal }
 	waitlist.prefix = func(o *WebOptions) **Limiter { return &o.WaitlistPrefix }
+	waitlist.ip = func(o *WebOptions) **Limiter { return &o.WaitlistIP }
+	waitlist.form = url.Values{"email": {"form@example.com"}, "bank": {"enbd"}, "source": {"web"}, "cf-turnstile-response": {"good"}}
+	waitlist.landing = "https://hasala.app/joined?error=rate_limited"
 
 	bank := publicForm{name: "bank request", path: "/api/v1/bank-requests"}
 	bank.good = `{"bank":"other","otherBank":"Bank Of Nowhere","source":"web","turnstileToken":"good"}`
@@ -128,6 +134,9 @@ func publicFormCases() []publicForm {
 	}
 	bank.global = func(o *WebOptions) **Limiter { return &o.BankGlobal }
 	bank.prefix = func(o *WebOptions) **Limiter { return &o.BankPrefix }
+	bank.ip = func(o *WebOptions) **Limiter { return &o.BankIP }
+	bank.form = url.Values{"bank": {"other"}, "otherBank": {"Bank Of Nowhere"}, "source": {"web"}, "cf-turnstile-response": {"good"}}
+	bank.landing = "https://hasala.app/joined?error=rate_limited&form=bank"
 
 	return []publicForm{waitlist, bank}
 }
@@ -153,6 +162,35 @@ func TestPublicGlobalBudgetIsSpentOnlyAfterTurnstile(t *testing.T) {
 				t.Fatalf("Retry-After %q", w.Header().Get("Retry-After"))
 			}
 		})
+	}
+}
+
+func TestARateLimitedFormPostLandsOnTheDonePage(t *testing.T) {
+	for _, c := range publicFormCases() {
+		for tier, limiter := range map[string]func(*WebOptions) **Limiter{"client": c.ip, "global": c.global} {
+			t.Run(c.name+"/"+tier, func(t *testing.T) {
+				r := newWebRig(t)
+				o := r.h.srv.Web
+				o.Turnstile, o.TurnstileRequired = &fakeTurnstile{}, true
+				*limiter(o) = NewLimiter(0, 1, 1, nil)
+				submit := func() *httptest.ResponseRecorder {
+					req := httptest.NewRequest("POST", c.path, strings.NewReader(c.form.Encode()))
+					req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+					req.Header.Set("Accept", "text/html")
+					w := httptest.NewRecorder()
+					r.h.h.ServeHTTP(w, req)
+					return w
+				}
+				wantStatus(t, submit(), http.StatusSeeOther)
+				w := submit()
+				if w.Code != http.StatusSeeOther || w.Header().Get("Location") != c.landing {
+					t.Fatalf("form post over the budget: %d %v %s", w.Code, w.Header(), w.Body)
+				}
+				if w.Header().Get("Retry-After") != "600" {
+					t.Fatalf("Retry-After %q", w.Header().Get("Retry-After"))
+				}
+			})
+		}
 	}
 }
 

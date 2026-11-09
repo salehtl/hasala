@@ -195,6 +195,7 @@ const jsonLd = {
   // headings; "Print or save as PDF". onPage: set up again for every legal
   // page the router swaps in, and torn down when it swaps one out.
   import { onPage } from '../scripts/page';
+  import { anchorNote } from '../scripts/anchor-note';
 
   onPage((signal) => {
     const doc = document.querySelector('[data-doc]');
@@ -255,18 +256,12 @@ const jsonLd = {
       btn.setAttribute('aria-label', `Copy link to “${h.textContent}”`);
       btn.innerHTML =
         '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6.5 9.5 9.5 6.5M7 4.5l1.2-1.2a2.8 2.8 0 0 1 4 4L11 8.5M9 11.5l-1.2 1.2a2.8 2.8 0 0 1-4-4L5 7.5"/></svg><span class="anchor-copy__note" role="status"></span>';
-      btn.addEventListener('click', async () => {
+      const copied = anchorNote(btn.querySelector('span')!, h.id, signal);
+      btn.addEventListener('click', () => {
         const url = `${location.origin}${location.pathname}#${h.id}`;
         // Keep the router's history state, so Back and Forward still work.
         history.replaceState(history.state, '', `#${h.id}`);
-        const note = btn.querySelector('span')!;
-        try {
-          await navigator.clipboard.writeText(url);
-          note.textContent = `#${h.id} · link copied`;
-        } catch {
-          note.textContent = `#${h.id}`;
-        }
-        setTimeout(() => (note.textContent = ''), 2400);
+        void copied(() => navigator.clipboard.writeText(url));
       });
       h.append(btn);
     });

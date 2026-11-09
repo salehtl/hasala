@@ -25,6 +25,11 @@ const OUT: Record<Dir, [number, number, number]> = {
   transfer: [0, -1.2, -4],
 };
 const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';
+const enum Phase {
+  Idle,
+  Dragging,
+  Leaving,
+}
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function initReview(): void {
@@ -56,8 +61,8 @@ function setup(signal: AbortSignal): void {
   });
 
   let top = 0;
-  let busy = false;
-  let history: number[] = [];
+  let phase: Phase = Phase.Idle;
+  let undoAsked = false;
   let timer = 0;
   let inView = false;
   let paused = false;
@@ -104,19 +109,19 @@ function setup(signal: AbortSignal): void {
 
   // The next card, or the "All caught up" panel, settles into place.
   const advance = () => {
-    history.push(top);
     top++;
+    lit(null);
     layout();
     if (top >= n) done.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE_OUT });
   };
 
   async function swipe(dir: Dir, opts: { drag?: boolean; auto?: boolean; v?: number } = {}) {
-    if (busy || top >= n) return;
-    busy = true;
+    if (phase !== Phase.Idle || top >= n) return;
+    phase = Phase.Leaving;
+    undoAsked = false;
     const card = cards[top];
     const next = cards[top + 1];
     const pill = pills.get(dir);
-    const legend = legends.get(dir);
     if (reducedMotion()) {
       const fade = card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
       await fade.finished;
@@ -124,7 +129,7 @@ function setup(signal: AbortSignal): void {
       advance();
       fade.cancel();
       (cards[top] ?? done).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
-      busy = false;
+      settle();
       return;
     }
     const w = stage!.clientWidth;
@@ -132,7 +137,7 @@ function setup(signal: AbortSignal): void {
     if (!opts.drag) {
       // 700 → 1220 ms: the drag. The card leans, the tint grows, the pill swells.
       pill?.toggleAttribute('data-active', true);
-      legend?.toggleAttribute('data-active', true);
+      lit(dir);
       const lean = card.animate(
         [{ transform: 'none' }, { transform: `translate(${ox * 40}px, ${oy * 40}px) rotate(${rot * 0.38}deg)` }],
         { duration: 520, easing: EASE_OUT, fill: 'forwards' },
@@ -143,8 +148,8 @@ function setup(signal: AbortSignal): void {
           autoLean = null;
           card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
           pill?.removeAttribute('data-active');
-          legend?.removeAttribute('data-active');
-          busy = false;
+          lit(null);
+          phase = Phase.Idle;
         };
       const leaned = await lean.finished.then(
         () => true,
@@ -185,20 +190,25 @@ function setup(signal: AbortSignal): void {
     await fly.finished;
     await wait(240);
     pill?.removeAttribute('data-active');
-    legend?.removeAttribute('data-active');
     card.getAnimations({ subtree: true }).forEach((a) => a.cancel());
     next?.getAnimations().forEach((a) => a.cancel());
     advance();
-    busy = false;
+    settle();
   }
 
   const appear = (el: HTMLElement) => {
     if (!reducedMotion()) el.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'ease-out' });
   };
 
+  const settle = () => {
+    phase = Phase.Idle;
+    if (undoAsked) undo();
+  };
+
   const undo = () => {
-    if (busy || !history.length) return;
-    top = history.pop()!;
+    undoAsked = phase === Phase.Leaving;
+    if (phase !== Phase.Idle || !top) return;
+    top--;
     layout();
     toast.removeAttribute('data-show');
     say('Undone.');
@@ -206,9 +216,7 @@ function setup(signal: AbortSignal): void {
   };
 
   const restart = () => {
-    if (busy) return;
     top = 0;
-    history = [];
     layout();
     toast.removeAttribute('data-show');
     // The button that was pressed is gone; keep focus on the deck.
@@ -288,7 +296,6 @@ function setup(signal: AbortSignal): void {
   let dx = 0;
   let dy = 0;
   let id = 0;
-  let dragging = false;
   let samples: [number, number, number][] = [];
   const band = (d: number) => {
     const a = Math.abs(d) - 140;
@@ -297,11 +304,12 @@ function setup(signal: AbortSignal): void {
   stage.addEventListener('pointerdown', (e) => {
     // Use is a tap, not a drag: no capture, so its click lands on it.
     stop();
-    if (dragging || (e.target as Element).closest('[data-use]')) return;
+    if ((e.target as Element).closest('[data-use]')) return;
     const card = (e.target as Element).closest<HTMLElement>('.rcard[data-pos="0"]');
-    if (card) autoLean?.();
-    if (!card || busy) return;
-    dragging = true;
+    if (!card) return;
+    autoLean?.();
+    if (phase !== Phase.Idle) return;
+    phase = Phase.Dragging;
     id = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
@@ -310,7 +318,7 @@ function setup(signal: AbortSignal): void {
     card.setPointerCapture(e.pointerId);
   });
   stage.addEventListener('pointermove', (e) => {
-    if (!dragging || e.pointerId !== id) return;
+    if (phase !== Phase.Dragging || e.pointerId !== id) return;
     dx = e.clientX - startX;
     dy = e.clientY - startY;
     samples = [...samples.slice(-2), [dx, dy, e.timeStamp]];
@@ -324,8 +332,8 @@ function setup(signal: AbortSignal): void {
     lit(d > 24 ? dir : null);
   });
   const end = (e: PointerEvent) => {
-    if (!dragging || e.pointerId !== id) return;
-    dragging = false;
+    if (phase !== Phase.Dragging || e.pointerId !== id) return;
+    phase = Phase.Idle;
     const card = cards[top];
     const [sx, sy, st] = samples[0];
     const v = Math.hypot(dx - sx, dy - sy) / Math.max(1, e.timeStamp - st);
