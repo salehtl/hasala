@@ -52,7 +52,7 @@ func (a *Accounts) ResetBegin(ctx context.Context, email string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	eligible := ok && st.hasPassword() && st.active() && !st.frozen() && !st.InDoubt
+	eligible := ok && st.resettable()
 	var userID *uuid.UUID
 	if eligible {
 		userID = &st.ID
@@ -278,7 +278,7 @@ func (a *Accounts) ResetFinish(ctx context.Context, resetID string, verifier, ek
 	if err != nil {
 		return SignedIn{}, err
 	}
-	if !st.active() || !st.hasPassword() || st.frozen() {
+	if !st.resettable() {
 		return SignedIn{}, fmt.Errorf("%w: the account is no longer eligible", ErrResetRefused)
 	}
 	var live bool

@@ -10,6 +10,7 @@ import (
 
 	"github.com/salehtl/hasala/server/internal/keyproto"
 	"github.com/salehtl/hasala/server/internal/pgtx"
+	"github.com/salehtl/hasala/server/internal/purgeledger"
 )
 
 type approvedReset struct {
@@ -218,4 +219,25 @@ func TestAResetThatExpiresWhileItWaitsIsRefused(t *testing.T) {
 		t.Fatalf("a reset past its expiry: %v", err)
 	}
 	f.assertResetDidNotFinish(m, r)
+}
+
+func TestAnApprovedResetCannotFinishAfterAReplayPutsTheAddressInDoubt(t *testing.T) {
+	f := newAcctFixture(t)
+	m := f.passwordMember("Maya")
+	r := f.approvedReset(m, "a brand new password")
+	f.clock.advance(time.Minute)
+	entries := []purgeledger.Entry{{ID: m.user.UserID, At: f.clock.now().Truncate(time.Second), Kind: purgeledger.KindEmail}}
+	if rep, err := Reapply(bgctx, f.pool, entries, f.clock.now()); err != nil || rep.Emails != 1 {
+		t.Fatalf("reapply %+v %v, want one email change", rep, err)
+	}
+	if _, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig); !errors.Is(err, ErrResetRefused) || !strings.Contains(err.Error(), "eligible") {
+		t.Fatalf("a reset finished on an address in doubt: %v", err)
+	}
+	f.assertResetDidNotFinish(m, r)
+	if _, err := f.pool.Exec(bgctx, `UPDATE users SET reverify_requested_at = NULL WHERE id = $1`, m.user.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.acct.ResetFinish(bgctx, r.id, r.newS, r.sig); err != nil {
+		t.Fatalf("the reset once the address was cleared: %v", err)
+	}
 }

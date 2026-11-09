@@ -116,6 +116,9 @@ type accountState struct {
 func (s accountState) frozen() bool      { return s.FrozenAt != nil }
 func (s accountState) active() bool      { return s.Status == "active" }
 func (s accountState) hasPassword() bool { return len(s.PasswordHash) > 0 }
+func (s accountState) resettable() bool {
+	return s.hasPassword() && s.active() && !s.frozen() && !s.InDoubt
+}
 func (s accountState) operatorFrozen() bool {
 	return s.FrozenBy != nil && *s.FrozenBy == FrozenByOperator
 }
