@@ -53,7 +53,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   private var messages: [String: Message] = [:]
   private var order: [String] = []
   private var _requests: [Recorded] = []
-  private var failures: [String: [(status: Int, reason: String?)]] = [:]
+  private var failures: [(path: String, status: Int, reason: String?)] = []
   private var lastNonce = ""
 
   public var historyID = "1000"
@@ -100,7 +100,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   /// each status is used once, then the request is served normally. `reason` goes in Google's
   /// error body (`error.errors[0].reason`, e.g. "userRateLimitExceeded" on a 403).
   public func fail(_ pathContains: String, with statuses: [Int], reason: String? = nil) {
-    lock.withLock { failures[pathContains, default: []].append(contentsOf: statuses.map { ($0, reason) }) }
+    lock.withLock { failures += statuses.map { (pathContains, $0, reason) } }
   }
 
   public var requests: [Recorded] { lock.withLock { _requests } }
@@ -135,12 +135,8 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
       return googleError(status, reason: "rateLimitExceeded")
     }
     let keyed = path + (query.first { $0.0 == "format" }.map { "?format=\($0.1)" } ?? "")
-    if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
-      for (k, v) in failures where !v.isEmpty && keyed.contains(k) {
-        failures[k] = Array(v.dropFirst())
-        return v[0]
-      }
-      return nil
+    if let failure = lock.withLock({ () -> (path: String, status: Int, reason: String?)? in
+      failures.firstIndex { keyed.contains($0.path) }.map { failures.remove(at: $0) }
     }) {
       return googleError(failure.status, reason: failure.reason)
     }

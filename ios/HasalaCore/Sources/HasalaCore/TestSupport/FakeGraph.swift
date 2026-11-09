@@ -80,7 +80,7 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   private var order: [String] = []
   private var _subscriptions: [Subscription] = []
   private var _requests: [Recorded] = []
-  private var failures: [String: [(status: Int, retryAfter: Int?, code: String?)]] = [:]
+  private var failures: [(path: String, status: Int, retryAfter: Int?, code: String?)] = []
   private var lastNonce = ""
   private var nextSubscription = 0
   private var inFlight = 0
@@ -134,9 +134,7 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
   /// once, then the request is served normally. `retryAfter` adds a `Retry-After` header and
   /// `code` Graph's `error.code`.
   public func fail(_ pathContains: String, with statuses: [Int], retryAfter: Int? = nil, code: String? = nil) {
-    lock.withLock {
-      failures[pathContains, default: []].append(contentsOf: statuses.map { ($0, retryAfter, code) })
-    }
+    lock.withLock { failures += statuses.map { (pathContains, $0, retryAfter, code) } }
   }
 
   /// A subscription another iPhone of the app left on this mailbox.
@@ -177,12 +175,8 @@ public final class FakeGraph: HTTPExchange, @unchecked Sendable {
           method: request.method.rawValue, path: path, query: query, form: form, body: body,
           authorization: request.header("Authorization"), prefer: request.header("Prefer")))
     }
-    if let f = lock.withLock({ () -> (status: Int, retryAfter: Int?, code: String?)? in
-      for (k, v) in failures where !v.isEmpty && path.contains(k) {
-        failures[k] = Array(v.dropFirst())
-        return v[0]
-      }
-      return nil
+    if let f = lock.withLock({ () -> (path: String, status: Int, retryAfter: Int?, code: String?)? in
+      failures.firstIndex { path.contains($0.path) }.map { failures.remove(at: $0) }
     }) {
       var r = error(f.status, f.code ?? "SyntheticFailure")
       if let ra = f.retryAfter { r.headers.append(("Retry-After", String(ra))) }
