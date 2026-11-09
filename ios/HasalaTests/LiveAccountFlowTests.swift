@@ -539,6 +539,8 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
     var passkeyLoginRefusal: (status: Int, code: String)?
     var mailboxLink: (thisDevice: Bool, provider: String)?
     var mailboxLinkAsks = 0
+    var recoveries: [String: (user: String, code: String)] = [:]
+    var recoverVerifies = 0
   }
 
   private let lock = NSLock()
@@ -564,6 +566,7 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
   var passkeysAdded: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.passkeys.count } } }
   var wrapsStored: Int { state.withLock { $0.users.values.reduce(0) { $0 + $1.wraps.count } } }
   var unfreezeCalls: Int { state.withLock { $0.unfreezeCalls } }
+  var recoverVerifies: Int { state.withLock { $0.recoverVerifies } }
   var mailboxLinkAsks: Int { state.withLock { $0.mailboxLinkAsks } }
   var mailboxLink: (thisDevice: Bool, provider: String)? {
     get { state.withLock { $0.mailboxLink } }
@@ -684,8 +687,29 @@ nonisolated final class MiniHasalad: Transport, @unchecked Sendable {
       s.sessions[t] = (u.id, writer, false)
       return grant(t, u, writer: writer)
     case "POST /api/v1/auth/recover/begin":
-      // #7 for words whose recovery key no account here has (this fake keeps none).
-      return error(404, "not_found")
+      guard let key = b["recovery_pubkey"] as? String,
+        let u = s.users.values.first(where: { !$0.deleted && $0.keys["recovery_pubkey"] as? String == key })
+      else { return error(404, "not_found") }
+      let id = token()
+      s.recoveries[id] = (u.id, "654321")
+      s.lastCode = "654321"
+      return ok(["ceremony_id": id, "email_hint": "m\u{2022}\u{2022}\u{2022}@e\u{2022}\u{2022}\u{2022}.com"])
+    case "POST /api/v1/auth/recover/verify":
+      s.recoverVerifies += 1
+      guard let id = b["ceremony_id"] as? String, let c = s.recoveries[id], c.code == b["code"] as? String,
+        let u = s.users[c.user]
+      else { return error(403, "code_rejected") }
+      return ok([
+        "nonce": Base64.encode(bytes(32)), "user_id": u.id, "amk_commitment": u.keys["amk_commitment"] ?? "",
+        "authority_pubkey": u.keys["authority_pubkey"] ?? "", "recovery_wrap": u.keys["recovery_wrap"] ?? "",
+        "current_epoch": 1,
+        "options": [
+          "publicKey": [
+            "challenge": Base64.encodeURL(bytes(32)), "rp": ["id": "hasala.app", "name": "Hasala"],
+            "user": ["id": Base64.encodeURL(bytes(32)), "name": "Hasala", "displayName": "Hasala"],
+          ]
+        ],
+      ])
     default: break
     }
     guard let bearer, let sess = s.sessions[bearer], !sess.revoked else { return error(401, "unauthorized") }

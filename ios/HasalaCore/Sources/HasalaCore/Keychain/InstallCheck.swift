@@ -22,21 +22,70 @@ public enum InstallCheck {
 
   public static func run(
     protectedDataAvailable: Bool, defaults: UserDefaults, keychain: KeychainSecretStore, groups: [String?],
-    widgetsDirectory: URL?, apiHost: String? = nil
+    widgetsDirectory: URL?, apiHost: String? = nil, random: any RandomSource = SystemRandom()
   ) -> Outcome {
     guard protectedDataAvailable else { return .notNow(statuses: []) }
     if defaults.string(forKey: installIDKey) != nil { return .done }
-    let secrets = apiHost.map { Secrets(store: keychain, apiHost: $0) }
-    let leftover = secrets.flatMap { try? $0.session() }
-    let (complete, statuses) = keychain.purgeAll(groups: groups)
-    guard complete else { return .notNow(statuses: statuses) }
-    if var stranded = leftover, let secrets {
-      stranded.pending_logout = true
-      try? secrets.writeSession(stranded)
+    let id: String
+    do {
+      id = try random.uuidV4()
+    } catch .randomUnavailable(let status) {
+      return .notNow(statuses: [status])
+    } catch {
+      return .notNow(statuses: [])
     }
-    if let w = widgetsDirectory { try? FileManager.default.removeItem(at: w) }  // logged and retried, never fatal
-    let id = (try? SystemRandom().uuidV4()) ?? "00000000-0000-4000-8000-000000000000"
+    var kept: SecretItem?
+    if let apiHost {
+      switch markStranded(Secrets(store: keychain, apiHost: apiHost)) {
+      case .wait(let statuses): return .notNow(statuses: statuses)
+      case .nothing: break
+      case .marked: kept = .session(apiHost: apiHost)
+      }
+    }
+    let (complete, statuses) = keychain.purgeAll(groups: groups, sparing: kept)
+    guard complete else { return .notNow(statuses: statuses) }
+    if let w = widgetsDirectory { removeWidgets(w) }
     defaults.set(id, forKey: installIDKey)
     return .done
+  }
+
+  private static let log = CoreLog(category: "HasalaKeychain")
+
+  private enum Stranded {
+    case nothing
+    case marked
+    case wait(statuses: [Int32])
+  }
+
+  private static func markStranded(_ secrets: Secrets) -> Stranded {
+    var stranded: SessionRecord?
+    do {
+      stranded = try secrets.session()
+    } catch .notNow(let status) {
+      return .wait(statuses: [status])
+    } catch {
+      log.error("install_session_unreadable")
+      return .nothing
+    }
+    guard var record = stranded else { return .nothing }
+    if record.pending_logout { return .marked }
+    record.pending_logout = true
+    do {
+      try secrets.writeSession(record)
+    } catch .notNow(let status), .failed(let status) {
+      return .wait(statuses: [status])
+    } catch {
+      return .wait(statuses: [])
+    }
+    return .marked
+  }
+
+  private static func removeWidgets(_ directory: URL) {
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+    do {
+      try FileManager.default.removeItem(at: directory)
+    } catch {
+      log.error("install_widget_snapshot_not_removed")
+    }
   }
 }

@@ -65,7 +65,7 @@ public final class SyncContext: Sendable {
       let state = try storeCall { () throws(StoreError) in try store.syncState() }
       guard let pinned = PinnedRoster.decode(state.rosterJSON) else { return .halted(.rosterInvalid) }
       let fresh = try await RosterService.refetch(client: client, bearer: try bearer(), pinned: pinned)
-      return fresh.writers[writerID.string]?.final_counter != nil ? .wipe : stop
+      return fresh.writers[writerID.string]?.isLive == false ? .wipe : stop
     } catch {
       return error
     }

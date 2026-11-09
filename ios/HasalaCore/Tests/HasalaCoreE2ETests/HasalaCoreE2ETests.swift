@@ -206,6 +206,58 @@ struct AccountTests {
     #expect(await AccountSignIn.signOut(a.env) == true)
     #expect(try a.env.secrets.session() == nil)
   }
+
+  @Test("sign-out of a session the Keychain will not read now is not reported as confirmed")
+  func signOutNotNow() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    a.keychain.locked = true
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    a.keychain.locked = false
+    #expect(try a.env.secrets.session() != nil)
+  }
+
+  @Test("sign-out of a session item that cannot be read removes it, so the sign-out holds on the next launch")
+  func signOutUnreadable() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    try a.keychain.write(.session(apiHost: "api.hasala.app"), Data("not json".utf8))
+    #expect(await AccountSignIn.signOut(a.env) == false)
+    #expect(try a.keychain.read(.session(apiHost: "api.hasala.app")) == nil)
+  }
+
+  func bearerFailure(_ env: AccountEnvironment) -> CeremonyError? {
+    do {
+      _ = try AccountSignIn.liveBearer(env)
+      return nil
+    } catch {
+      return error
+    }
+  }
+
+  @Test("no session, or a pending logout, is the server's 401; a session held back by the Keychain is not")
+  func liveBearer() async throws {
+    let w = World()
+    let a = w.phone("a")
+    _ = try await w.passwordAccount(a)
+    #expect(bearerFailure(a.env) == nil)
+    a.keychain.locked = true
+    let held = try #require(bearerFailure(a.env))
+    #expect(held.failure == nil)
+    guard case .secret(.notNow) = held else {
+      Issue.record("expected the Keychain's not-now")
+      return
+    }
+    a.keychain.locked = false
+    var pending = try #require(try a.env.secrets.session())
+    pending.pending_logout = true
+    try a.env.secrets.writeSession(pending)
+    #expect(bearerFailure(a.env)?.failure?.status == 401)
+    try a.env.secrets.deleteSession()
+    #expect(bearerFailure(a.env)?.failure?.status == 401)
+  }
 }
 
 @Suite("Step-up helper")

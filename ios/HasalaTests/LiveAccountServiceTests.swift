@@ -4,6 +4,7 @@ import CoreStore
 import CoreSync
 import CoreTime
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Hasala
@@ -29,6 +30,15 @@ struct LiveAccountServiceTests {
       client: AuthClient(transport: server), secrets: Secrets(store: MemorySecretStore(), apiHost: "api.hasala.app"),
       approvalKeys: SoftDAK(), passkeys: passkeys, clock: SystemClock(), random: SystemRandom(),
       apiBase: "https://api.hasala.app", accountsDirectory: nil)
+  }
+
+  static func faultyPhone(_ server: MiniHasalad) -> (AccountEnvironment, FaultySecrets) {
+    let store = FaultySecrets()
+    let env = AccountEnvironment(
+      client: AuthClient(transport: server), secrets: Secrets(store: store, apiHost: "api.hasala.app"),
+      approvalKeys: SoftDAK(), passkeys: AssertingPasskeys(), clock: SystemClock(), random: SystemRandom(),
+      apiBase: "https://api.hasala.app", accountsDirectory: nil)
+    return (env, store)
   }
 
   /// C1-P through the service: invite, email code, the words, one `password/register`.
@@ -254,6 +264,144 @@ struct LiveAccountServiceTests {
     #expect(try await again.signInWithPasskey() == .ready)
   }
 
+  @Test func aBindingThatCannotBeReadStopsSignupAndSignIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let binding = try #require(try env.secrets.binding())
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.beginSignup(
+        code: try #require(InviteCode(Self.invite)), linkKey: nil, email: "omar@example.com", displayName: "Omar")
+    }
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.signInWithPassword(email: Self.email, password: Self.password)
+    }
+    await #expect(throws: AuthFailure.refused) { _ = try await again.signInWithPasskey() }
+    #expect(walls.isEmpty)
+
+    store.fault = .none
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() == binding)
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func anEpochKeyThatCannotBeReadDoesNotAskForAnUnlock() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+
+    let again = LiveAccountService(env: env)
+    store.fault = .epochKey
+    await #expect(throws: AuthFailure.refused) {
+      _ = try await again.signInWithPassword(email: Self.email, password: Self.password)
+    }
+    store.fault = .none
+    #expect(try await again.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func aBindingThatCannotBeReadStopsRecoveryBeforeTheCodeIsSpent() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, words) = try await Self.signUp(server, env)
+    await a.signOut()
+
+    let again = LiveAccountService(env: env)
+    let ticket = try await again.beginRecovery(words: words)
+    let code = try #require(server.lastCode)
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) { try await again.verifyRecovery(ticket, code: code, kind: .passkey) }
+    #expect(server.recoverVerifies == 0)
+
+    store.fault = .none
+    try await again.verifyRecovery(ticket, code: code, kind: .passkey)
+    #expect(server.recoverVerifies == 1)
+  }
+
+  @Test func anotherAccountsWordsOnABoundIPhoneAskToRemoveItsData() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, _) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.signOut()
+    let (_, otherWords) = try await Self.signUp(server, Self.phone(server))
+
+    let again = LiveAccountService(env: env)
+    var walls: [String?] = []
+    again.hooks = LiveAccountHooks(otherAccountHere: { walls.append($0) })
+    let ticket = try await again.beginRecovery(words: otherWords)
+    let code = try #require(server.lastCode)
+    await #expect(throws: AuthFailure.cancelled) { try await again.verifyRecovery(ticket, code: code, kind: .passkey) }
+    #expect(walls == [Self.email])
+  }
+
+  @Test func aBindingThatCannotBeReadDoesNotUnfreezeAsAnUnboundIPhone() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.freezeAll(byOperator: false)
+
+    store.fault = .binding
+    await #expect(throws: AuthFailure.refused) { try await a.perform(.unfreeze, password: nil) }
+    #expect(server.unfreezeCalls == 0)
+  }
+
+  @Test func aSessionThatCannotBeReadKeepsTheCheckAndTheSession() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let (env, store) = Self.faultyPhone(server)
+    _ = try await Self.signUp(server, env)
+    let held = try #require(try env.secrets.session())
+    var signedOut = 0
+    let account = LiveAccountService(env: env)
+    account.hooks.left = { signedOut += 1 }
+    let session = AccountSession(
+      services: AccountServices(
+        account: account, mailbox: MockMailbox(offersSampleData: false), setup: MockSetupAuthoring(),
+        notifications: MockNotificationPermission()),
+      phase: .checking)
+
+    store.fault = .session
+    await session.resume()
+    #expect(session.phase == .checking)
+    #expect(session.resumeFailure == .offline)
+    #expect(signedOut == 0)
+
+    store.fault = .none
+    #expect(try env.secrets.session() == held)
+    _ = try await env.client.session(bearer: held.token)
+    await session.resume()
+    #expect(session.phase == .needsUnlock(passkeyCanUnlock: false))
+    #expect(session.resumeFailure == nil)
+  }
+
+  @Test func aMissingOrLoggedOutSessionIsStillRefusedOnResume() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let account = LiveAccountService(env: env)
+
+    var pending = try #require(try env.secrets.session())
+    pending.pending_logout = true
+    try env.secrets.writeSession(pending)
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+
+    try env.secrets.deleteSession()
+    await #expect(throws: AuthFailure.refused) { _ = try await account.resumeSignedIn() }
+  }
+
+  @Test func aBindingThatCannotBeReadCountsAsKeysOnThisIPhone() {
+    let (env, store) = Self.faultyPhone(MiniHasalad(invite: Self.invite))
+    let a = LiveAccountService(env: env)
+    #expect(!a.keysOnThisIPhone)
+    store.fault = .binding
+    #expect(a.keysOnThisIPhone)
+  }
+
   /// §4.7 row 1: an offline sign-out keeps the session item marked `pending_logout`; the
   /// logout is retried later, and the item goes once the server confirms.
   @Test func anOfflineSignOutIsFinishedLater() async throws {
@@ -344,8 +492,8 @@ struct LiveAccountServiceTests {
   /// `GET /account`'s freeze: who froze it, and the trigger in the app's +04:00 clock.
   @Test func theFreezeIsReadFromTheAccount() {
     let inOct2026: Int64 = 1_792_000_000_000
-    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> LiveAccountFields {
-      LiveAccountFields(frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
+    func fields(frozen: Bool, by: String?, at: String? = nil, restricted: Bool = false) -> AccountInfo {
+      AccountInfo(user_id: "u", frozen: frozen, freeze_trigger_at: at, frozen_by: by, restricted: restricted)
     }
     #expect(LiveAccountService.freeze(fields(frozen: false, by: nil), nowMs: inOct2026) == nil)
     #expect(LiveAccountService.freeze(fields(frozen: true, by: "operator"), nowMs: inOct2026) == FreezeInfo(by: .operator, when: nil))
@@ -364,4 +512,27 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: newYearInDubai) == "on Fri 1 Jan at 01:00")
     #expect(LiveAccountService.freezeTime("2026-12-31T19:00:00Z", nowMs: newYearInDubai) == "on Thu 31 Dec 2026 at 23:00")
   }
+}
+
+nonisolated final class FaultySecrets: SecretStore {
+  enum Fault { case none, binding, epochKey, session }
+
+  private let inner = MemorySecretStore()
+  private let current = Mutex(Fault.none)
+
+  var fault: Fault {
+    get { current.withLock { $0 } }
+    set { current.withLock { $0 = newValue } }
+  }
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? {
+    switch (item, fault) {
+    case (.accountBinding, .binding), (.epochKey, .epochKey), (.session, .session): throw .failed(status: -26276)
+    default: return try inner.read(item)
+    }
+  }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try inner.write(item, value) }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { try inner.delete(item) }
 }

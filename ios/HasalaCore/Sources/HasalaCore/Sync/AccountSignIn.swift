@@ -91,12 +91,26 @@ public enum AccountSignIn {
     return DeviceBindingJSON(writerID: w.string, sigB64: Base64.encode(sig))
   }
 
+  public static func liveBearer(_ env: AccountEnvironment) throws(CeremonyError) -> String {
+    guard let s = try secretStep({ () throws(SecretStoreError) in try env.secrets.session() }), !s.pending_logout else {
+      throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
+    }
+    return s.token
+  }
+
   /// §4.7 row 1: `POST /auth/logout` BEFORE the session item goes; offline →
   /// keep it with `pending_logout: true` and treat the app as signed out.
   /// Returns whether the server confirmed (`204` or `401`).
   @discardableResult
   public static func signOut(_ env: AccountEnvironment) async -> Bool {
-    guard let s = try? env.secrets.session() else { return true }
+    let stored: SessionRecord?
+    do {
+      stored = try env.secrets.session()
+    } catch {
+      try? env.secrets.deleteSession()
+      return false
+    }
+    guard let s = stored else { return true }
     do {
       try await env.client.logout(bearer: s.token)
     } catch {
@@ -198,11 +212,12 @@ public enum StepUpHelper {
   }
 
   /// A `device_code` proof with the typed code, reusing the stored signature.
-  public static func withCode(_ proof: Proof, code: String) -> StepUpJSON {
+  public static func withCode(_ proof: Proof, code: String) throws(CeremonyError) -> StepUpJSON {
     let p = proof.stepUp.proof
-    return StepUpJSON(
-      nonce: proof.stepUp.nonce,
-      proof: .deviceCode(writerID: p.writer_id ?? "", sigB64: p.sig ?? "", code: code))
+    guard p.kind == StepUpProofKind.deviceCode.rawValue, let writer = p.writer_id, let sig = p.sig else {
+      throw .noDeviceKey
+    }
+    return StepUpJSON(nonce: proof.stepUp.nonce, proof: .deviceCode(writerID: writer, sigB64: sig, code: code))
   }
 
   static func dakSign(_ env: AccountEnvironment, challenge: Data, userID: UserID, writerID: WriterID, reason: String)

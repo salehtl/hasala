@@ -5,6 +5,7 @@ import CoreSync
 import CoreTime
 import Foundation
 import HasalaKeychain
+import HasalaWidgetData
 import UIKit
 
 /// The live graph's fixed half (spec 04 §3, the composition root): the Keychain behind
@@ -74,7 +75,7 @@ final class AppEnvironment {
     if defaults.string(forKey: InstallCheck.installIDKey) != nil { return .done }
     return InstallCheck.run(
       protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable, defaults: defaults, keychain: keychain,
-      groups: [keychainGroup, sharedKeychainGroup], widgetsDirectory: nil,
+      groups: [keychainGroup, sharedKeychainGroup], widgetsDirectory: WidgetSnapshotStore.shared()?.directory,
       apiHost: BuildInfo.apiBaseURL().host() ?? "api.hasala.app")
   }
 

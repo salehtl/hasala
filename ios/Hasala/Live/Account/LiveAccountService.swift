@@ -76,7 +76,13 @@ final class LiveAccountService: AccountService {
 
   private var binding: AccountBinding? { try? env.secrets.binding() }
 
-  var keysOnThisIPhone: Bool { binding != nil }
+  private func heldBinding() throws(AuthFailure) -> AccountBinding? {
+    do { return try env.secrets.binding() } catch { throw .refused }
+  }
+
+  var keysOnThisIPhone: Bool {
+    do { return try env.secrets.binding() != nil } catch { return true }
+  }
 
   /// This iPhone holds `b`'s data: the gate shows the "Remove this iPhone's data" wall,
   /// and the screen that asked stays as it is (`.cancelled` shows nothing).
@@ -90,7 +96,7 @@ final class LiveAccountService: AccountService {
   func beginSignup(code: InviteCode, linkKey: String?, email: String, displayName: String)
     async throws(AuthFailure) -> SignupTicket
   {
-    if let b = binding { throw otherAccountHere(b) }
+    if let b = try heldBinding() { throw otherAccountHere(b) }
     await Self.retryPendingLogout(env)
     do {
       let s = try await AccountCreation.beginSignup(
@@ -210,29 +216,29 @@ final class LiveAccountService: AccountService {
 
   // MARK: Sign in
 
-  private func outcome(_ r: SignInResult, passkeyCanUnlock: Bool) async -> SignInOutcome {
+  private func outcome(_ r: SignInResult, bound: AccountBinding?, passkeyCanUnlock: Bool)
+    async throws(AuthFailure) -> SignInOutcome
+  {
     signIn = r
     if r.restricted { return .frozen(await freezeInfo(token: r.grant.session_token)) }
     if !r.hasKeys { return .needsKeys }
     // A bound iPhone whose keys are here opens straight away.
-    if let b = binding, b.user_id == r.grant.user_id,
-      let u = b.userID, (try? env.secrets.epochKey(userID: u, epoch: b.key_epoch)) != nil
-    {
-      return .ready
+    if let b = bound, b.user_id == r.grant.user_id, let u = b.userID {
+      do {
+        if try env.secrets.epochKey(userID: u, epoch: b.key_epoch) != nil { return .ready }
+      } catch {
+        throw .refused
+      }
     }
     return .needsUnlock(passkeyCanUnlock: passkeyCanUnlock)
   }
 
   func signInWithPasskey() async throws(AuthFailure) -> SignInOutcome {
     let stale = await Self.retryPendingLogout(env)
-    let bound = binding
+    let bound = try heldBinding()
+    let r: SignInResult
     do {
-      let r = try await AccountSignIn.withPasskey(env, bound: bound, wantPRF: true)
-      profile = AccountProfile(displayName: binding?.display_name ?? "", email: binding?.email_norm ?? "",
-                               method: .passkey)
-      methodConfirmed = true
-      Self.logOutLater(stale, env)
-      return await outcome(r, passkeyCanUnlock: r.assertion?.prfFirst != nil)
+      r = try await AccountSignIn.withPasskey(env, bound: bound, wantPRF: true)
     } catch {
       switch error.failureClass {
       case .rejected:
@@ -253,25 +259,29 @@ final class LiveAccountService: AccountService {
       }
       throw Self.map(error)
     }
+    profile = AccountProfile(displayName: bound?.display_name ?? "", email: bound?.email_norm ?? "", method: .passkey)
+    methodConfirmed = true
+    Self.logOutLater(stale, env)
+    return try await outcome(r, bound: bound, passkeyCanUnlock: r.assertion?.prfFirst != nil)
   }
 
   func signInWithPassword(email: String, password: String) async throws(AuthFailure) -> SignInOutcome {
-    let bound = binding
+    let bound = try heldBinding()
     if let bound, let typed = try? EmailNorm.normalize(email), typed != bound.email_norm {
       throw otherAccountHere(bound)
     }
     let stale = await Self.retryPendingLogout(env)
+    let r: SignInResult
     do {
-      let r = try await AccountSignIn.withPassword(env, email: email, password: password, bound: bound)
-      profile = AccountProfile(displayName: binding?.display_name ?? "", email: r.emailNorm ?? email,
-                               method: .password)
-      methodConfirmed = true
-      Self.logOutLater(stale, env)
-      // TODO(WS-14): offer the passkey unlock when GET /keys/wraps lists a PRF wrap (K34).
-      return await outcome(r, passkeyCanUnlock: false)
+      r = try await AccountSignIn.withPassword(env, email: email, password: password, bound: bound)
     } catch {
       throw Self.map(error)
     }
+    profile = AccountProfile(displayName: bound?.display_name ?? "", email: r.emailNorm ?? email, method: .password)
+    methodConfirmed = true
+    Self.logOutLater(stale, env)
+    // TODO(WS-14): offer the passkey unlock when GET /keys/wraps lists a PRF wrap (K34).
+    return try await outcome(r, bound: bound, passkeyCanUnlock: false)
   }
 
   // MARK: Pending sign-out (spec 04 §4.7 row 1)
@@ -366,10 +376,12 @@ final class LiveAccountService: AccountService {
   /// tell a sign-in killed before unlock from a C1 killed before its bootstrap, so the
   /// server's `has_keys` decides (and its PRF wraps whether Face ID can unlock).
   func resumeSignedIn() async throws(AuthFailure) -> SignInOutcome {
-    guard let s = try? env.secrets.session(), !s.pending_logout else { throw .refused }
-    let a: LiveAccountFields
+    let stored: SessionRecord?
+    do { stored = try env.secrets.session() } catch { throw .offline }
+    guard let s = stored, !s.pending_logout else { throw .refused }
+    let a: AccountInfo
     do {
-      a = try await accountFields(s.token)
+      a = try await env.client.account(bearer: s.token)
     } catch {
       throw Self.map(CeremonyError.api(error))
     }
@@ -483,6 +495,7 @@ final class LiveAccountService: AccountService {
   func verifyRecovery(_ ticket: RecoveryTicket, code: String, kind: SignInMethod) async throws(AuthFailure) {
     guard let r = recovery, r.ceremonyID == ticket.id else { throw .refused }
     guard kind == .passkey else { throw .notInThisBuild }
+    let held = try heldBinding()
     do {
       try await AccountRecovery.verifyForPasskey(env, r, code: code)
       codeTries = 5
@@ -496,7 +509,7 @@ final class LiveAccountService: AccountService {
     }
     // One account per iPhone (spec 04 §4.4): another account's data here asks for the
     // wall before the passkey sheet.
-    if let b = binding, let user = r.userID, b.user_id != user.string {
+    if let b = held, let user = r.userID, b.user_id != user.string {
       r.wipe()
       recovery = nil
       throw otherAccountHere(b)
@@ -530,14 +543,14 @@ final class LiveAccountService: AccountService {
   /// What `GET /account` and the binding say. Passkey rows, devices and last sign-in
   /// need routes CoreSync doesn't read yet; the rows shown are this iPhone's own.
   func securityState() async throws(AuthFailure) -> SecurityState {
-    guard let b = binding else { throw .refused }
+    guard let b = try heldBinding() else { throw .refused }
     var hasPassword = profile?.method == .password
     var hasPasskey = profile?.method == .passkey
     var frozen: FreezeInfo?
-    var fetched: LiveAccountFields?
+    var fetched: AccountInfo?
     if let token = try? env.secrets.session()?.token {
       do {
-        fetched = try await accountFields(token)
+        fetched = try await env.client.account(bearer: token)
       } catch {
         if !methodConfirmed { throw Self.map(CeremonyError.api(error)) }
       }
@@ -561,7 +574,7 @@ final class LiveAccountService: AccountService {
   /// Who froze the account and when, from `GET /account` (allowed on a restricted
   /// session); the holder's, with no time, when the server can't be asked.
   private func freezeInfo(token: String) async -> FreezeInfo {
-    let a = try? await accountFields(token)
+    let a = try? await env.client.account(bearer: token)
     return a.flatMap { Self.freeze($0, nowMs: env.clock.nowMs()) } ?? FreezeInfo(by: .holder, when: nil)
   }
 
@@ -569,14 +582,14 @@ final class LiveAccountService: AccountService {
   /// still read; spec 04 §6.11). nil when it isn't frozen, or the server can't be asked.
   func freezeInfo() async -> FreezeInfo? {
     guard let token = try? env.secrets.session()?.token,
-      let a = try? await accountFields(token)
+      let a = try? await env.client.account(bearer: token)
     else { return nil }
     return Self.freeze(a, nowMs: env.clock.nowMs())
   }
 
   /// The freeze `GET /account` reports: `frozen_by` names the operator or the holder, and
   /// `freeze_trigger_at` is shown on the holder's wall.
-  static func freeze(_ a: LiveAccountFields, nowMs: Int64) -> FreezeInfo? {
+  static func freeze(_ a: AccountInfo, nowMs: Int64) -> FreezeInfo? {
     guard a.frozen == true || a.restricted == true else { return nil }
     return FreezeInfo(
       by: a.frozen_by == "operator" ? .operator : .holder, when: freezeTime(a.freeze_trigger_at, nowMs: nowMs),
@@ -596,7 +609,7 @@ final class LiveAccountService: AccountService {
 
   func perform(_ action: SecurityAction, password: String?) async throws(AuthFailure) {
     let factor: StepUpHelper.Factor = password.map { .device(password: $0) } ?? .passkey
-    guard let b = binding else {
+    guard let b = try heldBinding() else {
       guard case .unfreeze = action else { throw .refused }
       try await unfreeze(factor: factor, binding: nil)
       return
@@ -705,7 +718,7 @@ final class LiveAccountService: AccountService {
   /// `phrase.view` (#67): the passkey's PRF output opens its wrap, whose AMK opens the
   /// phrase box. Passkey accounts with a PRF wrap only (S-41).
   func viewRecoveryPhrase() async throws(AuthFailure) -> [String] {
-    guard let b = binding, let user = b.userID else { throw .refused }
+    guard let b = try heldBinding(), let user = b.userID else { throw .refused }
     do {
       let proof = try await StepUpHelper.prove(
         env, params: .phraseView, factor: .passkey, binding: b, reason: "Confirm it's you to see your 12 words")
@@ -750,15 +763,8 @@ final class LiveAccountService: AccountService {
     return Date(timeIntervalSince1970: Double(ms) / 1000)
   }
 
-  private func accountFields(_ token: String) async throws(APIError) -> LiveAccountFields {
-    try await env.client.api.call(.get, "/api/v1/account", bearer: token, as: LiveAccountFields.self)
-  }
-
   private func bearer() throws(CeremonyError) -> String {
-    guard let s = try? env.secrets.session(), !s.pending_logout else {
-      throw .api(.refused(APIFailure(status: 401, code: "unauthorized")))
-    }
-    return s.token
+    try AccountSignIn.liveBearer(env)
   }
 
   private func clearSignedIn() {
@@ -860,21 +866,6 @@ final class LiveAccountService: AccountService {
     default: String(String(describing: e).prefix { $0 != "(" })
     }
   }
-}
-
-/// The fields of `GET /account` (#40) the app reads, including the freeze's author and
-/// trigger time, which CoreAuth's `AccountInfo` doesn't carry.
-nonisolated struct LiveAccountFields: Decodable, Sendable {
-  var has_keys: Bool?
-  var email: String?
-  var display_name: String?
-  var has_password: Bool?
-  var has_passkey: Bool?
-  var frozen: Bool?
-  var freeze_trigger_at: String?
-  var frozen_by: String?
-  var holder_can_lift: Bool?
-  var restricted: Bool?
 }
 
 /// `{"step_up"}`, the body of #16, #65, #66 and #67.

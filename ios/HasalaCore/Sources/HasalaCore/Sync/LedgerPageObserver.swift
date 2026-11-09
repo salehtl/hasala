@@ -146,7 +146,7 @@ public actor LedgerPageObserver: PageObserver {
       var page: [FoldRow] = []
       var held = 0
       for r in rows {
-        let outcome = try reopen(r, opener, revoked: revoked.contains(r.writerID) || r.disposition == .setAside)
+        let outcome = try reopen(r, opener, setsAsideNewer: revoked.contains(r.writerID) || r.disposition == .setAside)
         let now = WireRowRecord.Disposition(outcome)
         if now != r.disposition {
           guard r.disposition == .setAside, now == .folded else { throw integrityHalt("cold_fold_disposition") }
@@ -205,30 +205,16 @@ public actor LedgerPageObserver: PageObserver {
   }
 
   /// The reader's decision for a stored row, taken again (R3-R10).
-  private func reopen(_ r: WireRowRecord, _ opener: Opener, revoked: Bool = false) throws(SyncStop) -> PageReader.RowOutcome {
+  private func reopen(_ r: WireRowRecord, _ opener: Opener, setsAsideNewer: Bool = false) throws(SyncStop) -> PageReader.RowOutcome {
     let envelope: Envelope
     do { envelope = try Envelope(userID: context.userID, writerID: r.writerID, counter: r.counter) } catch {
       throw .halted(.inconsistent("cold_fold_envelope"))
     }
-    switch opener.open(r.blob, envelope: envelope, prevHash: r.prevHash) {
-    case .opened(let plaintext):
-      switch OpCodec.decodeR10(plaintext) {
-      case .ops(let ops): return .opened(plaintext: plaintext, ops: ops)
-      case .setAside(let reason, _): return .setAside(reason, alarm: false)
-      case .hardStop(.updateRequired) where revoked: return .setAside(.opsUndecodable, alarm: false)
-      case .hardStop(.updateRequired): throw .halted(.updateRequired)
-      case .hardStop: throw .halted(.inconsistent("cold_fold_decode"))
-      }
-    case .setAside(let reason, let alarm):
-      return .setAside(reason, alarm: alarm)
-    case .needsUnlock(let e):
-      throw .needsUnlock(epoch: e)
-    case .hardStop(.updateRequired) where revoked:
-      return .setAside(.opsUndecodable, alarm: false)
-    case .hardStop(.updateRequired):
-      throw .halted(.updateRequired)
-    case .hardStop, .refreshEpoch:
-      throw .halted(.inconsistent("cold_fold_open"))
+    switch PageReader.decide(opener.open(r.blob, envelope: envelope, prevHash: r.prevHash), setsAsideNewer: setsAsideNewer) {
+    case .row(let outcome): return outcome
+    case .stop(.needsUnlock(let e)): throw .needsUnlock(epoch: e)
+    case .stop(.hardStop(.updateRequired)): throw .halted(.updateRequired)
+    case .stop: throw .halted(.inconsistent("cold_fold_open"))
     }
   }
 

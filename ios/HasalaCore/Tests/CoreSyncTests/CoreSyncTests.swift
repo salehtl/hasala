@@ -6,6 +6,26 @@ import Testing
 
 @testable import CoreSync
 
+@Suite("CoreSync: step-up proofs")
+struct StepUpCodeTests {
+  func proof(_ p: StepUpJSON.Proof) -> StepUpHelper.Proof {
+    StepUpHelper.Proof(stepUp: StepUpJSON(nonce: "n", proof: p), prf: nil, credentialID: nil)
+  }
+
+  @Test("the typed code goes on the device_code proof that was signed")
+  func codeOnDeviceCodeProof() throws {
+    let filled = try StepUpHelper.withCode(proof(.deviceCode(writerID: "w", sigB64: "s", code: "")), code: "123456")
+    #expect(filled == StepUpJSON(nonce: "n", proof: .deviceCode(writerID: "w", sigB64: "s", code: "123456")))
+  }
+
+  @Test("a code on any other proof is refused, never sent with an empty writer or signature")
+  func codeOnOtherProof() throws {
+    #expect(throws: CeremonyError.self) {
+      _ = try StepUpHelper.withCode(proof(.device(writerID: "w", sigB64: "s", verifierB64: "v")), code: "123456")
+    }
+  }
+}
+
 @Suite("CoreSync: pieces")
 struct SyncPieceTests {
   @Test("ULIDs: 26 Crockford characters, time-ordered")
