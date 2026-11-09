@@ -431,6 +431,35 @@ public actor LedgerPageObserver: PageObserver {
     sampleIssued = false
   }
 
+  public func loadSample(account: AccountInfo, enqueue: @Sendable ([Op]) async throws -> Void) async throws(SampleLoadError) {
+    try await loadSample(account: account, seed: { () throws(SampleSeedError) in try SampleSeed.bundled() }, enqueue: enqueue)
+  }
+
+  func loadSample(
+    account: AccountInfo, seed: @Sendable () throws(SampleSeedError) -> Data, enqueue: @Sendable ([Op]) async throws -> Void
+  ) async throws(SampleLoadError) {
+    let blobs = try sampleBatches(account: account, seed: seed)
+    do {
+      try await enqueue(blobs.flatMap(\.ops))
+    } catch {
+      sampleNotSaved()
+      throw .notSaved
+    }
+    try? await reproject()
+  }
+
+  public func openingOps(after run: RunOutcome) throws -> AuthoredBlob? {
+    guard run.stop == nil else { return nil }
+    let folded = try loaded()
+    guard folded.homeCurrency == nil else { return nil }
+    let ledger = Projector.overlay(folded, pending: try pendingOverlay(over: folded), writerID: context.writerID.string).0
+    guard ledger.homeCurrency == nil else { return nil }
+    return try stamps.build(try baseContext().raised(to: stamps.lastMs)) { a throws(AuthorError) in
+      a.setHomeCurrency("AED")
+      try a.setRate(currency: "USD", rateMicro: 3_672_500)
+    }
+  }
+
   // MARK: Errors
 
   /// `LedgerFold.page`, its halts as sync stops.
@@ -468,6 +497,7 @@ public enum SampleLoadError: Error, Sendable, Equatable {
   case sync(SyncStop)
   /// The gate refused (`.refused`), or the seed did not load or author.
   case seed(SampleSeedError)
+  case notSaved
 }
 
 extension WireRowRecord.Disposition {

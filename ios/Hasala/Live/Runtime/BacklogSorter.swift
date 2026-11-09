@@ -226,9 +226,11 @@ actor BacklogSorter {
   private var checkAgain = false
   private var closed = false
   private var mayRun: Bool
+  private var held = false
   private var hold: BacklogSnapshot.Hold?
   private var observer: (@Sendable (BacklogSnapshot) -> Void)?
   private var task: Task<Void, Never>?
+  private var stopping: Task<Void, Never>?
   private var generation = 0
   private var watching = false
   private(set) var passes = 0
@@ -275,7 +277,7 @@ actor BacklogSorter {
   func ensure(retry: Bool = false) async {
     guard !closed else { return }
     if retry { retryArmed = true }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     guard enabled() else { return resume() }
     if let run = record.run, run.phase != .done { return resume() }
     if checking {
@@ -297,7 +299,7 @@ actor BacklogSorter {
   }
 
   private var mayStart: Bool {
-    guard !closed, mayRun, task == nil else { return false }
+    guard !closed, mayRun, !held, task == nil else { return false }
     guard let run = record.run else { return true }
     return run.phase == .done && (retryArmed || !run.retriesOnlyAtOpen)
   }
@@ -308,7 +310,7 @@ actor BacklogSorter {
       if run.phase != .done { end(.off) }
       return
     }
-    guard mayRun else { return }
+    guard mayRun, !held else { return }
     switch run.phase {
     case .running:
       if task == nil { launch() } else { wake.fire() }
@@ -342,7 +344,12 @@ actor BacklogSorter {
   func switchedOff() {
     guard !enabled() else { return }
     halt()
-    if let run = record.run, run.phase != .done { end(.off) }
+    if let run = record.run, run.phase != .done { end(.off) } else { publish() }
+  }
+
+  func switchedOn() async {
+    publish()
+    await ensure(retry: true)
   }
 
   func suspend() {
@@ -356,6 +363,21 @@ actor BacklogSorter {
 
   func finished() async {
     await task?.value
+  }
+
+  func settled() async {
+    await stopping?.value
+  }
+
+  func holdRuns() async {
+    held = true
+    halt()
+    await settled()
+  }
+
+  func releaseRuns() {
+    held = false
+    resume()
   }
 
   func sendAllBack(_ author: @Sendable ([String: Int64]) async -> Int?) async -> Int {
@@ -386,7 +408,14 @@ actor BacklogSorter {
   }
 
   private func halt() {
-    task?.cancel()
+    if let running = task {
+      running.cancel()
+      let earlier = stopping
+      stopping = Task {
+        await earlier?.value
+        await running.value
+      }
+    }
     task = nil
     hold = nil
     wake.fire()

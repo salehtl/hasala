@@ -25,6 +25,7 @@ final class AppRouter {
   /// Sheet B after sheet A closes (never two at once): the bell row "Sign in again" opens
   /// Profile › Bank alerts.
   var nextSheet: (SheetRoute, profilePath: [ProfileRoute])?
+  var nextCover: CoverRoute?
   var pasteBankText = false
 
   #if HASALA_MOCKS
@@ -35,6 +36,7 @@ final class AppRouter {
   /// Presents `route`, with `path` pushed inside it when it is the profile. A sheet that
   /// is up closes first; `route` follows it (`presentNext`, from the sheet's dismissal).
   func open(_ route: SheetRoute, profile path: [ProfileRoute] = []) {
+    nextCover = nil
     if sheet != nil {
       nextSheet = (route, path)
       sheet = nil
@@ -52,6 +54,11 @@ final class AppRouter {
     profile = []
     overProfile = nil
     transaction = []
+    if let queued = nextCover {
+      nextCover = nil
+      cover = queued
+      return
+    }
     guard let next = nextSheet else { return }
     nextSheet = nil
     present(next.0, profile: next.profilePath)
@@ -86,7 +93,10 @@ final class AppRouter {
     overProfile = nil
     cover = nil
     nextSheet = nil
+    nextCover = nil
   }
+
+  var sheetUpOrClosing: Bool { sheet != nil || nextSheet != nil || nextCover != nil }
 
   private func present(_ route: SheetRoute, profile path: [ProfileRoute]) {
     switch route {

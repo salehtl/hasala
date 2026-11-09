@@ -76,12 +76,7 @@ final class BootController {
 
   @ObservationIgnored private let account: LiveAccountService
   @ObservationIgnored private let services: AccountServices
-  /// The runtime being opened; its value is the runtime once it is open (before its
-  /// launch run).
-  @ObservationIgnored private var opening: Task<AccountRuntime?, Never>?
-  @ObservationIgnored private var closing: Task<Void, Never>?
-  /// Bumped by every open and close, so an older opening can't publish or clear a newer one.
-  @ObservationIgnored private var openingID = 0
+  @ObservationIgnored private let turns = RuntimeTurns<AccountRuntime>()
   @ObservationIgnored private var observingProtectedData = false
   @ObservationIgnored private var startRetry: Task<Void, Never>?
   @ObservationIgnored private var startRetryDelay: Duration = .seconds(1)
@@ -106,9 +101,13 @@ final class BootController {
     account.hooks = LiveAccountHooks(
       engine: { [weak self] in self?.runtime?.engine },
       context: { [weak self] in self?.runtime?.context },
-      pause: { [weak self] in await self?.runtime?.coordinator.pause() },
-      resume: { [weak self] in await self?.runtime?.coordinator.resume() },
+      pause: { [weak self] in await self?.runtime?.holdWork() },
+      resume: { [weak self] in await self?.runtime?.resumeWork() },
       left: { [weak self] in await self?.left() },
+      forgetHomeLayout: { [weak self] in
+        self?.app?.forgetHomeLayout()
+        HomeLayoutStore.forgetAll()
+      },
       otherAccountHere: { [weak self] email in self?.wall = .otherAccount(email: email) },
       deviceUnenrolled: { [weak self] in self?.wall = .unenrolled })
     // The BGTaskScheduler tasks run the open account's coordinator (spec 04 §7.9). A task
@@ -149,7 +148,10 @@ final class BootController {
     let (phase, wall) = Self.initialPhase(boot, finished: LocalAccountData.setupFinished())
     Self.dropLockedTextsMarker(phase)
     self.wall = wall
-    session = AccountSession(services: services, phase: phase)
+    let decided = AccountSession(services: services, phase: phase)
+    decided.onPhaseChange = { [weak self] in self?.phaseChanged($0) }
+    decided.onUnfroze = { [weak self] in self?.relaunch() }
+    session = decided
     state = .decided
     phaseChanged(session.phase)
     let env = self.env.account
@@ -201,15 +203,15 @@ final class BootController {
   // MARK: Phase changes
 
   /// The gate moved: open the account when it reaches setup or the app, close it when
-  /// it leaves. Called by the root view on every phase change.
+  /// it leaves.
   func phaseChanged(_ phase: AccountSession.Phase) {
     Self.noteReached(phase)
     switch phase {
     case .onboarding, .ready, .frozen:
       openRuntimeIfNeeded()
     case .signedOut:
-      app?.forgetHomeLayout()
-      HomeLayoutStore.forgetAll()
+      let secrets = env.account.secrets
+      LocalAccountData.forgetIfNoAccount(binding: { try secrets.binding() })
       Task { await closeRuntime() }
     case .checking, .needsUnlock, .needsKeys:
       break
@@ -225,8 +227,7 @@ final class BootController {
   /// its launch run (a caller's run coalesces with it).
   func openedRuntime() async -> AccountRuntime? {
     if let runtime { return runtime }
-    if let opening { return await opening.value }
-    return runtime
+    return await turns.opened()
   }
 
   /// The app came to the foreground: catch up (at most once a minute), and finish a
@@ -242,7 +243,7 @@ final class BootController {
   }
 
   private func openRuntimeIfNeeded() {
-    guard runtime == nil, opening == nil, wall == nil, let binding = try? env.account.secrets.binding() else { return }
+    guard runtime == nil, !turns.isOpening, wall == nil, let binding = try? env.account.secrets.binding() else { return }
     // The binding and keys are here but the store isn't (a restore to this iPhone, §4.7
     // row 8). A fresh store would restart this writer's chain at zero; this build can't
     // set it from the verified server head, so it asks to start this iPhone again.
@@ -253,12 +254,8 @@ final class BootController {
     let env = self.env
     let account = self.account
     let profile = Self.profileInfo(account.profile, binding: binding)
-    let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop) }
-    openingID += 1
-    let id = openingID
-    let closing = self.closing
-    opening = Task { [weak self] in
-      await closing?.value
+    turns.open { [weak self] turn in
+      let stopped: @Sendable (SyncStop) async -> Void = { [weak self] stop in await self?.stopped(stop, turn: turn) }
       let rt: AccountRuntime
       do {
         rt = try await AccountRuntime.open(
@@ -267,24 +264,24 @@ final class BootController {
       } catch {
         // The store or projection could not open (a disk or protection failure, or a
         // store left half-made): a wall offers Try again and starting this iPhone over.
-        guard let self, self.openingID == id else { return nil }
-        self.opening = nil
+        guard let self, self.turns.isCurrent(turn) else { return nil }
+        self.turns.finishOpening(turn)
         if self.session.phase != .signedOut { self.wall = .openFailed }
         return nil
       }
-      guard let self, self.openingID == id, self.session.phase != .signedOut else {
+      guard let self, self.turns.isCurrent(turn), self.session.phase != .signedOut else {
         await rt.close()
         return nil
       }
       var facts = Self.facts(rt, texts: self.services.bankTexts)
       if let phase = rt.store.mailboxPhase { facts.mailbox = Self.mailboxFact(phase) }
-      self.opening = nil
+      self.turns.finishOpening(turn)
       self.runtime = rt
       let layouts = HomeLayoutStore(account: LocalAccountData.digest(binding.user_id, salt: LocalAccountData.salt()))
       let app = AppModel(
         store: rt.store, mailbox: self.services.mailbox, layouts: layouts,
         notificationReads: NotificationReads(defaults: .standard), bankTexts: self.services.bankTexts,
-        reviewOrderDefaults: .standard)
+        reviewOrderDefaults: .standard, amountsDefaults: .standard)
       if BuildSurface.showsCloudSuggestions { app.cloudSort = LiveCloudSortController(runtime: rt) }
       rt.store.onWriteFailed = { [weak app] in app?.writeFailed() }
       // Pull to refresh waits at most 20 s; the run carries on without it.
@@ -306,15 +303,15 @@ final class BootController {
         self.session.reviewAccount = rt.reviewAccount
         await rt.store.reload()
       }
-      BackgroundScheduler.shared.scheduleRefresh()
-      Task { [weak self] in await self?.launch(rt, binding: binding) }
+      BackgroundScheduler.shared.scheduleAfterOpening(rt.store.mailboxPhase)
+      Task { [weak self] in await self?.launch(rt, binding: binding, turn: turn) }
       return rt
     }
   }
 
   /// The launch run, then APNs registration for the account that is still open.
-  private func launch(_ rt: AccountRuntime, binding: AccountBinding) async {
-    await rt.start(buildNumber: env.buildNumber, stopped: { [weak self] stop in await self?.stopped(stop) })
+  private func launch(_ rt: AccountRuntime, binding: AccountBinding, turn: RuntimeTurns<AccountRuntime>.Turn) async {
+    await rt.start(buildNumber: env.buildNumber, stopped: { [weak self] stop in await self?.stopped(stop, turn: turn) })
     guard runtime === rt else { return }
     PushRegistrar.shared.register(env: env.account, userID: binding.user_id)
   }
@@ -339,27 +336,25 @@ final class BootController {
     badge?.stop()
     badge = nil
     AppIconBadge.clear()
-    openingID += 1
-    opening?.cancel()
-    opening = nil
     BackgroundScheduler.shared.cancelAll()
     syncHalt = nil
+    wall = Self.wallAfterClosing(wall)
     setupFacts = OnboardingStep.Facts(hasSession: true, keysReady: true)
-    guard let rt = runtime else { return }
-    runtime = nil
-    app = nil
-    session.reviewAccount = false
-    PushRegistrar.shared.forget()
-    let previous = closing
-    let task = Task {
-      await previous?.value
-      await rt.close()
+    let rt = runtime
+    if rt != nil {
+      runtime = nil
+      app = nil
+      session.reviewAccount = false
+      PushRegistrar.shared.forget()
     }
-    closing = task
-    await task.value
+    await turns.close(rt) { await $0.close() }
   }
 
   // MARK: Walls
+
+  static func wallAfterClosing(_ wall: Wall?) -> Wall? {
+    wall == .updateRequired ? nil : wall
+  }
 
   /// "Try again" on a wall that offers it.
   func tryAgain() {
@@ -369,12 +364,16 @@ final class BootController {
       openRuntimeIfNeeded()
     case .updateRequired:
       wall = nil
-      if let rt = runtime, let binding = try? env.account.secrets.binding() {
-        Task { await launch(rt, binding: binding) }
-      }
+      relaunch()
     default:
       break
     }
+  }
+
+  private func relaunch() {
+    guard let rt = runtime, let binding = try? env.account.secrets.binding() else { return }
+    let turn = turns.turn
+    Task { await launch(rt, binding: binding, turn: turn) }
   }
 
   func retrySync() {
@@ -390,7 +389,11 @@ final class BootController {
   }
 
   static func clearsSyncHalt(_ stop: SyncStop?, latch: OutboxLatch? = nil) -> Bool {
-    latch != .chainBreak && (stop.map(WorkCoordinator.tolerable) ?? true)
+    guard latch != .chainBreak else { return false }
+    switch stop {
+    case nil, .rateLimited?, .latched?: return true
+    default: return false
+    }
   }
 
   static func syncHalt(for stop: SyncStop) -> HaltKind? {
@@ -416,24 +419,31 @@ final class BootController {
     wall = nil
     erasing = false
     if session.phase != .signedOut { session.signedOut() }
+    guard case .notNow = env.installCheck else { return }
+    state = .waiting
+    start()
   }
 
   // MARK: Stops only the gate can act on
 
-  private func stopped(_ stop: SyncStop) async {
+  private func stopped(_ stop: SyncStop, turn: RuntimeTurns<AccountRuntime>.Turn) async {
+    guard turns.isCurrent(turn) else { return }
     switch stop {
     case .wipe:
       // `410 account_deleted`, or a revocation the pinned key history shows: the account was
-      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is read before
-      // the wipe and revoked after it.
+      // deleted, or this iPhone removed, on another device (§4.7 row 3). The Google grant is
+      // revoked before the wipe, while its token is still here.
       let binding = try? env.account.secrets.binding()
-      let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: env.account.secrets, userID: $0) }
       await closeRuntime()
-      if let b = binding, let u = b.userID { AccountWipe.wipe(env.account, userID: u, writerID: b.writerID) }
+      if let b = binding, let u = b.userID {
+        let build = env.build
+        await MailboxLane.endGrantThenWipe(env.account, userID: u, writerID: b.writerID) {
+          await MailboxLane.endGrant($0, build: build, stopWatch: false)
+        }
+      }
       try? env.account.secrets.deleteSession()
       LocalAccountData.forget()
       account.forgetAll()
-      MailboxLane.endGrantLater(grant, build: env.build)
       session.signedOut()
     case .needsSignIn, .needsRebind:
       // The session is gone (expired, signed out everywhere): sign in again. The data and
@@ -447,10 +457,11 @@ final class BootController {
       // shows the holder's wall; its Unfreeze reads `frozen_by` again before any #66.
       // After "Leave it frozen" the banner stays.
       let info = await account.freezeInfo()
-      guard session.phase != .signedOut else { return }
+      guard turns.isCurrent(turn), session.phase != .signedOut else { return }
       session.runFoundFrozen(info)
     case .needsUnlock, .keysRequired:
       await closeRuntime()
+      await account.endSessionKeepingData()
       session.signedOut()
     case .halted(.updateRequired):
       wall = .updateRequired
@@ -471,7 +482,7 @@ final class BootController {
     f.textsChosen = BankTexts.setUpHere(texts)
     let r = rt.projection.reader
     f.banksChosen = !((try? r.senderTrust()) ?? [:]).isEmpty
-    f.sampleLoaded = ((try? r.activity(limit: 1_000)) ?? []).contains { $0.mailboxMessageID?.hasPrefix("sample-") == true }
+    f.sampleLoaded = (try? r.holdsSample()) ?? false
     return f
   }
 

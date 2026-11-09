@@ -179,19 +179,19 @@ final class AccountRuntime {
       provider: lane.provider)
   }
 
-  @ObservationIgnored private(set) var movedAwayMs: Int64? = LocalAccountData.mailboxMovedAway()
-  @ObservationIgnored var lastPhase: MailboxPhase?
+  @ObservationIgnored private(set) var moveNote = MailboxMoveNote(kept: nil, movedAwayMs: nil, current: nil)
 
-  func noteMovedAway(from old: MailboxPhase?, to new: MailboxPhase) {
-    lastPhase = new
-    if LiveReading.movedAway(from: old, to: new) {
-      let now = context.clock.nowMs()
-      LocalAccountData.setMailboxMovedAway(now)
-      movedAwayMs = now
-    } else if new != .otherDevice, movedAwayMs != nil {
-      LocalAccountData.setMailboxMovedAway(nil)
-      movedAwayMs = nil
-    }
+  func startMoveNote(current: MailboxPhase?) {
+    moveNote = MailboxMoveNote(
+      kept: LocalAccountData.mailboxPhaseSeen(), movedAwayMs: LocalAccountData.mailboxMovedAway(), current: current)
+    LocalAccountData.setMailboxPhaseSeen(moveNote.lastPhase)
+  }
+
+  private func seeMailboxPhase(_ phase: MailboxPhase) {
+    guard phase != moveNote.lastPhase else { return }
+    moveNote.see(phase, nowMs: context.clock.nowMs())
+    LocalAccountData.setMailboxPhaseSeen(phase)
+    LocalAccountData.setMailboxMovedAway(moveNote.movedAwayMs)
   }
 
   func reading(
@@ -207,7 +207,7 @@ final class AccountRuntime {
   ) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
     let status = lane == nil ? nil : store.mailboxStatus
-    if status != nil, let phase = store.mailboxPhase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
+    if status != nil, let phase = store.mailboxPhase { seeMailboxPhase(phase) }
     let held = status.flatMap { s in
       lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }
     }
@@ -218,7 +218,7 @@ final class AccountRuntime {
       sample: store.holdsSample || reviewAccount, status: status, provider: provider, progress: store.importProgress,
       heldElsewhere: held, textsChosen: textsChosen, textsLastRunMs: textsLastRunMs, textsTestMissed: textsTestMissed, trustedBanks: trusted,
       newestMailRowMs: (try? projection.reader.newestMailboxPostedMs()) ?? nil, txns: store.state.txns,
-      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: movedAwayMs)
+      backgroundRefreshOff: backgroundRefreshOff, movedAwayMs: moveNote.movedAwayMs)
   }
 
   func retryMailbox() async {
@@ -350,6 +350,7 @@ final class AccountRuntime {
         sync: { trigger, deadline in
           let out = await engine.run(trigger, deadline: deadline)
           if let seen = try? await observer.seenStamps() { authoring.updateSeen(seen) }
+          await Self.authorOpeningOps(after: out, observer: observer, outbox: outbox)
           let phase = await engine.status.phase
           let shown = Self.shownStop(out.stop, phase: phase)
           if shown == nil { await backlog.allowRuns(true) }
@@ -391,7 +392,7 @@ final class AccountRuntime {
     }
     rt.finishInterruptedSwitch(held: held, remembered: remembered, defaults: providerDefaults)
     rt.linkCopy.ownLink(store.mailboxPhase)
-    rt.lastPhase = store.mailboxPhase
+    rt.startMoveNote(current: store.mailboxPhase)
     store.readingSource = { [weak rt] in
       guard let rt else { return nil }
       let texts = bankTextFacts.read(nowMs: context.clock.nowMs())
@@ -438,16 +439,17 @@ final class AccountRuntime {
       await backlog.allowRuns(true)
     }
     await refreshAccount()
-    let launched = await coordinator.run(.launch)
-    // Only after a launch run that reached the server's head: an iPhone that couldn't
-    // pull yet (offline) would author the account's opening ops a second time.
-    if launched.stop == nil { await authorOpeningOpsIfNeeded() }
+    await coordinator.run(.launch)
   }
 
   /// `GET /account` (#40), read live: the review flag and the account's own name.
   func refreshAccount() async {
     guard let token = try? env.secrets.activeSession()?.token else { return }
     guard let info = try? await env.client.account(bearer: token), info.user_id == binding.user_id else { return }
+    await adopt(info)
+  }
+
+  private func adopt(_ info: AccountInfo) async {
     account = info
     reviewAccount = info.review_account == true
     await onAccount?(info)
@@ -474,35 +476,20 @@ final class AccountRuntime {
   }
 
   nonisolated static func importing(_ lane: MailboxLane) async -> Bool {
-    let phase = await lane.status().phase
-    return phase == .scanning || phase == .authoringBackfill
+    await lane.status().phase.isImporting
   }
 
-  /// Home currency AED and the USD peg (04 §6.2), once per account: authored only when
-  /// the ledger (after the launch pull) has no home currency yet.
-  func authorOpeningOpsIfNeeded() async {
-    guard (try? projection.reader.homeCurrency()) == nil else { return }
-    let observer = self.observer
-    do {
-      let ctx = try await observer.authorContext()
-      guard
-        let blob = try observer.stamps.build(
-          ctx,
-          { a throws(AuthorError) in
-            a.setHomeCurrency("AED")
-            try a.setRate(currency: "USD", rateMicro: 3_672_500)
-          })
-      else { return }
+  nonisolated static func authorOpeningOps(after out: RunOutcome, observer: LedgerPageObserver, outbox: Outbox) async {
+    try? await observer.writes.run {
+      guard let blob = try await observer.openingOps(after: out) else { return }
       try await outbox.enqueue(blob.ops)
       try await observer.reproject()
-    } catch {
-      // Retried on the next launch.
     }
   }
 
   /// "Use sample data" (spec 04 §6.13): a live `GET /account` for the gate, the bundled
-  /// seed as blobs (the observer checks the review flag and the empty ledger again), all of
-  /// them through the outbox in one transaction, then one upload.
+  /// seed as blobs (the observer checks the review flag and the empty ledger again), all
+  /// of it through the outbox in one save, then one upload.
   func loadSample() async throws(SetupFailure) {
     guard let token = try? env.secrets.activeSession()?.token else { throw .failed("You're signed out. Sign in again.") }
     let info: AccountInfo
@@ -511,20 +498,15 @@ final class AccountRuntime {
     } catch {
       throw .offline
     }
-    reviewAccount = info.review_account == true
-    let blobs: [AuthoredBlob]
+    await adopt(info)
+    let outbox = self.outbox
     do {
-      blobs = try await observer.sampleBatches(account: info)
+      try await observer.loadSample(account: info) { try await outbox.enqueue($0) }
+    } catch .notSaved {
+      throw .failed("Couldn't save the sample data. Try again.")
     } catch {
       throw .failed("Sample data isn't available for this account.")
     }
-    do {
-      try await outbox.enqueue(blobs.flatMap(\.ops))
-    } catch {
-      await observer.sampleNotSaved()
-      throw .failed("Couldn't save the sample data. Try again.")
-    }
-    try? await observer.reproject()
     await store.reload()
     Task { await coordinator.run(.authored) }
   }
@@ -539,6 +521,26 @@ final class AccountRuntime {
     await backlog.suspend()
     await coordinator.close()
     for lane in lanes.values { await lane.close() }
+    await mailboxLedger.textWrites.hold()
+    await backlog.settled()
+    await coordinator.finished()
+  }
+
+  func holdWork() async {
+    await backlog.holdRuns()
+    await coordinator.pause()
+    for lane in lanes.values { await lane.stop() }
+    await mailboxLedger.textWrites.hold()
+    await store.writesFinished()
+    await observer.writes.finished()
+  }
+
+  func resumeWork() async {
+    mailboxLedger.textWrites.releaseHold()
+    for lane in lanes.values { await lane.resume() }
+    let held = await coordinator.resume()
+    await backlog.releaseRuns()
+    if let held { Task { await coordinator.run(held) } }
   }
 
   func followSwitch() {
@@ -549,7 +551,7 @@ final class AccountRuntime {
       Task { await sorter.switchedOff() }
     }
     switchOn = center.addObserver(forName: MerchantSuggestionsSetting.turnedOn, object: defaults, queue: nil) { _ in
-      Task { await sorter.ensure(retry: true) }
+      Task { await sorter.switchedOn() }
     }
   }
 

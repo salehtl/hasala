@@ -292,6 +292,18 @@ public struct LedgerReader: Sendable {
     }
   }
 
+  public func holdsSample() throws -> Bool {
+    try db.read { db in
+      try Bool.fetchOne(
+        db,
+        sql: """
+          SELECT EXISTS(
+            SELECT 1 FROM txn WHERE superseded_by IS NULL AND (unparsed = 0 OR archived IS NOT NULL)
+            AND mailbox_message_id GLOB 'sample-*')
+          """) ?? false
+    }
+  }
+
   /// The review queue in deck order (newest first), for the given lanes.
   public func review(lanes: [ReviewLane] = ReviewLane.allCases.filter(\.inDeck), limit: Int = 500) throws -> [TxnRow] {
     let marks = lanes.map { _ in "?" }.joined(separator: ",")

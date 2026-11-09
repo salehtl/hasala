@@ -80,6 +80,8 @@ actor WorkCoordinator {
     var timedOut = false
     var mailHalt: MailboxHaltCode?
 
+    static let notRun = Outcome(stop: .notNow)
+
     /// The silent push's `.failed`: the run could not reach the server or stopped.
     var failed: Bool { stop.map { !WorkCoordinator.tolerable($0) } ?? false }
 
@@ -173,13 +175,18 @@ actor WorkCoordinator {
   private var current: Trigger?
   private var rerun: Trigger?
   private var rerunLimit = RerunLimit.unasked
+  private var held: Trigger?
   /// The callers waiting, by id, with the run each waits on.
   private var waiters: [Int: Task<Outcome, Never>] = [:]
   private var nextWaiter = 0
   private var lastForeground: ContinuousClock.Instant?
   private var closed = false
   private var paused = false
+  private var syncing: Task<(newData: Bool, stop: SyncStop?), Never>?
+  private var handing: [SyncStop] = []
+  private var settling: Task<Void, Never>?
   private(set) var runs = 0
+  @TaskLocal private static var insideHandOver = false
 
   init(stages: Stages) {
     self.stages = stages
@@ -189,6 +196,7 @@ actor WorkCoordinator {
   func close() {
     closed = true
     rerun = nil
+    held = nil
     inFlight?.cancel()
   }
 
@@ -196,12 +204,31 @@ actor WorkCoordinator {
   /// deleted, and its store wiped. `resume()` undoes it when the deletion did not happen.
   func pause() async {
     paused = true
+    if let rerun { hold(rerun) }
     rerun = nil
-    if let t = inFlight { _ = await t.value }
+    await finished()
   }
 
-  func resume() {
+  @discardableResult
+  func resume() -> Trigger? {
     paused = false
+    defer { held = nil }
+    return held
+  }
+
+  private func hold(_ trigger: Trigger) {
+    if Self.queues(trigger, over: held) { held = trigger }
+  }
+
+  func finished() async {
+    if let syncing { _ = await syncing.value }
+    guard !Self.insideHandOver else { return }
+    var settled: Task<Void, Never>?
+    while inFlight != nil || settling != settled {
+      settled = settling
+      await settled?.value
+      if let inFlight { _ = await inFlight.value }
+    }
   }
 
   /// Runs once, coalescing with a run in flight. `budget` bounds how long this caller
@@ -209,8 +236,12 @@ actor WorkCoordinator {
   /// 25 s); nil waits until done.
   @discardableResult
   func run(_ trigger: Trigger, budget: Duration? = nil) async -> Outcome {
-    guard !closed, !paused else { return Outcome() }
-    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return Outcome() }
+    guard !closed else { return .notRun }
+    if trigger == .foreground, let last = lastForeground, ContinuousClock.now - last < Self.foregroundSpacing { return .notRun }
+    guard !paused else {
+      hold(trigger)
+      return .notRun
+    }
     let deadline = budget.map { ContinuousClock.now + $0 }
     let task: Task<Outcome, Never>
     if let t = inFlight {
@@ -282,14 +313,18 @@ actor WorkCoordinator {
     // run stops waiting for it instead (it finishes, or stops at its deadline).
     let sync = stages.sync
     let syncTask = Task { await sync(trigger.sync, deadline) }
+    syncing = syncTask
     let synced = await Self.wait(
       for: syncTask, until: nil, timedOut: (newData: false, stop: SyncStop?.some(.cancelled)),
       cancelled: (newData: false, stop: SyncStop?.some(.cancelled)))
     out.newData = synced.newData
     out.stop = synced.stop
-    if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
+    if Task.isCancelled {
+      settle(syncTask)
+      return Outcome(newData: out.newData, stop: .cancelled)
+    }
     if let stop = synced.stop, Self.surfaces(stop) {
-      await stages.stopped(stop)
+      await hand(stop)
       if Self.endsTheAccount(stop) { return out }
     }
     if !closed, let mailbox = stages.mailbox, let mt = trigger.mailbox, synced.stop.map(Self.tolerable) ?? true {
@@ -311,6 +346,23 @@ actor WorkCoordinator {
     if Task.isCancelled { return Outcome(newData: out.newData, stop: .cancelled) }
     await stages.committed()
     return out
+  }
+
+  private func settle(_ sync: Task<(newData: Bool, stop: SyncStop?), Never>) {
+    let earlier = settling
+    settling = Task {
+      await earlier?.value
+      guard let stop = await sync.value.stop, Self.surfaces(stop), !closed else { return }
+      await hand(stop)
+    }
+  }
+
+  private func hand(_ stop: SyncStop) async {
+    guard !handing.contains(stop) else { return }
+    handing.append(stop)
+    let stopped = stages.stopped
+    await Task { await Self.$insideHandOver.withValue(true) { await stopped(stop) } }.value
+    handing.removeAll { $0 == stop }
   }
 
   /// A stop the account gate acts on: the account was deleted (410), the session is gone,

@@ -10,6 +10,7 @@ import CoreTestSupport
 import CoreTime
 import CoreWire
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CoreMailbox
@@ -1044,6 +1045,79 @@ struct BankTextFallbackTests {
       text.replacingOccurrences(of: "03-06-2026", with: "05-06-2026"), atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked)
     let d = try #require(await same.attempts.first?.draft)
     #expect(d.payload["posted_precision"]?.stringValue == "time" && d.payload["posted_at"]?.stringValue == "2026-06-05T08:00:00.000Z")
+  }
+}
+
+@Suite("bank texts: while the account's writers are held")
+struct BankTextHoldTests {
+  final class Opened: Sendable {
+    private let state = Mutex<(open: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, []))
+
+    func open() {
+      let waiters = state.withLock { s -> [CheckedContinuation<Void, Never>] in
+        s.open = true
+        defer { s.waiters = [] }
+        return s.waiters
+      }
+      for w in waiters { w.resume() }
+    }
+
+    func wait() async {
+      await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+        let now = state.withLock { s -> Bool in
+          if !s.open { s.waiters.append(k) }
+          return s.open
+        }
+        if now { k.resume() }
+      }
+    }
+
+    var isOpen: Bool { state.withLock { $0.open } }
+  }
+
+  @Test("a held ledger writes no text, automation or paste, until the hold is released")
+  func aHeldLedgerWritesNoText() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-purchase-credit-card")
+    await rig.ledger.textWrites.hold()
+    #expect(await rig.add(c) == .failed("serial"))
+    #expect(await rig.author.paste(c.text, atMs: TextRig.t0, secret: TextRig.secret, link: .notLinked) == .failed("serial"))
+    #expect(try rig.store.pendingCount() == 0)
+    rig.ledger.textWrites.releaseHold()
+    #expect(await rig.add(c).added != nil)
+    #expect(try rig.ingests().count == 1)
+  }
+
+  @Test("a hold waits for a text already being written, and one queued behind it is refused")
+  func aHoldWaitsForTheTextInFlight() async throws {
+    let rig = try TextRig()
+    let c = try TextCase.named("dib-purchase-credit-card")
+    let entered = Opened()
+    let finish = Opened()
+    let writing = Task {
+      await rig.author.add(
+        c.arrival, secret: TextRig.secret,
+        link: {
+          entered.open()
+          await finish.wait()
+          return .notLinked
+        })
+    }
+    await entered.wait()
+    let held = Opened()
+    let holding = Task {
+      await rig.ledger.textWrites.hold()
+      held.open()
+    }
+    let queued = Task { await rig.add(c) }
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(!held.isOpen)
+    finish.open()
+    await holding.value
+    #expect(try rig.ingests().count == 1)
+    #expect(await writing.value.added != nil)
+    #expect(await queued.value == .failed("serial"))
+    #expect(try rig.ingests().count == 1)
   }
 }
 

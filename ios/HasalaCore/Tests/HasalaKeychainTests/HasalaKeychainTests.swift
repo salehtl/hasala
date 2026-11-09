@@ -365,6 +365,35 @@ struct InstallCheckTests {
     #expect(api.count == 0 && d.string(forKey: InstallCheck.installIDKey)?.count == 36)
   }
 
+  @Test("a wipe that could not delete everything runs the purge again")
+  func eraseStoppedShort() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let d = defaults()
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil) == .done)
+    try k.write(.accountBinding, Data("b".utf8))
+    api.locked = true
+    guard case .notNow(let s) = InstallCheck.erase(defaults: d, keychain: k, groups: [nil])
+    else { Issue.record("expected notNow"); return }
+    #expect(!s.isEmpty && d.string(forKey: InstallCheck.installIDKey) == nil)
+    api.locked = false
+    #expect(api.count == 1)
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil) == .done)
+    #expect(api.count == 0 && d.string(forKey: InstallCheck.installIDKey)?.count == 36)
+  }
+
+  @Test("a wipe that deleted everything leaves the install as it was")
+  func eraseFinished() throws {
+    let api = InMemoryKeychainAPI()
+    let k = KeychainSecretStore(accessGroup: nil, api: api)
+    let d = defaults()
+    #expect(InstallCheck.run(protectedDataAvailable: true, defaults: d, keychain: k, groups: [nil], widgetsDirectory: nil) == .done)
+    let id = d.string(forKey: InstallCheck.installIDKey)
+    try k.write(.accountBinding, Data("b".utf8))
+    #expect(InstallCheck.erase(defaults: d, keychain: k, groups: [nil]) == .done)
+    #expect(api.count == 0 && d.string(forKey: InstallCheck.installIDKey) == id)
+  }
+
   @Test("a failed delete leaves installID unset, so the next launch retries")
   func retries() throws {
     let api = InMemoryKeychainAPI()

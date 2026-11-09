@@ -27,9 +27,14 @@ final class AccountSession {
   }
 
   let services: AccountServices
-  private(set) var phase: Phase
-  /// "Leave it frozen": the app opens with the frozen banner. The freeze is kept as it
-  /// was (who froze it decides whether Unfreeze is offered, spec 04 §6.11).
+  private(set) var phase: Phase {
+    didSet { if phase != oldValue { onPhaseChange?(phase) } }
+  }
+  @ObservationIgnored var onPhaseChange: (@MainActor (Phase) -> Void)?
+  @ObservationIgnored var onUnfroze: (@MainActor () -> Void)?
+  /// "Leave it frozen": the app, or the setup the freeze interrupted, opens with the frozen
+  /// banner. The freeze is kept as it was (who froze it decides whether Unfreeze is offered,
+  /// spec 04 §6.11).
   private(set) var leftFrozen: FreezeInfo?
   private var setupBehindWall = false
   private var behindWall: Phase { setupBehindWall ? .onboarding : .ready }
@@ -157,6 +162,7 @@ final class AccountSession {
     default: return
     }
     leftFrozen = nil
+    onUnfroze?()
   }
 
   /// The server says the operator froze the account: the wall, or the banner after "Leave

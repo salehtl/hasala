@@ -290,6 +290,61 @@ struct ModelSuggestionSweepTests {
     #expect(quiet.calls.isEmpty && none.withLock { $0 }.isEmpty)
   }
 
+  final class WatchedCloud: CategoryModel, Sendable {
+    let modelTag = "cf-clef/1"
+    let log = Mutex<[String]>([])
+    let onCall: @Sendable (Int) -> Void
+
+    init(onCall: @escaping @Sendable (Int) -> Void) { self.onCall = onCall }
+
+    func availability() -> ModelAvailability { .available }
+
+    func suggest(subject: String, allowed: [AllowedCategory]) async -> ModelAnswer {
+      let n = log.withLock {
+        $0.append(subject)
+        return $0.count
+      }
+      onCall(n)
+      return .unknown
+    }
+  }
+
+  @Test("a long sweep reports its cloud calls as it goes, so a kill partway loses only a few")
+  func cloudSpendCheckpoints() async throws {
+    let names = ["ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO", "FOXTROT", "GOLF", "HOTEL", "INDIA", "JULIET", "KILO", "LIMA"]
+    var l = Ledger()
+    _ = try l.ingest(names.map { ("\($0) CAFE SPOT", "debit") })
+    let spent = Mutex<[Int]>([])
+    let seen = Mutex<[Int: [Int]]>([:])
+    let cloud = WatchedCloud { n in
+      let now = spent.withLock { $0 }
+      seen.withLock { $0[n] = now }
+    }
+    _ = try await ModelSuggestionSweep.suggest(
+      rows: l.rows(), categorizer: Self.categorizer, allowed: Self.allowed, stages: [.cloud(cloud)], context: .foreground,
+      cache: MemoryCache(), now: { now }, spent: { n in spent.withLock { $0.append(n) } })
+    #expect(cloud.log.withLock { $0.count } == 12)
+    #expect(seen.withLock { $0[5] } == [])
+    #expect(seen.withLock { $0[6] } == [5])
+    #expect(seen.withLock { $0[11] } == [5, 5])
+    #expect(spent.withLock { $0 } == [5, 5, 2])
+  }
+
+  @Test("the spend queue keeps its order and is empty once drained")
+  func spendQueue() async {
+    let got = Mutex<[Int]>([])
+    let q = SpendQueue { n in
+      if n == 1 { try? await Task.sleep(for: .milliseconds(30)) }
+      got.withLock { $0.append(n) }
+    }
+    await q.drained()
+    q.add(1)
+    q.add(2)
+    q.add(3)
+    await q.drained()
+    #expect(got.withLock { $0 } == [1, 2, 3])
+  }
+
   @Test("more than 500 suggestions split into blobs that each fold clean")
   func chunks() async throws {
     var l = Ledger()

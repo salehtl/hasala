@@ -695,6 +695,85 @@ struct SignInSecurityFlowTests: AccountSuite {
     #expect(account.frozenInfo == nil)
   }
 
+  @Test func onlyLiftingTheFreezeAsksForALaunchRun() async throws {
+    let account = MockAccountService(existing: .passkey, signedIn: true)
+    account.delay = .zero
+    account.freezeForScenario(by: .holder)
+    let session = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.leaveFrozen()
+    session.showFrozenWall()
+    #expect(launches == 0)
+    try await session.unfreeze(password: nil)
+    #expect(session.phase == .ready && launches == 1)
+  }
+
+  @Test func unfreezingFromTheBannerAsksForALaunchRunWithNoPhaseChange() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
+    session.leaveFrozen()
+    var launches = 0
+    var phases = 0
+    session.onUnfroze = { launches += 1 }
+    session.onPhaseChange = { _ in phases += 1 }
+    session.unfroze()
+    #expect(launches == 1 && phases == 0 && session.leftFrozen == nil)
+  }
+
+  @Test func aFreezeFoundDuringSetupGoesBackToSetupWhenLifted() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    var launches = 0
+    session.onUnfroze = { launches += 1 }
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding && launches == 1)
+    session.setupFinished()
+    session.froze(holder)
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
+  @Test func leavingItFrozenDuringSetupGoesBackToSetupWithTheFreezeKept() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    session.runFoundFrozen(holder)
+    session.leaveFrozen()
+    #expect(session.phase == .onboarding && session.leftFrozen == holder)
+    session.runFoundFrozen(holder)
+    #expect(session.phase == .onboarding)
+    session.showFrozenWall()
+    #expect(session.phase == .frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .onboarding && session.leftFrozen == nil)
+  }
+
+  @Test func finishingSetupAfterLeavingItFrozenOpensTheAppWithTheBanner() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    var phases: [AccountSession.Phase] = []
+    session.onPhaseChange = { phases.append($0) }
+    session.runFoundFrozen(holder)
+    session.leaveFrozen()
+    session.setupFinished()
+    #expect(phases == [.frozen(holder), .onboarding, .ready])
+    #expect(session.leftFrozen == holder)
+    session.showFrozenWall()
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
+  @Test func aSignOutForgetsTheSetupBehindAFreeze() {
+    let holder = FreezeInfo(by: .holder, when: nil)
+    let session = AccountSession(services: services(MockAccountService()), phase: .onboarding)
+    session.runFoundFrozen(holder)
+    session.signedOut()
+    session.signedIn(.frozen(holder))
+    session.unfroze()
+    #expect(session.phase == .ready)
+  }
+
   @Test func aSignInToAFrozenAccountKeepsWhoFrozeIt() {
     let session = AccountSession(services: services(MockAccountService()), phase: .signedOut)
     session.signedIn(.frozen(FreezeInfo(by: .operator, when: nil)))
@@ -724,6 +803,19 @@ struct SignInSecurityFlowTests: AccountSuite {
     let fresh = AccountSession(services: services(MockAccountService()), phase: .ready)
     fresh.runFoundFrozen(nil)
     #expect(fresh.phase == .frozen(FreezeInfo(by: .holder, when: nil)))
+  }
+
+  @Test func theGateHearsEveryPhaseChangeWithNoViewWatching() {
+    let session = AccountSession(services: services(MockAccountService()), phase: .ready)
+    var heard: [AccountSession.Phase] = []
+    session.onPhaseChange = { heard.append($0) }
+    session.setupFinished()
+    #expect(heard.isEmpty)
+    session.signedOut()
+    session.signedOut()
+    session.accountCreated()
+    session.setupFinished()
+    #expect(heard == [.signedOut, .onboarding, .ready])
   }
 
   // MARK: Relaunch (spec 04 §6.5)

@@ -81,27 +81,31 @@ final class AppEnvironment {
 
   /// "Remove this iPhone's data" from a wall (§4.7 row 2, without the server's writer
   /// revocation): the session is signed out (kept as `pending_logout` when the server
-  /// can't be reached, so the logout is retried), then every Hasala item in both access
-  /// groups and every account's files go, with what UserDefaults noted about the
-  /// account. This iPhone's Google grant is revoked last, from the token read first.
-  func eraseLocalData() async {
+  /// can't be reached, so the logout is retried), this iPhone's Google grant is revoked
+  /// while its token is still here, then every Hasala item in both access groups and every
+  /// account's files go, with what UserDefaults noted about the account.
+  func eraseLocalData(defaults: UserDefaults = .standard) async {
     let secrets = account.secrets
     let binding = try? secrets.binding()
     let session = try? secrets.session()
-    let grant = binding?.userID.flatMap { MailboxLane.heldGrant(secrets: secrets, userID: $0) }
     let confirmed = await AccountSignIn.signOut(account)
     let pending = confirmed ? nil : (try? secrets.session()).flatMap { $0.pending_logout ? $0 : nil }
-    if let b = binding, let u = b.userID { AccountWipe.wipe(account, userID: u, writerID: b.writerID) }
+    if let b = binding, let u = b.userID {
+      let build = self.build
+      await MailboxLane.endGrantThenWipe(account, userID: u, writerID: b.writerID) {
+        await MailboxLane.endGrant($0, build: build, stopWatch: false)
+      }
+    }
     if let s = session, let u = UserID(s.user_id) { AccountWipe.wipe(account, userID: u, writerID: nil) }
     if let dir = account.accountsDirectory,
       let items = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
     {
       for item in items { try? FileManager.default.removeItem(at: item) }
     }
-    _ = keychain.purgeAll(groups: [Self.keychainGroup, Self.sharedKeychainGroup])
-    LocalAccountData.forget()
+    let purged = InstallCheck.erase(defaults: defaults, keychain: keychain, groups: [Self.keychainGroup, Self.sharedKeychainGroup])
+    installCheck = secretsInMemory ? .done : purged
+    LocalAccountData.forget(defaults: defaults)
     if let pending { try? secrets.writeSession(pending) }
-    MailboxLane.endGrantLater(grant, build: build)
   }
 
   /// `<Application Support>/Hasala/accounts`; each account's store is `<user_id>/` below it.

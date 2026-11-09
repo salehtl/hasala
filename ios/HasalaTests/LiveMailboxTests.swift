@@ -623,6 +623,39 @@ struct MailGrantEndsTests {
     #expect(await MailGrantEnds().connectGate(within: .milliseconds(1)) == nil)
   }
 
+  @Test func aCancelledDepartureStillWaitsForItsEnding() async {
+    let ends = MailGrantEnds()
+    let log = Log()
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await ends.end {
+        try? await Task.sleep(for: .milliseconds(80))
+        log.add("ended")
+      }
+      log.add("left")
+    }
+    departure.cancel()
+    await departure.value
+    #expect(log.all == ["ended", "left"])
+  }
+
+  @Test func aCancelledDepartureWaitsOnlyForTheLimit() async {
+    let ends = MailGrantEnds()
+    let release = Mutex<CheckedContinuation<Void, Never>?>(nil)
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await ends.end(within: .milliseconds(50)) {
+        await withCheckedContinuation { c in release.withLock { $0 = c } }
+      }
+    }
+    departure.cancel()
+    await departure.value
+    #expect(await ends.settled(within: .milliseconds(1)) == false)
+    while release.withLock({ $0 == nil }) { await Task.yield() }
+    release.withLock { $0?.resume(); $0 = nil }
+    #expect(await ends.settled(within: .seconds(10)))
+  }
+
   /// One ending's worst case (every request at its limit, one after another) is inside a
   /// connect's wait, so in practice the connect waits for it rather than being refused.
   @Test func anEndingIsBoundedInsideTheConnectWait() {

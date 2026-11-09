@@ -731,6 +731,76 @@ struct BacklogSorterTests {
     #expect(await !t.isRunning && running.run?.phase == .running && script.passes == 0)
   }
 
+  nonisolated final class SlowPass: Sendable {
+    let log = Mutex<[String]>([])
+    var all: [String] { log.withLock { $0 } }
+
+    func run() async -> BacklogSorter.PassResult? {
+      log.withLock { $0.append("pass.start") }
+      let ended = ContinuousClock.now + .milliseconds(150)
+      while ContinuousClock.now < ended { await Task.yield() }
+      log.withLock { $0.append("pass.end") }
+      return BacklogSorter.PassResult(pass: BacklogSort.Pass(suggestions: [], memo: BacklogSort.Memo(), pending: 1, calls: 1, stop: nil, settled: 1))
+    }
+  }
+
+  func slowSorter(_ slow: SlowPass, _ saved: Saved, mayRun: Bool = true) -> BacklogSorter {
+    BacklogSorter(
+      pass: { _, _ in await slow.run() }, store: saved.store, nowMs: Clock().now, appActive: { true }, importRunning: { false }, enabled: { true },
+      network: Net(), mayRun: mayRun, sleep: Sleeps().sleep)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aHoldWaitsForThePassInFlightAndNothingStartsUntilItIsReleased() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.holdRuns()
+    #expect(slow.all == ["pass.start", "pass.end"])
+    #expect(await !s.isRunning)
+    await s.ensure(retry: true)
+    await s.resume()
+    #expect(await !s.isRunning)
+    #expect(saved.run?.phase == .running)
+    await s.releaseRuns()
+    #expect(await s.isRunning)
+    await s.suspend()
+    await s.settled()
+  }
+
+  @Test func releasingAHoldLeavesARunTheGateStoppedStopped() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.releaseRuns()
+    #expect(await !s.isRunning && script.passes == 0)
+    await s.allowRuns(true)
+    await s.finished()
+    #expect(script.passes == 1)
+  }
+
+  @Test func theGateAllowingRunsDoesNotLiftAHold() async {
+    let saved = Saved.running()
+    let script = Script([(0, 1, nil)])
+    let s = sorter(script, saved, mayRun: false)
+    await s.holdRuns()
+    await s.allowRuns(true)
+    #expect(await !s.isRunning && script.passes == 0)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func afterSuspendingSettledWaitsForThePassInFlight() async {
+    let saved = Saved.running()
+    let slow = SlowPass()
+    let s = slowSorter(slow, saved)
+    await s.resume()
+    await waitFor { slow.all.contains("pass.start") }
+    await s.suspend()
+    await s.settled()
+    #expect(slow.all == ["pass.start", "pass.end"])
+  }
+
   @Test func nothingStartsOrResumesWhileTheAccountIsStoppedAndWorkGoesOnOnceItClears() async {
     let saved = Saved()
     let script = Script([(0, 1, nil)])
@@ -937,6 +1007,27 @@ struct CloudSortStatusTests {
     for _ in 0..<400 where c.status.phase != .done { try? await Task.sleep(for: .milliseconds(5)) }
     #expect(c.status.phase == .done)
     #expect(await c.sendAllBack() == 5)
+  }
+
+  @Test(arguments: [BacklogSorterTests.Saved(), BacklogSorterTests.Saved.ended(nil), BacklogSorterTests.Saved.ended(.failed)])
+  func theSwitchIsReadWhenItChangesWithNoRunGoing(_ saved: BacklogSorterTests.Saved) async {
+    let enabled = BacklogSorterTests.Flag()
+    let sorter = BacklogSorter(
+      pass: { _, _ in nil }, waiting: { _ in false }, store: saved.store, nowMs: { BacklogSorterTests.start }, appActive: { true },
+      importRunning: { false }, enabled: { enabled.value }, network: BacklogSorterTests.Net(), sleep: { _ in })
+    let c = LiveCloudSortController(sorter: sorter, view: { _ in Self.view(2) }, sendBack: { 0 }, enabled: { enabled.value })
+    for _ in 0..<400 where c.status.cloudSortedCount != 2 { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.cloudSortedCount == 2)
+    let before = c.status.phase
+    #expect(before != .off)
+    enabled.set(false)
+    await sorter.switchedOff()
+    for _ in 0..<400 where c.status.phase != .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == .off)
+    enabled.set(true)
+    await sorter.switchedOn()
+    for _ in 0..<400 where c.status.phase == .off { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(c.status.phase == before)
   }
 
   @Test func aRecountAskedForWhileOneRunsRunsOnceMore() async {

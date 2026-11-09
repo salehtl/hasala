@@ -161,6 +161,98 @@ struct AppLockControllerTests {
     }
   }
 
+  final class SteppedLAContext: LockContext {
+    var biometry: LockBiometry { .faceID }
+    var waiting: [CheckedContinuation<LockCheck, Never>] = []
+    var asked = 0
+    func canEvaluate() -> Bool { true }
+    func evaluate(reason: String) async -> LockCheck {
+      asked += 1
+      return await withCheckedContinuation { waiting.append($0) }
+    }
+    func answer(_ check: LockCheck) {
+      if !waiting.isEmpty { waiting.removeFirst().resume(returning: check) }
+    }
+    func untilAsked(_ n: Int) async {
+      for _ in 0..<400 where asked < n || waiting.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+      #expect(asked >= n && !waiting.isEmpty)
+    }
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPromptOwedWhileAnEarlierOneIsUpRunsWhenThatOneEnds() async {
+    let stepped = SteppedLAContext()
+    let lock = AppLockController(makeContext: { stepped }, isEnabled: { true })
+    let first = Task { await lock.unlock() }
+    await stepped.untilAsked(1)
+    lock.scenePhaseChanged(.inactive)
+    lock.scenePhaseChanged(.background)
+    lock.scenePhaseChanged(.inactive)
+    lock.scenePhaseChanged(.active)
+    #expect(stepped.asked == 1)
+    stepped.answer(.cancelled)
+    await first.value
+    await stepped.untilAsked(2)
+    stepped.answer(.passed)
+    for _ in 0..<400 where lock.isLocked { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(!lock.isLocked)
+    #expect(stepped.asked == 2)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPromptOwedWhileTheSettingIsConfirmedRunsWhenThatEnds() async {
+    let stepped = SteppedLAContext()
+    let clock = self.clock
+    let lock = AppLockController(makeContext: { stepped }, isEnabled: { true }, now: { clock.now })
+    let opened = Task { await lock.unlock() }
+    await stepped.untilAsked(1)
+    stepped.answer(.passed)
+    await opened.value
+    #expect(!lock.isLocked)
+    let change = Task { await lock.confirmChange(to: true) }
+    await stepped.untilAsked(2)
+    lock.scenePhaseChanged(.background)
+    clock.elapsed += AppLockController.grace
+    lock.scenePhaseChanged(.active)
+    #expect(lock.isLocked)
+    #expect(stepped.asked == 2)
+    stepped.answer(.cancelled)
+    #expect(await change.value == false)
+    await stepped.untilAsked(3)
+    stepped.answer(.passed)
+    for _ in 0..<400 where lock.isLocked { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(!lock.isLocked)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPromptThatEndsOffScreenWaitsForTheAppToComeBack() async {
+    let stepped = SteppedLAContext()
+    let lock = AppLockController(makeContext: { stepped }, isEnabled: { true })
+    let first = Task { await lock.unlock() }
+    await stepped.untilAsked(1)
+    lock.scenePhaseChanged(.background)
+    stepped.answer(.cancelled)
+    await first.value
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(stepped.asked == 1)
+    lock.scenePhaseChanged(.active)
+    await stepped.untilAsked(2)
+    stepped.answer(.passed)
+    for _ in 0..<400 where lock.isLocked { try? await Task.sleep(for: .milliseconds(5)) }
+    #expect(!lock.isLocked)
+    #expect(stepped.asked == 2)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func aPromptThePersonCancelledIsNotAskedAgain() async {
+    let stepped = SteppedLAContext()
+    let lock = AppLockController(makeContext: { stepped }, isEnabled: { true })
+    lock.scenePhaseChanged(.active)
+    await stepped.untilAsked(1)
+    lock.scenePhaseChanged(.inactive)
+    lock.scenePhaseChanged(.active)
+    stepped.answer(.cancelled)
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(stepped.asked == 1)
+    #expect(lock.isLocked)
+  }
+
   @Test func theOwnPromptForTheSettingIsNotCovered() async throws {
     let gated = GatedLAContext()
     let lock = AppLockController(makeContext: { gated }, isEnabled: { false })

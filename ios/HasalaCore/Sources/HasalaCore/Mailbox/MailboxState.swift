@@ -18,6 +18,8 @@ public enum MailboxPhase: String, Sendable, Codable, CaseIterable {
   case otherDevice = "other_device"
   case reconnectRequired = "reconnect_required"
   case halted
+
+  public var isImporting: Bool { self == .scanning || self == .authoringBackfill }
 }
 
 /// Content-free error codes (spec 04 §7.11).
@@ -359,6 +361,35 @@ public actor InMemoryMailboxPersistence: MailboxPersistence {
   public func unreadableRecords() async throws(MailboxPersistenceError) -> [UnreadableRecord] { unreadable }
   public func bankHealth() async throws(MailboxPersistenceError) -> [BankHealthRow] {
     health.values.sorted { $0.domain < $1.domain }
+  }
+}
+
+public struct MailboxMoveNote: Sendable, Equatable {
+  public private(set) var lastPhase: MailboxPhase?
+  public private(set) var movedAwayMs: Int64?
+
+  public init(kept: MailboxPhase?, movedAwayMs: Int64?, current: MailboxPhase?) {
+    lastPhase = kept ?? current
+    self.movedAwayMs = movedAwayMs
+  }
+
+  public mutating func see(_ phase: MailboxPhase, nowMs: Int64) {
+    guard phase != lastPhase else { return }
+    let old = lastPhase
+    lastPhase = phase
+    if Self.movedAway(from: old, to: phase) {
+      movedAwayMs = nowMs
+    } else if phase != .otherDevice {
+      movedAwayMs = nil
+    }
+  }
+
+  public static func movedAway(from old: MailboxPhase?, to new: MailboxPhase) -> Bool {
+    guard new == .otherDevice, let old else { return false }
+    switch old {
+    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: return true
+    case .unlinked, .otherDevice: return false
+    }
   }
 }
 

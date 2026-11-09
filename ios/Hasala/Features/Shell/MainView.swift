@@ -83,6 +83,7 @@ struct MainView: View {
     }
     .onChange(of: WidgetLinkInbox.shared.pending) { _, _ in openPendingWidgetLink() }
     .onChange(of: scenePhase, initial: true) { _, phase in
+      app.sceneChanged(onScreen: phase != .background)
       if phase == .active { app.bankTexts?.refresh() }
     }
     .alert(

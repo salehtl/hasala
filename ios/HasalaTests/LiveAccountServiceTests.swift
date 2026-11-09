@@ -5,6 +5,8 @@ import CoreSync
 import CoreTime
 import Foundation
 import Synchronization
+import HasalaKeychain
+import HasalaModels
 import Testing
 
 @testable import Hasala
@@ -189,6 +191,206 @@ struct LiveAccountServiceTests {
     // Nothing of the account's mailbox stays here for the next account.
     #expect(try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).read() == nil)
     #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aDeletionEndsItsGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let user = try #require(try env.secrets.binding()?.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    a.grantEnds = MailGrantEnds()
+    a.endGrant = { held, _ in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    a.hooks = LiveAccountHooks(left: {})
+    try await a.perform(.deleteAccount, password: Self.password)
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeEndsTheGrantWhileTheTokenIsStillHere() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+      log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+    }
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aWipeFromACancelledTaskStillEndsTheGrantBeforeTheTokenGoes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let log = MailGrantEndsTests.Log()
+    let secrets = env.secrets
+    let departure = Task {
+      while !Task.isCancelled { await Task.yield() }
+      await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { held in
+        try? await Task.sleep(for: .milliseconds(100))
+        log.add("token here: \(MailboxLane.heldGrant(secrets: secrets, userID: user) == held)")
+      }
+    }
+    departure.cancel()
+    await departure.value
+    #expect(log.all == ["token here: true"])
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+  }
+
+  @Test func aHungEndingStillLetsTheWipeFinish() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    try SecretsMailRefreshTokenStore(secrets: env.secrets, userID: user, provider: .gmail).write("synthetic-refresh-a")
+    let ends = MailGrantEnds()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: ends, within: .milliseconds(50)) { _ in
+      try? await Task.sleep(for: .seconds(1))
+    }
+    #expect(MailboxLane.heldGrant(secrets: env.secrets, userID: user) == nil)
+    #expect(await ends.settled(within: .seconds(10)))
+  }
+
+  @Test func aWipeWithNoGrantDoesNotWaitOnAnEnding() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let user = try #require(binding.userID)
+    let log = MailGrantEndsTests.Log()
+    await MailboxLane.endGrantThenWipe(env, userID: user, writerID: binding.writerID, ends: MailGrantEnds()) { _ in log.add("ended") }
+    #expect(log.all.isEmpty)
+  }
+
+  @Test func aWipeThatCouldNotDeleteEverythingWaitsForThePurgeToRunAgain() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let api = InMemoryKeychainAPI()
+    api.locked = true
+    let name = "test.erase.\(UUID().uuidString)"
+    let d = try #require(UserDefaults(suiteName: name))
+    defer { d.removePersistentDomain(forName: name) }
+    d.set("install", forKey: InstallCheck.installIDKey)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let env = AppEnvironment(
+      build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"),
+      account: Self.phone(server), keychain: KeychainSecretStore(accessGroup: nil, api: api), installCheck: .done,
+      secretsInMemory: false, hasPasscode: { true })
+    await env.eraseLocalData(defaults: d)
+    guard case .notNow = env.installCheck else {
+      Issue.record("expected the purge to be owed")
+      return
+    }
+    #expect(d.string(forKey: InstallCheck.installIDKey) == nil)
+  }
+
+  @Test func theSampleDataAnswerReachesTheSessionToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    var told: [Bool] = []
+    rt.onAccount = { told.append($0.review_account == true) }
+    server.reviewAccounts = true
+    try? await rt.loadSample()
+    #expect(rt.reviewAccount)
+    #expect(told == [true])
+    await rt.close()
+  }
+
+  @Test func holdingTheRuntimeStopsEveryWriterUntilItResumes() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in })
+    await rt.holdWork()
+    #expect(await !rt.coordinator.run(.authored).ran)
+    for lane in rt.lanes.values { #expect(await lane.isStopped) }
+    await rt.backlog.ensure(retry: true)
+    #expect(await !rt.backlog.isRunning)
+    let pending = try rt.context.store.pendingCount()
+    #expect(await Self.addText(rt) == nil)
+    #expect(try rt.context.store.pendingCount() == pending)
+    await rt.resumeWork()
+    for lane in rt.lanes.values { #expect(await !lane.isStopped) }
+    #expect(await rt.coordinator.run(.authored).ran)
+    #expect(await Self.addText(rt) != nil)
+    await rt.close()
+    #expect(await Self.addText(rt) == nil)
+  }
+
+  static func addText(_ rt: AccountRuntime) async -> BankTextAuthored? {
+    try? await rt.bankTexts.author(
+      BankTextsCoreWiringTests.purchase, sender: nil, reading: KeptBankText(fields: BankTextFields(), mayBeBanks: true),
+      arrivedAt: BankTextsCoreWiringTests.t0, secret: Data(count: 32), link: .notLinked, origin: .automation)
+  }
+
+  @Test func endingTheSessionForMissingKeysLeavesARelaunchAtWelcomeToo() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session() == nil)
+    #expect(try env.secrets.binding() != nil)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+    #expect(try await a.signInWithPassword(email: Self.email, password: Self.password) == .ready)
+  }
+
+  @Test func endingTheSessionOfflineIsFinishedLaterAndARelaunchAgrees() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    server.offline = true
+    await a.endSessionKeepingData()
+    #expect(try env.secrets.session()?.pending_logout == true)
+    #expect(Boot.decide(Boot.gather(env)) == .signedOutBound)
+  }
+
+  @Test func onlySigningOutOnPurposeForgetsTheHomeLayout() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    let (a, _) = try await Self.signUp(server, env)
+    let log = MailGrantEndsTests.Log()
+    a.hooks = LiveAccountHooks(left: { log.add("left") }, forgetHomeLayout: { log.add("layout") })
+    await a.endSessionKeepingData()
+    #expect(log.all.isEmpty)
+    await a.signOut()
+    #expect(log.all == ["layout", "left"])
+  }
+
+  @Test func anEndedSessionLeavesTheHomeLayoutForTheNextSignIn() async throws {
+    let server = MiniHasalad(invite: Self.invite)
+    let env = Self.phone(server)
+    _ = try await Self.signUp(server, env)
+    let base = try #require(URL(string: "https://api.hasala.app"))
+    let boot = BootController(
+      env: AppEnvironment(
+        build: .current, apiBaseURL: base, transport: URLSessionTransport(baseURL: base, clientHeader: "ios/test"), account: env,
+        keychain: KeychainSecretStore(accessGroup: nil, api: InMemoryKeychainAPI()), installCheck: .done, secretsInMemory: false,
+        hasPasscode: { true }))
+    let layouts = HomeLayoutStore(account: "test-\(UUID().uuidString)")
+    defer { layouts.forget() }
+    layouts.save(HomeLayout([HomeLayout.Entry(.today)]))
+    boot.phaseChanged(.signedOut)
+    #expect(layouts.load()?.ids == ["today"])
   }
 
   @Test func signingInAgainOnABoundIPhoneOpensStraightAway() async throws {
@@ -533,6 +735,28 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: newYearInDubai) == "on Fri 1 Jan at 01:00")
     #expect(LiveAccountService.freezeTime("2026-12-31T19:00:00Z", nowMs: newYearInDubai) == "on Thu 31 Dec 2026 at 23:00")
   }
+  @Test func theApprovalKeyReadsAsLockedOnlyWhileTheKeychainIsLocked() {
+    let user = UserID("00000000-0000-4000-8000-000000000001")!
+    let writer = WriterID("ios-00000000-0000-4000-8000-000000000002")!
+    #expect(throws: ApprovalKeyError.notNow) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .notNow(status: -25308)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+    #expect(throws: ApprovalKeyError.unavailable) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .failed(status: -25300)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+  }
+}
+
+nonisolated private struct RefusingSecretStore: SecretStore {
+  let refusal: SecretStoreError
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { throw refusal }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw refusal }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { throw refusal }
 }
 
 nonisolated final class FaultySecrets: SecretStore {

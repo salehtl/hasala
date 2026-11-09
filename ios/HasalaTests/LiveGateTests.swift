@@ -38,6 +38,13 @@ struct LiveGateTests {
     check(.opening(Self.binding()), finished: true, .ready, nil)
   }
 
+  @Test func closingTheAccountTakesTheUpdateWallWithItAndLeavesTheOthers() {
+    #expect(BootController.wallAfterClosing(.updateRequired) == nil)
+    #expect(BootController.wallAfterClosing(nil) == nil)
+    let kept: [BootController.Wall] = [.otherAccount(email: "maya@example.com"), .foreignData, .unenrolled, .restoring, .openFailed]
+    for wall in kept { #expect(BootController.wallAfterClosing(wall) == wall) }
+  }
+
   @Test func theGmailStepResumesFromTheLane() {
     #expect(BootController.mailboxFact(.unlinked) == .unlinked)
     #expect(BootController.mailboxFact(.scanning) == .scanning)
@@ -124,8 +131,10 @@ struct LiveGateTests {
     d.set(Data([1]), forKey: "debug.simulatorApprovalKey.u:w")
     LocalAccountData.setMailboxProvider(.outlook, d)
     #expect(LocalAccountData.mailboxProvider(d) == .outlook)
+    LocalAccountData.setAmountsHidden(true, d)
     SearchHistory.shared.add("Carrefour")
     LocalAccountData.forget(defaults: d)
+    #expect(!LocalAccountData.amountsHidden(d))
     // What was searched (merchant names) never shows to the next account in this process.
     #expect(SearchHistory.shared.recent.isEmpty)
     // The provider this iPhone read the account's mail through goes with the account.
@@ -136,6 +145,22 @@ struct LiveGateTests {
     #if targetEnvironment(simulator)
       #expect(d.object(forKey: "debug.simulatorApprovalKey.u:w") == nil)
     #endif
+    #expect(d.string(forKey: "app.hasala.installID") == "install-a")
+  }
+
+  struct UnreadableKeychain: Error {}
+
+  @Test func aWipeCutShortIsFinishedOnceTheKeychainHoldsNoAccount() {
+    let d = Self.defaults()
+    LocalAccountData.markSetupFinished(d)
+    LocalAccountData.setMailboxProvider(.outlook, d)
+    LocalAccountData.forgetIfNoAccount(binding: { Self.binding() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { throw UnreadableKeychain() }, defaults: d)
+    #expect(LocalAccountData.setupFinished(d))
+    LocalAccountData.forgetIfNoAccount(binding: { nil }, defaults: d)
+    #expect(!LocalAccountData.setupFinished(d))
+    #expect(LocalAccountData.mailboxProvider(d) == nil)
     #expect(d.string(forKey: "app.hasala.installID") == "install-a")
   }
 

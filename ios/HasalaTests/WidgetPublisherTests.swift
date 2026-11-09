@@ -49,6 +49,16 @@ struct WidgetPublisherTests {
     #expect(open.snapshot.amountsHidden == false)
   }
 
+  @Test func widgetsStayHiddenAfterARelaunch() throws {
+    let store = temporaryStore()
+    defer { try? FileManager.default.removeItem(at: store.directory) }
+    let d = LiveGateTests.defaults()
+    AppModel(store: InMemoryLedger(), amountsDefaults: d).toggleAmountsHidden()
+    let publisher = WidgetPublisher(app: AppModel(store: InMemoryLedger(), amountsDefaults: d), store: store, reload: {})
+    #expect(store.read()?.amountsHidden == true)
+    publisher.stop()
+  }
+
   @Test func followsHiddenAmountsAndLedgerEdits() async throws {
     let store = temporaryStore()
     defer { try? FileManager.default.removeItem(at: store.directory) }
@@ -211,6 +221,43 @@ struct WidgetLinkRoutingTests {
     #expect(app.tab == .home)
     #expect(app.router.home.isEmpty)
     #expect(app.cover == nil)
+  }
+
+  @Test func theReviewLinkWaitsForAnOpenSheetToCloseBeforeItsCover() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.notifications)
+    app.open(.review)
+    #expect(app.tab == .review)
+    #expect(app.router.sheet == nil)
+    #expect(app.cover == nil)
+    app.open(.review)
+    #expect(app.cover == nil)
+    app.router.sheetDismissed()
+    #expect(app.cover == .review)
+    #expect(app.router.nextCover == nil)
+  }
+
+  @Test func aLaterPlaceDropsTheCoverThatWasWaiting() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.notifications)
+    app.open(.review)
+    app.open(.home)
+    app.router.sheetDismissed()
+    #expect(app.cover == nil)
+
+    app.router.open(.notifications)
+    app.open(.review)
+    app.router.open(.profile)
+    #expect(app.router.nextCover == nil)
+    #expect(app.router.sheet == .profile)
+    app.router.sheet = nil
+    app.router.sheetDismissed()
+    #expect(app.cover == nil)
+
+    app.router.open(.notifications)
+    app.open(.review)
+    app.router.clearPresentation()
+    #expect(app.router.nextCover == nil)
   }
 
   @Test func aProjectLinkOpensThatProject() {

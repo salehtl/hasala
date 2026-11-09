@@ -1,14 +1,31 @@
 import Synchronization
 
 public final class WriteSerial: Sendable {
-  private let state = Mutex<(busy: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, []))
+  public struct Held: Error {}
+
+  private let state = Mutex<(busy: Bool, held: Bool, waiters: [CheckedContinuation<Void, Never>])>((false, false, []))
 
   public init() {}
 
   public func run<T: Sendable>(_ body: () async throws -> T) async throws -> T {
     await acquire()
     defer { release() }
+    if state.withLock({ $0.held }) { throw Held() }
     return try await body()
+  }
+
+  public func finished() async {
+    await acquire()
+    release()
+  }
+
+  public func hold() async {
+    state.withLock { $0.held = true }
+    await finished()
+  }
+
+  public func releaseHold() {
+    state.withLock { $0.held = false }
   }
 
   public var isBusy: Bool { state.withLock { $0.busy } }

@@ -34,10 +34,8 @@ nonisolated final class SecureEnclaveApprovalKey: ApprovalKeySigner, @unchecked 
     }
     do {
       try store.write(.approvalKey(userID: userID, writerID: writerID), key.dataRepresentation)
-    } catch .notNow(_) {
-      throw .notNow
     } catch {
-      throw .unavailable
+      throw ApprovalKeyError(storeError: error)
     }
     return key.publicKey.x963Representation
   }
@@ -67,7 +65,7 @@ nonisolated final class SecureEnclaveApprovalKey: ApprovalKeySigner, @unchecked 
     do {
       data = try store.read(.approvalKey(userID: userID, writerID: writerID))
     } catch {
-      throw .notNow
+      throw ApprovalKeyError(storeError: error)
     }
     guard let data else { throw .missing }
     do {

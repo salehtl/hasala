@@ -99,6 +99,18 @@ struct LiveReadingTests {
     #expect(!LiveReading.movedAway(from: .active, to: .active))
   }
 
+  @Test func thePhaseSeenHereSurvivesARelaunchUntilTheAccountLeaves() throws {
+    let name = "LiveReadingTests.phaseSeen"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defaults.removePersistentDomain(forName: name)
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(LocalAccountData.mailboxPhaseSeen(defaults) == nil)
+    LocalAccountData.setMailboxPhaseSeen(.active, defaults)
+    #expect(LocalAccountData.mailboxPhaseSeen(defaults) == .active)
+    LocalAccountData.forget(defaults: defaults)
+    #expect(LocalAccountData.mailboxPhaseSeen(defaults) == nil)
+  }
+
   @Test func theMovedAwayNoteIsKeptAndForgotten() throws {
     let defaults = try #require(UserDefaults(suiteName: "LiveReadingTests"))
     defaults.removePersistentDomain(forName: "LiveReadingTests")

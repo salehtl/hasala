@@ -95,10 +95,6 @@ enum LiveReading {
   }
 
   static func movedAway(from old: MailboxPhase?, to new: MailboxPhase) -> Bool {
-    guard new == .otherDevice, let old else { return false }
-    switch old {
-    case .scanning, .awaitingCards, .authoringBackfill, .active, .reconnectRequired, .halted: return true
-    case .unlinked, .otherDevice: return false
-    }
+    MailboxMoveNote.movedAway(from: old, to: new)
   }
 }

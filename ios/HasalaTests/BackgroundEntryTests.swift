@@ -1,3 +1,4 @@
+import CoreMailbox
 import Testing
 import UIKit
 
@@ -17,6 +18,14 @@ struct BackgroundEntryTests {
         log.events.append("opened")
         return runtime
       })
+  }
+
+  @Test func anAccountThatOpensDuringAnImportAsksForAProcessingWindowAgain() {
+    #expect(BackgroundScheduler.kinds(afterOpening: .scanning) == [.refresh, .processing])
+    #expect(BackgroundScheduler.kinds(afterOpening: .authoringBackfill) == [.refresh, .processing])
+    #expect(BackgroundScheduler.kinds(afterOpening: .active) == [.refresh])
+    #expect(BackgroundScheduler.kinds(afterOpening: .awaitingCards) == [.refresh])
+    #expect(BackgroundScheduler.kinds(afterOpening: nil) == [.refresh])
   }
 
   @Test func onlyAForegroundLaunchStartsTheGraphAtLaunch() {

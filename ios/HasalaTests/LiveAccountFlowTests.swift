@@ -225,10 +225,13 @@ struct LiveAccountFlowTests {
     #expect(await account.freezeInfo() == FreezeInfo(by: .holder, when: "on Sun 11 Oct at 21:20", hasPassword: true))
 
     server.operatorFreezesBeforeUnfreeze = true
+    var forgotLayout = false
+    account.hooks = LiveAccountHooks(forgetHomeLayout: { forgotLayout = true })
     let stale = AccountSession(services: services(account), phase: .frozen(FreezeInfo(by: .holder, when: nil)))
     await #expect(throws: AuthFailure.sessionEnded) { try await stale.unfreeze(password: Self.password) }
     #expect(server.unfreezeCalls == 1)
     #expect(stale.phase == .signedOut)
+    #expect(!forgotLayout)
     #expect(try a.env.secrets.session() == nil)
     #expect(a.binding != nil)  // the data and keys stay
     let operatorFreeze = FreezeInfo(by: .operator, when: "on Sun 11 Oct at 21:20", hasPassword: true)
@@ -544,13 +547,17 @@ struct LiveAccountFlowTests {
     let server = MiniHasalad(invite: Self.invite)
     let a = Phone(server)
     _ = try await signUp(a, server)
-    let session = AccountSession(services: services(a.relaunched()), phase: .ready)
+    let account = a.relaunched()
+    var forgotLayout = false
+    account.hooks = LiveAccountHooks(forgetHomeLayout: { forgotLayout = true })
+    let session = AccountSession(services: services(account), phase: .ready)
     let m = SecurityModel(session: session)
     await m.load()
     await m.request(.signOutEverywhere)
     m.confirmPassword = Self.password
     await m.confirm()
     #expect(m.failure == nil)
+    #expect(forgotLayout)
     #expect(server.lastStepUpAction == "session.logout_all")
     #expect(session.phase == .signedOut)
     #expect(try a.env.secrets.session() == nil)

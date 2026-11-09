@@ -391,11 +391,12 @@ struct BankTextsIntakeTests {
     let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
     let binding = try #require(try env.secrets.binding())
     let r = rig()
+    LocalAccountData.setMailboxPhaseSeen(nil)
     let rt = try await AccountRuntime.open(
       env: env, binding: binding, enrolled: a.enrolled, build: .current,
       profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
       bankTextFacts: r.facts)
-    #expect(rt.store.mailboxPhase == .unlinked && rt.lastPhase == .unlinked && r.factsData.link == nil)
+    #expect(rt.store.mailboxPhase == .unlinked && rt.moveNote.lastPhase == .unlinked && r.factsData.link == nil)
 
     rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
     #expect(rt.store.mailboxPhase == nil)
@@ -406,7 +407,7 @@ struct BankTextsIntakeTests {
     #expect(r.factsData.link == nil)
 
     _ = rt.readingInputs(textsChosen: false, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
-    #expect(rt.lastPhase == .unlinked)
+    #expect(rt.moveNote.lastPhase == .unlinked)
     await rt.close()
   }
 

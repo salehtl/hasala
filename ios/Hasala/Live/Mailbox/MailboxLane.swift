@@ -1,6 +1,7 @@
 import CoreMailbox
 import CorePrimitives
 import CoreStore
+import CoreSync
 import CoreTemplate
 import CoreTime
 import Foundation
@@ -179,6 +180,8 @@ nonisolated final class MailboxLane: Sendable {
 
   func resume() async { await engine.resume() }
 
+  var isStopped: Bool { get async { await engine.stopped } }
+
   func close() async {
     work.close()
     await engine.stop()
@@ -343,6 +346,11 @@ nonisolated final class MailGrantEnds: @unchecked Sendable {
     }
   }
 
+  func end(within limit: Duration = MailGrantEnds.departureWait, _ work: @escaping @Sendable () async -> Void) async {
+    enqueue(work)
+    _ = await Task { await self.settled(within: limit) }.value
+  }
+
   /// Before a connect signs in: nil once every earlier ending is done (waiting at most
   /// `limit`), else the refusal ("Couldn't connect … Try again."). An ending still running
   /// could reach the provider after the new link and end its grant and watch.
@@ -379,14 +387,19 @@ extension MailboxLane {
     return grants.isEmpty ? nil : HeldMailGrants(grants: grants)
   }
 
-  nonisolated static func endGrantLater(_ held: HeldMailGrants?, build: BuildInfo) {
-    guard let held else { return }
-    MailGrantEnds.shared.enqueue { await endGrant(held, build: build, stopWatch: false) }
+  nonisolated static func endGrantThenWipe(
+    _ env: AccountEnvironment, userID: UserID, writerID: WriterID?, ends: MailGrantEnds = .shared,
+    within limit: Duration = MailGrantEnds.departureWait, ending: @escaping @Sendable (HeldMailGrants) async -> Void
+  ) async {
+    if let held = heldGrant(secrets: env.secrets, userID: userID) {
+      await ends.end(within: limit) { await ending(held) }
+    }
+    AccountWipe.wipe(env, userID: userID, writerID: writerID)
   }
 
   /// Ends this iPhone's grants as the account leaves it (spec 04 §4.7 rows 2–4), best effort,
-  /// and nothing for a provider the build has no client for. It needs only what `heldGrant`
-  /// read, so it runs after the local wipe as well.
+  /// and nothing for a provider the build has no client for. It runs before the local wipe:
+  /// a kill during it leaves the token here, and the next departure ends it.
   ///
   /// - Gmail: `users.stop` first when the account itself is going (`stopWatch`), then the
   ///   refresh token is revoked at Google.
