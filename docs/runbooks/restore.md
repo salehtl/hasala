@@ -104,10 +104,11 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
 
 ## Steps
 
-1. Stop the API, the tunnel and the console. The database keeps running.
+1. Stop the API, the tunnel, the console and the health probes, so that the
+   restore does not alert. The database keeps running.
 
    ```sh
-   sudo systemctl stop hasalad cloudflared-hasala hasala-console
+   sudo systemctl stop hasalad cloudflared-hasala hasala-console hasala-health.timer
    ```
 
 2. Keep the host's ledger. It is newer than every backup. Do not replace it
@@ -139,15 +140,20 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
 
    Try this command on a VM before the first restore on the host.
 
-4. Add 1 to the log generation, so that each iPhone knows that the server was
+4. Move the log generation, so that each iPhone knows that the server was
    restored.
 
    ```sh
-   n=$(sudo cat /var/lib/hasala-ledger/generation 2>/dev/null || echo 1)
-   echo $((n + 1)) | sudo -u hasala tee /var/lib/hasala-ledger/generation
+   sudo hasala-bump-generation
    ```
 
-5. Start Hasala, and examine the replay.
+   The new value is the current time in seconds, or 1 more than the old value
+   when that is higher. So it differs from every value that an iPhone holds,
+   also on a new host that lost the file. Do not restore the file from a
+   backup: a backup can be older than the last restore.
+
+5. Start Hasala, and examine the replay. This also starts the health probes
+   again.
 
    ```sh
    sudo systemctl start hasala.target
