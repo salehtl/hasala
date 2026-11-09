@@ -303,6 +303,33 @@ struct BankTextsIntakeTests {
     await rt.close()
   }
 
+  @Test func aLaneStateThatCouldNotBeReadLeavesTheCopyAndTheMoveAwayAlone() async throws {
+    let provider = UserDefaults.standard.string(forKey: LocalAccountData.mailboxProviderKey)
+    defer { UserDefaults.standard.set(provider, forKey: LocalAccountData.mailboxProviderKey) }
+    let server = MiniHasalad(invite: LiveAccountServiceTests.invite)
+    let env = LiveAccountServiceTests.phone(server)
+    let (a, _) = try await LiveAccountServiceTests.signUp(server, env)
+    let binding = try #require(try env.secrets.binding())
+    let r = rig()
+    let rt = try await AccountRuntime.open(
+      env: env, binding: binding, enrolled: a.enrolled, build: .current,
+      profile: BootController.profileInfo(nil, binding: binding), usesPasskey: { false }, stopped: { _ in },
+      bankTextFacts: r.facts)
+    #expect(rt.store.mailboxPhase == .unlinked && rt.lastPhase == .unlinked && r.factsData.link == nil)
+
+    rt.store.noteMailbox(MailboxEngine.stateUnread, nowMs: rt.context.clock.nowMs())
+    #expect(rt.store.mailboxPhase == nil)
+    #expect(rt.store.mailboxStatus == MailboxEngine.stateUnread)
+
+    rt.linkCopy.ownLink(rt.store.mailboxPhase)
+    await rt.checkServerLink()
+    #expect(r.factsData.link == nil)
+
+    _ = rt.readingInputs(textsChosen: false, textsLastRunMs: nil, backgroundRefreshOff: false)
+    #expect(rt.lastPhase == .unlinked)
+    await rt.close()
+  }
+
   @Test func onlyAPhaseThatReadsTheMailboxWritesLinked() {
     for phase in MailboxPhase.allCases {
       let r = rig()

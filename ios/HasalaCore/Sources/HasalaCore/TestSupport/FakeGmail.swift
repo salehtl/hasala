@@ -53,7 +53,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   private var messages: [String: Message] = [:]
   private var order: [String] = []
   private var _requests: [Recorded] = []
-  private var failures: [String: [(status: Int, reason: String?)]] = [:]
+  private var failures: [(path: String, status: Int, reason: String?)] = []
   private var lastNonce = ""
 
   public var historyID = "1000"
@@ -100,7 +100,7 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
   /// each status is used once, then the request is served normally. `reason` goes in Google's
   /// error body (`error.errors[0].reason`, e.g. "userRateLimitExceeded" on a 403).
   public func fail(_ pathContains: String, with statuses: [Int], reason: String? = nil) {
-    lock.withLock { failures[pathContains, default: []].append(contentsOf: statuses.map { ($0, reason) }) }
+    lock.withLock { failures += statuses.map { (pathContains, $0, reason) } }
   }
 
   public var requests: [Recorded] { lock.withLock { _requests } }
@@ -135,12 +135,8 @@ public final class FakeGmail: HTTPExchange, @unchecked Sendable {
       return googleError(status, reason: "rateLimitExceeded")
     }
     let keyed = path + (query.first { $0.0 == "format" }.map { "?format=\($0.1)" } ?? "")
-    if let failure = lock.withLock({ () -> (status: Int, reason: String?)? in
-      for (k, v) in failures where !v.isEmpty && keyed.contains(k) {
-        failures[k] = Array(v.dropFirst())
-        return v[0]
-      }
-      return nil
+    if let failure = lock.withLock({ () -> (path: String, status: Int, reason: String?)? in
+      failures.firstIndex { keyed.contains($0.path) }.map { failures.remove(at: $0) }
     }) {
       return googleError(failure.status, reason: failure.reason)
     }
@@ -445,19 +441,27 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
   nonisolated(unsafe) private static var fakes: [String: any HTTPExchange] = [:]
   nonisolated(unsafe) private static var next = 0
 
+  private var loading: Task<Void, Never>?
+
   /// An ephemeral-configured exchange whose every request is answered by `fake`.
-  public static func exchange(for fake: any HTTPExchange, maxResponseBytes: Int? = nil) -> URLSessionHTTPExchange {
-    let id = registry.withLock { () -> String in
+  public static func exchange(for fake: any HTTPExchange, maxResponseBytes: Int? = nil) -> FakeURLSessionExchange {
+    let id = register(fake)
+    let c = URLSessionConfiguration.ephemeral
+    c.protocolClasses = [FakeGmailURLProtocol.self]
+    c.httpAdditionalHeaders = [header: id]
+    return FakeURLSessionExchange(id: id, session: URLSessionHTTPExchange(configuration: c, maxResponseBytes: maxResponseBytes))
+  }
+
+  static func register(_ fake: any HTTPExchange) -> String {
+    registry.withLock {
       next += 1
       let id = "fake-\(next)"
       fakes[id] = fake
       return id
     }
-    let c = URLSessionConfiguration.ephemeral
-    c.protocolClasses = [FakeGmailURLProtocol.self]
-    c.httpAdditionalHeaders = [header: id]
-    return URLSessionHTTPExchange(configuration: c, maxResponseBytes: maxResponseBytes)
   }
+
+  static func forget(_ id: String) { registry.withLock { fakes[id] = nil } }
 
   public override class func canInit(with request: URLRequest) -> Bool { request.value(forHTTPHeaderField: header) != nil }
   public override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -486,9 +490,10 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
     let headers = (req.allHTTPHeaderFields ?? [:]).filter { $0.key != Self.header }.map { ($0.key, $0.value) }
     let client = self.client
     let protocolSelf = UnsafeSendable(self)
-    Task {
+    loading = Task {
       do {
         let res = try await fake.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+        if Task.isCancelled { return }
         var fields = ["Content-Type": "application/json"]
         for (k, v) in res.headers { fields[k] = v }
         let http = HTTPURLResponse(url: url, statusCode: res.status, httpVersion: "HTTP/1.1", headerFields: fields)!
@@ -496,12 +501,29 @@ public final class FakeGmailURLProtocol: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(protocolSelf.value, didLoad: res.body)
         client?.urlProtocolDidFinishLoading(protocolSelf.value)
       } catch {
+        if Task.isCancelled { return }
         client?.urlProtocol(protocolSelf.value, didFailWithError: URLError(.notConnectedToInternet))
       }
     }
   }
 
-  public override func stopLoading() {}
+  public override func stopLoading() { loading?.cancel() }
+}
+
+public final class FakeURLSessionExchange: HTTPExchange {
+  private let id: String
+  private let session: URLSessionHTTPExchange
+
+  init(id: String, session: URLSessionHTTPExchange) {
+    self.id = id
+    self.session = session
+  }
+
+  deinit { FakeGmailURLProtocol.forget(id) }
+
+  public func send(_ request: HTTPRequest) async throws(HTTPExchangeError) -> HTTPResponse {
+    try await session.send(request)
+  }
 }
 
 struct UnsafeSendable<T>: @unchecked Sendable {

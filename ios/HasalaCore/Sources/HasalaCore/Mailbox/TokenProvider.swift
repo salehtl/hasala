@@ -28,8 +28,6 @@ public enum MailAuthError: Error, Sendable, Equatable {
   /// The Keychain is unreadable (before first unlock): try again later, change nothing.
   case notNow
   case offline
-  /// The token was revoked on purpose (disconnect, other device took over).
-  case revoked
 }
 
 public typealias GmailAuthError = MailAuthError
@@ -133,6 +131,19 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
     cached = AccessToken(value: grant.accessToken, expiresAtMs: clock.nowMs() + grant.expiresIn * 1000)
   }
 
+  @discardableResult
+  public func replace(with grant: MailTokenGrant) throws(MailAuthError) -> String? {
+    let prior: String?
+    do { prior = try store.read() } catch { throw .notNow }
+    try install(grant: grant)
+    return prior
+  }
+
+  public func restore(_ token: String?) {
+    cached = nil
+    if let token { try? store.write(token) } else { try? store.delete() }
+  }
+
   /// Whether a refresh token is present (nil: unreadable now).
   public func hasRefreshToken() -> Bool? {
     do { return try store.read() != nil } catch { return nil }
@@ -156,6 +167,12 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
   /// grant this iPhone stops using anyway.
   @discardableResult
   public func revokeAndForget(keepOnFailure: Bool = true) async -> Bool {
+    let revoked = await revoke(stopOnFailure: keepOnFailure)
+    if revoked || !keepOnFailure { try? store.delete() }
+    return revoked
+  }
+
+  public func revoke(stopOnFailure: Bool = true) async -> Bool {
     cached = nil
     let token: String?
     do { token = try store.read() } catch { return false }
@@ -163,10 +180,9 @@ public actor RefreshingMailTokenProvider: MailTokenProvider {
       do throws(MailOAuthError) {
         try await oauth.revoke(token: token)
       } catch {
-        if keepOnFailure { return false }
+        if stopOnFailure { return false }
       }
     }
-    try? store.delete()
     return true
   }
 

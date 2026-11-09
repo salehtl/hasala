@@ -116,6 +116,7 @@ public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable
   private let lock = NSLock()
   private var state: OutlookLinkState?
   public var locked = false
+  public var writesFail = false
 
   public init(_ state: OutlookLinkState? = nil) { self.state = state }
 
@@ -128,7 +129,7 @@ public final class MemoryOutlookLinkStore: OutlookLinkStore, @unchecked Sendable
   public func write(_ s: OutlookLinkState) throws(SecretUnavailable) {
     lock.lock()
     defer { lock.unlock() }
-    if locked { throw SecretUnavailable() }
+    if locked || writesFail { throw SecretUnavailable() }
     state = s
   }
   public func delete() throws(SecretUnavailable) {
@@ -429,7 +430,12 @@ public struct GraphClient: Sendable {
     var kept = state
     kept.subscriptionID = id
     kept.subscriptionResource = Self.subscriptionResource
-    try? link.write(kept)
+    do throws(SecretUnavailable) {
+      try link.write(kept)
+    } catch {
+      try? await deleteSubscription(id: id)
+      throw .offline
+    }
     return MailSubscription(expiresAtMs: Self.expiry(o, asked: asked))
   }
 
@@ -475,6 +481,7 @@ extension GraphClient: MailSource {
   /// server relays no Outlook wakes, or this iPhone keeps no clientState.
   public func subscribe(_ push: MailboxPushConfig) async throws(MailAPIError) -> MailSubscription? {
     guard case .outlook(let n, let l) = push, let state = try? link.read() else { return nil }
+    if state.subscriptionID != nil { return try await renew(push) }
     return try await createSubscription(n, l, state: state)
   }
 

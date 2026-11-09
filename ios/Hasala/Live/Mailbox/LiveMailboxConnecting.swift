@@ -425,13 +425,14 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     let days = MailboxEngine.backfillDays(
       newestImportMs: (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil, nowMs: rt.context.clock.nowMs())
     let oldPlan = switching && replaces && removingOld ? await current?.retirePlan() : nil
+    let retiring = oldPlan.flatMap { $0.total > 0 || !$0.countKnown ? $0 : nil }
     let oldName = status.address ?? current?.provider.appName ?? provider.appName
     let old = switching ? current : nil
     await old?.stop()
     let newest = (try? rt.projection.reader.newestMailboxPostedMs()) ?? nil
     let result = await lane.connect(
       backfillDays: days, pastMail: Self.pastMail(pastMail, takesOver: takesOver, newestImportMs: newest),
-      replacing: replaces, confirm: Self.confirm(ask, provider: provider))
+      replacing: replaces, retiring: retiring, confirm: Self.confirm(ask, provider: provider))
     let nowReading: String?
     do { nowReading = try Self.linked(result, provider: provider) } catch {
       await old?.resume()
@@ -440,7 +441,7 @@ final class LiveMailboxConnecting: MailboxConnecting, BankAlertsReporting, Other
     rt.linkedHere(provider)
     if switching, let old = current { await old.endGrant() }
     var retired = Self.retired(result)
-    if let oldPlan, oldPlan.total > 0 || !oldPlan.countKnown { retired = await lane.retire(oldPlan) }
+    if let retiring { retired = await lane.retire(retiring) }
     await rt.refreshMailbox()
     let reads = await lane.status()
     if reads.phase == .active, reads.readFromMs != nil, reads.lastSuccessAtMs == nil {

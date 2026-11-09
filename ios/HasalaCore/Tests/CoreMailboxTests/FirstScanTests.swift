@@ -142,6 +142,31 @@ final class GmailRateLimit: @unchecked Sendable {
     #expect(reports.last?.haltedOn == .reconnectRequired && reports.last?.phase == .reconnectRequired)
     #expect(seen.all.contains(MailboxProgress(stage: .failed(.reconnectRequired), done: 0, total: 0)))
   }
+
+  @Test func aRefusalThatHaltsTheFirstScanIsReportedAsAFailure() async {
+    let rig = Rig()
+    Self.backfill(rig, count: 10)
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    rig.gmail.fail("/messages/d0", with: [400])
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    let reports = await rig.engine.runFirstScan()
+    #expect(reports.count == 1)
+    #expect(reports.last?.haltedOn == .gmail && reports.last?.phase == .halted)
+    #expect(seen.all.contains(MailboxProgress(stage: .failed(.gmail), done: 0, total: 0)))
+  }
+
+  @Test func aStopThatPassesByItselfIsNotReportedAsAFailureDuringTheFirstScan() async {
+    let rig = Rig()
+    Self.backfill(rig, count: 10)
+    _ = await rig.engine.connect(presenter: FakePresenter(gmail: rig.gmail), backfillDays: 90)
+    rig.gmail.fail("/messages/d0", with: [500, 500, 500])
+    let seen = ProgressLog()
+    await rig.engine.setProgressHandler { seen.append($0) }
+    let reports = await rig.engine.runFirstScan()
+    #expect(reports.last?.phase == .active)
+    #expect(!seen.all.contains(MailboxProgress(stage: .failed(.gmail), done: 0, total: 0)))
+  }
 }
 
 final class CommitLog: @unchecked Sendable {

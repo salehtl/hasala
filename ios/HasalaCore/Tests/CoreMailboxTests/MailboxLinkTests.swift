@@ -283,6 +283,39 @@ import Testing
     #expect(await rig.state() == before)
   }
 
+  @Test func aCycleThatCannotAskWhoHoldsTheOtherProvidersLinkLeavesThisLaneAlone() async throws {
+    let rig = Rig()
+    rig.gmail.add(SyntheticMail.dibCard(id: "early", dateMs: Rig.t0 - 86_400_000))
+    await rig.connectAndActivate()
+    let before = await rig.state()
+    let accounted = await rig.accountedCount()
+    #expect(accounted > 0)
+    await rig.server.setLinkProvider(.outlook)
+    await rig.server.setOffline(true)
+    let r = await rig.engine.runCycle(trigger: .launch)
+    #expect(r.haltedOn == .offline && r.phase == .active && r.ops == 0)
+    #expect(await !rig.engine.stopped)
+    #expect(try rig.keychain.read() != nil)
+    #expect(await rig.state() == before)
+    #expect(await rig.accountedCount() == accounted)
+    await rig.server.setOffline(false)
+    _ = await rig.engine.runCycle(trigger: .launch)
+    #expect(await rig.engine.stopped)
+    #expect(await rig.state() == before)
+  }
+
+  @Test func aDisconnectThatCannotAskWhoHoldsTheOtherProvidersLinkStops() async throws {
+    let rig = Rig()
+    await rig.connectAndActivate()
+    let before = await rig.state()
+    await rig.server.setLinkProvider(.outlook)
+    await rig.server.setOffline(true)
+    #expect(await rig.engine.disconnect(removing: nil) == .failed)
+    #expect(await rig.server.deletes == 0)
+    #expect(try rig.keychain.read() != nil)
+    #expect(await rig.state() == before)
+  }
+
   func takenOver(_ rig: Rig) async {
     await rig.connectAndActivate()
     await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))

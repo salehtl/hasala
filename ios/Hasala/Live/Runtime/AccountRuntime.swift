@@ -183,7 +183,7 @@ final class AccountRuntime {
   func readingInputs(textsChosen: Bool, textsLastRunMs: Int64?, backgroundRefreshOff: Bool) -> LiveReading.Inputs {
     let provider = lane?.provider ?? .gmail
     let status = lane == nil ? nil : store.mailboxStatus
-    if let phase = status?.phase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
+    if status != nil, let phase = store.mailboxPhase, phase != lastPhase { noteMovedAway(from: lastPhase, to: phase) }
     let held = status.flatMap { s in
       lane.flatMap { LiveMailboxConnecting.heldElsewhere(phase: s.phase, link: serverLink, provider: $0.provider) }
     }

@@ -92,10 +92,18 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
     w.unstage = c.unstage
     w.pruneAccountedBelow = c.pruneAccountedBelowMs
     w.addImports = c.addImports.map { ($0.domain, $0.sinceMs) }
+    let addressAt = nowMs()
+    w.senderAddresses = c.senderAddresses.map { ($0, addressAt) }
     w.doneImports = c.doneImports
     w.unparsedSenders = c.unparsedSenders.map {
       MailboxUnparsedSenderRow(messageID: $0.messageID, domain: $0.domain, at: $0.atMs)
     }
+    w.strikes = c.strikes.map { ($0.messageID, $0.count, $0.atMs) }
+    w.beginRetire = c.beginRetire.map {
+      MailboxRetirePlanRow(
+        grantID: $0.grantID, provider: $0.provider, legacy: $0.legacy, total: $0.total, edited: $0.edited, countKnown: $0.countKnown)
+    }
+    w.endRetire = c.endRetire.map { ($0.grantID, $0.provider) }
     w.reader = c.reader?.encoded()
     w.health = c.healthBumps.map { ($0.domain, MailboxClock.localMonth($0.internalDateMs), $0.internalDateMs) }
     if let s = c.state {
@@ -142,6 +150,17 @@ public actor LedgerMailboxPersistence: MailboxPersistence {
 
   public func isParsing(_ messageID: String) async throws(MailboxPersistenceError) -> Bool {
     try io { try tables.isParsing(messageID) }
+  }
+
+  public func strikes(messageID: String) async throws(MailboxPersistenceError) -> Int {
+    try io { try tables.strikes(messageID: messageID) }
+  }
+
+  public func pendingRetires() async throws(MailboxPersistenceError) -> [MailboxRetirePlan] {
+    try io { try tables.pendingRetires() }.map {
+      MailboxRetirePlan(
+        grantID: $0.grantID, provider: $0.provider, legacy: $0.legacy, total: $0.total, edited: $0.edited, countKnown: $0.countKnown)
+    }
   }
 
   public func markParsing(_ messageID: String) async throws(MailboxPersistenceError) {

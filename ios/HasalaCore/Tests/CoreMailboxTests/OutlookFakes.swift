@@ -23,12 +23,19 @@ actor OutlookServer: MailboxServer {
   var deletes = 0
   var pushOn = true
   var returnsClientState = true
+  var deleteRefusal: MailboxServerError?
+  var watchRefusal: MailboxServerError?
 
+  func setWatchRefusal(_ e: MailboxServerError?) { watchRefusal = e }
+  func setDeleteRefusal(_ e: MailboxServerError?) { deleteRefusal = e }
   func setLink(_ l: MailboxLinkStatus) { link = l }
   func setPushOn(_ v: Bool) { pushOn = v }
   func setReturnsClientState(_ v: Bool) { returnsClientState = v }
 
-  func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus { link }
+  func linkStatus() async throws(MailboxServerError) -> MailboxLinkStatus {
+    if !pushOn, case .holder(let mine, _) = link { return .holder(isThisDevice: mine, watchExpiresAtMs: nil) }
+    return link
+  }
   func linkChallenge() async throws(MailboxServerError) -> String { nonce }
   func putLink(provider: MailProviderID, idToken: String, stepUp: JSONValue) async throws(MailboxServerError)
     -> MailboxLinkResult
@@ -38,10 +45,12 @@ actor OutlookServer: MailboxServer {
     return MailboxLinkResult(status: link, clientState: returnsClientState ? Self.clientState : nil)
   }
   func putWatch(expiresAtMs: Int64) async throws(MailboxServerError) {
+    if let watchRefusal { throw watchRefusal }
     watches.append(expiresAtMs)
     if case .holder(isThisDevice: true, _) = link { link = .holder(isThisDevice: true, watchExpiresAtMs: expiresAtMs) }
   }
   func deleteLink(stepUp: JSONValue) async throws(MailboxServerError) {
+    if let deleteRefusal { throw deleteRefusal }
     deletes += 1
     link = .noLink
   }
@@ -81,12 +90,13 @@ struct OutlookRig {
   /// `viaURLSession` serves FakeGraph through a real URLSession (`URLSessionHTTPExchange`).
   init(
     viaURLSession: Bool = false, maxResponseBytes: Int? = nil, categorizer: any IngestCategorizer = NoCategorizer(),
-    ledgerStore: LedgerStore? = nil, author real: MailboxOpAuthor? = nil
+    ledgerStore: LedgerStore? = nil, author real: MailboxOpAuthor? = nil,
+    wrapStore: ((any MailboxPersistence) -> any MailboxPersistence)? = nil
   ) {
     tables = ledgerStore.map { MailboxTableStore(writer: $0.db) } ?? (try! MailboxTableStore.inMemory())
     let authored = self.authored
     let clock = self.clock
-    store = LedgerMailboxPersistence(
+    let base: any MailboxPersistence = LedgerMailboxPersistence(
       tables: tables,
       author: { drafts, at in
         if let real {
@@ -101,6 +111,7 @@ struct OutlookRig {
             entityKind: "txn", entityID: "e-\($0.messageID)", enqueuedAt: at)
         }
       }, nowMs: { clock.nowMs() })
+    store = wrapStore?(base) ?? base
     let http: any HTTPExchange = viaURLSession ? FakeGmailURLProtocol.exchange(for: graph, maxResponseBytes: maxResponseBytes) : graph
     let oauth = MicrosoftOAuthClient(config: Self.config, http: http)
     provider = OutlookProvider(oauth: oauth, http: http, link: link, clock: clock)
