@@ -882,10 +882,6 @@ func countFor(ctx context.Context, tx pgx.Tx, r Relation, users []uuid.UUID) (in
 //   - step 4, with Goodbye: the `deleted` email is queued to the address, with
 //     no account (the row must outlive it), and loses the address when its
 //     send is final (mailq, O-17).
-//
-// It matches the account's current address only. An earlier address (before
-// an email change) stays in final mail_log rows that never carried the
-// account's id until the 30-day log sweep.
 func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Options, rep *Report) error {
 	type account struct {
 		id   uuid.UUID
@@ -922,10 +918,17 @@ func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Option
 	}
 	const addrs = `(SELECT email_norm FROM users WHERE id = ANY($1) AND email_norm IS NOT NULL)`
 	if _, err := tx.Exec(ctx,
-		`UPDATE invite_codes SET state = 'revoked', closed_at = now(), email_tag = NULL, link_key_hash = NULL
-		  WHERE state IN ('awaiting_testflight','queued','active')
-		    AND ((email_tag IS NOT NULL AND email_tag = ANY($2::bytea[]))
-		      OR id IN (SELECT invite_id FROM mail_log WHERE invite_id IS NOT NULL AND recipient IN `+addrs+`))`,
+		`WITH revoked AS (
+		   UPDATE invite_codes SET state = 'revoked', closed_at = now(), email_tag = NULL, link_key_hash = NULL
+		    WHERE state IN ('awaiting_testflight','queued','active')
+		      AND ((email_tag IS NOT NULL AND email_tag = ANY($2::bytea[]))
+		        OR id IN (SELECT invite_id FROM mail_log WHERE invite_id IS NOT NULL AND recipient IN `+addrs+`))
+		   RETURNING id, waitlist_entry_id)
+		 UPDATE waitlist_entries e SET state = 'confirmed', invited_at = NULL, updated_at = now()
+		  WHERE e.state = 'invited' AND e.id IN (SELECT waitlist_entry_id FROM revoked WHERE waitlist_entry_id IS NOT NULL)
+		    AND NOT EXISTS (SELECT 1 FROM invite_codes i WHERE i.waitlist_entry_id = e.id
+		                     AND i.state IN ('awaiting_testflight','queued','active')
+		                     AND i.id NOT IN (SELECT id FROM revoked))`,
 		users, tags); err != nil {
 		return fmt.Errorf("purge: revoke the address's invites: %w", err)
 	}
@@ -934,6 +937,9 @@ func eraseAddress(ctx context.Context, tx pgx.Tx, users []uuid.UUID, opts Option
 		`UPDATE mail_log SET status = 'suppressed', recipient = NULL, lease_until = NULL, final_at = now(), error = 'purged'
 		  WHERE status = 'sending' AND recipient IN ` + addrs,
 		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND recipient IN ` + addrs,
+		`UPDATE mail_log SET recipient = NULL WHERE final_at IS NOT NULL AND user_id IS NULL AND recipient IN
+		   (SELECT recipient FROM mail_log WHERE user_id = ANY($1) AND kind = 'alert' AND subkind = 'email_changed_old'
+		       AND recipient IS NOT NULL)`,
 		`DELETE FROM waitlist_entries WHERE state = 'joined'
 		    AND id IN (SELECT waitlist_entry_id FROM invite_codes WHERE redeemed_by = ANY($1))`,
 		`DELETE FROM signup_ceremonies WHERE email_norm IN ` + addrs,

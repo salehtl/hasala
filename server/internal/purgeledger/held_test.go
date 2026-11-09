@@ -175,12 +175,12 @@ func TestAnInterruptedWriteLeavesTheLedgerReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeLine = func(f *os.File, b []byte) (int, error) {
+	writeEntries = func(f *os.File, b []byte) (int, error) {
 		n, _ := f.Write(b[:10])
 		return n, errors.New("no space left on device")
 	}
 	werr := Append(path, []uuid.UUID{uuid.New()}, time.Now())
-	writeLine = (*os.File).Write
+	writeEntries = (*os.File).Write
 	if !errors.Is(werr, ErrNotWritten) {
 		t.Fatalf("a write cut short: %v, want ErrNotWritten", werr)
 	}

@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/salehtl/hasala/server/internal/blob"
 	"github.com/salehtl/hasala/server/internal/budget"
+	"github.com/salehtl/hasala/server/internal/oplog"
+	"github.com/salehtl/hasala/server/internal/pgtest"
 )
 
 func setOplogCeiling(t *testing.T, h *harness, bytes int64) {
@@ -178,6 +181,52 @@ func TestTheUploadByteBudgetIsRefundedWhenNothingIsStored(t *testing.T) {
 	}
 	setOplogCeiling(t, h, 256<<20)
 
+	wantStatus(t, upload(second), http.StatusOK)
+	w := upload(third)
+	wantStatus(t, w, http.StatusTooManyRequests)
+	wantError(t, w, "upload_bytes")
+	if n := countRows(t, h.pool, u); n != 2 {
+		t.Fatalf("%d rows stored, want 2", n)
+	}
+}
+
+func TestAnUploadWhoseCommitAnswerIsLostKeepsItsByteCharge(t *testing.T) {
+	h := newHarness(t)
+	u := h.user("lost-commit")
+	tok := h.session(u)
+	const writer = "ios-00000000-0000-4000-8000-000000000302"
+	h.writer(u, writer)
+
+	first, head := uploadChain(t, u, writer, 1, blob.ZeroHash, 1)
+	second, head2 := uploadChain(t, u, writer, 2, head, 1)
+	third, _ := uploadChain(t, u, writer, 3, head2, 1)
+	size := first[0].SizeBucket
+	if second[0].SizeBucket != size || third[0].SizeBucket != size {
+		t.Fatalf("blob sizes differ: %d, %d, %d", size, second[0].SizeBucket, third[0].SizeBucket)
+	}
+	losing, lose := pgtest.LosingCommitAnswers(t, h.pool)
+	h.srv.Appender = &oplog.Appender{Pool: losing}
+	h.srv.SyncPerUser = NewLimiter(0, 1000, 16, h.srv.now)
+	h.srv.SyncUploadBytes = NewLimiter(0, float64(2*size), 16, h.srv.now)
+	h.h = h.srv.Handler()
+	upload := func(blobs []UploadBlob) *httptest.ResponseRecorder {
+		return h.req(http.MethodPost, "/api/v1/sync", tok, UploadRequest{WriterID: writer, Stream: blob.StreamHot, Blobs: blobs})
+	}
+
+	lose()
+	wantStatus(t, upload(first), http.StatusInternalServerError)
+	deadline := time.Now().Add(30 * time.Second)
+	for countRows(t, h.pool, u) != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("the commit never landed")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	wantStatus(t, upload(first), http.StatusOK)
+	if n := countRows(t, h.pool, u); n != 1 {
+		t.Fatalf("%d rows after the resend, want 1", n)
+	}
 	wantStatus(t, upload(second), http.StatusOK)
 	w := upload(third)
 	wantStatus(t, w, http.StatusTooManyRequests)
