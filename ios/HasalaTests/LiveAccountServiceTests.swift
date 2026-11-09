@@ -535,4 +535,6 @@ nonisolated final class FaultySecrets: SecretStore {
   func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { try inner.write(item, value) }
 
   func delete(_ item: SecretItem) throws(SecretStoreError) { try inner.delete(item) }
+
+  func accounts(service: String) throws(SecretStoreError) -> [String] { try inner.accounts(service: service) }
 }

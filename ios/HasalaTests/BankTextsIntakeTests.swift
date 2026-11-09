@@ -325,7 +325,7 @@ struct BankTextsIntakeTests {
     await rt.checkServerLink()
     #expect(r.factsData.link == nil)
 
-    _ = rt.readingInputs(textsChosen: false, textsLastRunMs: nil, backgroundRefreshOff: false)
+    _ = rt.readingInputs(textsChosen: false, textsLastRunMs: nil, textsTestMissed: false, backgroundRefreshOff: false)
     #expect(rt.lastPhase == .unlinked)
     await rt.close()
   }
