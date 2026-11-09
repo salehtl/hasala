@@ -27,6 +27,7 @@ enum EngineError: Error, Equatable, Sendable {
   case notCompilable
   /// ICU's time or stack limit stopped a match (ReDoS backstop).
   case limitExceeded
+  case matchFailed
 }
 
 /// A translated pattern: ICU source and the names of its capture groups.
@@ -373,6 +374,8 @@ final class ICURegex: @unchecked Sendable {
   /// message refused as `too_large`. Re-measure on the oldest test iPhone before TestFlight
   /// (inventory client-core-b §2.3).
   static let timeLimit: Int32 = 10_000
+  static let stackOverflow: HasalaUErrorCode = 0x10311
+  static let timeOut: HasalaUErrorCode = 0x10312
 
   init(_ p: ICUPattern) throws(EngineError) {
     var status: HasalaUErrorCode = 0
@@ -407,7 +410,7 @@ final class ICURegex: @unchecked Sendable {
   /// stack limit stops the search.
   func firstMatch(in text: [UInt16], timeLimit: Int32 = ICURegex.timeLimit) throws(EngineError) -> Match? {
     var status: HasalaUErrorCode = 0
-    guard let re = uregex_clone(proto, &status), status <= 0 else { throw .notCompilable }
+    guard let re = uregex_clone(proto, &status), status <= 0 else { throw .matchFailed }
     defer { uregex_close(re) }
     uregex_setTimeLimit(re, timeLimit, &status)
     // ICU refuses a NULL text pointer, which an empty array would hand over.
@@ -429,7 +432,7 @@ final class ICURegex: @unchecked Sendable {
       let gs = (0..<groups.count).map { span(Int32($0 + 1)) }
       return .some(Match(range: whole, groups: gs))
     }
-    guard let result else { throw .limitExceeded }
+    guard let result else { throw status == Self.stackOverflow || status == Self.timeOut ? .limitExceeded : .matchFailed }
     return result
   }
 }
