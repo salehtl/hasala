@@ -7,12 +7,20 @@ coming back:
 - Each account deletion (`DELETE /api/v1/account` and `hasala-admin
   purge-user`) appends one line to `/var/lib/hasala-ledger/purged`: the random
   account id and the time. The append is part of the deletion. If it fails,
-  nothing is deleted. When the failure comes after bytes may have reached the
-  file, a `purge-cancelled` line follows. If the database commit fails and the account is still
+  nothing is deleted. An append first cuts an incomplete last line, with a log
+  line, and a write cut short is truncated back when possible and reports
+  nothing written. When the failure comes after bytes may have reached the
+  file and stayed there, a `purge-cancelled` line follows. If the database commit fails and the account is still
   there, a `purge-cancelled` line follows too. The replay does not
-  purge that account unless a later deletion line names it. If the line cannot
+  purge that account unless a later deletion line names it. A deletion holds
+  its account from before its line until its commit is settled. A replay leaves
+  a held account to the next replay and prints
+  `purge ledger: <n> account(s) have a deletion in progress and were left for the next replay`.
+  A replay also reads the ledger again once it holds the row locks, so a
+  `purge-cancelled` line already written keeps the account. If the line cannot
   be cancelled (for example, the database cannot be read after the failed
-  commit, or the ledger stops taking writes after a part of the line), or the
+  commit, or the ledger stops taking writes after a part of the line that
+  could not be truncated back), or the
   process stops between the append and the commit, the line stays and the next replay purges the account
   with no goodbye email. The holder asked for that deletion: the answer in the
   first case says that it may still take effect.
@@ -23,14 +31,19 @@ coming back:
   "Restore records" row).
 - The ledger also records holder freezes and unfreezes, device removals,
   password changes, resets and removals, passkey removals (by the holder, and
-  the old passkeys that a recovery removes), waitlist leaves, waitlist
-  entries deleted because their invite email bounced, the first time the
+  the old passkeys that a recovery removes), key wrap deletions, waitlist
+  leaves, waitlist entries deleted because their invite email bounced, the first time the
   12 words were shown after a signup that skipped them, a sign-out of all
   sessions (`logout-all`), an email change, and an invite that the operator
   revoked (console or `hasalad invite revoke`), with internal ids and times
   only (a passkey by its credential id, an invite by its id; never an
-  address). These are written after the
-  change commits; a failed write is logged and does not stop the change. A
+  address). For a change made through `hasalad serve`, the line is kept in
+  `restore_ledger_held` in the change's transaction, moved to the file after
+  the commit, and retried by a sweep at start and every minute. The limit: a
+  stop followed by a restore before any restart loses a held line. The console
+  and the operator commands (`hasalad account unfreeze`, `hasalad invite
+  revoke`) append after their commit, and a failed append does not undo the
+  change. A
   console revocation that the ledger did not record shows an error page. The
   console runs as `hasala-console` and appends through the `hasala-ledger`
   group, so `purged` and `purged.lock` are mode `0660`. The
@@ -45,7 +58,11 @@ coming back:
   ends, so a password-only account gets back in with its 12 words), a removed
   passkey (the passkey and its key wrap go, and the sessions it signed in end,
   with every passkey session the server cannot attribute; an account left with
-  no passkey and no password gets back in with its 12 words), a waitlist leave,
+  no passkey and no password gets back in with its 12 words; while the 12 words
+  are unseen, a replay keeps the passkey that holds the account's only key
+  wrap), a deleted key wrap (the wrap goes again unless it was put back in the
+  same second or later, and the last wrap of an account with unseen words
+  stays), a waitlist leave,
   a bounced-invite deletion (the entry goes again and its invite is
   revoked), and a first view of the 12 words (the account's "words not yet
   seen" flag is cleared again, so Home does not ask for them again), a
@@ -71,12 +88,15 @@ coming back:
   kind it does not know, with a log line (`purgeledger: skipped an entry of a
   kind this hasalad does not know`), keeps it in the file until it is past
   retention, and replays the rest. A line of a known kind that is malformed
-  still fails the whole ledger.
+  still fails the whole ledger. An append and the replay cut an incomplete last
+  line, with a log line (`purgeledger: cut an incomplete last line`). A last
+  line with no newline that reads as a whole entry is refused and needs the
+  operator (refer to "If the replay fails" below).
 - An older `hasalad` fails on a kind it does not know. A `hasalad` from before
   the event kinds (before `legal/accuracy-fixes`) fails on every line with a
   third field; one from before `onboarding/phrase-on-home` fails on
   `phrase-seen`, and one from before `onboarding/w5-review-fixes` fails on
-  `sessions`, `email` and `invite-revoked`. A `hasalad` from before
+  `sessions`, `email`, `invite-revoked` and `wrap`. A `hasalad` from before
   `hardening/ledger-and-limits` skips these three kinds, so its replay does
   not apply them again. A `hasalad` from before `security/server-lifecycle`
   skips `purge-cancelled`, so its replay purges an account whose deletion was
@@ -95,7 +115,11 @@ coming back:
 - A single sign-out (`logout`) is not recorded: a session has no internal id
   for the ledger. A restore can bring back a session that was signed out
   alone. The holder can end it again with a sign-out of all sessions.
-- If the replay fails, `hasalad` and the console do not start.
+- If the replay fails, `hasalad` and the console do not start. When the error
+  says that the file ends in a whole entry with no newline, add the newline or
+  remove the line. When an older build already joined a new line to an
+  incomplete one (the error names a line that is not a ledger entry), remove
+  the joined line.
 - Each daily and pre-migration backup keeps an encrypted copy of the ledger
   (`hasala-ledger-<tag>-<time>.tar.age`). A backup fails when the ledger file
   is missing.
@@ -152,22 +176,33 @@ Values in angle brackets are placeholders. Nothing real belongs in this file.
    also on a new host that lost the file. Do not restore the file from a
    backup: a backup can be older than the last restore.
 
+   `hasalad serve` also checks this. It keeps
+   `/var/lib/hasala-ledger/generation.seal`. When it finds the database replaced
+   and the file not raised, it raises the generation and logs a warning. Do this
+   step anyway: the seal is not in the backups, and a new host starts without
+   one.
+
 5. Start Hasala, and examine the replay. This also starts the health probes
    again.
 
    ```sh
    sudo systemctl start hasala.target
    systemctl show -P Result hasala-purge-replay
-   journalctl -u hasala-purge-replay -o cat | tail -1
+   journalctl -u hasala-purge-replay -o cat | tail -2
    ```
 
-   The result is `success`, and the last line is
+   The result is `success`, and the summary line is
    `purge ledger: <n> entries, <m> account(s) purged again (...), ...`, with
-   the counts of each event applied again. If the count of device removals
+   the counts of each event applied again, key wrap deletions included. When a
+   deletion was in progress, its line about the accounts left for the next
+   replay comes after this one. If the count of device removals
    whose signer is not in the database is above 0, ask the holder to remove
    that iPhone again. If the count of email changes is above 0, those
    accounts are back on their old address and marked for re-verification: the
-   holder changes the address again in the app. The journal
+   holder changes the address again in the app. If the count of
+   `passkey removal(s) kept back because that passkey is the only way to show the unseen 12 words`
+   is above 0, ask the holder to view the words, then remove that passkey
+   again. The journal
    shows counts only, never an account id.
 
 ## Lift a freeze that the holder cannot lift
@@ -178,9 +213,18 @@ a "Your recovery phrase was used" alert is dated to that recovery, and the
 recovery replaced or re-dated every factor. A frozen account also refuses a
 new recovery and a password reset. Then only the operator can lift it.
 
-`GET /api/v1/account` reports `holder_can_lift` while the account is frozen:
-false for an operator freeze, and false when no passkey, and no live device
-with a password, is older than the freeze's trigger. The app then shows no
+A device freeze is not dated back to a sign-out asked for from a session on that
+same device, whichever proof it used, passkey or device (sign out everywhere,
+freeze, unfreeze, password set, change, removal or reset with a code, passkey
+removal). It is still dated back to a change from another device's session, from
+a session on no device, or made with no session at all (recovery, a reset
+finished on a new iPhone).
+
+`GET /api/v1/account` reports `holder_can_lift` while the account is frozen,
+for the session that asks:
+false for an operator freeze, and false when no passkey is older than the
+freeze's trigger and that session's own device, with a password, is not older.
+The app then shows no
 Unfreeze. It shows "Talk to a person" and asks the holder to write to us from
 the account's address, so expect the request below.
 
@@ -209,8 +253,9 @@ in-app lockdown or the operator.
    row (`cli.account_unfreeze`). It then appends an `unfreeze` line to the
    ledger, so a later restore does not bring the freeze back. If that append
    fails, the command says so and exits 1: the account is unfrozen, but a
-   restore would freeze it again. Run the command again after a restore in
-   that case.
+   restore would freeze it again. Run the command again once the ledger takes
+   writes: it records the missed unfreeze. `hasalad invite revoke` does the
+   same: a rerun records the missed revocation.
 3. The factors that the recovery made work again. Tell the holder to sign in
    and remove each device, passkey or password that they do not know.
 

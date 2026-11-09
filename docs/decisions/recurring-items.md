@@ -126,8 +126,9 @@ payment). The matcher never writes it.
     When the due on or after today is already paid or matched, the range starts at the
     first unpaid due after those paid dues, so a paid due is never paused. Until that day
     the bill shows as Paused from that date. Resume sets `until` = today on the open range,
-    and removes a range that has not started yet. A range that would start on or after its
-    `until` is refused.
+    and removes a range that has not started yet. Pausing again replaces a range that has
+    not started yet, and never starts later than that range. A range that would start on or
+    after its `until` is refused.
 11. Paused dues are not expected: not late, not "to come", not in the plan.
 12. A payment matched to a paused due marks it paid and raises "Charged while paused".
 13. Ending while paused closes the open range at `end`.

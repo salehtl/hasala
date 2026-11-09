@@ -79,24 +79,35 @@ is reachable.
 - The real-mail fence.
 - The HasalaCore lints, and a check that the bundled templates
   (`ios/HasalaCore/Sources/HasalaCore/Resources/templates`) are the same as
-  `server/internal/tmpl/seed`. After you change a seed template, run
-  `swift ios/tools/templates/sync.swift`.
+  `server/internal/tmpl/seed`. `scripts/check-templates-manifest.sh` also
+  compares the SHA-256 of each seed with `TemplatesManifest.swift`. After you
+  change a seed template, run `swift ios/tools/templates/sync.swift`.
 - The golden fixtures check. The sets `authres`, `categorize`, `extract`, `fx`,
   `merchant-group`, `norm-dates`, `outlook-sender`, `replay` and `sms-extract` are golden files: the Swift tests own their
   expected output, and `HASALA_UPDATE_GOLDEN=1` rewrites it
   (`conformance/README.md`). The gate fails when a branch changes one of these
-  sets and changes nothing under `ios/HasalaCore/Tests`.
+  sets and changes nothing under `ios/HasalaCore/Tests`. In CI the gate also
+  fails when `HEAD^1` does not exist, because this check needs it.
 - The toolchain floor.
 - The hasalad fences (`server/cmd/hasalad/fence_test.go`).
 - `go vet` and `go test` in `server/`, then in `server/oracle/`. Both use one
   temporary Postgres (unix socket only).
-- The typecheck and `bun test` of the assist worker (`infra/assist`).
+- The typecheck and `bun test` of the assist worker (`infra/assist`). Its
+  dependencies are always installed from the lockfile.
 - The conformance suites. The `CONFORMANCE` table in `scripts/check.sh` names
   the Go packages of each fixture set. Each directory
   in `conformance/` must have an entry. When you add a fixture set, add its
-  entry.
-- The known failures (`KNOWN_FAILING` in `scripts/check.sh`). The gate skips
-  each one by name, then runs it alone, and it must still fail.
+  entry. A skipped test counts only when it is a real-corpus test or a
+  `TestWrite*` writer switched off through `HASALA_WRITE_CONFORMANCE`.
+- The known failures (`KNOWN_FAILING` in `scripts/check.sh`). Each entry has a
+  fourth field, the failure text. The gate skips each one by name, then runs it
+  alone, and it must still fail with that text.
+
+The gate also runs its own self-tests: `scripts/tests/gate_run_test.sh`,
+`gotest_ran_test.sh` and `git_env_test.sh`. The last one proves that the
+self-tests leave the surrounding repository alone when git's variables are
+exported. The closing lines name only the steps that ran, and a step that did
+not run adds `check: NOT RUN: ...`.
 
 ### One test
 
@@ -172,9 +183,12 @@ it is not sure, it runs the job.
   `private-fixtures.lock`. Only `ios-tools` reads `design/`.
 - `gate` and `vuln` also do not read `docs/`, `web/` and `ios/`. But they read
   all `*.go`, `*.nix`, `go.mod`, `go.sum`, `go.work` and `go.work.sum` files
-  in those directories, and the bundled templates
-  (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`). A change in
-  `infra/` starts them.
+  in those directories, the bundled templates
+  (`ios/HasalaCore/Sources/HasalaCore/Resources/templates/`) and
+  `ios/HasalaCore/Sources/HasalaCore/Resources/TemplatesManifest.swift`. `gate`
+  also reads `docs/runbooks/restore.md` (`module-eval` pins it), and `vuln`
+  shares the output of `gate`, so it also runs when that file changes. A change
+  in `infra/` starts them.
 - `swift` reads only `ios/` and `conformance/`, plus `server/internal/tmpl/seed/`.
 - `ios-tools` reads only `ios/`, `design/` and the
   flake. The devShell step of `ios-tools` reads only `ios/scripts/` and the
@@ -282,7 +296,11 @@ Release scripts:
 - `ios/scripts/archive.sh` runs a gate before it builds (exit 13). First, no
   `IntegrationStub` must be in `ios/`. Then it runs
   `ios/scripts/privacy-lint.sh`. This lint compares the use of
-  required-reason APIs with the privacy manifest.
+  required-reason APIs with the privacy manifest. Then the committed sample
+  seed must agree with `ios/scripts/golden/maya-v1.sha256` and
+  `SampleManifest.sha256`. Last, on a build that is not a TRIAL build, the
+  `op_version_ceiling` of the release API must be at or above
+  `SchemaVersion.author`, so this step needs network access to `/api/v1/meta`.
 - `ios/scripts/check-bundle.sh <.app|.xcarchive|.ipa>` examines the contents
   of a build:
   - No test data.
@@ -311,6 +329,12 @@ Release scripts:
   and `upload.sh` does not upload a TRIAL build. If another worktree uses
   `main`, make a release worktree on the branch `main`, then
   `git merge --ff-only origin/main` in it.
+- `archive.sh` exits 10 on a dirty tree. On a build that is not a TRIAL build,
+  it also exits 10 if the checkout, HEAD or branch changed during
+  `xcodebuild archive`.
+- `upload.sh` writes `ios/build/<BUILD>/upload-state` (`uploading`, `uploaded`
+  or `failed <code>`). It exits 2 when `HASALA_BUILD_DIR` is set with a real
+  `xcrun` first on PATH.
 - An update of Xcode stops all simulator work. The `simctl` wrapper runs
   `xcodebuild -runFirstLaunch`, and this command waits for the admin
   password of the owner. Until the owner gives it, `simctl` and the UI
@@ -348,6 +372,8 @@ CI for iOS:
     module's `hardening.distrustedCARoots` and examines that those roots are
     not trusted for servers, and that the roots of the hosts the QA host calls
     are.
+  - `ops-scripts` (on the two systems). It runs the rendered backup, retry,
+    `hasala-admin` and other operations scripts against stubs.
   - `qa-vm` (on x86_64-linux). It must have KVM.
 - On a Mac, `nix flake check --no-build --all-systems` evaluates the Linux
   checks.
@@ -356,8 +382,9 @@ CI for iOS:
 
 `hasalad <mode>` has these modes: `serve`, `migrate`, `verify`,
 `purge-user`, `invite` (`mint [--review | --email]`, `list`, `revoke`),
-`account` (`review`, `unfreeze`), `waitlist`, `email test`, `console` and
-`version`. `account unfreeze <uuid> --confirm <uuid>` lifts any freeze. It is
+`account` (`review`, `unfreeze`), `mailbox`
+(`rekey --drop-links --keep-key-id <id>`), `waitlist`, `email test`, `console`
+and `version`. `account unfreeze <uuid> --confirm <uuid>` lifts any freeze. It is
 the out-of-band path for a holder who cannot lift their own freeze (for
 example a freeze dated to a phrase recovery). Refer to
 `docs/runbooks/restore.md`. `console` is the operator
@@ -393,11 +420,11 @@ restore must not undo. `hasala-purge-replay` applies them again before
 `hasalad` starts. Refer to `docs/runbooks/restore.md`.
 
 - The ledger records account deletions, freezes and unfreezes, device
-  removals, password changes, passkey removals, waitlist leaves, waitlist
-  entries deleted after a bounced invite, the first view of the 12 words
-  after a signup that skipped them, sign-outs of all sessions (`sessions`),
-  email changes (`email`) and the operator's invite revocations
-  (`invite-revoked`). It records only internal IDs and
+  removals, password changes, passkey removals, key wrap deletions (`wrap`),
+  waitlist leaves, waitlist entries deleted after a bounced invite, the first
+  view of the 12 words after a signup that skipped them, sign-outs of all
+  sessions (`sessions`), email changes (`email`) and the operator's invite
+  revocations (`invite-revoked`). It records only internal IDs and
   times. Do not add an email address or a name.
 - A deletion's line is written before its commit. When the commit fails and
   the account is still there, `purge-cancelled` cancels that line, and the
@@ -405,6 +432,18 @@ restore must not undo. `hasala-purge-replay` applies them again before
   limit: a process stop between the append and the commit leaves the line, and
   the next replay purges that account although the database was not restored. A
   failed commit whose read-back cannot reach the database behaves the same way.
+- A deletion holds its account (a per-account session advisory lock) from
+  before its line until its commit is settled. A replay leaves a held account
+  to the next replay and prints how many it left. A replay also reads the
+  ledger again once it holds the row locks, so a `purge-cancelled` line already
+  written keeps the account.
+- Every other kind that goes through the server is held in
+  `restore_ledger_held`, in the transaction of its change, and flushed to the
+  file after the commit. A new kind must use the same path.
+- An append and the replay cut an incomplete last line, with a log line. A last
+  line with no newline that reads as a whole entry is refused and needs the
+  operator (`docs/runbooks/restore.md`). A write that fails part way is cut
+  back and reports nothing written.
 - `hasalad account unfreeze` records its unfreeze in the ledger, with the
   same kind as the holder's. No command freezes an account as the operator
   yet. When you add one, record the freeze in the ledger.
@@ -428,8 +467,8 @@ restore must not undo. `hasala-purge-replay` applies them again before
 > `hasala-purge-replay` fails and `hasalad` does not start. A build from before
 > the event kinds (before branch `legal/accuracy-fixes`) fails on each line
 > with a third field. A build from before `onboarding/w5-review-fixes` fails on
-> each kind newer than itself (for example `phrase-seen`, `sessions`, `email`
-> and `invite-revoked`). A build from before `hardening/ledger-and-limits`
+> each kind newer than itself (for example `phrase-seen`, `sessions`, `email`,
+> `invite-revoked` and `wrap`). A build from before `hardening/ledger-and-limits`
 > skips `sessions`, `email` and `invite-revoked`, so its replay does not apply
 > them again. A build from before `security/server-lifecycle` skips
 > `purge-cancelled`, so its replay purges an account whose deletion was
@@ -474,6 +513,12 @@ From `web/`:
    - `/` loads more than 15 KB of JavaScript (gzip).
    - Web Analytics can run on a page with a code or a token in its address
      (refer to below).
+   - A site built with a Turnstile site key starts `/joined` on its success
+     card.
+   - A legal page has a status that is not `draft` or `final`, or a `final`
+     page has an `[[OWNER:` note anywhere except `draftNote`, front matter
+     included. This check runs when the Astro config loads, so `bun run check`
+     and `bun run dev` stop too.
 
 ### Third-party scripts
 
@@ -500,6 +545,9 @@ If you add a page with a code or a token in its address, do these steps:
 1. Set `referrer="no-referrer"` on `Base`.
 2. Add the page to `_headers`.
 3. Add the page to the router.
+4. For a page with a token, use `arriveAtLink` and `markLinkDone` in
+   `web/src/lib/link-page.ts`, so a finished action stays finished after a
+   reload.
 
 ### Local servers and Lighthouse
 
@@ -522,7 +570,9 @@ The PUBLIC_* settings (waitlist mode, API base, Turnstile site key) are in
 - `api` (the default). The invite form sends to the API. People also use
   this form to tell us about a bank that we do not read yet. The page shows
   "Check your email", with the step to confirm the address within 7 days.
-  The request shows on the waitlist in `hasalad console`.
+  The request shows on the waitlist in `hasalad console`. Without script, in a
+  build with a site key, `/joined` shows the error card, because such a post
+  has no token and is refused.
 - `email` (use this only when the API does not operate). The form opens a
   prepared email to support@hasala.app. It sends nothing and does not load
   Turnstile. Without JavaScript, the form goes to `/joined`, which tells

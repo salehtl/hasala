@@ -427,13 +427,13 @@ keeps the day ledger and the rows filed here.
 | Pass spacing | 30 s from the start of the last pass, kept when new rows wake the run and across a relaunch (the record keeps the last pass time); at most 24 a minute, under `PER_IP` 30 per 60 s |
 | Names per run | No cap. A run goes on until nothing waits, a pause, or the day cap |
 | Names per device per day | 400, over a rolling 24 h, shared with the foreground sweep |
-| Tries per name | 3 in a session; a 429 or 503 doesn't use up a try |
+| Tries per name | 3 in a session; a 429, a 503 or a cancelled call doesn't use up a try |
 | 429 | waits of 1, 3 and 10 minutes, then the run pauses for 10 minutes and resumes on a foreground after that |
 | 503 (spend limit, or the model gone) | the run pauses for 15 minutes, and resumes on a foreground after that |
 | Offline | the run pauses, and resumes on its own when the phone is back online |
 | In the background | the run pauses, and resumes on the next foreground |
 | Day cap reached | the run pauses, and resumes on a foreground once the rolling window has room |
-| 3 failed passes in a row (the database or the outbox failed) | the run ends; it is tried again at the next open |
+| 3 failed passes in a row (the database or the outbox failed) | the run ends; it is tried again at the next open. A failed pass that also hit a 429, a 503 or the day cap follows that stop's wait or pause, and still counts as a failed pass |
 
 A 503 or 429 pauses the run, and the run resumes by itself. The run is foreground only (no
 `BGContinuedProcessingTask`), so "never in a background refresh or a push wake" still
@@ -443,7 +443,8 @@ eligible, and cached names are not asked again. Turning Sort automatically off l
 run go on, but nothing more is filed without review.
 
 **One day ledger.** Every Clef request counts toward the 400 a day: the run's, and the
-foreground sweep's (up to 40 per foreground). A request counts when it is sent, also when
+foreground sweep's (up to 40 per foreground). The foreground sweep records its requests
+every 5 and the remainder at the end, so a kill can lose up to 4. A request counts when it is sent, also when
 the pass fails afterwards (a cache write, the re-read, the outbox or the re-projection),
 and a pass that enqueued some of its blobs before a failure keeps those rows among the rows
 filed here. The foreground sweep asks Clef for at most what is left of the day. While a run
@@ -469,7 +470,9 @@ comes. The top card stays until the person moves on, so nothing moves under the 
 **Sending back.** Profile › Cloud suggestions shows **Send Cloudflare's sorting back to
 Review** while a row that a run on this device filed is still as the run left it, and asks
 first ("Send 104 payments back to Review?"). The device keeps the rows it filed, with the
-version it left each at, next to the run record. Sending back re-reads each row and authors
+version it left each at, next to the run record. The rows a pass will file are saved before
+its write and removed again if the write fails, so a kill after the write cannot hide them
+from Send back. Sending back re-reads each row and authors
 `txn_categorized {category: <same>, needs_review: true, source: model "cf-clef/1"}` only
 for rows still at that version (`BacklogSort.sendBack`), so they go back to Review with
 Clef's category as a suggestion. An edit on another device moves the version, and the row

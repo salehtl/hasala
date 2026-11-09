@@ -182,8 +182,10 @@ requires the pre-migration dump, a missing backup disk also stops `hasalad`
 and the console from starting, even with nothing pending: deliberate, fail
 closed, and alerted through `onFailure`.
 
-The off-site unit copies the new backups and then deletes each off-site copy
-that is `backup.retentionDays` days old (29 by default). Thus the rclone
+The off-site unit runs after each daily backup, and also on its own daily timer
+at 08:00, independent of the daily backup. It copies the new backups and then
+deletes each off-site copy that is `backup.retentionDays` days old (29 by
+default). Thus the rclone
 credentials need permission to list, write and delete objects in the bucket
 (for R2: "Object Read & Write" on that bucket only). Do not add a bucket lock
 rule that keeps objects longer than 29 days: the privacy policy promises 30

@@ -11,8 +11,11 @@ build wrote that row, so the reader sets the row aside and sync continues. Other
 `/meta` gives no answer, it stops as before.
 
 **Shipping a new schema.** Raise `OpVersionCeiling` and deploy `hasalad` before a build that
-writes the new schema goes out. A device that read a row while the ceiling was low holds it
-set aside, and a build that can read it folds it on its next cold fold.
+writes the new schema goes out. `ios/scripts/archive.sh` enforces this order against the
+deployed server: a build that is not a trial stops (exit 13) when the release API's
+`op_version_ceiling` is below `SchemaVersion.author`. A device that read a row while the
+ceiling was low holds it set aside, and a build that can read it folds it on its next cold
+fold.
 
 **Trust.** The ceiling comes from the server, which the device does not trust. A false high
 ceiling is today's stop. A false low ceiling makes a build skip a genuine next-version row
