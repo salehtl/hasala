@@ -112,9 +112,7 @@ public enum AccountManagement {
   }
 
   /// Uploads what is queued and pulls to the head, so the pinned head is
-  /// current: one engine run (coalesced with any run in flight). A latch
-  /// stops only the upload; the pull still runs and the head is the verified
-  /// one either way.
+  /// current: one engine run (coalesced with any run in flight).
   static func catchUp(_ engine: SyncEngine) async throws(CeremonyError) {
     if let stop = await engine.run(.refresh).stop {
       throw .badResponse("sync before removal: \(stop)")
