@@ -566,4 +566,26 @@ struct LiveAccountServiceTests {
     #expect(LiveAccountService.freezeTime("2026-12-31T21:00:00Z", nowMs: newYearInDubai) == "on Fri 1 Jan at 01:00")
     #expect(LiveAccountService.freezeTime("2026-12-31T19:00:00Z", nowMs: newYearInDubai) == "on Thu 31 Dec 2026 at 23:00")
   }
+  @Test func theApprovalKeyReadsAsLockedOnlyWhileTheKeychainIsLocked() {
+    let user = UserID("00000000-0000-4000-8000-000000000001")!
+    let writer = WriterID("ios-00000000-0000-4000-8000-000000000002")!
+    #expect(throws: ApprovalKeyError.notNow) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .notNow(status: -25308)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+    #expect(throws: ApprovalKeyError.unavailable) {
+      try SecureEnclaveApprovalKey(store: RefusingSecretStore(refusal: .failed(status: -25300)))
+        .publicKeyX963(userID: user, writerID: writer)
+    }
+  }
+}
+
+nonisolated private struct RefusingSecretStore: SecretStore {
+  let refusal: SecretStoreError
+
+  func read(_ item: SecretItem) throws(SecretStoreError) -> Data? { throw refusal }
+
+  func write(_ item: SecretItem, _ value: Data) throws(SecretStoreError) { throw refusal }
+
+  func delete(_ item: SecretItem) throws(SecretStoreError) { throw refusal }
 }

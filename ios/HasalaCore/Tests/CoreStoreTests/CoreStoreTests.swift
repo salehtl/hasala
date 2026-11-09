@@ -1,5 +1,6 @@
 // Unit tests for CoreStore (owner: WS-11): the §4.2 schema, each §5
 // transaction boundary, the §4.4 item formats and the §4.1 file hygiene.
+import CoreAuth
 import CorePrimitives
 import CoreWire
 import Foundation
@@ -221,6 +222,13 @@ struct SecretTests {
     #expect(try s.writerSeed(userID: user, writerID: writer).map { $0.withUnsafeBytes { Data($0) } } == Data(repeating: 7, count: 32))
     try m.write(.writerKey(userID: user, writerID: writer), Data([2]) + Data(repeating: 7, count: 32))
     #expect(throws: SecretStoreError.self) { _ = try s.writerSeed(userID: user, writerID: writer) }
+  }
+
+  @Test("only a locked Keychain reads as 'not now' for the approval key; any other refusal is unavailable")
+  func approvalKeyStoreErrors() {
+    #expect(ApprovalKeyError(storeError: .notNow(status: -25308)) == .notNow)
+    #expect(ApprovalKeyError(storeError: .failed(status: -25300)) == .unavailable)
+    #expect(ApprovalKeyError(storeError: .readBackMismatch) == .unavailable)
   }
 
   @Test("locked: reads throw 'not now', never nil; wipe removes every item")

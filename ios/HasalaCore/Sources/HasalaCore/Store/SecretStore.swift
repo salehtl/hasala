@@ -9,6 +9,7 @@
 // when the item is absent; any other failure (before first unlock,
 // `errSecInteractionNotAllowed`) throws, and callers treat a throw as "not
 // now", never as "absent".
+import CoreAuth
 import CorePrimitives
 import Foundation
 import Synchronization
@@ -95,6 +96,12 @@ public enum SecretStoreError: Error, Sendable, Hashable {
   case readBackMismatch
   /// Any other Keychain status.
   case failed(status: Int32)
+}
+
+extension ApprovalKeyError {
+  public init(storeError: SecretStoreError) {
+    if case .notNow = storeError { self = .notNow } else { self = .unavailable }
+  }
 }
 
 public protocol SecretStore: Sendable {
