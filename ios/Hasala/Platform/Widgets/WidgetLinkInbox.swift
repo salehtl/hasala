@@ -10,6 +10,7 @@ final class WidgetLinkInbox {
 
 extension AppModel {
   func open(_ link: WidgetLink) {
+    let sheetClosing = router.sheetUpOrClosing
     router.clearPresentation()
     switch link {
     case .home:
@@ -27,7 +28,7 @@ extension AppModel {
       router.home = BuildSurface.showsUnfinished ? [.accounts] : []
     case .review:
       router.tab = .review
-      if reviewCount > 0 { startReview() }
+      if reviewCount > 0 { startReview(afterSheetCloses: sheetClosing) }
     case .activity:
       router.tab = .activity
       router.activity = []

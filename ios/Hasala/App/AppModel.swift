@@ -357,9 +357,9 @@ final class AppModel {
 
   func open(_ txn: TxnID) { router.open(.transaction(txn)) }
 
-  func startReview() {
+  func startReview(afterSheetCloses: Bool = false) {
     reviewPeriodOverride = nil
-    cover = .review
+    if afterSheetCloses { router.nextCover = .review } else { cover = .review }
   }
 
   func startReview(over preset: PeriodPreset) {

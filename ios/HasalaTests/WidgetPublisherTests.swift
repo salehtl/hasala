@@ -223,6 +223,43 @@ struct WidgetLinkRoutingTests {
     #expect(app.cover == nil)
   }
 
+  @Test func theReviewLinkWaitsForAnOpenSheetToCloseBeforeItsCover() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.notifications)
+    app.open(.review)
+    #expect(app.tab == .review)
+    #expect(app.router.sheet == nil)
+    #expect(app.cover == nil)
+    app.open(.review)
+    #expect(app.cover == nil)
+    app.router.sheetDismissed()
+    #expect(app.cover == .review)
+    #expect(app.router.nextCover == nil)
+  }
+
+  @Test func aLaterPlaceDropsTheCoverThatWasWaiting() {
+    let app = AppModel(store: InMemoryLedger())
+    app.router.open(.notifications)
+    app.open(.review)
+    app.open(.home)
+    app.router.sheetDismissed()
+    #expect(app.cover == nil)
+
+    app.router.open(.notifications)
+    app.open(.review)
+    app.router.open(.profile)
+    #expect(app.router.nextCover == nil)
+    #expect(app.router.sheet == .profile)
+    app.router.sheet = nil
+    app.router.sheetDismissed()
+    #expect(app.cover == nil)
+
+    app.router.open(.notifications)
+    app.open(.review)
+    app.router.clearPresentation()
+    #expect(app.router.nextCover == nil)
+  }
+
   @Test func aProjectLinkOpensThatProject() {
     let app = AppModel(store: InMemoryLedger(state: MayaLedger.state))
     app.open(.project("japan"))
