@@ -859,6 +859,7 @@ public actor MailboxEngine {
           report.phase = .unlinked
           return report
         case .holder(isThisDevice: false, _):
+          await tokens.forget()
           state.lastHolderCheckAtMs = now
           return await finish(&state, report)
         case .holder(isThisDevice: true, let watch):

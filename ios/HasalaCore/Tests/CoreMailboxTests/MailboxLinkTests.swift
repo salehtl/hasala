@@ -174,6 +174,47 @@ import Testing
     #expect(await rig.accounted("gap") != nil)
   }
 
+  func iPhoneThatLostTheLink(_ rig: Rig) async throws {
+    await rig.connectAndActivate()
+    await rig.server.setLink(.holder(isThisDevice: false, watchExpiresAtMs: nil))
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+    #expect(try rig.keychain.read() == nil)
+    rig.gmail.clearRequests()
+  }
+
+  @Test func aTokenLeftByAConnectThatDiedBeforeTheLinkMovedIsForgottenWithoutARevoke() async throws {
+    let rig = Rig()
+    try await iPhoneThatLostTheLink(rig)
+    try rig.keychain.write("synthetic-token-of-the-stopped-connect")
+
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .otherDevice)
+
+    #expect(try rig.keychain.read() == nil)
+    #expect(revokes(rig) == 0)
+  }
+
+  @Test func aTokenLeftByAConnectWhoseLinkMovedStaysAndTheIPhoneReadsAgain() async throws {
+    let rig = Rig()
+    try await iPhoneThatLostTheLink(rig)
+    try rig.keychain.write(rig.gmail.refreshToken)
+    await rig.server.setLink(.holder(isThisDevice: true, watchExpiresAtMs: nil))
+
+    #expect(await rig.engine.runCycle(trigger: .launch).phase == .active)
+
+    #expect(try rig.keychain.read() == rig.gmail.refreshToken)
+  }
+
+  @Test func aHolderCheckThatCouldNotReachTheServerKeepsTheConnectsToken() async throws {
+    let rig = Rig()
+    try await iPhoneThatLostTheLink(rig)
+    try rig.keychain.write("synthetic-token-of-the-stopped-connect")
+    await rig.server.setOffline(true)
+
+    #expect(await rig.engine.runCycle(trigger: .launch).haltedOn == .offline)
+
+    #expect(try rig.keychain.read() == "synthetic-token-of-the-stopped-connect")
+  }
+
   func saveReader(_ rig: Rig) async throws {
     var c = MailboxCommit()
     c.reader = MailReaderState(address: SyntheticMail.defaultTo)
